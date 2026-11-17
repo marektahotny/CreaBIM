@@ -9,6 +9,7 @@
 pub mod assign;
 pub mod blend;
 pub mod catalogue;
+pub mod dxf;
 pub mod freecad;
 pub mod gltf;
 pub mod gltf_read;

@@ -551,6 +551,12 @@ impl Snapper {
     }
 
     /// Leave `ids` out of snapping from now on (and bring back the rest).
+    /// A point to snap to, as an end point: a drawing's survey mark or a
+    /// block's insertion point.
+    pub fn add_point(&mut self, p: DVec3, src: Source, host: Option<ElementId>) {
+        self.point(p, SnapKind::Endpoint, src, host);
+    }
+
     pub fn hide(&mut self, ids: &[ElementId]) {
         if self.hide != ids {
             self.hide = ids.to_vec();

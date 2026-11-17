@@ -31,6 +31,20 @@ Its dashed outline shows when it is selected or under the pointer, in plans and 
 
 A trace placed in a [Profile view](profiles#the-profile-view) is kept to that profile: **Only in this profile** is ticked, and it is not drawn in plans, sections or 3D. Untick it to choose the views it shows in, as for any other reference.
 
+## A DXF drawing
+
+A DXF is read as PilonDesigner reads it: lines, polylines with arcs, circles, ellipses and splines, texts (TEXT and MTEXT), hatches (their pattern lines, solid fills as outlines), blocks with their arrays, dimensions, points and 3D faces, by layer and in metres from the file's units (millimetres when it gives none). Drawings saved before AutoCAD 2007 are read in their code page, so Slovak and Czech letters (ANSI 1250) come out right.
+
+- **Layers**: tick the layers to show; *All* and *None* switch them together.
+- **Texts** show at their size and turn once they are big enough on screen to read.
+- **Points**: survey points, small circles marking them and blocks' insertion points snap.
+- A drawing in national coordinates (**S-JTSK**, kilometres from the origin) comes to the project's origin, its lower left corner there; move it in *Properties*.
+- A **3D survey** shows the range of its heights.
+
+## Clip
+
+**Clip…**: click two opposite corners in the view; only what lies between them shows (lines are cut at the edge). **Whole** shows all of it again.
+
 ## How it looks
 
 - **Colour**: red, blue, grey or green, or *its own colours* (a picture's).
