@@ -4374,6 +4374,7 @@ impl CreaBimApp {
             )
         });
         let icons_extra = self.profile_thumbs();
+        let maps = self.maps_rect;
         let Some(web) = &mut self.shell.web else {
             return false;
         };
@@ -4396,6 +4397,10 @@ impl CreaBimApp {
                 }
             }
             None => web.park(Pane::Help),
+        }
+        match maps {
+            Some(rect) => web.place(Pane::Maps, rect, ppp),
+            None => web.park(Pane::Maps),
         }
         match popup {
             Some((_, _, true)) => self.close_popup(),

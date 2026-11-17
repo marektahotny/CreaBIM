@@ -22,9 +22,13 @@ pub enum Pane {
     Nav,
     /// The guide, at the right of the window while it is open.
     Help,
+    /// The map underlays' site (Pilon Map Downloader), in its window
+    /// while it is open. Not one of the app's own pages: nothing it says
+    /// is listened to, and no state or script is sent to it.
+    Maps,
 }
 
-const PANES: usize = 6;
+const PANES: usize = 7;
 
 impl Pane {
     /// In the order they are made, which stacks the popup on top.
@@ -34,6 +38,7 @@ impl Pane {
         Pane::Status,
         Pane::Nav,
         Pane::Help,
+        Pane::Maps,
         Pane::Popup,
     ];
 
@@ -45,6 +50,7 @@ impl Pane {
             Pane::Popup => "popup",
             Pane::Nav => "nav",
             Pane::Help => "help",
+            Pane::Maps => "maps",
         }
     }
 }
@@ -88,6 +94,9 @@ pub fn icon_markup() -> Vec<(String, String)> {
 }
 
 fn page(pane: Pane) -> String {
+    if pane == Pane::Maps {
+        return BLANK.into();
+    }
     // the guide's pages are in its pane from the start, for searching
     let pages = match pane {
         Pane::Help => format!(
@@ -142,7 +151,14 @@ impl WebUi {
                 // the popup's corners can be round (Save the changes):
                 // what its page leaves clear shows the app behind
                 .with_transparent(pane == Pane::Popup)
+                // only the map site's pages (and the blank one) load in
+                // its pane
+                .with_navigation_handler(move |url| pane != Pane::Maps || maps_allowed(&url))
                 .with_ipc_handler(move |r| {
+                    // the map site is not the app's page: it has no say
+                    if pane == Pane::Maps {
+                        return;
+                    }
                     if let Ok(body) = serde_json::from_str(r.body()) {
                         inbox.lock().unwrap().push(Msg { pane, body });
                         ctx.request_repaint();
@@ -228,11 +244,20 @@ impl WebUi {
         let _ = self.view(pane).evaluate_script(script);
     }
 
-    /// Run a script in every pane's page.
+    /// Run a script in every one of the app's own pages.
     pub fn run_all(&self, script: &str) {
-        for (_, v) in &self.views {
+        for (_, v) in self.views.iter().filter(|(p, _)| *p != Pane::Maps) {
             let _ = v.evaluate_script(script);
         }
+    }
+
+    /// Load the map site in its pane, or clear it (none).
+    pub fn maps_load(&mut self, url: Option<&str>) {
+        let v = self.view(Pane::Maps);
+        let _ = match url {
+            Some(u) => v.load_url(u),
+            None => v.load_html(BLANK),
+        };
     }
 
     /// Re-send every state next frame (after a page reloads).
@@ -291,6 +316,27 @@ impl WebUi {
         }
         let _ = self.view(Pane::Top).focus_parent();
     }
+}
+
+/// The map pane's page while the site isn't open.
+const BLANK: &str = "<!doctype html><html><body></body></html>";
+
+/// Where the map underlays come from (Pilon Map Downloader).
+pub const MAPS_URL: &str = "https://mapy.pilondesign.eu/";
+
+/// The origin of a URL: its scheme and host (and port), no path.
+pub fn origin(url: &str) -> &str {
+    let after = url.find("://").map_or(0, |i| i + 3);
+    let end = url[after..]
+        .find(['/', '?', '#'])
+        .map_or(url.len(), |i| after + i);
+    &url[..end]
+}
+
+/// May the map pane go to `url`: the map site's own pages, and its blank
+/// page.
+fn maps_allowed(url: &str) -> bool {
+    url.starts_with("about:") || url.starts_with("data:") || origin(url) == origin(MAPS_URL)
 }
 
 const PARKED: egui::Rect = egui::Rect {

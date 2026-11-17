@@ -57,6 +57,8 @@ mod levelcopy;
 mod levelsui;
 #[path = "mapimport.rs"]
 mod mapimport;
+#[path = "maplink.rs"]
+mod maplink;
 #[path = "marksui.rs"]
 mod marksui;
 #[path = "mastersui.rs"]
@@ -211,6 +213,11 @@ pub struct CreaBimApp {
     /// A 3D drawing reference to make a terrain from, asked from its
     /// Properties.
     terrain_ref: Option<ElementId>,
+    /// The map site's window (Pilon Map Downloader): open, where its page
+    /// goes, and the listener it sends to.
+    maps_open: bool,
+    maps_rect: Option<egui::Rect>,
+    maplink: Option<maplink::MapLink>,
     /// Shift+A's Add menu, open, with what is typed in it (MU24).
     add_menu: Option<String>,
     scene: Vec<SceneItem>,
@@ -460,6 +467,9 @@ impl CreaBimApp {
             remove_ref: None,
             copy_ref: None,
             terrain_ref: None,
+            maps_open: false,
+            maps_rect: None,
+            maplink: None,
             add_menu: None,
             scene: vec![],
             plan: PlanState::default(),
@@ -11878,6 +11888,7 @@ impl eframe::App for CreaBimApp {
         self.discipline_window(&ctx);
         self.water_calc_window(&ctx);
         self.earthworks_window(&ctx);
+        self.maps_window(&ctx);
         self.note_editor_window(&ctx);
         self.ifc_export_window(&ctx);
         self.reference_steps();
