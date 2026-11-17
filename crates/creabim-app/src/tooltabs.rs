@@ -1,6 +1,7 @@
-//! The tools row's tabs (brief 02, 2.1): Model, Annotate, View and Manage
-//! each show their own tools and commands, icons only, while Select and
-//! Align stay at the left on every tab. A tool picked by its key shows its
+//! The tools row's tabs (brief 02, 2.1): Architecture (upstream's Model),
+//! the building services' disciplines, Annotate, View and Manage each show
+//! their own tools and commands, icons only, while Select and Align stay at
+//! the left on every tab. A tool picked by its key shows its
 //! tab. A tool can be on two tabs where it belongs to both: the callout.
 
 use crate::planview::Tool;
@@ -27,8 +28,23 @@ pub enum Entry {
     Sep,
 }
 
-/// The first is called Model upstream; this fork names it after its discipline.
-pub const TABS: [&str; 4] = ["Architecture", "Annotate", "View", "Manage"];
+/// The first is called Model upstream; this fork names it after its
+/// discipline, and puts the building services' disciplines beside it.
+pub const TABS: [&str; 10] = [
+    "Architecture",
+    "Cadastre",
+    "Plumbing and gas",
+    "Heating",
+    "HVAC",
+    "Medical gases",
+    "Electrical installation",
+    "Annotate",
+    "View",
+    "Manage",
+];
+
+/// The tab where annotating starts; the ones before it are disciplines.
+pub const ANNOTATE: usize = 7;
 
 /// On every tab, before it.
 pub const ALWAYS: [Tool; 2] = [Tool::Select, Tool::Align];
@@ -88,6 +104,137 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::Planting),
         ],
         1 => vec![
+            act(
+                "discipline:cadastre",
+                "Cadastre and site",
+                "landmark",
+                "Cadastral map, orthophoto and terrain in S-JTSK: the standards and the tools coming",
+            ),
+            act(
+                "project.info",
+                "Project information",
+                "info",
+                "Site, address, latitude and longitude, and the project's codes (STN or ČSN)",
+            ),
+            act(
+                "view.reference",
+                "Map underlay",
+                "underlay",
+                "Trace over a map or a picture: shown faintly under this view (Alt+F2 hides it)",
+            ),
+            Sep,
+            T(Tool::Terrain),
+            T(Tool::Paving),
+            T(Tool::Planting),
+        ],
+        2 => vec![
+            act(
+                "discipline:water",
+                "Water supply",
+                "droplet",
+                "Cold and hot water: the standards (STN EN 806-3, STN 73 6655) and the tools coming",
+            ),
+            act(
+                "catalogue.cat:bathroom",
+                "Sanitary fixtures",
+                "fixtures",
+                "Basins, WCs, baths and showers from the catalogue",
+            ),
+            act(
+                "catalogue.cat:plumbing",
+                "Plumbing fixtures",
+                "waves",
+                "Floor drains, taps and water heaters from the catalogue",
+            ),
+            Sep,
+            act(
+                "discipline:drainage",
+                "Drainage",
+                "droplets",
+                "Waste and soil pipes: the standards (STN EN 12056-2, STN 73 6760) and the tools coming",
+            ),
+            Sep,
+            act(
+                "discipline:gas",
+                "Gas installation",
+                "flame",
+                "Gas pipes, the main shut-off and the meter: the standards (TPP 704 01) and the tools coming",
+            ),
+        ],
+        3 => vec![
+            act(
+                "discipline:heating.radiators",
+                "Radiator heating",
+                "heater",
+                "Heat loss, radiators, pipes and balancing: the standards (STN EN 12831-1, STN EN 12828) and the tools coming",
+            ),
+            act(
+                "discipline:heating.floor",
+                "Underfloor heating",
+                "layout-grid",
+                "Loops, spacing and manifolds: the standards (STN EN 1264) and the tools coming",
+            ),
+            act(
+                "discipline:heating.wall",
+                "Wall heating",
+                "columns-3",
+                "Wall heating panels: the standards (STN EN 1264) and the tools coming",
+            ),
+            act(
+                "discipline:heating.ceiling",
+                "Ceiling heating",
+                "rows-3",
+                "Ceiling heating and cooling panels: the standards (STN EN 1264) and the tools coming",
+            ),
+            Sep,
+            act(
+                "catalogue.cat:hvac",
+                "Radiators and boilers",
+                "thermometer",
+                "Radiators, boilers and other heating fixtures from the catalogue",
+            ),
+        ],
+        4 => vec![
+            act(
+                "discipline:ventilation",
+                "Ventilation",
+                "wind",
+                "Ducts, terminals and units: the standards (STN EN 16798-3) and the tools coming",
+            ),
+            act(
+                "catalogue.cat:hvac",
+                "Diffusers and fans",
+                "fan",
+                "Diffusers, grilles, fans and split units from the catalogue",
+            ),
+        ],
+        5 => vec![act(
+            "discipline:medgas",
+            "Medical gases",
+            "cylinder",
+            "O2, medical air, vacuum, N2O and CO2: the standards (STN EN ISO 7396-1) and the tools coming",
+        )],
+        6 => vec![
+            act(
+                "discipline:electrical",
+                "Electrical installation",
+                "zap",
+                "Circuits, cables, protection and lightning: the standards (STN 33 2000) and the tools coming",
+            ),
+            act(
+                "catalogue.cat:electrical",
+                "Sockets and switches",
+                "plug",
+                "Sockets, switches, boards and detectors from the catalogue",
+            ),
+            act(
+                "catalogue.cat:lighting",
+                "Lights",
+                "lightbulb",
+                "Ceiling, wall and recessed lights from the catalogue",
+            ),
+        ],
+        ANNOTATE => vec![
             T(Tool::Dimension),
             T(Tool::Angle),
             T(Tool::Radius),
@@ -120,7 +267,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "How doors, windows and other elements are numbered; renumber, and check for marks used twice",
             ),
         ],
-        2 => vec![
+        8 => vec![
             // levels are what plans are cut from, so they sit with the
             // views that come from them (MU20)
             T(Tool::Level),
@@ -278,11 +425,14 @@ mod tests {
             );
         }
         assert_eq!(home_of(Tool::Wall), 0);
-        assert_eq!(home_of(Tool::Dimension), 1);
-        assert_eq!(home_of(Tool::Section), 2);
-        assert_eq!(home_of(Tool::Grid), 3);
+        assert_eq!(home_of(Tool::Dimension), ANNOTATE);
+        assert_eq!(home_of(Tool::Section), ANNOTATE + 1);
+        assert_eq!(home_of(Tool::Grid), ANNOTATE + 2);
+        // the terrain tools are on Cadastre too, but at home in Architecture
+        assert_eq!(home_of(Tool::Terrain), 0);
+        assert!(holds(1, Tool::Terrain));
         // the callout is on both of its tabs
-        assert!(holds(1, Tool::Callout) && holds(2, Tool::Callout));
+        assert!(holds(ANNOTATE, Tool::Callout) && holds(ANNOTATE + 1, Tool::Callout));
         // Select is on every one
         assert!((0..TABS.len()).all(|t| holds(t, Tool::Select)));
     }

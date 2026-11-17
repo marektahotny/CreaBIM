@@ -539,6 +539,12 @@ impl CreaBimApp {
         self.catalogue.user.as_deref().unwrap_or(&[])
     }
 
+    /// Open the catalogue at `category` (all of it with none).
+    pub(super) fn open_catalogue_at(&mut self, category: Option<ObjectCategory>) {
+        self.catalogue.open = true;
+        self.catalogue.category = category;
+    }
+
     /// Run a catalogue action. False when the action isn't one.
     pub(super) fn objects_action(&mut self, head: &str, _arg: &str) -> bool {
         match head {

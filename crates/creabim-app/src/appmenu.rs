@@ -1129,6 +1129,22 @@ impl CreaBimApp {
                 crate::props::section(ui, "Building");
                 text(ui, "Name", &mut draft.building_name, "");
                 text(ui, "Use", &mut draft.building_use, "Dwelling");
+                crate::props::section(ui, "Standards");
+                crate::props::row(ui, "Codes", |ui| {
+                    egui::ComboBox::from_id_salt("project.norms")
+                        .icon(crate::props::combo_icon)
+                        .selected_text(crate::i18n::tw(draft.norms.label()))
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for set in creabim_core::norms::NormSet::ALL {
+                                ui.selectable_value(&mut draft.norms, set, crate::i18n::tw(set.label()));
+                            }
+                        })
+                        .response
+                        .on_hover_text(crate::i18n::t(
+                            "The standards the building services' calculations follow: Slovak first, Czech where the building is in the Czech Republic",
+                        ));
+                });
                 ui.label(
                     egui::RichText::new(
                         "These fill the title blocks of every sheet (a value a sheet sets itself still wins) and name the project, site and building in IFC exports.",

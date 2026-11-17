@@ -42,6 +42,9 @@ pub struct ProjectInfo {
     /// a view.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pad: Vec<PadItem>,
+    /// The building codes the project follows: STN, or ČSN.
+    #[serde(skip_serializing_if = "crate::norms::NormSet::is_default")]
+    pub norms: crate::norms::NormSet,
     /// The project's own profiles (MU27 block 5), for sweeps.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub profiles: Vec<crate::profiles::NamedProfile>,

@@ -689,7 +689,7 @@ impl CreaBimApp {
                 self.set_tool_type(TypeCategory::Wall, id);
                 self.status = "Screen wall: click to start, click again to place each wall. Its type sets the unit and holes; pick another in the bar.".into();
             }
-            _ => return self.objects_action(head, arg),
+            _ => return self.objects_action(head, arg) || self.discipline_action(head, arg),
         }
         true
     }

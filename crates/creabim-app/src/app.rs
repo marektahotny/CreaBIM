@@ -33,6 +33,8 @@ mod areasui;
 mod assemblies;
 #[path = "cropui.rs"]
 mod cropui;
+#[path = "disciplines.rs"]
+mod disciplines;
 #[path = "divideui.rs"]
 mod divideui;
 #[path = "drafting.rs"]
@@ -318,6 +320,8 @@ pub struct CreaBimApp {
     settings_open: bool,
     /// The Project information window (A7-5).
     project_open: bool,
+    /// The discipline whose window is open (its standards and tools).
+    discipline: Option<creabim_core::norms::Discipline>,
     /// A note open in its own big editor window (MU26).
     note_editor: Option<ElementId>,
     /// A schedule export asked from its header ("csv" or "xlsx").
@@ -479,6 +483,7 @@ impl CreaBimApp {
             levels: Default::default(),
             settings_open: false,
             project_open: false,
+            discipline: None,
             note_editor: None,
             copy_guides: None,
             overlap_seen: 0,
@@ -11528,6 +11533,7 @@ impl eframe::App for CreaBimApp {
             self.geometry_key = None;
         }
         self.project_window(&ctx);
+        self.discipline_window(&ctx);
         self.note_editor_window(&ctx);
         self.ifc_export_window(&ctx);
         self.reference_steps();
