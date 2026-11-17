@@ -18,6 +18,7 @@ pub mod materials;
 pub mod pdf;
 pub mod shape;
 pub mod titleblock;
+pub mod xyz;
 
 pub use assign::{assign, Assign};
 pub use link::{sync, Incoming, SyncReport};

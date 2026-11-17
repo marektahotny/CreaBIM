@@ -219,8 +219,9 @@ pub fn terrain_top(model: &Model, s: &Site) -> Vec<[DVec3; 3]> {
         .filter(|p| creabim_core::polygon::contains(boundary, *p))
         .collect();
     let (verts, tris) = refine(boundary, &inside);
+    let h = s.ground_heights(&verts);
     tris.iter()
-        .map(|t| t.map(|i| verts[i].extend(z + s.ground_at(verts[i]))))
+        .map(|t| t.map(|i| verts[i].extend(z + h[i])))
         .collect()
 }
 
@@ -267,36 +268,46 @@ fn refine(boundary: &[DVec2], inner: &[DVec2]) -> (Vec<DVec2>, Vec<[usize; 3]>) 
     };
     let boundary_edge =
         |a: usize, b: usize| a < n0 && b < n0 && ((a + 1) % n0 == b || (b + 1) % n0 == a);
-    for _ in 0..8 * tris.len().max(1) {
-        let mut flipped = false;
-        'outer: for i in 0..tris.len() {
-            for e in 0..3 {
-                let (a, b, c) = (tris[i][e], tris[i][(e + 1) % 3], tris[i][(e + 2) % 3]);
-                if boundary_edge(a, b) {
-                    continue;
-                }
-                // the triangle across edge a-b runs b-a
-                let Some((j, d)) = tris.iter().enumerate().find_map(|(j, t)| {
-                    (j != i)
-                        .then(|| (0..3).find(|&f| t[f] == b && t[(f + 1) % 3] == a))
-                        .flatten()
-                        .map(|f| (j, t[(f + 2) % 3]))
-                }) else {
-                    continue;
-                };
-                let (pa, pb, pc, pd) = (verts[a], verts[b], verts[c], verts[d]);
-                // only a convex quad can flip
-                let convex = (pd - pc).perp_dot(pa - pc) * (pd - pc).perp_dot(pb - pc) < 0.0;
-                if convex && in_circle(pa, pb, pc, pd) {
-                    tris[i] = [c, a, d];
-                    tris[j] = [d, b, c];
-                    flipped = true;
-                    break 'outer;
+    // each directed edge to the triangle it runs round; edges to check
+    // are kept on a stack, so a flip looks again only at its neighbours
+    let mut edges: std::collections::HashMap<(usize, usize), usize> = Default::default();
+    let mut stack: Vec<(usize, usize)> = vec![];
+    for (i, t) in tris.iter().enumerate() {
+        for e in 0..3 {
+            edges.insert((t[e], t[(e + 1) % 3]), i);
+            stack.push((t[e], t[(e + 1) % 3]));
+        }
+    }
+    let third = |t: &[usize; 3], a: usize, b: usize| t.iter().copied().find(|&v| v != a && v != b);
+    let mut budget = 64 * tris.len().max(1);
+    while let Some((a, b)) = stack.pop() {
+        if budget == 0 {
+            break;
+        }
+        budget -= 1;
+        if boundary_edge(a, b) {
+            continue;
+        }
+        let (Some(&i), Some(&j)) = (edges.get(&(a, b)), edges.get(&(b, a))) else {
+            continue;
+        };
+        let (Some(c), Some(d)) = (third(&tris[i], a, b), third(&tris[j], a, b)) else {
+            continue;
+        };
+        let (pa, pb, pc, pd) = (verts[a], verts[b], verts[c], verts[d]);
+        // only a convex quad can flip
+        let convex = (pd - pc).perp_dot(pa - pc) * (pd - pc).perp_dot(pb - pc) < 0.0;
+        if convex && in_circle(pa, pb, pc, pd) {
+            edges.remove(&(a, b));
+            edges.remove(&(b, a));
+            tris[i] = [c, a, d];
+            tris[j] = [d, b, c];
+            for (k, t) in [(i, tris[i]), (j, tris[j])] {
+                for e in 0..3 {
+                    edges.insert((t[e], t[(e + 1) % 3]), k);
                 }
             }
-        }
-        if !flipped {
-            break;
+            stack.extend([(a, d), (d, b), (b, c), (c, a)]);
         }
     }
     (verts, tris)

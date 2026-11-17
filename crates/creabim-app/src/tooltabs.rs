@@ -124,6 +124,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
             Sep,
             T(Tool::Terrain),
+            act(
+                "terrain:points",
+                "Terrain from points",
+                "mountain",
+                "A terrain through surveyed points (XYZ, TXT, PTS, CSV; S-JTSK too): its outline round them, each a spot height",
+            ),
             T(Tool::Paving),
             T(Tool::Planting),
         ],

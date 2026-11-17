@@ -693,6 +693,7 @@ impl CreaBimApp {
                 return self.objects_action(head, arg)
                     || self.discipline_action(head, arg)
                     || self.calc_action(head, arg)
+                    || self.terrain_action(head, arg)
             }
         }
         true

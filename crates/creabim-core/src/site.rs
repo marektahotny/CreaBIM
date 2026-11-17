@@ -311,6 +311,27 @@ impl Site {
         }
     }
 
+    /// [`Site::ground_at`] for many points, its spot heights gathered
+    /// once (a surveyed terrain has hundreds).
+    pub fn ground_heights(&self, ps: &[DVec2]) -> Vec<f64> {
+        let SiteForm::Terrain {
+            boundary,
+            top,
+            points,
+            ..
+        } = &self.form
+        else {
+            return ps.iter().map(|p| self.ground_at(*p)).collect();
+        };
+        if points.is_empty() {
+            return vec![*top; ps.len()];
+        }
+        let controls = controls(boundary, *top, points);
+        ps.iter()
+            .map(|p| surface_height(*top, &controls, *p))
+            .collect()
+    }
+
     /// The height of a terrain's surface above its level at `p`: its top
     /// when flat, else weighted towards the nearest spot heights.
     pub fn ground_at(&self, p: DVec2) -> f64 {
@@ -324,14 +345,7 @@ impl Site {
                 if points.is_empty() {
                     return *top;
                 }
-                // the outline's corners stay at the terrain's top unless a
-                // spot height is on them
-                let corners = boundary
-                    .iter()
-                    .filter(|c| !points.iter().any(|q| q.truncate().distance(**c) < 1e-3))
-                    .map(|c| c.extend(*top));
-                let controls: Vec<DVec3> = points.iter().copied().chain(corners).collect();
-                surface_height(*top, &controls, p)
+                surface_height(*top, &controls(boundary, *top, points), p)
             }
             SiteForm::Area { top, .. } => *top,
             SiteForm::Plant { base, .. } => *base,
@@ -386,6 +400,16 @@ impl Site {
         let (lo, hi) = self.bounds(model)?;
         Some(((lo + hi) / 2.0).truncate().extend(lo.z))
     }
+}
+
+/// What a terrain's surface passes through: its spot heights, and the
+/// outline's corners at its top unless a spot height is on them.
+fn controls(boundary: &[DVec2], top: f64, points: &[DVec3]) -> Vec<DVec3> {
+    let corners = boundary
+        .iter()
+        .filter(|c| !points.iter().any(|q| q.truncate().distance(**c) < 1e-3))
+        .map(|c| c.extend(top));
+    points.iter().copied().chain(corners).collect()
 }
 
 fn ccw(pts: &mut [DVec2]) {
