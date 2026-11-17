@@ -23,17 +23,17 @@ pub struct FromPoints {
 }
 
 /// The height of the project's ±0,000 in a survey whose lowest point is
-/// `lo`: the project's elevation when it has one the survey is near, else
-/// the lowest point's whole metre when the heights are above sea level
-/// (over 50 m), else 0 (the survey is already to ±0,000).
+/// `lo`: none (0) when its heights are already to ±0,000 (under 50 m);
+/// above sea level, the project's elevation when it has one the survey is
+/// near, else the lowest point's whole metre.
 pub fn datum(model: &Model, lo: f64) -> f64 {
     let elevation = model.project_info().map_or(0.0, |(_, i)| i.elevation);
-    if elevation != 0.0 && lo > elevation - 500.0 {
-        elevation
-    } else if lo > 50.0 {
-        lo.floor()
-    } else {
+    if lo <= 50.0 {
         0.0
+    } else if elevation != 0.0 && (lo - elevation).abs() < 500.0 {
+        elevation
+    } else {
+        lo.floor()
     }
 }
 

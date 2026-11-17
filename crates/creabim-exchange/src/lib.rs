@@ -14,6 +14,7 @@ pub mod freecad;
 pub mod gltf;
 pub mod gltf_read;
 pub mod link;
+pub mod mapdl;
 pub mod materials;
 pub mod pdf;
 pub mod shape;

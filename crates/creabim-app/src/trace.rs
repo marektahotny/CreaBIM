@@ -96,7 +96,11 @@ fn key(source: &RefSource) -> String {
     match source {
         RefSource::View(v) => format!("view:{v:?}"),
         RefSource::Image { path, .. } => format!("image:{path}"),
-        RefSource::Dxf { path } => format!("dxf:{path}"),
+        RefSource::Dxf { path, unit: None } => format!("dxf:{path}"),
+        RefSource::Dxf {
+            path,
+            unit: Some(u),
+        } => format!("dxf:{path}@{u}"),
         RefSource::Pdf { path, page, scale } => format!("pdf:{path}#{page}@{scale}"),
     }
 }
@@ -192,12 +196,17 @@ impl RefCache {
     pub fn dxf_file(
         &mut self,
         path: &str,
+        unit: Option<f64>,
     ) -> Result<Arc<creabim_exchange::dxf::DxfImport>, String> {
-        if let Some(d) = self.dxf.get(path) {
+        let k = key(&RefSource::Dxf {
+            path: path.into(),
+            unit,
+        });
+        if let Some(d) = self.dxf.get(&k) {
             return Ok(d.clone());
         }
-        let d = Arc::new(dxf_import(path)?);
-        self.dxf.insert(path.to_string(), d.clone());
+        let d = Arc::new(dxf_import(path, unit)?);
+        self.dxf.insert(k, d.clone());
         Ok(d)
     }
 
@@ -208,7 +217,7 @@ impl RefCache {
         source: &RefSource,
     ) -> Result<Option<Arc<creabim_exchange::dxf::DxfImport>>, String> {
         match source {
-            RefSource::Dxf { path } => self.dxf_file(path).map(Some),
+            RefSource::Dxf { path, unit } => self.dxf_file(path, *unit).map(Some),
             RefSource::Pdf { path, page, scale } => {
                 let k = key(source);
                 if let Some(d) = self.dxf.get(&k) {
@@ -236,9 +245,6 @@ impl RefCache {
     pub fn forget(&mut self, id: ElementId) {
         if let Some((k, ..)) = self.read.remove(&id) {
             let k = k.split('|').next().unwrap_or(&k).to_string();
-            if let Some(path) = k.strip_prefix("dxf:") {
-                self.dxf.remove(path);
-            }
             self.dxf.remove(&k);
             self.scans.remove(&k);
         }
@@ -246,9 +252,12 @@ impl RefCache {
 }
 
 /// A DXF file read whole.
-pub fn dxf_import(path: &str) -> Result<creabim_exchange::dxf::DxfImport, String> {
+pub fn dxf_import(
+    path: &str,
+    unit: Option<f64>,
+) -> Result<creabim_exchange::dxf::DxfImport, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
-    let d = creabim_exchange::dxf::read(&creabim_exchange::dxf::decode(&bytes), None);
+    let d = creabim_exchange::dxf::read(&creabim_exchange::dxf::decode(&bytes), unit);
     if d.polys.is_empty() && d.texts.is_empty() && d.points.is_empty() && d.faces.is_empty() {
         return Err(format!("{path}: no drawing in it"));
     }
@@ -401,7 +410,7 @@ pub fn read(model: &Model, source: &RefSource) -> Shown {
             Ok(r) => Shown::Picture(Arc::new(r)),
             Err(e) => Shown::Missing(e),
         },
-        RefSource::Dxf { path } => match dxf_import(path) {
+        RefSource::Dxf { path, unit } => match dxf_import(path, *unit) {
             Ok(d) => {
                 DXF_CAPPED.store(
                     d.faces.len() >= 400_000,
@@ -447,7 +456,7 @@ pub fn label(model: &Model, source: &RefSource) -> String {
     };
     match source {
         RefSource::View(v) => model.get(*v).map_or("a view".into(), |e| e.name.clone()),
-        RefSource::Image { path, .. } | RefSource::Dxf { path } => file(path),
+        RefSource::Image { path, .. } | RefSource::Dxf { path, .. } => file(path),
         RefSource::Pdf { path, page, .. } => format!("{} ({page})", file(path)),
     }
 }
@@ -807,7 +816,7 @@ mod tests {
         let dir = std::env::temp_dir().join("creabim-trace-test.dxf");
         let text = "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n5000\n21\n0\n0\nENDSEC\n0\nEOF\n";
         std::fs::write(&dir, text).unwrap();
-        let d = dxf_import(&dir.to_string_lossy()).unwrap();
+        let d = dxf_import(&dir.to_string_lossy(), None).unwrap();
         let lines = dxf_linework(&d, &[], None).lines;
         assert_eq!(lines.len(), 1);
         assert!((lines[0][1].x - 5.0).abs() < 1e-9, "{:?}", lines[0]);

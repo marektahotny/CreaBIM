@@ -692,6 +692,7 @@ impl CreaBimApp {
                 .pick_file()
                 .map(|p| RefSource::Dxf {
                     path: p.display().to_string(),
+                    unit: None,
                 }),
             "view" => id_of(rest).map(RefSource::View),
             _ => None,

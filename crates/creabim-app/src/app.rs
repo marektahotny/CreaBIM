@@ -55,6 +55,8 @@ mod joinsui;
 mod levelcopy;
 #[path = "levelsui.rs"]
 mod levelsui;
+#[path = "mapimport.rs"]
+mod mapimport;
 #[path = "marksui.rs"]
 mod marksui;
 #[path = "mastersui.rs"]
@@ -7968,6 +7970,7 @@ impl CreaBimApp {
                 {
                     add = Some(RefSource::Dxf {
                         path: p.display().to_string(),
+                        unit: None,
                     });
                 }
             }
@@ -8071,7 +8074,7 @@ impl CreaBimApp {
         let name = crate::trace::label(model, &r.source);
         let path = match &r.source {
             RefSource::Image { path, .. }
-            | RefSource::Dxf { path }
+            | RefSource::Dxf { path, .. }
             | RefSource::Pdf { path, .. } => Some(path.clone()),
             RefSource::View(_) => None,
         };
@@ -8137,7 +8140,7 @@ impl CreaBimApp {
                 let p = p.display().to_string();
                 match &mut r.source {
                     RefSource::Image { path, .. }
-                    | RefSource::Dxf { path }
+                    | RefSource::Dxf { path, .. }
                     | RefSource::Pdf { path, .. } => *path = p,
                     RefSource::View(_) => {}
                 }
@@ -8780,9 +8783,17 @@ impl CreaBimApp {
                 .unwrap_or("")
                 .to_lowercase();
             let p = path.display().to_string();
+            // a map package (Pilon Map Downloader) goes in whole
+            if ext == "zip" {
+                self.map_from_zip(&path, Some(view));
+                continue;
+            }
             let source = match ext.as_str() {
                 e if crate::trace::PICTURES.contains(&e) => crate::trace::picture_source(&p),
-                "dxf" => creabim_core::RefSource::Dxf { path: p },
+                "dxf" => creabim_core::RefSource::Dxf {
+                    path: p,
+                    unit: None,
+                },
                 "pdf" => creabim_core::RefSource::Pdf {
                     path: p,
                     page: 1,
@@ -8790,7 +8801,7 @@ impl CreaBimApp {
                 },
                 _ => {
                     self.status = format!(
-                        "{} can't be a reference: drop a picture (PNG, JPEG, TIFF, BMP), a DXF or a PDF file.",
+                        "{} can't be a reference: drop a picture (PNG, JPEG, TIFF, BMP), a DXF or a PDF file, or a map package (ZIP).",
                         path.file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("That file")

@@ -23,8 +23,13 @@ pub enum RefSource {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         dpi: Option<f64>,
     },
-    /// A DXF drawing's lines, in metres from its units.
-    Dxf { path: String },
+    /// A DXF drawing's lines, in metres from its units: the file's own,
+    /// else `unit` (metres to a drawing unit), else millimetres.
+    Dxf {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        unit: Option<f64>,
+    },
     /// A PDF page's lines and texts (or a scanned page's picture), at the
     /// drawing's scale 1:`scale`; `page` from 1.
     Pdf { path: String, page: u32, scale: f64 },
