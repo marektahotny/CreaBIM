@@ -11497,6 +11497,7 @@ impl eframe::App for CreaBimApp {
             self.shell.settings.plan_grid,
             self.shell.settings.axis_lines,
         );
+        crate::planview::set_thin_lines(self.shell.settings.thin_lines);
         if ink != crate::theme::interaction() {
             crate::theme::set_interaction(ink);
             self.geometry_key = None;
@@ -12795,6 +12796,10 @@ mod sheet_tools_tests {
             app.plan.temp_dims_off, before,
             "temporary dimensions toggle"
         );
+        let thin = app.shell.settings.thin_lines;
+        app.run_action(&ctx, "view.thin");
+        assert_ne!(app.shell.settings.thin_lines, thin, "thin lines toggle");
+        app.run_action(&ctx, "view.thin");
         app.run_action(&ctx, "sheet.preview");
         assert!(app.print_preview, "print preview toggles");
         app.run_action(&ctx, "export.sheets");

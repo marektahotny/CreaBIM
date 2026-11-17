@@ -854,6 +854,56 @@ pub fn show(
     selection: &mut Selection,
     style: PaneStyle,
 ) -> Option<String> {
+    let out = show_pane(ui, rect, doc, view, kind, plan, state, selection, style);
+    work_cursor(ui, rect, state);
+    out
+}
+
+/// The working cursor (PilonDesigner, as Revit): while a tool draws or a
+/// point is asked for, a small cross about 33 px across, light with a
+/// dark edge so it reads on any drawing, in place of the system pointer.
+fn work_cursor(ui: &egui::Ui, rect: Rect, state: &PlanState) {
+    let Some(p) = ui
+        .input(|i| i.pointer.hover_pos())
+        .filter(|p| rect.contains(*p))
+    else {
+        return;
+    };
+    let asked = ui.ctx().output(|o| o.cursor_icon) == egui::CursorIcon::Crosshair;
+    let drawing = state.tool != Tool::Select && state.modal.is_none();
+    if !(asked || drawing) {
+        return;
+    }
+    ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+    let top = ui
+        .ctx()
+        .layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("work_cursor"),
+        ))
+        .with_clip_rect(rect);
+    let p = Pos2::new(p.x.round() + 0.5, p.y.round() + 0.5);
+    let arm = 16.0;
+    let edge = Stroke::new(3.0, Color32::from_rgba_unmultiplied(15, 23, 42, 140));
+    let ink = Stroke::new(1.0, Color32::from_rgb(241, 245, 249));
+    for s in [edge, ink] {
+        top.line_segment([p - egui::vec2(arm, 0.0), p + egui::vec2(arm, 0.0)], s);
+        top.line_segment([p - egui::vec2(0.0, arm), p + egui::vec2(0.0, arm)], s);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn show_pane(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    doc: &mut Document,
+    view: ElementId,
+    kind: PaneKind,
+    plan: &Drawing,
+    state: &mut PlanState,
+    selection: &mut Selection,
+    style: PaneStyle,
+) -> Option<String> {
     // while a point is asked for, a click gives it and selects nothing
     let picking = state.point_pick && matches!(kind, PaneKind::Plan { .. });
     let sense = if picking {
@@ -5483,6 +5533,19 @@ fn section_letter(n: usize) -> String {
 
 static PLAN_GRID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 static PLAN_AXES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// Thin lines (Revit's and PilonDesigner's TL): every line drawn one
+/// pixel wide on screen, whatever its pen, for close work. Sheets, prints
+/// and PDFs keep their weights.
+static THIN_LINES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Thin lines on screen, for this frame.
+pub fn set_thin_lines(on: bool) {
+    THIN_LINES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn thin_lines() -> bool {
+    THIN_LINES.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// The settings' grid behind drawings and X/Y lines in plans, for this
 /// frame.
@@ -5659,6 +5722,13 @@ pub fn draw_item_with(
     mm: f64,
     o: &Ovr,
 ) {
+    // thin lines: cut and projection pens one pixel wide
+    let thin = Ovr {
+        cut: 1.0 / 1.8,
+        proj: 1.0,
+        ..*o
+    };
+    let o = if thin_lines() { &thin } else { o };
     let highlight = crate::theme::interaction();
     let ink = if selected {
         highlight

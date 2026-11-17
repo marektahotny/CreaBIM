@@ -1813,7 +1813,7 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "view.tempdims" | "view.thin" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
@@ -2527,6 +2527,16 @@ impl CreaBimApp {
                     "Grid on behind drawings.".into()
                 } else {
                     "Grid off: plain paper behind drawings.".into()
+                };
+            }
+            "view.thin" => {
+                let s = &mut self.shell.settings;
+                s.thin_lines = !s.thin_lines;
+                s.store();
+                self.status = if self.shell.settings.thin_lines {
+                    "Thin lines: every line one pixel wide on screen. Sheets and prints keep their weights.".into()
+                } else {
+                    "Line weights shown: cut thick, the rest thin.".into()
                 };
             }
             "view.tempdims" => {
@@ -3295,6 +3305,12 @@ impl CreaBimApp {
                     "hint": "What temporary dimensions measure walls from: the faces of their load-bearing core (never plaster or insulation), the wall faces, the core's middle or the centreline",
                 }));
             }
+            // thin lines (TL), for close work: weights come back with it off
+            options.push(json!({
+                "kind": "toggle", "id": "view.thin", "label": "Thin lines",
+                "icon": "minus", "on": self.shell.settings.thin_lines,
+                "hint": "Every line one pixel wide on screen, for close work (TL). Off: cut lines thick. Sheets and prints keep their weights",
+            }));
             // the grid behind the drawing, on or off for every drawing
             // (MU40: some prefer plain paper)
             options.push(json!({

@@ -186,6 +186,8 @@ pub struct Settings {
     pub temp_dims_off: bool,
     /// What temporary dimensions measure walls from (core faces by default).
     pub temp_ref: creabim_core::walls::WallRef,
+    /// Thin lines on screen (TL): every pen one pixel wide.
+    pub thin_lines: bool,
     /// The kinds of element the 3D view leaves out (grids, annotation,
     /// guides…), from its Visibility settings.
     pub hidden_3d: Vec<creabim_core::Category>,
@@ -255,6 +257,7 @@ impl Default for Settings {
             ifc_body: "modelled".into(),
             temp_dims_off: false,
             temp_ref: Default::default(),
+            thin_lines: false,
             hidden_3d: vec![],
             xray: false,
             hidden_colour_3d: false,
