@@ -172,6 +172,13 @@ pub struct PartSettings {
     /// The sweep path clicked so far.
     pub path: Vec<DVec2>,
     pub terrain_thickness: f64,
+    /// What the Terrain tool draws: 0 terrain, 1 a building pit, 2 a
+    /// platform.
+    pub terrain_kind: usize,
+    /// A new pit's bottom (a platform's height) above the level.
+    pub earth_bottom: f64,
+    /// New pits' and platforms' slopes, 1:n.
+    pub earth_slope: f64,
     pub area: usize,
     /// How deep a void drawn on a face in 3D cuts into it.
     pub face_depth: f64,
@@ -225,6 +232,9 @@ impl Default for PartSettings {
             steps: 3,
             path: vec![],
             terrain_thickness: 0.5,
+            terrain_kind: 0,
+            earth_bottom: -1.5,
+            earth_slope: 1.0,
             area: 0,
             plant: PlantForm::Tree,
             canopy: 4.0,
@@ -240,6 +250,7 @@ impl Default for PartSettings {
 pub enum Make {
     Extrusion { base: f64, height: f64, void: bool },
     Terrain { thickness: f64 },
+    Earthwork { bottom: f64, slope: f64, pit: bool },
     Area(usize),
 }
 
@@ -256,6 +267,11 @@ pub fn make_for(state: &PlanState) -> Option<Make> {
             base: s.void_base,
             height: s.void_height,
             void: true,
+        },
+        Tool::Terrain if s.terrain_kind > 0 => Make::Earthwork {
+            bottom: s.earth_bottom,
+            slope: s.earth_slope,
+            pit: s.terrain_kind == 1,
         },
         Tool::Terrain => Make::Terrain {
             thickness: s.terrain_thickness,
@@ -320,6 +336,19 @@ pub fn from_outline(
                 Element::new("Terrain", ElementKind::Site(s)),
                 "Draw terrain",
                 "Terrain added, flat at the level. Add spot heights in Properties to shape it. Ctrl+Z to undo.".to_string(),
+            )
+        }
+        Make::Earthwork { bottom, slope, pit } => {
+            let s = Site::earthwork(level, outline, bottom, slope, pit);
+            let (name, label, msg) = if pit {
+                ("Building pit", "Draw building pit", "Building pit added: its sides slope up to the ground. Set its bottom and slopes in Properties; the schedule of earthworks takes it off.")
+            } else {
+                ("Platform", "Draw platform", "Platform added: the ground is levelled at its height, sloping to the ground round it.")
+            };
+            (
+                Element::new(name, ElementKind::Site(s)),
+                label,
+                msg.to_string(),
             )
         }
         Make::Area(i) => {
@@ -542,12 +571,44 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             }
             v
         }
-        Tool::Terrain => vec![num(
-            "terrain_thickness",
-            "Depth",
-            s.terrain_thickness,
-            "How deep new terrain is below its surface",
-        )],
+        Tool::Terrain => {
+            let mut v = vec![seg(["Terrain", "Building pit", "Platform"]
+                .iter()
+                .enumerate()
+                .map(|(i, l)| {
+                    opt(
+                        format!("part:earth.{i}"),
+                        l,
+                        s.terrain_kind == i,
+                        "Ground; a pit dug and filled again; or the ground levelled at a height",
+                    )
+                })
+                .collect())];
+            if s.terrain_kind == 0 {
+                v.push(num(
+                    "terrain_thickness",
+                    "Depth",
+                    s.terrain_thickness,
+                    "How deep new terrain is below its surface",
+                ));
+            } else {
+                v.push(num(
+                    "earth_bottom",
+                    if s.terrain_kind == 1 {
+                        "Bottom"
+                    } else {
+                        "Height"
+                    },
+                    s.earth_bottom,
+                    "Above the level: a pit's bottom, a platform's top",
+                ));
+                v.push(json!({
+                    "kind": "number", "key": "part.earth_slope", "label": "Slopes 1:", "value": s.earth_slope,
+                    "unit": "", "step": 0.25, "min": 0, "max": 10, "hint": "The slopes' run per unit of height (1:1 is 45°)",
+                }));
+            }
+            v
+        }
         Tool::Paving => vec![seg(AREAS
             .iter()
             .enumerate()
@@ -607,6 +668,8 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "size_b" => s.size.1 = v.clamp(0.005, 20.0),
         "steps" => s.steps = v.round().clamp(1.0, 40.0) as u32,
         "terrain_thickness" => s.terrain_thickness = v.clamp(0.05, 100.0),
+        "earth_bottom" => s.earth_bottom = v.clamp(-50.0, 50.0),
+        "earth_slope" => s.earth_slope = v.clamp(0.0, 10.0),
         "canopy" => s.canopy = v.clamp(0.2, 50.0),
         "plant_height" => s.plant_height = v.clamp(0.2, 100.0),
         _ => {}
@@ -623,6 +686,13 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
                 s.profile = p;
                 s.size = p.defaults();
             }
+        }
+    } else if let Some(i) = what.strip_prefix("earth.") {
+        s.terrain_kind = i.parse().unwrap_or(0).min(2);
+        if s.terrain_kind == 2 && s.earth_bottom < -0.5 {
+            s.earth_bottom = 0.0;
+        } else if s.terrain_kind == 1 && s.earth_bottom >= 0.0 {
+            s.earth_bottom = -1.5;
         }
     } else if let Some(i) = what.strip_prefix("area.") {
         s.area = i.parse().unwrap_or(0).min(AREAS.len() - 1);
@@ -1000,6 +1070,62 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
                     }
                 }
             }
+        }
+        SiteForm::Earthwork {
+            bottom,
+            slope,
+            pit,
+            topsoil,
+            ..
+        } => {
+            crate::props::row(ui, "Kind", |ui| {
+                crate::props::flow(ui, |ui| {
+                    if ui
+                        .selectable_label(*pit, crate::i18n::t("Building pit"))
+                        .clicked()
+                        && !*pit
+                    {
+                        *pit = true;
+                        label = "Earthwork kind";
+                    }
+                    if ui
+                        .selectable_label(!*pit, crate::i18n::t("Platform"))
+                        .clicked()
+                        && *pit
+                    {
+                        *pit = false;
+                        label = "Earthwork kind";
+                    }
+                })
+            });
+            let what = if *pit { "Bottom" } else { "Height" };
+            if num(ui, what, bottom, -50.0, 50.0) {
+                label = "Earthwork height";
+            }
+            if crate::props::row(ui, "Slopes", |ui| {
+                crate::props::fill(
+                    ui,
+                    egui::DragValue::new(slope)
+                        .range(0.0..=10.0)
+                        .speed(0.05)
+                        .max_decimals(2)
+                        .prefix("1:"),
+                )
+                .changed()
+            }) {
+                label = "Earthwork slopes";
+            }
+            if num(ui, "Topsoil", topsoil, 0.0, 2.0) {
+                label = "Topsoil depth";
+            }
+            weak(
+                ui,
+                crate::i18n::tr(if *pit {
+                    "Dug to its bottom with its sides sloping up to the ground; back-filled once the building stands, so the ground stays. The schedule of earthworks takes it off."
+                } else {
+                    "The ground levelled at its height, sloping to the ground round it: cut where it was higher, filled where lower. The terrain follows it."
+                }),
+            );
         }
         SiteForm::Plant {
             position,

@@ -130,6 +130,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "mountain",
                 "A terrain through surveyed points (XYZ, TXT, PTS, CSV; S-JTSK too): its outline round them, each a spot height",
             ),
+            act(
+                "earthworks:schedule",
+                "Earthworks",
+                "calc",
+                "The schedule of earthworks: topsoil, the pit, platforms' cut and fill, trenches, back-fill and haul, with KROS codes. Draw pits and platforms with the Terrain tool",
+            ),
             T(Tool::Paving),
             T(Tool::Planting),
         ],

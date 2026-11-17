@@ -485,7 +485,7 @@ fn clip_half_plane(poly: &[DVec2], point: DVec2, normal: DVec2) -> Vec<DVec2> {
     out
 }
 
-fn segment_distance(p: DVec2, a: DVec2, b: DVec2) -> f64 {
+pub(crate) fn segment_distance(p: DVec2, a: DVec2, b: DVec2) -> f64 {
     let d = b - a;
     let t = ((p - a).dot(d) / d.length_squared().max(1e-12)).clamp(0.0, 1.0);
     p.distance(a + d * t)

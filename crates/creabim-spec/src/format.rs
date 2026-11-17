@@ -693,7 +693,8 @@ spec_struct! {
         outline: Vec<DVec2>,
         /// An area's holes.
         holes: Vec<Vec<DVec2>>,
-        /// Terrain and area: the top above the level.
+        /// Terrain and area: the top above the level; a pit's bottom or a
+        /// platform's height.
         top: f64 = 0.0,
         /// Terrain and area: how deep.
         thickness: Option<f64>,
@@ -712,6 +713,10 @@ spec_struct! {
         canopy: Option<f64>,
         /// A plant's height.
         height: Option<f64>,
+        /// A pit's or platform's sides slope 1:n.
+        slope: Option<f64>,
+        /// A pit's or platform's topsoil stripped first, metres.
+        topsoil: f64 = 0.0,
         material: Option<String>,
     }
 }
@@ -722,6 +727,8 @@ spec_enum! {
         Terrain = "terrain",
         Area = "area",
         Plant = "plant",
+        Pit = "pit",
+        Platform = "platform",
     }
 }
 

@@ -202,6 +202,7 @@ impl Element {
             ElementKind::Site(s) => match s.form {
                 crate::SiteForm::Terrain { .. } => "IfcGeographicElement",
                 crate::SiteForm::Area { .. } => "IfcCivilElement",
+                crate::SiteForm::Earthwork { .. } => "IfcEarthworksCut",
                 crate::SiteForm::Plant { .. } => "IfcGeographicElement",
             },
             ElementKind::Room(_) => "IfcSpace",

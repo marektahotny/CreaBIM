@@ -1391,6 +1391,7 @@ fn site_element(c: &mut Ctx, s: &f::SiteElement, at: &Path) {
         f::SiteKind::Terrain => &["outline", "top", "thickness", "points", "contour"],
         f::SiteKind::Area => &["outline", "holes", "top", "thickness", "pattern"],
         f::SiteKind::Plant => &["at", "base", "plant", "canopy", "height"],
+        f::SiteKind::Pit | f::SiteKind::Platform => &["outline", "top", "slope", "topsoil"],
     };
     let allowed: Vec<&str> = COMMON.iter().chain(own).copied().collect();
     let kind = format!("a site {}", s.kind.key());
@@ -1435,6 +1436,22 @@ fn site_element(c: &mut Ctx, s: &f::SiteElement, at: &Path) {
                     thickness,
                     pattern,
                 }
+            }
+        }
+        f::SiteKind::Pit | f::SiteKind::Platform => {
+            let Some(slope) = missing(c, s.slope, "slope") else {
+                return c.fail(&s.id);
+            };
+            let mut boundary = c.pts(&s.outline);
+            if core::polygon::signed_area2(&boundary) < 0.0 {
+                boundary.reverse();
+            }
+            site::SiteForm::Earthwork {
+                boundary,
+                bottom: c.l(s.top),
+                slope,
+                pit: s.kind == f::SiteKind::Pit,
+                topsoil: c.l(s.topsoil),
             }
         }
         f::SiteKind::Plant => {

@@ -703,6 +703,8 @@ What a site element is.
 - `"terrain"`
 - `"area"`
 - `"plant"`
+- `"pit"`
+- `"platform"`
 
 ### PatternKind
 
@@ -746,7 +748,7 @@ A site element: terrain, a hard landscape area or a plant.
 | `level` | string | required |  |
 | `outline` | array of [x, y] |  | Terrain and area: the outline. |
 | `holes` | array of array of [x, y] |  | An area's holes. |
-| `top` | number | default `0.0` | Terrain and area: the top above the level. |
+| `top` | number | default `0.0` | Terrain and area: the top above the level; a pit's bottom or a platform's height. |
 | `thickness` | number |  | Terrain and area: how deep. |
 | `points` | array of [x, y, z] |  | Terrain: spot heights `[x, y, z]`, `z` above the level. |
 | `contour` | number | default `0.0` | Terrain: a contour every so much height; 0 draws none. |
@@ -756,6 +758,8 @@ A site element: terrain, a hard landscape area or a plant.
 | `plant` | [PlantForm](#plantform) | default `"tree"` |  |
 | `canopy` | number |  | A plant's crown across. |
 | `height` | number |  | A plant's height. |
+| `slope` | number |  | A pit's or platform's sides slope 1:n. |
+| `topsoil` | number | default `0.0` | A pit's or platform's topsoil stripped first, metres. |
 | `material` | string |  |  |
 
 ### Anchor
