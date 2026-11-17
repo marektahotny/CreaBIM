@@ -134,6 +134,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "droplet",
                 "Cold and hot water: the standards (STN EN 806-3, STN 73 6655) and the tools coming",
             ),
+            T(Tool::Pipe),
             act(
                 "catalogue.cat:bathroom",
                 "Sanitary fixtures",
@@ -153,12 +154,24 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "droplets",
                 "Waste and soil pipes: the standards (STN EN 12056-2, STN 73 6760) and the tools coming",
             ),
+            act(
+                "pipe:K",
+                "Drain pipe",
+                "pipe-fall",
+                "The Pipe tool in foul drainage: PP-HT DN 100 falling 2 %",
+            ),
             Sep,
             act(
                 "discipline:gas",
                 "Gas installation",
                 "flame",
                 "Gas pipes, the main shut-off and the meter: the standards (TPP 704 01) and the tools coming",
+            ),
+            act(
+                "pipe:ZP",
+                "Gas pipe",
+                "pipe-gas",
+                "The Pipe tool in natural gas: HERZ GASPRESS at 2.4 m",
             ),
         ],
         3 => vec![
@@ -188,6 +201,13 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
             Sep,
             act(
+                "pipe:UKP",
+                "Heating pipe",
+                "pipe",
+                "The Pipe tool in heating supply; the return is in the bar's systems",
+            ),
+            Sep,
+            act(
                 "catalogue.cat:hvac",
                 "Radiators and boilers",
                 "thermometer",
@@ -202,18 +222,32 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Ducts, terminals and units: the standards (STN EN 16798-3) and the tools coming",
             ),
             act(
+                "pipe:VZP",
+                "Duct",
+                "pipe",
+                "The Pipe tool in supply air: a Spiro duct Ø160 at 2.7 m; exhaust and rectangular ducts are in the bar",
+            ),
+            act(
                 "catalogue.cat:hvac",
                 "Diffusers and fans",
                 "fan",
                 "Diffusers, grilles, fans and split units from the catalogue",
             ),
         ],
-        5 => vec![act(
-            "discipline:medgas",
-            "Medical gases",
-            "cylinder",
-            "O2, medical air, vacuum, N2O and CO2: the standards (STN EN ISO 7396-1) and the tools coming",
-        )],
+        5 => vec![
+            act(
+                "discipline:medgas",
+                "Medical gases",
+                "cylinder",
+                "O2, medical air, vacuum, N2O and CO2: the standards (STN EN ISO 7396-1) and the tools coming",
+            ),
+            act(
+                "pipe:O2",
+                "Medical gas pipe",
+                "pipe",
+                "The Pipe tool in oxygen: SANHA copper; AIR, VAC, N2O and CO2 are in the bar's systems",
+            ),
+        ],
         6 => vec![
             act(
                 "discipline:electrical",

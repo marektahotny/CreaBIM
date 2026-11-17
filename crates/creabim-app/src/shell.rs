@@ -176,6 +176,7 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Ceiling => "ceiling",
         Tool::Callout => "callout",
         Tool::Detail => "detail-component",
+        Tool::Pipe => "pipe",
     }
 }
 
@@ -203,6 +204,7 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::RoomSeparator
         | Tool::Ceiling => 1,
         Tool::Terrain | Tool::Paving | Tool::Planting => 5,
+        Tool::Pipe => 6,
         Tool::Section | Tool::Elevation | Tool::Callout => 2,
         Tool::Dimension
         | Tool::Tag
@@ -414,6 +416,11 @@ impl CreaBimApp {
             "units.menu" => self.unit_items(),
             "select.menu" => self.select_menu_items(),
             "sweep.library" => self.sweep_library_items(),
+            k if k.starts_with("pipe.") => crate::pipesui::menu_items(&self.plan.members.pipe, k)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(a, t, on)| Item::new(a, t).checked(on))
+                .collect(),
             "beam.corner" => creabim_core::members::BeamCorner::ALL
                 .iter()
                 .map(|c| {
@@ -1951,6 +1958,7 @@ impl CreaBimApp {
             }
             _ if self.join_action(head, arg) => {}
             _ if self.crop_action(head, arg) => {}
+            _ if self.pipe_action(head, arg) => {}
             _ if self.profiles_action(head, arg) => {}
             _ if self.masters_action(head, arg) => {}
             _ if self.log_action(ctx, head) => {}

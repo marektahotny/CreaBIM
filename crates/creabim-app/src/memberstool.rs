@@ -50,6 +50,8 @@ pub struct MemberSettings {
     /// The beam this chain placed last: the next joins only it, and a new
     /// chain starts with none (MU40: a new Beam command joined the old one).
     pub last_beam: Option<ElementId>,
+    /// What the Pipe tool draws next.
+    pub pipe: crate::pipesui::PipeDraft,
 }
 
 impl Default for MemberSettings {
@@ -79,6 +81,7 @@ impl Default for MemberSettings {
             beam_on_face: false,
             railing_section: None,
             last_beam: None,
+            pipe: Default::default(),
         }
     }
 }
@@ -655,6 +658,7 @@ pub fn preview(
                 a.truncate() + n,
             ]);
         }
+        (Tool::Pipe, _) => crate::pipesui::preview(painter, project, &set.pipe, a, b),
         (Tool::Railing, _) => {
             let scr: Option<Vec<Pos2>> = set.path.iter().map(|p| project(p.extend(z))).collect();
             if let Some(scr) = scr {
@@ -1364,6 +1368,7 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                 "Size of new columns",
             ),
         ],
+        Tool::Pipe => crate::pipesui::tool_options(&m.pipe),
         Tool::Beam => vec![
             json!({
                 "kind": "menu", "key": "beam.corner", "label": "Corners",
@@ -1518,6 +1523,10 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
     match key.trim_start_matches("member.") {
         "column" => m.set_column_size(v.clamp(0.05, 3.0)),
         "beam_width" => m.beam_width = v.clamp(0.05, 2.0),
+        "pipe_height" => {
+            m.pipe.height = v.clamp(-5.0, 20.0);
+            m.pipe.last_z = None;
+        }
         "beam_depth" => m.beam_depth = v.clamp(0.05, 3.0),
         "pitch" => m.roof_pitch = v.clamp(1.0, 75.0),
         "stair_width" => m.stair_width = v.clamp(0.5, 5.0),

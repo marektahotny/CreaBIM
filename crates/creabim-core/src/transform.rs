@@ -359,6 +359,12 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             g.a = origin(g.a, g.level);
             g.b = origin(g.b, g.level);
         }
+        ElementKind::Pipe(p) => {
+            let level = Some(p.level);
+            p.start = origin(p.start, level);
+            p.end = origin(p.end, level);
+            p.validate().ok()?;
+        }
         ElementKind::Shaft(s) => {
             if !t.keeps_upright() {
                 return None;
@@ -608,6 +614,7 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
             _ => return None,
         },
         ElementKind::Guide(g) => (g.a + g.b) / 2.0 + DVec3::Z * elevation(g.level),
+        ElementKind::Pipe(p) => (p.start + p.end) / 2.0 + DVec3::Z * elevation(Some(p.level)),
         ElementKind::CropBox(c) => c.center(),
         // (MU23) a reference turns and scales about its middle; a paper
         // mark and a note are where they are written
@@ -690,6 +697,7 @@ pub fn duplicate(model: &Model, id: ElementId) -> Vec<Element> {
             | ElementKind::Sketch(_)
             | ElementKind::Grid(_)
             | ElementKind::Guide(_)
+            | ElementKind::Pipe(_)
             | ElementKind::Shaft(_)
             | ElementKind::Object(_)
             | ElementKind::Room(_)

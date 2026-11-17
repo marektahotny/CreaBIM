@@ -1,0 +1,7793 @@
+[
+ {
+  "id": "HERZ",
+  "short": "plasthliník HERZ",
+  "name": "Plasthliník HERZ PipeFix (PE-RT/Al/PE-HD)",
+  "material": "Plasthliník HERZ",
+  "manufacturer": "HERZ – príručka pre návrh a montáž",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 14,
+    "innerMm": 10,
+    "nominalMm": 14,
+    "kgm": 0.111,
+    "segment": "14 x 2",
+    "alMm": 0.4,
+    "waterLm": 0.075,
+    "coilM": 200,
+    "barM": null,
+    "code": "3 C140 20",
+    "fixM": 0.8
+   },
+   {
+    "outerMm": 16,
+    "innerMm": 12,
+    "nominalMm": 16,
+    "kgm": 0.129,
+    "segment": "16 x 2",
+    "alMm": 0.4,
+    "waterLm": 0.113,
+    "coilM": 200,
+    "barM": 5,
+    "code": "3 C160 20",
+    "codeBar": "3 C160 34",
+    "fixM": 0.8
+   },
+   {
+    "outerMm": 18,
+    "innerMm": 14,
+    "nominalMm": 18,
+    "kgm": 0.152,
+    "segment": "18 x 2",
+    "alMm": 0.4,
+    "waterLm": 0.154,
+    "coilM": 200,
+    "barM": null,
+    "code": "3 C180 20",
+    "fixM": 0.9
+   },
+   {
+    "outerMm": 20,
+    "innerMm": 16,
+    "nominalMm": 20,
+    "kgm": 0.175,
+    "segment": "20 x 2",
+    "alMm": 0.4,
+    "waterLm": 0.201,
+    "coilM": 100,
+    "barM": 5,
+    "code": "3 C200 20",
+    "codeBar": "3 C200 34",
+    "fixM": 1
+   },
+   {
+    "outerMm": 26,
+    "innerMm": 20,
+    "nominalMm": 26,
+    "kgm": 0.296,
+    "segment": "26 x 3",
+    "alMm": 0.5,
+    "waterLm": 0.307,
+    "coilM": 50,
+    "barM": 5,
+    "code": "3 C260 30",
+    "codeBar": "3 C260 35",
+    "fixM": 1.2
+   },
+   {
+    "outerMm": 32,
+    "innerMm": 26,
+    "nominalMm": 32,
+    "kgm": 0.366,
+    "segment": "32 x 3",
+    "alMm": 0.5,
+    "waterLm": 0.523,
+    "coilM": 50,
+    "barM": 5,
+    "code": "3 C320 30",
+    "codeBar": "3 C320 35",
+    "fixM": 1.6
+   },
+   {
+    "outerMm": 40,
+    "innerMm": 33,
+    "nominalMm": 40,
+    "kgm": 0.51,
+    "segment": "40 x 3,5",
+    "alMm": 0.5,
+    "waterLm": 0.845,
+    "coilM": 50,
+    "barM": 5,
+    "code": "3 C400 30",
+    "codeBar": "3 C400 36",
+    "fixM": 1.7
+   },
+   {
+    "outerMm": 50,
+    "innerMm": 42,
+    "nominalMm": 50,
+    "kgm": 0.87,
+    "segment": "50 x 4",
+    "alMm": 0.6,
+    "waterLm": 1.385,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C500 40",
+    "codeBar": "3 C500 40",
+    "fixM": 1.8
+   },
+   {
+    "outerMm": 63,
+    "innerMm": 54,
+    "nominalMm": 63,
+    "kgm": 1.315,
+    "segment": "63 x 4,5",
+    "alMm": 0.8,
+    "waterLm": 2.229,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C630 45",
+    "codeBar": "3 C630 45",
+    "fixM": 2
+   },
+   {
+    "outerMm": 75,
+    "innerMm": 65,
+    "nominalMm": 75,
+    "kgm": 1.565,
+    "segment": "75 x 5",
+    "alMm": 0.8,
+    "waterLm": 3.32,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C750 50",
+    "codeBar": "3 C750 50",
+    "fixM": 2
+   }
+  ],
+  "media": [
+   "voda",
+   "ukur",
+   "chlad"
+  ],
+  "densityKgDm3": 1.4,
+  "joint": "lisované tvarovky HERZ PipeFix (mosadz, nerezová objímka)",
+  "standards": "STN EN ISO 21003, STN EN 806, STN EN 12828",
+  "note": "95 °C / 10 bar; ohyb s ohýbačkou 5·d, ručne 10·d, od 32×3 len tvarovky; uchytenie 14–16: 0,8 m, 20: 1 m, 26: 1,2 m, 32: 1,6 m, 40: 1,7 m, 50: 1,8 m, 63: 2 m; rozťažnosť 0,026 mm/m·K",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7114 00",
+    "d1": 14,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7214 00",
+    "d1": 14,
+    "d2": 14
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7014 00",
+    "d1": 14,
+    "d2": 14
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7116 00",
+    "d1": 16,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7216 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7016 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7118 00",
+    "d1": 18,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7218 00",
+    "d1": 18,
+    "d2": 18
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7018 00",
+    "d1": 18,
+    "d2": 18
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7120 00",
+    "d1": 20,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7220 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7020 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7126 00",
+    "d1": 26,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7126 01",
+    "d1": 26,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7226 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7026 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7132 00",
+    "d1": 32,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7132 01",
+    "d1": 32,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7232 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7032 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7140 00",
+    "d1": 40,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7140 01",
+    "d1": 40,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7240 00",
+    "d1": 40,
+    "d2": 40
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7040 00",
+    "d1": 40,
+    "d2": 40
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7150 00",
+    "d1": 50,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7150 01",
+    "d1": 50,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7250 00",
+    "d1": 50,
+    "d2": 50
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7050 00",
+    "d1": 50,
+    "d2": 50
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7163 00",
+    "d1": 63,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7163 01",
+    "d1": 63,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7263 00",
+    "d1": 63,
+    "d2": 63
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7063 00",
+    "d1": 63,
+    "d2": 63
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7175 00",
+    "d1": 75,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7175 01",
+    "d1": 75,
+    "angle": 45
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7016 01",
+    "d1": 16,
+    "d2": 14
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7018 01",
+    "d1": 18,
+    "d2": 14
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7018 02",
+    "d1": 18,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7020 03",
+    "d1": 20,
+    "d2": 14
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7020 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7020 02",
+    "d1": 20,
+    "d2": 18
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7026 01",
+    "d1": 26,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7026 05",
+    "d1": 26,
+    "d2": 18
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7026 02",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 01",
+    "d1": 32,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 07",
+    "d1": 32,
+    "d2": 18
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 02",
+    "d1": 32,
+    "d2": 20
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 06",
+    "d1": 32,
+    "d2": 26
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7040 02",
+    "d1": 40,
+    "d2": 26
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7040 03",
+    "d1": 40,
+    "d2": 32
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7050 01",
+    "d1": 50,
+    "d2": 26
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7050 02",
+    "d1": 50,
+    "d2": 32
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7050 03",
+    "d1": 50,
+    "d2": 40
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7063 01",
+    "d1": 63,
+    "d2": 26
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7216 01",
+    "d1": 16,
+    "d2": 14
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7220 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7220 10",
+    "d1": 20,
+    "d2": 14
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7220 02",
+    "d1": 20,
+    "d2": 18
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7226 05",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7226 03",
+    "d1": 26,
+    "d2": 16
+   }
+  ],
+  "bend": {
+   "maxOuterMm": 26,
+   "rTool": 5,
+   "rHand": 10
+  },
+  "maxTempC": 95,
+  "maxBar": 10
+ },
+ {
+  "id": "HERZT",
+  "short": "plasthliník HERZ – tyče",
+  "name": "Plasthliník HERZ PipeFix – tyče 5 m (PE-RT/Al/PE-HD)",
+  "material": "Plasthliník HERZ",
+  "manufacturer": "HERZ – príručka pre návrh a montáž",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 16,
+    "innerMm": 12,
+    "nominalMm": 16,
+    "kgm": 0.129,
+    "segment": "16 x 2",
+    "alMm": 0.4,
+    "waterLm": 0.113,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C160 34",
+    "codeBar": "3 C160 34",
+    "fixM": 0.8
+   },
+   {
+    "outerMm": 20,
+    "innerMm": 16,
+    "nominalMm": 20,
+    "kgm": 0.175,
+    "segment": "20 x 2",
+    "alMm": 0.4,
+    "waterLm": 0.201,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C200 34",
+    "codeBar": "3 C200 34",
+    "fixM": 1
+   },
+   {
+    "outerMm": 26,
+    "innerMm": 20,
+    "nominalMm": 26,
+    "kgm": 0.296,
+    "segment": "26 x 3",
+    "alMm": 0.5,
+    "waterLm": 0.307,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C260 35",
+    "codeBar": "3 C260 35",
+    "fixM": 1.2
+   },
+   {
+    "outerMm": 32,
+    "innerMm": 26,
+    "nominalMm": 32,
+    "kgm": 0.366,
+    "segment": "32 x 3",
+    "alMm": 0.5,
+    "waterLm": 0.523,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C320 35",
+    "codeBar": "3 C320 35",
+    "fixM": 1.6
+   },
+   {
+    "outerMm": 40,
+    "innerMm": 33,
+    "nominalMm": 40,
+    "kgm": 0.51,
+    "segment": "40 x 3,5",
+    "alMm": 0.5,
+    "waterLm": 0.845,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C400 36",
+    "codeBar": "3 C400 36",
+    "fixM": 1.7
+   },
+   {
+    "outerMm": 50,
+    "innerMm": 42,
+    "nominalMm": 50,
+    "kgm": 0.87,
+    "segment": "50 x 4",
+    "alMm": 0.6,
+    "waterLm": 1.385,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C500 40",
+    "codeBar": "3 C500 40",
+    "fixM": 1.8
+   },
+   {
+    "outerMm": 63,
+    "innerMm": 54,
+    "nominalMm": 63,
+    "kgm": 1.315,
+    "segment": "63 x 4,5",
+    "alMm": 0.8,
+    "waterLm": 2.229,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C630 45",
+    "codeBar": "3 C630 45",
+    "fixM": 2
+   },
+   {
+    "outerMm": 75,
+    "innerMm": 65,
+    "nominalMm": 75,
+    "kgm": 1.565,
+    "segment": "75 x 5",
+    "alMm": 0.8,
+    "waterLm": 3.32,
+    "coilM": null,
+    "barM": 5,
+    "code": "3 C750 50",
+    "codeBar": "3 C750 50",
+    "fixM": 2
+   }
+  ],
+  "media": [
+   "voda",
+   "ukur",
+   "chlad"
+  ],
+  "densityKgDm3": 1.4,
+  "joint": "lisované tvarovky HERZ PipeFix (mosadz, nerezová objímka); tyče 5 m napájané spojkami",
+  "standards": "STN EN ISO 21003, STN EN 806, STN EN 12828",
+  "note": "tyče 5 m (16–75) pre viditeľné a priame rozvody, stúpačky a pivnice; 95 °C / 10 bar; tyče sa napájajú tvarovkami (kolená, T-kusy), neohýbajú sa; uchytenie 16: 0,8 m, 20: 1 m, 26: 1,2 m, 32: 1,6 m, 40: 1,7 m, 50: 1,8 m, 63–75: 2 m",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7114 00",
+    "d1": 14,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7214 00",
+    "d1": 14,
+    "d2": 14
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7014 00",
+    "d1": 14,
+    "d2": 14
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7116 00",
+    "d1": 16,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7216 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7016 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7118 00",
+    "d1": 18,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7218 00",
+    "d1": 18,
+    "d2": 18
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7018 00",
+    "d1": 18,
+    "d2": 18
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7120 00",
+    "d1": 20,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7220 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7020 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7126 00",
+    "d1": 26,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7126 01",
+    "d1": 26,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7226 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7026 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7132 00",
+    "d1": 32,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7132 01",
+    "d1": 32,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7232 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7032 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7140 00",
+    "d1": 40,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7140 01",
+    "d1": 40,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7240 00",
+    "d1": 40,
+    "d2": 40
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7040 00",
+    "d1": 40,
+    "d2": 40
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7150 00",
+    "d1": 50,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7150 01",
+    "d1": 50,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7250 00",
+    "d1": 50,
+    "d2": 50
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7050 00",
+    "d1": 50,
+    "d2": 50
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7163 00",
+    "d1": 63,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7163 01",
+    "d1": 63,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7263 00",
+    "d1": 63,
+    "d2": 63
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7063 00",
+    "d1": 63,
+    "d2": 63
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7175 00",
+    "d1": 75,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7175 01",
+    "d1": 75,
+    "angle": 45
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7016 01",
+    "d1": 16,
+    "d2": 14
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7018 01",
+    "d1": 18,
+    "d2": 14
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7018 02",
+    "d1": 18,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7020 03",
+    "d1": 20,
+    "d2": 14
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7020 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7020 02",
+    "d1": 20,
+    "d2": 18
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7026 01",
+    "d1": 26,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7026 05",
+    "d1": 26,
+    "d2": 18
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7026 02",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 01",
+    "d1": 32,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 07",
+    "d1": 32,
+    "d2": 18
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 02",
+    "d1": 32,
+    "d2": 20
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 06",
+    "d1": 32,
+    "d2": 26
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7040 02",
+    "d1": 40,
+    "d2": 26
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7040 03",
+    "d1": 40,
+    "d2": 32
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7050 01",
+    "d1": 50,
+    "d2": 26
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7050 02",
+    "d1": 50,
+    "d2": 32
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7050 03",
+    "d1": 50,
+    "d2": 40
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7063 01",
+    "d1": 63,
+    "d2": 26
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7216 01",
+    "d1": 16,
+    "d2": 14
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7220 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7220 10",
+    "d1": 20,
+    "d2": 14
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7220 02",
+    "d1": 20,
+    "d2": 18
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7226 05",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7226 03",
+    "d1": 26,
+    "d2": 16
+   }
+  ],
+  "maxTempC": 95,
+  "maxBar": 10,
+  "barM": 5
+ },
+ {
+  "id": "HERZFH",
+  "short": "plasthliník HERZ",
+  "name": "Plasthliník HERZ podlahové vykurovanie",
+  "material": "Plasthliník HERZ",
+  "manufacturer": "HERZ – príručka pre návrh a montáž",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 10,
+    "innerMm": 7.4,
+    "nominalMm": 10,
+    "kgm": 0.047,
+    "segment": "10 x 1,3",
+    "alMm": 0.2,
+    "waterLm": 0.043,
+    "coilM": 250,
+    "code": "3 C101 30"
+   },
+   {
+    "outerMm": 14,
+    "innerMm": 10,
+    "nominalMm": 14,
+    "kgm": 0.088,
+    "segment": "14 x 2",
+    "alMm": 0.2,
+    "waterLm": 0.075,
+    "coilM": 200,
+    "code": "3 C140 30"
+   },
+   {
+    "outerMm": 16,
+    "innerMm": 12,
+    "nominalMm": 16,
+    "kgm": 0.102,
+    "segment": "16 x 2",
+    "alMm": 0.2,
+    "waterLm": 0.113,
+    "coilM": 200,
+    "code": "3 D160 20"
+   }
+  ],
+  "media": [
+   "ukur",
+   "chlad"
+  ],
+  "densityKgDm3": 1.4,
+  "joint": "lisované tvarovky HERZ PipeFix",
+  "standards": "STN EN ISO 21003, STN EN 1264",
+  "note": "kotúče 200–250 m; 10×1,3 pre stenové vykurovanie / chladenie",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7114 00",
+    "d1": 14,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7214 00",
+    "d1": 14,
+    "d2": 14
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7014 00",
+    "d1": 14,
+    "d2": 14
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7116 00",
+    "d1": 16,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7216 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7016 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7118 00",
+    "d1": 18,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7218 00",
+    "d1": 18,
+    "d2": 18
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7018 00",
+    "d1": 18,
+    "d2": 18
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7120 00",
+    "d1": 20,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7220 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7020 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7126 00",
+    "d1": 26,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7126 01",
+    "d1": 26,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7226 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7026 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7132 00",
+    "d1": 32,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7132 01",
+    "d1": 32,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7232 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7032 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7140 00",
+    "d1": 40,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7140 01",
+    "d1": 40,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7240 00",
+    "d1": 40,
+    "d2": 40
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7040 00",
+    "d1": 40,
+    "d2": 40
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7150 00",
+    "d1": 50,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7150 01",
+    "d1": 50,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7250 00",
+    "d1": 50,
+    "d2": 50
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7050 00",
+    "d1": 50,
+    "d2": 50
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7163 00",
+    "d1": 63,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7163 01",
+    "d1": 63,
+    "angle": 45
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus",
+    "code": "P 7263 00",
+    "d1": 63,
+    "d2": 63
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ PipeFix spojka",
+    "code": "P 7063 00",
+    "d1": 63,
+    "d2": 63
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 90°",
+    "code": "P 7175 00",
+    "d1": 75,
+    "angle": 90
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ PipeFix koleno 45°",
+    "code": "P 7175 01",
+    "d1": 75,
+    "angle": 45
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7016 01",
+    "d1": 16,
+    "d2": 14
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7018 01",
+    "d1": 18,
+    "d2": 14
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7018 02",
+    "d1": 18,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7020 03",
+    "d1": 20,
+    "d2": 14
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7020 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7020 02",
+    "d1": 20,
+    "d2": 18
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7026 01",
+    "d1": 26,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7026 05",
+    "d1": 26,
+    "d2": 18
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7026 02",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 01",
+    "d1": 32,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 07",
+    "d1": 32,
+    "d2": 18
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 02",
+    "d1": 32,
+    "d2": 20
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7032 06",
+    "d1": 32,
+    "d2": 26
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7040 02",
+    "d1": 40,
+    "d2": 26
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7040 03",
+    "d1": 40,
+    "d2": 32
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7050 01",
+    "d1": 50,
+    "d2": 26
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7050 02",
+    "d1": 50,
+    "d2": 32
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7050 03",
+    "d1": 50,
+    "d2": 40
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ PipeFix spojka redukovaná",
+    "code": "P 7063 01",
+    "d1": 63,
+    "d2": 26
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7216 01",
+    "d1": 16,
+    "d2": 14
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7220 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7220 10",
+    "d1": 20,
+    "d2": 14
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7220 02",
+    "d1": 20,
+    "d2": 18
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7226 05",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ PipeFix T-kus redukovaný",
+    "code": "P 7226 03",
+    "d1": 26,
+    "d2": 16
+   }
+  ],
+  "bend": {
+   "maxOuterMm": 26,
+   "rTool": 5,
+   "rHand": 10
+  },
+  "maxTempC": 95,
+  "maxBar": 10
+ },
+ {
+  "id": "HERZG",
+  "short": "plasthliník HERZ",
+  "name": "Plasthliník HERZ GASPRESS IPANA – plyn (žltý)",
+  "material": "Plasthliník HERZ (plyn)",
+  "manufacturer": "HERZ – TPH 03 2012",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 16,
+    "innerMm": 12,
+    "nominalMm": 16,
+    "kgm": 0.129,
+    "segment": "16 x 2",
+    "alMm": 0.2,
+    "coilM": 200,
+    "barM": 5,
+    "code": "G 1160 20",
+    "codeBar": "G 1160 21",
+    "fixM": 0.8
+   },
+   {
+    "outerMm": 20,
+    "innerMm": 16,
+    "nominalMm": 20,
+    "kgm": 0.175,
+    "segment": "20 x 2",
+    "alMm": 0.25,
+    "coilM": 50,
+    "barM": 5,
+    "code": "G 1200 20",
+    "codeBar": "G 1200 21",
+    "fixM": 1
+   },
+   {
+    "outerMm": 26,
+    "innerMm": 20,
+    "nominalMm": 26,
+    "kgm": 0.296,
+    "segment": "26 x 3",
+    "alMm": 0.35,
+    "coilM": 50,
+    "barM": 5,
+    "code": "G 1260 30",
+    "codeBar": "G 1260 31",
+    "fixM": 1.2
+   },
+   {
+    "outerMm": 32,
+    "innerMm": 26,
+    "nominalMm": 32,
+    "kgm": 0.366,
+    "segment": "32 x 3",
+    "alMm": 0.5,
+    "coilM": 50,
+    "barM": 5,
+    "code": "G 1320 30",
+    "codeBar": "G 1320 31",
+    "fixM": 1.6
+   }
+  ],
+  "media": [
+   "plyn"
+  ],
+  "densityKgDm3": 1.4,
+  "joint": "lisované tvarovky HERZ GASPRESS (HNBR O-krúžok)",
+  "standards": "STN EN 1775, TPP 704 01, TPH 03 2012",
+  "note": "NTL vnútorný plynovod max. 10 kPa, −20 až +60 °C; ohyb s ohýbačkou 5·d, ručne 10·d, 32×3 len tvarovky; nadprietokové poistky a protipožiarne armatúry HERZ",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "HERZ GASPRESS koleno 90°",
+    "code": "G 17116 00",
+    "d1": 16,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus",
+    "code": "G 17216 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ GASPRESS priama spojka",
+    "code": "G 17016 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ GASPRESS koleno 90°",
+    "code": "G 17120 00",
+    "d1": 20,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus",
+    "code": "G 17220 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ GASPRESS priama spojka",
+    "code": "G 17020 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ GASPRESS koleno 90°",
+    "code": "G 17126 00",
+    "d1": 26,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus",
+    "code": "G 17226 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ GASPRESS priama spojka",
+    "code": "G 17026 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ GASPRESS koleno 90°",
+    "code": "G 17132 00",
+    "d1": 32,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus",
+    "code": "G 17232 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ GASPRESS priama spojka",
+    "code": "G 17032 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17020 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17026 01",
+    "d1": 26,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17026 02",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17032 02",
+    "d1": 32,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17032 06",
+    "d1": 32,
+    "d2": 20
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17220 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17226 03",
+    "d1": 26,
+    "d2": 16
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17226 05",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17232 04",
+    "d1": 32,
+    "d2": 20
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17232 07",
+    "d1": 32,
+    "d2": 26
+   }
+  ],
+  "bend": {
+   "maxOuterMm": 26,
+   "rTool": 5,
+   "rHand": 10
+  },
+  "maxTempC": 60,
+  "maxBar": 0.1
+ },
+ {
+  "id": "HERZGT",
+  "short": "plasthliník HERZ – tyče",
+  "name": "Plasthliník HERZ GASPRESS IPANA – plyn, tyče 5 m (žltý)",
+  "material": "Plasthliník HERZ (plyn)",
+  "manufacturer": "HERZ – TPH 03 2012",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 16,
+    "innerMm": 12,
+    "nominalMm": 16,
+    "kgm": 0.129,
+    "segment": "16 x 2",
+    "alMm": 0.2,
+    "coilM": null,
+    "barM": 5,
+    "code": "G 1160 21",
+    "codeBar": "G 1160 21",
+    "fixM": 0.8
+   },
+   {
+    "outerMm": 20,
+    "innerMm": 16,
+    "nominalMm": 20,
+    "kgm": 0.175,
+    "segment": "20 x 2",
+    "alMm": 0.25,
+    "coilM": null,
+    "barM": 5,
+    "code": "G 1200 21",
+    "codeBar": "G 1200 21",
+    "fixM": 1
+   },
+   {
+    "outerMm": 26,
+    "innerMm": 20,
+    "nominalMm": 26,
+    "kgm": 0.296,
+    "segment": "26 x 3",
+    "alMm": 0.35,
+    "coilM": null,
+    "barM": 5,
+    "code": "G 1260 31",
+    "codeBar": "G 1260 31",
+    "fixM": 1.2
+   },
+   {
+    "outerMm": 32,
+    "innerMm": 26,
+    "nominalMm": 32,
+    "kgm": 0.366,
+    "segment": "32 x 3",
+    "alMm": 0.5,
+    "coilM": null,
+    "barM": 5,
+    "code": "G 1320 31",
+    "codeBar": "G 1320 31",
+    "fixM": 1.6
+   }
+  ],
+  "media": [
+   "plyn"
+  ],
+  "densityKgDm3": 1.4,
+  "joint": "lisované tvarovky HERZ GASPRESS (HNBR O-krúžok); tyče 5 m napájané spojkami",
+  "standards": "STN EN 1775, TPP 704 01, TPH 03 2012",
+  "note": "tyče 5 m 16–32; NTL vnútorný plynovod max. 10 kPa, −20 až +60 °C; tyče sa napájajú tvarovkami (kolená, T-kusy), neohýbajú sa",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "HERZ GASPRESS koleno 90°",
+    "code": "G 17116 00",
+    "d1": 16,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus",
+    "code": "G 17216 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ GASPRESS priama spojka",
+    "code": "G 17016 00",
+    "d1": 16,
+    "d2": 16
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ GASPRESS koleno 90°",
+    "code": "G 17120 00",
+    "d1": 20,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus",
+    "code": "G 17220 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ GASPRESS priama spojka",
+    "code": "G 17020 00",
+    "d1": 20,
+    "d2": 20
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ GASPRESS koleno 90°",
+    "code": "G 17126 00",
+    "d1": 26,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus",
+    "code": "G 17226 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ GASPRESS priama spojka",
+    "code": "G 17026 00",
+    "d1": 26,
+    "d2": 26
+   },
+   {
+    "kind": "Elbow",
+    "name": "HERZ GASPRESS koleno 90°",
+    "code": "G 17132 00",
+    "d1": 32,
+    "angle": 90
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus",
+    "code": "G 17232 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Coupling",
+    "name": "HERZ GASPRESS priama spojka",
+    "code": "G 17032 00",
+    "d1": 32,
+    "d2": 32
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17020 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17026 01",
+    "d1": 26,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17026 02",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17032 02",
+    "d1": 32,
+    "d2": 16
+   },
+   {
+    "kind": "Reducer",
+    "name": "HERZ GASPRESS redukcia",
+    "code": "G 17032 06",
+    "d1": 32,
+    "d2": 20
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17220 01",
+    "d1": 20,
+    "d2": 16
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17226 03",
+    "d1": 26,
+    "d2": 16
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17226 05",
+    "d1": 26,
+    "d2": 20
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17232 04",
+    "d1": 32,
+    "d2": 20
+   },
+   {
+    "kind": "Tee",
+    "name": "HERZ GASPRESS T-kus redukovaný",
+    "code": "G 17232 07",
+    "d1": 32,
+    "d2": 26
+   }
+  ],
+  "maxTempC": 60,
+  "maxBar": 0.1,
+  "barM": 5
+ },
+ {
+  "id": "Cu",
+  "name": "Meď STN EN 1057",
+  "material": "Meď",
+  "roughnessMm": 0.0015,
+  "sizes": [
+   {
+    "outerMm": 12,
+    "innerMm": 10,
+    "nominalMm": 10,
+    "kgm": 0.309
+   },
+   {
+    "outerMm": 15,
+    "innerMm": 13,
+    "nominalMm": 13,
+    "kgm": 0.393
+   },
+   {
+    "outerMm": 18,
+    "innerMm": 16,
+    "nominalMm": 16,
+    "kgm": 0.477
+   },
+   {
+    "outerMm": 22,
+    "innerMm": 20,
+    "nominalMm": 20,
+    "kgm": 0.59
+   },
+   {
+    "outerMm": 28,
+    "innerMm": 25,
+    "nominalMm": 25,
+    "kgm": 1.116
+   },
+   {
+    "outerMm": 35,
+    "innerMm": 32,
+    "nominalMm": 32,
+    "kgm": 1.411
+   },
+   {
+    "outerMm": 42,
+    "innerMm": 39,
+    "nominalMm": 39,
+    "kgm": 1.706
+   },
+   {
+    "outerMm": 54,
+    "innerMm": 50,
+    "nominalMm": 50,
+    "kgm": 2.921
+   },
+   {
+    "outerMm": 64,
+    "innerMm": 60,
+    "nominalMm": 60,
+    "kgm": 3.483
+   },
+   {
+    "outerMm": 76.1,
+    "innerMm": 72.1,
+    "nominalMm": 72.1,
+    "kgm": 4.162
+   }
+  ],
+  "media": [
+   "voda",
+   "ukur",
+   "chlad",
+   "plyn"
+  ],
+  "densityKgDm3": 8.94,
+  "joint": "lisovanie / kapilárne spájkovanie",
+  "standards": "STN EN 1057, STN EN 806"
+ },
+ {
+  "id": "PEXAL",
+  "name": "PEX-AL-PEX",
+  "material": "PEX-AL-PEX",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 16,
+    "innerMm": 12,
+    "nominalMm": 12,
+    "kgm": 0.123
+   },
+   {
+    "outerMm": 20,
+    "innerMm": 16,
+    "nominalMm": 16,
+    "kgm": 0.158
+   },
+   {
+    "outerMm": 26,
+    "innerMm": 20,
+    "nominalMm": 20,
+    "kgm": 0.303
+   },
+   {
+    "outerMm": 32,
+    "innerMm": 26,
+    "nominalMm": 26,
+    "kgm": 0.383
+   },
+   {
+    "outerMm": 40,
+    "innerMm": 33,
+    "nominalMm": 33,
+    "kgm": 0.562
+   },
+   {
+    "outerMm": 50,
+    "innerMm": 42,
+    "nominalMm": 42,
+    "kgm": 0.809
+   },
+   {
+    "outerMm": 63,
+    "innerMm": 54,
+    "nominalMm": 54,
+    "kgm": 1.158
+   }
+  ],
+  "media": [
+   "voda",
+   "ukur",
+   "chlad"
+  ],
+  "densityKgDm3": 1.4,
+  "joint": "lisovacie tvarovky",
+  "standards": "STN EN ISO 21003"
+ },
+ {
+  "id": "PPR",
+  "name": "PPR PN 20",
+  "material": "PPR",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 16,
+    "innerMm": 10.6,
+    "nominalMm": 10.6,
+    "kgm": 0.102
+   },
+   {
+    "outerMm": 20,
+    "innerMm": 13.2,
+    "nominalMm": 13.2,
+    "kgm": 0.16
+   },
+   {
+    "outerMm": 25,
+    "innerMm": 16.6,
+    "nominalMm": 16.6,
+    "kgm": 0.247
+   },
+   {
+    "outerMm": 32,
+    "innerMm": 21.2,
+    "nominalMm": 21.2,
+    "kgm": 0.406
+   },
+   {
+    "outerMm": 40,
+    "innerMm": 26.6,
+    "nominalMm": 26.6,
+    "kgm": 0.631
+   },
+   {
+    "outerMm": 50,
+    "innerMm": 33.4,
+    "nominalMm": 33.4,
+    "kgm": 0.979
+   },
+   {
+    "outerMm": 63,
+    "innerMm": 42,
+    "nominalMm": 42,
+    "kgm": 1.559
+   },
+   {
+    "outerMm": 75,
+    "innerMm": 50,
+    "nominalMm": 50,
+    "kgm": 2.209
+   },
+   {
+    "outerMm": 90,
+    "innerMm": 60,
+    "nominalMm": 60,
+    "kgm": 3.181
+   }
+  ],
+  "media": [
+   "voda",
+   "ukur"
+  ],
+  "densityKgDm3": 0.9,
+  "joint": "polyfúzne zváranie",
+  "standards": "STN EN ISO 15874"
+ },
+ {
+  "id": "PEX",
+  "name": "PE-Xa podlahové vykurovanie (s kyslíkovou bariérou)",
+  "material": "PE-Xa",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 14,
+    "innerMm": 10,
+    "nominalMm": 10,
+    "kgm": 0.071
+   },
+   {
+    "outerMm": 16,
+    "innerMm": 12,
+    "nominalMm": 12,
+    "kgm": 0.083
+   },
+   {
+    "outerMm": 17,
+    "innerMm": 13,
+    "nominalMm": 13,
+    "kgm": 0.089
+   },
+   {
+    "outerMm": 20,
+    "innerMm": 16,
+    "nominalMm": 16,
+    "kgm": 0.106
+   },
+   {
+    "outerMm": 25,
+    "innerMm": 20.4,
+    "nominalMm": 20.4,
+    "kgm": 0.154
+   },
+   {
+    "outerMm": 32,
+    "innerMm": 26.2,
+    "nominalMm": 26.2,
+    "kgm": 0.249
+   }
+  ],
+  "media": [
+   "ukur",
+   "chlad"
+  ],
+  "densityKgDm3": 0.94,
+  "joint": "nasúvacie / lisovacie tvarovky",
+  "standards": "STN EN ISO 15875, STN EN 1264"
+ },
+ {
+  "id": "OCEL",
+  "name": "Oceľ závitová STN EN 10255 (M)",
+  "material": "Oceľ",
+  "roughnessMm": 0.045,
+  "sizes": [
+   {
+    "outerMm": 21.3,
+    "innerMm": 16.1,
+    "nominalMm": 15,
+    "dn": 15,
+    "kgm": 1.199
+   },
+   {
+    "outerMm": 26.9,
+    "innerMm": 21.7,
+    "nominalMm": 20,
+    "dn": 20,
+    "kgm": 1.558
+   },
+   {
+    "outerMm": 33.7,
+    "innerMm": 27.3,
+    "nominalMm": 25,
+    "dn": 25,
+    "kgm": 2.407
+   },
+   {
+    "outerMm": 42.4,
+    "innerMm": 36,
+    "nominalMm": 32,
+    "dn": 32,
+    "kgm": 3.094
+   },
+   {
+    "outerMm": 48.3,
+    "innerMm": 41.9,
+    "nominalMm": 40,
+    "dn": 40,
+    "kgm": 3.559
+   },
+   {
+    "outerMm": 60.3,
+    "innerMm": 53.1,
+    "nominalMm": 50,
+    "dn": 50,
+    "kgm": 5.034
+   },
+   {
+    "outerMm": 76.1,
+    "innerMm": 68.9,
+    "nominalMm": 65,
+    "dn": 65,
+    "kgm": 6.437
+   },
+   {
+    "outerMm": 88.9,
+    "innerMm": 80.9,
+    "nominalMm": 80,
+    "dn": 80,
+    "kgm": 8.375
+   },
+   {
+    "outerMm": 114.3,
+    "innerMm": 105.3,
+    "nominalMm": 100,
+    "dn": 100,
+    "kgm": 12.185
+   }
+  ],
+  "media": [
+   "voda",
+   "ukur",
+   "chlad",
+   "plyn",
+   "poziar"
+  ],
+  "densityKgDm3": 7.85,
+  "joint": "závit / zváranie",
+  "standards": "STN EN 10255",
+  "label": "dn"
+ },
+ {
+  "id": "NEREZ",
+  "name": "Nerez 1.4401 lisovací systém",
+  "material": "Nerez",
+  "roughnessMm": 0.0015,
+  "sizes": [
+   {
+    "outerMm": 15,
+    "innerMm": 13,
+    "nominalMm": 13,
+    "kgm": 0.351
+   },
+   {
+    "outerMm": 18,
+    "innerMm": 16,
+    "nominalMm": 16,
+    "kgm": 0.426
+   },
+   {
+    "outerMm": 22,
+    "innerMm": 19.6,
+    "nominalMm": 19.6,
+    "kgm": 0.626
+   },
+   {
+    "outerMm": 28,
+    "innerMm": 25.6,
+    "nominalMm": 25.6,
+    "kgm": 0.806
+   },
+   {
+    "outerMm": 35,
+    "innerMm": 32,
+    "nominalMm": 32,
+    "kgm": 1.26
+   },
+   {
+    "outerMm": 42,
+    "innerMm": 39,
+    "nominalMm": 39,
+    "kgm": 1.523
+   },
+   {
+    "outerMm": 54,
+    "innerMm": 51,
+    "nominalMm": 51,
+    "kgm": 1.974
+   },
+   {
+    "outerMm": 76.1,
+    "innerMm": 72.1,
+    "nominalMm": 72.1,
+    "kgm": 3.715
+   },
+   {
+    "outerMm": 88.9,
+    "innerMm": 84.9,
+    "nominalMm": 84.9,
+    "kgm": 4.357
+   },
+   {
+    "outerMm": 108,
+    "innerMm": 104,
+    "nominalMm": 104,
+    "kgm": 5.315
+   }
+  ],
+  "media": [
+   "voda",
+   "ukur",
+   "chlad"
+  ],
+  "densityKgDm3": 7.98,
+  "joint": "lisovanie",
+  "standards": "STN EN 10312"
+ },
+ {
+  "id": "PPHT",
+  "name": "PP-HT vnútorná kanalizácia",
+  "material": "PP-HT",
+  "roughnessMm": 1,
+  "sizes": [
+   {
+    "outerMm": 32,
+    "innerMm": 28.4,
+    "nominalMm": 30,
+    "dn": 30,
+    "kgm": 0.154
+   },
+   {
+    "outerMm": 40,
+    "innerMm": 36.4,
+    "nominalMm": 40,
+    "dn": 40,
+    "kgm": 0.194
+   },
+   {
+    "outerMm": 50,
+    "innerMm": 46.4,
+    "nominalMm": 50,
+    "dn": 50,
+    "kgm": 0.245
+   },
+   {
+    "outerMm": 75,
+    "innerMm": 71.2,
+    "nominalMm": 70,
+    "dn": 70,
+    "kgm": 0.393
+   },
+   {
+    "outerMm": 90,
+    "innerMm": 85.6,
+    "nominalMm": 90,
+    "dn": 90,
+    "kgm": 0.546
+   },
+   {
+    "outerMm": 110,
+    "innerMm": 104.6,
+    "nominalMm": 100,
+    "dn": 100,
+    "kgm": 0.819
+   },
+   {
+    "outerMm": 125,
+    "innerMm": 118.8,
+    "nominalMm": 125,
+    "dn": 125,
+    "kgm": 1.068
+   },
+   {
+    "outerMm": 160,
+    "innerMm": 152.2,
+    "nominalMm": 150,
+    "dn": 150,
+    "kgm": 1.721
+   }
+  ],
+  "media": [
+   "kanal"
+  ],
+  "densityKgDm3": 0.9,
+  "joint": "hrdlo s tesniacim krúžkom",
+  "standards": "STN EN 1451-1, STN EN 12056-2",
+  "label": "dn"
+ },
+ {
+  "id": "KG",
+  "name": "PVC-KG SN 4 (v zemi)",
+  "material": "PVC-U",
+  "roughnessMm": 1,
+  "sizes": [
+   {
+    "outerMm": 110,
+    "innerMm": 103.6,
+    "nominalMm": 100,
+    "dn": 100,
+    "kgm": 1.503
+   },
+   {
+    "outerMm": 125,
+    "innerMm": 118.6,
+    "nominalMm": 125,
+    "dn": 125,
+    "kgm": 1.714
+   },
+   {
+    "outerMm": 160,
+    "innerMm": 152,
+    "nominalMm": 150,
+    "dn": 150,
+    "kgm": 2.744
+   },
+   {
+    "outerMm": 200,
+    "innerMm": 190.2,
+    "nominalMm": 200,
+    "dn": 200,
+    "kgm": 4.205
+   },
+   {
+    "outerMm": 250,
+    "innerMm": 237.6,
+    "nominalMm": 250,
+    "dn": 250,
+    "kgm": 6.648
+   },
+   {
+    "outerMm": 315,
+    "innerMm": 299.6,
+    "nominalMm": 300,
+    "dn": 300,
+    "kgm": 10.407
+   }
+  ],
+  "media": [
+   "kanal"
+  ],
+  "densityKgDm3": 1.4,
+  "joint": "hrdlo s tesniacim krúžkom",
+  "standards": "STN EN 1401-1, STN EN 752",
+  "label": "dn"
+ },
+ {
+  "id": "PE100",
+  "name": "PE 100 – plyn, elektrotvarovky (Gawaplast ELOFIT)",
+  "material": "PE 100",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 25,
+    "innerMm": 19,
+    "nominalMm": 25,
+    "kgm": 0.171,
+    "segment": "SDR 11 PN16",
+    "code": "OŽ110025100"
+   },
+   {
+    "outerMm": 32,
+    "innerMm": 26,
+    "nominalMm": 32,
+    "kgm": 0.272,
+    "segment": "SDR 11 PN16",
+    "code": "OŽ110032100"
+   },
+   {
+    "outerMm": 40,
+    "innerMm": 32.6,
+    "nominalMm": 40,
+    "kgm": 0.43,
+    "segment": "SDR 11 PN16",
+    "code": "OŽ110040100"
+   },
+   {
+    "outerMm": 50,
+    "innerMm": 40.8,
+    "nominalMm": 50,
+    "kgm": 0.666,
+    "segment": "SDR 11 PN16",
+    "code": "OŽ110050100"
+   },
+   {
+    "outerMm": 63,
+    "innerMm": 51.4,
+    "nominalMm": 63,
+    "kgm": 1.05,
+    "segment": "SDR 11 PN16",
+    "code": "OŽ110063100"
+   },
+   {
+    "outerMm": 75,
+    "innerMm": 61.4,
+    "nominalMm": 75,
+    "kgm": 1.47,
+    "segment": "SDR 11 PN16",
+    "code": "OŽ110075100"
+   },
+   {
+    "outerMm": 90,
+    "innerMm": 79.6,
+    "nominalMm": 90,
+    "kgm": 1.46,
+    "segment": "SDR 17,6 PN10",
+    "code": "OŽ170090100"
+   },
+   {
+    "outerMm": 110,
+    "innerMm": 97.4,
+    "nominalMm": 110,
+    "kgm": 2.17,
+    "segment": "SDR 17,6 PN10",
+    "code": "OŽ170110012"
+   },
+   {
+    "outerMm": 125,
+    "innerMm": 110.8,
+    "nominalMm": 125,
+    "kgm": 2.66,
+    "segment": "SDR 17,6 PN10",
+    "code": "OŽ170125012"
+   },
+   {
+    "outerMm": 160,
+    "innerMm": 141.8,
+    "nominalMm": 160,
+    "kgm": 4.52,
+    "segment": "SDR 17,6 PN10",
+    "code": "OŽ170160012"
+   },
+   {
+    "outerMm": 225,
+    "innerMm": 199.4,
+    "nominalMm": 225,
+    "kgm": 8.93,
+    "segment": "SDR 17,6 PN10",
+    "code": "OŽ170225012"
+   },
+   {
+    "outerMm": 315,
+    "innerMm": 279.2,
+    "nominalMm": 315,
+    "kgm": 17.4,
+    "segment": "SDR 17,6 PN10",
+    "code": "OŽ170315012"
+   }
+  ],
+  "media": [
+   "plyn"
+  ],
+  "densityKgDm3": 0.96,
+  "joint": "elektrofúzne zváranie elektrotvarovkami ELOFIT (STN EN 1555-3), zváracím prístrojom s čítaním čiarového kódu; potrubie oškrabať 1 cm za koniec tvarovky",
+  "standards": "STN EN 1555-2, STN EN 1555-3, STN EN 12007-2, TPP 702 01",
+  "note": "PE potrubie len v zemi – nie nad terénom ani v budove; výstup zo zeme a vstup do skrinky / budovy zemnou prechodkou PE/oceľ alebo prechodkou PE/meď v zemi; výstražná fólia a signalizačný vodič.",
+  "manufacturer": "GAWAPLAST SLOVAKIA s.r.o. – produktový katalóg 2016",
+  "label": "ds",
+  "fittings": [
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME020",
+    "d1": 20,
+    "kg": 0.055,
+    "price": 2.7,
+    "D": 33,
+    "L": 70,
+    "L1": 34
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME025",
+    "d1": 25,
+    "kg": 0.062,
+    "price": 2.93,
+    "D": 36,
+    "L": 70,
+    "L1": 34
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME032",
+    "d1": 32,
+    "kg": 0.079,
+    "price": 3.18,
+    "D": 46,
+    "L": 70,
+    "L1": 34
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME040",
+    "d1": 40,
+    "kg": 0.117,
+    "price": 3.43,
+    "D": 55,
+    "L": 85,
+    "L1": 41
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME050",
+    "d1": 50,
+    "kg": 0.155,
+    "price": 5.16,
+    "D": 67,
+    "L": 87,
+    "L1": 42
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME063",
+    "d1": 63,
+    "kg": 0.227,
+    "price": 5.41,
+    "D": 77,
+    "L": 97,
+    "L1": 47
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME075",
+    "d1": 75,
+    "kg": 0.366,
+    "price": 7.59,
+    "D": 98,
+    "L": 125,
+    "L1": 61
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME090",
+    "d1": 90,
+    "kg": 0.531,
+    "price": 10.05,
+    "D": 113,
+    "L": 146,
+    "L1": 72
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME110",
+    "d1": 110,
+    "kg": 0.677,
+    "price": 12,
+    "D": 136,
+    "L": 155,
+    "L1": 76
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME125",
+    "d1": 125,
+    "kg": 1.019,
+    "price": 16.66,
+    "D": 156,
+    "L": 166,
+    "L1": 82
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME140",
+    "d1": 140,
+    "kg": 1.187,
+    "price": 19.61,
+    "D": 168,
+    "L": 170,
+    "L1": 84
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME160",
+    "d1": 160,
+    "kg": 1.533,
+    "price": 22.07,
+    "D": 191,
+    "L": 175,
+    "L1": 87
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME180",
+    "d1": 180,
+    "kg": 1.994,
+    "price": 33.11,
+    "D": 215,
+    "L": 177,
+    "L1": 88
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME200",
+    "d1": 200,
+    "kg": 2.243,
+    "price": 39.25,
+    "D": 236,
+    "L": 185,
+    "L1": 92
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME225",
+    "d1": 225,
+    "kg": 3.813,
+    "price": 53.93,
+    "D": 272,
+    "L": 212,
+    "L1": 104
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME250",
+    "d1": 250,
+    "kg": 4.39,
+    "price": 85.84,
+    "D": 296,
+    "L": 212,
+    "L1": 106
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME280",
+    "d1": 280,
+    "kg": 8.75,
+    "price": 102.98,
+    "D": 355,
+    "L": 220,
+    "L1": 110
+   },
+   {
+    "kind": "Coupling",
+    "name": "Elektrofúzna objímka priama EME",
+    "code": "12EME315",
+    "d1": 315,
+    "kg": 11.7,
+    "price": 120.16,
+    "D": 372.5,
+    "L": 240,
+    "L1": 120
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM020",
+    "d1": 20,
+    "kg": 0.073,
+    "price": 8.56,
+    "D": 32,
+    "L1": 34,
+    "L2": 50.5,
+    "L": 52,
+    "H": 95.5
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM025",
+    "d1": 25,
+    "kg": 0.085,
+    "price": 8.56,
+    "D": 37,
+    "L1": 37,
+    "L2": 54,
+    "L": 57,
+    "H": 102
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM032",
+    "d1": 32,
+    "kg": 0.115,
+    "price": 8.56,
+    "D": 45,
+    "L1": 34,
+    "L2": 57.5,
+    "L": 64,
+    "H": 80
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM040",
+    "d1": 40,
+    "kg": 0.16,
+    "price": 10.32,
+    "D": 53,
+    "L1": 41,
+    "L2": 65,
+    "L": 73,
+    "H": 91.5
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM050",
+    "d1": 50,
+    "kg": 0.203,
+    "price": 12.85,
+    "D": 65,
+    "L1": 48,
+    "L2": 77,
+    "L": 84,
+    "H": 109.5
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM063",
+    "d1": 63,
+    "kg": 0.328,
+    "price": 14.74,
+    "D": 78,
+    "L1": 53,
+    "L2": 88,
+    "L": 100,
+    "H": 129
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM075",
+    "d1": 75,
+    "kg": 0.457,
+    "price": 22.06,
+    "D": 90,
+    "L1": 58,
+    "L2": 97,
+    "L": 110,
+    "H": 142
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM090",
+    "d1": 90,
+    "kg": 1.068,
+    "price": 38.29,
+    "D": 115,
+    "L1": 78,
+    "L2": 119,
+    "L": 133,
+    "H": 176
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM110",
+    "d1": 110,
+    "kg": null,
+    "price": 43.85,
+    "D": 139,
+    "L1": 83,
+    "L2": 144,
+    "L": 164,
+    "H": 214
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM125",
+    "d1": 125,
+    "kg": 1.994,
+    "price": 54.74,
+    "D": 158,
+    "L1": 85,
+    "L2": 157.5,
+    "L": 180,
+    "H": 237
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM160",
+    "d1": 160,
+    "kg": 3.25,
+    "price": 110.03,
+    "D": 192,
+    "L1": 90,
+    "L2": 173,
+    "L": 208.5,
+    "H": 269
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM180",
+    "d1": 180,
+    "kg": 6.45,
+    "price": 184.82,
+    "D": 208,
+    "L1": 112,
+    "L2": 185,
+    "L": 225,
+    "H": 289
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGEM200",
+    "d1": 200,
+    "kg": 7.87,
+    "price": 385.06,
+    "D": 230,
+    "L1": 125,
+    "L2": 205,
+    "L": 250,
+    "H": 320
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGE225",
+    "d1": 225,
+    "kg": 10.925,
+    "price": 430.94,
+    "D": 274,
+    "L1": 124,
+    "L2": 337,
+    "L": 274,
+    "H": 474
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGE250",
+    "d1": 250,
+    "kg": 17.125,
+    "price": 717.15,
+    "D": 308,
+    "L1": 132,
+    "L2": 385,
+    "L": 308,
+    "H": 539
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Elektrofúzne koleno 90° EGEM",
+    "code": "12EGE315",
+    "d1": 315,
+    "kg": null,
+    "price": 986.06,
+    "D": 380,
+    "L1": 155,
+    "L2": 422,
+    "L": 380,
+    "H": 612
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM032",
+    "d1": 32,
+    "kg": 0.103,
+    "price": 8.56,
+    "D": 45,
+    "L1": 36,
+    "L2": 46.5,
+    "L": 64.5,
+    "H": 94
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM040",
+    "d1": 40,
+    "kg": 0.158,
+    "price": 10.32,
+    "D": 55,
+    "L1": 41,
+    "L2": 53.5,
+    "L": 75,
+    "H": 109
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM050",
+    "d1": 50,
+    "kg": 0.179,
+    "price": 12.85,
+    "D": 65,
+    "L1": 48,
+    "L2": 62.5,
+    "L": 83,
+    "H": 128
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM063",
+    "d1": 63,
+    "kg": 0.25,
+    "price": 14.74,
+    "D": 80,
+    "L1": 53,
+    "L2": 68,
+    "L": 100,
+    "H": 147
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM075",
+    "d1": 75,
+    "kg": 0.389,
+    "price": 22.06,
+    "D": 95,
+    "L1": 60,
+    "L2": 81,
+    "L": 113,
+    "H": 169
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM090",
+    "d1": 90,
+    "kg": 0.895,
+    "price": 26,
+    "D": 119,
+    "L1": 70,
+    "L2": 99,
+    "L": 134,
+    "H": 208
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM110",
+    "d1": 110,
+    "kg": 1.225,
+    "price": 37.76,
+    "D": 137,
+    "L1": 83,
+    "L2": 114,
+    "L": 161.5,
+    "H": 241
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM125",
+    "d1": 125,
+    "kg": 1.856,
+    "price": 52.03,
+    "D": 170,
+    "L1": 85,
+    "L2": 122,
+    "L": 157,
+    "H": 246
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM160",
+    "d1": 160,
+    "kg": 3.38,
+    "price": 110.03,
+    "D": 192,
+    "L1": 90,
+    "L2": 134,
+    "L": 208.5,
+    "H": 296
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM180",
+    "d1": 180,
+    "kg": 4.583,
+    "price": 184.82,
+    "D": 215,
+    "L1": 106,
+    "L2": 160,
+    "L": 240,
+    "H": 340
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECEM200",
+    "d1": 200,
+    "kg": 5.983,
+    "price": 385.06,
+    "D": 240,
+    "L1": 121,
+    "L2": 185,
+    "L": 260,
+    "H": 390
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECE225",
+    "d1": 225,
+    "kg": 8.625,
+    "price": 430.94,
+    "D": 274,
+    "L1": 124,
+    "L2": 277,
+    "L": 274,
+    "H": 550
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECE250",
+    "d1": 250,
+    "kg": 14.11,
+    "price": 717.06,
+    "D": 308,
+    "L1": 132,
+    "L2": 292,
+    "L": 308,
+    "H": 600
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Elektrofúzne koleno 45° ECEM",
+    "code": "12ECE315",
+    "d1": 315,
+    "kg": null,
+    "price": 985.97,
+    "D": 380,
+    "L1": 155,
+    "L2": 337,
+    "L": 380,
+    "H": 680
+   },
+   {
+    "kind": "Elbow",
+    "angle": 30,
+    "name": "Elektrofúzne koleno 30° ECEM30",
+    "code": "12ECEM30090",
+    "d1": 90,
+    "kg": 0.688,
+    "price": 36.97,
+    "D": 119.2,
+    "L1": 70,
+    "L2": 93.6,
+    "L": 134,
+    "H": 209
+   },
+   {
+    "kind": "Elbow",
+    "angle": 30,
+    "name": "Elektrofúzne koleno 30° ECEM30",
+    "code": "12ECEM30110",
+    "d1": 110,
+    "kg": 1.05,
+    "price": 39.68,
+    "D": 134,
+    "L1": 83,
+    "L2": 107,
+    "L": 154,
+    "H": 233
+   },
+   {
+    "kind": "Elbow",
+    "angle": 30,
+    "name": "Elektrofúzne koleno 30° ECEM30",
+    "code": "12ECEM30125",
+    "d1": 125,
+    "kg": 1.438,
+    "price": 53.94,
+    "D": 159.4,
+    "L1": 88.6,
+    "L2": 114.5,
+    "L": 172.5,
+    "H": 264.5
+   },
+   {
+    "kind": "Elbow",
+    "angle": 30,
+    "name": "Elektrofúzne koleno 30° ECEM30",
+    "code": "12ECEM30160",
+    "d1": 160,
+    "kg": 2.714,
+    "price": 132.03,
+    "D": 192,
+    "L1": 87,
+    "L2": 124,
+    "L": 208.5,
+    "H": 279
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE020",
+    "d1": 20,
+    "d2": 20,
+    "kg": 0.076,
+    "price": 8.88,
+    "D": 32,
+    "L1": 37.5,
+    "L2": 46,
+    "L": 45,
+    "H": 83
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE025",
+    "d1": 25,
+    "d2": 25,
+    "kg": 0.095,
+    "price": 8.88,
+    "D": 37,
+    "L1": 37.5,
+    "L2": 46,
+    "L": 50,
+    "H": 87
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE032",
+    "d1": 32,
+    "d2": 32,
+    "kg": 0.12,
+    "price": 8.88,
+    "D": 44,
+    "L1": 37.5,
+    "L2": 47,
+    "L": 55,
+    "H": 96.5
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE040",
+    "d1": 40,
+    "d2": 40,
+    "kg": 0.191,
+    "price": 10.32,
+    "D": 54,
+    "L1": 44,
+    "L2": 54,
+    "L": 66.5,
+    "H": 111
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE050",
+    "d1": 50,
+    "d2": 50,
+    "kg": 0.288,
+    "price": 13,
+    "D": 65,
+    "L1": 46.5,
+    "L2": 61,
+    "L": 76.5,
+    "H": 133.5
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE063",
+    "d1": 63,
+    "d2": 63,
+    "kg": 0.525,
+    "price": 14.91,
+    "D": 80,
+    "L1": 57,
+    "L2": 68,
+    "L": 90,
+    "H": 156
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE075",
+    "d1": 75,
+    "d2": 75,
+    "kg": 0.73,
+    "price": 20.47,
+    "D": 95,
+    "L1": 58,
+    "L2": 72,
+    "L": 98,
+    "H": 178
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETE",
+    "code": "12ETE090",
+    "d1": 90,
+    "d2": 90,
+    "kg": 1.39,
+    "price": 29.35,
+    "D": 118,
+    "L1": 67.5,
+    "L2": 134,
+    "L": 120,
+    "H": 182
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE110",
+    "d1": 110,
+    "d2": 110,
+    "kg": 1.864,
+    "price": 38.41,
+    "D": 139,
+    "L1": 83,
+    "L2": 88.5,
+    "L": 144,
+    "H": 247
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE125",
+    "d1": 125,
+    "d2": 125,
+    "kg": 2.59,
+    "price": 50.12,
+    "D": 158,
+    "L1": 88,
+    "L2": 94,
+    "L": 157.5,
+    "H": 270
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE160",
+    "d1": 160,
+    "d2": 160,
+    "kg": 3.688,
+    "price": 126.59,
+    "D": 190,
+    "L1": 87,
+    "L2": 105,
+    "L": 151,
+    "H": 303
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE180",
+    "d1": 180,
+    "d2": 180,
+    "kg": 6.825,
+    "price": 193.24,
+    "D": 210,
+    "L1": 92,
+    "L2": 105,
+    "L": 165,
+    "H": 350
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE200",
+    "d1": 200,
+    "d2": 200,
+    "kg": 9.175,
+    "price": 446.68,
+    "D": 235,
+    "L1": 115,
+    "L2": 115,
+    "L": 195,
+    "H": 375
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE225",
+    "d1": 225,
+    "d2": 225,
+    "kg": 18.5,
+    "price": 660.09,
+    "D": 274,
+    "L1": 124,
+    "L2": 125,
+    "L": 342,
+    "H": 412
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE250",
+    "d1": 250,
+    "d2": 250,
+    "kg": 20.714,
+    "price": 896.44,
+    "D": 308,
+    "L1": 120,
+    "L2": 135,
+    "L": 377,
+    "H": 459
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus ETCE",
+    "code": "12ETCE315",
+    "d1": 315,
+    "d2": 315,
+    "kg": null,
+    "price": 1165.38,
+    "D": 380,
+    "L1": 155,
+    "L2": 150,
+    "L": 427,
+    "H": 540
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER3220",
+    "d1": 32,
+    "d2": 20,
+    "kg": 0.12,
+    "price": 14.68,
+    "D": 42,
+    "L1": 37.5,
+    "L2": 45,
+    "L": 55,
+    "H": 91
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER1163",
+    "d1": 110,
+    "d2": 63,
+    "kg": 1.594,
+    "price": 53.56,
+    "D": 140,
+    "L1": 83,
+    "L2": 68.5,
+    "L": 144,
+    "H": 220
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER1190",
+    "d1": 110,
+    "d2": 90,
+    "kg": 1.725,
+    "price": 53.56,
+    "D": 140,
+    "L1": 83,
+    "L2": 88.5,
+    "L": 144,
+    "H": 240
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER1263",
+    "d1": 125,
+    "d2": 63,
+    "kg": 2.2,
+    "price": 67.71,
+    "D": 159,
+    "L1": 88,
+    "L2": 68.5,
+    "L": 157.5,
+    "H": 241.5
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER1290",
+    "d1": 125,
+    "d2": 90,
+    "kg": 2.333,
+    "price": 67.71,
+    "D": 159,
+    "L1": 88,
+    "L2": 90,
+    "L": 157.5,
+    "H": 261.5
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER1211",
+    "d1": 125,
+    "d2": 110,
+    "kg": 2.433,
+    "price": 67.71,
+    "D": 159,
+    "L1": 88,
+    "L2": 88.5,
+    "L": 157.5,
+    "H": 261.5
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER1663",
+    "d1": 160,
+    "d2": 63,
+    "kg": 3,
+    "price": 139.24,
+    "D": 195,
+    "L1": 90,
+    "L2": 78.5,
+    "L": 155,
+    "H": 283
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER1690",
+    "d1": 160,
+    "d2": 90,
+    "kg": 2.88,
+    "price": 139.24,
+    "D": 195,
+    "L1": 90,
+    "L2": 83.5,
+    "L": 155,
+    "H": 288
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER1611",
+    "d1": 160,
+    "d2": 110,
+    "kg": 3.02,
+    "price": 139.24,
+    "D": 195,
+    "L1": 90,
+    "L2": 88.5,
+    "L": 155,
+    "H": 293
+   },
+   {
+    "kind": "Tee",
+    "name": "Elektrofúzny T-kus redukovaný ETER",
+    "code": "12ETER1612",
+    "d1": 160,
+    "d2": 125,
+    "kg": 3.12,
+    "price": 139.24,
+    "D": 195,
+    "L1": 90,
+    "L2": 93.5,
+    "L": 155,
+    "H": 298
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE2520",
+    "d1": 25,
+    "d2": 20,
+    "kg": 0.075,
+    "price": 5.88,
+    "D": 36,
+    "L1": 40,
+    "L2": 37,
+    "L": 85
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE3220",
+    "d1": 32,
+    "d2": 20,
+    "kg": 0.077,
+    "price": 5.88,
+    "D": 43,
+    "L1": 43,
+    "L2": 37,
+    "L": 85
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE3225",
+    "d1": 32,
+    "d2": 25,
+    "kg": 0.083,
+    "price": 7.76,
+    "D": 44,
+    "L1": 39.5,
+    "L2": 39.5,
+    "L": 85
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE4020",
+    "d1": 40,
+    "d2": 20,
+    "kg": 0.12,
+    "price": 13.88,
+    "D": 52.5,
+    "L1": 48,
+    "L2": 40,
+    "L": 95
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE4032",
+    "d1": 40,
+    "d2": 32,
+    "kg": 0.115,
+    "price": 7.94,
+    "D": 55,
+    "L1": 47,
+    "L2": 42,
+    "L": 95
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE5032",
+    "d1": 50,
+    "d2": 32,
+    "kg": 0.14,
+    "price": 11.12,
+    "D": 64,
+    "L1": 49.5,
+    "L2": 41.5,
+    "L": 100
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE5040",
+    "d1": 50,
+    "d2": 40,
+    "kg": 0.17,
+    "price": 11.12,
+    "D": 64,
+    "L1": 49.5,
+    "L2": 47.5,
+    "L": 103
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE6332",
+    "d1": 63,
+    "d2": 32,
+    "kg": 0.216,
+    "price": 12.68,
+    "D": 81.5,
+    "L1": 55.5,
+    "L2": 42,
+    "L": 118
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE6340",
+    "d1": 63,
+    "d2": 40,
+    "kg": 0.246,
+    "price": 12.68,
+    "D": 81.5,
+    "L1": 55,
+    "L2": 45,
+    "L": 118
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE6350",
+    "d1": 63,
+    "d2": 50,
+    "kg": 0.246,
+    "price": 12.68,
+    "D": 81.5,
+    "L1": 55.5,
+    "L2": 50,
+    "L": 118
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE7563",
+    "d1": 75,
+    "d2": 63,
+    "kg": 0.417,
+    "price": 23.79,
+    "D": 97,
+    "L1": 60,
+    "L2": 57,
+    "L": 125
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE9050",
+    "d1": 90,
+    "d2": 50,
+    "kg": 0.473,
+    "price": 23.79,
+    "D": 117,
+    "L1": 72,
+    "L2": 49,
+    "L": 142
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE9063",
+    "d1": 90,
+    "d2": 63,
+    "kg": 0.477,
+    "price": 23.79,
+    "D": 115,
+    "L1": 68,
+    "L2": 62,
+    "L": 150
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE1163",
+    "d1": 110,
+    "d2": 63,
+    "kg": 0.642,
+    "price": 30.91,
+    "D": 135,
+    "L1": 72.5,
+    "L2": 63,
+    "L": 160
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE1190",
+    "d1": 110,
+    "d2": 90,
+    "kg": 0.66,
+    "price": 30.91,
+    "D": 135,
+    "L1": 73,
+    "L2": 68.5,
+    "L": 158
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE1263",
+    "d1": 125,
+    "d2": 63,
+    "kg": 0.72,
+    "price": 39.68,
+    "D": 150,
+    "L1": 76,
+    "L2": 65,
+    "L": 162.5
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE1290",
+    "d1": 125,
+    "d2": 90,
+    "kg": 0.788,
+    "price": 39.68,
+    "D": 150,
+    "L1": 80,
+    "L2": 70,
+    "L": 160
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE1211",
+    "d1": 125,
+    "d2": 110,
+    "kg": 0.863,
+    "price": 39.68,
+    "D": 156,
+    "L1": 70,
+    "L2": 71.5,
+    "L": 161
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE1690",
+    "d1": 160,
+    "d2": 90,
+    "kg": 1.217,
+    "price": 64.71,
+    "D": 192,
+    "L1": 81,
+    "L2": 72,
+    "L": 177
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE1611",
+    "d1": 160,
+    "d2": 110,
+    "kg": 1.367,
+    "price": 64.71,
+    "D": 192,
+    "L1": 81,
+    "L2": 77,
+    "L": 182
+   },
+   {
+    "kind": "Reducer",
+    "name": "Elektrofúzna redukcia ERDE",
+    "code": "12ERDE1612",
+    "d1": 160,
+    "d2": 125,
+    "kg": 1.275,
+    "price": 64.71,
+    "D": 186,
+    "L1": 76,
+    "L2": 73.5,
+    "L": 179
+   },
+   {
+    "kind": "PeCu",
+    "name": "Prechodka PE/meď nalisovacia EA",
+    "code": "12EA2518",
+    "d1": 25,
+    "d2": 18,
+    "kg": 0.108,
+    "price": 25.38,
+    "L": 100,
+    "L1": 46,
+    "L2": 25,
+    "D": 36,
+    "D3": 14.1
+   },
+   {
+    "kind": "PeCu",
+    "name": "Prechodka PE/meď nalisovacia EA",
+    "code": "12EA2522",
+    "d1": 25,
+    "d2": 22,
+    "kg": 0.13,
+    "price": 25.38,
+    "L": 103,
+    "L1": 44.5,
+    "L2": 28,
+    "D": 41,
+    "D3": 18.5
+   },
+   {
+    "kind": "PeCu",
+    "name": "Prechodka PE/meď nalisovacia EA",
+    "code": "12EA3222",
+    "d1": 32,
+    "d2": 22,
+    "kg": 0.133,
+    "price": 28.56,
+    "L": 107,
+    "L1": 51,
+    "L2": 28,
+    "D": 41,
+    "D3": 18.5
+   },
+   {
+    "kind": "PeCu",
+    "name": "Prechodka PE/meď nalisovacia EA",
+    "code": "12EA3228",
+    "d1": 32,
+    "d2": 28,
+    "kg": 0.193,
+    "price": 28.56,
+    "L": 110,
+    "L1": 48,
+    "L2": 30.5,
+    "D": 50,
+    "D3": 24
+   },
+   {
+    "kind": "PeSteelBend",
+    "name": "Zemná prechodka PE/oceľ 90° oblúková ERTCF",
+    "code": "12ERTCFZ025",
+    "d1": 25,
+    "d2": 19.05,
+    "thread": "3/4\"",
+    "kg": 1.73,
+    "price": 61.77,
+    "L1": 165,
+    "LF": 14.5,
+    "L2": 700,
+    "L3": 500,
+    "R": 150,
+    "D": 32.3,
+    "Dcoat": 30
+   },
+   {
+    "kind": "PeSteelBend",
+    "name": "Zemná prechodka PE/oceľ 90° oblúková ERTCF",
+    "code": "12ERTCFZ032",
+    "d1": 32,
+    "d2": 25.4,
+    "thread": "1\"",
+    "kg": 2.1,
+    "price": 69.52,
+    "L1": 165,
+    "LF": 16.8,
+    "L2": 700,
+    "L3": 500,
+    "R": 150,
+    "D": 40,
+    "Dcoat": 37
+   },
+   {
+    "kind": "PeSteelBend",
+    "name": "Zemná prechodka PE/oceľ 90° oblúková ERTCF",
+    "code": "12ERTCFZ040",
+    "d1": 40,
+    "d2": 31.75,
+    "thread": "1 1/4\"",
+    "kg": 3.5,
+    "price": 80.01,
+    "L1": 165,
+    "LF": 19.1,
+    "L2": 700,
+    "L3": 500,
+    "R": 150,
+    "D": 50,
+    "Dcoat": 45.6
+   },
+   {
+    "kind": "PeSteelBend",
+    "name": "Zemná prechodka PE/oceľ 90° oblúková ERTCF",
+    "code": "12ERTCFZ050",
+    "d1": 50,
+    "d2": 38.1,
+    "thread": "1 1/2\"",
+    "kg": 4.2,
+    "price": 102.95,
+    "L1": 165,
+    "LF": 19.1,
+    "L2": 770,
+    "L3": 500,
+    "R": 170,
+    "D": 63,
+    "Dcoat": 52.6
+   },
+   {
+    "kind": "PeSteelBend",
+    "name": "Zemná prechodka PE/oceľ 90° oblúková ERTCF",
+    "code": "12ERTCFZ063",
+    "d1": 63,
+    "d2": 50.8,
+    "thread": "2\"",
+    "kg": 7.15,
+    "price": 124.68,
+    "L1": 190,
+    "LF": 23.4,
+    "L2": 770,
+    "L3": 700,
+    "R": 260,
+    "D": 73,
+    "Dcoat": 64
+   },
+   {
+    "kind": "PeSteelBend",
+    "name": "Zemná prechodka PE/oceľ 90° oblúková ERTCF",
+    "code": "12ERTCFZ075",
+    "d1": 75,
+    "d2": 63.5,
+    "thread": "2 1/2\"",
+    "kg": 8.5,
+    "price": 290.21,
+    "L1": 190,
+    "LF": 26.7,
+    "L2": 750,
+    "L3": 700,
+    "R": 300,
+    "D": 88,
+    "Dcoat": 80
+   },
+   {
+    "kind": "PeSteelBend",
+    "name": "Zemná prechodka PE/oceľ 90° oblúková ERTCF",
+    "code": "12ERTCFZ090",
+    "d1": 90,
+    "d2": 76.2,
+    "thread": "3\"",
+    "kg": 11.5,
+    "price": 403.88,
+    "L1": 190,
+    "LF": 29.8,
+    "L2": 700,
+    "L3": 750,
+    "R": 300,
+    "D": 107,
+    "Dcoat": 93
+   }
+  ]
+ },
+ {
+  "id": "CUMED",
+  "name": "Meď – medicinálne plyny, kapilárne tvarovky na tvrdé spájkovanie (SANHA séria 5000)",
+  "material": "Meď (medicinálne plyny)",
+  "roughnessMm": 0.0015,
+  "sizes": [
+   {
+    "outerMm": 8,
+    "innerMm": 6,
+    "nominalMm": 8,
+    "kgm": 0.197,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 10,
+    "innerMm": 8,
+    "nominalMm": 10,
+    "kgm": 0.253,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 12,
+    "innerMm": 10,
+    "nominalMm": 12,
+    "kgm": 0.309,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 15,
+    "innerMm": 13,
+    "nominalMm": 15,
+    "kgm": 0.393,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 18,
+    "innerMm": 16,
+    "nominalMm": 18,
+    "kgm": 0.477,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 22,
+    "innerMm": 20,
+    "nominalMm": 22,
+    "kgm": 0.59,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 28,
+    "innerMm": 25,
+    "nominalMm": 28,
+    "kgm": 1.116,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 35,
+    "innerMm": 32,
+    "nominalMm": 35,
+    "kgm": 1.411,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 42,
+    "innerMm": 39,
+    "nominalMm": 42,
+    "kgm": 1.706,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 54,
+    "innerMm": 50,
+    "nominalMm": 54,
+    "kgm": 2.921,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 64,
+    "innerMm": 60,
+    "nominalMm": 64,
+    "kgm": 3.483,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 76.1,
+    "innerMm": 72.1,
+    "nominalMm": 76.1,
+    "kgm": 4.162,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 88.9,
+    "innerMm": 84.9,
+    "nominalMm": 88.9,
+    "kgm": 4.881,
+    "segment": "EN 13348",
+    "code": ""
+   },
+   {
+    "outerMm": 108,
+    "innerMm": 103,
+    "nominalMm": 108,
+    "kgm": 7.408,
+    "segment": "EN 13348",
+    "code": ""
+   }
+  ],
+  "media": [
+   "medplyn"
+  ],
+  "densityKgDm3": 8.94,
+  "joint": "kapilárny spoj – tvrdé spájkovanie (STN EN 1254-1, SANHA séria 5000), spájka CuP / Ag bez taviva pri Cu–Cu, spájkovanie s preplachom dusíkom (STN EN ISO 7396-1)",
+  "standards": "STN EN ISO 7396-1, STN EN 13348, STN EN 1254-1",
+  "note": "Rúry Cu-DHP odmastené a čistené podľa STN EN 13348 s uzavretými koncami; tvarovky v čistom prevedení pre medicinálne plyny. Rozmery tela tvaroviek sú typové (katalóg SANHA uvádza len čísla zboží a rozmery rúr).",
+  "manufacturer": "SANHA – katalóg 2023 (tvarovky); rúry Cu-DHP STN EN 13348",
+  "label": "ds",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A8",
+    "d1": 8,
+    "D": 10.8,
+    "L": 15
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A10",
+    "d1": 10,
+    "D": 13,
+    "L": 18
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A12",
+    "d1": 12,
+    "D": 15.2,
+    "L": 20.8
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A15",
+    "d1": 15,
+    "D": 18.5,
+    "L": 25.5
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A18",
+    "d1": 18,
+    "D": 21.8,
+    "L": 30.2
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A22",
+    "d1": 22,
+    "D": 26.2,
+    "L": 36.8
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A28",
+    "d1": 28,
+    "D": 32.8,
+    "L": 45.2
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A35",
+    "d1": 35,
+    "D": 40.5,
+    "L": 56.5
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A42",
+    "d1": 42,
+    "D": 48.2,
+    "L": 66.8
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A54",
+    "d1": 54,
+    "D": 61.4,
+    "L": 82.6
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A64",
+    "d1": 64,
+    "D": 72.4,
+    "L": 95.5
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A76",
+    "d1": 76.1,
+    "D": 85.7,
+    "L": 111.5
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A89",
+    "d1": 88.9,
+    "D": 99.8,
+    "L": 128.3
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° kapilárny 5002A",
+    "code": "15002A108",
+    "d1": 108,
+    "D": 120.8,
+    "L": 153.6
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "150418",
+    "d1": 8,
+    "D": 10.8,
+    "L": 11.8
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504110",
+    "d1": 10,
+    "D": 13,
+    "L": 13.9
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504112",
+    "d1": 12,
+    "D": 15.2,
+    "L": 15.9
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504115",
+    "d1": 15,
+    "D": 18.5,
+    "L": 19.4
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504118",
+    "d1": 18,
+    "D": 21.8,
+    "L": 22.9
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504122",
+    "d1": 22,
+    "D": 26.2,
+    "L": 27.9
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504128",
+    "d1": 28,
+    "D": 32.8,
+    "L": 33.9
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504135",
+    "d1": 35,
+    "D": 40.5,
+    "L": 42.3
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504142",
+    "d1": 42,
+    "D": 48.2,
+    "L": 49.8
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504154",
+    "d1": 54,
+    "D": 61.4,
+    "L": 60.7
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504164",
+    "d1": 64,
+    "D": 72.4,
+    "L": 69.6
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504176",
+    "d1": 76.1,
+    "D": 85.7,
+    "L": 80.6
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "1504189",
+    "d1": 88.9,
+    "D": 99.8,
+    "L": 92.3
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° kapilárny 5041",
+    "code": "15041108",
+    "d1": 108,
+    "D": 120.8,
+    "L": 109.8
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "151308",
+    "d1": 8,
+    "d2": 8,
+    "D": 10.8,
+    "L": 12.6,
+    "H": 18
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513010",
+    "d1": 10,
+    "d2": 10,
+    "D": 13,
+    "L": 15,
+    "H": 21.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513012",
+    "d1": 12,
+    "d2": 12,
+    "D": 15.2,
+    "L": 17.2,
+    "H": 24.8
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513015",
+    "d1": 15,
+    "d2": 15,
+    "D": 18.5,
+    "L": 21,
+    "H": 30.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513018",
+    "d1": 18,
+    "d2": 18,
+    "D": 21.8,
+    "L": 24.8,
+    "H": 35.7
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513022",
+    "d1": 22,
+    "d2": 22,
+    "D": 26.2,
+    "L": 30.2,
+    "H": 43.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513028",
+    "d1": 28,
+    "d2": 28,
+    "D": 32.8,
+    "L": 36.8,
+    "H": 53.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513035",
+    "d1": 35,
+    "d2": 35,
+    "D": 40.5,
+    "L": 46,
+    "H": 66.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513042",
+    "d1": 42,
+    "d2": 42,
+    "D": 48.2,
+    "L": 54.2,
+    "H": 78.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513054",
+    "d1": 54,
+    "d2": 54,
+    "D": 61.4,
+    "L": 66.4,
+    "H": 97.1
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513064",
+    "d1": 64,
+    "d2": 64,
+    "D": 72.4,
+    "L": 76.3,
+    "H": 112.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513076",
+    "d1": 76.1,
+    "d2": 76.1,
+    "D": 85.7,
+    "L": 88.6,
+    "H": 131.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "1513089",
+    "d1": 88.9,
+    "d2": 88.9,
+    "D": 99.8,
+    "L": 101.7,
+    "H": 151.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130",
+    "code": "15130108",
+    "d1": 108,
+    "d2": 108,
+    "D": 120.8,
+    "L": 121.2,
+    "H": 181.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "1513010810",
+    "d1": 10,
+    "d2": 8,
+    "D": 13,
+    "L": 15,
+    "H": 21.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "1513012812",
+    "d1": 12,
+    "d2": 8,
+    "D": 15.2,
+    "L": 17.2,
+    "H": 24.8
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130121012",
+    "d1": 12,
+    "d2": 10,
+    "D": 15.2,
+    "L": 17.2,
+    "H": 24.8
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "1513015815",
+    "d1": 15,
+    "d2": 8,
+    "D": 18.5,
+    "L": 21,
+    "H": 30.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130151015",
+    "d1": 15,
+    "d2": 10,
+    "D": 18.5,
+    "L": 21,
+    "H": 30.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130151215",
+    "d1": 15,
+    "d2": 12,
+    "D": 18.5,
+    "L": 21,
+    "H": 30.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130181018",
+    "d1": 18,
+    "d2": 10,
+    "D": 21.8,
+    "L": 24.8,
+    "H": 35.7
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130181218",
+    "d1": 18,
+    "d2": 12,
+    "D": 21.8,
+    "L": 24.8,
+    "H": 35.7
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130181518",
+    "d1": 18,
+    "d2": 15,
+    "D": 21.8,
+    "L": 24.8,
+    "H": 35.7
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130221022",
+    "d1": 22,
+    "d2": 10,
+    "D": 26.2,
+    "L": 30.2,
+    "H": 43.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130221222",
+    "d1": 22,
+    "d2": 12,
+    "D": 26.2,
+    "L": 30.2,
+    "H": 43.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130221522",
+    "d1": 22,
+    "d2": 15,
+    "D": 26.2,
+    "L": 30.2,
+    "H": 43.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130221822",
+    "d1": 22,
+    "d2": 18,
+    "D": 26.2,
+    "L": 30.2,
+    "H": 43.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130281028",
+    "d1": 28,
+    "d2": 10,
+    "D": 32.8,
+    "L": 36.8,
+    "H": 53.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130281228",
+    "d1": 28,
+    "d2": 12,
+    "D": 32.8,
+    "L": 36.8,
+    "H": 53.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130281528",
+    "d1": 28,
+    "d2": 15,
+    "D": 32.8,
+    "L": 36.8,
+    "H": 53.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130281828",
+    "d1": 28,
+    "d2": 18,
+    "D": 32.8,
+    "L": 36.8,
+    "H": 53.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130282228",
+    "d1": 28,
+    "d2": 22,
+    "D": 32.8,
+    "L": 36.8,
+    "H": 53.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130351535",
+    "d1": 35,
+    "d2": 15,
+    "D": 40.5,
+    "L": 46,
+    "H": 66.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130351835",
+    "d1": 35,
+    "d2": 18,
+    "D": 40.5,
+    "L": 46,
+    "H": 66.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130352235",
+    "d1": 35,
+    "d2": 22,
+    "D": 40.5,
+    "L": 46,
+    "H": 66.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130352835",
+    "d1": 35,
+    "d2": 28,
+    "D": 40.5,
+    "L": 46,
+    "H": 66.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130421542",
+    "d1": 42,
+    "d2": 15,
+    "D": 48.2,
+    "L": 54.2,
+    "H": 78.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130421842",
+    "d1": 42,
+    "d2": 18,
+    "D": 48.2,
+    "L": 54.2,
+    "H": 78.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130422242",
+    "d1": 42,
+    "d2": 22,
+    "D": 48.2,
+    "L": 54.2,
+    "H": 78.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130422842",
+    "d1": 42,
+    "d2": 28,
+    "D": 48.2,
+    "L": 54.2,
+    "H": 78.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130423542",
+    "d1": 42,
+    "d2": 35,
+    "D": 48.2,
+    "L": 54.2,
+    "H": 78.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130542254",
+    "d1": 54,
+    "d2": 22,
+    "D": 61.4,
+    "L": 66.4,
+    "H": 97.1
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130542854",
+    "d1": 54,
+    "d2": 28,
+    "D": 61.4,
+    "L": 66.4,
+    "H": 97.1
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130543554",
+    "d1": 54,
+    "d2": 35,
+    "D": 61.4,
+    "L": 66.4,
+    "H": 97.1
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130544254",
+    "d1": 54,
+    "d2": 42,
+    "D": 61.4,
+    "L": 66.4,
+    "H": 97.1
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130643564",
+    "d1": 64,
+    "d2": 35,
+    "D": 72.4,
+    "L": 76.3,
+    "H": 112.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130644264",
+    "d1": 64,
+    "d2": 42,
+    "D": 72.4,
+    "L": 76.3,
+    "H": 112.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130645464",
+    "d1": 64,
+    "d2": 54,
+    "D": 72.4,
+    "L": 76.3,
+    "H": 112.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130763576",
+    "d1": 76.1,
+    "d2": 35,
+    "D": 85.7,
+    "L": 88.6,
+    "H": 131.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130764276",
+    "d1": 76.1,
+    "d2": 42,
+    "D": 85.7,
+    "L": 88.6,
+    "H": 131.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130765476",
+    "d1": 76.1,
+    "d2": 54,
+    "D": 85.7,
+    "L": 88.6,
+    "H": 131.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130766476",
+    "d1": 76.1,
+    "d2": 64,
+    "D": 85.7,
+    "L": 88.6,
+    "H": 131.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130893589",
+    "d1": 88.9,
+    "d2": 35,
+    "D": 99.8,
+    "L": 101.7,
+    "H": 151.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130894289",
+    "d1": 88.9,
+    "d2": 42,
+    "D": 99.8,
+    "L": 101.7,
+    "H": 151.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130895489",
+    "d1": 88.9,
+    "d2": 54,
+    "D": 99.8,
+    "L": 101.7,
+    "H": 151.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130896489",
+    "d1": 88.9,
+    "d2": 64,
+    "D": 99.8,
+    "L": 101.7,
+    "H": 151.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "15130897689",
+    "d1": 88.9,
+    "d2": 76.1,
+    "D": 99.8,
+    "L": 101.7,
+    "H": 151.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "1513010854108",
+    "d1": 108,
+    "d2": 54,
+    "D": 120.8,
+    "L": 121.2,
+    "H": 181.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "1513010864108",
+    "d1": 108,
+    "d2": 64,
+    "D": 120.8,
+    "L": 121.2,
+    "H": 181.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "1513010876108",
+    "d1": 108,
+    "d2": 76.1,
+    "D": 120.8,
+    "L": 121.2,
+    "H": 181.6
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus kapilárny 5130 redukovaný",
+    "code": "1513010889108",
+    "d1": 108,
+    "d2": 88.9,
+    "D": 120.8,
+    "L": 121.2,
+    "H": 181.6
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "15240108",
+    "d1": 10,
+    "d2": 8,
+    "D": 13,
+    "L1": 12,
+    "L2": 10.8,
+    "L": 26.8
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "15240128",
+    "d1": 12,
+    "d2": 8,
+    "D": 15.2,
+    "L1": 13,
+    "L2": 10.8,
+    "L": 27.8
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152401210",
+    "d1": 12,
+    "d2": 10,
+    "D": 15.2,
+    "L1": 13,
+    "L2": 12,
+    "L": 29
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "15240158",
+    "d1": 15,
+    "d2": 8,
+    "D": 18.5,
+    "L1": 15,
+    "L2": 10.8,
+    "L": 29.8
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152401510",
+    "d1": 15,
+    "d2": 10,
+    "D": 18.5,
+    "L1": 15,
+    "L2": 12,
+    "L": 31
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152401512",
+    "d1": 15,
+    "d2": 12,
+    "D": 18.5,
+    "L1": 15,
+    "L2": 13,
+    "L": 32
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152401810",
+    "d1": 18,
+    "d2": 10,
+    "D": 21.8,
+    "L1": 17,
+    "L2": 12,
+    "L": 33
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152401812",
+    "d1": 18,
+    "d2": 12,
+    "D": 21.8,
+    "L1": 17,
+    "L2": 13,
+    "L": 34
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152401815",
+    "d1": 18,
+    "d2": 15,
+    "D": 21.8,
+    "L1": 17,
+    "L2": 15,
+    "L": 36
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152402210",
+    "d1": 22,
+    "d2": 10,
+    "D": 26.2,
+    "L1": 20,
+    "L2": 12,
+    "L": 36
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152402212",
+    "d1": 22,
+    "d2": 12,
+    "D": 26.2,
+    "L1": 20,
+    "L2": 13,
+    "L": 37
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152402215",
+    "d1": 22,
+    "d2": 15,
+    "D": 26.2,
+    "L1": 20,
+    "L2": 15,
+    "L": 39
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152402218",
+    "d1": 22,
+    "d2": 18,
+    "D": 26.2,
+    "L1": 20,
+    "L2": 17,
+    "L": 41
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152402812",
+    "d1": 28,
+    "d2": 12,
+    "D": 32.8,
+    "L1": 23,
+    "L2": 13,
+    "L": 40
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152402815",
+    "d1": 28,
+    "d2": 15,
+    "D": 32.8,
+    "L1": 23,
+    "L2": 15,
+    "L": 42
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152402818",
+    "d1": 28,
+    "d2": 18,
+    "D": 32.8,
+    "L1": 23,
+    "L2": 17,
+    "L": 44
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152402822",
+    "d1": 28,
+    "d2": 22,
+    "D": 32.8,
+    "L1": 23,
+    "L2": 20,
+    "L": 47
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152403515",
+    "d1": 35,
+    "d2": 15,
+    "D": 40.5,
+    "L1": 28,
+    "L2": 15,
+    "L": 47
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152403518",
+    "d1": 35,
+    "d2": 18,
+    "D": 40.5,
+    "L1": 28,
+    "L2": 17,
+    "L": 49
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152403522",
+    "d1": 35,
+    "d2": 22,
+    "D": 40.5,
+    "L1": 28,
+    "L2": 20,
+    "L": 52
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152403528",
+    "d1": 35,
+    "d2": 28,
+    "D": 40.5,
+    "L1": 28,
+    "L2": 23,
+    "L": 55
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152404218",
+    "d1": 42,
+    "d2": 18,
+    "D": 48.2,
+    "L1": 32,
+    "L2": 17,
+    "L": 53
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152404222",
+    "d1": 42,
+    "d2": 22,
+    "D": 48.2,
+    "L1": 32,
+    "L2": 20,
+    "L": 56
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152404228",
+    "d1": 42,
+    "d2": 28,
+    "D": 48.2,
+    "L1": 32,
+    "L2": 23,
+    "L": 59
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152404235",
+    "d1": 42,
+    "d2": 35,
+    "D": 48.2,
+    "L1": 32,
+    "L2": 28,
+    "L": 64
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152405422",
+    "d1": 54,
+    "d2": 22,
+    "D": 61.4,
+    "L1": 37,
+    "L2": 20,
+    "L": 61
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152405428",
+    "d1": 54,
+    "d2": 28,
+    "D": 61.4,
+    "L1": 37,
+    "L2": 23,
+    "L": 64
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152405435",
+    "d1": 54,
+    "d2": 35,
+    "D": 61.4,
+    "L1": 37,
+    "L2": 28,
+    "L": 69
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152405442",
+    "d1": 54,
+    "d2": 42,
+    "D": 61.4,
+    "L1": 37,
+    "L2": 32,
+    "L": 73
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152406435",
+    "d1": 64,
+    "d2": 35,
+    "D": 72.4,
+    "L1": 40.9,
+    "L2": 28,
+    "L": 72.9
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152406442",
+    "d1": 64,
+    "d2": 42,
+    "D": 72.4,
+    "L1": 40.9,
+    "L2": 32,
+    "L": 76.9
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152406454",
+    "d1": 64,
+    "d2": 54,
+    "D": 72.4,
+    "L1": 40.9,
+    "L2": 37,
+    "L": 81.9
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152407654",
+    "d1": 76.1,
+    "d2": 54,
+    "D": 85.7,
+    "L1": 46,
+    "L2": 37,
+    "L": 87
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152407664",
+    "d1": 76.1,
+    "d2": 64,
+    "D": 85.7,
+    "L1": 46,
+    "L2": 40.9,
+    "L": 90.8
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152408976",
+    "d1": 88.9,
+    "d2": 76.1,
+    "D": 99.8,
+    "L1": 51.3,
+    "L2": 46,
+    "L": 101.3
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "1524010889",
+    "d1": 108,
+    "d2": 88.9,
+    "D": 120.8,
+    "L1": 59.4,
+    "L2": 51.3,
+    "L": 114.7
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152434215",
+    "d1": 42,
+    "d2": 15,
+    "D": 48.2,
+    "L1": 32,
+    "L2": 15,
+    "L": 51
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152437635",
+    "d1": 76.1,
+    "d2": 35,
+    "D": 85.7,
+    "L1": 46,
+    "L2": 28,
+    "L": 78
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152437642",
+    "d1": 76.1,
+    "d2": 42,
+    "D": 85.7,
+    "L1": 46,
+    "L2": 32,
+    "L": 82
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152438954",
+    "d1": 88.9,
+    "d2": 54,
+    "D": 99.8,
+    "L1": 51.3,
+    "L2": 37,
+    "L": 92.3
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "152438964",
+    "d1": 88.9,
+    "d2": 64,
+    "D": 99.8,
+    "L1": 51.3,
+    "L2": 40.9,
+    "L": 96.2
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "1524310854",
+    "d1": 108,
+    "d2": 54,
+    "D": 120.8,
+    "L1": 59.4,
+    "L2": 37,
+    "L": 100.4
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "1524310864",
+    "d1": 108,
+    "d2": 64,
+    "D": 120.8,
+    "L1": 59.4,
+    "L2": 40.9,
+    "L": 104.2
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia kapilárna 5240/5243",
+    "code": "1524310876",
+    "d1": 108,
+    "d2": 76.1,
+    "D": 120.8,
+    "L1": 59.4,
+    "L2": 46,
+    "L": 109.3
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "152708",
+    "d1": 8,
+    "D": 10.8,
+    "L": 18.6,
+    "L1": 7.8
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527010",
+    "d1": 10,
+    "D": 13,
+    "L": 21,
+    "L1": 9
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527012",
+    "d1": 12,
+    "D": 15.2,
+    "L": 23,
+    "L1": 10
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527015",
+    "d1": 15,
+    "D": 18.5,
+    "L": 27,
+    "L1": 12
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527018",
+    "d1": 18,
+    "D": 21.8,
+    "L": 31,
+    "L1": 14
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527022",
+    "d1": 22,
+    "D": 26.2,
+    "L": 37,
+    "L1": 17
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527028",
+    "d1": 28,
+    "D": 32.8,
+    "L": 43,
+    "L1": 20
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527035",
+    "d1": 35,
+    "D": 40.5,
+    "L": 53,
+    "L1": 25
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527042",
+    "d1": 42,
+    "D": 48.2,
+    "L": 61,
+    "L1": 29
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527054",
+    "d1": 54,
+    "D": 61.4,
+    "L": 71,
+    "L1": 34
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527064",
+    "d1": 64,
+    "D": 72.4,
+    "L": 78.8,
+    "L1": 37.9
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527076",
+    "d1": 76.1,
+    "D": 85.7,
+    "L": 88.9,
+    "L1": 43
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "1527089",
+    "d1": 88.9,
+    "D": 99.8,
+    "L": 99.7,
+    "L1": 48.3
+   },
+   {
+    "kind": "Coupling",
+    "name": "Nátrubok kapilárny so zarážkou 5270",
+    "code": "15270108",
+    "d1": 108,
+    "D": 120.8,
+    "L": 115.7,
+    "L1": 56.4
+   }
+  ]
+ },
+ {
+  "id": "NIROSAN",
+  "name": "Nerez 1.4404 – požiarna voda, lisovací systém NiroSan® (SANHA séria 9000)",
+  "material": "Nerez 1.4404",
+  "roughnessMm": 0.0015,
+  "sizes": [
+   {
+    "outerMm": 15,
+    "innerMm": 13,
+    "nominalMm": 15,
+    "kgm": 0.351,
+    "segment": "NiroSan 1.4404",
+    "code": "6900015"
+   },
+   {
+    "outerMm": 18,
+    "innerMm": 16,
+    "nominalMm": 18,
+    "kgm": 0.426,
+    "segment": "NiroSan 1.4404",
+    "code": "6900018"
+   },
+   {
+    "outerMm": 22,
+    "innerMm": 19.6,
+    "nominalMm": 22,
+    "kgm": 0.626,
+    "segment": "NiroSan 1.4404",
+    "code": "6900022"
+   },
+   {
+    "outerMm": 28,
+    "innerMm": 25.6,
+    "nominalMm": 28,
+    "kgm": 0.806,
+    "segment": "NiroSan 1.4404",
+    "code": "6900028"
+   },
+   {
+    "outerMm": 35,
+    "innerMm": 32,
+    "nominalMm": 35,
+    "kgm": 1.26,
+    "segment": "NiroSan 1.4404",
+    "code": "6900035"
+   },
+   {
+    "outerMm": 42,
+    "innerMm": 39,
+    "nominalMm": 42,
+    "kgm": 1.523,
+    "segment": "NiroSan 1.4404",
+    "code": "6900042"
+   },
+   {
+    "outerMm": 54,
+    "innerMm": 51,
+    "nominalMm": 54,
+    "kgm": 1.974,
+    "segment": "NiroSan 1.4404",
+    "code": "6900054"
+   },
+   {
+    "outerMm": 64,
+    "innerMm": 60,
+    "nominalMm": 64,
+    "kgm": 3.109,
+    "segment": "NiroSan 1.4404",
+    "code": "6900064"
+   },
+   {
+    "outerMm": 76.1,
+    "innerMm": 72.1,
+    "nominalMm": 76.1,
+    "kgm": 3.715,
+    "segment": "NiroSan 1.4404",
+    "code": "6900076"
+   },
+   {
+    "outerMm": 88.9,
+    "innerMm": 84.9,
+    "nominalMm": 88.9,
+    "kgm": 4.357,
+    "segment": "NiroSan 1.4404",
+    "code": "6900089"
+   },
+   {
+    "outerMm": 108,
+    "innerMm": 104,
+    "nominalMm": 108,
+    "kgm": 5.315,
+    "segment": "NiroSan 1.4404",
+    "code": "69000108"
+   },
+   {
+    "outerMm": 139.7,
+    "innerMm": 134.5,
+    "nominalMm": 139.7,
+    "kgm": 8.936,
+    "segment": "NiroSan 1.4404",
+    "code": "69000140"
+   }
+  ],
+  "media": [
+   "poziar",
+   "voda"
+  ],
+  "densityKgDm3": 7.98,
+  "joint": "lisovaný spoj NiroSan® 1.4404 s tesnením EPDM (profil SA / V / M), 16 bar, −30…+120 °C; nezalisovaný spoj netesní (UVUD)",
+  "standards": "STN EN 10312, DVGW GW 541, STN EN 12845, STN 73 0873",
+  "note": "SANHA uvádza použitie pre hasiace rozvody a sprinklery v mokrom prostredí. Pre sprinklerové zariadenia over certifikáciu (VdS / FM) a požiadavky STN EN 12845 a projektu PBS. Rozmery tela tvaroviek sú typové.",
+  "manufacturer": "SANHA – katalóg 2023, NiroSan® séria 9000",
+  "label": "ds",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A15",
+    "d1": 15,
+    "D": 23.4,
+    "L": 37.8
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A18",
+    "d1": 18,
+    "D": 26.9,
+    "L": 42.7
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A22",
+    "d1": 22,
+    "D": 31.5,
+    "L": 49.3
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A28",
+    "d1": 28,
+    "D": 38.5,
+    "L": 59.2
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A35",
+    "d1": 35,
+    "D": 46.6,
+    "L": 70.8
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A42",
+    "d1": 42,
+    "D": 54.7,
+    "L": 82.3
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A54",
+    "d1": 54,
+    "D": 68.6,
+    "L": 102.1
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A64",
+    "d1": 64,
+    "D": 80.2,
+    "L": 117.8
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A76",
+    "d1": 76.1,
+    "D": 94.3,
+    "L": 135.3
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A89",
+    "d1": 88.9,
+    "D": 109.1,
+    "L": 153.9
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A108",
+    "d1": 108,
+    "D": 131.3,
+    "L": 181.6
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Oblúk 90° lisovací 9002A",
+    "code": "69002A140",
+    "d1": 139.7,
+    "D": 168.1,
+    "L": 227.6
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904115",
+    "d1": 15,
+    "D": 23.4,
+    "L": 30.3
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904118",
+    "d1": 18,
+    "D": 26.9,
+    "L": 33.8
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904122",
+    "d1": 22,
+    "D": 31.5,
+    "L": 38.4
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904128",
+    "d1": 28,
+    "D": 38.5,
+    "L": 45.3
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904135",
+    "d1": 35,
+    "D": 46.6,
+    "L": 53.4
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904142",
+    "d1": 42,
+    "D": 54.7,
+    "L": 61.5
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904154",
+    "d1": 54,
+    "D": 68.6,
+    "L": 75.4
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904164",
+    "d1": 64,
+    "D": 80.2,
+    "L": 86.1
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904176",
+    "d1": 76.1,
+    "D": 94.3,
+    "L": 97.7
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "6904189",
+    "d1": 88.9,
+    "D": 109.1,
+    "L": 109.9
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "69041108",
+    "d1": 108,
+    "D": 131.3,
+    "L": 128.1
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Oblúk 45° lisovací 9041",
+    "code": "69041140",
+    "d1": 139.7,
+    "D": 168.1,
+    "L": 158.4
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913015",
+    "d1": 15,
+    "d2": 15,
+    "D": 23.4,
+    "L": 31.8,
+    "H": 43.5
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913018",
+    "d1": 18,
+    "d2": 18,
+    "D": 26.9,
+    "L": 35.5,
+    "H": 48.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913022",
+    "d1": 22,
+    "d2": 22,
+    "D": 31.5,
+    "L": 40.5,
+    "H": 56.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913028",
+    "d1": 28,
+    "d2": 28,
+    "D": 38.5,
+    "L": 48,
+    "H": 67.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913035",
+    "d1": 35,
+    "d2": 35,
+    "D": 46.6,
+    "L": 56.8,
+    "H": 80
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913042",
+    "d1": 42,
+    "d2": 42,
+    "D": 54.7,
+    "L": 65.5,
+    "H": 92.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913054",
+    "d1": 54,
+    "d2": 54,
+    "D": 68.6,
+    "L": 80.5,
+    "H": 114.8
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913064",
+    "d1": 64,
+    "d2": 64,
+    "D": 80.2,
+    "L": 92.2,
+    "H": 132.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913076",
+    "d1": 76.1,
+    "d2": 76.1,
+    "D": 94.3,
+    "L": 104.9,
+    "H": 152
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "6913089",
+    "d1": 88.9,
+    "d2": 88.9,
+    "D": 109.1,
+    "L": 118.3,
+    "H": 172.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "69130108",
+    "d1": 108,
+    "d2": 108,
+    "D": 131.3,
+    "L": 138.4,
+    "H": 204
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130",
+    "code": "69130140",
+    "d1": 139.7,
+    "d2": 139.7,
+    "D": 168.1,
+    "L": 171.7,
+    "H": 255.7
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130181518",
+    "d1": 18,
+    "d2": 15,
+    "D": 26.9,
+    "L": 35.5,
+    "H": 48.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130221522",
+    "d1": 22,
+    "d2": 15,
+    "D": 31.5,
+    "L": 40.5,
+    "H": 56.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130221822",
+    "d1": 22,
+    "d2": 18,
+    "D": 31.5,
+    "L": 40.5,
+    "H": 56.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130281528",
+    "d1": 28,
+    "d2": 15,
+    "D": 38.5,
+    "L": 48,
+    "H": 67.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130281828",
+    "d1": 28,
+    "d2": 18,
+    "D": 38.5,
+    "L": 48,
+    "H": 67.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130282228",
+    "d1": 28,
+    "d2": 22,
+    "D": 38.5,
+    "L": 48,
+    "H": 67.2
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130351535",
+    "d1": 35,
+    "d2": 15,
+    "D": 46.6,
+    "L": 56.8,
+    "H": 80
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130351835",
+    "d1": 35,
+    "d2": 18,
+    "D": 46.6,
+    "L": 56.8,
+    "H": 80
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130352235",
+    "d1": 35,
+    "d2": 22,
+    "D": 46.6,
+    "L": 56.8,
+    "H": 80
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130352835",
+    "d1": 35,
+    "d2": 28,
+    "D": 46.6,
+    "L": 56.8,
+    "H": 80
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130421842",
+    "d1": 42,
+    "d2": 18,
+    "D": 54.7,
+    "L": 65.5,
+    "H": 92.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130422242",
+    "d1": 42,
+    "d2": 22,
+    "D": 54.7,
+    "L": 65.5,
+    "H": 92.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130422842",
+    "d1": 42,
+    "d2": 28,
+    "D": 54.7,
+    "L": 65.5,
+    "H": 92.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130423542",
+    "d1": 42,
+    "d2": 35,
+    "D": 54.7,
+    "L": 65.5,
+    "H": 92.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130542254",
+    "d1": 54,
+    "d2": 22,
+    "D": 68.6,
+    "L": 80.5,
+    "H": 114.8
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130542854",
+    "d1": 54,
+    "d2": 28,
+    "D": 68.6,
+    "L": 80.5,
+    "H": 114.8
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130543554",
+    "d1": 54,
+    "d2": 35,
+    "D": 68.6,
+    "L": 80.5,
+    "H": 114.8
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130544254",
+    "d1": 54,
+    "d2": 42,
+    "D": 68.6,
+    "L": 80.5,
+    "H": 114.8
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130642264",
+    "d1": 64,
+    "d2": 22,
+    "D": 80.2,
+    "L": 92.2,
+    "H": 132.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130642864",
+    "d1": 64,
+    "d2": 28,
+    "D": 80.2,
+    "L": 92.2,
+    "H": 132.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130643564",
+    "d1": 64,
+    "d2": 35,
+    "D": 80.2,
+    "L": 92.2,
+    "H": 132.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130644264",
+    "d1": 64,
+    "d2": 42,
+    "D": 80.2,
+    "L": 92.2,
+    "H": 132.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130645464",
+    "d1": 64,
+    "d2": 54,
+    "D": 80.2,
+    "L": 92.2,
+    "H": 132.3
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130762276",
+    "d1": 76.1,
+    "d2": 22,
+    "D": 94.3,
+    "L": 104.9,
+    "H": 152
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130762876",
+    "d1": 76.1,
+    "d2": 28,
+    "D": 94.3,
+    "L": 104.9,
+    "H": 152
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130763576",
+    "d1": 76.1,
+    "d2": 35,
+    "D": 94.3,
+    "L": 104.9,
+    "H": 152
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130764276",
+    "d1": 76.1,
+    "d2": 42,
+    "D": 94.3,
+    "L": 104.9,
+    "H": 152
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130765476",
+    "d1": 76.1,
+    "d2": 54,
+    "D": 94.3,
+    "L": 104.9,
+    "H": 152
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130766476",
+    "d1": 76.1,
+    "d2": 64,
+    "D": 94.3,
+    "L": 104.9,
+    "H": 152
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130892289",
+    "d1": 88.9,
+    "d2": 22,
+    "D": 109.1,
+    "L": 118.3,
+    "H": 172.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130892889",
+    "d1": 88.9,
+    "d2": 28,
+    "D": 109.1,
+    "L": 118.3,
+    "H": 172.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130893589",
+    "d1": 88.9,
+    "d2": 35,
+    "D": 109.1,
+    "L": 118.3,
+    "H": 172.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130894289",
+    "d1": 88.9,
+    "d2": 42,
+    "D": 109.1,
+    "L": 118.3,
+    "H": 172.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130895489",
+    "d1": 88.9,
+    "d2": 54,
+    "D": 109.1,
+    "L": 118.3,
+    "H": 172.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130896489",
+    "d1": 88.9,
+    "d2": 64,
+    "D": 109.1,
+    "L": 118.3,
+    "H": 172.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130897689",
+    "d1": 88.9,
+    "d2": 76.1,
+    "D": 109.1,
+    "L": 118.3,
+    "H": 172.9
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913010822108",
+    "d1": 108,
+    "d2": 22,
+    "D": 131.3,
+    "L": 138.4,
+    "H": 204
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913010828108",
+    "d1": 108,
+    "d2": 28,
+    "D": 131.3,
+    "L": 138.4,
+    "H": 204
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913010835108",
+    "d1": 108,
+    "d2": 35,
+    "D": 131.3,
+    "L": 138.4,
+    "H": 204
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913010842108",
+    "d1": 108,
+    "d2": 42,
+    "D": 131.3,
+    "L": 138.4,
+    "H": 204
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913010854108",
+    "d1": 108,
+    "d2": 54,
+    "D": 131.3,
+    "L": 138.4,
+    "H": 204
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913010864108",
+    "d1": 108,
+    "d2": 64,
+    "D": 131.3,
+    "L": 138.4,
+    "H": 204
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913010876108",
+    "d1": 108,
+    "d2": 76.1,
+    "D": 131.3,
+    "L": 138.4,
+    "H": 204
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913010889108",
+    "d1": 108,
+    "d2": 88.9,
+    "D": 131.3,
+    "L": 138.4,
+    "H": 204
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913014076140",
+    "d1": 139.7,
+    "d2": 76.1,
+    "D": 168.1,
+    "L": 171.7,
+    "H": 255.7
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "6913014089140",
+    "d1": 139.7,
+    "d2": 88.9,
+    "D": 168.1,
+    "L": 171.7,
+    "H": 255.7
+   },
+   {
+    "kind": "Tee",
+    "name": "T-kus lisovací 9130 redukovaný",
+    "code": "69130140108140",
+    "d1": 139.7,
+    "d2": 108,
+    "D": 168.1,
+    "L": 171.7,
+    "H": 255.7
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692401815",
+    "d1": 18,
+    "d2": 15,
+    "D": 26.9,
+    "L1": 25.9,
+    "L2": 24.2,
+    "L": 54.1
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692402215",
+    "d1": 22,
+    "d2": 15,
+    "D": 31.5,
+    "L1": 28.1,
+    "L2": 24.2,
+    "L": 56.4
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692402218",
+    "d1": 22,
+    "d2": 18,
+    "D": 31.5,
+    "L1": 28.1,
+    "L2": 25.9,
+    "L": 58
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692402822",
+    "d1": 28,
+    "d2": 22,
+    "D": 38.5,
+    "L1": 31.4,
+    "L2": 28.1,
+    "L": 63.5
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692432815",
+    "d1": 28,
+    "d2": 15,
+    "D": 38.5,
+    "L1": 31.4,
+    "L2": 24.2,
+    "L": 59.7
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692432818",
+    "d1": 28,
+    "d2": 18,
+    "D": 38.5,
+    "L1": 31.4,
+    "L2": 25.9,
+    "L": 61.3
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692433518",
+    "d1": 35,
+    "d2": 18,
+    "D": 46.6,
+    "L1": 35.2,
+    "L2": 25.9,
+    "L": 65.2
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692433522",
+    "d1": 35,
+    "d2": 22,
+    "D": 46.6,
+    "L1": 35.2,
+    "L2": 28.1,
+    "L": 67.3
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692433528",
+    "d1": 35,
+    "d2": 28,
+    "D": 46.6,
+    "L1": 35.2,
+    "L2": 31.4,
+    "L": 70.7
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692434222",
+    "d1": 42,
+    "d2": 22,
+    "D": 54.7,
+    "L1": 39.1,
+    "L2": 28.1,
+    "L": 71.2
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692434228",
+    "d1": 42,
+    "d2": 28,
+    "D": 54.7,
+    "L1": 39.1,
+    "L2": 31.4,
+    "L": 74.5
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692434235",
+    "d1": 42,
+    "d2": 35,
+    "D": 54.7,
+    "L1": 39.1,
+    "L2": 35.2,
+    "L": 78.3
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692435428",
+    "d1": 54,
+    "d2": 28,
+    "D": 68.6,
+    "L1": 45.7,
+    "L2": 31.4,
+    "L": 81.1
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692435435",
+    "d1": 54,
+    "d2": 35,
+    "D": 68.6,
+    "L1": 45.7,
+    "L2": 35.2,
+    "L": 85
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692435442",
+    "d1": 54,
+    "d2": 42,
+    "D": 68.6,
+    "L1": 45.7,
+    "L2": 39.1,
+    "L": 88.8
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692436442",
+    "d1": 64,
+    "d2": 42,
+    "D": 80.2,
+    "L1": 50.4,
+    "L2": 39.1,
+    "L": 93.5
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692436454",
+    "d1": 64,
+    "d2": 54,
+    "D": 80.2,
+    "L1": 50.4,
+    "L2": 45.7,
+    "L": 100.1
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692437654",
+    "d1": 76.1,
+    "d2": 54,
+    "D": 94.3,
+    "L1": 54.6,
+    "L2": 45.7,
+    "L": 104.3
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692437664",
+    "d1": 76.1,
+    "d2": 64,
+    "D": 94.3,
+    "L1": 54.6,
+    "L2": 50.4,
+    "L": 109
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692438954",
+    "d1": 88.9,
+    "d2": 54,
+    "D": 109.1,
+    "L1": 59.1,
+    "L2": 45.7,
+    "L": 108.8
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692438964",
+    "d1": 88.9,
+    "d2": 64,
+    "D": 109.1,
+    "L1": 59.1,
+    "L2": 50.4,
+    "L": 113.5
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "692438976",
+    "d1": 88.9,
+    "d2": 76.1,
+    "D": 109.1,
+    "L1": 59.1,
+    "L2": 54.6,
+    "L": 117.8
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "6924310854",
+    "d1": 108,
+    "d2": 54,
+    "D": 131.3,
+    "L1": 65.8,
+    "L2": 45.7,
+    "L": 115.5
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "6924310864",
+    "d1": 108,
+    "d2": 64,
+    "D": 131.3,
+    "L1": 65.8,
+    "L2": 50.4,
+    "L": 120.2
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "6924310876",
+    "d1": 108,
+    "d2": 76.1,
+    "D": 131.3,
+    "L1": 65.8,
+    "L2": 54.6,
+    "L": 124.4
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "6924310889",
+    "d1": 108,
+    "d2": 88.9,
+    "D": 131.3,
+    "L1": 65.8,
+    "L2": 59.1,
+    "L": 128.9
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "6924314089",
+    "d1": 139.7,
+    "d2": 88.9,
+    "D": 168.1,
+    "L1": 76.9,
+    "L2": 59.1,
+    "L": 140
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia lisovacia 9240/9243",
+    "code": "69243140108",
+    "d1": 139.7,
+    "d2": 108,
+    "D": 168.1,
+    "L1": 76.9,
+    "L2": 65.8,
+    "L": 146.7
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927015",
+    "d1": 15,
+    "D": 23.4,
+    "L": 46.5,
+    "L1": 21.2
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927018",
+    "d1": 18,
+    "D": 26.9,
+    "L": 49.8,
+    "L1": 22.9
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927022",
+    "d1": 22,
+    "D": 31.5,
+    "L": 54.2,
+    "L1": 25.1
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927028",
+    "d1": 28,
+    "D": 38.5,
+    "L": 60.8,
+    "L1": 28.4
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927035",
+    "d1": 35,
+    "D": 46.6,
+    "L": 68.5,
+    "L1": 32.2
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927042",
+    "d1": 42,
+    "D": 54.7,
+    "L": 76.2,
+    "L1": 36.1
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927054",
+    "d1": 54,
+    "D": 68.6,
+    "L": 89.4,
+    "L1": 42.7
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927064",
+    "d1": 64,
+    "D": 80.2,
+    "L": 98.8,
+    "L1": 47.4
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927076",
+    "d1": 76.1,
+    "D": 94.3,
+    "L": 107.3,
+    "L1": 51.6
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "6927089",
+    "d1": 88.9,
+    "D": 109.1,
+    "L": 116.2,
+    "L1": 56.1
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "69270108",
+    "d1": 108,
+    "D": 131.3,
+    "L": 129.6,
+    "L1": 62.8
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spojka lisovacia 9270",
+    "code": "69270140",
+    "d1": 139.7,
+    "D": 168.1,
+    "L": 151.8,
+    "L1": 73.9
+   }
+  ]
+ },
+ {
+  "id": "DYM",
+  "name": "Dymovod PP/AL koaxiálny 60/100 a 80/125 pre kondenzačné kotly (Cox Geelen / Regulus / Brilon)",
+  "material": "PP/Al",
+  "roughnessMm": 0.5,
+  "sizes": [
+   {
+    "outerMm": 100,
+    "innerMm": 60,
+    "nominalMm": 100,
+    "kgm": 1.6,
+    "segment": "PP/AL koax 60/100 (EN 14471)",
+    "code": ""
+   },
+   {
+    "outerMm": 125,
+    "innerMm": 80,
+    "nominalMm": 125,
+    "kgm": 2.3,
+    "segment": "PP/AL koax 80/125 (EN 14471)",
+    "code": ""
+   }
+  ],
+  "media": [
+   "dym"
+  ],
+  "densityKgDm3": 0.91,
+  "joint": "násuvný spoj PP s tesnením EPDM (krúžky natrieť silikónovou pastou), vonkajšia rúra spojená sponou s manžetou; rúry sa môžu skracovať",
+  "standards": "STN EN 14471, STN EN 1443, STN 73 4201, STN EN 15287-1, STN EN 13384-1",
+  "note": "Kóta 100 / 125 = vonkajšia rúra (vzduch), dᵢ 60 / 80 = spalinová PP rúra. Vodorovné úseky so spádom min. 3° (≈ 5 cm/m) smerom ku kotlu – kondenzát steká do kotla. Max. dĺžky, ekvivalentné dĺžky kolien a vyústenie (C13 cez stenu, C33 cez strechu) podľa návodu výrobcu kotla a STN 73 4201. Teplota spalín max. 120 °C (T120). Rozmery tvaroviek typové podľa Regulus OPP.",
+  "manufacturer": "Cox Geelen, Regulus, Brilon – sortiment imperialshop.sk (2026), rozmery Regulus OPP 60/100 a 80/125",
+  "label": "segment",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Koleno 87° 60/100 PP/AL",
+    "code": "",
+    "d1": 100,
+    "D": 104,
+    "L": 113,
+    "price": 22.73
+   },
+   {
+    "kind": "Elbow",
+    "angle": 87,
+    "name": "Koleno 87° 60/100 PP/AL",
+    "code": "",
+    "d1": 100,
+    "D": 104,
+    "L": 113,
+    "price": 22.73
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Koleno 45° 60/100 PP/AL",
+    "code": "",
+    "d1": 100,
+    "D": 104,
+    "L": 80,
+    "price": 21.33
+   },
+   {
+    "kind": "Elbow",
+    "angle": 90,
+    "name": "Koleno 90° 80/125 PP/AL",
+    "code": "",
+    "d1": 125,
+    "D": 130,
+    "L": 140,
+    "price": 28.49
+   },
+   {
+    "kind": "Elbow",
+    "angle": 87,
+    "name": "Koleno 90° 80/125 PP/AL",
+    "code": "",
+    "d1": 125,
+    "D": 130,
+    "L": 140,
+    "price": 28.49
+   },
+   {
+    "kind": "Elbow",
+    "angle": 45,
+    "name": "Koleno 45° 80/125 PP/AL",
+    "code": "",
+    "d1": 125,
+    "D": 130,
+    "L": 95,
+    "price": 27.79
+   },
+   {
+    "kind": "Tee",
+    "name": "Revízny T-kus 60/100 PP/AL (typový)",
+    "code": "",
+    "d1": 100,
+    "d2": 100,
+    "D": 104,
+    "L": 120,
+    "H": 140
+   },
+   {
+    "kind": "Tee",
+    "name": "Revízny T-kus 80/125 PP/AL Cox Geelen",
+    "code": "",
+    "d1": 125,
+    "d2": 125,
+    "D": 130,
+    "L": 135,
+    "H": 160,
+    "price": 69.26
+   },
+   {
+    "kind": "Reducer",
+    "name": "Redukcia 80/125 – 60/100 PP/AL Cox Geelen",
+    "code": "",
+    "d1": 125,
+    "d2": 100,
+    "D": 130,
+    "L": 110.5,
+    "L1": 60,
+    "L2": 50.5,
+    "price": 43.56
+   },
+   {
+    "kind": "Reducer",
+    "adapter": true,
+    "name": "Vsuvka do kotla 60/100 s odbermi (prípojka kotla ø60 / ø100)",
+    "code": "7807",
+    "d1": 100,
+    "d2": 60,
+    "D": 104,
+    "L": 120,
+    "L1": 70,
+    "L2": 50
+   },
+   {
+    "kind": "Reducer",
+    "adapter": true,
+    "name": "Vsuvka do kotla 60/100 → 80/125 s odbermi (prípojka kotla ø60 / ø100)",
+    "code": "7808",
+    "d1": 125,
+    "d2": 60,
+    "D": 130,
+    "L": 154,
+    "L1": 90,
+    "L2": 64
+   },
+   {
+    "kind": "Reducer",
+    "adapter": true,
+    "name": "Vsuvka do kotla 80/125 (prípojka kotla ø80 / ø125)",
+    "code": "",
+    "d1": 125,
+    "d2": 80,
+    "D": 130,
+    "L": 120,
+    "L1": 70,
+    "L2": 50
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spona s manžetou 100/100",
+    "code": "",
+    "d1": 100,
+    "D": 108,
+    "L": 60,
+    "price": 4.34
+   },
+   {
+    "kind": "Coupling",
+    "name": "Spona s manžetou 125/125",
+    "code": "",
+    "d1": 125,
+    "D": 133,
+    "L": 70,
+    "price": 11.34
+   },
+   {
+    "kind": "FlueBoilerAdapter",
+    "name": "Vsuvka do kotla 60/100 s odbermi (Regulus 7807)",
+    "code": "7807",
+    "d1": 100,
+    "L": 120
+   },
+   {
+    "kind": "FlueBoilerAdapter",
+    "name": "Vsuvka do kotla 60/100 → 80/125 s odbermi (Regulus 7808)",
+    "code": "7808",
+    "d1": 125,
+    "d2": 100,
+    "L": 154
+   },
+   {
+    "kind": "FlueInspection",
+    "name": "Revízny kus 60/100 PP/AL",
+    "code": "",
+    "d1": 100,
+    "price": 43.16
+   },
+   {
+    "kind": "FlueInspection",
+    "name": "Revízny kus 80/125 PP/AL Cox Geelen",
+    "code": "",
+    "d1": 125,
+    "price": 50.61
+   },
+   {
+    "kind": "FlueInspectionElbow",
+    "name": "Koleno kontrolné 60/100 PP/AL",
+    "code": "",
+    "d1": 100,
+    "angle": 90,
+    "price": 46.14
+   },
+   {
+    "kind": "FlueInspectionElbow",
+    "name": "Koleno revízne 80/125 90° PP/AL Cox Geelen",
+    "code": "",
+    "d1": 125,
+    "angle": 90,
+    "price": 51.91
+   },
+   {
+    "kind": "FlueCondensate",
+    "name": "Vsuvka s odtokom kondenzátu 60/100 PP/AL Cox Geelen",
+    "code": "",
+    "d1": 100,
+    "price": 62.62
+   },
+   {
+    "kind": "FlueCondensate",
+    "name": "Vsuvka s odtokom kondenzátu 80/125 PP/AL BEANAA601",
+    "code": "BEANAA601",
+    "d1": 125,
+    "price": 41.47
+   },
+   {
+    "kind": "FlueWallTerminal",
+    "name": "Rúra cez stenu 60/100 PP/AL s koncovkou",
+    "code": "",
+    "d1": 100,
+    "L": 750,
+    "price": 42.28
+   },
+   {
+    "kind": "FlueWallTerminal",
+    "name": "Stenová koncovka koaxiálna DN125/80 čierna Cox Geelen",
+    "code": "",
+    "d1": 125,
+    "L": 900,
+    "price": 67.18
+   },
+   {
+    "kind": "FlueRoofTerminal",
+    "name": "Strešná koncovka koaxiálna DN100/60 čierna Cox Geelen",
+    "code": "",
+    "d1": 100,
+    "price": 63.8
+   },
+   {
+    "kind": "FlueRoofTerminal",
+    "name": "Strešná koncovka koaxiálna DN80/125 čierna Cox Geelen",
+    "code": "",
+    "d1": 125,
+    "price": 71.05
+   },
+   {
+    "kind": "FlueRoofPipe",
+    "name": "Rúra cez strechu 80/125 PP/AL",
+    "code": "",
+    "d1": 125,
+    "price": 84.41
+   },
+   {
+    "kind": "FlueRoofFlashing",
+    "name": "Univerzálna strešná taška DN100/60 a 125/80, 5–25°, Brilon",
+    "code": "",
+    "d1": 125,
+    "price": 48.4
+   },
+   {
+    "kind": "FlueRoofFlashing",
+    "name": "Univerzálna strešná taška DN100/60 a 125/80, 35–55°, Brilon",
+    "code": "",
+    "d1": 125,
+    "price": 50.4
+   },
+   {
+    "kind": "FlueRoofFlashing",
+    "name": "Prechodka strechou šikmá 125 mm (univerzálna)",
+    "code": "",
+    "d1": 125,
+    "price": 34.5
+   },
+   {
+    "kind": "FlueRoofFlashing",
+    "name": "Prechod rovnou strechou DN100/60 a DN125/80, 0°, Cox Geelen",
+    "code": "",
+    "d1": 125,
+    "price": 22.18
+   },
+   {
+    "kind": "FlueCover",
+    "name": "Krycia vnútorná manžeta 100",
+    "code": "",
+    "d1": 100,
+    "price": 4.8
+   },
+   {
+    "kind": "FlueCover",
+    "name": "Krycia vnútorná manžeta 125",
+    "code": "",
+    "d1": 125,
+    "price": 10.64
+   },
+   {
+    "kind": "FlueChimneyEnd",
+    "name": "Ukončovací kus s doskou ø60 (do komína) Cox Geelen",
+    "code": "",
+    "d1": 100,
+    "price": 72.54
+   },
+   {
+    "kind": "FlueChimneyEnd",
+    "name": "Ukončovací kus s doskou ø80 (do komína) Cox Geelen",
+    "code": "",
+    "d1": 125,
+    "price": 76.12
+   }
+  ]
+ },
+ {
+  "id": "VZK",
+  "name": "VZT kruhové potrubie Spiro (pozink) STN EN 1506",
+  "material": "Pozinkovaný plech",
+  "roughnessMm": 0.15,
+  "sizes": [
+   {
+    "nominalMm": 80,
+    "innerMm": 80,
+    "outerMm": 81,
+    "kgm": 1.13
+   },
+   {
+    "nominalMm": 100,
+    "innerMm": 100,
+    "outerMm": 101,
+    "kgm": 1.42
+   },
+   {
+    "nominalMm": 125,
+    "innerMm": 125,
+    "outerMm": 126,
+    "kgm": 1.77
+   },
+   {
+    "nominalMm": 140,
+    "innerMm": 140,
+    "outerMm": 141,
+    "kgm": 1.99
+   },
+   {
+    "nominalMm": 160,
+    "innerMm": 160,
+    "outerMm": 161,
+    "kgm": 2.27
+   },
+   {
+    "nominalMm": 180,
+    "innerMm": 180,
+    "outerMm": 181,
+    "kgm": 2.55
+   },
+   {
+    "nominalMm": 200,
+    "innerMm": 200,
+    "outerMm": 201,
+    "kgm": 2.84
+   },
+   {
+    "nominalMm": 224,
+    "innerMm": 224,
+    "outerMm": 225,
+    "kgm": 3.81
+   },
+   {
+    "nominalMm": 250,
+    "innerMm": 250,
+    "outerMm": 251,
+    "kgm": 4.25
+   },
+   {
+    "nominalMm": 280,
+    "innerMm": 280,
+    "outerMm": 281,
+    "kgm": 4.76
+   },
+   {
+    "nominalMm": 315,
+    "innerMm": 315,
+    "outerMm": 316,
+    "kgm": 5.36
+   },
+   {
+    "nominalMm": 355,
+    "innerMm": 355,
+    "outerMm": 356,
+    "kgm": 6.04
+   },
+   {
+    "nominalMm": 400,
+    "innerMm": 400,
+    "outerMm": 401,
+    "kgm": 6.81
+   },
+   {
+    "nominalMm": 450,
+    "innerMm": 450,
+    "outerMm": 451,
+    "kgm": 7.66
+   },
+   {
+    "nominalMm": 500,
+    "innerMm": 500,
+    "outerMm": 501,
+    "kgm": 8.51
+   },
+   {
+    "nominalMm": 560,
+    "innerMm": 560,
+    "outerMm": 561,
+    "kgm": 12.71
+   },
+   {
+    "nominalMm": 630,
+    "innerMm": 630,
+    "outerMm": 631,
+    "kgm": 14.29
+   },
+   {
+    "nominalMm": 710,
+    "innerMm": 710,
+    "outerMm": 711,
+    "kgm": 16.11
+   },
+   {
+    "nominalMm": 800,
+    "innerMm": 800,
+    "outerMm": 801,
+    "kgm": 18.15
+   },
+   {
+    "nominalMm": 900,
+    "innerMm": 900,
+    "outerMm": 901,
+    "kgm": 20.42
+   },
+   {
+    "nominalMm": 1000,
+    "innerMm": 1000,
+    "outerMm": 1001,
+    "kgm": 22.69
+   },
+   {
+    "nominalMm": 1120,
+    "innerMm": 1120,
+    "outerMm": 1121,
+    "kgm": 25.41
+   },
+   {
+    "nominalMm": 1250,
+    "innerMm": 1250,
+    "outerMm": 1251,
+    "kgm": 28.36
+   }
+  ],
+  "media": [
+   "vzt"
+  ],
+  "densityKgDm3": 7.85,
+  "joint": "vsuvka / nátrubok s gumovým tesnením (trieda tesnosti C)",
+  "standards": "STN EN 1506, STN EN 12237",
+  "shape": "round"
+ },
+ {
+  "id": "VZH",
+  "name": "VZT hranaté potrubie (pozink) STN EN 1505",
+  "material": "Pozinkovaný plech",
+  "roughnessMm": 0.15,
+  "sizes": [
+   {
+    "nominalMm": 100,
+    "innerMm": 100,
+    "outerMm": 100
+   },
+   {
+    "nominalMm": 150,
+    "innerMm": 150,
+    "outerMm": 150
+   },
+   {
+    "nominalMm": 200,
+    "innerMm": 200,
+    "outerMm": 200
+   },
+   {
+    "nominalMm": 250,
+    "innerMm": 250,
+    "outerMm": 250
+   },
+   {
+    "nominalMm": 300,
+    "innerMm": 300,
+    "outerMm": 300
+   },
+   {
+    "nominalMm": 350,
+    "innerMm": 350,
+    "outerMm": 350
+   },
+   {
+    "nominalMm": 400,
+    "innerMm": 400,
+    "outerMm": 400
+   },
+   {
+    "nominalMm": 450,
+    "innerMm": 450,
+    "outerMm": 450
+   },
+   {
+    "nominalMm": 500,
+    "innerMm": 500,
+    "outerMm": 500
+   },
+   {
+    "nominalMm": 600,
+    "innerMm": 600,
+    "outerMm": 600
+   },
+   {
+    "nominalMm": 700,
+    "innerMm": 700,
+    "outerMm": 700
+   },
+   {
+    "nominalMm": 800,
+    "innerMm": 800,
+    "outerMm": 800
+   },
+   {
+    "nominalMm": 900,
+    "innerMm": 900,
+    "outerMm": 900
+   },
+   {
+    "nominalMm": 1000,
+    "innerMm": 1000,
+    "outerMm": 1000
+   },
+   {
+    "nominalMm": 1200,
+    "innerMm": 1200,
+    "outerMm": 1200
+   },
+   {
+    "nominalMm": 1400,
+    "innerMm": 1400,
+    "outerMm": 1400
+   },
+   {
+    "nominalMm": 1600,
+    "innerMm": 1600,
+    "outerMm": 1600
+   },
+   {
+    "nominalMm": 1800,
+    "innerMm": 1800,
+    "outerMm": 1800
+   },
+   {
+    "nominalMm": 2000,
+    "innerMm": 2000,
+    "outerMm": 2000
+   }
+  ],
+  "media": [
+   "vzt"
+  ],
+  "densityKgDm3": 7.85,
+  "joint": "príruba 20 / 30 mm, tesnenie",
+  "standards": "STN EN 1505, STN EN 1507",
+  "shape": "rect"
+ },
+ {
+  "id": "VZF",
+  "name": "VZT flexibilné potrubie Al s izoláciou",
+  "material": "Hliník (flexi)",
+  "roughnessMm": 2,
+  "sizes": [
+   {
+    "nominalMm": 80,
+    "innerMm": 80,
+    "outerMm": 130
+   },
+   {
+    "nominalMm": 100,
+    "innerMm": 100,
+    "outerMm": 150
+   },
+   {
+    "nominalMm": 125,
+    "innerMm": 125,
+    "outerMm": 175
+   },
+   {
+    "nominalMm": 160,
+    "innerMm": 160,
+    "outerMm": 210
+   },
+   {
+    "nominalMm": 200,
+    "innerMm": 200,
+    "outerMm": 250
+   },
+   {
+    "nominalMm": 250,
+    "innerMm": 250,
+    "outerMm": 300
+   },
+   {
+    "nominalMm": 315,
+    "innerMm": 315,
+    "outerMm": 365
+   }
+  ],
+  "media": [
+   "vzt"
+  ],
+  "joint": "sťahovacia páska",
+  "standards": "STN EN 13180",
+  "shape": "round",
+  "flex": true
+ }
+]

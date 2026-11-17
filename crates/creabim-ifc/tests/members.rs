@@ -1,12 +1,28 @@
-//! Columns, beams, roofs, stairs and railings go out with their own IFC
+//! Columns, beams, roofs, stairs, railings and pipes go out with their own IFC
 //! classes and come back from IFCX unchanged.
 
+use creabim_core::mep::Pipe;
 use creabim_core::{
     sample::sample_house, Beam, Column, Element, ElementKind, Landing, Model, Profile, Railing,
     Roof, RoofShape, Stair, Transaction,
 };
 use creabim_ifc::{export_ifc4, export_ifcx, import_ifcx, ExportOptions};
-use glam::DVec2;
+use glam::{DVec2, DVec3};
+
+fn pipe(level: creabim_core::ElementId, system: &str, height_mm: Option<f64>) -> Pipe {
+    Pipe {
+        level,
+        system: system.into(),
+        start: DVec3::new(0.5, 0.5, 0.3),
+        end: DVec3::new(4.5, 0.5, 0.3),
+        pipe_type: "HERZ".into(),
+        nominal_mm: 16.0,
+        outer_mm: 20.0,
+        inner_mm: 16.0,
+        height_mm,
+        insulation_mm: 9.0,
+    }
+}
 
 fn with_members() -> Model {
     let mut m = sample_house();
@@ -47,6 +63,14 @@ fn with_members() -> Model {
             ElementKind::Roof(Roof::new(level, rect, RoofShape::Hip)),
         ))
         .insert(s)
+        .insert(Element::new(
+            "Pipe",
+            ElementKind::Pipe(pipe(level, "SV", None)),
+        ))
+        .insert(Element::new(
+            "Duct",
+            ElementKind::Pipe(pipe(level, "VZP", Some(200.0))),
+        ))
         .apply(&mut m)
         .unwrap();
     let rail = Railing::along_stair(&m, sid, false).unwrap();
@@ -67,6 +91,8 @@ fn members_export_with_their_ifc4_classes() {
         ("IFCROOF(", ".HIP_ROOF."),
         ("IFCSTAIR(", ".QUARTER_TURN_STAIR."),
         ("IFCRAILING(", ".GUARDRAIL."),
+        ("IFCPIPESEGMENT(", ".RIGIDSEGMENT."),
+        ("IFCDUCTSEGMENT(", ".RIGIDSEGMENT."),
     ] {
         // the sample house has masses classed as columns and roofs too
         assert!(

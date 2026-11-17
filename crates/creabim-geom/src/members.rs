@@ -137,6 +137,7 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
             (m, [0.66, 0.66, 0.64])
         }
         ElementKind::Part(_) | ElementKind::Site(_) => crate::parts::mesh_of(model, e)?,
+        ElementKind::Pipe(p) => (crate::mep::pipe_mesh(model, p), crate::mep::color(p)),
         _ => return None,
     })
 }
@@ -370,6 +371,7 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
         ElementKind::Part(_) | ElementKind::Site(_) => {
             return crate::parts::plan_items(model, e, cut);
         }
+        ElementKind::Pipe(p) => return crate::mep::pipe_plan(model, e, p, cut),
         ElementKind::Column(c) => {
             let (z0, z1) = c.span(model);
             let pts = c.outline();

@@ -1135,6 +1135,7 @@ pub fn level_of(kind: &ElementKind) -> Option<ElementId> {
         ElementKind::Footing(f) => f.level,
         ElementKind::Part(p) => p.level,
         ElementKind::Site(s) => s.level,
+        ElementKind::Pipe(p) => p.level,
         _ => return None,
     })
 }
@@ -1150,6 +1151,7 @@ pub fn level_mut(kind: &mut ElementKind) -> Option<&mut ElementId> {
         ElementKind::Footing(f) => &mut f.level,
         ElementKind::Part(p) => &mut p.level,
         ElementKind::Site(s) => &mut s.level,
+        ElementKind::Pipe(p) => &mut p.level,
         _ => return None,
     })
 }

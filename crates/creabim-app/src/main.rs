@@ -37,6 +37,7 @@ mod optionbar;
 mod outline;
 mod paneface;
 mod partstool;
+mod pipesui;
 mod planview;
 mod props;
 mod render3d;
