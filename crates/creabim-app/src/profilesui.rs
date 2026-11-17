@@ -679,11 +679,12 @@ impl CreaBimApp {
         let src = match what {
             "image" => rfd::FileDialog::new()
                 .set_title("A picture to trace over")
-                .add_filter("Pictures", &["png", "jpg", "jpeg"])
+                .add_filter("Pictures", crate::trace::PICTURES)
                 .pick_file()
                 .map(|p| RefSource::Image {
                     path: p.display().to_string(),
                     width: 0.3,
+                    dpi: None,
                 }),
             "dxf" => rfd::FileDialog::new()
                 .set_title("A DXF drawing to trace over")

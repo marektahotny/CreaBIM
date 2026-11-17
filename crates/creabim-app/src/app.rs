@@ -7874,13 +7874,10 @@ impl CreaBimApp {
             {
                 if let Some(p) = rfd::FileDialog::new()
                     .set_title("Add a picture as a reference")
-                    .add_filter("Pictures", &["png", "jpg", "jpeg"])
+                    .add_filter("Pictures", crate::trace::PICTURES)
                     .pick_file()
                 {
-                    add = Some(RefSource::Image {
-                        path: p.display().to_string(),
-                        width: 10.0,
-                    });
+                    add = Some(crate::trace::picture_source(&p.display().to_string()));
                 }
             }
             if ui
@@ -8054,7 +8051,7 @@ impl CreaBimApp {
             let filter: (&str, &[&str]) = match &r.source {
                 RefSource::Dxf { .. } => ("DXF", &["dxf"]),
                 RefSource::Pdf { .. } => ("PDF", &["pdf"]),
-                _ => ("Pictures", &["png", "jpg", "jpeg"]),
+                _ => ("Pictures", crate::trace::PICTURES),
             };
             if let Some(p) = rfd::FileDialog::new()
                 .set_title("Another file for this reference")
@@ -8324,11 +8321,50 @@ impl CreaBimApp {
                 label = Some("Scale reference");
             }
         });
-        if let RefSource::Image { width, .. } = &mut r.source {
+        if let RefSource::Image { path, width, dpi } = &mut r.source {
             let before = *width;
             crate::props::row(ui, "Picture width", |ui| {
                 crate::props::fill(ui, crate::units::drag(width).range(0.1..=10000.0))
             });
+            // a scan's resolution and the scale it was drawn at give its
+            // width, as PilonDesigner's (pixels / dpi × N)
+            let id_px = egui::Id::new(("ref.image.px", path.as_str()));
+            let px = ui
+                .ctx()
+                .data(|m| m.get_temp::<u32>(id_px))
+                .unwrap_or_else(|| {
+                    let n = crate::trace::picture_px(path).map_or(0, |p| p.0);
+                    ui.ctx().data_mut(|m| m.insert_temp(id_px, n));
+                    n
+                });
+            if px > 0 {
+                let mut d = dpi.unwrap_or(crate::trace::DEFAULT_DPI);
+                let paper = px as f64 / d * 0.0254;
+                let mut n = *width / paper;
+                let (d0, n0) = (d, n);
+                crate::props::row(ui, "Resolution", |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut d)
+                            .range(10.0..=4800.0)
+                            .max_decimals(0)
+                            .suffix(" DPI"),
+                    )
+                });
+                crate::props::row(ui, "Drawing scale", |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut n)
+                            .range(0.01..=100000.0)
+                            .max_decimals(1)
+                            .prefix("1:"),
+                    )
+                });
+                if d != d0 || n != n0 {
+                    *dpi = Some(d);
+                    *width = px as f64 / d * 0.0254 * n;
+                }
+            }
             if *width != before {
                 // the picture keeps its middle where it is
                 let k = *width / before;
@@ -8653,10 +8689,7 @@ impl CreaBimApp {
                 .to_lowercase();
             let p = path.display().to_string();
             let source = match ext.as_str() {
-                "png" | "jpg" | "jpeg" => creabim_core::RefSource::Image {
-                    path: p,
-                    width: 10.0,
-                },
+                e if crate::trace::PICTURES.contains(&e) => crate::trace::picture_source(&p),
                 "dxf" => creabim_core::RefSource::Dxf { path: p },
                 "pdf" => creabim_core::RefSource::Pdf {
                     path: p,
@@ -8665,7 +8698,7 @@ impl CreaBimApp {
                 },
                 _ => {
                     self.status = format!(
-                        "{} can't be a reference: drop a PNG, JPEG, DXF or PDF file.",
+                        "{} can't be a reference: drop a picture (PNG, JPEG, TIFF, BMP), a DXF or a PDF file.",
                         path.file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("That file")
