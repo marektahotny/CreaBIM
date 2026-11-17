@@ -22,6 +22,21 @@ pub struct FromPoints {
     pub moved: DVec3,
 }
 
+/// The height of the project's ±0,000 in a survey whose lowest point is
+/// `lo`: the project's elevation when it has one the survey is near, else
+/// the lowest point's whole metre when the heights are above sea level
+/// (over 50 m), else 0 (the survey is already to ±0,000).
+pub fn datum(model: &Model, lo: f64) -> f64 {
+    let elevation = model.project_info().map_or(0.0, |(_, i)| i.elevation);
+    if elevation != 0.0 && lo > elevation - 500.0 {
+        elevation
+    } else if lo > 50.0 {
+        lo.floor()
+    } else {
+        0.0
+    }
+}
+
 /// The terrain `points` (as read) make on `level`.
 pub fn terrain_from_points(
     model: &Model,
@@ -47,15 +62,7 @@ pub fn terrain_from_points(
     } else {
         DVec2::ZERO
     };
-    // heights above sea level: to the project's ±0,000
-    let elevation = model.project_info().map_or(0.0, |(_, i)| i.elevation);
-    let z0 = if elevation != 0.0 && lo.z > elevation - 500.0 {
-        elevation
-    } else if lo.z > 50.0 {
-        lo.z.floor()
-    } else {
-        0.0
-    };
+    let z0 = datum(model, lo.z);
     let level_z = creabim_core::members::elevation(model, level);
     let moved = xy.extend(z0);
     let local: Vec<DVec3> = pts
@@ -118,17 +125,54 @@ impl CreaBimApp {
         };
         let text = creabim_exchange::dxf::decode(&bytes);
         let read = xyz::read(&text);
-        let Some((level, _)) = self.work_level() else {
-            return;
-        };
-        let Some(made) = terrain_from_points(self.doc.model(), level, &read.points) else {
-            self.status =
-                t("No terrain made: the file needs at least three points, one per line as x y z.");
-            return;
-        };
         let name = std::path::Path::new(path)
             .file_stem()
             .map_or("Terrain".into(), |n| n.to_string_lossy().into_owned());
+        self.terrain_from(
+            &read.points,
+            name,
+            "No terrain made: the file needs at least three points, one per line as x y z.",
+        );
+    }
+
+    /// Make a terrain from a 3D drawing reference's heights (PilonDesigner's
+    /// Terén z DXF): the points, lines' vertices and faces' corners on its
+    /// layers shown, within its clip, where the reference puts them.
+    pub(super) fn terrain_from_reference(&mut self, id: ElementId) {
+        let model = self.doc.model();
+        let Some(e) = model.get(id) else {
+            return;
+        };
+        let ElementKind::Reference(r) = &e.kind else {
+            return;
+        };
+        let (r, name) = (r.clone(), e.name.clone());
+        let Ok(Some(d)) = self.plan.ref_cache.drawing(&r.source) else {
+            return;
+        };
+        let points: Vec<DVec3> = d
+            .heights(&r.layers_off, r.clip)
+            .into_iter()
+            .map(|q| r.place(q.truncate()).extend(q.z))
+            .collect();
+        self.terrain_from(
+            &points,
+            name,
+            "No terrain made: the layers shown hold fewer than three points with heights.",
+        );
+    }
+
+    /// Make a terrain named `name` from `points` (as read) on the working
+    /// level; `none` says why when they make none.
+    fn terrain_from(&mut self, points: &[DVec3], name: String, none: &str) {
+        let t = crate::i18n::tr;
+        let Some((level, _)) = self.work_level() else {
+            return;
+        };
+        let Some(made) = terrain_from_points(self.doc.model(), level, points) else {
+            self.status = t(none);
+            return;
+        };
         let e = Element::new(name, ElementKind::Site(made.site));
         let id = e.id;
         if let Err(err) = self

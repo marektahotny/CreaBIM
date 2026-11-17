@@ -40,7 +40,7 @@ A DXF is read as PilonDesigner reads it: lines, polylines with arcs, circles, el
 - **Texts** show at their size and turn once they are big enough on screen to read.
 - **Points**: survey points, small circles marking them and blocks' insertion points snap.
 - A drawing in national coordinates (**S-JTSK**, kilometres from the origin) comes to the project's origin, its lower left corner there; move it in *Properties*.
-- A **3D survey** shows the range of its heights.
+- A **3D survey** shows the range of its heights. In 3D its 3D lines and faces stand at their heights, to the project's ±0,000 as a terrain made from it. **Terrain from its heights** makes a terrain through its points, the vertices of its 3D lines and the corners of its faces, on the layers shown and within its clip (see [Site](site#terrain-from-surveyed-points)).
 
 ## A picture
 
