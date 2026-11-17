@@ -142,9 +142,9 @@ pub fn pipe_fields(ui: &mut egui::Ui, p: &mut Pipe) -> &'static str {
     if p.kind().is_gravity() {
         ui.label(
             egui::RichText::new(format!(
-                "{}: {:.1} %",
+                "{}: {} %",
                 crate::i18n::tr("Fall"),
-                p.fall_pct()
+                crate::i18n::num(p.fall_pct(), 1)
             ))
             .weak(),
         );

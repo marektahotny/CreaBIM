@@ -197,6 +197,7 @@ window.ICONS = {
 "beam": "<rect width=\"20\" height=\"12\" x=\"2\" y=\"6\" rx=\"2\"></rect>",
 "pipe": "<path d=\"M2 8h9a5 5 0 0 1 5 5v9\" /><path d=\"M2 14h7a1 1 0 0 1 1 1v7\" /><path d=\"M2 6v10\" /><path d=\"M8 22h10\" />",
 "pipe-fall": "<path d=\"M2 6l20 4\" /><path d=\"M2 12l20 4\" /><path d=\"M16 20l3 2 3-2\" />",
+"calc": "<rect x=\"5\" y=\"2\" width=\"14\" height=\"20\" rx=\"2\" /><path d=\"M8 6h8\" /><path d=\"M8 11h.01\" /><path d=\"M12 11h.01\" /><path d=\"M16 11h.01\" /><path d=\"M8 15h.01\" /><path d=\"M12 15h.01\" /><path d=\"M16 15h4\" /><path d=\"M8 19h.01\" /><path d=\"M12 19h.01\" />",
 "pipe-gas": "<path d=\"M2 9h20\" /><path d=\"M2 15h20\" /><path d=\"M12 2c1.5 2 1.5 3.5 0 5\" /><path d=\"M12 17c1.5 2 1.5 3.5 0 5\" />",
 "slab": "<path d=\"M2 10l10-5 10 5-10 5z\"></path><path d=\"M2 10v4l10 5 10-5v-4\"></path><path d=\"M12 15v4\"></path>",
 "object": "<path d=\"M2 8.875h20v6.25H2z\"></path><path d=\"M4.5 15.125v3.75\"></path><path d=\"M19.5 15.125v3.75\"></path><path d=\"M4.5 8.875V5.125h15v3.75\"></path>",

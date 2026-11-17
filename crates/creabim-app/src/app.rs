@@ -77,6 +77,8 @@ mod typepreview;
 mod typesui;
 #[path = "wallsui.rs"]
 mod wallsui;
+#[path = "watercalc.rs"]
+mod watercalc;
 
 /// What the 3D geometry was last built from; rebuild when any of it changes.
 /// ((model revision, hidden revision), selection, selected face, drawing
@@ -322,6 +324,8 @@ pub struct CreaBimApp {
     project_open: bool,
     /// The discipline whose window is open (its standards and tools).
     discipline: Option<creabim_core::norms::Discipline>,
+    /// The water supply calculation's window, while it is open.
+    water_calc: Option<Vec<watercalc::SystemCalc>>,
     /// A note open in its own big editor window (MU26).
     note_editor: Option<ElementId>,
     /// A schedule export asked from its header ("csv" or "xlsx").
@@ -484,6 +488,7 @@ impl CreaBimApp {
             settings_open: false,
             project_open: false,
             discipline: None,
+            water_calc: None,
             note_editor: None,
             copy_guides: None,
             overlap_seen: 0,
@@ -11541,6 +11546,7 @@ impl eframe::App for CreaBimApp {
         }
         self.project_window(&ctx);
         self.discipline_window(&ctx);
+        self.water_calc_window(&ctx);
         self.note_editor_window(&ctx);
         self.ifc_export_window(&ctx);
         self.reference_steps();

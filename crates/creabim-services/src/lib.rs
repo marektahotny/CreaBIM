@@ -13,6 +13,7 @@
 pub mod fixtures;
 pub mod fluid;
 pub mod hydraulics;
+pub mod model;
 pub mod network;
 pub mod peak_flow;
 pub mod pipe_types;
