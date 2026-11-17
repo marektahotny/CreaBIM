@@ -45,6 +45,8 @@ mod earthworksui;
 mod editui;
 #[path = "fittingsui.rs"]
 mod fittingsui;
+#[path = "fixturelegend.rs"]
+mod fixturelegend;
 #[path = "gridvis.rs"]
 mod gridvis;
 #[path = "helpui.rs"]
@@ -346,6 +348,8 @@ pub struct CreaBimApp {
     water_calc: Option<Vec<watercalc::SystemCalc>>,
     /// The fittings schedule, while its window is open.
     fittings: Option<Vec<creabim_services::fittings::Fitting>>,
+    /// The legend of sanitary fixtures is open.
+    fixture_legend: bool,
     /// The schedule of earthworks, while its window is open.
     earthworks: Option<(
         Vec<creabim_core::earthworks::Row>,
@@ -520,6 +524,7 @@ impl CreaBimApp {
             discipline: None,
             water_calc: None,
             fittings: None,
+            fixture_legend: false,
             earthworks: None,
             note_editor: None,
             copy_guides: None,
@@ -11924,6 +11929,7 @@ impl eframe::App for CreaBimApp {
         self.discipline_window(&ctx);
         self.water_calc_window(&ctx);
         self.fittings_window(&ctx);
+        self.fixture_legend_window(&ctx);
         self.earthworks_window(&ctx);
         self.maps_window(&ctx);
         self.note_editor_window(&ctx);

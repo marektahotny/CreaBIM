@@ -178,6 +178,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Basins, WCs, baths and showers from the catalogue",
             ),
             act(
+                "calc:fixtures",
+                "Legend of fixtures",
+                "file-text",
+                "The sanitary fixtures placed, each type with its mark, trap and connection, as the legend of a plumbing drawing",
+            ),
+            act(
                 "catalogue.cat:plumbing",
                 "Plumbing fixtures",
                 "waves",

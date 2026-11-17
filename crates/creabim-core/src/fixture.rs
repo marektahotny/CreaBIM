@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 pub const FAMILIES: &[&str] = &[
     "Umývadlo",
     "WC s nádržkou",
+    "Závesné WC s podomietkovou nádržkou",
     "Sprcha",
     "Vaňa",
     "Kuchynský drez",
@@ -307,6 +308,22 @@ pub fn shape(family: &str, len: Option<f64>) -> Shape {
             None,
         );
     }
+    // hung on the wall: the pan alone, its cistern and frame in the wall
+    // behind the flush plate (the usual 360 × 530 pan, rim 400 mm)
+    if f.contains("závesné wc") {
+        return s(
+            0.36,
+            0.53,
+            0.42,
+            0.07,
+            vec![
+                rect(-0.123, 0.0, 0.123, 0.012),
+                rounded(-0.18, 0.012, 0.18, 0.53, 0.17),
+                ellipse(0.0, 0.31, 0.12, 0.17, 28),
+            ],
+            None,
+        );
+    }
     if f.contains("wc") || f.contains("záchod") {
         return s(
             0.4,
@@ -485,6 +502,11 @@ pub fn local_connectors(family: &str, len: Option<f64>) -> Vec<LocalConn> {
             c(UKP, x - 0.025, 0.06, h, 15.0),
             c(UKS, x + 0.025, 0.06, h, 15.0),
         ];
+    }
+    // in the frame: water to the cistern 1 m up, the waste bend at the
+    // wall 230 mm above the floor
+    if f.contains("závesné wc") {
+        return vec![c(SV, -0.17, 0.0, 1.0, 15.0), c(K, 0.0, 0.0, 0.23, 100.0)];
     }
     if f.contains("wc") || f.contains("záchod") {
         return vec![c(SV, -0.12, 0.03, 0.15, 15.0), c(K, 0.0, 0.05, 0.22, 100.0)];
