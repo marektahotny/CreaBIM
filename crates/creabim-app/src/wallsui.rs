@@ -61,11 +61,11 @@ pub(super) fn wall_fields(
                 let lines = walls::layer_boundaries(model, w);
                 if !lines.is_empty() {
                     ui.separator();
-                    ui.weak("By a layer boundary");
+                    ui.weak(crate::i18n::t("By a layer boundary"));
                     for (l, name) in lines {
                         if ui
                             .selectable_value(&mut w.location, l, crate::i18n::tw(name))
-                            .on_hover_text("Draw and dimension the wall on this line between layers. The wall stays where it is.")
+                            .on_hover_text(crate::i18n::t("Draw and dimension the wall on this line between layers. The wall stays where it is."))
                             .changed()
                         {
                             label = "Wall location line"
@@ -75,7 +75,7 @@ pub(super) fn wall_fields(
             })
             .response
             .on_hover_text(
-                "The line the wall is drawn and dimensioned on. It stays put when the wall gets thicker, changes its layers or is flipped.",
+                crate::i18n::t("The line the wall is drawn and dimensioned on. It stays put when the wall gets thicker, changes its layers or is flipped."),
             );
     });
     // Blender's rows (MU32): the operator in the field column, what it
@@ -144,7 +144,7 @@ pub(super) fn wall_fields(
             })
             .response
             .on_hover_text(
-                "Unconnected: the wall is as tall as its height. Up to a level: its top follows that level when it moves.",
+                crate::i18n::t("Unconnected: the wall is as tall as its height. Up to a level: its top follows that level when it moves."),
             );
     });
     match &mut w.top {
@@ -154,10 +154,10 @@ pub(super) fn wall_fields(
             }
             let h = walls::constrained_height(model, w).unwrap_or(w.height);
             ui.label(
-                egui::RichText::new(format!(
+                egui::RichText::new(crate::i18n::tr(&format!(
                     "Height {}, from its top constraint",
                     crate::units::len(h.max(walls::MIN_HEIGHT))
-                ))
+                )))
                 .weak(),
             );
         }
@@ -178,7 +178,7 @@ pub(super) fn wall_fields(
                 let on = !w.disallow_join[i];
                 if ui
                     .add_sized([bw, h], egui::Button::selectable(on, end))
-                    .on_hover_text("Off: this end stays square and free, and is not pulled along when the wall it touches moves. Right-click the end in plan to switch it too.")
+                    .on_hover_text(crate::i18n::t("Off: this end stays square and free, and is not pulled along when the wall it touches moves. Right-click the end in plan to switch it too."))
                     .clicked()
                 {
                     w.disallow_join[i] = on;
@@ -264,22 +264,24 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
             // a label-column row, then two equal buttons, as Blender (MU29)
             crate::props::row(ui, "Hung", |ui| {
                 ui.label(creabim_geom::opening::door_hand(o, &host).to_lowercase())
-                    .on_hover_text("The hinge side seen from the side it opens to, and whether it opens into the building or out of it.")
+                    .on_hover_text(crate::i18n::t("The hinge side seen from the side it opens to, and whether it opens into the building or out of it."))
             });
             crate::props::row(ui, "Flip", |ui| {
                 crate::props::flow(ui, |ui| {
                     let w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
                     if ui
-                        .add_sized([w, 22.0], egui::Button::new("Hand"))
-                        .on_hover_text("Hinge it on the other jamb (Shift+Space).")
+                        .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("Hand")))
+                        .on_hover_text(crate::i18n::t("Hinge it on the other jamb (Shift+Space)."))
                         .clicked()
                     {
                         walls::flip_hand(o);
                         label = "Flip door hand"
                     }
                     if ui
-                        .add_sized([w, 22.0], egui::Button::new("Swing"))
-                        .on_hover_text("Open it to the other side of the wall (Space).")
+                        .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("Swing")))
+                        .on_hover_text(crate::i18n::t(
+                            "Open it to the other side of the wall (Space).",
+                        ))
                         .clicked()
                     {
                         walls::flip_facing(o);
@@ -302,8 +304,8 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
             crate::props::row(ui, "Flip", |ui| {
                 let w = ui.available_width();
                 if ui
-                    .add_sized([w, 22.0], egui::Button::new("Inside / outside"))
-                    .on_hover_text("Turn it round in its wall: its sill board and frame move to the other face (Space).")
+                    .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("Inside / outside")))
+                    .on_hover_text(crate::i18n::t("Turn it round in its wall: its sill board and frame move to the other face (Space)."))
                     .clicked()
                 {
                     walls::flip_facing(o);
@@ -312,7 +314,9 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
             });
         }
         OpeningKind::Hole => {
-            ui.label("A bare opening: a hole through the wall with no door or window in it");
+            ui.label(crate::i18n::t(
+                "A bare opening: a hole through the wall with no door or window in it",
+            ));
         }
     }
     label

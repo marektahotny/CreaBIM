@@ -48,11 +48,11 @@ impl CreaBimApp {
             .add_sized(
                 [width, ui.spacing().interact_size.y],
                 egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center)
-                    .hint_text(hint)
+                    .hint_text(crate::i18n::tr(&hint))
                     .vertical_align(egui::Align::Center),
             )
             .on_hover_text(
-                "Mark: what its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering).",
+                crate::i18n::t("Mark: what its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering)."),
             )
             .changed();
         if changed {
@@ -71,13 +71,13 @@ impl CreaBimApp {
         {
             let n = others.len() - 1;
             ui.label(
-                egui::RichText::new(format!(
+                egui::RichText::new(crate::i18n::tr(&format!(
                     "⚠ {m} is also the mark of {n} other element{}.",
                     if n == 1 { "" } else { "s" }
-                ))
+                )))
                 .color(ui.visuals().warn_fg_color),
             );
-            if ui.small_button("Select them").clicked() {
+            if ui.small_button(crate::i18n::t("Select them")).clicked() {
                 self.selection.extend(others.clone(), false);
             }
         }
@@ -98,9 +98,9 @@ impl CreaBimApp {
             _ => "None".into(),
         };
         let changed = crate::props::row(ui, "Mark", |ui| {
-            crate::props::fill(ui, egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center).hint_text(hint))
+            crate::props::fill(ui, egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center).hint_text(crate::i18n::tr(&hint)))
                 .on_hover_text(
-                    "What its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering).",
+                    crate::i18n::t("What its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering)."),
                 )
                 .changed()
         });
@@ -116,13 +116,13 @@ impl CreaBimApp {
         {
             let n = others.len() - 1;
             ui.label(
-                egui::RichText::new(format!(
+                egui::RichText::new(crate::i18n::tr(&format!(
                     "⚠ {m} is also the mark of {n} other element{}.",
                     if n == 1 { "" } else { "s" }
-                ))
+                )))
                 .color(ui.visuals().warn_fg_color),
             );
-            if ui.small_button("Select them").clicked() {
+            if ui.small_button(crate::i18n::t("Select them")).clicked() {
                 self.selection.extend(others.clone(), false);
             }
         }
@@ -146,42 +146,42 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 ui.label(
                     egui::RichText::new(
-                        "How doors, windows and other elements are numbered when they have no mark of their own. Tags and schedules show these numbers. The rules belong to the project and can be saved for another one.",
+                        crate::i18n::t("How doors, windows and other elements are numbered when they have no mark of their own. Tags and schedules show these numbers. The rules belong to the project and can be saved for another one."),
                     )
                     .weak(),
                 );
                 ui.add_space(6.0);
                 rules_grid(ui, &mut rules);
                 crate::props::flow(ui, |ui| {
-                    ui.label("Ground level number").on_hover_text(
-                        "The number of the lowest level at or above ±0, for level-based marks; levels above count up, those below count down",
+                    ui.label(crate::i18n::t("Ground level number")).on_hover_text(
+                        crate::i18n::t("The number of the lowest level at or above ±0, for level-based marks; levels above count up, those below count down"),
                     );
                     ui.add(egui::DragValue::new(&mut rules.ground_number).range(-9..=99));
                 });
                 crate::props::flow(ui, |ui| {
                     if ui
                         .button("D01, W01")
-                        .on_hover_text("Doors and windows counted through the building, lowest level first")
+                        .on_hover_text(crate::i18n::t("Doors and windows counted through the building, lowest level first"))
                         .clicked()
                     {
                         rules = MarkRules::default();
                     }
                     if ui
                         .button("D-101, W-101")
-                        .on_hover_text("Level-based: the level's number, then the count on that level")
+                        .on_hover_text(crate::i18n::t("Level-based: the level's number, then the count on that level"))
                         .clicked()
                     {
                         rules = MarkRules::level_based();
                     }
-                    if ui.button("Save rules…").clicked() {
+                    if ui.button(crate::i18n::t("Save rules…")).clicked() {
                         action = Some("save");
                     }
-                    if ui.button("Load rules…").clicked() {
+                    if ui.button(crate::i18n::t("Load rules…")).clicked() {
                         action = Some("load");
                     }
                 });
                 ui.separator();
-                ui.label(egui::RichText::new("Apply").strong());
+                ui.label(egui::RichText::new(crate::i18n::t("Apply")).strong());
                 crate::props::flow(ui, |ui| {
                     egui::ComboBox::from_id_salt("renumber_only").icon(crate::props::combo_icon)
                         .selected_text(crate::i18n::tw(self.marks.only.map_or("Every kind", |c| c.label())))
@@ -195,18 +195,18 @@ impl CreaBimApp {
                 });
                 crate::props::flow(ui, |ui| {
                     if ui
-                        .button("Renumber")
+                        .button(crate::i18n::t("Renumber"))
                         .on_hover_text(
-                            "Write the rules' numbers onto the elements without a mark, so later changes to the model leave them as they are. With Replace, every element is numbered afresh.",
+                            crate::i18n::t("Write the rules' numbers onto the elements without a mark, so later changes to the model leave them as they are. With Replace, every element is numbered afresh."),
                         )
                         .clicked()
                     {
                         action = Some("renumber");
                     }
                     if ui
-                        .button("Marks from names")
+                        .button(crate::i18n::t("Marks from names"))
                         .on_hover_text(
-                            "Elements named like \"D-101 sliding doors\" take D-101 as their mark",
+                            crate::i18n::t("Elements named like \"D-101 sliding doors\" take D-101 as their mark"),
                         )
                         .clicked()
                     {
@@ -249,15 +249,15 @@ impl CreaBimApp {
     fn duplicates_list(&mut self, ui: &mut egui::Ui) {
         let dups = marks::duplicates(self.doc.model());
         if dups.is_empty() {
-            ui.label(egui::RichText::new("✔ No two elements share a mark.").weak());
+            ui.label(egui::RichText::new(crate::i18n::t("✔ No two elements share a mark.")).weak());
             return;
         }
         ui.label(
-            egui::RichText::new(format!(
+            egui::RichText::new(crate::i18n::tr(&format!(
                 "⚠ {} mark{} used more than once:",
                 dups.len(),
                 if dups.len() == 1 { " is" } else { "s are" }
-            ))
+            )))
             .color(ui.visuals().warn_fg_color),
         );
         egui::ScrollArea::vertical()
@@ -276,8 +276,8 @@ impl CreaBimApp {
                             shown += &format!(" and {} more", names.len() - 2);
                         }
                         ui.label(egui::RichText::new(&m).strong());
-                        ui.label(shown);
-                        if ui.small_button("Select").clicked() {
+                        ui.label(crate::i18n::tr(&shown));
+                        if ui.small_button(crate::i18n::t("Select")).clicked() {
                             self.selection.extend(ids.clone(), false);
                         }
                     });
@@ -336,7 +336,7 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
             ui.end_row();
             for class in MarkClass::ALL {
                 let r = rules.rule_mut(class);
-                ui.checkbox(&mut r.auto, class.label());
+                ui.checkbox(&mut r.auto, crate::i18n::tr(class.label()));
                 ui.add(
                     egui::TextEdit::singleline(&mut r.prefix)
                         .vertical_align(egui::Align::Center)
@@ -364,7 +364,7 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
                 ui.label(if r.auto {
                     egui::RichText::new(sample).monospace()
                 } else {
-                    egui::RichText::new("typed only").weak()
+                    egui::RichText::new(crate::i18n::t("typed only")).weak()
                 });
                 ui.end_row();
             }
@@ -392,17 +392,19 @@ impl CreaBimApp {
         ui.add_space(4.0);
         crate::props::flow(ui, |ui| {
             if crate::props::switch(ui, &mut shown, format!("Head in {name}"))
-                .on_hover_text(
+                .on_hover_text(crate::i18n::t(
                     "Show this level's name and elevation in this view; its line stays either way",
-                )
+                ))
                 .changed()
             {
                 edited.hidden = !shown;
             }
             if head.offset.is_some()
                 && ui
-                    .small_button("Put it back")
-                    .on_hover_text("Undo the drag: the automatic layout places it again")
+                    .small_button(crate::i18n::t("Put it back"))
+                    .on_hover_text(crate::i18n::t(
+                        "Undo the drag: the automatic layout places it again",
+                    ))
                     .clicked()
             {
                 edited.offset = None;

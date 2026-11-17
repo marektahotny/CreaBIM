@@ -111,7 +111,7 @@ fn weight_combo(
                     .speed(0.01)
                     .range(0.02..=2.0)
                     .max_decimals(2)
-                    .suffix(" mm"),
+                    .suffix(crate::i18n::t(" mm")),
             )
             .changed();
     }
@@ -147,7 +147,10 @@ fn pattern_combo(
 /// A colour that can be left unset. A fill starts light, a line dark.
 fn colour_pick(ui: &mut egui::Ui, c: &mut Option<Rgb>, fill: bool, hover: &str) -> bool {
     let mut on = c.is_some();
-    let mut changed = ui.checkbox(&mut on, "").on_hover_text(hover).changed();
+    let mut changed = ui
+        .checkbox(&mut on, "")
+        .on_hover_text(crate::i18n::tr(hover))
+        .changed();
     if changed {
         let v = if fill { 0.85 } else { 0.2 };
         *c = on.then_some(Rgb([v; 3]));
@@ -246,7 +249,7 @@ fn limit_ui(
 ) -> bool {
     let mut changed = false;
     crate::props::flow(ui, |ui| {
-        ui.label(label);
+        ui.label(crate::i18n::tr(label));
         let current = l
             .and_then(|l| levels.iter().find(|x| x.0 == l.level))
             .map_or(none.to_string(), |x| x.1.clone());
@@ -307,12 +310,14 @@ pub(super) fn range_ui(
     };
     let mut pick = mode;
     crate::props::flow(ui, |ui| {
-        ui.radio_value(&mut pick, Mode::Own, "Its level")
-            .on_hover_text("Only the elements of this plan's own level, as plans always drew");
-        ui.radio_value(&mut pick, Mode::Range, "Levels in range")
-            .on_hover_text("Every level's elements between the bottom and the top: a site level under the floor, roofs dashed overhead");
-        ui.radio_value(&mut pick, Mode::Above, "From above")
-            .on_hover_text("Look down from the top with nothing cut; roofs and upper slabs hide what is under them. A roof or site plan.");
+        ui.radio_value(&mut pick, Mode::Own, crate::i18n::t("Its level"))
+            .on_hover_text(crate::i18n::t(
+                "Only the elements of this plan's own level, as plans always drew",
+            ));
+        ui.radio_value(&mut pick, Mode::Range, crate::i18n::t("Levels in range"))
+            .on_hover_text(crate::i18n::t("Every level's elements between the bottom and the top: a site level under the floor, roofs dashed overhead"));
+        ui.radio_value(&mut pick, Mode::Above, crate::i18n::t("From above"))
+            .on_hover_text(crate::i18n::t("Look down from the top with nothing cut; roofs and upper slabs hide what is under them. A roof or site plan."));
     });
     let was = if r.from_above {
         2
@@ -365,14 +370,14 @@ pub(super) fn range_ui(
                 label = Some("View range");
             }
             if crate::props::switch(ui, &mut r.overhead, "Overhead dashed")
-                .on_hover_text("Draw what is above the cut, up to the top, in dashed lines: roof edges, upper slabs")
+                .on_hover_text(crate::i18n::t("Draw what is above the cut, up to the top, in dashed lines: roof edges, upper slabs"))
                 .changed()
             {
                 label = Some("View range");
             }
             ui.label(
                 egui::RichText::new(
-                    "Levels between the bottom and the cut are cut or seen below it; between the view depth and the bottom they draw lighter.",
+                    crate::i18n::t("Levels between the bottom and the cut are cut or seen below it; between the view depth and the bottom they draw lighter."),
                 )
                 .weak(),
             );
@@ -442,11 +447,11 @@ pub(super) fn look_ui(
                 .stroke(ui.visuals().widgets.inactive.bg_stroke)
                 .sense(egui::Sense::hover()),
         )
-        .on_hover_text("A named bundle of scale, style, hidden categories, pens, overrides and cues from the project's style pack. Change the template and every view using it changes.");
+        .on_hover_text(crate::i18n::t("A named bundle of scale, style, hidden categories, pens, overrides and cues from the project's style pack. Change the template and every view using it changes."));
         if crate::props::icon_button(ui, "pencil", "Edit the style pack")
-            .on_hover_text(
+            .on_hover_text(crate::i18n::t(
                 "Graphic styles: the pack's pens, object styles, hatches and view templates",
-            )
+            ))
             .clicked()
         {
             *edit_styles = true;
@@ -458,7 +463,7 @@ pub(super) fn look_ui(
         ui.spacing_mut().slider_width = (ui.available_width() - 56.0).max(40.0);
         if ui
             .add(egui::Slider::new(&mut c.fade, 0.0..=0.9).max_decimals(2))
-            .on_hover_text("Lines and fills further from the cut or the viewer draw lighter, up to this much at the far end of the view. Sections, elevations and plans from above.")
+            .on_hover_text(crate::i18n::t("Lines and fills further from the cut or the viewer draw lighter, up to this much at the far end of the view. Sections, elevations and plans from above."))
             .changed()
         {
             label = Some("Depth cues");
@@ -466,7 +471,9 @@ pub(super) fn look_ui(
     });
     let mut sun = c.shadows.is_some();
     if crate::props::check(ui, "Shadows", &mut sun, "Sun")
-        .on_hover_text("Shadows cast on the ground, in plans from above")
+        .on_hover_text(crate::i18n::t(
+            "Shadows cast on the ground, in plans from above",
+        ))
         .changed()
     {
         c.shadows = sun.then_some(Shadows {
@@ -516,7 +523,7 @@ pub(super) fn look_ui(
     };
     let (resp, _) = crate::props::header(ui, &title, open, true);
     if resp
-        .on_hover_text("How a category draws in this view only: halftone, its weight, colour or line pattern, its hatch off")
+        .on_hover_text(crate::i18n::t("How a category draws in this view only: halftone, its weight, colour or line pattern, its hatch off"))
         .clicked()
     {
         ui.ctx().data_mut(|d| d.insert_temp(oid, !open));
@@ -537,7 +544,7 @@ pub(super) fn look_ui(
                 ui.label(egui::RichText::new(name).strong());
                 if ui
                     .small_button("✕")
-                    .on_hover_text("Remove this override")
+                    .on_hover_text(crate::i18n::t("Remove this override"))
                     .clicked()
                 {
                     remove = Some(i);
@@ -587,11 +594,11 @@ pub(super) fn override_fields(ui: &mut egui::Ui, o: &mut Override) -> bool {
     let mut changed = false;
     // one setting a row, as Blender's (MU22)
     changed |= crate::props::check(ui, "Draw", &mut o.halftone, "Halftone")
-        .on_hover_text("Drawn half-strength, mixed toward white")
+        .on_hover_text(crate::i18n::t("Drawn half-strength, mixed toward white"))
         .changed();
     let mut hatch_off = o.hatch == Some(false);
     if crate::props::check(ui, "", &mut hatch_off, "No hatch")
-        .on_hover_text("Leave out the hatch lines of its cut faces")
+        .on_hover_text(crate::i18n::t("Leave out the hatch lines of its cut faces"))
         .changed()
     {
         o.hatch = hatch_off.then_some(false);
@@ -677,7 +684,9 @@ impl CreaBimApp {
                 crate::props::row(ui, "Cut height", |ui| {
                     let r =
                         crate::props::fill(ui, crate::units::drag(cut_height).range(0.0..=100.0))
-                            .on_hover_text("How high above its level the plan is cut");
+                            .on_hover_text(crate::i18n::t(
+                                "How high above its level the plan is cut",
+                            ));
                     if r.changed() {
                         label = Some("Cut height");
                     }
@@ -834,12 +843,12 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 ui.label(
                     egui::RichText::new(
-                        "How the project draws: pens, object styles, hatch patterns and view templates, kept together as a style pack. Load an office's pack to restyle every view and sheet; save this one to use in another project.",
+                        crate::i18n::t("How the project draws: pens, object styles, hatch patterns and view templates, kept together as a style pack. Load an office's pack to restyle every view and sheet; save this one to use in another project."),
                     )
                     .weak(),
                 );
                 crate::props::flow(ui, |ui| {
-                    ui.label("Style pack");
+                    ui.label(crate::i18n::t("Style pack"));
                     egui::ComboBox::from_id_salt("pack_pick").icon(crate::props::combo_icon)
                         .selected_text(crate::i18n::tw(if id.is_some() {
                             pack.name.clone()
@@ -853,25 +862,25 @@ impl CreaBimApp {
                                 }
                             }
                         });
-                    ui.label("Name");
+                    ui.label(crate::i18n::t("Name"));
                     if ui
                         .add(egui::TextEdit::singleline(&mut pack.name).vertical_align(egui::Align::Center).desired_width(140.0))
                         .changed()
                     {
                         label = "Rename style pack";
                     }
-                    ui.menu_button("Add a shipped pack", |ui| {
+                    ui.menu_button(crate::i18n::t("Add a shipped pack"), |ui| {
                         for p in StylePack::shipped() {
-                            if ui.button(&p.name).on_hover_text(&p.description).clicked() {
+                            if ui.button(crate::i18n::tr(&p.name)).on_hover_text(crate::i18n::tr(&p.description)).clicked() {
                                 action = Some(if p.name == "Standard" { "standard" } else { "light" });
                                 ui.close();
                             }
                         }
                     });
-                    if ui.button("Load pack…").clicked() {
+                    if ui.button(crate::i18n::t("Load pack…")).clicked() {
                         action = Some("load");
                     }
-                    if ui.button("Save pack as…").clicked() {
+                    if ui.button(crate::i18n::t("Save pack as…")).clicked() {
                         action = Some("save");
                     }
                 });
@@ -1050,7 +1059,7 @@ fn objects_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
                 let mut s = i.map_or_else(|| ObjectStyle::new(c), |i| pack.objects[i].clone());
                 let before = s.clone();
                 let k = c.label();
-                ui.label(k);
+                ui.label(crate::i18n::tr(k));
                 weight_combo(ui, (k, "proj"), &mut s.projection_weight);
                 weight_combo(ui, (k, "cut"), &mut s.cut_weight);
                 crate::props::flow(ui, |ui| colour_pick(ui, &mut s.colour, false, "A line colour of its own"));
@@ -1084,7 +1093,7 @@ fn objects_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
         });
     ui.label(
         egui::RichText::new(
-            "As drawn keeps CreaBIM's pens. Styles for one material, surface patterns and draw order are set in the pack's file.",
+            crate::i18n::t("As drawn keeps CreaBIM's pens. Styles for one material, surface patterns and draw order are set in the pack's file."),
         )
         .weak(),
     );
@@ -1103,7 +1112,7 @@ fn pens_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
     for (i, t) in pack.pens.iter_mut().enumerate() {
         ui.push_id(("pens", i), |ui| {
             crate::props::flow(ui, |ui| {
-                ui.label(egui::RichText::new("Up to 1:").strong());
+                ui.label(egui::RichText::new(crate::i18n::t("Up to 1:")).strong());
                 changed |= ui
                     .add(egui::DragValue::new(&mut t.up_to).range(1.0..=100000.0))
                     .changed();
@@ -1113,14 +1122,14 @@ fn pens_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
             });
             egui::Grid::new("pen_widths").num_columns(6).show(ui, |ui| {
                 for (name, v) in t.weights.fields_mut() {
-                    ui.label(name);
+                    ui.label(crate::i18n::tr(name));
                     changed |= ui
                         .add(
                             egui::DragValue::new(v)
                                 .speed(0.01)
                                 .range(0.02..=2.0)
                                 .max_decimals(2)
-                                .suffix(" mm"),
+                                .suffix(crate::i18n::t(" mm")),
                         )
                         .changed();
                     ui.end_row();
@@ -1133,7 +1142,7 @@ fn pens_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
         pack.pens.remove(i);
         changed = true;
     }
-    if ui.button("Add a scale").clicked() {
+    if ui.button(crate::i18n::t("Add a scale")).clicked() {
         let last = pack.pens.last().cloned().expect("at least one");
         pack.pens.push(styles::PenTable {
             up_to: last.up_to * 2.0,
@@ -1143,7 +1152,7 @@ fn pens_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
     }
     ui.label(
         egui::RichText::new(
-            "A drawing takes the first table whose scale it is at or larger than: 1:50 takes Up to 1:75.",
+            crate::i18n::t("A drawing takes the first table whose scale it is at or larger than: 1:50 takes Up to 1:75."),
         )
         .weak(),
     );
@@ -1154,16 +1163,16 @@ fn pens_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
 fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> bool {
     let mut changed = false;
     crate::props::flow(ui, |ui| {
-        if ui.button("New pattern").clicked() {
+        if ui.button(crate::i18n::t("New pattern")).clicked() {
             let mut p = styles::builtin_pattern(creabim_core::Hatch::Diagonal);
             p.name = format!("Pattern {}", pack.patterns.len() + 1);
             pack.patterns.push(p);
             *pick = pack.patterns.len() - 1;
             changed = true;
         }
-        ui.menu_button("Copy a built-in", |ui| {
+        ui.menu_button(crate::i18n::t("Copy a built-in"), |ui| {
             for h in creabim_core::Hatch::ALL {
-                if ui.button(h.label()).clicked() {
+                if ui.button(crate::i18n::tr(h.label())).clicked() {
                     let mut p = styles::builtin_pattern(h);
                     if pack.patterns.iter().any(|x| x.name == p.name) {
                         p.name = format!("{} copy", p.name);
@@ -1178,7 +1187,7 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
     });
     ui.label(
         egui::RichText::new(
-            "A pattern named like a built-in one (Brick, Concrete, Diagonal…) replaces it for every material with that hatch.",
+            crate::i18n::t("A pattern named like a built-in one (Brick, Concrete, Diagonal…) replaces it for every material with that hatch."),
         )
         .weak(),
     );
@@ -1202,21 +1211,29 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
         let mut delete = false;
         let p = &mut pack.patterns[*pick];
         crate::props::flow(ui, |ui| {
-            ui.label("Name");
+            ui.label(crate::i18n::t("Name"));
             changed |= ui.text_edit_singleline(&mut p.name).changed();
-            delete = ui.small_button("Delete").clicked();
+            delete = ui.small_button(crate::i18n::t("Delete")).clicked();
         });
         crate::props::flow(ui, |ui| {
-            ui.label("Sizes");
+            ui.label(crate::i18n::t("Sizes"));
             changed |= ui
-                .radio_value(&mut p.units, PatternUnits::Paper, "on paper (mm)")
+                .radio_value(
+                    &mut p.units,
+                    PatternUnits::Paper,
+                    crate::i18n::t("on paper (mm)"),
+                )
                 .changed();
             changed |= ui
-                .radio_value(&mut p.units, PatternUnits::Model, "true size (m)")
+                .radio_value(
+                    &mut p.units,
+                    PatternUnits::Model,
+                    crate::i18n::t("true size (m)"),
+                )
                 .changed();
         });
         crate::props::flow(ui, |ui| {
-            ui.label("Background");
+            ui.label(crate::i18n::t("Background"));
             changed |= colour_pick(
                 ui,
                 &mut p.fill,
@@ -1228,11 +1245,11 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
         for (j, l) in p.lines.iter_mut().enumerate() {
             ui.push_id(("line", j), |ui| {
                 crate::props::flow(ui, |ui| {
-                    ui.label("Angle");
+                    ui.label(crate::i18n::t("Angle"));
                     changed |= ui
                         .add(egui::DragValue::new(&mut l.angle).speed(1.0).suffix("°"))
                         .changed();
-                    ui.label("Spacing");
+                    ui.label(crate::i18n::t("Spacing"));
                     changed |= ui
                         .add(
                             egui::DragValue::new(&mut l.spacing)
@@ -1240,11 +1257,11 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
                                 .range(0.001..=100.0),
                         )
                         .changed();
-                    ui.label("Offset");
+                    ui.label(crate::i18n::t("Offset"));
                     changed |= ui
                         .add(egui::DragValue::new(&mut l.offset).speed(0.01))
                         .changed();
-                    ui.label("Stagger");
+                    ui.label(crate::i18n::t("Stagger"));
                     changed |= ui
                         .add(egui::DragValue::new(&mut l.shift).speed(0.01))
                         .changed();
@@ -1254,14 +1271,16 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
                         .map(|d| d.to_string())
                         .collect::<Vec<_>>()
                         .join(" ");
-                    ui.label("Dashes");
+                    ui.label(crate::i18n::t("Dashes"));
                     if ui
                         .add(
                             egui::TextEdit::singleline(&mut dashes)
                                 .vertical_align(egui::Align::Center)
                                 .desired_width(80.0),
                         )
-                        .on_hover_text("Dash, gap, dash, gap…, spaced; 0 is a dot. Empty is solid.")
+                        .on_hover_text(crate::i18n::t(
+                            "Dash, gap, dash, gap…, spaced; 0 is a dot. Empty is solid.",
+                        ))
                         .changed()
                     {
                         l.dashes = dashes
@@ -1281,7 +1300,7 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
             p.lines.remove(j);
             changed = true;
         }
-        if ui.button("Add a line family").clicked() {
+        if ui.button(crate::i18n::t("Add a line family")).clicked() {
             p.lines.push(HatchLine {
                 angle: 45.0,
                 spacing: if p.units == PatternUnits::Model {
@@ -1315,7 +1334,7 @@ fn templates_page(
     give: &mut Option<String>,
 ) -> bool {
     let mut changed = false;
-    if ui.button("New template").clicked() {
+    if ui.button(crate::i18n::t("New template")).clicked() {
         pack.templates.push(ViewTemplate::new(&format!(
             "Template {}",
             pack.templates.len() + 1
@@ -1338,7 +1357,8 @@ fn templates_page(
             }
         }
         cols[0].add_space(8.0);
-        cols[0].label(egui::RichText::new("Views without a template take").strong());
+        cols[0]
+            .label(egui::RichText::new(crate::i18n::t("Views without a template take")).strong());
         let d = &mut pack.default_templates;
         for (text, slot) in [
             ("Plans", &mut d.plan),
@@ -1349,7 +1369,7 @@ fn templates_page(
             ("Detail views", &mut d.detail),
         ] {
             cols[0].horizontal(|ui| {
-                ui.label(text);
+                ui.label(crate::i18n::tr(text));
                 changed |= name_combo(ui, ("kind", text), &names, slot, "None");
             });
         }
@@ -1357,13 +1377,13 @@ fn templates_page(
         let mut delete = false;
         let t = &mut pack.templates[*pick];
         crate::props::flow(ui, |ui| {
-            ui.label("Name");
+            ui.label(crate::i18n::t("Name"));
             changed |= ui.text_edit_singleline(&mut t.name).changed();
-            delete = ui.small_button("Delete").clicked();
+            delete = ui.small_button(crate::i18n::t("Delete")).clicked();
         });
         crate::props::flow(ui, |ui| {
             let mut on = t.scale.is_some();
-            if ui.checkbox(&mut on, "Scale 1:").changed() {
+            if ui.checkbox(&mut on, crate::i18n::t("Scale 1:")).changed() {
                 t.scale = on.then_some(100.0);
                 changed = true;
             }
@@ -1375,7 +1395,7 @@ fn templates_page(
         });
         crate::props::flow(ui, |ui| {
             let mut on = t.style.is_some();
-            if ui.checkbox(&mut on, "Style").changed() {
+            if ui.checkbox(&mut on, crate::i18n::t("Style")).changed() {
                 t.style = on.then_some(creabim_core::ViewStyle::HiddenLine);
                 changed = true;
             }
@@ -1385,7 +1405,9 @@ fn templates_page(
         });
         let mut weights = t.weights.is_some();
         if crate::props::switch(ui, &mut weights, "Pens of its own")
-            .on_hover_text("Fixed pen widths whatever the scale, not the pack's")
+            .on_hover_text(crate::i18n::t(
+                "Fixed pen widths whatever the scale, not the pack's",
+            ))
             .changed()
         {
             t.weights = weights.then(|| creabim_core::LineWeights::for_scale(100.0));
@@ -1394,23 +1416,23 @@ fn templates_page(
         if let Some(w) = &mut t.weights {
             for (name, v) in w.fields_mut() {
                 crate::props::flow(ui, |ui| {
-                    ui.label(name);
+                    ui.label(crate::i18n::tr(name));
                     changed |= ui
                         .add(
                             egui::DragValue::new(v)
                                 .speed(0.01)
                                 .range(0.02..=2.0)
-                                .suffix(" mm"),
+                                .suffix(crate::i18n::t(" mm")),
                         )
                         .changed();
                 });
             }
         }
-        ui.label(egui::RichText::new("Leaves out").strong());
+        ui.label(egui::RichText::new(crate::i18n::t("Leaves out")).strong());
         crate::props::flow(ui, |ui| {
             for c in STYLED {
                 let mut on = t.hidden.contains(&c);
-                if ui.checkbox(&mut on, c.label()).changed() {
+                if ui.checkbox(&mut on, crate::i18n::tr(c.label())).changed() {
                     t.hidden.retain(|x| *x != c);
                     if on {
                         t.hidden.push(c);
@@ -1421,7 +1443,7 @@ fn templates_page(
         });
         let mut cues = t.cues.unwrap_or_default();
         crate::props::flow(ui, |ui| {
-            ui.label("Fade with distance");
+            ui.label(crate::i18n::t("Fade with distance"));
             changed |= ui
                 .add(egui::Slider::new(&mut cues.fade, 0.0..=0.9))
                 .changed();
@@ -1437,15 +1459,18 @@ fn templates_page(
         }
         t.cues = (cues != DepthCues::default()).then_some(cues);
         ui.label(
-            egui::RichText::new(format!(
+            egui::RichText::new(crate::i18n::tr(&format!(
                 "{} overrides, set in the pack's file.",
                 t.overrides.len()
-            ))
+            )))
             .weak(),
         );
         if !views.is_empty()
             && ui
-                .button(format!("Give it to the {} selected views", views.len()))
+                .button(crate::i18n::tr(&format!(
+                    "Give it to the {} selected views",
+                    views.len()
+                )))
                 .clicked()
         {
             *give = Some(t.name.clone());

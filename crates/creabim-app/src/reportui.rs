@@ -175,7 +175,7 @@ impl CreaBimApp {
                 ui,
                 egui::TextEdit::singleline(&mut self.log_ui.filter)
                     .vertical_align(egui::Align::Center)
-                    .hint_text("words to find"),
+                    .hint_text(crate::i18n::t("words to find")),
             )
         });
         crate::props::check(ui, "Show", &mut self.log_ui.problems_only, "Problems only");
@@ -184,8 +184,12 @@ impl CreaBimApp {
             .iter()
             .filter(|l| crate::actlog::is_problem(l))
             .count();
-        crate::props::row(ui, "Lines", |ui| ui.label(format!("{}", lines.len())));
-        crate::props::row(ui, "Problems", |ui| ui.label(format!("{problems}")));
+        crate::props::row(ui, "Lines", |ui| {
+            ui.label(crate::i18n::tr(&format!("{}", lines.len())))
+        });
+        crate::props::row(ui, "Problems", |ui| {
+            ui.label(crate::i18n::tr(&format!("{problems}")))
+        });
         crate::props::row(ui, "System", |ui| ui.label(os_version()));
         crate::props::row(ui, "Graphics", |ui| ui.label(gpu()));
         crate::props::note(
@@ -211,7 +215,7 @@ impl CreaBimApp {
             .stick_to_bottom(true)
             .show(ui, |ui| {
                 if shown.is_empty() {
-                    ui.label(egui::RichText::new("Nothing yet.").color(pal.muted));
+                    ui.label(egui::RichText::new(crate::i18n::t("Nothing yet.")).color(pal.muted));
                 }
                 for l in &shown {
                     let ink = if crate::actlog::is_problem(l) {
@@ -248,20 +252,20 @@ impl CreaBimApp {
         let pal = self.shell.theme.palette();
         egui::Modal::new(egui::Id::new("report-problem")).show(ctx, |ui| {
             ui.set_width(420.0);
-            ui.heading("Report a problem");
+            ui.heading(crate::i18n::t("Report a problem"));
             ui.add_space(6.0);
-            ui.label("CreaBIM saves one file to attach to a GitHub issue or an email: what it did lately, the steps that were slow, any crash, your settings, your system and graphics card. Nothing is sent anywhere.");
+            ui.label(crate::i18n::t("CreaBIM saves one file to attach to a GitHub issue or an email: what it did lately, the steps that were slow, any crash, your settings, your system and graphics card. Nothing is sent anywhere."));
             ui.add_space(8.0);
-            ui.checkbox(&mut with_project, "Include the project as it is now");
+            ui.checkbox(&mut with_project, crate::i18n::t("Include the project as it is now"));
             ui.label(
-                egui::RichText::new("It helps rebuild the problem exactly, but it is your work: leave it off if it is private.")
+                egui::RichText::new(crate::i18n::t("It helps rebuild the problem exactly, but it is your work: leave it off if it is private."))
                     .small()
                     .color(pal.muted),
             );
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                go = ui.button("Save the report…").clicked();
-                close = ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+                go = ui.button(crate::i18n::t("Save the report…")).clicked();
+                close = ui.button(crate::i18n::t("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
             });
         });
         self.report_ask = if go || close {

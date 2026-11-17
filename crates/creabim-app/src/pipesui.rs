@@ -98,7 +98,7 @@ pub fn pipe_fields(ui: &mut egui::Ui, p: &mut Pipe) -> &'static str {
         .show_ui(ui, |ui| {
             for t in &types {
                 let r = ui.selectable_label(p.pipe_type == t.id, crate::i18n::tw(t.name.clone()));
-                let r = r.on_hover_text(format!("{}\n{}", t.joint, t.standards));
+                let r = r.on_hover_text(crate::i18n::tr(&format!("{}\n{}", t.joint, t.standards)));
                 if r.clicked() && p.pipe_type != t.id {
                     set_type(p, t);
                     label = "Pipe type";
@@ -141,20 +141,20 @@ pub fn pipe_fields(ui: &mut egui::Ui, p: &mut Pipe) -> &'static str {
     }
     if p.kind().is_gravity() {
         ui.label(
-            egui::RichText::new(format!(
+            egui::RichText::new(crate::i18n::tr(&format!(
                 "{}: {} %",
                 crate::i18n::tr("Fall"),
                 crate::i18n::num(p.fall_pct(), 1)
-            ))
+            )))
             .weak(),
         );
     }
     ui.label(
-        egui::RichText::new(format!(
+        egui::RichText::new(crate::i18n::tr(&format!(
             "{}: {:.2} m",
             crate::i18n::tr("Length"),
             p.length()
-        ))
+        )))
         .weak(),
     );
     label

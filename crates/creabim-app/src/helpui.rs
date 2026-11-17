@@ -190,10 +190,10 @@ impl CreaBimApp {
                     .corner_radius(8.0)
                     .min_size(egui::vec2(16.0, 16.0)),
             )
-            .on_hover_text(format!(
+            .on_hover_text(crate::i18n::tr(&format!(
                 "About {}: a few lines, and its page in the guide",
                 title.to_lowercase()
-            ));
+            )));
         let mut read = false;
         egui::Popup::from_toggle_button_response(&r)
             // opening leftward, under the ?: the Help panel to the right
@@ -212,7 +212,11 @@ impl CreaBimApp {
                     ui.label(help::plain(l));
                 }
                 ui.add_space(4.0);
-                if page && ui.link("Read more in the guide →").clicked() {
+                if page
+                    && ui
+                        .link(crate::i18n::t("Read more in the guide →"))
+                        .clicked()
+                {
                     read = true;
                     ui.close();
                 }
@@ -295,7 +299,7 @@ impl CreaBimApp {
             .default_size([640.0, 520.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("Search:");
+                    ui.label(crate::i18n::t("Search:"));
                     ui.text_edit_singleline(&mut self.shell.help.query);
                 });
                 ui.separator();
@@ -305,16 +309,16 @@ impl CreaBimApp {
                         .id_salt("help_pages")
                         .show(&mut cols[0], |ui| {
                             let mut section = "";
-                            for (s, pid, md) in help::PAGES {
+                            for (s, pid, md) in help::pages() {
                                 if !q.is_empty() && !md.to_lowercase().contains(&q) {
                                     continue;
                                 }
-                                if *s != section {
+                                if s != section {
                                     section = s;
-                                    ui.label(egui::RichText::new(*s).weak());
+                                    ui.label(egui::RichText::new(help::section_name(s)).weak());
                                 }
                                 if ui
-                                    .selectable_label(*pid == id, crate::i18n::tw(help::title(md)))
+                                    .selectable_label(pid == id, crate::i18n::tw(help::title(md)))
                                     .clicked()
                                 {
                                     go = Some(pid.to_string());
@@ -376,7 +380,7 @@ fn classic_page(ui: &mut egui::Ui, md: &str) {
             ui.heading(plain(h));
         } else if let Some(h) = l.strip_prefix("## ").or_else(|| l.strip_prefix("### ")) {
             ui.add_space(6.0);
-            ui.label(egui::RichText::new(plain(h)).strong());
+            ui.label(egui::RichText::new(plain(crate::help::heading_text(h))).strong());
         } else if let Some(t) = l.strip_prefix("- ").or_else(|| l.strip_prefix("* ")) {
             ui.label(format!("•  {}", plain(t)));
         } else if l.starts_with('|') {

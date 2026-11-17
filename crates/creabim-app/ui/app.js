@@ -881,7 +881,10 @@
       if ((m = l.match(/^(#{1,4})\s+(.*)$/))) {
         flush();
         const n = m[1].length;
-        html += `<h${n} id="h-${slug(m[2])}">${inline(m[2])}</h${n}>`;
+        // `## Uhly {#angles}` keeps the English page's link
+        const own = m[2].match(/^(.*?)\s*\{#([^}]+)\}\s*$/);
+        const words = own ? own[1] : m[2];
+        html += `<h${n} id="h-${own ? own[2] : slug(words)}">${inline(words)}</h${n}>`;
         i++;
         continue;
       }

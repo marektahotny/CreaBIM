@@ -729,7 +729,7 @@ pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f6
                     .range(1.0..=5000.0)
                     .prefix("1:"),
             )
-            .on_hover_text("Any other scale: type its denominator")
+            .on_hover_text(crate::i18n::t("Any other scale: type its denominator"))
             .changed()
         {
             out = Some(v.round().max(1.0));
