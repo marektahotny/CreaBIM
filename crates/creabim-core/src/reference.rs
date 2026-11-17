@@ -71,6 +71,13 @@ pub struct Reference {
     /// right), once known: its middle is what it turns and scales about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bounds: Option<[DVec2; 2]>,
+    /// A drawing's layers not shown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers_off: Vec<String>,
+    /// Shown only within this rectangle, in its own coordinates (lower
+    /// left, upper right).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clip: Option<[DVec2; 2]>,
 }
 
 fn yes() -> bool {
@@ -112,12 +119,24 @@ impl Reference {
             in_perspective: true,
             in_orthographic: true,
             bounds: None,
+            layers_off: vec![],
+            clip: None,
         }
     }
 
     /// Shown in 3D: asked to be, and not kept to its profile.
     pub fn shows_in_3d(&self) -> bool {
         self.in_3d && !self.only_profile && !self.hidden
+    }
+
+    /// Placed with its lower left corner at the origin: a drawing in
+    /// national coordinates (S-JTSK, kilometres away) brought to the
+    /// project, as PilonDesigner does.
+    pub fn at_origin(&mut self, bounds: [DVec2; 2]) {
+        self.bounds = Some(bounds);
+        self.at = (bounds[1] - bounds[0]) / 2.0;
+        self.rotation = 0.0;
+        self.scale = 1.0;
     }
 
     /// Shown where it was drawn: its middle at its own middle, upright,

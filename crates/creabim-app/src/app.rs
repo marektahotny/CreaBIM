@@ -7775,8 +7775,15 @@ impl CreaBimApp {
         }
         let r_source_dxf = matches!(source, creabim_core::RefSource::Dxf { .. });
         let mut r = creabim_core::Reference::new(source, vec![v]);
+        let mut far = false;
         if let Some(b) = crate::trace::bounds_of(&r.source, &shown) {
-            r.in_place(b);
+            // a drawing in national coordinates (S-JTSK) comes to the origin
+            far = [b[0], b[1]].iter().any(|p| p.abs().max_element() > 2000.0);
+            if far {
+                r.at_origin(b);
+            } else {
+                r.in_place(b);
+            }
         }
         // a picture keeps its own colours; lines take the first colour
         if matches!(shown, crate::trace::Shown::Picture(_)) {
@@ -7794,7 +7801,11 @@ impl CreaBimApp {
         {
             self.selection.only(id);
             self.prop_tab = PropTab::Element;
-            self.status = "Reference added. Drag its middle to move it, a corner to scale it, the round grip to turn it; Calibrate sets an exact size. Alt+F2 hides it.".into();
+            self.status = if far {
+                crate::i18n::tr("Reference added at the project's origin: its coordinates are kilometres away (S-JTSK). Move it in Properties if it belongs elsewhere.")
+            } else {
+                "Reference added. Drag its middle to move it, a corner to scale it, the round grip to turn it; Calibrate sets an exact size. Alt+F2 hides it.".into()
+            };
             if r_source_dxf && crate::trace::DXF_CAPPED.load(std::sync::atomic::Ordering::Relaxed) {
                 self.status = format!(
                     "Reference added, but only in part: the file makes more than {} items (blocks in arrays inside arrays), so reading stopped there.",
@@ -8304,6 +8315,74 @@ impl CreaBimApp {
                 label = Some("Picture width");
             }
         }
+        // a drawing's layers, each shown or not (as PilonDesigner's)
+        if let RefSource::Dxf { path } = &r.source {
+            if let Ok(d) = self.plan.ref_cache.dxf_file(path) {
+                let mut layers = d.layers.clone();
+                layers.sort_by_key(|l| l.to_lowercase());
+                if layers.len() > 1 && crate::props::subsection(ui, "ref.layers", "Layers", false) {
+                    ui.horizontal(|ui| {
+                        if ui.small_button(crate::i18n::t("All")).clicked()
+                            && !r.layers_off.is_empty()
+                        {
+                            r.layers_off.clear();
+                            label = Some("Reference layers");
+                        }
+                        if ui.small_button(crate::i18n::t("None")).clicked() {
+                            r.layers_off = layers.clone();
+                            label = Some("Reference layers");
+                        }
+                    });
+                    egui::ScrollArea::vertical()
+                        .id_salt("ref.layers.list")
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            for l in &layers {
+                                let mut on = !r.layers_off.contains(l);
+                                if ui.checkbox(&mut on, l).changed() {
+                                    if on {
+                                        r.layers_off.retain(|x| x != l);
+                                    } else {
+                                        r.layers_off.push(l.clone());
+                                    }
+                                    label = Some("Reference layers");
+                                }
+                            }
+                        });
+                }
+                if d.has3d {
+                    if let Some((lo, hi)) = d.z_range() {
+                        crate::props::row(ui, "Heights", |ui| {
+                            ui.label(format!(
+                                "{} – {} m",
+                                crate::i18n::num(lo, 2),
+                                crate::i18n::num(hi, 2)
+                            ))
+                        });
+                    }
+                }
+            }
+        }
+        // what of it shows: all, or a rectangle picked in the view
+        crate::props::row(ui, "Clip", |ui| {
+            crate::props::flow(ui, |ui| {
+                let pick = ui
+                    .button(crate::i18n::t("Clip…"))
+                    .on_hover_text(crate::i18n::t(
+                        "Click two opposite corners in the view: only what lies between them shows",
+                    ));
+                if pick.clicked() {
+                    self.plan.clip_ref = Some((id, vec![]));
+                    self.plan.calibrate = None;
+                    self.plan.align_ref = None;
+                    self.status = crate::i18n::tr("Clip: click a first corner of what to keep.");
+                }
+                if r.clip.is_some() && ui.button(crate::i18n::t("Whole")).clicked() {
+                    r.clip = None;
+                    label = Some("Unclip reference");
+                }
+            })
+        });
         // three equal buttons across the row, as Blender's (MU24); stacked
         // when the panel is too narrow for their words (MU34)
         let mut pressed = None;
@@ -8389,6 +8468,7 @@ impl CreaBimApp {
             .as_ref()
             .map(|c| c.0)
             .or(self.plan.align_ref.as_ref().map(|a| a.0))
+            .or(self.plan.clip_ref.as_ref().map(|a| a.0))
             .or(self.plan.calibrated.map(|c| c.0));
         if let Some(id) = picking {
             if self.selection.active != Some(id) {
@@ -8431,6 +8511,33 @@ impl CreaBimApp {
                 self.selection.clear();
                 self.plan.ref_cache.forget(id);
                 self.status = "Reference taken away (Ctrl+Z brings it back).".into();
+            }
+        }
+        if let Some((id, a, b)) = self.plan.clipped.take() {
+            if let Some(e) = self.doc.model().get(id).cloned() {
+                let mut after = e.clone();
+                if let ElementKind::Reference(r) = &mut after.kind {
+                    // the corners in its own coordinates: a turned reference
+                    // is clipped square to itself
+                    let corners =
+                        [a, DVec2::new(a.x, b.y), b, DVec2::new(b.x, a.y)].map(|q| r.unplace(q));
+                    let lo = corners.iter().fold(corners[0], |m, q| m.min(*q));
+                    let hi = corners.iter().fold(corners[0], |m, q| m.max(*q));
+                    if (hi - lo).min_element() > 1e-6 {
+                        r.clip = Some([lo, hi]);
+                        if self
+                            .doc
+                            .commit(
+                                creabim_core::Transaction::new("Clip reference").replace(e, after),
+                            )
+                            .is_ok()
+                        {
+                            self.status = crate::i18n::tr(
+                                "Reference clipped: only what lies in the rectangle shows.",
+                            );
+                        }
+                    }
+                }
             }
         }
         if let Some((id, [a1, a2, b1, b2])) = self.plan.aligned.take() {

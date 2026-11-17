@@ -560,6 +560,10 @@ pub struct PlanState {
     pub align_ref: Option<(ElementId, Vec<DVec2>)>,
     /// Align's four points, picked, for the app to apply.
     pub aligned: Option<(ElementId, [DVec2; 4])>,
+    /// Clip: a reference whose clip is being picked, and its first corner.
+    pub clip_ref: Option<(ElementId, Vec<DVec2>)>,
+    /// Its two corners picked, for the app to set.
+    pub clipped: Option<(ElementId, DVec2, DVec2)>,
     /// Picture or DXF files dropped on a view, and where (MU23).
     pub dropped: Vec<(ElementId, DVec2, std::path::PathBuf)>,
     pub calibrated: Option<(ElementId, DVec2, DVec2)>,
@@ -702,6 +706,8 @@ impl Default for PlanState {
             close_outline: false,
             align_ref: None,
             aligned: None,
+            clip_ref: None,
+            clipped: None,
             dropped: vec![],
             calibrated: None,
             temp_dims_off: false,
@@ -2782,6 +2788,42 @@ pub fn show(
         }
         return None;
     }
+    // Clip: two opposite corners of what to keep of the reference
+    if state.clip_ref.is_some()
+        && (response.secondary_clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)))
+    {
+        state.clip_ref = None;
+        state.status = Some("Clip cancelled.".into());
+        return None;
+    }
+    if let Some((rid, pts)) = state.clip_ref.as_mut() {
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        }
+        if let (Some(a), Some(h)) = (pts.first(), hover_world) {
+            let r = egui::Rect::from_two_pos(xf.to_screen(*a), xf.to_screen(h));
+            painter.rect_stroke(
+                r,
+                0.0,
+                Stroke::new(1.5, accent_selected()),
+                egui::StrokeKind::Middle,
+            );
+        } else if let Some(h) = hover_world {
+            painter.circle_stroke(xf.to_screen(h), 4.0, Stroke::new(1.0, accent_selected()));
+        }
+        if response.clicked() {
+            if let Some(q) = hover_world {
+                pts.push(q);
+            }
+            if pts.len() >= 2 {
+                state.clipped = Some((*rid, pts[0], pts[1]));
+                state.clip_ref = None;
+            } else {
+                state.status = Some("Clip: click the opposite corner.".into());
+            }
+        }
+        return None;
+    }
     if let Some((rid, pts)) = state.calibrate.as_mut() {
         if response.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
@@ -4688,6 +4730,14 @@ fn add_reference_snaps(
         let crate::trace::Shown::Lines(lines) = state.ref_cache.get(model, e.id, r) else {
             continue;
         };
+        // a drawing's survey marks and blocks' insertion points
+        for p in lines.points.iter().take(MOST) {
+            s.add_point(
+                r.place(*p).extend(0.0),
+                crate::snaps::Source::Underlay,
+                Some(e.id),
+            );
+        }
         for l in lines.iter() {
             for w in l.windows(2) {
                 if n >= MOST {

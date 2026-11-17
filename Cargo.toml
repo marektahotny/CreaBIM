@@ -21,6 +21,7 @@ creabim-freecad = { path = "crates/creabim-freecad" }
 creabim-spec = { path = "crates/creabim-spec" }
 creabim-services = { path = "crates/creabim-services" }
 rusqlite = { version = "0.40", features = ["bundled"] }
+encoding_rs = "0.8"
 glam = { version = "0.30", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
