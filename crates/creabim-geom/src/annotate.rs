@@ -676,6 +676,178 @@ pub fn room_tag_items(
     out
 }
 
+/// A linear dimension's items, one per stretch: a chain (PilonDesigner's
+/// reťazová kóta) is one dimension line through all its points, each
+/// stretch between neighbours along it measured. A stretch across a whole
+/// door or window reads its width over the line and its height (and a
+/// window's sill) under it, STN 01 3420.
+pub fn linear_items(
+    model: &Model,
+    view: &View,
+    id: ElementId,
+    d: &creabim_core::Dimension,
+) -> Vec<PlanItem> {
+    let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b)) else {
+        return vec![];
+    };
+    let Some((b2, witness)) = squared(d.axis, a, b) else {
+        return vec![];
+    };
+    let num = |v: f64| {
+        creabim_core::write_number(model, creabim_core::NumberKind::Dimensions, d.format, v)
+    };
+    let below_text = |h: f64, sill: Option<f64>| match sill {
+        Some(s) => format!("{} ({})", num(h), num(s)),
+        None => num(h),
+    };
+    let look = look_of(model, d.style, d.color);
+    if !d.is_chain() {
+        let len = a.distance(b2);
+        let below = opening_below(model, d, len)
+            .or_else(|| opening_of_span(model, view, a, b))
+            .map(|(h, s)| below_text(h, s));
+        return vec![PlanItem::Dimension {
+            id,
+            a,
+            b: b2,
+            offset: d.offset,
+            text: num(len),
+            look,
+            witness,
+            breaks: vec![],
+            below,
+        }];
+    }
+    let u = (b2 - a).normalize_or_zero();
+    let mut marks: Vec<(f64, DVec2, &HostPoint)> = d
+        .points()
+        .filter_map(|p| {
+            let q = resolve(model, view, p)?;
+            Some(((q - a).dot(u), q, p))
+        })
+        .collect();
+    marks.sort_by(|x, y| x.0.total_cmp(&y.0));
+    marks.dedup_by(|y, x| (y.0 - x.0).abs() < 1e-4);
+    marks
+        .windows(2)
+        .map(|w| {
+            let ((sa, pa, ha), (sb, pb, hb)) = (w[0], w[1]);
+            let len = sb - sa;
+            let below = opening_between(model, ha, hb, len)
+                .or_else(|| opening_of_span(model, view, pa, pb))
+                .map(|(h, s)| below_text(h, s));
+            PlanItem::Dimension {
+                id,
+                a: a + u * sa,
+                b: a + u * sb,
+                offset: d.offset,
+                text: num(len),
+                look,
+                witness: Some([pa, pb]),
+                breaks: vec![],
+                below,
+            }
+        })
+        .collect()
+}
+
+/// A chain without its point `i` (0 is `a`, then the further points, then
+/// `b`), keeping its line where it is: an end taken out is replaced by the
+/// next point in along the line. None when only two points are left.
+pub fn without_point(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+    i: usize,
+) -> Option<creabim_core::Dimension> {
+    if !d.is_chain() || i > d.mids.len() + 1 {
+        return None;
+    }
+    let (a, b) = (resolve(model, view, &d.a)?, resolve(model, view, &d.b)?);
+    let (b2, _) = squared(d.axis, a, b)?;
+    let u = (b2 - a).normalize_or_zero();
+    let mut out = d.clone();
+    let along = |p: &HostPoint| resolve(model, view, p).map_or(0.0, |q| (q - a).dot(u));
+    if i >= 1 && i <= d.mids.len() {
+        out.mids.remove(i - 1);
+        return Some(out);
+    }
+    // the end's replacement: the furthest point in on its side
+    let pick = if i == 0 {
+        (0..out.mids.len()).min_by(|x, y| along(&out.mids[*x]).total_cmp(&along(&out.mids[*y])))
+    } else {
+        (0..out.mids.len()).max_by(|x, y| along(&out.mids[*x]).total_cmp(&along(&out.mids[*y])))
+    }?;
+    let p = out.mids.remove(pick);
+    if i == 0 {
+        // the line keeps its place: offset is measured from `a`
+        let q = resolve(model, view, &p)?;
+        out.offset += (a - q).dot(u.perp());
+        out.a = p;
+    } else {
+        out.b = p;
+    }
+    Some(out)
+}
+
+/// The door or window a stretch between two points on its jambs spans.
+fn opening_between(
+    model: &Model,
+    a: &HostPoint,
+    b: &HostPoint,
+    len: f64,
+) -> Option<(f64, Option<f64>)> {
+    let h = a.host?;
+    if b.host != Some(h) {
+        return None;
+    }
+    let ElementKind::Opening(o) = &model.get(h)?.kind else {
+        return None;
+    };
+    if (len - o.width).abs() > 1e-3 || o.kind == OpeningKind::Hole {
+        return None;
+    }
+    Some((o.height, (o.kind == OpeningKind::Window).then_some(o.sill)))
+}
+
+/// The door or window in a plan whose jambs a stretch from `a` to `b`
+/// runs between, whatever the points are bound to (a wall's face, the
+/// opening, nothing), as PilonDesigner finds it: both ends within the
+/// wall's thickness, at its jambs to 15 mm.
+pub fn opening_of_span(
+    model: &Model,
+    view: &View,
+    a: DVec2,
+    b: DVec2,
+) -> Option<(f64, Option<f64>)> {
+    let ViewKind::Plan { level, .. } = view.kind else {
+        return None;
+    };
+    model.iter().find_map(|e| {
+        let ElementKind::Opening(o) = &e.kind else {
+            return None;
+        };
+        if o.kind == OpeningKind::Hole {
+            return None;
+        }
+        let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+            return None;
+        };
+        if w.level != level {
+            return None;
+        }
+        let u = (w.end - w.start).normalize_or_zero();
+        let reach = w.thickness / 2.0 + 0.06;
+        let (sa, sb) = ((a - w.start).dot(u), (b - w.start).dot(u));
+        if (a - w.start).perp_dot(u).abs() > reach || (b - w.start).perp_dot(u).abs() > reach {
+            return None;
+        }
+        let (lo, hi) = (sa.min(sb), sa.max(sb));
+        ((lo - o.offset).abs() < 0.015 && (hi - o.offset - o.width).abs() < 0.015)
+            .then_some((o.height, (o.kind == OpeningKind::Window).then_some(o.sill)))
+    })
+}
+
 /// A plan dimension from jamb to jamb of one door or window (both ends on
 /// it, as long as it is wide): its height, and a window's sill, to write
 /// under the line (STN 01 3420).
@@ -928,36 +1100,7 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 out.push(note_item(model, e.id, n, leader, view.scale / 1000.0));
             }
             ElementKind::Dimension(d) if d.view == view_id => {
-                let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b))
-                else {
-                    continue;
-                };
-                let Some((b2, witness)) = squared(d.axis, a, b) else {
-                    continue;
-                };
-                let num = |v: f64| {
-                    creabim_core::write_number(
-                        model,
-                        creabim_core::NumberKind::Dimensions,
-                        d.format,
-                        v,
-                    )
-                };
-                let below = opening_below(model, d, a.distance(b2)).map(|(h, sill)| match sill {
-                    Some(s) => format!("{} ({})", num(h), num(s)),
-                    None => num(h),
-                });
-                out.push(PlanItem::Dimension {
-                    id: e.id,
-                    a,
-                    b: b2,
-                    offset: d.offset,
-                    text: num(a.distance(b2)),
-                    look: look_of(model, d.style, d.color),
-                    witness,
-                    breaks: vec![],
-                    below,
-                });
+                out.extend(linear_items(model, view, e.id, d));
             }
             ElementKind::Tag(t) if t.view == view_id => {
                 let Some(c) = centre(model, t.host) else {

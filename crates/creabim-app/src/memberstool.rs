@@ -1328,8 +1328,21 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
         ]
     };
     let mut out = match state.tool {
-        Tool::Door => opening("door", m.door, "door"),
-        Tool::Window => opening("window", m.window, "window"),
+        Tool::Door | Tool::Window => {
+            let mut v = if state.tool == Tool::Door {
+                opening("door", m.door, "door")
+            } else {
+                opening("window", m.window, "window")
+            };
+            v.push(toggle(
+                "tagnew",
+                "Tag",
+                state.tag_new,
+                "tag",
+                "Tag each new door and window in the plans of its level as it is placed",
+            ));
+            v
+        }
         Tool::Opening => opening("hole", m.hole, "opening"),
         Tool::Column => vec![
             toggle(
@@ -1553,6 +1566,10 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
 
 /// A toggle clicked in the tool bar.
 pub fn toggle_option(state: &mut PlanState, what: &str) {
+    if what == "tagnew" {
+        state.tag_new = !state.tag_new;
+        return;
+    }
     let m = &mut state.members;
     match what {
         "beam.onface" => m.beam_on_face = !m.beam_on_face,

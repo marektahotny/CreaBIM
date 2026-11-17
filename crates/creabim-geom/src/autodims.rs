@@ -4,11 +4,11 @@
 //! that side, then (above and to the left) a chain through the faces of
 //! the walls running across that side, then the overall size.
 //!
-//! The chains are made of ordinary dimensions whose ends are bound to the
-//! walls and openings they measure, so they follow them when they move or
-//! change size, and the padlock can hold any of them. A link across a
-//! whole door or window writes its height (and a window's sill) under the
-//! line (see [`crate::annotate::opening_below`]).
+//! Each chain is one dimension (PilonDesigner's reťazová kóta) whose
+//! points are bound to the walls and openings they measure, so it follows
+//! them when they move or change size. A stretch across a whole door or
+//! window writes its height (and a window's sill) under the line (see
+//! [`crate::annotate::linear_items`]).
 //!
 //! Only straight walls running across or up the drawing take part.
 
@@ -232,30 +232,48 @@ pub fn opening_chains(model: &Model, view_id: ElementId) -> Vec<Dimension> {
             chain(total, &mut out);
         }
     }
-    // leave out what the view already has
+    // leave out a chain whose every stretch the view measures already
+    let stretches = |d: &Dimension| -> Vec<(DVec2, DVec2)> {
+        let mut pts: Vec<DVec2> = d.points().filter_map(|p| resolve(model, view, p)).collect();
+        let u = match pts.as_slice() {
+            [a, .., b] => (*b - *a).normalize_or_zero(),
+            _ => return vec![],
+        };
+        pts.sort_by(|p, q| p.dot(u).total_cmp(&q.dot(u)));
+        pts.windows(2).map(|w| (w[0], w[1])).collect()
+    };
     let have: Vec<(DVec2, DVec2)> = model
         .iter()
         .filter_map(|e| match &e.kind {
             ElementKind::Dimension(d) if d.view == view_id && d.kind.is_linear() => {
-                Some((resolve(model, view, &d.a)?, resolve(model, view, &d.b)?))
+                Some(stretches(d))
             }
             _ => None,
         })
+        .flatten()
         .collect();
+    let along = |p: DVec2, q: DVec2, horizontal: bool| {
+        if horizontal {
+            (p.x.min(q.x), p.x.max(q.x))
+        } else {
+            (p.y.min(q.y), p.y.max(q.y))
+        }
+    };
     out.retain(|d| {
-        let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b)) else {
-            return true;
-        };
-        !have.iter().any(|(p, q)| {
-            (p.distance(a) < 1e-3 && q.distance(b) < 1e-3)
-                || (p.distance(b) < 1e-3 && q.distance(a) < 1e-3)
+        let horizontal = d.axis == DimAxis::Horizontal;
+        !stretches(d).iter().all(|(a, b)| {
+            let (lo, hi) = along(*a, *b, horizontal);
+            have.iter().any(|(p, q)| {
+                let (l2, h2) = along(*p, *q, horizontal);
+                (l2 - lo).abs() < 1e-3 && (h2 - hi).abs() < 1e-3
+            })
         })
     });
     out
 }
 
-/// A chain's links, one dimension between each two stops next to each
-/// other along the side, their line `at` across it.
+/// A chain: one dimension line `at` across the side, through every stop
+/// along it (PilonDesigner's reťazová kóta), none for fewer than two.
 fn links(
     model: &Model,
     view: &View,
@@ -263,34 +281,29 @@ fn links(
     horizontal: bool,
     at: f64,
     mut stops: Vec<Stop>,
-) -> Vec<Dimension> {
+) -> Option<Dimension> {
     stops.sort_by(|a, b| a.at.total_cmp(&b.at));
     stops.dedup_by(|a, b| (a.at - b.at).abs() < 1e-4);
-    stops
-        .windows(2)
-        .map(|w| {
-            let (s, t) = (w[0], w[1]);
-            // the link's line runs `at` across: left of a → b is +y for a
-            // chain along x, −x for one up y
-            let offset = if horizontal {
-                at - s.point.y
-            } else {
-                s.point.x - at
-            };
-            let mut d = Dimension::linear(
-                view_id,
-                attach(model, view, Some(s.host), s.point),
-                attach(model, view, Some(t.host), t.point),
-                offset,
-            );
-            d.axis = if horizontal {
-                DimAxis::Horizontal
-            } else {
-                DimAxis::Vertical
-            };
-            d
-        })
-        .collect()
+    let (first, last) = (*stops.first()?, *stops.last()?);
+    if stops.len() < 2 {
+        return None;
+    }
+    // the line runs `at` across: left of a → b is +y for a chain along x,
+    // −x for one up y
+    let offset = if horizontal {
+        at - first.point.y
+    } else {
+        first.point.x - at
+    };
+    let put = |s: Stop| attach(model, view, Some(s.host), s.point);
+    let mut d = Dimension::linear(view_id, put(first), put(last), offset);
+    d.mids = stops[1..stops.len() - 1].iter().map(|s| put(*s)).collect();
+    d.axis = if horizontal {
+        DimAxis::Horizontal
+    } else {
+        DimAxis::Vertical
+    };
+    Some(d)
 }
 
 /// The transaction that adds [`opening_chains`] to the plan `view`, with
@@ -303,6 +316,143 @@ pub fn dimension_openings(model: &Model, view: ElementId) -> (Transaction, usize
         tx = tx.insert(Element::new("Dimension", ElementKind::Dimension(d)));
     }
     (tx, n)
+}
+
+/// Join the linear dimensions of `view` that run on one line and touch
+/// (share a point) into chains, one dimension each, as PilonDesigner draws
+/// them; `only` limits it to those dimensions. Held dimensions stay as
+/// they are. Returns the transaction and how many dimensions it took in.
+pub fn join_chains(
+    model: &Model,
+    view_id: ElementId,
+    only: Option<&[ElementId]>,
+) -> (Transaction, usize) {
+    let mut tx = Transaction::new("Join dimensions into chains");
+    let Some(ElementKind::View(view)) = model.get(view_id).map(|e| &e.kind) else {
+        return (tx, 0);
+    };
+    // each dimension: its direction, line, and points along it
+    struct Line {
+        e: Element,
+        u: DVec2,
+        at: f64,
+        pts: Vec<(f64, DVec2, creabim_core::HostPoint)>,
+    }
+    let mut lines: Vec<Line> = vec![];
+    for e in model.iter() {
+        let ElementKind::Dimension(d) = &e.kind else {
+            continue;
+        };
+        if d.view != view_id || !d.kind.is_linear() || d.held.is_some() {
+            continue;
+        }
+        if only.is_some_and(|o| !o.contains(&e.id)) {
+            continue;
+        }
+        let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b)) else {
+            continue;
+        };
+        let Some(u) = d.axis.direction(a, b) else {
+            continue;
+        };
+        // one way round for every line: +x, or +y when plumb
+        let (u, flip) = if u.x < -1e-9 || (u.x.abs() <= 1e-9 && u.y < 0.0) {
+            (-u, true)
+        } else {
+            (u, false)
+        };
+        let n = u.perp();
+        let at = a.dot(n) + if flip { -d.offset } else { d.offset };
+        let pts = d
+            .points()
+            .filter_map(|p| {
+                Some((
+                    resolve(model, view, p)?.dot(u),
+                    resolve(model, view, p)?,
+                    *p,
+                ))
+            })
+            .collect();
+        lines.push(Line {
+            e: e.clone(),
+            u,
+            at,
+            pts,
+        });
+    }
+    let mut used = vec![false; lines.len()];
+    let mut joined = 0;
+    for i in 0..lines.len() {
+        if used[i] {
+            continue;
+        }
+        // grow the group by every line that touches it
+        let mut group = vec![i];
+        let mut grew = true;
+        while grew {
+            grew = false;
+            for j in 0..lines.len() {
+                if used[j] || group.contains(&j) {
+                    continue;
+                }
+                let (l, m) = (&lines[i], &lines[j]);
+                let same = l.u.perp_dot(m.u).abs() < 1e-6
+                    && (l.at - m.at).abs() < 1e-3
+                    && matches!((&l.e.kind, &m.e.kind), (ElementKind::Dimension(x), ElementKind::Dimension(y))
+                        if x.axis == y.axis && x.style == y.style && x.color == y.color);
+                let touches = group.iter().any(|g| {
+                    lines[*g]
+                        .pts
+                        .iter()
+                        .any(|p| m.pts.iter().any(|q| p.1.distance(q.1) < 1e-3))
+                });
+                if same && touches {
+                    group.push(j);
+                    grew = true;
+                }
+            }
+        }
+        if group.len() < 2 {
+            continue;
+        }
+        for g in &group {
+            used[*g] = true;
+        }
+        let base = &lines[i];
+        let mut pts: Vec<(f64, DVec2, creabim_core::HostPoint)> =
+            group.iter().flat_map(|g| lines[*g].pts.clone()).collect();
+        pts.sort_by(|x, y| x.0.total_cmp(&y.0));
+        // one point per place, a bound one before a free one
+        let mut kept: Vec<(f64, DVec2, creabim_core::HostPoint)> = vec![];
+        for p in pts {
+            match kept.iter_mut().find(|k| k.1.distance(p.1) < 1e-3) {
+                Some(k) if k.2.host.is_none() && p.2.host.is_some() => *k = p,
+                Some(_) => {}
+                None => kept.push(p),
+            }
+        }
+        kept.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let (Some(first), Some(last)) = (kept.first().cloned(), kept.last().cloned()) else {
+            continue;
+        };
+        let ElementKind::Dimension(d) = &base.e.kind else {
+            continue;
+        };
+        let mut chain = d.clone();
+        chain.a = first.2;
+        chain.b = last.2;
+        chain.mids = kept[1..kept.len() - 1].iter().map(|k| k.2).collect();
+        // the line stays where it was: left of a → b, which runs along u
+        chain.offset = base.at - first.1.dot(base.u.perp());
+        let mut after = base.e.clone();
+        after.kind = ElementKind::Dimension(chain);
+        tx = tx.replace(base.e.clone(), after);
+        for g in group.iter().skip(1) {
+            tx = tx.remove_cascade(model, lines[*g].e.id);
+        }
+        joined += group.len();
+    }
+    (tx, joined)
 }
 
 #[cfg(test)]
@@ -365,9 +515,9 @@ mod tests {
         tx = tx.insert(win);
         tx.apply(&mut m).unwrap();
         let (tx, n) = dimension_openings(&m, view);
-        // top: window chain (3 links), walls (3 links: −0.2..0.2..9.8..10.2),
-        // total; left: walls (3) and total; bottom, right: none
-        assert_eq!(n, 3 + 3 + 1 + 3 + 1, "{n}");
+        // top: window chain, walls (−0.2..0.2..9.8..10.2), total; left:
+        // walls and total; bottom, right: none. A chain is one dimension.
+        assert_eq!(n, 5, "{n}");
         tx.apply(&mut m).unwrap();
         let ElementKind::View(v) = &m.get(view).unwrap().kind else {
             unreachable!()
@@ -386,5 +536,65 @@ mod tests {
         assert!(across[0].1.contains("("), "{across:?}");
         // running it again adds nothing
         assert_eq!(opening_chains(&m, view).len(), 0);
+    }
+
+    #[test]
+    fn dimensions_on_one_line_join_into_one_chain() {
+        let mut m = Model::new();
+        let lvl = Element::new(
+            "Ground",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let view = Element::new("Plan", ElementKind::View(creabim_core::View::plan(lvl.id)));
+        let vid = view.id;
+        let free = |x: f64| creabim_core::HostPoint::free(DVec2::new(x, 0.0));
+        let dim = |a: f64, b: f64, off: f64| {
+            let mut d = Dimension::linear(vid, free(a), free(b), off);
+            d.axis = DimAxis::Horizontal;
+            Element::new("Dimension", ElementKind::Dimension(d))
+        };
+        // three links on one line (one drawn right to left), one apart
+        Transaction::new("set up")
+            .insert(lvl)
+            .insert(view)
+            .insert(dim(0.0, 1.0, 1.0))
+            .insert(dim(3.0, 1.0, -1.0))
+            .insert(dim(3.0, 4.5, 1.0))
+            .insert(dim(0.0, 4.5, 2.0))
+            .apply(&mut m)
+            .unwrap();
+        let (tx, n) = join_chains(&m, vid, None);
+        assert_eq!(n, 3);
+        tx.apply(&mut m).unwrap();
+        let dims: Vec<Dimension> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Dimension(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(dims.len(), 2);
+        let chain = dims.iter().find(|d| d.is_chain()).unwrap();
+        let mut xs: Vec<f64> = chain.points().map(|p| p.local.x).collect();
+        xs.sort_by(f64::total_cmp);
+        assert_eq!(xs, vec![0.0, 1.0, 3.0, 4.5]);
+        assert!((chain.offset - 1.0).abs() < 1e-9, "{chain:?}");
+        // drawn: three stretches on the line y = 1
+        let ElementKind::View(v) = &m.get(vid).unwrap().kind else {
+            unreachable!()
+        };
+        let texts: Vec<String> = crate::annotate::annotations(&m, vid, v)
+            .into_iter()
+            .filter_map(|it| match it {
+                crate::plan::PlanItem::Dimension {
+                    text, offset, a, ..
+                } if (a.y + offset - 1.0).abs() < 1e-9 => Some(text),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts.len(), 3, "{texts:?}");
     }
 }

@@ -407,7 +407,7 @@ fn main() -> ExitCode {
                     .ok_or_else(|| format!("no view named {view:?}"))?;
                 let (tx, n) = creabim_geom::autodims::dimension_openings(doc.model(), id);
                 doc.commit(tx).map_err(|e| e.to_string())?;
-                println!("{n} dimensions added");
+                println!("{n} dimension chains added");
                 creabim_store::save(out, &doc).map_err(|e| format!("{out}: {e}"))
             }),
         _ => Err(USAGE.to_string()),

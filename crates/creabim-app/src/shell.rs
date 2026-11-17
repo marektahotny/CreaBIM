@@ -1555,37 +1555,37 @@ impl CreaBimApp {
             }
             "new.layered" => {
                 self.path = new_path("Layered walls");
-                self.load_model(creabim_core::sample::layered_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::sample::layered_house()));
                 self.status = "Loaded the layered sample house.".into();
             }
             "new.typed" => {
                 self.path = new_path("Wall types");
-                self.load_model(creabim_core::sample::typed_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::sample::typed_house()));
                 self.status =
                     "Loaded the typed sample house: see Materials › Types… for its types.".into();
             }
             "new.furnished" => {
                 self.path = new_path("Furnished house");
-                self.load_model(creabim_core::sample::furnished_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::sample::furnished_house()));
                 self.status =
                     "Loaded the furnished sample house: see Create › Catalogue… to place more."
                         .into();
             }
             "new.garden" => {
                 self.path = new_path("House in its garden");
-                self.load_model(creabim_core::garden::garden_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::garden::garden_house()));
                 self.status =
                     "Loaded the garden sample: see Create › Site and Create › Building elements."
                         .into();
             }
             "new.sample" => {
                 self.path = new_path("Starter house");
-                self.load_model(creabim_core::starter::starter_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::starter::starter_house()));
                 self.status = STARTER_LOADED.into();
             }
             "new.simple" => {
                 self.path = new_path("Simple house");
-                self.load_model(sample_house());
+                self.load_model(crate::planview::with_opening_tags(sample_house()));
                 self.status = "Loaded the simple sample house.".into();
             }
             "new.buried" => {
@@ -1814,7 +1814,7 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.joindims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
@@ -2565,8 +2565,37 @@ impl CreaBimApp {
                 } else {
                     match self.doc.commit(tx) {
                         Ok(_) => format!(
-                            "Added {n} dimensions: doors and windows, walls and overall, bound to what they measure. Ctrl+Z to undo."
+                            "Added {n} dimension chains: doors and windows, walls and overall, bound to what they measure. Ctrl+Z to undo."
                         ),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
+                };
+            }
+            "view.joindims" => {
+                // the selected dimensions, or every one in the view
+                let picked: Vec<ElementId> = self
+                    .selection
+                    .active
+                    .into_iter()
+                    .chain(self.selection.others.iter().copied())
+                    .filter(|i| {
+                        matches!(
+                            self.doc.model().get(*i).map(|e| &e.kind),
+                            Some(ElementKind::Dimension(_))
+                        )
+                    })
+                    .collect();
+                let only = (picked.len() > 1).then_some(picked.as_slice());
+                let (tx, n) = creabim_geom::autodims::join_chains(self.doc.model(), id, only);
+                self.status = if n == 0 {
+                    crate::i18n::tr(
+                        "Nothing to join: no dimensions here run on one line and share a point.",
+                    )
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => crate::i18n::tr(&format!(
+                            "Joined {n} dimensions into chains: one dimension line each. Ctrl+Z to undo."
+                        )),
                         Err(e) => format!("Couldn't do that: {e}"),
                     }
                 };
@@ -3348,6 +3377,11 @@ impl CreaBimApp {
                     "kind": "button", "id": "view.dimopenings", "label": "Dimension openings",
                     "icon": "dimension",
                     "hint": "Dimension chains round the outside, as STN 01 3420: the doors and windows (width over the line, height and sill under it), the walls, the overall size. Bound to what they measure",
+                }));
+                options.push(json!({
+                    "kind": "button", "id": "view.joindims", "label": "Join into chains",
+                    "icon": "dimension",
+                    "hint": "Dimensions on one line that share a point become one dimension line, a chain as in PilonDesigner: the selected ones, or all in this view",
                 }));
             }
             if self.active_plan().is_some() {

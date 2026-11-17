@@ -404,7 +404,9 @@ impl CreaBimApp {
             app.areas.root = root;
         }
         app.shell.settings = settings;
-        app.load_model(creabim_core::starter::starter_house());
+        app.load_model(crate::planview::with_opening_tags(
+            creabim_core::starter::starter_house(),
+        ));
         app.status = STARTER_LOADED.into();
         // `creabim-app house.creabim` opens that file instead
         if let Some(path) = launch_file(std::env::args().skip(1)) {
@@ -9101,6 +9103,7 @@ impl CreaBimApp {
         let mut label = "";
         let mut extrude_sketch = false;
         let mut draw_hole = false;
+        let mut edit_points = false;
         let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
             crate::props::row(ui, text, |ui| {
                 crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
@@ -9865,15 +9868,25 @@ impl CreaBimApp {
                     }
                 }
                 ElementKind::Dimension(d) => {
+                    // a chain reads every stretch, in order along its line
                     let measured = self
                         .drawing(d.view)
-                        .and_then(|dr| {
-                            dr.items.into_iter().find_map(|i| match i {
-                                PlanItem::Dimension { id: i, text, .. } if i == id => Some(text),
-                                PlanItem::Annotation { id: i, item } if i == id => Some(item.text),
-                                _ => None,
-                            })
+                        .map(|dr| {
+                            dr.items
+                                .into_iter()
+                                .filter_map(|i| match i {
+                                    PlanItem::Dimension { id: i, text, .. } if i == id => {
+                                        Some(text)
+                                    }
+                                    PlanItem::Annotation { id: i, item } if i == id => {
+                                        Some(item.text)
+                                    }
+                                    _ => None,
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" + ")
                         })
+                        .filter(|t| !t.is_empty())
                         .unwrap_or_else(|| "-".into());
                     // metric dimension text carries no unit; say which here
                     let unit = if !matches!(
@@ -9890,8 +9903,26 @@ impl CreaBimApp {
                     let attached = [Some(d.a), Some(d.b), d.center]
                         .iter()
                         .flatten()
+                        .chain(d.mids.iter())
                         .filter(|p| p.host.is_some())
                         .count();
+                    if d.kind == creabim_core::DimensionKind::Linear {
+                        if d.is_chain() {
+                            ui.label(
+                                egui::RichText::new(crate::i18n::tr(&format!(
+                                    "A chain: one dimension line through {} points.",
+                                    d.mids.len() + 2
+                                )))
+                                .weak(),
+                            );
+                        }
+                        edit_points |= ui
+                            .button(crate::i18n::tr("Add or remove points"))
+                            .on_hover_text(crate::i18n::tr(
+                                "Click edges and corners to add them to this dimension line, click one of its points to take it out; Esc ends. As PilonDesigner's chains",
+                            ))
+                            .clicked();
+                    }
                     ui.label(
                         egui::RichText::new(match attached {
                             0 => "Not attached: it stays where it was drawn.".to_string(),
@@ -10567,6 +10598,9 @@ impl CreaBimApp {
                 self.status = o.hint();
             }
         }
+        if edit_points {
+            self.edit_dimension_points(ui.ctx(), id);
+        }
         if draw_hole {
             self.plan.cancel();
             self.plan.tool = Tool::Select;
@@ -10575,6 +10609,28 @@ impl CreaBimApp {
                 self.status = o.hint();
             }
         }
+    }
+
+    /// Add points to, or take them out of, dimension `id`: the Dimension
+    /// tool goes on with it as a chain (PilonDesigner's vynášacie čiary).
+    fn edit_dimension_points(&mut self, ctx: &egui::Context, id: ElementId) {
+        let Some(ElementKind::Dimension(d)) = self.doc.model().get(id).map(|e| e.kind.clone())
+        else {
+            return;
+        };
+        let Some(v) = self.view(d.view).cloned() else {
+            return;
+        };
+        let Some(at) = creabim_geom::annotate::resolve(self.doc.model(), &v, &d.a) else {
+            return;
+        };
+        self.active_view = Some(d.view);
+        self.pick_tool(ctx, Tool::Dimension);
+        self.plan.continue_chain(id, (d.a, at));
+        self.selection.only(id);
+        self.status = crate::i18n::tr(
+            "Click edges and corners to add them to the dimension line, click one of its points to take it out; Esc ends.",
+        );
     }
 
     /// The top of Properties, pinned while its tabs scroll (MU19/MU20):

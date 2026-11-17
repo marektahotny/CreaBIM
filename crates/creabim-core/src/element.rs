@@ -337,6 +337,7 @@ impl Element {
                     && [Some(d.a), Some(d.b), d.center]
                         .iter()
                         .flatten()
+                        .chain(d.mids.iter())
                         .all(|p| p.local.is_finite() && p.body.is_none_or(|b| b.is_finite()))
                 {
                     Ok(())
@@ -789,9 +790,35 @@ pub struct Dimension {
     /// Its own number format over its kind's in the style pack (A5-2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<crate::units::NumberFormat>,
+    /// A linear dimension's further points, as PilonDesigner's chains: one
+    /// dimension line through `a`, these and `b`, measuring each stretch
+    /// between neighbours along it. Their order does not matter; a point
+    /// whose host is gone drops out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mids: Vec<HostPoint>,
 }
 
 impl Dimension {
+    /// Every point a linear dimension measures: `a`, its further points,
+    /// `b`, as stored (not in order along the line).
+    pub fn points(&self) -> impl Iterator<Item = &HostPoint> {
+        std::iter::once(&self.a)
+            .chain(self.mids.iter())
+            .chain(std::iter::once(&self.b))
+    }
+
+    /// The same, to change.
+    pub fn points_mut(&mut self) -> impl Iterator<Item = &mut HostPoint> {
+        std::iter::once(&mut self.a)
+            .chain(self.mids.iter_mut())
+            .chain(std::iter::once(&mut self.b))
+    }
+
+    /// Is it a chain of more than one stretch?
+    pub fn is_chain(&self) -> bool {
+        !self.mids.is_empty()
+    }
+
     /// A linear dimension in the default style.
     pub fn linear(view: ElementId, a: HostPoint, b: HostPoint, offset: f64) -> Self {
         Self {
@@ -807,6 +834,7 @@ impl Dimension {
             pattern: None,
             held: None,
             format: None,
+            mids: Vec::new(),
         }
     }
 
