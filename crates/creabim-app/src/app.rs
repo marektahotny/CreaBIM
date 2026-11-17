@@ -3384,23 +3384,26 @@ impl CreaBimApp {
         // Esc or right-click steps back: drop the tool's clicks, then the
         // tool; in Select, right-click opens the menu
         if self.plan.sketch.is_none() && self.plan.outline.is_none() {
-            let (esc, shift) = ui.input(|i| (i.key_pressed(egui::Key::Escape), i.modifiers.shift));
+            let shift = ui.input(|i| i.modifiers.shift);
             // a grip being dragged takes Esc itself; in Edit mode a
-            // right-click opens the grips' menu
-            let esc = esc
-                && response.hovered()
-                && !ui.ctx().egui_wants_keyboard_input()
-                && self.handle_drag.is_none()
-                && !self.plan.grips.busy();
+            // right-click opens the grips' menu. Esc works wherever the
+            // pointer is, once a frame among the views.
+            let esc = self.handle_drag.is_none()
+                && !self.plan.grips.busy()
+                && crate::planview::esc_once(ui.ctx());
             let right = response.secondary_clicked()
                 && !shift
                 && !(self.plan.edit.is_some() && self.plan.tool == Tool::Select);
             if esc || right {
-                if self.pending_3d.take().is_some() || self.guide_from.take().is_some() {
+                let pending = self.pending_3d.take().is_some() || self.guide_from.take().is_some();
+                if pending && !esc {
                     self.plan.cancel();
                     self.status = "Cancelled. Right-click or Esc again to leave the tool.".into();
+                } else if esc && (self.plan.escape() || pending) {
+                    // Esc drops the whole command in one press
+                    self.status = "Cancelled.".into();
                 } else {
-                    let stepped = self.plan.step_back();
+                    let stepped = !esc && self.plan.step_back();
                     // Esc with nothing to step back from selects nothing (MU39)
                     if !stepped
                         && esc

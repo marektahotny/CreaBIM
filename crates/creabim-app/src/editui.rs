@@ -284,6 +284,12 @@ mod tests {
         assert_eq!(app.plan.edit, Some(id));
         app.toggle_edit_mode();
         assert_eq!(app.plan.edit, None);
+        // out of Edit mode, Esc drops a command whole in one press: back
+        // to Select; with none under way it has nothing to drop
+        app.plan.tool = crate::planview::Tool::Wall;
+        assert!(app.plan.escape());
+        assert_eq!(app.plan.tool, crate::planview::Tool::Select);
+        assert!(!app.plan.escape());
         // out of Edit mode Delete deletes the element, as it always did
         app.run_command(&ctx, Command::Delete, None);
         assert!(app.doc.model().get(id).is_none());

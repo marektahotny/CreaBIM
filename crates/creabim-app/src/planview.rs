@@ -801,7 +801,30 @@ impl PlanState {
         }
     }
 
-    /// Is a tool waiting for more clicks?
+    /// Esc: the command under way is dropped whole, its clicks and the
+    /// tool, back to Select in one press (a right-click still steps back
+    /// one thing at a time). Edit mode keeps its own steps. False when
+    /// there was nothing to drop.
+    pub fn escape(&mut self) -> bool {
+        if self.edit.is_some() {
+            return self.step_back();
+        }
+        let input = self.has_input();
+        if input {
+            self.cancel();
+            self.armed = None;
+        }
+        let guides = self.clear_references() > 0;
+        let tool = self.tool != Tool::Select;
+        if tool {
+            self.tool = Tool::Select;
+        }
+        if input || guides || tool {
+            self.status = Some("Cancelled.".into());
+        }
+        input || guides || tool
+    }
+
     /// Is a grip being dragged in a plan or section?
     pub fn gripping(&self) -> bool {
         self.grip.is_some()
@@ -817,6 +840,22 @@ impl PlanState {
             || !self.details.path.is_empty()
             || self.temp.editing.is_some()
     }
+}
+
+/// Esc pressed, for the first view that asks this frame: with several
+/// views open, one press is one step (the command, then the selection),
+/// never both. Not while a text field has the keyboard.
+pub fn esc_once(ctx: &egui::Context) -> bool {
+    if !ctx.input(|i| i.key_pressed(egui::Key::Escape)) || ctx.egui_wants_keyboard_input() {
+        return false;
+    }
+    let id = egui::Id::new("esc.once");
+    let frame = ctx.cumulative_frame_nr();
+    ctx.data_mut(|d| {
+        let fresh = d.get_temp::<u64>(id) != Some(frame);
+        d.insert_temp(id, frame);
+        fresh
+    })
 }
 
 pub struct Xf {
@@ -2598,8 +2637,7 @@ pub fn show(
         draw_cursor(&painter, xf.to_screen(model_to_pane(space, c)));
     }
     let right = response.secondary_clicked() && !shift;
-    let esc =
-        ui.input(|i| i.key_pressed(egui::Key::Escape)) && !ui.ctx().egui_wants_keyboard_input();
+    let esc = esc_once(ui.ctx());
     // a detail path that can be made is finished, never dropped
     if tool == Tool::Detail
         && (esc || right)
@@ -2608,8 +2646,10 @@ pub fn show(
     {
         return None;
     }
-    if esc {
-        state.step_back();
+    // Esc drops the command; with none under way it selects nothing
+    if esc && !state.escape() && state.edit.is_none() && selection.is_some() {
+        selection.clear();
+        state.status = Some("Nothing selected.".into());
     }
     let menu = right && !state.step_back() && tool == Tool::Select;
     if menu {
