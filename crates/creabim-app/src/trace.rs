@@ -609,6 +609,124 @@ pub fn linework(items: &[PlanItem]) -> Vec<Vec<DVec2>> {
 }
 
 /// A picture file's pixels.
+/// The picture files a reference can be.
+pub const PICTURES: &[&str] = &["png", "jpg", "jpeg", "tif", "tiff", "bmp"];
+
+/// A scan's resolution when its file doesn't say (PilonDesigner's).
+pub const DEFAULT_DPI: f64 = 150.0;
+
+/// A picture's size in pixels.
+pub fn picture_px(path: &str) -> Option<(u32, u32)> {
+    image::image_dimensions(path).ok()
+}
+
+/// A picture as a reference: as wide as its pixels at its resolution
+/// (the file's, else 150 DPI) drawn at 1:100.
+pub fn picture_source(path: &str) -> RefSource {
+    let dpi = std::fs::read(path).ok().and_then(|b| file_dpi(&b));
+    let width = picture_px(path).map_or(10.0, |(w, _)| {
+        w as f64 / dpi.unwrap_or(DEFAULT_DPI) * 0.0254 * 100.0
+    });
+    RefSource::Image {
+        path: path.to_string(),
+        width,
+        dpi,
+    }
+}
+
+/// The resolution a picture file gives (PNG pHYs, JPEG JFIF, TIFF
+/// XResolution), in dots per inch; none when it gives none, or less than
+/// 50 (a screen's 72 or 96 says nothing about a scan, so 72 and 96 are
+/// taken only from TIFF, which scanners write).
+pub fn file_dpi(b: &[u8]) -> Option<f64> {
+    let be32 = |i: usize| {
+        b.get(i..i + 4)
+            .map(|x| u32::from_be_bytes([x[0], x[1], x[2], x[3]]))
+    };
+    let dpi = if b.starts_with(b"\x89PNG") {
+        let mut i = 8;
+        let mut found = None;
+        while let Some(len) = be32(i) {
+            let kind = b.get(i + 4..i + 8)?;
+            if kind == b"pHYs" {
+                let (x, unit) = (be32(i + 8)?, *b.get(i + 16)?);
+                found = (unit == 1).then_some(x as f64 * 0.0254);
+                break;
+            }
+            if kind == b"IDAT" {
+                break;
+            }
+            i += 12 + len as usize;
+        }
+        found
+    } else if b.starts_with(&[0xff, 0xd8]) {
+        let mut i = 2;
+        let mut found = None;
+        while i + 4 <= b.len() && b[i] == 0xff {
+            let len = u16::from_be_bytes([b[i + 2], b[i + 3]]) as usize;
+            if b[i + 1] == 0xe0 && b.get(i + 4..i + 9) == Some(b"JFIF\0") {
+                let unit = *b.get(i + 11)?;
+                let x = u16::from_be_bytes([*b.get(i + 12)?, *b.get(i + 13)?]) as f64;
+                found = match unit {
+                    1 => Some(x),
+                    2 => Some(x * 2.54),
+                    _ => None,
+                };
+                break;
+            }
+            if b[i + 1] == 0xda {
+                break;
+            }
+            i += 2 + len;
+        }
+        found.filter(|d| *d > 96.0)
+    } else if b.starts_with(b"II*\0") || b.starts_with(b"MM\0*") {
+        let le = b[0] == b'I';
+        let u16_at = |i: usize| {
+            b.get(i..i + 2).map(|x| {
+                if le {
+                    u16::from_le_bytes([x[0], x[1]])
+                } else {
+                    u16::from_be_bytes([x[0], x[1]])
+                }
+            })
+        };
+        let u32_at = |i: usize| {
+            b.get(i..i + 4).map(|x| {
+                let a = [x[0], x[1], x[2], x[3]];
+                if le {
+                    u32::from_le_bytes(a)
+                } else {
+                    u32::from_be_bytes(a)
+                }
+            })
+        };
+        let ifd = u32_at(4)? as usize;
+        let n = u16_at(ifd)? as usize;
+        let (mut x, mut unit) = (None, 2);
+        for k in 0..n {
+            let e = ifd + 2 + k * 12;
+            match u16_at(e)? {
+                282 => {
+                    let at = u32_at(e + 8)? as usize;
+                    let (num, den) = (u32_at(at)?, u32_at(at + 4)?);
+                    x = (den > 0).then(|| num as f64 / den as f64);
+                }
+                296 => unit = u16_at(e + 8)?,
+                _ => {}
+            }
+        }
+        match unit {
+            2 => x,
+            3 => x.map(|v| v * 2.54),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    dpi.filter(|d| (50.0..=10000.0).contains(d))
+}
+
 pub fn picture(path: &str) -> Result<Raster, String> {
     let img = image::open(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
     let rgba = img.to_rgba8();
@@ -630,6 +748,43 @@ fn path_key(path: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_scans_resolution_is_read_from_its_file() {
+        // PNG with pHYs 11811 px/m (300 dpi)
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend([0, 0, 0, 9]);
+        png.extend(b"pHYs");
+        png.extend(11811u32.to_be_bytes());
+        png.extend(11811u32.to_be_bytes());
+        png.extend([1, 0, 0, 0, 0]);
+        assert!((file_dpi(&png).unwrap() - 300.0).abs() < 0.1);
+        // JPEG JFIF at 200 dpi; at 72 it says nothing
+        let jfif = |d: u16| {
+            let mut j = vec![0xff, 0xd8, 0xff, 0xe0, 0, 16];
+            j.extend(b"JFIF\0");
+            j.extend([1, 1, 1]);
+            j.extend(d.to_be_bytes());
+            j.extend(d.to_be_bytes());
+            j.extend([0, 0]);
+            j
+        };
+        assert_eq!(file_dpi(&jfif(200)), Some(200.0));
+        assert_eq!(file_dpi(&jfif(72)), None);
+        // little-endian TIFF, XResolution 400/1 inch
+        let mut t = b"II*\0".to_vec();
+        t.extend(8u32.to_le_bytes());
+        t.extend(1u16.to_le_bytes());
+        t.extend(282u16.to_le_bytes());
+        t.extend(5u16.to_le_bytes());
+        t.extend(1u32.to_le_bytes());
+        t.extend(26u32.to_le_bytes());
+        t.extend(0u32.to_le_bytes());
+        t.extend(400u32.to_le_bytes());
+        t.extend(1u32.to_le_bytes());
+        assert_eq!(file_dpi(&t), Some(400.0));
+        assert_eq!(file_dpi(b"nothing"), None);
+    }
 
     #[test]
     fn a_view_reference_reads_its_linework_and_spans_it() {

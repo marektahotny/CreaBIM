@@ -3,7 +3,7 @@
 A **reference** is something shown faintly under (or over) a plan or a section, to draw over or compare against:
 
 - **another view**: the floor below, under the floor you are drawing;
-- **a picture**: a scanned plan, a photo of a sketch (PNG or JPEG);
+- **a picture**: a scanned plan, a photo of a sketch (PNG, JPEG, TIFF or BMP);
 - **a DXF drawing**: a survey or a consultant's plan. A DWG opens once saved as DXF: any CAD program, or the free ODA File Converter, does it offline;
 - **a PDF page**: a plan sent as PDF, drawn at its scale 1:N, or a scanned page.
 
@@ -41,6 +41,10 @@ A DXF is read as PilonDesigner reads it: lines, polylines with arcs, circles, el
 - **Points**: survey points, small circles marking them and blocks' insertion points snap.
 - A drawing in national coordinates (**S-JTSK**, kilometres from the origin) comes to the project's origin, its lower left corner there; move it in *Properties*.
 - A **3D survey** shows the range of its heights.
+
+## A picture
+
+A picture comes as wide as its pixels at its **resolution** drawn at **1:100**, as PilonDesigner places a scan: a scan's resolution is read from the file (PNG, JPEG, TIFF), else taken as 150 DPI. In *Properties*, set **Resolution** to the scan's DPI and **Drawing scale** to the scale printed on the drawing, and it comes to size (width = pixels ÷ DPI × N). When neither is known, *Calibrate…* sets the size from a known distance.
 
 ## A PDF page
 

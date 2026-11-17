@@ -14,8 +14,15 @@ use serde::{Deserialize, Serialize};
 pub enum RefSource {
     /// Another plan or section, drawn at the same place.
     View(ElementId),
-    /// A picture file (PNG, JPEG); `width` metres wide at scale 1.
-    Image { path: String, width: f64 },
+    /// A picture file (PNG, JPEG, TIFF, BMP); `width` metres wide at
+    /// scale 1. A scan's resolution, when known, gives its drawing scale
+    /// 1:N (width = pixels / dpi × N).
+    Image {
+        path: String,
+        width: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dpi: Option<f64>,
+    },
     /// A DXF drawing's lines, in metres from its units.
     Dxf { path: String },
     /// A PDF page's lines and texts (or a scanned page's picture), at the
@@ -240,6 +247,7 @@ mod tests {
             RefSource::Image {
                 path: "plan.png".into(),
                 width: 10.0,
+                dpi: None,
             },
             vec![],
         );
