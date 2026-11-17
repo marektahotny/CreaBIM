@@ -87,6 +87,8 @@ pub struct RefCache {
     /// DXF files read, by path: what a reference shows is cut from them
     /// by its layers and clip.
     dxf: HashMap<String, Arc<creabim_exchange::dxf::DxfImport>>,
+    /// PDF pages found to be scans, by source key.
+    scans: std::collections::HashSet<String>,
 }
 
 /// The cache key of a source: its file, or its view.
@@ -95,6 +97,53 @@ fn key(source: &RefSource) -> String {
         RefSource::View(v) => format!("view:{v:?}"),
         RefSource::Image { path, .. } => format!("image:{path}"),
         RefSource::Dxf { path } => format!("dxf:{path}"),
+        RefSource::Pdf { path, page, scale } => format!("pdf:{path}#{page}@{scale}"),
+    }
+}
+
+/// Where a scanned PDF page's picture lies on its page, by source key.
+static SCANS: std::sync::Mutex<Option<HashMap<String, [DVec2; 2]>>> = std::sync::Mutex::new(None);
+
+/// A PDF page read: its drawing, or its scan with where it lies.
+pub fn pdf_page(
+    path: &str,
+    page: u32,
+    scale: f64,
+) -> Result<creabim_exchange::pdf::PdfPage, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
+    let p = creabim_exchange::pdf::read(&bytes, page, scale).map_err(|e| format!("{path}: {e}"))?;
+    if p.scan.is_none()
+        && p.imp.polys.is_empty()
+        && p.imp.fills.is_empty()
+        && p.imp.texts.is_empty()
+    {
+        return Err(if p.scan_unread {
+            format!("{path}: the page is a scan in a format not read here (JBIG2, CCITT or JPEG 2000); export the page as PNG or JPEG and add that.")
+        } else {
+            format!("{path}: nothing drawn on page {page}")
+        });
+    }
+    Ok(p)
+}
+
+/// A PDF page as a reference shows it: a scan as its picture (its place
+/// kept for [`bounds_of`]), else its drawing.
+fn pdf_shown(
+    source: &RefSource,
+    p: creabim_exchange::pdf::PdfPage,
+) -> (Shown, Option<Arc<creabim_exchange::dxf::DxfImport>>) {
+    match p.scan {
+        Some(s) => {
+            if let Ok(mut m) = SCANS.lock() {
+                m.get_or_insert_with(HashMap::new)
+                    .insert(key(source), s.rect);
+            }
+            (Shown::Picture(Arc::new(s.raster)), None)
+        }
+        None => {
+            let d = Arc::new(p.imp);
+            (Shown::Lines(Arc::new(dxf_linework(&d, &[], None))), Some(d))
+        }
     }
 }
 
@@ -128,8 +177,9 @@ impl RefCache {
             }
         }
         let s = match &r.source {
-            RefSource::Dxf { path } => match self.dxf_file(path) {
-                Ok(d) => Shown::Lines(Arc::new(dxf_linework(&d, &r.layers_off, r.clip))),
+            RefSource::Dxf { .. } | RefSource::Pdf { .. } => match self.drawing(&r.source) {
+                Ok(Some(d)) => Shown::Lines(Arc::new(dxf_linework(&d, &r.layers_off, r.clip))),
+                Ok(None) => read(model, &r.source),
                 Err(e) => Shown::Missing(e),
             },
             src => clip_shown(read(model, src), r.clip),
@@ -151,13 +201,46 @@ impl RefCache {
         Ok(d)
     }
 
+    /// A DXF drawing or a PDF page's drawing, read once; none for a
+    /// scanned page (a picture).
+    pub fn drawing(
+        &mut self,
+        source: &RefSource,
+    ) -> Result<Option<Arc<creabim_exchange::dxf::DxfImport>>, String> {
+        match source {
+            RefSource::Dxf { path } => self.dxf_file(path).map(Some),
+            RefSource::Pdf { path, page, scale } => {
+                let k = key(source);
+                if let Some(d) = self.dxf.get(&k) {
+                    return Ok(Some(d.clone()));
+                }
+                if self.scans.contains(&k) {
+                    return Ok(None);
+                }
+                let (_, d) = pdf_shown(source, pdf_page(path, *page, *scale)?);
+                match &d {
+                    Some(d) => {
+                        self.dxf.insert(k, d.clone());
+                    }
+                    None => {
+                        self.scans.insert(k);
+                    }
+                }
+                Ok(d)
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// Forget what was read, so it is read again (Reload).
     pub fn forget(&mut self, id: ElementId) {
         if let Some((k, ..)) = self.read.remove(&id) {
+            let k = k.split('|').next().unwrap_or(&k).to_string();
             if let Some(path) = k.strip_prefix("dxf:") {
-                let path = path.split('|').next().unwrap_or(path);
                 self.dxf.remove(path);
             }
+            self.dxf.remove(&k);
+            self.scans.remove(&k);
         }
     }
 }
@@ -328,6 +411,10 @@ pub fn read(model: &Model, source: &RefSource) -> Shown {
             }
             Err(e) => Shown::Missing(e),
         },
+        RefSource::Pdf { path, page, scale } => match pdf_page(path, *page, *scale) {
+            Ok(p) => pdf_shown(source, p).0,
+            Err(e) => Shown::Missing(e),
+        },
     }
 }
 
@@ -337,6 +424,9 @@ pub fn bounds_of(source: &RefSource, shown: &Shown) -> Option<[DVec2; 2]> {
         (RefSource::Image { width, .. }, Shown::Picture(r)) => {
             let h = width * r.height as f64 / r.width.max(1) as f64;
             Some([DVec2::ZERO, DVec2::new(*width, h)])
+        }
+        (RefSource::Pdf { .. }, Shown::Picture(_)) => {
+            SCANS.lock().ok()?.as_ref()?.get(&key(source)).copied()
         }
         (_, Shown::Lines(l)) => {
             let mut it = l.iter().flatten();
@@ -358,6 +448,7 @@ pub fn label(model: &Model, source: &RefSource) -> String {
     match source {
         RefSource::View(v) => model.get(*v).map_or("a view".into(), |e| e.name.clone()),
         RefSource::Image { path, .. } | RefSource::Dxf { path } => file(path),
+        RefSource::Pdf { path, page, .. } => format!("{} ({page})", file(path)),
     }
 }
 

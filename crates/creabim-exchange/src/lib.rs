@@ -15,6 +15,7 @@ pub mod gltf;
 pub mod gltf_read;
 pub mod link;
 pub mod materials;
+pub mod pdf;
 pub mod shape;
 pub mod titleblock;
 
