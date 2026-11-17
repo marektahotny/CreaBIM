@@ -3284,7 +3284,10 @@ impl CreaBimApp {
                 .show_ui(ui, |ui| {
                     if member
                         && ui
-                            .selectable_label(link.is_none(), crate::i18n::tw("Its own (width × depth)"))
+                            .selectable_label(
+                                link.is_none(),
+                                crate::i18n::tw("Its own (width × depth)"),
+                            )
                             .clicked()
                     {
                         pick = Some(None);

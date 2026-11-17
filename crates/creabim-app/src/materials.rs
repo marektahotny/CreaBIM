@@ -197,7 +197,10 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                         label = "Material category";
                     }
                     for (value, text) in CATEGORIES {
-                        if ui.selectable_label(m.category == *value, crate::i18n::tw(*text)).clicked() {
+                        if ui
+                            .selectable_label(m.category == *value, crate::i18n::tw(*text))
+                            .clicked()
+                        {
                             m.category = value.to_string();
                             label = "Material category";
                         }
@@ -237,7 +240,10 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                 .truncate()
                 .show_ui(ui, |ui| {
                     for h in Hatch::ALL {
-                        if ui.selectable_value(&mut m.hatch, h, crate::i18n::tw(h.label())).changed() {
+                        if ui
+                            .selectable_value(&mut m.hatch, h, crate::i18n::tw(h.label()))
+                            .changed()
+                        {
                             label = "Material hatch";
                         }
                     }
@@ -299,7 +305,10 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                     .width(ui.available_width().min(70.0))
                     .show_ui(ui, |ui| {
                         for u in RateUnit::ALL {
-                            if ui.selectable_label(per == u, crate::i18n::tw(u.label())).clicked() {
+                            if ui
+                                .selectable_label(per == u, crate::i18n::tw(u.label()))
+                                .clicked()
+                            {
                                 m.rate = Some(Rate { amount, per: u });
                                 label = "Material rate";
                             }
@@ -573,8 +582,16 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 crate::props::flow(ui, |ui| {
-                    ui.selectable_value(&mut self.mat.tab, MatTab::Project, crate::i18n::tw("In this project"));
-                    ui.selectable_value(&mut self.mat.tab, MatTab::Library, crate::i18n::tw("Library"));
+                    ui.selectable_value(
+                        &mut self.mat.tab,
+                        MatTab::Project,
+                        crate::i18n::tw("In this project"),
+                    );
+                    ui.selectable_value(
+                        &mut self.mat.tab,
+                        MatTab::Library,
+                        crate::i18n::tw("Library"),
+                    );
                     ui.separator();
                     ui.add(
                         egui::TextEdit::singleline(&mut self.mat.filter)

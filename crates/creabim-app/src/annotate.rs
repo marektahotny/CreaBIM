@@ -1261,11 +1261,17 @@ pub fn look_ui(
     crate::app::helpui::combo(ui, "Text style")
         .selected_text(crate::i18n::tw(name))
         .show_ui(ui, |ui| {
-            if ui.selectable_value(style, None, crate::i18n::tw("Default")).changed() {
+            if ui
+                .selectable_value(style, None, crate::i18n::tw("Default"))
+                .changed()
+            {
                 out = LookEdit::Changed("Text style");
             }
             for (id, n) in &all {
-                if ui.selectable_value(style, Some(*id), crate::i18n::tw(n)).changed() {
+                if ui
+                    .selectable_value(style, Some(*id), crate::i18n::tw(n))
+                    .changed()
+                {
                     out = LookEdit::Changed("Text style");
                 }
             }
@@ -1326,7 +1332,10 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
         .selected_text(crate::i18n::tw(s.font.label()))
         .show_ui(ui, |ui| {
             for f in Font::ALL {
-                if ui.selectable_value(&mut s.font, f, crate::i18n::tw(f.label())).changed() {
+                if ui
+                    .selectable_value(&mut s.font, f, crate::i18n::tw(f.label()))
+                    .changed()
+                {
                     label = Some("Text font");
                 }
             }
@@ -1431,12 +1440,18 @@ fn terminator_combo(
     crate::props::row(ui, text, |ui| {
         egui::ComboBox::from_id_salt(salt)
             .icon(crate::props::combo_icon)
-            .selected_text(crate::i18n::tw(t.map_or(usual.to_string(), |t| t.label().to_string())))
+            .selected_text(crate::i18n::tw(
+                t.map_or(usual.to_string(), |t| t.label().to_string()),
+            ))
             .width(ui.available_width())
             .show_ui(ui, |ui| {
-                changed |= ui.selectable_value(t, None, crate::i18n::tw(usual)).changed();
+                changed |= ui
+                    .selectable_value(t, None, crate::i18n::tw(usual))
+                    .changed();
                 for k in Terminator::ALL {
-                    changed |= ui.selectable_value(t, Some(k), crate::i18n::tw(k.label())).changed();
+                    changed |= ui
+                        .selectable_value(t, Some(k), crate::i18n::tw(k.label()))
+                        .changed();
                 }
             });
     });
@@ -1533,7 +1548,10 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
         .selected_text(crate::i18n::tw(s.purpose.label()))
         .show_ui(ui, |ui| {
             for k in StyleUse::ALL {
-                if ui.selectable_value(&mut s.purpose, k, crate::i18n::tw(k.label())).changed() {
+                if ui
+                    .selectable_value(&mut s.purpose, k, crate::i18n::tw(k.label()))
+                    .changed()
+                {
                     label = Some("Style use");
                 }
             }

@@ -1037,14 +1037,17 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     .icon(crate::props::combo_icon)
                     .width(w)
                     .truncate()
-                    .selected_text(
-                        crate::i18n::tw(r.rail_profile
+                    .selected_text(crate::i18n::tw(
+                        r.rail_profile
                             .clone()
-                            .unwrap_or_else(|| "Square bar".into())),
-                    )
+                            .unwrap_or_else(|| "Square bar".into()),
+                    ))
                     .show_ui(ui, |ui| {
                         if ui
-                            .selectable_label(r.rail_profile.is_none(), crate::i18n::tw("Square bar"))
+                            .selectable_label(
+                                r.rail_profile.is_none(),
+                                crate::i18n::tw("Square bar"),
+                            )
                             .clicked()
                         {
                             r.rail_profile = None;
@@ -1052,7 +1055,10 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                         }
                         for n in &names {
                             if ui
-                                .selectable_label(r.rail_profile.as_deref() == Some(n.as_str()), crate::i18n::tw(n))
+                                .selectable_label(
+                                    r.rail_profile.as_deref() == Some(n.as_str()),
+                                    crate::i18n::tw(n),
+                                )
                                 .clicked()
                             {
                                 r.rail_profile = Some(n.clone());
@@ -1200,7 +1206,10 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
                 .selected_text(crate::i18n::tw(current))
                 .show_ui(ui, |ui| {
                     for (lid, n, _) in levels.iter().rev() {
-                        if ui.selectable_value(&mut f.level, *lid, crate::i18n::tw(n)).changed() {
+                        if ui
+                            .selectable_value(&mut f.level, *lid, crate::i18n::tw(n))
+                            .changed()
+                        {
                             label = "Footing level";
                         }
                     }

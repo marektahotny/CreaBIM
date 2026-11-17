@@ -352,12 +352,16 @@ fn part_material(
         .width(ui.available_width().min(170.0))
         .truncate()
         .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(current, None, crate::i18n::tw("None")).changed();
+            changed |= ui
+                .selectable_value(current, None, crate::i18n::tw("None"))
+                .changed();
             for e in model
                 .iter()
                 .filter(|e| matches!(e.kind, ElementKind::Material(_)))
             {
-                changed |= ui.selectable_value(current, Some(e.id), crate::i18n::tw(&e.name)).changed();
+                changed |= ui
+                    .selectable_value(current, Some(e.id), crate::i18n::tw(&e.name))
+                    .changed();
             }
         });
     changed
@@ -381,7 +385,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
             .selected_text(crate::i18n::tw(o.category.label()))
             .show_ui(ui, |ui| {
                 for c in ObjectCategory::ALL {
-                    if ui.selectable_value(&mut o.category, c, crate::i18n::tw(c.label())).changed() {
+                    if ui
+                        .selectable_value(&mut o.category, c, crate::i18n::tw(c.label()))
+                        .changed()
+                    {
                         label = "Object category";
                     }
                 }
