@@ -28,6 +28,7 @@ pub mod levels;
 pub mod library;
 pub mod marks;
 pub mod members;
+pub mod mep;
 pub mod model;
 pub mod modgen;
 pub mod modifiers;

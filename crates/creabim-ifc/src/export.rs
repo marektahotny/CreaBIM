@@ -1909,6 +1909,8 @@ fn member_entity(k: &ElementKind) -> (&'static str, &'static str) {
             creabim_core::FootingKind::Strip => ("IFCFOOTING", ",$,.STRIP_FOOTING."),
             creabim_core::FootingKind::Pad => ("IFCFOOTING", ",$,.PAD_FOOTING."),
         },
+        ElementKind::Pipe(p) if p.kind().is_air() => ("IFCDUCTSEGMENT", ",$,.RIGIDSEGMENT."),
+        ElementKind::Pipe(_) => ("IFCPIPESEGMENT", ",$,.RIGIDSEGMENT."),
         _ => ("IFCRAILING", ",$,.GUARDRAIL."),
     }
 }

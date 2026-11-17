@@ -139,6 +139,7 @@ impl Element {
             ElementKind::Cut(c) => vec![c.target, c.cutter],
             ElementKind::Join(j) => vec![j.a, j.b],
             ElementKind::Detail(d) => vec![d.view],
+            ElementKind::Pipe(p) => vec![p.level],
             ElementKind::Guide(g) => g.level.into_iter().collect(),
             ElementKind::Railing(r) => std::iter::once(r.level)
                 .chain(r.stair.map(|s| s.stair))
@@ -187,6 +188,8 @@ impl Element {
             // drawing rules and drafting, not building elements
             ElementKind::Join(_) => "Join",
             ElementKind::Detail(_) => "DetailItem",
+            ElementKind::Pipe(p) if p.kind().is_air() => "IfcDuctSegment",
+            ElementKind::Pipe(_) => "IfcPipeSegment",
             ElementKind::Guide(_) => "Guide",
             ElementKind::Column(_) => "IfcColumn",
             ElementKind::Beam(_) => "IfcBeam",
@@ -389,6 +392,7 @@ impl Element {
                 }
             }
             ElementKind::Detail(d) => d.validate(),
+            ElementKind::Pipe(p) => p.validate(),
             ElementKind::Cut(c) => {
                 if c.target == c.cutter {
                     Err("an element can't cut itself".into())
@@ -484,6 +488,8 @@ pub enum ElementKind {
     Join(crate::joins::JoinRule),
     /// A detail component drawn in one view: a flashing, a membrane...
     Detail(crate::detail::DetailItem),
+    /// A pipe or duct segment of building services.
+    Pipe(crate::mep::Pipe),
 }
 
 impl ElementKind {
@@ -540,6 +546,7 @@ impl ElementKind {
             ElementKind::Ceiling(_) => "Ceiling",
             ElementKind::Join(_) => "Join",
             ElementKind::Detail(_) => "Detail",
+            ElementKind::Pipe(_) => "Pipe",
         }
     }
 }

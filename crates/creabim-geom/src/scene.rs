@@ -508,7 +508,8 @@ fn build_scene_unjoined(
             | ElementKind::Roof(_)
             | ElementKind::Stair(_)
             | ElementKind::Railing(_)
-            | ElementKind::Footing(_) => match crate::members::member_mesh(model, e) {
+            | ElementKind::Footing(_)
+            | ElementKind::Pipe(_) => match crate::members::member_mesh(model, e) {
                 Some(m) => m,
                 None => continue,
             },
