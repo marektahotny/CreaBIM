@@ -1117,6 +1117,27 @@ impl CreaBimApp {
                     )
                     .on_hover_text("The project's zero above sea level");
                 });
+                crate::props::row(ui, "S-JTSK origin", |ui| {
+                    let mut on = draft.sjtsk.is_some();
+                    if ui
+                        .checkbox(&mut on, "")
+                        .on_hover_text("Where the project's origin (0, 0) lies in S-JTSK (EPSG:5514), east and north")
+                        .changed()
+                    {
+                        draft.sjtsk = on.then_some([0.0, 0.0]);
+                    }
+                    if let Some([e, n]) = &mut draft.sjtsk {
+                        for (v, p) in [(e, "E "), (n, "N ")] {
+                            ui.add(
+                                egui::DragValue::new(v)
+                                    .speed(0.01)
+                                    .max_decimals(3)
+                                    .prefix(p)
+                                    .suffix(" m"),
+                            );
+                        }
+                    }
+                });
                 crate::props::row(ui, "True north", |ui| {
                     ui.add(
                         egui::DragValue::new(&mut draft.true_north)

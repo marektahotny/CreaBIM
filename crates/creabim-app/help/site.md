@@ -20,6 +20,17 @@ New terrain is flat at its level and covered in *Grass* from the material librar
 - A 3D DXF survey (points, 3D polylines, a TIN of 3D faces) makes one the same way: **Terrain from its heights** in the reference's *Properties*, from the layers shown, where the reference is placed.
 - Contours are drawn every 0.25, 0.5 or 1 m, by how much the ground rises. Only the first 40 spot heights are listed in *Properties*.
 
+### A map package
+
+**Map package** on the *Cadastre* tab puts in a ZIP from Pilon Map Downloader, as PilonDesigner does: pick the ZIP with a plan open, and its files are unpacked into a folder of the same name beside it.
+
+- `situacia.dxf` (the cadastre, buildings, networks and contours) becomes a reference in the plan, in metres, where the map puts it.
+- `ortofoto.jpg` with its world file `ortofoto.jgw` becomes a picture reference under the model, placed and sized by the world file. The terrain's fill covers it in the plan: untick *Terrain* under the view's categories to see it.
+- `teren.xyz` becomes a terrain, as with **Terrain from points**, its heights to the project's ±0,000.
+- `bod_pociatku.txt` gives where the project's origin is in S-JTSK (shown in *Project information* as **S-JTSK origin**) and its ±0,000 above sea level (Bpv), which becomes the project's *Elevation* when it has none yet.
+
+When the package has both local and S-JTSK files, the local ones are taken; S-JTSK ones are brought to the origin from `bod_pociatku.txt`. Putting a package in again adds its references and terrain again: remove the old ones.
+
 ### Earthworks
 
 The **Terrain** tool also draws earthworks, as PilonDesigner's terrain edits: pick **Building pit** or **Platform** in its bar, set the bottom (or height) above the level and the slopes 1:n, and draw the outline like a slab.

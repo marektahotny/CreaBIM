@@ -122,6 +122,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "underlay",
                 "Trace over a map or a picture: shown faintly under this view (Alt+F2 hides it)",
             ),
+            act(
+                "map:zip",
+                "Map package",
+                "map",
+                "A ZIP from Pilon Map Downloader: the cadastre and site plan, the orthophoto under it, the terrain, and where the project lies in S-JTSK and above sea level",
+            ),
             Sep,
             T(Tool::Terrain),
             act(

@@ -4679,6 +4679,7 @@ mod reference_grip_tests {
         let mut r = Reference::new(
             RefSource::Dxf {
                 path: "survey.dxf".into(),
+                unit: None,
             },
             vec![],
         );

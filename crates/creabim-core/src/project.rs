@@ -28,6 +28,11 @@ pub struct ProjectInfo {
     pub longitude: Option<f64>,
     /// The project's zero above sea level, metres.
     pub elevation: f64,
+    /// Where the project's origin is in S-JTSK (EPSG:5514): east and
+    /// north, metres, both negative in Slovakia (Pilon Map Downloader's
+    /// bod_pociatku).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sjtsk: Option<[f64; 2]>,
     /// How far true north turns from the drawings' up, degrees anticlockwise.
     pub true_north: f64,
     pub building_name: String,
