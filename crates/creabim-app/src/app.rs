@@ -39,6 +39,8 @@ mod disciplines;
 mod divideui;
 #[path = "drafting.rs"]
 mod drafting;
+#[path = "earthworksui.rs"]
+mod earthworksui;
 #[path = "editui.rs"]
 mod editui;
 #[path = "gridvis.rs"]
@@ -328,6 +330,11 @@ pub struct CreaBimApp {
     discipline: Option<creabim_core::norms::Discipline>,
     /// The water supply calculation's window, while it is open.
     water_calc: Option<Vec<watercalc::SystemCalc>>,
+    /// The schedule of earthworks, while its window is open.
+    earthworks: Option<(
+        Vec<creabim_core::earthworks::Row>,
+        Vec<creabim_core::earthworks::Taken>,
+    )>,
     /// A note open in its own big editor window (MU26).
     note_editor: Option<ElementId>,
     /// A schedule export asked from its header ("csv" or "xlsx").
@@ -491,6 +498,7 @@ impl CreaBimApp {
             project_open: false,
             discipline: None,
             water_calc: None,
+            earthworks: None,
             note_editor: None,
             copy_guides: None,
             overlap_seen: 0,
@@ -11776,6 +11784,7 @@ impl eframe::App for CreaBimApp {
         self.project_window(&ctx);
         self.discipline_window(&ctx);
         self.water_calc_window(&ctx);
+        self.earthworks_window(&ctx);
         self.note_editor_window(&ctx);
         self.ifc_export_window(&ctx);
         self.reference_steps();

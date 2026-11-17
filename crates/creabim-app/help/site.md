@@ -19,6 +19,16 @@ New terrain is flat at its level and covered in *Grass* from the material librar
 - Heights above sea level (Bpv) come to the project's ±0,000: its *Elevation* in *Project information* when set, else the lowest point's whole metre. The status line says where the origin and ±0,000 are.
 - Contours are drawn every 0.25, 0.5 or 1 m, by how much the ground rises. Only the first 40 spot heights are listed in *Properties*.
 
+### Earthworks
+
+The **Terrain** tool also draws earthworks, as PilonDesigner's terrain edits: pick **Building pit** or **Platform** in its bar, set the bottom (or height) above the level and the slopes 1:n, and draw the outline like a slab.
+
+- A **building pit** is dug to its bottom with its sides sloping up to the ground, and back-filled once the building stands: the ground stays as it was. Plans draw its bottom, the slopes' top edge dashed and hachures down the slopes.
+- A **platform** levels the ground at its height with slopes down or up to the ground round it. It changes the terrain for good: the 3D view and the contours follow it.
+- In *Properties*: the kind, bottom or height, slopes and the topsoil stripped first.
+
+**Earthworks** on the *Cadastre* tab opens the schedule of earthworks: topsoil, the cut of platforms, the pit, trenches under strip footings and shafts under pad footings, moving the spoil, back-fill (the pit less the building's underground), fill and the surplus to a tip, each with its KROS/Cenkros code as a guide. Volumes are the ground before less after on its triangulated surface, in cells of 0.5 m. *Copy for a spreadsheet* copies it with semicolons, for Excel or Cenkros.
+
 ## Hard landscape
 
 **Hard landscape** areas are slab-like layers on the ground, each with its own material and surface pattern.

@@ -1021,7 +1021,7 @@
         },
         "top": {
           "type": "number",
-          "description": "Terrain and area: the top above the level.",
+          "description": "Terrain and area: the top above the level; a pit's bottom or a platform's height.",
           "default": 0.0
         },
         "thickness": { "type": "number", "description": "Terrain and area: how deep." },
@@ -1059,6 +1059,15 @@
         "plant": { "$ref": "#/$defs/PlantForm", "default": "tree" },
         "canopy": { "type": "number", "description": "A plant's crown across." },
         "height": { "type": "number", "description": "A plant's height." },
+        "slope": {
+          "type": "number",
+          "description": "A pit's or platform's sides slope 1:n."
+        },
+        "topsoil": {
+          "type": "number",
+          "description": "A pit's or platform's topsoil stripped first, metres.",
+          "default": 0.0
+        },
         "material": { "type": "string" }
       },
       "required": ["id", "kind", "level"],
@@ -1067,7 +1076,7 @@
     "SiteKind": {
       "type": "string",
       "description": "What a site element is.",
-      "enum": ["terrain", "area", "plant"]
+      "enum": ["terrain", "area", "plant", "pit", "platform"]
     },
     "SitePattern": {
       "type": "object",

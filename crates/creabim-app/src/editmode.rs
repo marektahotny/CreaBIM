@@ -173,6 +173,9 @@ pub fn rings(model: &Model, e: &Element) -> Vec<RingInfo> {
                     out.extend(holes(h, z + top));
                     out
                 }
+                SiteForm::Earthwork {
+                    boundary, bottom, ..
+                } => vec![flat(Ring::Outline, boundary, z + bottom)],
                 SiteForm::Plant { .. } => vec![],
             }
         }
@@ -335,7 +338,8 @@ pub fn ring_mut(kind: &mut ElementKind, ring: Ring) -> Option<&mut Vec<DVec2>> {
         },
         (ElementKind::Site(s), ring) => match (&mut s.form, ring) {
             (SiteForm::Terrain { boundary, .. }, Ring::Outline)
-            | (SiteForm::Area { boundary, .. }, Ring::Outline) => Some(boundary),
+            | (SiteForm::Area { boundary, .. }, Ring::Outline)
+            | (SiteForm::Earthwork { boundary, .. }, Ring::Outline) => Some(boundary),
             (SiteForm::Area { holes, .. }, Ring::Hole(k)) => holes.get_mut(k),
             _ => None,
         },
@@ -730,7 +734,9 @@ fn shape_problem(e: &Element, disc: bool) -> Option<String> {
             Form::Sweep { .. } => return None,
         },
         ElementKind::Site(s) => match &s.form {
-            SiteForm::Terrain { boundary, .. } => (boundary.clone(), true, vec![]),
+            SiteForm::Terrain { boundary, .. } | SiteForm::Earthwork { boundary, .. } => {
+                (boundary.clone(), true, vec![])
+            }
             SiteForm::Area {
                 boundary, holes, ..
             } => (boundary.clone(), true, holes.clone()),

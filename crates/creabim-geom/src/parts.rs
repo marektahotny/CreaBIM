@@ -206,6 +206,8 @@ fn signed_area(p: &[DVec2]) -> f64 {
 
 /// The triangles of a terrain's top surface, in model coordinates.
 pub fn terrain_top(model: &Model, s: &Site) -> Vec<[DVec3; 3]> {
+    let edited = edited(model, s);
+    let s = edited.as_ref().unwrap_or(s);
     let SiteForm::Terrain {
         boundary, points, ..
     } = &s.form
@@ -225,98 +227,26 @@ pub fn terrain_top(model: &Model, s: &Site) -> Vec<[DVec3; 3]> {
         .collect()
 }
 
-/// A triangulation of `boundary` with `inner` points added as corners,
-/// its edges flipped towards a Delaunay triangulation.
 fn refine(boundary: &[DVec2], inner: &[DVec2]) -> (Vec<DVec2>, Vec<[usize; 3]>) {
-    let mut verts = boundary.to_vec();
-    let mut tris = triangulate(boundary);
-    let n0 = verts.len();
-    let ccw = |t: &[usize; 3], v: &[DVec2]| (v[t[1]] - v[t[0]]).perp_dot(v[t[2]] - v[t[0]]) > 0.0;
-    for t in tris.iter_mut() {
-        if !ccw(t, &verts) {
-            t.swap(1, 2);
-        }
-    }
-    for p in inner {
-        let Some(i) = tris.iter().position(|t| {
-            let [a, b, c] = t.map(|i| verts[i]);
-            (b - a).perp_dot(*p - a) >= 0.0
-                && (c - b).perp_dot(*p - b) >= 0.0
-                && (a - c).perp_dot(*p - c) >= 0.0
-        }) else {
-            continue;
-        };
-        if verts.iter().any(|v| v.distance(*p) < 1e-3) {
-            continue;
-        }
-        let k = verts.len();
-        verts.push(*p);
-        let [a, b, c] = tris[i];
-        tris[i] = [a, b, k];
-        tris.push([b, c, k]);
-        tris.push([c, a, k]);
-    }
-    // Lawson flips: an interior edge whose opposite corner falls inside
-    // the other triangle's circumcircle is swapped
-    let in_circle = |a: DVec2, b: DVec2, c: DVec2, d: DVec2| {
-        let (ax, ay) = (a.x - d.x, a.y - d.y);
-        let (bx, by) = (b.x - d.x, b.y - d.y);
-        let (cx, cy) = (c.x - d.x, c.y - d.y);
-        (ax * ax + ay * ay) * (bx * cy - cx * by) - (bx * bx + by * by) * (ax * cy - cx * ay)
-            + (cx * cx + cy * cy) * (ax * by - bx * ay)
-            > 1e-12
-    };
-    let boundary_edge =
-        |a: usize, b: usize| a < n0 && b < n0 && ((a + 1) % n0 == b || (b + 1) % n0 == a);
-    // each directed edge to the triangle it runs round; edges to check
-    // are kept on a stack, so a flip looks again only at its neighbours
-    let mut edges: std::collections::HashMap<(usize, usize), usize> = Default::default();
-    let mut stack: Vec<(usize, usize)> = vec![];
-    for (i, t) in tris.iter().enumerate() {
-        for e in 0..3 {
-            edges.insert((t[e], t[(e + 1) % 3]), i);
-            stack.push((t[e], t[(e + 1) % 3]));
-        }
-    }
-    let third = |t: &[usize; 3], a: usize, b: usize| t.iter().copied().find(|&v| v != a && v != b);
-    let mut budget = 64 * tris.len().max(1);
-    while let Some((a, b)) = stack.pop() {
-        if budget == 0 {
-            break;
-        }
-        budget -= 1;
-        if boundary_edge(a, b) {
-            continue;
-        }
-        let (Some(&i), Some(&j)) = (edges.get(&(a, b)), edges.get(&(b, a))) else {
-            continue;
-        };
-        let (Some(c), Some(d)) = (third(&tris[i], a, b), third(&tris[j], a, b)) else {
-            continue;
-        };
-        let (pa, pb, pc, pd) = (verts[a], verts[b], verts[c], verts[d]);
-        // only a convex quad can flip
-        let convex = (pd - pc).perp_dot(pa - pc) * (pd - pc).perp_dot(pb - pc) < 0.0;
-        if convex && in_circle(pa, pb, pc, pd) {
-            edges.remove(&(a, b));
-            edges.remove(&(b, a));
-            tris[i] = [c, a, d];
-            tris[j] = [d, b, c];
-            for (k, t) in [(i, tris[i]), (j, tris[j])] {
-                for e in 0..3 {
-                    edges.insert((t[e], t[(e + 1) % 3]), k);
-                }
-            }
-            stack.extend([(a, d), (d, b), (b, c), (c, a)]);
-        }
-    }
-    (verts, tris)
+    creabim_core::site::tin(boundary, inner)
 }
 
 /// A terrain's solid: its top surface, sides down to a flat underside
 /// `thickness` below its lowest point. A flat one leaves room for the
 /// hard landscape lying in it.
+/// A terrain as the platforms on it leave it; none when none do.
+fn edited(model: &Model, s: &Site) -> Option<Site> {
+    let pts = creabim_core::earthworks::edited_points(model, s)?;
+    let mut t = s.clone();
+    if let SiteForm::Terrain { points, .. } = &mut t.form {
+        *points = pts;
+    }
+    Some(t)
+}
+
 fn terrain_mesh(model: &Model, s: &Site) -> TriMesh {
+    let edited = edited(model, s);
+    let s = edited.as_ref().unwrap_or(s);
     let SiteForm::Terrain {
         boundary,
         top,
@@ -534,6 +464,8 @@ pub fn site_meshes(model: &Model, s: &Site) -> Vec<(TriMesh, [f32; 3], bool)> {
                 true,
             )]
         }
+        // a pit is dug and filled again; a platform shapes the terrain
+        SiteForm::Earthwork { .. } => vec![],
         SiteForm::Plant { .. } => plant_meshes(model, s),
     }
 }
@@ -826,6 +758,55 @@ fn site_plan(model: &Model, id: ElementId, s: &Site) -> Vec<PlanItem> {
                     a,
                     b,
                 });
+            }
+        }
+        SiteForm::Earthwork { boundary, .. } => {
+            // the bottom (a pit's) or the platform's edge, the slopes' top
+            // edge dashed, and hachures down the slopes, long and short
+            loop_lines(&mut out, id, Pen::Projection, boundary);
+            let g = model.iter().find_map(|e| match &e.kind {
+                ElementKind::Site(t)
+                    if boundary.iter().any(|p| {
+                        t.boundary()
+                            .is_some_and(|b| creabim_core::polygon::contains(b, *p))
+                            && matches!(t.form, SiteForm::Terrain { .. })
+                    }) =>
+                {
+                    creabim_core::earthworks::Ground::of(model, t)
+                }
+                _ => None,
+            });
+            if let (Some(g), Some(w)) = (g, creabim_core::earthworks::Work::of(model, s)) {
+                let ring = creabim_core::earthworks::slope_ring(&w, &g);
+                let n = ring.len();
+                for (i, (q, top, _)) in ring.iter().enumerate() {
+                    let next = ring[(i + 1) % n].1;
+                    if top.distance(*q) > 0.05 || next.distance(ring[(i + 1) % n].0) > 0.05 {
+                        out.push(PlanItem::Line {
+                            id,
+                            pen: Pen::Hidden,
+                            a: *top,
+                            b: next,
+                        });
+                    }
+                    let l = top.distance(*q);
+                    if l > 0.05 {
+                        // a pit's slopes fall inwards, a platform's away
+                        // from it when it stands above the ground
+                        let k = if i % 2 == 0 { 1.0 } else { 0.5 };
+                        let (hi, lo) = if w.pit || w.z < g.at(*top).unwrap_or(w.z) {
+                            (*top, *q)
+                        } else {
+                            (*q, *top)
+                        };
+                        out.push(PlanItem::Line {
+                            id,
+                            pen: Pen::Fine,
+                            a: hi,
+                            b: hi + (lo - hi) * k,
+                        });
+                    }
+                }
             }
         }
         SiteForm::Plant {

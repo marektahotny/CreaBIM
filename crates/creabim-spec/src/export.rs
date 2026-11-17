@@ -902,6 +902,8 @@ fn site_element(e: &Element, id: &str, s: &site::Site, ids: &Ids) -> f::SiteElem
         plant: f::PlantForm::Tree,
         canopy: None,
         height: None,
+        slope: None,
+        topsoil: 0.0,
         material: ids.of(s.material),
     };
     match &s.form {
@@ -959,6 +961,23 @@ fn site_element(e: &Element, id: &str, s: &site::Site, ids: &Ids) -> f::SiteElem
                     ..p(f::PatternKind::Stipple)
                 }),
             };
+        }
+        site::SiteForm::Earthwork {
+            boundary,
+            bottom,
+            slope,
+            pit,
+            topsoil,
+        } => {
+            out.kind = if *pit {
+                f::SiteKind::Pit
+            } else {
+                f::SiteKind::Platform
+            };
+            out.outline = boundary.clone();
+            out.top = *bottom;
+            out.slope = Some(*slope);
+            out.topsoil = *topsoil;
         }
         site::SiteForm::Plant {
             position,
