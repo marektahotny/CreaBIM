@@ -22,7 +22,7 @@ New terrain is flat at its level and covered in *Grass* from the material librar
 
 ### Map underlays
 
-**Map underlays** on the *Cadastre* tab opens Pilon Map Downloader's site (mapy.pilondesign.eu) in a window of the app, as PilonDesigner does. Find the place, pick the area and what to take, and send it with the map's **Vložiť do Revitu** button: the app answers the map as Revit's Pilon Map Link does. The site plan, the orthophoto and the terrain come into the plan that is open, and the project is placed in S-JTSK, as with a map package below. The files are kept in a folder beside the project's file.
+**Map underlays** on the *Cadastre* tab opens Pilon Map Downloader's site (mapy.pilondesign.eu) in a window of the app, as PilonDesigner does. Find the place, pick the area and what to take, and send it with the map's **Odoslať do CreaBIM** button (the app answers the map as Revit's Pilon Map Link does). The site plan, the orthophoto and the terrain come into the plan that is open, and the project is placed in S-JTSK, as with a map package below. The files are kept in a folder beside the project's file.
 
 The app listens for the map on this computer only, and answers the map's own site only.
 

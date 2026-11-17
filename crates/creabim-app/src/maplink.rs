@@ -340,7 +340,7 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 ui.label(
                     egui::RichText::new(t(
-                        "Pick the area and what to take, then send it with the map's Revit button (Vložiť do Revitu): it comes here, into the plan open.",
+                        "Pick the area and what to take, then send it with the map's button (Odoslať do CreaBIM): it comes here, into the plan open.",
                     ))
                     .weak(),
                 );
