@@ -388,6 +388,408 @@ impl Pipe {
     }
 }
 
+/// Which pipes a valve or accessory goes on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValveMedium {
+    Water,
+    Heating,
+    Cooling,
+    Fire,
+    Gas,
+    MedGas,
+    Drain,
+    Air,
+}
+
+impl ValveMedium {
+    /// The medium of a system's pipes.
+    pub fn of(kind: SystemKind) -> Option<ValveMedium> {
+        Some(match kind {
+            SystemKind::ColdWater | SystemKind::HotWater | SystemKind::Circulation => {
+                ValveMedium::Water
+            }
+            SystemKind::Sanitary | SystemKind::Storm => ValveMedium::Drain,
+            SystemKind::FireWater => ValveMedium::Fire,
+            SystemKind::Gas => ValveMedium::Gas,
+            SystemKind::HeatingSupply | SystemKind::HeatingReturn => ValveMedium::Heating,
+            SystemKind::CoolingSupply | SystemKind::CoolingReturn => ValveMedium::Cooling,
+            SystemKind::MedGas => ValveMedium::MedGas,
+            SystemKind::AirSupply | SystemKind::AirExhaust => ValveMedium::Air,
+            SystemKind::Flue | SystemKind::Other => return None,
+        })
+    }
+}
+
+/// A kind of valve or pipe accessory (PilonDesigner's `VALVE_KINDS`, the
+/// accessory roles of the Pilon Hydraulika core).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ValveKind {
+    /// Its code, as files keep it ("uzaver", "cistiaci"...).
+    pub code: &'static str,
+    /// Its name, in Slovak.
+    pub name: &'static str,
+    /// Local loss coefficient ζ.
+    pub zeta: Option<f64>,
+    /// A fixed pressure loss, kPa (a water meter, a pressure reducer).
+    pub dp_kpa: Option<f64>,
+    pub media: &'static [ValveMedium],
+    /// IFC 4 entity and predefined type.
+    pub ifc: (&'static str, &'static str),
+    /// The standards it is designed to.
+    pub norm: &'static str,
+    /// The end of a run (a gas appliance, a medical gas outlet).
+    pub terminal: bool,
+    /// Without effect on the hydraulic calculation (a vent cap, a
+    /// cleanout).
+    pub nocalc: bool,
+}
+
+const fn vk(
+    code: &'static str,
+    name: &'static str,
+    zeta: Option<f64>,
+    dp_kpa: Option<f64>,
+    media: &'static [ValveMedium],
+    ifc: (&'static str, &'static str),
+    norm: &'static str,
+) -> ValveKind {
+    ValveKind {
+        code,
+        name,
+        zeta,
+        dp_kpa,
+        media,
+        ifc,
+        norm,
+        terminal: false,
+        nocalc: false,
+    }
+}
+
+const fn terminal(k: ValveKind) -> ValveKind {
+    ValveKind {
+        terminal: true,
+        ..k
+    }
+}
+
+const fn nocalc(k: ValveKind) -> ValveKind {
+    ValveKind { nocalc: true, ..k }
+}
+
+use ValveMedium as M;
+
+/// The valves and accessories, in PilonDesigner's order.
+pub const VALVE_KINDS: &[ValveKind] = &[
+    vk(
+        "uzaver",
+        "Guľový uzáver",
+        Some(0.3),
+        None,
+        &[M::Water, M::Heating, M::Cooling, M::Fire, M::MedGas],
+        ("IfcValve", "ISOLATING"),
+        "STN EN 13828",
+    ),
+    vk(
+        "rohovy",
+        "Rohový ventil (pripojenie predmetu)",
+        Some(3.0),
+        None,
+        &[M::Water],
+        ("IfcValve", "ISOLATING"),
+        "STN EN 806-2, STN EN 200",
+    ),
+    vk(
+        "spatna",
+        "Spätná klapka",
+        Some(3.0),
+        None,
+        &[M::Water, M::Heating, M::Cooling, M::Fire],
+        ("IfcValve", "CHECK"),
+        "STN EN 13959",
+    ),
+    vk(
+        "filter",
+        "Filter (lapač nečistôt)",
+        Some(3.0),
+        None,
+        &[M::Water, M::Heating, M::Cooling, M::Gas],
+        ("IfcFilter", "STRAINER"),
+        "STN EN 13443-1",
+    ),
+    vk(
+        "redukcny",
+        "Redukčný ventil tlaku",
+        None,
+        Some(0.0),
+        &[M::Water, M::Fire],
+        ("IfcValve", "PRESSUREREDUCING"),
+        "STN EN 1567",
+    ),
+    vk(
+        "vyvazovaci",
+        "Vyvažovací / cirkulačný ventil",
+        Some(2.0),
+        None,
+        &[M::Water, M::Heating, M::Cooling],
+        ("IfcValve", "REGULATING"),
+        "",
+    ),
+    vk(
+        "termostaticky",
+        "Termostatický ventil (vykurovacie teleso)",
+        Some(8.0),
+        None,
+        &[M::Heating],
+        ("IfcValve", "REGULATING"),
+        "STN EN 215",
+    ),
+    vk(
+        "spiatocka",
+        "Ventil do spiatočky (regulačné šróbenie)",
+        Some(2.0),
+        None,
+        &[M::Heating],
+        ("IfcValve", "ISOLATING"),
+        "STN EN 215",
+    ),
+    vk(
+        "rtd",
+        "Regulátor tlakovej diferencie",
+        Some(0.0),
+        None,
+        &[M::Heating, M::Cooling],
+        ("IfcValve", "REGULATING"),
+        "",
+    ),
+    vk(
+        "vodomer",
+        "Vodomer",
+        None,
+        Some(20.0),
+        &[M::Water],
+        ("IfcFlowMeter", "WATERMETER"),
+        "STN EN ISO 4064",
+    ),
+    vk(
+        "kohut",
+        "Plynový guľový kohút",
+        Some(0.3),
+        None,
+        &[M::Gas],
+        ("IfcValve", "GASCOCK"),
+        "STN EN 331",
+    ),
+    vk(
+        "hup",
+        "Skrinka HUP (hlavný uzáver plynu)",
+        Some(0.0),
+        None,
+        &[M::Gas],
+        ("IfcValve", "ISOLATING"),
+        "TPP 609 01, STN EN 1775",
+    ),
+    vk(
+        "plynomer",
+        "Plynomer",
+        Some(0.0),
+        None,
+        &[M::Gas],
+        ("IfcFlowMeter", "GASMETER"),
+        "STN EN 1359",
+    ),
+    vk(
+        "regulator",
+        "Regulátor tlaku plynu",
+        Some(0.0),
+        None,
+        &[M::Gas],
+        ("IfcValve", "PRESSUREREDUCING"),
+        "STN EN 88-1",
+    ),
+    vk(
+        "tap",
+        "Termický uzáver (TAP)",
+        Some(1.0),
+        None,
+        &[M::Gas],
+        ("IfcValve", "SAFETYCUTOFF"),
+        "TPP 704 01",
+    ),
+    vk(
+        "krabica",
+        "Uzáverová (ventilová) skrinka",
+        Some(3.0),
+        None,
+        &[M::MedGas],
+        ("IfcValve", "ISOLATING"),
+        "STN EN ISO 7396-1",
+    ),
+    terminal(vk(
+        "spotrebic",
+        "Plynový spotrebič",
+        None,
+        None,
+        &[M::Gas],
+        ("IfcBurner", "NOTDEFINED"),
+        "TPP 704 01",
+    )),
+    nocalc(vk(
+        "hlavica",
+        "Odvetrávacia hlavica",
+        None,
+        None,
+        &[M::Drain],
+        ("IfcPipeFitting", "USERDEFINED"),
+        "STN EN 12056-2, STN 75 6760",
+    )),
+    nocalc(vk(
+        "cistiaci",
+        "Čistiaci kus",
+        None,
+        None,
+        &[M::Drain],
+        ("IfcPipeFitting", "USERDEFINED"),
+        "STN EN 12056-2, STN 75 6760",
+    )),
+    terminal(vk(
+        "vpust",
+        "Strešná vpusť / zvod zo žľabu",
+        None,
+        None,
+        &[M::Drain],
+        ("IfcWasteTerminal", "ROOFDRAIN"),
+        "STN EN 1253, STN EN 12056-3",
+    )),
+    terminal(vk(
+        "hydrant",
+        "Hydrant (hadicové zariadenie)",
+        None,
+        None,
+        &[M::Fire],
+        ("IfcFireSuppressionTerminal", "FIREHYDRANT"),
+        "STN EN 671-1, STN EN 671-2, STN 92 0400",
+    )),
+    terminal(vk(
+        "vyustP",
+        "Prívodná vyústka / tanierový ventil",
+        None,
+        None,
+        &[M::Air],
+        ("IfcAirTerminal", "DIFFUSER"),
+        "STN EN 12238, STN EN 16798-3",
+    )),
+    terminal(vk(
+        "vyustO",
+        "Odvodný tanierový ventil / mriežka",
+        None,
+        None,
+        &[M::Air],
+        ("IfcAirTerminal", "GRILLE"),
+        "STN EN 12238, STN EN 16798-3",
+    )),
+    vk(
+        "klapkaReg",
+        "Regulačná klapka",
+        None,
+        None,
+        &[M::Air],
+        ("IfcDamper", "CONTROLDAMPER"),
+        "STN EN 1751",
+    ),
+    vk(
+        "klapkaPoz",
+        "Protipožiarna klapka",
+        None,
+        None,
+        &[M::Air],
+        ("IfcDamper", "FIREDAMPER"),
+        "STN EN 15650, STN 73 0872",
+    ),
+    vk(
+        "tlmic",
+        "Tlmič hluku",
+        None,
+        None,
+        &[M::Air],
+        ("IfcDuctSilencer", "NOTDEFINED"),
+        "STN EN ISO 7235",
+    ),
+    vk(
+        "filterVzt",
+        "Filter vzduchu",
+        None,
+        None,
+        &[M::Air],
+        ("IfcFilter", "AIRPARTICLEFILTER"),
+        "STN EN ISO 16890",
+    ),
+    terminal(vk(
+        "vyvod",
+        "Vývod med. plynu (koncová jednotka)",
+        None,
+        None,
+        &[M::MedGas],
+        ("IfcMedicalDevice", "NOTDEFINED"),
+        "STN EN ISO 9170-1",
+    )),
+];
+
+/// A valve kind by its code.
+pub fn valve_kind(code: &str) -> Option<&'static ValveKind> {
+    VALVE_KINDS.iter().find(|k| k.code == code)
+}
+
+/// The valves that go on a system's pipes; the first is the usual one.
+pub fn valves_for(kind: SystemKind) -> Vec<&'static ValveKind> {
+    let Some(m) = ValveMedium::of(kind) else {
+        return vec![];
+    };
+    VALVE_KINDS
+        .iter()
+        .filter(|k| k.media.contains(&m))
+        .collect()
+}
+
+/// A valve or accessory on a pipe: it sits at `t` along it (0 its start,
+/// 1 its end) and moves with it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Valve {
+    pub pipe: ElementId,
+    pub t: f64,
+    /// Its kind's code (see [`VALVE_KINDS`]).
+    pub kind: String,
+}
+
+impl Valve {
+    pub fn kind_def(&self) -> Option<&'static ValveKind> {
+        valve_kind(&self.kind)
+    }
+
+    /// Its host pipe.
+    pub fn host<'a>(&self, model: &'a crate::Model) -> Option<&'a Pipe> {
+        match model.get(self.pipe).map(|e| &e.kind) {
+            Some(crate::ElementKind::Pipe(p)) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Where it is on its pipe, level-relative as the pipe's ends.
+    pub fn at(&self, pipe: &Pipe) -> DVec3 {
+        pipe.start.lerp(pipe.end, self.t)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !(self.t.is_finite() && (0.0..=1.0).contains(&self.t)) {
+            return Err("a valve sits on its pipe, between its ends".into());
+        }
+        if self.kind.is_empty() {
+            return Err("a valve needs a kind".into());
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,5 +840,36 @@ mod tests {
         let j = serde_json::to_string(&p).unwrap();
         assert!(!j.contains("insulation_mm") && !j.contains("height_mm"));
         assert_eq!(serde_json::from_str::<Pipe>(&j).unwrap(), p);
+    }
+
+    #[test]
+    fn valves_are_pilon_designers_and_sit_on_their_pipe() {
+        assert_eq!(VALVE_KINDS.len(), 28);
+        let mut codes: Vec<_> = VALVE_KINDS.iter().map(|k| k.code).collect();
+        codes.sort();
+        codes.dedup();
+        assert_eq!(codes.len(), VALVE_KINDS.len());
+        // each medium is offered its own
+        let water: Vec<_> = valves_for(SystemKind::ColdWater)
+            .iter()
+            .map(|k| k.code)
+            .collect();
+        assert!(water.contains(&"uzaver") && water.contains(&"vodomer"));
+        assert!(!water.contains(&"cistiaci"));
+        let drain: Vec<_> = valves_for(SystemKind::Sanitary)
+            .iter()
+            .map(|k| k.code)
+            .collect();
+        assert!(drain.contains(&"cistiaci") && drain.contains(&"hlavica"));
+        let p = pipe(DVec3::new(0.0, 0.0, 0.3), DVec3::new(4.0, 0.0, 0.3));
+        let mut v = Valve {
+            pipe: ElementId::new(),
+            t: 0.25,
+            kind: "uzaver".into(),
+        };
+        assert_eq!(v.at(&p), DVec3::new(1.0, 0.0, 0.3));
+        assert!(v.validate().is_ok());
+        v.t = 1.2;
+        assert!(v.validate().is_err());
     }
 }

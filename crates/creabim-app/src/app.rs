@@ -9137,6 +9137,7 @@ impl CreaBimApp {
         };
         let mut redraw = false;
         let mut new_style = false;
+        let mut add_valve: Option<&'static str> = None;
         let show_visibility = matches!(e.kind, ElementKind::View(_));
         let mut object_type = false;
         // a placed view's new scale: (its view, the scale)
@@ -10439,6 +10440,13 @@ impl CreaBimApp {
                     if !l.is_empty() {
                         label = l;
                     }
+                    add_valve = crate::pipesui::valve_add(ui, p);
+                }
+                ElementKind::Valve(v) => {
+                    let l = crate::pipesui::valve_fields(ui, self.doc.model(), v);
+                    if !l.is_empty() {
+                        label = l;
+                    }
                 }
                 ElementKind::Guide(g) => {
                     ui.label(
@@ -10456,6 +10464,25 @@ impl CreaBimApp {
                     }
                 }
             }
+        }
+        if let Some(code) = add_valve {
+            let name = creabim_core::mep::valve_kind(code).map_or(code, |k| k.name);
+            let valve = creabim_core::mep::Valve {
+                pipe: edited.id,
+                t: crate::pipesui::valve_place(self.doc.model(), edited.id),
+                kind: code.into(),
+            };
+            let v = Element::new(crate::i18n::tr(name), ElementKind::Valve(valve));
+            let id = v.id;
+            match self.doc.commit(Transaction::new("Add valve").insert(v)) {
+                Ok(_) => {
+                    self.selection.only(id);
+                    self.status =
+                        format!("{}: {}.", crate::i18n::tr("Added"), crate::i18n::tr(name));
+                }
+                Err(e) => self.status = format!("Couldn't do that: {e}"),
+            }
+            return;
         }
         if new_style {
             match crate::annotate::new_text_style(&mut self.doc) {
@@ -12375,6 +12402,7 @@ pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::Detail(_) => "detail component",
         ElementKind::Pipe(p) if p.kind().is_air() => "duct",
         ElementKind::Pipe(_) => "pipe",
+        ElementKind::Valve(_) => "valve",
         ElementKind::Ceiling(_) => "ceiling",
         ElementKind::ElementType(_) => "type",
         ElementKind::Shaft(_) => "shaft",

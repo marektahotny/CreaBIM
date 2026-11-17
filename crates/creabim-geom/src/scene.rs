@@ -513,6 +513,10 @@ fn build_scene_unjoined(
                 Some(m) => m,
                 None => continue,
             },
+            ElementKind::Valve(v) => match crate::valves::valve_mesh(model, v) {
+                Some(m) => m,
+                None => continue,
+            },
         };
         // a material's look wins over the element type's default
         let (color, surface) = creabim_core::material_of(model, e)

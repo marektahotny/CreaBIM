@@ -61,6 +61,101 @@ fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
     })
 }
 
+/// "Add valve or accessory" under a pipe's fields: the kinds its medium
+/// takes; the one picked.
+pub fn valve_add(ui: &mut egui::Ui, p: &Pipe) -> Option<&'static str> {
+    let kinds = creabim_core::mep::valves_for(p.kind());
+    if kinds.is_empty() {
+        return None;
+    }
+    let mut picked = None;
+    let width = ui.available_width().min(220.0);
+    crate::app::helpui::combo(ui, "Add valve")
+        .selected_text(crate::i18n::tr("Valve or accessory…"))
+        .width(width)
+        .show_ui(ui, |ui| {
+            for k in kinds {
+                let r = ui.selectable_label(false, crate::i18n::tr(k.name));
+                let r = if k.norm.is_empty() {
+                    r
+                } else {
+                    r.on_hover_text(k.norm)
+                };
+                if r.clicked() {
+                    picked = Some(k.code);
+                }
+            }
+        });
+    picked
+}
+
+/// Where a new valve goes on the pipe `id`: its middle, or the widest
+/// free stretch between the valves already on it.
+pub fn valve_place(model: &creabim_core::Model, id: creabim_core::ElementId) -> f64 {
+    let mut ts: Vec<f64> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Valve(v) if v.pipe == id => Some(v.t),
+            _ => None,
+        })
+        .collect();
+    ts.extend([0.0, 1.0]);
+    ts.sort_by(f64::total_cmp);
+    ts.windows(2)
+        .max_by(|a, b| (a[1] - a[0]).total_cmp(&(b[1] - b[0])))
+        .map_or(0.5, |w| (w[0] + w[1]) / 2.0)
+}
+
+/// A valve's fields; the name of the change, or "" for none.
+pub fn valve_fields(
+    ui: &mut egui::Ui,
+    model: &creabim_core::Model,
+    v: &mut creabim_core::mep::Valve,
+) -> &'static str {
+    let mut label = "";
+    let Some(pipe) = v.host(model) else {
+        return label;
+    };
+    let width = ui.available_width().min(220.0);
+    let this = v.kind_def();
+    crate::app::helpui::combo(ui, "Kind")
+        .selected_text(this.map_or(v.kind.clone(), |k| crate::i18n::tr(k.name)))
+        .width(width)
+        .show_ui(ui, |ui| {
+            for k in creabim_core::mep::valves_for(pipe.kind()) {
+                if ui
+                    .selectable_label(v.kind == k.code, crate::i18n::tr(k.name))
+                    .clicked()
+                    && v.kind != k.code
+                {
+                    v.kind = k.code.into();
+                    label = "Valve kind";
+                }
+            }
+        });
+    // along the pipe, from its start
+    let len = pipe.start.distance(pipe.end);
+    let mut at = v.t * len;
+    if len > 1e-6 && num(ui, "From the pipe's start", &mut at, 0.0, len) {
+        v.t = (at / len).clamp(0.0, 1.0);
+        label = "Move valve";
+    }
+    if let Some(k) = this {
+        crate::props::row(ui, "System", |ui| {
+            ui.label(format!("{} DN {:.0}", pipe.system, pipe.nominal_mm))
+        });
+        if let Some(z) = k.zeta {
+            crate::props::row(ui, "Loss coefficient ζ", |ui| {
+                ui.label(crate::i18n::num(z, 1))
+            });
+        }
+        if !k.norm.is_empty() {
+            crate::props::row(ui, "Standard", |ui| ui.label(k.norm));
+        }
+    }
+    label
+}
+
 /// The pipe's fields; the name of the change, or "" for none.
 pub fn pipe_fields(ui: &mut egui::Ui, p: &mut Pipe) -> &'static str {
     let mut label = "";

@@ -140,6 +140,8 @@ impl Element {
             ElementKind::Join(j) => vec![j.a, j.b],
             ElementKind::Detail(d) => vec![d.view],
             ElementKind::Pipe(p) => vec![p.level],
+            // a valve goes with its pipe
+            ElementKind::Valve(v) => vec![v.pipe],
             ElementKind::Guide(g) => g.level.into_iter().collect(),
             ElementKind::Railing(r) => std::iter::once(r.level)
                 .chain(r.stair.map(|s| s.stair))
@@ -190,6 +192,7 @@ impl Element {
             ElementKind::Detail(_) => "DetailItem",
             ElementKind::Pipe(p) if p.kind().is_air() => "IfcDuctSegment",
             ElementKind::Pipe(_) => "IfcPipeSegment",
+            ElementKind::Valve(v) => v.kind_def().map_or("IfcValve", |k| k.ifc.0),
             ElementKind::Guide(_) => "Guide",
             ElementKind::Column(_) => "IfcColumn",
             ElementKind::Beam(_) => "IfcBeam",
@@ -394,6 +397,7 @@ impl Element {
             }
             ElementKind::Detail(d) => d.validate(),
             ElementKind::Pipe(p) => p.validate(),
+            ElementKind::Valve(v) => v.validate(),
             ElementKind::Cut(c) => {
                 if c.target == c.cutter {
                     Err("an element can't cut itself".into())
@@ -491,6 +495,8 @@ pub enum ElementKind {
     Detail(crate::detail::DetailItem),
     /// A pipe or duct segment of building services.
     Pipe(crate::mep::Pipe),
+    /// A valve or accessory on a pipe.
+    Valve(crate::mep::Valve),
 }
 
 impl ElementKind {
@@ -548,6 +554,7 @@ impl ElementKind {
             ElementKind::Join(_) => "Join",
             ElementKind::Detail(_) => "Detail",
             ElementKind::Pipe(_) => "Pipe",
+            ElementKind::Valve(_) => "Valve",
         }
     }
 }

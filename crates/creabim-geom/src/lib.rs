@@ -35,6 +35,7 @@ pub mod section;
 pub mod sheet;
 pub mod slice;
 pub mod triangulate;
+pub mod valves;
 pub mod wall;
 pub mod xlsx;
 
