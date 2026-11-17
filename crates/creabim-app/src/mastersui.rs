@@ -2120,28 +2120,28 @@ impl CreaBimApp {
                 .fixed_pos(body.left_top() + egui::vec2(16.0, 12.0))
                 .show(ui.ctx(), |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
-                        ui.label(egui::RichText::new("Your own field").strong());
+                        ui.label(egui::RichText::new(crate::i18n::t("Your own field")).strong());
                         let r = ui.add(
                             egui::TextEdit::singleline(&mut name)
                                 .vertical_align(egui::Align::Center)
-                                .hint_text("client, drawn by, checked…")
+                                .hint_text(crate::i18n::t("client, drawn by, checked…"))
                                 .desired_width(200.0),
                         );
                         r.request_focus();
                         ui.horizontal(|ui| {
-                            add = ui.button("Add and place").clicked()
+                            add = ui.button(crate::i18n::t("Add and place")).clicked()
                                 || (r.lost_focus()
                                     && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-                            if ui.button("Cancel").clicked()
+                            if ui.button(crate::i18n::t("Cancel")).clicked()
                                 || ui.input(|i| i.key_pressed(egui::Key::Escape))
                             {
                                 keep = false;
                             }
                         });
                         ui.label(
-                            egui::RichText::new(
+                            egui::RichText::new(crate::i18n::t(
                                 "Each sheet fills it in; it shows its default until then.",
-                            )
+                            ))
                             .small()
                             .weak(),
                         );
@@ -2256,9 +2256,9 @@ impl CreaBimApp {
                     })
             })
             .response
-            .on_hover_text(
+            .on_hover_text(crate::i18n::t(
                 "The sheet corner its drawing is measured from: it stays there on any paper",
-            );
+            ));
             if corner != t.corner {
                 // the drawing stays where it is on the sheet
                 let d = t.corner.at(size.x, size.y) - corner.at(size.x, size.y);
@@ -2329,7 +2329,7 @@ impl CreaBimApp {
                             egui::TextEdit::singleline(draft)
                                 .vertical_align(egui::Align::Center)
                                 .desired_width(w)
-                                .hint_text("Until a sheet fills it")
+                                .hint_text(crate::i18n::t("Until a sheet fills it"))
                                 .id(master_field_id(id, f)),
                         );
                         if r.lost_focus() && *draft != *v {
@@ -2358,7 +2358,7 @@ impl CreaBimApp {
                     egui::TextEdit::singleline(&mut new)
                         .vertical_align(egui::Align::Center)
                         .desired_width(ui.available_width())
-                        .hint_text("client, drawn by, revision…"),
+                        .hint_text(crate::i18n::t("client, drawn by, revision…")),
                 );
                 r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
             });
@@ -2483,7 +2483,7 @@ impl CreaBimApp {
                         egui::DragValue::new(&mut m[k])
                             .range(0.0..=max)
                             .speed(0.5)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                 })
                 .changed();
@@ -2561,7 +2561,7 @@ impl CreaBimApp {
                         egui::DragValue::new(size)
                             .range(0.5..=60.0)
                             .speed(0.1)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                 })
                 .changed()
@@ -2591,10 +2591,20 @@ impl CreaBimApp {
                 }
                 let (mut x, mut y) = (at.x, at.y);
                 let cx = crate::props::row(ui, "X", |ui| {
-                    crate::props::fill(ui, egui::DragValue::new(&mut x).speed(0.5).suffix(" mm"))
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut x)
+                            .speed(0.5)
+                            .suffix(crate::i18n::t(" mm")),
+                    )
                 });
                 let cy = crate::props::row(ui, "Y", |ui| {
-                    crate::props::fill(ui, egui::DragValue::new(&mut y).speed(0.5).suffix(" mm"))
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut y)
+                            .speed(0.5)
+                            .suffix(crate::i18n::t(" mm")),
+                    )
                 });
                 if cx.changed() || cy.changed() {
                     *at = DVec2::new(x, y);
@@ -2608,7 +2618,7 @@ impl CreaBimApp {
                         egui::DragValue::new(width)
                             .range(0.05..=3.0)
                             .speed(0.01)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                 })
                 .changed()
@@ -2616,7 +2626,9 @@ impl CreaBimApp {
                     label = Some("Line pen");
                 }
                 let len: f64 = points.windows(2).map(|w| w[0].distance(w[1])).sum();
-                crate::props::row(ui, "Length", |ui| ui.label(format!("{len:.1} mm")));
+                crate::props::row(ui, "Length", |ui| {
+                    ui.label(crate::i18n::tr(&format!("{len:.1} mm")))
+                });
                 crate::props::note(ui, "Brought in: a line drawn here takes colours too.");
             }
             TitleItem::Fill { gray, .. } => {
@@ -2654,7 +2666,7 @@ impl CreaBimApp {
                             egui::DragValue::new(w)
                                 .range(0.05..=5.0)
                                 .speed(0.01)
-                                .suffix(" mm"),
+                                .suffix(crate::i18n::t(" mm")),
                         )
                     })
                     .changed()
@@ -2721,7 +2733,7 @@ impl CreaBimApp {
                         egui::DragValue::new(&mut w)
                             .range(1.0..=1200.0)
                             .speed(0.5)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                 });
                 let ch = crate::props::row(ui, "Height", |ui| {
@@ -2730,7 +2742,7 @@ impl CreaBimApp {
                         egui::DragValue::new(&mut h)
                             .range(1.0..=1200.0)
                             .speed(0.5)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                 });
                 if cw.changed() {
@@ -2740,7 +2752,9 @@ impl CreaBimApp {
                     *hi = *lo + DVec2::new(h / aspect, h);
                     label = Some("Logo size");
                 }
-                crate::props::row(ui, "Shapes", |ui| ui.label(format!("{}", shapes.len())));
+                crate::props::row(ui, "Shapes", |ui| {
+                    ui.label(crate::i18n::tr(&format!("{}", shapes.len())))
+                });
                 // one colour for all of it: a logo in the title block's ink
                 let mut one = match shapes.first() {
                     Some(TitleItem::Shape { fill: Some(c), .. })
@@ -2793,7 +2807,7 @@ impl CreaBimApp {
                         egui::DragValue::new(&mut w)
                             .range(1.0..=1200.0)
                             .speed(0.5)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                 });
                 let ch = crate::props::row(ui, "Height", |ui| {
@@ -2802,7 +2816,7 @@ impl CreaBimApp {
                         egui::DragValue::new(&mut h)
                             .range(1.0..=1200.0)
                             .speed(0.5)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                 });
                 // its own proportions, kept as either changes
@@ -2813,7 +2827,9 @@ impl CreaBimApp {
                     *hi = *lo + DVec2::new(h / aspect, h);
                     label = Some("Picture size");
                 }
-                crate::props::row(ui, "Pixels", |ui| ui.label(format!("{width} × {height}")));
+                crate::props::row(ui, "Pixels", |ui| {
+                    ui.label(crate::i18n::tr(&format!("{width} × {height}")))
+                });
                 if crate::props::action(
                     ui,
                     "",

@@ -81,7 +81,7 @@ fn len_field(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bo
 fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bool {
     let mut changed = false;
     crate::props::flow(ui, |ui| {
-        ui.label(text);
+        ui.label(crate::i18n::tr(text));
         let spacing = matches!(r, GridRule::Spacing(_));
         egui::ComboBox::from_id_salt(("curtain_rule", salt))
             .icon(crate::props::combo_icon)
@@ -109,13 +109,19 @@ fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bo
             GridRule::Spacing(s) => {
                 changed |= ui
                     .add(crate::units::drag(s).range(0.2..=20.0))
-                    .on_hover_text("A grid line every so far; the last bay takes what is left")
+                    .on_hover_text(crate::i18n::t(
+                        "A grid line every so far; the last bay takes what is left",
+                    ))
                     .changed()
             }
             GridRule::Count(n) => {
                 changed |= ui
-                    .add(egui::DragValue::new(n).range(1..=60).suffix(" bays"))
-                    .on_hover_text("So many equal bays")
+                    .add(
+                        egui::DragValue::new(n)
+                            .range(1..=60)
+                            .suffix(crate::i18n::t(" bays")),
+                    )
+                    .on_hover_text(crate::i18n::t("So many equal bays"))
                     .changed()
             }
         }
@@ -140,7 +146,7 @@ pub(super) fn curtain_fields(ui: &mut egui::Ui, c: &mut CurtainGrid) -> &'static
         label = "Mullion size";
     }
     crate::props::flow(ui, |ui| {
-        ui.label("Panels");
+        ui.label(crate::i18n::t("Panels"));
         for k in PanelKind::ALL {
             if ui
                 .selectable_value(&mut c.panel, k, crate::i18n::tw(k.label()))
@@ -155,8 +161,11 @@ pub(super) fn curtain_fields(ui: &mut egui::Ui, c: &mut CurtainGrid) -> &'static
     }
     if !c.swapped.is_empty() {
         crate::props::flow(ui, |ui| {
-            ui.label(format!("{} panels swapped", c.swapped.len()));
-            if ui.small_button("Reset").clicked() {
+            ui.label(crate::i18n::tr(&format!(
+                "{} panels swapped",
+                c.swapped.len()
+            )));
+            if ui.small_button(crate::i18n::t("Reset")).clicked() {
                 c.swapped.clear();
                 label = "Curtain panels";
             }
@@ -182,7 +191,7 @@ fn material_pick(
         .to_string();
     let mut changed = false;
     crate::props::flow(ui, |ui| {
-        ui.label("Material");
+        ui.label(crate::i18n::t("Material"));
         egui::ComboBox::from_id_salt(("type_material", salt))
             .icon(crate::props::combo_icon)
             .selected_text(crate::i18n::tw(shown))
@@ -218,7 +227,7 @@ fn assembly_pick(
         .map_or("None (single material)".to_string(), |x| x.1.clone());
     let mut changed = false;
     crate::props::flow(ui, |ui| {
-        ui.label("Assembly");
+        ui.label(crate::i18n::t("Assembly"));
         egui::ComboBox::from_id_salt("type_assembly")
             .icon(crate::props::combo_icon)
             .selected_text(crate::i18n::tw(shown))
@@ -271,10 +280,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                 match assembly_total(model, w.assembly) {
                     Some(total) => {
                         w.thickness = total;
-                        ui.label(format!(
+                        ui.label(crate::i18n::tr(&format!(
                             "Thickness {}, from its layers",
                             crate::units::len(total)
-                        ));
+                        )));
                     }
                     None => {
                         if len_field(ui, "Thickness", &mut w.thickness, 0.02, 2.0) {
@@ -286,7 +295,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                     }
                 }
                 crate::props::flow(ui, |ui| {
-                    ui.label("Location line");
+                    ui.label(crate::i18n::t("Location line"));
                     egui::ComboBox::from_id_salt("type_location")
                         .icon(crate::props::combo_icon)
                         .selected_text(crate::i18n::tw(w.location.label()))
@@ -309,7 +318,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
             crate::props::flow(ui, |ui| {
                 let mut own = w.height.is_some();
                 if crate::props::switch(ui, &mut own, "Default height")
-                    .on_hover_text("New walls of this type are drawn this high; otherwise as high as their level")
+                    .on_hover_text(crate::i18n::t("New walls of this type are drawn this high; otherwise as high as their level"))
                     .changed()
                 {
                     w.height = own.then_some(3.0);
@@ -360,10 +369,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
             match assembly_total(model, s.assembly) {
                 Some(total) => {
                     s.thickness = total;
-                    ui.label(format!(
+                    ui.label(crate::i18n::tr(&format!(
                         "Thickness {}, from its layers",
                         crate::units::len(total)
-                    ));
+                    )));
                 }
                 None => {
                     if len_field(ui, "Thickness", &mut s.thickness, 0.02, 3.0) {
@@ -476,7 +485,11 @@ pub(super) fn holes_fields(
         let area = creabim_core::polygon::signed_area2(h).abs() / 2.0;
         crate::props::row(ui, &format!("Hole {}", i + 1), |ui| {
             crate::props::flow(ui, |ui| {
-                ui.label(format!("{} corners, {}", h.len(), crate::units::area(area)));
+                ui.label(crate::i18n::tr(&format!(
+                    "{} corners, {}",
+                    h.len(),
+                    crate::units::area(area)
+                )));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if crate::props::icon_button(ui, "x", "Remove this hole").clicked() {
                         remove = Some(i);
@@ -499,10 +512,10 @@ pub(super) fn holes_fields(
     }
     if shafts > 0 {
         ui.label(
-            egui::RichText::new(format!(
+            egui::RichText::new(crate::i18n::tr(&format!(
                 "Cut by {} too: move or reshape the shaft to change it.",
                 plural(shafts, "shaft")
-            ))
+            )))
             .weak(),
         );
     }
@@ -768,7 +781,10 @@ impl CreaBimApp {
                         ui.selectable_value(&mut chosen, Some(*tid), crate::i18n::tw(n));
                     }
                     if choices.is_empty() {
-                        ui.label(egui::RichText::new("No types yet: add the starters").weak());
+                        ui.label(
+                            egui::RichText::new(crate::i18n::t("No types yet: add the starters"))
+                                .weak(),
+                        );
                     }
                 })
                 .response
@@ -814,11 +830,12 @@ impl CreaBimApp {
             let _ = &link;
             crate::props::row(ui, "Instances", |ui| {
                 crate::props::flow(ui, |ui| {
-                    ui.label(n.to_string()).on_hover_text(summary.clone());
+                    ui.label(n.to_string())
+                        .on_hover_text(crate::i18n::tr(&summary.clone()));
                     let w = ui.available_width();
                     if ui
-                        .add_sized([w, 22.0], egui::Button::new("Select all"))
-                        .on_hover_text("Select every element of this type")
+                        .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("Select all")))
+                        .on_hover_text(crate::i18n::t("Select every element of this type"))
                         .clicked()
                     {
                         asks.push(TypeAsk::SelectInstances(t));
@@ -835,14 +852,14 @@ impl CreaBimApp {
                         ui.available_width()
                     };
                     if ui
-                        .add_sized([w, 22.0], egui::Button::new("Edit\u{2026}"))
-                        .on_hover_text(format!(
+                        .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("Edit\u{2026}")))
+                        .on_hover_text(crate::i18n::tr(&format!(
                             "Edit the type \u{201c}{}\u{201d}: every instance follows",
                             self.doc
                                 .model()
                                 .get(t)
                                 .map_or(String::new(), |e| e.name.clone())
-                        ))
+                        )))
                         .clicked()
                     {
                         self.types.open = true;
@@ -850,10 +867,10 @@ impl CreaBimApp {
                     }
                     if two
                         && ui
-                            .add_sized([w, 22.0], egui::Button::new("New"))
-                            .on_hover_text(
+                            .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("New")))
+                            .on_hover_text(crate::i18n::t(
                                 "A new type with its values, which it becomes an instance of",
-                            )
+                            ))
                             .clicked()
                     {
                         asks.push(TypeAsk::FromElement(id));
@@ -873,7 +890,7 @@ impl CreaBimApp {
                             .truncate(),
                         )
                         .on_hover_text(
-                            "What this element sets for itself: a change to its type leaves these alone",
+                            crate::i18n::t("What this element sets for itself: a change to its type leaves these alone"),
                         );
                     })
                 });
@@ -881,16 +898,18 @@ impl CreaBimApp {
                     crate::props::flow(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         if link(ui, "Reset to type")
-                            .on_hover_text("Drop its overrides: take every value from its type")
+                            .on_hover_text(crate::i18n::t(
+                                "Drop its overrides: take every value from its type",
+                            ))
                             .clicked()
                         {
                             asks.push(TypeAsk::Reset(id));
                         }
                         ui.label(egui::RichText::new("·").weak());
                         if link(ui, "Update type")
-                            .on_hover_text(
+                            .on_hover_text(crate::i18n::t(
                                 "Make its values the type's: every other instance follows",
-                            )
+                            ))
                             .clicked()
                         {
                             asks.push(TypeAsk::SaveToType(id));
@@ -922,7 +941,14 @@ impl CreaBimApp {
             return;
         };
         let mut t = t.clone();
-        ui.label(egui::RichText::new(format!("{} · {}", t.ifc_class(), t.summary(model))).weak());
+        ui.label(
+            egui::RichText::new(crate::i18n::tr(&format!(
+                "{} · {}",
+                t.ifc_class(),
+                t.summary(model)
+            )))
+            .weak(),
+        );
         let label = type_fields(ui, model, &mut t);
         let n = types::instances(model, id).len();
         let mut asks = vec![];
@@ -931,20 +957,20 @@ impl CreaBimApp {
                 0 => "No instances yet.".to_string(),
                 n => format!("{}.", plural(n, "instance")),
             });
-            if n > 0 && ui.small_button("Select them").clicked() {
+            if n > 0 && ui.small_button(crate::i18n::t("Select them")).clicked() {
                 asks.push(TypeAsk::SelectInstances(id));
             }
         });
         self.show_in_model_ui(ui, id);
         crate::props::flow(ui, |ui| {
             if ui
-                .button("Open preview")
-                .on_hover_text("The type on its own, in 3D, plan and section, beside its values (or double-click it in the project browser)")
+                .button(crate::i18n::t("Open preview"))
+                .on_hover_text(crate::i18n::t("The type on its own, in 3D, plan and section, beside its values (or double-click it in the project browser)"))
                 .clicked()
             {
                 self.open_type_preview(id);
             }
-            if ui.button("Types window").clicked() {
+            if ui.button(crate::i18n::t("Types window")).clicked() {
                 self.open_types(Some(id));
             }
         });
@@ -997,7 +1023,7 @@ impl CreaBimApp {
                     .show(ui, |ui| {
                         for (heading, cat, curtain) in GROUPS {
                             ui.label(
-                                egui::RichText::new(heading.to_uppercase())
+                                egui::RichText::new(crate::i18n::t(heading).to_uppercase())
                                     .size(10.5)
                                     .strong()
                                     .color(ui.visuals().weak_text_color()),
@@ -1007,13 +1033,14 @@ impl CreaBimApp {
                                 .filter(|(_, _, t)| t.category() == cat && t.is_curtain() == curtain)
                             {
                                 let n = types::instances(model, *id).len();
+                                let name = crate::i18n::tr(name);
                                 let text = if n > 0 {
                                     format!("{name}  ·  {n}")
                                 } else {
-                                    name.to_string()
+                                    name
                                 };
                                 if ui
-                                    .selectable_label(current == Some(*id), crate::i18n::tw(text))
+                                    .selectable_label(current == Some(*id), text)
                                     .on_hover_text(t.summary(model))
                                     .clicked()
                                 {
@@ -1023,13 +1050,13 @@ impl CreaBimApp {
                             if cat == TypeCategory::Object {
                                 // objects come from the catalogue, not from sizes
                                 if ui
-                                    .small_button("Catalogue…")
-                                    .on_hover_text("Place furniture and fixtures from the catalogue; their types appear here")
+                                    .small_button(crate::i18n::t("Catalogue…"))
+                                    .on_hover_text(crate::i18n::t("Place furniture and fixtures from the catalogue; their types appear here"))
                                     .clicked()
                                 {
                                     asks.push(TypeAsk::Catalogue);
                                 }
-                            } else if ui.small_button("+ New").clicked() {
+                            } else if ui.small_button(crate::i18n::t("+ New")).clicked() {
                                 asks.push(TypeAsk::New(cat, curtain));
                             }
                             ui.add_space(6.0);
@@ -1037,21 +1064,21 @@ impl CreaBimApp {
                     });
                 crate::props::flow(ui, |ui| {
                     if ui
-                        .button("Add starters")
-                        .on_hover_text("Walls, curtain walls, doors, windows, slabs, roofs, columns and beams, with the starter assemblies they are built of")
+                        .button(crate::i18n::t("Add starters"))
+                        .on_hover_text(crate::i18n::t("Walls, curtain walls, doors, windows, slabs, roofs, columns and beams, with the starter assemblies they are built of"))
                         .clicked()
                     {
                         asks.push(TypeAsk::Starters);
                     }
                     if let Some(c) = current {
-                        if ui.button("Duplicate").clicked() {
+                        if ui.button(crate::i18n::t("Duplicate")).clicked() {
                             asks.push(TypeAsk::Duplicate(c));
                         }
                         let object = all.iter().any(|(id, _, t)| {
                             *id == c && t.category() == TypeCategory::Object
                         });
                         if ui
-                            .button("Delete")
+                            .button(crate::i18n::t("Delete"))
                             .on_hover_text(if object {
                                 "Deletes the objects of this type too. Ctrl+Z brings them back."
                             } else {
@@ -1069,7 +1096,7 @@ impl CreaBimApp {
                 let Some(id) = current else {
                     ui.label(
                         egui::RichText::new(
-                            "No types yet. Add the starters, or make a new one with + New.",
+                            crate::i18n::t("No types yet. Add the starters, or make a new one with + New."),
                         )
                         .weak(),
                     );
@@ -1079,7 +1106,9 @@ impl CreaBimApp {
                 let ElementKind::ElementType(t) = &e.kind else {
                     return;
                 };
-                let mut name = e.name.clone();
+                // shown in the interface's language; what is typed is kept
+                let shown = crate::i18n::tr(&e.name);
+                let mut name = shown.clone();
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center)
@@ -1087,21 +1116,24 @@ impl CreaBimApp {
                             .desired_width(320.0),
                     )
                     .changed()
+                    && name != shown
                 {
                     asks.push(TypeAsk::Rename(id, name));
                 }
                 ui.label(
-                    egui::RichText::new(format!("{} · {}", t.ifc_class(), t.summary(model)))
+                    egui::RichText::new(crate::i18n::tr(&format!("{} · {}", t.ifc_class(), t.summary(model))))
                         .weak(),
                 );
-                let mut description = t.description.clone();
+                let shown = crate::i18n::tr(&t.description);
+                let mut description = shown.clone();
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut description).vertical_align(egui::Align::Center)
-                            .hint_text("Description")
+                            .hint_text(crate::i18n::t("Description"))
                             .desired_width(420.0),
                     )
                     .changed()
+                    && description != shown
                 {
                     let mut new = t.clone();
                     new.description = description;
@@ -1121,7 +1153,7 @@ impl CreaBimApp {
                         n => format!("{}. Changing the type changes them all, but for what each overrides.", plural(n, "instance")),
                     });
                 });
-                if !users.is_empty() && ui.button("Select all instances").clicked() {
+                if !users.is_empty() && ui.button(crate::i18n::t("Select all instances")).clicked() {
                     asks.push(TypeAsk::SelectInstances(id));
                 }
                 let fits = self
@@ -1141,10 +1173,10 @@ impl CreaBimApp {
                         n => format!("Assign to the {n} selected elements"),
                     }),
                 );
-                if r.on_disabled_hover_text(format!(
+                if r.on_disabled_hover_text(crate::i18n::tr(&format!(
                     "Select {} first",
                     t.category().label().to_lowercase()
-                ))
+                )))
                 .clicked()
                 {
                     asks.push(TypeAsk::Assign(Some(id)));

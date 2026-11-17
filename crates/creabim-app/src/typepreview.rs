@@ -310,15 +310,15 @@ impl CreaBimApp {
         let mut on = self.type_preview.spotlight == Some(id);
         let r = ui
             .add_enabled(n > 0, egui::Checkbox::new(&mut on, "Show in model"))
-            .on_hover_text("Light every instance of this type in the 3D view and the plans, as if selected, and frame them")
-            .on_disabled_hover_text("No instances yet");
+            .on_hover_text(crate::i18n::t("Light every instance of this type in the 3D view and the plans, as if selected, and frame them"))
+            .on_disabled_hover_text(crate::i18n::t("No instances yet"));
         if r.changed() {
             self.show_type_in_model(on.then_some(id));
         }
         if on {
             let mut ghost = self.plan.spotlight_ghost;
             if crate::props::switch(ui, &mut ghost, "Fade the rest")
-                .on_hover_text("Draw everything else faint, to see them on their own; untick to see them in their context")
+                .on_hover_text(crate::i18n::t("Draw everything else faint, to see them on their own; untick to see them in their context"))
                 .changed()
             {
                 self.plan.spotlight_ghost = ghost;
@@ -383,7 +383,7 @@ impl CreaBimApp {
                                     asks.push(TypeAsk::Rename(id, n));
                                 }
                                 ui.label(
-                                    egui::RichText::new(format!("{} · {}", t.ifc_class(), t.summary(model)))
+                                    egui::RichText::new(crate::i18n::tr(&format!("{} · {}", t.ifc_class(), t.summary(model))))
                                         .weak(),
                                 );
                                 ui.add_space(6.0);
@@ -401,7 +401,7 @@ impl CreaBimApp {
                                         plural_word(n, "instance")
                                     ),
                                 });
-                                if !users.is_empty() && ui.button("Select them").clicked() {
+                                if !users.is_empty() && ui.button(crate::i18n::t("Select them")).clicked() {
                                     asks.push(TypeAsk::SelectInstances(id));
                                 }
                                 self.show_in_model_ui(ui, id);
@@ -410,7 +410,7 @@ impl CreaBimApp {
                     ui.separator();
                     ui.vertical(|ui| {
                         let Some(s) = &shown else {
-                            ui.label(egui::RichText::new("This type can't be drawn on its own.").weak());
+                            ui.label(egui::RichText::new(crate::i18n::t("This type can't be drawn on its own.")).weak());
                             return;
                         };
                         let w = ui.available_width().max(300.0);

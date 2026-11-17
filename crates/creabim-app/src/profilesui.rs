@@ -790,7 +790,11 @@ impl CreaBimApp {
         ui.horizontal(|ui| {
             ui.spacing_mut().interact_size.y = 20.0;
             ui.style_mut().override_font_id = Some(egui::FontId::proportional(12.0));
-            ui.label(egui::RichText::new("Name").size(12.0).color(pal.muted));
+            ui.label(
+                egui::RichText::new(crate::i18n::t("Name"))
+                    .size(12.0)
+                    .color(pal.muted),
+            );
             let r = ui
                 .add_enabled(
                     mine,
@@ -803,7 +807,9 @@ impl CreaBimApp {
                 } else {
                     "A preset keeps its name: Duplicate it to make your own"
                 })
-                .on_disabled_hover_text("A preset keeps its name: Duplicate it to make your own");
+                .on_disabled_hover_text(crate::i18n::t(
+                    "A preset keeps its name: Duplicate it to make your own",
+                ));
             let done = r.lost_focus();
             if done {
                 let new = self.profiles.name.trim().to_string();
@@ -845,7 +851,11 @@ impl CreaBimApp {
                     .fold((*first, *first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
                 let d = hi - lo;
                 crate::props::row(ui, "Size", |ui| {
-                    ui.label(format!("{:.0} × {:.0} mm", d.x * 1000.0, d.y * 1000.0))
+                    ui.label(crate::i18n::tr(&format!(
+                        "{:.0} × {:.0} mm",
+                        d.x * 1000.0,
+                        d.y * 1000.0
+                    )))
                 });
             }
             crate::props::row(ui, "Used by", |ui| {
@@ -876,11 +886,11 @@ impl CreaBimApp {
         let filled = faces.len() - voids.len();
         if self.prop_header(ui, "prof_faces", "Faces", true, None) {
             crate::props::row(ui, "Faces", |ui| {
-                ui.label(format!(
+                ui.label(crate::i18n::tr(&format!(
                     "{filled} filled, {} void{}",
                     voids.len(),
                     if voids.len() == 1 { "" } else { "s" }
-                ))
+                )))
             });
             let (fill, pick) = crate::props::actions2(
                 ui,
@@ -965,13 +975,17 @@ impl CreaBimApp {
                     let cx = crate::props::row(ui, "X", |ui| {
                         crate::props::fill(
                             ui,
-                            egui::DragValue::new(&mut x).suffix(" mm").speed(1.0),
+                            egui::DragValue::new(&mut x)
+                                .suffix(crate::i18n::t(" mm"))
+                                .speed(1.0),
                         )
                     });
                     let cy = crate::props::row(ui, "Y", |ui| {
                         crate::props::fill(
                             ui,
-                            egui::DragValue::new(&mut y).suffix(" mm").speed(1.0),
+                            egui::DragValue::new(&mut y)
+                                .suffix(crate::i18n::t(" mm"))
+                                .speed(1.0),
                         )
                     });
                     if cx.changed() || cy.changed() {
@@ -2879,7 +2893,7 @@ impl CreaBimApp {
                             .show(ui.ctx(), |ui| {
                                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label("Really");
+                                        ui.label(crate::i18n::t("Really"));
                                         let r = ui.add(
                                             egui::TextEdit::singleline(&mut text)
                                                 .vertical_align(egui::Align::Center)
@@ -2990,7 +3004,7 @@ impl CreaBimApp {
                     .show(ui.ctx(), |ui| {
                         egui::Frame::popup(ui.style()).show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label("Length");
+                                ui.label(crate::i18n::t("Length"));
                                 let r = ui.add(
                                     egui::TextEdit::singleline(&mut text)
                                         .vertical_align(egui::Align::Center)

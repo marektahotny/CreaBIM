@@ -337,17 +337,17 @@ impl CreaBimApp {
                 if ask == LevelAsk::Copy {
                     ui.separator();
                     crate::props::flow(ui, |ui| {
-                        if ui.small_button("All above").clicked() {
+                        if ui.small_button(crate::i18n::t("All above")).clicked() {
                             let z = from.and_then(|f| list.iter().find(|l| l.0 == f)).map_or(f64::MIN, |l| l.2.elevation);
                             self.level_copy.targets =
                                 list.iter().filter(|l| l.2.elevation > z + 1e-6).map(|l| l.0).collect();
                         }
-                        if ui.small_button("All below").clicked() {
+                        if ui.small_button(crate::i18n::t("All below")).clicked() {
                             let z = from.and_then(|f| list.iter().find(|l| l.0 == f)).map_or(f64::MAX, |l| l.2.elevation);
                             self.level_copy.targets =
                                 list.iter().filter(|l| l.2.elevation < z - 1e-6).map(|l| l.0).collect();
                         }
-                        if ui.small_button("None").clicked() {
+                        if ui.small_button(crate::i18n::t("None")).clicked() {
                             self.level_copy.targets.clear();
                         }
                     });

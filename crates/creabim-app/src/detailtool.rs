@@ -340,7 +340,7 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
         DetailKind::Membrane | DetailKind::Region { .. } | DetailKind::BreakLine
     ) {
         crate::props::flow(ui, |ui| {
-            ui.label("Width");
+            ui.label(crate::i18n::t("Width"));
             if ui
                 .add(crate::units::drag(&mut d.width).range(0.0..=5.0))
                 .changed()
@@ -351,7 +351,7 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
     }
     if matches!(d.kind, DetailKind::Membrane)
         && crate::props::switch(ui, &mut d.flip, "On the other side")
-            .on_hover_text("A membrane lies just off the line it follows, on the side it was clicked. This puts it on the other side.")
+            .on_hover_text(crate::i18n::t("A membrane lies just off the line it follows, on the side it was clicked. This puts it on the other side."))
             .changed()
     {
         label = "Membrane side";
@@ -359,14 +359,14 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
     match &mut d.kind {
         DetailKind::Repeat { module, joint } => {
             crate::props::flow(ui, |ui| {
-                ui.label("Unit");
+                ui.label(crate::i18n::t("Unit"));
                 if ui
                     .add(crate::units::drag(module).range(0.005..=5.0))
                     .changed()
                 {
                     label = "Detail unit";
                 }
-                ui.label("Joint");
+                ui.label(crate::i18n::t("Joint"));
                 if ui.add(crate::units::drag(joint).range(0.0..=0.5)).changed() {
                     label = "Detail joint";
                 }
@@ -390,11 +390,11 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
         _ => {}
     }
     ui.label(
-        egui::RichText::new(format!(
+        egui::RichText::new(crate::i18n::tr(&format!(
             "{} points, {} long. Detail components are drafting: they show in this view only, never in 3D, schedules or IFC.",
             d.points.len(),
             crate::units::len(d.length())
-        ))
+        )))
         .weak(),
     );
     label
@@ -418,13 +418,15 @@ pub fn winner_label(model: &Model, rule: &JoinRule, w: JoinWinner) -> String {
 /// A junction rule in Properties.
 pub fn join_fields(ui: &mut egui::Ui, model: &Model, j: &mut JoinRule) -> &'static str {
     let mut label = "";
-    ui.label(format!(
+    ui.label(crate::i18n::tr(&format!(
         "How {} and {} join where they meet in plans and sections.",
         name_of(model, j.a),
         name_of(model, j.b)
-    ));
+    )));
     if crate::props::switch(ui, &mut j.cleanup, "Clean up the junction")
-        .on_hover_text("Off: both are drawn whole where they overlap, with their own outlines.")
+        .on_hover_text(crate::i18n::t(
+            "Off: both are drawn whole where they overlap, with their own outlines.",
+        ))
         .changed()
     {
         label = "Junction cleanup";

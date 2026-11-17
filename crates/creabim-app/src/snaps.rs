@@ -336,9 +336,10 @@ impl SnapSettings {
 
 /// The snap switch and a drop-down of the kinds of snap, for a toolbar.
 pub fn snap_bar(ui: &mut egui::Ui, s: &mut SnapSettings) {
-    ui.toggle_value(&mut s.on, "Snap").on_hover_text(
-        "Object snaps on or off (F3). Hold Alt while picking to suspend them for a moment.",
-    );
+    ui.toggle_value(&mut s.on, crate::i18n::t("Snap"))
+        .on_hover_text(crate::i18n::t(
+            "Object snaps on or off (F3). Hold Alt while picking to suspend them for a moment.",
+        ));
     let mut all = *s;
     let n = all.switches().iter().filter(|(_, v)| **v).count();
     let total = all.switches().len();
@@ -355,10 +356,10 @@ pub fn snap_bar(ui: &mut egui::Ui, s: &mut SnapSettings) {
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show_ui(ui, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("All").clicked() {
+                    if ui.button(crate::i18n::t("All")).clicked() {
                         s.switches().into_iter().for_each(|(_, v)| *v = true);
                     }
-                    if ui.button("None").clicked() {
+                    if ui.button(crate::i18n::t("None")).clicked() {
                         s.switches().into_iter().for_each(|(_, v)| *v = false);
                     }
                 });
@@ -368,7 +369,7 @@ pub fn snap_bar(ui: &mut egui::Ui, s: &mut SnapSettings) {
                 }
             })
             .response
-            .on_hover_text("Which snaps are on");
+            .on_hover_text(crate::i18n::t("Which snaps are on"));
     });
 }
 

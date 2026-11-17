@@ -280,20 +280,21 @@ impl CreaBimApp {
         let (mut save, mut discard, mut cancel) = (false, false, false);
         egui::Modal::new(egui::Id::new("close-unsaved")).show(ctx, |ui| {
             ui.set_width(400.0);
-            ui.heading(format!("Save the changes to {name}?"));
+            ui.heading(crate::i18n::tr(&format!("Save the changes to {name}?")));
             ui.add_space(6.0);
-            ui.label("They are lost if you close without saving.");
+            ui.label(crate::i18n::t("They are lost if you close without saving."));
             ui.label(
-                egui::RichText::new("Enter saves, Esc goes back to the project.")
+                egui::RichText::new(crate::i18n::t("Enter saves, Esc goes back to the project."))
                     .small()
                     .color(pal.muted),
             );
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                save = ui.button("Save").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter));
-                discard = ui.button("Don't save").clicked();
-                cancel =
-                    ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+                save = ui.button(crate::i18n::t("Save")).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Enter));
+                discard = ui.button(crate::i18n::t("Don't save")).clicked();
+                cancel = ui.button(crate::i18n::t("Cancel")).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Escape));
             });
         });
         if cancel {
@@ -692,7 +693,7 @@ impl CreaBimApp {
                                 let yours = |ui: &mut egui::Ui| {
                                     ui.add_space(6.0);
                                     ui.label(
-                                        egui::RichText::new("Yours alone: it never changes anyone's drawings, and goes with you, not with the project.")
+                                        egui::RichText::new(crate::i18n::t("Yours alone: it never changes anyone's drawings, and goes with you, not with the project."))
                                             .weak()
                                             .small(),
                                     );
@@ -725,7 +726,7 @@ impl CreaBimApp {
                                                     }
                                                 })
                                                 .response
-                                                .on_hover_text("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white.");
+                                                .on_hover_text(crate::i18n::t("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white."));
                                         });
                                         crate::props::section(ui, "Move, Rotate and Scale bar");
                                         for (k, name, note) in [
@@ -772,14 +773,14 @@ impl CreaBimApp {
                                         }
                                         crate::props::section(ui, "Edit mode");
                                         crate::props::row(ui, "Edge width", |ui| {
-                                            ui.add(egui::Slider::new(&mut edge_w, 0.5..=3.0).step_by(0.25).suffix(" px"))
+                                            ui.add(egui::Slider::new(&mut edge_w, 0.5..=3.0).step_by(0.25).suffix(crate::i18n::t(" px")))
                                         });
                                         crate::props::row(ui, "Vertex size", |ui| {
-                                            ui.add(egui::Slider::new(&mut vert_s, 2.0..=10.0).step_by(1.0).suffix(" px"))
+                                            ui.add(egui::Slider::new(&mut vert_s, 2.0..=10.0).step_by(1.0).suffix(crate::i18n::t(" px")))
                                         });
                                         crate::props::section(ui, "3D view");
-                                        ui.checkbox(&mut axis_lines, "X and Y axes on the grid")
-                                            .on_hover_text("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it.");
+                                        ui.checkbox(&mut axis_lines, crate::i18n::t("X and Y axes on the grid"))
+                                            .on_hover_text(crate::i18n::t("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it."));
                                         yours(ui);
                                     }
                                     2 => {
@@ -799,7 +800,7 @@ impl CreaBimApp {
                                                 });
                                         });
                                         ui.label(
-                                            egui::RichText::new("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D.")
+                                            egui::RichText::new(crate::i18n::t("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D."))
                                                 .weak()
                                                 .small(),
                                         );
@@ -822,10 +823,10 @@ impl CreaBimApp {
                                                     }
                                                 });
                                         });
-                                        ui.checkbox(&mut marks, "Distance marks while dragging")
-                                            .on_hover_text("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it.");
+                                        ui.checkbox(&mut marks, crate::i18n::t("Distance marks while dragging"))
+                                            .on_hover_text(crate::i18n::t("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it."));
                                         ui.label(
-                                            egui::RichText::new("Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time.")
+                                            egui::RichText::new(crate::i18n::t("Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time."))
                                                 .weak()
                                                 .small(),
                                         );
@@ -844,7 +845,7 @@ impl CreaBimApp {
                                                 });
                                         });
                                         ui.label(
-                                            egui::RichText::new("Saved with the project: everyone who opens it works in these units.")
+                                            egui::RichText::new(crate::i18n::t("Saved with the project: everyone who opens it works in these units."))
                                                 .weak()
                                                 .small(),
                                         );
@@ -852,12 +853,12 @@ impl CreaBimApp {
                                     _ => {
                                         crate::props::section(ui, "Shortcuts");
                                         ui.label(
-                                            egui::RichText::new("Every key, by what it does. Ctrl+/ opens the list any time.")
+                                            egui::RichText::new(crate::i18n::t("Every key, by what it does. Ctrl+/ opens the list any time."))
                                                 .weak()
                                                 .small(),
                                         );
                                         ui.add_space(4.0);
-                                        keys = ui.button("Keyboard shortcuts…").clicked();
+                                        keys = ui.button(crate::i18n::t("Keyboard shortcuts…")).clicked();
                                     }
                                 }
                             });
@@ -943,7 +944,7 @@ impl CreaBimApp {
                 for s in STARTS.iter() {
                     if ui
                         .button(egui::RichText::new(s.title).strong())
-                        .on_hover_text(s.line)
+                        .on_hover_text(crate::i18n::tr(s.line))
                         .clicked()
                     {
                         pick = Some(s.id);
@@ -951,7 +952,11 @@ impl CreaBimApp {
                 }
                 crate::props::section(ui, "Samples to learn from");
                 for s in SAMPLES.iter() {
-                    if ui.button(s.title).on_hover_text(s.line).clicked() {
+                    if ui
+                        .button(crate::i18n::tr(s.title))
+                        .on_hover_text(crate::i18n::tr(s.line))
+                        .clicked()
+                    {
                         pick = Some(s.id);
                     }
                 }
@@ -993,7 +998,7 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.set_width(460.0);
-                ui.label(egui::RichText::new("How walls, slabs and roofs go out").strong());
+                ui.label(egui::RichText::new(crate::i18n::t("How walls, slabs and roofs go out")).strong());
                 let choices = [
                     (
                         IfcBody::Modelled,
@@ -1020,13 +1025,13 @@ impl CreaBimApp {
                 }
                 ui.add_space(6.0);
                 ui.label(
-                    egui::RichText::new("Doors, windows, openings and everything else go out the same way in all three.")
+                    egui::RichText::new(crate::i18n::t("Doors, windows, openings and everything else go out the same way in all three."))
                         .weak(),
                 );
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    go = ui.button("Export…").clicked();
-                    cancel = ui.button("Cancel").clicked();
+                    go = ui.button(crate::i18n::t("Export…")).clicked();
+                    cancel = ui.button(crate::i18n::t("Cancel")).clicked();
                 });
             });
         if key(body) != self.shell.settings.ifc_body {
@@ -1076,7 +1081,7 @@ impl CreaBimApp {
                     crate::props::row(ui, label, |ui| {
                         ui.add(
                             egui::TextEdit::singleline(v).vertical_align(egui::Align::Center)
-                                .hint_text(hint)
+                                .hint_text(crate::i18n::tr(hint))
                                 .desired_width(ui.available_width()),
                         );
                     });
@@ -1109,19 +1114,19 @@ impl CreaBimApp {
                 };
                 degrees(ui, "Latitude", &mut draft.latitude, 90.0);
                 degrees(ui, "Longitude", &mut draft.longitude, 180.0);
-                crate::props::row(ui, "Elevation", |ui| {
+                crate::props::row(ui, "site\u{4}Elevation", |ui| {
                     ui.add(
                         egui::DragValue::new(&mut draft.elevation)
                             .speed(0.01)
                             .suffix(" m"),
                     )
-                    .on_hover_text("The project's zero above sea level");
+                    .on_hover_text(crate::i18n::t("The project's zero above sea level"));
                 });
                 crate::props::row(ui, "S-JTSK origin", |ui| {
                     let mut on = draft.sjtsk.is_some();
                     if ui
                         .checkbox(&mut on, "")
-                        .on_hover_text("Where the project's origin (0, 0) lies in S-JTSK (EPSG:5514), east and north")
+                        .on_hover_text(crate::i18n::t("Where the project's origin (0, 0) lies in S-JTSK (EPSG:5514), east and north"))
                         .changed()
                     {
                         draft.sjtsk = on.then_some([0.0, 0.0]);
@@ -1145,7 +1150,7 @@ impl CreaBimApp {
                             .speed(0.5)
                             .suffix("°"),
                     )
-                    .on_hover_text("How far true north turns from the drawings' up, anticlockwise");
+                    .on_hover_text(crate::i18n::t("How far true north turns from the drawings' up, anticlockwise"));
                 });
                 crate::props::section(ui, "Building");
                 text(ui, "Name", &mut draft.building_name, "");
@@ -1168,16 +1173,16 @@ impl CreaBimApp {
                 });
                 ui.label(
                     egui::RichText::new(
-                        "These fill the title blocks of every sheet (a value a sheet sets itself still wins) and name the project, site and building in IFC exports.",
+                        crate::i18n::t("These fill the title blocks of every sheet (a value a sheet sets itself still wins) and name the project, site and building in IFC exports."),
                     )
                     .weak(),
                 );
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     apply = ui
-                        .add_enabled(draft != current, egui::Button::new("Apply"))
+                        .add_enabled(draft != current, egui::Button::new(crate::i18n::t("Apply")))
                         .clicked();
-                    close = ui.button("Close").clicked();
+                    close = ui.button(crate::i18n::t("Close")).clicked();
                 });
             });
         if apply {

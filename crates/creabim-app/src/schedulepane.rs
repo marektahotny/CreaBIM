@@ -254,7 +254,9 @@ pub fn show(
                 }
                 if r.id != ElementId::NIL
                     && resp
-                        .on_hover_text("Click to select every instance of this type")
+                        .on_hover_text(crate::i18n::t(
+                            "Click to select every instance of this type",
+                        ))
                         .clicked()
                 {
                     selection.extend(creabim_core::types::instances(doc.model(), r.id), false);
@@ -324,7 +326,9 @@ pub fn show(
                                 .max_decimals(2),
                         );
                         if resp
-                            .on_hover_text("Its price, in the currency you price the project in")
+                            .on_hover_text(crate::i18n::t(
+                                "Its price, in the currency you price the project in",
+                            ))
                             .changed()
                         {
                             edit = Some((
@@ -415,7 +419,7 @@ pub fn show(
                         } else {
                             "Click to select it"
                         };
-                        if resp.on_hover_text(hint).clicked() {
+                        if resp.on_hover_text(crate::i18n::tr(hint)).clicked() {
                             if material {
                                 let made = takeoff::lines(doc.model())
                                     .into_iter()

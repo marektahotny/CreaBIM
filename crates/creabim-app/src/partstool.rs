@@ -734,7 +734,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
 fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
     let mut label = "";
     if crate::props::switch(ui, &mut p.void, "Void: cuts what it meets")
-        .on_hover_text("A void cuts every wall, slab, roof, site surface and solid part it meets, and is drawn only as a see-through outline in 3D")
+        .on_hover_text(crate::i18n::t("A void cuts every wall, slab, roof, site surface and solid part it meets, and is drawn only as a see-through outline in 3D"))
         .changed()
     {
         label = "Void";
@@ -811,8 +811,8 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
                 label = "Profile height";
             }
             if ui
-                .button("Mirror profile")
-                .on_hover_text("Swap the profile to the path's other side")
+                .button(crate::i18n::t("Mirror profile"))
+                .on_hover_text(crate::i18n::t("Swap the profile to the path's other side"))
                 .clicked()
             {
                 for q in profile.iter_mut() {
@@ -831,7 +831,7 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
                     let name = model.get(*wall).map_or("?", |e| e.name.as_str());
                     weak(ui, format!("Follows wall {name}."));
                     crate::props::flow(ui, |ui| {
-                        ui.label("Along its");
+                        ui.label(crate::i18n::t("Along its"));
                         for e in [WallEdge::Top, WallEdge::Base] {
                             if ui
                                 .selectable_value(edge, e, crate::i18n::tw(e.label()))
@@ -887,7 +887,10 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
                     }
                 })
                 .response
-                .on_hover_text(format!("The IFC class it is exported as: {}", p.ifc_class));
+                .on_hover_text(crate::i18n::tr(&format!(
+                    "The IFC class it is exported as: {}",
+                    p.ifc_class
+                )));
         });
     }
     if let Some((lo, hi)) = p.bounds(model) {
@@ -945,7 +948,7 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
                             .changed();
                         changed |= ui
                             .add_sized([w, h], crate::units::drag(&mut q.z))
-                            .on_hover_text("Height above the level")
+                            .on_hover_text(crate::i18n::t("Height above the level"))
                             .changed();
                         if changed {
                             label = "Spot height";

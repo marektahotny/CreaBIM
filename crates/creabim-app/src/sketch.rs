@@ -715,7 +715,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
         .count();
     match sk.circle {
         Some(_) => {
-            ui.label("A circle");
+            ui.label(crate::i18n::t("A circle"));
         }
         None => {
             let n = sk.segment_count();
@@ -768,7 +768,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
     // column, a remove icon at its end (MU35)
     ui.add_space(4.0);
     crate::props::row(ui, "Constraints", |ui| {
-        ui.label(format!("{}", sk.constraints.len()))
+        ui.label(crate::i18n::tr(&format!("{}", sk.constraints.len())))
     });
     if sk.constraints.is_empty() {
         crate::props::note(ui, "None yet. Add one below; the sketch moves to meet it.");

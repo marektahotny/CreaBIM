@@ -353,7 +353,7 @@ pub fn check_layers(model: &Model) -> (Vec<ElementId>, String) {
 /// A text field with its label; true when it changed.
 fn text(ui: &mut egui::Ui, label: &str, v: &mut String) -> bool {
     crate::props::flow(ui, |ui| {
-        ui.label(label);
+        ui.label(crate::i18n::tr(label));
         ui.text_edit_singleline(v).changed()
     })
     .inner
@@ -372,11 +372,11 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
     let mut label = "";
     match room::shape_of(model, r) {
         Some(s) => {
-            ui.label(format!(
+            ui.label(crate::i18n::tr(&format!(
                 "Area {}   Perimeter {}",
                 crate::units::area(room::net_area(model, r, &s)),
                 crate::units::len(s.perimeter())
-            ));
+            )));
             ui.label(
                 egui::RichText::new(if r.is_drawn() {
                     "Its outline is drawn; it doesn't follow the walls."
@@ -416,7 +416,9 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
         },
     );
     if crate::props::switch(ui, &mut own, "Own height")
-        .on_hover_text("Otherwise it is as high as its ceiling, or its storey")
+        .on_hover_text(crate::i18n::t(
+            "Otherwise it is as high as its ceiling, or its storey",
+        ))
         .changed()
     {
         r.height = own.then_some(found);
@@ -429,16 +431,18 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
             }
         }
         None => {
-            ui.label(format!(
+            ui.label(crate::i18n::tr(&format!(
                 "Height {} (to its ceiling or the storey above)",
                 crate::units::len(found)
-            ));
+            )));
         }
     }
     if r.is_drawn()
         && ui
-            .button("Follow the walls instead")
-            .on_hover_text("Forget the drawn outline: measure it to the walls round its point")
+            .button(crate::i18n::t("Follow the walls instead"))
+            .on_hover_text(crate::i18n::t(
+                "Forget the drawn outline: measure it to the walls round its point",
+            ))
             .clicked()
     {
         r.boundary.clear();
@@ -453,14 +457,14 @@ pub fn ceiling_fields(ui: &mut egui::Ui, model: &Model, c: &mut Ceiling) -> &'st
     let mut label = "";
     match c.room.and_then(|r| model.get(r)) {
         Some(r) if c.boundary.is_empty() => {
-            ui.label(format!(
+            ui.label(crate::i18n::tr(&format!(
                 "Over {} {}: it follows the room's walls.",
                 number_of(model, r.id),
                 r.name
-            ));
+            )));
         }
         _ => {
-            ui.label(egui::RichText::new("Its outline is drawn.").weak());
+            ui.label(egui::RichText::new(crate::i18n::t("Its outline is drawn.")).weak());
         }
     }
     if length(ui, "Height", &mut c.height, 0.1, 50.0) {
@@ -471,7 +475,7 @@ pub fn ceiling_fields(ui: &mut egui::Ui, model: &Model, c: &mut Ceiling) -> &'st
     }
     let mut grid = c.grid > 0.0;
     if crate::props::switch(ui, &mut grid, "Suspended grid")
-        .on_hover_text("Tiles drawn in ceiling plans")
+        .on_hover_text(crate::i18n::t("Tiles drawn in ceiling plans"))
         .changed()
     {
         c.grid = if grid { 0.6 } else { 0.0 };
@@ -492,10 +496,10 @@ pub fn tag_fields(ui: &mut egui::Ui, fields: &mut Vec<RoomField>) -> &'static st
     } else {
         fields.clone()
     };
-    ui.label("Shows");
+    ui.label(crate::i18n::t("Shows"));
     for f in RoomField::ALL {
         let mut on = shown.contains(&f);
-        if ui.checkbox(&mut on, f.label()).changed() {
+        if ui.checkbox(&mut on, crate::i18n::tr(f.label())).changed() {
             if on {
                 // keep the order fields are listed in
                 shown.push(f);

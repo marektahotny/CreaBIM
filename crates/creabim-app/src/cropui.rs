@@ -307,9 +307,9 @@ impl CreaBimApp {
                 .collect();
         if rows.is_empty() {
             ui.label(
-                egui::RichText::new(
+                egui::RichText::new(crate::i18n::t(
                     "None yet. A crop box cuts the 3D view down to what is inside it.",
-                )
+                ))
                 .weak(),
             );
         }
@@ -319,7 +319,7 @@ impl CreaBimApp {
                 let mut v = *on;
                 if ui
                     .checkbox(&mut v, "")
-                    .on_hover_text("Crop with it")
+                    .on_hover_text(crate::i18n::t("Crop with it"))
                     .changed()
                 {
                     act = Some(("crop.toggle", *id));
@@ -327,7 +327,9 @@ impl CreaBimApp {
                 let mut s = *shown;
                 if ui
                     .checkbox(&mut s, "")
-                    .on_hover_text("Show its frame and handles (it crops either way)")
+                    .on_hover_text(crate::i18n::t(
+                        "Show its frame and handles (it crops either way)",
+                    ))
                     .changed()
                 {
                     act = Some(("crop.frame", *id));
@@ -336,7 +338,7 @@ impl CreaBimApp {
                 if ui.selectable_label(sel, crate::i18n::tw(name)).clicked() {
                     act = Some(("crop.select", *id));
                 }
-                if ui.small_button("Delete").clicked() {
+                if ui.small_button(crate::i18n::t("Delete")).clicked() {
                     act = Some(("delete", *id));
                 }
             });
@@ -357,12 +359,15 @@ impl CreaBimApp {
             }
         }
         crate::props::flow(ui, |ui| {
-            if ui.button("Add crop box").clicked() {
+            if ui.button(crate::i18n::t("Add crop box")).clicked() {
                 self.add_crop_box(false, false);
             }
             let some = !self.selected_croppable().is_empty();
             if ui
-                .add_enabled(some, egui::Button::new("Round the selection"))
+                .add_enabled(
+                    some,
+                    egui::Button::new(crate::i18n::t("Round the selection")),
+                )
                 .clicked()
             {
                 self.add_crop_box(true, false);
@@ -379,10 +384,10 @@ impl CreaBimApp {
     ) -> Option<&'static str> {
         let mut label = None;
         ui.label(
-            egui::RichText::new(format!(
+            egui::RichText::new(crate::i18n::tr(&format!(
                 "Crops {}. Drag the round handles on its faces to resize it, the square one to move it.",
                 self.owner_name(c.view)
-            ))
+            )))
             .weak(),
         );
         if crate::props::switch(ui, &mut c.enabled, "Crop").changed() {
@@ -390,9 +395,9 @@ impl CreaBimApp {
         }
         let mut shown = !c.frame_hidden;
         if crate::props::switch(ui, &mut shown, "Show the box")
-            .on_hover_text(
+            .on_hover_text(crate::i18n::t(
                 "Hidden, it still crops; its frame shows again only while it is selected",
-            )
+            ))
             .changed()
         {
             c.frame_hidden = !shown;
@@ -410,12 +415,16 @@ impl CreaBimApp {
                     }
                 })
                 .response
-                .on_hover_text("What shows of what the box crops away whole: nothing, a ghost of what is selected, or a ghost of all of it")
+                .on_hover_text(crate::i18n::t("What shows of what the box crops away whole: nothing, a ghost of what is selected, or a ghost of all of it"))
         });
         ui.add_space(4.0);
-        ui.label("What it crops");
+        ui.label(crate::i18n::t("What it crops"));
         let only = matches!(c.scope, CropScope::Only(_));
-        if ui.radio(!only, "Everything in the view").clicked() && only {
+        if ui
+            .radio(!only, crate::i18n::t("Everything in the view"))
+            .clicked()
+            && only
+        {
             c.scope = CropScope::All;
             label = Some("Crop everything");
         }
@@ -424,7 +433,10 @@ impl CreaBimApp {
             CropScope::All => 0,
         };
         if ui
-            .radio(only, format!("Only chosen elements ({n})"))
+            .radio(
+                only,
+                crate::i18n::tr(&format!("Only chosen elements ({n})")),
+            )
             .clicked()
             && !only
         {
@@ -435,13 +447,13 @@ impl CreaBimApp {
         if only {
             crate::props::flow(ui, |ui| {
                 if self.crop_pick == Some(id) {
-                    if ui.button("Done picking").clicked() {
+                    if ui.button(crate::i18n::t("Done picking")).clicked() {
                         self.end_crop_pick();
                     }
-                } else if ui.button("Pick elements…").clicked() {
+                } else if ui.button(crate::i18n::t("Pick elements…")).clicked() {
                     self.start_crop_pick(id);
                 }
-                if n > 0 && ui.button("Clear").clicked() {
+                if n > 0 && ui.button(crate::i18n::t("Clear")).clicked() {
                     c.scope = CropScope::Only(vec![]);
                     label = Some("Crop chosen elements");
                 }
@@ -454,8 +466,8 @@ impl CreaBimApp {
             .spacing([6.0, 4.0])
             .show(ui, |ui| {
                 ui.label("");
-                ui.label(egui::RichText::new("from").weak());
-                ui.label(egui::RichText::new("to").weak());
+                ui.label(egui::RichText::new(crate::i18n::t("from")).weak());
+                ui.label(egui::RichText::new(crate::i18n::t("to")).weak());
                 ui.end_row();
                 let w = ((ui.available_width() - 30.0) / 2.0).max(60.0);
                 for (axis, name) in ["X", "Y", "Z"].iter().enumerate() {
@@ -481,12 +493,12 @@ impl CreaBimApp {
             });
         let s = c.size();
         ui.label(
-            egui::RichText::new(format!(
+            egui::RichText::new(crate::i18n::tr(&format!(
                 "{} × {} × {}",
                 crate::units::len(s.x),
                 crate::units::len(s.y),
                 crate::units::len(s.z)
-            ))
+            )))
             .weak(),
         );
         crate::props::flow(ui, |ui| {
@@ -509,7 +521,7 @@ impl CreaBimApp {
             } else {
                 "Fit to the model"
             };
-            if ui.button(what).clicked() && fit(self, c) {
+            if ui.button(crate::i18n::tr(what)).clicked() && fit(self, c) {
                 label = Some("Fit crop box");
             }
         });
@@ -551,11 +563,11 @@ impl CreaBimApp {
             return;
         };
         egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.label(egui::RichText::new(format!("Picking what {name} crops")).strong());
-            ui.label(format!(
+            ui.label(egui::RichText::new(crate::i18n::tr(&format!("Picking what {name} crops"))).strong());
+            ui.label(crate::i18n::tr(&format!(
                 "{n} chosen. Click elements in the 3D view to add them, or click one again to leave it whole."
-            ));
-            if ui.button("Done picking").clicked() {
+            )));
+            if ui.button(crate::i18n::t("Done picking")).clicked() {
                 self.end_crop_pick();
             }
         });
@@ -854,22 +866,26 @@ impl CreaBimApp {
                         };
                         ui.label(egui::RichText::new(text).color(FRAME).strong());
                         if ui
-                            .button("Extend the box")
-                            .on_hover_text("Grow the box to take it in: one undo step")
+                            .button(crate::i18n::t("Extend the box"))
+                            .on_hover_text(crate::i18n::t(
+                                "Grow the box to take it in: one undo step",
+                            ))
                             .clicked()
                         {
                             pick = Some(0);
                         }
                         if ui
-                            .button("Show anyway")
-                            .on_hover_text("Leave it whole: the box no longer crops it")
+                            .button(crate::i18n::t("Show anyway"))
+                            .on_hover_text(crate::i18n::t(
+                                "Leave it whole: the box no longer crops it",
+                            ))
                             .clicked()
                         {
                             pick = Some(1);
                         }
                         if ui
-                            .button("Turn crop off")
-                            .on_hover_text("Switch the box off; it keeps its place")
+                            .button(crate::i18n::t("Turn crop off"))
+                            .on_hover_text(crate::i18n::t("Switch the box off; it keeps its place"))
                             .clicked()
                         {
                             pick = Some(2);

@@ -219,7 +219,7 @@ pub(super) fn layer_table(
     let n = a.layers.len();
     let (core0, core1) = a.core();
     ui.label(
-        egui::RichText::new(format!("{} face", a.usage.first_face()))
+        egui::RichText::new(crate::i18n::tr(&format!("{} face", a.usage.first_face())))
             .size(10.5)
             .color(weak),
     );
@@ -291,7 +291,7 @@ pub(super) fn layer_table(
                             .speed(0.001)
                             .range(assembly::MIN_LAYER..=2.0),
                     )
-                    .on_hover_text("Thickness; type any unit")
+                    .on_hover_text(crate::i18n::t("Thickness; type any unit"))
                     .changed()
                 {
                     l.thickness = t.max(assembly::MIN_LAYER);
@@ -301,21 +301,21 @@ pub(super) fn layer_table(
                     ui.spacing_mut().item_spacing.x = 2.0;
                     if ui
                         .add_enabled(i > 0, GlyphButton(Glyph::Up))
-                        .on_hover_text("Move the layer out")
+                        .on_hover_text(crate::i18n::t("Move the layer out"))
                         .clicked()
                     {
                         swap = Some((i - 1, i));
                     }
                     if ui
                         .add_enabled(i + 1 < n, GlyphButton(Glyph::Down))
-                        .on_hover_text("Move the layer in")
+                        .on_hover_text(crate::i18n::t("Move the layer in"))
                         .clicked()
                     {
                         swap = Some((i, i + 1));
                     }
                     if ui
                         .add_enabled(n > 1, GlyphButton(Glyph::Remove))
-                        .on_hover_text("Remove the layer")
+                        .on_hover_text(crate::i18n::t("Remove the layer"))
                         .clicked()
                     {
                         remove = Some(i);
@@ -325,7 +325,7 @@ pub(super) fn layer_table(
             }
         });
     ui.label(
-        egui::RichText::new(format!("{} face", a.usage.last_face()))
+        egui::RichText::new(crate::i18n::tr(&format!("{} face", a.usage.last_face())))
             .size(10.5)
             .color(weak),
     );
@@ -339,8 +339,8 @@ pub(super) fn layer_table(
     }
     crate::props::flow(ui, |ui| {
         if ui
-            .button("Add layer")
-            .on_hover_text("A new layer on the inner (or lower) side")
+            .button(crate::i18n::t("Add layer"))
+            .on_hover_text(crate::i18n::t("A new layer on the inner (or lower) side"))
             .clicked()
         {
             edited
@@ -348,10 +348,10 @@ pub(super) fn layer_table(
                 .push(Layer::new(LayerFunction::Finish, None, 0.013));
             label = "Add layer";
         }
-        ui.label(format!(
+        ui.label(crate::i18n::tr(&format!(
             "Total {}",
             crate::units::len(edited.layers.iter().map(|l| l.thickness).sum())
-        ));
+        )));
     });
     (!label.is_empty()).then_some((label, edited))
 }
@@ -464,7 +464,7 @@ impl CreaBimApp {
                             .changed();
                     }
                     ui.separator();
-                    create = ui.button("New assembly…").clicked();
+                    create = ui.button(crate::i18n::t("New assembly…")).clicked();
                 });
         });
         if let Some((_, a)) =
@@ -484,8 +484,10 @@ impl CreaBimApp {
             );
             ui.label(egui::RichText::new(a.summary(self.doc.model())).weak());
             edit = ui
-                .button("Edit layers…")
-                .on_hover_text("Change this assembly: every element built of it follows")
+                .button(crate::i18n::t("Edit layers…"))
+                .on_hover_text(crate::i18n::t(
+                    "Change this assembly: every element built of it follows",
+                ))
                 .clicked();
         }
         if create {
@@ -513,7 +515,13 @@ impl CreaBimApp {
             return;
         };
         let a = a.clone();
-        ui.label(egui::RichText::new(format!("For {}", a.usage.label().to_lowercase())).weak());
+        ui.label(
+            egui::RichText::new(crate::i18n::tr(&format!(
+                "For {}",
+                a.usage.label().to_lowercase()
+            )))
+            .weak(),
+        );
         strip(ui, model, &a, ui.available_width().min(240.0), 30.0);
         let edit = layer_table(ui, model, id, &a, true);
         let users = assembly::users(model, id).len();
@@ -524,7 +532,9 @@ impl CreaBimApp {
             })
             .weak(),
         );
-        let open = ui.button("Open in the assembly editor").clicked();
+        let open = ui
+            .button(crate::i18n::t("Open in the assembly editor"))
+            .clicked();
         if let Some((label, new)) = edit {
             self.run_asm(AsmAsk::Edit(id, label, new));
         }
@@ -576,11 +586,11 @@ impl CreaBimApp {
                             let rows: Vec<_> = all.iter().filter(|a| a.2.usage == usage).collect();
                             // a bold heading that folds, so a long list stays
                             // easy to scan (MU18)
-                            let head = egui::RichText::new(format!(
+                            let head = egui::RichText::new(crate::i18n::tr(&format!(
                                 "{}  ({})",
                                 usage.label(),
                                 rows.len()
-                            ))
+                            )))
                             .size(13.0)
                             .strong();
                             let open = rows.iter().any(|(id, _, _)| current == Some(*id))
@@ -608,7 +618,7 @@ impl CreaBimApp {
                                     asks.push(AsmAsk::Pick(*id));
                                 }
                             }
-                            if ui.small_button("+ New").clicked() {
+                            if ui.small_button(crate::i18n::t("+ New")).clicked() {
                                 asks.push(AsmAsk::New(usage));
                             }
                                 });
@@ -618,7 +628,7 @@ impl CreaBimApp {
                         if all.is_empty() {
                             ui.label(
                                 egui::RichText::new(
-                                    "No assemblies yet. Add the starters, or make a new one.",
+                                    crate::i18n::t("No assemblies yet. Add the starters, or make a new one."),
                                 )
                                 .weak(),
                             );
@@ -626,19 +636,19 @@ impl CreaBimApp {
                     });
                 crate::props::flow(ui, |ui| {
                     if ui
-                        .button("Add starters")
-                        .on_hover_text("A cavity wall, a partition, a floor and a pitched roof")
+                        .button(crate::i18n::t("Add starters"))
+                        .on_hover_text(crate::i18n::t("A cavity wall, a partition, a floor and a pitched roof"))
                         .clicked()
                     {
                         asks.push(AsmAsk::Starters);
                     }
                     if let Some(c) = current {
-                        if ui.button("Duplicate").clicked() {
+                        if ui.button(crate::i18n::t("Duplicate")).clicked() {
                             asks.push(AsmAsk::Duplicate(c));
                         }
                         if ui
-                            .button("Delete")
-                            .on_hover_text("What is built of it keeps its thickness, in one material. Ctrl+Z brings it back.")
+                            .button(crate::i18n::t("Delete"))
+                            .on_hover_text(crate::i18n::t("What is built of it keeps its thickness, in one material. Ctrl+Z brings it back."))
                             .clicked()
                         {
                             asks.push(AsmAsk::Delete(c));
@@ -665,18 +675,18 @@ impl CreaBimApp {
                     asks.push(AsmAsk::Rename(id, name));
                 }
                 ui.label(
-                    egui::RichText::new(format!(
+                    egui::RichText::new(crate::i18n::tr(&format!(
                         "IfcMaterialLayerSet · {} · {} total",
                         a.usage.label(),
                         crate::units::len(a.total())
-                    ))
+                    )))
                     .weak(),
                 );
                 let mut description = a.description.clone();
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut description).vertical_align(egui::Align::Center)
-                            .hint_text("Description")
+                            .hint_text(crate::i18n::t("Description"))
                             .desired_width(420.0),
                     )
                     .changed()
@@ -694,7 +704,7 @@ impl CreaBimApp {
                 ui.add_space(6.0);
                 let (c0, c1) = a.core();
                 ui.label(
-                    egui::RichText::new(format!(
+                    egui::RichText::new(crate::i18n::tr(&format!(
                         "Core: layer{} {}{} (orange). Layers run from the {} face to the {}. {}",
                         if c0 == c1 { "" } else { "s" },
                         c0 + 1,
@@ -710,7 +720,7 @@ impl CreaBimApp {
                         } else {
                             ""
                         }
-                    ))
+                    )))
                     .weak(),
                 );
                 ui.add_space(6.0);
@@ -720,7 +730,7 @@ impl CreaBimApp {
                         0 => "Not used yet.".to_string(),
                         n => format!("Used by {n} element{}.", if n == 1 { "" } else { "s" }),
                     });
-                    if !users.is_empty() && ui.small_button("Select them").clicked() {
+                    if !users.is_empty() && ui.small_button(crate::i18n::t("Select them")).clicked() {
                         asks.push(AsmAsk::SelectUsers(id));
                     }
                 });
@@ -741,10 +751,10 @@ impl CreaBimApp {
                         n => format!("Assign to the {n} selected elements"),
                     }),
                 );
-                if r.on_disabled_hover_text(format!(
+                if r.on_disabled_hover_text(crate::i18n::tr(&format!(
                     "Select {} first",
                     a.usage.label().to_lowercase()
-                ))
+                )))
                 .clicked()
                 {
                     asks.push(AsmAsk::Assign(Some(id)));
