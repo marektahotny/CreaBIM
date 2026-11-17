@@ -78,6 +78,9 @@ impl LibraryEntry {
             opacity: self.opacity,
             pattern: None,
             rate: None,
+            lambda: None,
+            density: None,
+            fire: String::new(),
         }
     }
 

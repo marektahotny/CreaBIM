@@ -280,6 +280,55 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             }
             ui.end_row();
 
+            // design values for heat loss and fire safety (STN 73 0540-3,
+            // STN EN 13501-1); 0 or empty is unknown
+            ui.label("Thermal conductivity λ");
+            let mut lambda = m.lambda.unwrap_or(0.0);
+            if ui
+                .add(
+                    egui::DragValue::new(&mut lambda)
+                        .range(0.0..=500.0)
+                        .speed(0.001)
+                        .max_decimals(3)
+                        .suffix(" W/(m·K)"),
+                )
+                .on_hover_text(
+                    "Design value λ by STN 73 0540-3 or the product's data sheet; 0 is unknown",
+                )
+                .changed()
+            {
+                m.lambda = (lambda > 0.0).then_some(lambda);
+                label = "Material thermal conductivity";
+            }
+            ui.end_row();
+
+            ui.label("Density");
+            let mut density = m.density.unwrap_or(0.0);
+            if ui
+                .add(
+                    egui::DragValue::new(&mut density)
+                        .range(0.0..=25000.0)
+                        .speed(5.0)
+                        .max_decimals(0)
+                        .suffix(" kg/m³"),
+                )
+                .changed()
+            {
+                m.density = (density > 0.0).then_some(density);
+                label = "Material density";
+            }
+            ui.end_row();
+
+            ui.label("Reaction to fire");
+            if ui
+                .add(egui::TextEdit::singleline(&mut m.fire).desired_width(90.0))
+                .on_hover_text("Class by STN EN 13501-1: A1, A2-s1,d0, B-s1,d0 … F")
+                .changed()
+            {
+                label = "Material reaction to fire";
+            }
+            ui.end_row();
+
             ui.label("Rate");
             crate::props::flow(ui, |ui| {
                 let per = m.rate.map_or(RateUnit::Area, |r| r.per);

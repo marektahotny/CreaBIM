@@ -50,6 +50,7 @@ pub mod room;
 pub mod sample;
 pub mod screen;
 pub mod site;
+pub mod skbase;
 pub mod sketch;
 pub mod slab;
 pub mod split;

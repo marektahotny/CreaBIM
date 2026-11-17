@@ -768,14 +768,25 @@ impl CreaBimApp {
                 self.report(r, "New assembly. Name it and add its layers.");
             }
             AsmAsk::Starters => {
+                // the Slovak base first: its materials and build-ups
+                let base = creabim_core::skbase::add_base(self.doc.model());
+                let based = !base.ops.is_empty();
+                if based {
+                    let r = self.doc.commit(base);
+                    self.report(r, "");
+                }
                 let (tx, ids) = assembly::add_starters(self.doc.model());
-                if tx.ops.is_empty() {
+                if tx.ops.is_empty() && !based {
                     self.status = "The starter assemblies are in the project already.".into();
                 } else {
-                    let r = self.doc.commit(tx);
+                    let r = if tx.ops.is_empty() {
+                        Ok(())
+                    } else {
+                        self.doc.commit(tx)
+                    };
                     self.report(
                         r,
-                        "Added starter assemblies: a cavity wall, a partition, a floor and a pitched roof.",
+                        "Added the usual Slovak materials and build-ups of walls, floors and roofs, and the starter assemblies.",
                     );
                 }
                 self.open_assemblies(ids.first().copied());

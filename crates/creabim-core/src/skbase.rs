@@ -1,0 +1,380 @@
+//! What a new project starts with in Slovak practice: the usual building
+//! materials with their design values (λ by STN 73 0540-3 and common data
+//! sheets, reaction to fire by STN EN 13501-1), and the usual build-ups of
+//! walls, floors and roofs made of them, each with a type to draw with.
+//! Ported from PilonDesigner (`materials.ts`, `types.ts`; the data in
+//! `data/sk-base.json` is written by `tools/sk-base/export.sh`). The
+//! values are for a first design and can be edited in the project.
+
+use crate::assembly::{self, Assembly, AssemblyUse, Layer, LayerFunction, MIN_LAYER};
+use crate::types::{self, ElementType, SlabType, TypeParams, WallType};
+use crate::{Element, ElementId, ElementKind, Hatch, Material, Model, Transaction};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct Base {
+    materials: Vec<BaseMaterial>,
+    walls: Vec<BuildUp>,
+    floors: Vec<BuildUp>,
+    roofs: Vec<BuildUp>,
+}
+
+#[derive(Deserialize)]
+struct BaseMaterial {
+    id: String,
+    name: String,
+    category: String,
+    lambda: f64,
+    density: f64,
+    fire: String,
+    color: String,
+    #[serde(default)]
+    maker: String,
+    #[serde(default)]
+    block: String,
+    #[serde(default)]
+    rw: Option<f64>,
+    #[serde(default, rename = "fireRes")]
+    fire_res: String,
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    note: String,
+}
+
+#[derive(Deserialize)]
+struct BuildUp {
+    name: String,
+    #[serde(default)]
+    boundary: String,
+    #[serde(default)]
+    fire: String,
+    #[serde(default)]
+    rw: Option<f64>,
+    /// A curtain wall: CreaBIM has its own, so it is left out.
+    #[serde(default)]
+    curtain: Option<serde_json::Value>,
+    layers: Vec<BaseLayer>,
+}
+
+#[derive(Deserialize)]
+struct BaseLayer {
+    material: String,
+    mm: f64,
+    #[serde(default)]
+    core: bool,
+    /// Above a ventilated gap (roofing, battens).
+    #[serde(default)]
+    vent: bool,
+}
+
+fn base() -> Base {
+    serde_json::from_str(include_str!("../data/sk-base.json")).expect("sk-base.json")
+}
+
+/// The IFC category and the cut hatch of a material of PilonDesigner's
+/// group `category`.
+fn kind_of(m: &BaseMaterial) -> (&'static str, Hatch) {
+    let c = m.category.as_str();
+    if m.id == "tehla-plna" {
+        ("brick", Hatch::Brick)
+    } else if c.starts_with("Tehly") || c.contains("AKU") {
+        ("block", Hatch::Brick)
+    } else if c.contains("órobetón") {
+        ("block", Hatch::Diagonal)
+    } else if c == "Betón" {
+        ("concrete", Hatch::Concrete)
+    } else if c == "Minerálna vlna" || c == "Polystyrén" {
+        ("insulation", Hatch::Cross)
+    } else if c.starts_with("Omietky") {
+        ("plaster", Hatch::Solid)
+    } else if c.starts_with("Sadrokartón") {
+        if m.id == "sdk" {
+            ("gypsum", Hatch::Solid)
+        } else {
+            ("wood", Hatch::Timber)
+        }
+    } else if c == "Podlahy" {
+        if m.id == "laminat" {
+            ("wood", Hatch::Timber)
+        } else {
+            ("finish", Hatch::Solid)
+        }
+    } else if c == "Obklady" {
+        if m.id == "obklad-kamen" {
+            ("stone", Hatch::Solid)
+        } else {
+            ("finish", Hatch::Solid)
+        }
+    } else if c.starts_with("Izolácie") {
+        ("membrane", Hatch::Solid)
+    } else if c.starts_with("Strešné") {
+        ("roofing", Hatch::Solid)
+    } else if c == "Kameň" {
+        ("stone", Hatch::Brick)
+    } else if c.starts_with("Zeminy") {
+        ("earth", Hatch::Diagonal)
+    } else if c == "Kovy" {
+        if m.id == "hlinik" {
+            ("aluminium", Hatch::Solid)
+        } else {
+            ("steel", Hatch::Solid)
+        }
+    } else if c.starts_with("Sklo") {
+        ("glass", Hatch::Empty)
+    } else {
+        ("", Hatch::Solid)
+    }
+}
+
+fn colour(hex: &str) -> [f32; 3] {
+    let v = u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap_or(0xcccccc);
+    [(v >> 16) & 255, (v >> 8) & 255, v & 255].map(|c| c as f32 / 255.0)
+}
+
+fn material(m: &BaseMaterial) -> Material {
+    let (category, hatch) = kind_of(m);
+    // a product's data, as its sheet gives them
+    let mut d: Vec<String> = vec![];
+    if !m.maker.is_empty() {
+        d.push(m.maker.clone());
+    }
+    if !m.kind.is_empty() {
+        d.push(m.kind.clone());
+    }
+    if !m.block.is_empty() {
+        d.push(format!("tvárnica {}", m.block));
+    }
+    if let Some(rw) = m.rw {
+        d.push(format!("Rw {rw} dB"));
+    }
+    if !m.fire_res.is_empty() {
+        d.push(m.fire_res.clone());
+    }
+    if !m.note.is_empty() {
+        d.push(m.note.clone());
+    }
+    Material {
+        hatch,
+        color: colour(&m.color),
+        category: category.into(),
+        description: d.join("; "),
+        metallic: if category == "steel" || category == "aluminium" {
+            1.0
+        } else {
+            0.0
+        },
+        roughness: if category == "glass" { 0.1 } else { 0.8 },
+        opacity: if category == "glass" { 0.35 } else { 1.0 },
+        lambda: Some(m.lambda),
+        density: Some(m.density),
+        fire: m.fire.clone(),
+        ..Material::default()
+    }
+}
+
+/// What a layer does in its build-up: the core carries; over a
+/// ventilated gap the outermost is the finish and the rest (battens) the
+/// gap; else by its material.
+fn function(l: &BaseLayer, first: bool, category: &str, screed: bool) -> LayerFunction {
+    if l.core {
+        LayerFunction::Structure
+    } else if l.vent {
+        if first {
+            LayerFunction::Finish
+        } else {
+            LayerFunction::AirGap
+        }
+    } else if screed {
+        LayerFunction::Substrate
+    } else {
+        match category {
+            "insulation" => LayerFunction::Insulation,
+            "membrane" => LayerFunction::Membrane,
+            _ => LayerFunction::Finish,
+        }
+    }
+}
+
+/// What the base holds: (materials, wall, floor, roof build-ups).
+pub fn counts() -> (usize, usize, usize, usize) {
+    let b = base();
+    let n = |l: &[BuildUp]| l.iter().filter(|t| t.curtain.is_none()).count();
+    (b.materials.len(), n(&b.walls), n(&b.floors), n(&b.roofs))
+}
+
+/// Add the Slovak base the model doesn't have yet (by name): materials,
+/// build-ups of walls, floors and roofs, and a type of each build-up.
+pub fn add_base(model: &Model) -> Transaction {
+    let b = base();
+    let mut tx = Transaction::new("Slovak materials and build-ups");
+    let have: Vec<(String, ElementId)> = crate::library::materials(model)
+        .into_iter()
+        .map(|(id, n, _)| (n.to_string(), id))
+        .collect();
+    // each base material's element, new or already there, with what its
+    // layers are
+    let mut by_id: std::collections::HashMap<&str, (ElementId, &'static str, bool)> =
+        Default::default();
+    for m in &b.materials {
+        let (category, _) = kind_of(m);
+        let screed = m.id.starts_with("poter");
+        let id = match have.iter().find(|(n, _)| *n == m.name) {
+            Some((_, id)) => *id,
+            None => {
+                let e = Element::new(m.name.as_str(), ElementKind::Material(material(m)));
+                let id = e.id;
+                tx = tx.insert(e);
+                id
+            }
+        };
+        by_id.insert(m.id.as_str(), (id, category, screed));
+    }
+    let assemblies = assembly::assemblies(model);
+    let kinds = types::types(model);
+    for (usage, list) in [
+        (AssemblyUse::Wall, &b.walls),
+        (AssemblyUse::Floor, &b.floors),
+        (AssemblyUse::Roof, &b.roofs),
+    ] {
+        for t in list.iter().filter(|t| t.curtain.is_none()) {
+            let found = assemblies.iter().find(|(_, n, _)| *n == t.name);
+            let (id, total) = match found {
+                Some((id, _, a)) => (*id, a.total()),
+                None => {
+                    let layers: Vec<Layer> = t
+                        .layers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, l)| {
+                            let (m, category, screed) = match by_id.get(l.material.as_str()) {
+                                Some((id, c, s)) => (Some(*id), *c, *s),
+                                None => (None, "", false),
+                            };
+                            // foils thinner than a layer can be are drawn at 1 mm
+                            Layer::new(
+                                function(l, i == 0, category, screed),
+                                m,
+                                (l.mm / 1000.0).max(MIN_LAYER),
+                            )
+                        })
+                        .collect();
+                    let mut a = Assembly::new(usage, layers);
+                    let mut d: Vec<String> = vec![];
+                    match t.boundary.as_str() {
+                        "exterier" => d.push("vonkajšia konštrukcia".into()),
+                        "interier" => d.push("vnútorná konštrukcia".into()),
+                        "teren" => d.push("konštrukcia pri teréne".into()),
+                        _ => {}
+                    }
+                    if !t.fire.is_empty() {
+                        d.push(format!("požiarna odolnosť {}", t.fire));
+                    }
+                    if let Some(rw) = t.rw {
+                        d.push(format!("Rw {rw} dB"));
+                    }
+                    a.description = d.join("; ");
+                    let total = a.total();
+                    let e = Element::new(t.name.as_str(), ElementKind::Assembly(a));
+                    let id = e.id;
+                    tx = tx.insert(e);
+                    (id, total)
+                }
+            };
+            if kinds.iter().any(|(_, n, _)| *n == t.name) {
+                continue;
+            }
+            let params = match usage {
+                AssemblyUse::Wall => TypeParams::Wall(WallType {
+                    thickness: total,
+                    assembly: Some(id),
+                    material: None,
+                    location: Default::default(),
+                    height: None,
+                    curtain: None,
+                    screen: None,
+                }),
+                AssemblyUse::Floor => TypeParams::Slab(SlabType {
+                    thickness: total,
+                    assembly: Some(id),
+                    material: None,
+                }),
+                AssemblyUse::Roof => TypeParams::Roof(SlabType {
+                    thickness: total,
+                    assembly: Some(id),
+                    material: None,
+                }),
+            };
+            tx = tx.insert(Element::new(
+                t.name.as_str(),
+                ElementKind::ElementType(ElementType::new(params)),
+            ));
+        }
+    }
+    tx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Document;
+
+    #[test]
+    fn a_new_project_takes_the_base_once() {
+        let mut doc = Document::new();
+        doc.commit(add_base(doc.model())).unwrap();
+        let m = doc.model();
+        let (materials, walls, floors, roofs) = counts();
+        assert_eq!((materials, walls, floors, roofs), (71, 20, 4, 3));
+        assert_eq!(crate::library::materials(m).len(), materials);
+        assert_eq!(assembly::assemblies(m).len(), walls + floors + roofs);
+        assert_eq!(types::types(m).len(), walls + floors + roofs);
+        // again adds nothing
+        assert!(add_base(m).ops.is_empty());
+    }
+
+    #[test]
+    fn a_build_up_is_made_of_its_layers() {
+        let mut doc = Document::new();
+        doc.commit(add_base(doc.model())).unwrap();
+        let m = doc.model();
+        let all = assembly::assemblies(m);
+        let (_, _, a) = all
+            .iter()
+            .find(|(_, n, _)| *n == "Obvodová – tehla 300 + EPS 150")
+            .unwrap();
+        a.validate().unwrap();
+        assert!((a.total() - 0.47).abs() < 1e-9);
+        let f: Vec<LayerFunction> = a.layers.iter().map(|l| l.function).collect();
+        assert_eq!(
+            f,
+            [
+                LayerFunction::Finish,
+                LayerFunction::Insulation,
+                LayerFunction::Structure,
+                LayerFunction::Finish
+            ]
+        );
+        // the insulation is EPS with its λ and reaction to fire
+        let eps = m.get(a.layers[1].material.unwrap()).unwrap();
+        let ElementKind::Material(mat) = &eps.kind else {
+            panic!()
+        };
+        assert_eq!(eps.name, "EPS 70F – fasádny");
+        assert_eq!((mat.lambda, mat.fire.as_str()), (Some(0.039), "E"));
+        // every build-up is sound, foils at the thinnest a layer can be
+        for (_, n, a) in &all {
+            a.validate().unwrap_or_else(|e| panic!("{n}: {e}"));
+        }
+        // and its type is as thick
+        let kinds = types::types(m);
+        let (_, _, t) = kinds
+            .iter()
+            .find(|(_, n, _)| *n == "Obvodová – tehla 300 + EPS 150")
+            .unwrap();
+        let TypeParams::Wall(w) = &t.params else {
+            panic!()
+        };
+        assert!((w.thickness - 0.47).abs() < 1e-9 && w.assembly.is_some());
+    }
+}
