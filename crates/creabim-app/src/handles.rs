@@ -802,7 +802,7 @@ fn elevation(model: &Model, level: Option<ElementId>) -> f64 {
 /// The handles of element `id`. `face` is the selected face of a mass.
 /// The section a reference is shown in, as its line's start and direction;
 /// none when it is shown in plans (its coordinates are then the plan's).
-fn ref_plane(model: &Model, r: &creabim_core::Reference) -> Option<(DVec2, DVec2)> {
+pub(crate) fn ref_plane(model: &Model, r: &creabim_core::Reference) -> Option<(DVec2, DVec2)> {
     let v = r.shown_in.first()?;
     match &model.get(*v)?.kind {
         ElementKind::View(creabim_core::View {

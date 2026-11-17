@@ -206,6 +206,9 @@ pub struct CreaBimApp {
     remove_ref: Option<ElementId>,
     /// Copy to view…: the reference, and the view its copy goes to (MU38).
     copy_ref: Option<(ElementId, ElementId)>,
+    /// A 3D drawing reference to make a terrain from, asked from its
+    /// Properties.
+    terrain_ref: Option<ElementId>,
     /// Shift+A's Add menu, open, with what is typed in it (MU24).
     add_menu: Option<String>,
     scene: Vec<SceneItem>,
@@ -454,6 +457,7 @@ impl CreaBimApp {
             sheets_export: SheetsExport::default(),
             remove_ref: None,
             copy_ref: None,
+            terrain_ref: None,
             add_menu: None,
             scene: vec![],
             plan: PlanState::default(),
@@ -1376,6 +1380,54 @@ impl CreaBimApp {
         }
     }
 
+    /// A 3D drawing reference's lines as model segments (pairs of
+    /// points): its 3D lines and faces at their heights less ±0,000, its
+    /// flat lines on its view's plane; none for a flat one or one shown in
+    /// a section.
+    fn reference_3d(&mut self, r: &creabim_core::Reference) -> Option<Vec<DVec3>> {
+        if !matches!(r.source, creabim_core::RefSource::Dxf { .. }) {
+            return None;
+        }
+        let model = self.doc.model();
+        if crate::handles::ref_plane(model, r).is_some() {
+            return None;
+        }
+        let d = self.plan.ref_cache.drawing(&r.source).ok()??;
+        if !d.has3d {
+            return None;
+        }
+        let (lo, _) = d.z_range()?;
+        let z0 = terrainimport::datum(model, lo);
+        let flat = crate::handles::ref_world(model, r, DVec2::ZERO).z;
+        let on = |l: &str| !r.layers_off.iter().any(|x| x == l);
+        let inside = |p: DVec2| {
+            r.clip
+                .is_none_or(|[a, b]| p.cmpge(a).all() && p.cmple(b).all())
+        };
+        let at = |p: DVec2, z: Option<f64>| r.place(p).extend(z.map_or(flat, |z| z - z0));
+        let mut out = vec![];
+        let mut ring = |pts: &[DVec2], zs: Option<&Vec<f64>>, closed: bool| {
+            let n = pts.len();
+            for i in 0..n.saturating_sub(usize::from(!closed)) {
+                let j = (i + 1) % n;
+                if i == j || !inside(pts[i]) || !inside(pts[j]) {
+                    continue;
+                }
+                out.push(at(pts[i], zs.map(|z| z[i])));
+                out.push(at(pts[j], zs.map(|z| z[j])));
+            }
+        };
+        for p in d.polys.iter().filter(|p| on(&p.layer)) {
+            ring(&p.pts, p.z.as_ref(), p.closed);
+        }
+        for f in d.faces.iter().filter(|f| on(&f.layer)) {
+            let pts: Vec<DVec2> = f.pts.iter().map(|q| q.truncate()).collect();
+            let zs: Vec<f64> = f.pts.iter().map(|q| q.z).collect();
+            ring(&pts, Some(&zs), true);
+        }
+        Some(out)
+    }
+
     fn draw_reference_lines_3d(
         &mut self,
         painter: &egui::Painter,
@@ -1385,12 +1437,26 @@ impl CreaBimApp {
         // a huge drawing is cut short rather than slowing the 3D view
         let mut budget = 30_000usize;
         for (id, r) in refs {
-            let model = self.doc.model();
-            let world = |p: DVec2| crate::handles::ref_world(model, &r, p);
             let ink = crate::trace::colour(&r)
                 .unwrap_or(Color32::from_gray(150))
                 .gamma_multiply(r.opacity.clamp(0.15, 1.0));
             let stroke = egui::Stroke::new(1.0, ink);
+            // a 3D drawing (a survey) at its heights, to ±0,000 as a
+            // terrain made from it is
+            if let Some(segs) = self.reference_3d(&r) {
+                for s in segs.chunks(2) {
+                    if budget == 0 {
+                        return;
+                    }
+                    budget -= 1;
+                    if let (Some(a), Some(b)) = (project(s[0]), project(s[1])) {
+                        painter.line_segment([a, b], stroke);
+                    }
+                }
+                continue;
+            }
+            let model = self.doc.model();
+            let world = |p: DVec2| crate::handles::ref_world(model, &r, p);
             match self.plan.ref_cache.get(model, id, &r) {
                 crate::trace::Shown::Lines(lines) => {
                     for l in lines.iter() {
@@ -8487,6 +8553,19 @@ impl CreaBimApp {
                                 crate::i18n::num(hi, 2)
                             ))
                         });
+                        if ui
+                            .add_sized(
+                                [ui.available_width(), 24.0],
+                                egui::Button::new(crate::i18n::t("Terrain from its heights"))
+                                    .truncate(),
+                            )
+                            .on_hover_text(crate::i18n::t(
+                                "A terrain through its points, 3D lines and faces on the layers shown, within its clip, on the working level",
+                            ))
+                            .clicked()
+                        {
+                            self.terrain_ref = Some(id);
+                        }
                     }
                 }
             }
@@ -8631,6 +8710,9 @@ impl CreaBimApp {
                     );
                 }
             }
+        }
+        if let Some(id) = self.terrain_ref.take() {
+            self.terrain_from_reference(id);
         }
         if let Some(id) = self.remove_ref.take() {
             let tx = creabim_core::Transaction::new("Remove reference")

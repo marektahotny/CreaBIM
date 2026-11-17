@@ -104,6 +104,43 @@ impl DxfImport {
         (lo <= hi).then_some((lo, hi))
     }
 
+    /// Its points with heights on layers not `off` and within `clip`:
+    /// the vertices of 3D lines, points and the corners of 3D faces, each
+    /// place once (shared corners of a TIN), for a terrain (PilonDesigner's
+    /// `cadZPoints`).
+    pub fn heights(&self, off: &[String], clip: Option<[DVec2; 2]>) -> Vec<DVec3> {
+        let on = |l: &str| !off.iter().any(|x| x == l);
+        let inside = |p: DVec2| clip.is_none_or(|[a, b]| p.cmpge(a).all() && p.cmple(b).all());
+        let mut seen = std::collections::HashSet::new();
+        let mut out = vec![];
+        let mut add = |q: DVec3| {
+            if inside(q.truncate())
+                && q.is_finite()
+                && seen.insert(((q.x * 1000.0).round() as i64, (q.y * 1000.0).round() as i64))
+            {
+                out.push(q);
+            }
+        };
+        for p in self.polys.iter().filter(|p| on(&p.layer)) {
+            if let Some(z) = &p.z {
+                for (q, z) in p.pts.iter().zip(z) {
+                    add(q.extend(*z));
+                }
+            }
+        }
+        for m in self.points.iter().filter(|m| on(&m.layer)) {
+            if let Some(z) = m.z {
+                add(m.p.extend(z));
+            }
+        }
+        for f in self.faces.iter().filter(|f| on(&f.layer)) {
+            for q in &f.pts {
+                add(*q);
+            }
+        }
+        out
+    }
+
     /// Far from the origin, as drawings in national coordinates are
     /// (S-JTSK: about −1 200 km, −500 km), more than 2 km.
     pub fn is_far(&self) -> bool {
@@ -1500,6 +1537,14 @@ mod tests {
             "a triangle: its repeated corner dropped"
         );
         assert_eq!(r.z_range(), Some((312.0, 314.0)));
+        // its heights: the point and the face's three corners
+        assert_eq!(r.heights(&[], None).len(), 4);
+        assert_eq!(r.heights(&["TEREN".into()], None).len(), 1);
+        let clip = [
+            DVec2::new(-450115.0, -1250455.0),
+            DVec2::new(-450100.0, -1250435.0),
+        ];
+        assert_eq!(r.heights(&[], Some(clip)).len(), 2);
     }
 
     #[test]

@@ -17,6 +17,7 @@ New terrain is flat at its level and covered in *Grass* from the material librar
 - Its outline goes round the outermost points, and the surface passes through every point. A large survey is thinned to about 1500 points on a grid, the one nearest each cell's middle kept.
 - Points in **S-JTSK** (Y and X over 50 km) are turned to east and north, and their lower left whole metre comes to the project's origin.
 - Heights above sea level (Bpv) come to the project's ±0,000: its *Elevation* in *Project information* when set, else the lowest point's whole metre. The status line says where the origin and ±0,000 are.
+- A 3D DXF survey (points, 3D polylines, a TIN of 3D faces) makes one the same way: **Terrain from its heights** in the reference's *Properties*, from the layers shown, where the reference is placed.
 - Contours are drawn every 0.25, 0.5 or 1 m, by how much the ground rises. Only the first 40 spot heights are listed in *Properties*.
 
 ### Earthworks
