@@ -157,6 +157,66 @@ fn bidet() -> CatalogueObject {
     )
 }
 
+fn wc_wall_hung() -> CatalogueObject {
+    let f = "Závesné WC s podomietkovou nádržkou";
+    let s = shape(f, None);
+    let n = 32;
+    // the pan's middle, out from the wall
+    let cy = -0.3;
+    let rim = s.height - 0.02;
+    let mut b = Build::new();
+    b.add(
+        "Pan",
+        ceramic(),
+        stack(&[
+            (squircle(v2(0.0, -0.12), 0.1, 0.1, 2.6, n), s.bottom),
+            (squircle(v2(0.0, -0.17), 0.15, 0.15, 2.6, n), s.bottom + 0.1),
+            (
+                squircle(v2(0.0, cy + 0.035), 0.18, 0.265, 2.4, n),
+                rim - 0.02,
+            ),
+            (squircle(v2(0.0, cy + 0.035), 0.18, 0.265, 2.4, n), rim),
+            (squircle(v2(0.0, cy), 0.13, 0.2, 2.4, n), rim - 0.01),
+            (squircle(v2(0.0, cy), 0.07, 0.1, 2.4, n), s.bottom + 0.16),
+        ]),
+        false,
+    );
+    b.add(
+        "Seat and lid",
+        ceramic(),
+        stack(&[
+            (squircle(v2(0.0, cy + 0.03), 0.18, 0.26, 2.4, n), rim),
+            (
+                squircle(v2(0.0, cy + 0.03), 0.182, 0.262, 2.4, n),
+                rim + 0.012,
+            ),
+            (squircle(v2(0.0, cy + 0.03), 0.172, 0.25, 2.4, n), s.height),
+        ]),
+        false,
+    );
+    // the flush plate 246 × 164, its middle 1 m above the floor
+    b.add(
+        "Flush plate",
+        chrome(),
+        soft_box(
+            v3(-0.123, -0.012, 0.918),
+            v3(0.123, 0.0, 1.082),
+            0.004,
+            0.002,
+        ),
+        false,
+    );
+    finish(
+        b,
+        f,
+        "WC, wall-hung with concealed cistern",
+        "Wall-hung pan 360 × 530, rim 400 mm, on an installation frame in the wall (500 wide, 1120 high, 120 deep or more) with its concealed cistern and flush plate; water DN 15 in the frame, waste DN 100",
+        ObjectCategory::Bathroom,
+        ("IfcSanitaryTerminal", "TOILETPAN"),
+        Mount::Wall,
+    )
+}
+
 fn urinal() -> CatalogueObject {
     let f = "Pisoár";
     let s = shape(f, None);
@@ -355,6 +415,7 @@ pub fn starters() -> Vec<CatalogueObject> {
         washing_machine(),
         dishwasher(),
         bidet(),
+        wc_wall_hung(),
         urinal(),
         towel_radiator(),
         manifold(),
