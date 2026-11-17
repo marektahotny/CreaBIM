@@ -281,8 +281,29 @@ impl PipeDraft {
 use creabim_core::{Document, Element, ElementId, ElementKind, ModelError, Transaction};
 use glam::{DVec2, DVec3};
 
+/// How near a click must be to a fixture's connector to join it, m.
+const CONNECTOR_REACH: f64 = 0.05;
+
+/// The fixture connector on `level` nearest `p`, within reach.
+pub fn connector_at(
+    model: &creabim_core::Model,
+    level: ElementId,
+    p: DVec2,
+) -> Option<creabim_core::fixture::Connector> {
+    model
+        .iter()
+        .filter(|e| matches!(&e.kind, ElementKind::Object(o) if o.level == level))
+        .flat_map(|e| creabim_core::fixture::connectors(model, e))
+        .map(|c| (c.at.truncate().distance(p), c))
+        .filter(|(d, _)| *d <= CONNECTOR_REACH)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, c)| c)
+}
+
 /// A click with the Pipe tool on `level`: the first starts a run, each
-/// next one draws a pipe to it and goes on from there.
+/// next one draws a pipe to it and goes on from there. A run started at
+/// a fixture's connector takes its system and height; one ended at a
+/// connector of its system drops or rises to it there, and ends.
 pub fn click(
     doc: &mut Document,
     level: ElementId,
@@ -290,10 +311,21 @@ pub fn click(
     state: &mut crate::planview::PlanState,
     selection: &mut crate::selection::Selection,
 ) -> Result<(), ModelError> {
+    let conn = connector_at(doc.model(), level, p);
     let draft = &mut state.members.pipe;
     match state.pending {
         None => {
             draft.last_z = None;
+            let mut p = p;
+            if let Some(c) = conn {
+                if let Some(def) = creabim_core::mep::system(c.kind.code()) {
+                    if draft.system != def.code {
+                        *draft = PipeDraft::for_system(def);
+                    }
+                }
+                draft.last_z = Some(c.at.z);
+                p = c.at.truncate();
+            }
             state.pending = Some(p);
             state.status = Some(crate::i18n::tr(
                 "Click where the pipe goes; keep clicking to go on. Esc or right-click ends.",
@@ -301,13 +333,35 @@ pub fn click(
             Ok(())
         }
         Some(a) if a.distance(p) > 0.01 => {
-            let pipe = draft.pipe(level, a, p);
+            let conn = conn.filter(|c| c.kind.code() == draft.system);
+            let b = conn.map_or(p, |c| c.at.truncate());
+            let pipe = draft.pipe(level, a, b);
+            let mut tx = Transaction::new("Draw pipe");
+            let mut last = None;
+            if let Some(c) = conn {
+                if (c.at.z - pipe.end.z).abs() > 0.01 {
+                    let mut drop = pipe.clone();
+                    drop.start = pipe.end;
+                    drop.end = c.at;
+                    let name = format!("{} {}", drop.system, size_label(&drop));
+                    let e = Element::new(name, ElementKind::Pipe(drop));
+                    last = Some(e.id);
+                    tx = tx.insert(e);
+                }
+            }
             draft.last_z = Some(pipe.end.z);
             let name = format!("{} {}", pipe.system, size_label(&pipe));
             let e = Element::new(name, ElementKind::Pipe(pipe));
-            selection.only(e.id);
-            state.pending = Some(p);
-            doc.commit(Transaction::new("Draw pipe").insert(e))
+            selection.only(last.unwrap_or(e.id));
+            tx = tx.insert(e);
+            if conn.is_some() {
+                // joined a fixture: the run ends there
+                draft.last_z = None;
+                state.pending = None;
+            } else {
+                state.pending = Some(b);
+            }
+            doc.commit(tx)
         }
         Some(_) => Ok(()),
     }
@@ -481,5 +535,56 @@ mod tool_tests {
             .iter()
             .any(|(_, t, on)| t == "20x3,4" && *on));
         assert_eq!(menu_items(&d, "pipe.system").unwrap().len(), SYSTEMS.len());
+    }
+
+    #[test]
+    fn a_run_from_a_basin_takes_its_system_and_ends_dropping_to_another() {
+        use creabim_core::Document;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let basin = creabim_core::catalogue::starter("starter/washbasin").unwrap();
+        let mut place = |x: f64| {
+            let (tx, _) =
+                creabim_core::objects::place(doc.model(), &basin, level, DVec2::new(x, 3.0), 0.0);
+            doc.commit(tx).unwrap();
+        };
+        place(1.0);
+        place(4.0);
+        let model = doc.model();
+        let hot = |x: f64| {
+            let c = connector_at(model, level, DVec2::new(x - 0.08, 2.98)).unwrap();
+            assert_eq!(c.kind, creabim_core::fixture::ConnKind::TV);
+            c
+        };
+        let (a, b) = (hot(1.0), hot(4.0));
+        let mut state = crate::planview::PlanState::default();
+        let mut sel = crate::selection::Selection::default();
+        click(
+            &mut doc,
+            level,
+            a.at.truncate() + DVec2::new(0.01, 0.0),
+            &mut state,
+            &mut sel,
+        )
+        .unwrap();
+        assert_eq!(state.members.pipe.system, "TV");
+        assert_eq!(state.members.pipe.last_z, Some(a.at.z));
+        let n = doc.model().len();
+        click(&mut doc, level, DVec2::new(2.5, 2.0), &mut state, &mut sel).unwrap();
+        // the last leg runs lower than the next tap, so it rises to it
+        state.members.pipe.last_z = Some(0.3);
+        click(&mut doc, level, b.at.truncate(), &mut state, &mut sel).unwrap();
+        assert_eq!(doc.model().len(), n + 3, "two runs and a rise to the tap");
+        assert!(state.pending.is_none(), "joining a fixture ends the run");
+        let rise = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Pipe(p) if p.is_vertical() => Some(p.clone()),
+                _ => None,
+            })
+            .next()
+            .unwrap();
+        assert!((rise.end - b.at).length() < 1e-9);
     }
 }

@@ -17,6 +17,7 @@ pub mod divide;
 pub mod document;
 pub mod editmesh;
 pub mod element;
+pub mod fixture;
 pub mod footing;
 pub mod garden;
 pub mod graphics;
