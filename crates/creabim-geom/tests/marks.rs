@@ -237,6 +237,7 @@ fn dimension_lines_break_where_tags_sit_across_them() {
         look,
         witness: None,
         breaks: vec![],
+        below: None,
     };
     let mut items = vec![tag, dim(look), dim(TextLook::default())];
     break_dimensions(&mut items, 0.1);

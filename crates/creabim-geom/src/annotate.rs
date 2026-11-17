@@ -644,6 +644,27 @@ pub fn room_tag_items(
     out
 }
 
+/// A plan dimension from jamb to jamb of one door or window (both ends on
+/// it, as long as it is wide): its height, and a window's sill, to write
+/// under the line (STN 01 3420).
+pub fn opening_below(
+    model: &Model,
+    d: &creabim_core::Dimension,
+    len: f64,
+) -> Option<(f64, Option<f64>)> {
+    let h = d.a.host?;
+    if d.b.host != Some(h) {
+        return None;
+    }
+    let ElementKind::Opening(o) = &model.get(h)?.kind else {
+        return None;
+    };
+    if (len - o.width).abs() > 1e-3 || o.kind == OpeningKind::Hole {
+        return None;
+    }
+    Some((o.height, (o.kind == OpeningKind::Window).then_some(o.sill)))
+}
+
 /// A dimension's value as it is written in `units`.
 pub fn dimension_text(units: &creabim_core::Units, a: DVec2, b: DVec2) -> String {
     units.dimension(a.distance(b))
@@ -882,20 +903,28 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 let Some((b2, witness)) = squared(d.axis, a, b) else {
                     continue;
                 };
+                let num = |v: f64| {
+                    creabim_core::write_number(
+                        model,
+                        creabim_core::NumberKind::Dimensions,
+                        d.format,
+                        v,
+                    )
+                };
+                let below = opening_below(model, d, a.distance(b2)).map(|(h, sill)| match sill {
+                    Some(s) => format!("{} ({})", num(h), num(s)),
+                    None => num(h),
+                });
                 out.push(PlanItem::Dimension {
                     id: e.id,
                     a,
                     b: b2,
                     offset: d.offset,
-                    text: creabim_core::write_number(
-                        model,
-                        creabim_core::NumberKind::Dimensions,
-                        d.format,
-                        a.distance(b2),
-                    ),
+                    text: num(a.distance(b2)),
                     look: look_of(model, d.style, d.color),
                     witness,
                     breaks: vec![],
+                    below,
                 });
             }
             ElementKind::Tag(t) if t.view == view_id => {
@@ -1083,6 +1112,8 @@ pub struct DimensionGeometry {
     pub angle: f64,
     /// Where the dimension line meets its witness lines.
     pub ends_at: (DVec2, DVec2),
+    /// Where text under the line goes, mirroring `text_at`.
+    pub below_at: DVec2,
 }
 
 /// A linear dimension's linework: its line `offset` to the left of `a` →
@@ -1128,6 +1159,7 @@ pub fn dimension_geometry(
         ends,
         // 1.8 mm off the line for the default 2.5 mm text
         text_at: (pa + pb) / 2.0 + up * (0.55 + look.size / 2.0) * mm,
+        below_at: (pa + pb) / 2.0 - up * (0.55 + look.size / 2.0) * mm,
         angle,
         ends_at: (pa, pb),
     }

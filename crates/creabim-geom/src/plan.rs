@@ -658,6 +658,10 @@ pub enum PlanItem {
         /// Stretches of the dimension line left out where tags and notes
         /// sit across it, as fractions of the way from `a` to `b`.
         breaks: Vec<[f64; 2]>,
+        /// Text under the line (STN 01 3420: a dimension across a whole
+        /// door or window has its width above and its height, and a
+        /// window's sill in brackets, below).
+        below: Option<String>,
     },
     /// A tag: `text` in a bubble at `at`, with a leader back to `anchor`.
     Tag {

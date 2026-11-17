@@ -5956,11 +5956,26 @@ pub fn draw_item_with(
             look,
             witness,
             breaks,
+            below,
             ..
         } => {
             let ink = crate::annotate::ink(look, selected, highlight);
             let d = (*a, *b, *offset, *witness);
             draw_dimension(painter, xf, d, breaks, text, look, mm, ink);
+            if let Some(t) = below {
+                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+                let px = crate::annotate::text_px(look, mm, xf);
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(g.below_at),
+                    t,
+                    px,
+                    ink,
+                    g.angle,
+                    paper::Anchor::Middle,
+                    look,
+                );
+            }
         }
         PlanItem::Annotation { item, .. } => {
             let ink = crate::annotate::ink(&item.look, selected, highlight);

@@ -1813,7 +1813,7 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.thin" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
@@ -2555,6 +2555,19 @@ impl CreaBimApp {
                     Ok(0) => "Every door and window here is tagged already.".into(),
                     Ok(n) => format!("Tagged {n} doors and windows. Drag a tag to move it."),
                     Err(e) => format!("Couldn't do that: {e}"),
+                };
+            }
+            "view.dimopenings" => {
+                let (tx, n) = creabim_geom::autodims::dimension_openings(self.doc.model(), id);
+                self.status = if n == 0 {
+                    "Nothing to add: the doors, windows and walls here are dimensioned already (plans only).".into()
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => format!(
+                            "Added {n} dimensions: doors and windows, walls and overall, bound to what they measure. Ctrl+Z to undo."
+                        ),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
                 };
             }
             "view.tagfixtures" => {
@@ -3322,6 +3335,13 @@ impl CreaBimApp {
                 "kind": "button", "id": "view.tag", "label": "Tag openings", "icon": "tag",
                 "hint": "Tag every door and window in this view that has no tag yet",
             }));
+            if self.active_plan().is_some() {
+                options.push(json!({
+                    "kind": "button", "id": "view.dimopenings", "label": "Dimension openings",
+                    "icon": "dimension",
+                    "hint": "Dimension chains round the outside, as STN 01 3420: the doors and windows (width over the line, height and sill under it), the walls, the overall size. Bound to what they measure",
+                }));
+            }
             if self.active_plan().is_some() {
                 options.push(json!({
                     "kind": "button", "id": "view.tagfixtures", "label": "Tag fixtures", "icon": "fixtures",

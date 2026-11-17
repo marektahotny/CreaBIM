@@ -306,6 +306,7 @@ pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, l
                 look,
                 witness,
                 breaks,
+                below,
                 ..
             } => {
                 let mut g = dimension_geometry(*a, *b, *offset, *witness, look, 1.0 / map.k());
@@ -315,6 +316,9 @@ pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, l
                 }
                 draw_ends(canvas, &g.ends, look, &to);
                 canvas.styled_text(to(g.text_at), text, Anchor::Middle, g.angle, look);
+                if let Some(t) = below {
+                    canvas.styled_text(to(g.below_at), t, Anchor::Middle, g.angle, look);
+                }
             }
             PlanItem::Tag {
                 anchor,
