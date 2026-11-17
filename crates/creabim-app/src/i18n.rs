@@ -136,8 +136,10 @@ fn lookup(l: Lang, english: &str) -> Option<&'static str> {
 }
 
 /// The keys of a pane's state whose text is read by people.
-const TEXT_KEYS: [&str; 9] = [
+const TEXT_KEYS: [&str; 11] = [
     "label",
+    "message",
+    "samples_title",
     "hint",
     "name",
     "title",
@@ -160,9 +162,14 @@ fn walk(v: &mut serde_json::Value) {
     use serde_json::Value;
     match v {
         Value::Object(map) => {
+            // a menu button shows its value as its caption; elsewhere a value
+            // is what was typed, and stays as it was
+            let menu = map.get("kind").and_then(Value::as_str) == Some("menu");
             for (k, val) in map.iter_mut() {
                 match val {
-                    Value::String(s) if TEXT_KEYS.contains(&k.as_str()) => {
+                    Value::String(s)
+                        if TEXT_KEYS.contains(&k.as_str()) || (menu && k == "value") =>
+                    {
                         let out = tr(s);
                         if out != *s {
                             *s = out;
