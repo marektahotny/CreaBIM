@@ -166,6 +166,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Size the cold and hot water pipes drawn to the fixtures (STN EN 806-3) and check the pressure",
             ),
             act(
+                "calc:fittings",
+                "Fittings schedule",
+                "table-2",
+                "The elbows, tees, branches and reducers the pipes need where they meet, counted by system",
+            ),
+            act(
                 "catalogue.cat:bathroom",
                 "Sanitary fixtures",
                 "fixtures",

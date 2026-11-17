@@ -10,6 +10,7 @@
 //! (STN EN 806-3, STN 73 6655, DIN 1988-300) and find the pressure it
 //! needs at its root.
 
+pub mod fittings;
 pub mod fixtures;
 pub mod fluid;
 pub mod hydraulics;
