@@ -632,6 +632,17 @@ pub struct Material {
     /// [`crate::takeoff`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate: Option<crate::takeoff::Rate>,
+    /// Design thermal conductivity λ, W/(m·K) (STN 73 0540-3), for heat
+    /// loss and U-values; none when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lambda: Option<f64>,
+    /// Density, kg/m³.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub density: Option<f64>,
+    /// Reaction to fire class by STN EN 13501-1 ("A1", "B-s1,d0", "E");
+    /// empty when unknown.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fire: String,
 }
 
 /// The roughness of a material that doesn't say: matte, like most
@@ -666,6 +677,9 @@ impl Default for Material {
             opacity: 1.0,
             pattern: None,
             rate: None,
+            lambda: None,
+            density: None,
+            fire: String::new(),
         }
     }
 }

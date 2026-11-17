@@ -1608,10 +1608,14 @@ impl CreaBimApp {
                 let _ = m.commit(tx);
                 let tx = creabim_core::units::set_units(m.model(), units);
                 let _ = m.commit(tx);
+                // the usual materials and build-ups of walls, floors and
+                // roofs, with a type of each to draw with
+                let tx = creabim_core::skbase::add_base(m.model());
+                let _ = m.commit(tx);
                 self.load_model(m.model().clone());
                 self.path = new_path("Untitled");
                 self.status =
-                    "New project with two levels. Pick the Wall tool to start drawing.".into();
+                    "New project with two levels and the usual materials and build-ups. Pick the Wall tool to start drawing.".into();
             }
             "new.project" => self.open_new_project(ctx),
             "new.sheet" => self.new_sheet(),

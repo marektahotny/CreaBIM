@@ -1,0 +1,1562 @@
+{
+ "materials": [
+  {
+   "id": "tehla-plna",
+   "category": "Tehly a tvárnice",
+   "name": "Plná pálená tehla",
+   "lambda": 0.8,
+   "density": 1800,
+   "fire": "A1",
+   "color": "#b5543a"
+  },
+  {
+   "id": "tvarnica-440",
+   "category": "Tehly a tvárnice",
+   "name": "Keramická tvárnica 440 brúsená (tepelnoizolačná)",
+   "lambda": 0.12,
+   "density": 650,
+   "fire": "A1",
+   "color": "#c9774f"
+  },
+  {
+   "id": "tvarnica-380",
+   "category": "Tehly a tvárnice",
+   "name": "Keramická tvárnica 380 brúsená",
+   "lambda": 0.15,
+   "density": 700,
+   "fire": "A1",
+   "color": "#c9774f"
+  },
+  {
+   "id": "tvarnica-300",
+   "category": "Tehly a tvárnice",
+   "name": "Keramická tvárnica 300",
+   "lambda": 0.2,
+   "density": 800,
+   "fire": "A1",
+   "color": "#c9774f"
+  },
+  {
+   "id": "tvarnica-250",
+   "category": "Tehly a tvárnice",
+   "name": "Keramická tvárnica 250 (nosná vnútorná)",
+   "lambda": 0.3,
+   "density": 900,
+   "fire": "A1",
+   "color": "#c9774f"
+  },
+  {
+   "id": "priečkovka-115",
+   "category": "Tehly a tvárnice",
+   "name": "Keramická priečkovka 115",
+   "lambda": 0.4,
+   "density": 950,
+   "fire": "A1",
+   "color": "#d28b62"
+  },
+  {
+   "id": "vapennopiesk",
+   "category": "Tehly a tvárnice",
+   "name": "Vápennopiesková tvárnica",
+   "lambda": 0.99,
+   "density": 1800,
+   "fire": "A1",
+   "color": "#d9d4c7"
+  },
+  {
+   "id": "porobeton-350",
+   "category": "Pórobetón",
+   "name": "Pórobetón P2-350",
+   "lambda": 0.09,
+   "density": 350,
+   "fire": "A1",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porobeton-400",
+   "category": "Pórobetón",
+   "name": "Pórobetón P2-400",
+   "lambda": 0.1,
+   "density": 400,
+   "fire": "A1",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porobeton-500",
+   "category": "Pórobetón",
+   "name": "Pórobetón P4-500",
+   "lambda": 0.13,
+   "density": 500,
+   "fire": "A1",
+   "color": "#dedad0"
+  },
+  {
+   "id": "porobeton-600",
+   "category": "Pórobetón",
+   "name": "Pórobetón P4-600",
+   "lambda": 0.16,
+   "density": 600,
+   "fire": "A1",
+   "color": "#d8d3c8"
+  },
+  {
+   "id": "zelezobeton",
+   "category": "Betón",
+   "name": "Železobetón",
+   "lambda": 1.58,
+   "density": 2500,
+   "fire": "A1",
+   "color": "#9aa3ad"
+  },
+  {
+   "id": "beton",
+   "category": "Betón",
+   "name": "Prostý betón",
+   "lambda": 1.3,
+   "density": 2300,
+   "fire": "A1",
+   "color": "#b0b6bd"
+  },
+  {
+   "id": "obklad-keram",
+   "category": "Obklady",
+   "name": "Keramický obklad",
+   "lambda": 1,
+   "density": 2000,
+   "fire": "A1",
+   "color": "#e8eef2"
+  },
+  {
+   "id": "obklad-kamen",
+   "category": "Obklady",
+   "name": "Kamenný obklad",
+   "lambda": 2.3,
+   "density": 2600,
+   "fire": "A1",
+   "color": "#a89f8f"
+  },
+  {
+   "id": "poter-cem",
+   "category": "Betón",
+   "name": "Cementový poter",
+   "lambda": 1.16,
+   "density": 2000,
+   "fire": "A1",
+   "color": "#bfc4c9"
+  },
+  {
+   "id": "poter-anhydrit",
+   "category": "Betón",
+   "name": "Anhydritový poter",
+   "lambda": 1.2,
+   "density": 2100,
+   "fire": "A1",
+   "color": "#c8c3b5"
+  },
+  {
+   "id": "mw-fasada",
+   "category": "Minerálna vlna",
+   "name": "Minerálna vlna – fasádna doska",
+   "lambda": 0.036,
+   "density": 110,
+   "fire": "A1",
+   "color": "#e8d38a"
+  },
+  {
+   "id": "mw-medzi",
+   "category": "Minerálna vlna",
+   "name": "Minerálna vlna – medzi krokvy / do priečok",
+   "lambda": 0.035,
+   "density": 30,
+   "fire": "A1",
+   "color": "#ead9a0"
+  },
+  {
+   "id": "mw-krocaj",
+   "category": "Minerálna vlna",
+   "name": "Minerálna vlna – kročajová",
+   "lambda": 0.035,
+   "density": 110,
+   "fire": "A1",
+   "color": "#e2cf8a"
+  },
+  {
+   "id": "eps-70f",
+   "category": "Polystyrén",
+   "name": "EPS 70F – fasádny",
+   "lambda": 0.039,
+   "density": 15,
+   "fire": "E",
+   "color": "#f6e7a6"
+  },
+  {
+   "id": "eps-sedy",
+   "category": "Polystyrén",
+   "name": "EPS šedý (grafitový) – fasádny",
+   "lambda": 0.031,
+   "density": 15,
+   "fire": "E",
+   "color": "#b9bcc2"
+  },
+  {
+   "id": "eps-100",
+   "category": "Polystyrén",
+   "name": "EPS 100 – podlahový",
+   "lambda": 0.037,
+   "density": 20,
+   "fire": "E",
+   "color": "#f3e9b8"
+  },
+  {
+   "id": "eps-150",
+   "category": "Polystyrén",
+   "name": "EPS 150 – podlahový",
+   "lambda": 0.035,
+   "density": 25,
+   "fire": "E",
+   "color": "#f0e2a8"
+  },
+  {
+   "id": "xps",
+   "category": "Polystyrén",
+   "name": "XPS – extrudovaný (sokel, pod základ)",
+   "lambda": 0.034,
+   "density": 32,
+   "fire": "E",
+   "color": "#9fd0e8"
+  },
+  {
+   "id": "omietka-vc",
+   "category": "Omietky a povrchy",
+   "name": "Omietka vápennocementová",
+   "lambda": 0.88,
+   "density": 1600,
+   "fire": "A1",
+   "color": "#efeae2"
+  },
+  {
+   "id": "omietka-sadra",
+   "category": "Omietky a povrchy",
+   "name": "Omietka sadrová",
+   "lambda": 0.57,
+   "density": 1300,
+   "fire": "A1",
+   "color": "#f4f1ea"
+  },
+  {
+   "id": "omietka-sil",
+   "category": "Omietky a povrchy",
+   "name": "Omietka silikónová (tenkovrstvová)",
+   "lambda": 0.7,
+   "density": 1800,
+   "fire": "A2-s1,d0",
+   "color": "#e9e4da"
+  },
+  {
+   "id": "sdk",
+   "category": "Sadrokartón a drevo",
+   "name": "Sadrokartón",
+   "lambda": 0.22,
+   "density": 800,
+   "fire": "A2-s1,d0",
+   "color": "#f2f2f2"
+  },
+  {
+   "id": "osb",
+   "category": "Sadrokartón a drevo",
+   "name": "OSB doska",
+   "lambda": 0.13,
+   "density": 650,
+   "fire": "D-s2,d0",
+   "color": "#d9b47a"
+  },
+  {
+   "id": "drevo",
+   "category": "Sadrokartón a drevo",
+   "name": "Drevo mäkké (smrek)",
+   "lambda": 0.13,
+   "density": 450,
+   "fire": "D-s2,d0",
+   "color": "#c89a5e"
+  },
+  {
+   "id": "dlazba",
+   "category": "Podlahy",
+   "name": "Keramická dlažba",
+   "lambda": 1.01,
+   "density": 2000,
+   "fire": "A1",
+   "color": "#d7dde3"
+  },
+  {
+   "id": "laminat",
+   "category": "Podlahy",
+   "name": "Laminátová / drevená podlaha",
+   "lambda": 0.17,
+   "density": 900,
+   "fire": "D-s2,d0",
+   "color": "#b98a5a"
+  },
+  {
+   "id": "hydroizolacia",
+   "category": "Izolácie proti vode",
+   "name": "Hydroizolácia – asfaltový pás",
+   "lambda": 0.21,
+   "density": 1100,
+   "fire": "E",
+   "color": "#2f3640"
+  },
+  {
+   "id": "pe-folia",
+   "category": "Izolácie proti vode",
+   "name": "PE fólia",
+   "lambda": 0.35,
+   "density": 950,
+   "fire": "E",
+   "color": "#6b7280"
+  },
+  {
+   "id": "krytina-skridla",
+   "category": "Strešné krytiny",
+   "name": "Pálená / betónová škridla",
+   "lambda": 1,
+   "density": 1900,
+   "fire": "A1",
+   "color": "#a8553f"
+  },
+  {
+   "id": "krytina-plech",
+   "category": "Strešné krytiny",
+   "name": "Plechová krytina",
+   "lambda": 50,
+   "density": 7800,
+   "fire": "A1",
+   "color": "#5f6b78"
+  },
+  {
+   "id": "difuzna-folia",
+   "category": "Izolácie proti vode",
+   "name": "Difúzna (poistná) fólia",
+   "lambda": 0.35,
+   "density": 400,
+   "fire": "E",
+   "color": "#8aa0b4"
+  },
+  {
+   "id": "hydroizolacia-pvc",
+   "category": "Izolácie proti vode",
+   "name": "Hydroizolácia – fólia PVC",
+   "lambda": 0.16,
+   "density": 1300,
+   "fire": "E",
+   "color": "#4b5563"
+  },
+  {
+   "id": "kamen-lom",
+   "category": "Kameň",
+   "name": "Lomový kameň (murivo)",
+   "lambda": 2.3,
+   "density": 2600,
+   "fire": "A1",
+   "color": "#9d958a"
+  },
+  {
+   "id": "zemina",
+   "category": "Zeminy a kamenivo",
+   "name": "Zemina rastlá",
+   "lambda": 2,
+   "density": 1800,
+   "fire": "A1",
+   "color": "#8b6b4a"
+  },
+  {
+   "id": "nasyp-zemina",
+   "category": "Zeminy a kamenivo",
+   "name": "Zhutnený násyp zeminou",
+   "lambda": 2,
+   "density": 1800,
+   "fire": "A1",
+   "color": "#9a7b56"
+  },
+  {
+   "id": "strk",
+   "category": "Zeminy a kamenivo",
+   "name": "Štrk, kamenivo (zhutnený násyp)",
+   "lambda": 2,
+   "density": 1900,
+   "fire": "A1",
+   "color": "#a8a29e"
+  },
+  {
+   "id": "ocel",
+   "category": "Kovy",
+   "name": "Oceľ S235",
+   "lambda": 50,
+   "density": 7850,
+   "fire": "A1",
+   "color": "#4b5563"
+  },
+  {
+   "id": "hlinik",
+   "category": "Kovy",
+   "name": "Hliník (zliatina)",
+   "lambda": 160,
+   "density": 2700,
+   "fire": "A1",
+   "color": "#9ca3af"
+  },
+  {
+   "id": "porfix-p2-400-300",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX Premium P2-400 300",
+   "lambda": 0.093,
+   "density": 400,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-400",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 300 mm",
+   "width": 300,
+   "rw": 46,
+   "fireRes": "REI-M 240",
+   "kind": "obvodové murivo",
+   "note": "λ10,dry 0.085 / λU 0.093 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-400-375",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX Premium P2-400 375",
+   "lambda": 0.093,
+   "density": 400,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-400",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 375 mm",
+   "width": 375,
+   "rw": 49,
+   "fireRes": "REI-M 240",
+   "kind": "obvodové murivo",
+   "note": "λ10,dry 0.085 / λU 0.093 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-400-500",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX Premium P2-400 500",
+   "lambda": 0.093,
+   "density": 400,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-400",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 500 mm",
+   "width": 500,
+   "rw": 51,
+   "fireRes": "REI-M 240",
+   "kind": "obvodové murivo",
+   "note": "λ10,dry 0.085 / λU 0.093 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-440-250",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P2-440 250",
+   "lambda": 0.103,
+   "density": 440,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-440",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 250 mm",
+   "width": 250,
+   "rw": 45,
+   "fireRes": "REI-M 240",
+   "kind": "obvodové / nosné murivo",
+   "note": "λ10,dry 0.095 / λU 0.103 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-440-300",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P2-440 300",
+   "lambda": 0.103,
+   "density": 440,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-440",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 300 mm",
+   "width": 300,
+   "rw": 47,
+   "fireRes": "REI-M 240",
+   "kind": "obvodové / nosné murivo",
+   "note": "λ10,dry 0.095 / λU 0.103 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-440-375",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P2-440 375",
+   "lambda": 0.103,
+   "density": 440,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-440",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 375 mm",
+   "width": 375,
+   "rw": 50,
+   "fireRes": "REI-M 240",
+   "kind": "obvodové / nosné murivo",
+   "note": "λ10,dry 0.095 / λU 0.103 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p4-600-200",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P4-600 200",
+   "lambda": 0.163,
+   "density": 600,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P4-600",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 200 mm",
+   "width": 200,
+   "rw": 46,
+   "fireRes": "EI 180",
+   "kind": "nosné murivo",
+   "note": "λ10,dry 0.15 / λU 0.163 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#dedad0"
+  },
+  {
+   "id": "porfix-p4-600-250",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P4-600 250",
+   "lambda": 0.163,
+   "density": 600,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P4-600",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 250 mm",
+   "width": 250,
+   "rw": 49,
+   "fireRes": "REI-M 240",
+   "kind": "nosné murivo",
+   "note": "λ10,dry 0.15 / λU 0.163 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#dedad0"
+  },
+  {
+   "id": "porfix-p4-600-300",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P4-600 300",
+   "lambda": 0.163,
+   "density": 600,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P4-600",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 300 mm",
+   "width": 300,
+   "rw": 51,
+   "fireRes": "REI-M 240",
+   "kind": "nosné murivo",
+   "note": "λ10,dry 0.15 / λU 0.163 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#dedad0"
+  },
+  {
+   "id": "porfix-p4-600-375",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P4-600 375",
+   "lambda": 0.163,
+   "density": 600,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P4-600",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 375 mm",
+   "width": 375,
+   "rw": 51,
+   "fireRes": "REI-M 240",
+   "kind": "nosné murivo",
+   "note": "λ10,dry 0.15 / λU 0.163 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#dedad0"
+  },
+  {
+   "id": "porfix-p6-650-200",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P6-650 200",
+   "lambda": 0.174,
+   "density": 650,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P6-650",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 200 mm",
+   "width": 200,
+   "rw": 47,
+   "fireRes": "EI 180",
+   "kind": "nosné murivo",
+   "note": "λ10,dry 0.16 / λU 0.174 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#dedad0"
+  },
+  {
+   "id": "porfix-p6-650-250",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P6-650 250",
+   "lambda": 0.174,
+   "density": 650,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P6-650",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 250 mm",
+   "width": 250,
+   "rw": 50,
+   "fireRes": "REI-M 240",
+   "kind": "nosné murivo",
+   "note": "λ10,dry 0.16 / λU 0.174 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#dedad0"
+  },
+  {
+   "id": "porfix-p6-650-300",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P6-650 300",
+   "lambda": 0.174,
+   "density": 650,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P6-650",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 300 mm",
+   "width": 300,
+   "rw": 51,
+   "fireRes": "REI-M 240",
+   "kind": "nosné murivo",
+   "note": "λ10,dry 0.16 / λU 0.174 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#dedad0"
+  },
+  {
+   "id": "porfix-p6-650-375",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX P6-650 375",
+   "lambda": 0.174,
+   "density": 650,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P6-650",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 375 mm",
+   "width": 375,
+   "rw": 51,
+   "fireRes": "REI-M 240",
+   "kind": "nosné murivo",
+   "note": "λ10,dry 0.16 / λU 0.174 W/(m·K); PORFIX Technické listy 2025",
+   "color": "#dedad0"
+  },
+  {
+   "id": "porfix-p2-500-50",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 50",
+   "lambda": 0.13,
+   "density": 500,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-500",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 50 mm",
+   "width": 50,
+   "rw": 35,
+   "fireRes": "",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ 0.13 W/(m·K); PORFIX Technické listy 2025; λ orientačne (v liste neuvedená)",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-75",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 75",
+   "lambda": 0.13,
+   "density": 500,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-500",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 75 mm",
+   "width": 75,
+   "rw": 37,
+   "fireRes": "",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ 0.13 W/(m·K); PORFIX Technické listy 2025; λ orientačne (v liste neuvedená)",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-100",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 100",
+   "lambda": 0.13,
+   "density": 500,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-500",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 100 mm",
+   "width": 100,
+   "rw": 39,
+   "fireRes": "EI 180",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ 0.13 W/(m·K); PORFIX Technické listy 2025; λ orientačne (v liste neuvedená)",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-125",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 125",
+   "lambda": 0.13,
+   "density": 500,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-500",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 125 mm",
+   "width": 125,
+   "rw": 40,
+   "fireRes": "EI 180",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ 0.13 W/(m·K); PORFIX Technické listy 2025; λ orientačne (v liste neuvedená)",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-150",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 150",
+   "lambda": 0.13,
+   "density": 500,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-500",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 150 mm",
+   "width": 150,
+   "rw": 42,
+   "fireRes": "EI 180",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ 0.13 W/(m·K); PORFIX Technické listy 2025; λ orientačne (v liste neuvedená)",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-200",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 200",
+   "lambda": 0.13,
+   "density": 500,
+   "fire": "A1",
+   "hatch": "porobeton",
+   "strength": "P2-500",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 200 mm",
+   "width": 200,
+   "rw": 45,
+   "fireRes": "EI 180",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ 0.13 W/(m·K); PORFIX Technické listy 2025; λ orientačne (v liste neuvedená)",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-aku-175",
+   "category": "PORFIX AKU vápenno-piesok",
+   "name": "PORFIX AKU P20/1,8 nosné 175",
+   "lambda": 0.75,
+   "density": 1800,
+   "fire": "A1",
+   "hatch": "murivo",
+   "strength": "P20/1,8",
+   "maker": "PORFIX",
+   "block": "248 × 249 × 175 mm",
+   "width": 175,
+   "rw": 52,
+   "fireRes": "REI 120",
+   "kind": "nosné akustické murivo",
+   "note": "λ 0.75 W/(m·K); PORFIX AKU Technické listy 2026",
+   "color": "#d9d4c7"
+  },
+  {
+   "id": "porfix-aku-199",
+   "category": "PORFIX AKU vápenno-piesok",
+   "name": "PORFIX AKU P20/1,8 nosné 199",
+   "lambda": 0.75,
+   "density": 1800,
+   "fire": "A1",
+   "hatch": "murivo",
+   "strength": "P20/1,8",
+   "maker": "PORFIX",
+   "block": "248 × 249 × 199 mm",
+   "width": 199,
+   "rw": 54,
+   "fireRes": "REI 240",
+   "kind": "nosné akustické murivo",
+   "note": "λ 0.75 W/(m·K); PORFIX AKU Technické listy 2026",
+   "color": "#d9d4c7"
+  },
+  {
+   "id": "porfix-aku-248",
+   "category": "PORFIX AKU vápenno-piesok",
+   "name": "PORFIX AKU P20/1,8 nosné 248",
+   "lambda": 0.75,
+   "density": 1800,
+   "fire": "A1",
+   "hatch": "murivo",
+   "strength": "P20/1,8",
+   "maker": "PORFIX",
+   "block": "248 × 249 × 248 mm",
+   "width": 248,
+   "rw": 56,
+   "fireRes": "REI 240",
+   "kind": "nosné akustické murivo",
+   "note": "λ 0.75 W/(m·K); PORFIX AKU Technické listy 2026",
+   "color": "#d9d4c7"
+  },
+  {
+   "id": "porfix-aku-nn-125",
+   "category": "PORFIX AKU vápenno-piesok",
+   "name": "PORFIX AKU P20/1,8 nenosné 125",
+   "lambda": 0.75,
+   "density": 1800,
+   "fire": "A1",
+   "hatch": "murivo",
+   "strength": "P20/1,8",
+   "maker": "PORFIX",
+   "block": "248 × 249 × 125 mm",
+   "width": 125,
+   "rw": 48,
+   "fireRes": "EI 90",
+   "kind": "nenosné akustické murivo",
+   "note": "λ 0.75 W/(m·K); PORFIX AKU Technické listy 2026",
+   "color": "#d9d4c7"
+  },
+  {
+   "id": "porfix-aku-nn-150",
+   "category": "PORFIX AKU vápenno-piesok",
+   "name": "PORFIX AKU P20/1,8 nenosné 150",
+   "lambda": 0.75,
+   "density": 1800,
+   "fire": "A1",
+   "hatch": "murivo",
+   "strength": "P20/1,8",
+   "maker": "PORFIX",
+   "block": "248 × 249 × 150 mm",
+   "width": 150,
+   "rw": 51,
+   "fireRes": "EI 120",
+   "kind": "nenosné akustické murivo",
+   "note": "λ 0.75 W/(m·K); PORFIX AKU Technické listy 2026",
+   "color": "#d9d4c7"
+  },
+  {
+   "id": "zavesna-stena",
+   "category": "Sklo a hliník",
+   "name": "Závesná stena – hliníkové stĺpiky a priečniky, izolačné trojsklo",
+   "lambda": 0.14,
+   "density": 300,
+   "fire": "A2-s1,d0",
+   "color": "#7fa6c8"
+  }
+ ],
+ "walls": [
+  {
+   "id": "OBV-300-EPS150",
+   "name": "Obvodová – tehla 300 + EPS 150",
+   "boundary": "exterier",
+   "fire": "REI 120",
+   "layers": [
+    {
+     "material": "omietka-sil",
+     "mm": 5
+    },
+    {
+     "material": "eps-70f",
+     "mm": 150
+    },
+    {
+     "material": "tvarnica-300",
+     "mm": 300,
+     "core": true
+    },
+    {
+     "material": "omietka-vc",
+     "mm": 15
+    }
+   ]
+  },
+  {
+   "id": "OBV-250-MW200",
+   "name": "Obvodová – tehla 250 + minerálna vlna 200",
+   "boundary": "exterier",
+   "fire": "REI 90",
+   "layers": [
+    {
+     "material": "omietka-sil",
+     "mm": 5
+    },
+    {
+     "material": "mw-fasada",
+     "mm": 200
+    },
+    {
+     "material": "tvarnica-250",
+     "mm": 250,
+     "core": true
+    },
+    {
+     "material": "omietka-vc",
+     "mm": 15
+    }
+   ]
+  },
+  {
+   "id": "OBV-PB-375",
+   "name": "Obvodová – pórobetón 375 + EPS 100",
+   "boundary": "exterier",
+   "fire": "REI 120",
+   "layers": [
+    {
+     "material": "omietka-sil",
+     "mm": 5
+    },
+    {
+     "material": "eps-sedy",
+     "mm": 100
+    },
+    {
+     "material": "porobeton-400",
+     "mm": 375,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "OBV-440",
+   "name": "Obvodová – tehla 440 brúsená bez zateplenia",
+   "boundary": "exterier",
+   "fire": "REI 120",
+   "layers": [
+    {
+     "material": "omietka-vc",
+     "mm": 20
+    },
+    {
+     "material": "tvarnica-440",
+     "mm": 440,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "NOS-250",
+   "name": "Nosná vnútorná – tehla 250",
+   "boundary": "interier",
+   "fire": "REI 90",
+   "layers": [
+    {
+     "material": "omietka-vc",
+     "mm": 15
+    },
+    {
+     "material": "tvarnica-250",
+     "mm": 250,
+     "core": true
+    },
+    {
+     "material": "omietka-vc",
+     "mm": 15
+    }
+   ]
+  },
+  {
+   "id": "NOS-ZB-200",
+   "name": "Nosná vnútorná – železobetón 200",
+   "boundary": "interier",
+   "fire": "REI 120",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "zelezobeton",
+     "mm": 200,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "PRI-115",
+   "name": "Priečka – tehla 115",
+   "boundary": "interier",
+   "fire": "EI 60",
+   "layers": [
+    {
+     "material": "omietka-vc",
+     "mm": 15
+    },
+    {
+     "material": "priečkovka-115",
+     "mm": 115,
+     "core": true
+    },
+    {
+     "material": "omietka-vc",
+     "mm": 15
+    }
+   ]
+  },
+  {
+   "id": "PRI-PB-100",
+   "name": "Priečka – pórobetón 100",
+   "boundary": "interier",
+   "fire": "EI 120",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porobeton-500",
+     "mm": 100,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "SDK-100",
+   "name": "Priečka – sadrokartón 100",
+   "boundary": "interier",
+   "fire": "EI 30",
+   "rw": 45,
+   "layers": [
+    {
+     "material": "sdk",
+     "mm": 12.5
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 75,
+     "core": true
+    },
+    {
+     "material": "sdk",
+     "mm": 12.5
+    }
+   ]
+  },
+  {
+   "id": "OBV-PFX-440-300",
+   "name": "Obvodová – PORFIX P2-440 300 + EPS šedý 150",
+   "boundary": "exterier",
+   "fire": "REI-M 240",
+   "layers": [
+    {
+     "material": "omietka-sil",
+     "mm": 5
+    },
+    {
+     "material": "eps-sedy",
+     "mm": 150
+    },
+    {
+     "material": "porfix-p2-440-300",
+     "mm": 300,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "OBV-PFX-PREM-500",
+   "name": "Obvodová – PORFIX Premium P2-400 500 bez zateplenia",
+   "boundary": "exterier",
+   "fire": "REI-M 240",
+   "layers": [
+    {
+     "material": "omietka-vc",
+     "mm": 15
+    },
+    {
+     "material": "porfix-p2-400-500",
+     "mm": 500,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "NOS-PFX-600-250",
+   "name": "Nosná vnútorná – PORFIX P4-600 250",
+   "boundary": "interier",
+   "fire": "REI-M 240",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-p4-600-250",
+     "mm": 250,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "MB-AKU-248",
+   "name": "Medzibytová – PORFIX AKU 248 (Rw 56 dB)",
+   "boundary": "interier",
+   "fire": "REI 240",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-aku-248",
+     "mm": 248,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "MB-AKU-199",
+   "name": "Medzibytová / hotelová – PORFIX AKU 199 (Rw 54 dB)",
+   "boundary": "interier",
+   "fire": "REI 240",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-aku-199",
+     "mm": 199,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "NOS-AKU-175",
+   "name": "Nosná vnútorná – PORFIX AKU 175 (Rw 52 dB)",
+   "boundary": "interier",
+   "fire": "REI 120",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-aku-175",
+     "mm": 175,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "PRI-AKU-150",
+   "name": "Priečka – PORFIX AKU 150 (Rw 51 dB)",
+   "boundary": "interier",
+   "fire": "EI 120",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-aku-nn-150",
+     "mm": 150,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "PRI-AKU-125",
+   "name": "Priečka – PORFIX AKU 125 (Rw 48 dB)",
+   "boundary": "interier",
+   "fire": "EI 90",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-aku-nn-125",
+     "mm": 125,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "PRI-PFX-150",
+   "name": "Priečka – PORFIX priečkovka P2-500 150",
+   "boundary": "interier",
+   "fire": "EI 180",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-p2-500-150",
+     "mm": 150,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "PRI-PFX-100",
+   "name": "Priečka – PORFIX priečkovka P2-500 100",
+   "boundary": "interier",
+   "fire": "EI 180",
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-p2-500-100",
+     "mm": 100,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "ZAV-150",
+   "name": "Závesná stena – hliník + trojsklo (rastr 1,2 × 1,5 m)",
+   "boundary": "exterier",
+   "curtain": {
+    "u": 1.2,
+    "v": 1.5,
+    "mullion": 0.05,
+    "depth": 0.15
+   },
+   "layers": [
+    {
+     "material": "zavesna-stena",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "VIK-DR-160",
+   "name": "Vikier – drevený rám, MW 160 medzi stĺpikmi, oplechovanie",
+   "boundary": "exterier",
+   "layers": [
+    {
+     "material": "krytina-plech",
+     "mm": 0.6,
+     "vent": true
+    },
+    {
+     "material": "drevo",
+     "mm": 24,
+     "vent": true
+    },
+    {
+     "material": "difuzna-folia",
+     "mm": 0.5
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 160,
+     "core": true
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "sdk",
+     "mm": 12.5
+    }
+   ]
+  }
+ ],
+ "floors": [
+  {
+   "id": "POD-TEREN",
+   "name": "Podlaha na teréne – dlažba, poter, EPS 150",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 10
+    },
+    {
+     "material": "poter-cem",
+     "mm": 60
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "STROP-ZB-200",
+   "name": "Strop ŽB 200 – laminát, poter, kročajová MW",
+   "boundary": "interier",
+   "fire": "REI 90",
+   "layers": [
+    {
+     "material": "laminat",
+     "mm": 10
+    },
+    {
+     "material": "poter-anhydrit",
+     "mm": 50
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "mw-krocaj",
+     "mm": 40
+    },
+    {
+     "material": "zelezobeton",
+     "mm": 200,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "STROP-ZB-250",
+   "name": "Strop ŽB 250 – dlažba, poter, EPS 100",
+   "boundary": "interier",
+   "fire": "REI 120",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 10
+    },
+    {
+     "material": "poter-cem",
+     "mm": 50
+    },
+    {
+     "material": "eps-100",
+     "mm": 40
+    },
+    {
+     "material": "zelezobeton",
+     "mm": 250,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "STROP-POSL",
+   "name": "Strop pod nevykurovaným podkrovím – MW 300",
+   "boundary": "exterier",
+   "fire": "REI 60",
+   "layers": [
+    {
+     "material": "mw-medzi",
+     "mm": 300
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "zelezobeton",
+     "mm": 200,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  }
+ ],
+ "roofs": [
+  {
+   "id": "STR-SIKMA-MW",
+   "name": "Šikmá strecha – škridla, MW 200 medzi + 60 pod krokvami",
+   "boundary": "exterier",
+   "layers": [
+    {
+     "material": "krytina-skridla",
+     "mm": 30,
+     "vent": true
+    },
+    {
+     "material": "drevo",
+     "mm": 50,
+     "vent": true
+    },
+    {
+     "material": "difuzna-folia",
+     "mm": 0.5
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 200,
+     "core": true
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 60
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "sdk",
+     "mm": 12.5
+    }
+   ]
+  },
+  {
+   "id": "STR-SIKMA-PLECH",
+   "name": "Šikmá strecha – plech, MW 240 medzi krokvami",
+   "boundary": "exterier",
+   "layers": [
+    {
+     "material": "krytina-plech",
+     "mm": 1,
+     "vent": true
+    },
+    {
+     "material": "drevo",
+     "mm": 50,
+     "vent": true
+    },
+    {
+     "material": "difuzna-folia",
+     "mm": 0.5
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 240,
+     "core": true
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "sdk",
+     "mm": 12.5
+    }
+   ]
+  },
+  {
+   "id": "STR-PLOCHA-EPS",
+   "name": "Plochá strecha – hydroizolácia, EPS 250, ŽB 200",
+   "boundary": "exterier",
+   "fire": "REI 60",
+   "layers": [
+    {
+     "material": "hydroizolacia-pvc",
+     "mm": 1.5
+    },
+    {
+     "material": "eps-150",
+     "mm": 250
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "zelezobeton",
+     "mm": 200,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  }
+ ]
+}
