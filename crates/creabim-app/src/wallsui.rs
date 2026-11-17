@@ -681,6 +681,29 @@ impl CreaBimApp {
                 }
                 .into();
             }
+            "tempdims.ref" => {
+                if let Some(r) = arg
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|i| creabim_core::walls::WallRef::ALL.get(i))
+                {
+                    self.plan.temp_ref = *r;
+                    self.shell.settings.temp_ref = *r;
+                    self.shell.settings.store();
+                    use creabim_core::walls::WallRef as R;
+                    self.status = match r {
+                        R::Face => "Temporary dimensions measure walls from their faces.",
+                        R::CoreFace => {
+                            "Temporary dimensions measure walls from the faces of their load-bearing core."
+                        }
+                        R::CoreCentre => {
+                            "Temporary dimensions measure walls from the middle of their core."
+                        }
+                        R::Centre => "Temporary dimensions measure walls from their centrelines.",
+                    }
+                    .into();
+                }
+            }
             "wall.flipnew" => {
                 self.plan.wall_flip = !self.plan.wall_flip;
                 self.status = format!(
@@ -691,6 +714,18 @@ impl CreaBimApp {
             _ => return false,
         }
         true
+    }
+
+    /// What temporary dimensions measure walls from, for the view strip.
+    pub(super) fn temp_ref_items(&self) -> Vec<crate::ui_model::Item> {
+        creabim_core::walls::WallRef::ALL
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                crate::ui_model::Item::new(format!("tempdims.ref:{i}"), r.label())
+                    .checked(self.plan.temp_ref == *r)
+            })
+            .collect()
     }
 
     /// The Wall tool's location line choices, for its option strip.

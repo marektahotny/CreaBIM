@@ -1,8 +1,9 @@
 //! Dimensions that hold a spacing (brief 02, 2.10 part 3: the padlock).
 //!
-//! A held dimension measures between two elements, each a line (a wall's
-//! centreline or a grid line) or a point (a column's centre), and keeps the
-//! distance it was locked at. When an edit moves one of the two and not the
+//! A held dimension measures between two elements, each a line (a wall or
+//! a grid line) or a point (a column, or furniture, a fixture or equipment),
+//! and keeps the distance it was locked at, between the two points it was
+//! locked on: a wall's core face, a column's side (see [`plan_point`]). When an edit moves one of the two and not the
 //! other, the other moves by as much, square to the line, so the spacing
 //! holds. What it moves can carry others in turn: a grid takes the walls and
 //! columns standing on it, a wall the walls joined to it. Each round of
@@ -39,6 +40,9 @@ pub fn place_of(model: &Model, id: ElementId) -> Option<Place> {
         ElementKind::Wall(w) if w.length() > 1e-9 => Some(Place::Line(w.start, w.end)),
         ElementKind::Grid(g) if g.start.distance(g.end) > 1e-9 => Some(Place::Line(g.start, g.end)),
         ElementKind::Column(c) => Some(Place::Point(c.position)),
+        // furniture, fixtures and equipment hold a spacing from their
+        // origin like a column
+        ElementKind::Object(o) => Some(Place::Point(o.position)),
         // a level, in a section's (along, height) space: a level line at
         // its elevation (A5-2), held only against other levels
         ElementKind::Level(l) => Some(Place::Line(
@@ -79,6 +83,60 @@ pub fn spacing(model: &Model, a: ElementId, b: ElementId) -> Option<(f64, DVec2)
     Some((signed(pa, pb, n), n))
 }
 
+/// Where a dimension's end is in plan now, on its host: a wall's point
+/// kept along and across it (so a held spacing measures between the faces
+/// it was locked on, not the centrelines), a column's or an object's
+/// point kept in its own turned axes. None for other hosts.
+pub fn plan_point(model: &Model, p: &crate::HostPoint) -> Option<DVec2> {
+    let host = model.get(p.host?)?;
+    match &host.kind {
+        ElementKind::Wall(w) => {
+            let u = if p.from_end {
+                w.length() + p.local.x
+            } else {
+                p.local.x
+            };
+            let d = w.direction();
+            Some(w.start + d * u + d.perp() * p.local.y)
+        }
+        ElementKind::Column(c) => {
+            let b = p.body?.truncate();
+            Some(c.position + DVec2::from_angle(c.rotation.to_radians()).rotate(b))
+        }
+        ElementKind::Object(o) => Some(o.to_plan(p.body?.truncate())),
+        ElementKind::Grid(g) => {
+            let b = p.body?.truncate();
+            let x = (g.end - g.start).normalize_or_zero();
+            Some(g.start + x * b.x + x.perp() * b.y)
+        }
+        _ => None,
+    }
+}
+
+/// The spacing a held dimension measures now, signed from `a` to `b`,
+/// with its normal: between its own two points where both can be found on
+/// their hosts (faces, cores), else between the hosts' places.
+fn held_spacing(model: &Model, dim: ElementId, a: ElementId, b: ElementId) -> Option<(f64, DVec2)> {
+    let (pa, pb) = (place_of(model, a)?, place_of(model, b)?);
+    let n = normal(pa, pb)?;
+    let ends = match &model.get(dim)?.kind {
+        ElementKind::Dimension(d) => {
+            // the dimension may run either way round
+            let (x, y) = if d.a.host == Some(a) {
+                (&d.a, &d.b)
+            } else {
+                (&d.b, &d.a)
+            };
+            plan_point(model, x).zip(plan_point(model, y))
+        }
+        _ => None,
+    };
+    Some(match ends {
+        Some((qa, qb)) => ((qb - qa).dot(n), n),
+        None => (signed(pa, pb, n), n),
+    })
+}
+
 /// `id` moved bodily by `by` in plan, with what goes with it: the walls and
 /// columns standing on a grid line, and the walls joined to a moved wall
 /// (see [`crate::joins::follow`]). Nothing in `keep` is carried. Returns
@@ -104,6 +162,10 @@ pub fn shift(
             c.position += by;
             vec![]
         }
+        ElementKind::Object(o) => {
+            o.position += by;
+            vec![]
+        }
         // up or down: what stands on it follows through its level
         ElementKind::Level(l) => {
             l.elevation += by.y;
@@ -115,8 +177,26 @@ pub fn shift(
             g.end += by;
             on.into_iter().filter(|o| !keep.contains(o)).collect()
         }
-        _ => return vec![],
+        // anything else that moves bodily: a stair, a footing, a slab…
+        _ => vec![],
     };
+    if !matches!(
+        now.kind,
+        ElementKind::Wall(_)
+            | ElementKind::Column(_)
+            | ElementKind::Object(_)
+            | ElementKind::Level(_)
+            | ElementKind::Grid(_)
+    ) {
+        match crate::transform::transformed(
+            model,
+            e,
+            &crate::transform::Xform::Move(by.extend(0.0)),
+        ) {
+            Some(n) => now = n,
+            None => return vec![],
+        }
+    }
     moved.push(now);
     for c in carried {
         let Some(o) = model.get(c) else { continue };
@@ -228,7 +308,7 @@ pub fn settle(model: &Model, tx: &Transaction) -> Vec<Transaction> {
             if this_round.contains_key(&go) {
                 continue;
             }
-            let Some((s, n)) = spacing(&model, fixed, go) else {
+            let Some((s, n)) = held_spacing(&model, dim, fixed, go) else {
                 continue;
             };
             let side = if s < 0.0 { -1.0 } else { 1.0 };

@@ -569,6 +569,9 @@ pub struct PlanState {
     pub calibrated: Option<(ElementId, DVec2, DVec2)>,
     /// Temporary dimensions muted (MU21): none shown, none clicked.
     pub temp_dims_off: bool,
+    /// What temporary dimensions measure walls from: their core's faces
+    /// unless set otherwise (PilonDesigner).
+    pub temp_ref: creabim_core::walls::WallRef,
     /// Sections show the floor plans' ranges: each plan's cut and view
     /// depth as a band, dragged by their grips (MU34 A1).
     pub plan_ranges: bool,
@@ -711,6 +714,7 @@ impl Default for PlanState {
             dropped: vec![],
             calibrated: None,
             temp_dims_off: false,
+            temp_ref: Default::default(),
             plan_ranges: false,
             range_drag: None,
             range_ends: HashMap::new(),
@@ -1695,6 +1699,20 @@ pub fn show(
             || state.anno_drag.is_some()
             || state.boxsel.is_some()
             || response.dragged();
+        // the box the selected element's body covers, for elements
+        // measured by their sides (equipment, stairs…)
+        let foot = selection.active.and_then(|id| {
+            let scene = cached_pick_scene(state, doc, view);
+            let (lo, hi) = scene
+                .iter()
+                .filter(|it| it.id == id)
+                .filter_map(|it| it.mesh.bounds())
+                .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)))?;
+            Some((
+                DVec2::new(lo.x as f64, lo.y as f64),
+                DVec2::new(hi.x as f64, hi.y as f64),
+            ))
+        });
         if let Some(r) = crate::tempdims::interact(
             ui,
             doc,
@@ -1708,6 +1726,8 @@ pub fn show(
             &mut state.status,
             &mut state.hint,
             quiet,
+            state.temp_ref,
+            foot,
         ) {
             return r;
         }

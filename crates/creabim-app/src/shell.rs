@@ -464,6 +464,7 @@ impl CreaBimApp {
             "render3d" => self.render_items(),
             "viewstyle" => self.view_style_items(),
             "wall.location" => self.wall_location_items(),
+            "tempdims.ref" => self.temp_ref_items(),
             "type.tool" => self.tool_type_items(),
             "palette" => self.palette_items(),
             "look" => crate::camera::Look::ALL
@@ -3287,6 +3288,11 @@ impl CreaBimApp {
                     "kind": "toggle", "id": "view.tempdims", "label": "Temporary dimensions",
                     "icon": "dimension", "on": !self.plan.temp_dims_off,
                     "hint": "The blue dimensions by what you select: on, they show and can be typed into; off, none show (MU21)",
+                }));
+                options.push(json!({
+                    "kind": "menu", "key": "tempdims.ref", "label": "Measure from",
+                    "value": self.plan.temp_ref.label(),
+                    "hint": "What temporary dimensions measure walls from: the faces of their load-bearing core (never plaster or insulation), the wall faces, the core's middle or the centreline",
                 }));
             }
             // the grid behind the drawing, on or off for every drawing

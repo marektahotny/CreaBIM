@@ -394,6 +394,7 @@ impl CreaBimApp {
         // are kept
         app.plan.snap.increment = false;
         app.plan.temp_dims_off = settings.temp_dims_off;
+        app.plan.temp_ref = settings.temp_ref;
         app.plan.snap.marks = settings.distance_marks;
         if settings.snap_spacing_um > 0 {
             app.plan.snap.step_um = settings.snap_spacing_um;

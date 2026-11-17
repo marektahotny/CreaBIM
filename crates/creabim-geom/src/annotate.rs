@@ -122,6 +122,17 @@ pub fn host_frame(model: &Model, id: ElementId) -> Option<DAffine3> {
             along(a.extend(elevation(Some(s.level))), (b - a).extend(0.0))
         }
         ElementKind::Grid(g) => along(g.start.extend(0.0), (g.end - g.start).extend(0.0)),
+        // a column or an object (furniture, a fixture, equipment): its
+        // position and turn, so dimensions to it follow it (PilonDesigner's
+        // dimensions bound to every element)
+        ElementKind::Column(c) => DAffine3::from_mat3_translation(
+            DMat3::from_rotation_z(c.rotation.to_radians()),
+            c.position.extend(elevation(Some(c.level)) + c.base_offset),
+        ),
+        ElementKind::Object(o) => DAffine3::from_mat3_translation(
+            DMat3::from_rotation_z(o.rotation.to_radians()),
+            o.position.extend(elevation(Some(o.level))),
+        ),
         ElementKind::Guide(g) => along(g.a + DVec3::Z * elevation(g.level), g.b - g.a),
         ElementKind::FreeMesh(m) => DAffine3::from_mat3_translation(
             DMat3::from_rotation_z(m.rotation.to_radians()) * m.scale,
