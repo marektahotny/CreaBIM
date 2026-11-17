@@ -18,6 +18,34 @@ impl CreaBimApp {
             .unwrap_or_default()
     }
 
+    /// A pick from the Pipe tool's bar, or `pipe:<system>` from a tab,
+    /// which takes up the Pipe tool in that system. False for another.
+    pub(super) fn pipe_action(&mut self, head: &str, arg: &str) -> bool {
+        if !crate::pipesui::action(&mut self.plan.members.pipe, head, arg) {
+            return false;
+        }
+        if head == "pipe" {
+            self.plan.tool = crate::planview::Tool::Pipe;
+            self.plan.cancel();
+        } else {
+            // a run goes on in what was picked from its next point
+            self.plan.pending = None;
+        }
+        let d = &self.plan.members.pipe;
+        let name = d
+            .system_def()
+            .map_or(d.system.clone(), |s| crate::i18n::tr(s.name));
+        self.status = format!(
+            "{}: {}, {} {}",
+            crate::i18n::tr("Pipe"),
+            name,
+            d.pipe_type()
+                .map_or(d.pipe_type.clone(), |t| t.name.clone()),
+            d.size_label()
+        );
+        true
+    }
+
     /// Run a discipline action. False when the action isn't one.
     pub(super) fn discipline_action(&mut self, head: &str, arg: &str) -> bool {
         match head {

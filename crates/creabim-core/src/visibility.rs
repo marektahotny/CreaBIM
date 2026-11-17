@@ -47,6 +47,8 @@ pub enum Category {
     /// Rooms (their colours and picking areas) and room separators.
     Rooms,
     Ceilings,
+    /// Pipes and ducts of building services.
+    Pipes,
     /// A category from a newer CreaBIM, kept so older versions still read
     /// the file.
     #[serde(other)]
@@ -54,7 +56,7 @@ pub enum Category {
 }
 
 impl Category {
-    pub const ALL: [Category; 26] = [
+    pub const ALL: [Category; 27] = [
         Category::Walls,
         Category::Slabs,
         Category::Doors,
@@ -81,6 +83,7 @@ impl Category {
         Category::Planting,
         Category::Rooms,
         Category::Ceilings,
+        Category::Pipes,
     ];
 
     pub fn label(self) -> &'static str {
@@ -111,6 +114,7 @@ impl Category {
             Category::Planting => "Planting",
             Category::Rooms => "Rooms and room separators",
             Category::Ceilings => "Ceilings",
+            Category::Pipes => "Pipes and ducts",
             Category::Other => "Other",
         }
     }
@@ -152,6 +156,7 @@ impl Category {
             ElementKind::Site(_) => Category::Site,
             ElementKind::Room(_) | ElementKind::RoomSeparator(_) => Category::Rooms,
             ElementKind::Ceiling(_) => Category::Ceilings,
+            ElementKind::Pipe(_) => Category::Pipes,
             _ => return None,
         })
     }

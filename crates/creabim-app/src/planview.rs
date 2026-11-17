@@ -84,10 +84,12 @@ pub enum Tool {
     Callout,
     /// A detail component: flashing, membrane, insulation, blocking...
     Detail,
+    /// A pipe or duct of building services, in the system picked.
+    Pipe,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 41] = [
+    pub const ALL: [Tool; 42] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -102,6 +104,7 @@ impl Tool {
         Tool::Stair,
         Tool::Railing,
         Tool::Footing,
+        Tool::Pipe,
         Tool::Object,
         Tool::Extrusion,
         Tool::Sweep,
@@ -161,6 +164,7 @@ impl Tool {
             Tool::Grid => "Grid",
             Tool::Column => "Column",
             Tool::Beam => "Beam",
+            Tool::Pipe => "Pipe",
             Tool::Roof => "Roof",
             Tool::Stair => "Stair",
             Tool::Railing => "Railing",
@@ -207,6 +211,7 @@ impl Tool {
             Tool::Grid => "Click two points for a grid line. It goes in the active grid system (top bar) and takes its next label. Shift keeps it straight.",
             Tool::Column => "Click to place a column. It runs up to the next level; set its size in the top bar or Properties.",
             Tool::Beam => "Click the beam's start, then its end; keep clicking to chain beams. Its top sits at the top of the storey. Esc or right-click ends.",
+            Tool::Pipe => "Click where the pipe starts, then each next point; keep clicking to go on. Pick its system, type and size in the bar. Drains fall by their system's slope. Esc or right-click ends.",
             Tool::Roof => "Draw the roof's outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). Pick Flat, Mono-pitch, Gable or Hip in the bar first.",
             Tool::Stair => "Click where the stair starts, then click the way it climbs. It rises to the next level in equal risers.",
             Tool::Railing => "Click inside a stair to rail both its sides, or click the points of a path; click the last point again to finish.",
@@ -1558,6 +1563,7 @@ pub fn show(
             | Tool::Elevation
             | Tool::Grid
             | Tool::Beam
+            | Tool::Pipe
             | Tool::Railing
             | Tool::Footing
             | Tool::RoomSeparator
@@ -2397,6 +2403,7 @@ pub fn show(
             | Tool::Elevation
             | Tool::Grid
             | Tool::Beam
+            | Tool::Pipe
             | Tool::Stair
             | Tool::Railing
             | Tool::Footing
@@ -3409,6 +3416,7 @@ fn plan_click(
         Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing => {
             crate::memberstool::click(doc, level, tool, p, state, selection)
         }
+        Tool::Pipe => crate::pipesui::click(doc, level, p, state, selection),
         Tool::Object => crate::objecttool::click(doc, level, p, state, selection),
         Tool::RoomSeparator => crate::roomtool::separator_click(doc, level, p, state, selection),
         Tool::Guide => match state.pending.take() {
