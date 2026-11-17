@@ -283,6 +283,31 @@ pub fn material_text(model: &Model, id: ElementId) -> String {
 }
 
 /// What a tag on `id` reads, and whether it sits in a circle (doors) or a box.
+/// A door's hand as STN 01 3420 names it: "L" when its hinges are on the
+/// left seen from the side it opens to, else "P" (pravé); none for
+/// anything but a door with a leaf.
+pub fn door_hand(model: &Model, id: ElementId) -> Option<&'static str> {
+    let ElementKind::Opening(o) = &model.get(id)?.kind else {
+        return None;
+    };
+    if o.kind != OpeningKind::Door {
+        return None;
+    }
+    let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+        return None;
+    };
+    let u = w.direction();
+    // the side it swings to, and the jamb its hinges are on
+    let swing = if o.faces_left(w) { u.perp() } else { -u.perp() };
+    let hinge = if o.flip_hand { u } else { -u };
+    // seen from the swing side, looking at the wall, right is swing.perp()
+    Some(if hinge.dot(swing.perp()) < 0.0 {
+        "L"
+    } else {
+        "P"
+    })
+}
+
 pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
     let Some(e) = model.get(id) else {
         return (String::new(), false);
@@ -299,8 +324,15 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
     if !matches!(e.kind, ElementKind::Object(_)) {
         if let Some(m) = creabim_core::marks::mark_of(model, id) {
             let round = matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Door);
+            // a door's mark (STN 01 3420): left or right over its number
+            if let Some(hand) = door_hand(model, id) {
+                return (format!("{hand}\n{m}"), true);
+            }
             return (m, round);
         }
+    }
+    if let Some(hand) = door_hand(model, id) {
+        return (format!("{hand}\n{}", e.name), true);
     }
     match &e.kind {
         ElementKind::Opening(o) => (e.name.clone(), o.kind == OpeningKind::Door),
@@ -1176,6 +1208,10 @@ pub struct TagGeometry {
     pub leader: Vec<DVec2>,
     /// The mark at the leader's end: an arrow, a dot, or nothing.
     pub ends: Ends,
+    /// Its text, a line at a time, where each is centred.
+    pub texts: Vec<(DVec2, String)>,
+    /// The line across a split circle, between its two lines of text.
+    pub divider: Option<(DVec2, DVec2)>,
 }
 
 /// Text height of tags and dimensions, paper mm.
@@ -1280,10 +1316,33 @@ pub fn tag_geometry(
 ) -> TagGeometry {
     // the default 2.5 mm text sits in a bubble 4.4 mm tall
     let k = look.size / TEXT;
-    let half = DVec2::new((look.width(text) / 2.0 + 1.2 * k).max(2.2 * k), 2.2 * k) * mm;
     let shape = match (look.shape, round) {
         (TagShape::Auto, true) => TagShape::Circle,
         (s, _) => s,
+    };
+    // two lines in a circle (STN 01 3420's door mark: L or P over the
+    // number) split by a line across its middle
+    let rows: Vec<&str> = text.split('\n').collect();
+    let split = rows.len() == 2 && shape == TagShape::Circle;
+    let (half, texts, divider) = if split {
+        let w = rows.iter().map(|r| look.width(r)).fold(0.0, f64::max);
+        // the text rows sit where the circle is 0.88 of its width
+        let r = ((w / 2.0 + 0.6 * k) / 0.88).max(3.4 * k) * mm;
+        let dy = DVec2::new(0.0, 0.48 * r);
+        (
+            DVec2::splat(r),
+            vec![
+                (at + dy, rows[0].to_string()),
+                (at - dy, rows[1].to_string()),
+            ],
+            Some((at - DVec2::new(r, 0.0), at + DVec2::new(r, 0.0))),
+        )
+    } else {
+        (
+            DVec2::new((look.width(text) / 2.0 + 1.2 * k).max(2.2 * k), 2.2 * k) * mm,
+            vec![(at, text.to_string())],
+            None,
+        )
     };
     let (outline, closed) = tag_outline(shape, at, half);
     // a leader back to the host, from the edge of the bubble (or of the
@@ -1331,6 +1390,8 @@ pub fn tag_geometry(
         closed,
         leader,
         ends,
+        texts,
+        divider,
     }
 }
 
@@ -1542,7 +1603,7 @@ mod tests {
                 .find_map(|i| match i {
                     // its leader's end, which follows the door (the text
                     // may be nudged clear of other lines)
-                    PlanItem::Tag { anchor, text, .. } if text == "D01" => Some(anchor),
+                    PlanItem::Tag { anchor, text, .. } if text.ends_with("\nD01") => Some(anchor),
                     _ => None,
                 })
                 .expect("front door is tagged D01")

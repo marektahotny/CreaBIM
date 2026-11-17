@@ -6007,17 +6007,22 @@ pub fn draw_item_with(
             } else if pts.len() > 1 {
                 painter.add(egui::Shape::line(pts, Stroke::new(1.2, ink)));
             }
+            if let Some((p, q)) = g.divider {
+                painter.line_segment([xf.to_screen(p), xf.to_screen(q)], Stroke::new(1.0, ink));
+            }
             let px = crate::annotate::text_px(look, mm, xf);
-            crate::annotate::text(
-                painter,
-                xf.to_screen(*at),
-                text,
-                px,
-                ink,
-                0.0,
-                paper::Anchor::Middle,
-                look,
-            );
+            for (p, t) in &g.texts {
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(*p),
+                    t,
+                    px,
+                    ink,
+                    0.0,
+                    paper::Anchor::Middle,
+                    look,
+                );
+            }
         }
         PlanItem::Tint { points, rgb, .. } => {
             let c = if selected { [0.98, 0.70, 0.45] } else { *rgb };
@@ -6349,16 +6354,18 @@ pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, 
                 painter.add(egui::Shape::line(pts, heavy));
             }
             let px = crate::annotate::text_px(look, mm, xf);
-            crate::annotate::text(
-                painter,
-                xf.to_screen(*at),
-                text,
-                px,
-                color,
-                0.0,
-                paper::Anchor::Middle,
-                look,
-            );
+            for (p, t) in &g.texts {
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(*p),
+                    t,
+                    px,
+                    color,
+                    0.0,
+                    paper::Anchor::Middle,
+                    look,
+                );
+            }
         }
         _ => {}
     }
