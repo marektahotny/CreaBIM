@@ -950,6 +950,7 @@ name = "creabim-geom"
 version = "1.1.2"
 dependencies = [
  "creabim-core",
+ "creabim-services",
  "epaint_default_fonts",
  "glam",
  "miniz_oxide 0.8.9",

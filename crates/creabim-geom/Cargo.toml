@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 creabim-core.workspace = true
+creabim-services.workspace = true
 glam.workspace = true
 miniz_oxide = "0.8"
 ttf-parser = "0.25"
