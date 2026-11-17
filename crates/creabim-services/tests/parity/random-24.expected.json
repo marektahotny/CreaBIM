@@ -1,0 +1,113 @@
+{
+  "root_flow_ls": 0.2,
+  "required_pa": 168493.46917586314,
+  "required_pa_current": 168493.46917586314,
+  "available_pa": 350000,
+  "critical_leaf": "6",
+  "critical_path": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6"
+  ],
+  "nodes": [
+    {
+      "id": "1",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        35.9
+      ],
+      "velocity_ms": 0.19758374698134912,
+      "r_pa_per_m": 22.316588046364515,
+      "linear_loss_pa": 284.7596634716112,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 20000,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "2",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        25,
+        27.2
+      ],
+      "velocity_ms": 0.34419321602918546,
+      "r_pa_per_m": 87.73426152830544,
+      "linear_loss_pa": 23.951453397227375,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "3",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "4",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        22,
+        20
+      ],
+      "velocity_ms": 0.6366197723675813,
+      "r_pa_per_m": 316.0862383088802,
+      "linear_loss_pa": 1027.2802745038607,
+      "local_loss_pa": 101.29078728724507,
+      "fixed_loss_pa": 0,
+      "zeta": 0.5,
+      "on_critical_path": true
+    },
+    {
+      "id": "5",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        18,
+        16
+      ],
+      "velocity_ms": 0.9947183943243458,
+      "r_pa_per_m": 911.37264616448,
+      "linear_loss_pa": 4228.769078203187,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "6",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    }
+  ]
+}

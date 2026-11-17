@@ -1,0 +1,162 @@
+{
+ "name": "random-28",
+ "kind": "cold",
+ "root_is_connection": true,
+ "available_kpa": null,
+ "settings": {
+  "Voda": {
+   "MetodaSucasnosti": "TabulkaLU",
+   "TypBudovy": "Nemocnica",
+   "AutomatickyZvacsitKritickuVetvu": false,
+   "TabulkaLU": [
+    [
+     0,
+     0
+    ],
+    [
+     5,
+     0.4
+    ],
+    [
+     20,
+     0.9
+    ],
+    [
+     100,
+     2.0
+    ],
+    [
+     500,
+     4.5
+    ]
+   ]
+  }
+ },
+ "nodes": [
+  {
+   "id": "1",
+   "parent": null,
+   "kind": "pipe",
+   "p1": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    11.39,
+    0.0,
+    -1.0
+   ],
+   "nominal": 22,
+   "inner": 20,
+   "roughness": 1.5e-06,
+   "material": "Meď",
+   "sizes": [
+    [
+     12,
+     10
+    ],
+    [
+     15,
+     13
+    ],
+    [
+     18,
+     16
+    ],
+    [
+     22,
+     20
+    ],
+    [
+     28,
+     25
+    ],
+    [
+     35,
+     32
+    ],
+    [
+     42,
+     39
+    ],
+    [
+     54,
+     50
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "2",
+   "parent": 0,
+   "kind": "pipe",
+   "p1": [
+    11.39,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    12.51,
+    0.0,
+    -1.0
+   ],
+   "nominal": 15,
+   "inner": 13,
+   "roughness": 1.5e-06,
+   "material": "Meď",
+   "sizes": [
+    [
+     12,
+     10
+    ],
+    [
+     15,
+     13
+    ],
+    [
+     18,
+     16
+    ],
+    [
+     22,
+     20
+    ],
+    [
+     28,
+     25
+    ],
+    [
+     35,
+     32
+    ],
+    [
+     42,
+     39
+    ],
+    [
+     54,
+     50
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "3",
+   "parent": 1,
+   "kind": "fixture",
+   "p1": [
+    12.51,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    12.51,
+    0.0,
+    -1.0
+   ],
+   "fixture": "Sprcha",
+   "connector_dn": 0
+  }
+ ]
+}

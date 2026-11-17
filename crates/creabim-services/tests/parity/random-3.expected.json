@@ -1,0 +1,273 @@
+{
+  "root_flow_ls": 0.30000000000000004,
+  "required_pa": 205037.6765627271,
+  "required_pa_current": 212543.09480540283,
+  "available_pa": 250000,
+  "critical_leaf": "11",
+  "critical_path": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11"
+  ],
+  "nodes": [
+    {
+      "id": "1",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        26
+      ],
+      "velocity_ms": 0.5650471352374983,
+      "r_pa_per_m": 147.84037404411956,
+      "linear_loss_pa": 1374.915478610312,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "2",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        26
+      ],
+      "velocity_ms": 0.5650471352374983,
+      "r_pa_per_m": 147.84037404411956,
+      "linear_loss_pa": 810.1652497617753,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "3",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        26
+      ],
+      "velocity_ms": 0.5650471352374983,
+      "r_pa_per_m": 147.84037404411956,
+      "linear_loss_pa": 749.5506964036862,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "4",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        26
+      ],
+      "velocity_ms": 0.5650471352374983,
+      "r_pa_per_m": 147.84037404411956,
+      "linear_loss_pa": 669.7168944198617,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "5",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0.5650471352374983,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 47.20688787750452,
+      "fixed_loss_pa": 0,
+      "zeta": 0.3,
+      "on_critical_path": true
+    },
+    {
+      "id": "6",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "7",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": [
+        20,
+        16
+      ],
+      "velocity_ms": 1.492077591486519,
+      "r_pa_per_m": 1552.8624963969091,
+      "linear_loss_pa": 6832.594984146401,
+      "local_loss_pa": 548.6148782020699,
+      "fixed_loss_pa": 0,
+      "zeta": 0.5,
+      "on_critical_path": true
+    },
+    {
+      "id": "8",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "9",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": [
+        20,
+        16
+      ],
+      "velocity_ms": 1.492077591486519,
+      "r_pa_per_m": 1552.8624963969091,
+      "linear_loss_pa": 1335.461746901341,
+      "local_loss_pa": 548.6148782020699,
+      "fixed_loss_pa": 0,
+      "zeta": 0.5,
+      "on_critical_path": true
+    },
+    {
+      "id": "10",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "11",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 548.6148782020699,
+      "fixed_loss_pa": 0,
+      "zeta": 0.5,
+      "on_critical_path": true
+    },
+    {
+      "id": "12",
+      "flow_ls": 0,
+      "sum_lu": 0,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        26
+      ],
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "13",
+      "flow_ls": 0,
+      "sum_lu": 0,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        26
+      ],
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "14",
+      "flow_ls": 0,
+      "sum_lu": 0,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        26
+      ],
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "15",
+      "flow_ls": 0,
+      "sum_lu": 0,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "16",
+      "flow_ls": 0,
+      "sum_lu": 0,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    }
+  ]
+}
