@@ -15,6 +15,7 @@ pub mod fluid;
 pub mod hydraulics;
 pub mod network;
 pub mod peak_flow;
+pub mod pipe_types;
 pub mod settings;
 mod sizing;
 pub mod water;
