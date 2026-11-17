@@ -1,0 +1,191 @@
+{
+ "name": "random-9",
+ "kind": "hot",
+ "root_is_connection": true,
+ "available_kpa": 120.0,
+ "settings": {
+  "Voda": {
+   "MetodaSucasnosti": "TabulkaLU",
+   "TypBudovy": "DomovDochodcov",
+   "TabulkaLU": [
+    [
+     0,
+     0
+    ],
+    [
+     5,
+     0.4
+    ],
+    [
+     20,
+     0.9
+    ],
+    [
+     100,
+     2.0
+    ],
+    [
+     500,
+     4.5
+    ]
+   ]
+  }
+ },
+ "nodes": [
+  {
+   "id": "1",
+   "parent": null,
+   "kind": "pipe",
+   "p1": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    9.59,
+    0.0,
+    -1.0
+   ],
+   "nominal": 40,
+   "inner": 41.8,
+   "roughness": 0.00015,
+   "material": "Oceľ závitová",
+   "sizes": [
+    [
+     15,
+     16.0
+    ],
+    [
+     20,
+     21.6
+    ],
+    [
+     25,
+     27.2
+    ],
+    [
+     32,
+     35.9
+    ],
+    [
+     40,
+     41.8
+    ],
+    [
+     50,
+     53.0
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "2",
+   "parent": 0,
+   "kind": "pipe",
+   "p1": [
+    9.59,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    9.59,
+    0.0,
+    1.94
+   ],
+   "nominal": 15,
+   "inner": 16.0,
+   "roughness": 0.00015,
+   "material": "Oceľ závitová",
+   "sizes": [
+    [
+     15,
+     16.0
+    ],
+    [
+     20,
+     21.6
+    ],
+    [
+     25,
+     27.2
+    ],
+    [
+     32,
+     35.9
+    ],
+    [
+     40,
+     41.8
+    ],
+    [
+     50,
+     53.0
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "3",
+   "parent": 1,
+   "kind": "pipe",
+   "p1": [
+    9.59,
+    0.0,
+    1.94
+   ],
+   "p2": [
+    9.59,
+    0.0,
+    4.65
+   ],
+   "nominal": 15,
+   "inner": 16.0,
+   "roughness": 0.00015,
+   "material": "Oceľ závitová",
+   "sizes": [
+    [
+     15,
+     16.0
+    ],
+    [
+     20,
+     21.6
+    ],
+    [
+     25,
+     27.2
+    ],
+    [
+     32,
+     35.9
+    ],
+    [
+     40,
+     41.8
+    ],
+    [
+     50,
+     53.0
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "4",
+   "parent": 2,
+   "kind": "fixture",
+   "p1": [
+    9.59,
+    0.0,
+    4.65
+   ],
+   "p2": [
+    9.59,
+    0.0,
+    4.65
+   ],
+   "fixture": "Kuchynský drez",
+   "connector_dn": 0
+  }
+ ]
+}

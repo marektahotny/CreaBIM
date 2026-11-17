@@ -1,0 +1,745 @@
+{
+  "root_flow_ls": 0.6585236080992385,
+  "required_pa": 284401.2202656804,
+  "required_pa_current": 444664.215745236,
+  "available_pa": 310000,
+  "critical_leaf": "27",
+  "critical_path": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "26",
+    "27"
+  ],
+  "nodes": [
+    {
+      "id": "1",
+      "flow_ls": 0.6585236080992385,
+      "sum_lu": 15,
+      "min_nominal_mm": 0,
+      "proposed": [
+        40,
+        26.6
+      ],
+      "velocity_ms": 1.184999574557113,
+      "r_pa_per_m": 668.9827738509932,
+      "linear_loss_pa": 3391.7426634245357,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 20000,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "2",
+      "flow_ls": 0.6585236080992385,
+      "sum_lu": 15,
+      "min_nominal_mm": 0,
+      "proposed": [
+        40,
+        26.6
+      ],
+      "velocity_ms": 1.184999574557113,
+      "r_pa_per_m": 668.9827738509932,
+      "linear_loss_pa": 916.5064001758608,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "3",
+      "flow_ls": 0.6585236080992385,
+      "sum_lu": 15,
+      "min_nominal_mm": 0,
+      "proposed": [
+        40,
+        26.6
+      ],
+      "velocity_ms": 1.184999574557113,
+      "r_pa_per_m": 668.9827738509932,
+      "linear_loss_pa": 3987.137332151919,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "4",
+      "flow_ls": 0.6585236080992385,
+      "sum_lu": 15,
+      "min_nominal_mm": 0,
+      "proposed": [
+        40,
+        26.6
+      ],
+      "velocity_ms": 1.184999574557113,
+      "r_pa_per_m": 668.9827738509932,
+      "linear_loss_pa": 3043.871621022019,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "5",
+      "flow_ls": 0.6585236080992385,
+      "sum_lu": 15,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "6",
+      "flow_ls": 0.357376467547732,
+      "sum_lu": 5,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        21.2
+      ],
+      "velocity_ms": 1.0124284684040916,
+      "r_pa_per_m": 672.2401015253371,
+      "linear_loss_pa": 3609.9293451910603,
+      "local_loss_pa": 1403.8027245030285,
+      "fixed_loss_pa": 0,
+      "zeta": 2,
+      "on_critical_path": false
+    },
+    {
+      "id": "7",
+      "flow_ls": 0.357376467547732,
+      "sum_lu": 5,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        21.2
+      ],
+      "velocity_ms": 1.0124284684040916,
+      "r_pa_per_m": 672.2401015253371,
+      "linear_loss_pa": 2850.2980304674293,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "8",
+      "flow_ls": 0.357376467547732,
+      "sum_lu": 5,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "9",
+      "flow_ls": 0.357376467547732,
+      "sum_lu": 5,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        21.2
+      ],
+      "velocity_ms": 1.0124284684040916,
+      "r_pa_per_m": 672.2401015253371,
+      "linear_loss_pa": 2204.947533003105,
+      "local_loss_pa": 512.3519501069821,
+      "fixed_loss_pa": 0,
+      "zeta": 1,
+      "on_critical_path": false
+    },
+    {
+      "id": "10",
+      "flow_ls": 0.357376467547732,
+      "sum_lu": 5,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 1.0124284684040916,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 1537.0558503209463,
+      "fixed_loss_pa": 0,
+      "zeta": 3,
+      "on_critical_path": false
+    },
+    {
+      "id": "11",
+      "flow_ls": 0.357376467547732,
+      "sum_lu": 5,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "12",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": [
+        25,
+        16.6
+      ],
+      "velocity_ms": 1.3861658565123707,
+      "r_pa_per_m": 1594.001461708871,
+      "linear_loss_pa": 8527.907820142458,
+      "local_loss_pa": 480.2198362565365,
+      "fixed_loss_pa": 0,
+      "zeta": 0.5,
+      "on_critical_path": false
+    },
+    {
+      "id": "13",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": [
+        25,
+        16.6
+      ],
+      "velocity_ms": 1.3861658565123707,
+      "r_pa_per_m": 1594.001461708871,
+      "linear_loss_pa": 494.1404531297501,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "14",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": [
+        25,
+        16.6
+      ],
+      "velocity_ms": 1.3861658565123707,
+      "r_pa_per_m": 1594.001461708871,
+      "linear_loss_pa": 6280.365759132951,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "15",
+      "flow_ls": 0.30000000000000004,
+      "sum_lu": 3,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "16",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        25,
+        16.6
+      ],
+      "velocity_ms": 0.924110571008247,
+      "r_pa_per_m": 779.1255309690323,
+      "linear_loss_pa": 841.4555734465549,
+      "local_loss_pa": 768.5279251604732,
+      "fixed_loss_pa": 0,
+      "zeta": 1.5,
+      "on_critical_path": false
+    },
+    {
+      "id": "17",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "18",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        25,
+        16.6
+      ],
+      "velocity_ms": 0.924110571008247,
+      "r_pa_per_m": 779.1255309690323,
+      "linear_loss_pa": 2765.8956349400646,
+      "local_loss_pa": 213.4310383362384,
+      "fixed_loss_pa": 0,
+      "zeta": 0.5,
+      "on_critical_path": false
+    },
+    {
+      "id": "19",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        40,
+        26.6
+      ],
+      "velocity_ms": 0.35989585186702544,
+      "r_pa_per_m": 82.58162170739354,
+      "linear_loss_pa": 56.9813189781015,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "20",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "21",
+      "flow_ls": 0.30352097113111687,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        21.2
+      ],
+      "velocity_ms": 0.8598587199638611,
+      "r_pa_per_m": 503.9980234965185,
+      "linear_loss_pa": 2157.1115405650994,
+      "local_loss_pa": 1403.8027245030285,
+      "fixed_loss_pa": 0,
+      "zeta": 2,
+      "on_critical_path": true
+    },
+    {
+      "id": "22",
+      "flow_ls": 0.30352097113111687,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": [
+        40,
+        26.6
+      ],
+      "velocity_ms": 0.5461796923237007,
+      "r_pa_per_m": 170.70799769247222,
+      "linear_loss_pa": 554.8009925005347,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "23",
+      "flow_ls": 0.30352097113111687,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": [
+        40,
+        26.6
+      ],
+      "velocity_ms": 0.5461796923237007,
+      "r_pa_per_m": 170.70799769247222,
+      "linear_loss_pa": 192.90003739249343,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "24",
+      "flow_ls": 0.30352097113111687,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0.5461796923237007,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 447.33414394488045,
+      "fixed_loss_pa": 0,
+      "zeta": 3,
+      "on_critical_path": true
+    },
+    {
+      "id": "25",
+      "flow_ls": 0.30352097113111687,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "26",
+      "flow_ls": 0,
+      "sum_lu": 0,
+      "min_nominal_mm": 0,
+      "proposed": [
+        40,
+        26.6
+      ],
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "27",
+      "flow_ls": 0,
+      "sum_lu": 0,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "28",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        21.2
+      ],
+      "velocity_ms": 0.5665893310498232,
+      "r_pa_per_m": 242.6854342154917,
+      "linear_loss_pa": 737.7637200150948,
+      "local_loss_pa": 320.9271630184683,
+      "fixed_loss_pa": 0,
+      "zeta": 2,
+      "on_critical_path": false
+    },
+    {
+      "id": "29",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "30",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        25,
+        16.6
+      ],
+      "velocity_ms": 0.924110571008247,
+      "r_pa_per_m": 779.1255309690323,
+      "linear_loss_pa": 1581.6248278671353,
+      "local_loss_pa": 853.7241533449536,
+      "fixed_loss_pa": 0,
+      "zeta": 2,
+      "on_critical_path": false
+    },
+    {
+      "id": "31",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "32",
+      "flow_ls": 0.40310650643214996,
+      "sum_lu": 6,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        21.2
+      ],
+      "velocity_ms": 1.1419792291061155,
+      "r_pa_per_m": 831.8416227360569,
+      "linear_loss_pa": 865.1152876454993,
+      "local_loss_pa": 1403.8027245030285,
+      "fixed_loss_pa": 0,
+      "zeta": 2,
+      "on_critical_path": false
+    },
+    {
+      "id": "33",
+      "flow_ls": 0.40310650643214996,
+      "sum_lu": 6,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        21.2
+      ],
+      "velocity_ms": 1.1419792291061155,
+      "r_pa_per_m": 831.8416227360569,
+      "linear_loss_pa": 4491.944762774708,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "34",
+      "flow_ls": 0.40310650643214996,
+      "sum_lu": 6,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 1.1419792291061155,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 651.8626623709425,
+      "fixed_loss_pa": 0,
+      "zeta": 1,
+      "on_critical_path": false
+    },
+    {
+      "id": "35",
+      "flow_ls": 0.40310650643214996,
+      "sum_lu": 6,
+      "min_nominal_mm": 0,
+      "proposed": [
+        32,
+        21.2
+      ],
+      "velocity_ms": 1.1419792291061155,
+      "r_pa_per_m": 831.8416227360569,
+      "linear_loss_pa": 474.1497249595527,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "36",
+      "flow_ls": 0.40310650643214996,
+      "sum_lu": 6,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "37",
+      "flow_ls": 0.40310650643214996,
+      "sum_lu": 6,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 325.93133118547127,
+      "fixed_loss_pa": 0,
+      "zeta": 0.5,
+      "on_critical_path": false
+    },
+    {
+      "id": "38",
+      "flow_ls": 0.4,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": [
+        25,
+        27.2
+      ],
+      "velocity_ms": 0.6883864320583709,
+      "r_pa_per_m": 317.3613418392089,
+      "linear_loss_pa": 342.7502491863456,
+      "local_loss_pa": 325.93133118547127,
+      "fixed_loss_pa": 0,
+      "zeta": 0.5,
+      "on_critical_path": false
+    },
+    {
+      "id": "39",
+      "flow_ls": 0.4,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "40",
+      "flow_ls": 0.4,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 236.86685853905078,
+      "fixed_loss_pa": 0,
+      "zeta": 1,
+      "on_critical_path": false
+    },
+    {
+      "id": "41",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        15,
+        16
+      ],
+      "velocity_ms": 0.9947183943243458,
+      "r_pa_per_m": 1285.978886401543,
+      "linear_loss_pa": 793.448972909752,
+      "local_loss_pa": 977.7939935564139,
+      "fixed_loss_pa": 0,
+      "zeta": 1.5,
+      "on_critical_path": false
+    },
+    {
+      "id": "42",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        15,
+        16
+      ],
+      "velocity_ms": 0.9947183943243458,
+      "r_pa_per_m": 1285.978886401543,
+      "linear_loss_pa": 2520.5186173470242,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "43",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0.9947183943243458,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 1483.751766903004,
+      "fixed_loss_pa": 0,
+      "zeta": 3,
+      "on_critical_path": false
+    },
+    {
+      "id": "44",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": [
+        15,
+        16
+      ],
+      "velocity_ms": 0.9947183943243458,
+      "r_pa_per_m": 1285.978886401543,
+      "linear_loss_pa": 3690.7594039724295,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "45",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": false
+    },
+    {
+      "id": "46",
+      "flow_ls": 0.2,
+      "sum_lu": 2,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 494.58392230100134,
+      "fixed_loss_pa": 0,
+      "zeta": 1,
+      "on_critical_path": false
+    }
+  ]
+}

@@ -1,0 +1,247 @@
+{
+ "name": "random-12",
+ "kind": "cold",
+ "root_is_connection": true,
+ "available_kpa": 200.0,
+ "settings": {
+  "Voda": {
+   "VodomerJeMimoModelu": false
+  }
+ },
+ "nodes": [
+  {
+   "id": "1",
+   "parent": null,
+   "kind": "pipe",
+   "p1": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    4.77,
+    0.0,
+    -1.0
+   ],
+   "nominal": 40,
+   "inner": 41.8,
+   "roughness": 0.00015,
+   "material": "Oceľ závitová",
+   "sizes": [
+    [
+     15,
+     16.0
+    ],
+    [
+     20,
+     21.6
+    ],
+    [
+     25,
+     27.2
+    ],
+    [
+     32,
+     35.9
+    ],
+    [
+     40,
+     41.8
+    ],
+    [
+     50,
+     53.0
+    ]
+   ],
+   "branch": false,
+   "zeta": 1.5
+  },
+  {
+   "id": "2",
+   "parent": 0,
+   "kind": "pipe",
+   "p1": [
+    4.77,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    4.77,
+    4.24,
+    -1.0
+   ],
+   "nominal": 15,
+   "inner": 16.0,
+   "roughness": 0.00015,
+   "material": "Oceľ závitová",
+   "sizes": [
+    [
+     15,
+     16.0
+    ],
+    [
+     20,
+     21.6
+    ],
+    [
+     25,
+     27.2
+    ],
+    [
+     32,
+     35.9
+    ],
+    [
+     40,
+     41.8
+    ],
+    [
+     50,
+     53.0
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "3",
+   "parent": 1,
+   "kind": "fitting",
+   "p1": [
+    4.77,
+    4.24,
+    -1.0
+   ],
+   "p2": [
+    4.77,
+    4.24,
+    -1.0
+   ],
+   "fitting": "transition"
+  },
+  {
+   "id": "4",
+   "parent": 2,
+   "kind": "pipe",
+   "p1": [
+    4.77,
+    4.24,
+    -1.0
+   ],
+   "p2": [
+    4.77,
+    9.7,
+    -1.0
+   ],
+   "nominal": 20,
+   "inner": 16,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "5",
+   "parent": 3,
+   "kind": "accessory",
+   "p1": [
+    4.77,
+    9.7,
+    -1.0
+   ],
+   "p2": [
+    4.77,
+    9.7,
+    -1.0
+   ],
+   "role": "balancing"
+  },
+  {
+   "id": "6",
+   "parent": 4,
+   "kind": "pipe",
+   "p1": [
+    4.77,
+    9.7,
+    -1.0
+   ],
+   "p2": [
+    5.18,
+    9.7,
+    -1.0
+   ],
+   "nominal": 20,
+   "inner": 16,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "7",
+   "parent": 5,
+   "kind": "fixture",
+   "p1": [
+    5.18,
+    9.7,
+    -1.0
+   ],
+   "p2": [
+    5.18,
+    9.7,
+    -1.0
+   ],
+   "fixture": "Bidet",
+   "connector_dn": 0
+  }
+ ]
+}

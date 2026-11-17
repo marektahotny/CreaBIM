@@ -1,0 +1,250 @@
+{
+ "name": "random-24",
+ "kind": "cold",
+ "root_is_connection": true,
+ "available_kpa": null,
+ "settings": {
+  "Voda": {
+   "MetodaSucasnosti": "PN_B_01706",
+   "TypBudovy": "Nemocnica"
+  },
+  "Armatury": {
+   "NavrhnutRedukcnyVentil": false
+  }
+ },
+ "nodes": [
+  {
+   "id": "1",
+   "parent": null,
+   "kind": "pipe",
+   "p1": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    12.76,
+    0.0,
+    -1.0
+   ],
+   "nominal": 32,
+   "inner": 35.9,
+   "roughness": 0.00015,
+   "material": "Oceľ závitová",
+   "sizes": [
+    [
+     15,
+     16.0
+    ],
+    [
+     20,
+     21.6
+    ],
+    [
+     25,
+     27.2
+    ],
+    [
+     32,
+     35.9
+    ],
+    [
+     40,
+     41.8
+    ],
+    [
+     50,
+     53.0
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "2",
+   "parent": 0,
+   "kind": "pipe",
+   "p1": [
+    12.76,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    12.76,
+    0.0,
+    -1.273
+   ],
+   "nominal": 25,
+   "inner": 27.2,
+   "roughness": 0.00015,
+   "material": "Oceľ závitová",
+   "sizes": [
+    [
+     15,
+     16.0
+    ],
+    [
+     20,
+     21.6
+    ],
+    [
+     25,
+     27.2
+    ],
+    [
+     32,
+     35.9
+    ],
+    [
+     40,
+     41.8
+    ],
+    [
+     50,
+     53.0
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "3",
+   "parent": 1,
+   "kind": "fitting",
+   "p1": [
+    12.76,
+    0.0,
+    -1.273
+   ],
+   "p2": [
+    12.76,
+    0.0,
+    -1.273
+   ],
+   "fitting": "transition"
+  },
+  {
+   "id": "4",
+   "parent": 2,
+   "kind": "pipe",
+   "p1": [
+    12.76,
+    0.0,
+    -1.273
+   ],
+   "p2": [
+    9.51,
+    0.0,
+    -1.273
+   ],
+   "nominal": 22,
+   "inner": 20,
+   "roughness": 1.5e-06,
+   "material": "Meď",
+   "sizes": [
+    [
+     12,
+     10
+    ],
+    [
+     15,
+     13
+    ],
+    [
+     18,
+     16
+    ],
+    [
+     22,
+     20
+    ],
+    [
+     28,
+     25
+    ],
+    [
+     35,
+     32
+    ],
+    [
+     42,
+     39
+    ],
+    [
+     54,
+     50
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "5",
+   "parent": 3,
+   "kind": "pipe",
+   "p1": [
+    9.51,
+    0.0,
+    -1.273
+   ],
+   "p2": [
+    9.51,
+    0.0,
+    3.367
+   ],
+   "nominal": 18,
+   "inner": 16,
+   "roughness": 1.5e-06,
+   "material": "Meď",
+   "sizes": [
+    [
+     12,
+     10
+    ],
+    [
+     15,
+     13
+    ],
+    [
+     18,
+     16
+    ],
+    [
+     22,
+     20
+    ],
+    [
+     28,
+     25
+    ],
+    [
+     35,
+     32
+    ],
+    [
+     42,
+     39
+    ],
+    [
+     54,
+     50
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "6",
+   "parent": 4,
+   "kind": "fixture",
+   "p1": [
+    9.51,
+    0.0,
+    3.367
+   ],
+   "p2": [
+    9.51,
+    0.0,
+    3.367
+   ],
+   "fixture": "Kuchynský drez",
+   "connector_dn": 0
+  }
+ ]
+}

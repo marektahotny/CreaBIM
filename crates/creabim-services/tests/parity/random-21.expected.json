@@ -1,0 +1,95 @@
+{
+  "root_flow_ls": 0.4,
+  "required_pa": 147746.50923180586,
+  "required_pa_current": 135118.3835910929,
+  "available_pa": 250000,
+  "critical_leaf": "5",
+  "critical_path": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+  ],
+  "nodes": [
+    {
+      "id": "1",
+      "flow_ls": 0.4,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": [
+        20,
+        16
+      ],
+      "velocity_ms": 1.9894367886486917,
+      "r_pa_per_m": 2627.7496471712716,
+      "linear_loss_pa": 18000.08508312321,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "2",
+      "flow_ls": 0.4,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": [
+        20,
+        16
+      ],
+      "velocity_ms": 1.9894367886486917,
+      "r_pa_per_m": 2627.7496471712716,
+      "linear_loss_pa": 3547.462023681217,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "3",
+      "flow_ls": 0.4,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "4",
+      "flow_ls": 0.4,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": [
+        20,
+        16
+      ],
+      "velocity_ms": 1.9894367886486917,
+      "r_pa_per_m": 2627.7496471712716,
+      "linear_loss_pa": 11194.213496949616,
+      "local_loss_pa": 1950.6306780518037,
+      "fixed_loss_pa": 0,
+      "zeta": 1,
+      "on_critical_path": true
+    },
+    {
+      "id": "5",
+      "flow_ls": 0.4,
+      "sum_lu": 4,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    }
+  ]
+}
