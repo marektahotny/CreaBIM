@@ -65,19 +65,7 @@ pub enum Joint {
     Node { owner: bool },
 }
 
-/// A node's key: its place to the millimetre.
-fn key(p: DVec3) -> [i64; 3] {
-    [p.x, p.y, p.z].map(|v| (v * 1000.0).round() as i64)
-}
-
-/// The bending radius of a pipe that is bent rather than fitted, m.
-fn bend_radius(p: &Pipe) -> Option<f64> {
-    if p.height_mm.is_some() {
-        return None;
-    }
-    let b = creabim_services::pipe_types::by_id(&p.pipe_type)?.bend?;
-    (p.outer_mm <= b.max_outer_mm + 1e-6).then_some(p.outer_mm * b.r_tool / 1000.0)
-}
+use creabim_services::fittings::{bend, key};
 
 /// How the pipe's start and end meet the model's other pipes.
 pub fn joints(model: &Model, p: &Pipe) -> [Joint; 2] {
@@ -128,13 +116,9 @@ pub fn joints(model: &Model, p: &Pipe) -> [Joint; 2] {
                     if dev < least || th < least {
                         Joint::Node { owner }
                     } else {
-                        let same = q.pipe_type == p.pipe_type
-                            && q.system == p.system
-                            && (q.outer_mm - p.outer_mm).abs() < 1e-6;
-                        let bend = bend_radius(p).filter(|_| same).and_then(|r| {
+                        let bent = bend(p, q, la, lb, th).map(|r| {
                             let t = r / (th / 2.0).tan();
-                            // an arc too long for short arms is a fitting
-                            (t <= 0.45 * la.min(lb)).then(|| {
+                            {
                                 let (t1, t2) = (node + ua * t, node + ub * t);
                                 let c = node + (ua + ub).normalize() * (r / (th / 2.0).sin());
                                 let (r1, r2) = (t1 - c, t2 - c);
@@ -149,9 +133,9 @@ pub fn joints(model: &Model, p: &Pipe) -> [Joint; 2] {
                                     })
                                     .collect();
                                 (t1, arc)
-                            })
+                            }
                         });
-                        match bend {
+                        match bent {
                             Some((at, arc)) => Joint::Bend { at, arc, owner },
                             None => Joint::Elbow { to: ub, owner },
                         }
@@ -167,9 +151,17 @@ pub fn joints(model: &Model, p: &Pipe) -> [Joint; 2] {
 /// Rings of a round pipe of radius `r` along `path`, each square to the
 /// way the path runs there, as a tube without ends.
 fn tube(m: &mut TriMesh, path: &[DVec3], r: f64) {
+    let path: Vec<(DVec3, f64)> = path.iter().map(|p| (*p, r)).collect();
+    taper(m, &path)
+}
+
+/// As [`tube`], each ring of its own radius: a reducer is a cone.
+fn taper(m: &mut TriMesh, path: &[(DVec3, f64)]) {
     if path.len() < 2 {
         return;
     }
+    let (path, radii): (Vec<DVec3>, Vec<f64>) = path.iter().copied().unzip();
+    let path = path.as_slice();
     let dir = |i: usize| {
         let (lo, hi) = (i.saturating_sub(1), (i + 1).min(path.len() - 1));
         (path[hi] - path[lo]).normalize_or_zero()
@@ -178,6 +170,7 @@ fn tube(m: &mut TriMesh, path: &[DVec3], r: f64) {
     let base = m.positions.len() as u32;
     for (i, c) in path.iter().enumerate() {
         let d = dir(i);
+        let r = radii[i];
         // carried along the path, so the rings don't twist
         u = (u - d * u.dot(d)).normalize_or(across(d).0);
         let v = d.cross(u);
@@ -231,6 +224,12 @@ fn ball(m: &mut TriMesh, c: DVec3, r: f64) {
     }
 }
 
+/// How long a reducer from `big` to `small` (outside diameters, mm) is
+/// drawn, m.
+fn taper_len(big: f64, small: f64) -> f64 {
+    ((big - small) * 1.5).max(30.0) / 1000.0
+}
+
 /// The pipe's solid, insulation included, with what joins it to the
 /// pipes at its ends: the arc it is bent in, or a ball where it is
 /// fitted to them.
@@ -246,6 +245,18 @@ pub fn pipe_mesh(model: &Model, p: &Pipe) -> TriMesh {
     let js = joints(model, p);
     if round {
         let r = w / 2.0 + ins;
+        // narrower than the largest pipe at an end: a cone from its size
+        let red = creabim_services::fittings::reductions_of(model, p);
+        let along = (b - a).normalize_or_zero();
+        for (i, big) in red.iter().enumerate() {
+            let (Some(big), false) = (big, matches!(js[i], Joint::Bend { .. })) else {
+                continue;
+            };
+            let (node, out) = if i == 0 { (a, along) } else { (b, -along) };
+            let rb = big / 2000.0 + ins;
+            let l = taper_len(*big, p.outer_mm).min(a.distance(b) / 2.0);
+            taper(&mut m, &[(node, rb), (node + out * l, r)]);
+        }
         for (i, j) in js.iter().enumerate() {
             let node = if i == 0 { a } else { b };
             match j {
@@ -326,8 +337,8 @@ pub fn pipe_mesh(model: &Model, p: &Pipe) -> TriMesh {
 }
 
 /// The pipe in a plan cut `cut` above its level: its outline in plan,
-/// washed in its system's colour, cut where it crosses the plane, seen
-/// below it, or dashed above. Its ends are closed only where it meets no
+/// washed in its system's colour, in the lightest line where it is cut
+/// or seen below, dashed above. Its ends are closed only where it meets no
 /// other pipe: at a corner its sides mitre into the other's, a bent pipe
 /// turns in its arc.
 pub fn pipe_plan(model: &Model, e: &Element, p: &Pipe, cut: f64) -> Vec<PlanItem> {
@@ -339,10 +350,10 @@ pub fn pipe_plan(model: &Model, e: &Element, p: &Pipe, cut: f64) -> Vec<PlanItem
     let run = b2 - a2;
     let lo = a.z.min(b.z) - half;
     let hi = a.z.max(b.z) + half;
-    let pen = if lo < cut && cut < hi {
-        Pen::Cut
-    } else if hi <= cut {
-        Pen::Projection
+    // the lightest line, cut or seen below: a heavier one would blot a
+    // pipe a few millimetres wide at a drawing's scale
+    let pen = if hi <= cut || lo < cut {
+        Pen::Fine
     } else {
         Pen::Hidden
     };
@@ -416,6 +427,28 @@ pub fn pipe_plan(model: &Model, e: &Element, p: &Pipe, cut: f64) -> Vec<PlanItem
                 closed[i] = false;
             }
         }
+    }
+    // narrower than the largest pipe at an end: a solid triangle there,
+    // pointing into this pipe (STN EN ISO 6412)
+    let red = creabim_services::fittings::reductions_of(model, p);
+    for (i, big) in red.iter().enumerate() {
+        let (Some(big), false) = (big, matches!(js[i], Joint::Bend { .. })) else {
+            continue;
+        };
+        let (node, into) = if i == 0 { (a2, d) } else { (b2, -d) };
+        let nb = d.perp() * (big / 2000.0 + p.insulation_mm / 1000.0);
+        let tip = node + into * taper_len(*big, p.outer_mm).min(run.length() / 2.0);
+        // the pipe's own corners are square again: the triangle covers them
+        corners[i] = [node - n, node + n];
+        closed[i] = false;
+        items.push(PlanItem::Shade {
+            id: e.id,
+            points: vec![node - nb, tip - n, tip + n, node + nb],
+            rgb: color(p),
+        });
+        line(&mut items, node - nb, tip - n);
+        line(&mut items, node + nb, tip + n);
+        line(&mut items, node - nb, node + nb);
     }
     let [[ar, al], [br, bl]] = corners;
     items.push(PlanItem::Shade {
@@ -666,8 +699,8 @@ mod tests {
             PlanItem::Line { pen, .. } => pen,
             _ => unreachable!(),
         };
-        assert_eq!(pen(0.3), Pen::Cut);
-        assert_eq!(pen(1.2), Pen::Projection);
+        assert_eq!(pen(0.3), Pen::Fine);
+        assert_eq!(pen(1.2), Pen::Fine);
         assert_eq!(pen(0.1), Pen::Hidden);
         assert!(matches!(
             pipe_plan(&m, &e, p, 1.2)[0],

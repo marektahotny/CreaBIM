@@ -43,6 +43,8 @@ mod drafting;
 mod earthworksui;
 #[path = "editui.rs"]
 mod editui;
+#[path = "fittingsui.rs"]
+mod fittingsui;
 #[path = "gridvis.rs"]
 mod gridvis;
 #[path = "helpui.rs"]
@@ -342,6 +344,8 @@ pub struct CreaBimApp {
     discipline: Option<creabim_core::norms::Discipline>,
     /// The water supply calculation's window, while it is open.
     water_calc: Option<Vec<watercalc::SystemCalc>>,
+    /// The fittings schedule, while its window is open.
+    fittings: Option<Vec<creabim_services::fittings::Fitting>>,
     /// The schedule of earthworks, while its window is open.
     earthworks: Option<(
         Vec<creabim_core::earthworks::Row>,
@@ -515,6 +519,7 @@ impl CreaBimApp {
             project_open: false,
             discipline: None,
             water_calc: None,
+            fittings: None,
             earthworks: None,
             note_editor: None,
             copy_guides: None,
@@ -11891,6 +11896,7 @@ impl eframe::App for CreaBimApp {
         self.project_window(&ctx);
         self.discipline_window(&ctx);
         self.water_calc_window(&ctx);
+        self.fittings_window(&ctx);
         self.earthworks_window(&ctx);
         self.maps_window(&ctx);
         self.note_editor_window(&ctx);
