@@ -497,9 +497,33 @@ pub fn tin(boundary: &[DVec2], inner: &[DVec2]) -> (Vec<DVec2>, Vec<[usize; 3]>)
         let k = verts.len();
         verts.push(*p);
         let [a, b, c] = tris[i];
-        tris[i] = [a, b, k];
-        tris.push([b, c, k]);
-        tris.push([c, a, k]);
+        // on (or a hair from) an edge, as a survey's grid points are on
+        // the outline: the edge is split, in its other triangle too, so no
+        // flat sliver is left along it
+        let on_edge = [(a, b, c), (b, c, a), (c, a, b)]
+            .into_iter()
+            .find(|&(u, v, _)| {
+                let e = verts[v] - verts[u];
+                e.perp_dot(*p - verts[u]).abs() < 1e-6 * e.length().max(1e-9)
+            });
+        let Some((u, v, w)) = on_edge else {
+            tris[i] = [a, b, k];
+            tris.push([b, c, k]);
+            tris.push([c, a, k]);
+            continue;
+        };
+        tris[i] = [u, k, w];
+        tris.push([k, v, w]);
+        let twin = tris
+            .iter()
+            .position(|t| (0..3).any(|e| t[e] == v && t[(e + 1) % 3] == u));
+        if let Some(j) = twin {
+            let x = tris[j].into_iter().find(|&q| q != u && q != v);
+            if let Some(x) = x {
+                tris[j] = [v, k, x];
+                tris.push([k, u, x]);
+            }
+        }
     }
     // Lawson flips: an interior edge whose opposite corner falls inside
     // the other triangle's circumcircle is swapped
@@ -728,6 +752,31 @@ pub fn transform(site: &mut Site, t: &Xform) -> Option<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_grid_of_points_on_and_inside_the_outline_leaves_no_slivers() {
+        // a survey's grid: its outer points lie on the outline's edges
+        let n = 12;
+        let boundary = [
+            DVec2::ZERO,
+            DVec2::new(11.0, 0.0),
+            DVec2::new(11.0, 11.0),
+            DVec2::new(0.0, 11.0),
+        ];
+        let inner: Vec<DVec2> = (0..n * n)
+            .map(|i| DVec2::new((i % n) as f64, (i / n) as f64))
+            .collect();
+        let (v, tris) = tin(&boundary, &inner);
+        assert_eq!(v.len(), n * n);
+        let areas: Vec<f64> = tris
+            .iter()
+            .map(|t| (v[t[1]] - v[t[0]]).perp_dot(v[t[2]] - v[t[0]]) / 2.0)
+            .collect();
+        assert!((areas.iter().sum::<f64>() - 121.0).abs() < 1e-9);
+        // every triangle is half a cell: none flat, none long and thin
+        assert_eq!(tris.len(), 2 * 11 * 11);
+        assert!(areas.iter().all(|a| (a - 0.5).abs() < 1e-9), "{areas:?}");
+    }
     use crate::{Element, ElementKind, Level};
 
     #[test]
