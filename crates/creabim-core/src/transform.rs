@@ -473,7 +473,7 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             let dd = frame.to_drawing(o + *d) - frame.to_drawing(o);
             let (a, b) = (drawn_at(model, &dim.a), drawn_at(model, &dim.b));
             let mut moved = false;
-            for p in [&mut dim.a, &mut dim.b] {
+            for p in dim.points_mut() {
                 if p.host.is_none() {
                     p.local += dd;
                     moved = true;
@@ -905,8 +905,7 @@ pub fn flip_view(model: &Model, view: ElementId) -> Option<crate::Transaction> {
         let mut changed = e.clone();
         let mine = match &mut changed.kind {
             ElementKind::Dimension(d) if d.view == view => {
-                free(&mut d.a);
-                free(&mut d.b);
+                d.points_mut().for_each(free);
                 if let Some(c) = &mut d.center {
                     free(c);
                 }

@@ -66,9 +66,9 @@ impl CreaBimApp {
             // continuous, and the spacing rows land on (MU23 board)
             out.push(seg(vec![opt(
                 "dim.chain".into(),
-                "Continuous",
+                "Chain dimension",
                 self.plan.dim_chain,
-                "After the first dimension, each click adds the next on the same line; Esc or right-click ends it",
+                "After the first dimension, each click adds a point to the same dimension line, one chain as in PilonDesigner; Esc or right-click ends it",
             )]));
             // spacing the user types, not presets (MU25): off, lines go
             // where clicked
@@ -220,6 +220,7 @@ impl CreaBimApp {
             "dim.chain" => {
                 self.plan.dim_chain = !self.plan.dim_chain;
                 self.plan.chain_line = None;
+                self.plan.chain_dim = None;
             }
             "dim.step" => {
                 self.plan.dim_step_mm = if self.plan.dim_step_mm > 0.0 {
@@ -1082,6 +1083,7 @@ fn style_preview(ui: &mut egui::Ui, s: &TextStyle) {
             look,
             witness: None,
             breaks: vec![],
+            below: None,
         },
         PlanItem::Tag {
             id: ElementId::new(),

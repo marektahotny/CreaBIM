@@ -508,6 +508,10 @@ pub struct PlanState {
     pub dim_chain: bool,
     /// The line a chain runs on: its axis and a point on it.
     pub chain_line: Option<(creabim_core::DimAxis, DVec2)>,
+    /// The chain being drawn: each further click adds a point to it.
+    pub chain_dim: Option<ElementId>,
+    /// Doors and windows are tagged in the plans as they are placed.
+    pub tag_new: bool,
     /// Rows of dimensions land on steps of this many paper mm from what
     /// they measure (0: free).
     pub dim_step_mm: f64,
@@ -569,6 +573,9 @@ pub struct PlanState {
     pub calibrated: Option<(ElementId, DVec2, DVec2)>,
     /// Temporary dimensions muted (MU21): none shown, none clicked.
     pub temp_dims_off: bool,
+    /// What temporary dimensions measure walls from: their core's faces
+    /// unless set otherwise (PilonDesigner).
+    pub temp_ref: creabim_core::walls::WallRef,
     /// Sections show the floor plans' ranges: each plan's cut and view
     /// depth as a band, dragged by their grips (MU34 A1).
     pub plan_ranges: bool,
@@ -684,8 +691,10 @@ impl Default for PlanState {
             guide_step: 45.0,
             hover_guide: None,
             dim_axis: None,
-            dim_chain: false,
+            dim_chain: true,
             chain_line: None,
+            chain_dim: None,
+            tag_new: true,
             dim_step_mm: 0.0,
             dim_step_size: 7.0,
             dim_lock: None,
@@ -711,6 +720,7 @@ impl Default for PlanState {
             dropped: vec![],
             calibrated: None,
             temp_dims_off: false,
+            temp_ref: Default::default(),
             plan_ranges: false,
             range_drag: None,
             range_ends: HashMap::new(),
@@ -731,11 +741,20 @@ impl PlanState {
         self.snaps.clear();
     }
 
+    /// Go on with dimension `id` as a chain: each Dimension tool click adds
+    /// a point to it or takes one out.
+    pub fn continue_chain(&mut self, id: ElementId, start: (HostPoint, DVec2)) {
+        self.cancel();
+        self.chain_dim = Some(id);
+        self.dim = vec![start];
+    }
+
     /// Drop any half-finished tool input.
     pub fn cancel(&mut self) {
         self.pending = None;
         self.dim.clear();
         self.chain_line = None;
+        self.chain_dim = None;
         self.anno.clear();
         self.tag_host = None;
         self.sketch = None;
@@ -840,6 +859,56 @@ impl Xf {
 /// Show a view's drawing in `rect`. Returns a status message when an edit fails.
 #[allow(clippy::too_many_arguments)]
 pub fn show(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    doc: &mut Document,
+    view: ElementId,
+    kind: PaneKind,
+    plan: &Drawing,
+    state: &mut PlanState,
+    selection: &mut Selection,
+    style: PaneStyle,
+) -> Option<String> {
+    let out = show_pane(ui, rect, doc, view, kind, plan, state, selection, style);
+    work_cursor(ui, rect, state);
+    out
+}
+
+/// The working cursor (PilonDesigner, as Revit): while a tool draws or a
+/// point is asked for, a small cross about 33 px across, light with a
+/// dark edge so it reads on any drawing, in place of the system pointer.
+fn work_cursor(ui: &egui::Ui, rect: Rect, state: &PlanState) {
+    let Some(p) = ui
+        .input(|i| i.pointer.hover_pos())
+        .filter(|p| rect.contains(*p))
+    else {
+        return;
+    };
+    let asked = ui.ctx().output(|o| o.cursor_icon) == egui::CursorIcon::Crosshair;
+    let drawing = state.tool != Tool::Select && state.modal.is_none();
+    if !(asked || drawing) {
+        return;
+    }
+    ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+    let top = ui
+        .ctx()
+        .layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("work_cursor"),
+        ))
+        .with_clip_rect(rect);
+    let p = Pos2::new(p.x.round() + 0.5, p.y.round() + 0.5);
+    let arm = 16.0;
+    let edge = Stroke::new(3.0, Color32::from_rgba_unmultiplied(15, 23, 42, 140));
+    let ink = Stroke::new(1.0, Color32::from_rgb(241, 245, 249));
+    for s in [edge, ink] {
+        top.line_segment([p - egui::vec2(arm, 0.0), p + egui::vec2(arm, 0.0)], s);
+        top.line_segment([p - egui::vec2(0.0, arm), p + egui::vec2(0.0, arm)], s);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn show_pane(
     ui: &mut egui::Ui,
     rect: Rect,
     doc: &mut Document,
@@ -1695,6 +1764,20 @@ pub fn show(
             || state.anno_drag.is_some()
             || state.boxsel.is_some()
             || response.dragged();
+        // the box the selected element's body covers, for elements
+        // measured by their sides (equipment, stairs…)
+        let foot = selection.active.and_then(|id| {
+            let scene = cached_pick_scene(state, doc, view);
+            let (lo, hi) = scene
+                .iter()
+                .filter(|it| it.id == id)
+                .filter_map(|it| it.mesh.bounds())
+                .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)))?;
+            Some((
+                DVec2::new(lo.x as f64, lo.y as f64),
+                DVec2::new(hi.x as f64, hi.y as f64),
+            ))
+        });
         if let Some(r) = crate::tempdims::interact(
             ui,
             doc,
@@ -1708,6 +1791,8 @@ pub fn show(
             &mut state.status,
             &mut state.hint,
             quiet,
+            state.temp_ref,
+            foot,
         ) {
             return r;
         }
@@ -2197,6 +2282,8 @@ pub fn show(
         );
     }
     match (state.dim.as_slice(), dim_hover, response.hover_pos()) {
+        // a chain grows by its points: the new point shows on its line
+        ([_], Some((_, _)), _) if state.chain_dim.is_some() => {}
         ([(_, a)], Some((_, b)), _) if a.distance(b) > 1e-6 => {
             preview_dimension(&painter, &xf, *a, b, dim_axis, 0.0, &dim_look, mm, accent);
         }
@@ -5463,6 +5550,19 @@ fn section_letter(n: usize) -> String {
 
 static PLAN_GRID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 static PLAN_AXES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// Thin lines (Revit's and PilonDesigner's TL): every line drawn one
+/// pixel wide on screen, whatever its pen, for close work. Sheets, prints
+/// and PDFs keep their weights.
+static THIN_LINES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Thin lines on screen, for this frame.
+pub fn set_thin_lines(on: bool) {
+    THIN_LINES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn thin_lines() -> bool {
+    THIN_LINES.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// The settings' grid behind drawings and X/Y lines in plans, for this
 /// frame.
@@ -5639,6 +5739,13 @@ pub fn draw_item_with(
     mm: f64,
     o: &Ovr,
 ) {
+    // thin lines: cut and projection pens one pixel wide
+    let thin = Ovr {
+        cut: 1.0 / 1.8,
+        proj: 1.0,
+        ..*o
+    };
+    let o = if thin_lines() { &thin } else { o };
     let highlight = crate::theme::interaction();
     let ink = if selected {
         highlight
@@ -5866,11 +5973,26 @@ pub fn draw_item_with(
             look,
             witness,
             breaks,
+            below,
             ..
         } => {
             let ink = crate::annotate::ink(look, selected, highlight);
             let d = (*a, *b, *offset, *witness);
             draw_dimension(painter, xf, d, breaks, text, look, mm, ink);
+            if let Some(t) = below {
+                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+                let px = crate::annotate::text_px(look, mm, xf);
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(g.below_at),
+                    t,
+                    px,
+                    ink,
+                    g.angle,
+                    paper::Anchor::Middle,
+                    look,
+                );
+            }
         }
         PlanItem::Annotation { item, .. } => {
             let ink = crate::annotate::ink(&item.look, selected, highlight);
@@ -5902,17 +6024,22 @@ pub fn draw_item_with(
             } else if pts.len() > 1 {
                 painter.add(egui::Shape::line(pts, Stroke::new(1.2, ink)));
             }
+            if let Some((p, q)) = g.divider {
+                painter.line_segment([xf.to_screen(p), xf.to_screen(q)], Stroke::new(1.0, ink));
+            }
             let px = crate::annotate::text_px(look, mm, xf);
-            crate::annotate::text(
-                painter,
-                xf.to_screen(*at),
-                text,
-                px,
-                ink,
-                0.0,
-                paper::Anchor::Middle,
-                look,
-            );
+            for (p, t) in &g.texts {
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(*p),
+                    t,
+                    px,
+                    ink,
+                    0.0,
+                    paper::Anchor::Middle,
+                    look,
+                );
+            }
         }
         PlanItem::Tint { points, rgb, .. } => {
             let c = if selected { [0.98, 0.70, 0.45] } else { *rgb };
@@ -6244,16 +6371,18 @@ pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, 
                 painter.add(egui::Shape::line(pts, heavy));
             }
             let px = crate::annotate::text_px(look, mm, xf);
-            crate::annotate::text(
-                painter,
-                xf.to_screen(*at),
-                text,
-                px,
-                color,
-                0.0,
-                paper::Anchor::Middle,
-                look,
-            );
+            for (p, t) in &g.texts {
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(*p),
+                    t,
+                    px,
+                    color,
+                    0.0,
+                    paper::Anchor::Middle,
+                    look,
+                );
+            }
         }
         _ => {}
     }
@@ -6521,23 +6650,52 @@ fn dimension_tool(
     others: &[(DVec2, DVec2, f64)],
     tol: f64,
 ) -> Result<(), creabim_core::ModelError> {
-    // a chain: the next point, at once, on the chain's line
-    if let (Some((axis, on_line)), 1) = (state.chain_line, state.dim.len()) {
-        let (a, pa) = state.dim[0];
-        if hit.1.distance(pa) < 1e-3 {
-            return Ok(());
+    // a chain (PilonDesigner's reťazová kóta): each click adds a point to
+    // the one dimension, on its line
+    if let (Some(id), 1) = (state.chain_dim, state.dim.len()) {
+        if let Some(before) = doc.model().get(id).cloned() {
+            let ElementKind::Dimension(d) = before.kind.clone() else {
+                state.cancel();
+                return Ok(());
+            };
+            let d = &d;
+            let v = match doc.model().get(view).map(|e| &e.kind) {
+                Some(ElementKind::View(v)) => Some(v.clone()),
+                _ => None,
+            };
+            let near = |p: &HostPoint| {
+                v.as_ref()
+                    .and_then(|v| annotate::resolve(doc.model(), v, p))
+                    .is_some_and(|q| q.distance(hit.1) < 1e-3)
+            };
+            // a click on one of its points takes it out again
+            if let Some(i) = d.points().position(near) {
+                let Some(fewer) = v
+                    .as_ref()
+                    .and_then(|v| annotate::without_point(doc.model(), v, d, i))
+                else {
+                    state.status =
+                        Some("A dimension needs two points: delete it to remove it.".into());
+                    return Ok(());
+                };
+                let mut after = before.clone();
+                after.kind = ElementKind::Dimension(fewer);
+                selection.only(id);
+                return doc.commit(
+                    Transaction::new("Remove point from dimension").replace(before, after),
+                );
+            }
+            let mut after = before.clone();
+            if let ElementKind::Dimension(d) = &mut after.kind {
+                d.mids.push(hit.0);
+                // a held spacing is for two points only
+                d.held = None;
+            }
+            selection.only(id);
+            state.dim = vec![hit];
+            return doc.commit(Transaction::new("Add to dimension chain").replace(before, after));
         }
-        let (b, pb) = hit;
-        // the line stays where it is, whichever way the chain runs
-        let offset = dim_offset(axis, pa, pb, on_line);
-        let mut d = Dimension::linear(view, a, b, offset);
-        d.axis = axis;
-        let e = state
-            .anno
-            .styled(Element::new("Dimension", ElementKind::Dimension(d)));
-        selection.only(e.id);
-        state.dim = vec![hit];
-        return doc.commit(Transaction::new("Add dimension").insert(e));
+        state.cancel();
     }
     match state.dim.len() {
         0 => {
@@ -6601,9 +6759,10 @@ fn dimension_tool(
             if state.dim_chain {
                 // the chain goes on from the second point, on this line
                 state.chain_line = Some((axis, pa + n * offset));
+                state.chain_dim = Some(e.id);
                 state.dim = vec![(b, pb)];
                 state.status = Some(
-                    "Continuous: click the next point; Esc or right-click ends the chain.".into(),
+                    "Chain: click the next point to add it to this dimension line; Esc or right-click ends the chain.".into(),
                 );
             }
             doc.commit(Transaction::new("Add dimension").insert(e))
@@ -6740,16 +6899,33 @@ pub fn tag_openings(
     doc: &mut Document,
     view: ElementId,
 ) -> Result<usize, creabim_core::ModelError> {
-    let model = doc.model();
+    let tags = opening_tags(doc.model(), view, None);
+    let n = tags.len();
+    let mut tx = Transaction::new("Tag doors and windows");
+    for t in tags {
+        tx = tx.insert(t);
+    }
+    doc.commit(tx)?;
+    Ok(n)
+}
+
+/// Tags for the doors and windows in `view` that have none there (only
+/// those in `only` when given), each outside its wall.
+pub fn opening_tags(
+    model: &creabim_core::Model,
+    view: ElementId,
+    only: Option<&[ElementId]>,
+) -> Vec<Element> {
+    let mut out = vec![];
     let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
-        return Ok(0);
+        return out;
     };
     let level = match v.kind {
         ViewKind::Plan { level, .. } => Some(level),
         _ => None,
     };
     let Some(proj) = annotate::Projector::of(model, v) else {
-        return Ok(0);
+        return out;
     };
     let tagged: Vec<ElementId> = model
         .iter()
@@ -6763,13 +6939,11 @@ pub fn tag_openings(
         .and_then(|d| d.bounds())
         .map_or(DVec2::ZERO, |(lo, hi)| (lo + hi) / 2.0);
     let scale = v.scale / 100.0;
-    let mut tx = Transaction::new("Tag doors and windows");
-    let mut n = 0;
     for e in model.iter() {
         let ElementKind::Opening(o) = &e.kind else {
             continue;
         };
-        if tagged.contains(&e.id) {
+        if tagged.contains(&e.id) || only.is_some_and(|o| !o.contains(&e.id)) {
             continue;
         }
         let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
@@ -6795,14 +6969,46 @@ pub fn tag_openings(
             // in sections and 3D views, above the opening
             None => DVec2::new(0.0, (o.height / 2.0 + 0.5) * scale.max(0.5)),
         };
-        tx = tx.insert(Element::new(
+        out.push(Element::new(
             "Tag",
             ElementKind::Tag(Tag::new(view, e.id, offset)),
         ));
-        n += 1;
     }
-    doc.commit(tx)?;
-    Ok(n)
+    out
+}
+
+/// Tags for new doors and windows `ids` in every plan of their level, as
+/// they are placed (as PilonDesigner labels them at once).
+pub fn tags_on_placement(model: &creabim_core::Model, ids: &[ElementId]) -> Vec<Element> {
+    let plans: Vec<ElementId> = model
+        .iter()
+        .filter(
+            |e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. })),
+        )
+        .map(|e| e.id)
+        .collect();
+    plans
+        .into_iter()
+        .flat_map(|v| opening_tags(model, v, Some(ids)))
+        .collect()
+}
+
+/// `model` with every door and window tagged in every plan: what a new
+/// project starts with.
+pub fn with_opening_tags(model: creabim_core::Model) -> creabim_core::Model {
+    let ids: Vec<ElementId> = model
+        .iter()
+        .filter(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind != OpeningKind::Hole))
+        .map(|e| e.id)
+        .collect();
+    let tags = tags_on_placement(&model, &ids);
+    let mut m = model;
+    let mut tx = Transaction::new("Tag doors and windows");
+    for t in tags {
+        tx = tx.insert(t);
+    }
+    let _ = tx.apply(&mut m);
+    m
 }
 
 /// Drag a tag (moves it) or a dimension (moves its line) in the Select
@@ -7342,7 +7548,17 @@ fn place_opening(
         creabim_core::walls::clamp_opening(doc.model(), o);
     }
     selection.only(e.id);
-    doc.commit(Transaction::new(format!("Place {}", name.to_lowercase())).insert(e))
+    let mut tx = Transaction::new(format!("Place {}", name.to_lowercase())).insert(e.clone());
+    // tagged at once in the plans of its level (holes take none)
+    if state.tag_new && kind != OpeningKind::Hole {
+        let mut m = doc.model().clone();
+        if tx.apply(&mut m).is_ok() {
+            for t in tags_on_placement(&m, &[e.id]) {
+                tx = tx.insert(t);
+            }
+        }
+    }
+    doc.commit(tx)
 }
 
 /// The pane behaviour for a view.
@@ -7540,24 +7756,21 @@ mod dimension_chain_tests {
         click(&mut doc, &mut state, 1.0, DVec2::new(1.0, 1.5)); // the line, 1.5 up
         click(&mut doc, &mut state, 5.0, DVec2::ZERO); // the chain goes on
         click(&mut doc, &mut state, 6.5, DVec2::ZERO);
-        let dims: Vec<(f64, f64)> = doc
+        // one dimension line through all four points (PilonDesigner's chain)
+        let chain = doc
             .model()
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Dimension(d) if d.view == view => Some((d.a.local.x, d.offset)),
+                ElementKind::Dimension(d) if d.view == view && d.is_chain() => Some(d.clone()),
                 _ => None,
             })
-            .collect();
-        // the three just made are the last ones
-        let made: Vec<&(f64, f64)> = dims.iter().rev().take(3).collect();
-        assert_eq!(
-            made.iter().map(|d| d.0).collect::<Vec<_>>(),
-            vec![5.0, 2.0, 0.0],
-            "{dims:?}"
-        );
-        for (_, off) in made {
-            assert!((off - 1.5).abs() < 1e-9, "on one line: {dims:?}");
-        }
+            .collect::<Vec<_>>();
+        assert_eq!(chain.len(), 1, "{chain:?}");
+        let d = &chain[0];
+        let mut xs: Vec<f64> = d.points().map(|p| p.local.x).collect();
+        xs.sort_by(f64::total_cmp);
+        assert_eq!(xs, vec![0.0, 2.0, 5.0, 6.5]);
+        assert!((d.offset - 1.5).abs() < 1e-9, "on one line: {d:?}");
         // a new row placed near another dimension's line lands on it
         state.cancel();
         state.dim_chain = false;
@@ -7612,6 +7825,125 @@ mod dimension_chain_tests {
             .last()
             .unwrap();
         assert!((last - 3.0).abs() < 1e-9, "{last}");
+    }
+
+    #[test]
+    fn a_click_on_a_chain_point_takes_it_out_and_the_line_stays() {
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let view = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. })))
+            .unwrap()
+            .id;
+        let mut state = PlanState::default();
+        let mut sel = Selection::default();
+        let h = |x: f64| (HostPoint::free(DVec2::new(x, 0.0)), DVec2::new(x, 0.0));
+        let ax = creabim_core::DimAxis::Horizontal;
+        for (x, raw) in [
+            (0.0, DVec2::ZERO),
+            (2.0, DVec2::ZERO),
+            (1.0, DVec2::new(1.0, 1.5)),
+            (5.0, DVec2::ZERO),
+        ] {
+            dimension_tool(
+                &mut doc,
+                view,
+                h(x),
+                raw,
+                ax,
+                &mut state,
+                &mut sel,
+                &[],
+                0.1,
+            )
+            .unwrap();
+        }
+        let id = state.chain_dim.unwrap();
+        let chain = |doc: &creabim_core::Document| match &doc.model().get(id).unwrap().kind {
+            ElementKind::Dimension(d) => (id, d.clone()),
+            _ => unreachable!(),
+        };
+        // take out its first point: the next one in becomes its end
+        state.continue_chain(id, h(5.0));
+        dimension_tool(
+            &mut doc,
+            view,
+            h(0.0),
+            DVec2::ZERO,
+            ax,
+            &mut state,
+            &mut sel,
+            &[],
+            0.1,
+        )
+        .unwrap();
+        let (_, d) = chain(&doc);
+        let mut xs: Vec<f64> = d.points().map(|p| p.local.x).collect();
+        xs.sort_by(f64::total_cmp);
+        assert_eq!(xs, vec![2.0, 5.0]);
+        assert!(!d.is_chain());
+        let ElementKind::View(v) = &doc.model().get(view).unwrap().kind else {
+            unreachable!()
+        };
+        let items = creabim_geom::annotate::linear_items(doc.model(), v, id, &d);
+        let PlanItem::Dimension { a, offset, .. } = &items[0] else {
+            panic!()
+        };
+        assert!(
+            (a.y + offset - 1.5).abs() < 1e-9,
+            "the line stays: {items:?}"
+        );
+        // a two-point one keeps its points
+        dimension_tool(
+            &mut doc,
+            view,
+            h(2.0),
+            DVec2::ZERO,
+            ax,
+            &mut state,
+            &mut sel,
+            &[],
+            0.1,
+        )
+        .unwrap();
+        assert_eq!(chain(&doc).1.points().count(), 2);
+    }
+
+    #[test]
+    fn new_doors_and_windows_are_tagged_in_their_plans() {
+        let m = creabim_core::starter::starter_house();
+        let openings = m
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind != OpeningKind::Hole))
+            .count();
+        let tags = |m: &creabim_core::Model| {
+            m.iter()
+                .filter(|e| matches!(&e.kind, ElementKind::Tag(_)))
+                .count()
+        };
+        let before = tags(&m);
+        let tagged = with_opening_tags(m);
+        assert!(
+            tags(&tagged) >= before + openings.min(1),
+            "{}",
+            tags(&tagged)
+        );
+        // every door and window has a tag in a plan
+        for e in tagged.iter() {
+            if matches!(&e.kind, ElementKind::Opening(o) if o.kind != OpeningKind::Hole) {
+                assert!(
+                    tagged
+                        .iter()
+                        .any(|t| matches!(&t.kind, ElementKind::Tag(t) if t.host == e.id)),
+                    "{} untagged",
+                    e.name
+                );
+            }
+        }
+        // running it again adds none
+        let again = with_opening_tags(tagged.clone());
+        assert_eq!(tags(&again), tags(&tagged));
     }
 }
 

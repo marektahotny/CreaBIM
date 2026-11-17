@@ -464,6 +464,8 @@ impl CreaBimApp {
             "render3d" => self.render_items(),
             "viewstyle" => self.view_style_items(),
             "wall.location" => self.wall_location_items(),
+            "tempdims.ref" => self.temp_ref_items(),
+            "view.reno" => self.reno_items(),
             "type.tool" => self.tool_type_items(),
             "palette" => self.palette_items(),
             "look" => crate::camera::Look::ALL
@@ -1553,37 +1555,37 @@ impl CreaBimApp {
             }
             "new.layered" => {
                 self.path = new_path("Layered walls");
-                self.load_model(creabim_core::sample::layered_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::sample::layered_house()));
                 self.status = "Loaded the layered sample house.".into();
             }
             "new.typed" => {
                 self.path = new_path("Wall types");
-                self.load_model(creabim_core::sample::typed_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::sample::typed_house()));
                 self.status =
                     "Loaded the typed sample house: see Materials › Types… for its types.".into();
             }
             "new.furnished" => {
                 self.path = new_path("Furnished house");
-                self.load_model(creabim_core::sample::furnished_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::sample::furnished_house()));
                 self.status =
                     "Loaded the furnished sample house: see Create › Catalogue… to place more."
                         .into();
             }
             "new.garden" => {
                 self.path = new_path("House in its garden");
-                self.load_model(creabim_core::garden::garden_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::garden::garden_house()));
                 self.status =
                     "Loaded the garden sample: see Create › Site and Create › Building elements."
                         .into();
             }
             "new.sample" => {
                 self.path = new_path("Starter house");
-                self.load_model(creabim_core::starter::starter_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::starter::starter_house()));
                 self.status = STARTER_LOADED.into();
             }
             "new.simple" => {
                 self.path = new_path("Simple house");
-                self.load_model(sample_house());
+                self.load_model(crate::planview::with_opening_tags(sample_house()));
                 self.status = "Loaded the simple sample house.".into();
             }
             "new.buried" => {
@@ -1812,7 +1814,7 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.joindims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
@@ -2528,6 +2530,16 @@ impl CreaBimApp {
                     "Grid off: plain paper behind drawings.".into()
                 };
             }
+            "view.thin" => {
+                let s = &mut self.shell.settings;
+                s.thin_lines = !s.thin_lines;
+                s.store();
+                self.status = if self.shell.settings.thin_lines {
+                    "Thin lines: every line one pixel wide on screen. Sheets and prints keep their weights.".into()
+                } else {
+                    "Line weights shown: cut thick, the rest thin.".into()
+                };
+            }
             "view.tempdims" => {
                 self.plan.temp_dims_off = !self.plan.temp_dims_off;
                 self.shell.settings.temp_dims_off = self.plan.temp_dims_off;
@@ -2544,6 +2556,48 @@ impl CreaBimApp {
                     Ok(0) => "Every door and window here is tagged already.".into(),
                     Ok(n) => format!("Tagged {n} doors and windows. Drag a tag to move it."),
                     Err(e) => format!("Couldn't do that: {e}"),
+                };
+            }
+            "view.dimopenings" => {
+                let (tx, n) = creabim_geom::autodims::dimension_openings(self.doc.model(), id);
+                self.status = if n == 0 {
+                    "Nothing to add: the doors, windows and walls here are dimensioned already (plans only).".into()
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => format!(
+                            "Added {n} dimension chains: doors and windows, walls and overall, bound to what they measure. Ctrl+Z to undo."
+                        ),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
+                };
+            }
+            "view.joindims" => {
+                // the selected dimensions, or every one in the view
+                let picked: Vec<ElementId> = self
+                    .selection
+                    .active
+                    .into_iter()
+                    .chain(self.selection.others.iter().copied())
+                    .filter(|i| {
+                        matches!(
+                            self.doc.model().get(*i).map(|e| &e.kind),
+                            Some(ElementKind::Dimension(_))
+                        )
+                    })
+                    .collect();
+                let only = (picked.len() > 1).then_some(picked.as_slice());
+                let (tx, n) = creabim_geom::autodims::join_chains(self.doc.model(), id, only);
+                self.status = if n == 0 {
+                    crate::i18n::tr(
+                        "Nothing to join: no dimensions here run on one line and share a point.",
+                    )
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => crate::i18n::tr(&format!(
+                            "Joined {n} dimensions into chains: one dimension line each. Ctrl+Z to undo."
+                        )),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
                 };
             }
             "view.tagfixtures" => {
@@ -3288,7 +3342,25 @@ impl CreaBimApp {
                     "icon": "dimension", "on": !self.plan.temp_dims_off,
                     "hint": "The blue dimensions by what you select: on, they show and can be typed into; off, none show (MU21)",
                 }));
+                options.push(json!({
+                    "kind": "menu", "key": "tempdims.ref", "label": "Measure from",
+                    "value": self.plan.temp_ref.label(),
+                    "hint": "What temporary dimensions measure walls from: the faces of their load-bearing core (never plaster or insulation), the wall faces, the core's middle or the centreline",
+                }));
             }
+            if let Some(v) = self.active_view.and_then(|id| self.view(id)) {
+                options.push(json!({
+                    "kind": "menu", "key": "view.reno", "label": "Renovation",
+                    "value": v.reno.map_or("Off", |r| r.label()),
+                    "hint": "Which stage of a renovation this view shows: the existing state, the demolition (yellow), the new state (red) or all to compare. Mark elements existing, demolished or new in Properties",
+                }));
+            }
+            // thin lines (TL), for close work: weights come back with it off
+            options.push(json!({
+                "kind": "toggle", "id": "view.thin", "label": "Thin lines",
+                "icon": "minus", "on": self.shell.settings.thin_lines,
+                "hint": "Every line one pixel wide on screen, for close work (TL). Off: cut lines thick. Sheets and prints keep their weights",
+            }));
             // the grid behind the drawing, on or off for every drawing
             // (MU40: some prefer plain paper)
             options.push(json!({
@@ -3300,6 +3372,18 @@ impl CreaBimApp {
                 "kind": "button", "id": "view.tag", "label": "Tag openings", "icon": "tag",
                 "hint": "Tag every door and window in this view that has no tag yet",
             }));
+            if self.active_plan().is_some() {
+                options.push(json!({
+                    "kind": "button", "id": "view.dimopenings", "label": "Dimension openings",
+                    "icon": "dimension",
+                    "hint": "Dimension chains round the outside, as STN 01 3420: the doors and windows (width over the line, height and sill under it), the walls, the overall size. Bound to what they measure",
+                }));
+                options.push(json!({
+                    "kind": "button", "id": "view.joindims", "label": "Join into chains",
+                    "icon": "dimension",
+                    "hint": "Dimensions on one line that share a point become one dimension line, a chain as in PilonDesigner: the selected ones, or all in this view",
+                }));
+            }
             if self.active_plan().is_some() {
                 options.push(json!({
                     "kind": "button", "id": "view.tagfixtures", "label": "Tag fixtures", "icon": "fixtures",
