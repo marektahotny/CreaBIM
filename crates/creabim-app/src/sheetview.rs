@@ -613,23 +613,15 @@ impl Canvas for EguiCanvas<'_> {
         if px < 3.0 {
             return;
         }
-        let galley = self.painter.layout_no_wrap(
-            text.to_string(),
-            egui::FontId::proportional(px),
+        crate::annotate::text(
+            self.painter,
+            self.xf.to_screen(at),
+            text,
+            px,
             Color32::BLACK,
-        );
-        let w = galley.size().x;
-        // centre of the text, along its baseline direction from the anchor
-        let shift = match anchor {
-            Anchor::Start => w / 2.0,
-            Anchor::Middle => 0.0,
-            Anchor::End => -w / 2.0,
-        };
-        let rot = egui::emath::Rot2::from_angle(-angle as f32);
-        let centre = self.xf.to_screen(at) + rot * Vec2::new(shift, 0.0);
-        let pos = centre - rot * (galley.size() / 2.0);
-        self.painter.add(
-            egui::epaint::TextShape::new(pos, galley, Color32::BLACK).with_angle(-angle as f32),
+            angle,
+            anchor,
+            &creabim_geom::annotation::TextLook::default(),
         );
     }
 

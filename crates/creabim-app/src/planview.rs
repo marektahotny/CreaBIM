@@ -5859,12 +5859,15 @@ pub fn draw_item_with(
                 let r = 10.0 * creabim_geom::plan::bubble_scale(text) as f32;
                 painter.circle(p, r, Color32::WHITE, Stroke::new(1.0, blue));
             }
-            painter.text(
+            crate::annotate::text(
+                painter,
                 p,
-                egui::Align2::CENTER_CENTER,
                 text,
-                egui::FontId::proportional(12.0),
+                12.0,
                 blue,
+                0.0,
+                paper::Anchor::Middle,
+                &creabim_geom::annotation::TextLook::default(),
             );
         }
         PlanItem::Text {
@@ -5878,24 +5881,19 @@ pub fn draw_item_with(
         } => {
             let px = text_px(*size);
             if px >= 4.0 {
-                let align = match align {
-                    paper::Anchor::Start => egui::Align2::LEFT_CENTER,
-                    paper::Anchor::Middle => egui::Align2::CENTER_CENTER,
-                    paper::Anchor::End => egui::Align2::RIGHT_CENTER,
-                };
                 let colour = match rgb {
                     Some([r, g, b]) => {
                         Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
                     }
                     None => ink,
                 };
+                // in the drawings' face and letter width, as on paper
+                let look = creabim_geom::annotation::TextLook {
+                    bold: *bold,
+                    ..Default::default()
+                };
                 let at = xf.to_screen(*at);
-                let font = egui::FontId::proportional(px);
-                painter.text(at, align, text, font.clone(), colour);
-                if *bold {
-                    // a second pass a hair to the right reads as semibold
-                    painter.text(at + Vec2::new(px / 28.0, 0.0), align, text, font, colour);
-                }
+                crate::annotate::text(painter, at, text, px, colour, 0.0, *align, &look);
             }
         }
         PlanItem::Dimension {
@@ -6212,12 +6210,15 @@ pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, 
                 let r = 10.0 * creabim_geom::plan::bubble_scale(text) as f32;
                 painter.circle_stroke(p, r, stroke);
             }
-            painter.text(
+            crate::annotate::text(
+                painter,
                 p,
-                egui::Align2::CENTER_CENTER,
                 text,
-                egui::FontId::proportional(12.0),
+                12.0,
                 color,
+                0.0,
+                paper::Anchor::Middle,
+                &creabim_geom::annotation::TextLook::default(),
             );
         }
         PlanItem::Text {

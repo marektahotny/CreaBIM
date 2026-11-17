@@ -576,6 +576,8 @@ impl CreaBimApp {
         let mut marks = self.plan.snap.marks;
         let mut paper = self.shell.settings.drawing_paper.clone();
         let mut navigation = self.shell.settings.navigation.clone();
+        let mut draw_font = self.shell.settings.drawing_font.clone();
+        let mut text_width = self.shell.settings.text_width;
         let mut grip_hover = None;
         let mut edit_bar = self.shell.settings.edit_bar.clone();
         let mut axis_lines = self.shell.settings.axis_lines;
@@ -726,6 +728,36 @@ impl CreaBimApp {
                                                 })
                                                 .response
                                                 .on_hover_text("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white.");
+                                        });
+                                        crate::props::section(ui, "Drawing text");
+                                        crate::props::row(ui, "Font", |ui| {
+                                            let name = creabim_geom::font::setup()
+                                                .font
+                                                .map(|f| f.family.clone())
+                                                .unwrap_or_else(|| crate::i18n::tr("Built-in sans"));
+                                            ui.horizontal(|ui| {
+                                                if !draw_font.is_empty()
+                                                    && ui.small_button("×").on_hover_text(crate::i18n::tr("Back to the usual font")).clicked()
+                                                {
+                                                    draw_font.clear();
+                                                }
+                                                if ui.button(name)
+                                                    .on_hover_text(crate::i18n::tr("Pick a font file (TTF or OTF) for the text of drawings: dimensions, tags, notes, title blocks. It is used on screen and carried in PDF and SVG. With none picked, Avenir Next Condensed is used where it is found: in a fonts folder beside the program or among the system's fonts."))
+                                                    .clicked()
+                                                {
+                                                    if let Some(p) = rfd::FileDialog::new()
+                                                        .set_title(crate::i18n::tr("Font of the drawings"))
+                                                        .add_filter("TrueType, OpenType", &["ttf", "otf"])
+                                                        .pick_file()
+                                                    {
+                                                        draw_font = p.display().to_string();
+                                                    }
+                                                }
+                                            });
+                                        });
+                                        crate::props::row(ui, "Letter width", |ui| {
+                                            ui.add(egui::DragValue::new(&mut text_width).range(0.3..=2.0).speed(0.01).fixed_decimals(2))
+                                                .on_hover_text(crate::i18n::tr("1 is the font's own width; 0.7 draws every letter of the drawings at 70 % of it."))
                                         });
                                         crate::props::section(ui, "Move, Rotate and Scale bar");
                                         for (k, name, note) in [
@@ -892,6 +924,22 @@ impl CreaBimApp {
             crate::modal::set_bar_by_pointer(edit_bar == "pointer");
             self.shell.settings.edit_bar = edit_bar;
             self.shell.settings.store();
+        }
+        if draw_font != self.shell.settings.drawing_font
+            || (text_width - self.shell.settings.text_width).abs() > 1e-9
+        {
+            let picked = draw_font != self.shell.settings.drawing_font;
+            self.shell.settings.drawing_font = draw_font;
+            self.shell.settings.text_width = text_width;
+            let found = crate::drawfont::apply(ctx, &self.shell.settings);
+            if picked && found.is_none() && !self.shell.settings.drawing_font.is_empty() {
+                // what was picked is no font: back to the usual
+                self.status = crate::i18n::tr("That file is not a font CreaBIM can read.");
+                self.shell.settings.drawing_font.clear();
+                crate::drawfont::apply(ctx, &self.shell.settings);
+            }
+            self.shell.settings.store();
+            self.geometry_key = None;
         }
         if navigation != self.shell.settings.navigation {
             self.shell.settings.navigation = navigation;

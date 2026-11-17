@@ -10,7 +10,9 @@ rust-version.workspace = true
 creabim-core.workspace = true
 glam.workspace = true
 miniz_oxide = "0.8"
+ttf-parser = "0.25"
 rust_xlsxwriter = { version = "0.96", default-features = false }
 
 [dev-dependencies]
+epaint_default_fonts = "0.36"
 serde_json.workspace = true

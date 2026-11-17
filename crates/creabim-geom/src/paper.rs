@@ -4,6 +4,7 @@
 
 use crate::annotate::{dimension_geometry, tag_geometry};
 use crate::annotation::{Ends, Marks, TextLook};
+use crate::font::TextSetup;
 use crate::looks::Looks;
 use crate::plan::{Hatch, Pen, PlanItem, PlanView};
 use crate::raster::Raster;
@@ -412,6 +413,15 @@ pub fn hex(rgb: [f32; 3]) -> String {
 
 /// Rough width of Helvetica text, mm.
 pub fn text_width(text: &str, size: f64) -> f64 {
+    let setup = crate::font::setup();
+    match &setup.font {
+        Some(f) => f.width(text, size) * setup.stretch,
+        None => rough_width(text, size) * setup.stretch,
+    }
+}
+
+/// Width of `text` in a face like Helvetica, by its kinds of letter.
+pub fn rough_width(text: &str, size: f64) -> f64 {
     text.chars()
         .map(|c| match c {
             'i' | 'j' | 'l' | '.' | ',' | ':' | ';' | '\'' | '|' | '!' => 0.25,
@@ -431,14 +441,24 @@ pub struct SvgCanvas {
     size: DVec2,
     body: String,
     clips: usize,
+    /// The drawings' face and letter width, and whether the face was used.
+    setup: TextSetup,
+    faced: bool,
 }
 
 impl SvgCanvas {
     pub fn new(size: DVec2) -> Self {
+        Self::with_setup(size, crate::font::setup())
+    }
+
+    /// A page whose text is set as `setup` says.
+    pub fn with_setup(size: DVec2, setup: TextSetup) -> Self {
         Self {
             size,
             body: String::new(),
             clips: 0,
+            setup,
+            faced: false,
         }
     }
 
@@ -447,9 +467,19 @@ impl SvgCanvas {
     }
 
     pub fn finish(self) -> String {
+        // the face travels in the file, so it reads the same anywhere
+        let face = match (&self.setup.font, self.faced) {
+            (Some(f), true) => format!(
+                "<style>@font-face {{ font-family: '{}'; src: url(data:font/{};base64,{}); }}</style>\n",
+                f.family.replace(['\'', '<', '&'], ""),
+                if f.truetype { "ttf" } else { "otf" },
+                crate::raster::base64(&f.bytes)
+            ),
+            _ => String::new(),
+        };
         format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w:.1}mm\" height=\"{h:.1}mm\" viewBox=\"0 0 {w:.3} {h:.3}\">\n\
-             <rect width=\"100%\" height=\"100%\" fill=\"white\"/>\n{}</svg>\n",
+             {face}<rect width=\"100%\" height=\"100%\" fill=\"white\"/>\n{}</svg>\n",
             self.body,
             w = self.size.x,
             h = self.size.y
@@ -495,10 +525,17 @@ impl SvgCanvas {
 
     fn svg_text(&mut self, at: DVec2, text: &str, anchor: Anchor, angle: f64, look: &TextLook) {
         let size = look.size;
-        let family = match look.font {
-            Font::Sans => "Helvetica, Arial, sans-serif",
-            Font::Serif => "Times, 'Times New Roman', serif",
-            Font::Mono => "Courier, 'Courier New', monospace",
+        let family = match (look.font, self.setup.face(look.font)) {
+            (_, Some(f)) => {
+                self.faced = true;
+                format!(
+                    "'{}', 'Arial Narrow', Helvetica, Arial, sans-serif",
+                    f.family.replace(['\'', '<', '&', '"'], "")
+                )
+            }
+            (Font::Sans, _) => "Helvetica, Arial, sans-serif".into(),
+            (Font::Serif, _) => "Times, 'Times New Roman', serif".into(),
+            (Font::Mono, _) => "Courier, 'Courier New', monospace".into(),
         };
         let mut extra = String::new();
         if look.bold {
@@ -516,6 +553,20 @@ impl SvgCanvas {
             Anchor::Middle => "middle",
             Anchor::End => "end",
         };
+        let stretch = self.setup.stretch;
+        if (stretch - 1.0).abs() > 1e-9 {
+            // narrower or wider letters: squeezed along the text, about its
+            // anchor
+            let _ = writeln!(
+                self.body,
+                "<text transform=\"translate({:.3} {:.3}) rotate({:.3}) scale({stretch} 1)\" font-family=\"{family}\" font-size=\"{size}\"{extra} text-anchor=\"{anchor}\" dominant-baseline=\"middle\">{}</text>",
+                p.x,
+                p.y,
+                -angle.to_degrees(),
+                xml_escape(text)
+            );
+            return;
+        }
         let rotate = if angle.abs() > 1e-9 {
             format!(
                 " transform=\"rotate({:.3} {:.3} {:.3})\"",
@@ -612,15 +663,26 @@ fn xml_escape(s: &str) -> String {
 // ---- PDF -----------------------------------------------------------------
 
 /// A multi-page vector PDF. Text uses the built-in Helvetica font.
-#[derive(Default)]
 pub struct PdfWriter {
     pages: Vec<PageData>,
+    /// The drawings' face (embedded, /F13) and letter width.
+    setup: TextSetup,
+}
+
+impl Default for PdfWriter {
+    fn default() -> Self {
+        Self::with_setup(crate::font::setup())
+    }
 }
 
 struct PageData {
     size: DVec2,
     content: String,
     images: Vec<Arc<Raster>>,
+    setup: TextSetup,
+    /// The glyphs of the drawings' face this page shows, and the
+    /// character of each.
+    glyphs: std::collections::BTreeMap<u16, char>,
 }
 
 /// One page of a [`PdfWriter`], drawn in millimetres.
@@ -662,6 +724,14 @@ impl PdfWriter {
         Self::default()
     }
 
+    /// A document whose text is set as `setup` says.
+    pub fn with_setup(setup: TextSetup) -> Self {
+        Self {
+            pages: vec![],
+            setup,
+        }
+    }
+
     /// Start a page of `size` mm; draw on the returned canvas.
     pub fn page(&mut self, size: DVec2) -> PdfPage<'_> {
         // millimetre units, round line ends
@@ -669,6 +739,8 @@ impl PdfWriter {
             size,
             content: format!("{PT:.5} 0 0 {PT:.5} 0 0 cm 1 J 1 j\n"),
             images: vec![],
+            setup: self.setup.clone(),
+            glyphs: Default::default(),
         });
         PdfPage {
             page: self.pages.last_mut().expect("just pushed"),
@@ -731,9 +803,19 @@ impl PdfWriter {
                 .as_bytes(),
             );
         }
-        let fonts: String = (0..PDF_FONTS.len())
+        let mut fonts: String = (0..PDF_FONTS.len())
             .map(|i| format!("/F{} {} 0 R ", i + 1, i + 3))
             .collect();
+        // the drawings' own face, after the pages: `next` on
+        let used: std::collections::BTreeMap<u16, char> = self
+            .pages
+            .iter()
+            .flat_map(|p| p.glyphs.iter().map(|(g, c)| (*g, *c)))
+            .collect();
+        let face = self.setup.font.clone().filter(|_| !used.is_empty());
+        if face.is_some() {
+            let _ = write!(fonts, "/F{} {next} 0 R ", PDF_FONTS.len() + 1);
+        }
         for (page, (id, images)) in self.pages.iter().zip(&ids) {
             let xobjects: String = images
                 .iter()
@@ -772,6 +854,11 @@ impl PdfWriter {
                 );
             }
         }
+        if let Some(f) = &face {
+            for body in embedded_font(f, &used, next) {
+                obj(&mut out, &body);
+            }
+        }
         let xref = out.len();
         let mut tail = format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len() + 1);
         for o in &offsets {
@@ -785,6 +872,90 @@ impl PdfWriter {
         out.extend_from_slice(tail.as_bytes());
         out
     }
+}
+
+/// The five objects of an embedded face, numbered from `first`: the
+/// composite font, its descendant, the descriptor, the file and the map
+/// from its glyphs back to characters (so the text can be searched and
+/// copied). Glyph numbers are the codes, two bytes each.
+fn embedded_font(
+    f: &crate::font::DrawingFont,
+    used: &std::collections::BTreeMap<u16, char>,
+    first: usize,
+) -> Vec<Vec<u8>> {
+    let k = 1000.0 / f.units;
+    let name = &f.ps_name;
+    let widths: String = used
+        .iter()
+        .map(|(g, c)| format!("{g} [{:.0}] ", f64::from(f.glyph(*c).1) * k))
+        .collect();
+    let (kind, file, map) = if f.truetype {
+        ("CIDFontType2", "FontFile2", " /CIDToGIDMap /Identity")
+    } else {
+        ("CIDFontType0", "FontFile3", "")
+    };
+    let mut cmap = String::from(
+        "/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n\
+         /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n\
+         /CMapName /Adobe-Identity-UCS def /CMapType 2 def\n\
+         1 begincodespacerange <0000> <FFFF> endcodespacerange\n",
+    );
+    let pairs: Vec<(&u16, &char)> = used.iter().collect();
+    for chunk in pairs.chunks(100) {
+        let _ = writeln!(cmap, "{} beginbfchar", chunk.len());
+        for (g, c) in chunk {
+            let mut u = [0u16; 2];
+            let hex: String = c
+                .encode_utf16(&mut u)
+                .iter()
+                .map(|w| format!("{w:04X}"))
+                .collect();
+            let _ = writeln!(cmap, "<{g:04X}> <{hex}>");
+        }
+        cmap.push_str("endbfchar\n");
+    }
+    cmap.push_str("endcmap CMapName currentdict /CMap defineresource pop end end");
+    let stream = |dict: &str, data: &[u8]| {
+        let mut body = format!("<< {dict} /Length {} >>\nstream\n", data.len()).into_bytes();
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\nendstream");
+        body
+    };
+    let packed = crate::raster::deflate(&f.bytes);
+    vec![
+        format!(
+            "<< /Type /Font /Subtype /Type0 /BaseFont /{name} /Encoding /Identity-H /DescendantFonts [{} 0 R] /ToUnicode {} 0 R >>",
+            first + 1,
+            first + 4
+        )
+        .into_bytes(),
+        format!(
+            "<< /Type /Font /Subtype /{kind} /BaseFont /{name} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {} 0 R /DW 500 /W [{widths}]{map} >>",
+            first + 2
+        )
+        .into_bytes(),
+        format!(
+            "<< /Type /FontDescriptor /FontName /{name} /Flags 4 /FontBBox [{:.0} {:.0} {:.0} {:.0}] /ItalicAngle 0 /Ascent {:.0} /Descent {:.0} /CapHeight {:.0} /StemV 80 /{file} {} 0 R >>",
+            f.bbox[0] * k,
+            f.bbox[1] * k,
+            f.bbox[2] * k,
+            f.bbox[3] * k,
+            f.ascent * k,
+            f.descent * k,
+            f.cap_height * k,
+            first + 3
+        )
+        .into_bytes(),
+        stream(
+            &if f.truetype {
+                format!("/Length1 {} /Filter /FlateDecode", f.bytes.len())
+            } else {
+                "/Subtype /OpenType /Filter /FlateDecode".to_string()
+            },
+            &packed,
+        ),
+        stream("", cmap.as_bytes()),
+    ]
 }
 
 fn pdf_string(s: &str) -> String {
@@ -863,22 +1034,61 @@ impl PdfPage<'_> {
         };
         // baseline sits a little below the middle of capital letters
         let (dir, up) = (DVec2::from_angle(angle), DVec2::from_angle(angle).perp());
-        let o = at + dir * along - up * size * 0.35;
-        let color = match look.rgb {
-            Some([r, g, b]) => format!("{r:.3} {g:.3} {b:.3} rg"),
-            None => "0 g".into(),
+        let stretch = self.page.setup.stretch;
+        let Some(face) = self.page.setup.face(look.font).cloned() else {
+            let o = at + dir * along - up * size * 0.35;
+            let color = match look.rgb {
+                Some([r, g, b]) => format!("{r:.3} {g:.3} {b:.3} rg"),
+                None => "0 g".into(),
+            };
+            // letters `stretch` wide: the text's own x axis that long
+            let _ = writeln!(
+                self.page.content,
+                "{color} BT /F{} {size:.3} Tf {:.5} {:.5} {:.5} {:.5} {:.3} {:.3} Tm {} Tj ET",
+                pdf_font(look),
+                dir.x * stretch,
+                dir.y * stretch,
+                up.x,
+                up.y,
+                o.x,
+                o.y,
+                pdf_string(text)
+            );
+            return;
         };
+        // the drawings' own face: by its glyphs, its capitals' middle on
+        // the point; one weight and no slant in the file, so bold is the
+        // letters outlined as well as filled and italic is a lean
+        let o = at + dir * along - up * size * face.cap_height / face.units / 2.0;
+        let mut codes = String::with_capacity(text.len() * 4 + 2);
+        for c in text.chars() {
+            let (g, _) = face.glyph(c);
+            self.page.glyphs.entry(g).or_insert(c);
+            let _ = write!(codes, "{g:04X}");
+        }
+        let (fill, line) = match look.rgb {
+            Some([r, g, b]) => (
+                format!("{r:.3} {g:.3} {b:.3} rg"),
+                format!("{r:.3} {g:.3} {b:.3} RG"),
+            ),
+            None => ("0 g".into(), "0 G".into()),
+        };
+        let bold = if look.bold {
+            format!("{line} {:.4} w [] 0 d 2 Tr ", size * 0.035)
+        } else {
+            String::new()
+        };
+        let lean = if look.italic { dir * 0.2 } else { DVec2::ZERO };
         let _ = writeln!(
             self.page.content,
-            "{color} BT /F{} {size:.3} Tf {:.5} {:.5} {:.5} {:.5} {:.3} {:.3} Tm {} Tj ET",
-            pdf_font(look),
-            dir.x,
-            dir.y,
-            up.x,
-            up.y,
+            "q {fill} {bold}BT /F{} {size:.3} Tf {:.5} {:.5} {:.5} {:.5} {:.3} {:.3} Tm <{codes}> Tj ET Q",
+            PDF_FONTS.len() + 1,
+            dir.x * stretch,
+            dir.y * stretch,
+            up.x + lean.x,
+            up.y + lean.y,
             o.x,
             o.y,
-            pdf_string(text)
         );
     }
 }
@@ -973,5 +1183,85 @@ mod tests {
                 i + 1
             );
         }
+    }
+
+    fn ubuntu(stretch: f64) -> TextSetup {
+        let f = crate::font::DrawingFont::parse(epaint_default_fonts::UBUNTU_LIGHT.to_vec())
+            .expect("a font");
+        TextSetup {
+            font: Some(Arc::new(f)),
+            stretch,
+        }
+    }
+
+    #[test]
+    fn a_face_from_a_file_is_measured_by_its_letters() {
+        let s = ubuntu(1.0);
+        let f = s.font.as_ref().unwrap();
+        assert_eq!(f.family, "Ubuntu");
+        assert!(f.truetype && f.units == 1000.0);
+        // an i is narrower than an m; Slovak letters are in it
+        assert!(f.width("i", 10.0) < f.width("m", 10.0) / 2.0);
+        assert_ne!(f.glyph('č').0, 0);
+        assert!((f.width("Kuchyňa", 2.5) - 2.0 * f.width("Kuchyňa", 1.25)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_pdf_carries_the_face_and_narrows_the_letters() {
+        let mut pdf = PdfWriter::with_setup(ubuntu(0.7));
+        {
+            let mut p = pdf.page(DVec2::new(210.0, 297.0));
+            p.text(DVec2::new(20.0, 20.0), 3.0, "Kúpeľňa č. 2", Anchor::Start);
+            let serif = TextLook {
+                font: Font::Serif,
+                ..TextLook::default()
+            };
+            p.styled_text(DVec2::new(20.0, 40.0), "Times", Anchor::Start, 0.0, &serif);
+        }
+        let bytes = pdf.finish();
+        let s = String::from_utf8_lossy(&bytes);
+        // the user's face by glyph numbers, 70 % wide; Times as before, as wide
+        assert!(
+            s.contains("/F13 3.000 Tf 0.70000 0.00000 0.00000 1.00000"),
+            "{s}"
+        );
+        assert!(s.contains("/F5 2.500 Tf 0.70000 0.00000"));
+        assert!(s.contains("(Times) Tj"));
+        assert!(s.contains("/Subtype /Type0 /BaseFont /Ubuntu-Light /Encoding /Identity-H"));
+        assert!(s.contains("/FontFile2") && s.contains("/CIDToGIDMap /Identity"));
+        // ľ is found again by a search: its glyph maps back to U+013E
+        assert!(s.contains("> <013E>"));
+        // every object where the table says
+        let xref = s.rfind("startxref").unwrap();
+        let at: usize = s[xref + 9..]
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(bytes[at..].starts_with(b"xref"));
+        // no face used, none carried
+        let mut plain = PdfWriter::with_setup(ubuntu(1.0));
+        plain.page(DVec2::new(210.0, 297.0));
+        assert!(!String::from_utf8_lossy(&plain.finish()).contains("/Type0"));
+    }
+
+    #[test]
+    fn an_svg_names_and_carries_the_face() {
+        let mut c = SvgCanvas::with_setup(DVec2::new(100.0, 100.0), ubuntu(0.7));
+        c.text(DVec2::new(10.0, 90.0), 3.0, "Izba", Anchor::Middle);
+        let s = c.finish();
+        assert!(s.contains("@font-face { font-family: 'Ubuntu'; src: url(data:font/ttf;base64,"));
+        assert!(s.contains(
+            "<text transform=\"translate(10.000 10.000) rotate(-0.000) scale(0.7 1)\" font-family=\"'Ubuntu', "
+        ));
+        // without a setup: as it was
+        let mut c = SvgCanvas::with_setup(DVec2::new(100.0, 100.0), TextSetup::default());
+        c.text(DVec2::new(10.0, 90.0), 3.0, "Izba", Anchor::Middle);
+        let s = c.finish();
+        assert!(s.contains(
+            "<text x=\"10.000\" y=\"10.000\" font-family=\"Helvetica, Arial, sans-serif\""
+        ));
+        assert!(!s.contains("@font-face"));
     }
 }

@@ -73,7 +73,8 @@ pub fn text(
     }
     let family = match look.font {
         Font::Mono => egui::FontFamily::Monospace,
-        Font::Sans | Font::Serif => egui::FontFamily::Proportional,
+        Font::Sans => crate::drawfont::family(),
+        Font::Serif => egui::FontFamily::Proportional,
     };
     let mut job = egui::text::LayoutJob::simple_singleline(
         text.to_string(),
@@ -84,7 +85,9 @@ pub fn text(
         s.format.italics = look.italic;
     }
     let galley = painter.layout_job(job);
-    let w = galley.size().x;
+    let stretch = creabim_geom::font::setup().stretch as f32;
+    let size = galley.size();
+    let w = size.x * stretch;
     let shift = match anchor {
         Anchor::Start => w / 2.0,
         Anchor::Middle => 0.0,
@@ -93,10 +96,41 @@ pub fn text(
     // the screen's y runs down, so a counter-clockwise turn is a negative angle
     let rot = egui::emath::Rot2::from_angle(-angle as f32);
     let centre = at + rot * Vec2::new(shift, 0.0);
-    let pos = centre - rot * (galley.size() / 2.0);
+    // no bold face on screen: the text again, a hair to the right
+    let nudge = rot * Vec2::new((px * 0.05).max(0.6), 0.0);
+    if (stretch - 1.0).abs() > 1e-4 {
+        // letters narrower or wider than the face's: its triangles, set
+        // about the text's middle and squeezed along it
+        let ctx = painter.ctx();
+        let mut tess = egui::epaint::Tessellator::new(
+            ctx.pixels_per_point(),
+            egui::epaint::TessellationOptions {
+                round_text_to_pixels: false,
+                coarse_tessellation_culling: false,
+                ..Default::default()
+            },
+            ctx.fonts(|f| f.font_image_size()),
+            vec![],
+        );
+        let mut mesh = egui::Mesh::default();
+        tess.tessellate_text(
+            &egui::epaint::TextShape::new(Pos2::ZERO, galley, color),
+            &mut mesh,
+        );
+        for v in &mut mesh.vertices {
+            let p = Vec2::new((v.pos.x - size.x / 2.0) * stretch, v.pos.y - size.y / 2.0);
+            v.pos = centre + rot * p;
+        }
+        if look.bold {
+            let mut again = mesh.clone();
+            again.translate(nudge);
+            painter.add(egui::Shape::mesh(again));
+        }
+        painter.add(egui::Shape::mesh(mesh));
+        return;
+    }
+    let pos = centre - rot * (size / 2.0);
     if look.bold {
-        // no bold face on screen: the text again, a hair to the right
-        let nudge = rot * Vec2::new((px * 0.05).max(0.6), 0.0);
         painter.add(
             egui::epaint::TextShape::new(pos + nudge, galley.clone(), color)
                 .with_angle(-angle as f32),
