@@ -31,7 +31,7 @@ impl CreaBimApp {
 
     /// The plan the package's references show in: `view` (it was dropped
     /// on), else the one open, else the working level's first.
-    fn map_plan(&self, view: Option<ElementId>) -> Option<(ElementId, ElementId)> {
+    pub(super) fn map_plan(&self, view: Option<ElementId>) -> Option<(ElementId, ElementId)> {
         let model = self.doc.model();
         let plan_of = |v: ElementId| match model.get(v).map(|e| &e.kind) {
             Some(ElementKind::View(View {
@@ -53,16 +53,25 @@ impl CreaBimApp {
     /// Put in the package at `path`, in the plan `view` if given.
     pub(super) fn map_from_zip(&mut self, path: &std::path::Path, view: Option<ElementId>) {
         let t = crate::i18n::tr;
-        let files = match std::fs::read(path)
+        match std::fs::read(path)
             .map_err(|e| e.to_string())
             .and_then(|b| mapdl::unzip(&b))
         {
-            Ok(f) => f,
-            Err(e) => {
-                self.status = format!("{} {}: {e}", t("Couldn't read"), path.display());
-                return;
-            }
-        };
+            // unpacked beside it, for the references to read
+            Ok(files) => self.map_put_in(files, &path.with_extension(""), view),
+            Err(e) => self.status = format!("{} {}: {e}", t("Couldn't read"), path.display()),
+        }
+    }
+
+    /// Put in a package's `files`, written into `dir` for the references
+    /// to read, in the plan `view` if given.
+    pub(super) fn map_put_in(
+        &mut self,
+        files: Vec<(String, Vec<u8>)>,
+        dir: &std::path::Path,
+        view: Option<ElementId>,
+    ) {
+        let t = crate::i18n::tr;
         let pkg = mapdl::package(&files);
         if pkg.dxfs.is_empty() && pkg.ortho.is_none() && pkg.xyz.is_none() && pkg.origin.is_none() {
             self.status = t("The package holds no site plan, orthophoto, terrain or origin point.");
@@ -72,10 +81,8 @@ impl CreaBimApp {
             self.status = t("Open a plan first: the map goes under it.");
             return;
         };
-        // unpacked beside it, for the references to read
-        let dir = path.with_extension("");
         let file = |name: &str| dir.join(name).display().to_string();
-        if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| {
+        if let Err(e) = std::fs::create_dir_all(dir).and_then(|_| {
             files
                 .iter()
                 .try_for_each(|(n, b)| std::fs::write(dir.join(n), b))

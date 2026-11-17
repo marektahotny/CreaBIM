@@ -696,6 +696,7 @@ impl CreaBimApp {
                     || self.terrain_action(head, arg)
                     || self.earthworks_action(head, arg)
                     || self.map_action(head, arg)
+                    || self.maplink_action(head, arg)
             }
         }
         true

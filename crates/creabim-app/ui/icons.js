@@ -198,6 +198,7 @@ window.ICONS = {
 "pipe": "<path d=\"M2 8h9a5 5 0 0 1 5 5v9\" /><path d=\"M2 14h7a1 1 0 0 1 1 1v7\" /><path d=\"M2 6v10\" /><path d=\"M8 22h10\" />",
 "pipe-fall": "<path d=\"M2 6l20 4\" /><path d=\"M2 12l20 4\" /><path d=\"M16 20l3 2 3-2\" />",
 "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\" />",
+"globe": "<circle cx=\"12\" cy=\"12\" r=\"10\" /><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\" /><path d=\"M2 12h20\" />",
 "calc": "<rect x=\"5\" y=\"2\" width=\"14\" height=\"20\" rx=\"2\" /><path d=\"M8 6h8\" /><path d=\"M8 11h.01\" /><path d=\"M12 11h.01\" /><path d=\"M16 11h.01\" /><path d=\"M8 15h.01\" /><path d=\"M12 15h.01\" /><path d=\"M16 15h4\" /><path d=\"M8 19h.01\" /><path d=\"M12 19h.01\" />",
 "pipe-gas": "<path d=\"M2 9h20\" /><path d=\"M2 15h20\" /><path d=\"M12 2c1.5 2 1.5 3.5 0 5\" /><path d=\"M12 17c1.5 2 1.5 3.5 0 5\" />",
 "slab": "<path d=\"M2 10l10-5 10 5-10 5z\"></path><path d=\"M2 10v4l10 5 10-5v-4\"></path><path d=\"M12 15v4\"></path>",

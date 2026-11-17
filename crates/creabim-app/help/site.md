@@ -20,6 +20,12 @@ New terrain is flat at its level and covered in *Grass* from the material librar
 - A 3D DXF survey (points, 3D polylines, a TIN of 3D faces) makes one the same way: **Terrain from its heights** in the reference's *Properties*, from the layers shown, where the reference is placed.
 - Contours are drawn every 0.25, 0.5 or 1 m, by how much the ground rises. Only the first 40 spot heights are listed in *Properties*.
 
+### Map underlays
+
+**Map underlays** on the *Cadastre* tab opens Pilon Map Downloader's site (mapy.pilondesign.eu) in a window of the app, as PilonDesigner does. Find the place, pick the area and what to take, and send it with the map's **Odoslať do CreaBIM** button (the app answers the map as Revit's Pilon Map Link does). The site plan, the orthophoto and the terrain come into the plan that is open, and the project is placed in S-JTSK, as with a map package below. The files are kept in a folder beside the project's file.
+
+The app listens for the map on this computer only, and answers the map's own site only.
+
 ### A map package
 
 **Map package** on the *Cadastre* tab puts in a ZIP from Pilon Map Downloader, as PilonDesigner does: pick the ZIP with a plan open, and its files are unpacked into a folder of the same name beside it.

@@ -123,6 +123,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Trace over a map or a picture: shown faintly under this view (Alt+F2 hides it)",
             ),
             act(
+                "map:open",
+                "Map underlays",
+                "globe",
+                "The map site in a window (Pilon Map Downloader): pick the area, and the cadastre, orthophoto and terrain come into the plan, the project placed in S-JTSK",
+            ),
+            act(
                 "map:zip",
                 "Map package",
                 "map",
