@@ -211,7 +211,7 @@ pub fn files_of(payload: &serde_json::Value) -> Vec<(String, Vec<u8>)> {
     }
     if let Some(p) = payload["terrain"]["points"].as_array() {
         let mut t = String::new();
-        for q in p.chunks_exact(3) {
+        for q in p.chunks(3).filter(|q| q.len() == 3) {
             if let (Some(x), Some(y), Some(z)) = (num(&q[0]), num(&q[1]), num(&q[2])) {
                 t.push_str(&format!("{x} {y} {z}\n"));
             }
