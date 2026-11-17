@@ -88,6 +88,8 @@ CUSTOM={
 # Brief 02's final icon set (boards/IconSetFinal.png): Lucide's grammar, a
 # 24 grid, 2.0 stroke, round caps and joins. Lucide icons kept as they are:
 names+="""align-start-vertical lamp-ceiling tree-deciduous circle-dot-dashed square-arrow-out-up-right layout-panel-left arrow-up-to-line align-left settings log-out""".split()
+# the discipline tabs (building services, cadastre)
+names+="""droplet droplets flame wind zap heater fan plug lightbulb waves thermometer landmark cylinder heart-pulse rows-3 columns-3 layout-grid gauge book-check""".split()
 FINAL={
  # model
  "wall": '<rect x="3" y="3" width="18" height="18" rx="2" /> <path d="M3 9h18M3 15h18M9 3v6M15 3v6M12 9v6M7 15v6M17 15v6" />',

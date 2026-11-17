@@ -31,6 +31,7 @@ pub mod members;
 pub mod model;
 pub mod modgen;
 pub mod modifiers;
+pub mod norms;
 pub mod objects;
 pub mod offset;
 pub mod ops;
