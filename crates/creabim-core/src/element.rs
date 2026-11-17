@@ -34,6 +34,10 @@ pub struct Element {
     /// [`crate::marks`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<String>,
+    /// Its part in a renovation: existing, demolished or new; none is new
+    /// (see [`crate::reno`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reno: Option<crate::reno::Reno>,
 }
 
 /// An object in another file that an element mirrors.
@@ -58,6 +62,7 @@ impl Element {
             source: None,
             of_type: None,
             mark: None,
+            reno: None,
         }
     }
 
@@ -1768,6 +1773,10 @@ pub struct View {
     /// project's style pack.
     #[serde(default, skip_serializing_if = "crate::styles::boxed_look_is_default")]
     pub look: Box<crate::styles::ViewLook>,
+    /// The stage of a renovation it shows; none shows every element as
+    /// usual (see [`crate::reno`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reno: Option<crate::reno::RenoView>,
 }
 
 /// Where a detail view comes from: the box `lo`..`hi` (drawing
@@ -2002,6 +2011,7 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
         }
     }
 
@@ -2028,6 +2038,7 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
         }
     }
 }
@@ -2051,6 +2062,7 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
         }
     }
 
@@ -2075,6 +2087,7 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
         }
     }
 
@@ -2104,6 +2117,7 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
         }
     }
 

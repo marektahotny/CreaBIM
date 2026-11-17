@@ -465,6 +465,7 @@ impl CreaBimApp {
             "viewstyle" => self.view_style_items(),
             "wall.location" => self.wall_location_items(),
             "tempdims.ref" => self.temp_ref_items(),
+            "view.reno" => self.reno_items(),
             "type.tool" => self.tool_type_items(),
             "palette" => self.palette_items(),
             "look" => crate::camera::Look::ALL
@@ -3316,6 +3317,13 @@ impl CreaBimApp {
                     "kind": "menu", "key": "tempdims.ref", "label": "Measure from",
                     "value": self.plan.temp_ref.label(),
                     "hint": "What temporary dimensions measure walls from: the faces of their load-bearing core (never plaster or insulation), the wall faces, the core's middle or the centreline",
+                }));
+            }
+            if let Some(v) = self.active_view.and_then(|id| self.view(id)) {
+                options.push(json!({
+                    "kind": "menu", "key": "view.reno", "label": "Renovation",
+                    "value": v.reno.map_or("Off", |r| r.label()),
+                    "hint": "Which stage of a renovation this view shows: the existing state, the demolition (yellow), the new state (red) or all to compare. Mark elements existing, demolished or new in Properties",
                 }));
             }
             // thin lines (TL), for close work: weights come back with it off

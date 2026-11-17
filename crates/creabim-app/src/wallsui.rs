@@ -704,6 +704,32 @@ impl CreaBimApp {
                     .into();
                 }
             }
+            "view.reno" => {
+                use creabim_core::reno::RenoView;
+                let Some(id) = self.active_view else {
+                    return true;
+                };
+                let Some(mut v) = self.view(id).cloned() else {
+                    return true;
+                };
+                let i = arg.parse::<usize>().unwrap_or(0);
+                v.reno = i.checked_sub(1).and_then(|i| RenoView::ALL.get(i).copied());
+                let r = self.doc.edit_merged(id, "Renovation stage", |e| {
+                    e.kind = ElementKind::View(v.clone())
+                });
+                let msg = match v.reno {
+                    None => "Renovation off: everything drawn as usual.",
+                    Some(RenoView::Existing) => {
+                        "Existing state: what stands now, the elements to keep and to take down."
+                    }
+                    Some(RenoView::Demolition) => {
+                        "Demolition: what is taken down in yellow, with the holes for new doors and windows."
+                    }
+                    Some(RenoView::New) => "New state: what stays and what is built, the new in red.",
+                    Some(RenoView::All) => "All stages at once: demolished in yellow, new in red.",
+                };
+                self.report(r, crate::i18n::tr(msg));
+            }
             "wall.flipnew" => {
                 self.plan.wall_flip = !self.plan.wall_flip;
                 self.status = format!(
@@ -725,6 +751,21 @@ impl CreaBimApp {
                 crate::ui_model::Item::new(format!("tempdims.ref:{i}"), r.label())
                     .checked(self.plan.temp_ref == *r)
             })
+            .collect()
+    }
+
+    /// Which renovation stage the view shows, for the view strip.
+    pub(super) fn reno_items(&self) -> Vec<crate::ui_model::Item> {
+        use creabim_core::reno::RenoView;
+        let now = self
+            .active_view
+            .and_then(|id| self.view(id))
+            .and_then(|v| v.reno);
+        std::iter::once(crate::ui_model::Item::new("view.reno:0", "Off").checked(now.is_none()))
+            .chain(RenoView::ALL.iter().enumerate().map(|(i, r)| {
+                crate::ui_model::Item::new(format!("view.reno:{}", i + 1), r.label())
+                    .checked(now == Some(*r))
+            }))
             .collect()
     }
 

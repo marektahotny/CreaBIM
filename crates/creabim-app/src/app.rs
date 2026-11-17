@@ -10688,6 +10688,9 @@ impl CreaBimApp {
             });
         }
         self.mark_warning(ui, id);
+        if creabim_core::reno::has_state(&e.kind) {
+            self.reno_row(ui, id);
+        }
         ui.add_space(2.0);
         // its actions, under its name (brief 02, 2.7)
         self.action_bar(ui);
@@ -10696,6 +10699,60 @@ impl CreaBimApp {
         ui.painter()
             .hline(r.x_range(), r.top(), egui::Stroke::new(1.0, pal.border));
         ui.add_space(3.0);
+    }
+
+    /// Its part in a renovation (PilonDesigner): existing, demolished or
+    /// new, for it and the rest of the selection.
+    fn reno_row(&mut self, ui: &mut egui::Ui, id: ElementId) {
+        use creabim_core::reno::{self, Reno};
+        let Some(now) = self.doc.model().get(id).map(reno::state) else {
+            return;
+        };
+        let mut pick = now;
+        crate::props::head_row(ui, "Renovation", |ui| {
+            egui::ComboBox::from_id_salt(("reno", id))
+                .selected_text(crate::i18n::tr(now.label()))
+                .show_ui(ui, |ui| {
+                    for r in Reno::ALL {
+                        ui.selectable_value(&mut pick, r, crate::i18n::tr(r.label()));
+                    }
+                })
+                .response
+                .on_hover_text(crate::i18n::tr(
+                    "What happens to it in a renovation: it stays, it is taken down, or it is new. Views show one stage (the view strip's Renovation)",
+                ));
+        });
+        if pick == now {
+            return;
+        }
+        let ids: Vec<ElementId> = std::iter::once(id)
+            .chain(self.selection.others.iter().copied())
+            .filter(|i| {
+                self.doc
+                    .model()
+                    .get(*i)
+                    .is_some_and(|e| reno::has_state(&e.kind))
+            })
+            .collect();
+        let model = self.doc.model();
+        let mut tx = creabim_core::Transaction::new("Renovation");
+        for i in ids {
+            let Some(e) = model.get(i) else { continue };
+            let mut now = e.clone();
+            now.reno = (!pick.is_new()).then_some(pick);
+            if now != *e {
+                tx = tx.replace(e.clone(), now);
+            }
+        }
+        let r = self.doc.commit(tx).map(|_| ());
+        self.report(
+            r,
+            crate::i18n::tr(match pick {
+                Reno::Existing => "Marked as existing: it stays.",
+                Reno::Demolished => "Marked as demolished: yellow in the demolition stage.",
+                Reno::New => "Marked as new: red in the new state.",
+            }),
+        );
     }
 
     /// The tabs Properties shows now, in order (MU19).
@@ -12800,6 +12857,25 @@ mod sheet_tools_tests {
         app.run_action(&ctx, "view.thin");
         assert_ne!(app.shell.settings.thin_lines, thin, "thin lines toggle");
         app.run_action(&ctx, "view.thin");
+        let plan = app
+            .doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. })))
+            .map(|e| e.id)
+            .expect("the test project has a plan");
+        {
+            app.active_view = Some(plan);
+            app.run_action(&ctx, "view.reno:2");
+            let stage = |app: &CreaBimApp| app.view(plan).and_then(|v| v.reno);
+            assert_eq!(
+                stage(&app),
+                Some(creabim_core::reno::RenoView::Demolition),
+                "renovation stage"
+            );
+            app.run_action(&ctx, "view.reno:0");
+            assert_eq!(stage(&app), None, "renovation off");
+        }
         app.run_action(&ctx, "sheet.preview");
         assert!(app.print_preview, "print preview toggles");
         app.run_action(&ctx, "export.sheets");
