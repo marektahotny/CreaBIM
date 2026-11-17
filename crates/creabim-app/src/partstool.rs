@@ -856,7 +856,10 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
             // Blender's rows (MU31): each spot a labelled row of X, Y, Z
             // filling the field column, the operator under them
             let mut remove = None;
-            for (i, q) in points.iter_mut().enumerate() {
+            // a surveyed terrain has hundreds: the first are listed
+            const LISTED: usize = 40;
+            let more = points.len().saturating_sub(LISTED);
+            for (i, q) in points.iter_mut().enumerate().take(LISTED) {
                 crate::props::row(ui, &format!("Spot {}", i + 1), |ui| {
                     crate::props::flow(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
@@ -882,6 +885,12 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
                         }
                     })
                 });
+            }
+            if more > 0 {
+                weak(
+                    ui,
+                    format!("{} {more}", crate::i18n::tr("Spot heights not listed:")),
+                );
             }
             if let Some(i) = remove {
                 points.remove(i);

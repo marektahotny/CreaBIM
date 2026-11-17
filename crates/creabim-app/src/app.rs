@@ -71,6 +71,8 @@ mod selectsimilar;
 pub(crate) mod shell;
 #[path = "stylesui.rs"]
 mod stylesui;
+#[path = "terrainimport.rs"]
+mod terrainimport;
 #[path = "typepreview.rs"]
 mod typepreview;
 #[path = "typesui.rs"]
