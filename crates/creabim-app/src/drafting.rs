@@ -329,7 +329,11 @@ impl CreaBimApp {
                 .selected_text(crate::i18n::tw(self.drafting.filter.label()))
                 .show_ui(ui, |ui| {
                     for k in StyleUse::ALL {
-                        ui.selectable_value(&mut self.drafting.filter, k, crate::i18n::tw(k.label()));
+                        ui.selectable_value(
+                            &mut self.drafting.filter,
+                            k,
+                            crate::i18n::tw(k.label()),
+                        );
                     }
                 });
             ui.separator();
@@ -378,7 +382,10 @@ impl CreaBimApp {
                         for (id, name, purpose, users) in &list {
                             let text = format!("{name}  ({users})");
                             let r = ui
-                                .selectable_label(self.drafting.style == Some(*id), crate::i18n::tw(text))
+                                .selectable_label(
+                                    self.drafting.style == Some(*id),
+                                    crate::i18n::tw(text),
+                                )
                                 .on_hover_text(format!(
                                     "For {}; used by {users}",
                                     purpose.label().to_lowercase()
@@ -670,7 +677,10 @@ impl CreaBimApp {
             .selected_text(crate::i18n::tw(t.corner.label()))
             .show_ui(ui, |ui| {
                 for c in Corner::ALL {
-                    if ui.selectable_value(&mut t.corner, c, crate::i18n::tw(c.label())).changed() {
+                    if ui
+                        .selectable_value(&mut t.corner, c, crate::i18n::tw(c.label()))
+                        .changed()
+                    {
                         label = Some("Title block corner");
                     }
                 }

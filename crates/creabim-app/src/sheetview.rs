@@ -710,7 +710,10 @@ pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f6
             .show_ui(ui, |ui| {
                 for s in SCALES {
                     if ui
-                        .selectable_label((s - scale).abs() < 1e-6, crate::i18n::tw(format!("1:{s:.0}")))
+                        .selectable_label(
+                            (s - scale).abs() < 1e-6,
+                            crate::i18n::tw(format!("1:{s:.0}")),
+                        )
                         .clicked()
                     {
                         out = Some(s);

@@ -209,7 +209,10 @@ impl CreaBimApp {
                                 edit = Some((rid, r, "Junction winner"));
                             }
                         }
-                        if ui.selectable_label(!r.cleanup, crate::i18n::tw("Not cleaned up")).clicked() {
+                        if ui
+                            .selectable_label(!r.cleanup, crate::i18n::tw("Not cleaned up"))
+                            .clicked()
+                        {
                             r.cleanup = false;
                             edit = Some((rid, r, "Junction cleanup"));
                         }

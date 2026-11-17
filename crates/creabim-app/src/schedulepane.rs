@@ -347,7 +347,11 @@ pub fn show(
                                 .width(inner.width())
                                 .show_ui(ui, |ui| {
                                     for u in RateUnit::ALL {
-                                        ui.selectable_value(&mut chosen, u, crate::i18n::tw(u.label()));
+                                        ui.selectable_value(
+                                            &mut chosen,
+                                            u,
+                                            crate::i18n::tw(u.label()),
+                                        );
                                     }
                                 });
                         });
@@ -378,7 +382,11 @@ pub fn show(
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(&mut chosen, None, crate::i18n::tw("-"));
                                     for (id, name) in &materials {
-                                        ui.selectable_value(&mut chosen, Some(*id), crate::i18n::tw(name));
+                                        ui.selectable_value(
+                                            &mut chosen,
+                                            Some(*id),
+                                            crate::i18n::tw(name),
+                                        );
                                     }
                                 });
                         });

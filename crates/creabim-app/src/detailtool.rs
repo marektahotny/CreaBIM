@@ -322,7 +322,11 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
         .selected_text(crate::i18n::tw(d.kind.label()))
         .show_ui(ui, |ui| {
             for k in DetailKind::ALL {
-                if ui.selectable_label(d.kind.same(k), crate::i18n::tw(k.label())).clicked() && !d.kind.same(k) {
+                if ui
+                    .selectable_label(d.kind.same(k), crate::i18n::tw(k.label()))
+                    .clicked()
+                    && !d.kind.same(k)
+                {
                     d.kind = k;
                     if d.width <= 0.0 {
                         d.width = k.default_width();
@@ -374,7 +378,10 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
                 .selected_text(crate::i18n::tw(hatch.label()))
                 .show_ui(ui, |ui| {
                     for h in Hatch::ALL {
-                        if ui.selectable_value(hatch, h, crate::i18n::tw(h.label())).changed() {
+                        if ui
+                            .selectable_value(hatch, h, crate::i18n::tw(h.label()))
+                            .changed()
+                        {
                             label = "Detail hatch";
                         }
                     }

@@ -110,7 +110,10 @@ pub fn shape_controls(
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         for s in Shape::ALL {
-                            if ui.selectable_label(chosen == s, crate::i18n::tw(s.label())).clicked() {
+                            if ui
+                                .selectable_label(chosen == s, crate::i18n::tw(s.label()))
+                                .clicked()
+                            {
                                 chosen = s;
                             }
                         }

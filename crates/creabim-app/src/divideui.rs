@@ -329,7 +329,8 @@ impl CreaBimApp {
                                 (Way::Up, "Up", "Up its height: courses, bands, shelves"),
                                 (Way::Grid, "Grid", "Both: panels"),
                             ] {
-                                ui.selectable_value(&mut d.way, w, crate::i18n::tw(t)).on_hover_text(tip);
+                                ui.selectable_value(&mut d.way, w, crate::i18n::tw(t))
+                                    .on_hover_text(tip);
                             }
                             ui.separator();
                             ui.selectable_value(&mut d.by_size, false, crate::i18n::tw("Count"))
@@ -434,13 +435,25 @@ impl CreaBimApp {
                             }
                             ui.separator();
                             if cuttable {
-                                ui.selectable_value(&mut d.make, Make::Cuts, crate::i18n::tw("Cuts"))
-                                    .on_hover_text("Cut it into separate elements");
+                                ui.selectable_value(
+                                    &mut d.make,
+                                    Make::Cuts,
+                                    crate::i18n::tw("Cuts"),
+                                )
+                                .on_hover_text("Cut it into separate elements");
                             }
-                            ui.selectable_value(&mut d.make, Make::Guides, crate::i18n::tw("Guides"))
-                                .on_hover_text("Guides at the divisions, to snap to");
-                            ui.selectable_value(&mut d.make, Make::Copies, crate::i18n::tw("Copies"))
-                                .on_hover_text("What you Shift+click, one in each part");
+                            ui.selectable_value(
+                                &mut d.make,
+                                Make::Guides,
+                                crate::i18n::tw("Guides"),
+                            )
+                            .on_hover_text("Guides at the divisions, to snap to");
+                            ui.selectable_value(
+                                &mut d.make,
+                                Make::Copies,
+                                crate::i18n::tw("Copies"),
+                            )
+                            .on_hover_text("What you Shift+click, one in each part");
                             if d.make == Make::Cuts {
                                 ui.label(egui::RichText::new("gap").weak());
                                 ui.add(crate::units::drag(&mut d.gap).range(0.0..=1.0))

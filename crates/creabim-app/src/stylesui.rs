@@ -84,14 +84,19 @@ fn weight_combo(
         )
         .selected_text(crate::i18n::tw(text))
         .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(w, None, crate::i18n::tw("As drawn")).changed();
+            changed |= ui
+                .selectable_value(w, None, crate::i18n::tw("As drawn"))
+                .changed();
             for p in PenName::ALL {
                 changed |= ui
                     .selectable_value(w, Some(Weight::Pen(p)), crate::i18n::tw(p.label()))
                     .changed();
             }
             if ui
-                .selectable_label(matches!(w, Some(Weight::Mm(_))), crate::i18n::tw("Millimetres"))
+                .selectable_label(
+                    matches!(w, Some(Weight::Mm(_))),
+                    crate::i18n::tw("Millimetres"),
+                )
                 .clicked()
                 && !matches!(w, Some(Weight::Mm(_)))
             {
@@ -122,12 +127,18 @@ fn pattern_combo(
     egui::ComboBox::from_id_salt(salt)
         .icon(crate::props::combo_icon)
         .width(ui.spacing().combo_width.max(84.0).min(ui.available_width()))
-        .selected_text(crate::i18n::tw(p.as_ref().map_or("As drawn", |p| p.label())))
+        .selected_text(crate::i18n::tw(
+            p.as_ref().map_or("As drawn", |p| p.label()),
+        ))
         .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(p, None, crate::i18n::tw("As drawn")).changed();
+            changed |= ui
+                .selectable_value(p, None, crate::i18n::tw("As drawn"))
+                .changed();
             for n in LinePattern::NAMED {
                 let label = n.label();
-                changed |= ui.selectable_value(p, Some(n), crate::i18n::tw(label)).changed();
+                changed |= ui
+                    .selectable_value(p, Some(n), crate::i18n::tw(label))
+                    .changed();
             }
         });
     changed
@@ -171,9 +182,13 @@ fn name_combo(
         )
         .selected_text(crate::i18n::tw(v.as_deref().unwrap_or(none)))
         .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(v, None, crate::i18n::tw(none)).changed();
+            changed |= ui
+                .selectable_value(v, None, crate::i18n::tw(none))
+                .changed();
             for n in names {
-                changed |= ui.selectable_value(v, Some(n.clone()), crate::i18n::tw(n)).changed();
+                changed |= ui
+                    .selectable_value(v, Some(n.clone()), crate::i18n::tw(n))
+                    .changed();
             }
         });
     changed
@@ -241,7 +256,10 @@ fn limit_ui(
             .truncate()
             .selected_text(crate::i18n::tw(current))
             .show_ui(ui, |ui| {
-                if ui.selectable_label(l.is_none(), crate::i18n::tw(none)).clicked() {
+                if ui
+                    .selectable_label(l.is_none(), crate::i18n::tw(none))
+                    .clicked()
+                {
                     *l = None;
                     changed = true;
                 }
@@ -547,7 +565,11 @@ pub(super) fn look_ui(
                         .overrides
                         .iter()
                         .any(|o| o.target == Target::Category(c));
-                    if !taken && ui.selectable_label(false, crate::i18n::tw(c.label())).clicked() {
+                    if !taken
+                        && ui
+                            .selectable_label(false, crate::i18n::tw(c.label()))
+                            .clicked()
+                    {
                         add = Some(c);
                     }
                 }
@@ -1168,7 +1190,10 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
         for (i, p) in pack.patterns.iter().enumerate() {
             cols[0].horizontal(|ui| {
                 pattern_preview(ui, p, 100.0);
-                if ui.selectable_label(*pick == i, crate::i18n::tw(&p.name)).clicked() {
+                if ui
+                    .selectable_label(*pick == i, crate::i18n::tw(&p.name))
+                    .clicked()
+                {
                     *pick = i;
                 }
             });
@@ -1305,7 +1330,10 @@ fn templates_page(
     let names: Vec<String> = pack.templates.iter().map(|t| t.name.clone()).collect();
     ui.columns(2, |cols| {
         for (i, n) in names.iter().enumerate() {
-            if cols[0].selectable_label(*pick == i, crate::i18n::tw(n)).clicked() {
+            if cols[0]
+                .selectable_label(*pick == i, crate::i18n::tw(n))
+                .clicked()
+            {
                 *pick = i;
             }
         }

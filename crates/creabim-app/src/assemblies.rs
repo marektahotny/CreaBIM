@@ -243,7 +243,10 @@ pub(super) fn layer_table(
                     .selected_text(crate::i18n::tw(l.function.label()))
                     .show_ui(ui, |ui| {
                         for f in LayerFunction::ALL {
-                            if ui.selectable_value(&mut l.function, f, crate::i18n::tw(f.label())).changed() {
+                            if ui
+                                .selectable_value(&mut l.function, f, crate::i18n::tw(f.label()))
+                                .changed()
+                            {
                                 label = "Layer function";
                             }
                         }
@@ -259,14 +262,22 @@ pub(super) fn layer_table(
                     .selected_text(crate::i18n::tw(shown))
                     .show_ui(ui, |ui| {
                         if ui
-                            .selectable_value(&mut l.material, None, crate::i18n::tw("None (air, or by type)"))
+                            .selectable_value(
+                                &mut l.material,
+                                None,
+                                crate::i18n::tw("None (air, or by type)"),
+                            )
                             .changed()
                         {
                             label = "Layer material";
                         }
                         for (mid, name, _) in &mats {
                             if ui
-                                .selectable_value(&mut l.material, Some(*mid), crate::i18n::tw(*name))
+                                .selectable_value(
+                                    &mut l.material,
+                                    Some(*mid),
+                                    crate::i18n::tw(*name),
+                                )
                                 .changed()
                             {
                                 label = "Layer material";
@@ -448,7 +459,9 @@ impl CreaBimApp {
                         .selectable_value(current, None, crate::i18n::tw("None (single material)"))
                         .changed();
                     for (id, n) in &choices {
-                        changed |= ui.selectable_value(current, Some(*id), crate::i18n::tw(n)).changed();
+                        changed |= ui
+                            .selectable_value(current, Some(*id), crate::i18n::tw(n))
+                            .changed();
                     }
                     ui.separator();
                     create = ui.button("New assembly…").clicked();

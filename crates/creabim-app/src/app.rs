@@ -755,7 +755,10 @@ impl CreaBimApp {
                     if matches!(a, creabim_exchange::Assign::Class(_)) && !is_mesh {
                         continue;
                     }
-                    if ui.selectable_label(false, crate::i18n::tw(a.label())).clicked() {
+                    if ui
+                        .selectable_label(false, crate::i18n::tw(a.label()))
+                        .clicked()
+                    {
                         pick = Some(a);
                     }
                 }
@@ -6685,7 +6688,10 @@ impl CreaBimApp {
             .truncate()
             .show_ui(ui, |ui| {
                 if ui
-                    .selectable_label(self.workplane.is_none(), crate::i18n::tw("Level (follows the plan)"))
+                    .selectable_label(
+                        self.workplane.is_none(),
+                        crate::i18n::tw("Level (follows the plan)"),
+                    )
                     .clicked()
                 {
                     self.workplane = None;
@@ -6853,7 +6859,11 @@ impl CreaBimApp {
                 .selected_text(crate::i18n::tw(self.plan.wall_location.label()))
                 .show_ui(ui, |ui| {
                     for l in creabim_core::LocationLine::ALL {
-                        ui.selectable_value(&mut self.plan.wall_location, l, crate::i18n::tw(l.label()));
+                        ui.selectable_value(
+                            &mut self.plan.wall_location,
+                            l,
+                            crate::i18n::tw(l.label()),
+                        );
                     }
                 });
             ui.checkbox(&mut self.plan.wall_flip, "Exterior left");
@@ -6952,9 +6962,13 @@ impl CreaBimApp {
         crate::app::helpui::combo(ui, "Material")
             .selected_text(crate::i18n::tw(name))
             .show_ui(ui, |ui| {
-                changed |= ui.selectable_value(current, None, crate::i18n::tw("By type")).changed();
+                changed |= ui
+                    .selectable_value(current, None, crate::i18n::tw("By type"))
+                    .changed();
                 for (id, n) in &materials {
-                    changed |= ui.selectable_value(current, Some(*id), crate::i18n::tw(n)).changed();
+                    changed |= ui
+                        .selectable_value(current, Some(*id), crate::i18n::tw(n))
+                        .changed();
                 }
                 ui.separator();
                 create = ui.button("New material…").clicked();
@@ -7079,7 +7093,11 @@ impl CreaBimApp {
                     .selected_text(crate::i18n::tw(c.op.label()))
                     .show_ui(ui, |ui| {
                         for op in BoolOp::ALL {
-                            if ui.selectable_label(op == c.op, crate::i18n::tw(op.label())).clicked() && op != c.op {
+                            if ui
+                                .selectable_label(op == c.op, crate::i18n::tw(op.label()))
+                                .clicked()
+                                && op != c.op
+                            {
                                 set_op = Some((*cid, op));
                             }
                         }
@@ -7652,8 +7670,12 @@ impl CreaBimApp {
                             crate::i18n::tw(format!("Chosen ({})", x.chosen.len())),
                         );
                         ui.add_enabled_ui(this.is_some(), |ui| {
-                            ui.selectable_value(&mut x.scope, ExportScope::This, crate::i18n::tw("This one"))
-                                .on_disabled_hover_text("Open a sheet first");
+                            ui.selectable_value(
+                                &mut x.scope,
+                                ExportScope::This,
+                                crate::i18n::tw("This one"),
+                            )
+                            .on_disabled_hover_text("Open a sheet first");
                         });
                     })
                 });
@@ -8594,8 +8616,12 @@ impl CreaBimApp {
                                     .width(ui.available_width())
                                     .show_ui(ui, |ui| {
                                         for s in creabim_core::graphics::DrawingStyle::ALL {
-                                            ui.selectable_value(&mut style, s, crate::i18n::tw(s.label()))
-                                                .on_hover_text(s.hint());
+                                            ui.selectable_value(
+                                                &mut style,
+                                                s,
+                                                crate::i18n::tw(s.label()),
+                                            )
+                                            .on_hover_text(s.hint());
                                         }
                                     });
                             });
@@ -9016,7 +9042,10 @@ impl CreaBimApp {
                             .selected_text(crate::i18n::tw(category.label()))
                             .show_ui(ui, |ui| {
                                 for c in ScheduleCategory::ALL {
-                                    if ui.selectable_value(category, c, crate::i18n::tw(c.label())).changed() {
+                                    if ui
+                                        .selectable_value(category, c, crate::i18n::tw(c.label()))
+                                        .changed()
+                                    {
                                         label = "Schedule category"
                                     }
                                 }
@@ -9064,7 +9093,14 @@ impl CreaBimApp {
                                 .selected_text(crate::i18n::tw(current))
                                 .show_ui(ui, |ui| {
                                     for (u, l) in &choices {
-                                        if ui.selectable_value(&mut v.underlay, *u, crate::i18n::tw(l)).changed() {
+                                        if ui
+                                            .selectable_value(
+                                                &mut v.underlay,
+                                                *u,
+                                                crate::i18n::tw(l),
+                                            )
+                                            .changed()
+                                        {
                                             label = "View underlay"
                                         }
                                     }
@@ -9198,7 +9234,10 @@ impl CreaBimApp {
                             .selected_text(crate::i18n::tw(current))
                             .show_ui(ui, |ui| {
                                 for (name, w, h) in Sheet::SIZES {
-                                    if ui.selectable_label(current == *name, crate::i18n::tw(*name)).clicked() {
+                                    if ui
+                                        .selectable_label(current == *name, crate::i18n::tw(*name))
+                                        .clicked()
+                                    {
                                         (sh.width, sh.height) = (*w, *h);
                                         label = "Sheet size"
                                     }
@@ -9358,14 +9397,20 @@ impl CreaBimApp {
                                         .width(ui.available_width())
                                         .show_ui(ui, |ui| {
                                             if ui
-                                                .selectable_label(t.style.is_none(), crate::i18n::tw("Plain"))
+                                                .selectable_label(
+                                                    t.style.is_none(),
+                                                    crate::i18n::tw("Plain"),
+                                                )
                                                 .clicked()
                                             {
                                                 t.style = None;
                                             }
                                             for (i, n) in &styles {
                                                 if ui
-                                                    .selectable_label(t.style == Some(*i), crate::i18n::tw(n))
+                                                    .selectable_label(
+                                                        t.style == Some(*i),
+                                                        crate::i18n::tw(n),
+                                                    )
                                                     .clicked()
                                                 {
                                                     t.style = Some(*i);
@@ -9428,7 +9473,10 @@ impl CreaBimApp {
                         .selected_text(crate::i18n::tw(name(Some(s.level))))
                         .show_ui(ui, |ui| {
                             for (lid, n) in &levels {
-                                if ui.selectable_value(&mut s.level, *lid, crate::i18n::tw(n)).changed() {
+                                if ui
+                                    .selectable_value(&mut s.level, *lid, crate::i18n::tw(n))
+                                    .changed()
+                                {
                                     label = "Shaft base"
                                 }
                             }
@@ -9440,14 +9488,22 @@ impl CreaBimApp {
                         .selected_text(crate::i18n::tw(name(s.top_level)))
                         .show_ui(ui, |ui| {
                             if ui
-                                .selectable_value(&mut s.top_level, None, crate::i18n::tw("One storey up"))
+                                .selectable_value(
+                                    &mut s.top_level,
+                                    None,
+                                    crate::i18n::tw("One storey up"),
+                                )
                                 .changed()
                             {
                                 label = "Shaft top"
                             }
                             for (lid, n) in &levels {
                                 if ui
-                                    .selectable_value(&mut s.top_level, Some(*lid), crate::i18n::tw(n))
+                                    .selectable_value(
+                                        &mut s.top_level,
+                                        Some(*lid),
+                                        crate::i18n::tw(n),
+                                    )
                                     .changed()
                                 {
                                     label = "Shaft top"
@@ -9538,7 +9594,14 @@ impl CreaBimApp {
                             .selected_text(crate::i18n::tw(d.axis.label()))
                             .show_ui(ui, |ui| {
                                 for a in creabim_core::DimAxis::ALL {
-                                    if ui.selectable_value(&mut d.axis, a, crate::i18n::tw(a.label())).changed() {
+                                    if ui
+                                        .selectable_value(
+                                            &mut d.axis,
+                                            a,
+                                            crate::i18n::tw(a.label()),
+                                        )
+                                        .changed()
+                                    {
                                         label = "Dimension direction"
                                     }
                                 }
@@ -9844,7 +9907,11 @@ impl CreaBimApp {
                         .show_ui(ui, |ui| {
                             for c in FREE_MESH_CLASSES {
                                 if ui
-                                    .selectable_value(&mut m.ifc_class, c.to_string(), crate::i18n::tw(*c))
+                                    .selectable_value(
+                                        &mut m.ifc_class,
+                                        c.to_string(),
+                                        crate::i18n::tw(*c),
+                                    )
                                     .changed()
                                 {
                                     label = "Classify mesh"
@@ -12194,7 +12261,9 @@ fn view_style_combo(ui: &mut egui::Ui, salt: &str, style: &mut ViewStyle) -> boo
             .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for s in ViewStyle::ALL {
-                    changed |= ui.selectable_value(style, s, crate::i18n::tw(s.label())).changed();
+                    changed |= ui
+                        .selectable_value(style, s, crate::i18n::tw(s.label()))
+                        .changed();
                 }
             });
     });

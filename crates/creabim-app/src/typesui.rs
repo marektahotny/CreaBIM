@@ -88,11 +88,19 @@ fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bo
             .selected_text(crate::i18n::tw(r.label()))
             .width(ui.available_width().min(80.0))
             .show_ui(ui, |ui| {
-                if ui.selectable_label(spacing, crate::i18n::tw("Spacing")).clicked() && !spacing {
+                if ui
+                    .selectable_label(spacing, crate::i18n::tw("Spacing"))
+                    .clicked()
+                    && !spacing
+                {
                     *r = GridRule::Spacing(1.5);
                     changed = true;
                 }
-                if ui.selectable_label(!spacing, crate::i18n::tw("Count")).clicked() && spacing {
+                if ui
+                    .selectable_label(!spacing, crate::i18n::tw("Count"))
+                    .clicked()
+                    && spacing
+                {
                     *r = GridRule::Count(4);
                     changed = true;
                 }
@@ -134,7 +142,10 @@ pub(super) fn curtain_fields(ui: &mut egui::Ui, c: &mut CurtainGrid) -> &'static
     crate::props::flow(ui, |ui| {
         ui.label("Panels");
         for k in PanelKind::ALL {
-            if ui.selectable_value(&mut c.panel, k, crate::i18n::tw(k.label())).changed() {
+            if ui
+                .selectable_value(&mut c.panel, k, crate::i18n::tw(k.label()))
+                .changed()
+            {
                 label = "Curtain panels";
             }
         }
@@ -178,9 +189,13 @@ fn material_pick(
             .width(ui.available_width().min(150.0))
             .truncate()
             .show_ui(ui, |ui| {
-                changed |= ui.selectable_value(current, None, crate::i18n::tw("By type")).changed();
+                changed |= ui
+                    .selectable_value(current, None, crate::i18n::tw("By type"))
+                    .changed();
                 for (id, n) in &materials {
-                    changed |= ui.selectable_value(current, Some(*id), crate::i18n::tw(n)).changed();
+                    changed |= ui
+                        .selectable_value(current, Some(*id), crate::i18n::tw(n))
+                        .changed();
                 }
             });
     });
@@ -214,7 +229,9 @@ fn assembly_pick(
                     .selectable_value(current, None, crate::i18n::tw("None (single material)"))
                     .changed();
                 for (id, n) in &choices {
-                    changed |= ui.selectable_value(current, Some(*id), crate::i18n::tw(n)).changed();
+                    changed |= ui
+                        .selectable_value(current, Some(*id), crate::i18n::tw(n))
+                        .changed();
                 }
             });
     });
@@ -275,7 +292,14 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                         .selected_text(crate::i18n::tw(w.location.label()))
                         .show_ui(ui, |ui| {
                             for l in creabim_core::LocationLine::ALL {
-                                if ui.selectable_value(&mut w.location, l, crate::i18n::tw(l.label())).changed() {
+                                if ui
+                                    .selectable_value(
+                                        &mut w.location,
+                                        l,
+                                        crate::i18n::tw(l.label()),
+                                    )
+                                    .changed()
+                                {
                                     label = "Type location line";
                                 }
                             }

@@ -763,7 +763,10 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
                     crate::props::flow(ui, |ui| {
                         ui.label("Along its");
                         for e in [WallEdge::Top, WallEdge::Base] {
-                            if ui.selectable_value(edge, e, crate::i18n::tw(e.label())).changed() {
+                            if ui
+                                .selectable_value(edge, e, crate::i18n::tw(e.label()))
+                                .changed()
+                            {
                                 label = "Sweep edge";
                             }
                         }
@@ -804,7 +807,10 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
                 .truncate()
                 .show_ui(ui, |ui| {
                     for c in IFC_CLASSES {
-                        if ui.selectable_label(p.ifc_class == *c, crate::i18n::tw(*c)).clicked() {
+                        if ui
+                            .selectable_label(p.ifc_class == *c, crate::i18n::tw(*c))
+                            .clicked()
+                        {
                             p.ifc_class = c.to_string();
                             label = "IFC class";
                         }
@@ -936,7 +942,11 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
                     .show_ui(ui, |ui| {
                         for c in choices {
                             let on = pattern.label() == c.label();
-                            if ui.selectable_label(on, crate::i18n::tw(c.label())).clicked() && !on {
+                            if ui
+                                .selectable_label(on, crate::i18n::tw(c.label()))
+                                .clicked()
+                                && !on
+                            {
                                 *pattern = c;
                                 label = "Area pattern";
                             }
@@ -993,7 +1003,10 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
                 .selected_text(crate::i18n::tw(form.label()))
                 .show_ui(ui, |ui| {
                     for f in PlantForm::ALL {
-                        if ui.selectable_value(form, f, crate::i18n::tw(f.label())).changed() {
+                        if ui
+                            .selectable_value(form, f, crate::i18n::tw(f.label()))
+                            .changed()
+                        {
                             label = "Plant form";
                         }
                     }

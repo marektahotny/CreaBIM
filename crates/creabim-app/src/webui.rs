@@ -210,15 +210,16 @@ impl WebUi {
         } else {
             let mut v = state.clone();
             crate::i18n::translate_json(&mut v);
-            format!("window.I18N={};window.CB && CB.state({v})", crate::i18n::page_table())
+            format!(
+                "window.I18N={};window.CB && CB.state({v})",
+                crate::i18n::page_table()
+            )
         };
         let i = pane as usize;
         if self.sent[i] == text {
             return;
         }
-        let _ = self
-            .view(pane)
-            .evaluate_script(&text);
+        let _ = self.view(pane).evaluate_script(&text);
         self.sent[i] = text;
     }
 

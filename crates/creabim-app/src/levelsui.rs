@@ -720,7 +720,10 @@ fn project_units(ui: &mut egui::Ui, units: &mut Units) {
             .width(w)
             .show_ui(ui, |ui| {
                 for u in LengthUnit::ALL {
-                    if ui.selectable_label(units.length == u, crate::i18n::tw(u.label())).clicked() {
+                    if ui
+                        .selectable_label(units.length == u, crate::i18n::tw(u.label()))
+                        .clicked()
+                    {
                         *units = Units::of(u);
                     }
                 }

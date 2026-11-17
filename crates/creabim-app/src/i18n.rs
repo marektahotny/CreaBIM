@@ -158,8 +158,8 @@ fn with_numbers(l: Lang, english: &str) -> Option<String> {
         if c.is_ascii_digit() {
             let mut end = i + 1;
             while let Some(&(j, d)) = chars.peek() {
-                let decimal = d == '.'
-                    && english[j + 1..].starts_with(|x: char| x.is_ascii_digit());
+                let decimal =
+                    d == '.' && english[j + 1..].starts_with(|x: char| x.is_ascii_digit());
                 if d.is_ascii_digit() || decimal {
                     end = j + d.len_utf8();
                     chars.next();
@@ -337,8 +337,14 @@ mod tests {
 
     #[test]
     fn counts_and_pairs_are_found_by_their_parts() {
-        assert_eq!(translated(Lang::Sk, "640 elements").as_deref(), Some("640 prvkov"));
-        assert_eq!(translated(Lang::Sk, "View: Wall").as_deref(), Some("Pohľad: Stena"));
+        assert_eq!(
+            translated(Lang::Sk, "640 elements").as_deref(),
+            Some("640 prvkov")
+        );
+        assert_eq!(
+            translated(Lang::Sk, "View: Wall").as_deref(),
+            Some("Pohľad: Stena")
+        );
         assert_eq!(translated(Lang::Sk, "No such text 12"), None);
     }
 
@@ -359,7 +365,10 @@ mod tests {
             }
         }
         for k in used {
-            assert!(PAGE_TEXTS.contains(&k), "app.js uses T({k:?}), not in PAGE_TEXTS");
+            assert!(
+                PAGE_TEXTS.contains(&k),
+                "app.js uses T({k:?}), not in PAGE_TEXTS"
+            );
         }
         let sk = parse(Lang::Sk.source()).unwrap();
         for k in PAGE_TEXTS {

@@ -102,7 +102,10 @@ pub(super) fn wall_fields(
             .width(ui.available_width().min(130.0))
             .show_ui(ui, |ui| {
                 for (l, n, _) in &lv {
-                    if ui.selectable_value(&mut w.level, *l, crate::i18n::tw(n)).changed() {
+                    if ui
+                        .selectable_value(&mut w.level, *l, crate::i18n::tw(n))
+                        .changed()
+                    {
                         label = "Wall base level"
                     }
                 }
