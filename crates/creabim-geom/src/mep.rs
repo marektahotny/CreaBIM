@@ -1,6 +1,14 @@
 //! Pipes and ducts in 3D and in plan: a pipe a cylinder (a rectangular
 //! duct a box) along its axis, in its system's colour; in plan its
 //! outline, washed in that colour, cut or seen below as other members.
+//!
+//! Where pipes meet end to end they are drawn joined: two rigid pipes at
+//! a corner mitre into each other (an elbow), a pipe that is bent rather
+//! than fitted (multilayer pipe from a coil, up to the size its maker
+//! allows) turns in an arc of the maker's bending radius, and at a tee or
+//! a cross no end is closed. The model stays straight pipes sharing a
+//! point; the joints are how they are drawn (PilonDesigner's
+//! `pipebends.ts`).
 
 use crate::mesh::TriMesh;
 use crate::plan::{Pen, PlanItem};
@@ -38,17 +46,231 @@ fn across(d: DVec3) -> (DVec3, DVec3) {
     (side, d.cross(side).normalize())
 }
 
-/// The pipe's solid, insulation included.
-pub fn pipe_mesh(model: &Model, p: &Pipe) -> TriMesh {
+/// How one end of a pipe meets other pipes.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Joint {
+    /// Nothing there: the end is closed.
+    Free,
+    /// One other pipe, bent into: the pipe stops at `at`, where the arc
+    /// `arc` (from this pipe's stop to the other's) begins; one of the
+    /// two draws it.
+    Bend {
+        at: DVec3,
+        arc: Vec<DVec3>,
+        owner: bool,
+    },
+    /// One other rigid pipe at an angle: `to` is the way it leaves.
+    Elbow { to: DVec3, owner: bool },
+    /// Two or more others (a tee, a cross), or one straight on.
+    Node { owner: bool },
+}
+
+/// A node's key: its place to the millimetre.
+fn key(p: DVec3) -> [i64; 3] {
+    [p.x, p.y, p.z].map(|v| (v * 1000.0).round() as i64)
+}
+
+/// The bending radius of a pipe that is bent rather than fitted, m.
+fn bend_radius(p: &Pipe) -> Option<f64> {
+    if p.height_mm.is_some() {
+        return None;
+    }
+    let b = creabim_services::pipe_types::by_id(&p.pipe_type)?.bend?;
+    (p.outer_mm <= b.max_outer_mm + 1e-6).then_some(p.outer_mm * b.r_tool / 1000.0)
+}
+
+/// How the pipe's start and end meet the model's other pipes.
+pub fn joints(model: &Model, p: &Pipe) -> [Joint; 2] {
     let (a, b) = ends(model, p);
+    let mut out = [Joint::Free, Joint::Free];
+    if a.distance(b) < 1e-6 {
+        return out;
+    }
+    // the others at each end: (their pipe, their far end)
+    let mut at: [Vec<(&Pipe, DVec3)>; 2] = [vec![], vec![]];
+    let keys = [key(a), key(b)];
+    for e in model.iter() {
+        let creabim_core::ElementKind::Pipe(q) = &e.kind else {
+            continue;
+        };
+        let (qa, qb) = ends(model, q);
+        if (key(qa) == keys[0] && key(qb) == keys[1]) || (key(qa) == keys[1] && key(qb) == keys[0])
+        {
+            // itself (or one laid over it)
+            continue;
+        }
+        for (i, k) in keys.iter().enumerate() {
+            if key(qa) == *k {
+                at[i].push((q, qb));
+            } else if key(qb) == *k {
+                at[i].push((q, qa));
+            }
+        }
+    }
+    // of those at a node, the one whose far end comes first draws what is shared
+    let first = |x: DVec3, y: DVec3| (x.x, x.y, x.z) < (y.x, y.y, y.z);
+    for (i, others) in at.iter().enumerate() {
+        let (node, far) = if i == 0 { (a, b) } else { (b, a) };
+        let owner = others.iter().all(|(_, f)| first(far, *f));
+        out[i] = match others.as_slice() {
+            [] => Joint::Free,
+            [(q, qfar)] => {
+                let (ua, la) = ((far - node).normalize(), far.distance(node));
+                let lb = qfar.distance(node);
+                if lb < 1e-6 {
+                    Joint::Node { owner }
+                } else {
+                    let ub = (*qfar - node) / lb;
+                    // the angle between the two arms, and how far the run turns
+                    let th = ua.dot(ub).clamp(-1.0, 1.0).acos();
+                    let dev = std::f64::consts::PI - th;
+                    let least = 5.0_f64.to_radians();
+                    if dev < least || th < least {
+                        Joint::Node { owner }
+                    } else {
+                        let same = q.pipe_type == p.pipe_type
+                            && q.system == p.system
+                            && (q.outer_mm - p.outer_mm).abs() < 1e-6;
+                        let bend = bend_radius(p).filter(|_| same).and_then(|r| {
+                            let t = r / (th / 2.0).tan();
+                            // an arc too long for short arms is a fitting
+                            (t <= 0.45 * la.min(lb)).then(|| {
+                                let (t1, t2) = (node + ua * t, node + ub * t);
+                                let c = node + (ua + ub).normalize() * (r / (th / 2.0).sin());
+                                let (r1, r2) = (t1 - c, t2 - c);
+                                let n =
+                                    ((dev / (std::f64::consts::PI / 16.0)).ceil() as usize).max(4);
+                                let s = dev.sin();
+                                let arc = (0..=n)
+                                    .map(|k| {
+                                        let f = k as f64 / n as f64;
+                                        c + r1 * (((1.0 - f) * dev).sin() / s)
+                                            + r2 * ((f * dev).sin() / s)
+                                    })
+                                    .collect();
+                                (t1, arc)
+                            })
+                        });
+                        match bend {
+                            Some((at, arc)) => Joint::Bend { at, arc, owner },
+                            None => Joint::Elbow { to: ub, owner },
+                        }
+                    }
+                }
+            }
+            _ => Joint::Node { owner },
+        };
+    }
+    out
+}
+
+/// Rings of a round pipe of radius `r` along `path`, each square to the
+/// way the path runs there, as a tube without ends.
+fn tube(m: &mut TriMesh, path: &[DVec3], r: f64) {
+    if path.len() < 2 {
+        return;
+    }
+    let dir = |i: usize| {
+        let (lo, hi) = (i.saturating_sub(1), (i + 1).min(path.len() - 1));
+        (path[hi] - path[lo]).normalize_or_zero()
+    };
+    let (mut u, _) = across(dir(0));
+    let base = m.positions.len() as u32;
+    for (i, c) in path.iter().enumerate() {
+        let d = dir(i);
+        // carried along the path, so the rings don't twist
+        u = (u - d * u.dot(d)).normalize_or(across(d).0);
+        let v = d.cross(u);
+        for k in 0..SIDES {
+            let t = k as f64 / SIDES as f64 * std::f64::consts::TAU;
+            let n = u * t.cos() + v * t.sin();
+            m.positions.push((*c + n * r).as_vec3().to_array());
+            m.normals.push(n.as_vec3().to_array());
+        }
+    }
+    let s = SIDES as u32;
+    for i in 0..path.len() as u32 - 1 {
+        for k in 0..s {
+            let j = (k + 1) % s;
+            let (a0, a1, b0, b1) = (
+                base + i * s + k,
+                base + i * s + j,
+                base + (i + 1) * s + k,
+                base + (i + 1) * s + j,
+            );
+            m.indices.extend([a0, a1, b1, a0, b1, b0]);
+        }
+    }
+}
+
+/// A ball of radius `r` at `c`: what an elbow or a tee is in 3D.
+fn ball(m: &mut TriMesh, c: DVec3, r: f64) {
+    const RINGS: usize = 8;
+    let base = m.positions.len() as u32;
+    for i in 0..=RINGS {
+        let lat = i as f64 / RINGS as f64 * std::f64::consts::PI;
+        for k in 0..SIDES {
+            let lon = k as f64 / SIDES as f64 * std::f64::consts::TAU;
+            let n = DVec3::new(lat.sin() * lon.cos(), lat.sin() * lon.sin(), lat.cos());
+            m.positions.push((c + n * r).as_vec3().to_array());
+            m.normals.push(n.as_vec3().to_array());
+        }
+    }
+    let s = SIDES as u32;
+    for i in 0..RINGS as u32 {
+        for k in 0..s {
+            let j = (k + 1) % s;
+            let (a0, a1, b0, b1) = (
+                base + i * s + k,
+                base + i * s + j,
+                base + (i + 1) * s + k,
+                base + (i + 1) * s + j,
+            );
+            m.indices.extend([a0, b1, a1, a0, b0, b1]);
+        }
+    }
+}
+
+/// The pipe's solid, insulation included, with what joins it to the
+/// pipes at its ends: the arc it is bent in, or a ball where it is
+/// fitted to them.
+pub fn pipe_mesh(model: &Model, p: &Pipe) -> TriMesh {
+    let (mut a, mut b) = ends(model, p);
     let mut m = TriMesh::default();
+    if a.distance(b) < 1e-9 {
+        return m;
+    }
+    let ins = p.insulation_mm / 1000.0;
+    let (w, h) = p.section_m();
+    let round = p.height_mm.is_none();
+    let js = joints(model, p);
+    if round {
+        let r = w / 2.0 + ins;
+        for (i, j) in js.iter().enumerate() {
+            let node = if i == 0 { a } else { b };
+            match j {
+                Joint::Bend { at, arc, owner } => {
+                    if *owner {
+                        tube(&mut m, arc, r);
+                    }
+                    if i == 0 {
+                        a = *at;
+                    } else {
+                        b = *at;
+                    }
+                }
+                Joint::Elbow { owner: true, .. } | Joint::Node { owner: true } => {
+                    ball(&mut m, node, r)
+                }
+                _ => {}
+            }
+        }
+    }
     let d = (b - a).normalize_or_zero();
     if d == DVec3::ZERO {
         return m;
     }
     let (u, v) = across(d);
-    let ins = p.insulation_mm / 1000.0;
-    let (w, h) = p.section_m();
     match p.height_mm {
         Some(_) => {
             let (hw, hh) = (w / 2.0 + ins, h / 2.0 + ins);
@@ -105,7 +327,9 @@ pub fn pipe_mesh(model: &Model, p: &Pipe) -> TriMesh {
 
 /// The pipe in a plan cut `cut` above its level: its outline in plan,
 /// washed in its system's colour, cut where it crosses the plane, seen
-/// below it, or dashed above.
+/// below it, or dashed above. Its ends are closed only where it meets no
+/// other pipe: at a corner its sides mitre into the other's, a bent pipe
+/// turns in its arc.
 pub fn pipe_plan(model: &Model, e: &Element, p: &Pipe, cut: f64) -> Vec<PlanItem> {
     let mut items = Vec::new();
     let (a, b) = (p.start, p.end);
@@ -113,18 +337,6 @@ pub fn pipe_plan(model: &Model, e: &Element, p: &Pipe, cut: f64) -> Vec<PlanItem
     let half = w / 2.0 + p.insulation_mm / 1000.0;
     let (a2, b2) = (a.truncate(), b.truncate());
     let run = b2 - a2;
-    // a riser shows as its section: a square or a circle round its axis
-    let pts: Vec<DVec2> = if run.length() < 1e-6 {
-        (0..SIDES)
-            .map(|i| {
-                let t = i as f64 / SIDES as f64 * std::f64::consts::TAU;
-                a2 + DVec2::new(t.cos(), t.sin()) * half
-            })
-            .collect()
-    } else {
-        let n = run.normalize().perp() * half;
-        vec![a2 - n, b2 - n, b2 + n, a2 + n]
-    };
     let lo = a.z.min(b.z) - half;
     let hi = a.z.max(b.z) + half;
     let pen = if lo < cut && cut < hi {
@@ -134,19 +346,115 @@ pub fn pipe_plan(model: &Model, e: &Element, p: &Pipe, cut: f64) -> Vec<PlanItem
     } else {
         Pen::Hidden
     };
-    let _ = model;
-    items.push(PlanItem::Shade {
-        id: e.id,
-        points: pts.clone(),
-        rgb: color(p),
-    });
-    for i in 0..pts.len() {
+    let line = |items: &mut Vec<PlanItem>, a: DVec2, b: DVec2| {
         items.push(PlanItem::Line {
             id: e.id,
             pen,
-            a: pts[i],
-            b: pts[(i + 1) % pts.len()],
+            a,
+            b,
+        })
+    };
+    // a riser shows as its section: a square or a circle round its axis
+    if run.length() < 1e-6 {
+        let pts: Vec<DVec2> = (0..SIDES)
+            .map(|i| {
+                let t = i as f64 / SIDES as f64 * std::f64::consts::TAU;
+                a2 + DVec2::new(t.cos(), t.sin()) * half
+            })
+            .collect();
+        items.push(PlanItem::Shade {
+            id: e.id,
+            points: pts.clone(),
+            rgb: color(p),
         });
+        for i in 0..pts.len() {
+            line(&mut items, pts[i], pts[(i + 1) % pts.len()]);
+        }
+        return items;
+    }
+    // joints are found in the model's heights; the plan is level
+    let z = model.level(p.level).map_or(0.0, |l| l.elevation);
+    let flat = |q: DVec3| (q - DVec3::Z * z).truncate();
+    let js = joints(model, p);
+    let d = run.normalize();
+    let n = d.perp() * half;
+    // each end's two corners (right of the run, left of it), whether it
+    // is closed, and the arc drawn from it
+    let mut corners = [[a2 - n, a2 + n], [b2 - n, b2 + n]];
+    let mut closed = [true, true];
+    let mut arcs: Vec<Vec<DVec2>> = vec![];
+    for (i, j) in js.iter().enumerate() {
+        // out of the pipe, at this end
+        let out = if i == 0 { -d } else { d };
+        match j {
+            Joint::Free => {}
+            Joint::Node { .. } => closed[i] = false,
+            Joint::Bend { at, arc, owner } => {
+                let c = flat(*at);
+                corners[i] = [c - n, c + n];
+                closed[i] = false;
+                if *owner {
+                    arcs.push(arc.iter().map(|q| flat(*q)).collect());
+                }
+            }
+            Joint::Elbow { to, .. } => {
+                let to = to.truncate();
+                // a riser there, or nearly back on itself: closed as it is
+                let Some(to) = to.try_normalize() else {
+                    continue;
+                };
+                let turn = out.perp_dot(to);
+                let cos = out.dot(to);
+                if cos < -0.94 {
+                    continue;
+                }
+                // the sides meet the other pipe's on the line that halves
+                // the corner: the inner side shorter, the outer longer
+                let k = half * turn / (1.0 + cos) * if i == 0 { -1.0 } else { 1.0 };
+                let node = if i == 0 { a2 } else { b2 };
+                corners[i] = [node - n + out * k, node + n - out * k];
+                closed[i] = false;
+            }
+        }
+    }
+    let [[ar, al], [br, bl]] = corners;
+    items.push(PlanItem::Shade {
+        id: e.id,
+        points: vec![ar, br, bl, al],
+        rgb: color(p),
+    });
+    line(&mut items, ar, br);
+    line(&mut items, al, bl);
+    if closed[0] {
+        line(&mut items, ar, al);
+    }
+    if closed[1] {
+        line(&mut items, br, bl);
+    }
+    for arc in arcs {
+        // the arc's two sides, each point set off square to the way it runs
+        let side = |s: f64| -> Vec<DVec2> {
+            (0..arc.len())
+                .map(|i| {
+                    let (lo, hi) = (i.saturating_sub(1), (i + 1).min(arc.len() - 1));
+                    let t = (arc[hi] - arc[lo]).normalize_or_zero();
+                    arc[i] + t.perp() * half * s
+                })
+                .collect()
+        };
+        let (r, l) = (side(-1.0), side(1.0));
+        let mut points = r.clone();
+        points.extend(l.iter().rev());
+        items.push(PlanItem::Shade {
+            id: e.id,
+            points,
+            rgb: color(p),
+        });
+        for s in [&r, &l] {
+            for q in s.windows(2) {
+                line(&mut items, q[0], q[1]);
+            }
+        }
     }
     items
 }
@@ -223,6 +531,129 @@ mod tests {
         let mesh = pipe_mesh(&m, p);
         assert!(mesh.is_closed());
         assert!((mesh.volume() - 0.4 * 0.2 * 2.0).abs() < 1e-6);
+    }
+
+    /// Two pipes of `kind` meeting at (2, 0) at a right angle, and the
+    /// first of them.
+    fn corner(kind: &str) -> (Model, Element) {
+        let (mut m, e) = model_with(|l| {
+            let mut p = pipe(l, None);
+            p.pipe_type = kind.into();
+            p
+        });
+        let ElementKind::Pipe(p) = &e.kind else {
+            unreachable!()
+        };
+        let mut q = p.clone();
+        q.start = p.end;
+        q.end = DVec3::new(2.0, 3.0, 0.3);
+        Transaction::new("second")
+            .insert(Element::new("Pipe", ElementKind::Pipe(q)))
+            .apply(&mut m)
+            .unwrap();
+        (m, e)
+    }
+
+    fn lines(items: &[PlanItem]) -> Vec<(DVec2, DVec2)> {
+        items
+            .iter()
+            .filter_map(|i| match i {
+                PlanItem::Line { a, b, .. } => Some((*a, *b)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn rigid_pipes_mitre_at_a_corner() {
+        let (m, e) = corner("PPR");
+        let ElementKind::Pipe(p) = &e.kind else {
+            unreachable!()
+        };
+        let js = joints(&m, p);
+        assert_eq!(js[0], Joint::Free);
+        assert!(matches!(js[1], Joint::Elbow { .. }));
+        // closed at its free start only; at the corner the outer side
+        // runs on by half the width and the inner stops as short
+        let l = lines(&pipe_plan(&m, &e, p, 1.2));
+        assert_eq!(l.len(), 3);
+        let ends: Vec<DVec2> = l.iter().take(2).map(|(_, b)| *b).collect();
+        assert!(
+            (ends[0] - DVec2::new(2.01, -0.01)).length() < 1e-9,
+            "{ends:?}"
+        );
+        assert!(
+            (ends[1] - DVec2::new(1.99, 0.01)).length() < 1e-9,
+            "{ends:?}"
+        );
+        // in 3D one of the two has the elbow's ball
+        let other = m
+            .iter()
+            .find_map(|x| match &x.kind {
+                ElementKind::Pipe(q) if x.id != e.id => Some(q.clone()),
+                _ => None,
+            })
+            .unwrap();
+        let balls = [p, &other]
+            .iter()
+            .filter(|q| pipe_mesh(&m, q).positions.len() > 200)
+            .count();
+        assert_eq!(balls, 1);
+    }
+
+    #[test]
+    fn a_pipe_from_a_coil_turns_in_an_arc() {
+        // multilayer pipe, 20 mm outside: bent at 5 d = 100 mm
+        let (m, e) = corner("HERZ");
+        let ElementKind::Pipe(p) = &e.kind else {
+            unreachable!()
+        };
+        let js = joints(&m, p);
+        let Joint::Bend { at, arc, .. } = &js[1] else {
+            panic!("{js:?}")
+        };
+        assert!((*at - DVec3::new(1.9, 0.0, 0.3)).length() < 1e-9);
+        assert!((*arc.last().unwrap() - DVec3::new(2.0, 0.1, 0.3)).length() < 1e-9);
+        // every point of the arc is 100 mm from its centre
+        let c = DVec3::new(1.9, 0.1, 0.3);
+        assert!(arc.iter().all(|q| (q.distance(c) - 0.1).abs() < 1e-9));
+        // the straight part stops where the arc begins, and is not closed there
+        let l = lines(&pipe_plan(&m, &e, p, 1.2));
+        assert!((l[0].1.x - 1.9).abs() < 1e-9 && (l[1].1.x - 1.9).abs() < 1e-9);
+        // too short an arm for the arc: a fitting, as rigid pipe
+        let (mut m, e) = corner("HERZ");
+        let other = m
+            .iter()
+            .find(|x| x.id != e.id && matches!(x.kind, ElementKind::Pipe(_)))
+            .unwrap()
+            .clone();
+        let mut short = other.clone();
+        if let ElementKind::Pipe(q) = &mut short.kind {
+            q.end = DVec3::new(2.0, 0.15, 0.3);
+        }
+        Transaction::new("short")
+            .replace(other, short)
+            .apply(&mut m)
+            .unwrap();
+        assert!(matches!(joints(&m, p)[1], Joint::Elbow { .. }));
+    }
+
+    #[test]
+    fn a_tee_leaves_the_ends_open() {
+        let (mut m, e) = corner("PPR");
+        let ElementKind::Pipe(p) = &e.kind else {
+            unreachable!()
+        };
+        let mut on = p.clone();
+        on.start = p.end;
+        on.end = DVec3::new(4.0, 0.0, 0.3);
+        Transaction::new("on")
+            .insert(Element::new("Pipe", ElementKind::Pipe(on)))
+            .apply(&mut m)
+            .unwrap();
+        assert!(matches!(joints(&m, p)[1], Joint::Node { .. }));
+        // two sides and the cap of the free start
+        assert_eq!(lines(&pipe_plan(&m, &e, p, 1.2)).len(), 3);
     }
 
     #[test]
