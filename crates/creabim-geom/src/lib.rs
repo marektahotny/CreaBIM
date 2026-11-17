@@ -8,10 +8,12 @@
 pub mod annotate;
 pub mod annotation;
 pub mod crop;
+
 pub mod cropbox;
 pub mod curtain;
 pub mod declutter;
 pub mod detail;
+pub mod font;
 pub mod looks;
 pub mod markers;
 pub mod members;

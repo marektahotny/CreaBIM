@@ -379,6 +379,7 @@ impl CreaBimApp {
         crate::modal::set_bar_by_pointer(settings.edit_bar == "pointer");
         crate::handles::set_edit_display(settings.edit_edge_width, settings.edit_vertex_size);
         shell::style(&cc.egui_ctx, theme);
+        crate::drawfont::apply(&cc.egui_ctx, &settings);
         let viewport = cc
             .wgpu_render_state
             .as_ref()

@@ -246,8 +246,13 @@ impl TextLook {
     /// Rough width of `text` on paper, mm.
     pub fn width(&self, text: &str) -> f64 {
         let w = match self.font {
-            Font::Mono => text.chars().count() as f64 * 0.6 * self.size,
-            Font::Serif => text_width(text, self.size) * 0.95,
+            Font::Mono => {
+                text.chars().count() as f64 * 0.6 * self.size * crate::font::setup().stretch
+            }
+            Font::Serif => {
+                crate::paper::rough_width(text, self.size) * 0.95 * crate::font::setup().stretch
+            }
+            // the drawings' own face if one is set, by its letters
             Font::Sans => text_width(text, self.size),
         };
         if self.bold {

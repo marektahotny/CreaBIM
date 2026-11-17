@@ -1161,16 +1161,23 @@ fn template_preview(ui: &mut egui::Ui, t: &SheetTemplate) {
                 ..
             } => {
                 let anchor = match align {
-                    creabim_core::titleblock::TextAlign::Start => egui::Align2::LEFT_CENTER,
-                    creabim_core::titleblock::TextAlign::Middle => egui::Align2::CENTER_CENTER,
-                    creabim_core::titleblock::TextAlign::End => egui::Align2::RIGHT_CENTER,
+                    creabim_core::titleblock::TextAlign::Start => {
+                        creabim_geom::paper::Anchor::Start
+                    }
+                    creabim_core::titleblock::TextAlign::Middle => {
+                        creabim_geom::paper::Anchor::Middle
+                    }
+                    creabim_core::titleblock::TextAlign::End => creabim_geom::paper::Anchor::End,
                 };
-                painter.text(
+                crate::annotate::text(
+                    &painter,
                     to(o + *at),
-                    anchor,
                     text,
-                    egui::FontId::proportional((*size as f32 * k * 1.2).max(5.0)),
+                    (*size as f32 * k * 1.2).max(5.0),
                     ink,
+                    0.0,
+                    anchor,
+                    &creabim_geom::annotation::TextLook::default(),
                 );
             }
         }

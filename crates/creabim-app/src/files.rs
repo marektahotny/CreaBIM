@@ -232,6 +232,12 @@ pub struct Settings {
     /// Edit mode's wires and corner dots, in points.
     pub edit_edge_width: f32,
     pub edit_vertex_size: f32,
+    /// The drawings' typeface: a TrueType or OpenType file in place of
+    /// the built-in sans; empty looks for Avenir Next Condensed beside
+    /// the program and among the system's fonts.
+    pub drawing_font: String,
+    /// The width of the drawings' letters: 0.7 is 70 % of the face's own.
+    pub text_width: f64,
 }
 
 impl Default for Settings {
@@ -272,6 +278,8 @@ impl Default for Settings {
             interaction: "orange".into(),
             edit_edge_width: 1.0,
             edit_vertex_size: 4.0,
+            drawing_font: String::new(),
+            text_width: 0.7,
         }
     }
 }
