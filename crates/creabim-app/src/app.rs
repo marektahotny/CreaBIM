@@ -7850,9 +7850,9 @@ impl CreaBimApp {
             ui.label(egui::RichText::new("None yet: add one below.").weak());
         }
         let mut add = None;
-        // one row of three equal buttons, as Blender's Add row (MU27)
+        // one row of equal buttons, as Blender's Add row (MU27)
         crate::props::flow(ui, |ui| {
-            let w = ((ui.available_width() - 2.0 * ui.spacing().item_spacing.x) / 3.0).max(40.0);
+            let w = ((ui.available_width() - 3.0 * ui.spacing().item_spacing.x) / 4.0).max(40.0);
             ui.spacing_mut().interact_size.x = w;
             egui::ComboBox::from_id_salt(("trace.add", v))
                 .icon(crate::props::combo_icon)
@@ -7895,6 +7895,23 @@ impl CreaBimApp {
                 {
                     add = Some(RefSource::Dxf {
                         path: p.display().to_string(),
+                    });
+                }
+            }
+            if ui
+                .add_sized([w, 22.0], egui::Button::new("+ PDF"))
+                .on_hover_text(crate::i18n::tr("A PDF drawing's lines, fills and texts at its scale 1:N (100 unless changed in its properties); a scanned page comes as a picture."))
+                .clicked()
+            {
+                if let Some(p) = rfd::FileDialog::new()
+                    .set_title(crate::i18n::tr("Add a PDF as a reference"))
+                    .add_filter("PDF", &["pdf"])
+                    .pick_file()
+                {
+                    add = Some(RefSource::Pdf {
+                        path: p.display().to_string(),
+                        page: 1,
+                        scale: 100.0,
                     });
                 }
             }
@@ -7976,10 +7993,13 @@ impl CreaBimApp {
             RefSource::View(_) => "View",
             RefSource::Image { .. } => "Picture",
             RefSource::Dxf { .. } => "DXF drawing",
+            RefSource::Pdf { .. } => "PDF page",
         };
         let name = crate::trace::label(model, &r.source);
         let path = match &r.source {
-            RefSource::Image { path, .. } | RefSource::Dxf { path } => Some(path.clone()),
+            RefSource::Image { path, .. }
+            | RefSource::Dxf { path }
+            | RefSource::Pdf { path, .. } => Some(path.clone()),
             RefSource::View(_) => None,
         };
         // as Blender's image rows (MU23): its name, cut with … and whole
@@ -8033,6 +8053,7 @@ impl CreaBimApp {
         if replace {
             let filter: (&str, &[&str]) = match &r.source {
                 RefSource::Dxf { .. } => ("DXF", &["dxf"]),
+                RefSource::Pdf { .. } => ("PDF", &["pdf"]),
                 _ => ("Pictures", &["png", "jpg", "jpeg"]),
             };
             if let Some(p) = rfd::FileDialog::new()
@@ -8042,7 +8063,9 @@ impl CreaBimApp {
             {
                 let p = p.display().to_string();
                 match &mut r.source {
-                    RefSource::Image { path, .. } | RefSource::Dxf { path } => *path = p,
+                    RefSource::Image { path, .. }
+                    | RefSource::Dxf { path }
+                    | RefSource::Pdf { path, .. } => *path = p,
                     RefSource::View(_) => {}
                 }
                 // it keeps its place, turn and scale; its size is read again
@@ -8315,9 +8338,68 @@ impl CreaBimApp {
                 label = Some("Picture width");
             }
         }
+        // a PDF's page and the scale it is drawn at
+        if let RefSource::Pdf { path, page, scale } = &mut r.source {
+            let (page0, scale0) = (*page, *scale);
+            let id_n = egui::Id::new(("ref.pdf.pages", path.as_str()));
+            let pages = ui
+                .ctx()
+                .data(|m| m.get_temp::<u32>(id_n))
+                .unwrap_or_else(|| {
+                    let n = std::fs::read(&*path)
+                        .ok()
+                        .and_then(|b| creabim_exchange::pdf::page_count(&b).ok())
+                        .unwrap_or(1);
+                    ui.ctx().data_mut(|m| m.insert_temp(id_n, n));
+                    n
+                });
+            if pages > 1 {
+                crate::props::row(ui, "Page", |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(page)
+                            .range(1..=pages)
+                            .suffix(format!(" / {pages}")),
+                    )
+                });
+            }
+            crate::props::row(ui, "Drawing scale", |ui| {
+                crate::props::fill(
+                    ui,
+                    egui::DragValue::new(scale)
+                        .range(1.0..=100000.0)
+                        .speed(1.0)
+                        .max_decimals(0)
+                        .prefix("1:"),
+                )
+            });
+            let (page1, scale1) = (*page, *scale);
+            if page1 != page0 || scale1 != scale0 {
+                // drawn at another scale it grows about its middle; another
+                // page is measured again
+                let k = scale1 / scale0.max(1e-9);
+                let shown = crate::trace::read(self.doc.model(), &r.source);
+                match crate::trace::bounds_of(&r.source, &shown) {
+                    Some(b) if page1 != page0 => r.bounds = Some(b),
+                    _ => {
+                        if let Some([a, b]) = r.bounds {
+                            r.bounds = Some([a * k, b * k]);
+                        }
+                    }
+                }
+                if let Some(c) = r.clip {
+                    r.clip = Some(c.map(|p| p * k));
+                }
+                label = Some(if page1 != page0 {
+                    "Reference page"
+                } else {
+                    "Drawing scale"
+                });
+            }
+        }
         // a drawing's layers, each shown or not (as PilonDesigner's)
-        if let RefSource::Dxf { path } = &r.source {
-            if let Ok(d) = self.plan.ref_cache.dxf_file(path) {
+        if matches!(r.source, RefSource::Dxf { .. } | RefSource::Pdf { .. }) {
+            if let Ok(Some(d)) = self.plan.ref_cache.drawing(&r.source) {
                 let mut layers = d.layers.clone();
                 layers.sort_by_key(|l| l.to_lowercase());
                 if layers.len() > 1 && crate::props::subsection(ui, "ref.layers", "Layers", false) {
@@ -8576,9 +8658,14 @@ impl CreaBimApp {
                     width: 10.0,
                 },
                 "dxf" => creabim_core::RefSource::Dxf { path: p },
+                "pdf" => creabim_core::RefSource::Pdf {
+                    path: p,
+                    page: 1,
+                    scale: 100.0,
+                },
                 _ => {
                     self.status = format!(
-                        "{} can't be a reference: drop a PNG, JPEG or DXF file.",
+                        "{} can't be a reference: drop a PNG, JPEG, DXF or PDF file.",
                         path.file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("That file")

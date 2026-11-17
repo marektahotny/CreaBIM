@@ -18,6 +18,9 @@ pub enum RefSource {
     Image { path: String, width: f64 },
     /// A DXF drawing's lines, in metres from its units.
     Dxf { path: String },
+    /// A PDF page's lines and texts (or a scanned page's picture), at the
+    /// drawing's scale 1:`scale`; `page` from 1.
+    Pdf { path: String, page: u32, scale: f64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

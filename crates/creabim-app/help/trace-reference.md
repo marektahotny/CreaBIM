@@ -4,13 +4,14 @@ A **reference** is something shown faintly under (or over) a plan or a section, 
 
 - **another view**: the floor below, under the floor you are drawing;
 - **a picture**: a scanned plan, a photo of a sketch (PNG or JPEG);
-- **a DXF drawing**: a survey or a consultant's plan. A DWG opens once saved as DXF: any CAD program, or the free ODA File Converter, does it offline.
+- **a DXF drawing**: a survey or a consultant's plan. A DWG opens once saved as DXF: any CAD program, or the free ODA File Converter, does it offline;
+- **a PDF page**: a plan sent as PDF, drawn at its scale 1:N, or a scanned page.
 
 A reference is saved with the project. One reference can show in **several views** (a site survey under every floor). Pictures and drawings stay where they are on disk, as links: *Reload* reads them again after they change.
 
 ## Adding one
 
-**Reference** on the *View* tab opens the **Trace and reference** tab of *Properties* for the view in the area you last used. Pick another view from *Add*, or click **Picture…** or **DXF drawing…**. It is added in place and selected. A picture or DXF file dropped on a plan or section becomes a reference too.
+**Reference** on the *View* tab opens the **Trace and reference** tab of *Properties* for the view in the area you last used. Pick another view from *Add*, or click **Picture…**, **DXF drawing…** or **PDF…**. It is added in place and selected. A picture, DXF or PDF file dropped on a plan or section becomes a reference too.
 
 ## Placing it
 
@@ -40,6 +41,14 @@ A DXF is read as PilonDesigner reads it: lines, polylines with arcs, circles, el
 - **Points**: survey points, small circles marking them and blocks' insertion points snap.
 - A drawing in national coordinates (**S-JTSK**, kilometres from the origin) comes to the project's origin, its lower left corner there; move it in *Properties*.
 - A **3D survey** shows the range of its heights.
+
+## A PDF page
+
+A PDF is read as PilonDesigner reads it: the page's lines, its solid fills in their colour (white areas and the page's background left out) and its texts, at the drawing's **scale 1:N**: a PDF measures paper, so the model is the paper times N. It comes at 1:100; set **Drawing scale** in *Properties* to the scale printed on the drawing, and it grows or shrinks about its middle. A page turned in the PDF is read turned, as it is seen. **Page** picks another page of the file.
+
+Lines, fills and texts are on the layers *PDF*, *PDF výplne* and *PDF texty*, so *Layers* turns them on and off as a DXF's.
+
+A **scanned page** (a picture with no lines) comes as its picture, placed where it lies on the page. Scans saved as JBIG2, CCITT or JPEG 2000 can't be read here: export the page as PNG or JPEG and add that. Check the size with *Calibrate…* when the scale isn't known.
 
 ## Clip
 
