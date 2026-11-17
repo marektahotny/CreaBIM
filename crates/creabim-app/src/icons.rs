@@ -340,7 +340,7 @@ pub fn row(ui: &mut egui::Ui, icon: Icon, selected: bool, text: &str) -> egui::R
         ui.spacing_mut().item_spacing.x = 5.0;
         let (r, _) = ui.allocate_exact_size(vec2(14.0, 14.0), egui::Sense::hover());
         icon.paint(ui.painter(), r);
-        ui.selectable_label(selected, text)
+        ui.selectable_label(selected, crate::i18n::tw(text))
     })
     .inner
 }

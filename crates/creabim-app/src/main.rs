@@ -26,6 +26,7 @@ mod ghost;
 mod handles;
 mod help;
 mod hoverpick;
+mod i18n;
 mod icons;
 mod memberstool;
 mod modal;

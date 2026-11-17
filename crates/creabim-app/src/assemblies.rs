@@ -240,10 +240,13 @@ pub(super) fn layer_table(
                 egui::ComboBox::from_id_salt(("fn", id, i))
                     .icon(crate::props::combo_icon)
                     .width(if compact { 78.0 } else { 96.0 })
-                    .selected_text(l.function.label())
+                    .selected_text(crate::i18n::tw(l.function.label()))
                     .show_ui(ui, |ui| {
                         for f in LayerFunction::ALL {
-                            if ui.selectable_value(&mut l.function, f, f.label()).changed() {
+                            if ui
+                                .selectable_value(&mut l.function, f, crate::i18n::tw(f.label()))
+                                .changed()
+                            {
                                 label = "Layer function";
                             }
                         }
@@ -256,17 +259,25 @@ pub(super) fn layer_table(
                 egui::ComboBox::from_id_salt(("mat", id, i))
                     .icon(crate::props::combo_icon)
                     .width(if compact { 110.0 } else { 190.0 })
-                    .selected_text(shown)
+                    .selected_text(crate::i18n::tw(shown))
                     .show_ui(ui, |ui| {
                         if ui
-                            .selectable_value(&mut l.material, None, "None (air, or by type)")
+                            .selectable_value(
+                                &mut l.material,
+                                None,
+                                crate::i18n::tw("None (air, or by type)"),
+                            )
                             .changed()
                         {
                             label = "Layer material";
                         }
                         for (mid, name, _) in &mats {
                             if ui
-                                .selectable_value(&mut l.material, Some(*mid), *name)
+                                .selectable_value(
+                                    &mut l.material,
+                                    Some(*mid),
+                                    crate::i18n::tw(*name),
+                                )
                                 .changed()
                             {
                                 label = "Layer material";
@@ -441,14 +452,16 @@ impl CreaBimApp {
         let mut edit = false;
         crate::props::flow(ui, |ui| {
             crate::app::helpui::combo(ui, "Assembly")
-                .selected_text(shown)
+                .selected_text(crate::i18n::tw(shown))
                 .width(ui.available_width().min(150.0))
                 .show_ui(ui, |ui| {
                     changed |= ui
-                        .selectable_value(current, None, "None (single material)")
+                        .selectable_value(current, None, crate::i18n::tw("None (single material)"))
                         .changed();
                     for (id, n) in &choices {
-                        changed |= ui.selectable_value(current, Some(*id), n).changed();
+                        changed |= ui
+                            .selectable_value(current, Some(*id), crate::i18n::tw(n))
+                            .changed();
                     }
                     ui.separator();
                     create = ui.button("New assembly…").clicked();
@@ -588,7 +601,7 @@ impl CreaBimApp {
                                     }
                                 );
                                 if ui
-                                    .selectable_label(current == Some(*id), text)
+                                    .selectable_label(current == Some(*id), crate::i18n::tw(text))
                                     .on_hover_text(a.summary(model))
                                     .clicked()
                                 {

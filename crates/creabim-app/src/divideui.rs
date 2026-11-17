@@ -329,12 +329,13 @@ impl CreaBimApp {
                                 (Way::Up, "Up", "Up its height: courses, bands, shelves"),
                                 (Way::Grid, "Grid", "Both: panels"),
                             ] {
-                                ui.selectable_value(&mut d.way, w, t).on_hover_text(tip);
+                                ui.selectable_value(&mut d.way, w, crate::i18n::tw(t))
+                                    .on_hover_text(tip);
                             }
                             ui.separator();
-                            ui.selectable_value(&mut d.by_size, false, "Count")
+                            ui.selectable_value(&mut d.by_size, false, crate::i18n::tw("Count"))
                                 .on_hover_text("A number of equal parts");
-                            ui.selectable_value(&mut d.by_size, true, "Size")
+                            ui.selectable_value(&mut d.by_size, true, crate::i18n::tw("Size"))
                                 .on_hover_text("Parts of a size; the rest goes where you say");
                             let number =
                                 |ui: &mut egui::Ui, d: &mut Settings, up: bool, tag: &str| {
@@ -397,17 +398,17 @@ impl CreaBimApp {
                             if d.by_size {
                                 egui::ComboBox::from_id_salt("divide.rest")
                                     .icon(crate::props::combo_icon)
-                                    .selected_text(match d.rest {
+                                    .selected_text(crate::i18n::tw(match d.rest {
                                         Rest::Ends => "Rest at both ends",
                                         Rest::Start => "Rest at the start",
                                         Rest::End => "Rest at the end",
                                         Rest::Spread => "Spread evenly",
-                                    })
+                                    }))
                                     .show_ui(ui, |ui| {
                                         ui.selectable_value(
                                             &mut d.rest,
                                             Rest::Ends,
-                                            "Rest at both ends",
+                                            crate::i18n::tw("Rest at both ends"),
                                         )
                                         .on_hover_text(
                                             "Full parts centred, a short one at each end",
@@ -415,17 +416,17 @@ impl CreaBimApp {
                                         ui.selectable_value(
                                             &mut d.rest,
                                             Rest::Start,
-                                            "Rest at the start",
+                                            crate::i18n::tw("Rest at the start"),
                                         );
                                         ui.selectable_value(
                                             &mut d.rest,
                                             Rest::End,
-                                            "Rest at the end",
+                                            crate::i18n::tw("Rest at the end"),
                                         );
                                         ui.selectable_value(
                                             &mut d.rest,
                                             Rest::Spread,
-                                            "Spread evenly",
+                                            crate::i18n::tw("Spread evenly"),
                                         )
                                         .on_hover_text(
                                             "As many parts as are nearest the size, all equal",
@@ -434,13 +435,25 @@ impl CreaBimApp {
                             }
                             ui.separator();
                             if cuttable {
-                                ui.selectable_value(&mut d.make, Make::Cuts, "Cuts")
-                                    .on_hover_text("Cut it into separate elements");
+                                ui.selectable_value(
+                                    &mut d.make,
+                                    Make::Cuts,
+                                    crate::i18n::tw("Cuts"),
+                                )
+                                .on_hover_text("Cut it into separate elements");
                             }
-                            ui.selectable_value(&mut d.make, Make::Guides, "Guides")
-                                .on_hover_text("Guides at the divisions, to snap to");
-                            ui.selectable_value(&mut d.make, Make::Copies, "Copies")
-                                .on_hover_text("What you Shift+click, one in each part");
+                            ui.selectable_value(
+                                &mut d.make,
+                                Make::Guides,
+                                crate::i18n::tw("Guides"),
+                            )
+                            .on_hover_text("Guides at the divisions, to snap to");
+                            ui.selectable_value(
+                                &mut d.make,
+                                Make::Copies,
+                                crate::i18n::tw("Copies"),
+                            )
+                            .on_hover_text("What you Shift+click, one in each part");
                             if d.make == Make::Cuts {
                                 ui.label(egui::RichText::new("gap").weak());
                                 ui.add(crate::units::drag(&mut d.gap).range(0.0..=1.0))

@@ -442,10 +442,10 @@ impl CreaBimApp {
                 ui.indent("to", |ui| {
                     egui::ComboBox::from_id_salt("move-to")
                         .icon(crate::props::combo_icon)
-                        .selected_text(current)
+                        .selected_text(crate::i18n::tw(current))
                         .show_ui(ui, |ui| {
                             for (id, n, _) in &others {
-                                ui.selectable_value(&mut target, Some(*id), n);
+                                ui.selectable_value(&mut target, Some(*id), crate::i18n::tw(n));
                             }
                         });
                 });
@@ -716,11 +716,14 @@ fn project_units(ui: &mut egui::Ui, units: &mut Units) {
         let w = ui.available_width();
         egui::ComboBox::from_id_salt("unit")
             .icon(crate::props::combo_icon)
-            .selected_text(units.length.label())
+            .selected_text(crate::i18n::tw(units.length.label()))
             .width(w)
             .show_ui(ui, |ui| {
                 for u in LengthUnit::ALL {
-                    if ui.selectable_label(units.length == u, u.label()).clicked() {
+                    if ui
+                        .selectable_label(units.length == u, crate::i18n::tw(u.label()))
+                        .clicked()
+                    {
                         *units = Units::of(u);
                     }
                 }
@@ -812,11 +815,11 @@ fn combo_row<T: PartialEq + Copy>(
         let w = ui.available_width();
         egui::ComboBox::from_id_salt(("nf", label))
             .icon(crate::props::combo_icon)
-            .selected_text(now)
+            .selected_text(crate::i18n::tw(now))
             .width(w)
             .show_ui(ui, |ui| {
                 for (v, l) in opts {
-                    ui.selectable_value(value, *v, l);
+                    ui.selectable_value(value, *v, crate::i18n::tw(l));
                 }
             });
     });

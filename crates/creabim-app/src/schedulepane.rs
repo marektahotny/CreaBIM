@@ -343,11 +343,15 @@ pub fn show(
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                             egui::ComboBox::from_id_salt(("rate_per", n, r.id))
                                 .icon(crate::props::combo_icon)
-                                .selected_text(per.label())
+                                .selected_text(crate::i18n::tw(per.label()))
                                 .width(inner.width())
                                 .show_ui(ui, |ui| {
                                     for u in RateUnit::ALL {
-                                        ui.selectable_value(&mut chosen, u, u.label());
+                                        ui.selectable_value(
+                                            &mut chosen,
+                                            u,
+                                            crate::i18n::tw(u.label()),
+                                        );
                                     }
                                 });
                         });
@@ -373,12 +377,16 @@ pub fn show(
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                             egui::ComboBox::from_id_salt(("material", r.id))
                                 .icon(crate::props::combo_icon)
-                                .selected_text(text.as_str())
+                                .selected_text(crate::i18n::tw(text.as_str()))
                                 .width(inner.width())
                                 .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut chosen, None, "-");
+                                    ui.selectable_value(&mut chosen, None, crate::i18n::tw("-"));
                                     for (id, name) in &materials {
-                                        ui.selectable_value(&mut chosen, Some(*id), name);
+                                        ui.selectable_value(
+                                            &mut chosen,
+                                            Some(*id),
+                                            crate::i18n::tw(name),
+                                        );
                                     }
                                 });
                         });

@@ -326,10 +326,14 @@ impl CreaBimApp {
         }
         crate::props::flow(ui, |ui| {
             crate::app::helpui::combo(ui, "Show")
-                .selected_text(self.drafting.filter.label())
+                .selected_text(crate::i18n::tw(self.drafting.filter.label()))
                 .show_ui(ui, |ui| {
                     for k in StyleUse::ALL {
-                        ui.selectable_value(&mut self.drafting.filter, k, k.label());
+                        ui.selectable_value(
+                            &mut self.drafting.filter,
+                            k,
+                            crate::i18n::tw(k.label()),
+                        );
                     }
                 });
             ui.separator();
@@ -378,7 +382,10 @@ impl CreaBimApp {
                         for (id, name, purpose, users) in &list {
                             let text = format!("{name}  ({users})");
                             let r = ui
-                                .selectable_label(self.drafting.style == Some(*id), text)
+                                .selectable_label(
+                                    self.drafting.style == Some(*id),
+                                    crate::i18n::tw(text),
+                                )
                                 .on_hover_text(format!(
                                     "For {}; used by {users}",
                                     purpose.label().to_lowercase()
@@ -631,7 +638,7 @@ impl CreaBimApp {
                     if ui
                         .selectable_label(
                             self.drafting.template == Some(*id),
-                            format!("{name}  ({users})"),
+                            crate::i18n::tw(format!("{name}  ({users})")),
                         )
                         .clicked()
                     {
@@ -667,10 +674,13 @@ impl CreaBimApp {
             }
         });
         crate::app::helpui::combo(ui, "Sits in the")
-            .selected_text(t.corner.label())
+            .selected_text(crate::i18n::tw(t.corner.label()))
             .show_ui(ui, |ui| {
                 for c in Corner::ALL {
-                    if ui.selectable_value(&mut t.corner, c, c.label()).changed() {
+                    if ui
+                        .selectable_value(&mut t.corner, c, crate::i18n::tw(c.label()))
+                        .changed()
+                    {
                         label = Some("Title block corner");
                     }
                 }
@@ -911,17 +921,17 @@ impl CreaBimApp {
             egui::ComboBox::from_id_salt("sheet.master")
                 .icon(crate::props::combo_icon)
                 .width(ui.available_width())
-                .selected_text(now)
+                .selected_text(crate::i18n::tw(now))
                 .show_ui(ui, |ui| {
                     if ui
-                        .selectable_value(&mut sh.template, None, "Built-in")
+                        .selectable_value(&mut sh.template, None, crate::i18n::tw("Built-in"))
                         .changed()
                     {
                         label = Some("Sheet template");
                     }
                     for (id, name) in &list {
                         if ui
-                            .selectable_value(&mut sh.template, Some(*id), name)
+                            .selectable_value(&mut sh.template, Some(*id), crate::i18n::tw(name))
                             .changed()
                         {
                             label = Some("Sheet template");

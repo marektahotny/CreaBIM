@@ -129,11 +129,11 @@ impl CreaBimApp {
             // choice filling the field column (MU29: it ran off the panel)
             crate::props::row(ui, which, |ui| {
                 egui::ComboBox::from_id_salt(("corner", id, at_end)).icon(crate::props::combo_icon)
-                    .selected_text(now.label())
+                    .selected_text(crate::i18n::tw(now.label()))
                     .width(ui.available_width())
                     .show_ui(ui, |ui| {
                         for p in creabim_core::CornerPreset::ALL {
-                            if ui.selectable_label(p == now, p.label()).clicked() && p != now {
+                            if ui.selectable_label(p == now, crate::i18n::tw(p.label())).clicked() && p != now {
                                 pick = Some((other, p));
                             }
                         }
@@ -195,13 +195,13 @@ impl CreaBimApp {
                 };
                 egui::ComboBox::from_id_salt(("join", rid))
                     .icon(crate::props::combo_icon)
-                    .selected_text(shown)
+                    .selected_text(crate::i18n::tw(shown))
                     .show_ui(ui, |ui| {
                         let rule = r;
                         for w in JoinWinner::ALL {
                             let text = crate::detailtool::winner_label(model, &rule, w);
                             if ui
-                                .selectable_label(r.cleanup && r.winner == w, text)
+                                .selectable_label(r.cleanup && r.winner == w, crate::i18n::tw(text))
                                 .clicked()
                             {
                                 r.winner = w;
@@ -209,7 +209,10 @@ impl CreaBimApp {
                                 edit = Some((rid, r, "Junction winner"));
                             }
                         }
-                        if ui.selectable_label(!r.cleanup, "Not cleaned up").clicked() {
+                        if ui
+                            .selectable_label(!r.cleanup, crate::i18n::tw("Not cleaned up"))
+                            .clicked()
+                        {
                             r.cleanup = false;
                             edit = Some((rid, r, "Junction cleanup"));
                         }

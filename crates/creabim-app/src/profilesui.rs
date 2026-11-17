@@ -3274,17 +3274,20 @@ impl CreaBimApp {
                 .icon(crate::props::combo_icon)
                 .width(w)
                 .truncate()
-                .selected_text(link.clone().unwrap_or_else(|| {
+                .selected_text(crate::i18n::tw(link.clone().unwrap_or_else(|| {
                     if member {
                         "Its own (width × depth)".into()
                     } else {
                         "Its own".into()
                     }
-                }))
+                })))
                 .show_ui(ui, |ui| {
                     if member
                         && ui
-                            .selectable_label(link.is_none(), "Its own (width × depth)")
+                            .selectable_label(
+                                link.is_none(),
+                                crate::i18n::tw("Its own (width × depth)"),
+                            )
                             .clicked()
                     {
                         pick = Some(None);

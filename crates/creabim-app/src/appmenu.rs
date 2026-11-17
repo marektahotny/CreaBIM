@@ -702,11 +702,11 @@ impl CreaBimApp {
                                         crate::props::section(ui, "Look");
                                         crate::props::row(ui, "Theme", |ui| {
                                             egui::ComboBox::from_id_salt("settings.theme").icon(crate::props::combo_icon)
-                                                .selected_text(theme.label())
+                                                .selected_text(crate::i18n::tw(theme.label()))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for t in crate::theme::Theme::ALL {
-                                                        ui.selectable_value(&mut theme, t, t.label());
+                                                        ui.selectable_value(&mut theme, t, crate::i18n::tw(t.label()));
                                                     }
                                                 });
                                         });
@@ -717,11 +717,11 @@ impl CreaBimApp {
                                                 _ => "Follow the theme",
                                             };
                                             egui::ComboBox::from_id_salt("settings.paper").icon(crate::props::combo_icon)
-                                                .selected_text(label(&paper))
+                                                .selected_text(crate::i18n::tw(label(&paper)))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for k in ["theme", "light", "dark"] {
-                                                        ui.selectable_value(&mut paper, k.to_string(), label(k));
+                                                        ui.selectable_value(&mut paper, k.to_string(), crate::i18n::tw(label(k)));
                                                     }
                                                 })
                                                 .response
@@ -790,11 +790,11 @@ impl CreaBimApp {
                                                 _ => "CreaBIM: middle orbits, left boxes",
                                             };
                                             egui::ComboBox::from_id_salt("settings.navigation").icon(crate::props::combo_icon)
-                                                .selected_text(label(&navigation))
+                                                .selected_text(crate::i18n::tw(label(&navigation)))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for k in ["creabim", "classic"] {
-                                                        ui.selectable_value(&mut navigation, k.to_string(), label(k));
+                                                        ui.selectable_value(&mut navigation, k.to_string(), crate::i18n::tw(label(k)));
                                                     }
                                                 });
                                         });
@@ -814,11 +814,11 @@ impl CreaBimApp {
                                                 &crate::snaps::STEPS_METRIC
                                             };
                                             egui::ComboBox::from_id_salt("settings.spacing").icon(crate::props::combo_icon)
-                                                .selected_text(crate::units::len(spacing as f64 / 1e6))
+                                                .selected_text(crate::i18n::tw(crate::units::len(spacing as f64 / 1e6)))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for um in steps {
-                                                        ui.selectable_value(&mut spacing, *um, crate::units::len(*um as f64 / 1e6));
+                                                        ui.selectable_value(&mut spacing, *um, crate::i18n::tw(crate::units::len(*um as f64 / 1e6)));
                                                     }
                                                 });
                                         });
@@ -835,11 +835,11 @@ impl CreaBimApp {
                                         crate::props::section(ui, "This project");
                                         crate::props::row(ui, "Units", |ui| {
                                             egui::ComboBox::from_id_salt("settings.units").icon(crate::props::combo_icon)
-                                                .selected_text(unit_row(unit).0)
+                                                .selected_text(crate::i18n::tw(unit_row(unit).0))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for u in UNIT_ORDER {
-                                                        ui.selectable_value(&mut unit, u, unit_row(u).0);
+                                                        ui.selectable_value(&mut unit, u, crate::i18n::tw(unit_row(u).0));
                                                     }
                                                 });
                                         });

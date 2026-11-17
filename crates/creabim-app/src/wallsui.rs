@@ -50,11 +50,11 @@ pub(super) fn wall_fields(
     let mut label = "";
     crate::props::flow(ui, |ui| {
         crate::app::helpui::combo(ui, "Location line")
-            .selected_text(walls::location_label(model, w))
+            .selected_text(crate::i18n::tw(walls::location_label(model, w)))
             .width(ui.available_width().min(130.0))
             .show_ui(ui, |ui| {
                 for l in LocationLine::ALL {
-                    if ui.selectable_value(&mut w.location, l, l.label()).changed() {
+                    if ui.selectable_value(&mut w.location, l, crate::i18n::tw(l.label())).changed() {
                         label = "Wall location line"
                     }
                 }
@@ -64,7 +64,7 @@ pub(super) fn wall_fields(
                     ui.weak("By a layer boundary");
                     for (l, name) in lines {
                         if ui
-                            .selectable_value(&mut w.location, l, name)
+                            .selectable_value(&mut w.location, l, crate::i18n::tw(name))
                             .on_hover_text("Draw and dimension the wall on this line between layers. The wall stays where it is.")
                             .changed()
                         {
@@ -98,11 +98,14 @@ pub(super) fn wall_fields(
     let lv = levels(model);
     crate::props::flow(ui, |ui| {
         crate::app::helpui::combo(ui, "Base level")
-            .selected_text(name_of(model, w.level))
+            .selected_text(crate::i18n::tw(name_of(model, w.level)))
             .width(ui.available_width().min(130.0))
             .show_ui(ui, |ui| {
                 for (l, n, _) in &lv {
-                    if ui.selectable_value(&mut w.level, *l, n).changed() {
+                    if ui
+                        .selectable_value(&mut w.level, *l, crate::i18n::tw(n))
+                        .changed()
+                    {
                         label = "Wall base level"
                     }
                 }
@@ -117,11 +120,11 @@ pub(super) fn wall_fields(
     };
     crate::props::flow(ui, |ui| {
         crate::app::helpui::combo(ui, "Top")
-            .selected_text(shown)
+            .selected_text(crate::i18n::tw(shown))
             .width(ui.available_width().min(130.0))
             .show_ui(ui, |ui| {
                 if ui
-                    .selectable_label(w.top.is_unconnected(), "Unconnected")
+                    .selectable_label(w.top.is_unconnected(), crate::i18n::tw("Unconnected"))
                     .clicked()
                     && !w.top.is_unconnected()
                 {
@@ -130,7 +133,7 @@ pub(super) fn wall_fields(
                 }
                 for (l, n, _) in &lv {
                     let on = matches!(w.top, WallTop::UpToLevel { level, .. } if level == *l);
-                    if ui.selectable_label(on, format!("Up to {n}")).clicked() && !on {
+                    if ui.selectable_label(on, crate::i18n::tw(format!("Up to {n}"))).clicked() && !on {
                         w.top = WallTop::UpToLevel {
                             level: *l,
                             offset: 0.0,

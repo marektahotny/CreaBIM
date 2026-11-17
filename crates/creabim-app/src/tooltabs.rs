@@ -27,7 +27,8 @@ pub enum Entry {
     Sep,
 }
 
-pub const TABS: [&str; 4] = ["Model", "Annotate", "View", "Manage"];
+/// The first is called Model upstream; this fork names it after its discipline.
+pub const TABS: [&str; 4] = ["Architecture", "Annotate", "View", "Manage"];
 
 /// On every tab, before it.
 pub const ALWAYS: [Tool; 2] = [Tool::Select, Tool::Align];

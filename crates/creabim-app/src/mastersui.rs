@@ -2215,14 +2215,23 @@ impl CreaBimApp {
                 egui::ComboBox::from_id_salt(("master.paper", id))
                     .icon(crate::props::combo_icon)
                     .width(ui.available_width())
-                    .selected_text(format!("{now}{}", if portrait { ", portrait" } else { "" }))
+                    .selected_text(crate::i18n::tw(format!(
+                        "{now}{}",
+                        if portrait { ", portrait" } else { "" }
+                    )))
                     .show_ui(ui, |ui| {
                         for (n, w, h) in PAPERS {
-                            if ui.selectable_label(n == now && !portrait, n).clicked() {
+                            if ui
+                                .selectable_label(n == now && !portrait, crate::i18n::tw(n))
+                                .clicked()
+                            {
                                 pick = Some(DVec2::new(w, h));
                             }
                             if ui
-                                .selectable_label(n == now && portrait, format!("{n}, portrait"))
+                                .selectable_label(
+                                    n == now && portrait,
+                                    crate::i18n::tw(format!("{n}, portrait")),
+                                )
                                 .clicked()
                             {
                                 pick = Some(DVec2::new(h, w));
@@ -2239,10 +2248,10 @@ impl CreaBimApp {
                 egui::ComboBox::from_id_salt(("master.corner", id))
                     .icon(crate::props::combo_icon)
                     .width(ui.available_width())
-                    .selected_text(corner.label())
+                    .selected_text(crate::i18n::tw(corner.label()))
                     .show_ui(ui, |ui| {
                         for c in Corner::ALL {
-                            ui.selectable_value(&mut corner, c, c.label());
+                            ui.selectable_value(&mut corner, c, crate::i18n::tw(c.label()));
                         }
                     })
             })

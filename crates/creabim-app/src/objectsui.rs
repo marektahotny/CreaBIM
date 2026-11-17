@@ -348,16 +348,20 @@ fn part_material(
     let mut changed = false;
     egui::ComboBox::from_id_salt(("part_material", salt))
         .icon(crate::props::combo_icon)
-        .selected_text(shown)
+        .selected_text(crate::i18n::tw(shown))
         .width(ui.available_width().min(170.0))
         .truncate()
         .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(current, None, "None").changed();
+            changed |= ui
+                .selectable_value(current, None, crate::i18n::tw("None"))
+                .changed();
             for e in model
                 .iter()
                 .filter(|e| matches!(e.kind, ElementKind::Material(_)))
             {
-                changed |= ui.selectable_value(current, Some(e.id), &e.name).changed();
+                changed |= ui
+                    .selectable_value(current, Some(e.id), crate::i18n::tw(&e.name))
+                    .changed();
             }
         });
     changed
@@ -378,10 +382,13 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         ui.spacing_mut().combo_width = ui.available_width();
         egui::ComboBox::from_id_salt("object_category")
             .icon(crate::props::combo_icon)
-            .selected_text(o.category.label())
+            .selected_text(crate::i18n::tw(o.category.label()))
             .show_ui(ui, |ui| {
                 for c in ObjectCategory::ALL {
-                    if ui.selectable_value(&mut o.category, c, c.label()).changed() {
+                    if ui
+                        .selectable_value(&mut o.category, c, crate::i18n::tw(c.label()))
+                        .changed()
+                    {
                         label = "Object category";
                     }
                 }
@@ -391,11 +398,11 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         ui.spacing_mut().combo_width = ui.available_width();
         egui::ComboBox::from_id_salt("object_mount")
             .icon(crate::props::combo_icon)
-            .selected_text(mount_label(o.mount))
+            .selected_text(crate::i18n::tw(mount_label(o.mount)))
             .show_ui(ui, |ui| {
                 for m in Mount::ALL {
                     if ui
-                        .selectable_value(&mut o.mount, m, mount_label(m))
+                        .selectable_value(&mut o.mount, m, crate::i18n::tw(mount_label(m)))
                         .changed()
                     {
                         label = "Object placement";
@@ -429,10 +436,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         let mut class = o.ifc.class.clone();
         egui::ComboBox::from_id_salt("object_class")
             .icon(crate::props::combo_icon)
-            .selected_text(&class)
+            .selected_text(crate::i18n::tw(&class))
             .show_ui(ui, |ui| {
                 for (c, _, _) in IFC_CLASSES {
-                    ui.selectable_value(&mut class, c.to_string(), *c);
+                    ui.selectable_value(&mut class, c.to_string(), crate::i18n::tw(*c));
                 }
             });
         if class != o.ifc.class {
@@ -445,10 +452,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         let mut pre = o.ifc.predefined.clone();
         egui::ComboBox::from_id_salt("object_predefined")
             .icon(crate::props::combo_icon)
-            .selected_text(&pre)
+            .selected_text(crate::i18n::tw(&pre))
             .show_ui(ui, |ui| {
                 for p in objects::predefined_types(&o.ifc.class) {
-                    ui.selectable_value(&mut pre, p.to_string(), *p);
+                    ui.selectable_value(&mut pre, p.to_string(), crate::i18n::tw(*p));
                 }
             });
         if pre != o.ifc.predefined {
@@ -648,9 +655,9 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 let cat = &mut self.catalogue;
                 ui.horizontal_wrapped(|ui| {
-                    ui.selectable_value(&mut cat.category, None, "All");
+                    ui.selectable_value(&mut cat.category, None, crate::i18n::tw("All"));
                     for c in ObjectCategory::ALL {
-                        ui.selectable_value(&mut cat.category, Some(c), c.label());
+                        ui.selectable_value(&mut cat.category, Some(c), crate::i18n::tw(c.label()));
                     }
                 });
                 ui.add(

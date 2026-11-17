@@ -110,7 +110,10 @@ pub fn shape_controls(
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         for s in Shape::ALL {
-                            if ui.selectable_label(chosen == s, s.label()).clicked() {
+                            if ui
+                                .selectable_label(chosen == s, crate::i18n::tw(s.label()))
+                                .clicked()
+                            {
                                 chosen = s;
                             }
                         }
@@ -839,10 +842,10 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
                 .icon(crate::props::combo_icon)
                 .width(w)
                 .truncate()
-                .selected_text(name(*v))
+                .selected_text(crate::i18n::tw(name(*v)))
                 .show_ui(ui, |ui| {
                     for i in 0..n {
-                        ui.selectable_value(v, i, name(i));
+                        ui.selectable_value(v, i, crate::i18n::tw(name(i)));
                     }
                 });
         });
@@ -854,10 +857,10 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
                 .icon(crate::props::combo_icon)
                 .width(w)
                 .truncate()
-                .selected_text(KINDS[form.kind])
+                .selected_text(crate::i18n::tw(KINDS[form.kind]))
                 .show_ui(ui, |ui| {
                     for (k, name) in KINDS.iter().enumerate() {
-                        ui.selectable_value(&mut form.kind, k, *name);
+                        ui.selectable_value(&mut form.kind, k, crate::i18n::tw(*name));
                     }
                 });
         });
