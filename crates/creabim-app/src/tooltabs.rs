@@ -136,6 +136,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
             T(Tool::Pipe),
             act(
+                "calc:water",
+                "Calculate water supply",
+                "calc",
+                "Size the cold and hot water pipes drawn to the fixtures (STN EN 806-3) and check the pressure",
+            ),
+            act(
                 "catalogue.cat:bathroom",
                 "Sanitary fixtures",
                 "fixtures",

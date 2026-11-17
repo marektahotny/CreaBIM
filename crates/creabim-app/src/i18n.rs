@@ -68,6 +68,16 @@ pub fn lang() -> Lang {
     }
 }
 
+/// `v` to `decimals` places, with the decimal comma Slovak and Czech
+/// write.
+pub fn num(v: f64, decimals: usize) -> String {
+    let s = format!("{v:.decimals$}");
+    match lang() {
+        Lang::En => s,
+        _ => s.replace('.', ","),
+    }
+}
+
 /// Speak `l` from now on. Text already on screen follows on the next frame.
 pub fn set_lang(l: Lang) {
     let n = match l {

@@ -19,6 +19,15 @@ Sanitary ware, appliances, radiators, manifolds and fan coils from the catalogue
 
 The catalogue's washbasin, WC, bath, shower, sink, floor drain, outside tap and radiator keep their own 3D models and gain the connectors. The washing machine, dishwasher, bidet, urinal, towel radiator, underfloor heating manifold and the wall, under-window and ceiling cassette fan coils are PilonDesigner's, sized and drawn as it draws them.
 
+## Water supply calculation
+
+**Calculate water supply** on the *Plumbing and gas* tab sizes the cold (SV) and hot (TV) water pipes drawn, by PilonDesigner's method (STN EN 806-3 loading units, or STN 73 6655 / DIN 1988-300 where its settings say).
+
+- The network is the pipes of the system joined where their ends meet, or where one ends on another (a tee), out to the fixtures whose connectors they reach. It starts at the lowest free pipe end with no fixture, where the supply comes in.
+- The window shows each system's design flow, the pressure it needs against what the connection gives, and each pipe's flow, velocity, pressure loss per metre and proposed size. The critical path is in bold. Click a pipe to select it.
+- **Apply proposed sizes** changes the pipes to the sizes proposed, in their own series, and calculates again.
+- Pipe ends joined to nothing, pipes not reached from the start and loops are listed, so they can be fixed.
+
 ## Pipe types
 
 The types are PilonDesigner's catalogue: a system offers the types for what it carries. Each has its sizes with their outside and inside diameters, its roughness for the calculations, its joints and standards, and for manufacturers' series (HERZ, SANHA, GAWAPLAST) their fittings.
