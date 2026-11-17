@@ -663,6 +663,8 @@ impl CreaBimApp {
             // column now, with zoom and pan: MU24)
             json!({"kind": "toggle", "id": "xray", "icon": "xray", "label": "X-ray", "on": s.xray, "shortcut": "Alt+Z",
                    "hint": "See through walls, slabs and roofs to what is inside them"}),
+            json!({"kind": "toggle", "id": "shadows3d", "icon": "sun", "label": "Shadows", "on": s.sun.shadows,
+                   "hint": "Shadows the sun casts. View › Sun and shadows sets the date, time and how they look"}),
             json!({"kind": "menu", "key": "look", "icon": "rotate-3d", "label": "Look from",
                    "hint": "Look from the top, a side or the corner"}),
             json!({"kind": "toggle", "id": "ground.grid", "icon": "grid-3x3", "label": "Ground grid", "on": s.ground_grid,

@@ -197,6 +197,8 @@ pub struct Settings {
     pub guides_hidden: bool,
     /// How the 3D view draws: shaded, with edges, hidden line or wireframe.
     pub render_3d: crate::render3d::RenderMode,
+    /// The 3D view's sun and its shadows.
+    pub sun: crate::sun::Sun,
     /// Width of the Help panel, in points.
     pub help_width: f32,
     /// Which sections of Properties are open, by key, where it differs
@@ -257,6 +259,7 @@ impl Default for Settings {
             hidden_colour_3d: false,
             guides_hidden: false,
             render_3d: Default::default(),
+            sun: Default::default(),
             help_width: 400.0,
             props_open: Default::default(),
             tools_tab: 0,
