@@ -431,11 +431,11 @@ pub fn marks_page(
         }
         crate::props::section(ui, "Membranes in details");
         crate::props::Combo::new("Drawn as")
-            .selected_text(pack.membranes.label())
+            .selected_text(crate::i18n::tw(pack.membranes.label()))
             .show_ui(ui, |ui| {
                 for m in creabim_core::MembraneLook::ALL {
                     changed |= ui
-                        .selectable_value(&mut pack.membranes, m, m.label())
+                        .selectable_value(&mut pack.membranes, m, crate::i18n::tw(m.label()))
                         .changed();
                 }
             });
@@ -642,7 +642,7 @@ fn part_row<T: Copy + PartialEq>(ui: &mut egui::Ui, label: &str, v: &mut T, opti
     ui.horizontal(|ui| {
         ui.add_sized([96.0, 20.0], egui::Label::new(label));
         for (o, text) in options {
-            ui.selectable_value(v, *o, *text);
+            ui.selectable_value(v, *o, crate::i18n::tw(*text));
         }
     });
 }

@@ -82,16 +82,16 @@ fn weight_combo(
                 .max(108.0)
                 .min(ui.available_width()),
         )
-        .selected_text(text)
+        .selected_text(crate::i18n::tw(text))
         .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(w, None, "As drawn").changed();
+            changed |= ui.selectable_value(w, None, crate::i18n::tw("As drawn")).changed();
             for p in PenName::ALL {
                 changed |= ui
-                    .selectable_value(w, Some(Weight::Pen(p)), p.label())
+                    .selectable_value(w, Some(Weight::Pen(p)), crate::i18n::tw(p.label()))
                     .changed();
             }
             if ui
-                .selectable_label(matches!(w, Some(Weight::Mm(_))), "Millimetres")
+                .selectable_label(matches!(w, Some(Weight::Mm(_))), crate::i18n::tw("Millimetres"))
                 .clicked()
                 && !matches!(w, Some(Weight::Mm(_)))
             {
@@ -122,12 +122,12 @@ fn pattern_combo(
     egui::ComboBox::from_id_salt(salt)
         .icon(crate::props::combo_icon)
         .width(ui.spacing().combo_width.max(84.0).min(ui.available_width()))
-        .selected_text(p.as_ref().map_or("As drawn", |p| p.label()))
+        .selected_text(crate::i18n::tw(p.as_ref().map_or("As drawn", |p| p.label())))
         .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(p, None, "As drawn").changed();
+            changed |= ui.selectable_value(p, None, crate::i18n::tw("As drawn")).changed();
             for n in LinePattern::NAMED {
                 let label = n.label();
-                changed |= ui.selectable_value(p, Some(n), label).changed();
+                changed |= ui.selectable_value(p, Some(n), crate::i18n::tw(label)).changed();
             }
         });
     changed
@@ -169,11 +169,11 @@ fn name_combo(
                 .max(108.0)
                 .min(ui.available_width()),
         )
-        .selected_text(v.as_deref().unwrap_or(none))
+        .selected_text(crate::i18n::tw(v.as_deref().unwrap_or(none)))
         .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(v, None, none).changed();
+            changed |= ui.selectable_value(v, None, crate::i18n::tw(none)).changed();
             for n in names {
-                changed |= ui.selectable_value(v, Some(n.clone()), n).changed();
+                changed |= ui.selectable_value(v, Some(n.clone()), crate::i18n::tw(n)).changed();
             }
         });
     changed
@@ -239,15 +239,15 @@ fn limit_ui(
             .icon(crate::props::combo_icon)
             .width(ui.available_width().min(130.0))
             .truncate()
-            .selected_text(current)
+            .selected_text(crate::i18n::tw(current))
             .show_ui(ui, |ui| {
-                if ui.selectable_label(l.is_none(), none).clicked() {
+                if ui.selectable_label(l.is_none(), crate::i18n::tw(none)).clicked() {
                     *l = None;
                     changed = true;
                 }
                 for (id, name) in levels {
                     let on = l.is_some_and(|l| l.level == *id);
-                    if ui.selectable_label(on, name).clicked() {
+                    if ui.selectable_label(on, crate::i18n::tw(name)).clicked() {
                         *l = Some(RangeLimit {
                             level: *id,
                             offset: l.map_or(0.0, |l| l.offset),
@@ -538,7 +538,7 @@ pub(super) fn look_ui(
     crate::props::row(ui, "Add", |ui| {
         egui::ComboBox::from_id_salt("add_override")
             .icon(crate::props::combo_icon)
-            .selected_text("A category…")
+            .selected_text(crate::i18n::tw("A category…"))
             .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for c in STYLED {
@@ -547,7 +547,7 @@ pub(super) fn look_ui(
                         .overrides
                         .iter()
                         .any(|o| o.target == Target::Category(c));
-                    if !taken && ui.selectable_label(false, c.label()).clicked() {
+                    if !taken && ui.selectable_label(false, crate::i18n::tw(c.label())).clicked() {
                         add = Some(c);
                     }
                 }
@@ -819,14 +819,14 @@ impl CreaBimApp {
                 crate::props::flow(ui, |ui| {
                     ui.label("Style pack");
                     egui::ComboBox::from_id_salt("pack_pick").icon(crate::props::combo_icon)
-                        .selected_text(if id.is_some() {
+                        .selected_text(crate::i18n::tw(if id.is_some() {
                             pack.name.clone()
                         } else {
                             format!("{} (built in)", pack.name)
-                        })
+                        }))
                         .show_ui(ui, |ui| {
                             for (pid, name, default) in &packs {
-                                if ui.selectable_label(*default, name).clicked() {
+                                if ui.selectable_label(*default, crate::i18n::tw(name)).clicked() {
                                     make_default = Some(*pid);
                                 }
                             }
@@ -865,7 +865,7 @@ impl CreaBimApp {
                         (Page::Templates, "View templates"),
                         (Page::Marks, "Tags and marks"),
                     ] {
-                        ui.selectable_value(&mut self.gstyles.page, p, text);
+                        ui.selectable_value(&mut self.gstyles.page, p, crate::i18n::tw(text));
                     }
                 });
                 ui.separator();
@@ -1168,7 +1168,7 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
         for (i, p) in pack.patterns.iter().enumerate() {
             cols[0].horizontal(|ui| {
                 pattern_preview(ui, p, 100.0);
-                if ui.selectable_label(*pick == i, &p.name).clicked() {
+                if ui.selectable_label(*pick == i, crate::i18n::tw(&p.name)).clicked() {
                     *pick = i;
                 }
             });
@@ -1305,7 +1305,7 @@ fn templates_page(
     let names: Vec<String> = pack.templates.iter().map(|t| t.name.clone()).collect();
     ui.columns(2, |cols| {
         for (i, n) in names.iter().enumerate() {
-            if cols[0].selectable_label(*pick == i, n).clicked() {
+            if cols[0].selectable_label(*pick == i, crate::i18n::tw(n)).clicked() {
                 *pick = i;
             }
         }

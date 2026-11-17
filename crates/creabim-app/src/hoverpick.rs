@@ -237,7 +237,7 @@ pub fn badge(
                             let label = describe(model, *id);
                             let row = ui.selectable_label(
                                 i == h.index,
-                                egui::RichText::new(label).size(12.0).color(pal.text),
+                                crate::i18n::tw(egui::RichText::new(label).size(12.0).color(pal.text)),
                             );
                             if row.hovered() {
                                 hovered_row = Some(i);

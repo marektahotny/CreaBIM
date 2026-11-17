@@ -836,7 +836,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
         ElementKind::Roof(r) => {
             // each shape with its own picture
             crate::props::Combo::new("Shape")
-                .selected_text(r.shape.label())
+                .selected_text(crate::i18n::tw(r.shape.label()))
                 .show_ui(ui, |ui| {
                     for s in RoofShape::ALL {
                         let pick = crate::props::picture_option(
@@ -1038,13 +1038,13 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     .width(w)
                     .truncate()
                     .selected_text(
-                        r.rail_profile
+                        crate::i18n::tw(r.rail_profile
                             .clone()
-                            .unwrap_or_else(|| "Square bar".into()),
+                            .unwrap_or_else(|| "Square bar".into())),
                     )
                     .show_ui(ui, |ui| {
                         if ui
-                            .selectable_label(r.rail_profile.is_none(), "Square bar")
+                            .selectable_label(r.rail_profile.is_none(), crate::i18n::tw("Square bar"))
                             .clicked()
                         {
                             r.rail_profile = None;
@@ -1052,7 +1052,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                         }
                         for n in &names {
                             if ui
-                                .selectable_label(r.rail_profile.as_deref() == Some(n.as_str()), n)
+                                .selectable_label(r.rail_profile.as_deref() == Some(n.as_str()), crate::i18n::tw(n))
                                 .clicked()
                             {
                                 r.rail_profile = Some(n.clone());
@@ -1098,10 +1098,10 @@ fn column_levels(ui: &mut egui::Ui, model: &Model, c: &mut Column) -> &'static s
     };
     let mut base = c.level;
     crate::app::helpui::combo(ui, "Base level")
-        .selected_text(name(Some(c.level)))
+        .selected_text(crate::i18n::tw(name(Some(c.level))))
         .show_ui(ui, |ui| {
             for (lid, n, _) in levels.iter().rev() {
-                ui.selectable_value(&mut base, *lid, n);
+                ui.selectable_value(&mut base, *lid, crate::i18n::tw(n));
             }
         });
     if base != c.level {
@@ -1118,12 +1118,12 @@ fn column_levels(ui: &mut egui::Ui, model: &Model, c: &mut Column) -> &'static s
     }
     let mut top = c.top_level();
     crate::app::helpui::combo(ui, "Top level")
-        .selected_text(name(top))
+        .selected_text(crate::i18n::tw(name(top)))
         .show_ui(ui, |ui| {
-            ui.selectable_value(&mut top, None, "Unconnected")
+            ui.selectable_value(&mut top, None, crate::i18n::tw("Unconnected"))
                 .on_hover_text("A fixed height, or up to the next level");
             for (lid, n, _) in levels.iter().rev() {
-                ui.selectable_value(&mut top, Some(*lid), n);
+                ui.selectable_value(&mut top, Some(*lid), crate::i18n::tw(n));
             }
         });
     if top != c.top_level() {
@@ -1197,10 +1197,10 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
                 .find(|l| l.0 == f.level)
                 .map_or(String::new(), |l| l.1.clone());
             crate::app::helpui::combo(ui, "Level")
-                .selected_text(current)
+                .selected_text(crate::i18n::tw(current))
                 .show_ui(ui, |ui| {
                     for (lid, n, _) in levels.iter().rev() {
-                        if ui.selectable_value(&mut f.level, *lid, n).changed() {
+                        if ui.selectable_value(&mut f.level, *lid, crate::i18n::tw(n)).changed() {
                             label = "Footing level";
                         }
                     }

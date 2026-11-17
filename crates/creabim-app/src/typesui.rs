@@ -85,14 +85,14 @@ fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bo
         let spacing = matches!(r, GridRule::Spacing(_));
         egui::ComboBox::from_id_salt(("curtain_rule", salt))
             .icon(crate::props::combo_icon)
-            .selected_text(r.label())
+            .selected_text(crate::i18n::tw(r.label()))
             .width(ui.available_width().min(80.0))
             .show_ui(ui, |ui| {
-                if ui.selectable_label(spacing, "Spacing").clicked() && !spacing {
+                if ui.selectable_label(spacing, crate::i18n::tw("Spacing")).clicked() && !spacing {
                     *r = GridRule::Spacing(1.5);
                     changed = true;
                 }
-                if ui.selectable_label(!spacing, "Count").clicked() && spacing {
+                if ui.selectable_label(!spacing, crate::i18n::tw("Count")).clicked() && spacing {
                     *r = GridRule::Count(4);
                     changed = true;
                 }
@@ -134,7 +134,7 @@ pub(super) fn curtain_fields(ui: &mut egui::Ui, c: &mut CurtainGrid) -> &'static
     crate::props::flow(ui, |ui| {
         ui.label("Panels");
         for k in PanelKind::ALL {
-            if ui.selectable_value(&mut c.panel, k, k.label()).changed() {
+            if ui.selectable_value(&mut c.panel, k, crate::i18n::tw(k.label())).changed() {
                 label = "Curtain panels";
             }
         }
@@ -174,13 +174,13 @@ fn material_pick(
         ui.label("Material");
         egui::ComboBox::from_id_salt(("type_material", salt))
             .icon(crate::props::combo_icon)
-            .selected_text(shown)
+            .selected_text(crate::i18n::tw(shown))
             .width(ui.available_width().min(150.0))
             .truncate()
             .show_ui(ui, |ui| {
-                changed |= ui.selectable_value(current, None, "By type").changed();
+                changed |= ui.selectable_value(current, None, crate::i18n::tw("By type")).changed();
                 for (id, n) in &materials {
-                    changed |= ui.selectable_value(current, Some(*id), n).changed();
+                    changed |= ui.selectable_value(current, Some(*id), crate::i18n::tw(n)).changed();
                 }
             });
     });
@@ -206,15 +206,15 @@ fn assembly_pick(
         ui.label("Assembly");
         egui::ComboBox::from_id_salt("type_assembly")
             .icon(crate::props::combo_icon)
-            .selected_text(shown)
+            .selected_text(crate::i18n::tw(shown))
             .width(ui.available_width().min(170.0))
             .truncate()
             .show_ui(ui, |ui| {
                 changed |= ui
-                    .selectable_value(current, None, "None (single material)")
+                    .selectable_value(current, None, crate::i18n::tw("None (single material)"))
                     .changed();
                 for (id, n) in &choices {
-                    changed |= ui.selectable_value(current, Some(*id), n).changed();
+                    changed |= ui.selectable_value(current, Some(*id), crate::i18n::tw(n)).changed();
                 }
             });
     });
@@ -272,10 +272,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                     ui.label("Location line");
                     egui::ComboBox::from_id_salt("type_location")
                         .icon(crate::props::combo_icon)
-                        .selected_text(w.location.label())
+                        .selected_text(crate::i18n::tw(w.location.label()))
                         .show_ui(ui, |ui| {
                             for l in creabim_core::LocationLine::ALL {
-                                if ui.selectable_value(&mut w.location, l, l.label()).changed() {
+                                if ui.selectable_value(&mut w.location, l, crate::i18n::tw(l.label())).changed() {
                                     label = "Type location line";
                                 }
                             }
@@ -720,12 +720,12 @@ impl CreaBimApp {
         let mut chosen = current;
         crate::props::flow(ui, |ui| {
             crate::app::helpui::combo(ui, "Type")
-                .selected_text(shown)
+                .selected_text(crate::i18n::tw(shown))
                 .width(ui.available_width().min(180.0))
                 .show_ui(ui, |ui| {
                     // an object is its type: it can change type, not lose it
                     if cat != TypeCategory::Object {
-                        ui.selectable_value(&mut chosen, None, "No type");
+                        ui.selectable_value(&mut chosen, None, crate::i18n::tw("No type"));
                     }
                     let mut curtain_header = false;
                     for (tid, n, curtain) in &choices {
@@ -733,7 +733,7 @@ impl CreaBimApp {
                             curtain_header = true;
                             ui.separator();
                         }
-                        ui.selectable_value(&mut chosen, Some(*tid), n);
+                        ui.selectable_value(&mut chosen, Some(*tid), crate::i18n::tw(n));
                     }
                     if choices.is_empty() {
                         ui.label(egui::RichText::new("No types yet: add the starters").weak());
@@ -981,7 +981,7 @@ impl CreaBimApp {
                                     name.to_string()
                                 };
                                 if ui
-                                    .selectable_label(current == Some(*id), text)
+                                    .selectable_label(current == Some(*id), crate::i18n::tw(text))
                                     .on_hover_text(t.summary(model))
                                     .clicked()
                                 {

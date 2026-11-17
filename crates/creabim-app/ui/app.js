@@ -9,6 +9,11 @@
   let S = null; // the last state
   const local = { open: {}, filter: "", stack: [] };
 
+  // text in the interface's language: the app sends its table as I18N
+  function T(s) {
+    return (window.I18N && window.I18N[s]) || s;
+  }
+
   function post(msg) {
     window.ipc.postMessage(JSON.stringify(msg));
   }
@@ -185,7 +190,7 @@
       t.kind === "menu" ? `<button class="tool ${t.open ? "on" : ""}" data-popup="${esc(t.key)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}${icon("chevron-down", "tchev")}</button>` :
       `<button class="tool ${t.active ? "on" : ""} ${t.off ? "off" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}</button>`).join("");
     const html =
-      `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="About, updates, settings and exit"><span class="logo">${mark(true)}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
+      `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="${T("About, updates, settings and exit")}"><span class="logo">${mark(true)}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
       `<div class="quick">${quick}</div><span class="spacer"></span><div class="doc" title="${esc(S.doc.path)}${S.doc.unsaved === false ? "" : " · unsaved changes"}">${S.doc.unsaved === false ? "" : `<span class="dot"></span>`}${esc(S.doc.name)}</div>${S.right.map(control).join("")}</div>` +
       `<div class="bar2"><div class="ttabs">${tabs}</div><div class="tools">${tools}</div><span class="spacer"></span></div>` +
       // the tool options strip: the tool in use and what it can be set to,
@@ -201,12 +206,12 @@
       `<span class="spacer"></span>` +
       (S.tool_options.length && S.options.length ? `<span class="vsep group-sep"></span>` : "") +
       `<div class="options view-opts">${shown(S.options).map((c) => control(c)).join("")}</div>` +
-      (S.more ? `<button class="dd more-btn ${S.popup === "more" ? "open" : ""}" data-popup="more" title="${S.more} more ${S.more === 1 ? "option" : "options"} that don't fit here">${icon("ellipsis")}<span class="v">More</span></button>` : "") +
+      (S.more ? `<button class="dd more-btn ${S.popup === "more" ? "open" : ""}" data-popup="more" title="${T(S.more === 1 ? "{} more option that doesn't fit here" : "{} more options that don't fit here").replace("{}", S.more)}">${icon("ellipsis")}<span class="v">${T("More")}</span></button>` : "") +
       `</div>` +
       // every control at its own width, out of sight, to measure
       `<div class="bar3 measure" aria-hidden="true"><div class="m-tool">${S.tool_options.map((c) => control(c)).join("")}</div>` +
       `<div class="m-view">${S.options.map((c) => control(c)).join("")}</div>` +
-      `<span class="m-more"><button class="dd more-btn">${icon("ellipsis")}<span class="v">More</span></button></span></div>`;
+      `<span class="m-more"><button class="dd more-btn">${icon("ellipsis")}<span class="v">${T("More")}</span></button></span></div>`;
     const cut = html.indexOf(`<div class="bar3 measure"`);
     // a row scrolled sideways stays where it was
     const scrolled = ROWS.map((sel) => { const r = root.querySelector(sel); return r ? r.scrollLeft : 0; });
@@ -293,9 +298,9 @@
       return;
     }
     let html = `<div class="browser"><div class="browser-head"><div class="title">${icon("layout-dashboard")}Project<span class="count">${esc(S.count)}</span>` +
-      `<button class="gact fold" data-fold="${anyOpen ? 0 : 1}" title="${anyOpen ? "Collapse every group" : "Expand every group"}">${icon(anyOpen ? "chevrons-down-up" : "chevrons-up-down")}</button>` +
+      `<button class="gact fold" data-fold="${anyOpen ? 0 : 1}" title="${anyOpen ? T("Collapse every group") : T("Expand every group")}">${icon(anyOpen ? "chevrons-down-up" : "chevrons-up-down")}</button>` +
       `</div>` +
-      `<label class="search">${icon("search")}<input data-key="filter" data-live="1" placeholder="Find views and elements" value="${esc(local.filter)}"></label></div><div class="tree">`;
+      `<label class="search">${icon("search")}<input data-key="filter" data-live="1" placeholder="${T("Find views and elements")}" value="${esc(local.filter)}"></label></div><div class="tree">`;
     let any = false;
     for (const g of S.groups) {
       const rows = f ? g.rows.filter((r) => r.name.toLowerCase().includes(f) || (r.mark && r.mark.toLowerCase().includes(f))) : g.rows;
@@ -389,7 +394,7 @@
       const label = m.label ? `<span class="v">${esc(m.label)}</span>` : "";
       html += `<span class="qsep"></span><button class="dd ${m.on ? "on" : ""} ${S.popup === m.key ? "open" : ""}" data-popup="${esc(m.key)}" title="${esc(m.hint)}">${icon(m.icon)}${label}${icon("chevron-down", "chev")}</button>`;
     }
-    html += `<span class="qsep"></span><button class="dd ${S.popup === S.look.key ? "open" : ""}" data-popup="${esc(S.look.key)}" title="${esc(S.look.hint)}">${icon("axis-3d")}<span class="v">View</span>${icon("chevron-down", "chev")}</button></div>`;
+    html += `<span class="qsep"></span><button class="dd ${S.popup === S.look.key ? "open" : ""}" data-popup="${esc(S.look.key)}" title="${esc(S.look.hint)}">${icon("axis-3d")}<span class="v">${T("View")}</span>${icon("chevron-down", "chev")}</button></div>`;
     root.innerHTML = html;
   }
 
@@ -405,12 +410,12 @@
     const found = S.items.filter((i) => i.id && words.every((w) => i.label.toLowerCase().includes(w)));
     local.found = found;
     local.hot = Math.max(0, Math.min(local.hot || 0, found.length - 1));
-    let html = `<div class="palette"><label class="pq">${icon("search")}<input data-key="palette" data-live="1" placeholder="Type a command, a tool or a view" value="${esc(local.query || "")}"></label><div class="pl">`;
+    let html = `<div class="palette"><label class="pq">${icon("search")}<input data-key="palette" data-live="1" placeholder="${T("Type a command, a tool or a view")}" value="${esc(local.query || "")}"></label><div class="pl">`;
     found.slice(0, 60).forEach((i, n) => {
       html += `<button class="mi ${n === local.hot ? "hot" : ""}" data-act="${esc(i.id)}" data-n="${n}" title="${esc(i.hint)}"><span class="ck">${i.icon ? icon(i.icon) : ""}</span><span class="label">${esc(i.label)}</span>${i.key ? `<span class="key">${esc(i.key)}</span>` : ""}</button>`;
     });
-    if (found.length === 0) html += `<div class="empty">Nothing matches.</div>`;
-    html += `</div><div class="pfoot"><span>↑↓ choose</span><span>Enter run</span><span>Esc close</span></div></div>`;
+    if (found.length === 0) html += `<div class="empty">${T("Nothing matches.")}</div>`;
+    html += `</div><div class="pfoot"><span>${T("↑↓ choose")}</span><span>${T("Enter run")}</span><span>${T("Esc close")}</span></div></div>`;
     keepFocus(() => { root.innerHTML = html; });
     const input = root.querySelector("input[data-key=palette]");
     if (input && document.activeElement !== input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
@@ -503,10 +508,10 @@
     // Create and Cancel were out of reach below the edge (issue 24)
     const was = root.querySelector(".np-body");
     const top = was && !fresh ? was.scrollTop : 0;
-    root.innerHTML = `<div class="np"><div class="np-head"><span class="logo np-logo">${woven("new", fresh)}</span><b>${esc(d.title)}</b><span class="np-esc">Esc to close</span></div>` +
+    root.innerHTML = `<div class="np"><div class="np-head"><span class="logo np-logo">${woven("new", fresh)}</span><b>${esc(d.title)}</b><span class="np-esc">${T("Esc to close")}</span></div>` +
       `<div class="np-body"><div class="np-starts">${d.starts.map((c) => card(c, true)).join("")}</div>` +
       `<div class="np-sub">${esc(d.samples_title)}</div><div class="np-samples">${d.samples.map((c) => card(c, false)).join("")}</div></div>` +
-      `<div class="np-foot"><span>${esc(d.note)}</span><span class="spacer"></span><button class="np-btn" data-np="cancel">Cancel</button><button class="np-btn primary" data-np="create">Create</button></div></div>`;
+      `<div class="np-foot"><span>${esc(d.note)}</span><span class="spacer"></span><button class="np-btn" data-np="cancel">${T("Cancel")}</button><button class="np-btn primary" data-np="create">${T("Create")}</button></div></div>`;
     const body = root.querySelector(".np-body");
     if (body) {
       body.scrollTop = top;
@@ -541,22 +546,22 @@
     // drawn for the question stays, so the nest settles where it is)
     if (!dlg || (asking && (dlg.dataset.k !== key || dlg.classList.contains("saved")))) {
       const fn = `<span class="fn">${esc(c.file)}</span>`;
-      const title = failed ? `Couldn't save ${fn}` : c.fresh ? "Save your new project before closing?" : `Save ${fn} before closing?`;
-      const line = failed ? "Your changes are still open. Nothing was lost." : esc(c.line);
+      const title = failed ? T("Couldn't save {}").replace("{}", fn) : c.fresh ? T("Save your new project before closing?") : T("Save {} before closing?").replace("{}", fn);
+      const line = failed ? T("Your changes are still open. Nothing was lost.") : esc(c.line);
       root.innerHTML = `<div class="cs unsaved" role="dialog" aria-modal="true" aria-labelledby="cs-t">` +
         `<div class="cs-body"><div class="cs-tile unsaved">${unsavedNest()}</div>` +
         `<div><h2 id="cs-t">${title}</h2><div class="cs-sub">${line}</div></div>` +
         (failed ? `<div class="cs-err">${esc(c.error)}</div>` : "") + `</div>` +
-        `<div class="cs-foot"><span class="cs-hints"><kbd>Enter</kbd> save <kbd>Esc</kbd> back</span><span class="cs-sp"></span>` +
+        `<div class="cs-foot"><span class="cs-hints"><kbd>Enter</kbd> ${T("save")} <kbd>Esc</kbd> ${T("back")}</span><span class="cs-sp"></span>` +
         // (icons stand in for the words when the window is narrow)
-        `<button class="cs-btn danger" data-cs="discard" title="Don't save: close and let the changes go">${icon("trash-2", "ic")}<span class="tx">Don't save</span></button>` +
-        `<button class="cs-btn" data-cs="cancel" title="Cancel: back to the project (Esc)">${icon("undo-2", "ic")}<span class="tx">Cancel</span></button>` +
-        `<button class="cs-btn primary focus" data-cs="save" title="Save, then close (Enter)"><span class="spin"></span>${icon("save", "ic")}<span class="lbl tx"></span></button></div></div>`;
+        `<button class="cs-btn danger" data-cs="discard" title="${T("Don't save: close and let the changes go")}">${icon("trash-2", "ic")}<span class="tx">${T("Don't save")}</span></button>` +
+        `<button class="cs-btn" data-cs="cancel" title="${T("Cancel: back to the project (Esc)")}">${icon("undo-2", "ic")}<span class="tx">${T("Cancel")}</span></button>` +
+        `<button class="cs-btn primary focus" data-cs="save" title="${T("Save, then close (Enter)")}"><span class="spin"></span>${icon("save", "ic")}<span class="lbl tx"></span></button></div></div>`;
       dlg = root.querySelector(".cs");
       dlg.dataset.k = key;
       local.closeH = null;
     }
-    const main = c.fresh || failed ? "Save as…" : "Save";
+    const main = c.fresh || failed ? T("Save as…") : T("Save");
     const lbl = dlg.querySelector(".lbl");
     dlg.classList.toggle("saving", c.phase === "saving");
     if (c.phase === "saved") {
@@ -564,14 +569,14 @@
         dlg.querySelectorAll(".unsaved").forEach((e) => { e.classList.remove("unsaved"); e.classList.add("saved"); });
         dlg.classList.remove("unsaved");
         dlg.classList.add("saved", "closing");
-        dlg.querySelector("h2").textContent = "Saved.";
+        dlg.querySelector("h2").textContent = T("Saved.");
         dlg.querySelector(".cs-sub").innerHTML = `Everything is in <b>${esc(c.file)}</b>. Closing CreaBIM…`;
         const err = dlg.querySelector(".cs-err");
         if (err) err.remove();
       }
-      lbl.textContent = "Saved";
+      lbl.textContent = T("Saved");
     } else {
-      lbl.textContent = c.phase === "saving" ? "Saving…" : main;
+      lbl.textContent = c.phase === "saving" ? T("Saving…") : main;
     }
     closeSize();
   }
@@ -613,7 +618,7 @@
     // the button spins at once; the app saves on its next frame
     if (what === "save") {
       dlg.classList.add("saving");
-      dlg.querySelector(".lbl").textContent = "Saving…";
+      dlg.querySelector(".lbl").textContent = T("Saving…");
     }
     post({ t: "closeask", do: what });
   }
@@ -683,7 +688,7 @@
     return `<div class="hp"><div class="hp-title">${h.icon ? icon(h.icon) : icon("circle-help")}<b>${esc(h.title)}</b>` +
       (h.keys ? `<span class="hp-key">${esc(h.keys)}</span>` : "") + `</div>` +
       h.lines.map((l) => `<p>${inline(l)}</p>`).join("") +
-      (h.page ? `<button class="hp-more" data-act="help:${esc(h.page)}">${icon("book-open")}<span>Read more in the guide</span>${icon("arrow-right")}</button>` : "") +
+      (h.page ? `<button class="hp-more" data-act="help:${esc(h.page)}">${icon("book-open")}<span>${T("Read more in the guide")}</span>${icon("arrow-right")}</button>` : "") +
       `</div>`;
   }
 
@@ -804,7 +809,7 @@
   function mdImage(alt, src) {
     const url = S && S.images && S.images[src];
     // click a picture to see it as wide as the panel lets it, again to go back
-    return url ? `<figure class="zoomable" title="Click to enlarge"><img src="${url}" alt="${alt}"><figcaption>${alt}</figcaption></figure>` : "";
+    return url ? `<figure class="zoomable" title="${T("Click to enlarge")}"><img src="${url}" alt="${alt}"><figcaption>${alt}</figcaption></figure>` : "";
   }
 
   // Inline marks, on text already escaped.
@@ -870,7 +875,7 @@
       const l = lines[i];
       let m;
       if (/^\s*$/.test(l)) { flush(); i++; continue; }
-      if (/^<!--\s*upcoming\b.*-->\s*$/.test(l)) { flush(); html += `<div class="soon"><div class="soon-tag">Coming soon</div>`; i++; continue; }
+      if (/^<!--\s*upcoming\b.*-->\s*$/.test(l)) { flush(); html += `<div class="soon"><div class="soon-tag">${T("Coming soon")}</div>`; i++; continue; }
       if (/^<!--\s*\/upcoming\s*-->\s*$/.test(l)) { flush(); html += `</div>`; i++; continue; }
       if (/^<!--.*-->\s*$/.test(l)) { i++; continue; }
       if ((m = l.match(/^(#{1,4})\s+(.*)$/))) {
@@ -947,11 +952,11 @@
     if (q.trim()) {
       const found = search(q);
       local.hfound = found;
-      body = `<div class="hres-n">${found.length ? found.length + (found.length === 1 ? " page" : " pages") : "Nothing found"} for “${esc(q)}”</div>` +
+      body = `<div class="hres-n">${found.length ? found.length + " " + T(found.length === 1 ? "page" : "pages") : T("Nothing found")} ${T("for")} “${esc(q)}”</div>` +
         found.map((f) => `<button class="hres" data-act="help:${esc(f.p.id)}"><b>${esc(f.p.title)}</b><span class="hsec">${esc(f.p.section)}</span><span class="snip">${f.snip}</span></button>`).join("");
     } else if (!page) {
       // the contents: every page by section
-      body = `<article class="hdoc"><h1>Help</h1><p>Pick a page, or search the guide above. <kbd>F1</kbd> opens the page about the tool you are using.</p>`;
+      body = `<article class="hdoc"><h1>${T("Help")}</h1><p>${T("Pick a page, or search the guide above.")} <kbd>F1</kbd> ${T("opens the page about the tool you are using.")}</p>`;
       let section = null;
       for (const p of pages) {
         if (p.section !== section) {
@@ -968,7 +973,7 @@
       // the woven mark over each page, woven once as the page opens
       const opened = local.hwoven !== page.id;
       local.hwoven = page.id;
-      body = `<div class="help-mark logo">${woven("guide", opened)}</div><div class="crumb"><a data-act="help:contents">Contents</a> › ${esc(page.section)}</div><article class="hdoc">${foldSections(markdown(page.md), page.id)}</article>` +
+      body = `<div class="help-mark logo">${woven("guide", opened)}</div><div class="crumb"><a data-act="help:contents">${T("Contents")}</a> › ${esc(page.section)}</div><article class="hdoc">${foldSections(markdown(page.md), page.id)}</article>` +
         // two equal cards, a small label over the page's title (MU30)
         `<div class="pn">${prev ? `<a class="pn-card" data-act="help:${esc(prev.id)}"><small>← Previous</small><span>${esc(prev.title)}</span></a>` : "<span></span>"}` +
         `${next ? `<a class="pn-card next" data-act="help:${esc(next.id)}"><small>Next →</small><span>${esc(next.title)}</span></a>` : "<span></span>"}</div>`;
@@ -977,10 +982,10 @@
     const scroller = root.querySelector(".help-body");
     const keep = scroller && local.hwhere === where ? scroller.scrollTop : null;
     root.innerHTML = `<div class="help"><div class="help-head">` +
-      `<button class="ibtn" data-act="help.back" title="Back" ${S.back ? "" : "disabled"}>${icon("arrow-left")}</button>` +
-      `<button class="ibtn ${page || q ? "" : "on"}" data-act="help:contents" title="Contents">${icon("book-open")}</button>` +
-      `<label class="search">${icon("search")}<input data-key="helpq" data-live="1" placeholder="Search the guide" value="${esc(q)}"></label>` +
-      `<button class="ibtn" data-act="help.close" title="Close (F1 or Esc)">${icon("x")}</button></div>` +
+      `<button class="ibtn" data-act="help.back" title="${T("Back")}" ${S.back ? "" : "disabled"}>${icon("arrow-left")}</button>` +
+      `<button class="ibtn ${page || q ? "" : "on"}" data-act="help:contents" title="${T("Contents")}">${icon("book-open")}</button>` +
+      `<label class="search">${icon("search")}<input data-key="helpq" data-live="1" placeholder="${T("Search the guide")}" value="${esc(q)}"></label>` +
+      `<button class="ibtn" data-act="help.close" title="${T("Close (F1 or Esc)")}">${icon("x")}</button></div>` +
       `<div class="help-body">${body}</div></div>`;
     const b = root.querySelector(".help-body");
     if (keep !== null) b.scrollTop = keep;

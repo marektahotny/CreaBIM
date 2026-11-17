@@ -749,13 +749,13 @@ impl CreaBimApp {
         let mut pick = None;
         egui::ComboBox::from_id_salt("assign_as")
             .icon(crate::props::combo_icon)
-            .selected_text("Assign as…")
+            .selected_text(crate::i18n::tw("Assign as…"))
             .show_ui(ui, |ui| {
                 for a in creabim_exchange::Assign::menu() {
                     if matches!(a, creabim_exchange::Assign::Class(_)) && !is_mesh {
                         continue;
                     }
-                    if ui.selectable_label(false, a.label()).clicked() {
+                    if ui.selectable_label(false, crate::i18n::tw(a.label())).clicked() {
                         pick = Some(a);
                     }
                 }
@@ -4936,7 +4936,7 @@ impl CreaBimApp {
         // + Add modifier: grouped, each with its icon and what it is for
         egui::ComboBox::from_id_salt(("add_modifier", id))
             .icon(crate::props::combo_icon)
-            .selected_text("+ Add modifier")
+            .selected_text(crate::i18n::tw("+ Add modifier"))
             .width(ui.available_width())
             .height(600.0)
             .show_ui(ui, |ui| {
@@ -4956,7 +4956,7 @@ impl CreaBimApp {
                             let (ir, _) = ui
                                 .allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
                             crate::svgicon::paint(ui.painter(), ir.shrink(2.0), k.icon(), muted);
-                            ui.selectable_label(false, k.label())
+                            ui.selectable_label(false, crate::i18n::tw(k.label()))
                         })
                         .inner
                         .on_hover_text(hint);
@@ -5196,11 +5196,11 @@ impl CreaBimApp {
                             crate::props::row(ui, "Path", |ui| {
                                 egui::ComboBox::from_id_salt(("mod.path", id, i))
                                     .icon(crate::props::combo_icon)
-                                    .selected_text(if path.len() < 2 { "Pick a sketch or guide".to_string() } else { format!("{} points", path.len()) })
+                                    .selected_text(crate::i18n::tw(if path.len() < 2 { "Pick a sketch or guide".to_string() } else { format!("{} points", path.len()) }))
                                     .width(ui.available_width())
                                     .show_ui(ui, |ui| {
                                         for (name, pts) in &paths {
-                                            if ui.selectable_label(false, name).clicked() {
+                                            if ui.selectable_label(false, crate::i18n::tw(name)).clicked() {
                                                 *path = pts.clone();
                                                 edited = true;
                                             }
@@ -5216,7 +5216,7 @@ impl CreaBimApp {
                             crate::props::row(ui, "Across", |ui| {
                                 crate::props::flow(ui, |ui| {
                                     for a in Axis::ALL {
-                                        if ui.selectable_value(axis, a, a.label()).changed() {
+                                        if ui.selectable_value(axis, a, crate::i18n::tw(a.label())).changed() {
                                             edited = true;
                                         }
                                     }
@@ -5725,7 +5725,7 @@ impl CreaBimApp {
                     .desired_width((ui.available_width() - 64.0).max(60.0)),
             );
             if ui
-                .selectable_label(as_todo, "To-do")
+                .selectable_label(as_todo, crate::i18n::tw("To-do"))
                 .on_hover_text("Add it as a to-do (else a note)")
                 .clicked()
             {
@@ -6680,12 +6680,12 @@ impl CreaBimApp {
         };
         egui::ComboBox::from_id_salt("workplane")
             .icon(crate::props::combo_icon)
-            .selected_text(text)
+            .selected_text(crate::i18n::tw(text))
             .width(ui.available_width().min(150.0))
             .truncate()
             .show_ui(ui, |ui| {
                 if ui
-                    .selectable_label(self.workplane.is_none(), "Level (follows the plan)")
+                    .selectable_label(self.workplane.is_none(), crate::i18n::tw("Level (follows the plan)"))
                     .clicked()
                 {
                     self.workplane = None;
@@ -6724,7 +6724,7 @@ impl CreaBimApp {
         crate::props::flow(ui, |ui| {
             for t in Tool::ALL {
                 if ui
-                    .selectable_label(self.plan.tool == t, t.label())
+                    .selectable_label(self.plan.tool == t, crate::i18n::tw(t.label()))
                     .on_hover_text(t.hint())
                     .clicked()
                 {
@@ -6740,12 +6740,12 @@ impl CreaBimApp {
             );
             egui::ComboBox::from_id_salt("pivot")
                 .icon(crate::props::combo_icon)
-                .selected_text(self.plan.pivot.label())
+                .selected_text(crate::i18n::tw(self.plan.pivot.label()))
                 .width(ui.available_width().min(150.0))
                 .truncate()
                 .show_ui(ui, |ui| {
                     for p in crate::modal::Pivot::ALL {
-                        ui.selectable_value(&mut self.plan.pivot, p, p.label());
+                        ui.selectable_value(&mut self.plan.pivot, p, crate::i18n::tw(p.label()));
                     }
                 });
             self.workplane_bar(ui);
@@ -6768,19 +6768,19 @@ impl CreaBimApp {
             };
             egui::ComboBox::from_id_salt("view")
                 .icon(crate::props::combo_icon)
-                .selected_text(current)
+                .selected_text(crate::i18n::tw(current))
                 .width(ui.available_width().min(190.0))
                 .truncate()
                 .show_ui(ui, |ui| {
                     for (id, name, _) in views {
-                        ui.selectable_value(&mut self.active_view, Some(id), name);
+                        ui.selectable_value(&mut self.active_view, Some(id), crate::i18n::tw(name));
                     }
                     if !sheet_list.is_empty() {
                         ui.separator();
                         ui.label(egui::RichText::new("Sheets").weak());
                     }
                     for (id, name) in sheet_list {
-                        ui.selectable_value(&mut self.active_view, Some(id), name);
+                        ui.selectable_value(&mut self.active_view, Some(id), crate::i18n::tw(name));
                     }
                 });
             if let Some(id) = self.active_view.filter(|id| self.is_sheet(*id)) {
@@ -6850,10 +6850,10 @@ impl CreaBimApp {
             ui.add(crate::units::drag(&mut self.plan.wall_thickness).range(0.05..=1.0));
             egui::ComboBox::from_id_salt("wall_location")
                 .icon(crate::props::combo_icon)
-                .selected_text(self.plan.wall_location.label())
+                .selected_text(crate::i18n::tw(self.plan.wall_location.label()))
                 .show_ui(ui, |ui| {
                     for l in creabim_core::LocationLine::ALL {
-                        ui.selectable_value(&mut self.plan.wall_location, l, l.label());
+                        ui.selectable_value(&mut self.plan.wall_location, l, crate::i18n::tw(l.label()));
                     }
                 });
             ui.checkbox(&mut self.plan.wall_flip, "Exterior left");
@@ -6874,7 +6874,7 @@ impl CreaBimApp {
         let mut chosen = None;
         egui::ComboBox::from_id_salt("place_view")
             .icon(crate::props::combo_icon)
-            .selected_text("Place view…")
+            .selected_text(crate::i18n::tw("Place view…"))
             .width(ui.available_width().min(150.0))
             .truncate()
             .show_ui(ui, |ui| {
@@ -6884,7 +6884,7 @@ impl CreaBimApp {
                     } else {
                         name
                     };
-                    if ui.selectable_label(false, label).clicked() {
+                    if ui.selectable_label(false, crate::i18n::tw(label)).clicked() {
                         chosen = Some(id);
                     }
                 }
@@ -6950,11 +6950,11 @@ impl CreaBimApp {
         let mut changed = false;
         let mut create = false;
         crate::app::helpui::combo(ui, "Material")
-            .selected_text(name)
+            .selected_text(crate::i18n::tw(name))
             .show_ui(ui, |ui| {
-                changed |= ui.selectable_value(current, None, "By type").changed();
+                changed |= ui.selectable_value(current, None, crate::i18n::tw("By type")).changed();
                 for (id, n) in &materials {
-                    changed |= ui.selectable_value(current, Some(*id), n).changed();
+                    changed |= ui.selectable_value(current, Some(*id), crate::i18n::tw(n)).changed();
                 }
                 ui.separator();
                 create = ui.button("New material…").clicked();
@@ -7076,10 +7076,10 @@ impl CreaBimApp {
                 // cut away, joined on, or only what both hold (MU38)
                 egui::ComboBox::from_id_salt(("cut.op", *cid))
                     .icon(crate::props::combo_icon)
-                    .selected_text(c.op.label())
+                    .selected_text(crate::i18n::tw(c.op.label()))
                     .show_ui(ui, |ui| {
                         for op in BoolOp::ALL {
-                            if ui.selectable_label(op == c.op, op.label()).clicked() && op != c.op {
+                            if ui.selectable_label(op == c.op, crate::i18n::tw(op.label())).clicked() && op != c.op {
                                 set_op = Some((*cid, op));
                             }
                         }
@@ -7096,10 +7096,10 @@ impl CreaBimApp {
         let mut add = None;
         egui::ComboBox::from_id_salt("cut_with")
             .icon(crate::props::combo_icon)
-            .selected_text("Subtract…")
+            .selected_text(crate::i18n::tw("Subtract…"))
             .show_ui(ui, |ui| {
                 for (_, cid, name) in &candidates {
-                    if ui.selectable_label(false, name).clicked() {
+                    if ui.selectable_label(false, crate::i18n::tw(name)).clicked() {
                         add = Some(*cid);
                     }
                 }
@@ -7644,15 +7644,15 @@ impl CreaBimApp {
                         ui.selectable_value(
                             &mut x.scope,
                             ExportScope::All,
-                            format!("All ({})", all.len()),
+                            crate::i18n::tw(format!("All ({})", all.len())),
                         );
                         ui.selectable_value(
                             &mut x.scope,
                             ExportScope::Chosen,
-                            format!("Chosen ({})", x.chosen.len()),
+                            crate::i18n::tw(format!("Chosen ({})", x.chosen.len())),
                         );
                         ui.add_enabled_ui(this.is_some(), |ui| {
-                            ui.selectable_value(&mut x.scope, ExportScope::This, "This one")
+                            ui.selectable_value(&mut x.scope, ExportScope::This, crate::i18n::tw("This one"))
                                 .on_disabled_hover_text("Open a sheet first");
                         });
                     })
@@ -7675,8 +7675,8 @@ impl CreaBimApp {
                 }
                 crate::props::row(ui, "As", |ui| {
                     crate::props::flow(ui, |ui| {
-                        ui.selectable_value(&mut x.each, false, "One PDF");
-                        ui.selectable_value(&mut x.each, true, "A PDF each");
+                        ui.selectable_value(&mut x.each, false, crate::i18n::tw("One PDF"));
+                        ui.selectable_value(&mut x.each, true, crate::i18n::tw("A PDF each"));
                     })
                 });
                 crate::props::row(ui, "Paper", |ui| {
@@ -7813,11 +7813,11 @@ impl CreaBimApp {
             ui.spacing_mut().interact_size.x = w;
             egui::ComboBox::from_id_salt(("trace.add", v))
                 .icon(crate::props::combo_icon)
-                .selected_text("+ View")
+                .selected_text(crate::i18n::tw("+ View"))
                 .width(w)
                 .show_ui(ui, |ui| {
                     for (id, name) in &others {
-                        if ui.selectable_label(false, name).clicked() {
+                        if ui.selectable_label(false, crate::i18n::tw(name)).clicked() {
                             add = Some(RefSource::View(*id));
                         }
                     }
@@ -8076,14 +8076,14 @@ impl CreaBimApp {
             crate::props::row(ui, title, |ui| {
                 egui::ComboBox::from_id_salt(("ref.views", id))
                     .icon(crate::props::combo_icon)
-                    .selected_text(match n {
+                    .selected_text(crate::i18n::tw(match n {
                         0 => "No view".to_string(),
                         1 => views
                             .iter()
                             .find(|(v, _)| r.shown_in.contains(v))
                             .map_or("1 view".into(), |(_, n)| n.clone()),
                         n => format!("{n} views"),
-                    })
+                    }))
                     .width(ui.available_width())
                     .show_ui(ui, |ui| {
                         for (v, name) in &views {
@@ -8590,11 +8590,11 @@ impl CreaBimApp {
                             crate::props::row(ui, "Drawing style", |ui| {
                                 egui::ComboBox::from_id_salt("section.panel.drawing_style")
                                     .icon(crate::props::combo_icon)
-                                    .selected_text(style.label())
+                                    .selected_text(crate::i18n::tw(style.label()))
                                     .width(ui.available_width())
                                     .show_ui(ui, |ui| {
                                         for s in creabim_core::graphics::DrawingStyle::ALL {
-                                            ui.selectable_value(&mut style, s, s.label())
+                                            ui.selectable_value(&mut style, s, crate::i18n::tw(s.label()))
                                                 .on_hover_text(s.hint());
                                         }
                                     });
@@ -9013,10 +9013,10 @@ impl CreaBimApp {
                 ElementKind::View(v) if matches!(v.kind, ViewKind::Schedule { .. }) => {
                     if let ViewKind::Schedule { category, by_type } = &mut v.kind {
                         crate::app::helpui::combo(ui, "Lists")
-                            .selected_text(category.label())
+                            .selected_text(crate::i18n::tw(category.label()))
                             .show_ui(ui, |ui| {
                                 for c in ScheduleCategory::ALL {
-                                    if ui.selectable_value(category, c, c.label()).changed() {
+                                    if ui.selectable_value(category, c, crate::i18n::tw(c.label())).changed() {
                                         label = "Schedule category"
                                     }
                                 }
@@ -9061,10 +9061,10 @@ impl CreaBimApp {
                                 .find(|(u, _)| *u == v.underlay)
                                 .map_or("None".to_string(), |(_, l)| l.clone());
                             crate::app::helpui::combo(ui, "Underlay")
-                                .selected_text(current)
+                                .selected_text(crate::i18n::tw(current))
                                 .show_ui(ui, |ui| {
                                     for (u, l) in &choices {
-                                        if ui.selectable_value(&mut v.underlay, *u, l).changed() {
+                                        if ui.selectable_value(&mut v.underlay, *u, crate::i18n::tw(l)).changed() {
                                             label = "View underlay"
                                         }
                                     }
@@ -9156,7 +9156,7 @@ impl CreaBimApp {
                         crate::props::row(ui, "Drawing style", |ui| {
                             egui::ComboBox::from_id_salt("section.drawing_style")
                                 .icon(crate::props::combo_icon)
-                                .selected_text(v.graphics.drawing_style.label())
+                                .selected_text(crate::i18n::tw(v.graphics.drawing_style.label()))
                                 .width(ui.available_width())
                                 .show_ui(ui, |ui| {
                                     for s in creabim_core::graphics::DrawingStyle::ALL {
@@ -9164,7 +9164,7 @@ impl CreaBimApp {
                                             .selectable_value(
                                                 &mut v.graphics.drawing_style,
                                                 s,
-                                                s.label(),
+                                                crate::i18n::tw(s.label()),
                                             )
                                             .on_hover_text(s.hint())
                                             .changed()
@@ -9195,10 +9195,10 @@ impl CreaBimApp {
                         egui::ComboBox::from_id_salt(("sheet.paper", id))
                             .icon(crate::props::combo_icon)
                             .width(ui.available_width())
-                            .selected_text(current)
+                            .selected_text(crate::i18n::tw(current))
                             .show_ui(ui, |ui| {
                                 for (name, w, h) in Sheet::SIZES {
-                                    if ui.selectable_label(current == *name, *name).clicked() {
+                                    if ui.selectable_label(current == *name, crate::i18n::tw(*name)).clicked() {
                                         (sh.width, sh.height) = (*w, *h);
                                         label = "Sheet size"
                                     }
@@ -9354,18 +9354,18 @@ impl CreaBimApp {
                                 crate::props::row(ui, "Text style", |ui| {
                                     egui::ComboBox::from_id_salt(("title.style", vp.view))
                                         .icon(crate::props::combo_icon)
-                                        .selected_text(now)
+                                        .selected_text(crate::i18n::tw(now))
                                         .width(ui.available_width())
                                         .show_ui(ui, |ui| {
                                             if ui
-                                                .selectable_label(t.style.is_none(), "Plain")
+                                                .selectable_label(t.style.is_none(), crate::i18n::tw("Plain"))
                                                 .clicked()
                                             {
                                                 t.style = None;
                                             }
                                             for (i, n) in &styles {
                                                 if ui
-                                                    .selectable_label(t.style == Some(*i), n)
+                                                    .selectable_label(t.style == Some(*i), crate::i18n::tw(n))
                                                     .clicked()
                                                 {
                                                     t.style = Some(*i);
@@ -9425,10 +9425,10 @@ impl CreaBimApp {
                             .map_or("One storey up".to_string(), |l| l.1.clone())
                     };
                     crate::app::helpui::combo(ui, "Base level")
-                        .selected_text(name(Some(s.level)))
+                        .selected_text(crate::i18n::tw(name(Some(s.level))))
                         .show_ui(ui, |ui| {
                             for (lid, n) in &levels {
-                                if ui.selectable_value(&mut s.level, *lid, n).changed() {
+                                if ui.selectable_value(&mut s.level, *lid, crate::i18n::tw(n)).changed() {
                                     label = "Shaft base"
                                 }
                             }
@@ -9437,17 +9437,17 @@ impl CreaBimApp {
                         label = "Shaft base"
                     }
                     crate::app::helpui::combo(ui, "Top level")
-                        .selected_text(name(s.top_level))
+                        .selected_text(crate::i18n::tw(name(s.top_level)))
                         .show_ui(ui, |ui| {
                             if ui
-                                .selectable_value(&mut s.top_level, None, "One storey up")
+                                .selectable_value(&mut s.top_level, None, crate::i18n::tw("One storey up"))
                                 .changed()
                             {
                                 label = "Shaft top"
                             }
                             for (lid, n) in &levels {
                                 if ui
-                                    .selectable_value(&mut s.top_level, Some(*lid), n)
+                                    .selectable_value(&mut s.top_level, Some(*lid), crate::i18n::tw(n))
                                     .changed()
                                 {
                                     label = "Shaft top"
@@ -9535,10 +9535,10 @@ impl CreaBimApp {
                     }
                     if d.kind == creabim_core::DimensionKind::Linear {
                         crate::app::helpui::combo(ui, "Measures")
-                            .selected_text(d.axis.label())
+                            .selected_text(crate::i18n::tw(d.axis.label()))
                             .show_ui(ui, |ui| {
                                 for a in creabim_core::DimAxis::ALL {
-                                    if ui.selectable_value(&mut d.axis, a, a.label()).changed() {
+                                    if ui.selectable_value(&mut d.axis, a, crate::i18n::tw(a.label())).changed() {
                                         label = "Dimension direction"
                                     }
                                 }
@@ -9840,11 +9840,11 @@ impl CreaBimApp {
                 }
                 ElementKind::FreeMesh(m) => {
                     crate::app::helpui::combo(ui, "IFC class")
-                        .selected_text(m.ifc_class.clone())
+                        .selected_text(crate::i18n::tw(m.ifc_class.clone()))
                         .show_ui(ui, |ui| {
                             for c in FREE_MESH_CLASSES {
                                 if ui
-                                    .selectable_value(&mut m.ifc_class, c.to_string(), *c)
+                                    .selectable_value(&mut m.ifc_class, c.to_string(), crate::i18n::tw(*c))
                                     .changed()
                                 {
                                     label = "Classify mesh"
@@ -10562,7 +10562,7 @@ fn paper_mark_fields(
             crate::props::row(ui, "Shape", |ui| {
                 crate::props::flow(ui, |ui| {
                     if ui
-                        .selectable_label(!free, "Box")
+                        .selectable_label(!free, crate::i18n::tw("Box"))
                         .on_hover_text("Drag its corner and edge grips to size it")
                         .clicked()
                         && free
@@ -10578,7 +10578,7 @@ fn paper_mark_fields(
                         label = Some("Revision cloud shape");
                     }
                     if ui
-                        .selectable_label(free, "Freeform")
+                        .selectable_label(free, crate::i18n::tw("Freeform"))
                         .on_hover_text("Its own points: drag one to move it, drag a + to add one, right-click one to remove it")
                         .clicked()
                         && !free
@@ -12079,12 +12079,12 @@ fn plan_graphics_ui(
     crate::props::row(ui, "Drawing style", |ui| {
         egui::ComboBox::from_id_salt("view.drawing_style")
             .icon(crate::props::combo_icon)
-            .selected_text(g.drawing_style.label())
+            .selected_text(crate::i18n::tw(g.drawing_style.label()))
             .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for s in creabim_core::graphics::DrawingStyle::ALL {
                     if ui
-                        .selectable_value(&mut g.drawing_style, s, s.label())
+                        .selectable_value(&mut g.drawing_style, s, crate::i18n::tw(s.label()))
                         .on_hover_text(s.hint())
                         .changed()
                     {
@@ -12190,11 +12190,11 @@ fn view_style_combo(ui: &mut egui::Ui, salt: &str, style: &mut ViewStyle) -> boo
     crate::props::row(ui, "Style", |ui| {
         egui::ComboBox::from_id_salt(salt)
             .icon(crate::props::combo_icon)
-            .selected_text(style.label())
+            .selected_text(crate::i18n::tw(style.label()))
             .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for s in ViewStyle::ALL {
-                    changed |= ui.selectable_value(style, s, s.label()).changed();
+                    changed |= ui.selectable_value(style, s, crate::i18n::tw(s.label())).changed();
                 }
             });
     });

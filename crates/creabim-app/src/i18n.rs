@@ -108,24 +108,94 @@ pub fn t(english: &str) -> &str {
     lookup(lang(), english).unwrap_or(english)
 }
 
-/// `english` in the interface's language, as an owned string. Joined
-/// paths such as `Create › Wall` are translated part by part.
+/// `english` in the interface's language, as an owned string. Text built
+/// at run time is found too: joined paths such as `Create › Wall` part by
+/// part, counts such as `640 elements` by the table's `{} elements`, and a
+/// `Label: value` pair by its parts.
 pub fn tr(english: &str) -> String {
     let l = lang();
     if l == Lang::En {
         return english.to_string();
     }
+    translated(l, english).unwrap_or_else(|| english.to_string())
+}
+
+fn translated(l: Lang, english: &str) -> Option<String> {
     if let Some(s) = lookup(l, english) {
-        return s.to_string();
+        return Some(s.to_string());
     }
     if english.contains(" › ") {
-        return english
+        let parts: Vec<String> = english
             .split(" › ")
-            .map(|p| lookup(l, p).unwrap_or(p))
-            .collect::<Vec<_>>()
-            .join(" › ");
+            .map(|p| translated(l, p).unwrap_or_else(|| p.to_string()))
+            .collect();
+        return Some(parts.join(" › "));
     }
-    english.to_string()
+    if let Some(s) = with_numbers(l, english) {
+        return Some(s);
+    }
+    if let Some((head, rest)) = english.split_once(": ") {
+        let h = lookup(l, head);
+        let r = translated(l, rest);
+        if h.is_some() || r.is_some() {
+            return Some(format!(
+                "{}: {}",
+                h.unwrap_or(head),
+                r.as_deref().unwrap_or(rest)
+            ));
+        }
+    }
+    None
+}
+
+/// `640 elements` by the table's `{} elements`: each number taken out,
+/// looked up as `{}`, and put back in order.
+fn with_numbers(l: Lang, english: &str) -> Option<String> {
+    let mut key = String::with_capacity(english.len());
+    let mut nums = vec![];
+    let mut chars = english.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if c.is_ascii_digit() {
+            let mut end = i + 1;
+            while let Some(&(j, d)) = chars.peek() {
+                let decimal = d == '.'
+                    && english[j + 1..].starts_with(|x: char| x.is_ascii_digit());
+                if d.is_ascii_digit() || decimal {
+                    end = j + d.len_utf8();
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            nums.push(&english[i..end]);
+            key.push_str("{}");
+        } else {
+            key.push(c);
+        }
+    }
+    if nums.is_empty() {
+        return None;
+    }
+    let pattern = lookup(l, &key)?;
+    let mut out = String::with_capacity(pattern.len() + 8);
+    let mut nums = nums.into_iter();
+    let mut rest = pattern;
+    while let Some(at) = rest.find("{}") {
+        out.push_str(&rest[..at]);
+        out.push_str(nums.next().unwrap_or("{}"));
+        rest = &rest[at + 2..];
+    }
+    out.push_str(rest);
+    Some(out)
+}
+
+/// A widget's text in the interface's language. Plain text is translated;
+/// styled text is left as it was built.
+pub fn tw(text: impl Into<eframe::egui::WidgetText>) -> eframe::egui::WidgetText {
+    match text.into() {
+        eframe::egui::WidgetText::Text(s) => tr(&s).into(),
+        w => w,
+    }
 }
 
 fn lookup(l: Lang, english: &str) -> Option<&'static str> {
@@ -133,6 +203,68 @@ fn lookup(l: Lang, english: &str) -> Option<&'static str> {
         return None;
     }
     table(l).get(english).copied()
+}
+
+/// The text written into the pages themselves (`ui/app.js`, as `T("…")`),
+/// sent with each state as `window.I18N`. A test keeps it in step with
+/// the page.
+const PAGE_TEXTS: &[&str] = &[
+    "About, updates, settings and exit",
+    "Back",
+    "Cancel",
+    "Cancel: back to the project (Esc)",
+    "Click to enlarge",
+    "Close (F1 or Esc)",
+    "Collapse every group",
+    "Coming soon",
+    "Contents",
+    "Couldn't save {}",
+    "Create",
+    "Don't save",
+    "Don't save: close and let the changes go",
+    "Enter run",
+    "Esc close",
+    "Esc to close",
+    "Expand every group",
+    "Find views and elements",
+    "Help",
+    "More",
+    "Nothing found",
+    "Nothing matches.",
+    "Pick a page, or search the guide above.",
+    "Read more in the guide",
+    "Save",
+    "Save as…",
+    "Save your new project before closing?",
+    "Save {} before closing?",
+    "Save, then close (Enter)",
+    "Saved",
+    "Saved.",
+    "Saving…",
+    "Search the guide",
+    "Type a command, a tool or a view",
+    "View",
+    "Your changes are still open. Nothing was lost.",
+    "back",
+    "for",
+    "opens the page about the tool you are using.",
+    "page",
+    "pages",
+    "save",
+    "{} more option that doesn't fit here",
+    "{} more options that don't fit here",
+    "↑↓ choose",
+];
+
+/// The page's own texts in the interface's language, as a JSON object;
+/// empty in English.
+pub fn page_table() -> String {
+    let l = lang();
+    let map: serde_json::Map<String, serde_json::Value> = PAGE_TEXTS
+        .iter()
+        .filter_map(|k| lookup(l, k).map(|v| (k.to_string(), v.into())))
+        .collect();
+    serde_json::Value::Object(map).to_string()
 }
 
 /// The keys of a pane's state whose text is read by people.
@@ -204,9 +336,34 @@ mod tests {
     }
 
     #[test]
+    fn counts_and_pairs_are_found_by_their_parts() {
+        assert_eq!(translated(Lang::Sk, "640 elements").as_deref(), Some("640 prvkov"));
+        assert_eq!(translated(Lang::Sk, "View: Wall").as_deref(), Some("Pohľad: Stena"));
+        assert_eq!(translated(Lang::Sk, "No such text 12"), None);
+    }
+
+    #[test]
     fn languages_round_trip_by_id() {
         for l in Lang::ALL {
             assert_eq!(Lang::from_id(l.id()), Some(l));
+        }
+    }
+
+    #[test]
+    fn the_page_texts_are_listed_and_translated() {
+        let js = include_str!("../ui/app.js");
+        let mut used = vec![];
+        for part in js.split("T(\"").skip(1) {
+            if let Some(end) = part.find('"') {
+                used.push(&part[..end]);
+            }
+        }
+        for k in used {
+            assert!(PAGE_TEXTS.contains(&k), "app.js uses T({k:?}), not in PAGE_TEXTS");
+        }
+        let sk = parse(Lang::Sk.source()).unwrap();
+        for k in PAGE_TEXTS {
+            assert!(sk.contains_key(k), "no Slovak for page text {k:?}");
         }
     }
 

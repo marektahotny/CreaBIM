@@ -51,7 +51,8 @@ pub fn icon_button(ui: &mut Ui, icon: &str, tip: &str) -> Response {
 /// A sub-section inside a section's box, folding as Blender's
 /// (MU22): true while open. `key` keeps it folded or open.
 pub fn subsection(ui: &mut Ui, key: &str, title: &str, default_open: bool) -> bool {
-    let title = crate::i18n::t(title);
+    let title = crate::i18n::tr(title);
+    let title = title.as_str();
     let id = egui::Id::new(("props.sub", key));
     let open = ui
         .ctx()
@@ -163,7 +164,8 @@ fn inset(_ui: &Ui) -> f32 {
 /// A header row (MU24): a short `label` from the far left, its control
 /// taking the rest, as Blender's name field at the top of Properties.
 pub fn head_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
-    let label = crate::i18n::t(label);
+    let label = crate::i18n::tr(label);
+    let label = label.as_str();
     let w = ui.available_width();
     let h = ui.spacing().interact_size.y;
     ui.allocate_ui_with_layout(
@@ -194,7 +196,8 @@ pub fn head_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> 
 /// filling the rest. A label too long for its column is cut with … and
 /// shows whole when hovered.
 pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
-    let label = crate::i18n::t(label);
+    let label = crate::i18n::tr(label);
+    let label = label.as_str();
     // a control's own text never wraps: a value too long is cut with …
     // (A4-1)
     let add = |ui: &mut Ui| {
@@ -491,7 +494,8 @@ pub fn picture_option(
 
 /// A plain heading inside a window, for grouping rows.
 pub fn section(ui: &mut Ui, title: &str) {
-    let title = crate::i18n::t(title);
+    let title = crate::i18n::tr(title);
+    let title = title.as_str();
     if boxes_on(ui) {
         // in Properties, a box of its own with the title as its band (MU22)
         close_box(ui);
@@ -536,7 +540,8 @@ pub fn switch(ui: &mut Ui, on: &mut bool, label: impl Into<egui::WidgetText>) ->
 /// A small check box and its text, sized to its text: for grids of them
 /// (a view's categories), as Blender's (MU22).
 pub fn tick(ui: &mut Ui, on: &mut bool, label: &str, width: f32) -> Response {
-    let label = crate::i18n::t(label);
+    let label = crate::i18n::tr(label);
+    let label = label.as_str();
     let h = 19.0;
     let (rect, mut resp) = ui.allocate_exact_size(Vec2::new(width, h), Sense::click());
     if resp.clicked() {
@@ -631,6 +636,8 @@ pub fn check(
 ) -> Response {
     let label: egui::WidgetText = label.into();
     let text = crate::i18n::tr(label.text());
+    let group = crate::i18n::tr(group);
+    let group = group.as_str();
     let w = ui.available_width() - inset(ui);
     // as Blender's (MU22): a check box in the value column, its text after
     // it; the label column left empty, so on/off settings line up under
@@ -748,7 +755,8 @@ pub fn header(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, 
 }
 
 fn header_band(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, egui::Rect) {
-    let title = crate::i18n::t(title);
+    let title = crate::i18n::tr(title);
+    let title = title.as_str();
     // as Blender's panels (MU20): a band a step darker than the panel, a
     // thin open chevron at the left that turns down when the section is
     // open, the title in bold after it, a dotted grip at the right
@@ -882,7 +890,7 @@ impl Combo {
     }
 
     pub fn selected_text(mut self, t: impl Into<egui::WidgetText>) -> Self {
-        self.inner = self.inner.selected_text(t);
+        self.inner = self.inner.selected_text(crate::i18n::tw(t));
         self
     }
 

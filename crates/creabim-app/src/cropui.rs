@@ -333,7 +333,7 @@ impl CreaBimApp {
                     act = Some(("crop.frame", *id));
                 }
                 let sel = self.selection.contains(*id);
-                if ui.selectable_label(sel, name).clicked() {
+                if ui.selectable_label(sel, crate::i18n::tw(name)).clicked() {
                     act = Some(("crop.select", *id));
                 }
                 if ui.small_button("Delete").clicked() {
@@ -400,10 +400,10 @@ impl CreaBimApp {
         }
         crate::props::row(ui, "Outside", |ui| {
             egui::ComboBox::from_id_salt(("crop.outside", id))
-                .selected_text(c.outside.label())
+                .selected_text(crate::i18n::tw(c.outside.label()))
                 .show_ui(ui, |ui| {
                     for o in cropbox::Outside::ALL {
-                        if ui.selectable_label(c.outside == o, o.label()).clicked() && c.outside != o {
+                        if ui.selectable_label(c.outside == o, crate::i18n::tw(o.label())).clicked() && c.outside != o {
                             c.outside = o;
                             label = Some("What shows outside the crop box");
                         }

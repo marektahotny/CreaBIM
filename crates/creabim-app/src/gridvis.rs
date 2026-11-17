@@ -1241,10 +1241,10 @@ impl CreaBimApp {
         let style = |ui: &mut egui::Ui, text: &str, salt: &str, s: &mut LabelStyle| {
             let mut changed = false;
             egui::ComboBox::new(("gg-style", salt, id), text)
-                .selected_text(s.label())
+                .selected_text(crate::i18n::tw(s.label()))
                 .show_ui(ui, |ui| {
                     for o in LabelStyle::ALL {
-                        changed |= ui.selectable_value(s, o, o.label()).changed();
+                        changed |= ui.selectable_value(s, o, crate::i18n::tw(o.label())).changed();
                     }
                 });
             changed
@@ -1315,13 +1315,13 @@ impl CreaBimApp {
         let current = grids::group_of(model, g).map(|(e, _)| e.name.clone());
         let mut pick = None;
         crate::app::helpui::combo(ui, "Grid system")
-            .selected_text(current.unwrap_or_else(|| "None".into()))
+            .selected_text(crate::i18n::tw(current.unwrap_or_else(|| "None".into())))
             .show_ui(ui, |ui| {
-                if ui.selectable_label(g.group.is_none(), "None").clicked() {
+                if ui.selectable_label(g.group.is_none(), crate::i18n::tw("None")).clicked() {
                     pick = Some(None);
                 }
                 for (id, name) in &groups {
-                    if ui.selectable_label(g.group == Some(*id), name).clicked() {
+                    if ui.selectable_label(g.group == Some(*id), crate::i18n::tw(name)).clicked() {
                         pick = Some(Some(*id));
                     }
                 }

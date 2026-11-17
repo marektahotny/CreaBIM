@@ -313,7 +313,7 @@ impl CreaBimApp {
                                     section = s;
                                     ui.label(egui::RichText::new(*s).weak());
                                 }
-                                if ui.selectable_label(*pid == id, help::title(md)).clicked() {
+                                if ui.selectable_label(*pid == id, crate::i18n::tw(help::title(md))).clicked() {
                                     go = Some(pid.to_string());
                                 }
                             }

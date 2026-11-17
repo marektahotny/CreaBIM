@@ -145,7 +145,7 @@ pub fn controls(
                     crate::props::flow(ui, |ui| {
                         if modes {
                             for m in SlabMode::ALL {
-                                if ui.selectable_label(mode == m, m.label()).clicked() {
+                                if ui.selectable_label(mode == m, crate::i18n::tw(m.label())).clicked() {
                                     mode = m;
                                 }
                             }
@@ -154,10 +154,10 @@ pub fn controls(
                             if modes {
                                 ui.separator();
                             }
-                            if ui.selectable_label(!arc, "Line (L)").clicked() {
+                            if ui.selectable_label(!arc, crate::i18n::tw("Line (L)")).clicked() {
                                 arc = false;
                             }
-                            if ui.selectable_label(arc, "Arc (A)").clicked() {
+                            if ui.selectable_label(arc, crate::i18n::tw("Arc (A)")).clicked() {
                                 arc = true;
                             }
                             // A5-3: a sure way to close, whatever the pointer is on

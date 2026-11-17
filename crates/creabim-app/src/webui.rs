@@ -203,12 +203,14 @@ impl WebUi {
 
     /// Send a pane its state, if it changed since last time.
     pub fn send(&mut self, pane: Pane, state: &Value) {
+        // the page's own texts go with the state, so a change of language
+        // reaches them too
         let text = if crate::i18n::lang() == crate::i18n::Lang::En {
-            state.to_string()
+            format!("window.I18N={{}};window.CB && CB.state({state})")
         } else {
             let mut v = state.clone();
             crate::i18n::translate_json(&mut v);
-            v.to_string()
+            format!("window.I18N={};window.CB && CB.state({v})", crate::i18n::page_table())
         };
         let i = pane as usize;
         if self.sent[i] == text {
@@ -216,7 +218,7 @@ impl WebUi {
         }
         let _ = self
             .view(pane)
-            .evaluate_script(&format!("window.CB && CB.state({text})"));
+            .evaluate_script(&text);
         self.sent[i] = text;
     }
 

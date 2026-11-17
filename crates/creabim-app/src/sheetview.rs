@@ -702,15 +702,15 @@ pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f6
         egui::ComboBox::from_id_salt(("scale", salt))
             .width((ui.available_width() - typed - gap).max(30.0))
             .icon(crate::props::combo_icon)
-            .selected_text(if standard {
+            .selected_text(crate::i18n::tw(if standard {
                 format!("1:{scale:.0}")
             } else {
                 format!("1:{scale:.0} (custom)")
-            })
+            }))
             .show_ui(ui, |ui| {
                 for s in SCALES {
                     if ui
-                        .selectable_label((s - scale).abs() < 1e-6, format!("1:{s:.0}"))
+                        .selectable_label((s - scale).abs() < 1e-6, crate::i18n::tw(format!("1:{s:.0}")))
                         .clicked()
                     {
                         out = Some(s);

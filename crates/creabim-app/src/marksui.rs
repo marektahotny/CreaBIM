@@ -184,11 +184,11 @@ impl CreaBimApp {
                 ui.label(egui::RichText::new("Apply").strong());
                 crate::props::flow(ui, |ui| {
                     egui::ComboBox::from_id_salt("renumber_only").icon(crate::props::combo_icon)
-                        .selected_text(self.marks.only.map_or("Every kind", |c| c.label()))
+                        .selected_text(crate::i18n::tw(self.marks.only.map_or("Every kind", |c| c.label())))
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.marks.only, None, "Every kind");
+                            ui.selectable_value(&mut self.marks.only, None, crate::i18n::tw("Every kind"));
                             for c in MarkClass::ALL {
-                                ui.selectable_value(&mut self.marks.only, Some(c), c.label());
+                                ui.selectable_value(&mut self.marks.only, Some(c), crate::i18n::tw(c.label()));
                             }
                         });
                     crate::props::switch(ui, &mut self.marks.replace, "Replace typed marks too");
@@ -351,12 +351,12 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
                 ui.checkbox(&mut r.by_level, "");
                 egui::ComboBox::from_id_salt(("mark_order", class))
                     .icon(crate::props::combo_icon)
-                    .selected_text(r.order.label())
+                    .selected_text(crate::i18n::tw(r.order.label()))
                     .width(ui.available_width().min(150.0))
                     .truncate()
                     .show_ui(ui, |ui| {
                         for o in MarkOrder::ALL {
-                            ui.selectable_value(&mut r.order, o, o.label());
+                            ui.selectable_value(&mut r.order, o, crate::i18n::tw(o.label()));
                         }
                     });
                 ui.add(egui::DragValue::new(&mut r.start).range(0..=9999));
