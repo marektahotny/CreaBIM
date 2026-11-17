@@ -1226,6 +1226,9 @@ pub fn plan_view_with(
                 items.extend(crate::objects::object_plan(model, e, cut_height));
                 shades.extend(crate::objects::object_shade(model, e, cut_height, graphics));
             }
+            ElementKind::Valve(v) if v.host(model).is_some_and(|p| p.level == level) => {
+                items.extend(crate::valves::valve_plan(model, e, v));
+            }
             k if on_level && creabim_core::members::is_member(k) => {
                 items.extend(crate::members::member_plan(model, e, cut_height));
                 // a mass or sweep below the cut: its top seen tinted, in

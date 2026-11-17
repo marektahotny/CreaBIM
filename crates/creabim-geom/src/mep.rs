@@ -156,7 +156,7 @@ fn tube(m: &mut TriMesh, path: &[DVec3], r: f64) {
 }
 
 /// As [`tube`], each ring of its own radius: a reducer is a cone.
-fn taper(m: &mut TriMesh, path: &[(DVec3, f64)]) {
+pub(crate) fn taper(m: &mut TriMesh, path: &[(DVec3, f64)]) {
     if path.len() < 2 {
         return;
     }
@@ -197,7 +197,7 @@ fn taper(m: &mut TriMesh, path: &[(DVec3, f64)]) {
 }
 
 /// A ball of radius `r` at `c`: what an elbow or a tee is in 3D.
-fn ball(m: &mut TriMesh, c: DVec3, r: f64) {
+pub(crate) fn ball(m: &mut TriMesh, c: DVec3, r: f64) {
     const RINGS: usize = 8;
     let base = m.positions.len() as u32;
     for i in 0..=RINGS {
