@@ -14,6 +14,7 @@ use glam::{DVec2, DVec3};
 use std::f64::consts::{FRAC_PI_2, TAU};
 
 mod entourage;
+mod fixtures;
 mod services;
 
 // ---- outlines and solids ----
@@ -1243,6 +1244,7 @@ pub fn starters() -> Vec<CatalogueObject> {
     ]
     .into_iter()
     .chain(services::starters())
+    .chain(fixtures::starters())
     .chain(entourage::starters())
     .collect()
 }

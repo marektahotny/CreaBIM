@@ -940,6 +940,31 @@ impl CreaBimApp {
     }
 }
 
+/// A fixture's connectors, read only: the systems that join it, their
+/// sizes and heights, so pipes can be drawn to them.
+pub(super) fn connector_rows(
+    ui: &mut egui::Ui,
+    model: &creabim_core::Model,
+    e: &creabim_core::Element,
+) {
+    let conns = creabim_core::fixture::connectors(model, e);
+    if conns.is_empty() {
+        return;
+    }
+    crate::props::section(ui, "Connectors");
+    for c in conns {
+        let what = format!("{} – {}", c.kind.code(), crate::i18n::tr(c.kind.name()));
+        crate::props::row(ui, &what, |ui| {
+            ui.label(format!(
+                "DN {:.0}, {} {}",
+                c.dn,
+                crate::i18n::tr("Height").to_lowercase(),
+                crate::units::len(c.at.z)
+            ));
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

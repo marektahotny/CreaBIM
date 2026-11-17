@@ -10022,6 +10022,7 @@ impl CreaBimApp {
                     let hung = creabim_core::objects::hung(self.doc.model(), &e);
                     label = objectsui::object_fields(ui, o, hung);
                     object_type = true;
+                    objectsui::connector_rows(ui, self.doc.model(), &e);
                 }
                 k @ (ElementKind::Column(_)
                 | ElementKind::Beam(_)

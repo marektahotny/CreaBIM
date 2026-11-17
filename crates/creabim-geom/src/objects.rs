@@ -27,7 +27,8 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
     } else {
         Pen::Projection
     };
-    t.plan_symbol()
+    let mut items: Vec<PlanItem> = t
+        .plan_symbol()
         .into_iter()
         .map(|s| match s {
             SymbolItem::Loop(pts) => PlanItem::Polygon {
@@ -42,7 +43,48 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
                 b: o.to_plan(b),
             },
         })
-        .collect()
+        .collect();
+    items.extend(connector_marks(model, e));
+    items
+}
+
+/// Radius of the mark a fixture's connector shows as, m.
+pub const CONNECTOR_MARK: f64 = 0.025;
+
+/// A fixture's connectors as small discs in their systems' colours, so a
+/// pipe can be drawn to them.
+pub fn connector_marks(model: &Model, e: &Element) -> Vec<PlanItem> {
+    let mut items = Vec::new();
+    for c in creabim_core::fixture::connectors(model, e) {
+        let rgb = creabim_core::mep::system(c.kind.code()).map_or(0x8c8c8c, |s| s.color);
+        let rgb = [
+            ((rgb >> 16) & 0xff) as f32 / 255.0,
+            ((rgb >> 8) & 0xff) as f32 / 255.0,
+            (rgb & 0xff) as f32 / 255.0,
+        ];
+        let points: Vec<glam::DVec2> = (0..12)
+            .map(|i| {
+                let a = i as f64 / 12.0 * std::f64::consts::TAU;
+                c.at.truncate() + glam::DVec2::new(a.cos(), a.sin()) * CONNECTOR_MARK
+            })
+            .collect();
+        // washed over the symbol, not a tint under every line
+        items.push(PlanItem::Tint {
+            id: e.id,
+            points,
+            rgb,
+        });
+        // a circle, so its centre snaps
+        items.push(PlanItem::Arc {
+            id: e.id,
+            pen: Pen::Projection,
+            center: c.at.truncate(),
+            radius: CONNECTOR_MARK,
+            start: 0.0,
+            end: std::f64::consts::TAU,
+        });
+    }
+    items
 }
 
 /// The footprint of an object wholly below the cut (furniture, a bath, a

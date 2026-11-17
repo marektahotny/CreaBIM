@@ -10,6 +10,15 @@ Pipes and ducts of building services: water, drainage, gas, heating, cooling, me
 
 Each system has its code, as drawings label it (SV cold water, TV hot water, C circulation, K foul drainage, D rainwater, PV fire water, ZP gas, UKP and UKS heating, CHP and CHS cooling, O2, AIR, VAC, N2O and CO2 medical gases, DYM flue, VZP and VZO ventilation), its colour, and the pipe type, size and height a new pipe takes. Drains fall by their system's slope (2 % foul, 1 % rainwater) as they are drawn, and a run goes on from where its last pipe ended.
 
+## Fixtures and their connectors
+
+Sanitary ware, appliances, radiators, manifolds and fan coils from the catalogue have **connectors**, as PilonDesigner places them: a basin its hot and cold water and waste, a WC its cold water and soil pipe, a radiator its heating supply and return, a fan coil its chilled water and condensate. Plan shows each as a small disc in its system's colour, and the object's properties list them with their size and height.
+
+- Start a run on a connector and the tool takes its system and starts at its height.
+- End a run on a connector of the same system and the pipe drops or rises to it there, and the run ends.
+
+The catalogue's washbasin, WC, bath, shower, sink, floor drain, outside tap and radiator keep their own 3D models and gain the connectors. The washing machine, dishwasher, bidet, urinal, towel radiator, underfloor heating manifold and the wall, under-window and ceiling cassette fan coils are PilonDesigner's, sized and drawn as it draws them.
+
 ## Pipe types
 
 The types are PilonDesigner's catalogue: a system offers the types for what it carries. Each has its sizes with their outside and inside diameters, its roughness for the calculations, its joints and standards, and for manufacturers' series (HERZ, SANHA, GAWAPLAST) their fittings.
