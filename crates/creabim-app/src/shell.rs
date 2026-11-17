@@ -1181,6 +1181,14 @@ impl CreaBimApp {
                     .keep_open()
             })
             .collect();
+        let languages: Vec<Item> = crate::i18n::Lang::ALL
+            .into_iter()
+            .map(|l| {
+                Item::new(format!("lang:{}", l.id()), l.label())
+                    .checked(crate::i18n::lang() == l)
+                    .keep_open()
+            })
+            .collect();
         themes.push(Item::Separator);
         themes.push(
             Item::new("theme.next", "Next theme")
@@ -1241,6 +1249,7 @@ impl CreaBimApp {
             Item::Separator,
             Item::Header("Interface".into()),
             Item::sub("Theme", themes).icon("palette"),
+            Item::sub("Language", languages).icon("languages"),
             Item::new("palette", "Command palette")
                 .key("Ctrl+K")
                 .icon("search"),
@@ -1779,6 +1788,13 @@ impl CreaBimApp {
                     None => self.shell.theme.next(),
                 };
                 self.set_theme(ctx, t);
+            }
+            "lang" => {
+                if let Some(l) = crate::i18n::Lang::from_id(arg) {
+                    crate::i18n::set_lang(l);
+                    self.shell.settings.language = l.id().into();
+                    self.shell.settings.store();
+                }
             }
             "ui.classic" => {
                 self.shell.classic = !self.shell.classic;

@@ -154,6 +154,8 @@ impl Recent {
 #[serde(default)]
 pub struct Settings {
     pub theme: String,
+    /// The interface's language: "sk", "cs" or "en" (see `crate::i18n`).
+    pub language: String,
     /// Width of the project browser and of the properties panel, in points.
     pub left_width: f32,
     pub right_width: f32,
@@ -237,6 +239,7 @@ impl Default for Settings {
         Self {
             // the approved look (brief 02); anyone's saved theme stays theirs
             theme: "sage".into(),
+            language: "sk".into(),
             left_width: 264.0,
             right_width: 290.0,
             left_folded: false,

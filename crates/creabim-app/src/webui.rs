@@ -203,7 +203,13 @@ impl WebUi {
 
     /// Send a pane its state, if it changed since last time.
     pub fn send(&mut self, pane: Pane, state: &Value) {
-        let text = state.to_string();
+        let text = if crate::i18n::lang() == crate::i18n::Lang::En {
+            state.to_string()
+        } else {
+            let mut v = state.clone();
+            crate::i18n::translate_json(&mut v);
+            v.to_string()
+        };
         let i = pane as usize;
         if self.sent[i] == text {
             return;
