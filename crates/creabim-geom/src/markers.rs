@@ -567,6 +567,102 @@ pub fn callout(
     out
 }
 
+/// A section line that is broken in the middle or steps aside (see
+/// [`creabim_core::SectionLine`]): its heads at its two ends, heavy
+/// strokes there and at each corner, and, unless it is broken, a thin
+/// line between them.
+#[allow(clippy::too_many_arguments)]
+pub fn section_along(
+    id: ElementId,
+    number: &str,
+    sheet: &str,
+    a: DVec2,
+    b: DVec2,
+    line: &creabim_core::SectionLine,
+    parts: &MarkerParts,
+    mm: f64,
+) -> Vec<PlanItem> {
+    let along = (b - a).normalize_or_zero();
+    let look = along.perp();
+    let len = a.distance(b);
+    let stretches = line.stretches(len);
+    let last = stretches.last().map_or(0.0, |s| s.2);
+    // the heads and heavy ends of a straight line, the far one moved to
+    // where the line ends
+    let ends = MarkerParts {
+        line: MarkerLine::EndsOnly,
+        ..*parts
+    };
+    let stub = 6.0 * mm;
+    let mut out: Vec<PlanItem> = section(id, number, sheet, a, b, true, &ends, mm)
+        .into_iter()
+        .filter(|it| {
+            !matches!(
+                it,
+                PlanItem::Line {
+                    pen: Pen::Hidden,
+                    ..
+                }
+            )
+        })
+        .collect();
+    for it in out.iter_mut() {
+        let Some((lo, hi)) = it.bounds() else {
+            continue;
+        };
+        let c = (lo + hi) / 2.0;
+        if c.distance(b) < c.distance(a) {
+            let by = look * last;
+            match it {
+                PlanItem::Line { a, b, .. } => {
+                    *a += by;
+                    *b += by;
+                }
+                PlanItem::Arc { center, .. } => *center += by,
+                PlanItem::Text { at, .. } => *at += by,
+                PlanItem::Shade { points, .. } | PlanItem::Polygon { points, .. } => {
+                    points.iter_mut().for_each(|p| *p += by)
+                }
+                _ => {}
+            }
+        }
+    }
+    let at = |x: f64, aside: f64| a + along * x + look * aside;
+    let mut thin = |p: DVec2, q: DVec2| {
+        if !line.gap && p.distance(q) > 1e-6 && (q - p).dot(along) > 0.0 {
+            out.push(PlanItem::Line {
+                id,
+                pen: Pen::Grid,
+                a: p,
+                b: q,
+            });
+        }
+    };
+    let n = stretches.len();
+    let mut corners = vec![];
+    for (k, &(from, to, aside)) in stretches.iter().enumerate() {
+        let short = stub.min((to - from) / 2.0);
+        thin(at(from + short, aside), at(to - short, aside));
+        if k + 1 < n {
+            let next = stretches[k + 1].2;
+            // the corner: heavy in to it, across, and out of it
+            corners.push((at(to - short, aside), at(to, aside)));
+            corners.push((at(to, aside), at(to, next)));
+            let out_short = stub.min((stretches[k + 1].1 - to) / 2.0);
+            corners.push((at(to, next), at(to + out_short, next)));
+        }
+    }
+    for (p, q) in corners {
+        out.push(PlanItem::Line {
+            id,
+            pen: Pen::Cut,
+            a: p,
+            b: q,
+        });
+    }
+    out
+}
+
 /// In a plan's items, the section and elevation marks redrawn with
 /// `parts`: each section view's own items are taken out and its marks put
 /// in their place.
@@ -595,7 +691,13 @@ pub fn restyle_sections(model: &Model, items: &mut Vec<PlanItem>, parts: &Marker
         {
             let number = number_of(model, id);
             let sheet = sheet_ref(model, id);
-            items.extend(section(id, &number, &sheet, start, end, cut, parts, mm));
+            if cut && !v.line.is_plain() {
+                items.extend(section_along(
+                    id, &number, &sheet, start, end, &v.line, parts, mm,
+                ));
+            } else {
+                items.extend(section(id, &number, &sheet, start, end, cut, parts, mm));
+            }
         }
     }
 }

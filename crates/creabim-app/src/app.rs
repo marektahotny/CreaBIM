@@ -9813,6 +9813,55 @@ crate::props::row(ui, "File names", |ui| {
                     {
                         label = "View style"
                     }
+                    // the section line's own look and course: broken in the
+                    // middle, stepped aside (zalomený rez)
+                    if let ViewKind::Section {
+                        start,
+                        end,
+                        cut: true,
+                        ..
+                    } = v.kind
+                    {
+                        if crate::props::switch(ui, &mut v.line.gap, "Break the section line")
+                            .on_hover_text(crate::i18n::t(
+                                "Only the ends and corners of the line are drawn in plans",
+                            ))
+                            .changed()
+                        {
+                            label = "Section line";
+                        }
+                        let mut drop = None;
+                        for (k, j) in v.line.jogs.iter_mut().enumerate() {
+                            ui.push_id(("jog", k), |ui| {
+                                if num(ui, "Jog at (from the start)", &mut j.at, 0.0, 1e4)
+                                    | num(ui, "Step aside", &mut j.offset, -1e3, 1e3)
+                                {
+                                    label = "Section line";
+                                }
+                                if ui.small_button(crate::i18n::t("Remove this jog")).clicked() {
+                                    drop = Some(k);
+                                }
+                            });
+                        }
+                        if let Some(k) = drop {
+                            v.line.jogs.remove(k);
+                            label = "Section line";
+                        }
+                        if ui
+                            .button(crate::i18n::t("Add a jog to the section line"))
+                            .on_hover_text(crate::i18n::t("From there on the section cuts beside its line, by the step you set: positive to the side it looks to"))
+                            .clicked()
+                        {
+                            // past the last one, else in the middle
+                            let len = start.distance(end);
+                            let from = v.line.jogs.iter().map(|j| j.at).fold(0.0, f64::max);
+                            v.line.jogs.push(creabim_core::SectionJog {
+                                at: (from + len) / 2.0,
+                                offset: 1.0,
+                            });
+                            label = "Section line";
+                        }
+                    }
                     // how what is cut is drawn, as in plans (A4-11, MU20)
                     if matches!(v.kind, ViewKind::Section { .. }) {
                         crate::props::row(ui, "Drawing style", |ui| {

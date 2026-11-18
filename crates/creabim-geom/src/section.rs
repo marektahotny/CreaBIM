@@ -123,42 +123,68 @@ pub fn section_view_in(
     scale: f64,
     reveal: bool,
 ) -> Drawing {
+    let whole = [(0.0, start.distance(end), 0.0)];
+    section_view_jogged(
+        model, scene, start, end, depth, cut, style, scale, reveal, &whole,
+    )
+}
+
+/// [`section_view_in`] along a line that steps aside (a jogged section,
+/// zalomený rez): each of `stretches` (from, to along the line, and how
+/// far its cut plane stands to the side the view looks to) is cut and seen
+/// from its own plane, and drawn side by side as one section.
+#[allow(clippy::too_many_arguments)]
+pub fn section_view_jogged(
+    model: &Model,
+    scene: &[SceneItem],
+    start: DVec2,
+    end: DVec2,
+    depth: f64,
+    cut: bool,
+    style: ViewStyle,
+    scale: f64,
+    reveal: bool,
+    stretches: &[(f64, f64, f64)],
+) -> Drawing {
     let frame = SectionFrame::new(start, end, depth);
     let mut items = Vec::new();
-
-    let project = |p: DVec3| frame.project(p);
     let revealed = reveal.then(|| revealable(model));
-    let (lines, image) = hidden_lines(
-        scene,
-        &project,
-        frame.depth,
-        Some((0.0, frame.length)),
-        style,
-        revealed.as_ref(),
-    );
-    items.extend(image);
-    items.extend(lines);
-    items.extend(void_lines(
-        model,
-        &project,
-        frame.depth,
-        Some((0.0, frame.length)),
-    ));
-
     // Cut fill, drawn over the projection; layered elements layer by layer.
     let mut layers = vec![];
-    if cut {
+    let mut fills = vec![];
+    for &(from, to, aside) in stretches {
+        // this stretch's own cut plane
+        let frame = SectionFrame {
+            origin: frame.origin + frame.look * aside,
+            ..frame
+        };
+        let project = |p: DVec3| frame.project(p);
+        let (lines, image) = hidden_lines(
+            scene,
+            &project,
+            frame.depth,
+            Some((from, to)),
+            style,
+            revealed.as_ref(),
+        );
+        items.extend(image);
+        items.extend(lines);
+        items.extend(void_lines(model, &project, frame.depth, Some((from, to))));
+        if !cut {
+            continue;
+        }
         for s in scene {
             for loop_ in cut_loops(s, &frame) {
                 let pts: Vec<DVec2> = loop_.iter().map(|p| DVec2::new(p.x, p.y)).collect();
-                let (x0, x1) = (-1e-6, frame.length + 1e-6);
+                let (x0, x1) = (from - 1e-6, to + 1e-6);
                 if pts.iter().all(|p| p.x < x0) || pts.iter().all(|p| p.x > x1) {
                     continue;
                 }
-                // what runs on past the section line's ends (the ground,
-                // a long slab) is cut off at them
+                // what runs on past the stretch's ends (the ground, a long
+                // slab, what the next stretch cuts elsewhere) is cut off
+                // at them
                 let pts = if pts.iter().any(|p| p.x < x0 || p.x > x1) {
-                    clip_x(&clip_x(&pts, 0.0, 1.0), frame.length, -1.0)
+                    clip_x(&clip_x(&pts, from, 1.0), to, -1.0)
                 } else {
                     pts
                 };
@@ -171,7 +197,7 @@ pub fn section_view_in(
                         points: pts,
                         layer: Some(layer),
                     }),
-                    None => items.push(PlanItem::Polygon {
+                    None => fills.push(PlanItem::Polygon {
                         id: s.id,
                         pen: Pen::Cut,
                         points: pts,
@@ -180,6 +206,7 @@ pub fn section_view_in(
             }
         }
     }
+    items.extend(fills);
 
     crate::plan::clean_up_pieces(model, &mut items, layers);
     if reveal {
@@ -819,7 +846,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             depth,
             cut,
         } => {
-            let mut d = section_view_in(
+            let mut d = section_view_jogged(
                 model,
                 &scene(),
                 *start,
@@ -829,6 +856,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 style,
                 v.scale,
                 reveal,
+                &v.line.stretches(start.distance(*end)),
             );
             // rooms washed behind the cut, from floor to ceiling
             if v.room_colours && *cut {
@@ -873,9 +901,18 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         lay_out_level_heads(&mut d.items, &v.level_heads, v.scale);
     }
     // section and elevation marks in the project's family
+    // (a broken or jogged section line is drawn so in any family)
+    let own_lines = || {
+        model
+            .iter()
+            .any(|e| matches!(&e.kind, ElementKind::View(s) if !s.line.is_plain()))
+            .then(creabim_core::styles::MarkerParts::default)
+    };
     if let (creabim_core::ViewKind::Plan { .. }, Some(parts)) = (
         &kind,
-        creabim_core::styles::active_pack(model).marker_parts(),
+        creabim_core::styles::active_pack(model)
+            .marker_parts()
+            .or_else(own_lines),
     ) {
         crate::markers::restyle_sections(model, &mut d.items, &parts, v.scale / 1000.0);
     }

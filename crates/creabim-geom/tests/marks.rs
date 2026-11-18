@@ -570,3 +570,54 @@ fn a_typed_dimension_moves_what_its_end_is_on() {
     let free = Dimension::linear(plan, HostPoint::free(from), HostPoint::free(at), 0.5);
     assert!(driven(doc.model(), &v, &free, 0, 2.0, &[]).is_err());
 }
+
+#[test]
+fn a_jogged_section_cuts_each_stretch_on_its_own_plane() {
+    use creabim_core::{SectionJog, ViewKind};
+    let mut doc = Document::from_model(sample::sample_house());
+    let (sec, len) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::View(v) => match v.kind {
+                ViewKind::Section {
+                    start,
+                    end,
+                    cut: true,
+                    ..
+                } => Some((e.id, start.distance(end))),
+                _ => None,
+            },
+            _ => None,
+        })
+        .unwrap();
+    let plan = named(doc.model(), "Ground Floor plan");
+    let heavy = |doc: &Document| {
+        view_drawing(doc.model(), plan)
+            .unwrap()
+            .items
+            .iter()
+            .filter(|i| matches!(i, PlanItem::Line { id, pen: creabim_geom::plan::Pen::Cut, .. } if *id == sec))
+            .count()
+    };
+    let before = view_drawing(doc.model(), sec).unwrap().items;
+    let ends = heavy(&doc);
+    doc.edit_merged(sec, "Jog", |e| {
+        if let ElementKind::View(v) = &mut e.kind {
+            v.line.gap = true;
+            v.line.jogs = vec![SectionJog {
+                at: len / 2.0,
+                offset: -3.0,
+            }];
+        }
+    })
+    .unwrap();
+    // three heavy strokes more at the corner, and no thin line between
+    assert_eq!(heavy(&doc), ends + 3);
+    let after = view_drawing(doc.model(), sec).unwrap().items;
+    assert_ne!(before, after, "the second stretch cuts elsewhere");
+    let ElementKind::View(v) = &doc.model().get(sec).unwrap().kind else {
+        unreachable!()
+    };
+    assert_eq!(v.line.stretches(len).len(), 2);
+}

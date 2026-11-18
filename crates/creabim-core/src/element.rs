@@ -2077,6 +2077,56 @@ pub struct View {
     /// usual (see [`crate::reno`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reno: Option<crate::reno::RenoView>,
+    /// How a section's line is drawn in plans and where it steps aside.
+    #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
+    pub line: SectionLine,
+}
+
+/// A section line's own look and course: broken in the middle (only its
+/// ends and corners drawn), and stepped aside along the way (a jogged
+/// section, zalomený rez).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SectionLine {
+    /// Only the ends (and the corners of its jogs) are drawn.
+    #[serde(default)]
+    pub gap: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub jogs: Vec<SectionJog>,
+}
+
+/// From `at` metres along a section line on, its cut plane stands
+/// `offset` metres to the side it looks to (negative: behind).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SectionJog {
+    pub at: f64,
+    pub offset: f64,
+}
+
+impl SectionLine {
+    pub fn is_plain(&self) -> bool {
+        !self.gap && self.jogs.is_empty()
+    }
+
+    /// The stretches of a line `length` long: from, to, and how far the
+    /// cut plane stands aside there.
+    pub fn stretches(&self, length: f64) -> Vec<(f64, f64, f64)> {
+        let mut jogs: Vec<SectionJog> = self
+            .jogs
+            .iter()
+            .copied()
+            .filter(|j| j.at > 1e-6 && j.at < length - 1e-6)
+            .collect();
+        jogs.sort_by(|a, b| a.at.total_cmp(&b.at));
+        let mut out = vec![];
+        let (mut from, mut off) = (0.0, 0.0);
+        for j in jogs {
+            out.push((from, j.at, off));
+            from = j.at;
+            off = j.offset;
+        }
+        out.push((from, length, off));
+        out
+    }
 }
 
 /// Where a detail view comes from: the box `lo`..`hi` (drawing
@@ -2345,6 +2395,7 @@ impl View {
             level_heads: BTreeMap::new(),
             look: Default::default(),
             reno: None,
+            line: Default::default(),
         }
     }
 
@@ -2372,6 +2423,7 @@ impl View {
             level_heads: BTreeMap::new(),
             look: Default::default(),
             reno: None,
+            line: Default::default(),
         }
     }
 }
@@ -2396,6 +2448,7 @@ impl View {
             level_heads: BTreeMap::new(),
             look: Default::default(),
             reno: None,
+            line: Default::default(),
         }
     }
 
@@ -2421,6 +2474,7 @@ impl View {
             level_heads: BTreeMap::new(),
             look: Default::default(),
             reno: None,
+            line: Default::default(),
         }
     }
 
@@ -2451,6 +2505,7 @@ impl View {
             level_heads: BTreeMap::new(),
             look: Default::default(),
             reno: None,
+            line: Default::default(),
         }
     }
 
