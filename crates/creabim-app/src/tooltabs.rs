@@ -289,6 +289,18 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "pipe",
                 "The Pipe tool in oxygen: SANHA copper; AIR, VAC, N2O and CO2 are in the bar's systems",
             ),
+            act(
+                "med:unit",
+                "Supply unit",
+                "heart-pulse",
+                "A wall rail NR-H3 or a ceiling bridge SM-P 5.4 made to order: its gas outlets, sockets, data and nurse call, then placed",
+            ),
+            act(
+                "catalogue.cat:medical",
+                "Medical units",
+                "fixtures",
+                "The usual wall rail and ceiling bridge from the catalogue",
+            ),
         ],
         6 => vec![
             act(
