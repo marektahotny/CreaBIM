@@ -605,6 +605,14 @@ impl PlanState {
         let t = creabim_core::TypeCategory::of(&e.kind).and_then(|c| self.types.get(&c));
         if let Some(t) = t {
             creabim_core::types::stamp(model, &mut e, *t);
+            // picking a type sets the tool's location line to the type's;
+            // one chosen in the bar since is the wall's own, with the type
+            if let (ElementKind::Wall(w), Some(r)) = (&mut e.kind, &mut e.of_type) {
+                if w.location != self.wall_location {
+                    w.location = self.wall_location;
+                    r.overrides.push(creabim_core::types::Param::Location);
+                }
+            }
         }
         e
     }

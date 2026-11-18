@@ -664,10 +664,8 @@ impl CreaBimApp {
                     .ok()
                     .and_then(|i| LocationLine::ALL.get(i))
                 {
-                    if self.plan.wall_location != *l {
-                        // a location line of its own: new walls have no type
-                        self.plan.types.remove(&creabim_core::TypeCategory::Wall);
-                    }
+                    // the type picked for new walls stays: the line they
+                    // are drawn on is the tool's own choice
                     self.plan.wall_location = *l;
                     self.status =
                         format!("New walls are drawn on their {}.", l.label().to_lowercase());
@@ -822,5 +820,52 @@ mod tests {
             .unwrap();
         assert!(walls::attach_candidates(app.doc.model(), covered).is_empty());
         assert!(!attach_enabled(&app));
+    }
+
+    #[test]
+    fn a_location_line_picked_after_a_type_keeps_the_type() {
+        use creabim_core::types::{ElementType, WallType};
+        use creabim_core::types::{Param, TypeParams};
+        use glam::DVec2;
+        let mut doc = creabim_core::Document::from_model(creabim_core::sample::sample_house());
+        let tloc = LocationLine::Centre;
+        let ty = creabim_core::Element::new(
+            "Wall 300",
+            creabim_core::ElementKind::ElementType(ElementType::new(TypeParams::Wall(WallType {
+                thickness: 0.3,
+                assembly: None,
+                material: None,
+                location: tloc,
+                height: None,
+                curtain: None,
+                screen: None,
+            }))),
+        );
+        let tid = ty.id;
+        doc.commit(creabim_core::Transaction::new("type").insert(ty))
+            .unwrap();
+        let model = doc.model().clone();
+        let level = model.levels().next().unwrap().0.id;
+        let other = LocationLine::ALL.into_iter().find(|l| *l != tloc).unwrap();
+        let mut state = crate::planview::PlanState::default();
+        state.types.insert(creabim_core::TypeCategory::Wall, tid);
+        state.wall_location = other;
+        let w = crate::planview::new_wall(&model, level, &state, DVec2::ZERO, DVec2::X * 4.0);
+        assert_eq!(w.location, other);
+        let e = state.typed(
+            &model,
+            creabim_core::Element::new("Wall", creabim_core::ElementKind::Wall(w)),
+        );
+        let r = e.of_type.expect("the wall keeps its type");
+        assert_eq!(r.id, tid);
+        assert_eq!(r.overrides, vec![Param::Location]);
+        // on the type's own line nothing is overridden
+        state.wall_location = tloc;
+        let w = crate::planview::new_wall(&model, level, &state, DVec2::ZERO, DVec2::X * 4.0);
+        let e = state.typed(
+            &model,
+            creabim_core::Element::new("Wall", creabim_core::ElementKind::Wall(w)),
+        );
+        assert!(e.of_type.unwrap().overrides.is_empty());
     }
 }
