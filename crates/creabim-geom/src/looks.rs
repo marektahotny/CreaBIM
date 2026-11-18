@@ -167,6 +167,21 @@ impl Looks {
                     l.hatch_off = !h;
                 }
             }
+            // a coordination drawing tells the trades apart: each in one
+            // colour, its pipes, what is on them and its devices
+            if services && v.coordination && l.colour.is_none() {
+                use creabim_core::viewmodes::Trade;
+                let of = |p: &creabim_core::mep::Pipe| Trade::of_system(p.kind());
+                let trade = match &e.kind {
+                    ElementKind::Pipe(p) => Some(of(p)),
+                    ElementKind::Valve(x) => x.host(model).map(of),
+                    ElementKind::Object(_) if crate::elplan::is_device(model, e.id) => {
+                        Some(Trade::Electrical)
+                    }
+                    _ => None,
+                };
+                l.colour = trade.map(Trade::colour);
+            }
             // a services drawing's pipes: lines in their system's colour
             // and line type, unless the view says otherwise
             if let (true, ElementKind::Pipe(p)) = (services, &e.kind) {

@@ -9209,6 +9209,7 @@ crate::props::row(ui, "File names", |ui| {
                     gridvis::VisTarget::View(v),
                     Some(&format!("View: {name}")),
                 );
+                self.view_purpose_row(ui, v);
                 // a section's or elevation's drawing style, as a plan's (MU21)
                 // folding with its ?, as the other sections (MU37)
                 let is_section = matches!(

@@ -18,6 +18,47 @@ impl CreaBimApp {
             .unwrap_or_default()
     }
 
+    /// What the open view's drawing is for, in its settings: the
+    /// architect's, a trade's or the coordination of all.
+    pub(super) fn view_purpose_row(&mut self, ui: &mut egui::Ui, view: creabim_core::ElementId) {
+        use creabim_core::viewmodes::Purpose;
+        let Some(creabim_core::ElementKind::View(v)) = self.doc.model().get(view).map(|e| &e.kind)
+        else {
+            return;
+        };
+        if matches!(v.kind, creabim_core::ViewKind::Schedule { .. }) {
+            return;
+        }
+        let was = Purpose::of(v);
+        let mut now = was;
+        crate::props::row(ui, "Drawing for", |ui| {
+            egui::ComboBox::from_id_salt("view.purpose")
+                .icon(crate::props::combo_icon)
+                .selected_text(crate::i18n::tr(now.label()))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for p in Purpose::all() {
+                        ui.selectable_value(&mut now, p, crate::i18n::tr(p.label()));
+                    }
+                });
+        });
+        if now != was {
+            let r = self.doc.edit(view, "Drawing for", |e| {
+                if let creabim_core::ElementKind::View(x) = &mut e.kind {
+                    now.apply(x);
+                }
+            });
+            self.report(
+                r,
+                format!(
+                    "{}: {}.",
+                    crate::i18n::tr("Drawing for"),
+                    crate::i18n::tr(now.label())
+                ),
+            );
+        }
+    }
+
     /// Pipes are not drawn in the architect's plan, which leaves them
     /// out: with the open plan one of those, opens the storey's plan of
     /// the trade the Pipe tool draws for, made the first time. True when

@@ -2105,6 +2105,10 @@ pub struct View {
     /// The trade a services drawing is for; none shows every trade's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trade: Option<crate::viewmodes::Trade>,
+    /// A coordination drawing: every trade's pipes and wiring over the
+    /// building, each trade in its colour.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub coordination: bool,
     /// The storey a legend of rooms lists; none lists every storey's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub of_level: Option<ElementId>,
@@ -2494,6 +2498,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            coordination: false,
             of_level: None,
             notes: String::new(),
             spatial: false,
@@ -2527,6 +2532,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            coordination: false,
             of_level: None,
             notes: String::new(),
             spatial: false,
@@ -2557,6 +2563,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            coordination: false,
             of_level: None,
             notes: String::new(),
             spatial: false,
@@ -2588,6 +2595,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            coordination: false,
             of_level: None,
             notes: String::new(),
             spatial: false,
@@ -2624,6 +2632,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            coordination: false,
             of_level: None,
             notes: String::new(),
             spatial: false,

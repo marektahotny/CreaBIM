@@ -133,6 +133,7 @@ impl DisplayMode {
     /// Put `view` in this mode.
     pub fn apply(self, view: &mut View) {
         let blind = self != DisplayMode::Architecture;
+        view.coordination = false;
         view.graphics.drawing_style = if blind {
             DrawingStyle::Clean
         } else {
@@ -165,6 +166,62 @@ impl DisplayMode {
             o.halftone = self == DisplayMode::Services;
         }
         view.look.tidy();
+    }
+}
+
+/// What a drawing is for, as its view's settings pick it: the
+/// architect's, a blind one, one trade's, all the trades', or the
+/// coordination of them all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Purpose {
+    Architecture,
+    Blind,
+    Trade(Trade),
+    /// Every trade's pipes, each system in its own colour.
+    Services,
+    /// Everything, each trade in one colour of its own.
+    Coordination,
+}
+
+impl Purpose {
+    pub fn all() -> Vec<Purpose> {
+        let mut v = vec![Purpose::Architecture, Purpose::Blind];
+        v.extend(Trade::ALL.map(Purpose::Trade));
+        v.extend([Purpose::Services, Purpose::Coordination]);
+        v
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Purpose::Architecture => "Architecture",
+            Purpose::Blind => "Blind drawing",
+            Purpose::Trade(t) => t.label(),
+            Purpose::Services => "All trades",
+            Purpose::Coordination => "Coordination",
+        }
+    }
+
+    pub fn of(view: &View) -> Purpose {
+        match (DisplayMode::of(view), view.trade) {
+            (DisplayMode::Architecture, _) => Purpose::Architecture,
+            (DisplayMode::Blind, _) => Purpose::Blind,
+            (DisplayMode::Services, _) if view.coordination => Purpose::Coordination,
+            (DisplayMode::Services, Some(t)) => Purpose::Trade(t),
+            (DisplayMode::Services, None) => Purpose::Services,
+        }
+    }
+
+    pub fn apply(self, view: &mut View) {
+        match self {
+            Purpose::Architecture => DisplayMode::Architecture.apply(view),
+            Purpose::Blind => DisplayMode::Blind.apply(view),
+            _ => DisplayMode::Services.apply(view),
+        }
+        view.trade = match self {
+            Purpose::Trade(t) => Some(t),
+            _ => None,
+        };
+        view.coordination = self == Purpose::Coordination;
     }
 }
 
@@ -237,6 +294,21 @@ mod tests {
         DisplayMode::Architecture.apply(&mut v);
         assert_eq!(v, was);
     }
+
+    #[test]
+    fn a_drawing_is_for_the_architect_a_trade_or_the_coordination() {
+        let mut v = plan();
+        for p in Purpose::all() {
+            p.apply(&mut v);
+            assert_eq!(Purpose::of(&v), p);
+        }
+        // coordination: every trade, none left out
+        Purpose::Coordination.apply(&mut v);
+        assert!(v.coordination && v.trade.is_none());
+        assert_eq!(DisplayMode::of(&v), DisplayMode::Services);
+        Purpose::Architecture.apply(&mut v);
+        assert!(!v.coordination);
+    }
 }
 
 /// The trade a services drawing is for: it shows that trade's pipes and
@@ -273,6 +345,25 @@ impl Trade {
             Trade::MedGas => "Medical gases",
             Trade::Electrical => "Electrical (ELI)",
         }
+    }
+
+    /// The trade's colour in a coordination drawing.
+    pub fn colour(self) -> [f32; 3] {
+        match self {
+            Trade::Plumbing => [0.10, 0.40, 0.90],
+            Trade::Heating => [0.85, 0.15, 0.10],
+            Trade::Ventilation => [0.10, 0.60, 0.25],
+            Trade::MedGas => [0.60, 0.20, 0.75],
+            Trade::Electrical => [0.95, 0.55, 0.0],
+        }
+    }
+
+    /// The trade that draws pipes of the system `kind`.
+    pub fn of_system(kind: crate::mep::SystemKind) -> Trade {
+        Trade::ALL
+            .into_iter()
+            .find(|t| t.shows(kind))
+            .unwrap_or(Trade::Plumbing)
     }
 
     /// Does its drawing show pipes of the system `kind`?
