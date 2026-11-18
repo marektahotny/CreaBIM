@@ -727,6 +727,43 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
             }
             // a void is an opening in what it cuts, written below
             ElementKind::Part(p) if p.void => {}
+            // a valve or a terminal on a pipe: its body, with the class
+            // and predefined type of its kind
+            ElementKind::Valve(v) => {
+                let Some(pipe) = v.host(model) else { continue };
+                let level = pipe.level;
+                let Some(&(_, spl)) = storeys.get(&level) else {
+                    continue;
+                };
+                let Some((mesh, _)) = creabim_geom::valves::valve_mesh(model, v) else {
+                    continue;
+                };
+                let pl = c.local_placement(Some(spl), DVec3::ZERO, None);
+                let z0 = elevation(Some(level));
+                let fs = tessellate(&mut c, &mesh, |p| p - DVec3::Z * z0);
+                let shape = c.shape("Tessellation", &[fs]);
+                let kind = v.kind_def();
+                let (class, tail) = match kind {
+                    Some(k) if crate::classes::ifc4_element_tail(k.ifc.0).is_some() => {
+                        (k.ifc.0.to_ascii_uppercase(), format!(",$,.{}.", k.ifc.1))
+                    }
+                    _ => free_mesh_entity("IfcValve"),
+                };
+                let r = product(&mut c, &class, e, pl, shape, &tail);
+                let mut props = vec![
+                    ("Kind", Prop::Label(v.kind.clone())),
+                    ("System", Prop::Label(pipe.system.clone())),
+                    ("NominalDiameter", Prop::Length(pipe.nominal_mm / 1000.0)),
+                ];
+                if let Some(k) = kind {
+                    props.push(("Description", Prop::Label(k.name.to_string())));
+                    if !k.norm.is_empty() {
+                        props.push(("Standard", Prop::Label(k.norm.to_string())));
+                    }
+                }
+                c.pset_on(&[r], "CreaBIM_Valve", &props);
+                contained.entry(Some(level)).or_default().push(r);
+            }
             k if creabim_core::members::is_member(k) => {
                 let level = creabim_core::members::level_of(k);
                 let Some(&(_, spl)) = level.and_then(|l| storeys.get(&l)) else {
