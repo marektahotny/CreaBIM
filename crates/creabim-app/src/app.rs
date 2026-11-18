@@ -7197,38 +7197,83 @@ impl CreaBimApp {
         );
     }
 
-    fn materials(&self) -> Vec<(ElementId, String)> {
-        self.doc
-            .model()
-            .iter()
-            .filter(|e| matches!(e.kind, ElementKind::Material(_)))
-            .map(|e| (e.id, e.name.clone()))
-            .collect()
-    }
-
-    /// A material picker; "New material" adds one and picks it.
-    fn material_combo(&mut self, ui: &mut egui::Ui, current: &mut Option<ElementId>) -> bool {
-        let materials = self.materials();
+    /// A material picker for something of `usage`: the project's materials
+    /// it can be made of (a window's frame: aluminium, steel, timber,
+    /// plastic), then the library's it has not got yet, picked by a
+    /// click; "All materials" lists the rest too. "New material" adds one
+    /// and picks it.
+    fn material_combo(
+        &mut self,
+        ui: &mut egui::Ui,
+        current: &mut Option<ElementId>,
+        usage: creabim_core::library::MaterialUse,
+    ) -> bool {
+        let all_id = egui::Id::new("material_combo.all");
+        let mut all = ui.data(|d| d.get_temp::<bool>(all_id).unwrap_or(false));
+        let narrow = !usage.categories().is_empty();
+        let materials: Vec<(ElementId, String, bool)> =
+            creabim_core::library::materials(self.doc.model())
+                .into_iter()
+                .map(|(id, n, m)| (id, n.to_string(), usage.fits(&m.category)))
+                .collect();
         let name = current
             .and_then(|id| materials.iter().find(|m| m.0 == id))
             .map_or("By type", |m| m.1.as_str())
             .to_string();
+        // the library's materials of this use the project has not got
+        let shelf: Vec<&'static creabim_core::library::LibraryEntry> = if narrow {
+            creabim_core::library::LIBRARY
+                .iter()
+                .filter(|e| usage.fits(e.category) && !materials.iter().any(|m| m.1 == e.name))
+                .collect()
+        } else {
+            vec![]
+        };
         let mut changed = false;
         let mut create = false;
+        let mut take = None;
         crate::app::helpui::combo(ui, "Material")
             .selected_text(crate::i18n::tw(name))
             .show_ui(ui, |ui| {
                 changed |= ui
                     .selectable_value(current, None, crate::i18n::tw("By type"))
                     .changed();
-                for (id, n) in &materials {
-                    changed |= ui
-                        .selectable_value(current, Some(*id), crate::i18n::tw(n))
-                        .changed();
+                for (id, n, fits) in &materials {
+                    if *fits || all || *current == Some(*id) {
+                        changed |= ui
+                            .selectable_value(current, Some(*id), crate::i18n::tw(n))
+                            .changed();
+                    }
+                }
+                if !shelf.is_empty() {
+                    ui.separator();
+                    ui.label(egui::RichText::new(crate::i18n::t("From the library")).weak());
+                    for e in &shelf {
+                        if ui.selectable_label(false, crate::i18n::tw(e.name)).clicked() {
+                            take = Some(*e);
+                        }
+                    }
                 }
                 ui.separator();
+                if narrow {
+                    ui.checkbox(&mut all, crate::i18n::tw("All materials")).on_hover_text(
+                        crate::i18n::t(
+                            "List every material of the project, not only those this element is usually made of",
+                        ),
+                    );
+                }
                 create = ui.button(crate::i18n::t("New material…")).clicked();
             });
+        ui.data_mut(|d| d.insert_temp(all_id, all));
+        if let Some(entry) = take {
+            let e = entry.element();
+            *current = Some(e.id);
+            let r = self
+                .doc
+                .commit(Transaction::new("Material from the library").insert(e));
+            self.report(r, format!("{} added from the library.", entry.name));
+            changed = true;
+        }
         if create {
             let e = Element::new(
                 creabim_core::library::unique_name(self.doc.model(), "New material"),
@@ -9411,7 +9456,11 @@ crate::props::row(ui, "File names", |ui| {
                         }
                         // a curtain wall is as thick as its mullions
                         w.thickness = c.mullion_depth;
-                        if self.material_combo(ui, &mut w.material) {
+                        if self.material_combo(
+                            ui,
+                            &mut w.material,
+                            creabim_core::library::MaterialUse::Joinery,
+                        ) {
                             label = "Wall material"
                         }
                     } else {
@@ -9433,7 +9482,13 @@ crate::props::row(ui, "File names", |ui| {
                         } else if num(ui, "Thickness", &mut w.thickness, 0.02, 2.0) {
                             label = "Wall thickness"
                         }
-                        if !layered && self.material_combo(ui, &mut w.material) {
+                        if !layered
+                            && self.material_combo(
+                                ui,
+                                &mut w.material,
+                                creabim_core::library::MaterialUse::Wall,
+                            )
+                        {
                             label = "Wall material"
                         }
                     }
@@ -9502,7 +9557,13 @@ crate::props::row(ui, "File names", |ui| {
                             crate::units::elevation(s.top(level) - s.thickness)
                         ),
                     );
-                    if !layered && self.material_combo(ui, &mut s.material) {
+                    if !layered
+                        && self.material_combo(
+                            ui,
+                            &mut s.material,
+                            creabim_core::library::MaterialUse::Slab,
+                        )
+                    {
                         label = "Slab material"
                     }
                     let arcs = s.bulges.iter().filter(|b| b.abs() > 1e-9).count();
@@ -9558,7 +9619,11 @@ crate::props::row(ui, "File names", |ui| {
                     if num(ui, "Offset along wall", &mut o.offset, 0.0, 1e4) {
                         label = "Move opening"
                     }
-                    if self.material_combo(ui, &mut o.material) {
+                    if self.material_combo(
+                        ui,
+                        &mut o.material,
+                        creabim_core::library::MaterialUse::Joinery,
+                    ) {
                         label = "Material";
                     }
                     let l = wallsui::opening_fields(ui, self.doc.model(), o);
@@ -10603,7 +10668,11 @@ crate::props::row(ui, "File names", |ui| {
                                 }
                             }
                         });
-                    if self.material_combo(ui, &mut m.material) {
+                    if self.material_combo(
+                        ui,
+                        &mut m.material,
+                        creabim_core::library::MaterialUse::Any,
+                    ) {
                         label = "Mesh material"
                     }
                     // Transform, as Blender's (MU24): location, rotation
@@ -10682,7 +10751,11 @@ crate::props::row(ui, "File names", |ui| {
                 }
                 ElementKind::Ceiling(c) => {
                     label = crate::roomtool::ceiling_fields(ui, self.doc.model(), c);
-                    if self.material_combo(ui, &mut c.material) {
+                    if self.material_combo(
+                        ui,
+                        &mut c.material,
+                        creabim_core::library::MaterialUse::Ceiling,
+                    ) {
                         label = "Material";
                     }
                 }
@@ -10736,10 +10809,11 @@ crate::props::row(ui, "File names", |ui| {
                     }
                     // a void cuts, so it has no material to show
                     let void = matches!(k, ElementKind::Part(p) if p.void);
+                    let usage = creabim_core::library::MaterialUse::of(k);
                     if let Some(m) =
                         creabim_core::members::material_mut(k).filter(|_| !layered && !void)
                     {
-                        if self.material_combo(ui, m) {
+                        if self.material_combo(ui, m, usage) {
                             label = "Material";
                         }
                     }
