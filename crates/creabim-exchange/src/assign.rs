@@ -210,7 +210,8 @@ pub fn fit(
                 flip_facing: false,
                 setback: None,
                 reveal: None,
-                leaves: vec![],
+                division: None,
+                door: None,
             }))
         }
         Assign::Class(_) => Err("A class is not a shape.".into()),

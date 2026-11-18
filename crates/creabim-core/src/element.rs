@@ -1558,13 +1558,18 @@ pub struct Opening {
     /// [`crate::assembly::REVEAL_INSULATION`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reveal: Option<f64>,
-    /// How each leaf of a window opens, one for each pane across from
-    /// the left seen from inside; those left out are fixed.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub leaves: Vec<LeafOp>,
+    /// How it is divided into fields and how each opens; left out, a
+    /// window's panes are fixed glazing and a door has one leaf.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub division: Option<crate::joinery::FrameNode>,
+    /// A door as joinery: its leaf's nominal size, its frame, its fire
+    /// rating.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub door: Option<crate::joinery::DoorSpec>,
 }
 
-/// How a window's leaf opens. Left and right are seen from inside.
+/// How a field of a window or door opens. Left and right are seen from
+/// outside.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LeafOp {
@@ -1574,50 +1579,62 @@ pub enum LeafOp {
     /// Turning on hinges on its left or right.
     TurnLeft,
     TurnRight,
-    /// Tilting in at its top.
+    /// Tilting in at its top, hinged at the bottom.
     Tilt,
     /// Tilting and turning.
     TiltTurnLeft,
     TiltTurnRight,
+    /// Swinging out at its bottom, hinged at the top.
+    TopHung,
     /// Sliding to the left or right.
     SlideLeft,
     SlideRight,
     /// Lifting and sliding.
     LiftSlideLeft,
     LiftSlideRight,
+    /// A door's leaf, hinged on its left or right.
+    DoorLeft,
+    DoorRight,
 }
 
 impl LeafOp {
-    pub const ALL: [LeafOp; 10] = [
+    pub const ALL: [LeafOp; 13] = [
         LeafOp::Fixed,
         LeafOp::TurnLeft,
         LeafOp::TurnRight,
         LeafOp::Tilt,
         LeafOp::TiltTurnLeft,
         LeafOp::TiltTurnRight,
+        LeafOp::TopHung,
         LeafOp::SlideLeft,
         LeafOp::SlideRight,
         LeafOp::LiftSlideLeft,
         LeafOp::LiftSlideRight,
+        LeafOp::DoorLeft,
+        LeafOp::DoorRight,
     ];
 
     pub fn label(self) -> &'static str {
         match self {
-            LeafOp::Fixed => "Fixed",
+            LeafOp::Fixed => "Fixed glazing",
             LeafOp::TurnLeft => "Turning, hinges left",
             LeafOp::TurnRight => "Turning, hinges right",
             LeafOp::Tilt => "Tilting",
             LeafOp::TiltTurnLeft => "Tilt and turn, hinges left",
             LeafOp::TiltTurnRight => "Tilt and turn, hinges right",
+            LeafOp::TopHung => "Top hung",
             LeafOp::SlideLeft => "Sliding to the left",
             LeafOp::SlideRight => "Sliding to the right",
             LeafOp::LiftSlideLeft => "Lift and slide to the left",
             LeafOp::LiftSlideRight => "Lift and slide to the right",
+            LeafOp::DoorLeft => "Door leaf, hinges left",
+            LeafOp::DoorRight => "Door leaf, hinges right",
         }
     }
 
-    /// As window schedules abbreviate it (F, O, S, OS, P, ZP in Slovak
-    /// practice are translated from these).
+    /// As window schedules abbreviate it in Slovak practice: FIX, O
+    /// (otváravé), S (sklopné), OS, V (výklopné), P (posuvné), ZP
+    /// (zdvižno-posuvné), D (dvere), with L or P for left or right.
     pub fn code(self) -> &'static str {
         match self {
             LeafOp::Fixed => "FIX",
@@ -1626,10 +1643,13 @@ impl LeafOp {
             LeafOp::Tilt => "S",
             LeafOp::TiltTurnLeft => "OS-L",
             LeafOp::TiltTurnRight => "OS-P",
+            LeafOp::TopHung => "V",
             LeafOp::SlideLeft => "P-L",
             LeafOp::SlideRight => "P-P",
             LeafOp::LiftSlideLeft => "ZP-L",
             LeafOp::LiftSlideRight => "ZP-P",
+            LeafOp::DoorLeft => "D-L",
+            LeafOp::DoorRight => "D-P",
         }
     }
 
@@ -1637,7 +1657,40 @@ impl LeafOp {
         LeafOp::ALL.into_iter().find(|o| o.code() == s)
     }
 
-    /// The same turned round, as seen from the other side.
+    /// Hinged on a side: on its left?
+    pub fn hinged_left(self) -> Option<bool> {
+        match self {
+            LeafOp::TurnLeft | LeafOp::TiltTurnLeft | LeafOp::DoorLeft => Some(true),
+            LeafOp::TurnRight | LeafOp::TiltTurnRight | LeafOp::DoorRight => Some(false),
+            _ => None,
+        }
+    }
+
+    /// Sliding: to the left?
+    pub fn slides_left(self) -> Option<bool> {
+        match self {
+            LeafOp::SlideLeft | LeafOp::LiftSlideLeft => Some(true),
+            LeafOp::SlideRight | LeafOp::LiftSlideRight => Some(false),
+            _ => None,
+        }
+    }
+
+    pub fn lifts(self) -> bool {
+        matches!(self, LeafOp::LiftSlideLeft | LeafOp::LiftSlideRight)
+    }
+
+    pub fn tilts(self) -> bool {
+        matches!(
+            self,
+            LeafOp::Tilt | LeafOp::TiltTurnLeft | LeafOp::TiltTurnRight
+        )
+    }
+
+    pub fn is_door(self) -> bool {
+        matches!(self, LeafOp::DoorLeft | LeafOp::DoorRight)
+    }
+
+    /// The same with left and right changed over.
     pub fn mirrored(self) -> LeafOp {
         match self {
             LeafOp::TurnLeft => LeafOp::TurnRight,
@@ -1648,15 +1701,10 @@ impl LeafOp {
             LeafOp::SlideRight => LeafOp::SlideLeft,
             LeafOp::LiftSlideLeft => LeafOp::LiftSlideRight,
             LeafOp::LiftSlideRight => LeafOp::LiftSlideLeft,
+            LeafOp::DoorLeft => LeafOp::DoorRight,
+            LeafOp::DoorRight => LeafOp::DoorLeft,
             o => o,
         }
-    }
-
-    pub fn slides(self) -> bool {
-        matches!(
-            self,
-            LeafOp::SlideLeft | LeafOp::SlideRight | LeafOp::LiftSlideLeft | LeafOp::LiftSlideRight
-        )
     }
 }
 
@@ -1675,11 +1723,6 @@ impl Opening {
         left != self.flip_facing
     }
 
-    /// How leaf `i` of a window opens.
-    pub fn leaf(&self, i: usize) -> LeafOp {
-        self.leaves.get(i).copied().unwrap_or_default()
-    }
-
     /// Where its frame, `depth` deep, stands across `wall`, built up as
     /// `a`: from and to, the wall's left positive. See
     /// [`Opening::setback`].
@@ -1690,8 +1733,22 @@ impl Opening {
         depth: f64,
     ) -> (f64, f64) {
         let t = wall.thickness / 2.0;
+        // a door's lining runs through the whole wall
+        if self.is_lining() {
+            return (-t, t);
+        }
         let depth = depth.min(wall.thickness);
-        let layered = a.filter(|a| a.layers.len() >= 2);
+        // a door left to itself stands in the middle of a partition (a
+        // wall with no insulation)
+        let partition = |a: &crate::assembly::Assembly| {
+            self.kind == OpeningKind::Door
+                && self.setback.is_none()
+                && !a
+                    .layers
+                    .iter()
+                    .any(|l| l.function == crate::assembly::LayerFunction::Insulation)
+        };
+        let layered = a.filter(|a| a.layers.len() >= 2 && !partition(a));
         let (lo, hi) = match (layered, self.setback) {
             (Some(a), _) => crate::assembly::wall_core(a, wall),
             (None, Some(_)) => (-t, t),
@@ -1709,16 +1766,33 @@ impl Opening {
         (a0 + shift, a1 + shift)
     }
 
+    /// A door with a lining round its whole reveal.
+    pub fn is_lining(&self) -> bool {
+        self.kind == OpeningKind::Door
+            && self
+                .door
+                .as_ref()
+                .is_some_and(|d| d.frame == crate::joinery::DoorFrame::Lining)
+    }
+
     /// The setback it has: the one set, or the one it stands at left
-    /// to itself.
+    /// to itself, from the outer edge of the core (of the wall where it
+    /// has no layers).
     pub fn setback_in(&self, wall: &Wall, a: Option<&crate::assembly::Assembly>) -> f64 {
-        let layered = a.is_some_and(|a| a.layers.len() >= 2);
-        self.setback.unwrap_or(if layered {
-            0.0
+        if let Some(s) = self.setback {
+            return s;
+        }
+        let d = self.frame.depth.clamp(0.02, wall.thickness.max(0.02));
+        let span = self.frame_span(wall, a, d);
+        let t = wall.thickness / 2.0;
+        let core = a
+            .filter(|a| a.layers.len() >= 2)
+            .map_or((-t, t), |a| crate::assembly::wall_core(a, wall));
+        if wall.flip {
+            core.1 - span.1
         } else {
-            let d = self.frame.depth.clamp(0.02, wall.thickness.max(0.02));
-            (wall.thickness - d) / 2.0
-        })
+            span.0 - core.0
+        }
     }
 }
 

@@ -216,7 +216,8 @@ mod tests {
             flip_facing: false,
             setback: None,
             reveal: None,
-            leaves: vec![],
+            division: None,
+            door: None,
         };
         let boxes = curtain_boxes(&w, &g, &[&door]);
         let glass = boxes

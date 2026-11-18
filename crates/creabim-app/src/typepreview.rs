@@ -128,7 +128,8 @@ pub(super) fn sample_model(
                     flip_facing: false,
                     setback: None,
                     reveal: None,
-                    leaves: vec![],
+                    division: None,
+                    door: None,
                 }),
             ));
             // the section through its middle, whatever its width

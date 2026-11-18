@@ -2130,9 +2130,9 @@ fn opening_symbol(
 ) -> Vec<PlanItem> {
     use crate::opening::{opening_boxes, Fitted, Part};
     let mut out = Vec::new();
-    let Some(f) = Fitted::of(o, w) else {
+    if Fitted::of(o, w).is_none() {
         return out;
-    };
+    }
     let z = cut_v - c.v0;
     let line = |out: &mut Vec<PlanItem>, a: DVec2, b: DVec2| {
         out.push(PlanItem::Line {
@@ -2185,38 +2185,58 @@ fn opening_symbol(
             }
         }
         OpeningKind::Door => {
-            let Some(leaf) = boxes.iter().find(|b| b.part == Part::Leaf) else {
-                return out;
-            };
-            // the leaf turned open about its hinge on the face of the frame
-            // on the side it opens to, and the quarter circle it sweeps
+            // each leaf turned open about its hinge on the face of the
+            // frame on the side it opens to, and the quarter circle it
+            // sweeps
             let left = o.faces_left(w);
             let side = if left { 1.0 } else { -1.0 };
-            let s = if left { leaf.hi.y } else { leaf.lo.y };
-            let r = leaf.hi.x - leaf.lo.x;
-            let (u, towards) = if o.flip_hand {
-                (c.u0 + leaf.hi.x, -1.0)
-            } else {
-                (c.u0 + leaf.lo.x, 1.0)
-            };
-            rect(&mut out, u, u + towards * f.leaf(), s, s + side * r);
-            let hinge = at(u, s);
-            let closed = at(u + towards, s) - hinge;
-            let open = at(u, s + side) - hinge;
-            // arcs run anticlockwise: from whichever of the two comes first
-            let a0 = if closed.perp_dot(open) > 0.0 {
-                closed.to_angle()
-            } else {
-                open.to_angle()
-            };
-            out.push(PlanItem::Arc {
-                id,
-                pen: Pen::Symbol,
-                center: hinge,
-                radius: r,
-                start: a0,
-                end: a0 + std::f64::consts::FRAC_PI_2,
-            });
+            for leaf in boxes.iter().filter(|b| b.part == Part::Leaf) {
+                let s = if left { leaf.hi.y } else { leaf.lo.y };
+                let r = leaf.hi.x - leaf.lo.x;
+                // hinged on the side away from its handle
+                let mid = (leaf.lo.x + leaf.hi.x) / 2.0;
+                let at_end = boxes
+                    .iter()
+                    .find(|b| b.part == Part::Handle && b.lo.x >= leaf.lo.x && b.hi.x <= leaf.hi.x)
+                    .map_or(o.flip_hand, |h| (h.lo.x + h.hi.x) / 2.0 < mid);
+                let (u, towards) = if at_end {
+                    (c.u0 + leaf.hi.x, -1.0)
+                } else {
+                    (c.u0 + leaf.lo.x, 1.0)
+                };
+                let lt = (leaf.hi.y - leaf.lo.y).max(0.02);
+                rect(&mut out, u, u + towards * lt, s, s + side * r);
+                let hinge = at(u, s);
+                let closed = at(u + towards, s) - hinge;
+                let open = at(u, s + side) - hinge;
+                // arcs run anticlockwise: from whichever of the two comes first
+                let a0 = if closed.perp_dot(open) > 0.0 {
+                    closed.to_angle()
+                } else {
+                    open.to_angle()
+                };
+                out.push(PlanItem::Arc {
+                    id,
+                    pen: Pen::Symbol,
+                    center: hinge,
+                    radius: r,
+                    start: a0,
+                    end: a0 + std::f64::consts::FRAC_PI_2,
+                });
+            }
+            // the leaf's nominal size, and a fire door's rating, at the
+            // door on the side it opens to (STN 01 3420)
+            if let Some(d) = &o.door {
+                let t = w.thickness / 2.0;
+                out.push(PlanItem::Label {
+                    id,
+                    at: at(
+                        (c.u0 + c.u1) / 2.0,
+                        side * (t + 0.12 + (c.u1 - c.u0) * 0.35),
+                    ),
+                    text: d.mark(),
+                });
+            }
         }
     }
     out
@@ -2831,7 +2851,8 @@ mod tests {
                 flip_facing: false,
                 setback: None,
                 reveal: None,
-                leaves: vec![],
+                division: None,
+                door: None,
             }),
         );
         let hole = duct.id;

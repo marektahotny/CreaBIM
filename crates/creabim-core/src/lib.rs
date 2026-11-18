@@ -26,6 +26,7 @@ pub mod graphics;
 pub mod grids;
 pub mod holds;
 pub mod id;
+pub mod joinery;
 pub mod joins;
 pub mod levels;
 pub mod library;

@@ -491,6 +491,20 @@ What an opening is.
 - `"window"`
 - `"hole"`
 
+### Door
+
+A door as joinery: its leaf's nominal size, its frame, its fire rating.
+
+| Field | Type | | Description |
+|---|---|---|---|
+| `leaf_width` | number | default `0.8` | The leaf's nominal width, without the frame. |
+| `leaf_height` | number | default `1.97` | The leaf's nominal height. |
+| `frame` | string | required | "steel", "aluminium", "timber" or "lining" (a timber lining with architraves). |
+| `leaf` | string |  | What the leaf is made of: "timber", "steel" or "aluminium". |
+| `fire_rating` | string |  | A fire door's rating, as "EW 30/D3". |
+| `self_closing` | boolean | default `true` | A fire door with a closer. |
+| `smoke_tight` | boolean | default `false` | A smoke tight fire door. |
+
 ### Opening
 
 A door, window or bare hole in a wall, placed by its distance along the wall from the wall's start.
@@ -514,7 +528,8 @@ A door, window or bare hole in a wall, placed by its distance along the wall fro
 | `flip_facing` | boolean | default `false` | A door opening to the wall's exterior; a window facing its interior. |
 | `setback` | number |  | How far the frame's outer face stands in from the outer edge of the wall's core. Left out: on that edge in a layered wall, in the middle of a plain one. |
 | `reveal` | number |  | How far the reveal's insulation laps over the frame. |
-| `leaves` | array of string |  | How each leaf of a window opens, from the left seen from inside: "FIX", "O-L", "O-P" (turning, hinges left or right), "S" (tilting), "OS-L", "OS-P" (tilt and turn), "P-L", "P-P" (sliding), "ZP-L", "ZP-P" (lift and slide). |
+| `division` | string |  | How it is divided into fields, seen from outside, and how each opens. A field is "FIX", "O-L", "O-P" (turning, hinges left or right), "S" (tilting), "OS-L", "OS-P" (tilt and turn), "V" (top hung), "P-L", "P-P" (sliding), "ZP-L", "ZP-P" (lift and slide), "D-L", "D-P" (a door's leaf), with `*` after it for a solid panel; a split is "v(1:OS-L,1:FIX)" side by side or "h(0.3:S,0.7:OS-L)" top to bottom, each part after its share. |
+| `door` | [Door](#door) |  | A door as joinery: the opening's `width` and `height` left out are what its leaf and frame need. |
 
 ### Slab
 

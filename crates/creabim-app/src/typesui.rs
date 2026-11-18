@@ -715,6 +715,7 @@ impl CreaBimApp {
                     || self.cooling_action(head, arg)
                     || self.air_balance_action(head, arg)
                     || self.circuit_action(head, arg)
+                    || self.joinery_action(head, arg)
                     || self.heat_loss_action(head, arg)
                     || self.net_calc_action(head, arg)
                     || self.auto_valves_action(head, arg)

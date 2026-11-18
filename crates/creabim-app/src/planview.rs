@@ -4097,7 +4097,8 @@ fn section_tool(
                         flip_facing: false,
                         setback: None,
                         reveal: None,
-                        leaves: vec![],
+                        division: None,
+                        door: None,
                     }),
                 ),
             );
@@ -7589,7 +7590,8 @@ fn place_opening(
                 flip_facing: false,
                 setback: None,
                 reveal: None,
-                leaves: vec![],
+                division: None,
+                door: None,
             }),
         ),
     );

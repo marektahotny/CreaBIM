@@ -1023,7 +1023,8 @@ mod widen_tests {
             flip_facing: false,
             setback: None,
             reveal: None,
-            leaves: vec![],
+            division: None,
+            door: None,
         };
         (m, host, o)
     }

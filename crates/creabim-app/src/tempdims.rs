@@ -1201,7 +1201,8 @@ mod tests {
                     flip_facing: false,
                     setback: None,
                     reveal: None,
-                    leaves: vec![],
+                    division: None,
+                    door: None,
                 }),
             )
         };
@@ -1488,7 +1489,8 @@ mod core_tests {
                 flip_facing: false,
                 setback: None,
                 reveal: None,
-                leaves: vec![],
+                division: None,
+                door: None,
             }),
         );
         let did = door.id;

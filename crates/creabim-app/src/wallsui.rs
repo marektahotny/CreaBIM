@@ -252,10 +252,17 @@ pub(super) fn wall_fields(
     label
 }
 
-/// Where a door's or window's frame stands across its wall, how far
-/// the reveal laps it, and how each leaf of a window opens. Returns the
-/// edit's name.
-pub(super) fn seat_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) -> &'static str {
+/// A door as joinery (its leaf's nominal size, its frame, its fire
+/// rating), where a door's or window's frame stands across its wall,
+/// how far the reveal laps it, and its division with the button that
+/// opens the editor (`edit` set). Returns the edit's name.
+pub(super) fn seat_fields(
+    ui: &mut egui::Ui,
+    model: &Model,
+    o: &mut Opening,
+    edit: &mut bool,
+) -> &'static str {
+    use creabim_core::joinery::{self, DoorFrame, DoorMaterial, DoorSpec, FireDoor};
     let mut label = "";
     if o.kind == OpeningKind::Hole {
         return label;
@@ -267,17 +274,115 @@ pub(super) fn seat_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) -> 
         return label;
     };
     let asm = creabim_core::assembly_of(model, he).map(|x| x.1);
+    let t = crate::i18n::t;
+    if o.kind == OpeningKind::Door {
+        ui.separator();
+        ui.label(egui::RichText::new(t("Door leaf and frame")).strong());
+        // what it is now, or what its opening would hold
+        let mut d = o
+            .door
+            .clone()
+            .unwrap_or_else(|| DoorSpec::fitting(DoorFrame::Steel, o.width, o.height));
+        let mut changed = false;
+        changed |= crate::props::row(ui, "Leaf width", |ui| {
+            crate::props::fill(ui, crate::units::drag(&mut d.nom_width).range(0.3..=5.0))
+                .on_hover_text(t("The leaf's nominal width, without the frame: 600, 700, 800, 900 mm. The opening in the wall follows from it and the frame."))
+                .changed()
+        });
+        changed |= crate::props::row(ui, "Leaf height", |ui| {
+            crate::props::fill(ui, crate::units::drag(&mut d.nom_height).range(1.0..=5.0)).changed()
+        });
+        changed |= crate::props::row(ui, "Door frame", |ui| {
+            let mut c = false;
+            egui::ComboBox::from_id_salt("door_frame")
+                .icon(crate::props::combo_icon)
+                .selected_text(crate::i18n::tw(d.frame.label()))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for x in DoorFrame::ALL {
+                        c |= ui
+                            .selectable_value(&mut d.frame, x, crate::i18n::tw(x.label()))
+                            .changed();
+                    }
+                });
+            c
+        });
+        changed |= crate::props::row(ui, "Leaf material", |ui| {
+            let mut c = false;
+            egui::ComboBox::from_id_salt("door_leaf")
+                .icon(crate::props::combo_icon)
+                .selected_text(crate::i18n::tw(d.leaf.label()))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for x in DoorMaterial::ALL {
+                        c |= ui
+                            .selectable_value(&mut d.leaf, x, crate::i18n::tw(x.label()))
+                            .changed();
+                    }
+                });
+            c
+        });
+        let mut fire = d.fire.is_some();
+        if crate::props::row(ui, "Fire door", |ui| ui.checkbox(&mut fire, "").changed()) {
+            d.fire = fire.then(FireDoor::default);
+            changed = true;
+        }
+        if let Some(f) = &mut d.fire {
+            changed |= crate::props::row(ui, "Fire rating", |ui| {
+                let mut c = false;
+                egui::ComboBox::from_id_salt("door_fire")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(f.rating.clone())
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for x in joinery::FIRE_RATINGS {
+                            c |= ui
+                                .selectable_value(&mut f.rating, x.to_string(), x)
+                                .changed();
+                        }
+                    });
+                c
+            });
+            changed |= crate::props::row(ui, "Closer (C)", |ui| {
+                ui.checkbox(&mut f.self_closing, "").changed()
+            });
+            changed |= crate::props::row(ui, "Smoke tight (S)", |ui| {
+                ui.checkbox(&mut f.smoke_tight, "").changed()
+            });
+        }
+        let (ow, oh) = d.opening();
+        crate::props::row(ui, "Structural opening", |ui| {
+            ui.label(format!("{:.0} × {:.0} mm", ow * 1000.0, oh * 1000.0))
+        });
+        if changed {
+            joinery::apply_door(o, d);
+            label = "Door leaf and frame";
+        } else if o.door.is_some()
+            && crate::props::row(ui, "", |ui| {
+                ui.button(crate::i18n::t("Plain door"))
+                    .on_hover_text(t("Take the leaf's nominal size, frame and fire rating off: the door is its opening again."))
+                    .clicked()
+            })
+        {
+            o.door = None;
+            label = "Door leaf and frame";
+        }
+    }
     ui.separator();
-    ui.label(egui::RichText::new(crate::i18n::t("Seating in the wall")).strong());
-    let mut sb = o.setback_in(host, asm);
-    let changed = crate::props::row(ui, "Setback from the core", |ui| {
-        crate::props::fill(ui, crate::units::drag(&mut sb).range(-1.0..=2.0))
-            .on_hover_text(crate::i18n::t("How far the frame's outer face stands in from the outer edge of the wall's load-bearing layers; less than nothing moves it out into the insulation. In a wall with no layers it is measured from the wall's outside face."))
-            .changed()
-    });
-    if changed {
-        o.setback = Some(sb);
-        label = "Opening setback";
+    ui.label(egui::RichText::new(t("Seating in the wall")).strong());
+    if o.is_lining() {
+        ui.label(t("A lining runs through the whole wall."));
+    } else {
+        let mut sb = o.setback_in(host, asm);
+        let changed = crate::props::row(ui, "Setback from the core", |ui| {
+            crate::props::fill(ui, crate::units::drag(&mut sb).range(-1.0..=2.0))
+                .on_hover_text(t("How far the frame's outer face stands in from the outer edge of the wall's load-bearing layers; less than nothing moves it out into the insulation. In a wall with no layers it is measured from the wall's outside face."))
+                .changed()
+        });
+        if changed {
+            o.setback = Some(sb);
+            label = "Opening setback";
+        }
     }
     if o.kind == OpeningKind::Window {
         let mut lap = o
@@ -285,51 +390,25 @@ pub(super) fn seat_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) -> 
             .unwrap_or(creabim_core::assembly::REVEAL_INSULATION);
         let changed = crate::props::row(ui, "Reveal overlap", |ui| {
             crate::props::fill(ui, crate::units::drag(&mut lap).range(0.0..=0.3))
-                .on_hover_text(crate::i18n::t(
-                    "How far the reveal's insulation laps over the frame.",
-                ))
+                .on_hover_text(t("How far the reveal's insulation laps over the frame."))
                 .changed()
         });
         if changed {
             o.reveal = Some(lap);
             label = "Reveal overlap";
         }
-        ui.separator();
-        ui.label(
-            egui::RichText::new(crate::i18n::t("Leaves, from the left seen from inside")).strong(),
-        );
-        let n = o.frame.panes_across.clamp(1, 12) as usize;
-        for i in 0..n {
-            let mut op = o.leaf(i);
-            let text = format!("{} {}", crate::i18n::t("Leaf"), i + 1);
-            let changed = crate::props::row(ui, &text, |ui| {
-                let mut changed = false;
-                egui::ComboBox::from_id_salt(("leaf_op", i))
-                    .icon(crate::props::combo_icon)
-                    .selected_text(crate::i18n::tw(op.label()))
-                    .width(ui.available_width())
-                    .show_ui(ui, |ui| {
-                        for x in creabim_core::LeafOp::ALL {
-                            changed |= ui
-                                .selectable_value(&mut op, x, crate::i18n::tw(x.label()))
-                                .changed();
-                        }
-                    });
-                changed
-            });
-            if changed {
-                if o.leaves.len() <= i {
-                    o.leaves.resize(i + 1, creabim_core::LeafOp::Fixed);
-                }
-                o.leaves[i] = op;
-                label = "Leaf operation";
-            }
-        }
-        // no more leaves than panes, none kept that say nothing
-        o.leaves.truncate(n);
-        while o.leaves.last() == Some(&creabim_core::LeafOp::Fixed) {
-            o.leaves.pop();
-        }
+    }
+    ui.separator();
+    ui.label(egui::RichText::new(t("Division and opening")).strong());
+    crate::props::row(ui, "Fields", |ui| ui.label(joinery::operation(o)));
+    if crate::props::row(ui, "", |ui| {
+        ui.button(t("Edit the division…"))
+            .on_hover_text(t(
+                "Open the editor: split it by mullions and transoms and set how each field opens.",
+            ))
+            .clicked()
+    }) {
+        *edit = true;
     }
     label
 }

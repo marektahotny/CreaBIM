@@ -239,7 +239,8 @@ mod tests {
                 flip_facing: false,
                 setback: None,
                 reveal: None,
-                leaves: vec![],
+                division: None,
+                door: None,
             }),
         );
         let ids = (old.id, gone.id, new.id, door.id);

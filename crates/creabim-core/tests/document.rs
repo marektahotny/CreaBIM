@@ -51,7 +51,8 @@ fn door(host: ElementId) -> Element {
             flip_facing: false,
             setback: None,
             reveal: None,
-            leaves: vec![],
+            division: None,
+            door: None,
         }),
     )
 }

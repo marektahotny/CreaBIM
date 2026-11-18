@@ -197,7 +197,8 @@ pub fn holes(host: ElementId, w: &Wall, pattern: &ScreenPattern) -> Vec<Opening>
             flip_facing: false,
             setback: None,
             reveal: None,
-            leaves: vec![],
+            division: None,
+            door: None,
         })
         .collect()
 }

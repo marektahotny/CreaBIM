@@ -1196,7 +1196,8 @@ impl Builder {
                             flip_facing: false,
                             setback: None,
                             reveal: None,
-                            leaves: vec![],
+                            division: None,
+                            door: None,
                         }),
                         of_type: None,
                     });

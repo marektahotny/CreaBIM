@@ -711,7 +711,8 @@ impl<'a> Importer<'a> {
                         flip_facing: false,
                         setback: None,
                         reveal: None,
-                        leaves: vec![],
+                        division: None,
+                        door: None,
                     }),
                 });
             } else if let Some(&i) = self.slabs.get(&host) {
@@ -1746,7 +1747,8 @@ impl<'a> Importer<'a> {
                         flip_facing: false,
                         setback: None,
                         reveal: None,
-                        leaves: vec![],
+                        division: None,
+                        door: None,
                     }),
                 ));
             }
@@ -1882,7 +1884,8 @@ impl<'a> Importer<'a> {
                 flip_facing: false,
                 setback: None,
                 reveal: None,
-                leaves: vec![],
+                division: None,
+                door: None,
             }),
         });
     }

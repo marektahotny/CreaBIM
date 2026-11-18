@@ -512,7 +512,8 @@ mod tests {
                 flip_facing: false,
                 setback: None,
                 reveal: None,
-                leaves: vec![],
+                division: None,
+                door: None,
             }),
         );
         tx = tx.insert(win);

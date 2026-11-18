@@ -67,6 +67,8 @@ mod heatsourceui;
 pub(crate) mod helpui;
 #[path = "importui.rs"]
 mod importui;
+#[path = "joineryui.rs"]
+mod joineryui;
 #[path = "joinsui.rs"]
 mod joinsui;
 #[path = "levelcopy.rs"]
@@ -393,6 +395,8 @@ pub struct CreaBimApp {
     air_balance: bool,
     /// The circuit check window, while it is open.
     circuit: Option<creabim_services::electrical::Circuit>,
+    /// The window and door editor, while it is open.
+    joinery: Option<joineryui::JoineryEdit>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
     /// The Sun and shadows window is open.
@@ -585,6 +589,7 @@ impl CreaBimApp {
             cooling: None,
             air_balance: false,
             circuit: None,
+            joinery: None,
             heat_loss: None,
             net_calc: None,
             auto_valves: None,
@@ -9279,6 +9284,7 @@ impl CreaBimApp {
         let mut redraw = false;
         let mut new_style = false;
         let mut add_valve: Option<&'static str> = None;
+        let mut edit_joinery = false;
         let show_visibility = matches!(e.kind, ElementKind::View(_));
         let mut object_type = false;
         // a placed view's new scale: (its view, the scale)
@@ -9541,7 +9547,7 @@ impl CreaBimApp {
                             label = "Window panes"
                         }
                     }
-                    let l = wallsui::seat_fields(ui, self.doc.model(), o);
+                    let l = wallsui::seat_fields(ui, self.doc.model(), o, &mut edit_joinery);
                     if !l.is_empty() {
                         label = l;
                     }
@@ -10676,6 +10682,9 @@ impl CreaBimApp {
                     }
                 }
             }
+        }
+        if edit_joinery {
+            self.joinery_open(edited.id);
         }
         if let Some(code) = add_valve {
             let name = creabim_core::mep::valve_kind(code).map_or(code, |k| k.name);
@@ -12239,6 +12248,7 @@ impl eframe::App for CreaBimApp {
         self.cooling_window(&ctx);
         self.air_balance_window(&ctx);
         self.circuit_window(&ctx);
+        self.joinery_window(&ctx);
         self.heat_source_window(&ctx);
         self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);

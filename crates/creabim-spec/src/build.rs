@@ -889,16 +889,51 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         f::OpeningKind::Window => core::OpeningKind::Window,
         f::OpeningKind::Hole => core::OpeningKind::Hole,
     };
-    let mut leaves = vec![];
-    for (i, l) in o.leaves.iter().enumerate() {
-        match core::LeafOp::of_code(l) {
-            Some(op) => leaves.push(op),
-            None => c.err(
-                &at.key("leaves"),
-                format!("leaf {} is `{l}`, not one of FIX, O-L, O-P, S, OS-L, OS-P, P-L, P-P, ZP-L, ZP-P", i + 1),
-            ),
+    let division = match o.division.as_deref().map(core::joinery::FrameNode::parse) {
+        Some(Ok(d)) => Some(d),
+        Some(Err(e)) => {
+            c.err(&at.key("division"), e);
+            None
         }
-    }
+        None => None,
+    };
+    let door = o.door.as_ref().and_then(|d| {
+        let dat = at.key("door");
+        let Some(frame) = core::joinery::DoorFrame::of_code(&d.frame) else {
+            c.err(
+                &dat.key("frame"),
+                format!(
+                    "`{}` is not one of steel, aluminium, timber, lining",
+                    d.frame
+                ),
+            );
+            return None;
+        };
+        let leaf = match d.leaf.as_deref() {
+            None => core::joinery::DoorMaterial::Timber,
+            Some(l) => match core::joinery::DoorMaterial::of_code(l) {
+                Some(m) => m,
+                None => {
+                    c.err(
+                        &dat.key("leaf"),
+                        format!("`{l}` is not one of timber, steel, aluminium"),
+                    );
+                    return None;
+                }
+            },
+        };
+        Some(core::joinery::DoorSpec {
+            frame,
+            leaf,
+            nom_width: c.l(d.leaf_width),
+            nom_height: c.l(d.leaf_height),
+            fire: d.fire_rating.as_ref().map(|r| core::joinery::FireDoor {
+                rating: r.clone(),
+                self_closing: d.self_closing,
+                smoke_tight: d.smoke_tight,
+            }),
+        })
+    });
     let opening = core::Opening {
         host,
         kind,
@@ -916,7 +951,8 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         flip_facing: o.flip_facing,
         setback: o.setback.map(|v| c.l(v)),
         reveal: o.reveal.map(|v| c.l(v)),
-        leaves,
+        division,
+        door,
     };
     let mut e = Element::new(name_of(&o.name, &o.id), ElementKind::Opening(opening));
     let typed = match o.kind {
@@ -934,7 +970,16 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
     if !typed {
         return c.fail(&o.id);
     }
-    if o.r#type.is_none() {
+    // a door as joinery says what opening it needs
+    let needs = match &e.kind {
+        ElementKind::Opening(op) => op.door.as_ref().map(|d| d.opening()),
+        _ => None,
+    };
+    if let (Some((dw, dh)), ElementKind::Opening(op)) = (needs, &mut e.kind) {
+        op.width = dw;
+        op.height = dh;
+    }
+    if o.r#type.is_none() && needs.is_none() {
         for (v, key) in [(o.width, "width"), (o.height, "height")] {
             if v.is_none() {
                 c.err(at, format!("an opening needs `{key}` or a `type`"));

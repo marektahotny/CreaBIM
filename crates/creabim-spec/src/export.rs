@@ -811,7 +811,16 @@ fn opening(e: &Element, id: &str, o: &core::Opening, ids: &Ids) -> f::Opening {
         flip_facing: o.flip_facing,
         setback: o.setback,
         reveal: o.reveal,
-        leaves: o.leaves.iter().map(|l| l.code().to_string()).collect(),
+        division: o.division.as_ref().map(|d| d.code()),
+        door: o.door.as_ref().map(|d| f::Door {
+            leaf_width: d.nom_width,
+            leaf_height: d.nom_height,
+            frame: d.frame.code().into(),
+            leaf: Some(d.leaf.code().into()),
+            fire_rating: d.fire.as_ref().map(|x| x.rating.clone()),
+            self_closing: d.fire.as_ref().is_none_or(|x| x.self_closing),
+            smoke_tight: d.fire.as_ref().is_some_and(|x| x.smoke_tight),
+        }),
     }
 }
 

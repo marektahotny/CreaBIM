@@ -380,7 +380,8 @@ fn arc_void(model: &Model, host_id: ElementId, host: &Wall, cw: &Wall) -> Option
         flip_facing: false,
         setback: None,
         reveal: None,
-        leaves: vec![],
+        division: None,
+        door: None,
     })
 }
 
@@ -427,7 +428,8 @@ pub fn void_of(model: &Model, host_id: ElementId, host: &Wall, cw: &Wall) -> Opt
         flip_facing: false,
         setback: None,
         reveal: None,
-        leaves: vec![],
+        division: None,
+        door: None,
     })
 }
 

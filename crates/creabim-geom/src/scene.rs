@@ -864,6 +864,16 @@ fn opening_items(
             let (color, surface) = match (part, o.kind, material) {
                 (Part::Glass, ..) => (GLASS_COLOR, GLASS_SURFACE),
                 (Part::Handle, ..) => ([0.72, 0.73, 0.75], [0.3, 1.0, 1.0]),
+                (Part::Panel, _, None) => ([0.80, 0.80, 0.78], PLAIN_SURFACE),
+                // a door as joinery: its frame and leaf in their own colours
+                (Part::Frame, OpeningKind::Door, None) if o.door.is_some() => (
+                    o.door.as_ref().map_or([0.5; 3], |d| d.frame.color()),
+                    PLAIN_SURFACE,
+                ),
+                (Part::Leaf, _, None) if o.door.is_some() => (
+                    o.door.as_ref().map_or([0.5; 3], |d| d.leaf.color()),
+                    PLAIN_SURFACE,
+                ),
                 (_, _, Some(m)) => m,
                 (Part::Frame, OpeningKind::Window | OpeningKind::Hole, None) => {
                     ([0.93, 0.93, 0.91], PLAIN_SURFACE)
@@ -881,7 +891,7 @@ fn opening_items(
                 finish: match part {
                     Part::Glass => Some("Glass"),
                     Part::Handle => Some("Metal"),
-                    Part::Frame | Part::Leaf => None,
+                    Part::Frame | Part::Leaf | Part::Panel => None,
                 },
             }
         })

@@ -70,6 +70,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::Door),
             T(Tool::Window),
             T(Tool::Opening),
+            act(
+                "joinery:edit",
+                "Window and door editor",
+                "layout-grid",
+                "Split the selected window or door by mullions and transoms and set how each field opens",
+            ),
             Sep,
             T(Tool::Slab),
             T(Tool::Shaft),
