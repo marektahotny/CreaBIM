@@ -7439,6 +7439,8 @@ fn drag_annotation(
                         .items
                         .iter()
                         .any(|t| matches!(t, PlanItem::Tag { id: i, .. } if i == id)),
+                    // a fixture's or device's mark in a trade's plan
+                    Some(ElementKind::Object(_)) => true,
                     _ => false,
                 } =>
             {
@@ -7492,6 +7494,8 @@ fn drag_annotation(
                 let start = match &doc.model().get(id)?.kind {
                     ElementKind::Tag(t) if t.view == view => t.offset,
                     ElementKind::Dimension(d) if d.view == view => DVec2::new(d.offset, 0.0),
+                    // a fixture's mark moves, the fixture stays
+                    ElementKind::Object(o) => o.mark.unwrap_or(DVec2::ZERO),
                     // a stack's mark: the circle moves, its riser stays
                     ElementKind::Pipe(_) => drawing.items.iter().find_map(|it| match it {
                         PlanItem::Tag {
@@ -7537,6 +7541,11 @@ fn drag_annotation(
                     t.elbow = None;
                     t.end = None;
                 }
+            }
+        }),
+        Some(ElementKind::Object(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Object(x) = &mut e.kind {
+                x.mark = Some(start + p - grab);
             }
         }),
         Some(ElementKind::Pipe(_)) => doc.edit_merged(id, "Move mark", |e| {

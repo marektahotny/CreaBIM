@@ -1041,7 +1041,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                     .iter()
                     .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
                 let w = look.width(&row.spec.mark);
-                let at = DVec2::new(lo.x - (w / 2.0 + 1.5) * mm, (lo.y + hi.y) / 2.0);
+                // beside it, or where it was dragged to from there
+                let moved = match model.get(id).map(|e| &e.kind) {
+                    Some(ElementKind::Object(o)) => o.mark.unwrap_or(DVec2::ZERO),
+                    _ => DVec2::ZERO,
+                };
+                let at = DVec2::new(lo.x - (w / 2.0 + 1.5) * mm, (lo.y + hi.y) / 2.0) + moved;
                 marks.push(PlanItem::Annotation {
                     id,
                     item: Box::new(crate::annotation::Annotation {

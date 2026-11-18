@@ -89,7 +89,11 @@ pub fn marks(model: &Model, items: &[PlanItem], mm: f64) -> Vec<PlanItem> {
             continue;
         };
         let w = look.width(&text);
-        let at = DVec2::new(hi.x + (w / 2.0 + 1.0) * mm, (lo.y + hi.y) / 2.0);
+        let moved = match &e.kind {
+            ElementKind::Object(o) => o.mark.unwrap_or(DVec2::ZERO),
+            _ => DVec2::ZERO,
+        };
+        let at = DVec2::new(hi.x + (w / 2.0 + 1.0) * mm, (lo.y + hi.y) / 2.0) + moved;
         out.push(PlanItem::Annotation {
             id: e.id,
             item: Box::new(crate::annotation::Annotation {

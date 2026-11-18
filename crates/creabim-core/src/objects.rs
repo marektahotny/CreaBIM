@@ -639,6 +639,10 @@ pub struct Object {
     /// towards +y.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub rotation: f64,
+    /// How far its mark in a trade's plan (WC, U, a device's circuit) was
+    /// dragged from where the drawing puts it, m.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<DVec2>,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -652,6 +656,7 @@ impl Object {
             position,
             offset: 0.0,
             rotation,
+            mark: None,
         }
     }
 
