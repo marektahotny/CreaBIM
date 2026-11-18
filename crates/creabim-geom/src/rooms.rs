@@ -38,10 +38,28 @@ pub fn colour_of(name: &str, r: &Room) -> [f32; 3] {
 /// ceiling plan) ceilings. Rooms go first, under everything.
 pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64) -> Vec<PlanItem> {
     let mut out = vec![];
+    // drawn over the rooms' floors
+    let mut loops = vec![];
     for e in model.iter() {
         match &e.kind {
             ElementKind::Room(r) if r.level == level => {
                 if let Some(s) = room::shape_of(model, r) {
+                    // underfloor heating loops: the supply in full lines,
+                    // the return dashed beside it
+                    if let (Some(u), false) = (&r.ufh, view.ceiling_plan) {
+                        for sp in creabim_core::underfloor::loops(&s.outline, u) {
+                            for (pts, pen) in [(&sp.supply, Pen::Symbol), (&sp.ret, Pen::Hidden)] {
+                                for w in pts.windows(2) {
+                                    loops.push(PlanItem::Line {
+                                        id: e.id,
+                                        pen,
+                                        a: w[0],
+                                        b: w[1],
+                                    });
+                                }
+                            }
+                        }
+                    }
                     out.push(PlanItem::Room {
                         id: e.id,
                         points: s.outline,
@@ -82,6 +100,7 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
             _ => {}
         }
     }
+    out.extend(loops);
     out
 }
 

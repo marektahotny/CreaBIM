@@ -54,6 +54,9 @@ pub struct Room {
     /// over it, or to the level's floor-to-floor height.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<f64>,
+    /// Its underfloor heating, where it has one: the loops drawn in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ufh: Option<crate::underfloor::Underfloor>,
 }
 
 impl Room {
@@ -75,6 +78,9 @@ impl Room {
         }
         if self.height.is_some_and(|h| !(h.is_finite() && h > 0.0)) {
             return Err("a room's height must be positive".into());
+        }
+        if let Some(u) = &self.ufh {
+            u.validate()?;
         }
         Ok(())
     }
