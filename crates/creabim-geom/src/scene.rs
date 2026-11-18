@@ -304,7 +304,7 @@ fn reveal_wrap_parts(
     let at = |u: f64, v: f64, s: f64| (w.start + d * u + n * s).extend(z0 + v);
     let mut out: Vec<(assembly::Band, TriMesh)> = vec![];
     for o in openings {
-        if o.kind != creabim_core::OpeningKind::Window {
+        if !creabim_core::joinery::wraps_reveal(o) {
             continue;
         }
         let Some(c) = crate::wall::Cut::of(o, w) else {

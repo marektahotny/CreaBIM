@@ -665,3 +665,34 @@ fn a_dimension_to_a_walls_face_follows_the_wall() {
     let q = resolve(doc.model(), &v, &d.b).unwrap();
     assert!((q - (face - n)).length() < 1e-9);
 }
+
+#[test]
+fn reveal_insulation_is_billed_for_windows_and_framed_doors() {
+    use creabim_core::joinery::{apply_door, reveal_strips, DoorFrame, DoorSpec};
+    let mut doc = Document::from_model(creabim_core::starter::starter_house());
+    let windows = reveal_strips(doc.model(), false);
+    assert!(
+        !windows.is_empty(),
+        "the starter house's walls are insulated"
+    );
+    assert!(windows.iter().all(|s| s.area() > 0.0 && s.thickness > 0.0));
+    // a door with a lining covers its reveal; in a frame the layers turn in
+    let doors: Vec<Element> = doc
+        .model()
+        .iter()
+        .filter(|e| is_door(&e.kind))
+        .cloned()
+        .collect();
+    let mut tx = Transaction::new("Frames");
+    for e in doors {
+        let mut now = e.clone();
+        if let ElementKind::Opening(o) = &mut now.kind {
+            let spec = DoorSpec::fitting(DoorFrame::Steel, o.width, o.height);
+            apply_door(o, spec);
+        }
+        tx = tx.replace(e, now);
+    }
+    doc.commit(tx).unwrap();
+    let framed = reveal_strips(doc.model(), true);
+    assert!(!framed.is_empty());
+}

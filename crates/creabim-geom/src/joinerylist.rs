@@ -746,6 +746,76 @@ pub fn drawing(view: ElementId, title: &str, model: &Model, kind: OpeningKind) -
             }
         }
     }
+    // the insulation turned into the reveals, billed apart from the
+    // walls': thin strips as thick as the reveal is set back
+    let strips = creabim_core::joinery::reveal_strips(model, door);
+    if !strips.is_empty() {
+        let bottom = PlanView {
+            items: items.clone(),
+        }
+        .bounds()
+        .map_or(0.0, |b| b.0.y);
+        let mut p = Pencil {
+            items: &mut items,
+            id: view,
+        };
+        let mut y = bottom - 12.0;
+        p.text(
+            DVec2::new(0.0, y),
+            &tr("Reveal insulation (strips)"),
+            3.5,
+            Anchor::Start,
+            false,
+        );
+        y -= 7.0;
+        let cols = [0.0, 60.0, 90.0, 120.0, 150.0, 180.0];
+        let heads = [
+            tr("Material"),
+            tr("Thickness (mm)"),
+            tr("Width (mm)"),
+            tr("Length (m)"),
+            tr("Area (m²)"),
+            tr("Openings"),
+        ];
+        for (x, h) in cols.iter().zip(&heads) {
+            p.text(DVec2::new(*x, y), h, TEXT, Anchor::Start, false);
+        }
+        let mut total = 0.0;
+        for s in &strips {
+            y -= LINE + 1.0;
+            total += s.area();
+            let material = s
+                .material
+                .and_then(|m| model.get(m))
+                .map_or_else(|| tr("Insulation"), |m| tr(&m.name));
+            let row = [
+                material,
+                num(model, s.thickness),
+                num(model, s.width),
+                format!("{:.2}", s.length).replace('.', ","),
+                format!("{:.2}", s.area()).replace('.', ","),
+                s.openings.to_string(),
+            ];
+            for (x, t) in cols.iter().zip(&row) {
+                p.text(DVec2::new(*x, y), t, TEXT, Anchor::Start, false);
+            }
+        }
+        y -= LINE + 1.0;
+        p.text(
+            DVec2::new(cols[3], y),
+            &tr("Total"),
+            TEXT,
+            Anchor::Start,
+            true,
+        );
+        p.text(
+            DVec2::new(cols[4], y),
+            &format!("{total:.2}").replace('.', ","),
+            TEXT,
+            Anchor::Start,
+            true,
+        );
+    }
     PlanView { items }
 }
 

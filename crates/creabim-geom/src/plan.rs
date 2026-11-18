@@ -1128,7 +1128,7 @@ pub fn plan_view_with(
                     let Some(c) = Cut::of(o, w) else { continue };
                     if cut_v > c.v0 && cut_v < c.v1 {
                         gaps.push((c.u0, c.u1));
-                        if o.kind == creabim_core::OpeningKind::Window {
+                        if creabim_core::joinery::wraps_reveal(o) {
                             let frame = o.frame.fitted(c.u1 - c.u0, c.v1 - c.v0, w.thickness);
                             windows.push((
                                 c.u0,

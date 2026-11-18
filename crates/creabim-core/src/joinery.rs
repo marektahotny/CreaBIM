@@ -811,6 +811,99 @@ pub fn outer_sills(model: &crate::Model) -> Vec<OuterSill> {
     out
 }
 
+/// Do the wall's finish layers turn into this opening's reveal up to its
+/// frame? A window's do, and a door's set in a frame; a door with a
+/// lining round the reveal covers it instead.
+pub fn wraps_reveal(o: &Opening) -> bool {
+    match o.kind {
+        OpeningKind::Window => true,
+        OpeningKind::Door => o
+            .door
+            .as_ref()
+            .is_some_and(|d| d.frame != DoorFrame::Lining),
+        _ => false,
+    }
+}
+
+/// Insulation turned into reveals, for the bill: strips of one material,
+/// `thickness` thick and `width` wide (down the reveal to the frame), `length` metres of them in all round `openings` openings.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RevealStrip {
+    pub material: Option<crate::ElementId>,
+    pub thickness: f64,
+    pub width: f64,
+    pub length: f64,
+    pub openings: usize,
+}
+
+impl RevealStrip {
+    pub fn area(&self) -> f64 {
+        self.length * self.width
+    }
+}
+
+/// The insulation strips in the reveals of the model's windows (`doors`
+/// off) or doors: both jambs and the head, and a window's sill.
+pub fn reveal_strips(model: &crate::Model, doors: bool) -> Vec<RevealStrip> {
+    let mut out: Vec<RevealStrip> = vec![];
+    for e in model.iter() {
+        let crate::ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        if !wraps_reveal(o) || (o.kind == OpeningKind::Door) != doors {
+            continue;
+        }
+        let Some(host) = model.get(o.host) else {
+            continue;
+        };
+        let (crate::ElementKind::Wall(w), Some((_, asm))) =
+            (&host.kind, crate::assembly_of(model, host))
+        else {
+            continue;
+        };
+        let frame = o.frame.fitted(o.width, o.height, w.thickness);
+        let span = o.frame_span(w, Some(asm), frame.depth);
+        let lap = o.reveal.unwrap_or(crate::assembly::REVEAL_INSULATION);
+        let bands = crate::assembly::wall_bands(asm, w);
+        let round = 2.0 * o.height
+            + o.width
+            + if o.kind == OpeningKind::Window && o.sill > 1e-6 {
+                o.width
+            } else {
+                0.0
+            };
+        for l in crate::assembly::reveal_wraps(asm, w, span, lap) {
+            let Some(band) = bands.get(l.index) else {
+                continue;
+            };
+            // down the reveal from the wall's face side of it to the frame
+            let width = l.frame.max(l.d_in) - l.d;
+            if band.function != crate::assembly::LayerFunction::Insulation || width < 1e-6 {
+                continue;
+            }
+            let same = |s: &RevealStrip| {
+                s.material == band.material
+                    && (s.thickness - l.width).abs() < 5e-4
+                    && (s.width - width).abs() < 5e-4
+            };
+            match out.iter_mut().find(|s| same(s)) {
+                Some(s) => {
+                    s.length += round;
+                    s.openings += 1;
+                }
+                None => out.push(RevealStrip {
+                    material: band.material,
+                    thickness: l.width,
+                    width,
+                    length: round,
+                    openings: 1,
+                }),
+            }
+        }
+    }
+    out
+}
+
 /// A door's clear passage, width and height: what its frame leaves.
 pub fn clear_passage(o: &Opening) -> Option<(f64, f64)> {
     if o.kind != OpeningKind::Door {

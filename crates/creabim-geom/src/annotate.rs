@@ -1523,7 +1523,13 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                             return None;
                         };
                         let write = |m: f64| spaced(&format!("{:.0}", m * 1000.0));
-                        Some((write(w), write(h), wall.thickness / 2.0))
+                        // a fire door's rating goes under its height
+                        let fire = o.door.as_ref().and_then(|d| d.fire.as_ref());
+                        let under = match fire {
+                            Some(f) => format!("{}\n{}", write(h), f.label()),
+                            None => write(h),
+                        };
+                        Some((write(w), under, wall.thickness / 2.0))
                     }
                     _ => None,
                 });
@@ -1537,7 +1543,12 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 };
                 // the leader is as long as the numbers on it need
                 if let (Some(n), Some((tw, th, face))) = (square, &passage) {
-                    let long = look.width(tw).max(look.width(th)) * mm;
+                    let long = th
+                        .split('\n')
+                        .chain([tw.as_str()])
+                        .map(|t| look.width(t))
+                        .fold(0.0, f64::max)
+                        * mm;
                     let need = face + long + 3.0 * mm + radius(&text);
                     if offset.length() < need {
                         let side = if t.offset.dot(n) < 0.0 { -n } else { n };
@@ -1586,7 +1597,13 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     let dir = d.normalize_or_zero();
                     let (angle, up) = crate::annotation::upright(dir.to_angle());
                     let mid = at + dir * (r + (d.length() - face - r) / 2.0);
-                    for (text, side) in [(tw, 1.0), (th, -1.0)] {
+                    let mut rows = vec![(tw, 1.0)];
+                    rows.extend(
+                        th.split('\n')
+                            .enumerate()
+                            .map(|(k, t)| (t.to_string(), -1.0 - 1.4 * k as f64)),
+                    );
+                    for (text, side) in rows {
                         out.push(PlanItem::Annotation {
                             id: e.id,
                             item: Box::new(Annotation {
