@@ -152,7 +152,7 @@ pub fn devices(model: &Model) -> Vec<DeviceRow> {
         }
         let row = DeviceRow {
             count: 1,
-            name: format!("{} - {name}", tr(kind.label())),
+            name: format!("{} - {}", tr(kind.label()), tr(&name)),
             symbol,
         };
         found.push((kind, name, row));
