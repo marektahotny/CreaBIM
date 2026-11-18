@@ -34,6 +34,9 @@ pub fn colour_of(name: &str, r: &Room) -> [f32; 3] {
     PALETTE[h as usize % PALETTE.len()]
 }
 
+/// How far off a wall's face the line of its tiling is drawn, m.
+const TILING_OFF: f64 = 0.03;
+
 /// What a plan of `level` draws of its rooms, room separators and (in a
 /// ceiling plan) ceilings. Rooms go first, under everything.
 pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64) -> Vec<PlanItem> {
@@ -58,6 +61,19 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                                     });
                                 }
                             }
+                        }
+                    }
+                    // tiling: a thin line just off the walls' faces
+                    if r.tiling.is_some() && !view.ceiling_plan {
+                        for (a, b) in room::tiling_runs(model, &s) {
+                            let d = (b - a).normalize_or_zero();
+                            let off = DVec2::new(-d.y, d.x) * TILING_OFF;
+                            loops.push(PlanItem::Line {
+                                id: e.id,
+                                pen: Pen::Symbol,
+                                a: a + off,
+                                b: b + off,
+                            });
                         }
                     }
                     out.push(PlanItem::Room {

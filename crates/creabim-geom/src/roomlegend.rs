@@ -95,6 +95,26 @@ pub fn finishes(model: &Model, e: &Element, r: &Room) -> Finishes {
             f.walls = names.join(", ");
         }
     }
+    // tiling goes with the walls' finish, with its height and area
+    if let (Some(t), Some(s)) = (&r.tiling, &shape) {
+        let name = if t.name.trim().is_empty() {
+            tr("Tiling")
+        } else {
+            t.name.trim().to_string()
+        };
+        let area = creabim_core::room::tiling_area(model, r, s);
+        let tiles = format!(
+            "{name} {} {:.0} mm ({})",
+            tr("up to"),
+            t.height * 1000.0,
+            model.units().area(area)
+        );
+        f.walls = if f.walls.is_empty() {
+            tiles
+        } else {
+            format!("{}; {tiles}", f.walls)
+        };
+    }
     if f.ceiling.is_empty() {
         let top = creabim_core::room::height(model, r) + 0.5;
         if let Some((id, _)) = creabim_core::room::ceiling_over(model, r.level, r.at, top) {
@@ -139,8 +159,8 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
         col("Mark", 14.0, false),
         col("Room use", 34.0, false),
         col("Area", 18.0, true),
-        col("Floor", 40.0, false),
-        col("Walls - finish", 46.0, false),
+        col("Floor", 46.0, false),
+        col("Walls - finish", 80.0, false),
         col("Ceiling - finish", 40.0, false),
     ];
     let units = model.units();
@@ -242,5 +262,45 @@ mod tests {
         let slab = slab_at(doc.model(), r.level, r.at);
         let layered = slab.is_some_and(|s| creabim_core::assembly_of(doc.model(), s).is_some());
         assert!(layered || f.floor.is_empty(), "{f:?}");
+    }
+
+    /// Tiling runs along the room's walls less its doors, and the legend
+    /// writes it with the walls: its height and its area.
+    #[test]
+    fn tiling_leaves_the_doors_out_and_goes_to_the_legend() {
+        let m = creabim_core::starter::starter_house();
+        // a room with a door in one of its walls
+        let (e, shape) = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Room(_)))
+            .filter_map(|e| Some((e, creabim_core::room::shape(&m, e.id)?)))
+            .find(|(_, s)| {
+                let runs: f64 = creabim_core::room::tiling_runs(&m, s)
+                    .iter()
+                    .map(|(a, b)| a.distance(*b))
+                    .sum();
+                let walls = s.bounded_by.iter().all(|b| {
+                    b.and_then(|id| m.get(id))
+                        .is_some_and(|w| matches!(w.kind, ElementKind::Wall(_)))
+                });
+                walls && runs < s.perimeter() - 0.5
+            })
+            .expect("a room with a door");
+        let mut tiled = e.clone();
+        let ElementKind::Room(r) = &mut tiled.kind else {
+            unreachable!()
+        };
+        r.tiling = Some(creabim_core::room::Tiling {
+            height: 2.0,
+            name: "Ceramic tiles".into(),
+        });
+        let runs: f64 = creabim_core::room::tiling_runs(&m, &shape)
+            .iter()
+            .map(|(a, b)| a.distance(*b))
+            .sum();
+        let r = r.clone();
+        assert!((creabim_core::room::tiling_area(&m, &r, &shape) - runs * 2.0).abs() < 1e-9);
+        let f = finishes(&m, &tiled, &r);
+        assert!(f.walls.contains("Ceramic tiles up to 2000 mm ("), "{f:?}");
     }
 }

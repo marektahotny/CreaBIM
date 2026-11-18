@@ -54,9 +54,95 @@ pub struct Room {
     /// over it, or to the level's floor-to-floor height.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<f64>,
+    /// The tiling of its walls, where it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tiling: Option<Tiling>,
     /// Its underfloor heating, where it has one: the loops drawn in it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ufh: Option<crate::underfloor::Underfloor>,
+}
+
+/// Tiles on a room's walls: from the floor up to `height`, on every
+/// wall of the room, the doors left out.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Tiling {
+    /// How high it reaches above the floor, m.
+    pub height: f64,
+    /// What it is ("Ceramic tiles 300x600").
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub name: String,
+}
+
+/// The height new tiling reaches.
+pub const TILING_HEIGHT: f64 = 2.0;
+
+impl Default for Tiling {
+    fn default() -> Self {
+        Self {
+            height: TILING_HEIGHT,
+            name: String::new(),
+        }
+    }
+}
+
+/// Where a room's tiling runs: the stretches of its outline along
+/// walls, less the doors in them.
+pub fn tiling_runs(model: &Model, shape: &RoomShape) -> Vec<(DVec2, DVec2)> {
+    let n = shape.outline.len();
+    let mut out = vec![];
+    for (i, by) in shape.bounded_by.iter().enumerate() {
+        let Some(wall) = by.and_then(|id| model.get(id)) else {
+            continue;
+        };
+        let ElementKind::Wall(w) = &wall.kind else {
+            continue;
+        };
+        let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
+        let len = a.distance(b);
+        let along = (w.end - w.start).normalize_or_zero();
+        if len < 1e-6 || along == DVec2::ZERO {
+            continue;
+        }
+        let d = (b - a) / len;
+        // the doors of the wall, as stretches of the edge
+        let mut gaps: Vec<(f64, f64)> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Opening(o)
+                    if o.host == wall.id && o.kind == crate::OpeningKind::Door =>
+                {
+                    let p = (w.start + along * o.offset - a).dot(d);
+                    let q = (w.start + along * (o.offset + o.width) - a).dot(d);
+                    Some((p.min(q).max(0.0), p.max(q).min(len)))
+                }
+                _ => None,
+            })
+            .filter(|g| g.1 - g.0 > 1e-6)
+            .collect();
+        gaps.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let mut from = 0.0;
+        for (p, q) in gaps {
+            if p - from > 1e-6 {
+                out.push((a + d * from, a + d * p));
+            }
+            from = from.max(q);
+        }
+        if len - from > 1e-6 {
+            out.push((a + d * from, b));
+        }
+    }
+    out
+}
+
+/// The area of a room's tiling, m²: its runs by its height. Windows are
+/// not taken off.
+pub fn tiling_area(model: &Model, r: &Room, shape: &RoomShape) -> f64 {
+    let Some(t) = &r.tiling else { return 0.0 };
+    tiling_runs(model, shape)
+        .iter()
+        .map(|(a, b)| a.distance(*b))
+        .sum::<f64>()
+        * t.height
 }
 
 impl Room {

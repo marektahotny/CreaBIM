@@ -407,6 +407,32 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
             label = "Room data";
         }
     }
+    // tiling of the walls: what it is and how high it reaches
+    let mut tiled = r.tiling.is_some();
+    if crate::props::switch(ui, &mut tiled, "Wall tiling")
+        .on_hover_text(crate::i18n::t(
+            "A thin line along the room's walls in the plan, the doors left out; its area goes to the legend of rooms",
+        ))
+        .changed()
+    {
+        r.tiling = tiled.then(room::Tiling::default);
+        label = "Wall tiling";
+    }
+    if let Some(t) = r.tiling.as_mut() {
+        if text(ui, "Tiling", &mut t.name) {
+            label = "Wall tiling";
+        }
+        if length(ui, "Tiling height", &mut t.height, 0.1, 10.0) {
+            label = "Wall tiling";
+        }
+        if let Some(s) = room::shape_of(model, r) {
+            ui.label(format!(
+                "{} {}",
+                crate::i18n::t("Tiled area"),
+                model.units().area(room::tiling_area(model, r, &s))
+            ));
+        }
+    }
     let mut own = r.height.is_some();
     let found = room::height(
         model,
