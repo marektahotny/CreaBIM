@@ -9870,6 +9870,22 @@ crate::props::row(ui, "File names", |ui| {
                                 });
                         });
                     }
+                    // and a scheme, or the pipes and valves as they are
+                    if matches!(v.kind, ViewKind::Plan { .. })
+                        && creabim_core::viewmodes::DisplayMode::of(v)
+                            == creabim_core::viewmodes::DisplayMode::Services
+                        && crate::props::choice(
+                            ui,
+                            "Services drawn",
+                            &mut v.spatial,
+                            &[
+                                (false, "Scheme", "A line a pipe in its system's colour and line type, a symbol a valve, the same size on paper at every scale"),
+                                (true, "In space", "The pipes in their true widths and the valves' bodies, as they lie in the building"),
+                            ],
+                        )
+                    {
+                        label = "Services drawn";
+                    }
                     // the section line's own look and course: broken in the
                     // middle, stepped aside (zalomený rez)
                     if let ViewKind::Section {

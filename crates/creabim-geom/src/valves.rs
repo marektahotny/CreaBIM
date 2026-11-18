@@ -216,8 +216,62 @@ pub fn valve_plan(model: &Model, e: &Element, v: &Valve) -> Vec<PlanItem> {
     let Some(pipe) = v.host(model) else {
         return vec![];
     };
+    valve_plan_sized(model, e, v, symbol_half(pipe))
+}
+
+/// A valve as it is in space, seen from above: its body, a piece of its
+/// pipe half as thick again and three diameters long, with the stem's
+/// circle in the middle.
+pub fn valve_plan_spatial(model: &Model, e: &Element, v: &Valve) -> Vec<PlanItem> {
+    let Some(pipe) = v.host(model) else {
+        return vec![];
+    };
     let c = v.at(pipe).truncate();
-    let h = symbol_half(pipe);
+    let u = along(pipe);
+    let n = u.perp();
+    let (w, _) = pipe.section_m();
+    let w = w.max(0.015);
+    let (half_l, half_w) = (w * 1.5, w * 0.75);
+    let corner = |a: f64, b: f64| c + u * a * half_l + n * b * half_w;
+    vec![
+        PlanItem::Shade {
+            id: e.id,
+            points: vec![
+                corner(-1.0, -1.0),
+                corner(1.0, -1.0),
+                corner(1.0, 1.0),
+                corner(-1.0, 1.0),
+            ],
+            rgb: [1.0, 1.0, 1.0],
+        },
+        PlanItem::Polygon {
+            id: e.id,
+            pen: Pen::Symbol,
+            points: vec![
+                corner(-1.0, -1.0),
+                corner(1.0, -1.0),
+                corner(1.0, 1.0),
+                corner(-1.0, 1.0),
+            ],
+        },
+        PlanItem::Arc {
+            id: e.id,
+            pen: Pen::Symbol,
+            center: c,
+            radius: half_w * 0.6,
+            start: 0.0,
+            end: std::f64::consts::TAU,
+        },
+    ]
+}
+
+/// The valve's symbol with half its length `h`, metres: a scheme draws
+/// it the same size on paper at every scale.
+pub fn valve_plan_sized(model: &Model, e: &Element, v: &Valve, h: f64) -> Vec<PlanItem> {
+    let Some(pipe) = v.host(model) else {
+        return vec![];
+    };
+    let c = v.at(pipe).truncate();
     let s = symbol(&v.kind, c, along(pipe), h);
     let mut items = vec![];
     // the pipe's own lines don't run through the symbol

@@ -2090,6 +2090,11 @@ pub struct View {
     /// How a section's line is drawn in plans and where it steps aside.
     #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
     pub line: SectionLine,
+    /// A services drawing shows its pipes and valves as they are in
+    /// space (true widths, the valves' bodies) instead of as a scheme
+    /// (a line a pipe, a symbol a valve).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub spatial: bool,
     /// The notes a services legend writes under its last heading, one a
     /// line; empty writes the usual ones of its trades.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -2423,6 +2428,7 @@ impl View {
             line: Default::default(),
             trade: None,
             notes: String::new(),
+            spatial: false,
         }
     }
 
@@ -2453,6 +2459,7 @@ impl View {
             line: Default::default(),
             trade: None,
             notes: String::new(),
+            spatial: false,
         }
     }
 }
@@ -2480,6 +2487,7 @@ impl View {
             line: Default::default(),
             trade: None,
             notes: String::new(),
+            spatial: false,
         }
     }
 
@@ -2508,6 +2516,7 @@ impl View {
             line: Default::default(),
             trade: None,
             notes: String::new(),
+            spatial: false,
         }
     }
 
@@ -2541,6 +2550,7 @@ impl View {
             line: Default::default(),
             trade: None,
             notes: String::new(),
+            spatial: false,
         }
     }
 

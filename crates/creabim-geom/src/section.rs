@@ -941,18 +941,37 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         let mut seen = std::collections::HashSet::new();
         let mut lines = vec![];
         let mut pipes = vec![];
+        // a scheme: a line a pipe, a symbol a valve, 2.5 mm on paper at
+        // every scale; in space: the pipes' true widths, the valves'
+        // bodies
+        let spatial = v.spatial;
+        let half = 2.5 * v.scale / 1000.0;
         d.items.retain(|it| {
             let Some(e) = model.get(it.id()) else {
                 return true;
             };
-            let ElementKind::Pipe(p) = &e.kind else {
-                return true;
-            };
-            if seen.insert(e.id) {
-                lines.extend(crate::mep::pipe_line(model, e, p));
-                pipes.push(e);
+            match &e.kind {
+                ElementKind::Pipe(p) => {
+                    if seen.insert(e.id) {
+                        if !spatial {
+                            lines.extend(crate::mep::pipe_line(model, e, p));
+                        }
+                        pipes.push(e);
+                    }
+                    spatial
+                }
+                ElementKind::Valve(x) => {
+                    if seen.insert(e.id) {
+                        lines.extend(if spatial {
+                            crate::valves::valve_plan_spatial(model, e, x)
+                        } else {
+                            crate::valves::valve_plan_sized(model, e, x, half)
+                        });
+                    }
+                    false
+                }
+                _ => true,
             }
-            false
         });
         d.items.extend(lines);
         // and writes their sizes at them

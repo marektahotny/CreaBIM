@@ -1078,6 +1078,84 @@ mod tests {
         }
     }
 
+    /// A services drawing is a scheme (a line a pipe, a valve's symbol
+    /// the same size on paper at every scale) or shows the pipes and
+    /// valves as they lie in space.
+    #[test]
+    fn a_services_drawing_is_a_scheme_or_in_space() {
+        use creabim_core::viewmodes::DisplayMode;
+        use creabim_core::{Document, Transaction, ViewKind};
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (view, level) = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) => match v.kind {
+                    ViewKind::Plan { level, .. } => Some((e.id, level)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        let mut run = pipe(level, None);
+        run.start = DVec3::new(1.0, 1.0, 0.3);
+        run.end = DVec3::new(3.0, 1.0, 0.3);
+        let run = Element::new("Pipe", ElementKind::Pipe(run));
+        let valve = Element::new(
+            "Valve",
+            ElementKind::Valve(creabim_core::mep::Valve {
+                pipe: run.id,
+                t: 0.5,
+                kind: "uzaver".into(),
+                area_m2: None,
+                coef: None,
+                hydrant: None,
+                flow_lmin: None,
+                flow_m3h: None,
+            }),
+        );
+        let (run_id, valve_id) = (run.id, valve.id);
+        doc.commit(Transaction::new("pipes").insert(run).insert(valve))
+            .unwrap();
+        let set = |doc: &mut Document, spatial: bool, scale: f64| {
+            doc.edit(view, "mode", |e| {
+                if let ElementKind::View(v) = &mut e.kind {
+                    DisplayMode::Services.apply(v);
+                    v.spatial = spatial;
+                    v.scale = scale;
+                }
+            })
+            .unwrap();
+        };
+        let of = |m: &Model, id| -> Vec<PlanItem> {
+            crate::section::view_drawing(m, view)
+                .unwrap()
+                .items
+                .into_iter()
+                .filter(|i| i.id() == id)
+                .collect()
+        };
+        let width = |items: &[PlanItem]| {
+            let xs: Vec<f64> = items.iter().flat_map(|i| i.extent()).map(|p| p.x).collect();
+            xs.iter().cloned().fold(f64::MIN, f64::max)
+                - xs.iter().cloned().fold(f64::MAX, f64::min)
+        };
+        // a scheme: the pipe one line; the valve's symbol twice as large
+        // in the model at 1:100 as at 1:50
+        set(&mut doc, false, 50.0);
+        assert_eq!(lines(&of(doc.model(), run_id)).len(), 1);
+        let at_50 = width(&of(doc.model(), valve_id));
+        set(&mut doc, false, 100.0);
+        let at_100 = width(&of(doc.model(), valve_id));
+        assert!((at_100 / at_50 - 2.0).abs() < 0.05, "{at_50} {at_100}");
+        // in space: the pipe's two sides, the valve's body on it
+        set(&mut doc, true, 50.0);
+        assert!(of(doc.model(), run_id).len() > 2);
+        let body = of(doc.model(), valve_id);
+        assert!(body.iter().any(|i| matches!(i, PlanItem::Polygon { .. })));
+        assert!(width(&body) < 0.2);
+    }
+
     #[test]
     fn a_services_drawing_shows_a_pipe_as_a_line_of_its_system() {
         use creabim_core::viewmodes::DisplayMode;
