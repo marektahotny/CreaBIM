@@ -1119,6 +1119,8 @@ impl CreaBimApp {
         // the project's north turned: by an angle, or by a line picked in a plan
         let mut north_turn: Option<f64> = None;
         let mut north_line = false;
+        // the plot's data asked of the cadastre
+        let mut cadastre = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         crate::app::shell::window("Project information")
             .open(&mut open)
@@ -1183,6 +1185,36 @@ impl CreaBimApp {
                 text(ui, "Address", &mut draft.address, "");
                 text(ui, "Plots", &mut draft.parcels, "1838/116");
                 text(ui, "Cadastral district", &mut draft.cadastre, "");
+                crate::props::row(ui, "Plot area", |ui| {
+                    let mut on = draft.plot_area.is_some();
+                    if ui.checkbox(&mut on, "").changed() {
+                        draft.plot_area = on.then_some(0.0);
+                    }
+                    if let Some(a) = &mut draft.plot_area {
+                        ui.add(
+                            egui::DragValue::new(a)
+                                .range(0.0..=1e7)
+                                .speed(1.0)
+                                .max_decimals(2)
+                                .suffix(" m²"),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "The summary report works out the built-up index and the green coefficient from it",
+                        ));
+                    }
+                });
+                if ui
+                    .add_enabled(
+                        draft.sjtsk.is_some(),
+                        egui::Button::new(crate::i18n::t("Plot from the cadastre")),
+                    )
+                    .on_hover_text(crate::i18n::t(
+                        "Asks the cadastre's public service for the parcel under the building: its number, district and area. Needs the S-JTSK origin and the internet.",
+                    ))
+                    .clicked()
+                {
+                    cadastre = true;
+                }
                 let degrees = |ui: &mut egui::Ui, label: &str, v: &mut Option<f64>, range: f64| {
                     crate::props::row(ui, label, |ui| {
                         let mut on = v.is_some();
@@ -1324,6 +1356,14 @@ impl CreaBimApp {
                 )),
             );
         }
+        if cadastre {
+            self.status = match plot_from_cadastre(self.doc.model(), &mut draft) {
+                Ok(s) => s,
+                Err(e) => crate::i18n::tr(&format!(
+                    "The cadastre did not answer ({e}): check the connection, or type the plot's data in."
+                )),
+            };
+        }
         if north_line {
             self.plan.north_pick = true;
             close = true;
@@ -1332,6 +1372,74 @@ impl CreaBimApp {
         self.project_open = open && !close;
         self.project_draft = self.project_open.then_some(draft);
     }
+}
+
+/// The parcel under the building asked of the cadastre's public service
+/// and written to `draft`: its number, district and area. The answer for
+/// the status line.
+fn plot_from_cadastre(
+    model: &creabim_core::Model,
+    draft: &mut creabim_core::ProjectInfo,
+) -> Result<String, String> {
+    use creabim_exchange::kataster::{eskn_url, parse_eskn, Register};
+    let [e0, n0] = draft.sjtsk.ok_or("no S-JTSK origin")?;
+    // the middle of the building, else the project's origin
+    let ends: Vec<glam::DVec2> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            creabim_core::ElementKind::Wall(w) => Some([w.start, w.end]),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let mid = if ends.is_empty() {
+        glam::DVec2::ZERO
+    } else {
+        let lo = ends.iter().fold(ends[0], |a, p| a.min(*p));
+        let hi = ends.iter().fold(ends[0], |a, p| a.max(*p));
+        (lo + hi) / 2.0
+    };
+    // true north turns anticlockwise from the drawings' up
+    let p = glam::DVec2::from_angle(-draft.true_north.to_radians()).rotate(mid);
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+    let mut last = String::from("no parcel there");
+    for reg in [Register::C, Register::E] {
+        let url = eskn_url(e0 + p.x, n0 + p.y, reg);
+        let text = match agent.get(&url).call() {
+            Ok(r) => r.into_string().map_err(|e| e.to_string())?,
+            Err(e) => {
+                last = e.to_string();
+                continue;
+            }
+        };
+        let Some(k) = parse_eskn(&text, reg) else {
+            continue;
+        };
+        if let Some(n) = &k.number {
+            draft.parcels = n.clone();
+        }
+        if let Some(d) = &k.district {
+            draft.cadastre = d.clone();
+        }
+        if let Some(a) = k.area {
+            draft.plot_area = Some(a);
+        }
+        return Ok(format!(
+            "{}: {} {}, {} {}, {} m², {} {}. {}",
+            crate::i18n::t("From the cadastre"),
+            crate::i18n::t("plot no."),
+            k.number.as_deref().unwrap_or("?"),
+            crate::i18n::t("district"),
+            k.district.as_deref().unwrap_or("?"),
+            k.area.map_or("?".to_string(), |a| format!("{a:.0}")),
+            crate::i18n::t("sheet of ownership"),
+            k.sheet.as_deref().unwrap_or("?"),
+            crate::i18n::t("Apply writes it to the project. A plot of more parcels: add their numbers and areas by hand."),
+        ));
+    }
+    Err(last)
 }
 
 /// The logo's mark as a white texture, to tint with a theme's colour.

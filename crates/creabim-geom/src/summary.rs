@@ -36,6 +36,115 @@ pub struct Figures {
     pub height: f64,
     pub windows: usize,
     pub doors: usize,
+    /// The enclosed volume, m³: each storey's outline by its height and
+    /// the space under the roof over the top storey's walls (foundations
+    /// are not in it).
+    pub volume: f64,
+    /// Hard landscape of the site, m².
+    pub paved: f64,
+    /// The plot's area from the project information, m².
+    pub plot: Option<f64>,
+    /// The ground at the building against the project's zero, m: its
+    /// lowest and highest height at the corners of the ground storey.
+    pub ground: Option<(f64, f64)>,
+}
+
+impl Figures {
+    /// Built-up area over the plot's (index zastavanosti).
+    pub fn coverage(&self) -> Option<f64> {
+        self.plot.filter(|p| *p > 0.0).map(|p| self.built_up / p)
+    }
+
+    /// What of the plot stays green: not built on, not paved.
+    pub fn green(&self) -> Option<f64> {
+        self.plot
+            .filter(|p| *p > 0.0)
+            .map(|p| (p - self.built_up - self.paved).max(0.0) / p)
+    }
+}
+
+/// The ground at the building against the project's zero: the lowest
+/// and highest height of the terrain at the ends of the ground storey's
+/// walls. None without a terrain under them.
+pub fn ground_at_building(model: &Model) -> Option<(f64, f64)> {
+    use creabim_core::site::{surface_height, SiteForm};
+    let walls: Vec<&creabim_core::Wall> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) => Some(w),
+            _ => None,
+        })
+        .collect();
+    let ground = levels::sorted(model)
+        .into_iter()
+        .filter(|(id, ..)| walls.iter().any(|w| w.level == *id))
+        .find(|(.., l)| l.elevation >= -0.8)?
+        .0;
+    let mut range: Option<(f64, f64)> = None;
+    for e in model.iter() {
+        let ElementKind::Site(s) = &e.kind else {
+            continue;
+        };
+        let SiteForm::Terrain {
+            boundary,
+            top,
+            points,
+            ..
+        } = &s.form
+        else {
+            continue;
+        };
+        let base = model.level(s.level).map_or(0.0, |l| l.elevation);
+        for p in walls
+            .iter()
+            .filter(|w| w.level == ground)
+            .flat_map(|w| [w.start, w.end])
+        {
+            if !creabim_core::polygon::contains(boundary, p) {
+                continue;
+            }
+            let z = base + surface_height(*top, points, p);
+            range = Some(range.map_or((z, z), |(lo, hi)| (lo.min(z), hi.max(z))));
+        }
+    }
+    range
+}
+
+/// The space under the roofs over the plane `z`, m³: what their upper
+/// faces stand over it, summed.
+fn under_roofs(model: &Model, z: f64) -> f64 {
+    let roofs: Vec<_> = model
+        .iter()
+        .filter(|e| matches!(e.kind, ElementKind::Roof(_)))
+        .map(|e| e.id)
+        .collect();
+    if roofs.is_empty() {
+        return 0.0;
+    }
+    let mut v = 0.0;
+    for it in crate::scene::build_scene(model) {
+        if !roofs.contains(&it.id) || it.layer.is_some_and(|l| l.index > 0) {
+            continue;
+        }
+        let m = &it.mesh;
+        for t in m.indices.chunks_exact(3) {
+            let p = |i: u32| {
+                let q = m.positions[i as usize];
+                glam::DVec3::new(q[0] as f64, q[1] as f64, q[2] as f64)
+            };
+            let (a, b, c) = (p(t[0]), p(t[1]), p(t[2]));
+            // upper faces only
+            if m.normals[t[0] as usize][2] < 0.2 {
+                continue;
+            }
+            let plan = ((b - a).truncate().perp_dot((c - a).truncate())).abs() / 2.0;
+            let h = (a.z + b.z + c.z) / 3.0 - z;
+            if h > 0.0 {
+                v += plan * h;
+            }
+        }
+    }
+    v
 }
 
 pub fn figures(model: &Model) -> Figures {
@@ -76,15 +185,43 @@ pub fn figures(model: &Model) -> Figures {
         }
         f.floor_area += area;
         f.by_storey.push((creabim_core::words::tr(name), area, n));
+        let here: Vec<&creabim_core::Wall> =
+            walls.iter().filter(|w| w.level == *id).copied().collect();
+        let outline = enclosed(&here);
         if ground == Some(*id) {
-            let here: Vec<&creabim_core::Wall> =
-                walls.iter().filter(|w| w.level == *id).copied().collect();
-            f.built_up = enclosed(&here);
+            f.built_up = outline;
         }
-        for w in walls.iter().filter(|w| w.level == *id) {
+        let mut top: f64 = 0.0;
+        for w in &here {
             f.height = f.height.max(l.elevation + w.base_offset + w.height);
+            top = top.max(w.base_offset + w.height);
+        }
+        // a storey reaches to the next one's floor; the top one to its
+        // walls' tops, and the roof's space stands on that
+        let next = storeys
+            .iter()
+            .map(|s| s.2.elevation)
+            .filter(|z| *z > l.elevation + 1e-6)
+            .fold(f64::INFINITY, f64::min);
+        if next.is_finite() {
+            f.volume += outline * (next - l.elevation);
+        } else {
+            f.volume += outline * top + under_roofs(model, l.elevation + top);
         }
     }
+    for e in model.iter() {
+        if let ElementKind::Site(s) = &e.kind {
+            if let creabim_core::site::SiteForm::Area {
+                boundary, holes, ..
+            } = &s.form
+            {
+                let a = |p: &[glam::DVec2]| creabim_core::polygon::signed_area2(p).abs() / 2.0;
+                f.paved += a(boundary) - holes.iter().map(|h| a(h)).sum::<f64>();
+            }
+        }
+    }
+    f.plot = model.project_info().and_then(|p| p.1.plot_area);
+    f.ground = ground_at_building(model);
     for e in model.iter() {
         if let ElementKind::Opening(o) = &e.kind {
             match o.kind {
@@ -113,7 +250,7 @@ fn enclosed(walls: &[&creabim_core::Wall]) -> f64 {
     let thick = walls.iter().map(|w| w.thickness).fold(0.0, f64::max);
     let (lo, hi) = (lo - thick - 0.2, hi + thick + 0.2);
     let size = hi - lo;
-    let cell = (size.max_element() / 1200.0).max(0.025);
+    let cell = (size.max_element() / 3000.0).max(0.01);
     let (nx, ny) = (
         (size.x / cell).ceil() as usize + 1,
         (size.y / cell).ceil() as usize + 1,
@@ -296,7 +433,23 @@ pub fn report(model: &Model) -> Vec<Chapter> {
     ));
 
     let mut capacity = vec![
-        format!("Zastavaná plocha (obrys stien 1. NP): {}", m2(f.built_up)),
+        format!(
+            "Zastavaná plocha (obrys stien 1. NP z modelu): {}",
+            m2(f.built_up)
+        ),
+        match f.plot {
+            Some(p) => format!("Plocha pozemku (z katastra): {}", m2(p)),
+            None => format!("Plocha pozemku (z katastra): {FILL}"),
+        },
+        format!("Spevnené plochy: {}", m2(f.paved)),
+        match (f.coverage(), f.green()) {
+            (Some(c), Some(g)) => format!(
+                "Index zastavanosti: {}, koeficient zelene: {}",
+                format!("{c:.2}").replace('.', ","),
+                format!("{g:.2}").replace('.', ",")
+            ),
+            _ => format!("Index zastavanosti a koeficient zelene: {FILL} (chýba plocha pozemku)"),
+        },
         format!("Podlahová plocha miestností spolu: {}", m2(f.floor_area)),
     ];
     for (name, area, rooms) in &f.by_storey {
@@ -311,7 +464,31 @@ pub fn report(model: &Model) -> Vec<Chapter> {
             "±0,000 = {} m n. m.",
             format!("{:.2}", info.elevation).replace('.', ",")
         ),
-        format!("Obostavaný priestor: {FILL}"),
+        match f.ground {
+            Some((lo, hi)) => {
+                let s = |v: f64| format!("{v:+.2}").replace('.', ",").replace('-', "−");
+                if (hi - lo).abs() < 0.005 {
+                    format!(
+                        "Osadenie stavby: terén pri objekte {} m voči ±0,000 ({} m n. m.)",
+                        s(lo),
+                        format!("{:.2}", info.elevation + lo).replace('.', ",")
+                    )
+                } else {
+                    format!(
+                        "Osadenie stavby: terén pri objekte {} až {} m voči ±0,000 ({} až {} m n. m.)",
+                        s(lo),
+                        s(hi),
+                        format!("{:.2}", info.elevation + lo).replace('.', ","),
+                        format!("{:.2}", info.elevation + hi).replace('.', ",")
+                    )
+                }
+            }
+            None => format!("Osadenie stavby voči terénu: {FILL} (v modeli nie je terén pod stavbou)"),
+        },
+        format!(
+            "Obostavaný priestor (podlažia a priestor pod strechou z modelu, bez základov): {} m³",
+            format!("{:.1}", f.volume).replace('.', ",")
+        ),
         format!(
             "Potreba tepla a energií, pitnej a úžitkovej vody, množstvo odpadových vôd: {FILL}"
         ),

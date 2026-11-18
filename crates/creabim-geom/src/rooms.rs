@@ -64,8 +64,8 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                         }
                     }
                     // tiling: a thin line just off the walls' faces
-                    if r.tiling.is_some() && !view.ceiling_plan {
-                        for (a, b) in room::tiling_runs(model, &s) {
+                    if let (Some(t), false) = (&r.tiling, view.ceiling_plan) {
+                        for (a, b) in room::tiling_runs(model, &s, &t.skip) {
                             let d = (b - a).normalize_or_zero();
                             let off = DVec2::new(-d.y, d.x) * TILING_OFF;
                             loops.push(PlanItem::Line {

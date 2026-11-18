@@ -131,7 +131,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         return crate::roomlegend::schedule(model, None);
     }
     if category == ScheduleCategory::PipeList {
-        return crate::tradelists::pipes(model);
+        return crate::tradelists::pipes(model, None);
     }
     if category == ScheduleCategory::ElectricalList {
         return crate::tradelists::electrical(model);
@@ -965,8 +965,40 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
         3.5,
         Anchor::Middle,
     );
-    let rows = s.rows.len() + 2; // header, rows, totals
-    let bottom = -TITLE_ROW - rows as f64 * ROW;
+    // a cell's text broken to its column: a long one makes its row taller
+    const LEAD: f64 = 3.4;
+    let lines = |c: &Column, row: &Row, t: &str| -> Vec<String> {
+        if c.numeric || row.group || t.is_empty() {
+            return vec![t.to_string()];
+        }
+        let l = crate::joinerylist::wrap(t, c.width - 2.0 * PAD, 2.5);
+        if l.is_empty() {
+            vec![t.to_string()]
+        } else {
+            l
+        }
+    };
+    let heights: Vec<f64> = s
+        .rows
+        .iter()
+        .map(|row| {
+            let n = s
+                .columns
+                .iter()
+                .zip(&row.cells)
+                .map(|(c, t)| lines(c, row, t).len())
+                .max()
+                .unwrap_or(1);
+            ROW.max(n as f64 * LEAD + 2.0)
+        })
+        .collect();
+    // the top of each row, of the totals row after them, and the bottom
+    let mut tops = vec![-TITLE_ROW - ROW];
+    for h in &heights {
+        tops.push(tops[tops.len() - 1] - h);
+    }
+    let totals_top = tops[s.rows.len()];
+    let bottom = totals_top - ROW;
     let mut x = 0.0;
     let cell = |c: &Column, x: f64| {
         if c.numeric {
@@ -986,15 +1018,13 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
             align,
         );
         for (r, row) in s.rows.iter().enumerate() {
-            let y = -TITLE_ROW - (r as f64 + 1.5) * ROW;
-            text(
-                &mut items,
-                row.id,
-                DVec2::new(tx, y),
-                &row.cells[i],
-                2.5,
-                align,
-            );
+            let l = lines(c, row, &row.cells[i]);
+            let mid = tops[r] - heights[r] / 2.0;
+            let mut y = mid + (l.len() as f64 - 1.0) * LEAD / 2.0;
+            for t in &l {
+                text(&mut items, row.id, DVec2::new(tx, y), t, 2.5, align);
+                y -= LEAD;
+            }
         }
         if let Some(t) = s.totals.get(i).filter(|t| !t.is_empty()) {
             text(
@@ -1013,22 +1043,40 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
             let mut top = -TITLE_ROW;
             for (r, row) in s.rows.iter().enumerate() {
                 if spans(row) {
-                    let y = -TITLE_ROW - (r as f64 + 1.0) * ROW;
+                    let y = tops[r];
                     if y < top {
                         line(&mut items, DVec2::new(x, top), DVec2::new(x, y), false);
                     }
-                    top = y - ROW;
+                    top = tops[r + 1];
                 }
             }
             line(&mut items, DVec2::new(x, top), DVec2::new(x, bottom), false);
         }
         x += c.width;
     }
-    for r in 0..=rows {
-        let y = -TITLE_ROW - r as f64 * ROW;
-        let heavy = r == 0 || r == 1 || r == rows - 1 || r == rows;
-        line(&mut items, DVec2::new(0.0, y), DVec2::new(width, y), heavy);
+    // under the title, under the header, between the rows, over and under
+    // the totals
+    line(
+        &mut items,
+        DVec2::new(0.0, -TITLE_ROW),
+        DVec2::new(width, -TITLE_ROW),
+        true,
+    );
+    for (r, y) in tops.iter().enumerate() {
+        let heavy = r == 0 || r == s.rows.len();
+        line(
+            &mut items,
+            DVec2::new(0.0, *y),
+            DVec2::new(width, *y),
+            heavy,
+        );
     }
+    line(
+        &mut items,
+        DVec2::new(0.0, bottom),
+        DVec2::new(width, bottom),
+        true,
+    );
     // outer frame
     for (a, b) in [
         (DVec2::ZERO, DVec2::new(width, 0.0)),

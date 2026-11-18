@@ -449,10 +449,37 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
                     }
                 }
             }
+            // the trade's take-off on its first sheet, beside the legend
+            let list = (n == 0)
+                .then(|| {
+                    if trade == Trade::Electrical {
+                        return Some(schedule(
+                            &mut b,
+                            ScheduleCategory::ElectricalList,
+                            "Electrical list",
+                        ));
+                    }
+                    if crate::tradelists::pipes(&b.m, Some(trade)).rows.is_empty() {
+                        return None;
+                    }
+                    Some(
+                        b.find(|_, v| {
+                            matches!(v.kind, ViewKind::Schedule { category, .. }
+                                if category == ScheduleCategory::PipeList)
+                                && v.trade == Some(trade)
+                        })
+                        .unwrap_or_else(|| {
+                            let mut v = View::schedule(ScheduleCategory::PipeList);
+                            v.trade = Some(trade);
+                            b.view(format!("{} {code}", tr("Pipe list")), v)
+                        }),
+                    )
+                })
+                .flatten();
             b.sheet(
                 number(&part, storey, &mut n),
                 format!("{} {name}", tr("Floor plan")),
-                &[v, legend],
+                &[v, legend].into_iter().chain(list).collect::<Vec<_>>(),
             );
         }
     }

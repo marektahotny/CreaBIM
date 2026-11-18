@@ -42,10 +42,14 @@ fn row(id: ElementId, cells: [String; 5]) -> Row {
 /// The pipes and ducts: a row for each system, type and size with the
 /// length laid, in the systems' order, the smallest size first; under a
 /// system's pipes its valves by kind, counted.
-pub fn pipes(model: &Model) -> Schedule {
+pub fn pipes(model: &Model, trade: Option<creabim_core::viewmodes::Trade>) -> Schedule {
     let mut rows = vec![];
     let mut total = 0.0;
     for s in SYSTEMS {
+        if trade.is_some_and(|t| !t.shows(s.kind) || s.kind == creabim_core::mep::SystemKind::Other)
+        {
+            continue;
+        }
         // (type's name, size's label, nominal, length, first pipe)
         let mut sizes: Vec<(String, String, f64, f64, ElementId)> = vec![];
         // (kind's name, count, first valve)
@@ -225,7 +229,7 @@ mod tests {
     fn pipes_of_one_system_type_and_size_add_up_to_one_row() {
         let mut doc = Document::from_model(creabim_core::sample::sample_house());
         let level = doc.model().levels().next().unwrap().0.id;
-        assert!(pipes(doc.model()).rows.is_empty());
+        assert!(pipes(doc.model(), None).rows.is_empty());
         let mut tx = Transaction::new("pipes");
         for (system, len) in [("TV", 2.0), ("SV", 1.5), ("SV", 2.5)] {
             tx = tx.insert(Element::new(
@@ -245,13 +249,17 @@ mod tests {
             ));
         }
         doc.commit(tx).unwrap();
-        let s = pipes(doc.model());
+        let s = pipes(doc.model(), None);
         assert_eq!(s.rows.len(), 2);
         // cold water first, its two pipes together
         assert!(s.rows[0].cells[0].starts_with("SV"));
         assert_eq!(s.rows[0].cells[3], "4,0");
         assert_eq!(s.rows[1].cells[3], "2,0");
         assert_eq!(s.totals[3], "6,0");
+        // one trade's list leaves the others' pipes out
+        use creabim_core::viewmodes::Trade;
+        assert_eq!(pipes(doc.model(), Some(Trade::Plumbing)).rows.len(), 2);
+        assert!(pipes(doc.model(), Some(Trade::Heating)).rows.is_empty());
         // through the schedules' door too
         let by = crate::schedule::schedule(doc.model(), ScheduleCategory::PipeList);
         assert_eq!(by.rows.len(), 2);

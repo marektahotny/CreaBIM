@@ -24,6 +24,9 @@ pub struct ProjectInfo {
     /// The plots built on ("1838/116") and their cadastral district.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub parcels: String,
+    /// The area of the building plot, m², as the cadastre gives it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plot_area: Option<f64>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub cadastre: String,
     /// The office's logo for the title block: a picture kept with the

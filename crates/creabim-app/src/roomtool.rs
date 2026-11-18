@@ -418,6 +418,7 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
         r.tiling = tiled.then(room::Tiling::default);
         label = "Wall tiling";
     }
+    let tiled_shape = r.tiling.as_ref().and_then(|_| room::shape_of(model, r));
     if let Some(t) = r.tiling.as_mut() {
         if text(ui, "Tiling", &mut t.name) {
             label = "Wall tiling";
@@ -425,13 +426,44 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
         if length(ui, "Tiling height", &mut t.height, 0.1, 10.0) {
             label = "Wall tiling";
         }
-        if let Some(s) = room::shape_of(model, r) {
-            ui.label(format!(
-                "{} {}",
-                crate::i18n::t("Tiled area"),
-                model.units().area(room::tiling_area(model, r, &s))
-            ));
+        if let Some(s) = &tiled_shape {
+            // which of its walls carry tiles
+            for (i, wall) in room::bounding_walls(model, s).into_iter().enumerate() {
+                let len: f64 = room::tiling_runs(
+                    model,
+                    s,
+                    &room::bounding_walls(model, s)
+                        .into_iter()
+                        .filter(|w| *w != wall)
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .map(|(a, b)| a.distance(*b))
+                .sum();
+                let mut on = !t.skip.contains(&wall);
+                let name = format!(
+                    "{} {} ({})",
+                    crate::i18n::t("Wall"),
+                    i + 1,
+                    crate::units::len(len)
+                );
+                if ui.checkbox(&mut on, name).changed() {
+                    if on {
+                        t.skip.retain(|w| *w != wall);
+                    } else {
+                        t.skip.push(wall);
+                    }
+                    label = "Wall tiling";
+                }
+            }
         }
+    }
+    if let Some(s) = &tiled_shape {
+        ui.label(format!(
+            "{} {}",
+            crate::i18n::t("Tiled area"),
+            model.units().area(room::tiling_area(model, r, s))
+        ));
     }
     let mut own = r.height.is_some();
     let found = room::height(

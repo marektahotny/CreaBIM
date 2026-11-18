@@ -71,6 +71,9 @@ pub struct Tiling {
     /// What it is ("Ceramic tiles 300x600").
     #[serde(default, skip_serializing_if = "is_blank")]
     pub name: String,
+    /// The walls of the room left without tiles.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip: Vec<ElementId>,
 }
 
 /// The height new tiling reaches.
@@ -81,19 +84,68 @@ impl Default for Tiling {
         Self {
             height: TILING_HEIGHT,
             name: String::new(),
+            skip: vec![],
         }
     }
 }
 
+/// The stretches of the edge `a` to `b` of a room that the openings of
+/// `kind` in `wall` take, each with its opening.
+fn opening_spans<'a>(
+    model: &'a Model,
+    wall: &Element,
+    w: &crate::Wall,
+    kind: crate::OpeningKind,
+    a: DVec2,
+    b: DVec2,
+) -> Vec<(f64, f64, &'a crate::Opening)> {
+    let len = a.distance(b);
+    let along = (w.end - w.start).normalize_or_zero();
+    if len < 1e-6 || along == DVec2::ZERO {
+        return vec![];
+    }
+    let d = (b - a) / len;
+    let mut out: Vec<(f64, f64, &crate::Opening)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Opening(o) if o.host == wall.id && o.kind == kind => {
+                let p = (w.start + along * o.offset - a).dot(d);
+                let q = (w.start + along * (o.offset + o.width) - a).dot(d);
+                Some((p.min(q).max(0.0), p.max(q).min(len), o))
+            }
+            _ => None,
+        })
+        .filter(|g| g.1 - g.0 > 1e-6)
+        .collect();
+    out.sort_by(|x, y| x.0.total_cmp(&y.0));
+    out
+}
+
+/// The walls round a room, each once, in the outline's order.
+pub fn bounding_walls(model: &Model, shape: &RoomShape) -> Vec<ElementId> {
+    let mut out = vec![];
+    for id in shape.bounded_by.iter().flatten() {
+        if !out.contains(id)
+            && matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_)))
+        {
+            out.push(*id);
+        }
+    }
+    out
+}
+
 /// Where a room's tiling runs: the stretches of its outline along
-/// walls, less the doors in them.
-pub fn tiling_runs(model: &Model, shape: &RoomShape) -> Vec<(DVec2, DVec2)> {
+/// walls, less the doors in them and the walls in `skip`.
+pub fn tiling_runs(model: &Model, shape: &RoomShape, skip: &[ElementId]) -> Vec<(DVec2, DVec2)> {
     let n = shape.outline.len();
     let mut out = vec![];
     for (i, by) in shape.bounded_by.iter().enumerate() {
         let Some(wall) = by.and_then(|id| model.get(id)) else {
             continue;
         };
+        if skip.contains(&wall.id) {
+            continue;
+        }
         let ElementKind::Wall(w) = &wall.kind else {
             continue;
         };
@@ -105,23 +157,9 @@ pub fn tiling_runs(model: &Model, shape: &RoomShape) -> Vec<(DVec2, DVec2)> {
         }
         let d = (b - a) / len;
         // the doors of the wall, as stretches of the edge
-        let mut gaps: Vec<(f64, f64)> = model
-            .iter()
-            .filter_map(|e| match &e.kind {
-                ElementKind::Opening(o)
-                    if o.host == wall.id && o.kind == crate::OpeningKind::Door =>
-                {
-                    let p = (w.start + along * o.offset - a).dot(d);
-                    let q = (w.start + along * (o.offset + o.width) - a).dot(d);
-                    Some((p.min(q).max(0.0), p.max(q).min(len)))
-                }
-                _ => None,
-            })
-            .filter(|g| g.1 - g.0 > 1e-6)
-            .collect();
-        gaps.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let gaps = opening_spans(model, wall, w, crate::OpeningKind::Door, a, b);
         let mut from = 0.0;
-        for (p, q) in gaps {
+        for (p, q, _) in gaps {
             if p - from > 1e-6 {
                 out.push((a + d * from, a + d * p));
             }
@@ -134,15 +172,34 @@ pub fn tiling_runs(model: &Model, shape: &RoomShape) -> Vec<(DVec2, DVec2)> {
     out
 }
 
-/// The area of a room's tiling, m²: its runs by its height. Windows are
-/// not taken off.
+/// The area of a room's tiling, m²: its runs by its height, less what
+/// of the windows in its walls is below that height.
 pub fn tiling_area(model: &Model, r: &Room, shape: &RoomShape) -> f64 {
     let Some(t) = &r.tiling else { return 0.0 };
-    tiling_runs(model, shape)
+    let full = tiling_runs(model, shape, &t.skip)
         .iter()
         .map(|(a, b)| a.distance(*b))
         .sum::<f64>()
-        * t.height
+        * t.height;
+    let n = shape.outline.len();
+    let mut windows = 0.0;
+    for (i, by) in shape.bounded_by.iter().enumerate() {
+        let Some(wall) = by.and_then(|id| model.get(id)) else {
+            continue;
+        };
+        let ElementKind::Wall(w) = &wall.kind else {
+            continue;
+        };
+        if t.skip.contains(&wall.id) {
+            continue;
+        }
+        let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
+        for (p, q, o) in opening_spans(model, wall, w, crate::OpeningKind::Window, a, b) {
+            let top = (o.sill + o.height).min(t.height);
+            windows += (q - p) * (top - o.sill).max(0.0);
+        }
+    }
+    (full - windows).max(0.0)
 }
 
 impl Room {

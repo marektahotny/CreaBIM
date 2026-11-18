@@ -9850,7 +9850,8 @@ crate::props::row(ui, "File names", |ui| {
                     if matches!(
                         v.kind,
                         ViewKind::Schedule {
-                            category: ScheduleCategory::ServicesLegend,
+                            category: ScheduleCategory::ServicesLegend
+                                | ScheduleCategory::MaterialLegend,
                             ..
                         }
                     ) {

@@ -159,8 +159,8 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
         col("Mark", 14.0, false),
         col("Room use", 34.0, false),
         col("Area", 18.0, true),
-        col("Floor", 46.0, false),
-        col("Walls - finish", 80.0, false),
+        col("Floor", 40.0, false),
+        col("Walls - finish", 50.0, false),
         col("Ceiling - finish", 40.0, false),
     ];
     let units = model.units();
@@ -275,7 +275,7 @@ mod tests {
             .filter(|e| matches!(e.kind, ElementKind::Room(_)))
             .filter_map(|e| Some((e, creabim_core::room::shape(&m, e.id)?)))
             .find(|(_, s)| {
-                let runs: f64 = creabim_core::room::tiling_runs(&m, s)
+                let runs: f64 = creabim_core::room::tiling_runs(&m, s, &[])
                     .iter()
                     .map(|(a, b)| a.distance(*b))
                     .sum();
@@ -293,13 +293,23 @@ mod tests {
         r.tiling = Some(creabim_core::room::Tiling {
             height: 2.0,
             name: "Ceramic tiles".into(),
+            skip: vec![],
         });
-        let runs: f64 = creabim_core::room::tiling_runs(&m, &shape)
+        let runs: f64 = creabim_core::room::tiling_runs(&m, &shape, &[])
             .iter()
             .map(|(a, b)| a.distance(*b))
             .sum();
         let r = r.clone();
-        assert!((creabim_core::room::tiling_area(&m, &r, &shape) - runs * 2.0).abs() < 1e-9);
+        // the runs by the height, less the windows below it
+        let area = creabim_core::room::tiling_area(&m, &r, &shape);
+        assert!(area > 0.0 && area <= runs * 2.0 + 1e-9);
+        // a wall left out takes its run with it
+        let wall = creabim_core::room::bounding_walls(&m, &shape)[0];
+        let less: f64 = creabim_core::room::tiling_runs(&m, &shape, &[wall])
+            .iter()
+            .map(|(a, b)| a.distance(*b))
+            .sum();
+        assert!(less < runs - 0.1);
         let f = finishes(&m, &tiled, &r);
         assert!(f.walls.contains("Ceramic tiles up to 2000 mm ("), "{f:?}");
     }

@@ -363,6 +363,9 @@ fn reveal_wrap_parts(
     out
 }
 
+/// How thick a room's tiling is drawn in 3D, m.
+const TILING_THICKNESS: f64 = 0.01;
+
 /// A six-sided box from its corners, corner `i` having bit 0 for the far
 /// end along the first axis, bit 1 along the second and bit 2 along the
 /// third.
@@ -496,6 +499,37 @@ fn build_scene_unjoined(
                 });
                 continue;
             }
+            ElementKind::Room(r) => {
+                // its tiling: thin slabs on the walls' faces
+                let (Some(t), Some(s), Some(level)) = (
+                    &r.tiling,
+                    creabim_core::room::shape_of(model, r),
+                    model.level(r.level),
+                ) else {
+                    continue;
+                };
+                let mut mesh = TriMesh::default();
+                let (z0, z1) = (level.elevation, level.elevation + t.height);
+                for (a, b) in creabim_core::room::tiling_runs(model, &s, &t.skip) {
+                    let d = (b - a).normalize_or_zero();
+                    let n = glam::DVec2::new(-d.y, d.x) * TILING_THICKNESS;
+                    let c = |p: glam::DVec2, z: f64| DVec3::new(p.x, p.y, z);
+                    cuboid(
+                        &mut mesh,
+                        [
+                            c(a, z0),
+                            c(b, z0),
+                            c(a + n, z0),
+                            c(b + n, z0),
+                            c(a, z1),
+                            c(b, z1),
+                            c(a + n, z1),
+                            c(b + n, z1),
+                        ],
+                    );
+                }
+                (mesh, [0.86, 0.9, 0.92])
+            }
             ElementKind::Ceiling(c) => {
                 let Some(outline) = c.outline(model) else {
                     continue;
@@ -586,7 +620,6 @@ fn build_scene_unjoined(
             | ElementKind::Guide(_)
             | ElementKind::CropBox(_)
             | ElementKind::GridGroup(_)
-            | ElementKind::Room(_)
             | ElementKind::RoomSeparator(_)
             | ElementKind::Join(_)
             | ElementKind::Detail(_) => continue,

@@ -166,6 +166,61 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             TEXT,
         );
     }
+    // the notes of the drawing, the legend view's own, a line each
+    let notes: Vec<String> = match model.get(view).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => v
+            .notes
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(|l| format!("- {}", l.trim_start_matches("- ")))
+            .collect(),
+        _ => vec![],
+    };
+    if !notes.is_empty() {
+        y -= 3.0;
+        text(
+            &mut items,
+            DVec2::new(0.0, y - HEAD / 2.0),
+            &tr("NOTES"),
+            HEAD + 0.8,
+        );
+        y -= HEAD + 3.0;
+        for n in &notes {
+            for l in wrap(&n.to_uppercase(), WIDTH, TEXT) {
+                text(&mut items, DVec2::new(0.0, y - LINE / 2.0), &l, TEXT);
+                y -= LINE;
+            }
+            y -= 1.0;
+        }
+    }
+    // the project's zero above the sea, as the office's plans close
+    let zero = model.project_info().map_or(0.0, |p| p.1.elevation);
+    if zero.abs() > 1e-9 {
+        y -= 3.0;
+        text(
+            &mut items,
+            DVec2::new(0.0, y - LINE / 2.0),
+            &format!("±0,000 = {}", format!("{zero:.2}").replace('.', ",")),
+            TEXT + 0.6,
+        );
+        y -= LINE + 0.6;
+    }
+    // where the ground is against it at the building, from the site
+    if let Some((lo, hi)) = crate::summary::ground_at_building(model) {
+        let n = |v: f64| format!("{v:+.3}").replace('.', ",").replace('-', "−");
+        let at = if (hi - lo).abs() < 0.0005 {
+            n(lo)
+        } else {
+            format!("{} {} {}", n(lo), tr("to"), n(hi))
+        };
+        text(
+            &mut items,
+            DVec2::new(0.0, y - LINE / 2.0),
+            &format!("{}: {at}", tr("Ground at the building")),
+            TEXT + 0.6,
+        );
+    }
     PlanView { items }
 }
 
