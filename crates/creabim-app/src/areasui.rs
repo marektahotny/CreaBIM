@@ -960,9 +960,8 @@ impl CreaBimApp {
                 let mut items = vec![Item::new("area.show:model", "3D view")
                     .icon("box")
                     .checked(here == Shows::Model)
-                    .enabled(!model_elsewhere)
                     .hint(if model_elsewhere {
-                        "The 3D view is open in another area"
+                        "The 3D view is open in another area: it comes here, and that area takes what this one shows"
                     } else {
                         "The model in 3D"
                     })];
@@ -1224,9 +1223,21 @@ impl CreaBimApp {
                         None => return true,
                     }
                 };
-                if new == Shows::Model && self.areas.root.has_model() {
-                    self.status = "The 3D view is open in another area already.".into();
-                    return true;
+                // the one 3D view is in another area (maybe one hidden while
+                // this is shown alone): the two change places
+                if new == Shows::Model {
+                    let shows = self.areas.root.areas();
+                    let here = shows.get(i).copied();
+                    if let (Some(k), Some(here)) =
+                        (shows.iter().position(|s| *s == Shows::Model), here)
+                    {
+                        if k == i {
+                            return true;
+                        }
+                        if let Some(s) = self.areas.root.get_mut(k) {
+                            *s = here;
+                        }
+                    }
                 }
                 if let Some(s) = self.areas.root.get_mut(i) {
                     *s = new;
@@ -1703,10 +1714,11 @@ mod tests {
         assert_eq!(app.areas.max, Some(1));
         assert!(app.area_action("area.max", "1"));
         assert_eq!(app.areas.max, None);
-        // a second 3D area is refused
+        // there is one 3D view: asked for in another area (also while it
+        // is hidden behind one shown alone), the two change places
         app.areas.focus = 1;
         app.area_action("area.show", "model");
-        assert_eq!(app.areas.root.areas()[1], Shows::View(plan));
+        assert_eq!(app.areas.root.areas(), [Shows::View(plan), Shows::Model]);
         // stepping goes round the workspaces
         app.step_workspace(1);
         assert_eq!(app.areas.workspace, "Drawing");
