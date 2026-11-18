@@ -887,6 +887,8 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     if matches!(kind, creabim_core::ViewKind::Plan { .. }) {
         crate::declutter::place_labels(&mut d.items, v.scale / 1000.0);
     }
+    // the text of a stretch too short for it goes beside the stretch
+    crate::annotate::place_dimension_texts(&mut d.items, v.scale / 1000.0);
     // dimension lines whose style says so break where tags and notes
     // finally sit
     crate::annotate::break_dimensions(&mut d.items, v.scale / 1000.0);

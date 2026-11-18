@@ -385,7 +385,9 @@ pub struct PlanState {
     /// Element picked for a tag, waiting for the tag's position.
     tag_host: Option<ElementId>,
     /// Tag or dimension being dragged: where the drag began and its offset then.
-    anno_drag: Option<(ElementId, DVec2, DVec2)>,
+    /// With a stretch's number when it is that stretch's text of a
+    /// dimension that is dragged, not its line.
+    anno_drag: Option<(ElementId, DVec2, DVec2, Option<usize>)>,
     /// The area whose drag holds `anno_drag`, `level_drag` or `drag`:
     /// another area, not dragged, must not end it (MU32: a dimension moved
     /// a step per drag).
@@ -1351,6 +1353,7 @@ fn show_pane(
             witness,
             text,
             look,
+            place,
             ..
         } = item
         {
@@ -1365,7 +1368,7 @@ fn show_pane(
                 _ => None,
             };
             if let Some(current) = current {
-                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
                 let px = crate::annotate::text_px(look, mm, &xf);
                 let half = paper::text_width(text, look.size) * mm * xf.scale as f64 / 2.0;
                 let along = DVec2::from_angle(g.angle);
@@ -6025,14 +6028,18 @@ pub fn draw_item_with(
             witness,
             breaks,
             below,
+            place,
             ..
         } => {
             let ink = crate::annotate::ink(look, selected, highlight);
-            let d = (*a, *b, *offset, *witness);
+            let d = (*a, *b, *offset, *witness, *place);
             draw_dimension(painter, xf, d, breaks, text, look, mm, ink);
             if let Some(t) = below {
-                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
                 let px = crate::annotate::text_px(look, mm, xf);
+                if g.back {
+                    text_patch(painter, xf, &g, g.below_at, t, look, mm);
+                }
                 crate::annotate::text(
                     painter,
                     xf.to_screen(g.below_at),
@@ -6394,9 +6401,10 @@ pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, 
             look,
             witness,
             breaks,
+            place,
             ..
         } => {
-            let d = (*a, *b, *offset, *witness);
+            let d = (*a, *b, *offset, *witness, *place);
             draw_dimension_weighted(painter, xf, d, breaks, text, look, mm, color, TRACE);
         }
         PlanItem::Annotation { item, .. } => {
@@ -6447,7 +6455,7 @@ pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, 
 fn draw_dimension(
     painter: &egui::Painter,
     xf: &Xf,
-    (a, b, offset, witness): (DVec2, DVec2, f64, Option<[DVec2; 2]>),
+    (a, b, offset, witness, place): DimSpan,
     breaks: &[[f64; 2]],
     text: &str,
     look: &TextLook,
@@ -6457,7 +6465,7 @@ fn draw_dimension(
     draw_dimension_weighted(
         painter,
         xf,
-        (a, b, offset, witness),
+        (a, b, offset, witness, place),
         breaks,
         text,
         look,
@@ -6467,12 +6475,43 @@ fn draw_dimension(
     );
 }
 
+/// A dimension's measured ends, offset, witness points and text placing.
+type DimSpan = (
+    DVec2,
+    DVec2,
+    f64,
+    Option<[DVec2; 2]>,
+    creabim_geom::plan::DimPlace,
+);
+
+/// The patch of paper behind a dimension's text.
+fn text_patch(
+    painter: &egui::Painter,
+    xf: &Xf,
+    g: &creabim_geom::annotate::DimensionGeometry,
+    at: DVec2,
+    text: &str,
+    look: &TextLook,
+    mm: f64,
+) {
+    let pts: Vec<Pos2> = g
+        .patch(at, text, look, mm)
+        .iter()
+        .map(|p| xf.to_screen(*p))
+        .collect();
+    painter.add(egui::Shape::convex_polygon(
+        pts,
+        Color32::WHITE,
+        Stroke::NONE,
+    ));
+}
+
 /// A dimension with its strokes `w` times their weight.
 #[allow(clippy::too_many_arguments)]
 fn draw_dimension_weighted(
     painter: &egui::Painter,
     xf: &Xf,
-    (a, b, offset, witness): (DVec2, DVec2, f64, Option<[DVec2; 2]>),
+    (a, b, offset, witness, place): DimSpan,
     breaks: &[[f64; 2]],
     text: &str,
     look: &TextLook,
@@ -6480,10 +6519,13 @@ fn draw_dimension_weighted(
     ink: Color32,
     w: f32,
 ) {
-    let mut g = dimension_geometry(a, b, offset, witness, look, mm);
+    let mut g = dimension_geometry(a, b, offset, witness, look, mm).placed(&place, mm);
     g.break_line(breaks);
-    for (p, q) in g.lines {
-        painter.line_segment([xf.to_screen(p), xf.to_screen(q)], Stroke::new(w, ink));
+    for (p, q) in &g.lines {
+        painter.line_segment([xf.to_screen(*p), xf.to_screen(*q)], Stroke::new(w, ink));
+    }
+    if g.back {
+        text_patch(painter, xf, &g, g.text_at, text, look, mm);
     }
     crate::annotate::paint_ends_weighted(painter, xf, &g.ends, ink, w);
     let px = crate::annotate::text_px(look, mm, xf);
@@ -6519,7 +6561,7 @@ fn preview_dimension(
     draw_dimension(
         painter,
         xf,
-        (a, b2, offset, witness),
+        (a, b2, offset, witness, Default::default()),
         &[],
         &text,
         look,
@@ -7113,14 +7155,51 @@ fn drag_annotation(
             }
             _ => None,
         });
-        state.anno_drag = hit.and_then(|id| {
-            let start = match &doc.model().get(id)?.kind {
-                ElementKind::Tag(t) if t.view == view => t.offset,
-                ElementKind::Dimension(d) if d.view == view => DVec2::new(d.offset, 0.0),
-                _ => return None,
+        // a dimension's text under the pointer: that text is dragged, as
+        // PilonDesigner's (ťahanie čísla kóty)
+        let mut nth: std::collections::HashMap<ElementId, usize> = Default::default();
+        let on_text = drawing.items.iter().find_map(|it| {
+            let PlanItem::Dimension {
+                id,
+                a,
+                b,
+                offset,
+                text,
+                look,
+                witness,
+                place,
+                ..
+            } = it
+            else {
+                return None;
             };
-            Some((id, w, start))
+            let k = nth.entry(*id).or_default();
+            let i = *k;
+            *k += 1;
+            let linear = matches!(
+                &doc.model().get(*id)?.kind,
+                ElementKind::Dimension(d)
+                    if d.view == view && d.kind == creabim_core::DimensionKind::Linear
+            );
+            if !linear {
+                return None;
+            }
+            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
+            let q = g.patch(g.text_at, text, look, mm);
+            let inside = (0..4).all(|j| (q[(j + 1) % 4] - q[j]).perp_dot(w - q[j]) >= 0.0);
+            inside.then_some((*id, i, place.shift))
         });
+        state.anno_drag = match on_text {
+            Some((id, i, shift)) => Some((id, w, shift, Some(i))),
+            None => hit.and_then(|id| {
+                let start = match &doc.model().get(id)?.kind {
+                    ElementKind::Tag(t) if t.view == view => t.offset,
+                    ElementKind::Dimension(d) if d.view == view => DVec2::new(d.offset, 0.0),
+                    _ => return None,
+                };
+                Some((id, w, start, None))
+            }),
+        };
         if let Some((id, ..)) = state.anno_drag {
             selection.only(id);
             state.drag_owner = Some(response.id);
@@ -7129,7 +7208,7 @@ fn drag_annotation(
     if state.anno_drag.is_some() && state.drag_owner != Some(response.id) {
         return None;
     }
-    let (id, grab, start) = state.anno_drag?;
+    let (id, grab, start, stretch) = state.anno_drag?;
     if response.drag_stopped() || !response.dragged() {
         state.anno_drag = None;
         return Some(None);
@@ -7141,6 +7220,23 @@ fn drag_annotation(
                 t.offset = start + p - grab;
             }
         }),
+        Some(ElementKind::Dimension(_)) if stretch.is_some() => {
+            let i = stretch.unwrap_or(0);
+            let shift = start + p - grab;
+            // let go near where it falls by itself: back there
+            let home = shift.length() < 6.0 / xf.scale as f64;
+            doc.edit_merged(id, "Move dimension text", |e| {
+                if let ElementKind::Dimension(d) = &mut e.kind {
+                    if d.texts.len() <= i {
+                        d.texts.resize(i + 1, None);
+                    }
+                    d.texts[i] = (!home).then_some(shift);
+                    if d.texts.iter().all(|t| t.is_none()) {
+                        d.texts.clear();
+                    }
+                }
+            })
+        }
         Some(ElementKind::Dimension(_)) => {
             // move the line square to what it measures
             let item = drawing.items.iter().find_map(|it| match it {

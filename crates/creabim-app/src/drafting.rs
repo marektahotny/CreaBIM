@@ -1105,6 +1105,7 @@ fn style_preview(ui: &mut egui::Ui, s: &TextStyle) {
             witness: None,
             breaks: vec![],
             below: None,
+            place: Default::default(),
         },
         PlanItem::Tag {
             id: ElementId::new(),

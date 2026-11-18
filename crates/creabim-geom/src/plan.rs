@@ -593,6 +593,23 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
     }
 }
 
+/// Where a dimension's text sits and how its witness lines are drawn.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct DimPlace {
+    /// The text moved from over the middle of its line, drawing units.
+    pub shift: DVec2,
+    /// Moved by hand (a dragged text): the automatic placing of short
+    /// stretches leaves it alone.
+    pub manual: bool,
+    /// A thin leader from the middle of the line to the moved text.
+    pub leader: bool,
+    /// Witness lines only by the dimension line, not back to what is
+    /// measured.
+    pub short: bool,
+    /// The text on a patch of paper, covering what is drawn under it.
+    pub back: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum PlanItem {
     Polygon {
@@ -662,6 +679,8 @@ pub enum PlanItem {
         /// door or window has its width above and its height, and a
         /// window's sill in brackets, below).
         below: Option<String>,
+        /// Where its text sits and how its witness lines are drawn.
+        place: DimPlace,
     },
     /// A tag: `text` in a bubble at `at`, with a leader back to `anchor`.
     Tag {
@@ -2233,7 +2252,12 @@ fn opening_symbol(
             // a fire door's rating) under it (STN 01 3420)
             if let (Some(d), Some(leaf)) = (&o.door, boxes.iter().find(|b| b.part == Part::Leaf)) {
                 let num = |v: f64| {
-                    creabim_core::write_number(model, creabim_core::NumberKind::Dimensions, None, v)
+                    crate::annotate::spaced(&creabim_core::write_number(
+                        model,
+                        creabim_core::NumberKind::Dimensions,
+                        None,
+                        v,
+                    ))
                 };
                 let t = w.thickness / 2.0;
                 let mid = c.u0 + (leaf.lo.x + leaf.hi.x) / 2.0;
@@ -2253,6 +2277,7 @@ fn opening_symbol(
                     witness: None,
                     breaks: vec![],
                     below: Some(below),
+                    place: Default::default(),
                 });
             }
         }

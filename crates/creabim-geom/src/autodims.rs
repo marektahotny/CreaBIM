@@ -318,6 +318,160 @@ pub fn dimension_openings(model: &Model, view: ElementId) -> (Transaction, usize
     (tx, n)
 }
 
+/// A room's clear sizes, as PilonDesigner's "kóty svetlostí": two
+/// dimensions from face to face through the room, along its longest edge
+/// and square to it, attached to the walls they reach. Their lines keep
+/// off the middle of the room, where its tag stands.
+pub fn room_clear_dims(model: &Model, view_id: ElementId, room: ElementId) -> Vec<Dimension> {
+    let Some(ElementKind::View(view)) = model.get(view_id).map(|e| &e.kind) else {
+        return vec![];
+    };
+    let ViewKind::Plan { level, .. } = view.kind else {
+        return vec![];
+    };
+    let Some(ElementKind::Room(r)) = model.get(room).map(|e| &e.kind) else {
+        return vec![];
+    };
+    if r.level != level {
+        return vec![];
+    }
+    let Some(shape) = creabim_core::room::shape_of(model, r) else {
+        return vec![];
+    };
+    let ol = &shape.outline;
+    let n = ol.len();
+    if n < 3 {
+        return vec![];
+    }
+    // along the longest edge, turned to read left to right and upwards
+    let mut u = DVec2::X;
+    let mut best = 0.0;
+    for i in 0..n {
+        let d = ol[(i + 1) % n] - ol[i];
+        if d.length() > best {
+            best = d.length();
+            u = d / best;
+        }
+    }
+    let mut v = u.perp();
+    if u.y.abs() > u.x.abs() {
+        (u, v) = (v, u);
+    }
+    if u.x < 0.0 {
+        u = -u;
+    }
+    if v.y < 0.0 {
+        v = -v;
+    }
+    let c = ol.iter().copied().sum::<DVec2>() / n as f64;
+    let extent = |d: DVec2| {
+        ol.iter()
+            .map(|q| (*q - c).dot(d))
+            .fold((f64::MAX, f64::MIN), |(lo, hi), s| (lo.min(s), hi.max(s)))
+    };
+    // where the line through `a` along `d` is inside the room about `a`:
+    // its two ends and the edges they are on
+    let span = |a: DVec2, d: DVec2| {
+        let mut hits: Vec<(f64, usize)> = (0..n)
+            .filter_map(|i| {
+                let (p, q) = (ol[i], ol[(i + 1) % n]);
+                let e = q - p;
+                let den = d.perp_dot(e);
+                if den.abs() < 1e-12 {
+                    return None;
+                }
+                let t = (p - a).perp_dot(e) / den;
+                let s = (p - a).perp_dot(d) / den;
+                (0.0..1.0).contains(&s).then_some((t, i))
+            })
+            .collect();
+        hits.sort_by(|x, y| x.0.total_cmp(&y.0));
+        hits.chunks_exact(2)
+            .find(|w| w[0].0 <= 1e-9 && w[1].0 >= -1e-9)
+            .map(|w| (w[0], w[1]))
+    };
+    let k = view.scale / 100.0;
+    let chain = |d: DVec2, across: DVec2, shift: f64| {
+        [c + across * shift, c].into_iter().find_map(|a| {
+            let ((t0, e0), (t1, e1)) = span(a, d)?;
+            if t1 - t0 < 1e-6 {
+                return None;
+            }
+            let (p0, p1) = (a + d * t0, a + d * t1);
+            let mut dim = Dimension::linear(
+                view_id,
+                attach(model, view, shape.bounded_by[e0], p0),
+                attach(model, view, shape.bounded_by[e1], p1),
+                0.0,
+            );
+            dim.axis = if d.y.abs() < 1e-9 {
+                DimAxis::Horizontal
+            } else if d.x.abs() < 1e-9 {
+                DimAxis::Vertical
+            } else {
+                DimAxis::Aligned
+            };
+            Some(dim)
+        })
+    };
+    // the one across under the tag, the one up to its right; nearer the
+    // middle in a small room
+    let (v0, _) = extent(v);
+    let (_, u1) = extent(u);
+    let under = (-1.4 * k).max(v0 * 0.6);
+    let right = (1.9 * k).min(u1 * 0.75);
+    [chain(u, v, under), chain(v, u, right)]
+        .into_iter()
+        .flatten()
+        .filter(|d| !has_dimension(model, view, view_id, d))
+        .collect()
+}
+
+/// Is there a linear dimension in the view between the same two points?
+fn has_dimension(model: &Model, view: &View, view_id: ElementId, d: &Dimension) -> bool {
+    let ends = |d: &Dimension| Some((resolve(model, view, &d.a)?, resolve(model, view, &d.b)?));
+    let Some((a, b)) = ends(d) else {
+        return false;
+    };
+    model.iter().any(|e| match &e.kind {
+        ElementKind::Dimension(o) if o.view == view_id && !o.is_chain() => {
+            ends(o).is_some_and(|(p, q)| {
+                (p.distance(a) < 1e-4 && q.distance(b) < 1e-4)
+                    || (p.distance(b) < 1e-4 && q.distance(a) < 1e-4)
+            })
+        }
+        _ => false,
+    })
+}
+
+/// The transaction that adds the clear sizes of `rooms` (or, when none
+/// are given, of every room on the plan `view`), with how many dimensions
+/// it adds.
+pub fn dimension_rooms(
+    model: &Model,
+    view: ElementId,
+    rooms: &[ElementId],
+) -> (Transaction, usize) {
+    let all: Vec<ElementId> = if rooms.is_empty() {
+        model
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Room(_)))
+            .map(|e| e.id)
+            .collect()
+    } else {
+        rooms.to_vec()
+    };
+    let mut tx = Transaction::new("Dimension rooms");
+    let mut n = 0;
+    for r in all {
+        for d in room_clear_dims(model, view, r) {
+            tx = tx.insert(Element::new("Dimension", ElementKind::Dimension(d)));
+            n += 1;
+        }
+    }
+    (tx, n)
+}
+
 /// Join the linear dimensions of `view` that run on one line and touch
 /// (share a point) into chains, one dimension each, as PilonDesigner draws
 /// them; `only` limits it to those dimensions. Held dimensions stay as
@@ -458,6 +612,61 @@ pub fn join_chains(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_room_gets_its_clear_sizes() {
+        use creabim_core::{Document, Room};
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (view, level) = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) => match v.kind {
+                    ViewKind::Plan { level, .. } => Some((e.id, level)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        let room = Element::new(
+            "Izba",
+            ElementKind::Room(Room::new(level, DVec2::new(2.5, 3.0))),
+        );
+        let id = room.id;
+        doc.commit(Transaction::new("room").insert(room)).unwrap();
+        let m = doc.model();
+        let ElementKind::Room(r) = &m.get(id).unwrap().kind else {
+            unreachable!()
+        };
+        let shape = creabim_core::room::shape_of(m, r).unwrap();
+        let (lo, hi) = shape.outline.iter().fold(
+            (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+            |(lo, hi), p| (lo.min(*p), hi.max(*p)),
+        );
+        let dims = room_clear_dims(m, view, id);
+        assert_eq!(dims.len(), 2);
+        let ElementKind::View(v) = &m.get(view).unwrap().kind else {
+            unreachable!()
+        };
+        let len = |d: &Dimension| {
+            resolve(m, v, &d.a)
+                .unwrap()
+                .distance(resolve(m, v, &d.b).unwrap())
+        };
+        assert_eq!(dims[0].axis, DimAxis::Horizontal);
+        assert_eq!(dims[1].axis, DimAxis::Vertical);
+        assert!((len(&dims[0]) - (hi.x - lo.x)).abs() < 1e-6);
+        assert!((len(&dims[1]) - (hi.y - lo.y)).abs() < 1e-6);
+        // bound to the walls they reach
+        assert!(dims
+            .iter()
+            .all(|d| d.a.host.is_some() && d.b.host.is_some()));
+        // once added there is nothing more to add
+        let (tx, n) = dimension_rooms(m, view, &[]);
+        assert_eq!(n, 2);
+        doc.commit(tx).unwrap();
+        assert_eq!(dimension_rooms(doc.model(), view, &[id]).1, 0);
+    }
     use creabim_core::{Level, Opening, OpeningKind, Wall};
 
     #[test]

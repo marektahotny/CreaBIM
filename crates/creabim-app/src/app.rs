@@ -10176,6 +10176,37 @@ impl CreaBimApp {
                                 }
                             });
                     }
+                    if d.kind == creabim_core::DimensionKind::Linear {
+                        if crate::props::switch(ui, &mut d.short, "Short witness lines")
+                            .on_hover_text(crate::i18n::t("Witness lines only by the dimension line, not back to what is measured"))
+                            .changed()
+                        {
+                            label = "Dimension witness lines";
+                        }
+                        if crate::props::switch(ui, &mut d.back, "Text background")
+                            .on_hover_text(crate::i18n::t(
+                                "The numbers cover what is drawn under them",
+                            ))
+                            .changed()
+                        {
+                            label = "Dimension text background";
+                        }
+                        ui.label(
+                            egui::RichText::new(crate::i18n::t("Drag a number to move it. The number of a short stretch goes beside the stretch by itself."))
+                                .weak(),
+                        );
+                        if !d.texts.is_empty()
+                            && ui
+                                .button(crate::i18n::t("Numbers back in place"))
+                                .on_hover_text(crate::i18n::t(
+                                    "Put the dragged numbers back where they fall by themselves",
+                                ))
+                                .clicked()
+                        {
+                            d.texts.clear();
+                            label = "Dimension text back in place";
+                        }
+                    }
                     match crate::annotate::look_ui(ui, self.doc.model(), &mut d.style, &mut d.color)
                     {
                         crate::annotate::LookEdit::Changed(l) => label = l,

@@ -293,6 +293,7 @@ impl Pencil<'_> {
             witness: None,
             breaks: vec![],
             below: None,
+            place: Default::default(),
         });
     }
 }
@@ -694,6 +695,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model, kind: OpeningKind) -
             },
         );
     }
+    crate::annotate::place_dimension_texts(&mut items, 1.0);
     PlanView { items }
 }
 

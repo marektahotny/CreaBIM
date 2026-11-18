@@ -308,14 +308,27 @@ pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, l
                 witness,
                 breaks,
                 below,
+                place,
                 ..
             } => {
-                let mut g = dimension_geometry(*a, *b, *offset, *witness, look, 1.0 / map.k());
+                let mm = 1.0 / map.k();
+                let mut g =
+                    dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
                 g.break_line(breaks);
-                for (p, q) in g.lines {
-                    ink_line(canvas, &[to(p), to(q)], DIMENSION, look);
+                for (p, q) in &g.lines {
+                    ink_line(canvas, &[to(*p), to(*q)], DIMENSION, look);
                 }
                 draw_ends(canvas, &g.ends, look, &to);
+                if g.back {
+                    let texts = [(g.text_at, Some(text)), (g.below_at, below.as_ref())];
+                    for (at, t) in texts {
+                        if let Some(t) = t {
+                            let pts: Vec<DVec2> =
+                                g.patch(at, t, look, mm).iter().map(|p| to(*p)).collect();
+                            canvas.fill(&pts, 1.0);
+                        }
+                    }
+                }
                 canvas.styled_text(to(g.text_at), text, Anchor::Middle, g.angle, look);
                 if let Some(t) = below {
                     canvas.styled_text(to(g.below_at), t, Anchor::Middle, g.angle, look);

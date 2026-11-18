@@ -153,9 +153,10 @@ pub fn text_box(item: &PlanItem, mm: f64) -> Option<(TextBox, bool)> {
             text,
             look,
             witness,
+            place,
             ..
         } => {
-            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
             let w = look.width(text) * mm;
             let h = look.size * 0.6 * mm;
             let (dir, up) = (
@@ -221,9 +222,11 @@ fn obstacles(items: &[PlanItem], mm: f64) -> Vec<(DVec2, DVec2, f64, usize)> {
                 offset,
                 look,
                 witness,
+                place,
                 ..
             } => {
-                for (p, q) in dimension_geometry(*a, *b, *offset, *witness, look, mm).lines {
+                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
+                for (p, q) in g.lines {
                     out.push((p, q, 1.0, k));
                 }
             }

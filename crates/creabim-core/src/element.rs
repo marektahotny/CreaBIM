@@ -817,6 +817,19 @@ pub struct Dimension {
     /// whose host is gone drops out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mids: Vec<HostPoint>,
+    /// Texts dragged from over their stretch, as PilonDesigner's: for
+    /// each stretch in order along the line, how far its text is from
+    /// where it would sit, in the view's drawing (metres); none is where
+    /// it falls by itself (a short stretch's text beside it).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub texts: Vec<Option<DVec2>>,
+    /// Short witness lines: only by the dimension line, not back to what
+    /// is measured.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub short: bool,
+    /// Its text covers what is drawn under it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub back: bool,
 }
 
 impl Dimension {
@@ -856,6 +869,9 @@ impl Dimension {
             held: None,
             format: None,
             mids: Vec::new(),
+            texts: Vec::new(),
+            short: false,
+            back: false,
         }
     }
 

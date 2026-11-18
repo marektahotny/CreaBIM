@@ -694,13 +694,28 @@ pub fn linear_items(
         return vec![];
     };
     let num = |v: f64| {
-        creabim_core::write_number(model, creabim_core::NumberKind::Dimensions, d.format, v)
+        spaced(&creabim_core::write_number(
+            model,
+            creabim_core::NumberKind::Dimensions,
+            d.format,
+            v,
+        ))
     };
     let below_text = |h: f64, sill: Option<f64>| match sill {
         Some(s) => format!("{} ({})", num(h), num(s)),
         None => num(h),
     };
     let look = look_of(model, d.style, d.color);
+    let place = |i: usize| {
+        let shift = d.texts.get(i).copied().flatten();
+        crate::plan::DimPlace {
+            shift: shift.unwrap_or_default(),
+            manual: shift.is_some(),
+            leader: shift.is_some(),
+            short: d.short,
+            back: d.back,
+        }
+    };
     if !d.is_chain() {
         let len = a.distance(b2);
         let below = opening_below(model, d, len)
@@ -716,6 +731,7 @@ pub fn linear_items(
             witness,
             breaks: vec![],
             below,
+            place: place(0),
         }];
     }
     let u = (b2 - a).normalize_or_zero();
@@ -730,7 +746,8 @@ pub fn linear_items(
     marks.dedup_by(|y, x| (y.0 - x.0).abs() < 1e-4);
     marks
         .windows(2)
-        .map(|w| {
+        .enumerate()
+        .map(|(i, w)| {
             let ((sa, pa, ha), (sb, pb, hb)) = (w[0], w[1]);
             let len = sb - sa;
             let below = opening_between(model, ha, hb, len)
@@ -746,9 +763,125 @@ pub fn linear_items(
                 witness: Some([pa, pb]),
                 breaks: vec![],
                 below,
+                place: place(i),
             }
         })
         .collect()
+}
+
+/// A number with its thousands apart, as the drawings write millimetres:
+/// `1 970`. Text that is not a whole number stays as it is.
+pub fn spaced(text: &str) -> String {
+    if text.len() < 4 || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len() + text.len() / 3);
+    for (i, c) in text.chars().enumerate() {
+        if i > 0 && (text.len() - i) % 3 == 0 {
+            out.push('\u{a0}');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Put the text of each stretch too short for it beside the stretch, as
+/// PilonDesigner does: a chain's first stretch before its start, its last
+/// past its end, one inside past the mark towards the neighbour with room
+/// beside its own text, and where neither has room a row higher with a
+/// leader. Texts moved by hand stay. `mm` is drawing units per paper mm.
+pub fn place_dimension_texts(items: &mut [PlanItem], mm: f64) {
+    // what each dimension item needs along its line, and its length
+    struct Run {
+        k: usize,
+        a: DVec2,
+        b: DVec2,
+        w: f64,
+        up: DVec2,
+        lm: f64,
+        manual: bool,
+        below: bool,
+    }
+    let runs: Vec<Run> = items
+        .iter()
+        .enumerate()
+        .filter_map(|(k, it)| {
+            let PlanItem::Dimension {
+                a,
+                b,
+                offset,
+                text,
+                look,
+                witness,
+                below,
+                place,
+                ..
+            } = it
+            else {
+                return None;
+            };
+            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+            let (pa, pb) = g.ends_at;
+            let w = below
+                .iter()
+                .map(|t| look.width(t))
+                .fold(look.width(text), f64::max)
+                * mm;
+            Some(Run {
+                k,
+                a: pa,
+                b: pb,
+                w,
+                up: (g.text_at - (pa + pb) / 2.0).normalize_or_zero(),
+                lm: look.size * mm,
+                manual: place.manual,
+                below: below.is_some(),
+            })
+        })
+        .collect();
+    for (i, r) in runs.iter().enumerate() {
+        let len = r.a.distance(r.b);
+        if r.manual || len < 1e-9 || len >= r.w + 0.4 * r.lm {
+            continue;
+        }
+        let u = (r.b - r.a) / len;
+        // the stretch that carries on along the line from `p`, be it of
+        // this dimension or of another: how much room it has beside its
+        // own text
+        let room = |p: DVec2| {
+            runs.iter()
+                .enumerate()
+                .filter(|(j, o)| {
+                    *j != i
+                        && (o.a.distance(p) < 1e-6 || o.b.distance(p) < 1e-6)
+                        && (o.b - o.a).perp_dot(u).abs() < 1e-6 * o.a.distance(o.b).max(1.0)
+                })
+                .map(|(_, o)| o.a.distance(o.b) / 2.0 - o.w / 2.0)
+                .reduce(f64::min)
+        };
+        let gap = 0.5 * r.lm;
+        // from the middle of the stretch to beside it
+        let before = -u * (len / 2.0 + r.w / 2.0 + gap);
+        let after = u * (len / 2.0 + r.w / 2.0 + gap);
+        let need = r.w + 2.0 * gap;
+        let (shift, leader) = match (room(r.a), room(r.b)) {
+            // the line ends here: past its end
+            (_, None) => (after, false),
+            (None, _) => (before, false),
+            (Some(left), Some(right)) if left.max(right) >= need => {
+                (if left >= right { before } else { after }, false)
+            }
+            // nowhere beside: a row higher, every other one higher still
+            _ => {
+                let rows = if r.below { 2.6 } else { 1.5 } + if i % 2 == 1 { 0.0 } else { 1.4 };
+                (r.up * r.lm * rows, true)
+            }
+        };
+        if let PlanItem::Dimension { place, .. } = &mut items[r.k] {
+            place.shift = shift;
+            place.leader = leader;
+        }
+    }
 }
 
 /// A chain without its point `i` (0 is `a`, then the further points, then
@@ -1289,6 +1422,56 @@ pub struct DimensionGeometry {
     pub ends_at: (DVec2, DVec2),
     /// Where text under the line goes, mirroring `text_at`.
     pub below_at: DVec2,
+    /// The text covers what is under it.
+    pub back: bool,
+}
+
+impl DimensionGeometry {
+    /// The geometry with its text where `place` says and its witness
+    /// lines as it says. Call before [`DimensionGeometry::break_line`].
+    pub fn placed(mut self, place: &crate::plan::DimPlace, mm: f64) -> Self {
+        if place.short {
+            // 4.5 mm of witness line before the dimension line
+            for (from, to) in self.lines.iter_mut().skip(1) {
+                let d = *to - *from;
+                let len = d.length();
+                let keep = 6.0 * mm;
+                if len > keep {
+                    *from = *to - d / len * keep;
+                }
+            }
+        }
+        if place.shift != DVec2::ZERO {
+            let (pa, pb) = self.ends_at;
+            let mid = (pa + pb) / 2.0;
+            let up = (self.text_at - mid).normalize_or_zero();
+            let off = place.shift.dot(up);
+            if place.leader && off.abs() > 1.0 * mm {
+                // from the line to under the text
+                let foot = self.text_at + place.shift - up * off.signum() * 1.2 * mm;
+                self.lines.push((mid, foot));
+            }
+            self.text_at += place.shift;
+            self.below_at += place.shift;
+        }
+        self.back = place.back;
+        self
+    }
+
+    /// Corners of the patch behind `text` at `at` (see
+    /// [`crate::plan::DimPlace::back`]).
+    pub fn patch(&self, at: DVec2, text: &str, look: &TextLook, mm: f64) -> [DVec2; 4] {
+        let dir = DVec2::from_angle(self.angle);
+        let up = dir.perp();
+        let w = (look.width(text) / 2.0 + 0.4) * mm;
+        let h = (look.size * 0.5 + 0.25) * mm;
+        [
+            at - dir * w - up * h,
+            at + dir * w - up * h,
+            at + dir * w + up * h,
+            at - dir * w + up * h,
+        ]
+    }
 }
 
 /// A linear dimension's linework: its line `offset` to the left of `a` →
@@ -1337,6 +1520,7 @@ pub fn dimension_geometry(
         below_at: (pa + pb) / 2.0 - up * (0.55 + look.size / 2.0) * mm,
         angle,
         ends_at: (pa, pb),
+        back: false,
     }
 }
 
@@ -1541,6 +1725,94 @@ pub fn tag_geometry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn thousands_stand_apart() {
+        assert_eq!(spaced("900"), "900");
+        assert_eq!(spaced("1970"), "1\u{a0}970");
+        assert_eq!(spaced("12500"), "12\u{a0}500");
+        assert_eq!(spaced("1.25"), "1.25");
+        assert_eq!(spaced("+3.000"), "+3.000");
+    }
+
+    #[test]
+    fn a_short_stretch_has_its_text_beside_it() {
+        // a chain at 1:50 (0.05 m per paper mm): 2 m, 0.1 m, 2 m, 0.1 m
+        let mm = 0.05;
+        let id = ElementId::new();
+        let stops = [0.0, 2.0, 2.1, 4.1, 4.2];
+        let mut items: Vec<PlanItem> = stops
+            .windows(2)
+            .map(|w| PlanItem::Dimension {
+                id,
+                a: DVec2::new(w[0], 0.0),
+                b: DVec2::new(w[1], 0.0),
+                offset: 1.0,
+                text: format!("{:.0}", (w[1] - w[0]) * 1000.0),
+                look: TextLook::default(),
+                witness: None,
+                breaks: vec![],
+                below: None,
+                place: Default::default(),
+            })
+            .collect();
+        place_dimension_texts(&mut items, mm);
+        let place = |i: usize| match &items[i] {
+            PlanItem::Dimension { place, .. } => *place,
+            _ => unreachable!(),
+        };
+        // the long ones stay over their middle
+        assert_eq!(place(0).shift, DVec2::ZERO);
+        assert_eq!(place(2).shift, DVec2::ZERO);
+        // the one inside goes beside it, over a neighbour with room
+        let inner = place(1);
+        assert!(inner.shift.x.abs() > 0.05 && inner.shift.y == 0.0 && !inner.leader);
+        // the last past the chain's end
+        assert!(place(3).shift.x > 0.05);
+        // a text dragged by hand stays where it was put
+        if let PlanItem::Dimension { place, .. } = &mut items[1] {
+            *place = crate::plan::DimPlace {
+                shift: DVec2::new(0.0, 0.3),
+                manual: true,
+                ..Default::default()
+            };
+        }
+        place_dimension_texts(&mut items, mm);
+        assert_eq!(place_of(&items[1]).shift, DVec2::new(0.0, 0.3));
+        // three short ones in a row: the middle one has no room beside
+        let stops = [0.0, 2.0, 2.1, 2.2, 2.3, 4.3];
+        let mut items: Vec<PlanItem> = stops
+            .windows(2)
+            .map(|w| PlanItem::Dimension {
+                id,
+                a: DVec2::new(w[0], 0.0),
+                b: DVec2::new(w[1], 0.0),
+                offset: 1.0,
+                text: "100".into(),
+                look: TextLook::default(),
+                witness: None,
+                breaks: vec![],
+                below: None,
+                place: Default::default(),
+            })
+            .collect();
+        place_dimension_texts(&mut items, mm);
+        let mid = place_of(&items[2]);
+        assert!(mid.leader && mid.shift.y > 0.0 && mid.shift.x == 0.0);
+        // moved texts move with the geometry
+        let g = dimension_geometry(DVec2::ZERO, DVec2::X, 1.0, None, &TextLook::default(), mm);
+        let at = g.text_at;
+        let g = g.placed(&mid, mm);
+        assert_eq!(g.text_at, at + mid.shift);
+        assert_eq!(g.lines.len(), 4, "the line, two witness lines, the leader");
+    }
+
+    fn place_of(it: &PlanItem) -> crate::plan::DimPlace {
+        match it {
+            PlanItem::Dimension { place, .. } => *place,
+            _ => unreachable!(),
+        }
+    }
     use crate::section::view_drawing;
     use creabim_core::sample::sample_house;
 
@@ -1650,7 +1922,9 @@ mod tests {
                 .items
                 .into_iter()
                 .filter_map(|i| match i {
-                    PlanItem::Dimension { text, .. } => text.parse::<f64>().ok(),
+                    PlanItem::Dimension { text, .. } => {
+                        text.replace('\u{a0}', "").parse::<f64>().ok()
+                    }
                     _ => None,
                 })
                 .fold(0.0, f64::max)

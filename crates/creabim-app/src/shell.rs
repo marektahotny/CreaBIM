@@ -1830,7 +1830,7 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.joindims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
@@ -2583,6 +2583,35 @@ impl CreaBimApp {
                         Ok(_) => format!(
                             "Added {n} dimension chains: doors and windows, walls and overall, bound to what they measure. Ctrl+Z to undo."
                         ),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
+                };
+            }
+            "view.dimrooms" => {
+                // the selected rooms, or every room of the plan
+                let picked: Vec<ElementId> = self
+                    .selection
+                    .active
+                    .into_iter()
+                    .chain(self.selection.others.iter().copied())
+                    .filter(|i| {
+                        matches!(
+                            self.doc.model().get(*i).map(|e| &e.kind),
+                            Some(ElementKind::Room(_))
+                        )
+                    })
+                    .collect();
+                let (tx, n) =
+                    creabim_geom::autodims::dimension_rooms(self.doc.model(), id, &picked);
+                self.status = if n == 0 {
+                    crate::i18n::tr(
+                        "Nothing to add: the rooms here have their clear sizes dimensioned already (plans only).",
+                    )
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => crate::i18n::tr(&format!(
+                            "Added {n} dimensions of clear sizes, face to face, bound to the walls. Ctrl+Z to undo."
+                        )),
                         Err(e) => format!("Couldn't do that: {e}"),
                     }
                 };
@@ -3393,6 +3422,11 @@ impl CreaBimApp {
                     "kind": "button", "id": "view.dimopenings", "label": "Dimension openings",
                     "icon": "dimension",
                     "hint": "Dimension chains round the outside, as STN 01 3420: the doors and windows (width over the line, height and sill under it), the walls, the overall size. Bound to what they measure",
+                }));
+                options.push(json!({
+                    "kind": "button", "id": "view.dimrooms", "label": "Dimension rooms",
+                    "icon": "dimension",
+                    "hint": "The clear sizes of the selected rooms, or of every room here: two dimensions from face to face, bound to the walls",
                 }));
                 options.push(json!({
                     "kind": "button", "id": "view.joindims", "label": "Join into chains",
