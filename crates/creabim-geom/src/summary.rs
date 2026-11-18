@@ -499,6 +499,32 @@ pub fn report(model: &Model) -> Vec<Chapter> {
             ),
             None => format!("Požiarna výška stavby: {FILL}"),
         },
+        {
+            let rooms = crate::occupancy::rooms(model);
+            match crate::occupancy::table(model) {
+                Some(t) if !rooms.is_empty() => {
+                    let (zones, total) = crate::occupancy::by_zone(&rooms);
+                    let open = rooms.iter().filter(|r| r.persons.is_none()).count();
+                    format!(
+                        "Obsadenie stavby osobami: {total} osôb v {} požiarnych úsekoch podľa {} ({}{}{})",
+                        zones.len(),
+                        t.norm,
+                        t.edition,
+                        if t.changed.is_empty() {
+                            ""
+                        } else {
+                            "; hodnoty tabuľky boli ručne zmenené"
+                        },
+                        if open == 0 {
+                            String::new()
+                        } else {
+                            format!("; {open} miestností bez určeného počtu")
+                        }
+                    )
+                }
+                _ => format!("Obsadenie stavby osobami: {FILL}"),
+            }
+        },
         format!(
             "Obostavaný priestor (podlažia a priestor pod strechou z modelu, bez základov): {} m³",
             format!("{:.1}", f.volume).replace('.', ",")

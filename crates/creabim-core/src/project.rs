@@ -34,6 +34,10 @@ pub struct ProjectInfo {
     /// are the designer's, read from the norm's tables.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fire_distances: Vec<f64>,
+    /// The norms' tables the fire calculations run on, read from the
+    /// designer's parameter file and kept with the project.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fire_params: Vec<crate::fireparams::ParamTable>,
     /// The office's logo for the title block: a picture kept with the
     /// project.
     #[serde(skip_serializing_if = "Option::is_none")]

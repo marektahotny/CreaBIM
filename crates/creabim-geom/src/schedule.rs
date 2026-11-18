@@ -133,6 +133,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     if category == ScheduleCategory::FireFacades {
         return crate::firezones::facade_schedule(model);
     }
+    if category == ScheduleCategory::Occupancy {
+        return crate::occupancy::schedule(model);
+    }
     if category == ScheduleCategory::FireZones {
         return crate::firezones::schedule(model);
     }
@@ -543,6 +546,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         | ScheduleCategory::RoomLegend
         | ScheduleCategory::FireZones
         | ScheduleCategory::FireFacades
+        | ScheduleCategory::Occupancy
         | ScheduleCategory::ElectricalList => {
             unreachable!("the take-offs and the list of documentation are built on their own")
         }

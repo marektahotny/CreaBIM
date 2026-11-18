@@ -58,6 +58,14 @@ pub struct Room {
     /// a zone.
     #[serde(default, skip_serializing_if = "is_blank")]
     pub fire_zone: String,
+    /// What it is counted as for its persons: an item of the project's
+    /// occupancy table ("9.1").
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub fire_use: String,
+    /// The count the item's factor multiplies: the designed persons,
+    /// beds, seats or parking places.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub design_count: Option<f64>,
     /// The tiling of its walls, where it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiling: Option<Tiling>,

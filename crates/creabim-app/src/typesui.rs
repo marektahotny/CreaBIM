@@ -743,6 +743,7 @@ impl CreaBimApp {
                     || self.air_balance_action(head, arg)
                     || self.ducts_action(head, arg)
                     || self.circuit_action(head, arg)
+                    || self.fire_params_action(head, arg)
                     || self.circuits_action(head, arg)
                     || self.joinery_action(head, arg)
                     || self.heat_loss_action(head, arg)

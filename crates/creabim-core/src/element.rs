@@ -2330,10 +2330,13 @@ pub enum ScheduleCategory {
     /// The building's sides by storey and where they face: what of each
     /// is open to fire, for the separation distances.
     FireFacades,
+    /// The persons the rooms are counted for, by fire zone, from the
+    /// project's occupancy table.
+    Occupancy,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 19] = [
+    pub const ALL: [ScheduleCategory; 20] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2353,6 +2356,7 @@ impl ScheduleCategory {
         ScheduleCategory::RoomLegend,
         ScheduleCategory::FireZones,
         ScheduleCategory::FireFacades,
+        ScheduleCategory::Occupancy,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2377,6 +2381,7 @@ impl ScheduleCategory {
             ScheduleCategory::RoomLegend => return "Legend of rooms".into(),
             ScheduleCategory::FireZones => return "Fire zones".into(),
             ScheduleCategory::FireFacades => return "Fire-open areas of the facades".into(),
+            ScheduleCategory::Occupancy => return "Occupancy by persons".into(),
         };
         format!("{one} Schedule")
     }
@@ -2410,6 +2415,7 @@ impl ScheduleCategory {
             ScheduleCategory::RoomLegend => "Legend of rooms",
             ScheduleCategory::FireZones => "Fire zones",
             ScheduleCategory::FireFacades => "Fire-open areas of the facades",
+            ScheduleCategory::Occupancy => "Occupancy by persons",
         }
     }
 

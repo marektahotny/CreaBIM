@@ -973,6 +973,7 @@ spec_enum! {
         RoomLegend = "room_legend",
         FireZones = "fire_zones",
         FireFacades = "fire_facades",
+        Occupancy = "occupancy",
     }
 }
 

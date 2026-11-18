@@ -1119,6 +1119,7 @@ impl CreaBimApp {
         // the project's north turned: by an angle, or by a line picked in a plan
         let mut north_turn: Option<f64> = None;
         let mut north_line = false;
+        let mut fire_params = false;
         // the plot's data asked of the cadastre
         let mut cadastre = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
@@ -1203,6 +1204,16 @@ impl CreaBimApp {
                         ));
                     }
                 });
+                crate::props::section(ui, "Fire safety");
+                if ui
+                    .button(crate::i18n::t("Fire calculation parameters…"))
+                    .on_hover_text(crate::i18n::t(
+                        "The norms' tables the fire calculations count with: read from your file, changed when a norm changes, saved with the project",
+                    ))
+                    .clicked()
+                {
+                    fire_params = true;
+                }
                 crate::props::section(ui, "Fire separation distances");
                 ui.label(
                     egui::RichText::new(crate::i18n::t(
@@ -1387,6 +1398,9 @@ impl CreaBimApp {
                     "The cadastre did not answer ({e}): check the connection, or type the plot's data in."
                 )),
             };
+        }
+        if fire_params {
+            self.open_fire_params();
         }
         if north_line {
             self.plan.north_pick = true;

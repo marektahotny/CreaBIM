@@ -55,6 +55,8 @@ mod ductsui;
 mod earthworksui;
 #[path = "editui.rs"]
 mod editui;
+#[path = "fireparamsui.rs"]
+mod fireparamsui;
 #[path = "fittingsui.rs"]
 mod fittingsui;
 #[path = "fixturelegend.rs"]
@@ -401,6 +403,8 @@ pub struct CreaBimApp {
     ducts: Option<creabim_services::ductsizing::Limits>,
     /// The circuit check window, while it is open.
     circuit: Option<creabim_services::electrical::Circuit>,
+    /// The fire calculation parameters while their window is open.
+    fire_params: Option<fireparamsui::FireParamsDraft>,
     /// The circuits window, while it is open.
     circuits: Option<circuitsui::CircuitsWindow>,
     /// The window and door editor, while it is open.
@@ -600,6 +604,7 @@ impl CreaBimApp {
             air_balance: false,
             ducts: None,
             circuit: None,
+            fire_params: None,
             circuits: None,
             joinery: None,
             heat_loss: None,
@@ -12621,6 +12626,7 @@ impl eframe::App for CreaBimApp {
         self.air_balance_window(&ctx);
         self.ducts_window(&ctx);
         self.circuit_window(&ctx);
+        self.fire_params_window(&ctx);
         self.circuits_window(&ctx);
         self.joinery_window(&ctx);
         self.heat_source_window(&ctx);

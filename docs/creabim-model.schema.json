@@ -1358,7 +1358,8 @@
         "electrical_list",
         "room_legend",
         "fire_zones",
-        "fire_facades"
+        "fire_facades",
+        "occupancy"
       ]
     },
     "Callout": {

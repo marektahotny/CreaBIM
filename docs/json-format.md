@@ -866,6 +866,7 @@ What a schedule lists.
 - `"room_legend"`
 - `"fire_zones"`
 - `"fire_facades"`
+- `"occupancy"`
 
 ### Callout
 

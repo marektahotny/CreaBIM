@@ -408,6 +408,76 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
             label = "Room data";
         }
     }
+    // what it counts as for its persons, and the designed count
+    let table = creabim_geom::occupancy::table(model);
+    let shown = match table.and_then(|t| t.row(r.fire_use.trim())) {
+        Some(row) => format!("{} {}", row[0], row.get(1).map_or("", |s| s.as_str())),
+        None => r.fire_use.clone(),
+    };
+    let mut picked: Option<String> = None;
+    crate::props::row(ui, "Use for the persons", |ui| {
+        egui::ComboBox::from_id_salt("room.fire_use")
+            .selected_text(shown)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(r.fire_use.is_empty(), "-").clicked() {
+                    picked = Some(String::new());
+                }
+                match table {
+                    Some(t) => {
+                        for row in &t.rows {
+                            let name = row.get(1).map_or("", |s| s.as_str());
+                            let text = format!("{} {name}", row[0]);
+                            if ui.selectable_label(r.fire_use == row[0], text).clicked() {
+                                picked = Some(row[0].clone());
+                            }
+                        }
+                    }
+                    None => {
+                        ui.label(crate::i18n::t(
+                            "No occupancy table in the project: read it in Project information, Fire calculation parameters.",
+                        ));
+                    }
+                }
+            });
+    });
+    if let Some(p) = picked {
+        r.fire_use = p;
+        label = "Room data";
+    }
+    let mut counted = r.design_count.is_some();
+    if crate::props::switch(ui, &mut counted, "Designed count")
+        .on_hover_text(crate::i18n::t(
+            "The persons, beds, seats or parking places the norm's factor multiplies",
+        ))
+        .changed()
+    {
+        r.design_count = counted.then_some(1.0);
+        label = "Room data";
+    }
+    if let Some(n) = r.design_count.as_mut() {
+        let changed = crate::props::row(ui, "Count", |ui| {
+            ui.add(egui::DragValue::new(n).range(0.0..=100_000.0).speed(0.1))
+                .changed()
+        });
+        if changed {
+            label = "Room data";
+        }
+    }
+    if !r.fire_use.is_empty() || r.design_count.is_some() {
+        let area = room::shape_of(model, r).map_or(0.0, |s| room::net_area(model, r, &s));
+        let cell = |c: &str| table.map_or("", |t| t.cell(r.fire_use.trim(), c));
+        let p = creabim_geom::occupancy::persons(
+            cell(creabim_geom::occupancy::AREA),
+            cell(creabim_geom::occupancy::FACTOR),
+            area,
+            r.design_count,
+        );
+        ui.label(match p {
+            Some(p) => format!("{}: {p}", crate::i18n::t("Persons")),
+            None => crate::i18n::t("Persons: the item gives no value to count by here").to_string(),
+        });
+    }
     // tiling of the walls: what it is and how high it reaches
     let mut tiled = r.tiling.is_some();
     if crate::props::switch(ui, &mut tiled, "Wall tiling")

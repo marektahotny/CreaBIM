@@ -28,6 +28,7 @@ pub mod members;
 pub mod mep;
 pub mod mesh;
 pub mod objects;
+pub mod occupancy;
 pub mod opening;
 pub mod paper;
 pub mod parts;
