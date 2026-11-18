@@ -1144,7 +1144,25 @@ impl CreaBimApp {
                 text(ui, "Name", &mut draft.name, "Maple Lane House");
                 text(ui, "Number", &mut draft.number, "Job number");
                 text(ui, "Client", &mut draft.client, "");
-                text(ui, "Status", &mut draft.status, "Planning application");
+                crate::props::row(ui, "Stage", |ui| {
+                    let shown = match creabim_core::project::stage_code(&draft.status) {
+                        Some(code) => format!("{} ({code})", draft.status.trim()),
+                        None => draft.status.clone(),
+                    };
+                    egui::ComboBox::from_id_salt("project.stage")
+                        .selected_text(shown)
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut draft.status, String::new(), "-");
+                            for (name, code) in creabim_core::project::STAGES {
+                                ui.selectable_value(
+                                    &mut draft.status,
+                                    name.to_string(),
+                                    format!("{name} ({code})"),
+                                );
+                            }
+                        });
+                });
                 text(ui, "Issue date", &mut draft.issue_date, "");
                 text(ui, "Revision", &mut draft.revision, "00");
                 crate::props::section(ui, "Title block");

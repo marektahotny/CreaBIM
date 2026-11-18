@@ -5,6 +5,24 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The stages of documentation the Slovak Building Act (25/2025
+/// Z. z.) knows, with their codes as file names carry them.
+pub const STAGES: [(&str, &str); 5] = [
+    ("Stavebný zámer", "SZP"),
+    ("Stavebný zámer/Projekt stavby", "SZP/PSP"),
+    ("Projekt stavby", "PSP"),
+    ("Projekt stavby na ohlásenie", "PSO"),
+    ("Vykonávací projekt", "VPP"),
+];
+
+/// The code of a stage by its name; none for any other text.
+pub fn stage_code(stage: &str) -> Option<&'static str> {
+    STAGES
+        .iter()
+        .find(|(name, _)| *name == stage.trim())
+        .map(|s| s.1)
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProjectInfo {
@@ -42,7 +60,8 @@ pub struct ProjectInfo {
     /// project.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logo: Option<Logo>,
-    /// "Planning application", "Tender", "Construction".
+    /// The documentation's stage, one of [`STAGES`] by its name
+    /// ("Projekt stavby").
     pub status: String,
     /// The issue date, as the office writes it.
     pub issue_date: String,
@@ -454,5 +473,17 @@ mod north_tests {
         for (b, a) in before.iter().zip(walls(&doc)) {
             assert!((b.0 - a.0).length() < 1e-9 && (b.1 - a.1).length() < 1e-9);
         }
+    }
+}
+
+#[cfg(test)]
+mod stage_tests {
+    use super::*;
+
+    #[test]
+    fn a_stage_has_its_code_and_other_text_none() {
+        assert_eq!(stage_code("Projekt stavby"), Some("PSP"));
+        assert_eq!(stage_code(" Vykonávací projekt "), Some("VPP"));
+        assert_eq!(stage_code("Planning application"), None);
     }
 }
