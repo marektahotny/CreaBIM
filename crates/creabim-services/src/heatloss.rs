@@ -148,6 +148,9 @@ pub struct Item {
     pub f: f64,
     /// W.
     pub phi: f64,
+    /// Where an outside wall, window or door faces: degrees clockwise
+    /// from true north.
+    pub azimuth: Option<f64>,
 }
 
 /// What a room lacks for a full answer.
@@ -291,6 +294,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             .find(|x| x.level == level && x.e.id != not && polygon::contains(&x.shape.outline, p))
     };
     let mut out = BuildingLoss::default();
+    let north = model.project_info().map_or(0.0, |(_, p)| p.true_north);
     // (room index, outside perimeter) first, for B′
     let outside_len = |r: &RoomAt| -> f64 {
         let n = r.shape.outline.len();
@@ -335,28 +339,34 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                 missing.push(m);
             }
         };
-        let mut add = |kind: &'static str, detail: &str, a: f64, u: f64, f: f64| {
-            if a <= 1e-4 || u <= 0.0 {
-                return;
-            }
-            let phi = a * u * f * dt;
-            match items.iter_mut().find(|x| {
-                x.kind == kind && x.detail == detail && (x.u - u).abs() < 1e-9 && x.f == f
-            }) {
-                Some(x) => {
-                    x.area += a;
-                    x.phi += phi;
+        let mut add =
+            |kind: &'static str, detail: &str, a: f64, u: f64, f: f64, az: Option<f64>| {
+                if a <= 1e-4 || u <= 0.0 {
+                    return;
                 }
-                None => items.push(Item {
-                    kind,
-                    detail: detail.into(),
-                    area: a,
-                    u,
-                    f,
-                    phi,
-                }),
-            }
-        };
+                let phi = a * u * f * dt;
+                match items.iter_mut().find(|x| {
+                    x.kind == kind
+                        && x.detail == detail
+                        && (x.u - u).abs() < 1e-9
+                        && x.f == f
+                        && x.azimuth == az
+                }) {
+                    Some(x) => {
+                        x.area += a;
+                        x.phi += phi;
+                    }
+                    None => items.push(Item {
+                        kind,
+                        detail: detail.into(),
+                        area: a,
+                        u,
+                        f,
+                        phi,
+                        azimuth: az,
+                    }),
+                }
+            };
         let mut facade_dirs: Vec<f64> = vec![];
         let mut seen: Vec<ElementId> = vec![];
         let n = r.shape.outline.len();
@@ -380,6 +390,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                         (x.min(y), x.max(y))
                     };
                     let mut net = gross;
+                    let az = azimuth(DVec2::new((b - a).y, -(b - a).x), north);
                     for e in model.iter() {
                         let ElementKind::Opening(op) = &e.kind else {
                             continue;
@@ -408,12 +419,17 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                         } else {
                             ("Outside door", o.u_door)
                         };
-                        add(kind, "", oa, uo + o.d_u, 1.0);
+                        add(kind, "", oa, uo + o.d_u, 1.0, Some(az));
                     }
                     match u_of(model, we, R_WALL) {
-                        Some((uw, name)) => {
-                            add("Outside wall", &name, net.max(0.0), uw + o.d_u, 1.0)
-                        }
+                        Some((uw, name)) => add(
+                            "Outside wall",
+                            &name,
+                            net.max(0.0),
+                            uw + o.d_u,
+                            1.0,
+                            Some(az),
+                        ),
                         None => miss(Missing::WallBuildUp),
                     }
                 }
@@ -428,6 +444,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                             gross,
                             uw,
                             round3((ti - j.ti) / dt),
+                            None,
                         ),
                         None => miss(Missing::InnerWallBuildUp),
                     }
@@ -463,6 +480,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                         area,
                         round3(u_equiv_floor(bp, u, z)),
                         round3(f_ground),
+                        None,
                     );
                 }
                 None => miss(Missing::FloorBuildUp),
@@ -488,7 +506,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                         1.0 / rf.pitch.clamp(0.0, 80.0).to_radians().cos()
                     };
                     match u_of(model, e, R_ROOF) {
-                        Some((u, name)) => add("Roof", &name, area * slope, u + o.d_u, 1.0),
+                        Some((u, name)) => add("Roof", &name, area * slope, u + o.d_u, 1.0, None),
                         None => miss(Missing::RoofBuildUp),
                     }
                 }
@@ -552,6 +570,16 @@ fn wall_of(model: &Model, id: Option<ElementId>) -> Option<(&Element, &creabim_c
 
 /// A point past the wall an edge `a`–`b` of a room runs along (the
 /// outline is counter-clockwise, so out is to the right).
+/// Where the direction `n` of the drawing points: degrees clockwise
+/// from true north, which is `true_north` degrees anticlockwise of the
+/// drawing's up; to the whole degree.
+pub fn azimuth(n: DVec2, true_north: f64) -> f64 {
+    let t = true_north.to_radians();
+    let (north, east) = (DVec2::new(-t.sin(), t.cos()), DVec2::new(t.cos(), t.sin()));
+    let a = n.dot(east).atan2(n.dot(north)).to_degrees().round();
+    (a + 360.0) % 360.0
+}
+
 fn beyond(a: DVec2, b: DVec2, thickness: f64) -> DVec2 {
     let d = (b - a).normalize_or_zero();
     (a + b) / 2.0 + DVec2::new(d.y, -d.x) * (thickness + 0.05)

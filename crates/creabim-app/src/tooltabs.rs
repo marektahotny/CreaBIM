@@ -358,6 +358,13 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
             Sep,
             act(
+                "calc:cooling",
+                "Cooling load",
+                "sun",
+                "The cooling load of every room in summer (STN 73 0548): sun through the windows by where they face, walls, roof, people and appliances, and the fan-coil that covers it",
+            ),
+            Sep,
+            act(
                 "viewmode:services",
                 "Services drawing",
                 "layers-2",
