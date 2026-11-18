@@ -10,6 +10,7 @@
 //! (STN EN 806-3, STN 73 6655, DIN 1988-300) and find the pressure it
 //! needs at its root.
 
+pub mod firewater;
 pub mod fittings;
 pub mod fixtures;
 pub mod fixturespec;
@@ -22,6 +23,8 @@ pub mod peak_flow;
 pub mod pipe_types;
 pub mod settings;
 mod sizing;
+pub mod storm;
+pub mod tree;
 pub mod water;
 
 pub use fluid::Fluid;

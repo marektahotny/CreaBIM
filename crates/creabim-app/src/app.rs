@@ -85,6 +85,8 @@ mod reportui;
 mod selectsimilar;
 #[path = "shell.rs"]
 pub(crate) mod shell;
+#[path = "stormfireui.rs"]
+mod stormfireui;
 #[path = "stylesui.rs"]
 mod stylesui;
 #[path = "terrainimport.rs"]
@@ -360,6 +362,8 @@ pub struct CreaBimApp {
     med_unit: Option<creabim_core::catalogue::medical::MedUnitConfig>,
     /// The valve proposal window's options, while it is open.
     auto_valves: Option<creabim_core::autovalves::FillOpts>,
+    /// The storm water or fire main calculation shown.
+    net_calc: Option<stormfireui::NetCalc>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
     /// The schedule of earthworks, while its window is open.
@@ -539,6 +543,7 @@ impl CreaBimApp {
             fixture_legend: false,
             med_unit: None,
             heat_source: None,
+            net_calc: None,
             auto_valves: None,
             earthworks: None,
             note_editor: None,
@@ -10487,11 +10492,11 @@ impl CreaBimApp {
         }
         if let Some(code) = add_valve {
             let name = creabim_core::mep::valve_kind(code).map_or(code, |k| k.name);
-            let valve = creabim_core::mep::Valve {
-                pipe: edited.id,
-                t: crate::pipesui::valve_place(self.doc.model(), edited.id),
-                kind: code.into(),
-            };
+            let valve = creabim_core::mep::Valve::new(
+                edited.id,
+                crate::pipesui::valve_place(self.doc.model(), edited.id),
+                code,
+            );
             let v = Element::new(crate::i18n::tr(name), ElementKind::Valve(valve));
             let id = v.id;
             match self.doc.commit(Transaction::new("Add valve").insert(v)) {
@@ -11947,6 +11952,7 @@ impl eframe::App for CreaBimApp {
         self.fixture_legend_window(&ctx);
         self.med_unit_window(&ctx);
         self.heat_source_window(&ctx);
+        self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);
         self.earthworks_window(&ctx);
         self.maps_window(&ctx);

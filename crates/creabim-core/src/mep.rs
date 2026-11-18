@@ -759,9 +759,80 @@ pub struct Valve {
     pub t: f64,
     /// Its kind's code (see [`VALVE_KINDS`]).
     pub kind: String,
+    /// A roof drain's or a downpipe's catchment, m²; none takes the roof
+    /// over it, shared among the drains on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area_m2: Option<f64>,
+    /// Its runoff coefficient C; none takes it from the roof's pitch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coef: Option<f64>,
+    /// A hydrant's kind (see [`HYDRANTS`]); none is a D25 hose reel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hydrant: Option<String>,
+    /// A hydrant's flow, l/min, where it is not its kind's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_lmin: Option<f64>,
 }
 
+/// A hose system of a fire main (STN EN 671-1, STN EN 671-2, STN 92 0400).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hydrant {
+    pub code: &'static str,
+    /// Its name, in Slovak.
+    pub name: &'static str,
+    /// Its flow, l/s.
+    pub q_ls: f64,
+    /// The pressure it needs at the nozzle, kPa.
+    pub p_kpa: f64,
+    /// The smallest pipe it joins, DN.
+    pub min_dn: f64,
+}
+
+pub const HYDRANTS: [Hydrant; 3] = [
+    Hydrant {
+        code: "D19",
+        name: "Hadicový navijak D19",
+        q_ls: 0.3,
+        p_kpa: 200.0,
+        min_dn: 25.0,
+    },
+    Hydrant {
+        code: "D25",
+        name: "Hadicový navijak D25",
+        q_ls: 1.0,
+        p_kpa: 200.0,
+        min_dn: 25.0,
+    },
+    Hydrant {
+        code: "C52",
+        name: "Hydrant s plochou hadicou C52",
+        q_ls: 3.3,
+        p_kpa: 200.0,
+        min_dn: 50.0,
+    },
+];
+
 impl Valve {
+    pub fn new(pipe: ElementId, t: f64, kind: &str) -> Self {
+        Self {
+            pipe,
+            t,
+            kind: kind.into(),
+            area_m2: None,
+            coef: None,
+            hydrant: None,
+            flow_lmin: None,
+        }
+    }
+
+    /// The hose system a hydrant is.
+    pub fn hydrant_def(&self) -> &'static Hydrant {
+        HYDRANTS
+            .iter()
+            .find(|h| Some(h.code) == self.hydrant.as_deref())
+            .unwrap_or(&HYDRANTS[1])
+    }
+
     pub fn kind_def(&self) -> Option<&'static ValveKind> {
         valve_kind(&self.kind)
     }
@@ -862,11 +933,7 @@ mod tests {
             .collect();
         assert!(drain.contains(&"cistiaci") && drain.contains(&"hlavica"));
         let p = pipe(DVec3::new(0.0, 0.0, 0.3), DVec3::new(4.0, 0.0, 0.3));
-        let mut v = Valve {
-            pipe: ElementId::new(),
-            t: 0.25,
-            kind: "uzaver".into(),
-        };
+        let mut v = Valve::new(ElementId::new(), 0.25, "uzaver");
         assert_eq!(v.at(&p), DVec3::new(1.0, 0.0, 0.3));
         assert!(v.validate().is_ok());
         v.t = 1.2;

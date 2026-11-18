@@ -208,6 +208,31 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "pipe-fall",
                 "The Pipe tool in foul drainage: PP-HT DN 100 falling 2 %",
             ),
+            act(
+                "pipe:D",
+                "Rainwater pipe",
+                "roof-flat",
+                "The Pipe tool in rainwater drainage: PP-HT DN 100 falling 1 %",
+            ),
+            act(
+                "calc:storm",
+                "Calculate storm water",
+                "gauge",
+                "Size the rainwater stacks and drains from the roof drains on them and their areas (STN EN 12056-3)",
+            ),
+            Sep,
+            act(
+                "pipe:PV",
+                "Fire water pipe",
+                "git-commit-horizontal",
+                "The Pipe tool in the fire main to the hose systems",
+            ),
+            act(
+                "calc:fire",
+                "Calculate fire main",
+                "book-check",
+                "Size the fire main for the two worst hose systems at once and find the pressure needed at the inlet (STN 92 0400)",
+            ),
             Sep,
             act(
                 "discipline:gas",

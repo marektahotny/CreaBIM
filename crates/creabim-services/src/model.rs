@@ -519,11 +519,7 @@ mod tests {
         for (t, kind) in [(0.3, "uzaver"), (0.6, "vodomer"), (0.8, "hlavica")] {
             tx = tx.insert(Element::new(
                 kind,
-                ElementKind::Valve(creabim_core::mep::Valve {
-                    pipe: riser,
-                    t,
-                    kind: kind.into(),
-                }),
+                ElementKind::Valve(creabim_core::mep::Valve::new(riser, t, kind)),
             ));
         }
         doc.commit(tx).unwrap();

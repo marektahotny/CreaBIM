@@ -285,11 +285,7 @@ impl Graph {
         let t = r4(t.clamp(0.0, 1.0));
         self.valves.push((pipe, t, kind.to_string()));
         self.added.push(Proposed {
-            valve: Valve {
-                pipe: self.ids[pipe],
-                t,
-                kind: kind.to_string(),
-            },
+            valve: Valve::new(self.ids[pipe], t, kind),
             dn,
         });
     }
