@@ -1066,6 +1066,8 @@ pub fn plan_view_with(
                     continue;
                 }
                 let mut gaps: Vec<(f64, f64)> = Vec::new();
+                // the windows cut: their edges and their frames' depths
+                let mut windows: Vec<(f64, f64, f64)> = Vec::new();
                 for oid in model.dependents(e.id) {
                     let Some(oe) = model.get(oid) else { continue };
                     let ElementKind::Opening(o) = &oe.kind else {
@@ -1074,6 +1076,10 @@ pub fn plan_view_with(
                     let Some(c) = Cut::of(o, w) else { continue };
                     if cut_v > c.v0 && cut_v < c.v1 {
                         gaps.push((c.u0, c.u1));
+                        if o.kind == creabim_core::OpeningKind::Window {
+                            let frame = o.frame.fitted(c.u1 - c.u0, c.v1 - c.v0, w.thickness);
+                            windows.push((c.u0, c.u1, frame.depth));
+                        }
                         items.extend(opening_symbol(oid, o, w, &c, cut_v, &at));
                     } else if c.v0 >= cut_v {
                         // wholly above the cut (a duct hole, a high
@@ -1134,6 +1140,30 @@ pub fn plan_view_with(
                                 points: wall_band(w, &at, a, b, band.s0, band.s1),
                                 layer: Some(crate::scene::LayerPart::of(&band)),
                             });
+                        }
+                    }
+                    // the layers turned into the windows' reveals
+                    let bands = creabim_core::assembly::wall_bands(asm, w);
+                    for &(u0, u1, depth) in &windows {
+                        for l in creabim_core::assembly::reveal_wraps(asm, w, depth) {
+                            let Some(band) = bands.get(l.index) else {
+                                continue;
+                            };
+                            // not wider than half the window
+                            if l.under + l.width > (u1 - u0) / 2.0 {
+                                continue;
+                            }
+                            for (edge, into) in [(u0, 1.0), (u1, -1.0)] {
+                                layers.push(CutPiece {
+                                    id: e.id,
+                                    points: l
+                                        .shape()
+                                        .into_iter()
+                                        .map(|(x, s)| w.place(edge + into * x, s))
+                                        .collect(),
+                                    layer: Some(crate::scene::LayerPart::of(band)),
+                                });
+                            }
                         }
                     }
                     continue;

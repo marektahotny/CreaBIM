@@ -685,6 +685,29 @@ impl CreaBimApp {
                     new.description = description;
                     asks.push(AsmAsk::Edit(id, "Assembly description", new));
                 }
+                // which layers turn into the windows' reveals
+                if a.usage == AssemblyUse::Wall {
+                    let mut wrap = a.wrap;
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::tr("Window reveals"));
+                        egui::ComboBox::from_id_salt(("asm.wrap", id))
+                            .selected_text(crate::i18n::tr(wrap.label()))
+                            .show_ui(ui, |ui| {
+                                for w in creabim_core::RevealWrap::ALL {
+                                    ui.selectable_value(&mut wrap, w, crate::i18n::tr(w.label()));
+                                }
+                            })
+                            .response
+                            .on_hover_text(crate::i18n::tr(
+                                "The thin layers next to the core turn round its edge into a window's reveal and run to the frame; insulation thins to 30 mm there.",
+                            ));
+                    });
+                    if wrap != a.wrap {
+                        let mut new = a.clone();
+                        new.wrap = wrap;
+                        asks.push(AsmAsk::Edit(id, "Window reveals", new));
+                    }
+                }
                 ui.add_space(6.0);
                 strip(ui, model, a, ui.available_width().min(460.0), 44.0);
                 ui.add_space(6.0);

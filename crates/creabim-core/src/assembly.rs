@@ -186,6 +186,165 @@ pub struct Assembly {
     pub layers: Vec<Layer>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
+    /// Which of a wall's layers turn into its windows' reveals.
+    #[serde(default, skip_serializing_if = "RevealWrap::is_default")]
+    pub wrap: RevealWrap,
+}
+
+/// Which layers of a wall turn round the core's edge into the reveal of
+/// a window and run to its frame: those outside the core, those inside
+/// it, both or none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RevealWrap {
+    #[default]
+    Both,
+    Exterior,
+    Interior,
+    None,
+}
+
+impl RevealWrap {
+    pub const ALL: [RevealWrap; 4] = [
+        RevealWrap::Both,
+        RevealWrap::Exterior,
+        RevealWrap::Interior,
+        RevealWrap::None,
+    ];
+
+    pub fn is_default(&self) -> bool {
+        *self == RevealWrap::Both
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RevealWrap::Both => "Exterior and interior layers",
+            RevealWrap::Exterior => "Exterior layers",
+            RevealWrap::Interior => "Interior layers",
+            RevealWrap::None => "None",
+        }
+    }
+}
+
+/// How thick insulation is where it turns into a reveal, m: it laps the
+/// frame, usually 20 to 30 mm.
+pub const REVEAL_INSULATION: f64 = 0.03;
+
+/// The thickest layer, other than insulation, that turns into a reveal,
+/// m: renders, plasters, boards and membranes do, a leaf of masonry not.
+pub const REVEAL_MAX: f64 = 0.05;
+
+/// A layer turned into a window's reveal: an L, its leg in the wall's
+/// face lengthened into the opening and its foot along the jamb to the
+/// frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WrapLayer {
+    /// The layer, as [`Band::index`].
+    pub index: usize,
+    /// The wall's face on its side, across the wall, and the way from
+    /// there to the core (1 or −1).
+    pub face: f64,
+    pub inward: f64,
+    /// Its depths from that face: where it starts and ends, and the
+    /// frame's.
+    pub d: f64,
+    pub d_in: f64,
+    pub frame: f64,
+    /// How wide the layers under it are in the reveal, and it itself.
+    pub under: f64,
+    pub width: f64,
+}
+
+impl WrapLayer {
+    /// Its outline: `x` from the opening's edge into the opening, and
+    /// the place across the wall.
+    pub fn shape(&self) -> Vec<(f64, f64)> {
+        let s = |depth: f64| self.face + self.inward * depth;
+        let out = self.under + self.width;
+        let mut pts = vec![(0.0, s(self.d)), (out, s(self.d))];
+        if self.frame > self.d_in + 1e-6 {
+            pts.extend([
+                (out, s(self.frame)),
+                (self.under, s(self.frame)),
+                (self.under, s(self.d_in)),
+            ]);
+        } else {
+            pts.push((out, s(self.d_in)));
+        }
+        pts.push((0.0, s(self.d_in)));
+        pts
+    }
+}
+
+/// The layers of `a` that turn into the reveals of a window of `wall`
+/// whose frame, `frame_depth` deep, stands in the middle of the wall
+/// (PilonDesigner's `wrapStack`): on each side those before the frame,
+/// insulation thinned to [`REVEAL_INSULATION`].
+pub fn reveal_wraps(a: &Assembly, wall: &Wall, frame_depth: f64) -> Vec<WrapLayer> {
+    if a.wrap == RevealWrap::None || a.layers.len() < 2 {
+        return vec![];
+    }
+    let bands = wall_bands(a, wall);
+    let (first, last) = a.core();
+    let hd = frame_depth / 2.0;
+    let mut sides: Vec<Vec<&Band>> = vec![];
+    if matches!(a.wrap, RevealWrap::Both | RevealWrap::Exterior) {
+        sides.push(bands[..first].iter().collect());
+    }
+    if matches!(a.wrap, RevealWrap::Both | RevealWrap::Interior) {
+        sides.push(bands[last + 1..].iter().rev().collect());
+    }
+    let mut out = vec![];
+    for ls in sides {
+        let Some(b0) = ls.first() else { continue };
+        // the face is the first band's edge farther from the middle
+        let (face, inward) = if b0.s0.abs() > b0.s1.abs() {
+            (b0.s0, 1.0)
+        } else {
+            (b0.s1, -1.0)
+        };
+        let frame = face.abs() - hd;
+        let thick = |b: &Band| b.s1 - b.s0;
+        // only those before the frame: with a frame set in the
+        // insulation the layers behind it don't turn in
+        let mut act = vec![];
+        let mut acc = 0.0;
+        for b in ls {
+            if acc < frame - 1e-6 && b.function != LayerFunction::AirGap {
+                act.push((b, acc));
+            }
+            acc += thick(b);
+        }
+        // and of those only the thin ones next to the core: a brick
+        // leaf or a cladding on battens stops at the opening as it is,
+        // and nothing outside it can turn in round it
+        let turns =
+            |b: &Band| b.function == LayerFunction::Insulation || thick(b) <= REVEAL_MAX + 1e-9;
+        let keep = act.iter().rev().take_while(|(b, _)| turns(b)).count();
+        let act = act.split_off(act.len() - keep);
+        let widths: Vec<f64> = act
+            .iter()
+            .map(|(b, _)| {
+                if b.function == LayerFunction::Insulation {
+                    thick(b).min(REVEAL_INSULATION)
+                } else {
+                    thick(b)
+                }
+            })
+            .collect();
+        for (k, (b, d)) in act.iter().enumerate() {
+            out.push(WrapLayer {
+                index: b.index,
+                face,
+                inward,
+                d: *d,
+                d_in: (d + thick(b)).min(frame),
+                frame,
+                under: widths[k + 1..].iter().sum(),
+                width: widths[k],
+            });
+        }
+    }
+    out
 }
 
 /// The thinnest layer the editor and validation accept: 1 mm.
@@ -197,6 +356,7 @@ impl Assembly {
             usage,
             layers,
             description: String::new(),
+            wrap: RevealWrap::default(),
         }
     }
 
@@ -840,5 +1000,69 @@ mod tests {
         doc.commit(tx).unwrap();
         let back = Model::from_json(&doc.model().to_json()).unwrap();
         assert_eq!(&back, doc.model());
+    }
+
+    #[test]
+    fn layers_turn_into_a_windows_reveal_and_insulation_thins() {
+        use glam::DVec2;
+        // render 10, insulation 150, brick 250, plaster 15: 425 thick
+        let a = Assembly::new(
+            AssemblyUse::Wall,
+            vec![
+                Layer::new(LayerFunction::Finish, None, 0.01),
+                Layer::new(LayerFunction::Insulation, None, 0.15),
+                Layer::new(LayerFunction::Structure, None, 0.25),
+                Layer::new(LayerFunction::Finish, None, 0.015),
+            ],
+        );
+        let wall = Wall::new(
+            ElementId::new(),
+            DVec2::ZERO,
+            DVec2::new(5.0, 0.0),
+            0.425,
+            3.0,
+        );
+        let w = reveal_wraps(&a, &wall, 0.08);
+        assert_eq!(w.iter().map(|l| l.index).collect::<Vec<_>>(), vec![0, 1, 3]);
+        // the frame 172.5 mm in from either face
+        assert!(w.iter().all(|l| (l.frame - 0.1725).abs() < 1e-9));
+        // render outside the thinned insulation: 30 under it, 10 wide
+        let render = &w[0];
+        assert!((render.under - 0.03).abs() < 1e-9 && (render.width - 0.01).abs() < 1e-9);
+        assert_eq!(render.shape().len(), 6);
+        // insulation against the jamb, 30 mm, and on to the frame
+        let ins = &w[1];
+        assert!(ins.under.abs() < 1e-9 && (ins.width - 0.03).abs() < 1e-9);
+        assert!((ins.d_in - 0.16).abs() < 1e-9);
+        // plaster from the other face
+        let plaster = &w[2];
+        assert_eq!(plaster.inward, -render.inward);
+        assert!((plaster.width - 0.015).abs() < 1e-9);
+        // every outline stays between its face and the frame
+        for l in &w {
+            for (x, s) in l.shape() {
+                assert!((0.0..=0.05).contains(&x));
+                assert!(s.abs() <= 0.2125 + 1e-9 && s.abs() >= 0.04 - 1e-9, "{s}");
+            }
+        }
+        // a brick leaf outside a cavity doesn't turn in, nor what is outside it
+        let cavity = Assembly::new(
+            AssemblyUse::Wall,
+            vec![
+                Layer::new(LayerFunction::Finish, None, 0.1),
+                Layer::new(LayerFunction::AirGap, None, 0.04),
+                Layer::new(LayerFunction::Insulation, None, 0.1),
+                Layer::new(LayerFunction::Structure, None, 0.17),
+                Layer::new(LayerFunction::Finish, None, 0.015),
+            ],
+        );
+        let cw = reveal_wraps(&cavity, &wall, 0.08);
+        assert_eq!(cw.iter().map(|l| l.index).collect::<Vec<_>>(), vec![2, 4]);
+        let mut none = a.clone();
+        none.wrap = RevealWrap::None;
+        assert!(reveal_wraps(&none, &wall, 0.08).is_empty());
+        let mut ext = a.clone();
+        ext.wrap = RevealWrap::Exterior;
+        assert_eq!(reveal_wraps(&ext, &wall, 0.08).len(), 2);
     }
 }
