@@ -402,6 +402,7 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
         ("Ceiling finish", &mut r.ceiling_finish),
         ("Occupancy", &mut r.occupancy),
         ("Department", &mut r.department),
+        ("Fire zone", &mut r.fire_zone),
     ] {
         if text(ui, name, v) {
             label = "Room data";

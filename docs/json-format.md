@@ -864,6 +864,8 @@ What a schedule lists.
 - `"pipe_list"`
 - `"electrical_list"`
 - `"room_legend"`
+- `"fire_zones"`
+- `"fire_facades"`
 
 ### Callout
 

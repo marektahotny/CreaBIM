@@ -54,6 +54,10 @@ pub struct Room {
     /// over it, or to the level's floor-to-floor height.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<f64>,
+    /// The fire zone it belongs to ("N1.01"); rooms with one code make
+    /// a zone.
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub fire_zone: String,
     /// The tiling of its walls, where it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiling: Option<Tiling>,
@@ -252,10 +256,11 @@ pub enum RoomField {
     CeilingFinish,
     Occupancy,
     Department,
+    FireZone,
 }
 
 impl RoomField {
-    pub const ALL: [RoomField; 11] = [
+    pub const ALL: [RoomField; 12] = [
         RoomField::Name,
         RoomField::Number,
         RoomField::Area,
@@ -267,6 +272,7 @@ impl RoomField {
         RoomField::CeilingFinish,
         RoomField::Occupancy,
         RoomField::Department,
+        RoomField::FireZone,
     ];
     /// What a tag shows when it lists no fields.
     pub const DEFAULT: [RoomField; 3] = [RoomField::Name, RoomField::Number, RoomField::Area];
@@ -284,6 +290,7 @@ impl RoomField {
             RoomField::CeilingFinish => "Ceiling finish",
             RoomField::Occupancy => "Occupancy",
             RoomField::Department => "Department",
+            RoomField::FireZone => "Fire zone",
         }
     }
 
@@ -317,6 +324,7 @@ impl RoomField {
             RoomField::CeilingFinish => r.ceiling_finish.clone(),
             RoomField::Occupancy => r.occupancy.clone(),
             RoomField::Department => r.department.clone(),
+            RoomField::FireZone => r.fire_zone.clone(),
         }
     }
 }

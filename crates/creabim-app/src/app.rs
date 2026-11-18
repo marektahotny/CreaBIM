@@ -9833,6 +9833,15 @@ crate::props::row(ui, "File names", |ui| {
                         label = "Colour rooms"
                     }
                     if matches!(v.kind, ViewKind::Plan { .. })
+                        && crate::props::switch(ui, &mut v.fire_zones, "Fire zones")
+                            .on_hover_text(crate::i18n::t(
+                                "Fill the rooms by their fire zones and write the zones' codes in them",
+                            ))
+                            .changed()
+                    {
+                        label = "Fire zones"
+                    }
+                    if matches!(v.kind, ViewKind::Plan { .. })
                         && crate::props::switch(ui, &mut v.ceiling_plan, "Reflected ceiling plan")
                             .on_hover_text(crate::i18n::t("Draw the ceilings and what hangs from them, not the floor and furniture"))
                             .changed()

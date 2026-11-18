@@ -306,6 +306,8 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::PipeList => "table-2",
         ScheduleCategory::ElectricalList => "table-2",
         ScheduleCategory::RoomLegend => "room",
+        ScheduleCategory::FireZones => "room",
+        ScheduleCategory::FireFacades => "brick-wall",
     }
 }
 

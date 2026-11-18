@@ -971,6 +971,8 @@ spec_enum! {
         PipeList = "pipe_list",
         ElectricalList = "electrical_list",
         RoomLegend = "room_legend",
+        FireZones = "fire_zones",
+        FireFacades = "fire_facades",
     }
 }
 

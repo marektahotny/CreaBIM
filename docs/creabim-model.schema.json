@@ -1356,7 +1356,9 @@
         "material_legend",
         "pipe_list",
         "electrical_list",
-        "room_legend"
+        "room_legend",
+        "fire_zones",
+        "fire_facades"
       ]
     },
     "Callout": {

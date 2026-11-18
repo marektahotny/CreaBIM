@@ -1663,6 +1663,7 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         occupancy: r.occupancy.clone(),
         department: r.department.clone(),
         height: r.height.map(|h| c.l(h)),
+        fire_zone: String::new(),
         tiling: None,
         ufh: None,
     };
@@ -1737,6 +1738,8 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::PipeList => core::ScheduleCategory::PipeList,
                 f::ScheduleCategory::ElectricalList => core::ScheduleCategory::ElectricalList,
                 f::ScheduleCategory::RoomLegend => core::ScheduleCategory::RoomLegend,
+                f::ScheduleCategory::FireZones => core::ScheduleCategory::FireZones,
+                f::ScheduleCategory::FireFacades => core::ScheduleCategory::FireFacades,
             };
             let mut view = core::View::schedule(category);
             view.kind = core::ViewKind::Schedule {

@@ -76,10 +76,29 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                             });
                         }
                     }
+                    // a fire drawing: the zone's wash and its code
+                    let zone = r.fire_zone.trim();
+                    let fire = view.fire_zones && !zone.is_empty();
+                    if fire {
+                        loops.push(PlanItem::Text {
+                            id: e.id,
+                            at: r.at - DVec2::new(0.0, 0.9),
+                            text: zone.to_string(),
+                            size: 3.0,
+                            align: crate::paper::Anchor::Middle,
+                            mm: view.scale / 1000.0,
+                            rgb: Some([0.8, 0.1, 0.1]),
+                            bold: true,
+                        });
+                    }
                     out.push(PlanItem::Room {
                         id: e.id,
                         points: s.outline,
-                        rgb: view.room_colours.then(|| colour_of(&e.name, r)),
+                        rgb: if fire {
+                            Some(crate::firezones::colour_of(zone))
+                        } else {
+                            view.room_colours.then(|| colour_of(&e.name, r))
+                        },
                     });
                 }
             }

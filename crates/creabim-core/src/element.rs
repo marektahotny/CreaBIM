@@ -2063,6 +2063,10 @@ pub struct View {
     /// name): a colour-fill plan, or rooms shaded in a section.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub room_colours: bool,
+    /// A fire drawing: rooms washed by their fire zones, the zones'
+    /// codes written in them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fire_zones: bool,
     /// A plan seen looking up from the cut (a reflected ceiling plan): the
     /// ceilings over the level and what hangs from them, with walls cut but
     /// without the furniture and floors below.
@@ -2320,10 +2324,16 @@ pub enum ScheduleCategory {
     /// storey with their areas and the finishes of floor, walls and
     /// ceiling, read from the build-ups where a room does not say.
     RoomLegend,
+    /// The fire zones: each zone with its rooms and area, and the doors
+    /// on the zones' borders with their fire ratings.
+    FireZones,
+    /// The building's sides by storey and where they face: what of each
+    /// is open to fire, for the separation distances.
+    FireFacades,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 17] = [
+    pub const ALL: [ScheduleCategory; 19] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2341,6 +2351,8 @@ impl ScheduleCategory {
         ScheduleCategory::PipeList,
         ScheduleCategory::ElectricalList,
         ScheduleCategory::RoomLegend,
+        ScheduleCategory::FireZones,
+        ScheduleCategory::FireFacades,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2363,6 +2375,8 @@ impl ScheduleCategory {
             ScheduleCategory::PipeList => return "Pipe list".into(),
             ScheduleCategory::ElectricalList => return "Electrical list".into(),
             ScheduleCategory::RoomLegend => return "Legend of rooms".into(),
+            ScheduleCategory::FireZones => return "Fire zones".into(),
+            ScheduleCategory::FireFacades => return "Fire-open areas of the facades".into(),
         };
         format!("{one} Schedule")
     }
@@ -2394,6 +2408,8 @@ impl ScheduleCategory {
             ScheduleCategory::PipeList => "Pipe list",
             ScheduleCategory::ElectricalList => "Electrical list",
             ScheduleCategory::RoomLegend => "Legend of rooms",
+            ScheduleCategory::FireZones => "Fire zones",
+            ScheduleCategory::FireFacades => "Fire-open areas of the facades",
         }
     }
 
@@ -2461,6 +2477,7 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2493,6 +2510,7 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2522,6 +2540,7 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2552,6 +2571,7 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2587,6 +2607,7 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
             ceiling_plan: parent.ceiling_plan,
             graphics: parent.graphics.clone(),
             callout: Some(Callout::new(parent_id, a, b)),
