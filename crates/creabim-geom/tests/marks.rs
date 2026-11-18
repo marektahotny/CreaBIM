@@ -571,6 +571,63 @@ fn a_typed_dimension_moves_what_its_end_is_on() {
     assert!(driven(doc.model(), &v, &free, 0, 2.0, &[]).is_err());
 }
 
+/// An EQ chain: free point, a window's jamb, free point; the window
+/// slides to the middle and each stretch reads EQ.
+#[test]
+fn an_eq_chain_moves_the_point_between_to_the_middle() {
+    use creabim_core::{Dimension, HostPoint};
+    use creabim_geom::annotate::{attach, equalised, resolve, stretches};
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let (win, at) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Opening(o) if o.kind == OpeningKind::Window => {
+                let p = resolve(
+                    doc.model(),
+                    &v,
+                    &HostPoint {
+                        host: Some(e.id),
+                        local: DVec2::ZERO,
+                        from_end: false,
+                        body: None,
+                    },
+                )?;
+                Some((e.id, p))
+            }
+            _ => None,
+        })
+        .unwrap();
+    let ElementKind::Opening(o) = doc.model().get(win).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let ElementKind::Wall(w) = doc.model().get(o.host).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let u = w.direction();
+    let mut d = Dimension::linear(
+        plan,
+        HostPoint::free(at - u * 1.0),
+        HostPoint::free(at + u * 0.5),
+        0.5,
+    );
+    d.mids.push(attach(doc.model(), &v, Some(win), at));
+    d.eq = true;
+    assert_eq!(stretches(doc.model(), &v, &d).len(), 2);
+    doc.commit(equalised(doc.model(), &v, &d).unwrap()).unwrap();
+    let s = stretches(doc.model(), &v, &d);
+    assert!((s[0].2.distance(s[0].3) - 0.75).abs() < 1e-6);
+    assert!((s[1].2.distance(s[1].3) - 0.75).abs() < 1e-6);
+    let items = creabim_geom::annotate::linear_items(doc.model(), &v, plan, &d);
+    assert!(items
+        .iter()
+        .all(|i| matches!(i, PlanItem::Dimension { text, .. } if text == "EQ")));
+}
+
 #[test]
 fn a_jogged_section_cuts_each_stretch_on_its_own_plane() {
     use creabim_core::{SectionJog, ViewKind};

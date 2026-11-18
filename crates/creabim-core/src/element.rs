@@ -837,6 +837,9 @@ pub struct Dimension {
     /// Its text covers what is drawn under it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub back: bool,
+    /// A chain whose stretches are kept equal: each reads `EQ`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub eq: bool,
 }
 
 impl Dimension {
@@ -879,6 +882,7 @@ impl Dimension {
             texts: Vec::new(),
             short: false,
             back: false,
+            eq: false,
         }
     }
 

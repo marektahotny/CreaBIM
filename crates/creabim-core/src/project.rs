@@ -363,6 +363,18 @@ pub fn rotate_north(model: &crate::Model, degrees: f64) -> crate::Transaction {
                 });
             }
             ElementKind::Dimension(d) if in_plan(d.view) => {
+                // across and up the drawing swap on a quarter turn; at
+                // any other angle the dimension follows what it measures
+                use crate::annotation::DimAxis;
+                let quarters = (degrees / 90.0).round();
+                let square = (degrees - quarters * 90.0).abs() < 1e-6;
+                d.axis = match (d.axis, square, quarters.rem_euclid(2.0) == 1.0) {
+                    (DimAxis::Aligned, ..) => DimAxis::Aligned,
+                    (a, true, false) => a,
+                    (DimAxis::Horizontal, true, true) => DimAxis::Vertical,
+                    (DimAxis::Vertical, true, true) => DimAxis::Horizontal,
+                    (_, false, _) => DimAxis::Aligned,
+                };
                 for p in d.points_mut() {
                     if p.host.is_none() {
                         p.local = rot.rotate(p.local);

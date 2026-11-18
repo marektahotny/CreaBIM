@@ -781,7 +781,7 @@ pub fn linear_items(
                 a: a + u * sa,
                 b: a + u * sb,
                 offset: d.offset,
-                text: num(len),
+                text: if d.eq { "EQ".to_string() } else { num(len) },
                 look,
                 witness: Some([pa, pb]),
                 breaks: vec![],
@@ -1046,6 +1046,43 @@ pub fn stretches(
         .windows(2)
         .map(|w| (w[0].1, w[1].1, a + u * w[0].0, a + u * w[1].0))
         .collect()
+}
+
+/// The stretches of chain `d` made equal (an EQ dimension): its two ends
+/// stay, every point between moves what it stands on to an even share of
+/// the whole. One transaction; an error where a point between stands on
+/// nothing that can move.
+pub fn equalised(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+) -> Result<creabim_core::Transaction, String> {
+    let all = stretches(model, view, d);
+    let n = all.len();
+    if n < 2 {
+        return Err("An EQ dimension is a chain of two stretches or more.".into());
+    }
+    let total: f64 = all.iter().map(|s| s.2.distance(s.3)).sum();
+    let each = total / n as f64;
+    let mut now = model.clone();
+    let mut tx = creabim_core::Transaction::new("Equal stretches");
+    for i in 0..n - 1 {
+        let s = stretches(&now, view, d);
+        let Some(&(_, hb, pa, pb)) = s.get(i) else {
+            break;
+        };
+        if (pa.distance(pb) - each).abs() < 1e-6 {
+            continue;
+        }
+        let prefer: Vec<ElementId> = hb.host.into_iter().collect();
+        if prefer.is_empty() {
+            return Err("A point between the ends stands on no element: nothing to move.".into());
+        }
+        let step = driven(&now, view, d, i, each, &prefer)?;
+        step.apply(&mut now).map_err(|e| e.to_string())?;
+        tx.ops.extend(step.ops);
+    }
+    Ok(tx)
 }
 
 /// Stretch `i` of the dimension `d` made `value` long (PilonDesigner's

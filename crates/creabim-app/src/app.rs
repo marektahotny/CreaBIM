@@ -9394,6 +9394,7 @@ crate::props::row(ui, "File names", |ui| {
         let mut new_style = false;
         let mut add_valve: Option<&'static str> = None;
         let mut edit_joinery = false;
+        let mut equalise = false;
         let show_visibility = matches!(e.kind, ElementKind::View(_));
         let mut object_type = false;
         // a placed view's new scale: (its view, the scale)
@@ -10468,6 +10469,14 @@ crate::props::row(ui, "File names", |ui| {
                         {
                             label = "Dimension witness lines";
                         }
+                        if d.is_chain()
+                            && crate::props::switch(ui, &mut d.eq, "Equal stretches (EQ)")
+                                .on_hover_text(crate::i18n::t("The chain's stretches are made equal between its two ends and each reads EQ; what stands at the points between moves"))
+                                .changed()
+                        {
+                            label = "Dimension EQ";
+                            equalise = d.eq;
+                        }
                         if crate::props::switch(ui, &mut d.back, "Text background")
                             .on_hover_text(crate::i18n::t(
                                 "The numbers cover what is drawn under them",
@@ -11114,6 +11123,26 @@ crate::props::row(ui, "File names", |ui| {
                 self.doc.commit_merged(tx)
             };
             self.report(r, msg);
+        }
+        if equalise {
+            let model = self.doc.model();
+            let tx = match model.get(id).map(|e| &e.kind) {
+                Some(ElementKind::Dimension(d)) => match model.get(d.view).map(|e| &e.kind) {
+                    Some(ElementKind::View(v)) => {
+                        Some(creabim_geom::annotate::equalised(model, v, d))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
+            match tx {
+                Some(Ok(tx)) => {
+                    let r = self.doc.commit(tx);
+                    self.report(r, crate::i18n::tr("Stretches made equal."));
+                }
+                Some(Err(why)) => self.status = crate::i18n::tr(&why),
+                None => {}
+            }
         }
         if object_type {
             self.object_type_section(ui, id);
