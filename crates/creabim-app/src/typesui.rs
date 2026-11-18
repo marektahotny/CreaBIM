@@ -697,6 +697,7 @@ impl CreaBimApp {
                     || self.fixture_legend_action(head, arg)
                     || self.med_unit_action(head, arg)
                     || self.heat_source_action(head, arg)
+                    || self.auto_valves_action(head, arg)
                     || self.terrain_action(head, arg)
                     || self.earthworks_action(head, arg)
                     || self.map_action(head, arg)

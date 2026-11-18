@@ -166,6 +166,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Size the cold and hot water pipes drawn to the fixtures (STN EN 806-3) and check the pressure",
             ),
             act(
+                "valves:auto",
+                "Propose valves",
+                "wrench",
+                "Add the valves the pipes drawn still need: the meter assembly, shut-offs and angle valves on water (STN EN 806-2), vent heads and cleanouts on waste (STN EN 12056-2)",
+            ),
+            act(
                 "calc:fittings",
                 "Fittings schedule",
                 "table-2",
