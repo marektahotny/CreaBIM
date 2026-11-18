@@ -215,6 +215,19 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "pipe-gas",
                 "The Pipe tool in natural gas: HERZ GASPRESS at 2.4 m",
             ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
         ],
         3 => vec![
             act(
@@ -255,6 +268,19 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "thermometer",
                 "Radiators, boilers and other heating fixtures from the catalogue",
             ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
         ],
         4 => vec![
             act(
@@ -274,6 +300,19 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Diffusers and fans",
                 "fan",
                 "Diffusers, grilles, fans and split units from the catalogue",
+            ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
             ),
         ],
         5 => vec![
@@ -300,6 +339,19 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Medical units",
                 "fixtures",
                 "The usual wall rail and ceiling bridge from the catalogue",
+            ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
             ),
         ],
         6 => vec![
@@ -354,6 +406,19 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "hash",
                 "How doors, windows and other elements are numbered; renumber, and check for marks used twice",
             ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
         ],
         8 => vec![
             // levels are what plans are cut from, so they sit with the
@@ -374,6 +439,24 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Reference",
                 "underlay",
                 "Trace over another view, a picture or a DXF drawing: shown faintly under this view (Alt+F2 hides it)",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
+            act(
+                "viewmode:blind",
+                "Blind drawing",
+                "square-dashed",
+                "The open view in outlines only: no dimensions, tags, notes, room names or wall fills, to hand to the other professions",
+            ),
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
             ),
             act("new.sheet", "New sheet", "file-text", "A new drawing sheet"),
             Entry::Menu {

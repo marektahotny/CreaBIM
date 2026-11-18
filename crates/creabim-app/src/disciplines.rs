@@ -66,6 +66,37 @@ impl CreaBimApp {
                 };
                 self.open_catalogue_at(c);
             }
+            // the open view as one trade draws it
+            "viewmode" => {
+                let Some(mode) = creabim_core::viewmodes::DisplayMode::from_id(arg) else {
+                    return false;
+                };
+                let view = self.active_view.filter(|v| {
+                    matches!(
+                        self.doc.model().get(*v).map(|e| &e.kind),
+                        Some(creabim_core::ElementKind::View(_))
+                    )
+                });
+                let Some(v) = view else {
+                    self.status = crate::i18n::tr(
+                        "Open a plan, section or elevation first: the mode is the view's.",
+                    );
+                    return true;
+                };
+                let r = self.doc.edit(v, "Display mode", |e| {
+                    if let creabim_core::ElementKind::View(x) = &mut e.kind {
+                        mode.apply(x);
+                    }
+                });
+                self.report(
+                    r,
+                    format!(
+                        "{}: {}.",
+                        crate::i18n::tr("Display mode"),
+                        crate::i18n::tr(mode.label())
+                    ),
+                );
+            }
             _ => return false,
         }
         true
