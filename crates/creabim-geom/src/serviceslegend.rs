@@ -8,6 +8,7 @@ use crate::joinerylist::wrap;
 use crate::paper::Anchor;
 use crate::plan::{PlanItem, PlanView};
 use creabim_core::mep::{SystemDef, SYSTEMS};
+use creabim_core::viewmodes::Trade;
 use creabim_core::words::tr;
 use creabim_core::{ElementId, ElementKind, Model};
 use glam::DVec2;
@@ -52,7 +53,7 @@ pub fn systems(model: &Model) -> Vec<(&'static SystemDef, Vec<String>)> {
 /// heating and ventilation that are neither sanitary fixtures nor
 /// heaters (heat pumps, tanks, boilers, manifolds), each type once with
 /// its mark, or how many there are, and its name.
-pub fn equipment(model: &Model) -> Vec<(String, String)> {
+pub fn equipment(model: &Model, trade: Option<Trade>) -> Vec<(String, String)> {
     use creabim_core::objects::{self, ObjectCategory};
     let marks = creabim_core::marks::object_marks(model);
     // (type, how many)
@@ -65,7 +66,16 @@ pub fn equipment(model: &Model) -> Vec<(String, String)> {
         let Some(t) = objects::type_of_id(model, r.id) else {
             continue;
         };
-        if !matches!(t.category, ObjectCategory::Plumbing | ObjectCategory::Hvac) {
+        let shown = matches!(
+            (t.category, trade),
+            (ObjectCategory::Plumbing | ObjectCategory::Hvac, None)
+                | (ObjectCategory::Plumbing, Some(Trade::Plumbing))
+                | (
+                    ObjectCategory::Hvac,
+                    Some(Trade::Heating | Trade::Ventilation)
+                )
+        );
+        if !shown {
             continue;
         }
         let family = creabim_core::fixture::family_of(model, e);
@@ -91,6 +101,37 @@ pub fn equipment(model: &Model) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The trade the legend drawn as `view` is for; none is for all of them.
+pub fn trade_of(model: &Model, view: ElementId) -> Option<Trade> {
+    match model.get(view).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => v.trade,
+        _ => None,
+    }
+}
+
+/// The electrical devices, each type once: its kind and how many there
+/// are, and the type's name.
+pub fn devices(model: &Model) -> Vec<(String, String)> {
+    use creabim_core::electrical as el;
+    let mut found: Vec<(el::DeviceKind, String, usize)> = vec![];
+    for (e, _, kind) in el::devices(model) {
+        let name = e
+            .of_type
+            .as_ref()
+            .and_then(|r| model.get(r.id))
+            .map_or(e.name.clone(), |t| t.name.clone());
+        match found.iter_mut().find(|d| d.0 == kind && d.1 == name) {
+            Some(d) => d.2 += 1,
+            None => found.push((kind, name, 1)),
+        }
+    }
+    found.sort_by_key(|d| d.0 as u8);
+    found
+        .into_iter()
+        .map(|(kind, name, n)| (format!("{n}x"), format!("{} - {name}", tr(kind.label()))))
+        .collect()
+}
+
 /// The notes of the legend drawn as `view`: its own, a line each, else
 /// the usual ones of the trades the model has pipes of.
 pub fn notes(model: &Model, view: ElementId) -> Vec<String> {
@@ -106,6 +147,10 @@ pub fn notes(model: &Model, view: ElementId) -> Vec<String> {
     };
     if !own.is_empty() {
         return own;
+    }
+    let trade = trade_of(model, view);
+    if trade.is_some_and(|t| t != Trade::Plumbing && t != Trade::Heating) {
+        return vec![];
     }
     let has = |codes: &[&str]| {
         model
@@ -184,7 +229,10 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
     };
     text(&mut items, DVec2::new(0.0, 5.0), title, 5.0, None);
     let mut y = -2.0;
-    let systems = systems(model);
+    let trade = trade_of(model, view);
+    let of = |t: Trade| trade.is_none_or(|x| x == t);
+    let mut systems = systems(model);
+    systems.retain(|(s, _)| trade.is_none_or(|t| t.shows(s.kind)));
     if !systems.is_empty() {
         text(
             &mut items,
@@ -213,7 +261,8 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
     }
     let heated = model
         .iter()
-        .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.ufh.is_some()));
+        .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.ufh.is_some()))
+        && of(Trade::Heating);
     if heated {
         text(
             &mut items,
@@ -275,7 +324,11 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         );
         y -= LINE + 4.0;
     }
-    let rows = creabim_services::fixturespec::legend(model, None);
+    let rows = if of(Trade::Plumbing) {
+        creabim_services::fixturespec::legend(model, None)
+    } else {
+        vec![]
+    };
     if !rows.is_empty() {
         text(
             &mut items,
@@ -308,7 +361,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             y -= 1.5;
         }
     }
-    let equipment = equipment(model);
+    let equipment = equipment(model, trade);
     if !equipment.is_empty() {
         y -= 1.5;
         text(
@@ -320,6 +373,42 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         );
         y -= HEAD + 3.0;
         for (lead, name) in &equipment {
+            text(
+                &mut items,
+                DVec2::new(2.0, y - LINE / 2.0),
+                lead,
+                TEXT + 0.6,
+                Some(crate::mep::LABEL_GREEN),
+            );
+            for l in wrap(name, WIDTH - INDENT, TEXT) {
+                text(
+                    &mut items,
+                    DVec2::new(INDENT, y - LINE / 2.0),
+                    &l,
+                    TEXT,
+                    None,
+                );
+                y -= LINE;
+            }
+            y -= 1.5;
+        }
+    }
+    let devices = if of(Trade::Electrical) {
+        devices(model)
+    } else {
+        vec![]
+    };
+    if !devices.is_empty() {
+        y -= 1.5;
+        text(
+            &mut items,
+            DVec2::new(0.0, y - HEAD / 2.0),
+            &tr("ELECTRICAL DEVICES"),
+            HEAD,
+            None,
+        );
+        y -= HEAD + 3.0;
+        for (lead, name) in &devices {
             text(
                 &mut items,
                 DVec2::new(2.0, y - LINE / 2.0),
@@ -385,7 +474,12 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             );
         }
     }
-    if systems.is_empty() && rows.is_empty() && !heated && equipment.is_empty() {
+    if systems.is_empty()
+        && rows.is_empty()
+        && !heated
+        && equipment.is_empty()
+        && devices.is_empty()
+    {
         text(
             &mut items,
             DVec2::new(0.0, y - LINE / 2.0),

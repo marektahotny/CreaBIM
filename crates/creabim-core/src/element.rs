@@ -2304,10 +2304,19 @@ pub enum ScheduleCategory {
     /// construction, decree 60/2025 Z. z.): every sheet by its part, with
     /// its number, name, scale and paper.
     Documents,
+    /// The legend of materials beside an architectural plan: each
+    /// material cut in the plans with a patch of its hatch.
+    MaterialLegend,
+    /// The pipes and ducts of the services by system, type and size with
+    /// their lengths, and the valves on them by kind.
+    PipeList,
+    /// The electrical devices by kind and type, the cables by their
+    /// cross-section and the breakers of the circuits.
+    ElectricalList,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 13] = [
+    pub const ALL: [ScheduleCategory; 16] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2321,6 +2330,9 @@ impl ScheduleCategory {
         ScheduleCategory::DoorList,
         ScheduleCategory::ServicesLegend,
         ScheduleCategory::Documents,
+        ScheduleCategory::MaterialLegend,
+        ScheduleCategory::PipeList,
+        ScheduleCategory::ElectricalList,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2339,6 +2351,9 @@ impl ScheduleCategory {
             ScheduleCategory::DoorList => return "Door list".into(),
             ScheduleCategory::ServicesLegend => return "Services legend".into(),
             ScheduleCategory::Documents => return "List of documentation".into(),
+            ScheduleCategory::MaterialLegend => return "Legend of materials".into(),
+            ScheduleCategory::PipeList => return "Pipe list".into(),
+            ScheduleCategory::ElectricalList => return "Electrical list".into(),
         };
         format!("{one} Schedule")
     }
@@ -2366,6 +2381,9 @@ impl ScheduleCategory {
             ScheduleCategory::DoorList => "Door list",
             ScheduleCategory::ServicesLegend => "Services legend",
             ScheduleCategory::Documents => "List of documentation",
+            ScheduleCategory::MaterialLegend => "Legend of materials",
+            ScheduleCategory::PipeList => "Pipe list",
+            ScheduleCategory::ElectricalList => "Electrical list",
         }
     }
 
@@ -2374,7 +2392,9 @@ impl ScheduleCategory {
         self.joinery_list().is_some()
             || matches!(
                 self,
-                ScheduleCategory::ServicesLegend | ScheduleCategory::Documents
+                ScheduleCategory::ServicesLegend
+                    | ScheduleCategory::Documents
+                    | ScheduleCategory::MaterialLegend
             )
     }
 

@@ -127,11 +127,18 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     if category == ScheduleCategory::Documents {
         return crate::doclist::schedule(model);
     }
+    if category == ScheduleCategory::PipeList {
+        return crate::tradelists::pipes(model);
+    }
+    if category == ScheduleCategory::ElectricalList {
+        return crate::tradelists::electrical(model);
+    }
     // the drawn lists' tables are the door and window schedules
     let category = match category {
         ScheduleCategory::WindowList => ScheduleCategory::Windows,
         ScheduleCategory::DoorList => ScheduleCategory::Doors,
         ScheduleCategory::ServicesLegend => ScheduleCategory::Fixtures,
+        ScheduleCategory::MaterialLegend => ScheduleCategory::Walls,
         c => c,
     };
     let units = model.units();
@@ -520,8 +527,12 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
             )
         }
         // answered above, before the element schedules
-        ScheduleCategory::Materials | ScheduleCategory::Documents => {
-            unreachable!("the take-off and the list of documentation are built on their own")
+        ScheduleCategory::Materials
+        | ScheduleCategory::Documents
+        | ScheduleCategory::MaterialLegend
+        | ScheduleCategory::PipeList
+        | ScheduleCategory::ElectricalList => {
+            unreachable!("the take-offs and the list of documentation are built on their own")
         }
     };
     // marks sort as text (D01 < D02); walls and slabs by level, then model order

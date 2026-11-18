@@ -209,14 +209,17 @@ pub enum Trade {
     Ventilation,
     /// Medical gases.
     MedGas,
+    /// Wiring: sockets, lights, boards (ELI).
+    Electrical,
 }
 
 impl Trade {
-    pub const ALL: [Trade; 4] = [
+    pub const ALL: [Trade; 5] = [
         Trade::Plumbing,
         Trade::Heating,
         Trade::Ventilation,
         Trade::MedGas,
+        Trade::Electrical,
     ];
 
     pub fn label(self) -> &'static str {
@@ -225,6 +228,7 @@ impl Trade {
             Trade::Heating => "Heating and cooling (VYK)",
             Trade::Ventilation => "Ventilation (VZT)",
             Trade::MedGas => "Medical gases",
+            Trade::Electrical => "Electrical (ELI)",
         }
     }
 

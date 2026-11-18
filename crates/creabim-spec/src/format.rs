@@ -967,6 +967,9 @@ spec_enum! {
         ServicesLegend = "services_legend",
         /// The list of the documentation: the sheets by part.
         Documents = "documents",
+        MaterialLegend = "material_legend",
+        PipeList = "pipe_list",
+        ElectricalList = "electrical_list",
     }
 }
 

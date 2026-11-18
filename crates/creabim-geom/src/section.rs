@@ -877,6 +877,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             if *category == creabim_core::ScheduleCategory::ServicesLegend {
                 return Some(crate::serviceslegend::drawing(view, &e.name, model));
             }
+            if *category == creabim_core::ScheduleCategory::MaterialLegend {
+                return Some(crate::matlegend::drawing(view, &e.name, model));
+            }
             if *category == creabim_core::ScheduleCategory::Documents {
                 return Some(crate::doclist::drawing(view, &e.name, model));
             }

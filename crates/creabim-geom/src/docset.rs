@@ -226,6 +226,14 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
         let v = plan_of(&mut b, id, &name, l.elevation);
         b.sheet(number(asr, "VYZ", &mut n), tr("Foundations"), &[v]);
     }
+    // the legend of materials beside the plans, once a wall has one
+    let materials = (!crate::matlegend::rows(model).is_empty()).then(|| {
+        schedule(
+            &mut b,
+            ScheduleCategory::MaterialLegend,
+            "Legend of materials",
+        )
+    });
     let (mut above, mut below) = (0, storeys.iter().filter(|s| s.2 < -1.0).count() + 1);
     // each storey's code and its plan
     let mut plans = vec![];
@@ -241,7 +249,7 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
         b.sheet(
             number(asr, &code, &mut n),
             format!("{} {name}", tr("Floor plan")),
-            &[v],
+            &std::iter::once(v).chain(materials).collect::<Vec<_>>(),
         );
         plans.push((*id, name.clone(), code, v));
     }
@@ -349,14 +357,34 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
             .iter()
             .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.ufh.is_some()));
     use creabim_core::viewmodes::Trade;
+    let ducts = model.iter().any(|e| {
+        matches!(&e.kind, ElementKind::Pipe(p) if Trade::Ventilation.shows(p.kind())
+            && !Trade::Plumbing.shows(p.kind()))
+    });
+    let wiring = !creabim_core::electrical::devices(model).is_empty();
     for (on, code, trade) in [
         (plumbing, "ZTI", Trade::Plumbing),
         (heating, "VYK", Trade::Heating),
+        (ducts, "VZT", Trade::Ventilation),
+        (wiring, "ELI", Trade::Electrical),
     ] {
         if !on {
             continue;
         }
-        let legend = schedule(&mut b, ScheduleCategory::ServicesLegend, "Services legend");
+        // the trade's own legend; one made before legends were told
+        // apart serves water and heating as it did
+        let legend = b
+            .find(|_, v| {
+                matches!(v.kind, ViewKind::Schedule { category, .. }
+                    if category == ScheduleCategory::ServicesLegend)
+                    && (v.trade == Some(trade)
+                        || (v.trade.is_none() && matches!(trade, Trade::Plumbing | Trade::Heating)))
+            })
+            .unwrap_or_else(|| {
+                let mut v = View::schedule(ScheduleCategory::ServicesLegend);
+                v.trade = Some(trade);
+                b.view(format!("{} {code}", tr("Legend")), v)
+            });
         let part = format!("S01_{code}");
         let mut n = 0;
         for (level, name, storey, arch) in &plans {

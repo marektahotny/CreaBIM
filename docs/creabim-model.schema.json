@@ -1352,7 +1352,10 @@
         "window_list",
         "door_list",
         "services_legend",
-        "documents"
+        "documents",
+        "material_legend",
+        "pipe_list",
+        "electrical_list"
       ]
     },
     "Callout": {
