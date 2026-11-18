@@ -589,6 +589,11 @@
           "description": "A window without its inner sill board.",
           "default": false
         },
+        "threshold": {
+          "type": "boolean",
+          "description": "A door with a threshold between its jambs.",
+          "default": false
+        },
         "setback": {
           "type": "number",
           "description": "How far the frame's outer face stands in from the outer edge of the wall's core. Left out: on that edge in a layered wall, in the middle of a plain one."

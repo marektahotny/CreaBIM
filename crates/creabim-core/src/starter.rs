@@ -143,6 +143,7 @@ fn opening(host: ElementId, kind: OpeningKind, offset: f64, width: f64) -> Openi
         flip_facing: false,
         no_outer_sill: false,
         no_inner_sill: false,
+        threshold: false,
         setback: None,
         reveal: None,
         division: None,

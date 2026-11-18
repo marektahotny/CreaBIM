@@ -443,6 +443,8 @@ spec_struct! {
         no_outer_sill: bool = false,
         /// A window without its inner sill board.
         no_inner_sill: bool = false,
+        /// A door with a threshold between its jambs.
+        threshold: bool = false,
         /// How far the frame's outer face stands in from the outer edge
         /// of the wall's core. Left out: on that edge in a layered wall,
         /// in the middle of a plain one.

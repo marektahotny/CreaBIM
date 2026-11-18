@@ -196,7 +196,12 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
                 .as_ref()
                 .map_or(f.leaf(), |d| d.leaf_thickness().min(f.frame.depth));
             let (l0, l1) = (jw + gap, w - jw - gap);
-            add(Part::Leaf, b(l0, hd - lt, 0.01), b(l1, hd, h - hh - gap));
+            // over its threshold where it has one
+            let foot = if o.threshold { THRESHOLD + gap } else { 0.01 };
+            add(Part::Leaf, b(l0, hd - lt, foot), b(l1, hd, h - hh - gap));
+            if o.threshold {
+                add(Part::Frame, b(jw, -hd, 0.0), b(w - jw, hd, THRESHOLD));
+            }
             // a lining's architraves, on both faces of the wall round
             // the opening
             if o.is_lining() {
@@ -413,6 +418,8 @@ pub fn division(o: &Opening) -> FrameNode {
 pub const SILL_NOSE: f64 = 0.04;
 /// How far an inner sill board stands over the wall's inner face, m.
 pub const INNER_SILL_NOSE: f64 = 0.03;
+/// How high a door's threshold stands, m.
+pub const THRESHOLD: f64 = 0.02;
 
 /// Which way a door is hung, in words: its hinge side seen from the
 /// side it opens to, and which side that is.
@@ -587,6 +594,7 @@ mod tests {
             flip_facing: false,
             no_outer_sill: false,
             no_inner_sill: false,
+            threshold: false,
             setback: None,
             reveal: None,
             division: None,

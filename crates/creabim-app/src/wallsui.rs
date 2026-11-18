@@ -252,6 +252,35 @@ pub(super) fn wall_fields(
     label
 }
 
+/// A door's size: its leaf's, the opening in the wall following from
+/// it and the frame. Returns the edit's name.
+pub(super) fn leaf_fields(ui: &mut egui::Ui, o: &mut Opening) -> &'static str {
+    use creabim_core::joinery::{self, DoorFrame, DoorSpec};
+    let t = crate::i18n::t;
+    let mut d = o
+        .door
+        .clone()
+        .unwrap_or_else(|| DoorSpec::fitting(DoorFrame::Lining, o.width, o.height));
+    let mut changed = false;
+    changed |= crate::props::row(ui, "Leaf width", |ui| {
+        crate::props::fill(ui, crate::units::drag(&mut d.nom_width).range(0.3..=5.0))
+            .on_hover_text(t("The leaf's nominal width, without the frame: 600, 700, 800, 900 mm. The opening in the wall follows from it and the frame."))
+            .changed()
+    });
+    changed |= crate::props::row(ui, "Leaf height", |ui| {
+        crate::props::fill(ui, crate::units::drag(&mut d.nom_height).range(1.0..=5.0)).changed()
+    });
+    let (ow, oh) = d.opening();
+    crate::props::row(ui, "Structural opening", |ui| {
+        ui.label(format!("{:.0} × {:.0} mm", ow * 1000.0, oh * 1000.0))
+    });
+    if changed {
+        joinery::apply_door(o, d);
+        return "Door leaf and frame";
+    }
+    ""
+}
+
 /// A door as joinery (its leaf's nominal size, its frame, its fire
 /// rating), where a door's or window's frame stands across its wall,
 /// how far the reveal laps it, and its division with the button that
@@ -282,16 +311,8 @@ pub(super) fn seat_fields(
         let mut d = o
             .door
             .clone()
-            .unwrap_or_else(|| DoorSpec::fitting(DoorFrame::Steel, o.width, o.height));
+            .unwrap_or_else(|| DoorSpec::fitting(DoorFrame::Lining, o.width, o.height));
         let mut changed = false;
-        changed |= crate::props::row(ui, "Leaf width", |ui| {
-            crate::props::fill(ui, crate::units::drag(&mut d.nom_width).range(0.3..=5.0))
-                .on_hover_text(t("The leaf's nominal width, without the frame: 600, 700, 800, 900 mm. The opening in the wall follows from it and the frame."))
-                .changed()
-        });
-        changed |= crate::props::row(ui, "Leaf height", |ui| {
-            crate::props::fill(ui, crate::units::drag(&mut d.nom_height).range(1.0..=5.0)).changed()
-        });
         changed |= crate::props::row(ui, "Door frame", |ui| {
             let mut c = false;
             egui::ComboBox::from_id_salt("door_frame")
@@ -350,10 +371,6 @@ pub(super) fn seat_fields(
                 ui.checkbox(&mut f.smoke_tight, "").changed()
             });
         }
-        let (ow, oh) = d.opening();
-        crate::props::row(ui, "Structural opening", |ui| {
-            ui.label(format!("{:.0} × {:.0} mm", ow * 1000.0, oh * 1000.0))
-        });
         if changed {
             joinery::apply_door(o, d);
             label = "Door leaf and frame";
@@ -481,6 +498,14 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
                     }
                 })
             });
+            if crate::props::switch(ui, &mut o.threshold, "Threshold")
+                .on_hover_text(crate::i18n::t(
+                    "A threshold between the jambs: drawn in plans and 3D",
+                ))
+                .changed()
+            {
+                label = "Threshold"
+            }
         }
         OpeningKind::Window => {
             // the exterior is on the wall's left when it is flipped

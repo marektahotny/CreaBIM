@@ -72,7 +72,7 @@ impl Default for MemberSettings {
             footing_pad: false,
             footing_width: creabim_core::footing::STRIP_WIDTH,
             footing_thickness: creabim_core::footing::STRIP_THICKNESS,
-            door: [0.9, 2.1, 0.0],
+            door: [0.8, 1.97, 0.0],
             window: [1.2, 1.3, 0.9],
             hole: [1.0, 1.0, 1.0],
             column_section: None,
@@ -1297,20 +1297,25 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
         })
     };
     let opening = |key: &str, s: [f64; 3], what: &str| {
-        vec![
-            num(
-                &format!("{key}_width"),
+        // a door is typed by its leaf
+        let (wl, hl, wh) = if key == "door" {
+            (
+                "Leaf width",
+                "Leaf height",
+                "Width of the leaf of new doors, without the frame: the opening in the wall follows from it. Typing a size here places it without a type.".to_string(),
+            )
+        } else {
+            (
                 "Width",
-                s[0],
-                "m",
-                0.01,
-                0.1,
-                20.0,
-                &format!("Width of new {what}s. Typing a size here places it without a type."),
-            ),
+                "Height",
+                format!("Width of new {what}s. Typing a size here places it without a type."),
+            )
+        };
+        vec![
+            num(&format!("{key}_width"), wl, s[0], "m", 0.01, 0.1, 20.0, &wh),
             num(
                 &format!("{key}_height"),
-                "Height",
+                hl,
                 s[1],
                 "m",
                 0.01,

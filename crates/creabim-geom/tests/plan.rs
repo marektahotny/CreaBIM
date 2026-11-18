@@ -48,6 +48,7 @@ fn door_splits_wall_into_two_cut_pieces_with_a_swing() {
             flip_facing: false,
             no_outer_sill: false,
             no_inner_sill: false,
+            threshold: false,
             setback: None,
             reveal: None,
             division: None,

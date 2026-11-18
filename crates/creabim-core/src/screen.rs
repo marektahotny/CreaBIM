@@ -197,6 +197,7 @@ pub fn holes(host: ElementId, w: &Wall, pattern: &ScreenPattern) -> Vec<Opening>
             flip_facing: false,
             no_outer_sill: false,
             no_inner_sill: false,
+            threshold: false,
             setback: None,
             reveal: None,
             division: None,

@@ -9612,14 +9612,22 @@ crate::props::row(ui, "File names", |ui| {
                     draw_hole |= draw;
                 }
                 ElementKind::Opening(o) => {
-                    let old = o.width;
-                    if num(ui, "Width", &mut o.width, 0.1, 20.0) {
-                        // about its centre, or from the jamb by a corner
-                        creabim_core::walls::widen_in_place(self.doc.model(), old, o);
-                        label = "Opening width"
-                    }
-                    if num(ui, "Height", &mut o.height, 0.1, 20.0) {
-                        label = "Opening height"
+                    if o.kind == creabim_core::OpeningKind::Door {
+                        // a door is typed by its leaf
+                        let l = wallsui::leaf_fields(ui, o);
+                        if !l.is_empty() {
+                            label = l;
+                        }
+                    } else {
+                        let old = o.width;
+                        if num(ui, "Width", &mut o.width, 0.1, 20.0) {
+                            // about its centre, or from the jamb by a corner
+                            creabim_core::walls::widen_in_place(self.doc.model(), old, o);
+                            label = "Opening width"
+                        }
+                        if num(ui, "Height", &mut o.height, 0.1, 20.0) {
+                            label = "Opening height"
+                        }
                     }
                     if num(ui, "Sill", &mut o.sill, 0.0, 20.0) {
                         label = "Opening sill"

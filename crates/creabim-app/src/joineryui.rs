@@ -36,6 +36,16 @@ struct Subject {
     w: f64,
     h: f64,
     fw: f64,
+    /// A door's frame allowance: what its opening is wider and higher
+    /// than its leaf.
+    allow: Option<(f64, f64)>,
+}
+
+/// The frame a door's leaf is reckoned with: its own, or a lining.
+fn door_frame(o: &creabim_core::Opening) -> creabim_core::joinery::DoorFrame {
+    o.door
+        .as_ref()
+        .map_or(creabim_core::joinery::DoorFrame::Lining, |d| d.frame)
 }
 
 impl CreaBimApp {
@@ -99,6 +109,7 @@ impl CreaBimApp {
                         w: ed.w,
                         h: ed.h,
                         fw,
+                        allow: door.then(|| door_frame(o).allowance()),
                     }
                 }
                 _ => return,
@@ -218,11 +229,19 @@ impl CreaBimApp {
             // allowance
             let (dw, dh) = (ed.w - o.width, ed.h - o.height);
             if dw.abs() > 1e-6 || dh.abs() > 1e-6 {
-                o.width = ed.w;
-                o.height = ed.h;
-                if let Some(d) = &mut o.door {
-                    d.nom_width = (d.nom_width + dw).max(0.3);
-                    d.nom_height = (d.nom_height + dh).max(1.0);
+                if door {
+                    // a door is its leaf: the opening follows from it
+                    let frame = door_frame(o);
+                    let (aw, ah) = frame.allowance();
+                    let mut d = o.door.clone().unwrap_or_else(|| {
+                        creabim_core::joinery::DoorSpec::fitting(frame, o.width, o.height)
+                    });
+                    d.nom_width = (ed.w - aw).max(0.3);
+                    d.nom_height = (ed.h - ah).max(1.0);
+                    creabim_core::joinery::apply_door(o, d);
+                } else {
+                    o.width = ed.w;
+                    o.height = ed.h;
                 }
             }
         }
@@ -453,15 +472,24 @@ fn side(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, others: &[(String,
         .weak(),
     );
     ui.add_space(6.0);
-    // the whole opening's size, typed in millimetres
-    ui.label(egui::RichText::new(t("The whole opening")).strong());
-    for (label, v, lo, hi) in [
-        ("Width", &mut ed.w, 0.3, 12.0),
-        ("Height", &mut ed.h, 0.3, 6.0),
+    // a door is typed by its leaf, the opening following from the
+    // frame; a window by its whole opening, in millimetres
+    let (aw, ah) = s.allow.unwrap_or((0.0, 0.0));
+    ui.label(
+        egui::RichText::new(t(if s.door {
+            "Door leaf"
+        } else {
+            "The whole opening"
+        }))
+        .strong(),
+    );
+    for (label, v, a, lo, hi) in [
+        ("Width", &mut ed.w, aw, 0.3, 12.0),
+        ("Height", &mut ed.h, ah, 0.3, 6.0),
     ] {
         ui.horizontal(|ui| {
             ui.label(t(label));
-            let mut mm = (*v * 1000.0).round();
+            let mut mm = ((*v - a) * 1000.0).round();
             if ui
                 .add(
                     egui::DragValue::new(&mut mm)
@@ -471,9 +499,20 @@ fn side(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, others: &[(String,
                 )
                 .changed()
             {
-                *v = mm / 1000.0;
+                *v = mm / 1000.0 + a;
             }
         });
+    }
+    if s.door {
+        ui.label(
+            egui::RichText::new(format!(
+                "{}: {} × {} mm",
+                t("Structural opening"),
+                mm(ed.w),
+                mm(ed.h)
+            ))
+            .weak(),
+        );
     }
     ui.add_space(8.0);
     let sel = ed.sel.clone();

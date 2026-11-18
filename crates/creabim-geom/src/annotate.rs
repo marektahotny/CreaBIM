@@ -1529,7 +1529,9 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                             Some(f) => format!("{}\n{}", write(h), f.label()),
                             None => write(h),
                         };
-                        Some((write(w), under, wall.thickness / 2.0))
+                        // the way its leaf swings, and how far
+                        let left = if o.faces_left(wall) { 1.0 } else { -1.0 };
+                        Some((write(w), under, wall.thickness / 2.0, left, w))
                     }
                     _ => None,
                 });
@@ -1541,17 +1543,31 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     });
                     (hi - lo).max(0.0) / 2.0
                 };
+                // do numbers `long` on the leader fit between the wall
+                // and the arc a leaf `leaf` wide sweeps, at its middle?
+                let fits = |long: f64, leaf: f64| long + 3.0 * mm <= leaf * 0.85;
                 // the leader is as long as the numbers on it need
-                if let (Some(n), Some((tw, th, face))) = (square, &passage) {
+                // and on the side the leaf swings to, the bubble stands
+                // clear of the leaf and the arc it sweeps
+                if let (Some(n), Some((tw, th, face, left, leaf))) = (square, &passage) {
                     let long = th
                         .split('\n')
                         .chain([tw.as_str()])
                         .map(|t| look.width(t))
                         .fold(0.0, f64::max)
                         * mm;
-                    let need = face + long + 3.0 * mm + radius(&text);
+                    let side = if t.offset.dot(n) < 0.0 { -n } else { n };
+                    let mut need = face + long + 3.0 * mm + radius(&text);
+                    if side.dot(n * *left) > 0.0 {
+                        // the numbers inside the arc where they fit,
+                        // else past the leaf
+                        need = if fits(long, *leaf) {
+                            need.max(face + leaf + radius(&text))
+                        } else {
+                            need + leaf
+                        };
+                    }
                     if offset.length() < need {
-                        let side = if t.offset.dot(n) < 0.0 { -n } else { n };
                         offset = side * need;
                     }
                 }
@@ -1591,12 +1607,25 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 }
                 // the width over the line, the height under it, midway
                 // from the bubble to the wall's face
-                if let Some((tw, th, face)) = passage {
+                if let Some((tw, th, face, left, leaf)) = passage {
                     let d = anchor - at;
-                    let r = radius(&text);
                     let dir = d.normalize_or_zero();
                     let (angle, up) = crate::annotation::upright(dir.to_angle());
-                    let mid = at + dir * (r + (d.length() - face - r) / 2.0);
+                    // beside the wall's face, as the office writes them
+                    let long = th
+                        .split('\n')
+                        .chain([tw.as_str()])
+                        .map(|t| look.width(t))
+                        .fold(0.0, f64::max)
+                        * mm;
+                    // past the leaf where it swings to this side
+                    let swung = square.is_some_and(|n| dir.dot(n * left) < 0.0);
+                    let clear = if swung && !fits(long, leaf) {
+                        leaf
+                    } else {
+                        0.0
+                    };
+                    let mid = anchor - dir * (face + clear + 1.5 * mm + long / 2.0);
                     let mut rows = vec![(tw, 1.0)];
                     rows.extend(
                         th.split('\n')

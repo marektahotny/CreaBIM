@@ -4183,6 +4183,7 @@ fn section_tool(
                         flip_facing: false,
                         no_outer_sill: false,
                         no_inner_sill: false,
+                        threshold: false,
                         setback: None,
                         reveal: None,
                         division: None,
@@ -6041,6 +6042,28 @@ pub fn draw_item_with(
                         painter.line_segment([a, b], Stroke::new(1.8 * o.cut, ink));
                     }
                 }
+                Pen::Overhead => {
+                    let (w, c) = if selected {
+                        (2.0, highlight)
+                    } else {
+                        (1.0, ink)
+                    };
+                    let v = |p: egui::Pos2| DVec2::new(p.x as f64, p.y as f64);
+                    let dashes = creabim_geom::paper::OVERHEAD_DASHES.map(|d| d * 2.5);
+                    for piece in
+                        creabim_geom::looks::dash_polyline(&[v(a), v(b)], &dashes, w as f64)
+                    {
+                        if let [p, .., q] = piece[..] {
+                            painter.line_segment(
+                                [
+                                    egui::pos2(p.x as f32, p.y as f32),
+                                    egui::pos2(q.x as f32, q.y as f32),
+                                ],
+                                Stroke::new(w, c),
+                            );
+                        }
+                    }
+                }
                 Pen::Hidden => {
                     let (w, c) = if selected {
                         (2.0, highlight)
@@ -7193,12 +7216,15 @@ pub fn opening_tags(
                 } else {
                     -n
                 };
-                // a door's leader carries its clear passage
-                let far = if o.kind == creabim_core::OpeningKind::Door {
-                    1.6
-                } else {
-                    0.9
+                // a door's leader carries its clear passage, and its
+                // mark stands on the side its leaf swings to
+                let door = o.kind == creabim_core::OpeningKind::Door;
+                let out = match (door, o.faces_left(w)) {
+                    (true, true) => n,
+                    (true, false) => -n,
+                    _ => out,
                 };
+                let far = if door { 1.6 } else { 0.9 };
                 out * far * scale
             }
             // in sections and 3D views, above the opening
@@ -7946,11 +7972,23 @@ fn place_opening(
     };
     // the sizes in the bar (a type, when picked, sets its own)
     let m = &state.members;
-    let (kind, [width, height, sill], name) = match tool {
+    let (kind, [mut width, mut height, sill], name) = match tool {
         Tool::Door => (OpeningKind::Door, m.door, "Door"),
         Tool::Opening => (OpeningKind::Hole, m.hole, "Wall opening"),
         _ => (OpeningKind::Window, m.window, "Window"),
     };
+    // a door's sizes in the bar are its leaf's: the opening follows
+    // from them and the frame
+    let leaf = (kind == OpeningKind::Door).then_some(creabim_core::joinery::DoorSpec {
+        frame: creabim_core::joinery::DoorFrame::Lining,
+        leaf: creabim_core::joinery::DoorMaterial::Timber,
+        nom_width: width,
+        nom_height: height,
+        fire: None,
+    });
+    if let Some(d) = &leaf {
+        (width, height) = d.opening();
+    }
     let mut e = state.typed(
         doc.model(),
         Element::new(
@@ -7968,6 +8006,7 @@ fn place_opening(
                 flip_facing: false,
                 no_outer_sill: false,
                 no_inner_sill: false,
+                threshold: false,
                 setback: None,
                 reveal: None,
                 division: None,
@@ -7977,7 +8016,11 @@ fn place_opening(
         ),
     );
     // centred on the click, as wide as its type makes it
+    let typed = e.of_type.is_some();
     if let ElementKind::Opening(o) = &mut e.kind {
+        if !typed {
+            o.door = leaf;
+        }
         if o.width > len {
             return Ok(());
         }

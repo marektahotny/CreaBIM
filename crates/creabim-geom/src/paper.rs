@@ -136,6 +136,8 @@ pub const GRID: Stroke = Stroke {
     gray: 0.5,
     dash: Some([4.0, 1.0]),
 };
+/// The dashes of [`Pen::Overhead`], paper mm: a dash and two dots.
+pub const OVERHEAD_DASHES: [f64; 6] = [4.0, 1.0, 0.0, 1.0, 0.0, 1.0];
 /// Lines above the cut plane.
 pub const HIDDEN: Stroke = Stroke {
     width: 0.13,
@@ -177,6 +179,7 @@ pub fn pen_stroke_with(pen: Pen, w: &LineWeights) -> Stroke {
             width: w.hidden,
             ..HIDDEN
         },
+        Pen::Overhead => Stroke::solid(w.hidden, 0.0),
         Pen::Underlay => Stroke {
             width: w.hatch,
             ..HATCH

@@ -311,8 +311,9 @@ impl Looks {
     /// The stroke of a pen for element `id`, with its colour if it has one.
     pub fn stroke(&self, id: ElementId, pen: Pen) -> (Stroke, Option<[f32; 3]>, Option<Vec<f64>>) {
         let mut s = pen_stroke_with(pen, &self.weights);
+        let overhead = (pen == Pen::Overhead).then(|| crate::paper::OVERHEAD_DASHES.to_vec());
         let Some(l) = self.look(id) else {
-            return (s, None, None);
+            return (s, None, overhead);
         };
         match pen {
             Pen::Cut => {
@@ -327,8 +328,8 @@ impl Looks {
             }
             _ => {}
         }
-        let mut long = None;
-        if pen != Pen::Hidden {
+        let mut long = overhead;
+        if !matches!(pen, Pen::Hidden | Pen::Overhead) {
             match &l.dashes {
                 Some(None) => s.dash = None,
                 Some(Some(d)) if d.len() == 2 && d[0] > 0.0 => s.dash = Some([d[0], d[1]]),

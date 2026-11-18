@@ -528,6 +528,7 @@ A door, window or bare hole in a wall, placed by its distance along the wall fro
 | `flip_facing` | boolean | default `false` | A door opening to the wall's exterior; a window facing its interior. |
 | `no_outer_sill` | boolean | default `false` | A window without its outer sill of sheet metal. |
 | `no_inner_sill` | boolean | default `false` | A window without its inner sill board. |
+| `threshold` | boolean | default `false` | A door with a threshold between its jambs. |
 | `setback` | number |  | How far the frame's outer face stands in from the outer edge of the wall's core. Left out: on that edge in a layered wall, in the middle of a plain one. |
 | `reveal` | number |  | How far the reveal's insulation laps over the frame. |
 | `division` | string |  | How it is divided into fields, seen from outside, and how each opens. A field is "FIX", "O-L", "O-P" (turning, hinges left or right), "S" (tilting), "OS-L", "OS-P" (tilt and turn), "V" (top hung), "P-L", "P-P" (sliding), "ZP-L", "ZP-P" (lift and slide), "D-L", "D-P" (a door's leaf), with `*` after it for a solid panel; a split is "v(1:OS-L,1:FIX)" side by side or "h(0.3:S,0.7:OS-L)" top to bottom, each part after its share. |

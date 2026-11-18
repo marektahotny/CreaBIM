@@ -22,6 +22,9 @@ pub enum Pen {
     Guide,
     /// Above the cut plane (beams, the stair past its break): dashed.
     Hidden,
+    /// The wall carrying on over a door, above the cut plane: a thin
+    /// line of a dash and two dots.
+    Overhead,
     /// Another level traced under a plan: halftone, never printed, not
     /// picked, but snapped to.
     Underlay,
@@ -1110,9 +1113,7 @@ pub fn plan_view_with(
                     for (oid, o) in hosted {
                         if let Some(c) = Cut::of(o, w) {
                             if cut_v > c.v0 && cut_v < c.v1 {
-                                items.extend(opening_symbol(
-                                    model, oid, o, w, asm_of, &c, cut_v, &plain,
-                                ));
+                                items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &plain));
                             }
                         }
                     }
@@ -1139,7 +1140,7 @@ pub fn plan_view_with(
                                     .unwrap_or(creabim_core::assembly::REVEAL_INSULATION),
                             ));
                         }
-                        items.extend(opening_symbol(model, oid, o, w, asm_of, &c, cut_v, &at));
+                        items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &at));
                     } else if c.v0 >= cut_v {
                         // wholly above the cut (a duct hole, a high
                         // window): its outline in the wall, dashed
@@ -2208,7 +2209,6 @@ pub fn guide_span(a: DVec2, b: DVec2) -> Option<(DVec2, DVec2)> {
 /// `u` along the wall and `s` across it.
 #[allow(clippy::too_many_arguments)]
 fn opening_symbol(
-    model: &Model,
     id: ElementId,
     o: &creabim_core::Opening,
     w: &creabim_core::Wall,
@@ -2244,7 +2244,8 @@ fn opening_symbol(
         let cut = b.lo.z < z && z < b.hi.z;
         match b.part {
             // the sill member shows below the cut
-            Part::Frame if cut || (o.kind == OpeningKind::Window && b.lo.z <= 1e-9) => {
+            // and so does a door's threshold
+            Part::Frame if cut || (o.kind != OpeningKind::Hole && b.lo.z <= 1e-9) => {
                 rect(&mut out, u0, u1, b.lo.y, b.hi.y)
             }
             Part::Glass if cut => {
@@ -2277,6 +2278,17 @@ fn opening_symbol(
             // each leaf turned open about its hinge on the face of the
             // frame on the side it opens to, and the quarter circle it
             // sweeps
+            // the wall carries on over the door, above the cut: its
+            // faces across the opening, a dash and two dots
+            let t = w.thickness / 2.0;
+            for s in [-t, t] {
+                out.push(PlanItem::Line {
+                    id,
+                    pen: Pen::Overhead,
+                    a: at(c.u0, s),
+                    b: at(c.u1, s),
+                });
+            }
             let left = o.faces_left(w);
             let side = if left { 1.0 } else { -1.0 };
             for leaf in boxes.iter().filter(|b| b.part == Part::Leaf) {
@@ -2311,39 +2323,6 @@ fn opening_symbol(
                     radius: r,
                     start: a0,
                     end: a0 + std::f64::consts::FRAC_PI_2,
-                });
-            }
-            // the leaf's nominal size at the door, on the side it opens
-            // to: its width over a short dimension line, its height (and
-            // a fire door's rating) under it (STN 01 3420)
-            if let (Some(d), Some(leaf)) = (&o.door, boxes.iter().find(|b| b.part == Part::Leaf)) {
-                let num = |v: f64| {
-                    crate::annotate::spaced(&creabim_core::write_number(
-                        model,
-                        creabim_core::NumberKind::Dimensions,
-                        None,
-                        v,
-                    ))
-                };
-                let t = w.thickness / 2.0;
-                let mid = c.u0 + (leaf.lo.x + leaf.hi.x) / 2.0;
-                let s = side * (t + (d.nom_width * 0.45).max(0.25));
-                let mut below = num(d.nom_height);
-                if let Some(f) = &d.fire {
-                    below.push(' ');
-                    below.push_str(&f.label());
-                }
-                out.push(PlanItem::Dimension {
-                    id,
-                    a: at(mid - d.nom_width / 2.0, s),
-                    b: at(mid + d.nom_width / 2.0, s),
-                    offset: 0.0,
-                    text: num(d.nom_width),
-                    look: crate::annotate::look_of(model, None, None),
-                    witness: None,
-                    breaks: vec![],
-                    below: Some(below),
-                    place: Default::default(),
                 });
             }
         }
@@ -3009,6 +2988,7 @@ mod tests {
                 flip_facing: false,
                 no_outer_sill: false,
                 no_inner_sill: false,
+                threshold: false,
                 setback: None,
                 reveal: None,
                 division: None,

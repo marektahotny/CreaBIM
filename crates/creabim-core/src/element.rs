@@ -1570,6 +1570,9 @@ pub struct Opening {
     pub no_outer_sill: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub no_inner_sill: bool,
+    /// A door with a threshold between its jambs.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub threshold: bool,
     /// How far the frame's outer face stands in from the outer edge of
     /// the wall's load-bearing core (less than nothing: out into the
     /// insulation). Left out, the frame stands on that edge in a layered

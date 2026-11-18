@@ -811,6 +811,7 @@ fn opening(e: &Element, id: &str, o: &core::Opening, ids: &Ids) -> f::Opening {
         flip_facing: o.flip_facing,
         no_outer_sill: o.no_outer_sill,
         no_inner_sill: o.no_inner_sill,
+        threshold: o.threshold,
         setback: o.setback,
         reveal: o.reveal,
         division: o.division.as_ref().map(|d| d.code()),
