@@ -5779,6 +5779,29 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
         r.cut = r.cut.clamp(0.2, 6.0);
         out.insert(e.id, r);
     }
+    // a services drawing's pipes: lines in their system's colour, the
+    // dashed and dotted ones dashed here (paper has each its line type)
+    if creabim_core::viewmodes::DisplayMode::of(v) == creabim_core::viewmodes::DisplayMode::Services
+    {
+        for e in model.iter() {
+            let ElementKind::Pipe(p) = &e.kind else {
+                continue;
+            };
+            let r = out.entry(e.id).or_default();
+            if r.colour.is_none() {
+                let [a, b, d] = creabim_geom::mep::color(p);
+                r.colour = Some(Color32::from_rgb(
+                    (a * 255.0) as u8,
+                    (b * 255.0) as u8,
+                    (d * 255.0) as u8,
+                ));
+            }
+            r.dashed |= p.system_def().and_then(|s| s.dashes()).is_some();
+            if r.proj == 1.0 {
+                r.proj = (creabim_geom::looks::PIPE_LINE / w.projection.max(1e-6)) as f32;
+            }
+        }
+    }
     out
 }
 

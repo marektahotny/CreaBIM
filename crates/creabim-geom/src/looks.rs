@@ -11,6 +11,9 @@ use creabim_core::{ElementId, ElementKind, LineWeights, Model, View, ViewKind};
 use glam::DVec2;
 use std::collections::{HashMap, HashSet};
 
+/// The line a services drawing draws a pipe with, paper mm.
+pub const PIPE_LINE: f64 = 0.35;
+
 /// The look of one element in one view, where it differs from the pens.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Look {
@@ -71,6 +74,8 @@ impl Looks {
         let cutters = creabim_core::visibility::cutters(model);
         let beyond = crate::ranges::beyond(model, v);
         let fades = distance_fades(model, v);
+        let services = creabim_core::viewmodes::DisplayMode::of(v)
+            == creabim_core::viewmodes::DisplayMode::Services;
         let mut by_id = HashMap::new();
         let mut areas = vec![];
         for e in model.iter() {
@@ -160,6 +165,19 @@ impl Looks {
                 }
                 if let Some(h) = o.hatch {
                     l.hatch_off = !h;
+                }
+            }
+            // a services drawing's pipes: lines in their system's colour
+            // and line type, unless the view says otherwise
+            if let (true, ElementKind::Pipe(p)) = (services, &e.kind) {
+                if l.colour.is_none() {
+                    l.colour = Some(crate::mep::color(p));
+                }
+                if l.dashes.is_none() {
+                    l.dashes = Some(p.system_def().and_then(|s| s.dashes()));
+                }
+                if l.projection.is_none() {
+                    l.projection = Some(PIPE_LINE);
                 }
             }
             if beyond.contains(&e.id) {

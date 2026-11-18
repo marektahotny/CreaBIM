@@ -864,6 +864,22 @@ impl PlanView {
         crate::paper::draw(&mut svg, self, &map);
         svg.finish()
     }
+
+    /// [`PlanView::to_svg`] with a view's looks: its pens, styles and
+    /// overrides, as a sheet prints it.
+    pub fn to_svg_looks(&self, scale: f64, looks: &crate::looks::Looks) -> String {
+        let (lo, hi) = self.bounds().unwrap_or((DVec2::ZERO, DVec2::ONE));
+        let margin = DVec2::splat(1.0);
+        let (lo, hi) = (lo - margin, hi + margin);
+        let map = crate::paper::PaperMap {
+            model: lo,
+            paper: DVec2::ZERO,
+            scale,
+        };
+        let mut svg = crate::paper::SvgCanvas::new((hi - lo) * map.k());
+        crate::paper::draw_looks(&mut svg, self, &map, looks);
+        svg.finish()
+    }
 }
 
 /// Generate the plan of one level, cut `cut_height` metres above it.

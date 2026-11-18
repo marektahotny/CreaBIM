@@ -339,6 +339,51 @@ pub fn pipe_mesh(model: &Model, p: &Pipe) -> TriMesh {
 /// The least radius a riser's circle is drawn with in plan, m.
 pub const RISER_MARK: f64 = 0.035;
 
+/// The pipe as one line along its axis, as a services drawing shows it
+/// (the office's ZTI and ÚK plans, PilonDesigner's "výkres TZB"): the
+/// view gives the line its system's colour and line type. A riser is a
+/// small circle; a bent pipe turns in its arc.
+pub fn pipe_line(model: &Model, e: &Element, p: &Pipe) -> Vec<PlanItem> {
+    let pen = Pen::Projection;
+    let line = |a: DVec2, b: DVec2| PlanItem::Line {
+        id: e.id,
+        pen,
+        a,
+        b,
+    };
+    let (mut a, mut b) = (p.start.truncate(), p.end.truncate());
+    if a.distance(b) < 1e-6 {
+        return vec![PlanItem::Polygon {
+            id: e.id,
+            pen,
+            points: (0..SIDES)
+                .map(|i| {
+                    let t = i as f64 / SIDES as f64 * std::f64::consts::TAU;
+                    a + DVec2::new(t.cos(), t.sin()) * RISER_MARK
+                })
+                .collect(),
+        }];
+    }
+    let z = model.level(p.level).map_or(0.0, |l| l.elevation);
+    let flat = |q: DVec3| (q - DVec3::Z * z).truncate();
+    let mut items = vec![];
+    for (i, j) in joints(model, p).iter().enumerate() {
+        if let Joint::Bend { at, arc, owner } = j {
+            if i == 0 {
+                a = flat(*at);
+            } else {
+                b = flat(*at);
+            }
+            if *owner {
+                let pts: Vec<DVec2> = arc.iter().map(|q| flat(*q)).collect();
+                items.extend(pts.windows(2).map(|w| line(w[0], w[1])));
+            }
+        }
+    }
+    items.push(line(a, b));
+    items
+}
+
 /// The pipe in a plan cut `cut` above its level: its outline in plan,
 /// washed in its system's colour, in the lightest line where it is cut
 /// or seen below, dashed above. Its ends are closed only where it meets no
@@ -594,6 +639,75 @@ mod tests {
             .apply(&mut m)
             .unwrap();
         (m, e)
+    }
+
+    #[test]
+    fn a_services_drawing_shows_a_pipe_as_a_line_of_its_system() {
+        use creabim_core::viewmodes::DisplayMode;
+        use creabim_core::{Document, Transaction, ViewKind};
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (view, level) = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) => match v.kind {
+                    ViewKind::Plan { level, .. } => Some((e.id, level)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        let mut run = pipe(level, None);
+        run.start = DVec3::new(1.0, 1.0, 0.3);
+        run.end = DVec3::new(3.0, 1.0, 0.3);
+        let mut riser = pipe(level, None);
+        riser.start = DVec3::new(4.0, 2.0, 0.0);
+        riser.end = DVec3::new(4.0, 2.0, 2.5);
+        let (run, riser) = (
+            Element::new("Pipe", ElementKind::Pipe(run)),
+            Element::new("Riser", ElementKind::Pipe(riser)),
+        );
+        let (run_id, riser_id) = (run.id, riser.id);
+        doc.commit(Transaction::new("pipes").insert(run).insert(riser))
+            .unwrap();
+        let of = |m: &Model, id| -> Vec<PlanItem> {
+            crate::section::view_drawing(m, view)
+                .unwrap()
+                .items
+                .into_iter()
+                .filter(|i| i.id() == id)
+                .collect()
+        };
+        // the architect's drawing has it to scale: two sides and a wash
+        assert!(of(doc.model(), run_id).len() > 2);
+        doc.edit(view, "mode", |e| {
+            if let ElementKind::View(v) = &mut e.kind {
+                DisplayMode::Services.apply(v);
+            }
+        })
+        .unwrap();
+        let m = doc.model();
+        let items = of(m, run_id);
+        assert_eq!(
+            lines(&items),
+            vec![(DVec2::new(1.0, 1.0), DVec2::new(3.0, 1.0))]
+        );
+        assert_eq!(items.len(), 1);
+        // a riser is its small circle
+        assert!(matches!(of(m, riser_id)[..], [PlanItem::Polygon { .. }]));
+        // drawn in cold water's blue, dash and dot
+        let ElementKind::View(v) = &m.get(view).unwrap().kind else {
+            unreachable!()
+        };
+        let looks = crate::looks::Looks::for_view(m, view, v);
+        let (stroke, rgb, dashes) = looks.stroke(run_id, Pen::Projection);
+        assert_eq!(stroke.width, crate::looks::PIPE_LINE);
+        let ElementKind::Pipe(p) = &m.get(run_id).unwrap().kind else {
+            unreachable!()
+        };
+        let (rgb, want) = (rgb.unwrap(), color(p));
+        assert!((0..3).all(|i| (rgb[i] - want[i]).abs() < 1e-5), "{rgb:?}");
+        assert_eq!(dashes, Some(vec![5.0, 1.2, 0.0, 1.2]));
     }
 
     fn lines(items: &[PlanItem]) -> Vec<(DVec2, DVec2)> {

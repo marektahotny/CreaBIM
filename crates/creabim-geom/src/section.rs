@@ -879,6 +879,28 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     if let Some(stage) = v.reno {
         reno_colours(model, stage, &mut d.items);
     }
+    // a services drawing shows its pipes as lines, each in its system's
+    // colour and line type
+    if matches!(kind, creabim_core::ViewKind::Plan { .. })
+        && creabim_core::viewmodes::DisplayMode::of(v)
+            == creabim_core::viewmodes::DisplayMode::Services
+    {
+        let mut seen = std::collections::HashSet::new();
+        let mut lines = vec![];
+        d.items.retain(|it| {
+            let Some(e) = model.get(it.id()) else {
+                return true;
+            };
+            let ElementKind::Pipe(p) = &e.kind else {
+                return true;
+            };
+            if seen.insert(e.id) {
+                lines.extend(crate::mep::pipe_line(model, e, p));
+            }
+            false
+        });
+        d.items.extend(lines);
+    }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {
         d.items.retain(|it| !hidden.contains(&it.id()));

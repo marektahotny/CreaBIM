@@ -30,6 +30,25 @@ pub enum SystemKind {
     Other,
 }
 
+impl SystemDef {
+    /// The line a services drawing draws its pipes with, as the office's
+    /// drawings do: dashes and gaps in paper mm (a dash of 0 is a dot);
+    /// none is a solid line. Cold water dash-dot, hot water dash and two
+    /// dots, circulation long and short dashes, drains dashed; of the
+    /// rest the returns dashed.
+    pub fn dashes(&self) -> Option<Vec<f64>> {
+        match self.kind {
+            SystemKind::ColdWater => Some(vec![5.0, 1.2, 0.0, 1.2]),
+            SystemKind::HotWater => Some(vec![5.0, 1.2, 0.0, 1.2, 0.0, 1.2]),
+            SystemKind::Circulation => Some(vec![7.0, 1.5, 1.5, 1.5]),
+            SystemKind::Sanitary => Some(vec![4.0, 1.5]),
+            SystemKind::Storm => Some(vec![6.0, 1.5, 1.5, 1.5, 1.5, 1.5]),
+            _ if self.dashed => Some(vec![3.0, 1.5]),
+            _ => None,
+        }
+    }
+}
+
 impl SystemKind {
     /// IFC's predefined type of a distribution system.
     pub fn ifc_system(self) -> &'static str {
