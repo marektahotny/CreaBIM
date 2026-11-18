@@ -26,6 +26,10 @@ pub struct ProjectInfo {
     pub parcels: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub cadastre: String,
+    /// The office's logo for the title block: a picture kept with the
+    /// project.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logo: Option<Logo>,
     /// "Planning application", "Tender", "Construction".
     pub status: String,
     /// The issue date, as the office writes it.
@@ -66,6 +70,15 @@ pub struct ProjectInfo {
     /// The project's own profiles (MU27 block 5), for sweeps.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub profiles: Vec<crate::profiles::NamedProfile>,
+}
+
+/// A picture: `width` × `height` pixels, RGBA, stored as text (see
+/// `creabim_geom::raster::store_image`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Logo {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: String,
 }
 
 /// One item of the project's notepad.

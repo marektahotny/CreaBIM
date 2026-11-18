@@ -183,6 +183,21 @@ pub fn draw(
             Stroke::solid(pen, 0.0),
         );
     }
+    // the office's logo in the cell at the upper right, whole
+    if let Some(r) = project
+        .logo
+        .as_ref()
+        .and_then(|l| crate::raster::stored_image(l.width, l.height, &l.rgba))
+    {
+        let (lo, hi) = (o + DVec2::new(-49.6, 30.1), o + DVec2::new(-0.5, 53.7));
+        let (box_, mid) = (hi - lo, (lo + hi) / 2.0);
+        let l = project.logo.as_ref().map_or((1.0, 1.0), |l| {
+            (l.width.max(1) as f64, l.height.max(1) as f64)
+        });
+        let k = (box_.x / l.0).min(box_.y / l.1);
+        let half = DVec2::new(l.0, l.1) * k / 2.0;
+        c.image(mid - half, mid + half, None, &r);
+    }
     let or = |a: &str, b: &str| {
         if a.trim().is_empty() {
             b.trim().to_string()
@@ -367,6 +382,19 @@ mod tests {
         }
         // the designer signs all three when no one else is named
         assert_eq!(on.matches("Marek Tahotný").count(), 3);
+        // the office's logo goes in its cell
+        assert!(!on.contains("<image"));
+        let logo = ProjectInfo {
+            logo: Some(creabim_core::project::Logo {
+                width: 2,
+                height: 1,
+                rgba: crate::raster::store_image(&[255, 0, 0, 255, 0, 0, 255, 255]),
+            }),
+            ..project.clone()
+        };
+        let mut c = SvgCanvas::new(DVec2::new(sheet.width, sheet.height));
+        draw(&mut c, &sheet, &logo, "x", "1:50", &info);
+        assert!(c.finish().contains("<image"));
         sheet.title_block = false;
         let off = svg(&sheet);
         assert!(!off.contains("DM s.r.o.") && !off.contains("S01_ZTI"));

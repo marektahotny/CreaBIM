@@ -1144,6 +1144,36 @@ impl CreaBimApp {
                 text(ui, "Chief architect", &mut draft.architect, "");
                 text(ui, "Drawn by", &mut draft.drawn_by, "");
                 text(ui, "Responsible designer", &mut draft.designer, "");
+                crate::props::row(ui, "Logo", |ui| {
+                    crate::props::flow(ui, |ui| {
+                        if ui.button(crate::i18n::t("Choose…")).clicked() {
+                            if let Some(img) = rfd::FileDialog::new()
+                                .add_filter("Picture", &["png", "jpg", "jpeg"])
+                                .pick_file()
+                                .and_then(|p| image::open(p).ok())
+                            {
+                                // a logo needs no more; the project stays light
+                                let img = if img.width().max(img.height()) > 1024 {
+                                    img.resize(1024, 1024, image::imageops::FilterType::Triangle)
+                                } else {
+                                    img
+                                };
+                                let rgba = img.to_rgba8();
+                                draft.logo = Some(creabim_core::project::Logo {
+                                    width: rgba.width(),
+                                    height: rgba.height(),
+                                    rgba: creabim_geom::raster::store_image(rgba.as_raw()),
+                                });
+                            }
+                        }
+                        if draft.logo.is_some() {
+                            if ui.button(crate::i18n::t("Remove")).clicked() {
+                                draft.logo = None;
+                            }
+                            ui.label(egui::RichText::new(crate::i18n::t("In the title block")).weak());
+                        }
+                    })
+                });
                 crate::props::section(ui, "Site");
                 text(ui, "Site name", &mut draft.site_name, "");
                 text(ui, "Address", &mut draft.address, "");
