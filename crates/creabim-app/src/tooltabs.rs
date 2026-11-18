@@ -263,6 +263,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
             Sep,
             act(
+                "heat:source",
+                "Heat source",
+                "flame",
+                "A hot water cylinder, a gas condensing boiler or a heat pump from the range: sized by the heat load, a heat pump by its bivalence point, then placed",
+            ),
+            act(
                 "catalogue.cat:hvac",
                 "Radiators and boilers",
                 "thermometer",
