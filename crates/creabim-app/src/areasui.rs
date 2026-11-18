@@ -1448,7 +1448,12 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
         }
         "menu" => {
             let r = if icon.is_empty() {
-                name_button(ui, c["value"].as_str().unwrap_or(label), 86.0, p)
+                name_button(
+                    ui,
+                    &crate::i18n::tr(c["value"].as_str().unwrap_or(label)),
+                    86.0,
+                    p,
+                )
             } else {
                 pill(ui, icon, "", false, p)
             }
@@ -1468,8 +1473,12 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
                 ui.spacing_mut().interact_size.y = 20.0;
                 ui.spacing_mut().button_padding = egui::vec2(5.0, 1.0);
                 ui.style_mut().override_font_id = Some(egui::FontId::proportional(12.0));
-                ui.label(egui::RichText::new(label).size(12.0).color(p.muted))
-                    .on_hover_text(crate::i18n::tr(&tip));
+                ui.label(
+                    egui::RichText::new(crate::i18n::tr(label))
+                        .size(12.0)
+                        .color(p.muted),
+                )
+                .on_hover_text(crate::i18n::tr(&tip));
                 let w = if unit == "m" {
                     ui.add_sized([64.0, 20.0], crate::units::drag(&mut v))
                 } else {
@@ -1592,7 +1601,7 @@ fn mode_button(
     compact: bool,
     p: &crate::theme::Palette,
 ) -> egui::Response {
-    let text = if editing { "Edit mode" } else { "Object mode" };
+    let text = crate::i18n::tr(if editing { "Edit mode" } else { "Object mode" });
     // the theme's colours, the accent while editing (MU29: a fixed orange
     // clashed with the themes)
     let (rect, resp) = ui.allocate_exact_size(
@@ -1634,7 +1643,7 @@ fn mode_button(
             &ui.visuals().widgets.inactive.clone(),
             false,
         );
-        return resp.on_hover_text(crate::i18n::tr(text));
+        return resp.on_hover_text(text);
     }
     ui.painter().text(
         rect.left_center() + egui::vec2(8.0, 0.0),
