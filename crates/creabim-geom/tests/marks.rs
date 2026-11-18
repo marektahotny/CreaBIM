@@ -696,3 +696,30 @@ fn reveal_insulation_is_billed_for_windows_and_framed_doors() {
     let framed = reveal_strips(doc.model(), true);
     assert!(!framed.is_empty());
 }
+
+#[test]
+fn a_level_inside_a_storey_shows_the_storeys_floor_and_what_stands_on_it() {
+    let mut doc = Document::from_model(sample::sample_house());
+    let ground = doc
+        .model()
+        .levels()
+        .min_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+        .map(|(e, l)| (e.id, l.elevation))
+        .unwrap();
+    let (tx, id, plan) = creabim_core::levels::add(doc.model(), "Cut", ground.1 + 1.5, 1.5, true);
+    doc.commit(tx).unwrap();
+    let plan = plan.unwrap();
+    assert_eq!(
+        creabim_geom::plan::storey_cut(doc.model(), id, 0.2),
+        (ground.0, 1.7)
+    );
+    // the ground floor and its walls are in the new level's plan
+    let items = view_drawing(doc.model(), plan).unwrap().items;
+    let shows = |pick: &dyn Fn(&ElementKind) -> bool| {
+        items
+            .iter()
+            .any(|i| doc.model().get(i.id()).is_some_and(|e| pick(&e.kind)))
+    };
+    assert!(shows(&|k| matches!(k, ElementKind::Wall(_))));
+    assert!(shows(&|k| matches!(k, ElementKind::Slab(_))));
+}

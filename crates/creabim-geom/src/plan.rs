@@ -990,6 +990,7 @@ pub fn plan_view_with(
     cut_height: f64,
     graphics: &creabim_core::PlanGraphics,
 ) -> PlanView {
+    let (level, cut_height) = storey_cut(model, level, cut_height);
     let mut items = Vec::new();
     // tinted footprints, drawn under everything else
     let mut shades: Vec<PlanItem> = Vec::new();
@@ -1636,6 +1637,32 @@ fn wall_band(
 /// floor (a level put half way up a storey cuts the walls there, MU: a
 /// plan of a level added at +2.584 was empty). Gives how far this level
 /// lies above the wall's own.
+/// The level and cut a plan is drawn from. A level put inside a storey
+/// (to cut it there) has nothing built on it: its plan is the plan of the
+/// storey it lies in, cut that much higher, so the floor, the stairs, the
+/// furniture and what else stands below show as in any plan.
+pub fn storey_cut(model: &Model, level: ElementId, cut_height: f64) -> (ElementId, f64) {
+    let hosts = |l: ElementId| {
+        model.iter().any(|e| {
+            !matches!(e.kind, ElementKind::View(_))
+                && creabim_core::levels::level_of(&e.kind) == Some(l)
+        })
+    };
+    let Some(z) = model.level(level).map(|l| l.elevation) else {
+        return (level, cut_height);
+    };
+    if hosts(level) {
+        return (level, cut_height);
+    }
+    model
+        .levels()
+        .filter(|(e, l)| l.elevation < z - 1e-6 && hosts(e.id))
+        .max_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+        .map_or((level, cut_height), |(e, l)| {
+            (e.id, cut_height + z - l.elevation)
+        })
+}
+
 fn wall_rise(
     model: &Model,
     w: &creabim_core::Wall,
