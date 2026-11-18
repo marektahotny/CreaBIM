@@ -604,6 +604,7 @@ fn build_scene_unjoined(
                 Some(m) => m,
                 None => continue,
             },
+            ElementKind::Circuit(_) => continue,
         };
         // a material's look wins over the element type's default
         let (color, surface) = creabim_core::material_of(model, e)

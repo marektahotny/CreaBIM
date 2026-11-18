@@ -35,6 +35,8 @@ mod areasui;
 mod assemblies;
 #[path = "autovalvesui.rs"]
 mod autovalvesui;
+#[path = "circuitsui.rs"]
+mod circuitsui;
 #[path = "circuitui.rs"]
 mod circuitui;
 #[path = "coolingui.rs"]
@@ -395,6 +397,8 @@ pub struct CreaBimApp {
     air_balance: bool,
     /// The circuit check window, while it is open.
     circuit: Option<creabim_services::electrical::Circuit>,
+    /// The circuits window, while it is open.
+    circuits: Option<circuitsui::CircuitsWindow>,
     /// The window and door editor, while it is open.
     joinery: Option<joineryui::JoineryEdit>,
     /// The heat source window, while it is open.
@@ -591,6 +595,7 @@ impl CreaBimApp {
             cooling: None,
             air_balance: false,
             circuit: None,
+            circuits: None,
             joinery: None,
             heat_loss: None,
             net_calc: None,
@@ -10983,6 +10988,8 @@ crate::props::row(ui, "File names", |ui| {
                         label = l;
                     }
                 }
+                // a circuit is edited in the circuits window
+                ElementKind::Circuit(_) => {}
                 ElementKind::Guide(g) => {
                     ui.label(
                         egui::RichText::new(crate::i18n::t(
@@ -12569,6 +12576,7 @@ impl eframe::App for CreaBimApp {
         self.cooling_window(&ctx);
         self.air_balance_window(&ctx);
         self.circuit_window(&ctx);
+        self.circuits_window(&ctx);
         self.joinery_window(&ctx);
         self.heat_source_window(&ctx);
         self.net_calc_window(&ctx);
@@ -13057,6 +13065,7 @@ pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::Pipe(p) if p.kind().is_air() => "duct",
         ElementKind::Pipe(_) => "pipe",
         ElementKind::Valve(_) => "valve",
+        ElementKind::Circuit(_) => "circuit",
         ElementKind::Ceiling(_) => "ceiling",
         ElementKind::ElementType(_) => "type",
         ElementKind::Shaft(_) => "shaft",

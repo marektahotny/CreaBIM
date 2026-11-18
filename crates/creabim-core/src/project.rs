@@ -338,6 +338,7 @@ pub fn rotate_north(model: &crate::Model, degrees: f64) -> crate::Transaction {
             // these go with what they are in, or lie on paper
             ElementKind::Opening(_)
             | ElementKind::Valve(_)
+            | ElementKind::Circuit(_)
             | ElementKind::Level(_)
             | ElementKind::PaperMark(_) => continue,
             ElementKind::Project(p) => {

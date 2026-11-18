@@ -11,6 +11,7 @@
 //! needs at its root.
 
 pub mod airbalance;
+pub mod circuits;
 pub mod coolingload;
 pub mod electrical;
 pub mod firewater;

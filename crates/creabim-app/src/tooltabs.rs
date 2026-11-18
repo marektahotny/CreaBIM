@@ -449,6 +449,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
             Sep,
             act(
+                "calc:circuits",
+                "Circuits",
+                "list",
+                "The installation's circuits: devices and their power, breakers, cables, phases, RCDs, the check of each and the building's power balance; proposes circuits for devices that have none",
+            ),
+            act(
                 "calc:circuit",
                 "Circuit check",
                 "calc",

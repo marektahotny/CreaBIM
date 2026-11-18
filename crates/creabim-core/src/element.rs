@@ -147,6 +147,8 @@ impl Element {
             ElementKind::Pipe(p) => vec![p.level],
             // a valve goes with its pipe
             ElementKind::Valve(v) => vec![v.pipe],
+            // a circuit's board and devices are soft
+            ElementKind::Circuit(_) => vec![],
             ElementKind::Guide(g) => g.level.into_iter().collect(),
             ElementKind::Railing(r) => std::iter::once(r.level)
                 .chain(r.stair.map(|s| s.stair))
@@ -198,6 +200,7 @@ impl Element {
             ElementKind::Pipe(p) if p.kind().is_air() => "IfcDuctSegment",
             ElementKind::Pipe(_) => "IfcPipeSegment",
             ElementKind::Valve(v) => v.kind_def().map_or("IfcValve", |k| k.ifc.0),
+            ElementKind::Circuit(_) => "IfcDistributionCircuit",
             ElementKind::Guide(_) => "Guide",
             ElementKind::Column(_) => "IfcColumn",
             ElementKind::Beam(_) => "IfcBeam",
@@ -404,6 +407,7 @@ impl Element {
             ElementKind::Detail(d) => d.validate(),
             ElementKind::Pipe(p) => p.validate(),
             ElementKind::Valve(v) => v.validate(),
+            ElementKind::Circuit(c) => c.validate(),
             ElementKind::Cut(c) => {
                 if c.target == c.cutter {
                     Err("an element can't cut itself".into())
@@ -503,6 +507,8 @@ pub enum ElementKind {
     Pipe(crate::mep::Pipe),
     /// A valve or accessory on a pipe.
     Valve(crate::mep::Valve),
+    /// A final circuit of the electrical installation.
+    Circuit(crate::electrical::Circuit),
 }
 
 impl ElementKind {
@@ -561,6 +567,7 @@ impl ElementKind {
             ElementKind::Detail(_) => "Detail",
             ElementKind::Pipe(_) => "Pipe",
             ElementKind::Valve(_) => "Valve",
+            ElementKind::Circuit(_) => "Circuit",
         }
     }
 }

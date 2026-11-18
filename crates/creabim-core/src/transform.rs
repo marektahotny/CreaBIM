@@ -367,6 +367,8 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         }
         // a valve rides its pipe
         ElementKind::Valve(_) => {}
+        // a circuit is nowhere
+        ElementKind::Circuit(_) => {}
         ElementKind::Shaft(s) => {
             if !t.keeps_upright() {
                 return None;

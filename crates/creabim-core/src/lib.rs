@@ -18,6 +18,7 @@ pub mod divide;
 pub mod document;
 pub mod earthworks;
 pub mod editmesh;
+pub mod electrical;
 pub mod element;
 pub mod fixture;
 pub mod footing;
