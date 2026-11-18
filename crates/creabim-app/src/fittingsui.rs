@@ -28,6 +28,23 @@ impl CreaBimApp {
             return;
         };
         let t = crate::i18n::tr;
+        // by kind, system and size: the valves themselves
+        let mut valves: std::collections::BTreeMap<
+            (&'static str, String, u32),
+            Vec<creabim_core::ElementId>,
+        > = Default::default();
+        for e in self.doc.model().iter() {
+            let creabim_core::ElementKind::Valve(v) = &e.kind else {
+                continue;
+            };
+            let (Some(k), Some(p)) = (v.kind_def(), v.host(self.doc.model())) else {
+                continue;
+            };
+            valves
+                .entry((k.name, p.system.clone(), p.nominal_mm.round() as u32))
+                .or_default()
+                .push(e.id);
+        }
         let mut open = true;
         let mut again = false;
         let mut select: Option<Vec<creabim_core::ElementId>> = None;
@@ -47,7 +64,7 @@ impl CreaBimApp {
                         "Found from how the pipes meet; pipe that is bent takes no elbow.",
                     ));
                 });
-                if found.is_empty() {
+                if found.is_empty() && valves.is_empty() {
                     ui.label(t("No pipes meet yet: there are no fittings to list."));
                 }
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -87,6 +104,28 @@ impl CreaBimApp {
                                 ui.end_row();
                             }
                         });
+                    // the valves and accessories put on the pipes
+                    if !valves.is_empty() {
+                        ui.add_space(8.0);
+                        egui::Grid::new("fittings.valves")
+                            .num_columns(3)
+                            .striped(true)
+                            .spacing([14.0, 4.0])
+                            .show(ui, |ui| {
+                                ui.strong(t("Valves and accessories"));
+                                ui.strong(t("System"));
+                                ui.strong(t("Pieces"));
+                                ui.end_row();
+                                for ((name, system, dn), ids) in &valves {
+                                    if ui.link(format!("{} DN {dn}", t(name))).clicked() {
+                                        select = Some(ids.clone());
+                                    }
+                                    ui.label(system);
+                                    ui.label(ids.len().to_string());
+                                    ui.end_row();
+                                }
+                            });
+                    }
                 });
             });
         if let Some(ids) = select {
