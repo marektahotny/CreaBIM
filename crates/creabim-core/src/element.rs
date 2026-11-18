@@ -1566,6 +1566,10 @@ pub struct Opening {
     /// rating.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub door: Option<crate::joinery::DoorSpec>,
+    /// What the window or door list says of it in words; left out, the
+    /// list writes what it can tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub texts: Option<crate::joinery::JoineryTexts>,
 }
 
 /// How a field of a window or door opens. Left and right are seen from
@@ -2187,10 +2191,17 @@ pub enum ScheduleCategory {
     /// The take-off: what each material adds up to (area, volume, length,
     /// pieces), priced by its rate; grouped, it goes level by level.
     Materials,
+    /// The window list of Slovak practice (výpis okien): each kind of
+    /// window once, drawn with its sizes and how it opens, counted by
+    /// level, with its make, finish and a note.
+    WindowList,
+    /// The door list (výpis dverí), the same for doors, counted left
+    /// and right.
+    DoorList,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 9] = [
+    pub const ALL: [ScheduleCategory; 11] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2200,6 +2211,8 @@ impl ScheduleCategory {
         ScheduleCategory::Fixtures,
         ScheduleCategory::Rooms,
         ScheduleCategory::Materials,
+        ScheduleCategory::WindowList,
+        ScheduleCategory::DoorList,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2214,6 +2227,8 @@ impl ScheduleCategory {
             ScheduleCategory::Fixtures => "Fixture",
             ScheduleCategory::Rooms => "Room",
             ScheduleCategory::Materials => return "Take-off".into(),
+            ScheduleCategory::WindowList => return "Window list".into(),
+            ScheduleCategory::DoorList => return "Door list".into(),
         };
         format!("{one} Schedule")
     }
@@ -2237,6 +2252,17 @@ impl ScheduleCategory {
             ScheduleCategory::Fixtures => "Fixtures",
             ScheduleCategory::Rooms => "Rooms",
             ScheduleCategory::Materials => "Take-off",
+            ScheduleCategory::WindowList => "Window list",
+            ScheduleCategory::DoorList => "Door list",
+        }
+    }
+
+    /// The drawn list of windows or doors: which of the two.
+    pub fn joinery_list(self) -> Option<OpeningKind> {
+        match self {
+            ScheduleCategory::WindowList => Some(OpeningKind::Window),
+            ScheduleCategory::DoorList => Some(OpeningKind::Door),
+            _ => None,
         }
     }
 }

@@ -53,6 +53,7 @@ fn door(host: ElementId) -> Element {
             reveal: None,
             division: None,
             door: None,
+            texts: None,
         }),
     )
 }

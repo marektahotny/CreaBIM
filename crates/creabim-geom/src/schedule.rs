@@ -124,6 +124,12 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     if category == ScheduleCategory::Materials {
         return takeoff_schedule(model, by_type);
     }
+    // the drawn lists' tables are the door and window schedules
+    let category = match category {
+        ScheduleCategory::WindowList => ScheduleCategory::Windows,
+        ScheduleCategory::DoorList => ScheduleCategory::Doors,
+        c => c,
+    };
     let units = model.units();
     let mm =
         |v: f64| creabim_core::write_number(model, creabim_core::NumberKind::Schedules, None, v);
@@ -163,7 +169,10 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
             listed = Some(n);
             (columns, totals)
         }
-        ScheduleCategory::Doors | ScheduleCategory::Windows => {
+        ScheduleCategory::Doors
+        | ScheduleCategory::Windows
+        | ScheduleCategory::WindowList
+        | ScheduleCategory::DoorList => {
             let kind = if category == ScheduleCategory::Doors {
                 OpeningKind::Door
             } else {

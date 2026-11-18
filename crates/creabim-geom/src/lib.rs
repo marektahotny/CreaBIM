@@ -15,6 +15,7 @@ pub mod curtain;
 pub mod declutter;
 pub mod detail;
 pub mod font;
+pub mod joinerylist;
 pub mod looks;
 pub mod markers;
 pub mod members;

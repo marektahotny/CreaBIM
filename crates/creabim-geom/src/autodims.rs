@@ -514,6 +514,7 @@ mod tests {
                 reveal: None,
                 division: None,
                 door: None,
+                texts: None,
             }),
         );
         tx = tx.insert(win);

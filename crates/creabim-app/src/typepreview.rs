@@ -130,6 +130,7 @@ pub(super) fn sample_model(
                     reveal: None,
                     division: None,
                     door: None,
+                    texts: None,
                 }),
             ));
             // the section through its middle, whatever its width

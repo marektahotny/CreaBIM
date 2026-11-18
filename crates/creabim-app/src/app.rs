@@ -436,6 +436,8 @@ impl CreaBimApp {
         let settings = crate::files::Settings::load();
         let theme = crate::theme::Theme::from_id(&settings.theme).unwrap_or_default();
         crate::i18n::set_lang(crate::i18n::Lang::from_id(&settings.language).unwrap_or_default());
+        // drawings write their own words (a window list's headings) in it too
+        creabim_core::words::set_translator(crate::i18n::tr);
         crate::handles::set_grip_style(settings.grips);
         crate::modal::set_bar_by_pointer(settings.edit_bar == "pointer");
         crate::handles::set_edit_display(settings.edit_edge_width, settings.edit_vertex_size);

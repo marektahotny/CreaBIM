@@ -713,6 +713,7 @@ impl<'a> Importer<'a> {
                         reveal: None,
                         division: None,
                         door: None,
+                        texts: None,
                     }),
                 });
             } else if let Some(&i) = self.slabs.get(&host) {
@@ -1749,6 +1750,7 @@ impl<'a> Importer<'a> {
                         reveal: None,
                         division: None,
                         door: None,
+                        texts: None,
                     }),
                 ));
             }
@@ -1886,6 +1888,7 @@ impl<'a> Importer<'a> {
                 reveal: None,
                 division: None,
                 door: None,
+                texts: None,
             }),
         });
     }

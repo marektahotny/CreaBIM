@@ -50,6 +50,7 @@ fn door_splits_wall_into_two_cut_pieces_with_a_swing() {
             reveal: None,
             division: None,
             door: None,
+            texts: None,
         }),
     );
     let lid = l.id;

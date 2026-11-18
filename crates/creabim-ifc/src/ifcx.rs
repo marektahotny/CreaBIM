@@ -1198,6 +1198,7 @@ impl Builder {
                             reveal: None,
                             division: None,
                             door: None,
+                            texts: None,
                         }),
                         of_type: None,
                     });

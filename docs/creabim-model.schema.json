@@ -1333,7 +1333,9 @@
         "furniture",
         "fixtures",
         "rooms",
-        "materials"
+        "materials",
+        "window_list",
+        "door_list"
       ]
     },
     "Callout": {

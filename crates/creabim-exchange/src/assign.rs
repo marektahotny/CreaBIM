@@ -212,6 +212,7 @@ pub fn fit(
                 reveal: None,
                 division: None,
                 door: None,
+                texts: None,
             }))
         }
         Assign::Class(_) => Err("A class is not a shape.".into()),

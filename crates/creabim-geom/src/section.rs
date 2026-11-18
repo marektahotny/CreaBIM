@@ -843,6 +843,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             axonometric_view_in(model, scene(), *azimuth, *altitude, style, reveal, &crop)
         }
         creabim_core::ViewKind::Schedule { category, by_type } => {
+            if let Some(kind) = category.joinery_list() {
+                return Some(crate::joinerylist::drawing(view, &e.name, model, kind));
+            }
             let table = crate::schedule::schedule_by(model, *category, *by_type);
             return Some(crate::schedule::schedule_drawing(view, &e.name, &table));
         }

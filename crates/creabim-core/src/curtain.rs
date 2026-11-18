@@ -382,6 +382,7 @@ fn arc_void(model: &Model, host_id: ElementId, host: &Wall, cw: &Wall) -> Option
         reveal: None,
         division: None,
         door: None,
+        texts: None,
     })
 }
 
@@ -430,6 +431,7 @@ pub fn void_of(model: &Model, host_id: ElementId, host: &Wall, cw: &Wall) -> Opt
         reveal: None,
         division: None,
         door: None,
+        texts: None,
     })
 }
 

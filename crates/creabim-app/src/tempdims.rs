@@ -1203,6 +1203,7 @@ mod tests {
                     reveal: None,
                     division: None,
                     door: None,
+                    texts: None,
                 }),
             )
         };
@@ -1491,6 +1492,7 @@ mod core_tests {
                 reveal: None,
                 division: None,
                 door: None,
+                texts: None,
             }),
         );
         let did = door.id;

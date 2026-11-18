@@ -4099,6 +4099,7 @@ fn section_tool(
                         reveal: None,
                         division: None,
                         door: None,
+                        texts: None,
                     }),
                 ),
             );
@@ -7592,6 +7593,7 @@ fn place_opening(
                 reveal: None,
                 division: None,
                 door: None,
+                texts: None,
             }),
         ),
     );

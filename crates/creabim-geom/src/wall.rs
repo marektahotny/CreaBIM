@@ -267,6 +267,7 @@ mod tests {
             reveal: None,
             division: None,
             door: None,
+            texts: None,
         }
     }
 

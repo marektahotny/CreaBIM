@@ -68,6 +68,7 @@ pub mod units;
 pub mod viewmodes;
 pub mod visibility;
 pub mod walls;
+pub mod words;
 
 pub use annotation::{
     text_style, DimAxis, DimensionKind, Font, Note, StyleUse, TagShape, Terminator, TextAlign,

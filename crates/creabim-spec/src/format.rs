@@ -953,6 +953,10 @@ spec_enum! {
         Rooms = "rooms",
         /// The take-off by material.
         Materials = "materials",
+        /// The drawn window list (výpis okien).
+        WindowList = "window_list",
+        /// The drawn door list (výpis dverí).
+        DoorList = "door_list",
     }
 }
 

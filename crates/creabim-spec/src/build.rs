@@ -953,6 +953,7 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         reveal: o.reveal.map(|v| c.l(v)),
         division,
         door,
+        texts: None,
     };
     let mut e = Element::new(name_of(&o.name, &o.id), ElementKind::Opening(opening));
     let typed = match o.kind {
@@ -1724,6 +1725,8 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::Fixtures => core::ScheduleCategory::Fixtures,
                 f::ScheduleCategory::Rooms => core::ScheduleCategory::Rooms,
                 f::ScheduleCategory::Materials => core::ScheduleCategory::Materials,
+                f::ScheduleCategory::WindowList => core::ScheduleCategory::WindowList,
+                f::ScheduleCategory::DoorList => core::ScheduleCategory::DoorList,
             };
             let mut view = core::View::schedule(category);
             view.kind = core::ViewKind::Schedule {

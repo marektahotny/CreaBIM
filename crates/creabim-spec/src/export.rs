@@ -1081,6 +1081,8 @@ fn view(e: &Element, id: &str, v: &core::View, ids: &Ids) -> f::View {
                 core::ScheduleCategory::Fixtures => f::ScheduleCategory::Fixtures,
                 core::ScheduleCategory::Rooms => f::ScheduleCategory::Rooms,
                 core::ScheduleCategory::Materials => f::ScheduleCategory::Materials,
+                core::ScheduleCategory::WindowList => f::ScheduleCategory::WindowList,
+                core::ScheduleCategory::DoorList => f::ScheduleCategory::DoorList,
             });
         }
     }

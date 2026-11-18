@@ -853,6 +853,8 @@ What a schedule lists.
 - `"fixtures"`
 - `"rooms"`
 - `"materials"`: The take-off by material.
+- `"window_list"`: The drawn window list (výpis okien).
+- `"door_list"`: The drawn door list (výpis dverí).
 
 ### Callout
 

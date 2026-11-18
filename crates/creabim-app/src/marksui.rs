@@ -324,12 +324,20 @@ impl CreaBimApp {
 /// order, first number, and what the first mark looks like.
 fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
     egui::Grid::new("mark_rules")
-        .num_columns(8)
+        .num_columns(9)
         .spacing([10.0, 4.0])
         .striped(true)
         .show(ui, |ui| {
             for h in [
-                "Number", "Prefix", "Sep.", "Digits", "By level", "Order", "From", "First",
+                "Number",
+                "Prefix",
+                "Sep.",
+                "Digits",
+                "By level",
+                "Alike share",
+                "Order",
+                "From",
+                "First",
             ] {
                 ui.label(egui::RichText::new(h).weak());
             }
@@ -349,6 +357,13 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
                 );
                 ui.add(egui::DragValue::new(&mut r.padding).range(1..=6));
                 ui.checkbox(&mut r.by_level, "");
+                if matches!(class, MarkClass::Door | MarkClass::Window) {
+                    ui.checkbox(&mut r.alike, "").on_hover_text(crate::i18n::t(
+                        "Doors and windows that are alike share one mark, as the door and window lists count them.",
+                    ));
+                } else {
+                    ui.label("");
+                }
                 egui::ComboBox::from_id_salt(("mark_order", class))
                     .icon(crate::props::combo_icon)
                     .selected_text(crate::i18n::tw(r.order.label()))

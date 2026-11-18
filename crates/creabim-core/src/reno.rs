@@ -241,6 +241,7 @@ mod tests {
                 reveal: None,
                 division: None,
                 door: None,
+                texts: None,
             }),
         );
         let ids = (old.id, gone.id, new.id, door.id);

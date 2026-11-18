@@ -1025,6 +1025,7 @@ mod widen_tests {
             reveal: None,
             division: None,
             door: None,
+            texts: None,
         };
         (m, host, o)
     }

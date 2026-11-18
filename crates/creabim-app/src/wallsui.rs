@@ -398,6 +398,37 @@ pub(super) fn seat_fields(
             label = "Reveal overlap";
         }
     }
+    // what the window or door list says of it in words
+    ui.separator();
+    ui.label(
+        egui::RichText::new(t(if o.kind == OpeningKind::Door {
+            "In the door list"
+        } else {
+            "In the window list"
+        }))
+        .strong(),
+    );
+    let mut texts = o.texts.clone().unwrap_or_default();
+    let mut changed = false;
+    for (text, v, hint) in [
+        ("Execution", &mut texts.execution, "How it is made: profiles, system, leaves. Left empty, the list writes what the model tells."),
+        ("Finish", &mut texts.finish, "Its surface: colour, texture. Left empty, the list writes its material."),
+        ("Note", &mut texts.note, "Glazing, fittings, anything else. Left empty, a door's frame is named."),
+    ] {
+        changed |= crate::props::row(ui, text, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(v)
+                    .desired_rows(2)
+                    .desired_width(f32::INFINITY),
+            )
+            .on_hover_text(t(hint))
+            .changed()
+        });
+    }
+    if changed {
+        o.texts = (!texts.is_empty()).then_some(texts);
+        label = "Joinery list texts";
+    }
     ui.separator();
     ui.label(egui::RichText::new(t("Division and opening")).strong());
     crate::props::row(ui, "Fields", |ui| ui.label(joinery::operation(o)));

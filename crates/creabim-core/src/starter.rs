@@ -145,6 +145,7 @@ fn opening(host: ElementId, kind: OpeningKind, offset: f64, width: f64) -> Openi
         reveal: None,
         division: None,
         door: None,
+        texts: None,
     }
 }
 

@@ -412,6 +412,7 @@ impl SketchDraft {
             reveal: None,
             division: None,
             door: None,
+            texts: None,
         };
         let e = Element::new("Opening", ElementKind::Opening(o));
         let id = e.id;

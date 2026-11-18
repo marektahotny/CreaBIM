@@ -451,6 +451,40 @@ pub fn operation(o: &Opening) -> String {
         .join(" + ")
 }
 
+/// What makes a window or door the kind it is: all of it but where it
+/// stands and which way it is turned. Those with the same key are alike:
+/// one row of a window or door list, and one mark where the project's
+/// rules say so.
+pub fn kind_key(o: &Opening) -> String {
+    let mut plain = o.clone();
+    plain.host = crate::ElementId::NIL;
+    plain.offset = 0.0;
+    plain.flip_hand = false;
+    plain.flip_facing = false;
+    plain.setback = None;
+    format!("{plain:?}")
+}
+
+/// What a window or door list says of a window or door in words.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct JoineryTexts {
+    /// How it is made: "Plastové okenné profily, šesťkomorový systém".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub execution: String,
+    /// Its finish: "Drevené dvere, textúra dub".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub finish: String,
+    /// A note: "Zasklenie izolačným trojsklom".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
+}
+
+impl JoineryTexts {
+    pub fn is_empty(&self) -> bool {
+        self.execution.is_empty() && self.finish.is_empty() && self.note.is_empty()
+    }
+}
+
 /// A door's frame: it sets the structural opening its leaf needs, how
 /// it is drawn and what the schedule says.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
