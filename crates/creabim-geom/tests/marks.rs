@@ -621,3 +621,47 @@ fn a_jogged_section_cuts_each_stretch_on_its_own_plane() {
     };
     assert_eq!(v.line.stretches(len).len(), 2);
 }
+
+#[test]
+fn a_dimension_to_a_walls_face_follows_the_wall() {
+    use creabim_core::{Dimension, HostPoint, Wall};
+    use creabim_geom::annotate::{rehosted, resolve};
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let ViewKind::Plan { level, .. } = v.kind else {
+        unreachable!()
+    };
+    // a wall of the plan's level, and a free point on its face
+    let (id, w): (ElementId, Wall) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Wall(w) if w.level == level && !w.is_arc() => Some((e.id, w.clone())),
+            _ => None,
+        })
+        .unwrap();
+    let n = w.direction().perp();
+    let face = w.start + w.direction() * (w.length() / 2.0) + n * (w.thickness / 2.0);
+    let d = Dimension::linear(
+        plan,
+        HostPoint::free(face + n * 2.0),
+        HostPoint::free(face),
+        0.5,
+    );
+    let d = rehosted(doc.model(), &v, &d);
+    assert_eq!(d.b.host, Some(id), "the point on the face is the wall's");
+    assert_eq!(d.a.host, None, "the one in the open stays free");
+    // the wall moves a metre: the point goes with it
+    doc.edit_merged(id, "Move", |e| {
+        if let ElementKind::Wall(w) = &mut e.kind {
+            w.start -= n;
+            w.end -= n;
+        }
+    })
+    .unwrap();
+    let q = resolve(doc.model(), &v, &d.b).unwrap();
+    assert!((q - (face - n)).length() < 1e-9);
+}

@@ -4071,6 +4071,7 @@
  "Remove trace": "Odstranit podklad",
  "Remove {n} corners": "Odstranit {n} rohů",
  "Remove {n} corners of {}": "Odstranit {n} rohů {}",
+ "Remove {} corners": "Odstranit {} rohy",
  "Remove {} holes of {}": "Odstranit {} otvorů z {}",
  "Removed {n} copies that sat exactly on their originals. Ctrl+Z brings them back.": "Odstraněno {n} kopií, které ležely přesně na svých originálech. Ctrl+Z je vrátí.",
  "Removing topsoil, moved to heaps within 100 m": "Sejmutí ornice s vodorovným přemístěním na hromady, se složením do 100 m",

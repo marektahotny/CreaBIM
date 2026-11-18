@@ -944,6 +944,81 @@ pub fn without_point(
     Some(out)
 }
 
+/// The dimension `d` with its points kept on the walls they stand on, so
+/// that it follows them when they move (PilonDesigner's kóty zviazané s
+/// prvkami): a point clicked where lines cross, on a layer's face or on a
+/// corner belongs to no element by itself. Of the walls a point is on, it
+/// goes to the one whose face the dimension measures to, else to one
+/// whose end it is at, else to any. Points on doors and windows stay.
+pub fn rehosted(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+) -> creabim_core::Dimension {
+    let mut out = d.clone();
+    let ViewKind::Plan { level, .. } = view.kind else {
+        return out;
+    };
+    let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b)) else {
+        return out;
+    };
+    let Some((b2, _)) = squared(d.axis, a, b) else {
+        return out;
+    };
+    let u = (b2 - a).normalize_or_zero();
+    const NEAR: f64 = 2e-3;
+    for p in out.points_mut() {
+        let on_opening = p.host.is_some_and(|h| {
+            matches!(model.get(h).map(|e| &e.kind), Some(ElementKind::Opening(_)))
+        });
+        if on_opening {
+            continue;
+        }
+        let Some(q) = resolve(model, view, p) else {
+            continue;
+        };
+        let mut best: Option<(u8, ElementId)> = None;
+        for e in model.iter() {
+            let ElementKind::Wall(w) = &e.kind else {
+                continue;
+            };
+            if w.level != level || w.is_arc() {
+                continue;
+            }
+            let dir = w.direction();
+            let (x, s) = ((q - w.start).dot(dir), (q - w.start).dot(dir.perp()));
+            // its body, and where a joined corner carries it on
+            let reach = w.thickness;
+            if s.abs() > w.thickness / 2.0 + NEAR || x < -reach || x > w.length() + reach {
+                continue;
+            }
+            let at_end = x.abs() < NEAR || (x - w.length()).abs() < NEAR;
+            let inside = x > -NEAR && x < w.length() + NEAR;
+            let score = if dir.perp().dot(u).abs() > 0.7 {
+                3
+            } else if at_end {
+                2
+            } else if inside {
+                1
+            } else {
+                0
+            };
+            // what it was on already wins a tie
+            let better = match best {
+                None => true,
+                Some((b, _)) => score > b || (score == b && p.host == Some(e.id)),
+            };
+            if better {
+                best = Some((score, e.id));
+            }
+        }
+        if let Some((_, wall)) = best {
+            *p = attach(model, view, Some(wall), q);
+        }
+    }
+    out
+}
+
 /// A linear dimension's stretches in order along its line: the two points
 /// each measures between and where they stand on the measured line.
 pub fn stretches(

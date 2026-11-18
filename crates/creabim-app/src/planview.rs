@@ -6852,6 +6852,10 @@ fn dimension_tool(
                 d.mids.push(hit.0);
                 // a held spacing is for two points only
                 d.held = None;
+                // on the walls its points stand on, to follow them
+                if let Some(v) = &v {
+                    *d = annotate::rehosted(doc.model(), v, d);
+                }
             }
             selection.only(id);
             state.dim = vec![hit];
@@ -6915,6 +6919,10 @@ fn dimension_tool(
             let mut d = Dimension::linear(view, a, b, offset);
             d.axis = axis;
             d.short = state.dim_short;
+            // on the walls its points stand on, to follow them
+            if let Some(ElementKind::View(v)) = doc.model().get(view).map(|e| &e.kind) {
+                d = annotate::rehosted(doc.model(), v, &d);
+            }
             let e = state
                 .anno
                 .styled(Element::new("Dimension", ElementKind::Dimension(d)));
@@ -8138,7 +8146,18 @@ mod dimension_chain_tests {
             .collect::<Vec<_>>();
         assert_eq!(chain.len(), 1, "{chain:?}");
         let d = &chain[0];
-        let mut xs: Vec<f64> = d.points().map(|p| p.local.x).collect();
+        let mut xs: Vec<f64> = {
+            let ElementKind::View(v) = &doc.model().get(view).unwrap().kind else {
+                unreachable!()
+            };
+            // (points on a wall are kept on it: where they stand)
+            d.points()
+                .map(|p| {
+                    let x = annotate::resolve(doc.model(), v, p).unwrap().x;
+                    (x * 1e6).round() / 1e6
+                })
+                .collect()
+        };
         xs.sort_by(f64::total_cmp);
         assert_eq!(xs, vec![0.0, 2.0, 5.0, 6.5]);
         assert!((d.offset - 1.5).abs() < 1e-9, "on one line: {d:?}");
@@ -8186,11 +8205,7 @@ mod dimension_chain_tests {
             .model()
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Dimension(d)
-                    if d.view == view && (d.a.local.x - 10.0).abs() < 1e-9 =>
-                {
-                    Some(d.offset)
-                }
+                ElementKind::Dimension(d) if d.view == view && !d.is_chain() => Some(d.offset),
                 _ => None,
             })
             .last()
@@ -8250,7 +8265,18 @@ mod dimension_chain_tests {
         )
         .unwrap();
         let (_, d) = chain(&doc);
-        let mut xs: Vec<f64> = d.points().map(|p| p.local.x).collect();
+        let mut xs: Vec<f64> = {
+            let ElementKind::View(v) = &doc.model().get(view).unwrap().kind else {
+                unreachable!()
+            };
+            // (points on a wall are kept on it: where they stand)
+            d.points()
+                .map(|p| {
+                    let x = annotate::resolve(doc.model(), v, p).unwrap().x;
+                    (x * 1e6).round() / 1e6
+                })
+                .collect()
+        };
         xs.sort_by(f64::total_cmp);
         assert_eq!(xs, vec![2.0, 5.0]);
         assert!(!d.is_chain());

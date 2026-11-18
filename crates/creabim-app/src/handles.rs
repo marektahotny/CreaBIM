@@ -3090,7 +3090,7 @@ fn grip_menu(
                 ui.set_min_width(170.0);
                 let mut item = |ui: &mut egui::Ui, on: bool, text: &str, a: Act| {
                     if ui
-                        .add_enabled(on, egui::Button::new(text).frame(false))
+                        .add_enabled(on, egui::Button::new(crate::i18n::tr(text)).frame(false))
                         .clicked()
                     {
                         act = Some(a);
