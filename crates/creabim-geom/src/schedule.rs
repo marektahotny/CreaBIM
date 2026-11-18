@@ -128,6 +128,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     let category = match category {
         ScheduleCategory::WindowList => ScheduleCategory::Windows,
         ScheduleCategory::DoorList => ScheduleCategory::Doors,
+        ScheduleCategory::ServicesLegend => ScheduleCategory::Fixtures,
         c => c,
     };
     let units = model.units();
@@ -164,7 +165,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     let mut rows: Vec<(f64, String, Row)> = Vec::new();
     let mut listed = None;
     let (columns, totals) = match category {
-        ScheduleCategory::Furniture | ScheduleCategory::Fixtures => {
+        ScheduleCategory::Furniture
+        | ScheduleCategory::Fixtures
+        | ScheduleCategory::ServicesLegend => {
             let (columns, totals, n) = object_rows(model, category, by_type, &mut rows);
             listed = Some(n);
             (columns, totals)

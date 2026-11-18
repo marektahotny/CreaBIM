@@ -1335,7 +1335,8 @@
         "rooms",
         "materials",
         "window_list",
-        "door_list"
+        "door_list",
+        "services_legend"
       ]
     },
     "Callout": {

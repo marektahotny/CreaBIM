@@ -236,7 +236,7 @@ pub fn schedules(model: &Model) -> Vec<Schedule> {
         // the take-off has sheets of its own
         // nor do the drawn window and door lists: their tables are the
         // window and door schedules
-        .filter(|c| **c != ScheduleCategory::Materials && c.joinery_list().is_none())
+        .filter(|c| **c != ScheduleCategory::Materials && !c.is_drawn())
         .map(|c| schedule::schedule(model, *c))
         .filter(|s| !s.rows.is_empty())
         .collect()

@@ -846,6 +846,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             if let Some(kind) = category.joinery_list() {
                 return Some(crate::joinerylist::drawing(view, &e.name, model, kind));
             }
+            if *category == creabim_core::ScheduleCategory::ServicesLegend {
+                return Some(crate::serviceslegend::drawing(view, &e.name, model));
+            }
             let table = crate::schedule::schedule_by(model, *category, *by_type);
             return Some(crate::schedule::schedule_drawing(view, &e.name, &table));
         }

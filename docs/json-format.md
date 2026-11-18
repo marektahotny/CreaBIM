@@ -855,6 +855,7 @@ What a schedule lists.
 - `"materials"`: The take-off by material.
 - `"window_list"`: The drawn window list (výpis okien).
 - `"door_list"`: The drawn door list (výpis dverí).
+- `"services_legend"`: The legend of a services drawing: pipes and sanitary fixtures.
 
 ### Callout
 

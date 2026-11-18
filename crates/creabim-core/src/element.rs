@@ -2214,10 +2214,13 @@ pub enum ScheduleCategory {
     /// The door list (výpis dverí), the same for doors, counted left
     /// and right.
     DoorList,
+    /// The legend of a services drawing: the pipes' lines by system and
+    /// the sanitary fixtures by mark.
+    ServicesLegend,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 11] = [
+    pub const ALL: [ScheduleCategory; 12] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2229,6 +2232,7 @@ impl ScheduleCategory {
         ScheduleCategory::Materials,
         ScheduleCategory::WindowList,
         ScheduleCategory::DoorList,
+        ScheduleCategory::ServicesLegend,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2245,6 +2249,7 @@ impl ScheduleCategory {
             ScheduleCategory::Materials => return "Take-off".into(),
             ScheduleCategory::WindowList => return "Window list".into(),
             ScheduleCategory::DoorList => return "Door list".into(),
+            ScheduleCategory::ServicesLegend => return "Services legend".into(),
         };
         format!("{one} Schedule")
     }
@@ -2270,7 +2275,13 @@ impl ScheduleCategory {
             ScheduleCategory::Materials => "Take-off",
             ScheduleCategory::WindowList => "Window list",
             ScheduleCategory::DoorList => "Door list",
+            ScheduleCategory::ServicesLegend => "Services legend",
         }
+    }
+
+    /// Is it drawn as a sheet of its own rather than set as a table?
+    pub fn is_drawn(self) -> bool {
+        self.joinery_list().is_some() || self == ScheduleCategory::ServicesLegend
     }
 
     /// The drawn list of windows or doors: which of the two.

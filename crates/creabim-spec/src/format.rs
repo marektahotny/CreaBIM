@@ -957,6 +957,8 @@ spec_enum! {
         WindowList = "window_list",
         /// The drawn door list (výpis dverí).
         DoorList = "door_list",
+        /// The legend of a services drawing: pipes and sanitary fixtures.
+        ServicesLegend = "services_legend",
     }
 }
 

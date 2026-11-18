@@ -300,6 +300,7 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::Materials => "table-2",
         ScheduleCategory::WindowList => "app-window",
         ScheduleCategory::DoorList => "door-open",
+        ScheduleCategory::ServicesLegend => "fixtures",
     }
 }
 
