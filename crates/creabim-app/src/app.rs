@@ -49,6 +49,8 @@ mod fittingsui;
 mod fixturelegend;
 #[path = "gridvis.rs"]
 mod gridvis;
+#[path = "heatsourceui.rs"]
+mod heatsourceui;
 #[path = "helpui.rs"]
 pub(crate) mod helpui;
 #[path = "importui.rs"]
@@ -354,6 +356,8 @@ pub struct CreaBimApp {
     fixture_legend: bool,
     /// The medical supply unit being made to order, while its window is open.
     med_unit: Option<creabim_core::catalogue::medical::MedUnitConfig>,
+    /// The heat source window, while it is open.
+    heat_source: Option<heatsourceui::HeatSource>,
     /// The schedule of earthworks, while its window is open.
     earthworks: Option<(
         Vec<creabim_core::earthworks::Row>,
@@ -530,6 +534,7 @@ impl CreaBimApp {
             fittings: None,
             fixture_legend: false,
             med_unit: None,
+            heat_source: None,
             earthworks: None,
             note_editor: None,
             copy_guides: None,
@@ -11936,6 +11941,7 @@ impl eframe::App for CreaBimApp {
         self.fittings_window(&ctx);
         self.fixture_legend_window(&ctx);
         self.med_unit_window(&ctx);
+        self.heat_source_window(&ctx);
         self.earthworks_window(&ctx);
         self.maps_window(&ctx);
         self.note_editor_window(&ctx);

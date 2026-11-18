@@ -83,6 +83,10 @@ pub enum ConnKind {
     VAC,
     /// Nitrous oxide.
     N2O,
+    /// Hot water circulation.
+    C,
+    /// Fuel gas.
+    P,
 }
 
 impl ConnKind {
@@ -97,6 +101,8 @@ impl ConnKind {
             ConnKind::CHP => SystemKind::CoolingSupply,
             ConnKind::CHS => SystemKind::CoolingReturn,
             ConnKind::O2 | ConnKind::AIR | ConnKind::VAC | ConnKind::N2O => SystemKind::MedGas,
+            ConnKind::C => SystemKind::Circulation,
+            ConnKind::P => SystemKind::Gas,
         }
     }
 
@@ -114,6 +120,8 @@ impl ConnKind {
             ConnKind::AIR => "AIR",
             ConnKind::VAC => "VAC",
             ConnKind::N2O => "N2O",
+            ConnKind::C => "C",
+            ConnKind::P => "P",
         }
     }
 
@@ -131,6 +139,8 @@ impl ConnKind {
             ConnKind::AIR => "medical air",
             ConnKind::VAC => "vacuum",
             ConnKind::N2O => "nitrous oxide",
+            ConnKind::C => "circulation",
+            ConnKind::P => "gas",
         }
     }
 }
@@ -676,19 +686,34 @@ fn length_of(family: &str, t: &ObjectType) -> Option<f64> {
 }
 
 /// The connections a type carries as parts named `Connection <system>`
-/// (a medical supply unit's gases): each at the middle of its part's
-/// top, in the object's own axes, Cu 12 × 1.
+/// or `Connection <system> DN<size>` (a medical supply unit's gases, a
+/// boiler's or a cylinder's pipes): each at the middle of its part's
+/// top, in the object's own axes; Cu 12 × 1 where no size is said.
 pub fn part_connectors(t: &ObjectType) -> Vec<LocalConn> {
     t.parts
         .iter()
         .filter_map(|p| {
-            let kind = match p.name.strip_prefix("Connection ")? {
+            let mut words = p.name.strip_prefix("Connection ")?.split(' ');
+            let kind = match words.next()? {
                 "O2" => ConnKind::O2,
                 "AIR" => ConnKind::AIR,
                 "VAC" => ConnKind::VAC,
                 "N2O" => ConnKind::N2O,
+                "SV" => ConnKind::SV,
+                "TV" => ConnKind::TV,
+                "C" => ConnKind::C,
+                "K" => ConnKind::K,
+                "UKP" => ConnKind::UKP,
+                "UKS" => ConnKind::UKS,
+                "P" => ConnKind::P,
                 _ => return None,
             };
+            // medical gases join in Cu 12 × 1; others say their size
+            let dn = words
+                .next()
+                .and_then(|w| w.strip_prefix("DN"))
+                .and_then(|w| w.parse().ok())
+                .unwrap_or(12.0);
             let first = *p.mesh.vertices.first()?;
             let (lo, hi) = p
                 .mesh
@@ -698,7 +723,7 @@ pub fn part_connectors(t: &ObjectType) -> Vec<LocalConn> {
             Some(LocalConn {
                 kind,
                 at: ((lo + hi) / 2.0).truncate().extend(hi.z),
-                dn: 12.0,
+                dn,
             })
         })
         .collect()

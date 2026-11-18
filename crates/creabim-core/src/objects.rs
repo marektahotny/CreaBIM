@@ -372,6 +372,21 @@ pub const IFC_CLASSES: &[(&str, &str, &[&str])] = &[
         ],
     ),
     (
+        "IfcTank",
+        "IfcTankType",
+        &[
+            "BASIN",
+            "BREAKPRESSURE",
+            "EXPANSION",
+            "FEEDANDEXPANSION",
+            "PRESSUREVESSEL",
+            "STORAGE",
+            "VESSEL",
+            "USERDEFINED",
+            "NOTDEFINED",
+        ],
+    ),
+    (
         "IfcUnitaryEquipment",
         "IfcUnitaryEquipmentType",
         &[

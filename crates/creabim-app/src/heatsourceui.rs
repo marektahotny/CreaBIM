@@ -1,0 +1,370 @@
+//! Heat sources from PilonDesigner's library
+//! ([`creabim_core::catalogue::heat`]): a hot water cylinder, a gas
+//! condensing boiler or a heat pump's units, picked from their range by
+//! the heat load (a heat pump by its bivalence point,
+//! [`creabim_services::hpsizing`]), then placed as any catalogue object.
+
+use super::CreaBimApp;
+use super::Tool;
+use creabim_core::catalogue::heat::{self, HeatKind};
+use creabim_services::hpsizing::{self, HpInput};
+use eframe::egui::{self, Color32, Pos2, Stroke, Vec2};
+
+/// What the window is set to.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct HeatSource {
+    pub kind: HeatKind,
+    pub size: u32,
+    pub input: HpInput,
+}
+
+impl Default for HeatSource {
+    fn default() -> Self {
+        Self {
+            kind: HeatKind::HpOutdoor,
+            size: 8,
+            input: HpInput::default(),
+        }
+    }
+}
+
+fn is_heat_pump(k: HeatKind) -> bool {
+    matches!(
+        k,
+        HeatKind::HpOutdoor | HeatKind::HpIndoor | HeatKind::HpIndoorCylinder
+    )
+}
+
+/// The bivalence diagram: the building's need, the range's curves, the
+/// one taken, θe and the bivalence point.
+fn diagram(ui: &mut egui::Ui, i: &HpInput, sel: u32) {
+    let (rect, _) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 200.0), egui::Sense::hover());
+    let p = ui.painter_at(rect);
+    let ink = ui.visuals().text_color();
+    let weak = ui.visuals().weak_text_color();
+    let plot = egui::Rect::from_min_max(
+        rect.min + Vec2::new(34.0, 8.0),
+        rect.max - Vec2::new(10.0, 22.0),
+    );
+    let t0 = (-20.0_f64).min((i.te / 5.0).floor() * 5.0 - 5.0);
+    let t1 = hpsizing::T_HEAT_LIMIT + 5.0;
+    let sizes = HeatKind::HpOutdoor.sizes();
+    let top = sizes
+        .iter()
+        .map(|s| hpsizing::capacity(&heat::hp_curve(*s, i.t_flow), t1))
+        .fold(hpsizing::need(i, t0), f64::max);
+    let qmax = (top / 2.0).ceil() * 2.0 + 2.0;
+    let at = |t: f64, q: f64| {
+        Pos2::new(
+            plot.left() + ((t - t0) / (t1 - t0)) as f32 * plot.width(),
+            plot.bottom() - (q / qmax) as f32 * plot.height(),
+        )
+    };
+    let font = egui::FontId::proportional(10.0);
+    let mut t = t0;
+    while t <= t1 + 1e-9 {
+        p.line_segment(
+            [at(t, 0.0), at(t, qmax)],
+            Stroke::new(0.5, weak.gamma_multiply(0.35)),
+        );
+        p.text(
+            at(t, 0.0) + Vec2::new(0.0, 3.0),
+            egui::Align2::CENTER_TOP,
+            format!("{t:.0}"),
+            font.clone(),
+            weak,
+        );
+        t += 5.0;
+    }
+    let step = if qmax > 24.0 { 4.0 } else { 2.0 };
+    let mut q = 0.0;
+    while q <= qmax + 1e-9 {
+        p.line_segment(
+            [at(t0, q), at(t1, q)],
+            Stroke::new(0.5, weak.gamma_multiply(0.35)),
+        );
+        p.text(
+            at(t0, q) - Vec2::new(4.0, 0.0),
+            egui::Align2::RIGHT_CENTER,
+            format!("{q:.0}"),
+            font.clone(),
+            weak,
+        );
+        q += step;
+    }
+    let line = |f: &dyn Fn(f64) -> f64, stroke: Stroke| {
+        let n = ((t1 - t0) * 2.0) as usize;
+        let pts: Vec<Pos2> = (0..=n)
+            .map(|k| {
+                let t = t0 + k as f64 * 0.5;
+                at(t, f(t))
+            })
+            .collect();
+        p.add(egui::Shape::line(pts, stroke));
+    };
+    let blue = Color32::from_rgb(37, 99, 235);
+    for s in sizes {
+        let pts = heat::hp_curve(*s, i.t_flow);
+        if *s != sel {
+            line(&|t| hpsizing::capacity(&pts, t), Stroke::new(1.0, weak));
+        }
+        p.text(
+            at(t1, hpsizing::capacity(&pts, t1)) - Vec2::new(2.0, 1.0),
+            egui::Align2::RIGHT_BOTTOM,
+            s.to_string(),
+            font.clone(),
+            if *s == sel { blue } else { weak },
+        );
+    }
+    line(
+        &|t| hpsizing::need(i, t),
+        Stroke::new(2.0, Color32::from_rgb(220, 38, 38)),
+    );
+    let pts = heat::hp_curve(sel, i.t_flow);
+    line(&|t| hpsizing::capacity(&pts, t), Stroke::new(2.4, blue));
+    p.line_segment([at(i.te, 0.0), at(i.te, qmax)], Stroke::new(1.0, blue));
+    p.text(
+        at(i.te, qmax) + Vec2::new(4.0, 0.0),
+        egui::Align2::LEFT_TOP,
+        format!("θe = {:.0} °C", i.te),
+        font.clone(),
+        blue,
+    );
+    if let Some(tb) = hpsizing::size(i, &pts).t_biv {
+        p.circle(
+            at(tb, hpsizing::need(i, tb)),
+            4.5,
+            Color32::from_rgb(245, 158, 11),
+            Stroke::new(1.0, ink),
+        );
+    }
+    p.text(
+        Pos2::new(plot.center().x, rect.bottom()),
+        egui::Align2::CENTER_BOTTOM,
+        "θ [°C] · [kW]",
+        font,
+        weak,
+    );
+}
+
+impl CreaBimApp {
+    /// `heat:source` from the Heating tab: open the window.
+    pub(super) fn heat_source_action(&mut self, head: &str, arg: &str) -> bool {
+        if head != "heat" || arg != "source" {
+            return false;
+        }
+        if self.heat_source.is_none() {
+            self.heat_source = Some(HeatSource::default());
+        }
+        true
+    }
+
+    /// The window, while it is open.
+    pub(super) fn heat_source_window(&mut self, ctx: &egui::Context) {
+        let Some(mut c) = self.heat_source.clone() else {
+            return;
+        };
+        let t = crate::i18n::tr;
+        let num = crate::i18n::num;
+        let mut open = true;
+        let mut place = false;
+        let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
+        super::shell::window(t("Heat source"))
+            .id(egui::Id::new("heat.source"))
+            .open(&mut open)
+            .default_pos(area.center() - Vec2::new(240.0, 300.0))
+            .default_size(Vec2::new(480.0, 600.0))
+            .constrain_to(area)
+            .show(ctx, |ui| {
+                egui::ComboBox::from_id_salt("heat.source.kind")
+                    .width(ui.available_width() - 8.0)
+                    .selected_text(c.kind.name())
+                    .show_ui(ui, |ui| {
+                        for k in HeatKind::ALL {
+                            if ui.selectable_label(c.kind == k, k.name()).clicked() && c.kind != k {
+                                let was_hp = is_heat_pump(c.kind);
+                                c.kind = k;
+                                c.size = match k {
+                                    HeatKind::Cylinder => 200,
+                                    HeatKind::Boiler => 20,
+                                    HeatKind::BoilerCombi => 25,
+                                    _ if was_hp => c.size,
+                                    _ => 8,
+                                };
+                            }
+                        }
+                    });
+                c.size = c.kind.size(c.size);
+                let hp = is_heat_pump(c.kind);
+                let boiler = matches!(c.kind, HeatKind::Boiler | HeatKind::BoilerCombi);
+                let mut pick = None;
+                egui::Grid::new("heat.source.grid")
+                    .num_columns(2)
+                    .spacing([14.0, 5.0])
+                    .show(ui, |ui| {
+                        let i = &mut c.input;
+                        if hp || boiler {
+                            ui.label(t("Design heat load"));
+                            ui.add(
+                                egui::DragValue::new(&mut i.heat_load)
+                                    .range(0.5..=200.0)
+                                    .speed(0.1)
+                                    .suffix(" kW"),
+                            );
+                            ui.end_row();
+                        }
+                        if hp {
+                            ui.label(t("Design outside temperature"));
+                            ui.add(
+                                egui::DragValue::new(&mut i.te)
+                                    .range(-25.0..=0.0)
+                                    .speed(0.5)
+                                    .suffix(" °C"),
+                            );
+                            ui.end_row();
+                            ui.label(t("Flow temperature"));
+                            ui.add(
+                                egui::DragValue::new(&mut i.t_flow)
+                                    .range(25.0..=60.0)
+                                    .speed(0.5)
+                                    .suffix(" °C"),
+                            );
+                            ui.end_row();
+                            ui.label(t("People (hot water)"));
+                            ui.add(egui::DragValue::new(&mut i.persons).range(0.0..=200.0));
+                            ui.end_row();
+                            ui.label(t("Supply blocked"));
+                            ui.add(
+                                egui::DragValue::new(&mut i.block_h)
+                                    .range(0.0..=8.0)
+                                    .speed(0.1)
+                                    .suffix(" h"),
+                            );
+                            ui.end_row();
+                            ui.label(t("Bivalence point aimed at"));
+                            ui.add(
+                                egui::DragValue::new(&mut i.t_biv)
+                                    .range(-20.0..=5.0)
+                                    .speed(0.5)
+                                    .suffix(" °C"),
+                            );
+                            ui.end_row();
+                        }
+                        ui.label(t("Size"));
+                        ui.horizontal(|ui| {
+                            egui::ComboBox::from_id_salt("heat.source.size")
+                                .selected_text(format!("{} {}", c.size, c.kind.unit()))
+                                .show_ui(ui, |ui| {
+                                    for s in c.kind.sizes() {
+                                        ui.selectable_value(
+                                            &mut c.size,
+                                            *s,
+                                            format!("{s} {}", c.kind.unit()),
+                                        );
+                                    }
+                                });
+                            if hp {
+                                let s = hpsizing::recommend(&c.input);
+                                if ui
+                                    .button(format!("{}: {s} kW", t("By the bivalence point")))
+                                    .clicked()
+                                {
+                                    pick = Some(s);
+                                }
+                            } else if boiler {
+                                let s = c.kind.pick(c.input.heat_load);
+                                if ui
+                                    .button(format!("{}: {s} kW", t("By the heat load")))
+                                    .clicked()
+                                {
+                                    pick = Some(s);
+                                }
+                            }
+                        });
+                        ui.end_row();
+                    });
+                if let Some(s) = pick {
+                    c.size = s;
+                }
+                if hp {
+                    let r = hpsizing::size(&c.input, &heat::hp_curve(c.size, c.input.t_flow));
+                    let biv = match r.t_biv {
+                        Some(tb) => format!("{} {} °C", t("bivalence point"), num(tb, 1)),
+                        None => t("covers the need on its own (monovalent)"),
+                    };
+                    ui.label(format!(
+                        "{} {} kW · {} {} kW · {} · {} {} kW",
+                        t("Output at θe"),
+                        num(r.q_te, 1),
+                        t("need"),
+                        num(r.need_te, 1),
+                        biv,
+                        t("electric heating"),
+                        num(r.backup, 1),
+                    ));
+                    if r.backup > heat::backup_kw(c.size) + 1e-9 {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            format!(
+                                "{} ({} kW).",
+                                t("The indoor unit's electric heater does not cover the rest"),
+                                num(heat::backup_kw(c.size), 0)
+                            ),
+                        );
+                    }
+                    diagram(ui, &c.input, c.size);
+                    ui.weak("STN EN 12831-1 · STN EN 15450");
+                }
+                ui.separator();
+                let u = heat::describe(c.kind, c.size);
+                ui.label(egui::RichText::new(&u.name).strong());
+                egui::ScrollArea::vertical()
+                    .max_height(220.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        egui::Grid::new("heat.source.params")
+                            .num_columns(2)
+                            .striped(true)
+                            .spacing([14.0, 3.0])
+                            .show(ui, |ui| {
+                                for (k, v) in &u.params {
+                                    ui.label(k);
+                                    ui.label(v);
+                                    ui.end_row();
+                                }
+                                for port in &u.ports {
+                                    ui.weak(port.name);
+                                    ui.weak(if port.dn > 0 {
+                                        format!("{} DN {}", port.code, port.dn)
+                                    } else {
+                                        port.code.to_string()
+                                    });
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                ui.weak(t(
+                    "Usual values of the market's ranges, to design with: replace them with the maker's once the product is chosen.",
+                ));
+                ui.add_space(4.0);
+                if ui.button(t("Place it")).clicked() {
+                    place = true;
+                }
+            });
+        if place {
+            let unit = heat::unit(c.kind, c.size);
+            self.status = format!(
+                "{}: {}",
+                unit.name,
+                t("click in a plan or the 3D view to place it. Space turns it; Esc ends.")
+            );
+            self.plan.objects.current = Some(unit);
+            self.plan.objects.offset = None;
+            self.plan.objects.project_type = None;
+            self.plan.cancel();
+            self.plan.tool = Tool::Object;
+        }
+        self.heat_source = if open { Some(c) } else { None };
+    }
+}
