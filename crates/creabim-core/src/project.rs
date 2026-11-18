@@ -34,6 +34,10 @@ pub struct ProjectInfo {
     pub status: String,
     /// The issue date, as the office writes it.
     pub issue_date: String,
+    /// The documentation's revision ("00", "01"...): in the list of
+    /// documentation and at the end of exported file names.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub revision: String,
     /// The site's postal address.
     pub address: String,
     pub site_name: String,
@@ -191,6 +195,14 @@ pub fn pad_to_markdown(
 }
 
 impl ProjectInfo {
+    /// The revision as it is written: "00" until one is given.
+    pub fn revision_or_first(&self) -> String {
+        match self.revision.trim() {
+            "" => "00".to_string(),
+            r => r.to_string(),
+        }
+    }
+
     /// The title-block fields this fills, by the names title blocks use:
     /// only those with a value.
     pub fn fields(&self) -> Vec<(&'static str, String)> {

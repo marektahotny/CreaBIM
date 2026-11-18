@@ -7880,7 +7880,13 @@ impl CreaBimApp {
                 .map(|s| s.number.clone())
                 .unwrap_or_default();
             let t = model.get(id).map(|e| e.name.clone()).unwrap_or_default();
-            if let Some(name) = creabim_geom::docset::file_name(&self.sheets_export.prefix, &n) {
+            let rev = model
+                .project_info()
+                .map(|p| p.1.revision_or_first())
+                .unwrap_or_else(|| "00".into());
+            if let Some(name) =
+                creabim_geom::docset::file_name(&self.sheets_export.prefix, &n, &rev)
+            {
                 return name;
             }
             let raw = format!("{n} {t}");

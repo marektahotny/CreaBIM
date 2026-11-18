@@ -2239,8 +2239,15 @@ impl CreaBimApp {
             }
             "export.summary" => {
                 let number = creabim_geom::doclist::SUMMARY_NUMBER;
-                let name = creabim_geom::docset::file_name(&self.sheets_export.prefix, number)
-                    .unwrap_or_else(|| number.to_string());
+                let rev = self
+                    .doc
+                    .model()
+                    .project_info()
+                    .map(|p| p.1.revision_or_first())
+                    .unwrap_or_else(|| "00".into());
+                let name =
+                    creabim_geom::docset::file_name(&self.sheets_export.prefix, number, &rev)
+                        .unwrap_or_else(|| number.to_string());
                 let dir = std::path::Path::new(&self.path)
                     .parent()
                     .map(|d| d.to_path_buf())

@@ -1143,6 +1143,7 @@ impl CreaBimApp {
                 text(ui, "Client", &mut draft.client, "");
                 text(ui, "Status", &mut draft.status, "Planning application");
                 text(ui, "Issue date", &mut draft.issue_date, "");
+                text(ui, "Revision", &mut draft.revision, "00");
                 crate::props::section(ui, "Title block");
                 text(ui, "Chief architect", &mut draft.architect, "");
                 text(ui, "Drawn by", &mut draft.drawn_by, "");

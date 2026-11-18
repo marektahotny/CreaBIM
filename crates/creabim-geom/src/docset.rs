@@ -57,10 +57,12 @@ pub fn part_order(number: &str) -> Option<(usize, &'static str)> {
 /// The file a sheet of the set numbered `number` is exported to, as annex
 /// 24 names it: `prefix` (the construction's ID, the stage, the building
 /// in its group and its code) before the sheet's number. None for a
-/// sheet outside the set, or with no prefix given.
-pub fn file_name(prefix: &str, number: &str) -> Option<String> {
+/// sheet outside the set, or with no prefix given. The documentation's
+/// `revision` ends the name.
+pub fn file_name(prefix: &str, number: &str, revision: &str) -> Option<String> {
     let prefix = prefix.trim().trim_matches('_');
-    (!prefix.is_empty() && part_of(number).is_some()).then(|| format!("{prefix}_{number}"))
+    (!prefix.is_empty() && part_of(number).is_some())
+        .then(|| format!("{prefix}_{number}_{revision}"))
 }
 
 struct Builder {
@@ -509,11 +511,11 @@ mod tests {
         assert_eq!(part_of("C00_SIT_001"), Some("C Site drawings"));
         assert_eq!(part_of("A101"), None);
         assert_eq!(
-            file_name("24XY456_PSP_01_1111_", "S01_ASR_001_N01").as_deref(),
-            Some("24XY456_PSP_01_1111_S01_ASR_001_N01")
+            file_name("24XY456_PSP_01_1111_", "S01_ASR_001_N01", "00").as_deref(),
+            Some("24XY456_PSP_01_1111_S01_ASR_001_N01_00")
         );
-        assert_eq!(file_name("", "S01_ASR_001_N01"), None);
-        assert_eq!(file_name("24XY456_PSP_01_1111", "A101"), None);
+        assert_eq!(file_name("", "S01_ASR_001_N01", "00"), None);
+        assert_eq!(file_name("24XY456_PSP_01_1111", "A101", "00"), None);
     }
 
     #[test]

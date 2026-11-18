@@ -184,7 +184,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         (tr("Client"), or_dots(&info.client)),
         (tr("Stage"), or_dots(&info.status)),
         (tr("Date"), or_dots(&info.issue_date)),
-        (tr("Revision"), "00".to_string()),
+        (tr("Revision"), info.revision_or_first()),
     ];
     let n = lines.len() as f64;
     for (i, (label, value)) in lines.iter().enumerate() {
