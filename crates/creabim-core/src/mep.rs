@@ -336,9 +336,14 @@ pub struct Pipe {
     /// A rectangular duct's height, mm (its width is `nominal_mm`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height_mm: Option<f64>,
-    /// Insulation, mm; 0 for none.
+    /// Insulation, mm; 0 for none. Unless [`Pipe::insulation_set`], what
+    /// its system wants is taken where this is 0 ([`Pipe::insulation`]).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub insulation_mm: f64,
+    /// The insulation was typed (0 too: none wanted), not left to its
+    /// system.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub insulation_set: bool,
     /// Where a riser's mark (its stack's circle with the sizes beside
     /// it) was dragged to in plan, from the riser, m; none where the
     /// drawing sets it by itself.
@@ -362,6 +367,23 @@ impl Pipe {
 
     pub fn kind(&self) -> SystemKind {
         self.system_def().map_or(SystemKind::Other, |s| s.kind)
+    }
+
+    /// Its insulation, mm: as typed, else what its system wants
+    /// ([`default_insulation_mm`]).
+    pub fn insulation(&self) -> f64 {
+        if self.insulation_set || self.insulation_mm > 0.0 {
+            self.insulation_mm
+        } else if self.height_mm.is_some() {
+            0.0
+        } else {
+            default_insulation_mm(self.kind(), &self.pipe_type, self.outer_mm)
+        }
+    }
+
+    /// Its insulation is its system's, not typed.
+    pub fn insulation_is_auto(&self) -> bool {
+        !(self.insulation_set || self.insulation_mm > 0.0)
     }
 
     /// Rises or falls more than it runs: a riser or a drop.
@@ -409,6 +431,63 @@ impl Pipe {
             return Err("insulation must not be negative".into());
         }
         Ok(())
+    }
+}
+
+/// The thicknesses insulation comes in, mm.
+pub const INSULATION_CHOICES: [f64; 13] = [
+    0.0, 6.0, 9.0, 13.0, 19.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0, 100.0,
+];
+
+/// Heat insulation of a heating or hot water pipe of `outer_mm`, mm, at
+/// λ = 0,035 W/(m·K) (PilonDesigner's `heatInsulMm`): up to 22 mm 20 mm,
+/// to 35 mm 30 mm, to 100 mm as thick as the pipe (whole centimetres),
+/// above 100 mm.
+pub fn heat_insulation_mm(outer_mm: f64) -> f64 {
+    if outer_mm <= 22.0 {
+        20.0
+    } else if outer_mm <= 35.0 {
+        30.0
+    } else if outer_mm <= 100.0 {
+        (outer_mm / 10.0).ceil() * 10.0
+    } else {
+        100.0
+    }
+}
+
+/// The insulation a pipe of a system wants, mm (PilonDesigner's
+/// `defaultInsulMm`): heat insulation on hot water, circulation and
+/// heating; against condensation on cold water (9 mm) and cooling (13,
+/// from 42 mm 19); none on underfloor heating pipe, drainage, gas, flue
+/// and air.
+pub fn default_insulation_mm(kind: SystemKind, pipe_type: &str, outer_mm: f64) -> f64 {
+    if pipe_type == "HERZFH" || pipe_type == "PEX" {
+        return 0.0;
+    }
+    match kind {
+        SystemKind::HotWater
+        | SystemKind::Circulation
+        | SystemKind::HeatingSupply
+        | SystemKind::HeatingReturn => heat_insulation_mm(outer_mm),
+        SystemKind::ColdWater => 9.0,
+        SystemKind::CoolingSupply | SystemKind::CoolingReturn => {
+            if outer_mm >= 42.0 {
+                19.0
+            } else {
+                13.0
+            }
+        }
+        _ => 0.0,
+    }
+}
+
+/// What insulation is for: keeping heat, or condensation off.
+pub fn insulation_purpose(kind: SystemKind) -> &'static str {
+    match kind {
+        SystemKind::ColdWater | SystemKind::CoolingSupply | SystemKind::CoolingReturn => {
+            "against condensation"
+        }
+        _ => "heat",
     }
 }
 
@@ -899,6 +978,30 @@ impl Valve {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_pipe_takes_its_systems_insulation_unless_one_is_typed() {
+        assert_eq!(heat_insulation_mm(16.0), 20.0);
+        assert_eq!(heat_insulation_mm(32.0), 30.0);
+        assert_eq!(heat_insulation_mm(54.0), 60.0);
+        assert_eq!(heat_insulation_mm(160.0), 100.0);
+        assert_eq!(
+            default_insulation_mm(SystemKind::ColdWater, "Cu", 22.0),
+            9.0
+        );
+        assert_eq!(
+            default_insulation_mm(SystemKind::CoolingSupply, "Cu", 42.0),
+            19.0
+        );
+        assert_eq!(
+            default_insulation_mm(SystemKind::Sanitary, "PPHT", 110.0),
+            0.0
+        );
+        assert_eq!(
+            default_insulation_mm(SystemKind::HeatingSupply, "HERZFH", 16.0),
+            0.0
+        );
+    }
+
     fn pipe(a: DVec3, b: DVec3) -> Pipe {
         Pipe {
             level: ElementId::new(),
@@ -911,6 +1014,7 @@ mod tests {
             inner_mm: 104.6,
             height_mm: None,
             insulation_mm: 0.0,
+            insulation_set: false,
             mark: None,
         }
     }

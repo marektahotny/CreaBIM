@@ -600,6 +600,7 @@ mod tests {
                 inner_mm: 16.0,
                 height_mm: None,
                 insulation_mm: 0.0,
+                insulation_set: false,
                 mark: None,
             }),
         );
@@ -651,6 +652,7 @@ mod tests {
                     inner_mm: 16.0,
                     height_mm: None,
                     insulation_mm: 0.0,
+                    insulation_set: false,
                     mark: None,
                 }),
             ));

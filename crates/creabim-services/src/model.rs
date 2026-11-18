@@ -434,6 +434,7 @@ mod tests {
                 inner_mm: s.inner_mm,
                 height_mm: None,
                 insulation_mm: 0.0,
+                insulation_set: false,
                 mark: None,
             }),
         )

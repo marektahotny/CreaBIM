@@ -104,6 +104,43 @@ impl CreaBimApp {
                                 ui.end_row();
                             }
                         });
+                    // the insulation the pipes need (PilonDesigner's)
+                    let ins = fittings::insulation(self.doc.model(), 5.0);
+                    if !ins.is_empty() {
+                        ui.add_space(8.0);
+                        egui::Grid::new("fittings.insulation")
+                            .num_columns(4)
+                            .striped(true)
+                            .spacing([14.0, 4.0])
+                            .show(ui, |ui| {
+                                ui.strong(t("Pipe insulation"));
+                                ui.strong(t("System"));
+                                ui.strong(t("Length, m"));
+                                ui.strong(t("With 5 % for offcuts, m"));
+                                ui.end_row();
+                                for l in &ins {
+                                    let what = if l.heat {
+                                        t("heat (λ ≤ 0,035 W/m·K)")
+                                    } else {
+                                        t("against condensation (rubber / PE)")
+                                    };
+                                    let text = format!(
+                                        "{} {what}, Ø {} mm, {} {} mm",
+                                        t("Insulation"),
+                                        crate::i18n::num(l.outer_mm, 0),
+                                        t("thickness"),
+                                        crate::i18n::num(l.mm, 0)
+                                    );
+                                    if ui.link(text).clicked() {
+                                        select = Some(l.pipes.clone());
+                                    }
+                                    ui.label(&l.system);
+                                    ui.label(crate::i18n::num(l.length, 2));
+                                    ui.label(crate::i18n::num(l.gross, 2));
+                                    ui.end_row();
+                                }
+                            });
+                    }
                     // the valves and accessories put on the pipes
                     if !valves.is_empty() {
                         ui.add_space(8.0);

@@ -401,6 +401,62 @@ pub fn summary(fittings: &[Fitting]) -> Vec<Line> {
     m.into_values().collect()
 }
 
+/// A line of the insulation schedule: one thickness on one size of pipe
+/// in one system (PilonDesigner's `pipeSchedule` insul rows).
+#[derive(Clone, Debug, PartialEq)]
+pub struct InsulationLine {
+    pub system: String,
+    /// The pipe's outside diameter (the insulation's inside), mm.
+    pub outer_mm: f64,
+    pub mm: f64,
+    /// Heat insulation, else against condensation.
+    pub heat: bool,
+    /// Metres of pipe it goes on.
+    pub length: f64,
+    /// With `waste_pct` more for offcuts.
+    pub gross: f64,
+    pub pipes: Vec<ElementId>,
+}
+
+/// The insulation the pipes drawn need, by system, size and thickness:
+/// what was typed on each, else what its system wants
+/// ([`Pipe::insulation`]); `waste_pct` is added for offcuts.
+pub fn insulation(model: &Model, waste_pct: f64) -> Vec<InsulationLine> {
+    let mut m: BTreeMap<(String, i64, i64), InsulationLine> = BTreeMap::new();
+    for e in model.iter() {
+        let ElementKind::Pipe(p) = &e.kind else {
+            continue;
+        };
+        let mm = p.insulation();
+        if mm <= 0.0 || p.height_mm.is_some() {
+            continue;
+        }
+        let heat = creabim_core::mep::insulation_purpose(p.kind()) == "heat";
+        let l = m
+            .entry((
+                p.system.clone(),
+                (p.outer_mm * 10.0).round() as i64,
+                (mm * 10.0).round() as i64,
+            ))
+            .or_insert_with(|| InsulationLine {
+                system: p.system.clone(),
+                outer_mm: p.outer_mm,
+                mm,
+                heat,
+                length: 0.0,
+                gross: 0.0,
+                pipes: vec![],
+            });
+        l.length += p.length();
+        l.pipes.push(e.id);
+    }
+    let mut out: Vec<InsulationLine> = m.into_values().collect();
+    for l in &mut out {
+        l.gross = l.length * (1.0 + waste_pct / 100.0);
+    }
+    out
+}
+
 /// A smaller pipe joined to a larger one at a node: it narrows there (a
 /// reducer, a reducing tee or cross).
 #[derive(Clone, Debug, PartialEq)]
@@ -520,6 +576,7 @@ mod tests {
                     inner_mm: s.inner_mm,
                     height_mm: None,
                     insulation_mm: 0.0,
+                    insulation_set: false,
                     mark: None,
                 }),
             ));
@@ -571,6 +628,10 @@ mod tests {
         assert_eq!((f[0].kind, f[0].angle), (FittingKind::Branch, Some(45.0)));
         assert_eq!(f[0].label, "Odbočka 45° PP-HT 110/50", "{}", f[0].label);
         // the branch narrows at the node
+        // insulation: heat insulation on hot water, against condensation
+        // on cold, none on drainage; typed 0 keeps a pipe bare
+        let ins = insulation(&m, 5.0);
+        assert!(ins.iter().all(|l| l.system != "K" && l.mm > 0.0));
         let r = reductions(&m);
         assert_eq!(r.len(), 1);
         assert_eq!((r[0].d_big, r[0].d_small), (110.0, 50.0));

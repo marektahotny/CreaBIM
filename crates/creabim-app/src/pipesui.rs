@@ -296,10 +296,54 @@ pub fn pipe_fields(ui: &mut egui::Ui, p: &mut Pipe) -> &'static str {
             }
         }
     }
-    let mut ins = p.insulation_mm / 1000.0;
-    if num(ui, "Insulation", &mut ins, 0.0, 0.2) {
-        p.insulation_mm = (ins * 1000.0).round();
-        label = "Pipe insulation";
+    // insulation: its system's (for the schedule), or a thickness picked
+    if p.height_mm.is_none() {
+        let auto = creabim_core::mep::default_insulation_mm(p.kind(), &p.pipe_type, p.outer_mm);
+        let mm = |v: f64| {
+            if v > 0.0 {
+                format!("{v:.0} mm")
+            } else {
+                crate::i18n::tr("none")
+            }
+        };
+        let shown = if p.insulation_is_auto() {
+            format!("{} ({})", crate::i18n::tr("by its system"), mm(auto))
+        } else {
+            mm(p.insulation_mm)
+        };
+        crate::props::row(ui, "Insulation", |ui| {
+            crate::app::helpui::combo(ui, "pipe.insulation")
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(
+                            p.insulation_is_auto(),
+                            format!("{} ({})", crate::i18n::tr("by its system"), mm(auto)),
+                        )
+                        .on_hover_text(crate::i18n::tr("Hot water, circulation and heating: heat insulation; cold water and cooling: against condensation; drainage, gas and underfloor heating: none. Counted in the fittings schedule."))
+                        .clicked()
+                    {
+                        p.insulation_mm = 0.0;
+                        p.insulation_set = false;
+                        label = "Pipe insulation";
+                    }
+                    for v in creabim_core::mep::INSULATION_CHOICES {
+                        let on = !p.insulation_is_auto() && p.insulation_mm == v;
+                        if ui.selectable_label(on, mm(v)).clicked() {
+                            p.insulation_mm = v;
+                            p.insulation_set = true;
+                            label = "Pipe insulation";
+                        }
+                    }
+                });
+        });
+    } else {
+        let mut ins = p.insulation_mm / 1000.0;
+        if num(ui, "Insulation", &mut ins, 0.0, 0.2) {
+            p.insulation_mm = (ins * 1000.0).round();
+            p.insulation_set = true;
+            label = "Pipe insulation";
+        }
     }
     if num(ui, "Start height", &mut p.start.z, -20.0, 50.0)
         | num(ui, "End height", &mut p.end.z, -20.0, 50.0)
@@ -353,6 +397,7 @@ mod tests {
             inner_mm: 16.0,
             height_mm: None,
             insulation_mm: 0.0,
+            insulation_set: false,
             mark: None,
         }
     }
@@ -486,6 +531,7 @@ impl PipeDraft {
             inner_mm: self.nominal_mm,
             height_mm: None,
             insulation_mm: 0.0,
+            insulation_set: false,
             mark: None,
         };
         if let Some(t) = self.pipe_type() {
