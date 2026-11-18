@@ -700,6 +700,7 @@ impl CreaBimApp {
                     || self.floor_heat_action(head, arg)
                     || self.radiators_action(head, arg)
                     || self.cooling_action(head, arg)
+                    || self.air_balance_action(head, arg)
                     || self.heat_loss_action(head, arg)
                     || self.net_calc_action(head, arg)
                     || self.auto_valves_action(head, arg)

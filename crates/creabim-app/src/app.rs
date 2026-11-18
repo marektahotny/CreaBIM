@@ -25,6 +25,8 @@ use std::collections::HashMap;
 
 #[path = "actionbar.rs"]
 mod actionbar;
+#[path = "airbalanceui.rs"]
+mod airbalanceui;
 #[path = "appmenu.rs"]
 pub(crate) mod appmenu;
 #[path = "areasui.rs"]
@@ -383,6 +385,8 @@ pub struct CreaBimApp {
     radiators: Option<creabim_services::radiators::Settings>,
     /// The cooling load window, while it is open.
     cooling: Option<creabim_services::coolingload::Settings>,
+    /// The air balance window is open.
+    air_balance: bool,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
     /// The schedule of earthworks, while its window is open.
@@ -565,6 +569,7 @@ impl CreaBimApp {
             floor_heat: None,
             radiators: None,
             cooling: None,
+            air_balance: false,
             heat_loss: None,
             net_calc: None,
             auto_valves: None,
@@ -11978,6 +11983,7 @@ impl eframe::App for CreaBimApp {
         self.floor_heat_window(&ctx);
         self.radiators_window(&ctx);
         self.cooling_window(&ctx);
+        self.air_balance_window(&ctx);
         self.heat_source_window(&ctx);
         self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);
