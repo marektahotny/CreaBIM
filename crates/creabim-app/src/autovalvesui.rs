@@ -11,7 +11,14 @@ use creabim_core::{Element, ElementKind, Transaction};
 use eframe::egui::{self, Vec2};
 
 /// The systems it proposes for.
-const SYSTEMS: [(&str, &str); 3] = [("SV", "Cold water"), ("TV", "Hot water"), ("K", "Waste")];
+const SYSTEMS: [(&str, &str); 6] = [
+    ("SV", "Cold water"),
+    ("TV", "Hot water"),
+    ("K", "Waste"),
+    ("UKP", "Heating – supply"),
+    ("UKS", "Heating – return"),
+    ("ZP", "Gas – natural gas"),
+];
 
 /// What was added, in words.
 fn report(f: &Fill) -> String {
@@ -30,8 +37,8 @@ fn report(f: &Fill) -> String {
             f.heaters,
             "water heater inlets with a shut-off and a check valve",
         ),
-        (f.shut_offs, "shut-offs on risers and branches"),
-        (f.angle_valves, "angle valves"),
+        (f.shut_offs, "shut-offs"),
+        (f.angle_valves, "valves at fixtures and radiators"),
         (f.vents, "vent heads"),
         (f.cleanouts, "cleanouts"),
     ] {
@@ -108,7 +115,8 @@ impl CreaBimApp {
                     }
                 }
                 ui.add_space(4.0);
-                ui.weak("STN EN 806-2 · STN 73 6660 · STN 06 0830 · STN EN 12056-2 · STN 75 6760");
+                ui.weak(t("Heating: a thermostatic valve and a lockshield at every radiator, shut-offs at the manifold and the source, a strainer on the return. Gas: the main shut-off and a cock before every appliance."));
+                ui.weak("STN EN 806-2 · STN 73 6660 · STN 06 0830 · STN EN 12056-2 · STN 75 6760 · STN EN 12828 · STN EN 1775");
             });
         if let Some((code, f)) = run {
             let mut tx = Transaction::new("Propose valves");

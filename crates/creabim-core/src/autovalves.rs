@@ -352,8 +352,73 @@ pub fn fill(model: &Model, code: &str, opts: &FillOpts) -> Fill {
         Some(SystemKind::ColdWater) => fill_water(model, g, code, true, opts),
         Some(SystemKind::HotWater) => fill_water(model, g, code, false, opts),
         Some(SystemKind::Sanitary) => fill_sanitary(model, g, code, opts),
+        Some(k @ (SystemKind::HeatingSupply | SystemKind::HeatingReturn | SystemKind::Gas)) => {
+            fill_ends(model, g, k)
+        }
         _ => unsupported,
     }
+}
+
+/// Heating and gas: the valves at the ends of the pipes, where they
+/// reach what they feed.
+///
+/// Heating (STN EN 12828): a thermostatic valve on the supply into a
+/// radiator and a lockshield on its return; a shut-off on both pipes at
+/// a manifold and at the heat source, and a strainer on the return into
+/// the source.
+///
+/// Gas (STN EN 1775, TPP 704 01): the main shut-off where the pipe
+/// comes in (its lowest free end) and a gas cock before every appliance.
+fn fill_ends(model: &Model, mut g: Graph, kind: SystemKind) -> Fill {
+    let mut out = Fill::default();
+    let conn = match kind {
+        SystemKind::HeatingSupply => ConnKind::UKP,
+        SystemKind::HeatingReturn => ConnKind::UKS,
+        _ => ConnKind::P,
+    };
+    let conns = connectors_of(model, conn.code());
+    let mut joined = vec![false; g.points.len()];
+    for (p, family) in &conns {
+        let Some(i) = g.end_at(*p) else { continue };
+        joined[i] = true;
+        let radiator = family.is_some_and(|f| fixture::is_heating(f) && !fixture::is_manifold(f));
+        let want: &[&str] = match (kind, radiator, family.is_none()) {
+            (SystemKind::HeatingSupply, true, _) => &["termostaticky"],
+            (SystemKind::HeatingReturn, true, _) => &["spiatocka"],
+            (SystemKind::HeatingReturn, _, true) => &["uzaver", "filter"],
+            (SystemKind::Gas, ..) => &["kohut"],
+            _ => &["uzaver"],
+        };
+        let s = g.adj[i][0];
+        let l = g.segs[s].len();
+        for (n, k) in want.iter().enumerate() {
+            if g.on_seg(s, k) {
+                continue;
+            }
+            g.put_on(s, i, (0.1 + 0.15 * n as f64).min(l / 2.0), k);
+            if radiator {
+                out.angle_valves += 1;
+            } else {
+                out.shut_offs += 1;
+            }
+        }
+    }
+    if kind == SystemKind::Gas {
+        // where the gas comes in: the lowest free end nothing stands at
+        let root = (0..g.points.len())
+            .filter(|&i| g.deg(i) == 1 && !joined[i])
+            .min_by(|&i, &j| g.points[i].z.total_cmp(&g.points[j].z));
+        if let Some(i) = root {
+            if !g.has("hup") {
+                let s = g.adj[i][0];
+                let l = g.segs[s].len();
+                g.put_on(s, i, 0.1_f64.min(l / 2.0), "hup");
+                out.assembly.push("hup");
+            }
+        }
+    }
+    out.valves = g.added;
+    out
 }
 
 fn fill_water(model: &Model, mut g: Graph, code: &str, cold: bool, opts: &FillOpts) -> Fill {
@@ -778,6 +843,51 @@ mod tests {
             .0
             .id;
         (doc, level)
+    }
+
+    #[test]
+    fn heating_and_gas_get_the_valves_at_their_ends() {
+        let (mut doc, level) = doc();
+        // a radiator fed by a supply and a return, a gas pipe coming in
+        let sup = place(
+            &mut doc,
+            level,
+            "Doskové vykurovacie teleso",
+            DVec2::new(3.0, 2.0),
+            ConnKind::UKP,
+        );
+        let ret = fixture::connectors(
+            doc.model(),
+            doc.model()
+                .iter()
+                .find(|e| fixture::family_of(doc.model(), e) == Some("Doskové vykurovacie teleso"))
+                .unwrap(),
+        )
+        .into_iter()
+        .find(|c| c.kind == ConnKind::UKS)
+        .unwrap()
+        .at;
+        let far = |p: DVec3| [p.x - 2.0, p.y, p.z];
+        doc.commit(
+            Transaction::new("pipes")
+                .insert(pipe(level, "UKP", far(sup), sup.into(), 16.0))
+                .insert(pipe(level, "UKS", far(ret), ret.into(), 16.0))
+                .insert(pipe(level, "ZP", [0.0, 0.0, 0.5], [0.0, 3.0, 1.0], 22.0)),
+        )
+        .unwrap();
+        let kinds = |code: &str| -> Vec<String> {
+            fill(doc.model(), code, &FillOpts::default())
+                .valves
+                .into_iter()
+                .map(|p| p.valve.kind)
+                .collect()
+        };
+        assert_eq!(kinds("UKP"), ["termostaticky"]);
+        assert_eq!(kinds("UKS"), ["spiatocka"]);
+        // the main shut-off at the lower end, 0.1 m in
+        let gas = fill(doc.model(), "ZP", &FillOpts::default());
+        assert_eq!(gas.assembly, ["hup"]);
+        assert!(gas.valves[0].valve.t < 0.1);
     }
 
     /// A fixture of `family` from the catalogue at `at`, and where its

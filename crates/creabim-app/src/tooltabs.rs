@@ -175,7 +175,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "valves:auto",
                 "Propose valves",
                 "wrench",
-                "Add the valves the pipes drawn still need: the meter assembly, shut-offs and angle valves on water (STN EN 806-2), vent heads and cleanouts on waste (STN EN 12056-2)",
+                "Add the valves the pipes drawn still need: the meter assembly, shut-offs and angle valves on water (STN EN 806-2), vent heads and cleanouts on waste (STN EN 12056-2), radiator valves and shut-offs on heating, the main shut-off and cocks on gas",
             ),
             act(
                 "calc:fittings",
