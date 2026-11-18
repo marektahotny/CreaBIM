@@ -101,7 +101,7 @@ fn layer_items(
                 level.elevation,
                 plain,
             );
-            assembly::wall_bands(a, w)
+            let mut parts: Vec<(assembly::Band, TriMesh)> = assembly::wall_bands(a, w)
                 .into_iter()
                 .map(|b| {
                     let m = crate::wall::wall_layer_mesh_v(
@@ -117,7 +117,14 @@ fn layer_items(
                     );
                     (b, m)
                 })
-                .collect()
+                .collect();
+            // each layer's reveals are part of its solid: one solid a layer
+            for (b, m) in reveal_wrap_parts(w, a, &openings, level.elevation) {
+                if let Some((_, mesh)) = parts.iter_mut().find(|(p, _)| p.index == b.index) {
+                    mesh.append(&m);
+                }
+            }
+            parts
         }
         ElementKind::Slab(s) => {
             let level = model.level(s.level)?;
@@ -270,6 +277,86 @@ fn reveal_linings(
                     layer: None,
                     finish: Some(REVEAL),
                 }),
+            }
+        }
+    }
+    out
+}
+
+/// The layers of a wall turned into its windows' reveals
+/// ([`assembly::reveal_wraps`]) as solids, one per layer: at the jambs
+/// the window's whole height, at the head and (above the floor) the sill
+/// between them. A section through a window shows the insulation and the
+/// render lapped onto the frame, as the plan does at the jambs.
+fn reveal_wrap_parts(
+    w: &creabim_core::Wall,
+    a: &assembly::Assembly,
+    openings: &[&Opening],
+    level_z: f64,
+) -> Vec<(assembly::Band, TriMesh)> {
+    if w.is_arc() {
+        return vec![];
+    }
+    let bands = assembly::wall_bands(a, w);
+    let d = w.direction();
+    let n = DVec2::new(-d.y, d.x);
+    let z0 = level_z + w.base_offset;
+    let at = |u: f64, v: f64, s: f64| (w.start + d * u + n * s).extend(z0 + v);
+    let mut out: Vec<(assembly::Band, TriMesh)> = vec![];
+    for o in openings {
+        if o.kind != creabim_core::OpeningKind::Window {
+            continue;
+        }
+        let Some(c) = crate::wall::Cut::of(o, w) else {
+            continue;
+        };
+        let frame = o.frame.fitted(c.u1 - c.u0, c.v1 - c.v0, w.thickness);
+        let span = o.frame_span(w, Some(a), frame.depth);
+        let lap = o.reveal.unwrap_or(assembly::REVEAL_INSULATION);
+        let wraps = assembly::reveal_wraps(a, w, span, lap);
+        // how far the reveals come into the opening, all layers together
+        let total = wraps.iter().map(|l| l.under + l.width).fold(0.0, f64::max);
+        if total > (c.u1 - c.u0) / 2.0 || total > (c.v1 - c.v0) / 2.0 {
+            continue;
+        }
+        for l in &wraps {
+            let Some(band) = bands.get(l.index) else {
+                continue;
+            };
+            let s = |depth: f64| l.face + l.inward * depth;
+            // its outline as boxes: (from, to into the opening; from, to
+            // across the wall)
+            let mut boxes = vec![(0.0, l.under + l.width, s(l.d), s(l.d_in))];
+            if l.frame > l.d_in + 1e-6 {
+                boxes.push((l.under, l.under + l.width, s(l.d_in), s(l.frame)));
+            }
+            let mut mesh = TriMesh::default();
+            let mut slab = |u: (f64, f64), v: (f64, f64), s: (f64, f64)| {
+                let p = |i: usize| {
+                    at(
+                        if i & 1 == 0 { u.0 } else { u.1 },
+                        if i & 2 == 0 { v.0 } else { v.1 },
+                        if i & 4 == 0 { s.0 } else { s.1 },
+                    )
+                };
+                cuboid(&mut mesh, [p(0), p(1), p(2), p(3), p(4), p(5), p(6), p(7)]);
+            };
+            for &(x0, x1, s0, s1) in &boxes {
+                let across = (s0.min(s1), s0.max(s1));
+                if across.1 - across.0 < 1e-6 || x1 - x0 < 1e-6 {
+                    continue;
+                }
+                slab((c.u0 + x0, c.u0 + x1), (c.v0, c.v1), across);
+                slab((c.u1 - x1, c.u1 - x0), (c.v0, c.v1), across);
+                let between = (c.u0 + total, c.u1 - total);
+                slab(between, (c.v1 - x1, c.v1 - x0), across);
+                if c.v0 > 1e-6 {
+                    slab(between, (c.v0 + x0, c.v0 + x1), across);
+                }
+            }
+            match out.iter_mut().find(|(b, _)| b.index == band.index) {
+                Some((_, m)) => m.append(&mesh),
+                None => out.push((*band, mesh)),
             }
         }
     }
@@ -1093,6 +1180,67 @@ pub fn edit_mesh_to_tri(mesh: &creabim_core::EditMesh, origin: DVec3) -> TriMesh
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn insulation_and_render_turn_into_a_windows_head_and_sill() {
+        use creabim_core::{AssemblyUse, Document, Layer, LayerFunction as F};
+        let mut doc = Document::from_model(creabim_core::sample::layered_house());
+        let ids: Vec<ElementId> = doc.model().iter().map(|e| e.id).collect();
+        for id in ids {
+            match doc.model().get(id).unwrap().kind.clone() {
+                ElementKind::Assembly(a) if a.usage == AssemblyUse::Wall => doc
+                    .edit(id, "layers", |e| {
+                        if let ElementKind::Assembly(a) = &mut e.kind {
+                            a.layers = vec![
+                                Layer::new(F::Finish, None, 0.005),
+                                Layer::new(F::Insulation, None, 0.15),
+                                Layer::new(F::Structure, None, 0.25),
+                                Layer::new(F::Finish, None, 0.015),
+                            ];
+                        }
+                    })
+                    .unwrap(),
+                ElementKind::Wall(_) => {
+                    let _ = doc.edit(id, "thickness", |e| {
+                        if let ElementKind::Wall(w) = &mut e.kind {
+                            w.thickness = 0.42;
+                        }
+                    });
+                }
+                _ => {}
+            }
+        }
+        let m = doc.model();
+        let (wall, w, o) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Opening(o) if o.kind == creabim_core::OpeningKind::Window => {
+                    let host = m.get(o.host)?;
+                    let ElementKind::Wall(w) = &host.kind else {
+                        return None;
+                    };
+                    assembly::assembly_of(m, host)?;
+                    Some((host.id, w.clone(), o.clone()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let z0 = m.level(w.level).unwrap().elevation + w.base_offset;
+        let scene = build_scene_of(m, None);
+        // the insulation: the wall's layer with its reveals
+        let parts: Vec<_> = scene
+            .iter()
+            .filter(|i| i.id == wall && i.layer.is_some_and(|l| l.index == 1))
+            .collect();
+        assert_eq!(parts.len(), 1, "one solid a layer");
+        // lapped 30 mm over the frame at the head and the sill
+        let lap = assembly::REVEAL_INSULATION;
+        let v = parts[0].mesh.positions.iter().map(|p| p[2] as f64);
+        assert!(v
+            .clone()
+            .any(|z| (z - (z0 + o.sill + o.height - lap)).abs() < 1e-4));
+        assert!(v.clone().any(|z| (z - (z0 + o.sill + lap)).abs() < 1e-4));
+    }
 
     #[test]
     fn a_partition_held_to_the_ceilings_has_no_sliver_at_its_ends() {
