@@ -772,6 +772,10 @@ pub struct Valve {
     /// A hydrant's flow, l/min, where it is not its kind's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow_lmin: Option<f64>,
+    /// An air terminal's flow, m³/h; none shares its room's need with
+    /// the room's other terminals.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_m3h: Option<f64>,
 }
 
 /// A hose system of a fire main (STN EN 671-1, STN EN 671-2, STN 92 0400).
@@ -822,7 +826,13 @@ impl Valve {
             coef: None,
             hydrant: None,
             flow_lmin: None,
+            flow_m3h: None,
         }
+    }
+
+    /// A supply diffuser or an exhaust grille.
+    pub fn is_air_terminal(&self) -> bool {
+        matches!(self.kind.as_str(), "vyustP" | "vyustO")
     }
 
     /// The hose system a hydrant is.

@@ -358,6 +358,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
             Sep,
             act(
+                "calc:air",
+                "Air balance",
+                "refresh-cw",
+                "The air every room needs, supply and exhaust through its diffusers and grilles, and the flow of the air handling unit (STN EN 16798-1)",
+            ),
+            act(
                 "calc:cooling",
                 "Cooling load",
                 "sun",

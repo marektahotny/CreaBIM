@@ -176,6 +176,26 @@ pub fn valve_fields(
             label = "Runoff coefficient";
         }
     }
+    if v.is_air_terminal() {
+        let mut q = v.flow_m3h.unwrap_or(0.0);
+        let changed = crate::props::row(ui, "Air flow", |ui| {
+            crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut q)
+                    .range(0.0..=20_000.0)
+                    .speed(5.0)
+                    .suffix(" m³/h"),
+            )
+            .on_hover_text(crate::i18n::tr(
+                "0 shares the room's air flow among the room's terminals",
+            ))
+            .changed()
+        });
+        if changed {
+            v.flow_m3h = (q > 0.0).then_some(q);
+            label = "Air flow";
+        }
+    }
     if v.kind == "hydrant" {
         let now = v.hydrant_def();
         crate::app::helpui::combo(ui, "Hose system")
