@@ -83,6 +83,8 @@ mod medunitui;
 mod objectsui;
 #[path = "profilesui.rs"]
 mod profilesui;
+#[path = "radiatorsui.rs"]
+mod radiatorsui;
 #[path = "reportui.rs"]
 mod reportui;
 #[path = "selectsimilar.rs"]
@@ -375,6 +377,8 @@ pub struct CreaBimApp {
     )>,
     /// The underfloor heating window's settings, while it is open.
     floor_heat: Option<creabim_services::floorheat::Settings>,
+    /// The radiators window, while it is open.
+    radiators: Option<creabim_services::radiators::Settings>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
     /// The schedule of earthworks, while its window is open.
@@ -555,6 +559,7 @@ impl CreaBimApp {
             med_unit: None,
             heat_source: None,
             floor_heat: None,
+            radiators: None,
             heat_loss: None,
             net_calc: None,
             auto_valves: None,
@@ -11966,6 +11971,7 @@ impl eframe::App for CreaBimApp {
         self.med_unit_window(&ctx);
         self.heat_loss_window(&ctx);
         self.floor_heat_window(&ctx);
+        self.radiators_window(&ctx);
         self.heat_source_window(&ctx);
         self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);

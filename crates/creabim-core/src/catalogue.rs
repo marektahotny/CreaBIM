@@ -17,6 +17,7 @@ mod entourage;
 mod fixtures;
 pub mod heat;
 pub mod medical;
+pub mod radiators;
 mod services;
 
 // ---- outlines and solids ----

@@ -306,6 +306,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Give rooms their underfloor loops from their heat loss: spacing, loops of 100 m at most, flows and what to set at the manifold (STN EN 1264)",
             ),
             act(
+                "calc:radiators",
+                "Size radiators",
+                "table-2",
+                "Radiators for every room from its heat loss, less what its underfloor heating gives: type, length, output and flow (STN EN 442)",
+            ),
+            act(
                 "heat:source",
                 "Heat source",
                 "flame",
