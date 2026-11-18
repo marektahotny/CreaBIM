@@ -7827,6 +7827,9 @@ impl CreaBimApp {
                 .map(|s| s.number.clone())
                 .unwrap_or_default();
             let t = model.get(id).map(|e| e.name.clone()).unwrap_or_default();
+            if let Some(name) = creabim_geom::docset::file_name(&self.sheets_export.prefix, &n) {
+                return name;
+            }
             let raw = format!("{n} {t}");
             raw.trim()
                 .chars()
@@ -7970,7 +7973,16 @@ impl CreaBimApp {
                         ui.selectable_value(&mut x.each, true, crate::i18n::tw("A PDF each"));
                     })
                 });
-                crate::props::row(ui, "Paper", |ui| {
+crate::props::row(ui, "File names", |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::TextEdit::singleline(&mut x.prefix).hint_text("24XY456_PSP_01_1111"),
+                    )
+                    .on_hover_text(crate::i18n::t(
+                        "What the files of the drawing set start with, by annex 24 of the decree 60/2025 Z. z.: the construction's ID, the stage (PSO, SZP, PSP, VPP, DSZ), the building in its group (01) and the building's code (1111 a house for one family). With A PDF each a sheet S01_ASR_001_N01 is then written as 24XY456_PSP_01_1111_S01_ASR_001_N01.pdf. Empty: number and name.",
+                    ));
+                });
+                                crate::props::row(ui, "Paper", |ui| {
                     ui.label(
                         egui::RichText::new(crate::i18n::t(
                             "As printed: white, at the sheets' sizes",
@@ -11314,6 +11326,10 @@ pub(crate) struct SheetsExport {
     /// A PDF a sheet, not one for all.
     each: bool,
     chosen: std::collections::BTreeSet<ElementId>,
+    /// What the files of the drawing set's sheets start with, as the
+    /// building decree names them: the construction's ID, the stage, the
+    /// building in its group and its code (`24XY456_PSP_01_1111`).
+    prefix: String,
 }
 
 /// Width and height rows for a sheet picture, its proportions kept when
