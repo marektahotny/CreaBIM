@@ -1203,6 +1203,30 @@ impl CreaBimApp {
                         ));
                     }
                 });
+                crate::props::section(ui, "Fire separation distances");
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "The distance of each side of the building, as the norm's tables give it. Plans with the fire zones switched on draw the fire-dangerous space from it.",
+                    ))
+                    .weak(),
+                );
+                draft.fire_distances.resize(8, 0.0);
+                for (i, d) in draft.fire_distances.iter_mut().enumerate() {
+                    let side = creabim_core::words::tr(creabim_geom::firezones::FACING[i]);
+                    ui.horizontal(|ui| {
+                        ui.add_sized([40.0, 18.0], egui::Label::new(side));
+                        ui.add(
+                            egui::DragValue::new(d)
+                                .range(0.0..=200.0)
+                                .speed(0.05)
+                                .max_decimals(2)
+                                .suffix(" m"),
+                        );
+                    });
+                }
+                if draft.fire_distances.iter().all(|d| *d <= 0.0) {
+                    draft.fire_distances.clear();
+                }
                 if ui
                     .add_enabled(
                         draft.sjtsk.is_some(),

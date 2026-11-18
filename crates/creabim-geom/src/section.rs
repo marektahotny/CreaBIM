@@ -1057,6 +1057,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             d.items.extend(crate::heatplan::items(model, *level, mm));
         }
     }
+    // a plan that shows the fire zones shows the fire-dangerous space
+    // about the building too
+    if v.fire_zones && matches!(kind, creabim_core::ViewKind::Plan { .. }) {
+        d.items
+            .extend(crate::firezones::distance_items(model, v.scale / 1000.0));
+    }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {
         d.items.retain(|it| !hidden.contains(&it.id()));

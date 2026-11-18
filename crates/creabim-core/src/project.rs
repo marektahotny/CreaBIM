@@ -29,6 +29,11 @@ pub struct ProjectInfo {
     pub plot_area: Option<f64>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub cadastre: String,
+    /// The fire separation distances of the building's sides, m: eight,
+    /// north first and on clockwise; nothing where none is given. They
+    /// are the designer's, read from the norm's tables.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fire_distances: Vec<f64>,
     /// The office's logo for the title block: a picture kept with the
     /// project.
     #[serde(skip_serializing_if = "Option::is_none")]

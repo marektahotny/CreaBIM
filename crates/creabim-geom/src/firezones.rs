@@ -5,6 +5,7 @@
 //! door. The fire risk and the degree of fire safety are not worked out
 //! here: they need the fire load (STN 92 0201).
 
+use crate::plan::PlanItem;
 use crate::schedule::{Column, Row, Schedule};
 use creabim_core::words::tr;
 use creabim_core::{Element, ElementId, ElementKind, Model, OpeningKind, ScheduleCategory};
@@ -304,21 +305,29 @@ fn room_at(model: &Model, level: ElementId, p: DVec2) -> bool {
     })
 }
 
-/// The building's sides, storey by storey: walls with a room on one
-/// side only, gathered by where they face.
-pub fn facades(model: &Model) -> Vec<Facade> {
+/// An outer wall: one with a room on one side only.
+pub struct OuterWall<'a> {
+    pub id: ElementId,
+    pub wall: &'a creabim_core::Wall,
+    /// The way out of the building, a unit vector.
+    pub outward: DVec2,
+    /// Where it faces: 0 north, on clockwise to 7.
+    pub facing: usize,
+}
+
+/// The outer walls of the model, each with where it faces.
+pub fn outer_walls(model: &Model) -> Vec<OuterWall<'_>> {
     let north = model
         .project_info()
         .map_or(0.0, |p| p.1.true_north)
         .to_radians();
-    let mut out: Vec<Facade> = vec![];
+    let mut out = vec![];
     for e in model.iter() {
         let ElementKind::Wall(w) = &e.kind else {
             continue;
         };
         let along = (w.end - w.start).normalize_or_zero();
-        let len = w.start.distance(w.end);
-        if len < 1e-6 {
+        if w.start.distance(w.end) < 1e-6 {
             continue;
         }
         let mid = (w.start + w.end) / 2.0;
@@ -337,12 +346,102 @@ pub fn facades(model: &Model) -> Vec<Facade> {
         let up = DVec2::from_angle(north).rotate(DVec2::Y);
         let angle = up.angle_to(outward);
         let facing = ((-angle.to_degrees()).rem_euclid(360.0) / 45.0).round() as usize % 8;
+        out.push(OuterWall {
+            id: e.id,
+            wall: w,
+            outward,
+            facing,
+        });
+    }
+    out
+}
+
+/// The separation distance given for the side facing `facing`, m.
+pub fn distance_of(model: &Model, facing: usize) -> Option<f64> {
+    model
+        .project_info()
+        .and_then(|p| p.1.fire_distances.get(facing).copied())
+        .filter(|d| d.is_finite() && *d > 0.0)
+}
+
+/// The colour the fire-dangerous space is drawn in.
+pub const DANGER: [f32; 3] = [0.86, 0.2, 0.16];
+
+/// The fire-dangerous space about the building as a plan draws it: from
+/// each outer wall whose side has a separation distance, a strip that
+/// deep, washed and outlined, the distance written at the longest wall
+/// of the side. `mm` is metres to a paper millimetre.
+pub fn distance_items(model: &Model, mm: f64) -> Vec<PlanItem> {
+    use crate::plan::Pen;
+    let walls = outer_walls(model);
+    let mut items = vec![];
+    let mut seen: Vec<[DVec2; 2]> = vec![];
+    let mut longest: [Option<(f64, ElementId, DVec2, DVec2)>; 8] = [None; 8];
+    for o in &walls {
+        let Some(d) = distance_of(model, o.facing) else {
+            continue;
+        };
+        let w = o.wall;
+        let face = o.outward * (w.thickness / 2.0);
+        let (a, b) = (w.start + face, w.end + face);
+        // walls of storeys one over another make one strip
+        if seen
+            .iter()
+            .any(|s| s[0].distance(a) < 1e-3 && s[1].distance(b) < 1e-3)
+        {
+            continue;
+        }
+        seen.push([a, b]);
+        let (c, e) = (b + o.outward * d, a + o.outward * d);
+        items.push(PlanItem::Tint {
+            id: o.id,
+            points: vec![a, b, c, e],
+            rgb: DANGER,
+        });
+        for (p, q) in [(a, e), (e, c), (c, b)] {
+            items.push(PlanItem::Line {
+                id: o.id,
+                pen: Pen::Overhead,
+                a: p,
+                b: q,
+            });
+        }
+        let len = a.distance(b);
+        if longest[o.facing].is_none_or(|l| len > l.0) {
+            longest[o.facing] = Some((len, o.id, (c + e) / 2.0, o.outward));
+        }
+    }
+    for (facing, l) in longest.iter().enumerate() {
+        let (Some((_, id, at, outward)), Some(d)) = (l, distance_of(model, facing)) else {
+            continue;
+        };
+        items.push(PlanItem::Text {
+            id: *id,
+            at: *at + *outward * 2.5 * mm,
+            text: format!("d = {d:.2} m").replace('.', ","),
+            size: 2.5,
+            align: crate::paper::Anchor::Middle,
+            mm,
+            rgb: Some(DANGER),
+            bold: false,
+        });
+    }
+    items
+}
+
+/// The building's sides, storey by storey: walls with a room on one
+/// side only, gathered by where they face.
+pub fn facades(model: &Model) -> Vec<Facade> {
+    let mut out: Vec<Facade> = vec![];
+    for o in outer_walls(model) {
+        let (w, facing) = (o.wall, o.facing);
+        let len = w.start.distance(w.end);
         let open: f64 = model
             .iter()
-            .filter_map(|o| match &o.kind {
-                ElementKind::Opening(o) if o.host == e.id => {
-                    let fire = o.door.as_ref().is_some_and(|d| d.fire.is_some());
-                    (!fire).then_some(o.width * o.height)
+            .filter_map(|x| match &x.kind {
+                ElementKind::Opening(x) if x.host == o.id => {
+                    let fire = x.door.as_ref().is_some_and(|d| d.fire.is_some());
+                    (!fire).then_some(x.width * x.height)
                 }
                 _ => None,
             })
@@ -359,7 +458,7 @@ pub fn facades(model: &Model) -> Vec<Facade> {
                     length: 0.0,
                     area: 0.0,
                     open: 0.0,
-                    first: e.id,
+                    first: o.id,
                 });
                 out.last_mut().unwrap()
             }
@@ -389,6 +488,7 @@ pub fn facade_schedule(model: &Model) -> Schedule {
         col("Facade area", 24.0, true),
         col("Fire-open area", 28.0, true),
         col("Fire-open share", 26.0, true),
+        col("Separation distance", 30.0, true),
     ];
     let units = model.units();
     let rows: Vec<Row> = facades(model)
@@ -403,6 +503,9 @@ pub fn facade_schedule(model: &Model) -> Schedule {
                 units.area(f.area),
                 units.area(f.open),
                 format!("{:.0} %", f.open_percent()),
+                distance_of(model, f.facing)
+                    .map(|d| format!("{d:.2} m").replace('.', ","))
+                    .unwrap_or_default(),
             ],
         })
         .collect();
@@ -480,5 +583,48 @@ mod tests {
         let s = facade_schedule(&m);
         assert_eq!(s.rows.len(), f.len());
         assert!(s.rows[0].cells[5].ends_with('%'));
+    }
+
+    #[test]
+    fn a_side_with_a_distance_draws_its_fire_dangerous_space() {
+        let mut m = creabim_core::starter::starter_house();
+        assert!(distance_items(&m, 0.05).is_empty());
+        let mut info = m.project_info().map(|p| p.1.clone()).unwrap_or_default();
+        // south only
+        info.fire_distances = vec![0.0, 0.0, 0.0, 0.0, 4.5];
+        let tx = creabim_core::set_project(&m, info);
+        tx.apply(&mut m).unwrap();
+        assert_eq!(distance_of(&m, 4), Some(4.5));
+        assert_eq!(distance_of(&m, 0), None);
+        let items = distance_items(&m, 0.05);
+        let south: Vec<_> = outer_walls(&m)
+            .into_iter()
+            .filter(|o| o.facing == 4)
+            .collect();
+        assert!(!south.is_empty());
+        // each strip reaches 4.5 m out of its wall's face
+        let strips: Vec<_> = items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Tint { points, .. } => Some(points),
+                _ => None,
+            })
+            .collect();
+        assert!(!strips.is_empty() && strips.len() <= south.len());
+        for p in &strips {
+            assert!((p[1].distance(p[2]) - 4.5).abs() < 1e-9);
+        }
+        // and the distance is written once for the side
+        let texts: Vec<_> = items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["d = 4,50 m"]);
+        // the table of sides carries it
+        let s = facade_schedule(&m);
+        assert!(s.rows.iter().any(|r| r.cells.last().unwrap() == "4,50 m"));
     }
 }
