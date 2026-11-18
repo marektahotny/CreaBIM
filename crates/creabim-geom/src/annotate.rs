@@ -944,6 +944,132 @@ pub fn without_point(
     Some(out)
 }
 
+/// A linear dimension's stretches in order along its line: the two points
+/// each measures between and where they stand on the measured line.
+pub fn stretches(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+) -> Vec<(HostPoint, HostPoint, DVec2, DVec2)> {
+    let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b)) else {
+        return vec![];
+    };
+    let Some((b2, _)) = squared(d.axis, a, b) else {
+        return vec![];
+    };
+    if !d.is_chain() {
+        return vec![(d.a, d.b, a, b2)];
+    }
+    let u = (b2 - a).normalize_or_zero();
+    let mut marks: Vec<(f64, HostPoint)> = d
+        .points()
+        .filter_map(|p| Some(((resolve(model, view, p)? - a).dot(u), *p)))
+        .collect();
+    marks.sort_by(|x, y| x.0.total_cmp(&y.0));
+    marks.dedup_by(|y, x| (y.0 - x.0).abs() < 1e-4);
+    marks
+        .windows(2)
+        .map(|w| (w[0].1, w[1].1, a + u * w[0].0, a + u * w[1].0))
+        .collect()
+}
+
+/// Stretch `i` of the dimension `d` made `value` long (PilonDesigner's
+/// riadiaca kóta): the element one of its ends is on moves, the one in
+/// `prefer` (what is selected) if either is, else the one at its far end.
+/// A door or window slides in its wall; a wall measured along itself is
+/// made longer or shorter at that end; anything else moves bodily, with
+/// what is joined to it.
+pub fn driven(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+    i: usize,
+    value: f64,
+    prefer: &[ElementId],
+) -> Result<creabim_core::Transaction, String> {
+    if !matches!(view.kind, ViewKind::Plan { .. }) {
+        return Err("A dimension moves what it measures in plans only.".into());
+    }
+    if value <= 0.0 {
+        return Err("Type a distance more than zero.".into());
+    }
+    let all = stretches(model, view, d);
+    let (ha, hb, pa, pb) = *all.get(i).ok_or("It is gone.")?;
+    let u = (pb - pa).normalize_or_zero();
+    let delta = value - pa.distance(pb);
+    if delta.abs() < 1e-7 {
+        return Err("Already that far.".into());
+    }
+    if ha.host.is_some() && ha.host == hb.host {
+        return Err("Both ends are on the same element: change its size instead.".into());
+    }
+    let chosen = |h: &HostPoint| h.host.is_some_and(|id| prefer.contains(&id));
+    let (p, other, by) = if chosen(&hb) || (!chosen(&ha) && hb.host.is_some()) {
+        (hb, ha, u * delta)
+    } else if ha.host.is_some() {
+        (ha, hb, -u * delta)
+    } else {
+        return Err("Neither end is on an element: nothing to move.".into());
+    };
+    let id = p.host.ok_or("It is gone.")?;
+    let e = model.get(id).ok_or("It is gone.")?;
+    let mut tx = creabim_core::Transaction::new("Set dimension");
+    match &e.kind {
+        ElementKind::Opening(o) => {
+            let ElementKind::Wall(w) = &model.get(o.host).ok_or("It is not in a wall.")?.kind
+            else {
+                return Err("It is not in a wall.".into());
+            };
+            let offset = o.offset + by.dot(w.direction());
+            if offset < -1e-9 || offset + o.width > w.length() + 1e-9 {
+                return Err(format!("{} would run past the end of its wall.", e.name));
+            }
+            let mut now = e.clone();
+            if let ElementKind::Opening(o) = &mut now.kind {
+                o.offset = offset.max(0.0);
+            }
+            tx = tx.replace(e.clone(), now);
+        }
+        ElementKind::Wall(w) if w.direction().dot(u).abs() > 0.7 => {
+            // measured along the wall: that end of it moves
+            let dir = w.direction();
+            let end = p.from_end || p.local.x > w.length() / 2.0;
+            let mut now = e.clone();
+            if let ElementKind::Wall(w) = &mut now.kind {
+                if end {
+                    w.end += dir * by.dot(dir);
+                } else {
+                    w.start += dir * by.dot(dir);
+                }
+                if w.start.distance(w.end) < 0.05 {
+                    return Err(format!("{} would be left with no length.", e.name));
+                }
+            }
+            let mut moved = vec![now];
+            let follow = creabim_core::joins::follow(model, &mut moved);
+            for n in moved {
+                tx = tx.replace(e.clone(), n);
+            }
+            for (o, n) in follow {
+                if Some(o.id) != other.host && o != n {
+                    tx = tx.replace(o, n);
+                }
+            }
+        }
+        _ => {
+            let keep: std::collections::HashSet<ElementId> = other.host.into_iter().collect();
+            let moved = creabim_core::holds::shift(model, id, by, &keep);
+            if moved.is_empty() {
+                return Err(format!("{} can not be moved by a dimension.", e.name));
+            }
+            for (o, n) in moved {
+                tx = tx.replace(o, n);
+            }
+        }
+    }
+    Ok(tx)
+}
+
 /// The door or window a stretch between two points on its jambs spans.
 fn opening_between(
     model: &Model,

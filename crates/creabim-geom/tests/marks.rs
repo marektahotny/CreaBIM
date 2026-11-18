@@ -515,3 +515,58 @@ fn door_and_window_marks_stand_square_to_their_wall() {
         .iter()
         .any(|i| matches!(i, PlanItem::Tag { text, round: true, .. } if text.starts_with("K\n"))));
 }
+
+#[test]
+fn a_typed_dimension_moves_what_its_end_is_on() {
+    use creabim_core::{Dimension, HostPoint};
+    use creabim_geom::annotate::{attach, driven, resolve, stretches};
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    // from a free point to a window's jamb, along its wall
+    let (win, at) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Opening(o) if o.kind == OpeningKind::Window => {
+                let p = resolve(
+                    doc.model(),
+                    &v,
+                    &HostPoint {
+                        host: Some(e.id),
+                        local: DVec2::ZERO,
+                        from_end: false,
+                        body: None,
+                    },
+                )?;
+                Some((e.id, p))
+            }
+            _ => None,
+        })
+        .unwrap();
+    let ElementKind::Opening(o) = doc.model().get(win).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let ElementKind::Wall(w) = doc.model().get(o.host).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let from = at - w.direction() * 1.0;
+    let d = Dimension::linear(
+        plan,
+        HostPoint::free(from),
+        attach(doc.model(), &v, Some(win), at),
+        0.5,
+    );
+    assert_eq!(stretches(doc.model(), &v, &d).len(), 1);
+    let tx = driven(doc.model(), &v, &d, 0, 1.25, &[]).unwrap();
+    doc.commit(tx).unwrap();
+    let ElementKind::Opening(now) = &doc.model().get(win).unwrap().kind else {
+        unreachable!()
+    };
+    assert!((now.offset - o.offset - 0.25).abs() < 1e-9);
+    // nothing to move between two free points
+    let free = Dimension::linear(plan, HostPoint::free(from), HostPoint::free(at), 0.5);
+    assert!(driven(doc.model(), &v, &free, 0, 2.0, &[]).is_err());
+}

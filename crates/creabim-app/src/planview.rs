@@ -510,6 +510,11 @@ pub struct PlanState {
     pub dim_chain: bool,
     /// New linear dimensions have short witness lines.
     pub dim_short: bool,
+    /// A dimension's number being typed over.
+    pub dim_edit: Option<DimEdit>,
+    /// What was selected before the last click: a double-click on a
+    /// dimension's number moves that one of its two ends.
+    pub dim_edit_prefer: Vec<ElementId>,
     /// The line a chain runs on: its axis and a point on it.
     pub chain_line: Option<(creabim_core::DimAxis, DVec2)>,
     /// The chain being drawn: each further click adds a point to it.
@@ -705,6 +710,8 @@ impl Default for PlanState {
             dim_axis: None,
             dim_chain: true,
             dim_short: false,
+            dim_edit: None,
+            dim_edit_prefer: Vec::new(),
             chain_line: None,
             chain_dim: None,
             tag_new: true,
@@ -2129,6 +2136,23 @@ fn show_pane(
     let annotation_drag = state.anno.grab.is_some()
         || !response.drag_started_by(egui::PointerButton::Primary)
         || press_on_selected;
+    if tool == Tool::Select {
+        // what is selected besides dimensions: the end a typed dimension moves
+        let chosen = selection.all();
+        if chosen.is_empty()
+            || chosen.iter().any(|id| {
+                !matches!(
+                    doc.model().get(*id).map(|e| &e.kind),
+                    Some(ElementKind::Dimension(_))
+                )
+            })
+        {
+            state.dim_edit_prefer = chosen;
+        }
+        if let Some(r) = edit_dimension_value(ui, doc, view, plan, &xf, &response, state, mm) {
+            return r;
+        }
+    }
     if tool == Tool::Select && annotation_drag {
         if let Some(r) = drag_annotation(doc, view, plan, &xf, &response, state, selection, mm) {
             return r;
@@ -7154,6 +7178,133 @@ pub fn with_opening_tags(model: creabim_core::Model) -> creabim_core::Model {
     }
     let _ = tx.apply(&mut m);
     m
+}
+
+/// A dimension's number being typed over (a double-click on it): the
+/// element at the stretch's end then moves to make it true.
+#[derive(Clone, Debug)]
+pub struct DimEdit {
+    pub view: ElementId,
+    pub id: ElementId,
+    /// Which stretch of a chain.
+    pub stretch: usize,
+    /// Where the number stands in the drawing.
+    pub at: DVec2,
+    pub text: String,
+    /// What was selected: of the two ends, that one moves.
+    pub prefer: Vec<ElementId>,
+    /// The field has yet to take the keyboard.
+    pub fresh: bool,
+}
+
+/// A double-click on a linear dimension's number in the Select tool opens
+/// it for typing; Enter moves what it measures (PilonDesigner's riadiaca
+/// kóta), Esc or a click elsewhere leaves it. Returns `Some` while the
+/// frame's input is its own.
+#[allow(clippy::too_many_arguments)]
+fn edit_dimension_value(
+    ui: &egui::Ui,
+    doc: &mut Document,
+    view: ElementId,
+    drawing: &Drawing,
+    xf: &Xf,
+    response: &egui::Response,
+    state: &mut PlanState,
+    mm: f64,
+) -> Option<Option<String>> {
+    if state.dim_edit.is_none() && response.double_clicked() {
+        let w = xf.to_world(response.interact_pointer_pos()?);
+        let mut nth: HashMap<ElementId, usize> = Default::default();
+        let found = drawing.items.iter().find_map(|it| {
+            let PlanItem::Dimension {
+                id,
+                a,
+                b,
+                offset,
+                text,
+                look,
+                witness,
+                place,
+                ..
+            } = it
+            else {
+                return None;
+            };
+            let k = nth.entry(*id).or_default();
+            let i = *k;
+            *k += 1;
+            let linear = matches!(
+                &doc.model().get(*id)?.kind,
+                ElementKind::Dimension(d)
+                    if d.view == view && d.kind == creabim_core::DimensionKind::Linear
+            );
+            if !linear {
+                return None;
+            }
+            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
+            let q = g.patch(g.text_at, text, look, mm);
+            let inside = (0..4).all(|j| (q[(j + 1) % 4] - q[j]).perp_dot(w - q[j]) >= 0.0);
+            inside.then(|| (*id, i, g.text_at, text.clone()))
+        });
+        let (id, stretch, at, text) = found?;
+        state.dim_edit = Some(DimEdit {
+            view,
+            id,
+            stretch,
+            at,
+            text: text.replace(['\u{a0}', ' '], ""),
+            prefer: state.dim_edit_prefer.clone(),
+            fresh: true,
+        });
+        state.status = Some(
+            "Type the distance, then Enter: the element at the end of the stretch moves. Esc leaves it.".into(),
+        );
+        return Some(None);
+    }
+    let edit = state.dim_edit.as_mut().filter(|e| e.view == view)?;
+    let pos = xf.to_screen(edit.at);
+    let mut done = None;
+    egui::Area::new(egui::Id::new(("dim_edit", view)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(pos - Vec2::new(40.0, 12.0))
+        .show(ui.ctx(), |ui| {
+            let r = ui.add(egui::TextEdit::singleline(&mut edit.text).desired_width(80.0));
+            if edit.fresh {
+                r.request_focus();
+                edit.fresh = false;
+            } else if r.lost_focus() {
+                done = Some(ui.input(|i| i.key_pressed(egui::Key::Enter)));
+            }
+        });
+    let enter = done?;
+    let edit = state.dim_edit.take()?;
+    if !enter {
+        state.status = Some("The dimension is left as it was.".into());
+        return Some(None);
+    }
+    let Some(value) = crate::units::parse(&edit.text) else {
+        state.status = Some("That is not a distance.".into());
+        return Some(None);
+    };
+    let tx = match (
+        doc.model().get(edit.id).map(|e| &e.kind),
+        doc.model().get(view).map(|e| &e.kind),
+    ) {
+        (Some(ElementKind::Dimension(d)), Some(ElementKind::View(v))) => {
+            annotate::driven(doc.model(), v, d, edit.stretch, value, &edit.prefer)
+        }
+        _ => return Some(None),
+    };
+    match tx {
+        Ok(tx) => {
+            if let Err(e) = doc.commit(tx) {
+                return Some(Some(e.to_string()));
+            }
+            state.status = Some("Moved to the typed distance. Ctrl+Z to undo.".into());
+        }
+        Err(e) => state.status = Some(e),
+    }
+    Some(None)
 }
 
 /// Drag a tag (moves it) or a dimension (moves its line) in the Select
