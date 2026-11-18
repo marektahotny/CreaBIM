@@ -12728,7 +12728,7 @@ fn with_plan_views(model: Model) -> Model {
     for (e, _) in model.levels() {
         if !planned.contains(&e.id) {
             tx = tx.insert(Element::new(
-                format!("{} plan", e.name),
+                creabim_core::levels::plan_name(&e.name),
                 ElementKind::View(creabim_core::levels::plan_of(
                     &model,
                     e.id,

@@ -164,7 +164,7 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
         b.find(|_, v| matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level) && plain(v))
             .unwrap_or_else(|| {
                 let v = levels::plan_of(&b.m, level, z);
-                b.view(format!("{name} {}", tr("plan")), v)
+                b.view(levels::plan_name(name), v)
             })
     };
     let schedule = |b: &mut Builder, c: ScheduleCategory, name: &str| {

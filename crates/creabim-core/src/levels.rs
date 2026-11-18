@@ -24,7 +24,7 @@ pub fn next_name(model: &Model) -> String {
     let taken = |n: &str| model.levels().any(|(e, _)| e.name == n);
     let mut i = model.levels().count();
     loop {
-        let name = format!("Level {i}");
+        let name = format!("{} {i}", crate::words::tr("Level"));
         if !taken(&name) {
             return name;
         }
@@ -359,7 +359,7 @@ pub fn add(
     let mut view = None;
     if plan {
         let v = Element::new(
-            format!("{name} plan"),
+            plan_name(name),
             ElementKind::View(plan_of(model, id, elevation)),
         );
         view = Some(v.id);
@@ -505,6 +505,12 @@ pub fn delete(model: &Model, level: ElementId, what: OnDelete) -> Transaction {
     tx = tx.remove_all_cascade(model, &gone);
     tx.ops.push(crate::Op::Remove(e.clone()));
     tx
+}
+
+/// What the plan of level `level` is called, in the interface's
+/// language: "Level 2 plan", "Pôdorys Podlažie 2".
+pub fn plan_name(level: &str) -> String {
+    crate::words::tr("{} plan").replace("{}", level)
 }
 
 /// The plan of level `id` at `elevation`: cut 1.2 m above it, or, with
