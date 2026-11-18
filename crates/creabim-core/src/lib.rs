@@ -61,6 +61,7 @@ pub mod takeoff;
 pub mod titleblock;
 pub mod transform;
 pub mod types;
+pub mod underfloor;
 pub mod units;
 pub mod viewmodes;
 pub mod visibility;

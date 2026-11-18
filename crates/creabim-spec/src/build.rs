@@ -1601,6 +1601,7 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         occupancy: r.occupancy.clone(),
         department: r.department.clone(),
         height: r.height.map(|h| c.l(h)),
+        ufh: None,
     };
     c.insert(
         &r.id,

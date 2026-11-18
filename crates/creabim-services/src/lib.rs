@@ -14,6 +14,7 @@ pub mod firewater;
 pub mod fittings;
 pub mod fixtures;
 pub mod fixturespec;
+pub mod floorheat;
 pub mod fluid;
 pub mod groundloss;
 pub mod heatloss;

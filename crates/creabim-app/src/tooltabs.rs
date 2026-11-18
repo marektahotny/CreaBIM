@@ -300,6 +300,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The design heat loss of every room (STN EN 12831-1): through walls, windows, floor and roof and by ventilation, and the building's total",
             ),
             act(
+                "calc:floorheat",
+                "Design underfloor heating",
+                "spline",
+                "Give rooms their underfloor loops from their heat loss: spacing, loops of 100 m at most, flows and what to set at the manifold (STN EN 1264)",
+            ),
+            act(
                 "heat:source",
                 "Heat source",
                 "flame",

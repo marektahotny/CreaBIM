@@ -49,6 +49,8 @@ mod editui;
 mod fittingsui;
 #[path = "fixturelegend.rs"]
 mod fixturelegend;
+#[path = "floorheatui.rs"]
+mod floorheatui;
 #[path = "gridvis.rs"]
 mod gridvis;
 #[path = "heatlossui.rs"]
@@ -371,6 +373,8 @@ pub struct CreaBimApp {
         creabim_services::heatloss::Opts,
         creabim_services::heatloss::BuildingLoss,
     )>,
+    /// The underfloor heating window's settings, while it is open.
+    floor_heat: Option<creabim_services::floorheat::Settings>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
     /// The schedule of earthworks, while its window is open.
@@ -550,6 +554,7 @@ impl CreaBimApp {
             fixture_legend: false,
             med_unit: None,
             heat_source: None,
+            floor_heat: None,
             heat_loss: None,
             net_calc: None,
             auto_valves: None,
@@ -11960,6 +11965,7 @@ impl eframe::App for CreaBimApp {
         self.fixture_legend_window(&ctx);
         self.med_unit_window(&ctx);
         self.heat_loss_window(&ctx);
+        self.floor_heat_window(&ctx);
         self.heat_source_window(&ctx);
         self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);
