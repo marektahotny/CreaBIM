@@ -256,7 +256,24 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             );
             y -= LINE + 1.0;
         }
-        y -= 3.0;
+        // the edge of a heated field
+        let a = DVec2::new(0.0, y - LINE / 2.0);
+        crate::heatplan::strips(
+            &mut items,
+            view,
+            &[a, a + DVec2::X * SAMPLE],
+            crate::heatplan::FIELD,
+            Some((1.5, 1.0)),
+            1.0,
+        );
+        text(
+            &mut items,
+            DVec2::new(INDENT, y - LINE / 2.0),
+            &tr("edge of a heated field"),
+            TEXT,
+            None,
+        );
+        y -= LINE + 4.0;
     }
     let rows = creabim_services::fixturespec::legend(model, None);
     if !rows.is_empty() {
@@ -350,6 +367,19 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                 &mut items,
                 DVec2::new(0.0, y - LINE / 2.0),
                 &format!("±0,000 = {}", format!("{zero:.2}").replace('.', ",")),
+                TEXT + 0.6,
+                None,
+            );
+            y -= LINE + 0.6;
+        }
+        // a heating drawing's design outside temperature
+        if heated {
+            y -= 1.5;
+            let te = creabim_services::heatloss::Opts::default().te;
+            text(
+                &mut items,
+                DVec2::new(0.0, y - LINE / 2.0),
+                &format!("te = {te:.0} °C"),
                 TEXT + 0.6,
                 None,
             );

@@ -14,6 +14,8 @@ use glam::DVec2;
 /// The supply's and the return's colour.
 pub const SUPPLY: [f32; 3] = [0.84, 0.1, 0.1];
 pub const RETURN: [f32; 3] = [0.1, 0.3, 0.82];
+/// The edge of a heated field.
+pub const FIELD: [f32; 3] = [0.98, 0.82, 0.05];
 /// The return's dash and gap, paper mm.
 pub const DASH: (f64, f64) = (4.0, 1.5);
 /// A loop's line, paper mm.
@@ -113,8 +115,19 @@ pub fn items(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             e.id,
             r.at,
             which,
+            format!("{} - {}", r.number, e.name),
             design.rooms.iter().find(|x| x.id == e.id),
         ));
+        // the heated field's edge, a yellow dashed line
+        if let Some(mut ring) = creabim_core::underfloor::inset_ring(
+            &shape.outline,
+            creabim_core::underfloor::EDGE / 2.0,
+        ) {
+            if let Some(first) = ring.first().copied() {
+                ring.push(first);
+            }
+            strips(&mut out, e.id, &ring, FIELD, Some((1.5, 1.0)), mm);
+        }
     }
     let look = TextLook {
         size: TEXT,
@@ -129,26 +142,59 @@ pub fn items(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             mm,
         }),
     };
-    for (id, at, which, d) in tables {
-        let mut lines = vec![
-            format!("RZ 1 - {storey} ({which}/{circuits})"),
+    for (id, at, which, name, d) in tables {
+        // two columns, as the office's table of a circuit
+        let mut rows = vec![(
+            format!("RZ 1 - {storey} ({circuits}/{which})"),
             format!("tp = {} °C", num(settings.supply_c, 0)),
-        ];
+        )];
         if let Some(d) = d {
-            lines.extend([
-                format!("Lpz = {} mm", num(d.spacing * 1000.0, 0)),
-                format!("L = {} m", num(d.loop_len, 1)),
-                pipe.clone(),
-                format!("Δp = {} kPa", num(d.dp_kpa, 1)),
-                format!("{} l/min", num(d.flow_ls * 60.0, 2)),
-                format!("A = {} m²", num(d.area, 1)),
-                format!("{} °C, {} W", num(d.ti, 0), num(d.phi, 0)),
+            rows.extend([
+                (
+                    format!("Lpz = {} mm", num(d.spacing * 1000.0, 0)),
+                    format!("L = {} m", num(d.loop_len, 1)),
+                ),
+                (name, format!("{} {pipe}", creabim_core::words::tr("Pipe"))),
+                (
+                    format!("Δp = {} kPa", num(d.dp_kpa, 1)),
+                    format!("{} l/min", num(d.flow_ls * 60.0, 2)),
+                ),
+                (
+                    format!("S = {} m²", num(d.area, 1)),
+                    format!("{} °C, {} W", num(d.ti, 0), num(d.phi, 0)),
+                ),
             ]);
         }
+        let pad = 0.8;
+        let row = TEXT * 1.5;
+        let col = |pick: &dyn Fn(&(String, String)) -> &String| {
+            rows.iter().map(|r| look.width(pick(r))).fold(0.0, f64::max) + 2.0 * pad
+        };
+        let (w0, w1) = (col(&|r| &r.0), col(&|r| &r.1));
+        let h = rows.len() as f64 * row;
         // under the room's name
-        let half = lines.len() as f64 * TEXT * 1.25 / 2.0;
-        let at = at - DVec2::Y * (9.0 + half) * mm;
-        out.push(note(id, at, lines.join("\n"), look));
+        let top = at - DVec2::Y * 9.0 * mm - DVec2::X * (w0 + w1) / 2.0 * mm;
+        let p = |x: f64, y: f64| top + DVec2::new(x, -y) * mm;
+        let mut rule = |a: DVec2, b: DVec2| {
+            out.push(PlanItem::Line {
+                id,
+                pen: crate::plan::Pen::Fine,
+                a,
+                b,
+            })
+        };
+        for k in 0..=rows.len() {
+            let y = k as f64 * row;
+            rule(p(0.0, y), p(w0 + w1, y));
+        }
+        for x in [0.0, w0, w0 + w1] {
+            rule(p(x, 0.0), p(x, h));
+        }
+        for (k, (l, r)) in rows.into_iter().enumerate() {
+            let y = (k as f64 + 0.5) * row;
+            out.push(note(id, p(w0 / 2.0, y), l, look));
+            out.push(note(id, p(w0 + w1 / 2.0, y), r, look));
+        }
     }
     // the manifold's mark: its number and how many circuits leave it
     for e in model.iter() {
@@ -220,16 +266,22 @@ mod tests {
         assert!(count(SUPPLY) > 10 && count(RETURN) > 3 * count(SUPPLY));
         let table = out
             .iter()
-            .find_map(|i| match i {
+            .filter_map(|i| match i {
                 PlanItem::Annotation { id: i, item } if *i == id => Some(item.text.clone()),
                 _ => None,
             })
-            .unwrap();
-        assert!(table.contains("(1-2/2)"), "{table}");
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(table.contains("(2/1-2)"), "{table}");
         assert!(
             table.contains("Lpz = 150 mm") && table.contains("16x2"),
             "{table}"
         );
+        // framed: its rules, and the field's yellow edge
+        assert!(out
+            .iter()
+            .any(|i| matches!(i, PlanItem::Line { id: i, .. } if *i == id)));
+        assert!(count(FIELD) > 4);
         assert!(table.contains("l/min") && table.contains("kPa"), "{table}");
     }
 }
