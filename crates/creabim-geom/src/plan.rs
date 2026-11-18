@@ -1008,7 +1008,7 @@ pub fn plan_view_with(
             continue;
         }
         let on_level = match &e.kind {
-            ElementKind::Wall(w) => w.level == level,
+            ElementKind::Wall(w) => wall_rise(model, w, level, cut_height).is_some(),
             ElementKind::Slab(s) => s.level == level,
             // an imported mesh with no level of its own is on the level its
             // base stands on (MU33: a Blender import showed in no plan)
@@ -1052,7 +1052,9 @@ pub fn plan_view_with(
                     text: creabim_core::grids::display_label(model, g),
                 });
             }
-            ElementKind::Wall(w) if w.level == level => {
+            ElementKind::Wall(w) if wall_rise(model, w, level, cut_height).is_some() => {
+                // how far above the wall's own level this plan's lies
+                let rise = wall_rise(model, w, level, cut_height).unwrap_or(0.0);
                 let d = w.direction();
                 let n = DVec2::new(-d.y, d.x);
                 let t = w.thickness / 2.0;
@@ -1072,7 +1074,7 @@ pub fn plan_view_with(
                         w.start + d * ends.place(w, u, s, false) + n * s
                     }
                 };
-                let cut_v = cut_height - w.base_offset;
+                let cut_v = cut_height + rise - w.base_offset;
                 let top_v = wall_top_height(model, w);
                 let asm_of = creabim_core::assembly_of(model, e).map(|x| x.1);
                 if cut_v <= 0.0 || cut_v >= top_v {
@@ -1628,6 +1630,27 @@ fn wall_band(
 /// The height of a wall's top above its base where it is highest. A top
 /// attached to a roof or slab follows their undersides where they are
 /// over it, and keeps the wall's own height elsewhere.
+/// Is wall `w` in the plan of `level` cut `cut_height` above it? A wall of
+/// the level itself is; so is a wall of another level that stands in
+/// this storey: its base under the cut and its top above this level's
+/// floor (a level put half way up a storey cuts the walls there, MU: a
+/// plan of a level added at +2.584 was empty). Gives how far this level
+/// lies above the wall's own.
+fn wall_rise(
+    model: &Model,
+    w: &creabim_core::Wall,
+    level: ElementId,
+    cut_height: f64,
+) -> Option<f64> {
+    if w.level == level {
+        return Some(0.0);
+    }
+    let z = |l| model.level(l).map(|x| x.elevation);
+    let rise = z(level)? - z(w.level)?;
+    let floor = rise - w.base_offset;
+    (cut_height + floor > 1e-3 && wall_top_height(model, w) > floor + 1e-3).then_some(rise)
+}
+
 fn wall_top_height(model: &Model, w: &creabim_core::Wall) -> f64 {
     let Some(top) = creabim_core::walls::top_profile(model, w) else {
         return w.height;
@@ -2518,6 +2541,55 @@ mod tests {
                     }
                 )
         }));
+    }
+
+    #[test]
+    fn a_level_put_in_a_storey_cuts_the_walls_standing_there() {
+        use creabim_core::{Document, Element, Level, Transaction};
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let mid = Element::new(
+            "Level 2",
+            ElementKind::Level(Level {
+                elevation: 2.584,
+                height: 3.0,
+            }),
+        );
+        let id = mid.id;
+        doc.commit(Transaction::new("level").insert(mid)).unwrap();
+        let m = doc.model();
+        let ground: Vec<ElementId> = m
+            .iter()
+            .filter(|e| {
+                matches!(&e.kind, ElementKind::Wall(w)
+                    if m.level(w.level).is_some_and(|l| l.elevation == 0.0))
+            })
+            .map(|e| e.id)
+            .collect();
+        assert!(!ground.is_empty());
+        let cut = |v: &PlanView| {
+            v.items
+                .iter()
+                .any(|i| ground.contains(&i.id()) && matches!(i, PlanItem::Fill { .. }))
+        };
+        // 200 mm above it the ground floor's walls (3 m tall) are cut
+        assert!(cut(&plan_view(m, id, 0.2)));
+        // 1.2 m above it the cut passes over them: seen from above
+        let high = plan_view(m, id, 1.2);
+        assert!(!cut(&high));
+        assert!(high.items.iter().any(|i| ground.contains(&i.id())
+            && matches!(
+                i,
+                PlanItem::Polygon {
+                    pen: Pen::Projection,
+                    ..
+                }
+            )));
+        // the level above keeps its own walls only: those below end at it
+        let top = m.levels().find(|l| l.1.elevation == 3.0).unwrap().0.id;
+        assert!(!plan_view(m, top, 1.2)
+            .items
+            .iter()
+            .any(|i| ground.contains(&i.id())));
     }
 
     #[test]

@@ -353,13 +353,15 @@ pub fn add(
     height: f64,
     plan: bool,
 ) -> (Transaction, ElementId, Option<ElementId>) {
-    let _ = model;
     let level = Element::new(name, ElementKind::Level(Level { elevation, height }));
     let id = level.id;
     let mut tx = Transaction::new("Add level").insert(level);
     let mut view = None;
     if plan {
-        let v = Element::new(format!("{name} plan"), ElementKind::View(View::plan(id)));
+        let v = Element::new(
+            format!("{name} plan"),
+            ElementKind::View(plan_of(model, id, elevation)),
+        );
         view = Some(v.id);
         tx = tx.insert(v);
     }
@@ -503,6 +505,25 @@ pub fn delete(model: &Model, level: ElementId, what: OnDelete) -> Transaction {
     tx = tx.remove_all_cascade(model, &gone);
     tx.ops.push(crate::Op::Remove(e.clone()));
     tx
+}
+
+/// The plan of level `id` at `elevation`: cut 1.2 m above it, or, with
+/// the next level nearer than that (a level put inside a storey to cut
+/// it there), half way up to that one, so that the cut stays in what
+/// stands between them.
+pub fn plan_of(model: &Model, id: ElementId, elevation: f64) -> View {
+    let mut v = View::plan(id);
+    let next = model
+        .levels()
+        .filter(|(e, l)| e.id != id && l.elevation > elevation + 1e-6)
+        .map(|(_, l)| l.elevation - elevation)
+        .fold(f64::MAX, f64::min);
+    if let ViewKind::Plan { cut_height, .. } = &mut v.kind {
+        if next < *cut_height {
+            *cut_height = next / 2.0;
+        }
+    }
+    v
 }
 
 #[cfg(test)]

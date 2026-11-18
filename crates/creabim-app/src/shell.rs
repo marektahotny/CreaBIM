@@ -1634,6 +1634,9 @@ impl CreaBimApp {
             "levels" => self.open_levels(),
             "project.info" => self.project_open = true,
             "level.add" => self.add_level_above(),
+            "browser.section" => self.pick_tool(ctx, Tool::Section),
+            "browser.elevation" => self.pick_tool(ctx, Tool::Elevation),
+            "sheets.set" => self.make_drawing_set(),
             "browser.sort" => {
                 if let Some(g) = crate::browser::ViewGroup::from_key(arg) {
                     let tx = crate::browser::sort_auto(self.doc.model(), g);
@@ -3639,9 +3642,92 @@ impl CreaBimApp {
                 })
             })
             .collect();
+        // sections and elevations are listed even before there are any,
+        // each with the tool that draws one
+        for (g, icon, act, hint) in [
+            (
+                crate::browser::ViewGroup::Sections,
+                "scissors-line-dashed",
+                "browser.section",
+                "Section: draw its line across a plan with two clicks",
+            ),
+            (
+                crate::browser::ViewGroup::Elevations,
+                "elevation",
+                "browser.elevation",
+                "Elevation: draw its line in front of the building in a plan with two clicks",
+            ),
+        ] {
+            let act = json!({"id": act, "icon": "plus", "hint": hint});
+            match out.iter_mut().find(|x| x["key"] == g.key()) {
+                Some(x) => {
+                    if let Some(a) = x["acts"].as_array_mut() {
+                        a.push(act);
+                    }
+                }
+                None => {
+                    let at = out
+                        .iter()
+                        .position(|x| {
+                            crate::browser::ViewGroup::from_key(x["key"].as_str().unwrap_or(""))
+                                .is_some_and(|o| o as usize > g as usize)
+                        })
+                        .unwrap_or(out.len());
+                    out.insert(
+                        at,
+                        json!({
+                            "key": g.key(), "title": g.title(), "icon": icon, "open": true,
+                            "rows": [], "acts": [act], "sortable": true, "note": "",
+                        }),
+                    );
+                }
+            }
+        }
+        // the drawings to print: the sheets, those of the documentation's
+        // set under its parts (C, D.1 ASR, D.3 ZTI...), by number
+        {
+            let mut sheets: Vec<(&Element, &creabim_core::Sheet)> = model
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ElementKind::Sheet(sh) => Some((e, sh)),
+                    _ => None,
+                })
+                .collect();
+            sheets.sort_by(|a, b| a.1.number.cmp(&b.1.number));
+            let mut parts: Vec<(&str, Vec<Value>)> = vec![("Drawings to print", vec![])];
+            for (e, sh) in sheets {
+                let mut r = row(e, true);
+                r["name"] = json!(format!("{} · {}", sh.number, e.name));
+                let part = creabim_geom::docset::part_of(&sh.number).unwrap_or("Drawings to print");
+                match parts.iter_mut().find(|p| p.0 == part) {
+                    Some(p) => p.1.push(r),
+                    None => parts.push((part, vec![r])),
+                }
+            }
+            parts[1..].sort_by_key(|p| p.0);
+            for (i, (title, rows)) in parts.into_iter().enumerate() {
+                let acts = if i == 0 {
+                    json!([
+                        {"id": "sheets.set", "icon": "sheet-template",
+                         "hint": "Drawing set: make the plans, sections, elevations and lists still missing and a sheet for each, numbered by the building decree (C00_SIT, S01_ASR_001_N01...)"},
+                        {"id": "new.sheet", "icon": "plus", "hint": "New empty sheet"},
+                    ])
+                } else {
+                    json!([])
+                };
+                out.push(json!({
+                    "key": format!("sheets:{title}"), "title": title,
+                    "icon": icon_name(Icon::of_class("Sheet")), "open": true,
+                    "rows": rows, "acts": acts,
+                }));
+            }
+        }
         let mut groups: Vec<(String, Vec<&Element>)> = vec![];
         for e in model.iter() {
-            if matches!(e.kind, ElementKind::Units(_) | ElementKind::View(_)) {
+            if matches!(
+                e.kind,
+                ElementKind::Units(_) | ElementKind::View(_) | ElementKind::Sheet(_)
+            ) {
                 continue;
             }
             let class = class_of(e);
@@ -3723,9 +3809,17 @@ impl CreaBimApp {
                         _ => icon_name(Icon::of_class(&class)),
                     },
                 };
+                // what the project is set up with stays listed; the
+                // elements themselves (walls, doors, tags...) are picked
+                // in the drawings, and listed only for the search
+                let listed = matches!(
+                    class.as_str(),
+                    "IfcBuildingStorey" | "IfcMaterial" | "IfcMaterialLayerSet" | "ElementType"
+                );
                 json!({
                     "key": class, "title": group_title(&class), "icon": icon,
                     "open": rank(&class) < 3, "rows": rows, "acts": act,
+                    "search": !listed,
                 })
             })
             .collect();

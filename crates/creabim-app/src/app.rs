@@ -7134,6 +7134,32 @@ impl CreaBimApp {
         }
     }
 
+    /// The drawing set of the documentation: the views still missing
+    /// and a sheet for every drawing.
+    pub(super) fn make_drawing_set(&mut self) {
+        let Some((tx, made)) = creabim_geom::docset::drawing_set(self.doc.model()) else {
+            self.status = if self
+                .doc
+                .model()
+                .iter()
+                .any(|e| matches!(e.kind, ElementKind::Wall(_)))
+            {
+                "The drawing set is complete: every drawing has its sheet.".into()
+            } else {
+                "Draw the building's walls first: the drawing set is made from them.".into()
+            };
+            return;
+        };
+        let r = self.doc.commit(tx);
+        self.report(
+            r,
+            format!(
+                "Drawing set: {} views and {} sheets made, listed under Drawings to print. Undo takes them back.",
+                made.views, made.sheets
+            ),
+        );
+    }
+
     fn new_sheet(&mut self) {
         let used: Vec<String> = sheets::sheets(self.doc.model())
             .into_iter()
@@ -12703,7 +12729,11 @@ fn with_plan_views(model: Model) -> Model {
         if !planned.contains(&e.id) {
             tx = tx.insert(Element::new(
                 format!("{} plan", e.name),
-                ElementKind::View(View::plan(e.id)),
+                ElementKind::View(creabim_core::levels::plan_of(
+                    &model,
+                    e.id,
+                    model.level(e.id).map_or(0.0, |l| l.elevation),
+                )),
             ));
             any = true;
         }

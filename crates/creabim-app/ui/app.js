@@ -293,7 +293,7 @@
       // a click lists the group's items beside the rail, to pick one
       // without opening the browser (MU29); the wheel scrolls the rail
       let rail = `<div class="rail">`;
-      for (const g of S.groups) rail += `<button class="rail-btn" data-popup="rail:${esc(g.key)}" title="${esc(g.title)} (${g.rows.length})">${icon(g.icon)}</button>`;
+      for (const g of S.groups) if (!g.search) rail += `<button class="rail-btn" data-popup="rail:${esc(g.key)}" title="${esc(g.title)} (${g.rows.length})">${icon(g.icon)}</button>`;
       root.innerHTML = rail + `</div>`;
       return;
     }
@@ -304,7 +304,8 @@
     let any = false;
     for (const g of S.groups) {
       const rows = f ? g.rows.filter((r) => r.name.toLowerCase().includes(f) || (r.mark && r.mark.toLowerCase().includes(f))) : g.rows;
-      if (f && rows.length === 0) continue;
+      // the elements' own groups (walls, doors...) come up only in a search
+      if ((f && rows.length === 0) || (!f && g.search)) continue;
       any = true;
       const open = f ? true : (local.open[g.key] !== undefined ? local.open[g.key] : g.open);
       const acts = (g.acts || []).map((a) => `<button class="gact" data-act="${esc(a.id)}" title="${esc(a.hint)}">${icon(a.icon)}</button>`).join("");

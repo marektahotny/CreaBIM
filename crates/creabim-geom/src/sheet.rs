@@ -474,7 +474,13 @@ pub fn draw_builtin_frame(
     c.text(DVec2::new(x, row(15.5)), small, "SHEET", Anchor::Start);
     c.text(DVec2::new(x, row(21.5)), 5.0, title, Anchor::Start);
     c.text(DVec2::new(x, row(30.5)), small, "NUMBER", Anchor::Start);
-    c.text(DVec2::new(x, row(38.5)), 8.0, &sheet.number, Anchor::Start);
+    // a long number (S01_ASR_001_N01) smaller, to stay in its box
+    let size = if sheet.number.chars().count() > 8 {
+        4.5
+    } else {
+        8.0
+    };
+    c.text(DVec2::new(x, row(38.5)), size, &sheet.number, Anchor::Start);
     let x2 = split + 3.0;
     c.text(DVec2::new(x2, row(30.5)), small, "SCALE", Anchor::Start);
     c.text(DVec2::new(x2, row(35.5)), 3.0, scales, Anchor::Start);

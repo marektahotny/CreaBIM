@@ -564,7 +564,11 @@ impl CreaBimApp {
                     .get(id)
                     .map(|e| e.name.clone())
                     .unwrap_or_default();
-                let v = Element::new(format!("{name} plan"), ElementKind::View(View::plan(id)));
+                let z = self.doc.model().level(id).map_or(0.0, |l| l.elevation);
+                let v = Element::new(
+                    format!("{name} plan"),
+                    ElementKind::View(creabim_core::levels::plan_of(self.doc.model(), id, z)),
+                );
                 let vid = v.id;
                 let r = self
                     .doc

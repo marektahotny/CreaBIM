@@ -119,8 +119,12 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
     };
     let mut under = Vec::new();
     let mut over = Vec::new();
+    // walls of other levels that stand in this storey are in its own
+    // plan already
+    let drawn: HashSet<ElementId> = d.items.iter().map(|it| it.id()).collect();
     for (l, z, band) in bands(model, level, cut, r) {
-        let theirs = |it: &PlanItem| element_level(model, it.id()) == Some(l);
+        let theirs =
+            |it: &PlanItem| element_level(model, it.id()) == Some(l) && !drawn.contains(&it.id());
         match band {
             Band::Below | Band::Beyond => {
                 let sub = crate::plan::plan_view_with(model, l, own + cut - z, &g);
@@ -385,13 +389,28 @@ mod tests {
     }
 
     #[test]
-    fn a_plan_without_a_range_draws_its_own_level_only() {
+    fn a_plan_without_a_range_draws_what_stands_in_its_storey() {
         let (m, lv, el) = levels();
         let v = View::plan(lv[1]);
         let d = plan(&m, &v, lv[1], 1.2);
         let got = ids(&d);
         assert!(got.contains(&el[1]));
-        assert!(!got.contains(&el[0]) && !got.contains(&el[2]) && !got.contains(&el[3]));
+        // the site's wall, 1.8 m from -0.45, is cut at +1.2 too
+        assert!(got.contains(&el[0]));
+        assert!(!got.contains(&el[2]) && !got.contains(&el[3]));
+        // cut over its top it is seen from above, once, whatever the range
+        let mut low = View::plan(lv[1]);
+        low.graphics.range.bottom = Some(RangeLimit {
+            level: lv[0],
+            offset: 0.0,
+        });
+        let d = plan(&m, &low, lv[1], 1.5);
+        let walls = d
+            .items
+            .iter()
+            .filter(|it| it.id() == el[0] && matches!(it, PlanItem::Polygon { .. }))
+            .count();
+        assert_eq!(walls, 1);
     }
 
     #[test]
