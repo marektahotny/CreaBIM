@@ -1194,6 +1194,9 @@ impl Builder {
                             frame: Default::default(),
                             flip_hand: false,
                             flip_facing: false,
+                            setback: None,
+                            reveal: None,
+                            leaves: vec![],
                         }),
                         of_type: None,
                     });

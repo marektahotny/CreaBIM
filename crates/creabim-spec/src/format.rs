@@ -439,6 +439,17 @@ spec_struct! {
         /// A door opening to the wall's exterior; a window facing its
         /// interior.
         flip_facing: bool = false,
+        /// How far the frame's outer face stands in from the outer edge
+        /// of the wall's core. Left out: on that edge in a layered wall,
+        /// in the middle of a plain one.
+        setback: Option<f64>,
+        /// How far the reveal's insulation laps over the frame.
+        reveal: Option<f64>,
+        /// How each leaf of a window opens, from the left seen from
+        /// inside: "FIX", "O-L", "O-P" (turning, hinges left or right),
+        /// "S" (tilting), "OS-L", "OS-P" (tilt and turn), "P-L", "P-P"
+        /// (sliding), "ZP-L", "ZP-P" (lift and slide).
+        leaves: Vec<String>,
     }
 }
 

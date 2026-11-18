@@ -252,6 +252,88 @@ pub(super) fn wall_fields(
     label
 }
 
+/// Where a door's or window's frame stands across its wall, how far
+/// the reveal laps it, and how each leaf of a window opens. Returns the
+/// edit's name.
+pub(super) fn seat_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) -> &'static str {
+    let mut label = "";
+    if o.kind == OpeningKind::Hole {
+        return label;
+    }
+    let Some(he) = model.get(o.host) else {
+        return label;
+    };
+    let ElementKind::Wall(host) = &he.kind else {
+        return label;
+    };
+    let asm = creabim_core::assembly_of(model, he).map(|x| x.1);
+    ui.separator();
+    ui.label(egui::RichText::new(crate::i18n::t("Seating in the wall")).strong());
+    let mut sb = o.setback_in(host, asm);
+    let changed = crate::props::row(ui, "Setback from the core", |ui| {
+        crate::props::fill(ui, crate::units::drag(&mut sb).range(-1.0..=2.0))
+            .on_hover_text(crate::i18n::t("How far the frame's outer face stands in from the outer edge of the wall's load-bearing layers; less than nothing moves it out into the insulation. In a wall with no layers it is measured from the wall's outside face."))
+            .changed()
+    });
+    if changed {
+        o.setback = Some(sb);
+        label = "Opening setback";
+    }
+    if o.kind == OpeningKind::Window {
+        let mut lap = o
+            .reveal
+            .unwrap_or(creabim_core::assembly::REVEAL_INSULATION);
+        let changed = crate::props::row(ui, "Reveal overlap", |ui| {
+            crate::props::fill(ui, crate::units::drag(&mut lap).range(0.0..=0.3))
+                .on_hover_text(crate::i18n::t(
+                    "How far the reveal's insulation laps over the frame.",
+                ))
+                .changed()
+        });
+        if changed {
+            o.reveal = Some(lap);
+            label = "Reveal overlap";
+        }
+        ui.separator();
+        ui.label(
+            egui::RichText::new(crate::i18n::t("Leaves, from the left seen from inside")).strong(),
+        );
+        let n = o.frame.panes_across.clamp(1, 12) as usize;
+        for i in 0..n {
+            let mut op = o.leaf(i);
+            let text = format!("{} {}", crate::i18n::t("Leaf"), i + 1);
+            let changed = crate::props::row(ui, &text, |ui| {
+                let mut changed = false;
+                egui::ComboBox::from_id_salt(("leaf_op", i))
+                    .icon(crate::props::combo_icon)
+                    .selected_text(crate::i18n::tw(op.label()))
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for x in creabim_core::LeafOp::ALL {
+                            changed |= ui
+                                .selectable_value(&mut op, x, crate::i18n::tw(x.label()))
+                                .changed();
+                        }
+                    });
+                changed
+            });
+            if changed {
+                if o.leaves.len() <= i {
+                    o.leaves.resize(i + 1, creabim_core::LeafOp::Fixed);
+                }
+                o.leaves[i] = op;
+                label = "Leaf operation";
+            }
+        }
+        // no more leaves than panes, none kept that say nothing
+        o.leaves.truncate(n);
+        while o.leaves.last() == Some(&creabim_core::LeafOp::Fixed) {
+            o.leaves.pop();
+        }
+    }
+    label
+}
+
 /// A door's hand and swing, or a window's facing. Returns the edit's name.
 pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) -> &'static str {
     let mut label = "";

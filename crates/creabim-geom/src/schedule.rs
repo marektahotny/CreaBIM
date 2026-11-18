@@ -182,6 +182,10 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
             if doors {
                 // hinge side seen from where it opens to, into or out of the building
                 columns.push(col("Swing", None, 22.0, false));
+            } else {
+                // leaf by leaf from the left seen from inside
+                columns.push(col("Operation", None, 30.0, false));
+                columns.push(col("Leaves", None, 14.0, true));
             }
             for e in model.iter() {
                 let ElementKind::Opening(o) = &e.kind else {
@@ -204,6 +208,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
                         Some(ElementKind::Wall(w)) => crate::opening::door_hand(o, w).into(),
                         _ => String::new(),
                     });
+                } else {
+                    cells.push(crate::opening::window_operation(o));
+                    cells.push(o.frame.panes_across.clamp(1, 12).to_string());
                 }
                 rows.push((
                     0.0,

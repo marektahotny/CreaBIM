@@ -83,9 +83,9 @@ pub use editmesh::EditMesh;
 pub use element::{layer_edge_offsets, set_layer_edge, LayerEdge, LayerEnd, LocationLine, WallTop};
 pub use element::{
     Cut, Dimension, Element, ElementKind, FreeMesh, Grid, GridGroup, Guide, Hatch, HostPoint,
-    Level, LevelHead, Material, Opening, OpeningFrame, OpeningKind, ScheduleCategory, Sheet,
-    SheetTitle, Sketch, Slab, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall,
-    Workplane,
+    LeafOp, Level, LevelHead, Material, Opening, OpeningFrame, OpeningKind, ScheduleCategory,
+    Sheet, SheetTitle, Sketch, Slab, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport,
+    Wall, Workplane,
 };
 pub use footing::{Footing, FootingKind};
 pub use graphics::{LineWeights, PlanGraphics};

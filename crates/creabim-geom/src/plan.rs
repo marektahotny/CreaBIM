@@ -1039,6 +1039,7 @@ pub fn plan_view_with(
                 };
                 let cut_v = cut_height - w.base_offset;
                 let top_v = wall_top_height(model, w);
+                let asm_of = creabim_core::assembly_of(model, e).map(|x| x.1);
                 if cut_v <= 0.0 || cut_v >= top_v {
                     // wall entirely below or above the cut: show its outline in projection
                     if cut_v >= top_v {
@@ -1071,7 +1072,7 @@ pub fn plan_view_with(
                     for (oid, o) in hosted {
                         if let Some(c) = Cut::of(o, w) {
                             if cut_v > c.v0 && cut_v < c.v1 {
-                                items.extend(opening_symbol(oid, o, w, &c, cut_v, &plain));
+                                items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &plain));
                             }
                         }
                     }
@@ -1079,7 +1080,7 @@ pub fn plan_view_with(
                 }
                 let mut gaps: Vec<(f64, f64)> = Vec::new();
                 // the windows cut: their edges and their frames' depths
-                let mut windows: Vec<(f64, f64, f64)> = Vec::new();
+                let mut windows: Vec<(f64, f64, (f64, f64), f64)> = Vec::new();
                 for oid in model.dependents(e.id) {
                     let Some(oe) = model.get(oid) else { continue };
                     let ElementKind::Opening(o) = &oe.kind else {
@@ -1090,9 +1091,15 @@ pub fn plan_view_with(
                         gaps.push((c.u0, c.u1));
                         if o.kind == creabim_core::OpeningKind::Window {
                             let frame = o.frame.fitted(c.u1 - c.u0, c.v1 - c.v0, w.thickness);
-                            windows.push((c.u0, c.u1, frame.depth));
+                            windows.push((
+                                c.u0,
+                                c.u1,
+                                o.frame_span(w, asm_of, frame.depth),
+                                o.reveal
+                                    .unwrap_or(creabim_core::assembly::REVEAL_INSULATION),
+                            ));
                         }
-                        items.extend(opening_symbol(oid, o, w, &c, cut_v, &at));
+                        items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &at));
                     } else if c.v0 >= cut_v {
                         // wholly above the cut (a duct hole, a high
                         // window): its outline in the wall, dashed
@@ -1156,8 +1163,8 @@ pub fn plan_view_with(
                     }
                     // the layers turned into the windows' reveals
                     let bands = creabim_core::assembly::wall_bands(asm, w);
-                    for &(u0, u1, depth) in &windows {
-                        for l in creabim_core::assembly::reveal_wraps(asm, w, depth) {
+                    for &(u0, u1, span, lap) in &windows {
+                        for l in creabim_core::assembly::reveal_wraps(asm, w, span, lap) {
                             let Some(band) = bands.get(l.index) else {
                                 continue;
                             };
@@ -2116,6 +2123,7 @@ fn opening_symbol(
     id: ElementId,
     o: &creabim_core::Opening,
     w: &creabim_core::Wall,
+    asm: Option<&creabim_core::assembly::Assembly>,
     c: &Cut,
     cut_v: f64,
     at: &dyn Fn(f64, f64) -> DVec2,
@@ -2141,7 +2149,7 @@ fn opening_symbol(
             points: vec![at(u0, s0), at(u1, s0), at(u1, s1), at(u0, s1)],
         })
     };
-    let boxes = opening_boxes(o, w);
+    let boxes = opening_boxes(o, w, asm);
     for b in &boxes {
         let (u0, u1) = (c.u0 + b.lo.x, c.u0 + b.hi.x);
         let cut = b.lo.z < z && z < b.hi.z;
@@ -2821,6 +2829,9 @@ mod tests {
                 frame: Default::default(),
                 flip_hand: false,
                 flip_facing: false,
+                setback: None,
+                reveal: None,
+                leaves: vec![],
             }),
         );
         let hole = duct.id;

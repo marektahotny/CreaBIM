@@ -1199,6 +1199,9 @@ mod tests {
                     frame: Default::default(),
                     flip_hand: false,
                     flip_facing: false,
+                    setback: None,
+                    reveal: None,
+                    leaves: vec![],
                 }),
             )
         };
@@ -1483,6 +1486,9 @@ mod core_tests {
                 frame: Default::default(),
                 flip_hand: false,
                 flip_facing: false,
+                setback: None,
+                reveal: None,
+                leaves: vec![],
             }),
         );
         let did = door.id;

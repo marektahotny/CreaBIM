@@ -512,6 +512,9 @@ A door, window or bare hole in a wall, placed by its distance along the wall fro
 | `frame` | [Frame](#frame) |  |  |
 | `flip_hand` | boolean | default `false` | A door hinged on the jamb at the wall's end side. |
 | `flip_facing` | boolean | default `false` | A door opening to the wall's exterior; a window facing its interior. |
+| `setback` | number |  | How far the frame's outer face stands in from the outer edge of the wall's core. Left out: on that edge in a layered wall, in the middle of a plain one. |
+| `reveal` | number |  | How far the reveal's insulation laps over the frame. |
+| `leaves` | array of string |  | How each leaf of a window opens, from the left seen from inside: "FIX", "O-L", "O-P" (turning, hinges left or right), "S" (tilting), "OS-L", "OS-P" (tilt and turn), "P-L", "P-P" (sliding), "ZP-L", "ZP-P" (lift and slide). |
 
 ### Slab
 

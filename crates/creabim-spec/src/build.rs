@@ -889,6 +889,16 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         f::OpeningKind::Window => core::OpeningKind::Window,
         f::OpeningKind::Hole => core::OpeningKind::Hole,
     };
+    let mut leaves = vec![];
+    for (i, l) in o.leaves.iter().enumerate() {
+        match core::LeafOp::of_code(l) {
+            Some(op) => leaves.push(op),
+            None => c.err(
+                &at.key("leaves"),
+                format!("leaf {} is `{l}`, not one of FIX, O-L, O-P, S, OS-L, OS-P, P-L, P-P, ZP-L, ZP-P", i + 1),
+            ),
+        }
+    }
     let opening = core::Opening {
         host,
         kind,
@@ -904,6 +914,9 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         frame: Default::default(),
         flip_hand: o.flip_hand,
         flip_facing: o.flip_facing,
+        setback: o.setback.map(|v| c.l(v)),
+        reveal: o.reveal.map(|v| c.l(v)),
+        leaves,
     };
     let mut e = Element::new(name_of(&o.name, &o.id), ElementKind::Opening(opening));
     let typed = match o.kind {

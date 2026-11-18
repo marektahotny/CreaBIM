@@ -9541,6 +9541,10 @@ impl CreaBimApp {
                             label = "Window panes"
                         }
                     }
+                    let l = wallsui::seat_fields(ui, self.doc.model(), o);
+                    if !l.is_empty() {
+                        label = l;
+                    }
                 }
                 ElementKind::View(v) if matches!(v.kind, ViewKind::Schedule { .. }) => {
                     if let ViewKind::Schedule { category, by_type } = &mut v.kind {

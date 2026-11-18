@@ -126,6 +126,9 @@ pub(super) fn sample_model(
                     frame: Default::default(),
                     flip_hand: false,
                     flip_facing: false,
+                    setback: None,
+                    reveal: None,
+                    leaves: vec![],
                 }),
             ));
             // the section through its middle, whatever its width

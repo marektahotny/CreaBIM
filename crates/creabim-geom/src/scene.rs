@@ -854,7 +854,11 @@ fn opening_items(
     use crate::opening::Part;
     use creabim_core::OpeningKind;
     let material = creabim_core::material_of(model, e).map(|(_, m)| (m.color, m.surface()));
-    crate::opening::opening_meshes(o, w, level_z)
+    let asm = model
+        .get(o.host)
+        .and_then(|h| creabim_core::assembly_of(model, h))
+        .map(|x| x.1);
+    crate::opening::opening_meshes(o, w, asm, level_z)
         .into_iter()
         .map(|(part, mesh)| {
             let (color, surface) = match (part, o.kind, material) {

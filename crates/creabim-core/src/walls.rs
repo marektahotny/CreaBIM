@@ -1021,6 +1021,9 @@ mod widen_tests {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            setback: None,
+            reveal: None,
+            leaves: vec![],
         };
         (m, host, o)
     }

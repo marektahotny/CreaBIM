@@ -1547,6 +1547,117 @@ pub struct Opening {
     /// window with its outside face (and its sill) to the wall's interior.
     #[serde(default, skip_serializing_if = "is_false")]
     pub flip_facing: bool,
+    /// How far the frame's outer face stands in from the outer edge of
+    /// the wall's load-bearing core (less than nothing: out into the
+    /// insulation). Left out, the frame stands on that edge in a layered
+    /// wall and in the middle of a plain one; set in a plain wall, it is
+    /// measured from the wall's outside face.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setback: Option<f64>,
+    /// How far the reveal's insulation laps over the frame; left out,
+    /// [`crate::assembly::REVEAL_INSULATION`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reveal: Option<f64>,
+    /// How each leaf of a window opens, one for each pane across from
+    /// the left seen from inside; those left out are fixed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub leaves: Vec<LeafOp>,
+}
+
+/// How a window's leaf opens. Left and right are seen from inside.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeafOp {
+    /// Fixed glazing, with no sash.
+    #[default]
+    Fixed,
+    /// Turning on hinges on its left or right.
+    TurnLeft,
+    TurnRight,
+    /// Tilting in at its top.
+    Tilt,
+    /// Tilting and turning.
+    TiltTurnLeft,
+    TiltTurnRight,
+    /// Sliding to the left or right.
+    SlideLeft,
+    SlideRight,
+    /// Lifting and sliding.
+    LiftSlideLeft,
+    LiftSlideRight,
+}
+
+impl LeafOp {
+    pub const ALL: [LeafOp; 10] = [
+        LeafOp::Fixed,
+        LeafOp::TurnLeft,
+        LeafOp::TurnRight,
+        LeafOp::Tilt,
+        LeafOp::TiltTurnLeft,
+        LeafOp::TiltTurnRight,
+        LeafOp::SlideLeft,
+        LeafOp::SlideRight,
+        LeafOp::LiftSlideLeft,
+        LeafOp::LiftSlideRight,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LeafOp::Fixed => "Fixed",
+            LeafOp::TurnLeft => "Turning, hinges left",
+            LeafOp::TurnRight => "Turning, hinges right",
+            LeafOp::Tilt => "Tilting",
+            LeafOp::TiltTurnLeft => "Tilt and turn, hinges left",
+            LeafOp::TiltTurnRight => "Tilt and turn, hinges right",
+            LeafOp::SlideLeft => "Sliding to the left",
+            LeafOp::SlideRight => "Sliding to the right",
+            LeafOp::LiftSlideLeft => "Lift and slide to the left",
+            LeafOp::LiftSlideRight => "Lift and slide to the right",
+        }
+    }
+
+    /// As window schedules abbreviate it (F, O, S, OS, P, ZP in Slovak
+    /// practice are translated from these).
+    pub fn code(self) -> &'static str {
+        match self {
+            LeafOp::Fixed => "FIX",
+            LeafOp::TurnLeft => "O-L",
+            LeafOp::TurnRight => "O-P",
+            LeafOp::Tilt => "S",
+            LeafOp::TiltTurnLeft => "OS-L",
+            LeafOp::TiltTurnRight => "OS-P",
+            LeafOp::SlideLeft => "P-L",
+            LeafOp::SlideRight => "P-P",
+            LeafOp::LiftSlideLeft => "ZP-L",
+            LeafOp::LiftSlideRight => "ZP-P",
+        }
+    }
+
+    pub fn of_code(s: &str) -> Option<LeafOp> {
+        LeafOp::ALL.into_iter().find(|o| o.code() == s)
+    }
+
+    /// The same turned round, as seen from the other side.
+    pub fn mirrored(self) -> LeafOp {
+        match self {
+            LeafOp::TurnLeft => LeafOp::TurnRight,
+            LeafOp::TurnRight => LeafOp::TurnLeft,
+            LeafOp::TiltTurnLeft => LeafOp::TiltTurnRight,
+            LeafOp::TiltTurnRight => LeafOp::TiltTurnLeft,
+            LeafOp::SlideLeft => LeafOp::SlideRight,
+            LeafOp::SlideRight => LeafOp::SlideLeft,
+            LeafOp::LiftSlideLeft => LeafOp::LiftSlideRight,
+            LeafOp::LiftSlideRight => LeafOp::LiftSlideLeft,
+            o => o,
+        }
+    }
+
+    pub fn slides(self) -> bool {
+        matches!(
+            self,
+            LeafOp::SlideLeft | LeafOp::SlideRight | LeafOp::LiftSlideLeft | LeafOp::LiftSlideRight
+        )
+    }
 }
 
 impl Opening {
@@ -1562,6 +1673,52 @@ impl Opening {
             OpeningKind::Window | OpeningKind::Hole => !interior_left,
         };
         left != self.flip_facing
+    }
+
+    /// How leaf `i` of a window opens.
+    pub fn leaf(&self, i: usize) -> LeafOp {
+        self.leaves.get(i).copied().unwrap_or_default()
+    }
+
+    /// Where its frame, `depth` deep, stands across `wall`, built up as
+    /// `a`: from and to, the wall's left positive. See
+    /// [`Opening::setback`].
+    pub fn frame_span(
+        &self,
+        wall: &Wall,
+        a: Option<&crate::assembly::Assembly>,
+        depth: f64,
+    ) -> (f64, f64) {
+        let t = wall.thickness / 2.0;
+        let depth = depth.min(wall.thickness);
+        let layered = a.filter(|a| a.layers.len() >= 2);
+        let (lo, hi) = match (layered, self.setback) {
+            (Some(a), _) => crate::assembly::wall_core(a, wall),
+            (None, Some(_)) => (-t, t),
+            (None, None) => return (-depth / 2.0, depth / 2.0),
+        };
+        let sb = self.setback.unwrap_or(0.0);
+        // the exterior is the wall's right unless it is flipped
+        let (a0, a1) = if wall.flip {
+            (hi - sb - depth, hi - sb)
+        } else {
+            (lo + sb, lo + sb + depth)
+        };
+        // kept inside the wall
+        let shift = (-t - a0).max(0.0) + (t - a1).min(0.0);
+        (a0 + shift, a1 + shift)
+    }
+
+    /// The setback it has: the one set, or the one it stands at left
+    /// to itself.
+    pub fn setback_in(&self, wall: &Wall, a: Option<&crate::assembly::Assembly>) -> f64 {
+        let layered = a.is_some_and(|a| a.layers.len() >= 2);
+        self.setback.unwrap_or(if layered {
+            0.0
+        } else {
+            let d = self.frame.depth.clamp(0.02, wall.thickness.max(0.02));
+            (wall.thickness - d) / 2.0
+        })
     }
 }
 

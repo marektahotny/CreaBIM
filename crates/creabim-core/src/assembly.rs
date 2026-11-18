@@ -276,16 +276,17 @@ impl WrapLayer {
 }
 
 /// The layers of `a` that turn into the reveals of a window of `wall`
-/// whose frame, `frame_depth` deep, stands in the middle of the wall
+/// whose frame stands from `frame.0` to `frame.1` across the wall
 /// (PilonDesigner's `wrapStack`): on each side those before the frame,
-/// insulation thinned to [`REVEAL_INSULATION`].
-pub fn reveal_wraps(a: &Assembly, wall: &Wall, frame_depth: f64) -> Vec<WrapLayer> {
+/// insulation thinned to `lap`, what it laps over the frame
+/// ([`REVEAL_INSULATION`] unless the window says).
+pub fn reveal_wraps(a: &Assembly, wall: &Wall, frame: (f64, f64), lap: f64) -> Vec<WrapLayer> {
     if a.wrap == RevealWrap::None || a.layers.len() < 2 {
         return vec![];
     }
     let bands = wall_bands(a, wall);
     let (first, last) = a.core();
-    let hd = frame_depth / 2.0;
+    let span = frame;
     let mut sides: Vec<Vec<&Band>> = vec![];
     if matches!(a.wrap, RevealWrap::Both | RevealWrap::Exterior) {
         sides.push(bands[..first].iter().collect());
@@ -302,7 +303,12 @@ pub fn reveal_wraps(a: &Assembly, wall: &Wall, frame_depth: f64) -> Vec<WrapLaye
         } else {
             (b0.s1, -1.0)
         };
-        let frame = face.abs() - hd;
+        let frame = if inward > 0.0 {
+            span.0 - face
+        } else {
+            face - span.1
+        }
+        .max(0.0);
         let thick = |b: &Band| b.s1 - b.s0;
         // only those before the frame: with a frame set in the
         // insulation the layers behind it don't turn in
@@ -325,7 +331,7 @@ pub fn reveal_wraps(a: &Assembly, wall: &Wall, frame_depth: f64) -> Vec<WrapLaye
             .iter()
             .map(|(b, _)| {
                 if b.function == LayerFunction::Insulation {
-                    thick(b).min(REVEAL_INSULATION)
+                    thick(b).min(lap.max(0.0))
                 } else {
                     thick(b)
                 }
@@ -1022,7 +1028,7 @@ mod tests {
             0.425,
             3.0,
         );
-        let w = reveal_wraps(&a, &wall, 0.08);
+        let w = reveal_wraps(&a, &wall, (-0.04, 0.04), REVEAL_INSULATION);
         assert_eq!(w.iter().map(|l| l.index).collect::<Vec<_>>(), vec![0, 1, 3]);
         // the frame 172.5 mm in from either face
         assert!(w.iter().all(|l| (l.frame - 0.1725).abs() < 1e-9));
@@ -1056,13 +1062,16 @@ mod tests {
                 Layer::new(LayerFunction::Finish, None, 0.015),
             ],
         );
-        let cw = reveal_wraps(&cavity, &wall, 0.08);
+        let cw = reveal_wraps(&cavity, &wall, (-0.04, 0.04), REVEAL_INSULATION);
         assert_eq!(cw.iter().map(|l| l.index).collect::<Vec<_>>(), vec![2, 4]);
         let mut none = a.clone();
         none.wrap = RevealWrap::None;
-        assert!(reveal_wraps(&none, &wall, 0.08).is_empty());
+        assert!(reveal_wraps(&none, &wall, (-0.04, 0.04), REVEAL_INSULATION).is_empty());
         let mut ext = a.clone();
         ext.wrap = RevealWrap::Exterior;
-        assert_eq!(reveal_wraps(&ext, &wall, 0.08).len(), 2);
+        assert_eq!(
+            reveal_wraps(&ext, &wall, (-0.04, 0.04), REVEAL_INSULATION).len(),
+            2
+        );
     }
 }
