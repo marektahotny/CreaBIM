@@ -6,6 +6,7 @@
 
 pub mod annotation;
 pub mod assembly;
+pub mod autovalves;
 pub mod catalogue;
 pub mod checks;
 pub mod constraint;

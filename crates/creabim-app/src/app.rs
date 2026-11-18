@@ -31,6 +31,8 @@ pub(crate) mod appmenu;
 mod areasui;
 #[path = "assemblies.rs"]
 mod assemblies;
+#[path = "autovalvesui.rs"]
+mod autovalvesui;
 #[path = "cropui.rs"]
 mod cropui;
 #[path = "disciplines.rs"]
@@ -356,6 +358,8 @@ pub struct CreaBimApp {
     fixture_legend: bool,
     /// The medical supply unit being made to order, while its window is open.
     med_unit: Option<creabim_core::catalogue::medical::MedUnitConfig>,
+    /// The valve proposal window's options, while it is open.
+    auto_valves: Option<creabim_core::autovalves::FillOpts>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
     /// The schedule of earthworks, while its window is open.
@@ -535,6 +539,7 @@ impl CreaBimApp {
             fixture_legend: false,
             med_unit: None,
             heat_source: None,
+            auto_valves: None,
             earthworks: None,
             note_editor: None,
             copy_guides: None,
@@ -11942,6 +11947,7 @@ impl eframe::App for CreaBimApp {
         self.fixture_legend_window(&ctx);
         self.med_unit_window(&ctx);
         self.heat_source_window(&ctx);
+        self.auto_valves_window(&ctx);
         self.earthworks_window(&ctx);
         self.maps_window(&ctx);
         self.note_editor_window(&ctx);

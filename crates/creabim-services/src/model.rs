@@ -2,7 +2,8 @@
 //! where their ends meet (or one ends on another, a tee), and the
 //! fixtures whose connectors they reach, as the tree the calculations
 //! take. Its root is the free end no fixture stands at: the lowest, where
-//! a supply comes up into the building.
+//! a supply comes up into the building; hot water's is its heater's
+//! outlet where one is drawn.
 
 use crate::fixtures::match_fixture;
 use crate::network::{AccessoryRole, FittingKind, Network, Node, NodeId, NodeKind, PipeSize};
@@ -163,9 +164,28 @@ pub fn build(model: &Model, code: &str, s: &Settings) -> Option<ModelNetwork> {
             }
         }
     }
-    // the root: the lowest free end with no fixture, else the lowest end
+    // where plant stands (a water heater's cold inlet, its hot outlet)
+    let conn = if code == "TV" {
+        ConnKind::TV
+    } else {
+        ConnKind::SV
+    };
+    let plant: Vec<usize> = if matches!(code, "SV" | "TV") {
+        creabim_core::autovalves::plant_connectors(model, conn)
+            .into_iter()
+            .filter_map(|at| {
+                (0..points.len())
+                    .filter(|&i| adj[i].len() == 1 && points[i].distance(at) <= REACH)
+                    .min_by(|&i, &j| points[i].distance(at).total_cmp(&points[j].distance(at)))
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+    // the root: hot water sets out of its heater; else the lowest free
+    // end with no fixture and no plant, else the lowest end
     let free: Vec<usize> = (0..points.len())
-        .filter(|&i| adj[i].len() == 1 && at_point[i].is_none())
+        .filter(|&i| adj[i].len() == 1 && at_point[i].is_none() && !plant.contains(&i))
         .collect();
     let lowest = |v: &[usize]| {
         v.iter()
@@ -173,7 +193,15 @@ pub fn build(model: &Model, code: &str, s: &Settings) -> Option<ModelNetwork> {
             .min_by(|&i, &j| points[i].z.total_cmp(&points[j].z))
     };
     let all: Vec<usize> = (0..points.len()).filter(|&i| adj[i].len() == 1).collect();
-    let root = lowest(&free).or_else(|| lowest(&all)).unwrap_or(0);
+    let heater = if code == "TV" {
+        plant.first().copied()
+    } else {
+        None
+    };
+    let root = heater
+        .or_else(|| lowest(&free))
+        .or_else(|| lowest(&all))
+        .unwrap_or(0);
 
     let mut out = ModelNetwork::default();
     let mut used = vec![false; segs.len()];
@@ -222,7 +250,8 @@ pub fn build(model: &Model, code: &str, s: &Settings) -> Option<ModelNetwork> {
             here = add(&mut out, Some(here), n, None, None);
         }
         if outs == 0 {
-            if to != root {
+            // a water heater's inlet is no end left open
+            if to != root && !plant.contains(&to) {
                 out.open_ends.push(b);
                 let n = point_node(NodeKind::OpenEnd, p, out.net.nodes.len());
                 add(&mut out, Some(here), n, None, None);
@@ -518,6 +547,58 @@ mod tests {
         );
         assert_eq!(pipe_results(&m).len(), 6);
         assert!(m.unreached.is_empty() && m.loops == 0);
+    }
+
+    #[test]
+    fn a_water_heater_takes_cold_water_and_hot_water_sets_out_of_it() {
+        use creabim_core::catalogue::heat::{unit, HeatKind};
+        let (mut doc, level) = two_basins();
+        let tank = unit(HeatKind::Cylinder, 200);
+        let (tx, id) =
+            creabim_core::objects::place(doc.model(), &tank, level, DVec2::new(8.0, 2.0), 0.0);
+        doc.commit(tx).unwrap();
+        let e = doc.model().get(id).unwrap();
+        let c = fixture::connectors(doc.model(), e);
+        let at = |k: ConnKind| c.iter().find(|c| c.kind == k).unwrap().at;
+        let (sv, tv) = (at(ConnKind::SV), at(ConnKind::TV));
+        // cold water on to the cylinder's inlet, lower than where the
+        // main comes in from the side; hot water from its outlet
+        let mut tx = Transaction::new("pipes");
+        for (code, a, b) in [
+            ("SV", [4.08, 2.5, 0.3], [sv.x, 2.5, 0.3]),
+            ("SV", [sv.x, 2.5, 0.3], [sv.x, sv.y, 0.3]),
+            ("SV", [sv.x, sv.y, 0.3], [sv.x, sv.y, sv.z]),
+            ("TV", [tv.x, tv.y, tv.z], [tv.x, tv.y, 2.4]),
+            ("TV", [tv.x, tv.y, 2.4], [9.0, 9.0, 2.4]),
+            ("TV", [9.0, 9.0, 2.4], [9.0, 9.0, 0.3]),
+        ] {
+            tx = tx.insert(pipe(level, code, a, b));
+        }
+        doc.commit(tx).unwrap();
+        let s = Settings::default();
+        // lift the connection over the inlet: the root stays the connection
+        let mut doc2 = doc;
+        let riser = doc2
+            .model()
+            .iter()
+            .find(
+                |e| matches!(&e.kind, ElementKind::Pipe(p) if p.system == "SV" && p.start.z < 0.0),
+            )
+            .unwrap()
+            .clone();
+        let mut lifted = riser.clone();
+        if let ElementKind::Pipe(p) = &mut lifted.kind {
+            p.start.z = 0.25;
+        }
+        doc2.commit(Transaction::new("lift").replace(riser, lifted))
+            .unwrap();
+        assert!(sv.z < 0.25);
+        let m = build(doc2.model(), "SV", &s).unwrap();
+        assert_eq!(m.net.root().p1, [0.0, 2.5, 0.25]);
+        assert!(m.open_ends.is_empty() && m.unreached.is_empty());
+        let h = build(doc2.model(), "TV", &s).unwrap();
+        let r = h.net.root().p1;
+        assert!((DVec3::from(r) - tv).length() < 1e-9, "{r:?} {tv}");
     }
 
     #[test]
