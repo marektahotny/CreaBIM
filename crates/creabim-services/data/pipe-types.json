@@ -2316,6 +2316,8709 @@
   "standards": "STN EN ISO 15875, STN EN 1264"
  },
  {
+  "id": "WPPR",
+  "short": "Wavin PP-R",
+  "name": "Wavin PP-R S 3,2 / PN 16 / SDR 7,4 (zváraný)",
+  "material": "PP-R (Wavin)",
+  "sizes": [
+   {
+    "outerMm": 16.0,
+    "innerMm": 11.6,
+    "nominalMm": 16.0,
+    "kgm": 0.094,
+    "segment": "16 x 2,2",
+    "code": "STR016P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 20.0,
+    "innerMm": 14.4,
+    "nominalMm": 20.0,
+    "kgm": 0.145,
+    "segment": "20 x 2,8",
+    "code": "STR020P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 25.0,
+    "innerMm": 18.0,
+    "nominalMm": 25.0,
+    "kgm": 0.227,
+    "segment": "25 x 3,5",
+    "code": "STR025P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 32.0,
+    "innerMm": 23.2,
+    "nominalMm": 32.0,
+    "kgm": 0.367,
+    "segment": "32 x 4,4",
+    "code": "STR032P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 40.0,
+    "innerMm": 29.0,
+    "nominalMm": 40.0,
+    "kgm": 0.566,
+    "segment": "40 x 5,5",
+    "code": "STR040P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 50.0,
+    "innerMm": 36.2,
+    "nominalMm": 50.0,
+    "kgm": 0.886,
+    "segment": "50 x 6,9",
+    "code": "STR050P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 63.0,
+    "innerMm": 45.8,
+    "nominalMm": 63.0,
+    "kgm": 1.387,
+    "segment": "63 x 8,6",
+    "code": "STR063P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 75.0,
+    "innerMm": 54.4,
+    "nominalMm": 75.0,
+    "kgm": 1.99,
+    "segment": "75 x 10,3",
+    "code": "STR075P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 90.0,
+    "innerMm": 65.4,
+    "nominalMm": 90.0,
+    "kgm": 2.839,
+    "segment": "90 x 12,3",
+    "code": "STR090P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 110.0,
+    "innerMm": 79.8,
+    "nominalMm": 110.0,
+    "kgm": 4.274,
+    "segment": "110 x 15,1",
+    "code": "STR110P16X",
+    "barM": 4
+   },
+   {
+    "outerMm": 125.0,
+    "innerMm": 90.8,
+    "nominalMm": 125.0,
+    "kgm": 5.53,
+    "segment": "125 x 17,1",
+    "code": "STR125P16X",
+    "barM": 4
+   }
+  ],
+  "densityKgDm3": 0.9,
+  "joint": "polyfúzne zváranie (260 °C), elektrotvarovky",
+  "standards": "STN EN ISO 15874, STN EN 806",
+  "note": "rúry 4 m; studená a teplá voda; rozťažnosť 0,15 mm/m·K – kompenzácia zmien dĺžky",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO01690RCT",
+    "d1": 16.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO02090RCT",
+    "d1": 20.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO02590RCT",
+    "d1": 25.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO03290RCT",
+    "d1": 32.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO04090RCT",
+    "d1": 40.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO05090RCT",
+    "d1": 50.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO06390RCT",
+    "d1": 63.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO07590RCT",
+    "d1": 75.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO09090RCT",
+    "d1": 90.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO11090RCT",
+    "d1": 110.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90° PP-RCT, S 5 / SDR 11",
+    "code": "SKO16090XXX",
+    "d1": 160.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90° PP-RCT, S 5 / SDR 11",
+    "code": "SKO20090XXX",
+    "d1": 200.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90° PP-RCT, S 5 / SDR 11",
+    "code": "SKO25090XXX",
+    "d1": 250.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO01645XX",
+    "d1": 16.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO02045RCT",
+    "d1": 20.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO02545RCT",
+    "d1": 25.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO03245RCT",
+    "d1": 32.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO04045RCT",
+    "d1": 40.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO05045RCT",
+    "d1": 50.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO06345RCT",
+    "d1": 63.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO07545RCT",
+    "d1": 75.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO09045RCT",
+    "d1": 90.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO11045RCT",
+    "d1": 110.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° PP-RCT, S 5 / SDR 11",
+    "code": "SKO16045XXX",
+    "d1": 160.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° PP-RCT, S 5 / SDR 11",
+    "code": "SKO20045XXX",
+    "d1": 200.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° PP-RCT, S 5 / SDR 11",
+    "code": "SKO25045XXX",
+    "d1": 250.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO11645RCT",
+    "d1": 16.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO12045RCT",
+    "d1": 20.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO12545RCT",
+    "d1": 25.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO13245RCT",
+    "d1": 32.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK016XXXX",
+    "d1": 16.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK020RCTX",
+    "d1": 20.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK025RCTX",
+    "d1": 25.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK032RCTX",
+    "d1": 32.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK040RCTX",
+    "d1": 40.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK050RCTX",
+    "d1": 50.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK063RCTX",
+    "d1": 63.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK075RCTX",
+    "d1": 75.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK090RCTX",
+    "d1": 90.0,
+    "d2": 90.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK110RCTX",
+    "d1": 110.0,
+    "d2": 110.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný PP-RCT, S 5 / SDR 11",
+    "code": "STK160XXXXX",
+    "d1": 160.0,
+    "d2": 160.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný PP-RCT, S 5 / SDR 11",
+    "code": "STK200XXXXX",
+    "d1": 200.0,
+    "d2": 200.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný PP-RCT, S 5 / SDR 11",
+    "code": "STK250XXXXX",
+    "d1": 250.0,
+    "d2": 250.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR02016RCT",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR02520RCT",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR03220RCT",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR03225RCT",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR04020RCT",
+    "d1": 40.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR04025RCT",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR04032RCT",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05020RCT",
+    "d1": 50.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05025RCT",
+    "d1": 50.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05032RCT",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05040RCT",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06325RCT",
+    "d1": 63.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06332RCT",
+    "d1": 63.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06340RCT",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06350RCT",
+    "d1": 63.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR07540RCT",
+    "d1": 75.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR07550RCT",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR07563RCT",
+    "d1": 75.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR09075RCT",
+    "d1": 90.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0252020RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0322020RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0322025RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0322525RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI040RCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Oblúk",
+    "code": "SO02090RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Oblúk",
+    "code": "SO02590RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Oblúk",
+    "code": "SO03290RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT040RCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA016XXXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA075RCTX",
+    "d1": 75.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA090RCTX",
+    "d1": 90.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA110RCTX",
+    "d1": 110.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia hrdlová",
+    "code": "SRE02520RCT",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia hrdlová",
+    "code": "SRE03220RCT",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia hrdlová",
+    "code": "SRE03225RCT",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1160110X",
+    "d1": 160.0,
+    "d2": 110.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1160125X",
+    "d1": 160.0,
+    "d2": 125.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1200160X",
+    "d1": 200.0,
+    "d2": 160.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1250160X",
+    "d1": 250.0,
+    "d2": 160.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1250200X",
+    "d1": 250.0,
+    "d2": 200.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE12016RCT",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE12520RCT",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE13220RCT",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE13225RCT",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE14020RCT",
+    "d1": 40.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE14025RCT",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE14032RCT",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE15025RCT",
+    "d1": 50.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE15032RCT",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE15040RCT",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16325RCT",
+    "d1": 63.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16332RCT",
+    "d1": 63.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16340RCT",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16350RCT",
+    "d1": 63.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE17540RCT",
+    "d1": 75.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE17550RCT",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE17563RCT",
+    "d1": 75.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE19050RCT",
+    "d1": 90.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE19063RCT",
+    "d1": 90.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE19075RCT",
+    "d1": 90.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE111075RCT",
+    "d1": 110.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE111090RCT",
+    "d1": 110.0,
+    "d2": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA016RCTX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA075RCTX",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA090RCTX",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA110RCTX",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka vnútorná",
+    "code": "SZA120RCTE",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI01620XX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE01620XX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným s krížom",
+    "code": "SZI02020KRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM01620RCT",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM01625RCT",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02032RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM03240RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R PMD – prevlečná matica s otvorom na plombu",
+    "code": "SZMD02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI01620X",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE01620X",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok s výpustným ventilkem vnútorné / vonkajšie",
+    "code": "SNAVV120LFRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok s výpustným ventilkem vnútorné / vonkajšie",
+    "code": "SNAVV125LFRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok s výpustným ventilkem vnútorné / vonkajšie",
+    "code": "SNAVV132LFRCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK016XXXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK020XRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK025XRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné kolená s držiakom",
+    "code": "SNKD02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Priechodná nástenka",
+    "code": "SNKP020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Priechodná nástenka",
+    "code": "SNKP02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koncové nástenné koleno pravé",
+    "code": "SNK020KPXRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI03220RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koncové nástenné koleno ľavé",
+    "code": "SNK020KLXRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Univerzálny nástenný komplet",
+    "code": "SNKK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Univerzálny nástenný komplet",
+    "code": "SNKK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS06332RCT",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS07532RCT",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS09032RCT",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS11032RCT",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS11040RCT",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS16040XX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS16050XX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS16063XX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20050XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20063XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20075XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20090XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS25063XX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS25075XX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS25090XX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS250110X",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Filter",
+    "code": "SFI020XRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Filter",
+    "code": "SFI025XRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Filter",
+    "code": "SFI032XRCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Spätná klapka",
+    "code": "SZKL020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Spätná klapka",
+    "code": "SZKL025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Spätná klapka",
+    "code": "SZKL032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK016XXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK040RCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK050RCT",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK063RCT",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou krytkou",
+    "code": "SVEPLK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou krytkou",
+    "code": "SVEPLK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou rukoväťou",
+    "code": "SVEPLR020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou rukoväťou",
+    "code": "SVEPLR025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový guľový kohút s kovovou krytkou",
+    "code": "SVEKPLK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový guľový kohút s kovovou krytkou",
+    "code": "SVEKPLK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Predĺženie ventilu D 20, 25 mm",
+    "code": "VEPL020EXX",
+    "d1": 100.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vnútorné",
+    "code": "SSI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vnútorné",
+    "code": "SSI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vnútorné",
+    "code": "SSI03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vonkajšie",
+    "code": "SSE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vonkajšie",
+    "code": "SSE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vonkajšie",
+    "code": "SSE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vnútorné",
+    "code": "SSHI02020LFRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vnútorné",
+    "code": "SSHI02525LFRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vonkajšie",
+    "code": "SSHE02020LFRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vonkajšie",
+    "code": "SSHE02525LFRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN075RCTX",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN090RCTX",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN110RCTX",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700409W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700410W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700411W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700412W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700513W",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700514W",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700516W",
+    "d1": 140.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700517W",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700519W",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700521W",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok PP-RCT, S 5 / SDR 11",
+    "code": "SLN160XXXXX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok PP-RCT, S 5 / SDR 11",
+    "code": "SLN200XXXXX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok PP-RCT, S 5 / SDR 11",
+    "code": "SLN250XXXXX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA020PPRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA025PPRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA032PPRCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA040PPRCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA050PPRCT",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA063PPRCT",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA075PPRCT",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA090PPRCT",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA110PPRCT",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA160PPRCT",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA200PPRCT",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA250PPRCT",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700209W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700210W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700211W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700212W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700213W",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700214W",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700216W",
+    "d1": 140.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700217W",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700219W",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700221W",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka pre sadrokartón",
+    "code": "SZS02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno pre sadrokartón",
+    "code": "SNKS02020SRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenný komplet pre sadrokartón s presnými rozostupmi",
+    "code": "SNKK020SRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Radiátorová odbočka",
+    "code": "SRAO02020X",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Radiátorová odbočka",
+    "code": "SRAO02520X",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Eurokonus",
+    "code": "SZM02025ERCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Plastové hrdlo s prevlečnou maticou",
+    "code": "SHM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Plastové hrdlo s prevlečnou maticou",
+    "code": "SHM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Plastové hrdlo s prevlečnou maticou",
+    "code": "SHM03240RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM01620RCT",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R PMD – prevlečná matica s otvorom na plombu",
+    "code": "SNAMD02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R PMD – prevlečná matica s otvorom na plombu",
+    "code": "SNAMD02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° prechodka plastová s prevlečnou maticou",
+    "code": "SKOM02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° prechodka plastová s prevlečnou maticou",
+    "code": "SKOM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG02020XX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG02025XX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG02525XX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG03232XX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG04040XX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG05050XX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG06363XX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Objímka kovová so skrutkou",
+    "code": "PRK02025XX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Objímka kovová so skrutkou",
+    "code": "PRK03240XX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Objímka kovová so skrutkou",
+    "code": "PRK06350XX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE016XXXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE020XXXX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE025XXXX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE032XXXX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP020XXXX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP025XXXX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP032XXXX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP040XXXX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP050XXXX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP063XXXX",
+    "d1": 63.0
+   }
+  ],
+  "maxTempC": 70,
+  "maxBar": 10,
+  "media": [
+   "voda"
+  ],
+  "roughnessMm": 0.007,
+  "manufacturer": "Wavin – Katalóg Vnútorná inštalácia 2026",
+  "label": "ds",
+  "barM": 4
+ },
+ {
+  "id": "WPPRCT",
+  "short": "Wavin PP-RCT EVO",
+  "name": "Wavin PP-RCT EVO S 4 / SDR 9, od 160 S 5 / SDR 11 (zváraný)",
+  "material": "PP-RCT (Wavin)",
+  "sizes": [
+   {
+    "outerMm": 20.0,
+    "innerMm": 15.4,
+    "nominalMm": 20.0,
+    "kgm": 0.127,
+    "segment": "20 x 2,3",
+    "code": "STRE020S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 25.0,
+    "innerMm": 19.4,
+    "nominalMm": 25.0,
+    "kgm": 0.191,
+    "segment": "25 x 2,8",
+    "code": "STRE025S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 32.0,
+    "innerMm": 24.8,
+    "nominalMm": 32.0,
+    "kgm": 0.313,
+    "segment": "32 x 3,6",
+    "code": "STRE032S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 40.0,
+    "innerMm": 31.0,
+    "nominalMm": 40.0,
+    "kgm": 0.487,
+    "segment": "40 x 4,5",
+    "code": "STRE040S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 50.0,
+    "innerMm": 38.8,
+    "nominalMm": 50.0,
+    "kgm": 0.755,
+    "segment": "50 x 5,6",
+    "code": "STRE050S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 63.0,
+    "innerMm": 48.8,
+    "nominalMm": 63.0,
+    "kgm": 1.2,
+    "segment": "63 x 7,1",
+    "code": "STRE063S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 75.0,
+    "innerMm": 58.2,
+    "nominalMm": 75.0,
+    "kgm": 1.69,
+    "segment": "75 x 8,4",
+    "code": "STRE075S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 90.0,
+    "innerMm": 69.8,
+    "nominalMm": 90.0,
+    "kgm": 2.44,
+    "segment": "90 x 10,1",
+    "code": "STRE090S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 110.0,
+    "innerMm": 85.4,
+    "nominalMm": 110.0,
+    "kgm": 3.62,
+    "segment": "110 x 12,3",
+    "code": "STRE110S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 125.0,
+    "innerMm": 97.0,
+    "nominalMm": 125.0,
+    "kgm": 4.66,
+    "segment": "125 x 14,0",
+    "code": "STRE125S4",
+    "barM": 4
+   },
+   {
+    "outerMm": 160.0,
+    "innerMm": 130.8,
+    "nominalMm": 160.0,
+    "kgm": 6.42,
+    "segment": "160 x 14,6",
+    "code": "STRE160S5",
+    "barM": 4
+   },
+   {
+    "outerMm": 200.0,
+    "innerMm": 163.6,
+    "nominalMm": 200.0,
+    "kgm": 9.95,
+    "segment": "200 x 18,2",
+    "code": "STRE200S5",
+    "barM": 4
+   },
+   {
+    "outerMm": 250.0,
+    "innerMm": 204.6,
+    "nominalMm": 250.0,
+    "kgm": 15.5,
+    "segment": "250 x 22,7",
+    "code": "STRE250S5",
+    "barM": 4
+   }
+  ],
+  "densityKgDm3": 0.9,
+  "joint": "polyfúzne zváranie (260 °C), elektrotvarovky",
+  "standards": "STN EN ISO 15874, STN EN 806, STN EN 12828",
+  "note": "rúry 4 m; voda, vykurovanie a chladenie",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO01690RCT",
+    "d1": 16.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO02090RCT",
+    "d1": 20.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO02590RCT",
+    "d1": 25.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO03290RCT",
+    "d1": 32.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO04090RCT",
+    "d1": 40.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO05090RCT",
+    "d1": 50.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO06390RCT",
+    "d1": 63.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO07590RCT",
+    "d1": 75.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO09090RCT",
+    "d1": 90.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO11090RCT",
+    "d1": 110.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90° PP-RCT, S 5 / SDR 11",
+    "code": "SKO16090XXX",
+    "d1": 160.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90° PP-RCT, S 5 / SDR 11",
+    "code": "SKO20090XXX",
+    "d1": 200.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90° PP-RCT, S 5 / SDR 11",
+    "code": "SKO25090XXX",
+    "d1": 250.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO01645XX",
+    "d1": 16.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO02045RCT",
+    "d1": 20.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO02545RCT",
+    "d1": 25.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO03245RCT",
+    "d1": 32.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO04045RCT",
+    "d1": 40.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO05045RCT",
+    "d1": 50.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO06345RCT",
+    "d1": 63.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO07545RCT",
+    "d1": 75.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO09045RCT",
+    "d1": 90.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO11045RCT",
+    "d1": 110.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° PP-RCT, S 5 / SDR 11",
+    "code": "SKO16045XXX",
+    "d1": 160.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° PP-RCT, S 5 / SDR 11",
+    "code": "SKO20045XXX",
+    "d1": 200.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° PP-RCT, S 5 / SDR 11",
+    "code": "SKO25045XXX",
+    "d1": 250.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO11645RCT",
+    "d1": 16.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO12045RCT",
+    "d1": 20.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO12545RCT",
+    "d1": 25.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO13245RCT",
+    "d1": 32.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK016XXXX",
+    "d1": 16.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK020RCTX",
+    "d1": 20.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK025RCTX",
+    "d1": 25.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK032RCTX",
+    "d1": 32.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK040RCTX",
+    "d1": 40.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK050RCTX",
+    "d1": 50.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK063RCTX",
+    "d1": 63.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK075RCTX",
+    "d1": 75.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK090RCTX",
+    "d1": 90.0,
+    "d2": 90.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK110RCTX",
+    "d1": 110.0,
+    "d2": 110.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný PP-RCT, S 5 / SDR 11",
+    "code": "STK160XXXXX",
+    "d1": 160.0,
+    "d2": 160.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný PP-RCT, S 5 / SDR 11",
+    "code": "STK200XXXXX",
+    "d1": 200.0,
+    "d2": 200.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný PP-RCT, S 5 / SDR 11",
+    "code": "STK250XXXXX",
+    "d1": 250.0,
+    "d2": 250.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR02016RCT",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR02520RCT",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR03220RCT",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR03225RCT",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR04020RCT",
+    "d1": 40.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR04025RCT",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR04032RCT",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05020RCT",
+    "d1": 50.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05025RCT",
+    "d1": 50.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05032RCT",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05040RCT",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06325RCT",
+    "d1": 63.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06332RCT",
+    "d1": 63.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06340RCT",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06350RCT",
+    "d1": 63.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR07540RCT",
+    "d1": 75.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR07550RCT",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR07563RCT",
+    "d1": 75.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR09075RCT",
+    "d1": 90.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0252020RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0322020RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0322025RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0322525RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI040RCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Oblúk",
+    "code": "SO02090RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Oblúk",
+    "code": "SO02590RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Oblúk",
+    "code": "SO03290RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT040RCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA016XXXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA075RCTX",
+    "d1": 75.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA090RCTX",
+    "d1": 90.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA110RCTX",
+    "d1": 110.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia hrdlová",
+    "code": "SRE02520RCT",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia hrdlová",
+    "code": "SRE03220RCT",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia hrdlová",
+    "code": "SRE03225RCT",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1160110X",
+    "d1": 160.0,
+    "d2": 110.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1160125X",
+    "d1": 160.0,
+    "d2": 125.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1200160X",
+    "d1": 200.0,
+    "d2": 160.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1250160X",
+    "d1": 250.0,
+    "d2": 160.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1250200X",
+    "d1": 250.0,
+    "d2": 200.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE12016RCT",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE12520RCT",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE13220RCT",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE13225RCT",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE14020RCT",
+    "d1": 40.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE14025RCT",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE14032RCT",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE15025RCT",
+    "d1": 50.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE15032RCT",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE15040RCT",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16325RCT",
+    "d1": 63.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16332RCT",
+    "d1": 63.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16340RCT",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16350RCT",
+    "d1": 63.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE17540RCT",
+    "d1": 75.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE17550RCT",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE17563RCT",
+    "d1": 75.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE19050RCT",
+    "d1": 90.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE19063RCT",
+    "d1": 90.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE19075RCT",
+    "d1": 90.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE111075RCT",
+    "d1": 110.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE111090RCT",
+    "d1": 110.0,
+    "d2": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA016RCTX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA075RCTX",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA090RCTX",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA110RCTX",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka vnútorná",
+    "code": "SZA120RCTE",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI01620XX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE01620XX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným s krížom",
+    "code": "SZI02020KRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM01620RCT",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM01625RCT",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02032RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM03240RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R PMD – prevlečná matica s otvorom na plombu",
+    "code": "SZMD02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI01620X",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE01620X",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok s výpustným ventilkem vnútorné / vonkajšie",
+    "code": "SNAVV120LFRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok s výpustným ventilkem vnútorné / vonkajšie",
+    "code": "SNAVV125LFRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok s výpustným ventilkem vnútorné / vonkajšie",
+    "code": "SNAVV132LFRCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK016XXXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK020XRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK025XRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné kolená s držiakom",
+    "code": "SNKD02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Priechodná nástenka",
+    "code": "SNKP020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Priechodná nástenka",
+    "code": "SNKP02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koncové nástenné koleno pravé",
+    "code": "SNK020KPXRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI03220RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koncové nástenné koleno ľavé",
+    "code": "SNK020KLXRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Univerzálny nástenný komplet",
+    "code": "SNKK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Univerzálny nástenný komplet",
+    "code": "SNKK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS06332RCT",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS07532RCT",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS09032RCT",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS11032RCT",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS11040RCT",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS16040XX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS16050XX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS16063XX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20050XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20063XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20075XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20090XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS25063XX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS25075XX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS25090XX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS250110X",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Filter",
+    "code": "SFI020XRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Filter",
+    "code": "SFI025XRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Filter",
+    "code": "SFI032XRCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Spätná klapka",
+    "code": "SZKL020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Spätná klapka",
+    "code": "SZKL025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Spätná klapka",
+    "code": "SZKL032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK016XXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK040RCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK050RCT",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK063RCT",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou krytkou",
+    "code": "SVEPLK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou krytkou",
+    "code": "SVEPLK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou rukoväťou",
+    "code": "SVEPLR020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou rukoväťou",
+    "code": "SVEPLR025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový guľový kohút s kovovou krytkou",
+    "code": "SVEKPLK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový guľový kohút s kovovou krytkou",
+    "code": "SVEKPLK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Predĺženie ventilu D 20, 25 mm",
+    "code": "VEPL020EXX",
+    "d1": 100.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vnútorné",
+    "code": "SSI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vnútorné",
+    "code": "SSI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vnútorné",
+    "code": "SSI03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vonkajšie",
+    "code": "SSE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vonkajšie",
+    "code": "SSE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vonkajšie",
+    "code": "SSE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vnútorné",
+    "code": "SSHI02020LFRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vnútorné",
+    "code": "SSHI02525LFRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vonkajšie",
+    "code": "SSHE02020LFRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vonkajšie",
+    "code": "SSHE02525LFRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN075RCTX",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN090RCTX",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN110RCTX",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700409W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700410W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700411W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700412W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700513W",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700514W",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700516W",
+    "d1": 140.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700517W",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700519W",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700521W",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok PP-RCT, S 5 / SDR 11",
+    "code": "SLN160XXXXX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok PP-RCT, S 5 / SDR 11",
+    "code": "SLN200XXXXX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok PP-RCT, S 5 / SDR 11",
+    "code": "SLN250XXXXX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA020PPRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA025PPRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA032PPRCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA040PPRCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA050PPRCT",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA063PPRCT",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA075PPRCT",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA090PPRCT",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA110PPRCT",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA160PPRCT",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA200PPRCT",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA250PPRCT",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700209W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700210W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700211W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700212W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700213W",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700214W",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700216W",
+    "d1": 140.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700217W",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700219W",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700221W",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka pre sadrokartón",
+    "code": "SZS02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno pre sadrokartón",
+    "code": "SNKS02020SRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenný komplet pre sadrokartón s presnými rozostupmi",
+    "code": "SNKK020SRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Radiátorová odbočka",
+    "code": "SRAO02020X",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Radiátorová odbočka",
+    "code": "SRAO02520X",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Eurokonus",
+    "code": "SZM02025ERCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Plastové hrdlo s prevlečnou maticou",
+    "code": "SHM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Plastové hrdlo s prevlečnou maticou",
+    "code": "SHM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Plastové hrdlo s prevlečnou maticou",
+    "code": "SHM03240RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM01620RCT",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R PMD – prevlečná matica s otvorom na plombu",
+    "code": "SNAMD02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R PMD – prevlečná matica s otvorom na plombu",
+    "code": "SNAMD02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° prechodka plastová s prevlečnou maticou",
+    "code": "SKOM02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° prechodka plastová s prevlečnou maticou",
+    "code": "SKOM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG02020XX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG02025XX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG02525XX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG03232XX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG04040XX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG05050XX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG06363XX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Objímka kovová so skrutkou",
+    "code": "PRK02025XX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Objímka kovová so skrutkou",
+    "code": "PRK03240XX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Objímka kovová so skrutkou",
+    "code": "PRK06350XX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE016XXXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE020XXXX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE025XXXX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE032XXXX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP020XXXX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP025XXXX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP032XXXX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP040XXXX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP050XXXX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP063XXXX",
+    "d1": 63.0
+   }
+  ],
+  "maxTempC": 90,
+  "maxBar": 10,
+  "media": [
+   "voda",
+   "ukur",
+   "chlad"
+  ],
+  "roughnessMm": 0.007,
+  "manufacturer": "Wavin – Katalóg Vnútorná inštalácia 2026",
+  "label": "ds",
+  "barM": 4
+ },
+ {
+  "id": "WPPRB",
+  "short": "Wavin PP-RCT Basalt",
+  "name": "Wavin PP-RCT Basalt S 3,2 / S 4 (vystužený čadičovým vláknom)",
+  "material": "PP-RCT Basalt (Wavin)",
+  "sizes": [
+   {
+    "outerMm": 20.0,
+    "innerMm": 14.4,
+    "nominalMm": 20.0,
+    "kgm": 0.153,
+    "segment": "20 x 2,8",
+    "code": "STRFB020TRCT",
+    "barM": 4
+   },
+   {
+    "outerMm": 25.0,
+    "innerMm": 18.0,
+    "nominalMm": 25.0,
+    "kgm": 0.239,
+    "segment": "25 x 3,5",
+    "code": "STRFB025TRCT",
+    "barM": 4
+   },
+   {
+    "outerMm": 32.0,
+    "innerMm": 23.2,
+    "nominalMm": 32.0,
+    "kgm": 0.385,
+    "segment": "32 x 4,4",
+    "code": "STRFB032TRCT",
+    "barM": 4
+   },
+   {
+    "outerMm": 40.0,
+    "innerMm": 29.0,
+    "nominalMm": 40.0,
+    "kgm": 0.599,
+    "segment": "40 x 5,5",
+    "code": "STRFB040TRCT",
+    "barM": 4
+   },
+   {
+    "outerMm": 50.0,
+    "innerMm": 36.2,
+    "nominalMm": 50.0,
+    "kgm": 0.941,
+    "segment": "50 x 6,9",
+    "code": "STRFB050TRCT",
+    "barM": 4
+   },
+   {
+    "outerMm": 63.0,
+    "innerMm": 45.8,
+    "nominalMm": 63.0,
+    "kgm": 1.471,
+    "segment": "63 x 8,6",
+    "code": "STRFB063TRCT",
+    "barM": 4
+   },
+   {
+    "outerMm": 75.0,
+    "innerMm": 58.2,
+    "nominalMm": 75.0,
+    "kgm": 1.764,
+    "segment": "75 x 8,4",
+    "code": "STRFB075TRCT",
+    "barM": 4
+   },
+   {
+    "outerMm": 90.0,
+    "innerMm": 69.8,
+    "nominalMm": 90.0,
+    "kgm": 2.546,
+    "segment": "90 x 10,1",
+    "code": "STRFB090TRCT",
+    "barM": 4
+   },
+   {
+    "outerMm": 110.0,
+    "innerMm": 85.4,
+    "nominalMm": 110.0,
+    "kgm": 3.781,
+    "segment": "110 x 12,3",
+    "code": "STRFB110TRCT",
+    "barM": 4
+   },
+   {
+    "outerMm": 125.0,
+    "innerMm": 97.0,
+    "nominalMm": 125.0,
+    "kgm": 4.891,
+    "segment": "125 x 14,0",
+    "code": "STRFB125TRCT",
+    "barM": 4
+   }
+  ],
+  "densityKgDm3": 0.95,
+  "joint": "polyfúzne zváranie (260 °C), bez odizolovania",
+  "standards": "STN EN ISO 15874, STN EN 12828",
+  "note": "rúry 4 m; rozťažnosť 0,035 mm/m·K (vystužená rúra) – vhodná na teplú vodu a vykurovanie",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO01690RCT",
+    "d1": 16.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO02090RCT",
+    "d1": 20.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO02590RCT",
+    "d1": 25.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO03290RCT",
+    "d1": 32.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO04090RCT",
+    "d1": 40.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO05090RCT",
+    "d1": 50.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO06390RCT",
+    "d1": 63.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO07590RCT",
+    "d1": 75.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO09090RCT",
+    "d1": 90.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90°",
+    "code": "SKO11090RCT",
+    "d1": 110.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90° PP-RCT, S 5 / SDR 11",
+    "code": "SKO16090XXX",
+    "d1": 160.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90° PP-RCT, S 5 / SDR 11",
+    "code": "SKO20090XXX",
+    "d1": 200.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 90° PP-RCT, S 5 / SDR 11",
+    "code": "SKO25090XXX",
+    "d1": 250.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO01645XX",
+    "d1": 16.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO02045RCT",
+    "d1": 20.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO02545RCT",
+    "d1": 25.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO03245RCT",
+    "d1": 32.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO04045RCT",
+    "d1": 40.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO05045RCT",
+    "d1": 50.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO06345RCT",
+    "d1": 63.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO07545RCT",
+    "d1": 75.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO09045RCT",
+    "d1": 90.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45°",
+    "code": "SKO11045RCT",
+    "d1": 110.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° PP-RCT, S 5 / SDR 11",
+    "code": "SKO16045XXX",
+    "d1": 160.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° PP-RCT, S 5 / SDR 11",
+    "code": "SKO20045XXX",
+    "d1": 200.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° PP-RCT, S 5 / SDR 11",
+    "code": "SKO25045XXX",
+    "d1": 250.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO11645RCT",
+    "d1": 16.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO12045RCT",
+    "d1": 20.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO12545RCT",
+    "d1": 25.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin PP-R Koleno 45° vnútorné / vonkajšie",
+    "code": "SKO13245RCT",
+    "d1": 32.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK016XXXX",
+    "d1": 16.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK020RCTX",
+    "d1": 20.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK025RCTX",
+    "d1": 25.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK032RCTX",
+    "d1": 32.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK040RCTX",
+    "d1": 40.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK050RCTX",
+    "d1": 50.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK063RCTX",
+    "d1": 63.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK075RCTX",
+    "d1": 75.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK090RCTX",
+    "d1": 90.0,
+    "d2": 90.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný",
+    "code": "STK110RCTX",
+    "d1": 110.0,
+    "d2": 110.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný PP-RCT, S 5 / SDR 11",
+    "code": "STK160XXXXX",
+    "d1": 160.0,
+    "d2": 160.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný PP-RCT, S 5 / SDR 11",
+    "code": "STK200XXXXX",
+    "d1": 200.0,
+    "d2": 200.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus rovnoramenný PP-RCT, S 5 / SDR 11",
+    "code": "STK250XXXXX",
+    "d1": 250.0,
+    "d2": 250.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR02016RCT",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR02520RCT",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR03220RCT",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR03225RCT",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR04020RCT",
+    "d1": 40.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR04025RCT",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR04032RCT",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05020RCT",
+    "d1": 50.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05025RCT",
+    "d1": 50.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05032RCT",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR05040RCT",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06325RCT",
+    "d1": 63.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06332RCT",
+    "d1": 63.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06340RCT",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR06350RCT",
+    "d1": 63.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR07540RCT",
+    "d1": 75.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR07550RCT",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR07563RCT",
+    "d1": 75.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin PP-R T-kus redukovaný",
+    "code": "STKR09075RCT",
+    "d1": 90.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0252020RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0322020RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0322025RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus obojstranne redukovaný",
+    "code": "STKR0322525RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Cross",
+    "name": "Wavin PP-R Kríž",
+    "code": "SKRI040RCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Oblúk",
+    "code": "SO02090RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Oblúk",
+    "code": "SO02590RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Oblúk",
+    "code": "SO03290RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno trojcestné",
+    "code": "SKOT040RCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA016XXXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA075RCTX",
+    "d1": 75.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA090RCTX",
+    "d1": 90.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok",
+    "code": "SNA110RCTX",
+    "d1": 110.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia hrdlová",
+    "code": "SRE02520RCT",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia hrdlová",
+    "code": "SRE03220RCT",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia hrdlová",
+    "code": "SRE03225RCT",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1160110X",
+    "d1": 160.0,
+    "d2": 110.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1160125X",
+    "d1": 160.0,
+    "d2": 125.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1200160X",
+    "d1": 200.0,
+    "d2": 160.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1250160X",
+    "d1": 250.0,
+    "d2": 160.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia PP-RCT, S 5 / SDR 11",
+    "code": "SRE1250200X",
+    "d1": 250.0,
+    "d2": 200.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE12016RCT",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE12520RCT",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE13220RCT",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE13225RCT",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE14020RCT",
+    "d1": 40.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE14025RCT",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE14032RCT",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE15025RCT",
+    "d1": 50.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE15032RCT",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE15040RCT",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16325RCT",
+    "d1": 63.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16332RCT",
+    "d1": 63.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16340RCT",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE16350RCT",
+    "d1": 63.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE17540RCT",
+    "d1": 75.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE17550RCT",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE17563RCT",
+    "d1": 75.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE19050RCT",
+    "d1": 90.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE19063RCT",
+    "d1": 90.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE19075RCT",
+    "d1": 90.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE111075RCT",
+    "d1": 110.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin PP-R Redukcia vnútorné / vonkajšie",
+    "code": "SRE111090RCT",
+    "d1": 110.0,
+    "d2": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA016RCTX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA075RCTX",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA090RCTX",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka",
+    "code": "SZA110RCTX",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Záslepka vnútorná",
+    "code": "SZA120RCTE",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI01620XX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným",
+    "code": "SZI03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE01620XX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vonkajším",
+    "code": "SZE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s kovovým závitom vnútorným s krížom",
+    "code": "SZI02020KRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM01620RCT",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM01625RCT",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02032RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka kov s prevlečnou maticou",
+    "code": "SZM03240RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R PMD – prevlečná matica s otvorom na plombu",
+    "code": "SZMD02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI01620X",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vnútorným",
+    "code": "SKOI03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE01620X",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° s kovovým závitom vonkajším",
+    "code": "SKOE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok s výpustným ventilkem vnútorné / vonkajšie",
+    "code": "SNAVV120LFRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok s výpustným ventilkem vnútorné / vonkajšie",
+    "code": "SNAVV125LFRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin PP-R Nátrubok s výpustným ventilkem vnútorné / vonkajšie",
+    "code": "SNAVV132LFRCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK016XXXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK020XRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno",
+    "code": "SNK025XRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné kolená s držiakom",
+    "code": "SNKD02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Priechodná nástenka",
+    "code": "SNKP020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Priechodná nástenka",
+    "code": "SNKP02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koncové nástenné koleno pravé",
+    "code": "SNK020KPXRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI03220RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vnútorným",
+    "code": "STKI03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koncové nástenné koleno ľavé",
+    "code": "SNK020KLXRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Univerzálny nástenný komplet",
+    "code": "SNKK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Univerzálny nástenný komplet",
+    "code": "SNKK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02520RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus s kovovým závitom vonkajším",
+    "code": "STKE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS06332RCT",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS07532RCT",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS09032RCT",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS11032RCT",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS11040RCT",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS16040XX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS16050XX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS16063XX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20050XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20063XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20075XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS20090XX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS25063XX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS25075XX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS25090XX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Navarovacie sedlo",
+    "code": "SNS250110X",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Filter",
+    "code": "SFI020XRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Filter",
+    "code": "SFI025XRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Filter",
+    "code": "SFI032XRCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Spätná klapka",
+    "code": "SZKL020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Spätná klapka",
+    "code": "SZKL025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Spätná klapka",
+    "code": "SZKL032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Ventil priamy plastový",
+    "code": "SVE063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK016XXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK032RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK040RCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK050RCT",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Guľový kohút plastový",
+    "code": "SVEK063RCT",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou krytkou",
+    "code": "SVEPLK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou krytkou",
+    "code": "SVEPLK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou rukoväťou",
+    "code": "SVEPLR020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový ventil priamy s kovovou rukoväťou",
+    "code": "SVEPLR025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový guľový kohút s kovovou krytkou",
+    "code": "SVEKPLK020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Podomietkový guľový kohút s kovovou krytkou",
+    "code": "SVEKPLK025RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS020RCTX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS025RCTX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS032RCTX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Rozoberateľný spoj",
+    "code": "SRS040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Predĺženie ventilu D 20, 25 mm",
+    "code": "VEPL020EXX",
+    "d1": 100.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vnútorné",
+    "code": "SSI02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vnútorné",
+    "code": "SSI02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vnútorné",
+    "code": "SSI03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vonkajšie",
+    "code": "SSE02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vonkajšie",
+    "code": "SSE02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie vonkajšie",
+    "code": "SSE03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vnútorné",
+    "code": "SSHI02020LFRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vnútorné",
+    "code": "SSHI02525LFRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vonkajšie",
+    "code": "SSHE02020LFRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Šróbenie hrdlové vonkajšie",
+    "code": "SSHE02525LFRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN040RCTX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN050RCTX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN063RCTX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN075RCTX",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN090RCTX",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok",
+    "code": "SLN110RCTX",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700409W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700410W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700411W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700412W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700513W",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700514W",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700516W",
+    "d1": 140.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700517W",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700519W",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-sklené vlákno PN 16*",
+    "code": "FF700521W",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok PP-RCT, S 5 / SDR 11",
+    "code": "SLN160XXXXX",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok PP-RCT, S 5 / SDR 11",
+    "code": "SLN200XXXXX",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Lemový nákružok PP-RCT, S 5 / SDR 11",
+    "code": "SLN250XXXXX",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA020PPRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA025PPRCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA032PPRCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA040PPRCT",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA050PPRCT",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA063PPRCT",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA075PPRCT",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA090PPRCT",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA110PPRCT",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA160PPRCT",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA200PPRCT",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Elektrospojka",
+    "code": "ENA250PPRCT",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700209W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700210W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700211W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700212W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700213W",
+    "d1": 90.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700214W",
+    "d1": 110.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700216W",
+    "d1": 140.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700217W",
+    "d1": 160.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700219W",
+    "d1": 200.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príruba PP-oceľ PN 16*",
+    "code": "FF700221W",
+    "d1": 250.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka pre sadrokartón",
+    "code": "SZS02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenné koleno pre sadrokartón",
+    "code": "SNKS02020SRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Nástenný komplet pre sadrokartón s presnými rozostupmi",
+    "code": "SNKK020SRCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Radiátorová odbočka",
+    "code": "SRAO02020X",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Radiátorová odbočka",
+    "code": "SRAO02520X",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Eurokonus",
+    "code": "SZM02025ERCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Plastové hrdlo s prevlečnou maticou",
+    "code": "SHM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Plastové hrdlo s prevlečnou maticou",
+    "code": "SHM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Plastové hrdlo s prevlečnou maticou",
+    "code": "SHM03240RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM01620RCT",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka plastová s prevlečnou maticou",
+    "code": "SNAM03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R PMD – prevlečná matica s otvorom na plombu",
+    "code": "SNAMD02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R PMD – prevlečná matica s otvorom na plombu",
+    "code": "SNAMD02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° prechodka plastová s prevlečnou maticou",
+    "code": "SKOM02020RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Koleno 90° prechodka plastová s prevlečnou maticou",
+    "code": "SKOM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM02025RCT",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM02525RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM02532RCT",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM03225RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R T-kus prechodka plastová s prevlečnou maticou",
+    "code": "STKM03232RCT",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG02020XX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG02025XX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG02525XX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG03232XX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG04040XX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG05050XX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Prechodka s plastovým závitom vonkajším",
+    "code": "SDG06363XX",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Objímka kovová so skrutkou",
+    "code": "PRK02025XX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Objímka kovová so skrutkou",
+    "code": "PRK03240XX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Objímka kovová so skrutkou",
+    "code": "PRK06350XX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE016XXXX",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE020XXXX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE025XXXX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová",
+    "code": "PRE032XXXX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP020XXXX",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP025XXXX",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP032XXXX",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP040XXXX",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP050XXXX",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin PP-R Príchytka plastová s páskou",
+    "code": "PRP063XXXX",
+    "d1": 63.0
+   }
+  ],
+  "maxTempC": 90,
+  "maxBar": 10,
+  "media": [
+   "voda",
+   "ukur",
+   "chlad"
+  ],
+  "roughnessMm": 0.007,
+  "manufacturer": "Wavin – Katalóg Vnútorná inštalácia 2026",
+  "label": "ds",
+  "barM": 4
+ },
+ {
+  "id": "WTIGK",
+  "short": "Wavin Tigris K",
+  "name": "Wavin Tigris K5 / K1 viacvrstvová rúra PE-RT/Al/PE-RT (mosadzné lisované tvarovky)",
+  "material": "Plasthliník Wavin",
+  "sizes": [
+   {
+    "outerMm": 16.0,
+    "innerMm": 12.0,
+    "nominalMm": 16.0,
+    "kgm": 0.095,
+    "segment": "16 x 2,0",
+    "alMm": null,
+    "code": null,
+    "coilM": 200,
+    "barM": 5
+   },
+   {
+    "outerMm": 20.0,
+    "innerMm": 15.5,
+    "nominalMm": 20.0,
+    "kgm": 0.138,
+    "segment": "20 x 2,25",
+    "alMm": null,
+    "code": null,
+    "coilM": 100,
+    "barM": 5
+   },
+   {
+    "outerMm": 25.0,
+    "innerMm": 20.0,
+    "nominalMm": 25.0,
+    "kgm": 0.22,
+    "segment": "25 x 2,5",
+    "alMm": null,
+    "code": null,
+    "coilM": 50,
+    "barM": 5
+   },
+   {
+    "outerMm": 32.0,
+    "innerMm": 26.0,
+    "nominalMm": 32.0,
+    "kgm": 0.34,
+    "segment": "32 x 3,0",
+    "alMm": null,
+    "code": null,
+    "coilM": 50,
+    "barM": 5
+   },
+   {
+    "outerMm": 40.0,
+    "innerMm": 32.0,
+    "nominalMm": 40.0,
+    "kgm": 0.605,
+    "segment": "40 x 4,0",
+    "alMm": null,
+    "code": null,
+    "coilM": null,
+    "barM": 5
+   },
+   {
+    "outerMm": 50.0,
+    "innerMm": 41.0,
+    "nominalMm": 50.0,
+    "kgm": 0.84,
+    "segment": "50 x 4,5",
+    "alMm": null,
+    "code": null,
+    "coilM": null,
+    "barM": 5
+   },
+   {
+    "outerMm": 63.0,
+    "innerMm": 51.0,
+    "nominalMm": 63.0,
+    "kgm": 1.34,
+    "segment": "63 x 6,0",
+    "alMm": null,
+    "code": null,
+    "coilM": null,
+    "barM": 5
+   },
+   {
+    "outerMm": 75.0,
+    "innerMm": 60.0,
+    "nominalMm": 75.0,
+    "kgm": 2.14,
+    "segment": "75 x 7,5",
+    "alMm": null,
+    "code": "XP101375W",
+    "coilM": null,
+    "barM": 5
+   }
+  ],
+  "joint": "lisované tvarovky Tigris K5 (16–40), K1 (50–75)",
+  "note": "85 °C, 10 bar pri 70 °C; polomer ohybu 5·D; 16–25 v kotúčoch, všetky v tyčiach 5 m",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K5 Koleno 90°",
+    "code": "TF803000W",
+    "d1": 16.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K5 Koleno 90°",
+    "code": "TF803110W",
+    "d1": 20.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K5 Koleno 90°",
+    "code": "TF803220W",
+    "d1": 25.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K5 Koleno 90°",
+    "code": "TF803330W",
+    "d1": 32.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K5 Koleno 90°",
+    "code": "TF803440W",
+    "d1": 40.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K1 Koleno 90°",
+    "code": "XF110069W",
+    "d1": 50.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K1 Koleno 90°",
+    "code": "XF110073W",
+    "d1": 63.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K1 Koleno 90°",
+    "code": "XF110077W",
+    "d1": 75.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K5 Koleno 45°",
+    "code": "TF802220W",
+    "d1": 25.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K5 Koleno 45°",
+    "code": "TF802330W",
+    "d1": 32.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K5 Koleno 45°",
+    "code": "TF802440W",
+    "d1": 40.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K1 Koleno 45°",
+    "code": "XF110018W",
+    "d1": 50.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K1 Koleno 45°",
+    "code": "XF110019W",
+    "d1": 63.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris K1 Koleno 45°",
+    "code": "XF110020W",
+    "d1": 75.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vnútorný závit",
+    "code": "TF805000W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vnútorný závit",
+    "code": "TF805110W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vnútorný závit",
+    "code": "TF805220W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vnútorný závit",
+    "code": "TF805320W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vonkajší závit",
+    "code": "TF807000W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vonkajší závit",
+    "code": "TF807100W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vonkajší závit",
+    "code": "TF807110W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vonkajší závit",
+    "code": "TF807210W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vonkajší závit",
+    "code": "TF807220W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Koleno 90° – vonkajší závit",
+    "code": "TF807320W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Nástenné koleno 90° – vnútorný závit",
+    "code": "TF849200W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Nástenné koleno 90° – vnútorný závit",
+    "code": "TF849210W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Nástenné koleno 90° – vnútorný závit",
+    "code": "TF849211W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Nástenné koleno priechodné – vnútorný závit",
+    "code": "TF849300W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Nástenné koleno priechodné – vnútorný závit",
+    "code": "TF849310W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus",
+    "code": "TF810000W",
+    "d1": 16.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus",
+    "code": "TF810111W",
+    "d1": 20.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus",
+    "code": "TF810222W",
+    "d1": 25.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus",
+    "code": "TF810333W",
+    "d1": 32.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus",
+    "code": "TF810444W",
+    "d1": 40.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus",
+    "code": "XF120245W",
+    "d1": 50.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus",
+    "code": "XF120247W",
+    "d1": 63.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus",
+    "code": "XF120249W",
+    "d1": 75.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811010W",
+    "d1": 16.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811100W",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811101W",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811110W",
+    "d1": 20.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811121W",
+    "d1": 20.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811200W",
+    "d1": 25.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811201W",
+    "d1": 25.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811202W",
+    "d1": 25.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811210W",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811211W",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811212W",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811221W",
+    "d1": 25.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811232W",
+    "d1": 25.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811303W",
+    "d1": 32.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811312W",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811313W",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811322W",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811323W",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811423W",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811424W",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811433W",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K5 T-kus redukovaný",
+    "code": "TF811434W",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121425W",
+    "d1": 50.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121427W",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121428W",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121429W",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121432W",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121433W",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121455W",
+    "d1": 63.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121465W",
+    "d1": 63.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121478W",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121516W",
+    "d1": 75.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121524W",
+    "d1": 75.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris K1 T-kus redukovaný",
+    "code": "XF121532W",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 T-kus – vnútorný závit",
+    "code": "TF812000W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 T-kus – vnútorný závit",
+    "code": "TF812101W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 T-kus – vnútorný závit",
+    "code": "TF812111W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 T-kus – vnútorný závit",
+    "code": "TF812202W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 T-kus – vnútorný závit",
+    "code": "TF812212W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris K5 Spojka priama",
+    "code": "TF800000W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris K5 Spojka priama",
+    "code": "TF800110W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris K5 Spojka priama",
+    "code": "TF800220W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris K5 Spojka priama",
+    "code": "TF800330W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris K5 Spojka priama",
+    "code": "TF800440W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris K1 Spojka",
+    "code": "XF130451W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris K1 Spojka",
+    "code": "XF130462W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris K1 Spojka",
+    "code": "XF130463W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K1 Spojka redukovaná",
+    "code": "XF131622W",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K1 Spojka redukovaná",
+    "code": "XF131626W",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K1 Spojka redukovaná",
+    "code": "XF131635W",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K1 Spojka redukovaná",
+    "code": "XF131636W",
+    "d1": 63.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K1 Spojka redukovaná",
+    "code": "XF131643W",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K1 Spojka redukovaná",
+    "code": "XF131644W",
+    "d1": 75.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K5 Spojka redukovaná",
+    "code": "TF801100W",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K5 Spojka redukovaná",
+    "code": "TF801200W",
+    "d1": 25.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K5 Spojka redukovaná",
+    "code": "TF801210W",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K5 Spojka redukovaná",
+    "code": "TF801310W",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K5 Spojka redukovaná",
+    "code": "TF801320W",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris K5 Spojka redukovaná",
+    "code": "TF801430W",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vonkajší závit",
+    "code": "TF819010W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vonkajší závit",
+    "code": "TF819020W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vonkajší závit",
+    "code": "TF819100W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vonkajší závit",
+    "code": "TF819110W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vonkajší závit",
+    "code": "TF819210W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vonkajší závit",
+    "code": "TF819220W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vonkajší závit",
+    "code": "TF819320W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vonkajší závit",
+    "code": "TF819330W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vonkajší závit",
+    "code": "TF819430W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K1 Spojka – vonkajší závit",
+    "code": "XF134592W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818000W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818010W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818100W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818110W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818120W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818210W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818220W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818230W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818320W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka – vnútorný závit",
+    "code": "TF818430W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Záslepka",
+    "code": "TF806000W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Záslepka",
+    "code": "TF806100W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Záslepka",
+    "code": "TF806200W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka opravná teleskopická",
+    "code": "TF904010W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka opravná teleskopická",
+    "code": "TF904020W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka k rozdeľovaču vnútorný závit",
+    "code": "TF820000W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka k rozdeľovaču vnútorný závit",
+    "code": "TF820100W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka k rozdeľovaču vonkajší závit",
+    "code": "TF821100W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris K5 Spojka k rozdeľovaču vonkajší závit",
+    "code": "TF821200W",
+    "d1": 25.0
+   }
+  ],
+  "media": [
+   "voda",
+   "ukur",
+   "chlad"
+  ],
+  "roughnessMm": 0.007,
+  "manufacturer": "Wavin – Katalóg Vnútorná inštalácia 2026",
+  "label": "ds",
+  "densityKgDm3": 1.4,
+  "standards": "STN EN ISO 21003, STN EN 806, STN EN 12828",
+  "bend": {
+   "maxOuterMm": 32,
+   "rTool": 5,
+   "rHand": 5
+  },
+  "maxTempC": 85,
+  "maxBar": 10
+ },
+ {
+  "id": "WTIGM",
+  "short": "Wavin Tigris M",
+  "name": "Wavin Tigris M5 / M1 viacvrstvová rúra PE-RT/Al/PE-RT (tvarovky PPSU)",
+  "material": "Plasthliník Wavin",
+  "sizes": [
+   {
+    "outerMm": 16.0,
+    "innerMm": 12.0,
+    "nominalMm": 16.0,
+    "kgm": 0.095,
+    "segment": "16 x 2,0",
+    "alMm": null,
+    "code": null,
+    "coilM": 200,
+    "barM": 5
+   },
+   {
+    "outerMm": 20.0,
+    "innerMm": 15.5,
+    "nominalMm": 20.0,
+    "kgm": 0.138,
+    "segment": "20 x 2,25",
+    "alMm": null,
+    "code": null,
+    "coilM": 100,
+    "barM": 5
+   },
+   {
+    "outerMm": 25.0,
+    "innerMm": 20.0,
+    "nominalMm": 25.0,
+    "kgm": 0.22,
+    "segment": "25 x 2,5",
+    "alMm": null,
+    "code": null,
+    "coilM": 50,
+    "barM": 5
+   },
+   {
+    "outerMm": 32.0,
+    "innerMm": 26.0,
+    "nominalMm": 32.0,
+    "kgm": 0.34,
+    "segment": "32 x 3,0",
+    "alMm": null,
+    "code": null,
+    "coilM": 50,
+    "barM": 5
+   },
+   {
+    "outerMm": 40.0,
+    "innerMm": 32.0,
+    "nominalMm": 40.0,
+    "kgm": 0.605,
+    "segment": "40 x 4,0",
+    "alMm": null,
+    "code": null,
+    "coilM": null,
+    "barM": 5
+   },
+   {
+    "outerMm": 50.0,
+    "innerMm": 41.0,
+    "nominalMm": 50.0,
+    "kgm": 0.84,
+    "segment": "50 x 4,5",
+    "alMm": null,
+    "code": null,
+    "coilM": null,
+    "barM": 5
+   },
+   {
+    "outerMm": 63.0,
+    "innerMm": 51.0,
+    "nominalMm": 63.0,
+    "kgm": 1.34,
+    "segment": "63 x 6,0",
+    "alMm": null,
+    "code": null,
+    "coilM": null,
+    "barM": 5
+   },
+   {
+    "outerMm": 75.0,
+    "innerMm": 60.0,
+    "nominalMm": 75.0,
+    "kgm": 2.14,
+    "segment": "75 x 7,5",
+    "alMm": null,
+    "code": "XP101375W",
+    "coilM": null,
+    "barM": 5
+   }
+  ],
+  "joint": "lisované tvarovky Tigris M5 (16–40), M1 (50–75) z PPSU",
+  "note": "85 °C, 10 bar pri 70 °C; polomer ohybu 5·D; tvarovky z PPSU",
+  "fittings": [
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M1 Koleno 90°",
+    "code": "XF301500W",
+    "d1": 50.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M1 Koleno 90°",
+    "code": "XF301600W",
+    "d1": 63.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M1 Koleno 90°",
+    "code": "XF301700W",
+    "d1": 75.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M5 Koleno 90°",
+    "code": "TF907010W",
+    "d1": 16.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M5 Koleno 90°",
+    "code": "TF907020W",
+    "d1": 20.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M5 Koleno 90°",
+    "code": "TF907030W",
+    "d1": 25.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M5 Koleno 90°",
+    "code": "TF907050W",
+    "d1": 32.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M5 Koleno 90°",
+    "code": "TF907060W",
+    "d1": 40.0,
+    "angle": 90.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M5 Koleno 45°",
+    "code": "TF906030W",
+    "d1": 25.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M5 Koleno 45°",
+    "code": "TF906050W",
+    "d1": 32.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M5 Koleno 45°",
+    "code": "TF906060W",
+    "d1": 40.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M1 Koleno 45°",
+    "code": "XF300955W",
+    "d1": 50.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M1 Koleno 45°",
+    "code": "XF300956W",
+    "d1": 63.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Elbow",
+    "name": "Wavin Tigris M1 Koleno 45°",
+    "code": "XF301907W",
+    "d1": 75.0,
+    "angle": 45.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Koleno 90° – vonkajší závit",
+    "code": "XF303504W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Koleno 90° – vonkajší závit",
+    "code": "XF303605W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Koleno 90° – vonkajší závit",
+    "code": "XF303706W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vonkajší závit",
+    "code": "TF910110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vonkajší závit",
+    "code": "TF910210W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vonkajší závit",
+    "code": "TF910220W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vonkajší závit",
+    "code": "TF910320W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vonkajší závit",
+    "code": "TF910330W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vonkajší závit",
+    "code": "TF910530W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vonkajší závit",
+    "code": "TF910640W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vnútorný závit",
+    "code": "XF305404W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Koleno 90° – vnútorný závit",
+    "code": "XF305504W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Koleno 90° – vnútorný závit",
+    "code": "XF305605W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Koleno 90° – vnútorný závit",
+    "code": "XF305706W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vnútorný závit",
+    "code": "TF909110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vnútorný závit",
+    "code": "TF909220W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vnútorný závit",
+    "code": "TF909320W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vnútorný závit",
+    "code": "TF909330W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vnútorný závit",
+    "code": "TF909530W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vnútorný závit",
+    "code": "TF909640W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Koleno 90° – vnútorný závit",
+    "code": "TF909650W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Nástenné koleno 90° – vnútorný závit predĺžený",
+    "code": "TF931110W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Nástenné koleno 90° – vnútorný závit",
+    "code": "TF930110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Nástenné koleno 90° – vnútorný závit",
+    "code": "TF930210W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Wavin Tigris M5 - T-kus nástenný vnútorný závit",
+    "code": "TF922010W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Wavin Tigris M5 - T-kus nástenný vnútorný závit",
+    "code": "TF922111W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Nástenné koleno 180° priechodné – vnútorný závit",
+    "code": "TF932110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Nástenné koleno 180° priechodné – vnútorný závit",
+    "code": "TF932210W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus",
+    "code": "TF915010W",
+    "d1": 16.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus",
+    "code": "TF915020W",
+    "d1": 20.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus",
+    "code": "TF915030W",
+    "d1": 25.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus",
+    "code": "TF915050W",
+    "d1": 32.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus",
+    "code": "TF915060W",
+    "d1": 40.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus",
+    "code": "XF312500W",
+    "d1": 50.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus",
+    "code": "XF312600W",
+    "d1": 63.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus",
+    "code": "XF312700W",
+    "d1": 75.0,
+    "d2": 75.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916121W",
+    "d1": 16.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916211W",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916212W",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916221W",
+    "d1": 20.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916232W",
+    "d1": 20.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916311W",
+    "d1": 25.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916312W",
+    "d1": 25.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916313W",
+    "d1": 25.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916321W",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916322W",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916323W",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916332W",
+    "d1": 25.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916353W",
+    "d1": 25.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916515W",
+    "d1": 32.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916523W",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916525W",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916533W",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916535W",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916626W",
+    "d1": 40.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916635W",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916636W",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916655W",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M5 T-kus redukovaný",
+    "code": "TF916656W",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus redukovaný",
+    "code": "XF313545W",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus redukovaný",
+    "code": "XF313646W",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus redukovaný",
+    "code": "XF313656W",
+    "d1": 63.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus redukovaný",
+    "code": "XF313737W",
+    "d1": 75.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus redukovaný",
+    "code": "XF313747W",
+    "d1": 75.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus redukovaný",
+    "code": "XF313757W",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Tee",
+    "name": "Wavin Tigris M1 T-kus redukovaný",
+    "code": "XF313767W",
+    "d1": 75.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vnútorný závit",
+    "code": "TF919110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vnútorný závit",
+    "code": "TF919210W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vnútorný závit",
+    "code": "TF919220W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vnútorný závit",
+    "code": "TF919310W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vnútorný závit",
+    "code": "TF919320W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vnútorný závit",
+    "code": "TF919510W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vnútorný závit",
+    "code": "TF919530W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vnútorný závit",
+    "code": "TF919620W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vnútorný závit",
+    "code": "TF919630W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 T-kus – vnútorný závit",
+    "code": "XF314525W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 T-kus – vnútorný závit",
+    "code": "XF314545W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 T-kus – vnútorný závit",
+    "code": "XF314656W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 T-kus – vnútorný závit",
+    "code": "XF314767W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vonkajší závit",
+    "code": "TF920110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 T-kus – vonkajší závit",
+    "code": "TF920210W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris M5 Spojka",
+    "code": "TF900110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris M5 Spojka",
+    "code": "TF900220W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris M5 Spojka",
+    "code": "TF900330W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris M5 Spojka",
+    "code": "TF900550W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris M5 Spojka",
+    "code": "TF900660W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris M1 Spojka",
+    "code": "XF320500W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris M1 Spojka",
+    "code": "XF320600W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Coupling",
+    "name": "Wavin Tigris M1 Spojka",
+    "code": "XF320700W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M5 Spojka redukovaná",
+    "code": "TF901210W",
+    "d1": 20.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M5 Spojka redukovaná",
+    "code": "TF901310W",
+    "d1": 25.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M5 Spojka redukovaná",
+    "code": "TF901320W",
+    "d1": 25.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M5 Spojka redukovaná",
+    "code": "TF901510W",
+    "d1": 32.0,
+    "d2": 16.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M5 Spojka redukovaná",
+    "code": "TF901520W",
+    "d1": 32.0,
+    "d2": 20.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M5 Spojka redukovaná",
+    "code": "TF901530W",
+    "d1": 32.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M5 Spojka redukovaná",
+    "code": "TF901630W",
+    "d1": 40.0,
+    "d2": 25.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M5 Spojka redukovaná",
+    "code": "TF901640W",
+    "d1": 40.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M1 Spojka redukovaná",
+    "code": "XF321530W",
+    "d1": 50.0,
+    "d2": 32.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M1 Spojka redukovaná",
+    "code": "XF321540W",
+    "d1": 50.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M1 Spojka redukovaná",
+    "code": "XF321640W",
+    "d1": 63.0,
+    "d2": 40.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M1 Spojka redukovaná",
+    "code": "XF321650W",
+    "d1": 63.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M1 Spojka redukovaná",
+    "code": "XF321750W",
+    "d1": 75.0,
+    "d2": 50.0
+   },
+   {
+    "kind": "Reducer",
+    "name": "Wavin Tigris M1 Spojka redukovaná",
+    "code": "XF321760W",
+    "d1": 75.0,
+    "d2": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka – vonkajší závit",
+    "code": "TF924110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka – vonkajší závit",
+    "code": "TF924210W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka – vonkajší závit",
+    "code": "TF924220W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka – vonkajší závit",
+    "code": "TF924320W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka – vonkajší závit",
+    "code": "TF924330W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka – vonkajší závit",
+    "code": "TF924530W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka – vonkajší závit",
+    "code": "TF924540W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka – vonkajší závit",
+    "code": "TF924640W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka – vonkajší závit",
+    "code": "TF924650W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Spojka – vonkajší závit",
+    "code": "XF323540W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Spojka – vonkajší závit",
+    "code": "XF323660W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Spojka – vonkajší závit",
+    "code": "XF323770W",
+    "d1": 75.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923120W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923210W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923220W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923230W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923320W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923330W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923530W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923540W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923630W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s vnútorným závitom",
+    "code": "TF923640W",
+    "d1": 40.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Spojka – vnútorný závit",
+    "code": "XF325540W",
+    "d1": 50.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M1 Spojka – vnútorný závit",
+    "code": "XF325660W",
+    "d1": 63.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926110W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926120W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926210W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926220W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926250W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926320W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926330W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926350W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926530W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926540W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka s prevlečnou maticou",
+    "code": "TF926550W",
+    "d1": 32.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka prechodová lisovaná – M5 / meď",
+    "code": "TF914112W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka prechodová lisovaná – M5 / meď",
+    "code": "TF914115W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka prechodová lisovaná – M5 / meď",
+    "code": "TF914215W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka prechodová lisovaná – M5 / meď",
+    "code": "TF914222W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Spojka prechodová lisovaná – M5 / meď",
+    "code": "TF914322W",
+    "d1": 25.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Krížení",
+    "code": "TF929111W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Krížení",
+    "code": "TF929121W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Krížení",
+    "code": "TF929211W",
+    "d1": 16.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Krížení",
+    "code": "TF929212W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Krížení",
+    "code": "TF929221W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Krížení",
+    "code": "TF929222W",
+    "d1": 20.0
+   },
+   {
+    "kind": "Accessory",
+    "name": "Wavin Tigris M5 Pripojenie k radiátoru – koleno L = 300 mm",
+    "code": "TF928300W",
+    "d1": 5.0
+   }
+  ],
+  "media": [
+   "voda",
+   "ukur",
+   "chlad"
+  ],
+  "roughnessMm": 0.007,
+  "manufacturer": "Wavin – Katalóg Vnútorná inštalácia 2026",
+  "label": "ds",
+  "densityKgDm3": 1.4,
+  "standards": "STN EN ISO 21003, STN EN 806, STN EN 12828",
+  "bend": {
+   "maxOuterMm": 32,
+   "rTool": 5,
+   "rHand": 5
+  },
+  "maxTempC": 85,
+  "maxBar": 10
+ },
+ {
   "id": "OCEL",
   "name": "Oceľ závitová STN EN 10255 (M)",
   "material": "Oceľ",
