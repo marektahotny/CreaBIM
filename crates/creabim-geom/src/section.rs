@@ -908,6 +908,53 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         // and writes their sizes at them
         d.items
             .extend(crate::mep::pipe_labels(model, &pipes, v.scale / 1000.0));
+        // and the sanitary fixtures' marks beside them, as its legend
+        // lists them (WC, U, S...), unless a fixture is tagged already
+        let mm = v.scale / 1000.0;
+        let tagged: std::collections::HashSet<ElementId> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Tag(t) if t.view == view => Some(t.host),
+                _ => None,
+            })
+            .collect();
+        let look = crate::annotation::TextLook {
+            size: 3.0,
+            rgb: Some(crate::mep::LABEL_GREEN),
+            ..Default::default()
+        };
+        let mut marks = vec![];
+        for row in creabim_services::fixturespec::legend(model, None) {
+            for id in row.fixtures {
+                if tagged.contains(&id) {
+                    continue;
+                }
+                let pts: Vec<DVec2> = d
+                    .items
+                    .iter()
+                    .filter(|it| it.id() == id)
+                    .flat_map(|it| it.extent())
+                    .collect();
+                let Some(first) = pts.first().copied() else {
+                    continue;
+                };
+                let (lo, hi) = pts
+                    .iter()
+                    .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+                let w = look.width(&row.spec.mark);
+                let at = DVec2::new(lo.x - (w / 2.0 + 1.5) * mm, (lo.y + hi.y) / 2.0);
+                marks.push(PlanItem::Annotation {
+                    id,
+                    item: Box::new(crate::annotation::Annotation {
+                        shape: crate::annotation::Shape::Along { at, angle: 0.0 },
+                        text: row.spec.mark.clone(),
+                        look,
+                        mm,
+                    }),
+                });
+            }
+        }
+        d.items.extend(marks);
     }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {

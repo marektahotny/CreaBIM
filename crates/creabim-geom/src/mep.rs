@@ -897,6 +897,52 @@ mod tests {
     }
 
     #[test]
+    fn a_services_drawing_marks_its_sanitary_fixtures() {
+        use creabim_core::viewmodes::DisplayMode;
+        use creabim_core::{Document, ViewKind};
+        let mut doc = Document::from_model(creabim_core::sample::furnished_house());
+        let rows = creabim_services::fixturespec::legend(doc.model(), None);
+        assert!(!rows.is_empty());
+        let marks = |m: &Model, view| -> Vec<String> {
+            crate::section::view_drawing(m, view)
+                .unwrap()
+                .items
+                .into_iter()
+                .filter_map(|i| match i {
+                    PlanItem::Annotation { id, item }
+                        if matches!(m.get(id).map(|e| &e.kind), Some(ElementKind::Object(_)))
+                            && item.look.rgb == Some(LABEL_GREEN) =>
+                    {
+                        Some(item.text.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let views: Vec<_> = doc
+            .model()
+            .iter()
+            .filter(|e| {
+                matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. }))
+            })
+            .map(|e| e.id)
+            .collect();
+        assert!(views.iter().all(|v| marks(doc.model(), *v).is_empty()));
+        for v in &views {
+            doc.edit(*v, "mode", |e| {
+                if let ElementKind::View(v) = &mut e.kind {
+                    DisplayMode::Services.apply(v);
+                }
+            })
+            .unwrap();
+        }
+        let all: Vec<String> = views.iter().flat_map(|v| marks(doc.model(), *v)).collect();
+        // every mark written is one of the legend's
+        assert!(!all.is_empty());
+        assert!(all.iter().all(|m| rows.iter().any(|r| r.spec.mark == *m)));
+    }
+
+    #[test]
     fn pipes_side_by_side_share_a_label() {
         use crate::annotation::Shape;
         let m = creabim_core::sample::sample_house();
