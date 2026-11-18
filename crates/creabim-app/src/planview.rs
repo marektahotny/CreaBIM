@@ -508,6 +508,8 @@ pub struct PlanState {
     /// Continuous dimensions (MU23 board): each click after the first
     /// dimension adds the next on the same line.
     pub dim_chain: bool,
+    /// New linear dimensions have short witness lines.
+    pub dim_short: bool,
     /// The line a chain runs on: its axis and a point on it.
     pub chain_line: Option<(creabim_core::DimAxis, DVec2)>,
     /// The chain being drawn: each further click adds a point to it.
@@ -702,6 +704,7 @@ impl Default for PlanState {
             hover_guide: None,
             dim_axis: None,
             dim_chain: true,
+            dim_short: false,
             chain_line: None,
             chain_dim: None,
             tag_new: true,
@@ -3989,7 +3992,7 @@ fn section_tool(
                     })
                     .unwrap_or(3.0)
                     .max(0.5);
-                let name = creabim_core::levels::next_name(model);
+                let name = creabim_core::levels::storey_name(model, z);
                 let (mut tx, id, _) = creabim_core::levels::add(model, &name, z, height, true);
                 tx.label = "Draw level".into();
                 selection.only(id);
@@ -6782,10 +6785,26 @@ fn dimension_tool(
                 Some(ElementKind::View(v)) => Some(v.clone()),
                 _ => None,
             };
+            // the chain's line, to find a point by its tick on it
+            let line = v.as_ref().and_then(|v| {
+                let pa = annotate::resolve(doc.model(), v, &d.a)?;
+                let pb = annotate::resolve(doc.model(), v, &d.b)?;
+                let u = d
+                    .axis
+                    .direction(pa, pb)
+                    .unwrap_or((pb - pa).normalize_or_zero());
+                Some((pa + u.perp() * d.offset, u))
+            });
+            let reach = tol.max(1e-3);
             let near = |p: &HostPoint| {
                 v.as_ref()
                     .and_then(|v| annotate::resolve(doc.model(), v, p))
-                    .is_some_and(|q| q.distance(hit.1) < 1e-3)
+                    .is_some_and(|q| {
+                        q.distance(hit.1) < reach
+                            || line.is_some_and(|(o, u)| {
+                                (o + u * (q - o).dot(u)).distance(raw) < reach
+                            })
+                    })
             };
             // a click on one of its points takes it out again
             if let Some(i) = d.points().position(near) {
@@ -6871,6 +6890,7 @@ fn dimension_tool(
             }
             let mut d = Dimension::linear(view, a, b, offset);
             d.axis = axis;
+            d.short = state.dim_short;
             let e = state
                 .anno
                 .styled(Element::new("Dimension", ElementKind::Dimension(d)));
@@ -7941,6 +7961,7 @@ mod dimension_chain_tests {
             .id;
         let mut state = PlanState {
             dim_chain: true,
+            dim_short: false,
             ..Default::default()
         };
         let mut sel = Selection::default();

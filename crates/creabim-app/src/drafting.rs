@@ -70,6 +70,13 @@ impl CreaBimApp {
                 self.plan.dim_chain,
                 "After the first dimension, each click adds a point to the same dimension line, one chain as in PilonDesigner; Esc or right-click ends it",
             )]));
+            // witness lines only by the dimension line, chosen before drawing
+            out.push(seg(vec![opt(
+                "dim.short".into(),
+                "Short witness lines",
+                self.plan.dim_short,
+                "Witness lines only by the dimension line, not back to what is measured",
+            )]));
             // spacing the user types, not presets (MU25): off, lines go
             // where clicked
             out.push(seg(vec![opt(
@@ -222,6 +229,7 @@ impl CreaBimApp {
                 self.plan.chain_line = None;
                 self.plan.chain_dim = None;
             }
+            "dim.short" => self.plan.dim_short = !self.plan.dim_short,
             "dim.step" => {
                 self.plan.dim_step_mm = if self.plan.dim_step_mm > 0.0 {
                     0.0

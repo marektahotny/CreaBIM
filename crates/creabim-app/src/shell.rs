@@ -1609,6 +1609,13 @@ impl CreaBimApp {
                 let mut m = Document::new();
                 let mut tx = Transaction::new("New project");
                 for (name, z) in [("Level 0", 0.0), ("Level 1", 3.0)] {
+                    // named as the language counts storeys (1. NP, 2. NP)
+                    let storey = creabim_core::words::tr("Storey {}");
+                    let name = if storey == "Storey {}" {
+                        name.to_string()
+                    } else {
+                        storey.replace("{}", if z > 0.0 { "2" } else { "1" })
+                    };
                     tx = tx.insert(Element::new(
                         name,
                         ElementKind::Level(creabim_core::Level {

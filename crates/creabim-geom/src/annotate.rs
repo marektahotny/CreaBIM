@@ -924,25 +924,23 @@ pub fn without_point(
     let u = (b2 - a).normalize_or_zero();
     let mut out = d.clone();
     let along = |p: &HostPoint| resolve(model, view, p).map_or(0.0, |q| (q - a).dot(u));
-    if i >= 1 && i <= d.mids.len() {
-        out.mids.remove(i - 1);
-        return Some(out);
-    }
-    // the end's replacement: the furthest point in on its side
-    let pick = if i == 0 {
-        (0..out.mids.len()).min_by(|x, y| along(&out.mids[*x]).total_cmp(&along(&out.mids[*y])))
-    } else {
-        (0..out.mids.len()).max_by(|x, y| along(&out.mids[*x]).total_cmp(&along(&out.mids[*y])))
-    }?;
-    let p = out.mids.remove(pick);
-    if i == 0 {
-        // the line keeps its place: offset is measured from `a`
-        let q = resolve(model, view, &p)?;
-        out.offset += (a - q).dot(u.perp());
-        out.a = p;
-    } else {
-        out.b = p;
-    }
+    // what is left, in order along the line: its ends are the outermost,
+    // so the line keeps its direction and its side
+    let mut left: Vec<HostPoint> = d
+        .points()
+        .enumerate()
+        .filter(|(k, _)| *k != i)
+        .map(|(_, p)| *p)
+        .collect();
+    left.sort_by(|x, y| along(x).total_cmp(&along(y)));
+    out.b = left.pop()?;
+    out.a = left.remove(0);
+    out.mids = left;
+    // the line keeps its place: offset is measured from `a`
+    let q = resolve(model, view, &out.a)?;
+    out.offset += (a - q).dot(u.perp());
+    // the numbers dragged aside belonged to the old stretches
+    out.texts.clear();
     Some(out)
 }
 

@@ -81,7 +81,7 @@ impl CreaBimApp {
     }
 
     fn add_level_at(&mut self, elevation: f64, height: f64) {
-        let name = levels::next_name(self.doc.model());
+        let name = levels::storey_name(self.doc.model(), elevation);
         let (tx, id, plan) = levels::add(
             self.doc.model(),
             &name,

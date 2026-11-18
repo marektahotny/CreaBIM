@@ -32,6 +32,44 @@ pub fn next_name(model: &Model) -> String {
     }
 }
 
+/// A floor lower than this under the ground is an underground storey
+/// (STN 73 4301: more than 0.8 m).
+const UNDERGROUND: f64 = -0.8;
+
+/// The name of a new level at `elevation`, as the interface's language
+/// counts storeys: in Slovak "1. NP", "2. NP" from the ground up and
+/// "1. PP", "2. PP" down from it; where the language has no such way,
+/// [`next_name`].
+pub fn storey_name(model: &Model, elevation: f64) -> String {
+    let (up, down) = (
+        crate::words::tr("Storey {}"),
+        crate::words::tr("Basement {}"),
+    );
+    if up == "Storey {}" {
+        return next_name(model);
+    }
+    let taken = |n: &str| model.levels().any(|(e, _)| e.name == n);
+    let below = elevation < UNDERGROUND;
+    // the levels between the ground and this one, on its side of it
+    let mut i = 1 + model
+        .levels()
+        .filter(|(_, l)| {
+            if below {
+                l.elevation < UNDERGROUND && l.elevation > elevation + 1e-6
+            } else {
+                l.elevation >= UNDERGROUND && l.elevation < elevation - 1e-6
+            }
+        })
+        .count();
+    loop {
+        let name = if below { &down } else { &up }.replace("{}", &i.to_string());
+        if !taken(&name) {
+            return name;
+        }
+        i += 1;
+    }
+}
+
 /// The plan views of a level.
 pub fn plan_views(model: &Model, level: ElementId) -> Vec<ElementId> {
     model
@@ -510,7 +548,7 @@ pub fn delete(model: &Model, level: ElementId, what: OnDelete) -> Transaction {
 /// What the plan of level `level` is called, in the interface's
 /// language: "Level 2 plan", "Pôdorys Podlažie 2".
 pub fn plan_name(level: &str) -> String {
-    crate::words::tr("{} plan").replace("{}", level)
+    crate::words::tr("{} plan").replace("{}", &crate::words::tr(level))
 }
 
 /// The plan of level `id` at `elevation`: cut 1.2 m above it, or, with
