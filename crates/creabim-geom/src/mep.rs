@@ -1252,8 +1252,8 @@ mod tests {
                 .filter(|i| i.id() == id)
                 .collect()
         };
-        // the architect's drawing has it to scale: two sides and a wash
-        assert!(of(doc.model(), run_id).len() > 2);
+        // the architect's drawing leaves the trades' pipes out
+        assert!(of(doc.model(), run_id).is_empty());
         doc.edit(view, "mode", |e| {
             if let ElementKind::View(v) = &mut e.kind {
                 DisplayMode::Services.apply(v);

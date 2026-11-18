@@ -933,12 +933,22 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     if let Some(stage) = v.reno {
         reno_colours(model, stage, &mut d.items);
     }
-    // a drawing without the pipes leaves the wiring's devices out too
-    if v.hidden
-        .hides_category(creabim_core::visibility::Category::Pipes)
+    // pipes, ducts and wiring are the trades' to draw: the architect's
+    // plans, sections and elevations leave them out, whatever the view
+    // shows by category (the site plan keeps its connections)
+    let services = creabim_core::viewmodes::DisplayMode::of(v)
+        == creabim_core::viewmodes::DisplayMode::Services;
+    let site = v.graphics.range.from_above;
+    if (!services && !site)
+        || v.hidden
+            .hides_category(creabim_core::visibility::Category::Pipes)
     {
-        d.items
-            .retain(|it| !crate::elplan::is_device(model, it.id()));
+        d.items.retain(|it| {
+            !matches!(
+                model.get(it.id()).map(|e| &e.kind),
+                Some(ElementKind::Pipe(_) | ElementKind::Valve(_))
+            ) && !crate::elplan::is_device(model, it.id())
+        });
     }
     // a services drawing shows its pipes as lines, each in its system's
     // colour and line type

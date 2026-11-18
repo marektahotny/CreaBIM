@@ -28,10 +28,14 @@ impl CreaBimApp {
         use creabim_core::{ElementKind, ViewKind};
         let model = self.doc.model();
         let Some((now, level)) = self.active_view.and_then(|id| match &model.get(id)?.kind {
-            ElementKind::View(v) if v.hidden.hides_category(Category::Pipes) => match v.kind {
-                ViewKind::Plan { level, .. } => Some((v.clone(), level)),
-                _ => None,
-            },
+            ElementKind::View(v)
+                if DisplayMode::of(v) != DisplayMode::Services && !v.graphics.range.from_above =>
+            {
+                match v.kind {
+                    ViewKind::Plan { level, .. } => Some((v.clone(), level)),
+                    _ => None,
+                }
+            }
             _ => None,
         }) else {
             return false;
