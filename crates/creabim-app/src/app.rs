@@ -1541,6 +1541,11 @@ impl CreaBimApp {
             let zs: Vec<f64> = f.pts.iter().map(|q| q.z).collect();
             ring(&pts, Some(&zs), true);
         }
+        // its survey points, each as a pair of the same point
+        for m in d.points.iter().filter(|m| on(&m.layer) && inside(m.p)) {
+            let p = at(m.p, m.z);
+            out.extend([p, p]);
+        }
         Some(out)
     }
 
@@ -1566,7 +1571,11 @@ impl CreaBimApp {
                     }
                     budget -= 1;
                     if let (Some(a), Some(b)) = (project(s[0]), project(s[1])) {
-                        painter.line_segment([a, b], stroke);
+                        if s[0] == s[1] {
+                            painter.circle_filled(a, 1.5, ink);
+                        } else {
+                            painter.line_segment([a, b], stroke);
+                        }
                     }
                 }
                 continue;
@@ -4240,6 +4249,23 @@ impl CreaBimApp {
                                 Some(id),
                             );
                         }
+                    }
+                    continue;
+                }
+                // a 3D drawing (a survey) at its heights, as 3D shows it
+                if let Some(segs) = self.reference_3d(&r) {
+                    for w in segs.chunks(2).take(20_000usize.saturating_sub(n)) {
+                        if w[0] == w[1] {
+                            snapper.add_point(w[0], crate::snaps::Source::Underlay, Some(id));
+                        } else {
+                            snapper.add_segment(
+                                w[0],
+                                w[1],
+                                crate::snaps::Source::Underlay,
+                                Some(id),
+                            );
+                        }
+                        n += 1;
                     }
                     continue;
                 }
@@ -8872,6 +8898,16 @@ crate::props::row(ui, "File names", |ui| {
                         _ => 0.0,
                     });
                 if ui
+                    .add_sized(
+                        [ui.available_width(), 24.0],
+                        egui::Button::new(crate::i18n::t("Terrain from its heights")).truncate(),
+                    )
+                    .on_hover_text(crate::i18n::t("A terrain through the cloud's lowest point in each half metre (the ground under trees and cars), within its clip, on the working level"))
+                    .clicked()
+                {
+                    self.terrain_ref = Some(id);
+                }
+                if ui
                     .small_button(crate::i18n::t("Lowest point to ±0,000"))
                     .on_hover_text(crate::i18n::t("Lifts the cloud so its lowest point (the floor, in a room's scan) is at ±0,000."))
                     .clicked()
@@ -9158,7 +9194,18 @@ crate::props::row(ui, "File names", |ui| {
             }
         }
         if let Some(id) = self.terrain_ref.take() {
-            self.terrain_from_reference(id);
+            let cloud = matches!(
+                self.doc.model().get(id).map(|e| &e.kind),
+                Some(ElementKind::Reference(creabim_core::Reference {
+                    source: creabim_core::RefSource::Points { .. },
+                    ..
+                }))
+            );
+            if cloud {
+                self.terrain_from_cloud(id);
+            } else {
+                self.terrain_from_reference(id);
+            }
         }
         if let Some(id) = self.remove_ref.take() {
             let tx = creabim_core::Transaction::new("Remove reference")

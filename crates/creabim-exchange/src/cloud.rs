@@ -416,6 +416,30 @@ impl Cloud {
         .index()
     }
 
+    /// The ground under it: its lowest point in each `cell` (metres) of
+    /// the plan, within `clip`, where the file has it (PilonDesigner's
+    /// terrain from a cloud).
+    pub fn ground(&self, cell: f64, clip: Option<[DVec2; 2]>) -> Vec<DVec3> {
+        let cell = cell.max(0.01) as f32;
+        let mut low: HashMap<(i32, i32), u32> = HashMap::new();
+        for (n, p) in self.points.iter().enumerate() {
+            if clip.is_some_and(|[a, b]| {
+                let q = self.origin.truncate() + DVec2::new(p[0] as f64, p[1] as f64);
+                !(q.cmpge(a).all() && q.cmple(b).all())
+            }) {
+                continue;
+            }
+            let k = ((p[0] / cell).floor() as i32, (p[1] / cell).floor() as i32);
+            let e = low.entry(k).or_insert(n as u32);
+            if p[2] < self.points[*e as usize][2] {
+                *e = n as u32;
+            }
+        }
+        let mut idx: Vec<u32> = low.into_values().collect();
+        idx.sort_unstable();
+        idx.into_iter().map(|n| self.at(n as usize)).collect()
+    }
+
     /// About `most` of its points, evenly through the file: what 3D
     /// shows of it.
     pub fn sample(&self, most: usize) -> Vec<u32> {
@@ -529,5 +553,9 @@ mod tests {
         let clip = Some([DVec2::new(0.0, 0.0), DVec2::new(1.0, 3.0)]);
         assert_eq!(c.slice(0.9, 1.5, clip, 100_000).points.len(), 51);
         assert_eq!(c.sample(10).len(), 10);
+        // the ground: the lowest point of each metre square
+        let g = c.ground(1.0, None);
+        assert!(g.iter().all(|p| p.z <= 0.4 + 1e-6), "{g:?}");
+        assert_eq!(g.len(), 5, "four metres of wall and the stool");
     }
 }

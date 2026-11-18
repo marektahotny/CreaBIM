@@ -176,6 +176,36 @@ impl CreaBimApp {
         );
     }
 
+    /// Make a terrain from a point cloud reference: its lowest point in
+    /// each half metre (the ground under trees and cars), where the
+    /// reference puts them.
+    pub(super) fn terrain_from_cloud(&mut self, id: ElementId) {
+        let model = self.doc.model();
+        let Some(e) = model.get(id) else {
+            return;
+        };
+        let ElementKind::Reference(r) = &e.kind else {
+            return;
+        };
+        let (r, name) = (r.clone(), e.name.clone());
+        let creabim_core::RefSource::Points { path, lift, .. } = &r.source else {
+            return;
+        };
+        let Ok(c) = self.plan.ref_cache.cloud(path) else {
+            return;
+        };
+        let points: Vec<DVec3> = c
+            .ground(0.5, r.clip)
+            .into_iter()
+            .map(|q| r.place(q.truncate()).extend(q.z + lift))
+            .collect();
+        self.terrain_from(
+            &points,
+            name,
+            "No terrain made: the cloud holds fewer than three points.",
+        );
+    }
+
     /// Make a terrain named `name` from `points` (as read) on the working
     /// level; `none` says why when they make none.
     fn terrain_from(&mut self, points: &[DVec3], name: String, none: &str) {
