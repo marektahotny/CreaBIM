@@ -695,6 +695,20 @@ fn blue(dark: bool) -> Color32 {
     }
 }
 
+/// `ink` where it reads on `ground`; where the two are close (a pale
+/// blue on a theme's light plate), a dark or a white number.
+fn readable(ink: Color32, ground: Color32) -> Color32 {
+    let light = |c: Color32| 0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32;
+    let (i, g) = (light(ink), light(ground));
+    if (i - g).abs() >= 110.0 {
+        ink
+    } else if g > 128.0 {
+        Color32::from_rgb(15, 35, 80)
+    } else {
+        Color32::WHITE
+    }
+}
+
 /// A length's number alone, in the project's units.
 fn bare(metres: f64) -> String {
     let s = crate::units::len(metres);
@@ -914,7 +928,11 @@ pub fn interact(
             Stroke::new(if on || over_value { 1.6 } else { 1.0 }, ink),
             egui::StrokeKind::Inside,
         );
-        let color = if on { look.number } else { ink };
+        let color = if on {
+            look.number
+        } else {
+            readable(ink, ground)
+        };
         painter.galley_with_override_text_color(
             spot.value.min + Vec2::new(6.0, 3.0),
             galley,

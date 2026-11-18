@@ -7431,11 +7431,16 @@ fn drag_annotation(
                 (segment_distance(w, *a + n, *b + n) < 6.0 / xf.scale as f64).then_some(*id)
             }
             // a room's tag, drawn as its lines of text
+            // and the sizes written beside a stack's mark
             PlanItem::Annotation { id, item }
-                if matches!(
-                    doc.model().get(*id).map(|e| &e.kind),
-                    Some(ElementKind::Tag(_))
-                ) =>
+                if match doc.model().get(*id).map(|e| &e.kind) {
+                    Some(ElementKind::Tag(_)) => true,
+                    Some(ElementKind::Pipe(_)) => drawing
+                        .items
+                        .iter()
+                        .any(|t| matches!(t, PlanItem::Tag { id: i, .. } if i == id)),
+                    _ => false,
+                } =>
             {
                 let pts = item.extent();
                 let first = *pts.first()?;
@@ -7487,6 +7492,13 @@ fn drag_annotation(
                 let start = match &doc.model().get(id)?.kind {
                     ElementKind::Tag(t) if t.view == view => t.offset,
                     ElementKind::Dimension(d) if d.view == view => DVec2::new(d.offset, 0.0),
+                    // a stack's mark: the circle moves, its riser stays
+                    ElementKind::Pipe(_) => drawing.items.iter().find_map(|it| match it {
+                        PlanItem::Tag {
+                            id: i, anchor, at, ..
+                        } if *i == id => Some(*at - *anchor),
+                        _ => None,
+                    })?,
                     _ => return None,
                 };
                 Some((id, w, start, None))
@@ -7525,6 +7537,11 @@ fn drag_annotation(
                     t.elbow = None;
                     t.end = None;
                 }
+            }
+        }),
+        Some(ElementKind::Pipe(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Pipe(x) = &mut e.kind {
+                x.mark = Some(start + p - grab);
             }
         }),
         Some(ElementKind::Dimension(_)) if stretch.is_some() => {

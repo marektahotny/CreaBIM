@@ -430,20 +430,38 @@ pub fn stack_mark(model: &Model, p: &Pipe) -> Option<String> {
     // a stack's place, to the centimetre; water risers standing together
     // (cold, hot, circulation within 30 cm) are one stack
     let cell = |q: DVec2| ((q.x * 100.0).round() as i64, (q.y * 100.0).round() as i64);
-    let mut places: Vec<(i64, i64)> = model
+    // the vertical pipes of the letter: their places and heights
+    let upright: Vec<((i64, i64), f64, f64)> = model
         .iter()
         .filter_map(|e| match &e.kind {
             ElementKind::Pipe(o)
                 if letter(o.kind()) == Some(l)
                     && o.start.truncate().distance(o.end.truncate()) < 1e-6 =>
             {
-                Some(cell(o.start.truncate()))
+                let z = model.level(o.level).map_or(0.0, |l| l.elevation);
+                Some((
+                    cell(o.start.truncate()),
+                    z + o.start.z.min(o.end.z),
+                    z + o.start.z.max(o.end.z),
+                ))
             }
             _ => None,
         })
         .collect();
+    // a stack goes through a ceiling into another storey; a rise or a
+    // drop within its storey, into the floor too, is none (the office's
+    // rule of drawing, for every trade)
+    let floors = floors_between(model);
+    let through = |c: (i64, i64)| {
+        let here = upright.iter().filter(|u| u.0 == c);
+        let lo = here.clone().map(|u| u.1).fold(f64::MAX, f64::min);
+        let hi = here.map(|u| u.2).fold(f64::MIN, f64::max);
+        floors.iter().any(|f| lo < f - CEILING && hi > f - 1e-6)
+    };
+    let mut places: Vec<(i64, i64)> = upright.iter().map(|u| u.0).collect();
     places.sort();
     places.dedup();
+    places.retain(|c| through(*c));
     let near = if l == "V" { 30 } else { 0 };
     let mut stacks: Vec<(i64, i64)> = vec![];
     for q in places {
@@ -459,6 +477,25 @@ pub fn stack_mark(model: &Model, p: &Pipe) -> Option<String> {
         .iter()
         .position(|s| (s.0 - me.0).abs() <= near && (s.1 - me.1).abs() <= near)?;
     Some(format!("{l}{}", i + 1))
+}
+
+/// As far under a storey's floor as its ceiling below may reach, m: a
+/// pipe that only dips into the floor stays above it.
+const CEILING: f64 = 0.5;
+
+/// The ceilings a stack may go through: the floors that have a storey
+/// under them and the top storey's ceiling.
+fn floors_between(model: &Model) -> Vec<f64> {
+    let mut z: Vec<f64> = model.levels().map(|(_, l)| l.elevation).collect();
+    // and the top storey's ceiling, which a vent goes through to the roof
+    let top = model
+        .levels()
+        .map(|(_, l)| l.elevation + l.height)
+        .fold(f64::MIN, f64::max);
+    z.push(top);
+    z.sort_by(f64::total_cmp);
+    z.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    z.into_iter().skip(1).collect()
 }
 
 /// Does a rainwater pipe lead on from the stack standing at `at`: one
@@ -513,7 +550,14 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
     let mut out = vec![];
     let mut runs: Vec<Run> = vec![];
     // the stacks met: mark, the first riser and its place, their sizes
-    let mut stacks: Vec<(String, creabim_core::ElementId, DVec2, Vec<String>)> = vec![];
+    type Stack = (
+        String,
+        creabim_core::ElementId,
+        DVec2,
+        Vec<String>,
+        Option<DVec2>,
+    );
+    let mut stacks: Vec<Stack> = vec![];
     for e in pipes {
         let ElementKind::Pipe(p) = &e.kind else {
             continue;
@@ -536,7 +580,7 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
                         s.3.push(text);
                     }
                 }
-                None => stacks.push((mark, e.id, a, vec![text])),
+                None => stacks.push((mark, e.id, a, vec![text], p.mark)),
             }
             continue;
         }
@@ -560,8 +604,9 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
             text: pipe_text(p),
         });
     }
-    for (mark, id, a, sizes) in stacks {
-        let at = a + DVec2::new(5.0, 5.0) * mm;
+    for (mark, id, a, sizes, moved) in stacks {
+        // the line starts at the riser; the circle goes where it was put
+        let at = a + moved.unwrap_or(DVec2::new(5.0, 5.0) * mm);
         out.push(PlanItem::Tag {
             id,
             anchor: a,
@@ -855,6 +900,7 @@ mod tests {
             inner_mm: 16.0,
             height_mm,
             insulation_mm: 0.0,
+            mark: None,
         }
     }
 
@@ -979,6 +1025,19 @@ mod tests {
         riser.nominal_mm = 110.0;
         riser.start = DVec3::new(6.0, 3.0, 0.0);
         riser.end = DVec3::new(6.0, 3.0, 2.5);
+        // a rise within its storey is no stack: it has no mark
+        {
+            let mut m = m.clone();
+            let e = Element::new("Rise", ElementKind::Pipe(riser.clone()));
+            creabim_core::Transaction::new("t")
+                .insert(e.clone())
+                .apply(&mut m)
+                .unwrap();
+            let labels = pipe_labels(&m, &[&e], 0.05);
+            assert!(!labels.iter().any(|l| matches!(l, PlanItem::Tag { .. })));
+        }
+        // through the ceiling into the storey above it is one
+        riser.end = DVec3::new(6.0, 3.0, 4.0);
         let es = [
             run("SV", 2.0, 25.0, 18.0),
             run("TV", 2.1, 25.0, 18.0),
@@ -1177,7 +1236,7 @@ mod tests {
         run.end = DVec3::new(3.0, 1.0, 0.3);
         let mut riser = pipe(level, None);
         riser.start = DVec3::new(4.0, 2.0, 0.0);
-        riser.end = DVec3::new(4.0, 2.0, 2.5);
+        riser.end = DVec3::new(4.0, 2.0, 4.0);
         let (run, riser) = (
             Element::new("Pipe", ElementKind::Pipe(run)),
             Element::new("Riser", ElementKind::Pipe(riser)),

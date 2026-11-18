@@ -21,6 +21,7 @@ fn pipe(level: creabim_core::ElementId, system: &str, height_mm: Option<f64>) ->
         inner_mm: 16.0,
         height_mm,
         insulation_mm: 9.0,
+        mark: None,
     }
 }
 

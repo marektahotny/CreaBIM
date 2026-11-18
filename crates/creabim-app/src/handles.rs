@@ -1469,6 +1469,41 @@ pub fn originals(
             }
         }
     }
+    // a pipe's end takes along the pipes joined to it, and what a riser
+    // among them is joined to at its other end
+    if let ElementKind::Pipe(_) = &e.kind {
+        let world = |p: &creabim_core::mep::Pipe| {
+            let z = DVec3::Z * model.level(p.level).map_or(0.0, |l| l.elevation);
+            [p.start + z, p.end + z]
+        };
+        let mut at = 0;
+        while at < out.len() {
+            let ElementKind::Pipe(p) = &out[at].kind else {
+                break;
+            };
+            let upright = p.start.truncate().distance(p.end.truncate()) < 1e-6;
+            let ends = world(p);
+            at += 1;
+            if at > 1 && !upright {
+                continue;
+            }
+            for other in model.iter() {
+                let ElementKind::Pipe(o) = &other.kind else {
+                    continue;
+                };
+                if out.iter().any(|x| x.id == other.id) {
+                    continue;
+                }
+                let theirs = world(o);
+                if ends
+                    .iter()
+                    .any(|q| theirs.iter().any(|t| t.distance(*q) < 0.002))
+                {
+                    out.push(other.clone());
+                }
+            }
+        }
+    }
     (out, joined)
 }
 
@@ -1881,6 +1916,15 @@ pub fn apply(
                 } else {
                     o.start = p;
                 }
+            }
+        }
+    }
+    // the pipes joined to a pipe's end stay joined
+    if matches!(kind, HandleKind::Member { .. }) && matches!(out[0].kind, ElementKind::Pipe(_)) {
+        let mut moved = [out[0].clone()];
+        for (_, after) in creabim_core::joins::follow(model, &mut moved) {
+            if let Some(o) = out.iter_mut().skip(1).find(|o| o.id == after.id) {
+                *o = after;
             }
         }
     }

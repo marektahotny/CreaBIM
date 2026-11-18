@@ -339,6 +339,11 @@ pub struct Pipe {
     /// Insulation, mm; 0 for none.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub insulation_mm: f64,
+    /// Where a riser's mark (its stack's circle with the sizes beside
+    /// it) was dragged to in plan, from the riser, m; none where the
+    /// drawing sets it by itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<glam::DVec2>,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -906,6 +911,7 @@ mod tests {
             inner_mm: 104.6,
             height_mm: None,
             insulation_mm: 0.0,
+            mark: None,
         }
     }
 

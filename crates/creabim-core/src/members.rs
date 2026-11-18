@@ -1409,6 +1409,11 @@ pub fn grips(model: &Model, e: &Element) -> Vec<Grip> {
             .into_iter()
             .map(|(g, _)| g)
             .collect(),
+        // a pipe's or duct's two ends, of every trade
+        ElementKind::Pipe(p) => {
+            let z = DVec3::Z * elevation(model, p.level);
+            vec![flat(p.start + z), flat(p.end + z)]
+        }
         _ => vec![],
     }
 }
@@ -1573,6 +1578,19 @@ pub fn drag_grip(
             1 => b.end = now.truncate(),
             _ => b.depth = round(b.depth - d.z, step / 5.0).max(0.05),
         },
+        ElementKind::Pipe(p) => {
+            let to = now.truncate();
+            if p.start.truncate().distance(p.end.truncate()) < 1e-6 {
+                // a riser stays upright: it moves whole
+                p.start = to.extend(p.start.z);
+                p.end = to.extend(p.end.z);
+            } else if i == 0 {
+                p.start = to.extend(p.start.z);
+            } else {
+                p.end = to.extend(p.end.z);
+            }
+            p.validate()?;
+        }
         ElementKind::Roof(r) => {
             let n = r.boundary.len();
             if i < n {

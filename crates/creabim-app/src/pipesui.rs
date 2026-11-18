@@ -353,6 +353,7 @@ mod tests {
             inner_mm: 16.0,
             height_mm: None,
             insulation_mm: 0.0,
+            mark: None,
         }
     }
 
@@ -485,6 +486,7 @@ impl PipeDraft {
             inner_mm: self.nominal_mm,
             height_mm: None,
             insulation_mm: 0.0,
+            mark: None,
         };
         if let Some(t) = self.pipe_type() {
             set_size(&mut p, t, self.nominal_mm);

@@ -600,6 +600,7 @@ mod tests {
                 inner_mm: 16.0,
                 height_mm: None,
                 insulation_mm: 0.0,
+                mark: None,
             }),
         );
         assert!(notes(doc.model(), id).is_empty());
@@ -650,6 +651,7 @@ mod tests {
                     inner_mm: 16.0,
                     height_mm: None,
                     insulation_mm: 0.0,
+                    mark: None,
                 }),
             ));
         }
