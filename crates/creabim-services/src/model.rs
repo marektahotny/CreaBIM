@@ -5,7 +5,7 @@
 //! a supply comes up into the building.
 
 use crate::fixtures::match_fixture;
-use crate::network::{FittingKind, Network, Node, NodeId, NodeKind, PipeSize};
+use crate::network::{AccessoryRole, FittingKind, Network, Node, NodeId, NodeKind, PipeSize};
 use crate::pipe_types;
 use crate::settings::Settings;
 use creabim_core::fixture::{self, ConnKind};
@@ -85,11 +85,31 @@ pub fn build(model: &Model, code: &str, s: &Settings) -> Option<ModelNetwork> {
             [a, b]
         })
         .collect();
-    // pipes split where another ends on them
+    // the valves and accessories on them: where, what and its own ζ
+    let valves: Vec<(ElementId, DVec3, AccessoryRole, Option<f64>, &'static str)> = model
+        .iter()
+        .filter_map(|e| {
+            let ElementKind::Valve(v) = &e.kind else {
+                return None;
+            };
+            let (_, p) = pipes.iter().find(|(id, _)| *id == v.pipe)?;
+            let k = v.kind_def().filter(|k| !k.nocalc && !k.terminal)?;
+            let (a, b) = ends(model, p);
+            let (role, zeta) = valve_role(k);
+            Some((v.pipe, a.lerp(b, v.t), role, zeta, k.name))
+        })
+        .collect();
+    // pipes split where another ends on them, and at their valves
     let mut segs: Vec<Seg> = vec![];
     for (id, p) in &pipes {
         let (a, b) = ends(model, p);
         let mut ts: Vec<f64> = ends_all.iter().filter_map(|&q| inside(a, b, q)).collect();
+        ts.extend(
+            valves
+                .iter()
+                .filter(|v| v.0 == *id)
+                .filter_map(|v| inside(a, b, v.1)),
+        );
         ts.sort_by(f64::total_cmp);
         ts.dedup_by(|x, y| (*x - *y).abs() * a.distance(b) < JOIN);
         let mut at = a;
@@ -159,6 +179,7 @@ pub fn build(model: &Model, code: &str, s: &Settings) -> Option<ModelNetwork> {
     let mut used = vec![false; segs.len()];
     let mut seen = vec![false; points.len()];
     seen[root] = true;
+    let mut valve_done = vec![false; valves.len()];
     // depth first: (point reached, the segment it came by, the node to hang on)
     let &first = adj[root].first()?;
     let mut stack: Vec<(usize, usize, Option<NodeId>, bool)> = vec![(root, first, None, false)];
@@ -188,6 +209,18 @@ pub fn build(model: &Model, code: &str, s: &Settings) -> Option<ModelNetwork> {
         let fx = at_point[to].clone();
         let outs = next.len() + usize::from(fx.is_some());
         let p = [b.x, b.y, b.z];
+        // the valves standing here, one after another
+        for (k, v) in valves.iter().enumerate() {
+            if valve_done[k] || v.1.distance(b) > JOIN {
+                continue;
+            }
+            valve_done[k] = true;
+            let mut n = point_node(NodeKind::Accessory, p, out.net.nodes.len());
+            n.role = v.2;
+            n.zeta_override = v.3;
+            n.name = v.4.to_string();
+            here = add(&mut out, Some(here), n, None, None);
+        }
         if outs == 0 {
             if to != root {
                 out.open_ends.push(b);
@@ -247,6 +280,22 @@ pub fn build(model: &Model, code: &str, s: &Settings) -> Option<ModelNetwork> {
         .filter(|id| reached.binary_search(id).is_err())
         .collect();
     Some(out)
+}
+
+/// What a valve is to the calculation: the role whose ζ the settings
+/// give, or for the kinds they don't know its own ζ.
+fn valve_role(k: &creabim_core::mep::ValveKind) -> (AccessoryRole, Option<f64>) {
+    type R = AccessoryRole;
+    match k.code {
+        "uzaver" => (R::ShutOff, None),
+        "spatna" => (R::CheckValve, None),
+        "filter" => (R::Strainer, None),
+        "redukcny" => (R::PressureReducer, None),
+        "vyvazovaci" => (R::Balancing, None),
+        "vodomer" => (R::WaterMeter, None),
+        "krabica" => (R::ValveBox, None),
+        _ => (R::Other, k.zeta),
+    }
 }
 
 fn add(
@@ -419,6 +468,56 @@ mod tests {
         assert!(res
             .iter()
             .all(|(_, p)| p.flow_ls > 0.0 && p.proposed.is_some()));
+    }
+
+    #[test]
+    fn valves_on_the_pipes_add_their_losses() {
+        let (mut doc, _) = two_basins();
+        let s = Settings::default();
+        let mut plain = build(doc.model(), "SV", &s).unwrap();
+        let before = crate::water(&s, &mut plain.net, crate::SystemKind::ColdWater, true, None);
+        // a shut-off and a water meter on the riser, a vent head that
+        // takes no part in the calculation
+        let riser = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Pipe(p) if p.system == "SV" && p.start.z < 0.0 => Some(e.id),
+                _ => None,
+            })
+            .unwrap();
+        let mut tx = Transaction::new("valves");
+        for (t, kind) in [(0.3, "uzaver"), (0.6, "vodomer"), (0.8, "hlavica")] {
+            tx = tx.insert(Element::new(
+                kind,
+                ElementKind::Valve(creabim_core::mep::Valve {
+                    pipe: riser,
+                    t,
+                    kind: kind.into(),
+                }),
+            ));
+        }
+        doc.commit(tx).unwrap();
+        let mut m = build(doc.model(), "SV", &s).unwrap();
+        let acc: Vec<_> = m
+            .net
+            .nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Accessory)
+            .map(|n| n.role)
+            .collect();
+        assert_eq!(acc, vec![AccessoryRole::ShutOff, AccessoryRole::WaterMeter]);
+        // the riser is three pipes now, still one in the model
+        let kinds = |k: NodeKind| m.net.nodes.iter().filter(|n| n.kind == k).count();
+        assert_eq!(kinds(NodeKind::Pipe), 9);
+        let after = crate::water(&s, &mut m.net, crate::SystemKind::ColdWater, true, None);
+        assert!((after.root_flow_ls - before.root_flow_ls).abs() < 1e-12);
+        assert!(
+            after.required_pa > before.required_pa,
+            "{after:?} {before:?}"
+        );
+        assert_eq!(pipe_results(&m).len(), 6);
+        assert!(m.unreached.is_empty() && m.loops == 0);
     }
 
     #[test]
