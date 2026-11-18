@@ -325,8 +325,10 @@ pub fn derive(model: &Model) -> Vec<Fitting> {
                     .map(|r| c(bi, r).clamp(-1.0, 1.0).acos().to_degrees())
                     .fold(f64::MAX, f64::min);
                 let od = if br < 60.0 { 45.0 } else { 87.0 };
-                let it = item(t, "Tee", d[0], Some(d[2]), None)
-                    .or_else(|| item(t, "Tee", d[0], Some(d[0]), None));
+                // a drain's branch by its angle too: 45° or square
+                let at = drain.then_some(od);
+                let it = item(t, "Tee", d[0], Some(d[2]), at)
+                    .or_else(|| item(t, "Tee", d[0], Some(d[0]), at));
                 let kind = if drain {
                     FittingKind::Branch
                 } else {
@@ -642,6 +644,26 @@ mod tests {
         // counted for the schedule
         let s = summary(&f);
         assert_eq!((s.len(), s[0].count), (1, 1));
+    }
+
+    #[test]
+    fn wavin_drainage_takes_its_makers_elbows_and_branches_with_codes() {
+        let m = model(&[
+            ("K", "WAS", 100.0, [0.0, 0.0, 0.0], [2.0, 0.0, 0.0]),
+            ("K", "WAS", 100.0, [2.0, 0.0, 0.0], [2.0, 2.0, 0.0]),
+        ]);
+        let f = derive(&m);
+        assert_eq!(f[0].code, "HF015350W", "{:?}", f[0]);
+        assert!(f[0].label.contains("Wavin AS+ Koleno 87°"), "{}", f[0].label);
+        let m = model(&[
+            ("K", "WSI", 100.0, [0.0, 0.0, 0.0], [2.0, 0.0, 0.0]),
+            ("K", "WSI", 100.0, [2.0, 0.0, 0.0], [4.0, 0.0, 0.0]),
+            ("K", "WSI", 50.0, [2.0, 0.0, 0.0], [3.0, 1.0, 0.0]),
+        ]);
+        let f = derive(&m);
+        assert_eq!(f[0].kind, FittingKind::Branch);
+        assert!(f[0].label.starts_with("Wavin SiTech+ Odbočka 45°"), "{}", f[0].label);
+        assert!(!f[0].code.is_empty());
     }
 
     #[test]
