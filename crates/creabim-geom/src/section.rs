@@ -955,6 +955,17 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             }
         }
         d.items.extend(marks);
+        // underfloor heating: the loops' supply red, their return blue
+        // and dashed, each room's circuits written in it
+        if let (creabim_core::ViewKind::Plan { level, .. }, false) = (&kind, v.ceiling_plan) {
+            let heated = |id: ElementId| {
+                matches!(model.get(id).map(|e| &e.kind),
+                    Some(ElementKind::Room(r)) if r.ufh.is_some())
+            };
+            d.items
+                .retain(|it| !(matches!(it, PlanItem::Line { .. }) && heated(it.id())));
+            d.items.extend(crate::heatplan::items(model, *level, mm));
+        }
     }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {

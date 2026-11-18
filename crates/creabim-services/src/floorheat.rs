@@ -101,6 +101,8 @@ pub struct RoomDesign {
     pub id: ElementId,
     pub number: String,
     pub name: String,
+    /// The room's design temperature, °C.
+    pub ti: f64,
     /// The room's heat loss, W.
     pub phi: f64,
     /// The floor laid with pipes, m².
@@ -221,6 +223,7 @@ fn one(
         id: hl.id,
         number: hl.number.clone(),
         name: hl.name.clone(),
+        ti,
         phi: hl.phi,
         area,
         q_req,

@@ -130,6 +130,53 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         }
         y -= 3.0;
     }
+    let heated = model
+        .iter()
+        .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.ufh.is_some()));
+    if heated {
+        text(
+            &mut items,
+            DVec2::new(0.0, y - HEAD / 2.0),
+            &tr("UNDERFLOOR HEATING"),
+            HEAD,
+            None,
+        );
+        y -= HEAD + 3.0;
+        let pipe = format!(
+            "{}x{}",
+            creabim_services::floorheat::PIPE_OUTER_MM,
+            (creabim_services::floorheat::PIPE_OUTER_MM
+                - creabim_services::floorheat::PIPE_INNER_MM)
+                / 2.0
+        );
+        for (name, rgb, dashes) in [
+            ("underfloor heating - supply", crate::heatplan::SUPPLY, None),
+            (
+                "underfloor heating - return",
+                crate::heatplan::RETURN,
+                Some(crate::heatplan::DASH),
+            ),
+        ] {
+            let a = DVec2::new(0.0, y - LINE / 2.0);
+            crate::heatplan::strips(
+                &mut items,
+                view,
+                &[a, a + DVec2::X * SAMPLE],
+                rgb,
+                dashes,
+                1.0,
+            );
+            text(
+                &mut items,
+                DVec2::new(INDENT, y - LINE / 2.0),
+                &format!("{} {pipe}", tr(name)),
+                TEXT,
+                None,
+            );
+            y -= LINE + 1.0;
+        }
+        y -= 3.0;
+    }
     let rows = creabim_services::fixturespec::legend(model, None);
     if !rows.is_empty() {
         text(
@@ -163,7 +210,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             y -= 1.5;
         }
     }
-    if systems.is_empty() && rows.is_empty() {
+    if systems.is_empty() && rows.is_empty() && !heated {
         text(
             &mut items,
             DVec2::new(0.0, y - LINE / 2.0),
