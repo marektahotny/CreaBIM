@@ -1238,6 +1238,13 @@ impl CreaBimApp {
                 .icon("xray")
                 .hint("Walls, slabs, roofs and masses see-through, so beams, columns and what is inside them show"),
             Item::sub("Render", self.render_items()).icon(self.shell.settings.render_3d.icon()),
+            Item::new("shadows3d", "Shadows")
+                .checked(self.shell.settings.sun.shadows)
+                .icon("sun")
+                .hint("Shadows the sun casts in the 3D view"),
+            Item::new("sun3d", "Sun and shadows…")
+                .icon("sun")
+                .hint("The sun's date and time at the project's place, or its direction by hand, and how the shadows look"),
             Item::sub("Crop boxes", self.crop_menu()).icon("crop-box"),
             Item::sub("Camera", camera).icon("axis-3d"),
             Item::sub("Ground grid", ground).icon("grid-3x3"),
@@ -1715,6 +1722,9 @@ impl CreaBimApp {
                 };
             }
             "xray" => self.set_xray(!self.shell.settings.xray),
+            "sun3d" | "shadows3d" => {
+                self.sun_action(id);
+            }
             "render3d" => {
                 if let Some(m) = index.and_then(|i| RenderMode::ALL.get(i)) {
                     let s = &mut self.shell.settings;

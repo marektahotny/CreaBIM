@@ -49,6 +49,7 @@ mod sheetview;
 mod sketch;
 mod slabtool;
 mod snaps;
+mod sun;
 mod svgicon;
 mod tempdims;
 mod textures;

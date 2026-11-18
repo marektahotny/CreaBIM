@@ -101,6 +101,8 @@ pub(crate) mod shell;
 mod stormfireui;
 #[path = "stylesui.rs"]
 mod stylesui;
+#[path = "sunui.rs"]
+mod sunui;
 #[path = "terrainimport.rs"]
 mod terrainimport;
 #[path = "typepreview.rs"]
@@ -393,6 +395,10 @@ pub struct CreaBimApp {
     circuit: Option<creabim_services::electrical::Circuit>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
+    /// The Sun and shadows window is open.
+    sun_open: bool,
+    /// The graphics card drawing, for the Sun and shadows window.
+    gpu: Option<sunui::Gpu>,
     /// The schedule of earthworks, while its window is open.
     earthworks: Option<(
         Vec<creabim_core::earthworks::Row>,
@@ -444,7 +450,8 @@ impl CreaBimApp {
                 "{} ({:?}, driver {} {})",
                 i.name, i.backend, i.driver, i.driver_info
             );
-            crate::actlog::line(format!("graphics: {gpu}"));
+            crate::actlog::line(format!("graphics: {gpu} {:?}", i.device_type));
+            app.gpu = Some(sunui::Gpu::from_info(&i));
             reportui::set_gpu(gpu);
         }
         crate::actlog::line(format!("system: {}", reportui::os_version()));
@@ -581,6 +588,8 @@ impl CreaBimApp {
             heat_loss: None,
             net_calc: None,
             auto_valves: None,
+            sun_open: false,
+            gpu: None,
             earthworks: None,
             note_editor: None,
             copy_guides: None,
@@ -3151,6 +3160,7 @@ impl CreaBimApp {
         self.rebuild_selection(rs);
         let ppp = ui.ctx().pixels_per_point();
         let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
+        let lighting = self.lighting_3d();
         if let Some(vp) = &mut self.viewport {
             let tex = vp.render(
                 rs,
@@ -3163,6 +3173,7 @@ impl CreaBimApp {
                     BACKGROUND_3D
                 }
                 .map(f64::from),
+                &lighting,
             );
             ui.painter().image(
                 tex,
@@ -12108,6 +12119,7 @@ impl eframe::App for CreaBimApp {
         self.heat_source_window(&ctx);
         self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);
+        self.sun_window(&ctx);
         self.earthworks_window(&ctx);
         self.maps_window(&ctx);
         self.note_editor_window(&ctx);

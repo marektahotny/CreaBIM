@@ -872,6 +872,7 @@ dependencies = [
  "glam",
  "gtk",
  "image",
+ "naga",
  "raw-window-handle",
  "rfd",
  "serde",
