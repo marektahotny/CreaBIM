@@ -127,6 +127,16 @@ impl Builder {
             w = row.iter().map(|s| s.x + 20.0).sum::<f64>().max(w);
             h += row.iter().map(|s| s.y).fold(0.0, f64::max) + 25.0;
         }
+        // a drawing with its legends: the legends in a column beside it
+        let legend = |v: &ElementId| {
+            matches!(self.m.get(*v).map(|e| &e.kind),
+                Some(ElementKind::View(x)) if matches!(x.kind, ViewKind::Schedule { .. }))
+        };
+        if views.len() > 2 && !legend(&views[0]) && views[1..].iter().all(legend) {
+            let side = &sizes[1..];
+            w = sizes[0].x + 20.0 + side.iter().map(|s| s.x + 20.0).fold(0.0, f64::max);
+            h = (sizes[0].y + 25.0).max(side.iter().map(|s| s.y + 25.0).sum());
+        }
         let (need_w, need_h) = (w + 40.0, h + 75.0);
         let size = Sheet::SIZES
             .iter()
@@ -246,10 +256,29 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
             format!("N{above:02}")
         };
         let v = plan_of(&mut b, *id, name, *z);
+        // the storey's rooms with their finishes, once it has rooms
+        let rooms = model
+            .iter()
+            .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.level == *id))
+            .then(|| {
+                b.find(|_, v| {
+                    matches!(v.kind, ViewKind::Schedule { category, .. }
+                        if category == ScheduleCategory::RoomLegend)
+                        && v.of_level == Some(*id)
+                })
+                .unwrap_or_else(|| {
+                    let mut v = View::schedule(ScheduleCategory::RoomLegend);
+                    v.of_level = Some(*id);
+                    b.view(format!("{} {name}", tr("Legend of rooms")), v)
+                })
+            });
         b.sheet(
             number(asr, &code, &mut n),
             format!("{} {name}", tr("Floor plan")),
-            &std::iter::once(v).chain(materials).collect::<Vec<_>>(),
+            &std::iter::once(v)
+                .chain(rooms)
+                .chain(materials)
+                .collect::<Vec<_>>(),
         );
         plans.push((*id, name.clone(), code, v));
     }

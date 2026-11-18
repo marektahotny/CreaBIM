@@ -970,6 +970,7 @@ spec_enum! {
         MaterialLegend = "material_legend",
         PipeList = "pipe_list",
         ElectricalList = "electrical_list",
+        RoomLegend = "room_legend",
     }
 }
 

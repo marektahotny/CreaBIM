@@ -69,7 +69,16 @@ pub fn rows(model: &Model) -> Vec<Row> {
         };
         match creabim_core::assembly_of(model, e) {
             Some((_, a)) => {
-                for l in &a.layers {
+                // what the wall is built of, not its plasters and foils
+                let built = |l: &&creabim_core::Layer| {
+                    a.layers.len() == 1
+                        || matches!(
+                            l.function,
+                            creabim_core::LayerFunction::Structure
+                                | creabim_core::LayerFunction::Insulation
+                        )
+                };
+                for l in a.layers.iter().filter(built) {
                     if let Some(m) = l.material {
                         add(m, Some(l.thickness));
                     }

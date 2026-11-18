@@ -863,6 +863,7 @@ What a schedule lists.
 - `"material_legend"`
 - `"pipe_list"`
 - `"electrical_list"`
+- `"room_legend"`
 
 ### Callout
 

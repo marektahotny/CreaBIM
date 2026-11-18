@@ -1355,7 +1355,8 @@
         "documents",
         "material_legend",
         "pipe_list",
-        "electrical_list"
+        "electrical_list",
+        "room_legend"
       ]
     },
     "Callout": {

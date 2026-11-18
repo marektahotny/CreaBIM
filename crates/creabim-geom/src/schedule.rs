@@ -127,6 +127,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     if category == ScheduleCategory::Documents {
         return crate::doclist::schedule(model);
     }
+    if category == ScheduleCategory::RoomLegend {
+        return crate::roomlegend::schedule(model, None);
+    }
     if category == ScheduleCategory::PipeList {
         return crate::tradelists::pipes(model);
     }
@@ -531,6 +534,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         | ScheduleCategory::Documents
         | ScheduleCategory::MaterialLegend
         | ScheduleCategory::PipeList
+        | ScheduleCategory::RoomLegend
         | ScheduleCategory::ElectricalList => {
             unreachable!("the take-offs and the list of documentation are built on their own")
         }

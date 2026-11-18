@@ -2101,6 +2101,9 @@ pub struct View {
     /// The trade a services drawing is for; none shows every trade's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trade: Option<crate::viewmodes::Trade>,
+    /// The storey a legend of rooms lists; none lists every storey's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub of_level: Option<ElementId>,
     /// How a section's line is drawn in plans and where it steps aside.
     #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
     pub line: SectionLine,
@@ -2313,10 +2316,14 @@ pub enum ScheduleCategory {
     /// The electrical devices by kind and type, the cables by their
     /// cross-section and the breakers of the circuits.
     ElectricalList,
+    /// The legend of rooms beside an architectural plan: the rooms of a
+    /// storey with their areas and the finishes of floor, walls and
+    /// ceiling, read from the build-ups where a room does not say.
+    RoomLegend,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 16] = [
+    pub const ALL: [ScheduleCategory; 17] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2333,6 +2340,7 @@ impl ScheduleCategory {
         ScheduleCategory::MaterialLegend,
         ScheduleCategory::PipeList,
         ScheduleCategory::ElectricalList,
+        ScheduleCategory::RoomLegend,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2354,6 +2362,7 @@ impl ScheduleCategory {
             ScheduleCategory::MaterialLegend => return "Legend of materials".into(),
             ScheduleCategory::PipeList => return "Pipe list".into(),
             ScheduleCategory::ElectricalList => return "Electrical list".into(),
+            ScheduleCategory::RoomLegend => return "Legend of rooms".into(),
         };
         format!("{one} Schedule")
     }
@@ -2384,6 +2393,7 @@ impl ScheduleCategory {
             ScheduleCategory::MaterialLegend => "Legend of materials",
             ScheduleCategory::PipeList => "Pipe list",
             ScheduleCategory::ElectricalList => "Electrical list",
+            ScheduleCategory::RoomLegend => "Legend of rooms",
         }
     }
 
@@ -2461,6 +2471,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            of_level: None,
             notes: String::new(),
             spatial: false,
         }
@@ -2492,6 +2503,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            of_level: None,
             notes: String::new(),
             spatial: false,
         }
@@ -2520,6 +2532,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            of_level: None,
             notes: String::new(),
             spatial: false,
         }
@@ -2549,6 +2562,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            of_level: None,
             notes: String::new(),
             spatial: false,
         }
@@ -2583,6 +2597,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            of_level: None,
             notes: String::new(),
             spatial: false,
         }
