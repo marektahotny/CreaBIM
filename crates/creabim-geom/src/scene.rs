@@ -284,8 +284,8 @@ fn reveal_linings(
 }
 
 /// The layers of a wall turned into its windows' reveals
-/// ([`assembly::reveal_wraps`]) as solids, one per layer: at the jambs
-/// the window's whole height, at the head and (above the floor) the sill
+/// ([`assembly::reveal_wraps`]) as solids, one per layer: rings round
+/// the opening, the jambs with the head and (above the floor) the sill
 /// between them. A section through a window shows the insulation and the
 /// render lapped onto the frame, as the plan does at the jambs.
 fn reveal_wrap_parts(
@@ -346,11 +346,17 @@ fn reveal_wrap_parts(
                 if across.1 - across.0 < 1e-6 || x1 - x0 < 1e-6 {
                     continue;
                 }
-                slab((c.u0 + x0, c.u0 + x1), (c.v0, c.v1), across);
-                slab((c.u1 - x1, c.u1 - x0), (c.v0, c.v1), across);
-                let between = (c.u0 + total, c.u1 - total);
+                // a ring round the opening: its jambs as tall as the ring,
+                // its head and sill between them, so an elevation shows
+                // each layer's edge as one rectangle and no line of one
+                // runs on across another's
+                let sill = c.v0 > 1e-6;
+                let tall = (if sill { c.v0 + x0 } else { c.v0 }, c.v1 - x0);
+                slab((c.u0 + x0, c.u0 + x1), tall, across);
+                slab((c.u1 - x1, c.u1 - x0), tall, across);
+                let between = (c.u0 + x1, c.u1 - x1);
                 slab(between, (c.v1 - x1, c.v1 - x0), across);
-                if c.v0 > 1e-6 {
+                if sill {
                     slab(between, (c.v0 + x0, c.v0 + x1), across);
                 }
             }

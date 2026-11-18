@@ -643,7 +643,8 @@ pub(crate) fn hidden_lines(
                 });
                 continue;
             }
-            for (p, q) in zbuf.visible_runs(a, b) {
+            let across = (b - a).truncate().perp().normalize_or_zero();
+            for (p, q) in zbuf.runs(a, b, |p| zbuf.visible(p) && !zbuf.seam(p, across)) {
                 items.push(PlanItem::Line {
                     id: s.id,
                     pen: Pen::Projection,
@@ -1901,8 +1902,28 @@ impl DepthBuffer {
         p.z as f32 <= far + 0.02
     }
 
-    fn visible_runs(&self, a: DVec3, b: DVec3) -> Vec<(DVec2, DVec2)> {
-        self.runs(a, b, |p| self.visible(p))
+    /// Is `p`, on an edge running square to `across` (a unit direction
+    /// in the drawing), a seam in a flat face: the same solid nearest on
+    /// both sides of it, at one depth, and the edge on that face or just
+    /// behind it? Parts butted together (a frame's jambs and its head, a
+    /// layer's reveals) leave such seams; they are not drawn.
+    fn seam(&self, p: DVec3, across: DVec2) -> bool {
+        const FLUSH: f32 = 0.001;
+        let side = |k: f64| {
+            let q = self.to_px(p + (across * (k * self.px)).extend(0.0));
+            let (x, y) = (q.x.floor() as isize, q.y.floor() as isize);
+            if x < 0 || y < 0 || x as usize >= self.w || y as usize >= self.h {
+                return None;
+            }
+            let i = y as usize * self.w + x as usize;
+            (self.nearest[i] != EMPTY).then_some((self.nearest[i], self.depth[i]))
+        };
+        match (side(-2.5), side(2.5)) {
+            (Some((a, da)), Some((b, db))) => {
+                a == b && (da - db).abs() < FLUSH && p.z as f32 > da - FLUSH
+            }
+            _ => false,
+        }
     }
 
     /// The stretches of `a`-`b` where `keep` holds, in drawing coordinates.
