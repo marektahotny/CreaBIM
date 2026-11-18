@@ -441,6 +441,13 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "lightbulb",
                 "Ceiling, wall and recessed lights from the catalogue",
             ),
+            Sep,
+            act(
+                "calc:circuit",
+                "Circuit check",
+                "calc",
+                "A circuit's design current, voltage drop, protection IB ≤ In ≤ Iz and fault loop, with the smallest breaker and cable that pass (STN 33 2000-5-52)",
+            ),
         ],
         ANNOTATE => vec![
             T(Tool::Dimension),

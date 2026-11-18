@@ -12,6 +12,7 @@
 
 pub mod airbalance;
 pub mod coolingload;
+pub mod electrical;
 pub mod firewater;
 pub mod fittings;
 pub mod fixtures;
