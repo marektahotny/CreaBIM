@@ -1072,7 +1072,9 @@ pub fn plan_view_with(
                     for (oid, o) in hosted {
                         if let Some(c) = Cut::of(o, w) {
                             if cut_v > c.v0 && cut_v < c.v1 {
-                                items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &plain));
+                                items.extend(opening_symbol(
+                                    model, oid, o, w, asm_of, &c, cut_v, &plain,
+                                ));
                             }
                         }
                     }
@@ -1099,7 +1101,7 @@ pub fn plan_view_with(
                                     .unwrap_or(creabim_core::assembly::REVEAL_INSULATION),
                             ));
                         }
-                        items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &at));
+                        items.extend(opening_symbol(model, oid, o, w, asm_of, &c, cut_v, &at));
                     } else if c.v0 >= cut_v {
                         // wholly above the cut (a duct hole, a high
                         // window): its outline in the wall, dashed
@@ -2119,7 +2121,9 @@ pub fn guide_span(a: DVec2, b: DVec2) -> Option<(DVec2, DVec2)> {
 /// the sill member below, the wall faces and the glass line; for a door
 /// its leaf drawn open and the swing it sweeps. `at(u, s)` is a point
 /// `u` along the wall and `s` across it.
+#[allow(clippy::too_many_arguments)]
 fn opening_symbol(
+    model: &Model,
     id: ElementId,
     o: &creabim_core::Opening,
     w: &creabim_core::Wall,
@@ -2224,17 +2228,31 @@ fn opening_symbol(
                     end: a0 + std::f64::consts::FRAC_PI_2,
                 });
             }
-            // the leaf's nominal size, and a fire door's rating, at the
-            // door on the side it opens to (STN 01 3420)
-            if let Some(d) = &o.door {
+            // the leaf's nominal size at the door, on the side it opens
+            // to: its width over a short dimension line, its height (and
+            // a fire door's rating) under it (STN 01 3420)
+            if let (Some(d), Some(leaf)) = (&o.door, boxes.iter().find(|b| b.part == Part::Leaf)) {
+                let num = |v: f64| {
+                    creabim_core::write_number(model, creabim_core::NumberKind::Dimensions, None, v)
+                };
                 let t = w.thickness / 2.0;
-                out.push(PlanItem::Label {
+                let mid = c.u0 + (leaf.lo.x + leaf.hi.x) / 2.0;
+                let s = side * (t + (d.nom_width * 0.45).max(0.25));
+                let mut below = num(d.nom_height);
+                if let Some(f) = &d.fire {
+                    below.push(' ');
+                    below.push_str(&f.label());
+                }
+                out.push(PlanItem::Dimension {
                     id,
-                    at: at(
-                        (c.u0 + c.u1) / 2.0,
-                        side * (t + 0.12 + (c.u1 - c.u0) * 0.35),
-                    ),
-                    text: d.mark(),
+                    a: at(mid - d.nom_width / 2.0, s),
+                    b: at(mid + d.nom_width / 2.0, s),
+                    offset: 0.0,
+                    text: num(d.nom_width),
+                    look: crate::annotate::look_of(model, None, None),
+                    witness: None,
+                    breaks: vec![],
+                    below: Some(below),
                 });
             }
         }
