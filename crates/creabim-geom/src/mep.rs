@@ -412,6 +412,55 @@ pub fn pipe_text(p: &Pipe) -> String {
     }
 }
 
+/// The mark of the stack a riser is of, as the office's drawings number
+/// them: `K` for foul drains, `D` for rainwater, `V` for water, with its
+/// number among the model's stacks of that letter, counted from the left
+/// and then from the bottom of the plan, so a stack has one mark on every
+/// floor. None for the other systems' risers.
+pub fn stack_mark(model: &Model, p: &Pipe) -> Option<String> {
+    use creabim_core::mep::SystemKind as K;
+    use creabim_core::ElementKind;
+    let letter = |k: K| match k {
+        K::Sanitary => Some("K"),
+        K::Storm => Some("D"),
+        K::ColdWater | K::HotWater | K::Circulation => Some("V"),
+        _ => None,
+    };
+    let l = letter(p.kind())?;
+    // a stack's place, to the centimetre; water risers standing together
+    // (cold, hot, circulation within 30 cm) are one stack
+    let cell = |q: DVec2| ((q.x * 100.0).round() as i64, (q.y * 100.0).round() as i64);
+    let mut places: Vec<(i64, i64)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Pipe(o)
+                if letter(o.kind()) == Some(l)
+                    && o.start.truncate().distance(o.end.truncate()) < 1e-6 =>
+            {
+                Some(cell(o.start.truncate()))
+            }
+            _ => None,
+        })
+        .collect();
+    places.sort();
+    places.dedup();
+    let near = if l == "V" { 30 } else { 0 };
+    let mut stacks: Vec<(i64, i64)> = vec![];
+    for q in places {
+        if !stacks
+            .iter()
+            .any(|s| (s.0 - q.0).abs() <= near && (s.1 - q.1).abs() <= near)
+        {
+            stacks.push(q);
+        }
+    }
+    let me = cell(p.start.truncate());
+    let i = stacks
+        .iter()
+        .position(|s| (s.0 - me.0).abs() <= near && (s.1 - me.1).abs() <= near)?;
+    Some(format!("{l}{}", i + 1))
+}
+
 /// The green the office's services drawings write their pipes' sizes
 /// and fixtures' marks in.
 pub const LABEL_GREEN: [f32; 3] = [0.0, 0.6, 0.32];
@@ -450,6 +499,8 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
     }
     let mut out = vec![];
     let mut runs: Vec<Run> = vec![];
+    // the stacks met: mark, the first riser and its place, their sizes
+    let mut stacks: Vec<(String, creabim_core::ElementId, DVec2, Vec<String>)> = vec![];
     for e in pipes {
         let ElementKind::Pipe(p) = &e.kind else {
             continue;
@@ -457,10 +508,23 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
         let (a, b) = (p.start.truncate(), p.end.truncate());
         let len = a.distance(b);
         if len < 1e-6 {
-            // a riser: its size right of its circle
+            // a riser: its stack's mark in a circle up and to the right
+            // (K1, D2, V1), its size beside that
             let text = pipe_text(p);
-            let at = a + DVec2::X * (RISER_MARK + (look.width(&text) / 2.0 + 1.0) * mm);
-            out.push(label(e.id, at, 0.0, text));
+            let Some(mark) = stack_mark(model, p) else {
+                let at = a + DVec2::X * (RISER_MARK + (look.width(&text) / 2.0 + 1.0) * mm);
+                out.push(label(e.id, at, 0.0, text));
+                continue;
+            };
+            // risers of one stack share its mark, a line of sizes each
+            match stacks.iter_mut().find(|s| s.0 == mark) {
+                Some(s) => {
+                    if !s.3.contains(&text) {
+                        s.3.push(text);
+                    }
+                }
+                None => stacks.push((mark, e.id, a, vec![text])),
+            }
             continue;
         }
         if len < (0.8f64).max(14.0 * mm) {
@@ -482,6 +546,21 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
             level: p.level,
             text: pipe_text(p),
         });
+    }
+    for (mark, id, a, sizes) in stacks {
+        let at = a + DVec2::new(5.0, 5.0) * mm;
+        out.push(PlanItem::Tag {
+            id,
+            anchor: a,
+            at,
+            elbow: None,
+            text: mark,
+            round: true,
+            look,
+        });
+        let w = sizes.iter().map(|t| look.width(t)).fold(0.0, f64::max);
+        let beside = at + DVec2::X * (3.5 + w / 2.0) * mm;
+        out.push(label(id, beside, 0.0, sizes.join("\n")));
     }
     runs.sort_by(|x, y| y.len.total_cmp(&x.len));
     let in_wall = |level, q: DVec2| {
@@ -845,18 +924,27 @@ mod tests {
             unreachable!()
         };
         assert_eq!(pipe_text(p), "C 20x2.8");
+        let mut doc = creabim_core::Document::from_model(m);
+        let mut tx = creabim_core::Transaction::new("pipes");
+        for e in &es {
+            tx = tx.insert(e.clone());
+        }
+        doc.commit(tx).unwrap();
+        let m = doc.model().clone();
         let refs: Vec<&Element> = es.iter().collect();
         let labels = pipe_labels(&m, &refs, 0.05);
         let read = |i: &PlanItem| match i {
             PlanItem::Annotation { item, .. } => (item.text.clone(), item.shape.clone()),
             _ => unreachable!(),
         };
-        assert_eq!(labels.len(), 2);
-        let (text, _) = read(&labels[0]);
+        assert_eq!(labels.len(), 3);
+        // the riser: its stack's mark in a circle, and its size
+        assert!(matches!(&labels[0], PlanItem::Tag { text, round: true, .. } if text == "K1"));
+        let (text, _) = read(&labels[1]);
         assert_eq!(text, "DN110");
         // one label for the three, the one farthest up first, and where
         // they run
-        let (text, shape) = read(&labels[1]);
+        let (text, shape) = read(&labels[2]);
         assert_eq!(text, "C 20x2.8\nT 25x3.5\nS 25x3.5\nin the floor");
         let Shape::Along { at, angle } = shape else {
             unreachable!()
@@ -919,10 +1007,15 @@ mod tests {
         // the line and its label
         assert_eq!(items.len(), 2);
         assert!(matches!(items[1], PlanItem::Annotation { .. }));
-        // a riser is its small circle, with its size beside it
+        // a riser is its small circle, with its stack's mark and its
+        // size beside it
         assert!(matches!(
             of(m, riser_id)[..],
-            [PlanItem::Polygon { .. }, PlanItem::Annotation { .. }]
+            [
+                PlanItem::Polygon { .. },
+                PlanItem::Tag { .. },
+                PlanItem::Annotation { .. }
+            ]
         ));
         // drawn in cold water's blue, dash and dot
         let ElementKind::View(v) = &m.get(view).unwrap().kind else {
