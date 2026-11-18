@@ -9813,6 +9813,29 @@ crate::props::row(ui, "File names", |ui| {
                     {
                         label = "View style"
                     }
+                    // a services legend's notes: its own, or the usual ones
+                    if matches!(
+                        v.kind,
+                        ViewKind::Schedule {
+                            category: ScheduleCategory::ServicesLegend,
+                            ..
+                        }
+                    ) {
+                        ui.label(crate::i18n::t("Notes of the legend, one a line"));
+                        if ui
+                            .add(
+                                egui::TextEdit::multiline(&mut v.notes)
+                                    .desired_rows(4)
+                                    .desired_width(f32::INFINITY)
+                                    .hint_text(crate::i18n::t(
+                                        "Empty: the usual notes of the drawing's trades",
+                                    )),
+                            )
+                            .changed()
+                        {
+                            label = "Notes of the legend";
+                        }
+                    }
                     // a services plan is one trade's, or every trade's
                     if matches!(v.kind, ViewKind::Plan { .. })
                         && creabim_core::viewmodes::DisplayMode::of(v)

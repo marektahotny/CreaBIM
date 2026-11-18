@@ -48,6 +48,87 @@ pub fn systems(model: &Model) -> Vec<(&'static SystemDef, Vec<String>)> {
     out
 }
 
+/// The equipment of the services: the placed objects of plumbing and of
+/// heating and ventilation that are neither sanitary fixtures nor
+/// heaters (heat pumps, tanks, boilers, manifolds), each type once with
+/// its mark, or how many there are, and its name.
+pub fn equipment(model: &Model) -> Vec<(String, String)> {
+    use creabim_core::objects::{self, ObjectCategory};
+    let marks = creabim_core::marks::object_marks(model);
+    // (type, how many)
+    let mut found: Vec<(ElementId, usize)> = vec![];
+    for e in model.iter() {
+        if !matches!(e.kind, ElementKind::Object(_)) {
+            continue;
+        }
+        let Some(r) = &e.of_type else { continue };
+        let Some(t) = objects::type_of_id(model, r.id) else {
+            continue;
+        };
+        if !matches!(t.category, ObjectCategory::Plumbing | ObjectCategory::Hvac) {
+            continue;
+        }
+        let family = creabim_core::fixture::family_of(model, e);
+        if family.is_some_and(|f| !creabim_core::fixture::is_manifold(f)) {
+            continue;
+        }
+        match found.iter_mut().find(|f| f.0 == r.id) {
+            Some(f) => f.1 += 1,
+            None => found.push((r.id, 1)),
+        }
+    }
+    found
+        .into_iter()
+        .map(|(id, n)| {
+            let name = model.get(id).map(|t| t.name.clone()).unwrap_or_default();
+            let lead = marks
+                .get(&id)
+                .filter(|m| !m.is_empty())
+                .cloned()
+                .unwrap_or_else(|| format!("{n}x"));
+            (lead, name)
+        })
+        .collect()
+}
+
+/// The notes of the legend drawn as `view`: its own, a line each, else
+/// the usual ones of the trades the model has pipes of.
+pub fn notes(model: &Model, view: ElementId) -> Vec<String> {
+    let own: Vec<String> = match model.get(view).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => v
+            .notes
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect(),
+        _ => vec![],
+    };
+    if !own.is_empty() {
+        return own;
+    }
+    let has = |codes: &[&str]| {
+        model
+            .iter()
+            .any(|e| matches!(&e.kind, ElementKind::Pipe(p) if codes.contains(&p.system.as_str())))
+    };
+    let mut out = vec![];
+    if has(&["SV", "TV", "CTV"]) {
+        out.push(tr(
+            "Insulate the water pipes with foamed polyethylene insulation of the prescribed thickness.",
+        ));
+    }
+    if model.iter().any(|e| matches!(e.kind, ElementKind::Pipe(_))) {
+        out.push(tr(
+            "Where pipes in the floor pass through masonry, lay them in a sleeve.",
+        ));
+        out.push(tr(
+            "Before the works, check the position and depth of the existing public mains and adapt the laying of the services to them on site.",
+        ));
+    }
+    out
+}
+
 /// A sample of a system's line from `a`, `len` long: its dashes as thin
 /// strips in its colour.
 fn sample(items: &mut Vec<PlanItem>, id: ElementId, s: &SystemDef, a: DVec2, len: f64) {
@@ -210,7 +291,71 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             y -= 1.5;
         }
     }
-    if systems.is_empty() && rows.is_empty() && !heated {
+    let equipment = equipment(model);
+    if !equipment.is_empty() {
+        y -= 1.5;
+        text(
+            &mut items,
+            DVec2::new(0.0, y - HEAD / 2.0),
+            &tr("EQUIPMENT"),
+            HEAD,
+            None,
+        );
+        y -= HEAD + 3.0;
+        for (lead, name) in &equipment {
+            text(
+                &mut items,
+                DVec2::new(2.0, y - LINE / 2.0),
+                lead,
+                TEXT + 0.6,
+                Some(crate::mep::LABEL_GREEN),
+            );
+            for l in wrap(name, WIDTH - INDENT, TEXT) {
+                text(
+                    &mut items,
+                    DVec2::new(INDENT, y - LINE / 2.0),
+                    &l,
+                    TEXT,
+                    None,
+                );
+                y -= LINE;
+            }
+            y -= 1.5;
+        }
+    }
+    let notes = notes(model, view);
+    if !notes.is_empty() {
+        y -= 1.5;
+        text(
+            &mut items,
+            DVec2::new(0.0, y - HEAD / 2.0),
+            &format!("{}:", tr("NOTE")),
+            HEAD,
+            None,
+        );
+        y -= HEAD + 3.0;
+        for n in &notes {
+            let n = format!("- {}", n.trim_start_matches("- "));
+            for l in wrap(&n.to_uppercase(), WIDTH, TEXT) {
+                text(&mut items, DVec2::new(0.0, y - LINE / 2.0), &l, TEXT, None);
+                y -= LINE;
+            }
+            y -= 1.0;
+        }
+        // the project's zero above the sea, as the office's legends close
+        let zero = model.project_info().map_or(0.0, |p| p.1.elevation);
+        if zero.abs() > 1e-9 {
+            y -= 1.5;
+            text(
+                &mut items,
+                DVec2::new(0.0, y - LINE / 2.0),
+                &format!("±0,000 = {}", format!("{zero:.2}").replace('.', ",")),
+                TEXT + 0.6,
+                None,
+            );
+        }
+    }
+    if systems.is_empty() && rows.is_empty() && !heated && equipment.is_empty() {
         text(
             &mut items,
             DVec2::new(0.0, y - LINE / 2.0),
@@ -228,6 +373,61 @@ mod tests {
     use creabim_core::mep::Pipe;
     use creabim_core::{Document, Element, Transaction};
     use glam::DVec3;
+
+    /// Under the fixtures the legend writes its notes: the usual ones
+    /// of the pipes drawn, or the view's own, a line each.
+    #[test]
+    fn the_legend_closes_with_notes_its_own_or_the_usual() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let legend = Element::new(
+            "Legend",
+            ElementKind::View(creabim_core::View::schedule(
+                creabim_core::ScheduleCategory::ServicesLegend,
+            )),
+        );
+        let id = legend.id;
+        let pipe = Element::new(
+            "Pipe",
+            ElementKind::Pipe(Pipe {
+                level,
+                system: "SV".into(),
+                start: DVec3::ZERO,
+                end: DVec3::X,
+                pipe_type: "HERZ".into(),
+                nominal_mm: 16.0,
+                outer_mm: 20.0,
+                inner_mm: 16.0,
+                height_mm: None,
+                insulation_mm: 0.0,
+            }),
+        );
+        assert!(notes(doc.model(), id).is_empty());
+        doc.commit(Transaction::new("t").insert(legend.clone()).insert(pipe))
+            .unwrap();
+        // water pipes: insulation, sleeves, the public mains
+        assert_eq!(notes(doc.model(), id).len(), 3);
+        let texts = |m: &Model| {
+            drawing(id, "Legend", m)
+                .items
+                .iter()
+                .filter_map(|i| match i {
+                    PlanItem::Text { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(texts(doc.model()).iter().any(|t| t == "NOTE:"));
+        let mut own = legend.clone();
+        if let ElementKind::View(v) = &mut own.kind {
+            v.notes = "First\n\n- Second".into();
+        }
+        doc.commit(Transaction::new("t").replace(legend, own))
+            .unwrap();
+        assert_eq!(notes(doc.model(), id), ["First", "- Second"]);
+        let t = texts(doc.model());
+        assert!(t.iter().any(|t| t == "- FIRST") && t.iter().any(|t| t == "- SECOND"));
+    }
 
     #[test]
     fn the_legend_lists_the_systems_in_use_with_their_lines() {

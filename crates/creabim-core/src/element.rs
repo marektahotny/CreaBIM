@@ -2083,6 +2083,10 @@ pub struct View {
     /// How a section's line is drawn in plans and where it steps aside.
     #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
     pub line: SectionLine,
+    /// The notes a services legend writes under its last heading, one a
+    /// line; empty writes the usual ones of its trades.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// A section line's own look and course: broken in the middle (only its
@@ -2411,6 +2415,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            notes: String::new(),
         }
     }
 
@@ -2440,6 +2445,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            notes: String::new(),
         }
     }
 }
@@ -2466,6 +2472,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            notes: String::new(),
         }
     }
 
@@ -2493,6 +2500,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            notes: String::new(),
         }
     }
 
@@ -2525,6 +2533,7 @@ impl View {
             reno: None,
             line: Default::default(),
             trade: None,
+            notes: String::new(),
         }
     }
 

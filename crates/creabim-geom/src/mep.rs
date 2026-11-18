@@ -461,6 +461,19 @@ pub fn stack_mark(model: &Model, p: &Pipe) -> Option<String> {
     Some(format!("{l}{}", i + 1))
 }
 
+/// Does a rainwater pipe lead on from the stack standing at `at`: one
+/// that is no riser, with an end at the stack?
+fn led_away(model: &Model, at: DVec2) -> bool {
+    use creabim_core::mep::SystemKind as K;
+    model.iter().any(|e| match &e.kind {
+        creabim_core::ElementKind::Pipe(o) if o.kind() == K::Storm => {
+            let (a, b) = (o.start.truncate(), o.end.truncate());
+            a.distance(b) > 1e-6 && (a.distance(at) < 0.05 || b.distance(at) < 0.05)
+        }
+        _ => false,
+    })
+}
+
 /// The green the office's services drawings write their pipes' sizes
 /// and fixtures' marks in.
 pub const LABEL_GREEN: [f32; 3] = [0.0, 0.6, 0.32];
@@ -554,10 +567,16 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
             anchor: a,
             at,
             elbow: None,
-            text: mark,
+            text: mark.clone(),
             round: true,
             look,
         });
+        let mut sizes = sizes;
+        // a rainwater pipe nothing leads away from under the ground
+        // empties onto it
+        if mark.starts_with('D') && !led_away(model, a) {
+            sizes.push(creabim_core::words::tr("Discharge above the ground"));
+        }
         let w = sizes.iter().map(|t| look.width(t)).fold(0.0, f64::max);
         let beside = at + DVec2::X * (3.5 + w / 2.0) * mm;
         out.push(label(id, beside, 0.0, sizes.join("\n")));
