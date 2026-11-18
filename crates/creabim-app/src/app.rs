@@ -35,6 +35,8 @@ mod areasui;
 mod assemblies;
 #[path = "autovalvesui.rs"]
 mod autovalvesui;
+#[path = "circuitui.rs"]
+mod circuitui;
 #[path = "coolingui.rs"]
 mod coolingui;
 #[path = "cropui.rs"]
@@ -387,6 +389,8 @@ pub struct CreaBimApp {
     cooling: Option<creabim_services::coolingload::Settings>,
     /// The air balance window is open.
     air_balance: bool,
+    /// The circuit check window, while it is open.
+    circuit: Option<creabim_services::electrical::Circuit>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
     /// The schedule of earthworks, while its window is open.
@@ -570,6 +574,7 @@ impl CreaBimApp {
             radiators: None,
             cooling: None,
             air_balance: false,
+            circuit: None,
             heat_loss: None,
             net_calc: None,
             auto_valves: None,
@@ -11984,6 +11989,7 @@ impl eframe::App for CreaBimApp {
         self.radiators_window(&ctx);
         self.cooling_window(&ctx);
         self.air_balance_window(&ctx);
+        self.circuit_window(&ctx);
         self.heat_source_window(&ctx);
         self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);
