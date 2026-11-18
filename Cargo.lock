@@ -858,7 +858,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-app"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "base64",
  "bytemuck",
@@ -886,7 +886,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-blend"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "flate2",
  "ruzstd",
@@ -895,7 +895,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-cli"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "creabim-core",
  "creabim-exchange",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-core"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "glam",
  "indexmap",
@@ -920,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-exchange"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "creabim-blend",
  "creabim-core",
@@ -939,7 +939,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-freecad"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "flate2",
  "roxmltree",
@@ -949,7 +949,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-geom"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "creabim-core",
  "creabim-services",
@@ -963,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-ifc"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "creabim-core",
  "creabim-geom",
@@ -976,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-services"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "creabim-core",
  "glam",
@@ -986,7 +986,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-spec"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "creabim-core",
  "creabim-geom",
@@ -996,7 +996,7 @@ dependencies = [
 
 [[package]]
 name = "creabim-store"
-version = "1.1.2"
+version = "0.1.0"
 dependencies = [
  "creabim-core",
  "glam",
