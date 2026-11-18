@@ -13,6 +13,19 @@ pub struct ProjectInfo {
     /// The office's job number.
     pub number: String,
     pub client: String,
+    /// Who signs the drawings: the chief architect, who drew them and
+    /// the designer responsible (the title block's three names).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub architect: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub drawn_by: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub designer: String,
+    /// The plots built on ("1838/116") and their cadastral district.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub parcels: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub cadastre: String,
     /// "Planning application", "Tender", "Construction".
     pub status: String,
     /// The issue date, as the office writes it.

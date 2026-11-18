@@ -1140,9 +1140,15 @@ impl CreaBimApp {
                 text(ui, "Client", &mut draft.client, "");
                 text(ui, "Status", &mut draft.status, "Planning application");
                 text(ui, "Issue date", &mut draft.issue_date, "");
+                crate::props::section(ui, "Title block");
+                text(ui, "Chief architect", &mut draft.architect, "");
+                text(ui, "Drawn by", &mut draft.drawn_by, "");
+                text(ui, "Responsible designer", &mut draft.designer, "");
                 crate::props::section(ui, "Site");
                 text(ui, "Site name", &mut draft.site_name, "");
                 text(ui, "Address", &mut draft.address, "");
+                text(ui, "Plots", &mut draft.parcels, "1838/116");
+                text(ui, "Cadastral district", &mut draft.cadastre, "");
                 let degrees = |ui: &mut egui::Ui, label: &str, v: &mut Option<f64>, range: f64| {
                     crate::props::row(ui, label, |ui| {
                         let mut on = v.is_some();

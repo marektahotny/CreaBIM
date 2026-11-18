@@ -120,8 +120,8 @@ impl Builder {
         let (need_w, need_h) = (w + 40.0, h + 75.0);
         let size = Sheet::SIZES
             .iter()
-            .rev()
-            .find(|(_, sw, sh)| *sw >= need_w && *sh >= need_h)
+            .filter(|(_, sw, sh)| *sw >= need_w && *sh >= need_h)
+            .min_by(|a, b| (a.1 * a.2).total_cmp(&(b.1 * b.2)))
             .map_or("A0", |s| s.0);
         let sheet = self.add(Element::new(
             name,

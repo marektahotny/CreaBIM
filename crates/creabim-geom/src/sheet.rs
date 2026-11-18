@@ -77,7 +77,12 @@ pub fn today() -> String {
 pub const MARGIN: f64 = 10.0;
 /// Extra margin on the binding (left) edge.
 pub const BINDING: f64 = 20.0;
-pub const TITLE_BLOCK: DVec2 = DVec2::new(170.0, 45.0);
+pub const TITLE_BLOCK: DVec2 = DVec2::new(160.6, 54.2);
+/// The plain block a template is started from.
+const PLAIN_BLOCK: DVec2 = DVec2::new(170.0, 45.0);
+/// The office block's place: this far from the paper's right and lower
+/// edges.
+const BLOCK_EDGE: DVec2 = DVec2::new(5.0, 7.0);
 
 pub fn sheet_of(model: &Model, id: ElementId) -> Option<&Sheet> {
     match &model.get(id)?.kind {
@@ -305,8 +310,13 @@ pub fn title_block_bounds(model: &Model, sheet: &Sheet) -> (DVec2, DVec2) {
     }) {
         return (lo, hi);
     }
-    let lo = DVec2::new(sheet.width - MARGIN - TITLE_BLOCK.x, MARGIN);
-    (lo, lo + TITLE_BLOCK)
+    if !sheet.title_block {
+        let at = DVec2::new(sheet.width - BLOCK_EDGE.x, BLOCK_EDGE.y);
+        return (at, at);
+    }
+    let lo = DVec2::new(sheet.width - BLOCK_EDGE.x - TITLE_BLOCK.x, BLOCK_EDGE.y);
+    // with the line of the project's height over it
+    (lo, lo + TITLE_BLOCK + DVec2::new(0.0, 5.0))
 }
 
 /// A template's title block on a sheet, its fields filled in.
@@ -425,7 +435,7 @@ pub fn draw_frame(
             let values = frame_values(model, sheet, Some(t), title, scales, info);
             draw_template(c, sheet, t, &values);
         }
-        None => draw_builtin_frame(c, sheet, title, scales, info),
+        None => crate::titleblock::draw(c, sheet, &project, title, scales, info),
     }
 }
 
@@ -443,8 +453,8 @@ pub fn draw_builtin_frame(
     c.rect(lo, hi, Stroke::solid(0.5, 0.0));
 
     let thin = Stroke::solid(0.18, 0.0);
-    let tb_lo = DVec2::new(hi.x - TITLE_BLOCK.x, lo.y);
-    let tb_hi = DVec2::new(hi.x, lo.y + TITLE_BLOCK.y);
+    let tb_lo = DVec2::new(hi.x - PLAIN_BLOCK.x, lo.y);
+    let tb_hi = DVec2::new(hi.x, lo.y + PLAIN_BLOCK.y);
     c.rect(tb_lo, tb_hi, Stroke::solid(0.35, 0.0));
     // rows from the top: project, sheet title, then number / scale / date
     let row = |k: f64| tb_hi.y - k;
@@ -692,6 +702,9 @@ pub fn title_block_box(model: &Model, sheet: ElementId) -> Option<(DVec2, DVec2)
         }
     }
     let s = sheet_of(model, sheet)?;
+    if template_of(model, s).is_none() {
+        return Some(title_block_bounds(model, s));
+    }
     let mut c = Points(vec![]);
     let title = model.get(sheet).map(|e| e.name.as_str()).unwrap_or("");
     draw_frame(&mut c, model, s, title, "1:100", &SheetInfo::default());
@@ -1240,7 +1253,7 @@ mod tests {
         let (sid, _) = sheets(doc.model())[0];
         let info = SheetInfo::default();
         let before = sheet_svg(doc.model(), sid, &info).unwrap();
-        assert!(before.contains("PROJECT"), "the built-in block");
+        assert!(before.contains("DRAWING NO."), "the office block");
         doc.edit(sid, "Use template", |e| {
             if let ElementKind::Sheet(s) = &mut e.kind {
                 s.template = Some(tid);
@@ -1266,6 +1279,6 @@ mod tests {
             .unwrap();
         assert!(sheet_svg(doc.model(), sid, &info)
             .unwrap()
-            .contains("PROJECT"));
+            .contains("DRAWING NO."));
     }
 }

@@ -39,6 +39,7 @@ pub mod section;
 pub mod serviceslegend;
 pub mod sheet;
 pub mod slice;
+pub mod titleblock;
 pub mod triangulate;
 pub mod valves;
 pub mod wall;

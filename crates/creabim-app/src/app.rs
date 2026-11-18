@@ -9808,6 +9808,42 @@ crate::props::row(ui, "File names", |ui| {
                     if let Some(l) = self.sheet_template_ui(ui, sh) {
                         label = l;
                     }
+                    if sh.template.is_none() {
+                        // the office's title block: on or off, and the
+                        // profession it names
+                        if crate::props::row(ui, "Title block", |ui| {
+                            ui.checkbox(&mut sh.title_block, "")
+                        })
+                        .on_hover_text(crate::i18n::t(
+                            "Draw the title block on this sheet, filled from File › Project information. Off: the sheet keeps only its fold and trim marks.",
+                        ))
+                        .changed()
+                        {
+                            label = "Title block"
+                        }
+                        if sh.title_block {
+                            let mut p = sh.fields.get("profession").cloned().unwrap_or_default();
+                            let hint = creabim_geom::titleblock::profession(&Sheet {
+                                fields: Default::default(),
+                                ..sh.clone()
+                            });
+                            if crate::props::row(ui, "Profession", |ui| {
+                                crate::props::fill(
+                                    ui,
+                                    egui::TextEdit::singleline(&mut p).hint_text(hint),
+                                )
+                            })
+                            .changed()
+                            {
+                                if p.trim().is_empty() {
+                                    sh.fields.remove("profession");
+                                } else {
+                                    sh.fields.insert("profession".into(), p);
+                                }
+                                label = "Profession"
+                            }
+                        }
+                    }
                     // its guides, to reuse on other sheets (MU27)
                     let n = sh.guides.len();
                     crate::props::row(ui, "Guides", |ui| {

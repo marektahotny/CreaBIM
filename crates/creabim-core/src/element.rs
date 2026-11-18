@@ -2483,6 +2483,18 @@ pub struct Sheet {
     /// `false` for one across at that many mm up.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub guides: Vec<(bool, f64)>,
+    /// Its title block is drawn (a sheet can go without: a picture, a
+    /// cover).
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub title_block: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_yes(b: &bool) -> bool {
+    *b
 }
 
 impl Sheet {
@@ -2493,6 +2505,13 @@ impl Sheet {
         ("A2", 594.0, 420.0),
         ("A3", 420.0, 297.0),
         ("A4", 297.0, 210.0),
+        // lengthened sizes that fold to A4
+        ("3×A4", 630.0, 297.0),
+        ("4×A4", 841.0, 297.0),
+        ("6×A4", 630.0, 420.0),
+        ("8×A4", 841.0, 420.0),
+        ("9×A4", 630.0, 594.0),
+        ("12×A4", 841.0, 594.0),
     ];
 
     pub fn a(number: impl Into<String>, size: &str) -> Self {
@@ -2508,6 +2527,7 @@ impl Sheet {
             template: None,
             fields: Default::default(),
             guides: vec![],
+            title_block: true,
         }
     }
 
