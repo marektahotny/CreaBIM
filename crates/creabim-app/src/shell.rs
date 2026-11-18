@@ -857,6 +857,16 @@ impl CreaBimApp {
                 .icon("file-text")
                 .hint("The summary report of the building decree 60/2025, its nine chapters filled with what the project knows: who, where, storeys, areas, heights and build-ups. What is left to write is marked [doplniť]."),
             Item::new("export.svg", "This view or sheet as SVG").icon("file"),
+            Item::sub(
+                "This view or sheet as DXF",
+                creabim_geom::dxfout::DxfVersion::ALL
+                    .into_iter()
+                    .rev()
+                    .map(|v| Item::new(format!("export.dxf:{}", v.id()), v.label()))
+                    .collect(),
+            )
+            .icon("file")
+            .hint("A view at its true size in millimetres, a sheet in paper millimetres. Lines keep their colours, widths and dashes, on layers by what they are."),
             Item::new("export.xlsx", "Schedules to Excel (.xlsx)")
                 .icon("table-2")
                 .hint("A summary, then a sheet for each schedule, with numbers as numbers so the spreadsheet can sum them."),
@@ -1733,6 +1743,7 @@ impl CreaBimApp {
             }
             "export.glb" | "export.fcstd" | "export.ifcx" | "export.ifc4" | "export.pdf"
             | "export.svg" | "export.xlsx" => self.export(head),
+            "export.dxf" => self.export_dxf(arg),
             "export.folder" => self.open_export_folder(),
             "footing.foundation" => self.show_foundation_plan(),
             "placement" => {
@@ -2152,6 +2163,55 @@ impl CreaBimApp {
     pub(super) fn export(&mut self, what: &str) {
         self.export_inner(what);
         // what was exported can be found from the status bar
+        if self.status.starts_with("Exported ") {
+            self.last_export = Some(self.status.clone());
+        }
+    }
+
+    /// The open view or sheet as DXF of version `version` (its id; the
+    /// newest when it names none).
+    pub(super) fn export_dxf(&mut self, version: &str) {
+        use creabim_geom::dxfout::{self, DxfVersion};
+        let version = DxfVersion::from_id(version).unwrap_or(DxfVersion::R2018);
+        let Some(id) = self.active_view else {
+            self.status = "Open the view or sheet to export first.".into();
+            return;
+        };
+        let (name, text, what) = if self.is_sheet(id) {
+            let number = sheets::sheet_of(self.doc.model(), id)
+                .map(|s| s.number.clone())
+                .unwrap_or_default();
+            let text = sheets::sheet_dxf(self.doc.model(), id, &self.sheet_info(), version);
+            (number, text, "in paper millimetres".to_string())
+        } else {
+            let name = self
+                .doc
+                .model()
+                .get(id)
+                .map(|e| e.name.replace(' ', "-"))
+                .unwrap_or_default();
+            let model = self.doc.model();
+            let text = match (
+                self.view(id),
+                creabim_geom::section::view_drawing(model, id),
+            ) {
+                (Some(v), Some(d)) => {
+                    let looks = creabim_geom::looks::Looks::for_view(model, id, v);
+                    Some(dxfout::view_dxf(model, &d, &looks, v.scale, version))
+                }
+                _ => None,
+            };
+            (name, text, "at true size in millimetres".to_string())
+        };
+        let Some(text) = text else {
+            self.status = "This view has no drawing to export.".into();
+            return;
+        };
+        let Some(out) = self.export_to(with_extension(&self.path, &format!("{name}.dxf"))) else {
+            return;
+        };
+        let r = std::fs::write(&out, text);
+        self.report(r, format!("Exported {out} ({}, {what})", version.label()));
         if self.status.starts_with("Exported ") {
             self.last_export = Some(self.status.clone());
         }

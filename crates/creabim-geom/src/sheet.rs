@@ -973,6 +973,28 @@ pub fn sheet_svg(model: &Model, sheet: ElementId, info: &SheetInfo) -> Option<St
     Some(svg.finish())
 }
 
+/// A sheet as DXF in paper millimetres: its frame and title block on a
+/// layer of their own, each drawing's lines on the layers of what they
+/// are.
+pub fn sheet_dxf(
+    model: &Model,
+    sheet: ElementId,
+    info: &SheetInfo,
+    version: crate::dxfout::DxfVersion,
+) -> Option<String> {
+    let s = sheet_of(model, sheet)?;
+    let views = placed_views(model, sheet, &mut |v| view_drawing(model, v));
+    let mut c = crate::dxfout::DxfCanvas::new(version, 1.0);
+    let title = model.get(sheet).map(|e| e.name.as_str()).unwrap_or("");
+    draw_frame(&mut c, model, s, title, &scale_text(model, &views), info);
+    for v in &views {
+        crate::dxfout::draw_layered(&mut c, model, &v.drawing, &v.map, &v.looks);
+        draw_view_title(&mut c, v);
+    }
+    draw_sheet_notes(&mut c, model, sheet);
+    Some(c.finish())
+}
+
 /// All sheets as one PDF, a page per sheet in sheet-number order.
 pub fn sheets_pdf(model: &Model, info: &SheetInfo) -> Vec<u8> {
     let all: Vec<ElementId> = sheets(model).into_iter().map(|(id, _)| id).collect();
