@@ -925,6 +925,16 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         && creabim_core::viewmodes::DisplayMode::of(v)
             == creabim_core::viewmodes::DisplayMode::Services
     {
+        // one trade's drawing leaves the other trades' pipes out
+        if let Some(trade) = v.trade {
+            d.items.retain(|it| trade.shows_element(model, it.id()));
+        }
+        let heating = v
+            .trade
+            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Heating);
+        let plumbing = v
+            .trade
+            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Plumbing);
         let mut seen = std::collections::HashSet::new();
         let mut lines = vec![];
         let mut pipes = vec![];
@@ -963,7 +973,8 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         let mut marks = vec![];
         for row in creabim_services::fixturespec::legend(model, None) {
             for id in row.fixtures {
-                if tagged.contains(&id) {
+                // sanitary fixtures are marked in the plumber's drawing
+                if !plumbing || tagged.contains(&id) {
                     continue;
                 }
                 let pts: Vec<DVec2> = d
@@ -994,7 +1005,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         d.items.extend(marks);
         // underfloor heating: the loops' supply red, their return blue
         // and dashed, each room's circuits written in it
-        if let (creabim_core::ViewKind::Plan { level, .. }, false) = (&kind, v.ceiling_plan) {
+        if let (creabim_core::ViewKind::Plan { level, .. }, false, true) =
+            (&kind, v.ceiling_plan, heating)
+        {
             let heated = |id: ElementId| {
                 matches!(model.get(id).map(|e| &e.kind),
                     Some(ElementKind::Room(r)) if r.ufh.is_some())

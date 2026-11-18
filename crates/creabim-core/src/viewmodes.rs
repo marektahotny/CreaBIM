@@ -195,3 +195,71 @@ mod tests {
         assert_eq!(v, was);
     }
 }
+
+/// The trade a services drawing is for: it shows that trade's pipes and
+/// equipment only (ZTI and VYK plans of one storey differ by it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Trade {
+    /// Water, drainage, fire water and gas (ZTI, PLY).
+    Plumbing,
+    /// Heating and cooling (VYK).
+    Heating,
+    /// Ventilation (VZT).
+    Ventilation,
+    /// Medical gases.
+    MedGas,
+}
+
+impl Trade {
+    pub const ALL: [Trade; 4] = [
+        Trade::Plumbing,
+        Trade::Heating,
+        Trade::Ventilation,
+        Trade::MedGas,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Trade::Plumbing => "Plumbing and gas (ZTI)",
+            Trade::Heating => "Heating and cooling (VYK)",
+            Trade::Ventilation => "Ventilation (VZT)",
+            Trade::MedGas => "Medical gases",
+        }
+    }
+
+    /// Does its drawing show pipes of the system `kind`?
+    pub fn shows(self, kind: crate::mep::SystemKind) -> bool {
+        use crate::mep::SystemKind as K;
+        match kind {
+            K::ColdWater
+            | K::HotWater
+            | K::Circulation
+            | K::Sanitary
+            | K::Storm
+            | K::FireWater
+            | K::Gas => self == Trade::Plumbing,
+            K::HeatingSupply | K::HeatingReturn | K::CoolingSupply | K::CoolingReturn | K::Flue => {
+                self == Trade::Heating
+            }
+            K::AirSupply | K::AirExhaust => self == Trade::Ventilation,
+            K::MedGas => self == Trade::MedGas,
+            K::Other => true,
+        }
+    }
+
+    /// Does its drawing show the element `id`: a pipe or what is on one by
+    /// its system; anything else is the building all trades draw over.
+    pub fn shows_element(self, model: &crate::Model, id: crate::ElementId) -> bool {
+        use crate::ElementKind;
+        let pipe = |id: crate::ElementId| match model.get(id).map(|e| &e.kind) {
+            Some(ElementKind::Pipe(p)) => Some(self.shows(p.kind())),
+            _ => None,
+        };
+        match model.get(id).map(|e| &e.kind) {
+            Some(ElementKind::Pipe(p)) => self.shows(p.kind()),
+            Some(ElementKind::Valve(v)) => pipe(v.pipe).unwrap_or(true),
+            _ => true,
+        }
+    }
+}

@@ -1000,6 +1000,66 @@ mod tests {
     }
 
     #[test]
+    fn a_trades_drawing_leaves_the_other_trades_pipes_out() {
+        use creabim_core::viewmodes::{DisplayMode, Trade};
+        use creabim_core::{Document, Transaction, ViewKind};
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (view, level) = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) => match v.kind {
+                    ViewKind::Plan { level, .. } => Some((e.id, level)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        let mut water = pipe(level, None);
+        water.start = DVec3::new(1.0, 1.0, 0.3);
+        water.end = DVec3::new(3.0, 1.0, 0.3);
+        let mut heat = water.clone();
+        heat.start.y = 2.0;
+        heat.end.y = 2.0;
+        heat.system = creabim_core::mep::SYSTEMS
+            .iter()
+            .find(|s| s.kind == creabim_core::mep::SystemKind::HeatingSupply)
+            .unwrap()
+            .code
+            .to_string();
+        assert!(Trade::Plumbing.shows(water.kind()) && Trade::Heating.shows(heat.kind()));
+        let (water, heat) = (
+            Element::new("Water", ElementKind::Pipe(water)),
+            Element::new("Heating", ElementKind::Pipe(heat)),
+        );
+        let (w, h) = (water.id, heat.id);
+        doc.commit(Transaction::new("pipes").insert(water).insert(heat))
+            .unwrap();
+        let shown = |doc: &Document, id| {
+            crate::section::view_drawing(doc.model(), view)
+                .unwrap()
+                .items
+                .iter()
+                .any(|i| i.id() == id)
+        };
+        for (trade, water_on, heat_on) in [
+            (None, true, true),
+            (Some(Trade::Plumbing), true, false),
+            (Some(Trade::Heating), false, true),
+        ] {
+            doc.edit(view, "mode", |e| {
+                if let ElementKind::View(v) = &mut e.kind {
+                    DisplayMode::Services.apply(v);
+                    v.trade = trade;
+                }
+            })
+            .unwrap();
+            assert_eq!(shown(&doc, w), water_on, "{trade:?}");
+            assert_eq!(shown(&doc, h), heat_on, "{trade:?}");
+        }
+    }
+
+    #[test]
     fn a_services_drawing_shows_a_pipe_as_a_line_of_its_system() {
         use creabim_core::viewmodes::DisplayMode;
         use creabim_core::{Document, Transaction, ViewKind};

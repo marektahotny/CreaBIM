@@ -2077,6 +2077,9 @@ pub struct View {
     /// usual (see [`crate::reno`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reno: Option<crate::reno::RenoView>,
+    /// The trade a services drawing is for; none shows every trade's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trade: Option<crate::viewmodes::Trade>,
     /// How a section's line is drawn in plans and where it steps aside.
     #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
     pub line: SectionLine,
@@ -2396,6 +2399,7 @@ impl View {
             look: Default::default(),
             reno: None,
             line: Default::default(),
+            trade: None,
         }
     }
 
@@ -2424,6 +2428,7 @@ impl View {
             look: Default::default(),
             reno: None,
             line: Default::default(),
+            trade: None,
         }
     }
 }
@@ -2449,6 +2454,7 @@ impl View {
             look: Default::default(),
             reno: None,
             line: Default::default(),
+            trade: None,
         }
     }
 
@@ -2475,6 +2481,7 @@ impl View {
             look: Default::default(),
             reno: None,
             line: Default::default(),
+            trade: None,
         }
     }
 
@@ -2506,6 +2513,7 @@ impl View {
             look: Default::default(),
             reno: None,
             line: Default::default(),
+            trade: None,
         }
     }
 

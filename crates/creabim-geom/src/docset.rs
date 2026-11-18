@@ -338,7 +338,11 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
         || model
             .iter()
             .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.ufh.is_some()));
-    for (on, code) in [(plumbing, "ZTI"), (heating, "VYK")] {
+    use creabim_core::viewmodes::Trade;
+    for (on, code, trade) in [
+        (plumbing, "ZTI", Trade::Plumbing),
+        (heating, "VYK", Trade::Heating),
+    ] {
         if !on {
             continue;
         }
@@ -361,8 +365,23 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
                     v.browser_order = None;
                     v.scale = 50.0;
                     DisplayMode::Services.apply(&mut v);
+                    v.trade = Some(trade);
                     b.view(title.clone(), v)
                 });
+            // one made before trades were told apart takes its trade now
+            if let Some(old) = b.m.get(v).cloned() {
+                if matches!(&old.kind, ElementKind::View(x) if x.trade.is_none()) {
+                    let mut now = old.clone();
+                    if let ElementKind::View(x) = &mut now.kind {
+                        x.trade = Some(trade);
+                    }
+                    let one = Transaction::new("one").replace(old.clone(), now.clone());
+                    if one.apply(&mut b.m).is_ok() {
+                        let tx = std::mem::replace(&mut b.tx, Transaction::new(""));
+                        b.tx = tx.replace(old, now);
+                    }
+                }
+            }
             b.sheet(
                 number(&part, storey, &mut n),
                 format!("{} {name}", tr("Floor plan")),

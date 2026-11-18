@@ -1841,7 +1841,7 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.binddims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
@@ -2622,6 +2622,40 @@ impl CreaBimApp {
                     match self.doc.commit(tx) {
                         Ok(_) => crate::i18n::tr(&format!(
                             "Added {n} dimensions of clear sizes, face to face, bound to the walls. Ctrl+Z to undo."
+                        )),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
+                };
+            }
+            "view.binddims" => {
+                // every linear dimension of the view onto the walls its
+                // points stand on, so that it follows them
+                let model = self.doc.model();
+                let mut tx = Transaction::new("Bind dimensions to walls");
+                let mut n = 0;
+                if let Some(ElementKind::View(v)) = model.get(id).map(|e| &e.kind) {
+                    for e in model.iter() {
+                        let ElementKind::Dimension(d) = &e.kind else {
+                            continue;
+                        };
+                        if d.view != id || d.kind != creabim_core::DimensionKind::Linear {
+                            continue;
+                        }
+                        let bound = creabim_geom::annotate::rehosted(model, v, d);
+                        if bound != *d {
+                            let mut now = e.clone();
+                            now.kind = ElementKind::Dimension(bound);
+                            tx = tx.replace(e.clone(), now);
+                            n += 1;
+                        }
+                    }
+                }
+                self.status = if n == 0 {
+                    crate::i18n::tr("Every dimension here is bound already, or stands on no wall.")
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => crate::i18n::tr(&format!(
+                            "Bound {n} dimensions to the walls they stand on: they follow them now. Ctrl+Z to undo."
                         )),
                         Err(e) => format!("Couldn't do that: {e}"),
                     }
@@ -3438,6 +3472,11 @@ impl CreaBimApp {
                     "kind": "button", "id": "view.dimrooms", "label": "Dimension rooms",
                     "icon": "dimension",
                     "hint": "The clear sizes of the selected rooms, or of every room here: two dimensions from face to face, bound to the walls",
+                }));
+                options.push(json!({
+                    "kind": "button", "id": "view.binddims", "label": "Bind to walls",
+                    "icon": "dimension",
+                    "hint": "Dimensions drawn before they were bound to elements: every one in this view is kept on the walls its points stand on, so it follows them when they move",
                 }));
                 options.push(json!({
                     "kind": "button", "id": "view.joindims", "label": "Join into chains",

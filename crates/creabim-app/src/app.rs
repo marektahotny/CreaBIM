@@ -9813,6 +9813,32 @@ crate::props::row(ui, "File names", |ui| {
                     {
                         label = "View style"
                     }
+                    // a services plan is one trade's, or every trade's
+                    if matches!(v.kind, ViewKind::Plan { .. })
+                        && creabim_core::viewmodes::DisplayMode::of(v)
+                            == creabim_core::viewmodes::DisplayMode::Services
+                    {
+                        crate::props::row(ui, "Trade", |ui| {
+                            let name = |t: Option<creabim_core::viewmodes::Trade>| match t {
+                                Some(t) => crate::i18n::tw(t.label()),
+                                None => crate::i18n::tw("All trades"),
+                            };
+                            egui::ComboBox::from_id_salt("view.trade")
+                                .icon(crate::props::combo_icon)
+                                .selected_text(name(v.trade))
+                                .width(ui.available_width())
+                                .show_ui(ui, |ui| {
+                                    let all = std::iter::once(None).chain(
+                                        creabim_core::viewmodes::Trade::ALL.into_iter().map(Some),
+                                    );
+                                    for t in all {
+                                        if ui.selectable_value(&mut v.trade, t, name(t)).changed() {
+                                            label = "Trade of the drawing";
+                                        }
+                                    }
+                                });
+                        });
+                    }
                     // the section line's own look and course: broken in the
                     // middle, stepped aside (zalomený rez)
                     if let ViewKind::Section {
