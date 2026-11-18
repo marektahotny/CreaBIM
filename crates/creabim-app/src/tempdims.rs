@@ -1557,6 +1557,7 @@ mod core_tests {
                     Layer::new(LayerFunction::Finish, None, 0.02),
                 ],
                 description: String::new(),
+                wrap: Default::default(),
             }),
         );
         let mut a = wall(lid, (0.0, 0.0), (0.0, 5.0), 0.48);
