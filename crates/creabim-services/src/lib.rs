@@ -15,6 +15,8 @@ pub mod fittings;
 pub mod fixtures;
 pub mod fixturespec;
 pub mod fluid;
+pub mod groundloss;
+pub mod heatloss;
 pub mod hpsizing;
 pub mod hydraulics;
 pub mod model;

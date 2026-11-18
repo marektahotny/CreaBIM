@@ -294,6 +294,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
             Sep,
             act(
+                "calc:heatloss",
+                "Heat loss",
+                "gauge",
+                "The design heat loss of every room (STN EN 12831-1): through walls, windows, floor and roof and by ventilation, and the building's total",
+            ),
+            act(
                 "heat:source",
                 "Heat source",
                 "flame",
