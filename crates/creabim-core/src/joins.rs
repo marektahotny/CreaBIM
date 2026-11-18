@@ -1592,6 +1592,7 @@ mod tests {
                     crate::Layer::new(LayerFunction::Finish, None, 0.05),
                 ],
                 description: String::new(),
+                wrap: Default::default(),
             }),
         );
         let aid = a.id;
