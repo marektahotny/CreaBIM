@@ -140,6 +140,58 @@ pub fn valve_fields(
         v.t = (at / len).clamp(0.0, 1.0);
         label = "Move valve";
     }
+    if v.kind == "vpust" {
+        // a roof drain's catchment: 0 takes the roof over it
+        let mut a = v.area_m2.unwrap_or(0.0);
+        let changed = crate::props::row(ui, "Catchment area", |ui| {
+            crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut a)
+                    .range(0.0..=100_000.0)
+                    .speed(1.0)
+                    .suffix(" m²"),
+            )
+            .on_hover_text(crate::i18n::tr(
+                "0 takes the roof over the drain, shared among the drains on it",
+            ))
+            .changed()
+        });
+        if changed {
+            v.area_m2 = (a > 0.0).then_some(a);
+            label = "Catchment area";
+        }
+        let mut c = v.coef.unwrap_or(0.0);
+        let changed = crate::props::row(ui, "Runoff coefficient", |ui| {
+            crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut c).range(0.0..=1.0).speed(0.05),
+            )
+            .on_hover_text(crate::i18n::tr(
+                "0 takes it from the roof's pitch: 1.0 over 5 %, else 0.8",
+            ))
+            .changed()
+        });
+        if changed {
+            v.coef = (c > 0.0).then_some(c);
+            label = "Runoff coefficient";
+        }
+    }
+    if v.kind == "hydrant" {
+        let now = v.hydrant_def();
+        crate::app::helpui::combo(ui, "Hose system")
+            .selected_text(now.name)
+            .width(width)
+            .show_ui(ui, |ui| {
+                for h in &creabim_core::mep::HYDRANTS {
+                    let text = format!("{} ({} l/s)", h.name, crate::i18n::num(h.q_ls, 1));
+                    if ui.selectable_label(now.code == h.code, text).clicked() && now.code != h.code
+                    {
+                        v.hydrant = Some(h.code.into());
+                        label = "Hose system";
+                    }
+                }
+            });
+    }
     if let Some(k) = this {
         crate::props::row(ui, "System", |ui| {
             ui.label(format!("{} DN {:.0}", pipe.system, pipe.nominal_mm))
