@@ -387,6 +387,9 @@ pub enum Shape {
         text_at: DVec2,
         plan: bool,
     },
+    /// Lines of text centred on `at`, reading along `angle` (radians):
+    /// a pipe's label, turned along its pipe.
+    Along { at: DVec2, angle: f64 },
     /// A level's head where its datum line ends at `at`, Revit style: a
     /// target symbol, the level's name (the annotation's text) above the
     /// line and its `elevation` below.
@@ -619,6 +622,20 @@ impl Annotation {
                         })
                         .collect(),
                 );
+            }
+            Shape::Along { at, angle } => {
+                let (angle, up) = upright(angle);
+                let step = look.size * 1.25 * mm;
+                let lines: Vec<&str> = self.text.lines().collect();
+                let top = (lines.len() as f64 - 1.0) / 2.0;
+                for (i, l) in lines.iter().enumerate() {
+                    out.texts.push(MarkText {
+                        at: at + up * (top - i as f64) * step,
+                        text: l.to_string(),
+                        angle,
+                        anchor: Anchor::Middle,
+                    });
+                }
             }
             Shape::Spot { at, text_at, plan } => {
                 let w = look.width(&self.text) * mm;

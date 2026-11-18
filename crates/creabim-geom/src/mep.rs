@@ -384,6 +384,182 @@ pub fn pipe_line(model: &Model, e: &Element, p: &Pipe) -> Vec<PlanItem> {
     items
 }
 
+/// What a services drawing writes at a pipe, as the office's: a water
+/// pipe its letter and outside diameter by wall (`S 25x3.5`), a drain its
+/// `DN`, the rest their system's code and size.
+pub fn pipe_text(p: &Pipe) -> String {
+    use creabim_core::mep::SystemKind as K;
+    let n = |v: f64| {
+        if (v - v.round()).abs() < 0.05 {
+            format!("{v:.0}")
+        } else {
+            format!("{v:.1}")
+        }
+    };
+    let size = format!(
+        "{}x{}",
+        n(p.outer_mm),
+        n((p.outer_mm - p.inner_mm).max(0.0) / 2.0)
+    );
+    match p.kind() {
+        K::ColdWater => format!("S {size}"),
+        K::HotWater => format!("T {size}"),
+        K::Circulation => format!("C {size}"),
+        K::Sanitary | K::Storm | K::Flue | K::AirSupply | K::AirExhaust => {
+            format!("DN{}", n(p.nominal_mm))
+        }
+        _ => format!("{} {size}", p.system),
+    }
+}
+
+/// The green the office's services drawings write their pipes' sizes
+/// and fixtures' marks in.
+pub const LABEL_GREEN: [f32; 3] = [0.0, 0.6, 0.32];
+
+/// The labels of a services plan's pipes: pipes running side by side
+/// share one, a line each in their order across, turned along them and
+/// set beside the bundle, with where they run (in the floor, in a wall)
+/// under them; a riser has its size beside its circle. The same label is
+/// not written again within four metres. `mm` is drawing units per paper
+/// mm.
+pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> {
+    use crate::annotation::{Annotation, Shape, TextLook};
+    use creabim_core::ElementKind;
+    let look = TextLook {
+        size: 2.0,
+        rgb: Some(LABEL_GREEN),
+        ..TextLook::default()
+    };
+    let label = |id, at: DVec2, angle: f64, text: String| PlanItem::Annotation {
+        id,
+        item: Box::new(Annotation {
+            shape: Shape::Along { at, angle },
+            text,
+            look,
+            mm,
+        }),
+    };
+    struct Run {
+        id: creabim_core::ElementId,
+        a: DVec2,
+        u: DVec2,
+        len: f64,
+        z: f64,
+        level: creabim_core::ElementId,
+        text: String,
+    }
+    let mut out = vec![];
+    let mut runs: Vec<Run> = vec![];
+    for e in pipes {
+        let ElementKind::Pipe(p) = &e.kind else {
+            continue;
+        };
+        let (a, b) = (p.start.truncate(), p.end.truncate());
+        let len = a.distance(b);
+        if len < 1e-6 {
+            // a riser: its size right of its circle
+            let text = pipe_text(p);
+            let at = a + DVec2::X * (RISER_MARK + (look.width(&text) / 2.0 + 1.0) * mm);
+            out.push(label(e.id, at, 0.0, text));
+            continue;
+        }
+        if len < (0.8f64).max(14.0 * mm) {
+            continue;
+        }
+        // reading left to right, or upwards
+        let (a, b) =
+            if (b.x - a.x).abs() > 1e-9 && b.x < a.x || (b.x - a.x).abs() <= 1e-9 && b.y < a.y {
+                (b, a)
+            } else {
+                (a, b)
+            };
+        runs.push(Run {
+            id: e.id,
+            a,
+            u: (b - a) / len,
+            len,
+            z: (p.start.z + p.end.z) / 2.0,
+            level: p.level,
+            text: pipe_text(p),
+        });
+    }
+    runs.sort_by(|x, y| y.len.total_cmp(&x.len));
+    let in_wall = |level, q: DVec2| {
+        model.iter().any(|e| match &e.kind {
+            ElementKind::Wall(w) if w.level == level && !w.is_arc() => {
+                let d = w.end - w.start;
+                let t = ((q - w.start).dot(d) / d.length_squared().max(1e-12)).clamp(0.0, 1.0);
+                (w.start + d * t).distance(q) < w.thickness / 2.0
+            }
+            _ => false,
+        })
+    };
+    let mut used = vec![false; runs.len()];
+    let mut placed: Vec<(String, DVec2)> = vec![];
+    for i in 0..runs.len() {
+        if used[i] {
+            continue;
+        }
+        used[i] = true;
+        let seed = &runs[i];
+        let (u, n) = (seed.u, seed.u.perp());
+        // along the seed: where the bundle's pipes all run, and each
+        // one's place across
+        let (mut lo, mut hi) = (0.0, seed.len);
+        let mut members = vec![(0.0, i)];
+        for j in i + 1..runs.len() {
+            let r = &runs[j];
+            if used[j] || r.u.perp_dot(u).abs() > 0.02 {
+                continue;
+            }
+            let across = (r.a - seed.a).dot(n);
+            let (s0, s1) = (
+                (r.a - seed.a).dot(u),
+                (r.a - seed.a).dot(u) + r.len * r.u.dot(u),
+            );
+            let (s0, s1) = (s0.min(s1), s0.max(s1));
+            let both = s1.min(hi) - s0.max(lo);
+            if across.abs() < 0.4 && both >= 0.5 * r.len.min(hi - lo) {
+                used[j] = true;
+                members.push((across, j));
+                (lo, hi) = (lo.max(s0), hi.min(s1));
+            }
+        }
+        // top line first, as they lie across
+        members.sort_by(|x, y| y.0.total_cmp(&x.0));
+        let mut lines: Vec<String> = vec![];
+        for (_, j) in &members {
+            if !lines.contains(&runs[*j].text) {
+                lines.push(runs[*j].text.clone());
+            }
+        }
+        let mid = seed.a + u * (lo + hi) / 2.0;
+        let floor = members.iter().all(|(_, j)| runs[*j].z < 0.1);
+        let wall = members
+            .iter()
+            .all(|(c, _)| in_wall(seed.level, mid + n * *c));
+        if wall {
+            lines.push(creabim_core::words::tr("in the wall"));
+        } else if floor {
+            lines.push(creabim_core::words::tr("in the floor"));
+        }
+        let text = lines.join("\n");
+        if placed
+            .iter()
+            .any(|(t, at)| *t == text && at.distance(mid) < 4.0)
+        {
+            continue;
+        }
+        placed.push((text.clone(), mid));
+        // beside the bundle, clear of its outermost pipe
+        let top = members.first().map_or(0.0, |m| m.0);
+        let half = lines.len() as f64 * look.size * 1.25 / 2.0;
+        let at = mid + n * (top + (half + 1.0) * mm);
+        out.push(label(seed.id, at, u.to_angle(), text));
+    }
+    out
+}
+
 /// The pipe in a plan cut `cut` above its level: its outline in plan,
 /// washed in its system's colour, in the lightest line where it is cut
 /// or seen below, dashed above. Its ends are closed only where it meets no
@@ -642,6 +818,54 @@ mod tests {
     }
 
     #[test]
+    fn pipes_side_by_side_share_a_label() {
+        use crate::annotation::Shape;
+        let m = creabim_core::sample::sample_house();
+        let level = m.levels().next().unwrap().0.id;
+        let run = |system: &str, y: f64, outer: f64, inner: f64| {
+            let mut p = pipe(level, None);
+            p.system = system.into();
+            p.start = DVec3::new(1.0, y, 0.0);
+            p.end = DVec3::new(4.0, y, 0.0);
+            (p.outer_mm, p.inner_mm, p.nominal_mm) = (outer, inner, outer);
+            Element::new("Pipe", ElementKind::Pipe(p))
+        };
+        let mut riser = pipe(level, None);
+        riser.system = "K".into();
+        riser.nominal_mm = 110.0;
+        riser.start = DVec3::new(6.0, 3.0, 0.0);
+        riser.end = DVec3::new(6.0, 3.0, 2.5);
+        let es = [
+            run("SV", 2.0, 25.0, 18.0),
+            run("TV", 2.1, 25.0, 18.0),
+            run("C", 2.2, 20.0, 14.4),
+            Element::new("Riser", ElementKind::Pipe(riser)),
+        ];
+        let ElementKind::Pipe(p) = &es[2].kind else {
+            unreachable!()
+        };
+        assert_eq!(pipe_text(p), "C 20x2.8");
+        let refs: Vec<&Element> = es.iter().collect();
+        let labels = pipe_labels(&m, &refs, 0.05);
+        let read = |i: &PlanItem| match i {
+            PlanItem::Annotation { item, .. } => (item.text.clone(), item.shape.clone()),
+            _ => unreachable!(),
+        };
+        assert_eq!(labels.len(), 2);
+        let (text, _) = read(&labels[0]);
+        assert_eq!(text, "DN110");
+        // one label for the three, the one farthest up first, and where
+        // they run
+        let (text, shape) = read(&labels[1]);
+        assert_eq!(text, "C 20x2.8\nT 25x3.5\nS 25x3.5\nin the floor");
+        let Shape::Along { at, angle } = shape else {
+            unreachable!()
+        };
+        assert_eq!(angle, 0.0);
+        assert!((at.x - 2.5).abs() < 1e-9 && at.y > 2.2);
+    }
+
+    #[test]
     fn a_services_drawing_shows_a_pipe_as_a_line_of_its_system() {
         use creabim_core::viewmodes::DisplayMode;
         use creabim_core::{Document, Transaction, ViewKind};
@@ -692,9 +916,14 @@ mod tests {
             lines(&items),
             vec![(DVec2::new(1.0, 1.0), DVec2::new(3.0, 1.0))]
         );
-        assert_eq!(items.len(), 1);
-        // a riser is its small circle
-        assert!(matches!(of(m, riser_id)[..], [PlanItem::Polygon { .. }]));
+        // the line and its label
+        assert_eq!(items.len(), 2);
+        assert!(matches!(items[1], PlanItem::Annotation { .. }));
+        // a riser is its small circle, with its size beside it
+        assert!(matches!(
+            of(m, riser_id)[..],
+            [PlanItem::Polygon { .. }, PlanItem::Annotation { .. }]
+        ));
         // drawn in cold water's blue, dash and dot
         let ElementKind::View(v) = &m.get(view).unwrap().kind else {
             unreachable!()

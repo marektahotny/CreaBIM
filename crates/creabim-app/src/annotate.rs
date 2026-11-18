@@ -1029,7 +1029,7 @@ pub fn drag(
                     }
                     // a spot level's text moves, staying with what it is on
                     Shape::Spot { .. } => dim.b = attach(&model, view, dim.a.host, p),
-                    Shape::Note { .. } | Shape::Level { .. } => {}
+                    Shape::Note { .. } | Shape::Level { .. } | Shape::Along { .. } => {}
                 }
             })
         }

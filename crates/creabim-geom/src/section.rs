@@ -887,6 +887,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     {
         let mut seen = std::collections::HashSet::new();
         let mut lines = vec![];
+        let mut pipes = vec![];
         d.items.retain(|it| {
             let Some(e) = model.get(it.id()) else {
                 return true;
@@ -896,10 +897,14 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             };
             if seen.insert(e.id) {
                 lines.extend(crate::mep::pipe_line(model, e, p));
+                pipes.push(e);
             }
             false
         });
         d.items.extend(lines);
+        // and writes their sizes at them
+        d.items
+            .extend(crate::mep::pipe_labels(model, &pipes, v.scale / 1000.0));
     }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {
