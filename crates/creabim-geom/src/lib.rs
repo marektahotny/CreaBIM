@@ -16,6 +16,7 @@ pub mod declutter;
 pub mod detail;
 pub mod doclist;
 pub mod docset;
+pub mod elplan;
 pub mod firezones;
 pub mod font;
 pub mod heatplan;

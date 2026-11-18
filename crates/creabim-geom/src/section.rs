@@ -1036,6 +1036,13 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             }
         }
         d.items.extend(marks);
+        // the electrician's: small devices readable, each with its
+        // circuit written at it
+        if v.trade == Some(creabim_core::viewmodes::Trade::Electrical) {
+            crate::elplan::enlarge(model, &mut d.items, mm);
+            let marks = crate::elplan::marks(model, &d.items, mm);
+            d.items.extend(marks);
+        }
         // underfloor heating: the loops' supply red, their return blue
         // and dashed, each room's circuits written in it
         if let (creabim_core::ViewKind::Plan { level, .. }, false, true) =

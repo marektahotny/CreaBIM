@@ -109,27 +109,99 @@ pub fn trade_of(model: &Model, view: ElementId) -> Option<Trade> {
     }
 }
 
-/// The electrical devices, each type once: its kind and how many there
-/// are, and the type's name.
-pub fn devices(model: &Model) -> Vec<(String, String)> {
+/// A row of the electrical legend: a type of device with its plan symbol.
+pub struct DeviceRow {
+    /// How many there are.
+    pub count: usize,
+    /// "Socket - Single socket".
+    pub name: String,
+    /// The type's plan symbol as strokes, metres, the wall along x at
+    /// y = 0.
+    pub symbol: Vec<(DVec2, DVec2)>,
+}
+
+/// The electrical devices, each type once, with its symbol as the plans
+/// draw it.
+pub fn devices(model: &Model) -> Vec<DeviceRow> {
     use creabim_core::electrical as el;
-    let mut found: Vec<(el::DeviceKind, String, usize)> = vec![];
+    use creabim_core::objects::SymbolItem;
+    let mut found: Vec<(el::DeviceKind, String, DeviceRow)> = vec![];
     for (e, _, kind) in el::devices(model) {
         let name = e
             .of_type
             .as_ref()
             .and_then(|r| model.get(r.id))
             .map_or(e.name.clone(), |t| t.name.clone());
-        match found.iter_mut().find(|d| d.0 == kind && d.1 == name) {
-            Some(d) => d.2 += 1,
-            None => found.push((kind, name, 1)),
+        if let Some(d) = found.iter_mut().find(|d| d.0 == kind && d.1 == name) {
+            d.2.count += 1;
+            continue;
         }
+        let mut symbol = vec![];
+        for s in creabim_core::objects::type_of(model, e)
+            .map(|t| t.plan_symbol())
+            .unwrap_or_default()
+        {
+            match s {
+                SymbolItem::Line(a, b) => symbol.push((a, b)),
+                SymbolItem::Loop(pts) => {
+                    for i in 0..pts.len() {
+                        symbol.push((pts[i], pts[(i + 1) % pts.len()]));
+                    }
+                }
+            }
+        }
+        let row = DeviceRow {
+            count: 1,
+            name: format!("{} - {name}", tr(kind.label())),
+            symbol,
+        };
+        found.push((kind, name, row));
     }
     found.sort_by_key(|d| d.0 as u8);
-    found
-        .into_iter()
-        .map(|(kind, name, n)| (format!("{n}x"), format!("{} - {name}", tr(kind.label()))))
-        .collect()
+    found.into_iter().map(|d| d.2).collect()
+}
+
+/// The paper scale of a legend's symbols, mm to a metre: as a 1:50 plan
+/// draws them.
+const SYMBOL_SCALE: f64 = 20.0;
+/// The room a symbol has in its row, mm.
+const SYMBOL_BOX: DVec2 = DVec2::new(INDENT - 6.0, 9.0);
+
+/// A device's symbol's bounds and its paper scale, mm to a metre: the
+/// plans' scale unless it has to shrink into `SYMBOL_BOX`.
+fn symbol_fit(row: &DeviceRow) -> Option<(DVec2, DVec2, f64)> {
+    let first = row.symbol.first()?;
+    let (lo, hi) = row
+        .symbol
+        .iter()
+        .flat_map(|(a, b)| [*a, *b])
+        .fold((first.0, first.0), |(lo, hi), p| (lo.min(p), hi.max(p)));
+    let size = (hi - lo).max(DVec2::splat(1e-6));
+    let k = SYMBOL_SCALE
+        .min(SYMBOL_BOX.x / size.x)
+        .min(SYMBOL_BOX.y / size.y);
+    Some((lo, hi, k))
+}
+
+/// How tall a device's symbol is drawn, mm.
+fn symbol_height(row: &DeviceRow) -> f64 {
+    symbol_fit(row).map_or(0.0, |(lo, hi, k)| (hi.y - lo.y) * k)
+}
+
+/// A device's symbol about `centre`.
+fn device_symbol(items: &mut Vec<PlanItem>, id: ElementId, row: &DeviceRow, centre: DVec2) {
+    let Some((lo, hi, k)) = symbol_fit(row) else {
+        return;
+    };
+    let mid = (lo + hi) / 2.0;
+    for (a, b) in &row.symbol {
+        items.push(PlanItem::Line {
+            id,
+            pen: crate::plan::Pen::Projection,
+            a: centre + (*a - mid) * k,
+            b: centre + (*b - mid) * k,
+        });
+    }
 }
 
 /// The notes of the legend drawn as `view`: its own, a line each, else
@@ -408,25 +480,29 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             None,
         );
         y -= HEAD + 3.0;
-        for (lead, name) in &devices {
-            text(
+        for row in &devices {
+            let name = format!("{}, {} {}", row.name, row.count, tr("pcs"));
+            let lines = wrap(&name, WIDTH - INDENT, TEXT);
+            let words = lines.len() as f64 * LINE;
+            let tall = words.max(symbol_height(row));
+            device_symbol(
                 &mut items,
-                DVec2::new(2.0, y - LINE / 2.0),
-                lead,
-                TEXT + 0.6,
-                Some(crate::mep::LABEL_GREEN),
+                view,
+                row,
+                DVec2::new(SYMBOL_BOX.x / 2.0, y - tall / 2.0),
             );
-            for l in wrap(name, WIDTH - INDENT, TEXT) {
+            let mut ty = y - (tall - words) / 2.0;
+            for l in lines {
                 text(
                     &mut items,
-                    DVec2::new(INDENT, y - LINE / 2.0),
+                    DVec2::new(INDENT, ty - LINE / 2.0),
                     &l,
                     TEXT,
                     None,
                 );
-                y -= LINE;
+                ty -= LINE;
             }
-            y -= 1.5;
+            y -= tall + 1.5;
         }
     }
     let notes = notes(model, view);
@@ -603,5 +679,24 @@ mod tests {
             .filter(|i| matches!(i, PlanItem::Shade { rgb, .. } if rgb[2] > 0.8))
             .count();
         assert!(strips >= 4, "{strips}");
+    }
+
+    #[test]
+    fn the_electrical_legend_draws_each_device_with_its_symbol() {
+        let m = creabim_core::starter::starter_house();
+        let rows = devices(&m);
+        assert!(rows.len() > 3);
+        // each type once, counted, with the strokes the plans draw
+        assert!(rows.iter().all(|r| r.count > 0 && !r.symbol.is_empty()));
+        let socket = rows.iter().find(|r| r.name.contains("Double socket"));
+        assert!(socket.is_some_and(|r| r.count > 1));
+        // a small symbol keeps the plans' scale, a large one shrinks to
+        // its row
+        for r in &rows {
+            let (lo, hi, k) = symbol_fit(r).unwrap();
+            assert!(k <= SYMBOL_SCALE + 1e-9);
+            assert!((hi.x - lo.x) * k <= SYMBOL_BOX.x + 1e-9);
+            assert!(symbol_height(r) <= SYMBOL_BOX.y + 1e-9);
+        }
     }
 }
