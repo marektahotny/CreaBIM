@@ -51,6 +51,8 @@ mod fittingsui;
 mod fixturelegend;
 #[path = "gridvis.rs"]
 mod gridvis;
+#[path = "heatlossui.rs"]
+mod heatlossui;
 #[path = "heatsourceui.rs"]
 mod heatsourceui;
 #[path = "helpui.rs"]
@@ -364,6 +366,11 @@ pub struct CreaBimApp {
     auto_valves: Option<creabim_core::autovalves::FillOpts>,
     /// The storm water or fire main calculation shown.
     net_calc: Option<stormfireui::NetCalc>,
+    /// The heat loss calculation shown, with what it was given.
+    heat_loss: Option<(
+        creabim_services::heatloss::Opts,
+        creabim_services::heatloss::BuildingLoss,
+    )>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
     /// The schedule of earthworks, while its window is open.
@@ -543,6 +550,7 @@ impl CreaBimApp {
             fixture_legend: false,
             med_unit: None,
             heat_source: None,
+            heat_loss: None,
             net_calc: None,
             auto_valves: None,
             earthworks: None,
@@ -11951,6 +11959,7 @@ impl eframe::App for CreaBimApp {
         self.fittings_window(&ctx);
         self.fixture_legend_window(&ctx);
         self.med_unit_window(&ctx);
+        self.heat_loss_window(&ctx);
         self.heat_source_window(&ctx);
         self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);
