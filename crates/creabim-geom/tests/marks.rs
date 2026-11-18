@@ -30,10 +30,13 @@ fn add(doc: &mut Document, e: Element) -> ElementId {
 fn tags_and_schedules_read_typed_marks_and_the_rules() {
     let mut doc = Document::from_model(sample::sample_house());
     let door = first(doc.model(), is_door);
-    assert_eq!(tag_text(doc.model(), door), ("D01".into(), true));
+    // a door's tag: its hand (STN 01 3420) over its mark
+    let (text, round) = tag_text(doc.model(), door);
+    assert!(round && text.ends_with("\nD01"), "{text}");
+    assert!(text.starts_with("L\n") || text.starts_with("P\n"), "{text}");
     doc.edit(door, "Mark", |e| e.mark = Some("FD-1".into()))
         .unwrap();
-    assert_eq!(tag_text(doc.model(), door).0, "FD-1");
+    assert!(tag_text(doc.model(), door).0.ends_with("\nFD-1"));
     // level-based rules renumber the rest
     let tx = marks::set_rules(doc.model(), MarkRules::level_based());
     doc.commit(tx).unwrap();
@@ -43,12 +46,18 @@ fn tags_and_schedules_read_typed_marks_and_the_rules() {
         .find(|e| is_door(&e.kind) && e.id != door)
         .unwrap()
         .id;
-    assert!(tag_text(doc.model(), other).0.starts_with("D-"));
+    assert!(tag_text(doc.model(), other)
+        .0
+        .lines()
+        .last()
+        .unwrap()
+        .starts_with("D-"));
     // the door schedule shows the same marks
     let table = creabim_geom::schedule::schedule_by(doc.model(), ScheduleCategory::Doors, false);
     let marks: Vec<&str> = table.rows.iter().map(|r| r.cells[0].as_str()).collect();
     assert!(marks.contains(&"FD-1"), "{marks:?}");
-    assert!(marks.contains(&tag_text(doc.model(), other).0.as_str()));
+    let other_tag = tag_text(doc.model(), other).0;
+    assert!(marks.contains(&other_tag.lines().last().unwrap()));
     // a wall with a mark reads it, and the wall schedule grows a column
     let wall = first(doc.model(), |k| matches!(k, ElementKind::Wall(_)));
     let thickness = tag_text(doc.model(), wall).0;
@@ -237,6 +246,7 @@ fn dimension_lines_break_where_tags_sit_across_them() {
         look,
         witness: None,
         breaks: vec![],
+        below: None,
     };
     let mut items = vec![tag, dim(look), dim(TextLook::default())];
     break_dimensions(&mut items, 0.1);
@@ -405,4 +415,36 @@ fn the_starter_house_plans_with_level_marks_have_no_overlapping_labels() {
         let clash = creabim_geom::declutter::overlapping_labels(&items, mm);
         assert!(clash.is_empty(), "{}: {clash:?}", e.name);
     }
+}
+
+#[test]
+fn a_door_mark_is_a_split_circle_with_its_hand_over_its_number() {
+    use creabim_geom::annotate::tag_geometry;
+    let look = creabim_geom::annotation::TextLook::default();
+    let g = tag_geometry(
+        DVec2::new(5.0, 0.0),
+        DVec2::ZERO,
+        None,
+        "L\nD01",
+        true,
+        &look,
+        0.01,
+    );
+    assert_eq!(g.texts.len(), 2);
+    assert!(
+        g.texts[0].0.y > 0.0 && g.texts[1].0.y < 0.0,
+        "hand above, number below"
+    );
+    assert!(g.divider.is_some());
+    let one = tag_geometry(
+        DVec2::new(5.0, 0.0),
+        DVec2::ZERO,
+        None,
+        "W01",
+        true,
+        &look,
+        0.01,
+    );
+    assert_eq!(one.texts.len(), 1);
+    assert!(one.divider.is_none());
 }

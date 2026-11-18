@@ -251,7 +251,7 @@ impl CutPiece {
             None => material_key(model, self.id),
             Some(l) => match l.material {
                 Some(m) if model.get(m).is_some() => (Some(m), 0),
-                _ if l.function == creabim_core::LayerFunction::AirGap => (None, 250),
+                _ if l.function == creabim_core::LayerFunction::AirGap => AIR,
                 _ => (None, 1 + cut_priority(model, self.id)),
             },
         }
@@ -419,6 +419,9 @@ fn inside_spans(a: DVec2, b: DVec2, poly: &[DVec2], eps: f64) -> Vec<(f64, f64)>
         .collect()
 }
 
+/// The key of an air gap layer: air, for where the thick line goes.
+const AIR: (Option<ElementId>, u8) = (None, 250);
+
 /// Turn cut polygons into fills plus outlines, leaving out outline segments
 /// shared with a neighbouring cut so joined elements read as one mass.
 pub fn clean_up_cuts(model: &Model, items: &mut Vec<PlanItem>) {
@@ -505,15 +508,20 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
             let mut thin: Vec<(f64, f64, bool)> = Vec::new();
             for (j, other) in polys.iter().enumerate() {
                 let same = keys[i] == keys[j];
-                if i == j || (!same && other.id != piece.id) {
+                // a thick line only where cut material meets air
+                // (PilonDesigner): an air gap counts as air, and where two
+                // different materials meet, of one element or of two, the
+                // line between them is thin
+                if i == j || (!same && keys[j] == AIR) {
                     continue;
                 }
+                let merge = same || keys[i] == AIR;
                 for (p, q) in edges(&other.points) {
                     if on_line(p) && on_line(q) {
                         let (tp, tq) = ((p - a).dot(d), (q - a).dot(d));
                         let (lo, hi) = (tp.min(tq).max(0.0), tp.max(tq).min(len));
                         if hi > lo + eps {
-                            if same {
+                            if merge {
                                 covered.push((lo, hi));
                             } else {
                                 thin.push((lo, hi, i < j));
@@ -650,6 +658,10 @@ pub enum PlanItem {
         /// Stretches of the dimension line left out where tags and notes
         /// sit across it, as fractions of the way from `a` to `b`.
         breaks: Vec<[f64; 2]>,
+        /// Text under the line (STN 01 3420: a dimension across a whole
+        /// door or window has its width above and its height, and a
+        /// window's sill in brackets, below).
+        below: Option<String>,
     },
     /// A tag: `text` in a bubble at `at`, with a leader back to `anchor`.
     Tag {
@@ -2470,6 +2482,86 @@ mod tests {
         let roots: std::collections::HashSet<Key> =
             keys.into_iter().map(|k| find(&mut parent, k)).collect();
         roots.len()
+    }
+
+    #[test]
+    fn a_thick_line_only_where_the_cut_meets_air() {
+        use creabim_core::{Element, Level, Material, Transaction, Wall};
+        let mut m = Model::new();
+        let lvl = Element::new(
+            "L",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let brick = Element::new(
+            "Brick",
+            ElementKind::Material(Material::new(Default::default(), [0.8, 0.4, 0.3])),
+        );
+        let concrete = Element::new(
+            "Concrete",
+            ElementKind::Material(Material::new(Default::default(), [0.6, 0.6, 0.6])),
+        );
+        let mut w1 = Wall::new(lvl.id, DVec2::ZERO, DVec2::new(2.0, 0.0), 0.3, 2.7);
+        w1.material = Some(brick.id);
+        let mut w2 = Wall::new(lvl.id, DVec2::new(2.0, 0.0), DVec2::new(4.0, 0.0), 0.3, 2.7);
+        w2.material = Some(concrete.id);
+        let (e1, e2) = (
+            Element::new("W1", ElementKind::Wall(w1)),
+            Element::new("W2", ElementKind::Wall(w2)),
+        );
+        let (i1, i2) = (e1.id, e2.id);
+        Transaction::new("set up")
+            .insert(lvl)
+            .insert(brick)
+            .insert(concrete)
+            .insert(e1)
+            .insert(e2)
+            .apply(&mut m)
+            .unwrap();
+        let rect = |x0: f64, x1: f64| {
+            vec![
+                DVec2::new(x0, -0.15),
+                DVec2::new(x1, -0.15),
+                DVec2::new(x1, 0.15),
+                DVec2::new(x0, 0.15),
+            ]
+        };
+        let mut items = vec![
+            PlanItem::Polygon {
+                id: i1,
+                pen: Pen::Cut,
+                points: rect(0.0, 2.0),
+            },
+            PlanItem::Polygon {
+                id: i2,
+                pen: Pen::Cut,
+                points: rect(2.0, 4.0),
+            },
+        ];
+        clean_up_cuts(&m, &mut items);
+        // the joint between brick and concrete at x = 2: one thin line
+        let at_joint = |pen: Pen| {
+            items
+                .iter()
+                .filter(|it| {
+                    matches!(it, PlanItem::Line { pen: p, a, b, .. }
+                        if *p == pen && (a.x - 2.0).abs() < 1e-9 && (b.x - 2.0).abs() < 1e-9)
+                })
+                .count()
+        };
+        assert_eq!(at_joint(Pen::Cut), 0, "no thick line inside the cut");
+        assert_eq!(
+            at_joint(Pen::Projection),
+            1,
+            "a thin line between materials"
+        );
+        // the faces against air stay thick
+        assert!(items
+            .iter()
+            .any(|it| matches!(it, PlanItem::Line { pen: Pen::Cut, a, b, .. }
+            if (a.y + 0.15).abs() < 1e-9 && (b.y + 0.15).abs() < 1e-9)));
     }
 
     #[test]

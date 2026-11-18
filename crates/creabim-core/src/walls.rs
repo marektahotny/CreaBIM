@@ -14,6 +14,7 @@ use crate::{
     assembly, ElementId, ElementKind, LocationLine, Model, Op, Opening, Transaction, Wall, WallTop,
 };
 use glam::DVec2;
+use serde::{Deserialize, Serialize};
 
 /// The span across a wall of its core, `(exterior side, interior side)`,
 /// left of start → end positive. A wall without layers is all core.
@@ -57,6 +58,59 @@ pub fn offset_of(model: &Model, wall: &Wall, line: LocationLine) -> f64 {
         LocationLine::CoreExterior => core_span(model, wall).0,
         LocationLine::CoreInterior => core_span(model, wall).1,
         LocationLine::Boundary(k) => boundary_offset(model, wall, k as usize).unwrap_or(0.0),
+    }
+}
+
+/// What temporary dimensions measure a wall from, as PilonDesigner's
+/// reference planes: its faces, the faces of its load-bearing core (the
+/// default: plaster and insulation never count), the middle of the core,
+/// or its centreline.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WallRef {
+    Face,
+    #[default]
+    CoreFace,
+    CoreCentre,
+    Centre,
+}
+
+impl WallRef {
+    pub const ALL: [WallRef; 4] = [
+        WallRef::Face,
+        WallRef::CoreFace,
+        WallRef::CoreCentre,
+        WallRef::Centre,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            WallRef::Face => "Wall face",
+            WallRef::CoreFace => "Core face",
+            WallRef::CoreCentre => "Core centre",
+            WallRef::Centre => "Wall centre",
+        }
+    }
+}
+
+/// The lines `r` names across `wall`, as offsets from its centreline (left
+/// of start → end positive): two for faces, one for a middle.
+pub fn ref_offsets(model: &Model, wall: &Wall, r: WallRef) -> Vec<f64> {
+    let t = wall.thickness / 2.0;
+    match r {
+        WallRef::Face => vec![t, -t],
+        WallRef::CoreFace => {
+            let (a, b) = core_span(model, wall);
+            if (a - b).abs() < 1e-9 {
+                vec![a]
+            } else {
+                vec![a.max(b), a.min(b)]
+            }
+        }
+        WallRef::CoreCentre => {
+            let (a, b) = core_span(model, wall);
+            vec![(a + b) / 2.0]
+        }
+        WallRef::Centre => vec![0.0],
     }
 }
 

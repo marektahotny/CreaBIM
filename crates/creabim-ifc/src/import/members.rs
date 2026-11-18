@@ -69,6 +69,7 @@ impl Importer<'_> {
         };
         let element = Element {
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: self.new_id(e),

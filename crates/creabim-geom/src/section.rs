@@ -642,6 +642,78 @@ pub(crate) fn hidden_lines(
 }
 
 /// The live drawing of a view element, annotations included.
+/// A renovation stage's colours: what is taken down washed yellow, what is
+/// built red, over their cut; in the demolition stage a new door's or
+/// window's hole in an existing wall is drawn as demolition instead of the
+/// door or window.
+fn reno_colours(model: &Model, stage: creabim_core::reno::RenoView, items: &mut Vec<PlanItem>) {
+    use creabim_core::reno;
+    // new doors and windows in walls that stand now: in the demolition
+    // stage a yellow hole in place of the door, in the new state the door
+    // with its part of the wall in red
+    let holes: std::collections::HashSet<ElementId> = match stage {
+        reno::RenoView::Existing => Default::default(),
+        _ => reno::new_holes(model).into_iter().collect(),
+    };
+    let demolition = stage == reno::RenoView::Demolition;
+    if !holes.is_empty() {
+        if demolition {
+            items.retain(|it| !holes.contains(&it.id()));
+        }
+        for &id in &holes {
+            let Some(ElementKind::Opening(o)) = model.get(id).map(|e| &e.kind) else {
+                continue;
+            };
+            let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+                continue;
+            };
+            let (d, n) = (w.direction(), w.direction().perp() * (w.thickness / 2.0));
+            let (a, b) = (w.start + d * o.offset, w.start + d * (o.offset + o.width));
+            let points = vec![a - n, b - n, b + n, a + n];
+            items.push(PlanItem::Tint {
+                id,
+                points: points.clone(),
+                rgb: if demolition {
+                    reno::DEMOLISHED
+                } else {
+                    reno::NEW
+                },
+            });
+            if demolition {
+                items.push(PlanItem::Polygon {
+                    id,
+                    pen: crate::plan::Pen::Projection,
+                    points,
+                });
+            }
+        }
+    }
+    let mut tints = vec![];
+    for it in items.iter() {
+        let (id, points) = match it {
+            PlanItem::Fill { id, points, .. } => (id, points),
+            PlanItem::Polygon {
+                id,
+                pen: crate::plan::Pen::Cut,
+                points,
+            } => (id, points),
+            _ => continue,
+        };
+        let Some(e) = model.get(*id) else { continue };
+        if !reno::has_state(&e.kind) {
+            continue;
+        }
+        if let Some(rgb) = stage.colour(reno::state(e)) {
+            tints.push(PlanItem::Tint {
+                id: *id,
+                points: points.clone(),
+                rgb,
+            });
+        }
+    }
+    items.extend(tints);
+}
+
 pub fn view_drawing(model: &Model, view: ElementId) -> Option<Drawing> {
     view_drawing_with(model, view, false)
 }
@@ -664,6 +736,16 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     let mut hidden = v.hidden.hidden_set(model);
     // a section never hides its own drawing, even with section marks off
     hidden.remove(&view);
+    // a renovation stage: drawn from the model as it stands then, without
+    // what is not there (doors not yet cut leave no hole)
+    let staged;
+    let model = match v.reno {
+        Some(stage) => {
+            staged = creabim_core::reno::staged(model, stage);
+            &staged
+        }
+        None => model,
+    };
     // sections and 3D drawings start from the scene shared by every view
     // of this revision, less what the view hides
     let full = model;
@@ -790,6 +872,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         creabim_core::styles::active_pack(model).marker_parts(),
     ) {
         crate::markers::restyle_sections(model, &mut d.items, &parts, v.scale / 1000.0);
+    }
+    if let Some(stage) = v.reno {
+        reno_colours(model, stage, &mut d.items);
     }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {
