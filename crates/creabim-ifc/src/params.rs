@@ -311,6 +311,9 @@ pub(crate) fn type_from(category: TypeCategory, curtain: bool, p: &Props) -> Typ
                     panes_up: count("PanesUp"),
                 },
                 material: None,
+                door: None,
+                division: None,
+                threshold: false,
             };
             if door {
                 TypeParams::Door(o)

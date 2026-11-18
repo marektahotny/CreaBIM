@@ -382,6 +382,9 @@ fn materials_and_types(b: &mut Builder) {
                 panes_up: up,
             },
             material: frames,
+            door: None,
+            division: None,
+            threshold: false,
         })
     };
     let door = |w: f64, h: f64, material: Option<ElementId>, across: u32| {
@@ -394,6 +397,9 @@ fn materials_and_types(b: &mut Builder) {
                 ..Default::default()
             },
             material,
+            door: None,
+            division: None,
+            threshold: false,
         })
     };
     let p = wall_type(b, "Exterior wall 400, rendered");

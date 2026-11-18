@@ -22,6 +22,7 @@ pub(super) struct TypesUi {
 }
 
 /// What a click asks for, done once the window or panel is drawn.
+#[allow(clippy::large_enum_variant)]
 pub(super) enum TypeAsk {
     Pick(ElementId),
     New(TypeCategory, bool),
@@ -332,11 +333,37 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
             });
         }
         TypeParams::Door(o) | TypeParams::Window(o) => {
-            if len_field(ui, "Width", &mut o.width, 0.1, 20.0) {
-                label = "Type width";
+            if let Some(d) = &mut o.door {
+                // a door type with its joinery is typed by its leaf
+                let mut c = len_field(ui, "Leaf width", &mut d.nom_width, 0.3, 5.0);
+                c |= len_field(ui, "Leaf height", &mut d.nom_height, 1.0, 5.0);
+                if c {
+                    (o.width, o.height) = d.opening();
+                    label = "Type width";
+                }
+                crate::props::row(ui, "Door frame", |ui| {
+                    ui.label(crate::i18n::tw(d.frame.label()))
+                });
+                crate::props::row(ui, "Structural opening", |ui| {
+                    ui.label(format!(
+                        "{:.0} × {:.0} mm",
+                        o.width * 1000.0,
+                        o.height * 1000.0
+                    ))
+                });
+            } else {
+                if len_field(ui, "Width", &mut o.width, 0.1, 20.0) {
+                    label = "Type width";
+                }
+                if len_field(ui, "Height", &mut o.height, 0.1, 20.0) {
+                    label = "Type height";
+                }
             }
-            if len_field(ui, "Height", &mut o.height, 0.1, 20.0) {
-                label = "Type height";
+            if o.door.is_some() || o.division.is_some() || o.threshold {
+                crate::props::note(
+                    ui,
+                    "The leaf, frame, threshold and division come from the door or window the type was made of; change them there and update the type.",
+                );
             }
             if len_field(ui, "Sill", &mut o.sill, 0.0, 20.0) {
                 label = "Type sill";
