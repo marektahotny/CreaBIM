@@ -370,6 +370,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The air every room needs, supply and exhaust through its diffusers and grilles, and the flow of the air handling unit (STN EN 16798-1)",
             ),
             act(
+                "calc:ducts",
+                "Duct sizing",
+                "gauge",
+                "The air every duct carries, its velocity as drawn and the diameter for the velocity allowed; sets the proposed diameters on the round ducts",
+            ),
+            act(
                 "calc:cooling",
                 "Cooling load",
                 "sun",

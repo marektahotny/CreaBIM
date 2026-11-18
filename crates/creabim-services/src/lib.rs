@@ -13,6 +13,7 @@
 pub mod airbalance;
 pub mod circuits;
 pub mod coolingload;
+pub mod ductsizing;
 pub mod electrical;
 pub mod firewater;
 pub mod fittings;

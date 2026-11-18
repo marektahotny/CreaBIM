@@ -49,6 +49,8 @@ mod disciplines;
 mod divideui;
 #[path = "drafting.rs"]
 mod drafting;
+#[path = "ductsui.rs"]
+mod ductsui;
 #[path = "earthworksui.rs"]
 mod earthworksui;
 #[path = "editui.rs"]
@@ -395,6 +397,8 @@ pub struct CreaBimApp {
     cooling: Option<creabim_services::coolingload::Settings>,
     /// The air balance window is open.
     air_balance: bool,
+    /// The duct sizing window's velocities, while it is open.
+    ducts: Option<creabim_services::ductsizing::Limits>,
     /// The circuit check window, while it is open.
     circuit: Option<creabim_services::electrical::Circuit>,
     /// The circuits window, while it is open.
@@ -594,6 +598,7 @@ impl CreaBimApp {
             radiators: None,
             cooling: None,
             air_balance: false,
+            ducts: None,
             circuit: None,
             circuits: None,
             joinery: None,
@@ -12575,6 +12580,7 @@ impl eframe::App for CreaBimApp {
         self.radiators_window(&ctx);
         self.cooling_window(&ctx);
         self.air_balance_window(&ctx);
+        self.ducts_window(&ctx);
         self.circuit_window(&ctx);
         self.circuits_window(&ctx);
         self.joinery_window(&ctx);
