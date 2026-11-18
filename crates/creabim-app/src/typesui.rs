@@ -695,6 +695,7 @@ impl CreaBimApp {
                     || self.calc_action(head, arg)
                     || self.fittings_action(head, arg)
                     || self.fixture_legend_action(head, arg)
+                    || self.med_unit_action(head, arg)
                     || self.terrain_action(head, arg)
                     || self.earthworks_action(head, arg)
                     || self.map_action(head, arg)

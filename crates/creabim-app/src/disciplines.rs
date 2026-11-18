@@ -59,6 +59,7 @@ impl CreaBimApp {
                     "kitchen" => Some(ObjectCategory::Kitchen),
                     "plumbing" => Some(ObjectCategory::Plumbing),
                     "hvac" => Some(ObjectCategory::Hvac),
+                    "medical" => Some(ObjectCategory::Medical),
                     "electrical" => Some(ObjectCategory::Electrical),
                     "lighting" => Some(ObjectCategory::Lighting),
                     _ => None,

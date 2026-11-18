@@ -69,6 +69,8 @@ mod marksui;
 mod mastersui;
 #[path = "materials.rs"]
 mod materials;
+#[path = "medunitui.rs"]
+mod medunitui;
 #[path = "objectsui.rs"]
 mod objectsui;
 #[path = "profilesui.rs"]
@@ -350,6 +352,8 @@ pub struct CreaBimApp {
     fittings: Option<Vec<creabim_services::fittings::Fitting>>,
     /// The legend of sanitary fixtures is open.
     fixture_legend: bool,
+    /// The medical supply unit being made to order, while its window is open.
+    med_unit: Option<creabim_core::catalogue::medical::MedUnitConfig>,
     /// The schedule of earthworks, while its window is open.
     earthworks: Option<(
         Vec<creabim_core::earthworks::Row>,
@@ -525,6 +529,7 @@ impl CreaBimApp {
             water_calc: None,
             fittings: None,
             fixture_legend: false,
+            med_unit: None,
             earthworks: None,
             note_editor: None,
             copy_guides: None,
@@ -11930,6 +11935,7 @@ impl eframe::App for CreaBimApp {
         self.water_calc_window(&ctx);
         self.fittings_window(&ctx);
         self.fixture_legend_window(&ctx);
+        self.med_unit_window(&ctx);
         self.earthworks_window(&ctx);
         self.maps_window(&ctx);
         self.note_editor_window(&ctx);

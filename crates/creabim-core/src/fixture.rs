@@ -75,6 +75,14 @@ pub enum ConnKind {
     CHP,
     /// Chilled water return.
     CHS,
+    /// Oxygen.
+    O2,
+    /// Medical air.
+    AIR,
+    /// Vacuum.
+    VAC,
+    /// Nitrous oxide.
+    N2O,
 }
 
 impl ConnKind {
@@ -88,6 +96,7 @@ impl ConnKind {
             ConnKind::UKS => SystemKind::HeatingReturn,
             ConnKind::CHP => SystemKind::CoolingSupply,
             ConnKind::CHS => SystemKind::CoolingReturn,
+            ConnKind::O2 | ConnKind::AIR | ConnKind::VAC | ConnKind::N2O => SystemKind::MedGas,
         }
     }
 
@@ -101,6 +110,10 @@ impl ConnKind {
             ConnKind::UKS => "UKS",
             ConnKind::CHP => "CHP",
             ConnKind::CHS => "CHS",
+            ConnKind::O2 => "O2",
+            ConnKind::AIR => "AIR",
+            ConnKind::VAC => "VAC",
+            ConnKind::N2O => "N2O",
         }
     }
 
@@ -114,6 +127,10 @@ impl ConnKind {
             ConnKind::UKS => "heating return",
             ConnKind::CHP => "chilled water supply",
             ConnKind::CHS => "chilled water return",
+            ConnKind::O2 => "oxygen",
+            ConnKind::AIR => "medical air",
+            ConnKind::VAC => "vacuum",
+            ConnKind::N2O => "nitrous oxide",
         }
     }
 }
@@ -658,6 +675,35 @@ fn length_of(family: &str, t: &ObjectType) -> Option<f64> {
     }
 }
 
+/// The connections a type carries as parts named `Connection <system>`
+/// (a medical supply unit's gases): each at the middle of its part's
+/// top, in the object's own axes, Cu 12 × 1.
+pub fn part_connectors(t: &ObjectType) -> Vec<LocalConn> {
+    t.parts
+        .iter()
+        .filter_map(|p| {
+            let kind = match p.name.strip_prefix("Connection ")? {
+                "O2" => ConnKind::O2,
+                "AIR" => ConnKind::AIR,
+                "VAC" => ConnKind::VAC,
+                "N2O" => ConnKind::N2O,
+                _ => return None,
+            };
+            let first = *p.mesh.vertices.first()?;
+            let (lo, hi) = p
+                .mesh
+                .vertices
+                .iter()
+                .fold((first, first), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+            Some(LocalConn {
+                kind,
+                at: ((lo + hi) / 2.0).truncate().extend(hi.z),
+                dn: 12.0,
+            })
+        })
+        .collect()
+}
+
 /// A placed object's connectors: in plan, and the height above its level.
 /// Heights are PilonDesigner's above the floor, moved with an object
 /// raised or lowered from its type's height; for one hung from the
@@ -669,6 +715,20 @@ pub fn connectors(model: &Model, e: &Element) -> Vec<Connector> {
     let Some(t) = crate::objects::type_of(model, e) else {
         return vec![];
     };
+    let floor = model.level(o.level).map_or(0.0, |l| l.elevation);
+    // a type that carries its own connections (a medical supply unit)
+    let own = part_connectors(t);
+    if !own.is_empty() {
+        let base = crate::objects::base_z_of(model, o, t) - floor;
+        return own
+            .into_iter()
+            .map(|c| Connector {
+                kind: c.kind,
+                at: o.to_plan(c.at.truncate()).extend(base + c.at.z),
+                dn: c.dn,
+            })
+            .collect();
+    }
     let Some(family) = family_of_type(t) else {
         return vec![];
     };
@@ -792,5 +852,28 @@ mod tests {
         assert!((tv.at.x - 2.02).abs() < 1e-9, "{:?}", tv.at);
         assert!((tv.at.y - 2.92).abs() < 1e-9, "{:?}", tv.at);
         assert!((tv.at.z - 0.55).abs() < 1e-9, "{:?}", tv.at);
+    }
+
+    #[test]
+    fn a_medical_rail_takes_its_gases_on_top() {
+        use crate::catalogue::medical::{unit, MedUnitConfig, MedUnitKind};
+        use crate::Document;
+        let mut doc = Document::from_model(crate::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let cfg = MedUnitConfig::usual(MedUnitKind::Rail);
+        let rail = unit(&cfg);
+        let (tx, id) = crate::objects::place(doc.model(), &rail, level, DVec2::new(3.0, 5.85), 0.0);
+        doc.commit(tx).unwrap();
+        let e = doc.model().get(id).unwrap();
+        let c = connectors(doc.model(), e);
+        let kinds: Vec<_> = c.iter().map(|c| c.kind).collect();
+        assert_eq!(kinds, vec![ConnKind::O2, ConnKind::AIR, ConnKind::VAC]);
+        // oxygen first from the left seen from the front, 25 mm off the
+        // wall, on top of the profile: its axis 1.45 m up
+        let o2 = c[0];
+        assert!((o2.at.x - (3.0 - 0.622)).abs() < 1e-9, "{}", o2.at);
+        assert!((o2.at.y - (5.85 - 0.025)).abs() < 1e-9, "{}", o2.at);
+        assert!((o2.at.z - (1.45 + 0.1165 + 0.03)).abs() < 1e-9, "{}", o2.at);
+        assert_eq!((o2.dn, o2.kind.code()), (12.0, "O2"));
     }
 }

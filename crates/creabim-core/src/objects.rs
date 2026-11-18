@@ -41,6 +41,9 @@ pub enum ObjectCategory {
     /// Heating, ventilation and air conditioning: radiators, diffusers,
     /// split units and fans.
     Hvac,
+    /// Medical supply units: wall rails and ceiling bridges with their
+    /// gas outlets.
+    Medical,
     /// Cars, people and other figures that give a drawing its scale.
     Entourage,
     #[default]
@@ -48,7 +51,7 @@ pub enum ObjectCategory {
 }
 
 impl ObjectCategory {
-    pub const ALL: [ObjectCategory; 12] = [
+    pub const ALL: [ObjectCategory; 13] = [
         ObjectCategory::Bathroom,
         ObjectCategory::Kitchen,
         ObjectCategory::Living,
@@ -59,6 +62,7 @@ impl ObjectCategory {
         ObjectCategory::Lighting,
         ObjectCategory::Plumbing,
         ObjectCategory::Hvac,
+        ObjectCategory::Medical,
         ObjectCategory::Entourage,
         ObjectCategory::Other,
     ];
@@ -75,6 +79,7 @@ impl ObjectCategory {
             ObjectCategory::Lighting => "Lighting",
             ObjectCategory::Plumbing => "Plumbing",
             ObjectCategory::Hvac => "Heating and ventilation",
+            ObjectCategory::Medical => "Medical gases",
             ObjectCategory::Entourage => "Entourage",
             ObjectCategory::Other => "Other",
         }
@@ -89,6 +94,7 @@ impl ObjectCategory {
                 | ObjectCategory::Lighting
                 | ObjectCategory::Plumbing
                 | ObjectCategory::Hvac
+                | ObjectCategory::Medical
         )
     }
 
@@ -102,6 +108,7 @@ impl ObjectCategory {
             ObjectCategory::Lighting => "L",
             ObjectCategory::Plumbing => "P",
             ObjectCategory::Hvac => "M",
+            ObjectCategory::Medical => "G",
             _ => "F",
         }
     }
@@ -338,6 +345,19 @@ pub const IFC_CLASSES: &[(&str, &str, &[&str])] = &[
         "IfcSpaceHeater",
         "IfcSpaceHeaterType",
         &["CONVECTOR", "RADIATOR", "USERDEFINED", "NOTDEFINED"],
+    ),
+    (
+        "IfcMedicalDevice",
+        "IfcMedicalDeviceType",
+        &[
+            "AIRSTATION",
+            "FEEDAIRUNIT",
+            "OXYGENGENERATOR",
+            "OXYGENPLANT",
+            "VACUUMSTATION",
+            "USERDEFINED",
+            "NOTDEFINED",
+        ],
     ),
     (
         "IfcAirTerminal",
