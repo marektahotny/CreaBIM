@@ -528,6 +528,16 @@ pub struct Snapper {
     points: Vec<Point>,
     /// Distance between grid points; 0 turns the grid off.
     pub grid: f64,
+    /// Point clouds' slices shown in the plan: their points snap as end
+    /// points, looked up near the pointer rather than kept one by one.
+    clouds: Vec<CloudSnap>,
+}
+
+#[derive(Clone, Debug)]
+struct CloudSnap {
+    slice: std::sync::Arc<creabim_exchange::cloud::Slice>,
+    placed: creabim_core::Reference,
+    host: ElementId,
 }
 
 /// Pixels within which a snap takes over the pointer.
@@ -937,6 +947,58 @@ impl Snapper {
         })
     }
 
+    /// A point cloud's slice as the plan shows it: its points snap.
+    pub fn add_cloud(
+        &mut self,
+        slice: std::sync::Arc<creabim_exchange::cloud::Slice>,
+        placed: &creabim_core::Reference,
+        host: ElementId,
+    ) {
+        self.clouds.push(CloudSnap {
+            slice,
+            placed: placed.clone(),
+            host,
+        });
+    }
+
+    /// The cloud point nearest the pointer, with its distance in pixels.
+    fn cloud_near(
+        &self,
+        cfg: &SnapSettings,
+        cursor: Pos2,
+        project: &dyn Fn(DVec3) -> Option<Pos2>,
+        free: DVec3,
+    ) -> Option<(f32, Snap)> {
+        if self.clouds.is_empty() || !cfg.allows(SnapKind::Endpoint) || !cfg.takes(Source::Underlay)
+        {
+            return None;
+        }
+        // how far the pointer reaches in the model
+        let px = project(free)?.distance(project(free + DVec3::X)?) as f64;
+        if px <= 1e-9 {
+            return None;
+        }
+        let reach = TOLERANCE as f64 / px;
+        self.clouds
+            .iter()
+            .filter(|c| !self.hidden(Some(c.host)))
+            .filter_map(|c| {
+                let own = c.placed.unplace(free.truncate());
+                let q = c.slice.nearest(own, reach / c.placed.scale.max(1e-9))?;
+                let p = c.placed.place(q).extend(free.z);
+                let d = project(p)?.distance(cursor);
+                (d < TOLERANCE).then_some((
+                    d,
+                    Snap {
+                        p,
+                        kind: SnapKind::Endpoint,
+                        host: Some(c.host),
+                    },
+                ))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+    }
+
     /// The best snap for the pointer at `cursor`, of the kinds `cfg` allows.
     /// `from` is where the line being drawn started, for perpendicular and
     /// axis snaps; `free` is the unsnapped point under the pointer, used for
@@ -1009,6 +1071,12 @@ impl Snapper {
             .filter(|q| !self.hidden(q.host) && !self.hidden(q.host2))
             .filter_map(|q| near(q.p).map(|d| (d + rank(q.kind) * 2.0, q)))
             .min_by(|a, b| a.0.total_cmp(&b.0));
+        // a cloud's point, where no drawn point is nearer
+        if let Some((d, snap)) = free.and_then(|f| self.cloud_near(cfg, cursor, project, f)) {
+            if best_point.as_ref().is_none_or(|(b, _)| d < *b) {
+                return Some(Guided::plain(snap, None));
+            }
+        }
         if let Some((_, q)) = best_point {
             return Some(Guided::plain(
                 Snap {

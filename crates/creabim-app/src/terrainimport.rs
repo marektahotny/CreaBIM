@@ -105,8 +105,8 @@ impl CreaBimApp {
         let Some(path) = rfd::FileDialog::new()
             .set_title(crate::i18n::tr("Terrain from surveyed points"))
             .add_filter(
-                crate::i18n::tr("Points (XYZ, TXT, PTS, CSV)"),
-                &["xyz", "txt", "pts", "csv", "asc"],
+                crate::i18n::tr("Points (XYZ, TXT, PTS, CSV, LAS)"),
+                &["xyz", "txt", "pts", "csv", "asc", "las"],
             )
             .pick_file()
         else {
@@ -123,8 +123,22 @@ impl CreaBimApp {
             self.status = format!("{} {path}", t("Couldn't read"));
             return;
         };
-        let text = creabim_exchange::dxf::decode(&bytes);
-        let read = xyz::read(&text);
+        // a LAS cloud's points, a couple of hundred thousand of them
+        let read = if bytes.starts_with(b"LASF") {
+            match creabim_exchange::cloud::read_las(std::io::Cursor::new(&bytes), 200_000) {
+                Ok(c) => xyz::Points {
+                    points: (0..c.points.len()).map(|n| c.at(n)).collect(),
+                    skipped: 0,
+                    jtsk: c.jtsk,
+                },
+                Err(e) => {
+                    self.status = format!("{path}: {e}");
+                    return;
+                }
+            }
+        } else {
+            xyz::read(&creabim_exchange::dxf::decode(&bytes))
+        };
         let name = std::path::Path::new(path)
             .file_stem()
             .map_or("Terrain".into(), |n| n.to_string_lossy().into_owned());

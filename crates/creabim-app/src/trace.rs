@@ -75,6 +75,8 @@ impl From<Vec<Vec<DVec2>>> for Linework {
 pub enum Shown {
     Picture(Arc<Raster>),
     Lines(Arc<Linework>),
+    /// A point cloud; a plan shows a slice of it ([`RefCache::slice`]).
+    Cloud(Arc<creabim_exchange::cloud::Cloud>),
     /// It couldn't be read; why.
     Missing(String),
 }
@@ -89,7 +91,18 @@ pub struct RefCache {
     dxf: HashMap<String, Arc<creabim_exchange::dxf::DxfImport>>,
     /// PDF pages found to be scans, by source key.
     scans: std::collections::HashSet<String>,
+    /// Point clouds read, by source key.
+    clouds: HashMap<String, Arc<creabim_exchange::cloud::Cloud>>,
+    /// What a plan shows of a cloud, by reference and view, with what it
+    /// was cut by.
+    slices: HashMap<(ElementId, ElementId), (String, Arc<creabim_exchange::cloud::Slice>)>,
+    /// The points 3D shows of a cloud, by source key.
+    samples: HashMap<String, Arc<Vec<u32>>>,
 }
+
+/// Most points a plan shows of a cloud's slice, and 3D of a cloud.
+pub const SLICE_POINTS: usize = 150_000;
+pub const SAMPLE_POINTS: usize = 150_000;
 
 /// The cache key of a source: its file, or its view.
 fn key(source: &RefSource) -> String {
@@ -102,7 +115,45 @@ fn key(source: &RefSource) -> String {
             unit: Some(u),
         } => format!("dxf:{path}@{u}"),
         RefSource::Pdf { path, page, scale } => format!("pdf:{path}#{page}@{scale}"),
+        RefSource::Points { path, .. } => format!("points:{path}"),
     }
+}
+
+/// What is added to a cloud's heights to stand it in the model: less the
+/// survey's ±0,000 (as a terrain's), and its own lift.
+pub fn cloud_lift(model: &Model, source: &RefSource, c: &creabim_exchange::cloud::Cloud) -> f64 {
+    let lift = match source {
+        RefSource::Points { lift, .. } => *lift,
+        _ => 0.0,
+    };
+    lift - crate::app::terrainimport::datum(model, c.lo.z)
+}
+
+/// The heights (the file's) between which `view` shows a cloud: its
+/// slice above the plan's level, or all of it; none in other views.
+pub fn cloud_range(
+    model: &Model,
+    source: &RefSource,
+    c: &creabim_exchange::cloud::Cloud,
+    view: ElementId,
+) -> Option<(f64, f64)> {
+    let RefSource::Points {
+        from, to, whole, ..
+    } = source
+    else {
+        return None;
+    };
+    let creabim_core::ElementKind::View(v) = &model.get(view)?.kind else {
+        return None;
+    };
+    let creabim_core::ViewKind::Plan { level, .. } = &v.kind else {
+        return None;
+    };
+    if *whole {
+        return Some((f64::NEG_INFINITY, f64::INFINITY));
+    }
+    let z = model.level(*level).map_or(0.0, |l| l.elevation) - cloud_lift(model, source, c);
+    Some((z + from.min(*to), z + from.max(*to)))
 }
 
 /// Where a scanned PDF page's picture lies on its page, by source key.
@@ -181,6 +232,10 @@ impl RefCache {
             }
         }
         let s = match &r.source {
+            RefSource::Points { path, .. } => match self.cloud(path) {
+                Ok(c) => Shown::Cloud(c),
+                Err(e) => Shown::Missing(e),
+            },
             RefSource::Dxf { .. } | RefSource::Pdf { .. } => match self.drawing(&r.source) {
                 Ok(Some(d)) => Shown::Lines(Arc::new(dxf_linework(&d, &r.layers_off, r.clip))),
                 Ok(None) => read(model, &r.source),
@@ -190,6 +245,53 @@ impl RefCache {
         };
         self.read.insert(id, (k, rev, s.clone()));
         s
+    }
+
+    /// A point cloud's file, read once.
+    pub fn cloud(&mut self, path: &str) -> Result<Arc<creabim_exchange::cloud::Cloud>, String> {
+        let k = format!("points:{path}");
+        if let Some(c) = self.clouds.get(&k) {
+            return Ok(c.clone());
+        }
+        let c = Arc::new(creabim_exchange::cloud::read_file(path)?);
+        self.clouds.insert(k, c.clone());
+        Ok(c)
+    }
+
+    /// What the plan `view` shows of the cloud reference `id`: its points
+    /// between the slice's heights, within its clip.
+    pub fn slice(
+        &mut self,
+        model: &Model,
+        id: ElementId,
+        r: &Reference,
+        view: ElementId,
+    ) -> Option<Arc<creabim_exchange::cloud::Slice>> {
+        let RefSource::Points { path, .. } = &r.source else {
+            return None;
+        };
+        let c = self.cloud(path).ok()?;
+        let (from, to) = cloud_range(model, &r.source, &c, view)?;
+        let k = format!("{}|{from}:{to}", ref_key(r));
+        if let Some((kk, s)) = self.slices.get(&(id, view)) {
+            if *kk == k {
+                return Some(s.clone());
+            }
+        }
+        let s = Arc::new(c.slice(from, to, r.clip, SLICE_POINTS));
+        self.slices.insert((id, view), (k, s.clone()));
+        Some(s)
+    }
+
+    /// The points 3D shows of a cloud.
+    pub fn sample(&mut self, path: &str) -> Option<Arc<Vec<u32>>> {
+        let k = format!("points:{path}");
+        if let Some(s) = self.samples.get(&k) {
+            return Some(s.clone());
+        }
+        let s = Arc::new(self.cloud(path).ok()?.sample(SAMPLE_POINTS));
+        self.samples.insert(k, s.clone());
+        Some(s)
     }
 
     /// A DXF file, read once.
@@ -247,7 +349,10 @@ impl RefCache {
             let k = k.split('|').next().unwrap_or(&k).to_string();
             self.dxf.remove(&k);
             self.scans.remove(&k);
+            self.clouds.remove(&k);
+            self.samples.remove(&k);
         }
+        self.slices.retain(|(r, _), _| *r != id);
     }
 }
 
@@ -424,6 +529,10 @@ pub fn read(model: &Model, source: &RefSource) -> Shown {
             Ok(p) => pdf_shown(source, p).0,
             Err(e) => Shown::Missing(e),
         },
+        RefSource::Points { path, .. } => match creabim_exchange::cloud::read_file(path) {
+            Ok(c) => Shown::Cloud(Arc::new(c)),
+            Err(e) => Shown::Missing(e),
+        },
     }
 }
 
@@ -437,6 +546,7 @@ pub fn bounds_of(source: &RefSource, shown: &Shown) -> Option<[DVec2; 2]> {
         (RefSource::Pdf { .. }, Shown::Picture(_)) => {
             SCANS.lock().ok()?.as_ref()?.get(&key(source)).copied()
         }
+        (_, Shown::Cloud(c)) => Some(c.bounds()),
         (_, Shown::Lines(l)) => {
             let mut it = l.iter().flatten();
             let first = *it.next()?;
@@ -456,7 +566,9 @@ pub fn label(model: &Model, source: &RefSource) -> String {
     };
     match source {
         RefSource::View(v) => model.get(*v).map_or("a view".into(), |e| e.name.clone()),
-        RefSource::Image { path, .. } | RefSource::Dxf { path, .. } => file(path),
+        RefSource::Image { path, .. }
+        | RefSource::Dxf { path, .. }
+        | RefSource::Points { path, .. } => file(path),
         RefSource::Pdf { path, page, .. } => format!("{} ({page})", file(path)),
     }
 }
@@ -484,7 +596,80 @@ pub fn draw_view(
             continue;
         }
         let shown = cache.get(model, id, r);
+        if let Shown::Cloud(_) = shown {
+            if let Some(s) = cache.slice(model, id, r, view) {
+                let ink = colour(r).map(|c| c.gamma_multiply(r.opacity.clamp(0.0, 1.0)));
+                let mut dots = Dots::new(painter.clip_rect());
+                for (n, p) in s.points.iter().enumerate() {
+                    dots.add(to_screen(r.place(*p)), || {
+                        ink.unwrap_or_else(|| own_colour(s.rgb.get(n), r.opacity))
+                    });
+                }
+                dots.paint(painter);
+            }
+            continue;
+        }
         draw(painter, r, &shown, to_screen);
+    }
+}
+
+/// A cloud point's own colour, or grey where its file has none.
+pub fn own_colour(rgb: Option<&[u8; 3]>, opacity: f32) -> Color32 {
+    rgb.map_or(Color32::from_gray(70), |c| {
+        Color32::from_rgb(c[0], c[1], c[2])
+    })
+    .gamma_multiply(opacity.clamp(0.0, 1.0))
+}
+
+/// Points drawn as dots of two pixels, one a place on the screen however
+/// many fall there, so a cloud costs what the pane's pixels do.
+pub struct Dots {
+    rect: egui::Rect,
+    w: usize,
+    seen: Vec<u64>,
+    mesh: egui::Mesh,
+}
+
+impl Dots {
+    const SIZE: f32 = 2.0;
+
+    pub fn new(rect: egui::Rect) -> Self {
+        let w = (rect.width() / Self::SIZE).ceil().max(1.0) as usize;
+        let h = (rect.height() / Self::SIZE).ceil().max(1.0) as usize;
+        Self {
+            rect,
+            w,
+            seen: vec![0; (w * h).div_ceil(64)],
+            mesh: egui::Mesh::default(),
+        }
+    }
+
+    /// A dot at `p`, of the colour `ink` gives, unless one is there.
+    pub fn add(&mut self, p: Pos2, ink: impl FnOnce() -> Color32) {
+        if !self.rect.contains(p) {
+            return;
+        }
+        let i = ((p.x - self.rect.left()) / Self::SIZE) as usize;
+        let j = ((p.y - self.rect.top()) / Self::SIZE) as usize;
+        let n = j * self.w + i.min(self.w - 1);
+        let Some(word) = self.seen.get_mut(n / 64) else {
+            return;
+        };
+        if *word & (1 << (n % 64)) != 0 {
+            return;
+        }
+        *word |= 1 << (n % 64);
+        let at = self.rect.left_top() + egui::vec2(i as f32 * Self::SIZE, j as f32 * Self::SIZE);
+        self.mesh.add_colored_rect(
+            egui::Rect::from_min_size(at, egui::Vec2::splat(Self::SIZE)),
+            ink(),
+        );
+    }
+
+    pub fn paint(self, painter: &egui::Painter) {
+        if !self.mesh.is_empty() {
+            painter.add(egui::Shape::mesh(self.mesh));
+        }
     }
 }
 
@@ -536,7 +721,7 @@ pub fn draw(
             }
             draw_texts(painter, r, &lines.texts, ink, to_screen);
         }
-        Shown::Missing(_) => {}
+        Shown::Missing(_) | Shown::Cloud(_) => {}
     }
 }
 
@@ -809,6 +994,68 @@ mod tests {
         assert!(!l.is_empty(), "a plan has linework");
         let [lo, hi] = bounds_of(&src, &shown).unwrap();
         assert!(hi.x > lo.x && hi.y > lo.y);
+    }
+
+    #[test]
+    fn a_cloud_reference_shows_a_plan_its_slice_and_snaps_to_it() {
+        let m = creabim_core::sample::sample_house();
+        let view = m
+            .iter()
+            .find(|e| matches!(&e.kind, creabim_core::ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. })))
+            .unwrap()
+            .id;
+        let creabim_core::ElementKind::View(v) = &m.get(view).unwrap().kind else {
+            panic!()
+        };
+        let creabim_core::ViewKind::Plan { level, .. } = &v.kind else {
+            panic!()
+        };
+        let z = m.level(*level).unwrap().elevation;
+        // a wall's face scanned at two heights above the plan's level
+        let path = std::env::temp_dir().join("creabim-trace-cloud.xyz");
+        let mut t = String::new();
+        for i in 0..100 {
+            t += &format!("{} 3.0 {}\n", i as f64 * 0.05, z + 1.2);
+            t += &format!("{} 4.0 {}\n", i as f64 * 0.05, z + 2.6);
+        }
+        std::fs::write(&path, t).unwrap();
+        let src = RefSource::points(path.to_string_lossy().into_owned());
+        let shown = read(&m, &src);
+        let Shown::Cloud(c) = &shown else { panic!() };
+        assert_eq!(c.points.len(), 200);
+        let mut r = Reference::new(src, vec![view]);
+        r.in_place(bounds_of(&r.source, &shown).unwrap());
+        let id = ElementId::new();
+        let mut cache = RefCache::default();
+        let s = cache.slice(&m, id, &r, view).unwrap();
+        assert_eq!(s.points.len(), 100, "only the points in the slice");
+        assert!(s.points.iter().all(|p| (p.y - 3.0).abs() < 1e-6));
+        // lifted 1,4 m, the other row is in the slice
+        if let RefSource::Points { lift, .. } = &mut r.source {
+            *lift = -1.4;
+        }
+        let s = cache.slice(&m, id, &r, view).unwrap();
+        assert!(s.points.iter().all(|p| (p.y - 4.0).abs() < 1e-6));
+        // the pointer near a point of it snaps there
+        let mut snapper = crate::snaps::Snapper::new();
+        snapper.add_cloud(s, &r, id);
+        let project = |p: glam::DVec3| Some(egui::pos2(p.x as f32 * 100.0, p.y as f32 * 100.0));
+        let free = glam::DVec3::new(1.012, 4.03, 0.0);
+        let snap = snapper
+            .snap(
+                &crate::snaps::SnapSettings::default(),
+                project(free).unwrap(),
+                &project,
+                None,
+                Some(free),
+            )
+            .unwrap();
+        assert!(
+            snap.p.distance(glam::DVec3::new(1.0, 4.0, 0.0)) < 1e-6,
+            "{:?}",
+            snap.p
+        );
+        assert_eq!(snap.host, Some(id));
     }
 
     #[test]

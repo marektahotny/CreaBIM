@@ -33,6 +33,32 @@ pub enum RefSource {
     /// A PDF page's lines and texts (or a scanned page's picture), at the
     /// drawing's scale 1:`scale`; `page` from 1.
     Pdf { path: String, page: u32, scale: f64 },
+    /// A point cloud (a laser scan or a survey: XYZ, PTS, LAS). A plan
+    /// shows its points between the heights `from` and `to` above the
+    /// plan's level, or with `whole` all of them from above; `lift` is
+    /// added to its heights (a scanner's zero is seldom the floor).
+    Points {
+        path: String,
+        from: f64,
+        to: f64,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        whole: bool,
+        #[serde(default)]
+        lift: f64,
+    },
+}
+
+impl RefSource {
+    /// A cloud of a file, cut at breast height as PilonDesigner's.
+    pub fn points(path: String) -> Self {
+        RefSource::Points {
+            path,
+            from: 0.9,
+            to: 1.5,
+            whole: false,
+            lift: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -112,7 +112,7 @@ mod stylesui;
 #[path = "sunui.rs"]
 mod sunui;
 #[path = "terrainimport.rs"]
-mod terrainimport;
+pub(crate) mod terrainimport;
 #[path = "typepreview.rs"]
 mod typepreview;
 #[path = "typesui.rs"]
@@ -1569,6 +1569,34 @@ impl CreaBimApp {
                         painter.line_segment([a, b], stroke);
                     }
                 }
+                continue;
+            }
+            if let creabim_core::RefSource::Points { path, .. } = &r.source {
+                let (Ok(c), Some(sample)) = (
+                    self.plan.ref_cache.cloud(path),
+                    self.plan.ref_cache.sample(path),
+                ) else {
+                    continue;
+                };
+                let off = crate::trace::cloud_lift(self.doc.model(), &r.source, &c);
+                let own = crate::trace::colour(&r).map(|_| ink);
+                let mut dots = crate::trace::Dots::new(painter.clip_rect());
+                for n in sample.iter() {
+                    let p = c.at(*n as usize);
+                    if r.clip.is_some_and(|[a, b]| {
+                        !(p.truncate().cmpge(a).all() && p.truncate().cmple(b).all())
+                    }) {
+                        continue;
+                    }
+                    if let Some(s) = project(r.place(p.truncate()).extend(p.z + off)) {
+                        dots.add(s, || {
+                            own.unwrap_or_else(|| {
+                                crate::trace::own_colour(c.rgb.get(*n as usize), r.opacity)
+                            })
+                        });
+                    }
+                }
+                dots.paint(painter);
                 continue;
             }
             let model = self.doc.model();
@@ -4196,6 +4224,25 @@ impl CreaBimApp {
             // the references' lines, where 3D shows them (MU33)
             let mut n = 0usize;
             for (id, r) in self.refs_in_3d() {
+                // a cloud's points, a few thousand of them
+                if let creabim_core::RefSource::Points { path, .. } = &r.source {
+                    if let (Ok(c), Some(sample)) = (
+                        self.plan.ref_cache.cloud(path),
+                        self.plan.ref_cache.sample(path),
+                    ) {
+                        let off = crate::trace::cloud_lift(self.doc.model(), &r.source, &c);
+                        let step = sample.len().div_ceil(20_000).max(1);
+                        for k in sample.iter().step_by(step) {
+                            let p = c.at(*k as usize);
+                            snapper.add_point(
+                                r.place(p.truncate()).extend(p.z + off),
+                                crate::snaps::Source::Underlay,
+                                Some(id),
+                            );
+                        }
+                    }
+                    continue;
+                }
                 let model = self.doc.model();
                 if let crate::trace::Shown::Lines(lines) = self.plan.ref_cache.get(model, id, &r) {
                     for l in lines.iter() {
@@ -8140,6 +8187,16 @@ crate::props::row(ui, "File names", |ui| {
             r.colour = None;
             r.opacity = 0.6;
         }
+        // a cloud's points are seen at full strength, in their own
+        // colours where the scan has them
+        let mut cloud = None;
+        if let crate::trace::Shown::Cloud(c) = &shown {
+            r.opacity = 1.0;
+            if !c.rgb.is_empty() {
+                r.colour = None;
+            }
+            cloud = Some((c.points.len(), c.total, c.lo.z, c.hi.z));
+        }
         // named for what it shows, without a prefix eating the field (MU24)
         let name = crate::trace::label(model, &r.source);
         let e = Element::new(name.clone(), ElementKind::Reference(r));
@@ -8156,6 +8213,14 @@ crate::props::row(ui, "File names", |ui| {
             } else {
                 "Reference added. Drag its middle to move it, a corner to scale it, the round grip to turn it; Calibrate sets an exact size. Alt+F2 hides it.".into()
             };
+            if let Some((n, total, lo, hi)) = cloud {
+                self.status = format!(
+                    "{}: {n} / {total}, {} {lo:.2} … {hi:.2} m. {}",
+                    crate::i18n::t("Point cloud added"),
+                    crate::i18n::t("heights"),
+                    crate::i18n::t("The plan shows its slice 0,9 to 1,5 m above the level and drawing snaps to its points; set the slice and its lift in Properties.")
+                );
+            }
             if r_source_dxf && crate::trace::DXF_CAPPED.load(std::sync::atomic::Ordering::Relaxed) {
                 self.status = format!(
                     "Reference added, but only in part: the file makes more than {} items (blocks in arrays inside arrays), so reading stopped there.",
@@ -8265,6 +8330,19 @@ crate::props::row(ui, "File names", |ui| {
                     });
                 }
             }
+            if ui
+                .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("+ Points")))
+                .on_hover_text(crate::i18n::t("A point cloud (a laser scan or a survey of a building or a room: XYZ, PTS, TXT, CSV, LAS). A plan shows its slice at breast height, 3D all of it, and drawing snaps to its points."))
+                .clicked()
+            {
+                if let Some(p) = rfd::FileDialog::new()
+                    .set_title(crate::i18n::tr("Add a point cloud as a reference"))
+                    .add_filter("Points", creabim_exchange::cloud::FILES)
+                    .pick_file()
+                {
+                    add = Some(RefSource::points(p.display().to_string()));
+                }
+            }
         });
         if let Some(src) = add {
             self.add_reference(v, src);
@@ -8344,11 +8422,13 @@ crate::props::row(ui, "File names", |ui| {
             RefSource::Image { .. } => "Picture",
             RefSource::Dxf { .. } => "DXF drawing",
             RefSource::Pdf { .. } => "PDF page",
+            RefSource::Points { .. } => "Point cloud",
         };
         let name = crate::trace::label(model, &r.source);
         let path = match &r.source {
             RefSource::Image { path, .. }
             | RefSource::Dxf { path, .. }
+            | RefSource::Points { path, .. }
             | RefSource::Pdf { path, .. } => Some(path.clone()),
             RefSource::View(_) => None,
         };
@@ -8404,6 +8484,7 @@ crate::props::row(ui, "File names", |ui| {
             let filter: (&str, &[&str]) = match &r.source {
                 RefSource::Dxf { .. } => ("DXF", &["dxf"]),
                 RefSource::Pdf { .. } => ("PDF", &["pdf"]),
+                RefSource::Points { .. } => ("Points", creabim_exchange::cloud::FILES),
                 _ => ("Pictures", crate::trace::PICTURES),
             };
             if let Some(p) = rfd::FileDialog::new()
@@ -8415,6 +8496,7 @@ crate::props::row(ui, "File names", |ui| {
                 match &mut r.source {
                     RefSource::Image { path, .. }
                     | RefSource::Dxf { path, .. }
+                    | RefSource::Points { path, .. }
                     | RefSource::Pdf { path, .. } => *path = p,
                     RefSource::View(_) => {}
                 }
@@ -8727,6 +8809,89 @@ crate::props::row(ui, "File names", |ui| {
                     r.bounds = Some([a * k, b * k]);
                 }
                 label = Some("Picture width");
+            }
+        }
+        // a cloud's slice: the heights above each plan's level it is cut
+        // between, and how far it is lifted
+        if let RefSource::Points {
+            path,
+            from,
+            to,
+            whole,
+            lift,
+        } = &mut r.source
+        {
+            let before = (*from, *to, *whole, *lift);
+            crate::props::row(ui, "Show in plans", |ui| {
+                egui::ComboBox::from_id_salt("ref.points.whole")
+                    .selected_text(crate::i18n::t(if *whole {
+                        "All points from above"
+                    } else {
+                        "A slice between two heights"
+                    }))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            whole,
+                            false,
+                            crate::i18n::t("A slice between two heights"),
+                        );
+                        ui.selectable_value(whole, true, crate::i18n::t("All points from above"));
+                    });
+            });
+            if !*whole {
+                crate::props::row(ui, "Slice from", |ui| {
+                    crate::props::fill(ui, crate::units::drag(from).range(-1000.0..=1000.0))
+                });
+                crate::props::row(ui, "Slice to", |ui| {
+                    crate::props::fill(ui, crate::units::drag(to).range(-1000.0..=1000.0))
+                });
+            }
+            crate::props::row(ui, "Lifted by", |ui| {
+                crate::props::fill(ui, crate::units::drag(lift).range(-10000.0..=10000.0))
+            })
+            .on_hover_text(crate::i18n::t("Added to the cloud's heights: a scanner's zero is seldom the floor. The slice is measured from each plan's level."));
+            if let Ok(c) = self.plan.ref_cache.cloud(path) {
+                let off = crate::trace::cloud_lift(self.doc.model(), &r.source, &c);
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{}: {} / {}. {}: {:.3} … {:.3} m{}",
+                        crate::i18n::t("Points"),
+                        c.points.len(),
+                        c.total,
+                        crate::i18n::t("Heights"),
+                        c.lo.z + off,
+                        c.hi.z + off,
+                        if c.jtsk { ", S-JTSK" } else { "" },
+                    ))
+                    .weak()
+                    .small(),
+                );
+                let low = -(c.lo.z + off
+                    - match &r.source {
+                        RefSource::Points { lift, .. } => *lift,
+                        _ => 0.0,
+                    });
+                if ui
+                    .small_button(crate::i18n::t("Lowest point to ±0,000"))
+                    .on_hover_text(crate::i18n::t("Lifts the cloud so its lowest point (the floor, in a room's scan) is at ±0,000."))
+                    .clicked()
+                {
+                    if let RefSource::Points { lift, .. } = &mut r.source {
+                        *lift = low;
+                    }
+                }
+            }
+            if let RefSource::Points {
+                from,
+                to,
+                whole,
+                lift,
+                ..
+            } = &r.source
+            {
+                if before != (*from, *to, *whole, *lift) {
+                    label = Some("Point cloud slice");
+                }
             }
         }
         // a PDF's page and the scale it is drawn at
@@ -9077,9 +9242,10 @@ crate::props::row(ui, "File names", |ui| {
                     page: 1,
                     scale: 100.0,
                 },
+                "xyz" | "pts" | "las" | "asc" => creabim_core::RefSource::points(p),
                 _ => {
                     self.status = format!(
-                        "{} can't be a reference: drop a picture (PNG, JPEG, TIFF, BMP), a DXF or a PDF file, or a map package (ZIP).",
+                        "{} can't be a reference: drop a picture (PNG, JPEG, TIFF, BMP), a DXF or a PDF file, a point cloud (XYZ, PTS, LAS), or a map package (ZIP).",
                         path.file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("That file")

@@ -4956,7 +4956,15 @@ fn add_reference_snaps(
         if r.hidden || !r.shown_in.contains(&view) {
             continue;
         }
-        let crate::trace::Shown::Lines(lines) = state.ref_cache.get(model, e.id, r) else {
+        let shown = state.ref_cache.get(model, e.id, r);
+        // a cloud's points, as the plan shows them
+        if let crate::trace::Shown::Cloud(_) = shown {
+            if let Some(slice) = state.ref_cache.slice(model, e.id, r, view) {
+                s.add_cloud(slice, r, e.id);
+            }
+            continue;
+        }
+        let crate::trace::Shown::Lines(lines) = shown else {
             continue;
         };
         // a drawing's survey marks and blocks' insertion points
