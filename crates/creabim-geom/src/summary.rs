@@ -485,6 +485,20 @@ pub fn report(model: &Model) -> Vec<Chapter> {
             }
             None => format!("Osadenie stavby voči terénu: {FILL} (v modeli nie je terén pod stavbou)"),
         },
+        match crate::firezones::fire_height(model) {
+            Some(h) => format!(
+                "Požiarna výška stavby: {} m (nadzemné požiarne podlažia: {}, podzemné: {}{})",
+                format!("{:.2}", h.height).replace('.', ","),
+                h.above,
+                h.below,
+                if h.ground.is_some() {
+                    ""
+                } else {
+                    "; bez terénu v modeli, terén uvažovaný na ±0,000"
+                }
+            ),
+            None => format!("Požiarna výška stavby: {FILL}"),
+        },
         format!(
             "Obostavaný priestor (podlažia a priestor pod strechou z modelu, bez základov): {} m³",
             format!("{:.1}", f.volume).replace('.', ",")

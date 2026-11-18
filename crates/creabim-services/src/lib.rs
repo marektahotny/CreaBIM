@@ -15,6 +15,7 @@ pub mod circuits;
 pub mod coolingload;
 pub mod ductsizing;
 pub mod electrical;
+pub mod evacuation;
 pub mod firewater;
 pub mod fittings;
 pub mod fixtures;

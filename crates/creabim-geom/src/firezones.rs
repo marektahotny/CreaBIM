@@ -210,6 +210,52 @@ pub fn schedule(model: &Model) -> Schedule {
     }
 }
 
+/// The fire height of the building (the annex of decree 94/2004 Z. z.
+/// on the first above-ground fire storey and the fire height): the
+/// first above-ground fire storey is the lowest whose floor is no more
+/// than 1.5 m under the highest ground beside the building; the height
+/// runs from its floor to the floor of the last storey.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FireHeight {
+    pub first: ElementId,
+    pub last: ElementId,
+    /// From the first above-ground fire storey's floor to the last's, m.
+    pub height: f64,
+    /// Storeys above ground and under it, as fire counts them.
+    pub above: usize,
+    pub below: usize,
+    /// The highest ground at the building against the project's zero;
+    /// none when the model has no terrain there (the zero is taken).
+    pub ground: Option<f64>,
+}
+
+/// How far under the highest ground beside it a storey's floor may be
+/// and the storey still count as above ground, m.
+pub const FIRST_STOREY_DROP: f64 = 1.5;
+
+pub fn fire_height(model: &Model) -> Option<FireHeight> {
+    let storeys: Vec<_> = creabim_core::levels::sorted(model)
+        .into_iter()
+        .filter(|(id, ..)| {
+            model
+                .iter()
+                .any(|e| matches!(&e.kind, ElementKind::Wall(w) if w.level == *id))
+        })
+        .collect();
+    let ground = crate::summary::ground_at_building(model).map(|g| g.1);
+    let limit = ground.unwrap_or(0.0) - FIRST_STOREY_DROP;
+    let first = storeys.iter().position(|s| s.2.elevation >= limit - 1e-9)?;
+    let last = storeys.last()?;
+    Some(FireHeight {
+        first: storeys[first].0,
+        last: last.0,
+        height: last.2.elevation - storeys[first].2.elevation,
+        above: storeys.len() - first,
+        below: first,
+        ground,
+    })
+}
+
 /// A side of the building on a storey: its outer walls facing one way,
 /// with the openings in them that fire can pass (windows, and doors
 /// with no fire rating).
@@ -409,6 +455,17 @@ mod tests {
         let s = schedule(&m);
         assert_eq!(s.rows.len(), 2 + doors.len());
         assert!(s.rows.iter().any(|r| r.cells[4] == "NO FIRE DOOR"));
+    }
+
+    /// The fire height runs from the floor of the first storey above
+    /// ground to the floor of the last.
+    #[test]
+    fn the_fire_height_is_between_the_first_and_the_last_floor() {
+        let m = creabim_core::starter::starter_house();
+        let h = fire_height(&m).unwrap();
+        assert_eq!((h.above, h.below), (2, 0));
+        let z = |id| m.level(id).unwrap().elevation;
+        assert!((h.height - (z(h.last) - z(h.first))).abs() < 1e-9 && h.height > 2.0);
     }
 
     /// The outer walls of a storey gather by where they face; a side's
