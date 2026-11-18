@@ -152,7 +152,7 @@ impl CreaBimApp {
                 );
                 crate::props::section(ui, "Coming to this tab");
                 for p in d.planned() {
-                    ui.label(format!("•  {}", crate::i18n::t(p)));
+                    ui.label(crate::i18n::tr(&format!("•  {}", crate::i18n::t(p))));
                 }
             });
         if change_codes {

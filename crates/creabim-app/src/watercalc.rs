@@ -133,7 +133,7 @@ impl CreaBimApp {
                         .count();
                     if ui
                         .add_enabled(changes > 0, egui::Button::new(t("Apply proposed sizes")))
-                        .on_hover_text(format!("{}: {changes}", t("Pipes to change")))
+                        .on_hover_text(crate::i18n::tr(&format!("{}: {changes}", t("Pipes to change"))))
                         .clicked()
                     {
                         apply = true;
@@ -171,7 +171,7 @@ impl CreaBimApp {
                         });
                         if let Some(k) = r.reducer_setting_kpa {
                             crate::props::row(ui, "Pressure reducer", |ui| {
-                                ui.label(format!("{} {}", t("set to"), kpa(k * 1000.0)))
+                                ui.label(crate::i18n::tr(&format!("{} {}", t("set to"), kpa(k * 1000.0))))
                             });
                         }
                         let warn = |ui: &mut egui::Ui, s: String| {

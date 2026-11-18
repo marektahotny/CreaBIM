@@ -1310,7 +1310,7 @@ pub fn look_ui(
                 }
             }
             ui.separator();
-            if ui.button("New text style…").clicked() {
+            if ui.button(crate::i18n::t("New text style…")).clicked() {
                 out = LookEdit::NewStyle;
             }
         });
@@ -1318,7 +1318,7 @@ pub fn look_ui(
     // sat past the panel's edge)
     let mut own = color.is_some();
     if crate::props::switch(ui, &mut own, "Own colour")
-        .on_hover_text("Override the style's colour for this one")
+        .on_hover_text(crate::i18n::t("Override the style's colour for this one"))
         .changed()
     {
         *color = own.then_some([0.8, 0.1, 0.1]);
@@ -1381,7 +1381,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             egui::DragValue::new(&mut s.size)
                 .speed(0.05)
                 .range(0.5..=50.0)
-                .suffix(" mm"),
+                .suffix(crate::i18n::t(" mm")),
         )
         .changed()
         {
@@ -1391,7 +1391,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     crate::props::flow(ui, |ui| {
         let mut own = s.color.is_some();
         if crate::props::switch(ui, &mut own, "Colour")
-            .on_hover_text("Off: black on paper, blue on screen")
+            .on_hover_text(crate::i18n::t("Off: black on paper, blue on screen"))
             .changed()
         {
             s.color = own.then_some([0.0, 0.0, 0.0]);
@@ -1508,8 +1508,10 @@ pub fn leader_ui(
     });
     if elbow.is_some()
         && ui
-            .button("Straighten the leader")
-            .on_hover_text("Take its elbow out; drag the round grip on the leader to bend it again")
+            .button(crate::i18n::t("Straighten the leader"))
+            .on_hover_text(crate::i18n::t(
+                "Take its elbow out; drag the round grip on the leader to bend it again",
+            ))
             .clicked()
     {
         *elbow = None;
@@ -1550,7 +1552,7 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             egui::DragValue::new(&mut size)
                 .speed(0.05)
                 .range(0.5..=10.0)
-                .suffix(" mm"),
+                .suffix(crate::i18n::t(" mm")),
         )
         .changed()
         {
@@ -1571,9 +1573,9 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             }
         });
     if crate::props::switch(ui, &mut s.break_at_tags, "Break dimension lines at tags")
-        .on_hover_text(
+        .on_hover_text(crate::i18n::t(
             "Dimension lines in this style leave a gap where a tag or a note sits across them",
-        )
+        ))
         .changed()
     {
         label = Some("Dimension breaks");
@@ -1632,7 +1634,12 @@ pub fn style_inline(
     }
     if shown {
         label = style_ui(ui, &mut s);
-        ui.label(egui::RichText::new(format!("Changes every one of its {users} users.")).weak());
+        ui.label(
+            egui::RichText::new(crate::i18n::tr(&format!(
+                "Changes every one of its {users} users."
+            )))
+            .weak(),
+        );
     }
     let label = label?;
     let r = doc.edit_merged(id, label, |e| e.kind = ElementKind::TextStyle(s));
@@ -1679,7 +1686,7 @@ pub fn note_ui(
     // the field keeps its size and scrolls inside; the small button at its
     // corner opens the large editor (MU27)
     crate::props::flow(ui, |ui| {
-        ui.label("Text");
+        ui.label(crate::i18n::t("Text"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if crate::props::icon_button(
                 ui,
@@ -1723,10 +1730,10 @@ pub fn note_ui(
     crate::props::row(ui, "Box", |ui| {
         crate::props::flow(ui, |ui| {
             if ui
-                .checkbox(&mut boxed, "Wrap at")
-                .on_hover_text(
+                .checkbox(&mut boxed, crate::i18n::t("Wrap at"))
+                .on_hover_text(crate::i18n::t(
                     "Lines wrap to this width on paper; off, each line runs as long as it is",
-                )
+                ))
                 .changed()
             {
                 n.width = boxed.then_some(60.0);
@@ -1738,7 +1745,7 @@ pub fn note_ui(
                         egui::DragValue::new(w)
                             .speed(0.5)
                             .range(5.0..=800.0)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                     .changed()
                 {
@@ -1748,14 +1755,16 @@ pub fn note_ui(
         });
     });
     if crate::props::switch(ui, &mut n.markdown, "Markdown")
-        .on_hover_text("# heading (capitals, underlined), - bullet, 1. numbered, - [ ] and - [x] checkboxes; **bold** and *italic* marks are dropped on paper")
+        .on_hover_text(crate::i18n::t("# heading (capitals, underlined), - bullet, 1. numbered, - [ ] and - [x] checkboxes; **bold** and *italic* marks are dropped on paper"))
         .changed()
     {
         label = Some("Note markdown");
     }
     let mut leader = n.leader.is_some();
     if crate::props::switch(ui, &mut leader, "Leader")
-        .on_hover_text("An arrow from the note to what it is about. Drag its square to move it.")
+        .on_hover_text(crate::i18n::t(
+            "An arrow from the note to what it is about. Drag its square to move it.",
+        ))
         .changed()
     {
         n.leader = leader.then(|| HostPoint::free(n.at + DVec2::new(-1.5, -1.0) * unit));
@@ -1763,7 +1772,10 @@ pub fn note_ui(
     }
     if n.leader.is_some_and(|l| l.host.is_some()) {
         ui.label(
-            egui::RichText::new("Its arrow is attached and follows what it points at.").weak(),
+            egui::RichText::new(crate::i18n::t(
+                "Its arrow is attached and follows what it points at.",
+            ))
+            .weak(),
         );
     }
     label

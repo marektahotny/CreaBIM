@@ -739,7 +739,7 @@ impl ViewCube {
                 Nav::Zoom(_) => Nav::Zoom(delta),
             });
         if let Some(t) = tip.filter(|_| !response.dragged()) {
-            response.on_hover_text(t);
+            response.on_hover_text(crate::i18n::tr(&t));
         }
         (pick, nav)
     }

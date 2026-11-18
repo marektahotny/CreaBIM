@@ -248,14 +248,20 @@ impl CreaBimApp {
                             .get(id)
                             .map_or(String::new(), |e| e.name.clone());
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("{name}: its text")).strong());
+                            ui.label(
+                                egui::RichText::new(crate::i18n::tr(&format!("{name}: its text")))
+                                    .strong(),
+                            );
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    ui.checkbox(&mut n.markdown, "Lists and headings")
-                                        .on_hover_text(
+                                    ui.checkbox(
+                                        &mut n.markdown,
+                                        crate::i18n::t("Lists and headings"),
+                                    )
+                                    .on_hover_text(crate::i18n::t(
                                         "- bullets, 1. numbers, # headings drawn as such on paper",
-                                    );
+                                    ));
                                 },
                             );
                         });
@@ -279,9 +285,9 @@ impl CreaBimApp {
                             }
                         }
                         ui.label(
-                            egui::RichText::new(
+                            egui::RichText::new(crate::i18n::t(
                                 "Select something else to see the project's notepad here.",
-                            )
+                            ))
                             .weak(),
                         );
                     }
@@ -469,9 +475,9 @@ impl CreaBimApp {
             let grip = Rect::from_min_size(r.min, egui::vec2(12.0, HEADER));
             let resp = ui
                 .interact(grip, ui.id().with(("area-corner", i)), Sense::drag())
-                .on_hover_text(
+                .on_hover_text(crate::i18n::t(
                     "Drag into this area to split it, or into the one beside it to join the two",
-                );
+                ));
             let hot = resp.hovered() || resp.dragged();
             let c = if hot {
                 p.accent
@@ -749,9 +755,9 @@ impl CreaBimApp {
         child.spacing_mut().interact_size.y = 24.0;
         let room = head.width() - 20.0;
         // what shows: the kind, then which one
-        let r = pill(&mut child, kind_icon, "", true, &p).on_hover_text(format!(
+        let r = pill(&mut child, kind_icon, "", true, &p).on_hover_text(crate::i18n::tr(&format!(
             "{kind_label}: click to show another kind of view here"
-        ));
+        )));
         if r.clicked() {
             asks.push(Ask::Popup("area.kind".into(), r.rect));
         }
@@ -761,10 +767,11 @@ impl CreaBimApp {
         } else {
             (room * 0.32).clamp(70.0, 220.0)
         };
-        let r = name_button(&mut child, &name, name_w, &p).on_hover_text(format!(
-            "{name}: click to show another of the {}",
-            kind_label.to_lowercase()
-        ));
+        let r =
+            name_button(&mut child, &name, name_w, &p).on_hover_text(crate::i18n::tr(&format!(
+                "{name}: click to show another of the {}",
+                kind_label.to_lowercase()
+            )));
         if r.clicked() {
             asks.push(Ask::Popup(
                 if matches!(shows, Shows::Profiles) {
@@ -784,7 +791,8 @@ impl CreaBimApp {
         let mut plus_w = 0.0;
         if matches!(shows, Shows::Profiles) {
             for (k, (id, icon, tip, on)) in self.profile_buttons().into_iter().enumerate() {
-                let r = icon_btn(&mut child, icon, false, on, &p).on_hover_text(tip);
+                let r =
+                    icon_btn(&mut child, icon, false, on, &p).on_hover_text(crate::i18n::tr(&tip));
                 if r.clicked() && on {
                     asks.push(Ask::Run(id.into()));
                 }
@@ -801,7 +809,8 @@ impl CreaBimApp {
         // what to do with masters, beside the list of them (MU40)
         if matches!(shows, Shows::Masters) {
             for (id, icon, tip, on) in self.master_buttons() {
-                let r = icon_btn(&mut child, icon, false, on, &p).on_hover_text(tip);
+                let r =
+                    icon_btn(&mut child, icon, false, on, &p).on_hover_text(crate::i18n::tr(&tip));
                 if r.clicked() && on {
                     asks.push(if id.ends_with("menu") {
                         Ask::Popup(id.into(), r.rect)
@@ -833,7 +842,7 @@ impl CreaBimApp {
             // narrow, it shrinks to its icon, as Blender's (MU30)
             let compact = room < 600.0;
             let r = mode_button(&mut child, editing, compact, &p).on_hover_text(
-                "Object mode works on whole elements; Edit mode on one element's points, edges and faces. Tab switches",
+                crate::i18n::t("Object mode works on whole elements; Edit mode on one element's points, edges and faces. Tab switches"),
             );
             if r.clicked() {
                 asks.push(Ask::Popup("area.mode".into(), r.rect));
@@ -1260,14 +1269,17 @@ impl CreaBimApp {
             .resizable(false)
             .open(&mut open)
             .show(ctx, |ui| {
-                ui.label("A name for these areas, to pick from Workspace at the top right:");
+                ui.label(crate::i18n::t(
+                    "A name for these areas, to pick from Workspace at the top right:",
+                ));
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut name)
                         .vertical_align(egui::Align::Center)
                         .desired_width(220.0),
                 );
                 r.request_focus();
-                done = ui.input(|i| i.key_pressed(egui::Key::Enter)) || ui.button("Save").clicked();
+                done = ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    || ui.button(crate::i18n::t("Save")).clicked();
             });
         let name = name.trim().to_string();
         if done && !name.is_empty() {
@@ -1408,7 +1420,7 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
                 enabled,
                 p,
             )
-            .on_hover_text(tip);
+            .on_hover_text(crate::i18n::tr(&tip));
             // a small count at the corner: how many there are (MU36: section
             // boxes added without a sign)
             if let Some(n) = c["badge"].as_u64().filter(|n| *n > 0) {
@@ -1440,7 +1452,7 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
             } else {
                 pill(ui, icon, "", false, p)
             }
-            .on_hover_text(tip);
+            .on_hover_text(crate::i18n::tr(&tip));
             r.clicked()
                 .then(|| Ask::Popup(c["key"].as_str().unwrap_or("").into(), r.rect))
         }
@@ -1457,7 +1469,7 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
                 ui.spacing_mut().button_padding = egui::vec2(5.0, 1.0);
                 ui.style_mut().override_font_id = Some(egui::FontId::proportional(12.0));
                 ui.label(egui::RichText::new(label).size(12.0).color(p.muted))
-                    .on_hover_text(&tip);
+                    .on_hover_text(crate::i18n::tr(&tip));
                 let w = if unit == "m" {
                     ui.add_sized([64.0, 20.0], crate::units::drag(&mut v))
                 } else {
@@ -1622,7 +1634,7 @@ fn mode_button(
             &ui.visuals().widgets.inactive.clone(),
             false,
         );
-        return resp.on_hover_text(text);
+        return resp.on_hover_text(crate::i18n::tr(text));
     }
     ui.painter().text(
         rect.left_center() + egui::vec2(8.0, 0.0),

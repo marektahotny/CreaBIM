@@ -904,7 +904,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                         let w = ((ui.available_width() - 2.0) / 3.0).max(24.0);
                         if ui
                             .add_sized([w, h], egui::Button::new("‹"))
-                            .on_hover_text("The edge before")
+                            .on_hover_text(crate::i18n::t("The edge before"))
                             .clicked()
                         {
                             r.edge = (r.edge + n - 1) % n;
@@ -912,11 +912,14 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                         }
                         ui.add_sized(
                             [w, h],
-                            egui::Label::new(format!("{} of {n}", r.edge % n + 1)),
+                            egui::Label::new(crate::i18n::tr(&format!(
+                                "{} of {n}",
+                                r.edge % n + 1
+                            ))),
                         );
                         if ui
                             .add_sized([w, h], egui::Button::new("›"))
-                            .on_hover_text("The next edge")
+                            .on_hover_text(crate::i18n::t("The next edge"))
                             .clicked()
                         {
                             r.edge = (r.edge + 1) % n;
@@ -984,7 +987,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 crate::props::row(ui, "Landing after", |ui| {
                     let d = egui::DragValue::new(&mut l.after)
                         .range(1..=n.saturating_sub(1).max(1))
-                        .suffix(" risers");
+                        .suffix(crate::i18n::t(" risers"));
                     if crate::props::fill(ui, d).changed() {
                         label = "Stair landing";
                     }
@@ -1131,7 +1134,7 @@ fn column_levels(ui: &mut egui::Ui, model: &Model, c: &mut Column) -> &'static s
         .selected_text(crate::i18n::tw(name(top)))
         .show_ui(ui, |ui| {
             ui.selectable_value(&mut top, None, crate::i18n::tw("Unconnected"))
-                .on_hover_text("A fixed height, or up to the next level");
+                .on_hover_text(crate::i18n::t("A fixed height, or up to the next level"));
             for (lid, n, _) in levels.iter().rev() {
                 ui.selectable_value(&mut top, Some(*lid), crate::i18n::tw(n));
             }
@@ -1192,8 +1195,8 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
                 ),
             );
             if ui
-                .button("Let go of it")
-                .on_hover_text("Keep the footing where it is, on its own")
+                .button(crate::i18n::t("Let go of it"))
+                .on_hover_text(crate::i18n::t("Keep the footing where it is, on its own"))
                 .clicked()
             {
                 *f = creabim_core::footing::detached(model, f);
@@ -1236,7 +1239,7 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
                         label = "Move footing";
                     }
                     let r = crate::props::flow(ui, |ui| {
-                        ui.label("Rotation");
+                        ui.label(crate::i18n::t("Rotation"));
                         ui.add(
                             egui::DragValue::new(&mut f.rotation)
                                 .speed(0.5)

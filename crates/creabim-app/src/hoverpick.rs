@@ -220,14 +220,15 @@ pub fn badge(
                 .inner_margin(egui::Margin::symmetric(6, 2))
                 .show(ui, |ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    let text = egui::RichText::new(format!("{}/{n} · Tab", h.index + 1))
-                        .size(11.0)
-                        .color(blue);
+                    let text =
+                        egui::RichText::new(crate::i18n::tr(&format!("{}/{n} · Tab", h.index + 1)))
+                            .size(11.0)
+                            .color(blue);
                     let r = ui
                         .add(egui::Label::new(text).sense(egui::Sense::click()))
-                        .on_hover_text(format!(
+                        .on_hover_text(crate::i18n::tr(&format!(
                             "{n} elements under the pointer. Tab cycles them; click to list them."
-                        ));
+                        )));
                     if r.clicked() {
                         toggle = true;
                     }

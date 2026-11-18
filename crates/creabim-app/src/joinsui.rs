@@ -139,7 +139,7 @@ impl CreaBimApp {
                         }
                     })
                     .response
-                    .on_hover_text(format!("With {name}. How the two walls' layers meet at this corner. Auto mitres every layer; Cores lap runs the stronger wall's core on past the other's; a wall running through has every layer of the other stop at it; Not joined leaves both ends square."))
+                    .on_hover_text(crate::i18n::tr(&format!("With {name}. How the two walls' layers meet at this corner. Auto mitres every layer; Cores lap runs the stronger wall's core on past the other's; a wall running through has every layer of the other stop at it; Not joined leaves both ends square.")))
             });
         }
         if let Some((other, p)) = pick {
@@ -173,7 +173,7 @@ impl CreaBimApp {
         if mine.is_empty() {
             ui.label(
                 egui::RichText::new(
-                    "Joins automatically: layer by layer, the structure through finishes. Select it with another element and right-click to switch the join order or turn cleanup off.",
+                    crate::i18n::t("Joins automatically: layer by layer, the structure through finishes. Select it with another element and right-click to switch the join order or turn cleanup off."),
                 )
                 .weak(),
             );
@@ -186,7 +186,7 @@ impl CreaBimApp {
                 .get(other)
                 .map_or("(missing)".into(), |e| e.name.clone());
             crate::props::flow(ui, |ui| {
-                ui.label(format!("With {name}"));
+                ui.label(crate::i18n::tr(&format!("With {name}")));
                 let now = crate::detailtool::winner_label(model, &r, r.winner);
                 let shown = if r.cleanup {
                     now

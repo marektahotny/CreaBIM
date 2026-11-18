@@ -216,7 +216,7 @@ pub fn modify_bar(ui: &mut egui::Ui, selected: bool) -> Option<Command> {
             let enabled = selected || !c.needs_selection();
             if ui
                 .add_enabled(enabled, egui::Button::new(c.label()).small())
-                .on_hover_text(c.shortcut())
+                .on_hover_text(crate::i18n::tr(c.shortcut()))
                 .clicked()
             {
                 picked = Some(*c);

@@ -1063,10 +1063,10 @@ impl CreaBimApp {
             }
         }
         // every page of the guide, found by its title
-        for (section, id, md) in crate::help::PAGES {
+        for (section, id, md) in crate::help::pages() {
             let item = Item::new(format!("help:{id}"), crate::help::title(md))
                 .icon("book-open")
-                .hint(*section);
+                .hint(crate::help::section_name(section));
             flatten(vec![item], "Help › ", &mut out);
         }
         flatten(self.menu_items("views"), "Open › ", &mut out);
@@ -4245,7 +4245,7 @@ impl CreaBimApp {
                 .show(&ctx, |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
                         ui.set_max_width(360.0);
-                        ui.label(text);
+                        ui.label(crate::i18n::tr(&text));
                     });
                 });
         }
@@ -4584,7 +4584,7 @@ impl CreaBimApp {
                 });
             }
             ui.separator();
-            ui.label("File:");
+            ui.label(crate::i18n::t("File:"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.path)
                     .vertical_align(egui::Align::Center)

@@ -2906,8 +2906,8 @@ fn edge_palette(
                     let mut item = |ui: &mut egui::Ui, on: bool, text: &str, tip: &str, r| {
                         let b = ui
                             .add_enabled(on, egui::Button::new(text).small())
-                            .on_hover_text(tip)
-                            .on_disabled_hover_text(tip);
+                            .on_hover_text(crate::i18n::tr(tip))
+                            .on_disabled_hover_text(crate::i18n::tr(tip));
                         if b.clicked() {
                             asked = Some(r);
                         }
@@ -3120,7 +3120,8 @@ fn grip_menu(
                             None => {
                                 ui.add_enabled(
                                     false,
-                                    egui::Button::new("Make arc (slab outlines)").frame(false),
+                                    egui::Button::new(crate::i18n::t("Make arc (slab outlines)"))
+                                        .frame(false),
                                 );
                             }
                         }

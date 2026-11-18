@@ -45,7 +45,7 @@ pub fn icon_button(ui: &mut Ui, icon: &str, tip: &str) -> Response {
     }
     let ink = ui.visuals().text_color();
     crate::svgicon::paint(ui.painter(), r.shrink(3.0), icon, ink);
-    resp.on_hover_text(tip)
+    resp.on_hover_text(crate::i18n::tr(tip))
 }
 
 /// A sub-section inside a section's box, folding as Blender's
@@ -242,7 +242,7 @@ pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
                     g,
                     muted,
                 );
-                resp.on_hover_text(label);
+                resp.on_hover_text(crate::i18n::tr(label));
             } else {
                 // against its control, as Blender's
                 ui.painter().galley(
@@ -318,7 +318,11 @@ pub fn choice_icons<T: PartialEq + Copy>(
             };
             let r = egui::Rect::from_center_size(resp.rect.center(), Vec2::splat(15.0));
             crate::svgicon::paint(ui.painter(), r, icon, ink);
-            if resp.on_hover_text(format!("{name}: {tip}")).clicked() && !on {
+            if resp
+                .on_hover_text(crate::i18n::tr(&format!("{name}: {tip}")))
+                .clicked()
+                && !on
+            {
                 *value = *v;
                 changed = true;
             }
@@ -385,7 +389,7 @@ pub fn choice<T: PartialEq + Copy>(
             let resp = if tip.is_empty() {
                 resp.on_hover_text(*text)
             } else {
-                resp.on_hover_text(format!("{text}: {tip}"))
+                resp.on_hover_text(crate::i18n::tr(&format!("{text}: {tip}")))
             };
             if resp.clicked() && !on {
                 *value = *v;
@@ -409,7 +413,7 @@ pub fn action(ui: &mut Ui, label: &str, text: &str, tip: &str, enabled: bool) ->
         if tip.is_empty() {
             r
         } else {
-            r.on_hover_text(tip)
+            r.on_hover_text(crate::i18n::tr(tip))
         }
     })
 }
@@ -434,7 +438,7 @@ pub fn actions2(
             if tip.is_empty() {
                 r.clicked()
             } else {
-                r.on_hover_text(tip).clicked()
+                r.on_hover_text(crate::i18n::tr(tip)).clicked()
             }
         };
         let x = go(ui, a);
@@ -620,7 +624,7 @@ pub fn tick(ui: &mut Ui, on: &mut bool, label: &str, width: f32) -> Response {
             ink,
         );
         if elided {
-            resp = resp.on_hover_text(label.to_string());
+            resp = resp.on_hover_text(crate::i18n::tr(label));
         }
     }
     resp
@@ -732,7 +736,7 @@ pub fn check(
             ink,
         );
         if elided {
-            resp = resp.on_hover_text(text.clone());
+            resp = resp.on_hover_text(crate::i18n::tr(&text.clone()));
         }
     }
     resp

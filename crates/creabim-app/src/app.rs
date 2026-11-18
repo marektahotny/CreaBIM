@@ -854,7 +854,12 @@ impl CreaBimApp {
         }
         if let Some(s) = &e.source {
             ui.label(
-                egui::RichText::new(format!("From {}: {}", file_label(&s.file), s.object)).weak(),
+                egui::RichText::new(crate::i18n::tr(&format!(
+                    "From {}: {}",
+                    file_label(&s.file),
+                    s.object
+                )))
+                .weak(),
             );
         }
         let is_mesh = matches!(e.kind, ElementKind::FreeMesh(_));
@@ -878,7 +883,7 @@ impl CreaBimApp {
         if is_mesh {
             ui.label(
                 egui::RichText::new(
-                    "Make this shape a wall, slab, door or window sized to fit it, or give it a class.",
+                    crate::i18n::t("Make this shape a wall, slab, door or window sized to fit it, or give it a class."),
                 )
                 .weak(),
             );
@@ -5068,7 +5073,9 @@ impl CreaBimApp {
         use creabim_core::{Modifier, ModifierKind};
         let Some(ElementKind::FreeMesh(before)) = self.doc.model().get(id).map(|e| e.kind.clone())
         else {
-            ui.label(egui::RichText::new("This element takes no modifiers yet.").weak());
+            ui.label(
+                egui::RichText::new(crate::i18n::t("This element takes no modifiers yet.")).weak(),
+            );
             return;
         };
         let mut m = before.clone();
@@ -5141,7 +5148,7 @@ impl CreaBimApp {
                             ui.selectable_label(false, crate::i18n::tw(k.label()))
                         })
                         .inner
-                        .on_hover_text(hint);
+                        .on_hover_text(crate::i18n::tr(hint));
                     if r.clicked() {
                         let mut k = k;
                         // a sensible start for this mesh: round its middle,
@@ -5162,7 +5169,7 @@ impl CreaBimApp {
                 }
             });
         if m.modifiers.is_empty() {
-            ui.label(egui::RichText::new("None yet. A modifier changes the shape without touching the mesh: repeat it, panel it, round its corners, slice it into floors. Switch it off or apply it any time.").weak());
+            ui.label(egui::RichText::new(crate::i18n::t("None yet. A modifier changes the shape without touching the mesh: repeat it, panel it, round its corners, slice it into floors. Switch it off or apply it any time.")).weak());
         }
         let count = m.modifiers.len();
         let mut action: Option<(usize, i32)> = None;
@@ -5251,7 +5258,7 @@ impl CreaBimApp {
                             galley,
                             ui.visuals().text_color(),
                         );
-                        tresp.on_hover_text(md.kind.summary());
+                        tresp.on_hover_text(crate::i18n::tr(&md.kind.summary()));
                         // what it does, as the ? beside Properties' headings
                         // (MU39: not a block of small text in the card)
                         ui.add(
@@ -5270,24 +5277,24 @@ impl CreaBimApp {
                             egui::Popup::menu(&more).show(|ui| {
                                 if i == 0
                                     && ui
-                                        .button("Apply")
+                                        .button(crate::i18n::t("Apply"))
                                         .on_hover_text(
-                                            "Make it part of the mesh, so you can edit the result",
+                                            crate::i18n::t("Make it part of the mesh, so you can edit the result"),
                                         )
                                         .clicked()
                                 {
                                     action = Some((i, 2));
                                     ui.close();
                                 }
-                                if ui.button("Duplicate").clicked() {
+                                if ui.button(crate::i18n::t("Duplicate")).clicked() {
                                     action = Some((i, 3));
                                     ui.close();
                                 }
-                                if i > 0 && ui.button("Move up").clicked() {
+                                if i > 0 && ui.button(crate::i18n::t("Move up")).clicked() {
                                     action = Some((i, -1));
                                     ui.close();
                                 }
-                                if i + 1 < count && ui.button("Move down").clicked() {
+                                if i + 1 < count && ui.button(crate::i18n::t("Move down")).clicked() {
                                     action = Some((i, 1));
                                     ui.close();
                                 }
@@ -5598,12 +5605,16 @@ impl CreaBimApp {
         let mut label = "";
         let on = self.face.is_some_and(|f| f < m.mesh.faces.len());
         crate::props::row(ui, "Face", |ui| match self.face.filter(|_| on) {
-            Some(f) => ui.label(format!("{} ({} corners)", f + 1, m.mesh.faces[f].len())),
-            None => ui.label(egui::RichText::new("click one in a view").weak()),
+            Some(f) => ui.label(crate::i18n::tr(&format!(
+                "{} ({} corners)",
+                f + 1,
+                m.mesh.faces[f].len()
+            ))),
+            None => ui.label(egui::RichText::new(crate::i18n::t("click one in a view")).weak()),
         });
         crate::props::row(ui, "Distance", |ui| {
             crate::props::fill(ui, crate::units::drag(&mut self.extrude_distance))
-                .on_hover_text("How far Extrude and Move go")
+                .on_hover_text(crate::i18n::t("How far Extrude and Move go"))
         });
         let (ex, mv) = crate::props::actions2(
             ui,
@@ -5630,7 +5641,9 @@ impl CreaBimApp {
                 ui,
                 crate::units::drag(&mut self.inset_by).range(0.001..=100.0),
             )
-            .on_hover_text("How far inside its edges Inset draws the new face")
+            .on_hover_text(crate::i18n::t(
+                "How far inside its edges Inset draws the new face",
+            ))
         });
         let (ins, tap) = crate::props::actions2(
             ui,
@@ -5716,23 +5729,38 @@ impl CreaBimApp {
         // the ⋯ menu: copy and save, and tidying
         crate::props::flow(ui, |ui| {
             let open = info.pad.iter().filter(|i| i.todo && !i.done).count();
-            ui.label(egui::RichText::new(format!("{} items · {open} open", info.pad.len())).weak());
+            ui.label(
+                egui::RichText::new(crate::i18n::tr(&format!(
+                    "{} items · {open} open",
+                    info.pad.len()
+                )))
+                .weak(),
+            );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.menu_button("\u{22ef}", |ui| {
-                    if ui.button("Copy all").clicked() {
+                ui.menu_button(crate::i18n::t("\u{22ef}"), |ui| {
+                    if ui.button(crate::i18n::t("Copy all")).clicked() {
                         export = Some("copy");
                         ui.close();
                     }
-                    if ui.button("Save as text (.txt)\u{2026}").clicked() {
+                    if ui
+                        .button(crate::i18n::t("Save as text (.txt)\u{2026}"))
+                        .clicked()
+                    {
                         export = Some("txt");
                         ui.close();
                     }
-                    if ui.button("Save as Markdown (.md)\u{2026}").clicked() {
+                    if ui
+                        .button(crate::i18n::t("Save as Markdown (.md)\u{2026}"))
+                        .clicked()
+                    {
                         export = Some("md");
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Remove the done to-dos").clicked() {
+                    if ui
+                        .button(crate::i18n::t("Remove the done to-dos"))
+                        .clicked()
+                    {
                         export = Some("clean");
                         ui.close();
                     }
@@ -5759,7 +5787,7 @@ impl CreaBimApp {
                 continue;
             }
             if idx.is_empty() {
-                ui.label(egui::RichText::new("None yet.").weak());
+                ui.label(egui::RichText::new(crate::i18n::t("None yet.")).weak());
             }
             for k in idx {
                 let item = &mut info.pad[k];
@@ -5786,17 +5814,17 @@ impl CreaBimApp {
                         editing = None;
                     }
                     crate::props::flow(ui, |ui| {
-                        ui.checkbox(&mut item.todo, "To-do");
+                        ui.checkbox(&mut item.todo, crate::i18n::t("To-do"));
                         match item.link {
                             Some(_) => {
-                                if ui.small_button("Unlink").clicked() {
+                                if ui.small_button(crate::i18n::t("Unlink")).clicked() {
                                     item.link = None;
                                 }
                             }
                             None => {
                                 if ui
-                                    .add_enabled(target.is_some(), egui::Button::new("Link to the selection").small())
-                                    .on_hover_text("Ties it to the element selected, or else the view in front")
+                                    .add_enabled(target.is_some(), egui::Button::new(crate::i18n::t("Link to the selection")).small())
+                                    .on_hover_text(crate::i18n::t("Ties it to the element selected, or else the view in front"))
                                     .clicked()
                                 {
                                     item.link = target;
@@ -5882,7 +5910,10 @@ impl CreaBimApp {
                         );
                     }
                 }
-                if resp.on_hover_text(item.text.as_str()).double_clicked() {
+                if resp
+                    .on_hover_text(crate::i18n::tr(item.text.as_str()))
+                    .double_clicked()
+                {
                     editing = Some(k);
                     ui.ctx()
                         .data_mut(|d| d.insert_temp(egui::Id::new("pad.focus"), k));
@@ -5908,7 +5939,7 @@ impl CreaBimApp {
             );
             if ui
                 .selectable_label(as_todo, crate::i18n::tw("To-do"))
-                .on_hover_text("Add it as a to-do (else a note)")
+                .on_hover_text(crate::i18n::t("Add it as a to-do (else a note)"))
                 .clicked()
             {
                 as_todo = !as_todo;
@@ -6052,9 +6083,14 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 crate::props::flow(ui, |ui| {
-                    changed |= ui.checkbox(&mut n.markdown, "Markdown").changed();
+                    changed |= ui
+                        .checkbox(&mut n.markdown, crate::i18n::t("Markdown"))
+                        .changed();
                     ui.label(
-                        egui::RichText::new("# heading  - bullet  1. numbered  - [ ] to do").weak(),
+                        egui::RichText::new(crate::i18n::t(
+                            "# heading  - bullet  1. numbered  - [ ] to do",
+                        ))
+                        .weak(),
                     );
                 });
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -6853,8 +6889,8 @@ impl CreaBimApp {
     /// with an offset along the plane's normal.
     fn workplane_bar(&mut self, ui: &mut egui::Ui) {
         ui.separator();
-        ui.label("Workplane:").on_hover_text(
-            "Where sketches and guides drawn in 3D go. Plans draw on their level and sections on the section plane.",
+        ui.label(crate::i18n::t("Workplane:")).on_hover_text(
+            crate::i18n::t("Where sketches and guides drawn in 3D go. Plans draw on their level and sections on the section plane."),
         );
         let text = match &self.workplane {
             Some((_, name)) => name.clone(),
@@ -6877,15 +6913,18 @@ impl CreaBimApp {
                     self.geometry_key = None;
                     self.status = "Workplane: the working level.".into();
                 }
-                if ui.button("Pick a face…").clicked() {
+                if ui.button(crate::i18n::t("Pick a face…")).clicked() {
                     self.plane_pick = Some(PlanePick::Face);
                 }
-                if ui.button("Through three points…").clicked() {
+                if ui.button(crate::i18n::t("Through three points…")).clicked() {
                     self.plane_pick = Some(PlanePick::Points(vec![]));
                 }
                 let level = self.work_level();
                 if let Some((_, z)) = level {
-                    if ui.button("Level plane you can offset").clicked() {
+                    if ui
+                        .button(crate::i18n::t("Level plane you can offset"))
+                        .clicked()
+                    {
                         self.set_workplane(
                             Workplane::ground(z),
                             format!("level at {}", crate::units::elevation(z)),
@@ -6896,8 +6935,10 @@ impl CreaBimApp {
         if let Some((plane, _)) = self.workplane.as_mut() {
             let mut d = 0.0;
             let r = ui
-                .add(crate::units::drag(&mut d).prefix("Offset ± "))
-                .on_hover_text("Drag to slide the workplane along its normal");
+                .add(crate::units::drag(&mut d).prefix(crate::i18n::t("Offset ± ")))
+                .on_hover_text(crate::i18n::t(
+                    "Drag to slide the workplane along its normal",
+                ));
             if r.changed() && d != 0.0 {
                 plane.origin += plane.normal() * d;
                 self.geometry_key = None;
@@ -6910,7 +6951,7 @@ impl CreaBimApp {
             for t in Tool::ALL {
                 if ui
                     .selectable_label(self.plan.tool == t, crate::i18n::tw(t.label()))
-                    .on_hover_text(t.hint())
+                    .on_hover_text(crate::i18n::tr(t.hint()))
                     .clicked()
                 {
                     // a detail path being drawn is kept, not dropped
@@ -6920,9 +6961,10 @@ impl CreaBimApp {
                 }
             }
             ui.separator();
-            ui.label("Pivot:").on_hover_text(
-                "What R and S turn and scale about. Shift+right-click places the pivot cursor.",
-            );
+            ui.label(crate::i18n::t("Pivot:"))
+                .on_hover_text(crate::i18n::t(
+                    "What R and S turn and scale about. Shift+right-click places the pivot cursor.",
+                ));
             egui::ComboBox::from_id_salt("pivot")
                 .icon(crate::props::combo_icon)
                 .selected_text(crate::i18n::tw(self.plan.pivot.label()))
@@ -6936,7 +6978,7 @@ impl CreaBimApp {
             self.workplane_bar(ui);
             snaps::snap_bar(ui, &mut self.plan.snap);
             ui.separator();
-            ui.label("View:");
+            ui.label(crate::i18n::t("View:"));
             let current = self
                 .active_view
                 .and_then(|id| self.doc.model().get(id))
@@ -6962,7 +7004,7 @@ impl CreaBimApp {
                     }
                     if !sheet_list.is_empty() {
                         ui.separator();
-                        ui.label(egui::RichText::new("Sheets").weak());
+                        ui.label(egui::RichText::new(crate::i18n::t("Sheets")).weak());
                     }
                     for (id, name) in sheet_list {
                         ui.selectable_value(&mut self.active_view, Some(id), crate::i18n::tw(name));
@@ -6983,7 +7025,7 @@ impl CreaBimApp {
                         ViewKind::Axonometric { altitude, .. } => ("Altitude:", altitude, "°"),
                         ViewKind::Schedule { .. } => return,
                     };
-                    ui.label(text);
+                    ui.label(crate::i18n::tr(text));
                     let field = if unit == "°" {
                         egui::DragValue::new(value)
                             .speed(0.05)
@@ -7001,8 +7043,10 @@ impl CreaBimApp {
                         self.report(r, "View changed.");
                     }
                     if ui
-                        .button("Tag doors and windows")
-                        .on_hover_text("Tag every door and window in this view that has no tag yet")
+                        .button(crate::i18n::t("Tag doors and windows"))
+                        .on_hover_text(crate::i18n::t(
+                            "Tag every door and window in this view that has no tag yet",
+                        ))
                         .clicked()
                     {
                         let r = planview::tag_openings(&mut self.doc, id);
@@ -7016,9 +7060,9 @@ impl CreaBimApp {
                     }
                     if matches!(v.kind, ViewKind::Plan { .. })
                         && ui
-                            .button("Tag fixtures")
+                            .button(crate::i18n::t("Tag fixtures"))
                             .on_hover_text(
-                                "Tag every socket, switch, light, drain, radiator and other fixture on this plan with its type's mark",
+                                crate::i18n::t("Tag every socket, switch, light, drain, radiator and other fixture on this plan with its type's mark"),
                             )
                             .clicked()
                     {
@@ -7031,7 +7075,7 @@ impl CreaBimApp {
                     }
                 }
             }
-            ui.label("Wall thickness:");
+            ui.label(crate::i18n::t("Wall thickness:"));
             ui.add(crate::units::drag(&mut self.plan.wall_thickness).range(0.05..=1.0));
             egui::ComboBox::from_id_salt("wall_location")
                 .icon(crate::props::combo_icon)
@@ -7045,7 +7089,7 @@ impl CreaBimApp {
                         );
                     }
                 });
-            ui.checkbox(&mut self.plan.wall_flip, "Exterior left");
+            ui.checkbox(&mut self.plan.wall_flip, crate::i18n::t("Exterior left"));
         });
     }
 
@@ -7150,7 +7194,7 @@ impl CreaBimApp {
                         .changed();
                 }
                 ui.separator();
-                create = ui.button("New material…").clicked();
+                create = ui.button(crate::i18n::t("New material…")).clicked();
             });
         if create {
             let e = Element::new(
@@ -7168,7 +7212,7 @@ impl CreaBimApp {
 
     fn outliner(&mut self, ui: &mut egui::Ui) {
         let _perf = Perf::new("outliner");
-        ui.heading("Model");
+        ui.heading(crate::i18n::t("Model"));
         egui::ScrollArea::vertical().show(ui, |ui| {
             let mut groups: Vec<(String, Vec<(ElementId, String)>)> = Vec::new();
             for e in self.doc.model().iter() {
@@ -7197,7 +7241,7 @@ impl CreaBimApp {
                 .show_header(ui, |ui| {
                     let (r, _) = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
                     Icon::of_class(&class).paint(ui.painter(), r);
-                    ui.label(title);
+                    ui.label(crate::i18n::tr(&title));
                 })
                 .body(|ui| {
                     for (id, name) in items {
@@ -7260,7 +7304,7 @@ impl CreaBimApp {
             .collect();
         candidates.sort_by_key(|c| c.0);
         ui.separator();
-        ui.label("Booleans");
+        ui.label(crate::i18n::t("Booleans"));
         let mut remove = None;
         let mut select = None;
         let mut set_op = None;
@@ -7281,11 +7325,11 @@ impl CreaBimApp {
                             }
                         }
                     });
-                ui.label(name.as_str());
-                if ui.small_button("Select").clicked() {
+                ui.label(crate::i18n::tr(name.as_str()));
+                if ui.small_button(crate::i18n::t("Select")).clicked() {
                     select = Some(*cid);
                 }
-                if ui.small_button("Remove").clicked() {
+                if ui.small_button(crate::i18n::t("Remove")).clicked() {
                     remove = Some(*cid);
                 }
             });
@@ -7303,7 +7347,7 @@ impl CreaBimApp {
             });
         ui.label(
             egui::RichText::new(
-                "Pick an element to cut away. It turns into a see-through ghost you can still select and move.",
+                crate::i18n::t("Pick an element to cut away. It turns into a see-through ghost you can still select and move."),
             )
             .weak(),
         );
@@ -7362,16 +7406,19 @@ impl CreaBimApp {
         }
         let tool = self.plan.tool;
         ui.label(
-            egui::RichText::new(format!("Next {}", tool.label().to_lowercase()))
-                .strong()
-                .size(15.0),
+            egui::RichText::new(crate::i18n::tr(&format!(
+                "Next {}",
+                tool.label().to_lowercase()
+            )))
+            .strong()
+            .size(15.0),
         );
         if let Some(t) = typesui_type_name(self, tool) {
-            ui.label(egui::RichText::new(format!("Type: {t}")).weak());
+            ui.label(egui::RichText::new(crate::i18n::tr(&format!("Type: {t}"))).weak());
         }
         ui.label(
             egui::RichText::new(
-                "Set it before you click; the ghost shows it. The same settings are in the tool bar.",
+                crate::i18n::t("Set it before you click; the ghost shows it. The same settings are in the tool bar."),
             )
             .weak(),
         );
@@ -7381,7 +7428,7 @@ impl CreaBimApp {
                 let (lo, hi) = c.object.bounds();
                 let s = hi - lo;
                 ui.label(
-                    egui::RichText::new(format!(
+                    egui::RichText::new(crate::i18n::tr(&format!(
                         "{}: {} × {} × {}, {}",
                         c.name,
                         crate::units::len(s.x),
@@ -7392,7 +7439,7 @@ impl CreaBimApp {
                             creabim_core::objects::Mount::Floor => "on the floor",
                             creabim_core::objects::Mount::Ceiling => "hung from the ceiling",
                         }
-                    ))
+                    )))
                     .weak(),
                 );
             }
@@ -7419,22 +7466,30 @@ impl CreaBimApp {
                             ui,
                             egui::DragValue::new(&mut v)
                                 .range(lo..=hi)
-                                .suffix(format!(" {unit}")),
+                                .suffix(crate::i18n::tr(&format!(" {unit}"))),
                         )
                     };
-                    r.on_hover_text(hint).changed()
+                    r.on_hover_text(crate::i18n::tr(hint)).changed()
                 });
                 if changed {
                     set.push((key, v));
                 }
             } else if o["action"].as_bool().unwrap_or(false) {
                 // a step, not a setting: a button
-                if ui.button(label).on_hover_text(hint).clicked() {
+                if ui
+                    .button(crate::i18n::tr(&label))
+                    .on_hover_text(crate::i18n::tr(hint))
+                    .clicked()
+                {
                     act.push(o["id"].as_str().unwrap_or("").to_string());
                 }
             } else {
                 let mut on = o["on"].as_bool().unwrap_or(false);
-                if ui.checkbox(&mut on, label).on_hover_text(hint).changed() {
+                if ui
+                    .checkbox(&mut on, crate::i18n::tr(&label))
+                    .on_hover_text(crate::i18n::tr(hint))
+                    .changed()
+                {
                     act.push(o["id"].as_str().unwrap_or("").to_string());
                 }
             }
@@ -7524,11 +7579,11 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_width(240.0);
-                    ui.label(egui::RichText::new("Add").strong());
+                    ui.label(egui::RichText::new(crate::i18n::t("Add")).strong());
                     let r = ui.add(
                         egui::TextEdit::singleline(&mut q)
                             .vertical_align(egui::Align::Center)
-                            .hint_text("Type to find a tool"),
+                            .hint_text(crate::i18n::t("Type to find a tool")),
                     );
                     r.request_focus();
                     let want = q.to_lowercase();
@@ -7543,7 +7598,7 @@ impl CreaBimApp {
                             for t in &found {
                                 if ui
                                     .add(egui::Button::new(t.label()).frame(false))
-                                    .on_hover_text(t.hint())
+                                    .on_hover_text(crate::i18n::tr(t.hint()))
                                     .clicked()
                                 {
                                     pick = Some(*t);
@@ -7554,7 +7609,9 @@ impl CreaBimApp {
                         pick = found.first().copied();
                     }
                     if found.is_empty() {
-                        ui.label(egui::RichText::new("Nothing by that name").weak());
+                        ui.label(
+                            egui::RichText::new(crate::i18n::t("Nothing by that name")).weak(),
+                        );
                     }
                 });
             });
@@ -7854,7 +7911,7 @@ impl CreaBimApp {
                                 ExportScope::This,
                                 crate::i18n::tw("This one"),
                             )
-                            .on_disabled_hover_text("Open a sheet first");
+                            .on_disabled_hover_text(crate::i18n::t("Open a sheet first"));
                         });
                     })
                 });
@@ -7881,13 +7938,18 @@ impl CreaBimApp {
                     })
                 });
                 crate::props::row(ui, "Paper", |ui| {
-                    ui.label(egui::RichText::new("As printed: white, at the sheets' sizes").weak())
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t(
+                            "As printed: white, at the sheets' sizes",
+                        ))
+                        .weak(),
+                    )
                 });
                 ui.add_space(6.0);
                 crate::props::flow(ui, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        go = ui.button("Export…").clicked();
-                        cancel = ui.button("Cancel").clicked();
+                        go = ui.button(crate::i18n::t("Export…")).clicked();
+                        cancel = ui.button(crate::i18n::t("Cancel")).clicked();
                     });
                 });
             });
@@ -8016,7 +8078,7 @@ impl CreaBimApp {
             })
             .collect();
         if here.is_empty() {
-            ui.label(egui::RichText::new("None yet: add one below.").weak());
+            ui.label(egui::RichText::new(crate::i18n::t("None yet: add one below.")).weak());
         }
         let mut add = None;
         // one row of equal buttons, as Blender's Add row (MU27)
@@ -8035,10 +8097,12 @@ impl CreaBimApp {
                     }
                 })
                 .response
-                .on_hover_text("Another plan or section of this project, under this one");
+                .on_hover_text(crate::i18n::t(
+                    "Another plan or section of this project, under this one",
+                ));
             if ui
-                .add_sized([w, 22.0], egui::Button::new("+ Picture"))
-                .on_hover_text("A picture to trace over: a scanned plan, a photo of a sketch (PNG or JPEG). Calibrate it to size in its properties.")
+                .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("+ Picture")))
+                .on_hover_text(crate::i18n::t("A picture to trace over: a scanned plan, a photo of a sketch (PNG or JPEG). Calibrate it to size in its properties."))
                 .clicked()
             {
                 if let Some(p) = rfd::FileDialog::new()
@@ -8050,8 +8114,8 @@ impl CreaBimApp {
                 }
             }
             if ui
-                .add_sized([w, 22.0], egui::Button::new("+ DXF"))
-                .on_hover_text("A CAD drawing's lines (DXF). A DWG opens here once saved as DXF: any CAD program, or the free ODA File Converter, does it offline.")
+                .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("+ DXF")))
+                .on_hover_text(crate::i18n::t("A CAD drawing's lines (DXF). A DWG opens here once saved as DXF: any CAD program, or the free ODA File Converter, does it offline."))
                 .clicked()
             {
                 if let Some(p) = rfd::FileDialog::new()
@@ -8066,7 +8130,7 @@ impl CreaBimApp {
                 }
             }
             if ui
-                .add_sized([w, 22.0], egui::Button::new("+ PDF"))
+                .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("+ PDF")))
                 .on_hover_text(crate::i18n::tr("A PDF drawing's lines, fills and texts at its scale 1:N (100 unless changed in its properties); a scanned page comes as a picture."))
                 .clicked()
             {
@@ -8119,7 +8183,7 @@ impl CreaBimApp {
                                 [ui.available_width(), 22.0],
                                 egui::Button::selectable(on, name.as_str()).truncate(),
                             )
-                            .on_hover_text(name.as_str())
+                            .on_hover_text(crate::i18n::tr(name.as_str()))
                             .clicked()
                         {
                             select = Some(*id);
@@ -8279,11 +8343,11 @@ impl CreaBimApp {
         if let Some((pv, pname)) = &on_profile {
             crate::props::row(ui, "Shown in", |ui| {
                 if ui
-                    .checkbox(&mut r.only_profile, "Only in this profile")
-                    .on_hover_text(
+                    .checkbox(&mut r.only_profile, crate::i18n::t("Only in this profile"))
+                    .on_hover_text(crate::i18n::t(
                         "Kept to this profile: not in the plans, sections or 3D. \
                          Untick it to show it in other views too.",
-                    )
+                    ))
                     .changed()
                 {
                     if r.only_profile {
@@ -8298,7 +8362,9 @@ impl CreaBimApp {
             });
             if r.only_profile {
                 crate::props::row(ui, "", |ui| {
-                    ui.label(egui::RichText::new(format!("Profile: {pname}")).weak());
+                    ui.label(
+                        egui::RichText::new(crate::i18n::tr(&format!("Profile: {pname}"))).weak(),
+                    );
                 });
             }
         }
@@ -8321,7 +8387,7 @@ impl CreaBimApp {
                     .show_ui(ui, |ui| {
                         for (v, name) in &views {
                             let mut on = r.shown_in.contains(v);
-                            if ui.checkbox(&mut on, name).changed() {
+                            if ui.checkbox(&mut on, crate::i18n::tr(name)).changed() {
                                 if on {
                                     r.shown_in.push(*v);
                                 } else {
@@ -8366,7 +8432,7 @@ impl CreaBimApp {
                             egui::Stroke::new(1.5, ui.visuals().text_color()),
                         );
                     }
-                    resp.on_hover_text(tip).clicked()
+                    resp.on_hover_text(crate::i18n::tr(tip)).clicked()
                 };
                 if swatch(ui, None, r.colour.is_none(), "Its own colours") {
                     r.colour = None;
@@ -8415,9 +8481,9 @@ impl CreaBimApp {
         // (MU34)
         if !r.only_profile && crate::props::subsection(ui, "ref.3d", "In 3D", true) {
             if crate::props::switch(ui, &mut r.in_3d, "Shown")
-                .on_hover_text(
+                .on_hover_text(crate::i18n::t(
                     "Shown in the 3D view too, where its views are; off, only in its views",
-                )
+                ))
                 .changed()
             {
                 label = Some("Reference in 3D");
@@ -8518,7 +8584,7 @@ impl CreaBimApp {
                         egui::DragValue::new(&mut d)
                             .range(10.0..=4800.0)
                             .max_decimals(0)
-                            .suffix(" DPI"),
+                            .suffix(crate::i18n::t(" DPI")),
                     )
                 });
                 crate::props::row(ui, "Drawing scale", |ui| {
@@ -8565,7 +8631,7 @@ impl CreaBimApp {
                         ui,
                         egui::DragValue::new(page)
                             .range(1..=pages)
-                            .suffix(format!(" / {pages}")),
+                            .suffix(crate::i18n::tr(&format!(" / {pages}"))),
                     )
                 });
             }
@@ -8627,7 +8693,7 @@ impl CreaBimApp {
                         .show(ui, |ui| {
                             for l in &layers {
                                 let mut on = !r.layers_off.contains(l);
-                                if ui.checkbox(&mut on, l).changed() {
+                                if ui.checkbox(&mut on, crate::i18n::tr(l)).changed() {
                                     if on {
                                         r.layers_off.retain(|x| x != l);
                                     } else {
@@ -8641,11 +8707,11 @@ impl CreaBimApp {
                 if d.has3d {
                     if let Some((lo, hi)) = d.z_range() {
                         crate::props::row(ui, "Heights", |ui| {
-                            ui.label(format!(
+                            ui.label(crate::i18n::tr(&format!(
                                 "{} – {} m",
                                 crate::i18n::num(lo, 2),
                                 crate::i18n::num(hi, 2)
-                            ))
+                            )))
                         });
                         if ui
                             .add_sized(
@@ -8706,7 +8772,7 @@ impl CreaBimApp {
             {
                 if ui
                     .add_sized([w, 24.0], egui::Button::new(text).truncate())
-                    .on_hover_text(tip)
+                    .on_hover_text(crate::i18n::tr(tip))
                     .clicked()
                 {
                     pressed = Some(i);
@@ -8719,15 +8785,17 @@ impl CreaBimApp {
         let copy_btn = ui
             .add_sized(
                 [ui.available_width(), 24.0],
-                egui::Button::new("Copy to view…").truncate(),
+                egui::Button::new(crate::i18n::t("Copy to view…")).truncate(),
             )
-            .on_hover_text("A copy of it in another view, with its own place, size and settings");
+            .on_hover_text(crate::i18n::t(
+                "A copy of it in another view, with its own place, size and settings",
+            ));
         egui::Popup::menu(&copy_btn).show(|ui| {
             for (v, name) in &views {
                 if r.shown_in.contains(v) {
                     continue;
                 }
-                if ui.button(name).clicked() {
+                if ui.button(crate::i18n::tr(name)).clicked() {
                     copy_to = Some(*v);
                     ui.close();
                 }
@@ -8930,16 +8998,16 @@ impl CreaBimApp {
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
-                ui.label(format!(
+                ui.label(crate::i18n::tr(&format!(
                     "The two points are {} apart now. How far apart should they be?",
                     crate::units::len(a.distance(b))
-                ));
+                )));
                 let r = ui.add(crate::units::drag(&mut d).range(0.001..=100000.0));
                 r.request_focus();
                 crate::props::flow(ui, |ui| {
-                    go = ui.button("Scale it").clicked()
+                    go = ui.button(crate::i18n::t("Scale it")).clicked()
                         || ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    done = ui.button("Cancel").clicked();
+                    done = ui.button(crate::i18n::t("Cancel")).clicked();
                 });
             });
         ctx.data_mut(|m| m.insert_temp(id_d, d));
@@ -9052,7 +9120,7 @@ impl CreaBimApp {
                                                 s,
                                                 crate::i18n::tw(s.label()),
                                             )
-                                            .on_hover_text(s.hint());
+                                            .on_hover_text(crate::i18n::tr(s.hint()));
                                         }
                                     });
                             });
@@ -9238,16 +9306,21 @@ impl CreaBimApp {
         if self.prop_header(ui, "element", section, true, None) {
             match &mut edited.kind {
                 ElementKind::Level(l) => {
-                    if num(ui, "Elevation", &mut l.elevation, -100.0, 1000.0) {
+                    if num(ui, "level\u{4}Elevation", &mut l.elevation, -100.0, 1000.0) {
                         label = "Level elevation"
                     }
                     if num(ui, "Height", &mut l.height, 0.5, 50.0) {
                         label = "Level height"
                     }
-                    ui.label(egui::RichText::new("Moving a level moves everything on it.").weak());
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t(
+                            "Moving a level moves everything on it.",
+                        ))
+                        .weak(),
+                    );
                     if ui
-                        .button("Levels…")
-                        .on_hover_text("Add, duplicate, rename and delete levels")
+                        .button(crate::i18n::t("Levels…"))
+                        .on_hover_text(crate::i18n::t("Add, duplicate, rename and delete levels"))
                         .clicked()
                     {
                         self.open_levels();
@@ -9257,7 +9330,7 @@ impl CreaBimApp {
                 ElementKind::Wall(w) => {
                     let mut curtain = w.curtain.is_some();
                     if crate::props::switch(ui, &mut curtain, "Curtain wall")
-                    .on_hover_text("A grid of mullions holding glass or solid panels; doors in it take the place of panels")
+                    .on_hover_text(crate::i18n::t("A grid of mullions holding glass or solid panels; doors in it take the place of panels"))
                     .changed()
                 {
                     w.curtain = curtain.then(|| creabim_core::CurtainGrid {
@@ -9279,10 +9352,10 @@ impl CreaBimApp {
                                 .collect();
                         if !hosts.is_empty() {
                             ui.label(
-                            egui::RichText::new(format!(
+                            egui::RichText::new(crate::i18n::tr(&format!(
                                 "Set in {}: it cuts its own opening there, like a door, and the opening moves with it.",
                                 hosts.join(", ")
-                            ))
+                            )))
                             .weak(),
                         );
                         }
@@ -9307,10 +9380,10 @@ impl CreaBimApp {
                             )
                         });
                         if layered {
-                            ui.label(format!(
+                            ui.label(crate::i18n::tr(&format!(
                                 "Thickness {}, from its layers",
                                 crate::units::len(w.thickness)
-                            ));
+                            )));
                         } else if num(ui, "Thickness", &mut w.thickness, 0.02, 2.0) {
                             label = "Wall thickness"
                         }
@@ -9346,10 +9419,10 @@ impl CreaBimApp {
                     });
                     let mut thickness = s.thickness;
                     if layered {
-                        ui.label(format!(
+                        ui.label(crate::i18n::tr(&format!(
                             "Thickness {}, from its layers",
                             crate::units::len(s.thickness)
-                        ));
+                        )));
                     } else if num(ui, "Thickness", &mut thickness, 0.02, 3.0) {
                         s.set_thickness(thickness, self.plan.slab_keep_bottom);
                         label = "Slab thickness"
@@ -9447,7 +9520,7 @@ impl CreaBimApp {
                         label = l;
                     }
                     ui.separator();
-                    ui.label(egui::RichText::new("Frame").strong());
+                    ui.label(egui::RichText::new(crate::i18n::t("Frame")).strong());
                     if num(ui, "Frame width", &mut o.frame.width, 0.01, 0.5) {
                         label = "Frame width"
                     }
@@ -9497,13 +9570,15 @@ impl CreaBimApp {
                             )
                         };
                         if crate::props::switch(ui, by_type, what)
-                            .on_hover_text(hint)
+                            .on_hover_text(crate::i18n::tr(hint))
                             .changed()
                         {
                             label = undo
                         }
                     }
-                    if self.active_view != Some(id) && ui.button("Open this schedule").clicked() {
+                    if self.active_view != Some(id)
+                        && ui.button(crate::i18n::t("Open this schedule")).clicked()
+                    {
                         self.active_view = Some(id);
                     }
                 }
@@ -9540,7 +9615,7 @@ impl CreaBimApp {
                                 });
                             ui.label(
                             egui::RichText::new(
-                                "Another level drawn faintly under this one, to trace and snap to. Not printed.",
+                                crate::i18n::t("Another level drawn faintly under this one, to trace and snap to. Not printed."),
                             )
                             .weak(),
                         );
@@ -9590,7 +9665,10 @@ impl CreaBimApp {
                                 label = "Orbit 3D view"
                             }
                             ui.label(
-                                egui::RichText::new("Or drag in the view to orbit it.").weak(),
+                                egui::RichText::new(crate::i18n::t(
+                                    "Or drag in the view to orbit it.",
+                                ))
+                                .weak(),
                             );
                         }
                         ViewKind::Schedule { .. } => {}
@@ -9599,16 +9677,16 @@ impl CreaBimApp {
                         v.kind,
                         ViewKind::Plan { .. } | ViewKind::Section { cut: true, .. }
                     ) && crate::props::switch(ui, &mut v.room_colours, "Colour rooms")
-                        .on_hover_text(
+                        .on_hover_text(crate::i18n::t(
                             "Fill each room with a colour of its own, the same in every view",
-                        )
+                        ))
                         .changed()
                     {
                         label = "Colour rooms"
                     }
                     if matches!(v.kind, ViewKind::Plan { .. })
                         && crate::props::switch(ui, &mut v.ceiling_plan, "Reflected ceiling plan")
-                            .on_hover_text("Draw the ceilings and what hangs from them, not the floor and furniture")
+                            .on_hover_text(crate::i18n::t("Draw the ceilings and what hangs from them, not the floor and furniture"))
                             .changed()
                     {
                         label = "Ceiling plan"
@@ -9635,7 +9713,7 @@ impl CreaBimApp {
                                                 s,
                                                 crate::i18n::tw(s.label()),
                                             )
-                                            .on_hover_text(s.hint())
+                                            .on_hover_text(crate::i18n::tr(s.hint()))
                                             .changed()
                                         {
                                             label = "Drawing style";
@@ -9728,7 +9806,7 @@ impl CreaBimApp {
                         .get(vp.view)
                         .map(|e| e.name.clone())
                         .unwrap_or_default();
-                    ui.label(format!("Shows {view_name}"));
+                    ui.label(crate::i18n::tr(&format!("Shows {view_name}")));
                     // its scale is the view's: a new one redraws it at that
                     // size, round the viewport's centre
                     let view = vp.view;
@@ -9742,8 +9820,13 @@ impl CreaBimApp {
                     }
                     let mm = |ui: &mut egui::Ui, text: &str, v: &mut f64| {
                         crate::props::row(ui, text, |ui| {
-                            crate::props::fill(ui, egui::DragValue::new(v).speed(1.0).suffix(" mm"))
-                                .changed()
+                            crate::props::fill(
+                                ui,
+                                egui::DragValue::new(v)
+                                    .speed(1.0)
+                                    .suffix(crate::i18n::t(" mm")),
+                            )
+                            .changed()
                         })
                     };
                     if mm(ui, "Centre X", &mut vp.center.x) | mm(ui, "Centre Y", &mut vp.center.y) {
@@ -9772,11 +9855,11 @@ impl CreaBimApp {
                     }
                     ui.label(
                     egui::RichText::new(
-                        "Drag the view on the sheet to move it; double-click it to edit the model through it.",
+                        crate::i18n::t("Drag the view on the sheet to move it; double-click it to edit the model through it."),
                     )
                     .weak(),
                 );
-                    if ui.button("Open the view itself").clicked() {
+                    if ui.button(crate::i18n::t("Open the view itself")).clicked() {
                         self.active_view = Some(vp.view);
                     }
                     // its title on the sheet (MU27): its view's, so every
@@ -9799,7 +9882,7 @@ impl CreaBimApp {
                                         ui,
                                         egui::TextEdit::singleline(&mut t.text)
                                             .vertical_align(egui::Align::Center)
-                                            .hint_text("The view's name"),
+                                            .hint_text(crate::i18n::t("The view's name")),
                                     )
                                 });
                                 crate::props::row(ui, "Size", |ui| {
@@ -9808,7 +9891,7 @@ impl CreaBimApp {
                                         egui::DragValue::new(&mut t.size)
                                             .speed(0.1)
                                             .range(1.5..=10.0)
-                                            .suffix(" mm"),
+                                            .suffix(crate::i18n::t(" mm")),
                                     )
                                 });
                                 // its font, weight and colour: a text style
@@ -9857,13 +9940,17 @@ impl CreaBimApp {
                                     crate::props::row(ui, name, |ui| {
                                         crate::props::fill(
                                             ui,
-                                            egui::DragValue::new(v).speed(0.5).suffix(" mm"),
+                                            egui::DragValue::new(v)
+                                                .speed(0.5)
+                                                .suffix(crate::i18n::t(" mm")),
                                         )
                                     });
                                 }
                                 ui.label(
-                                    egui::RichText::new("Or drag the title itself on the sheet.")
-                                        .weak(),
+                                    egui::RichText::new(crate::i18n::t(
+                                        "Or drag the title itself on the sheet.",
+                                    ))
+                                    .weak(),
                                 );
                             }
                         }
@@ -9949,12 +10036,12 @@ impl CreaBimApp {
                     let (z0, z1) = s.span(self.doc.model());
                     let area = creabim_core::polygon::signed_area2(&s.boundary).abs() / 2.0;
                     ui.label(
-                    egui::RichText::new(format!(
+                    egui::RichText::new(crate::i18n::tr(&format!(
                         "From {} up to {}, {}. It cuts a hole in every slab and roof in between that it lies inside; move or reshape it (Edit) and they follow. Pick it in any view it passes through.",
                         crate::units::elevation(z0),
                         crate::units::elevation(z1),
                         crate::units::area(area)
-                    ))
+                    )))
                     .weak(),
                 );
                 }
@@ -9962,8 +10049,14 @@ impl CreaBimApp {
                     materials::preview(ui, m, 72.0);
                     label = materials::material_fields(ui, m);
                     let users = creabim_core::library::users(self.doc.model(), id).len();
-                    ui.label(egui::RichText::new(format!("Used by {users} elements.")).weak());
-                    if ui.button("Open in the material browser").clicked() {
+                    ui.label(
+                        egui::RichText::new(crate::i18n::tr(&format!("Used by {users} elements.")))
+                            .weak(),
+                    );
+                    if ui
+                        .button(crate::i18n::t("Open in the material browser"))
+                        .clicked()
+                    {
                         self.open_materials(Some(id));
                     }
                 }
@@ -9999,7 +10092,10 @@ impl CreaBimApp {
                     } else {
                         format!(" {}", crate::units::symbol())
                     };
-                    ui.label(format!("{}: {measured}{unit}", d.kind.label()));
+                    ui.label(crate::i18n::tr(&format!(
+                        "{}: {measured}{unit}",
+                        d.kind.label()
+                    )));
                     let attached = [Some(d.a), Some(d.b), d.center]
                         .iter()
                         .flatten()
@@ -10036,8 +10132,8 @@ impl CreaBimApp {
                             .clone()
                             .unwrap_or_else(|| creabim_core::annotation::SPOT_PATTERN.into());
                         crate::props::flow(ui, |ui| {
-                            ui.label("Reads").on_hover_text(
-                                "{elevation} in the project's units, {m} in metres (+0.45), {m3} to three places, {mm} in millimetres, {level} the level's name. For example: {m} FFL",
+                            ui.label(crate::i18n::t("Reads")).on_hover_text(
+                                crate::i18n::t("{elevation} in the project's units, {m} in metres (+0.45), {m3} to three places, {mm} in millimetres, {level} the level's name. For example: {m} FFL"),
                             );
                             if ui.text_edit_singleline(&mut pattern).changed() {
                                 d.pattern = Some(pattern.clone());
@@ -10080,7 +10176,7 @@ impl CreaBimApp {
                     {
                         let mut own = d.format.is_some();
                         if crate::props::switch(ui, &mut own, "Own format")
-                            .on_hover_text("This dimension writes its number its own way; off, it follows Dimensions in the style pack")
+                            .on_hover_text(crate::i18n::t("This dimension writes its number its own way; off, it follows Dimensions in the style pack"))
                             .changed()
                         {
                             d.format = own.then(Default::default);
@@ -10120,9 +10216,9 @@ impl CreaBimApp {
                         .get(t.host)
                         .map(|e| e.name.clone())
                         .unwrap_or_default();
-                    ui.label(format!("Tags {host}"));
+                    ui.label(crate::i18n::tr(&format!("Tags {host}")));
                     if crate::props::switch(ui, &mut t.material, "Reads the material")
-                        .on_hover_text("A material tag: its material, or its layers one line each, outside to inside")
+                        .on_hover_text(crate::i18n::t("A material tag: its material, or its layers one line each, outside to inside"))
                         .changed()
                     {
                         label = "Tag reads";
@@ -10132,7 +10228,10 @@ impl CreaBimApp {
                     {
                         label = "Move tag"
                     }
-                    if ui.button("Select the tagged element").clicked() {
+                    if ui
+                        .button(crate::i18n::t("Select the tagged element"))
+                        .clicked()
+                    {
                         self.selection.only(t.host);
                     }
                     if matches!(
@@ -10154,10 +10253,10 @@ impl CreaBimApp {
                         }
                         if t.end.is_some()
                             && ui
-                                .button("Leader back to the centre")
-                                .on_hover_text(
+                                .button(crate::i18n::t("Leader back to the centre"))
+                                .on_hover_text(crate::i18n::t(
                                     "Its leader points at the middle of what it tags again",
-                                )
+                                ))
                                 .clicked()
                         {
                             t.end = None;
@@ -10214,7 +10313,9 @@ impl CreaBimApp {
                             let r = if on_sheet {
                                 crate::props::fill(
                                     ui,
-                                    egui::DragValue::new(v).speed(0.5).suffix(" mm"),
+                                    egui::DragValue::new(v)
+                                        .speed(0.5)
+                                        .suffix(crate::i18n::t(" mm")),
                                 )
                             } else {
                                 crate::props::fill(ui, crate::units::drag(v))
@@ -10226,12 +10327,12 @@ impl CreaBimApp {
                     }
                 }
                 ElementKind::Units(_) => {
-                    if ui.button("Project units…").clicked() {
+                    if ui.button(crate::i18n::t("Project units…")).clicked() {
                         self.levels.units_open = true;
                     }
                 }
                 ElementKind::Project(_) => {
-                    if ui.button("Project information…").clicked() {
+                    if ui.button(crate::i18n::t("Project information…")).clicked() {
                         self.project_open = true;
                     }
                 }
@@ -10251,13 +10352,13 @@ impl CreaBimApp {
                     }
                 }
                 ElementKind::MarkRules(_) => {
-                    if ui.button("Mark numbering…").clicked() {
+                    if ui.button(crate::i18n::t("Mark numbering…")).clicked() {
                         self.marks.open = true;
                     }
                 }
                 ElementKind::StylePack(p) => {
                     ui.label(egui::RichText::new(p.description.clone()).weak());
-                    if ui.button("Graphic styles…").clicked() {
+                    if ui.button(crate::i18n::t("Graphic styles…")).clicked() {
                         self.gstyles.open = true;
                     }
                 }
@@ -10267,19 +10368,22 @@ impl CreaBimApp {
                     }
                     let users = crate::annotate::style_users(self.doc.model(), id);
                     ui.label(
-                        egui::RichText::new(format!(
+                        egui::RichText::new(crate::i18n::tr(&format!(
                             "Used by {users} dimensions, tags and notes. Rename it above."
-                        ))
+                        )))
                         .weak(),
                     );
                     crate::props::flow(ui, |ui| {
                         if ui
-                            .add_enabled(users > 0, egui::Button::new("Select all using it"))
+                            .add_enabled(
+                                users > 0,
+                                egui::Button::new(crate::i18n::t("Select all using it")),
+                            )
                             .clicked()
                         {
                             self.select_style_users(id);
                         }
-                        if ui.button("Annotation styles…").clicked() {
+                        if ui.button(crate::i18n::t("Annotation styles…")).clicked() {
                             self.open_styles(Some(id));
                         }
                     });
@@ -10289,14 +10393,17 @@ impl CreaBimApp {
                         .into_iter()
                         .filter(|(_, s)| s.template == Some(id))
                         .count();
-                    ui.label(egui::RichText::new(format!("Used by {users} sheets.")).weak());
-                    if ui.button("Sheet templates…").clicked() {
+                    ui.label(
+                        egui::RichText::new(crate::i18n::tr(&format!("Used by {users} sheets.")))
+                            .weak(),
+                    );
+                    if ui.button(crate::i18n::t("Sheet templates…")).clicked() {
                         self.drafting.templates_open = true;
                     }
                 }
                 ElementKind::Grid(g) => {
                     crate::props::flow(ui, |ui| {
-                        ui.label("Label");
+                        ui.label(crate::i18n::t("Label"));
                         if let Some((_, gg)) = creabim_core::grids::group_of(self.doc.model(), g) {
                             ui.label(egui::RichText::new(&gg.prefix).weak());
                         }
@@ -10395,7 +10502,7 @@ impl CreaBimApp {
                         let deg = |ui: &mut egui::Ui, name: &str, v: &mut f64| {
                             crate::props::row(ui, name, |ui| {
                                 crate::props::fill(ui, egui::DragValue::new(v).speed(1.0).suffix("°"))
-                                    .on_hover_text("Turns about this axis through its origin. R in a view turns it with the pointer; X, Y or Z then keeps to an axis.")
+                                    .on_hover_text(crate::i18n::t("Turns about this axis through its origin. R in a view turns it with the pointer; X, Y or Z then keeps to an axis."))
                                     .changed()
                             })
                         };
@@ -10414,7 +10521,7 @@ impl CreaBimApp {
                                 .speed(0.01)
                                 .range(0.01..=100.0),
                         )
-                        .on_hover_text("M moves by a base point. With the pointer over a view: G moves, R rotates, S scales, Shift+D duplicates.")
+                        .on_hover_text(crate::i18n::t("M moves by a base point. With the pointer over a view: G moves, R rotates, S scales, Shift+D duplicates."))
                         .changed()
                         {
                             label = "Scale mesh"
@@ -10422,17 +10529,17 @@ impl CreaBimApp {
                     });
 
                     ui.label(
-                        egui::RichText::new(format!(
+                        egui::RichText::new(crate::i18n::tr(&format!(
                             "Modifiers: {} (the wrench tab)",
                             m.modifiers.len()
-                        ))
+                        )))
                         .weak(),
                     );
-                    ui.label(format!(
+                    ui.label(crate::i18n::tr(&format!(
                         "{} vertices, {} faces",
                         m.mesh.vertices.len(),
                         m.mesh.faces.len()
-                    ));
+                    )));
                 }
                 ElementKind::Cut(c) => {
                     let name = |id| {
@@ -10441,12 +10548,12 @@ impl CreaBimApp {
                             .get(id)
                             .map_or("(missing)".to_string(), |e| e.name.clone())
                     };
-                    ui.label(format!(
+                    ui.label(crate::i18n::tr(&format!(
                         "{} {} with {}",
                         c.op.label(),
                         name(c.target),
                         name(c.cutter)
-                    ));
+                    )));
                     for op in BoolOp::ALL {
                         if ui.radio_value(&mut c.op, op, op.label()).changed() {
                             label = "Change boolean";
@@ -10469,10 +10576,10 @@ impl CreaBimApp {
                     label = crate::detailtool::detail_fields(ui, d);
                 }
                 ElementKind::RoomSeparator(sep) => {
-                    ui.label(format!(
+                    ui.label(crate::i18n::tr(&format!(
                         "{} long. Rooms on either side of it are measured apart.",
                         crate::units::len(sep.a.distance(sep.b))
-                    ));
+                    )));
                 }
                 ElementKind::Object(o) => {
                     let hung = creabim_core::objects::hung(self.doc.model(), &e);
@@ -10551,9 +10658,9 @@ impl CreaBimApp {
                 }
                 ElementKind::Guide(g) => {
                     ui.label(
-                        egui::RichText::new(
+                        egui::RichText::new(crate::i18n::t(
                             "A construction line to snap to. It is never printed or exported.",
-                        )
+                        ))
                         .weak(),
                     );
                     if num(ui, "From X", &mut g.a.x, -1e4, 1e4)
@@ -10861,7 +10968,7 @@ impl CreaBimApp {
         });
         if let Some(m) = multi.take() {
             ui.add(egui::Label::new(egui::RichText::new(m).weak().small()).truncate())
-                .on_hover_text("G, R, S, Shift+D, Delete, Ctrl+C and H act on all of them. Below is the last one picked; Shift+click picks another.");
+                .on_hover_text(crate::i18n::t("G, R, S, Shift+D, Delete, Ctrl+C and H act on all of them. Below is the last one picked; Shift+click picks another."));
         }
         if marksui::markable(&e.kind) {
             crate::props::head_row(ui, "Mark", |ui| {
@@ -11010,19 +11117,19 @@ impl CreaBimApp {
         } else {
             info.name.clone()
         };
-        crate::props::row(ui, "Name", |ui| ui.label(name));
+        crate::props::row(ui, "Name", |ui| ui.label(crate::i18n::tr(&name)));
         if !info.client.trim().is_empty() {
             crate::props::row(ui, "Client", |ui| ui.label(info.client.clone()));
         }
-        if ui.button("Project information…").clicked() {
+        if ui.button(crate::i18n::t("Project information…")).clicked() {
             self.project_open = true;
         }
         ui.add_space(6.0);
         crate::props::flow(ui, |ui| {
-            if ui.button("Levels…").clicked() {
+            if ui.button(crate::i18n::t("Levels…")).clicked() {
                 self.open_levels();
             }
-            if ui.button("Materials…").clicked() {
+            if ui.button(crate::i18n::t("Materials…")).clicked() {
                 self.open_materials(None);
             }
         });
@@ -11105,7 +11212,7 @@ impl CreaBimApp {
                     let ink = if on { p.accent } else { p.muted };
                     let icon = egui::Rect::from_center_size(r.center(), egui::vec2(16.0, 16.0));
                     crate::svgicon::paint(ui.painter(), icon, t.icon(), ink);
-                    if resp.on_hover_text(t.label()).clicked() {
+                    if resp.on_hover_text(crate::i18n::tr(t.label())).clicked() {
                         self.prop_tab = *t;
                         // folded, a tab opens it again on that tab (MU27)
                         if self.shell.settings.right_folded {
@@ -11147,7 +11254,7 @@ fn sheet_size_rows(ui: &mut egui::Ui, w: &mut f64, h: &mut f64, aspect: Option<f
             egui::DragValue::new(&mut nw)
                 .range(2.0..=2000.0)
                 .speed(0.5)
-                .suffix(" mm"),
+                .suffix(crate::i18n::t(" mm")),
         )
     })
     .changed();
@@ -11157,7 +11264,7 @@ fn sheet_size_rows(ui: &mut egui::Ui, w: &mut f64, h: &mut f64, aspect: Option<f
             egui::DragValue::new(&mut nh)
                 .range(2.0..=2000.0)
                 .speed(0.5)
-                .suffix(" mm"),
+                .suffix(crate::i18n::t(" mm")),
         )
     })
     .changed();
@@ -11206,7 +11313,7 @@ fn paper_mark_fields(
                 crate::props::flow(ui, |ui| {
                     if ui
                         .selectable_label(!free, crate::i18n::tw("Box"))
-                        .on_hover_text("Drag its corner and edge grips to size it")
+                        .on_hover_text(crate::i18n::t("Drag its corner and edge grips to size it"))
                         .clicked()
                         && free
                     {
@@ -11222,7 +11329,7 @@ fn paper_mark_fields(
                     }
                     if ui
                         .selectable_label(free, crate::i18n::tw("Freeform"))
-                        .on_hover_text("Its own points: drag one to move it, drag a + to add one, right-click one to remove it")
+                        .on_hover_text(crate::i18n::t("Its own points: drag one to move it, drag a + to add one, right-click one to remove it"))
                         .clicked()
                         && !free
                     {
@@ -11239,9 +11346,9 @@ fn paper_mark_fields(
                     egui::DragValue::new(arc)
                         .speed(0.1)
                         .range(2.0..=30.0)
-                        .suffix(" mm"),
+                        .suffix(crate::i18n::t(" mm")),
                 )
-                .on_hover_text("How long each arc is along the outline")
+                .on_hover_text(crate::i18n::t("How long each arc is along the outline"))
                 .changed()
                 {
                     label = Some("Revision cloud");
@@ -11251,8 +11358,8 @@ fn paper_mark_fields(
                 crate::props::flow(ui, |ui| {
                     let mut own = color.is_some();
                     if ui
-                        .checkbox(&mut own, "Own")
-                        .on_hover_text("Black without one")
+                        .checkbox(&mut own, crate::i18n::t("Own"))
+                        .on_hover_text(crate::i18n::t("Black without one"))
                         .changed()
                     {
                         *color = own.then_some([0.85, 0.1, 0.1]);
@@ -11285,7 +11392,7 @@ fn paper_mark_fields(
                             egui::DragValue::new(v)
                                 .speed(0.5)
                                 .range(5.0..=800.0)
-                                .suffix(" mm"),
+                                .suffix(crate::i18n::t(" mm")),
                         )
                         .changed()
                         {
@@ -11294,7 +11401,7 @@ fn paper_mark_fields(
                     });
                 }
             } else {
-                ui.label(egui::RichText::new(format!("{} points: drag one to move it, drag a + to add one, right-click one to remove it.", points.len())).weak());
+                ui.label(egui::RichText::new(crate::i18n::tr(&format!("{} points: drag one to move it, drag a + to add one, right-click one to remove it.", points.len()))).weak());
             }
         }
         PaperMarkKind::Picture {
@@ -11323,7 +11430,9 @@ fn paper_mark_fields(
                 *opacity = (pct / 100.0).clamp(0.0, 1.0);
                 label = Some("Picture opacity");
             }
-            crate::props::row(ui, "Pixels", |ui| ui.label(format!("{width} × {height}")));
+            crate::props::row(ui, "Pixels", |ui| {
+                ui.label(crate::i18n::tr(&format!("{width} × {height}")))
+            });
             if crate::props::action(
                 ui,
                 "",
@@ -11343,7 +11452,9 @@ fn paper_mark_fields(
             if sheet_size_rows(ui, w, h, Some(aspect)) {
                 label = Some("Picture size");
             }
-            crate::props::row(ui, "Shapes", |ui| ui.label(format!("{}", shapes.len())));
+            crate::props::row(ui, "Shapes", |ui| {
+                ui.label(crate::i18n::tr(&format!("{}", shapes.len())))
+            });
             let mut one = match shapes.first() {
                 Some(creabim_core::titleblock::TitleItem::Shape { fill: Some(c), .. })
                 | Some(creabim_core::titleblock::TitleItem::Shape { colour: c, .. }) => *c,
@@ -11371,21 +11482,26 @@ fn paper_mark_fields(
                     egui::DragValue::new(&mut m.size)
                         .speed(0.1)
                         .range(1.5..=6.0)
-                        .suffix(" mm"),
+                        .suffix(crate::i18n::t(" mm")),
                 )
                 .changed()
                 {
                     label = Some("Revisions table");
                 }
             });
-            ui.label(egui::RichText::new("A row for each revision cloud on this sheet.").weak());
+            ui.label(
+                egui::RichText::new(crate::i18n::t(
+                    "A row for each revision cloud on this sheet.",
+                ))
+                .weak(),
+            );
         }
         PaperMarkKind::NorthArrow { rotation } => {
             let mut own = rotation.is_some();
             if crate::props::check(ui, "Points to", &mut own, "An angle of its own")
-                .on_hover_text(format!(
+                .on_hover_text(crate::i18n::tr(&format!(
                     "Off, it follows the project's true north ({true_north:.1}°, Project information)"
-                ))
+                )))
                 .changed()
             {
                 *rotation = own.then_some(true_north);
@@ -11406,7 +11522,7 @@ fn paper_mark_fields(
                     egui::DragValue::new(&mut m.size)
                         .speed(0.2)
                         .range(6.0..=60.0)
-                        .suffix(" mm"),
+                        .suffix(crate::i18n::t(" mm")),
                 )
                 .changed()
                 {
@@ -11456,7 +11572,7 @@ fn paper_mark_fields(
                     egui::DragValue::new(&mut m.size)
                         .speed(0.1)
                         .range(0.5..=10.0)
-                        .suffix(" mm"),
+                        .suffix(crate::i18n::t(" mm")),
                 )
                 .changed()
                 {
@@ -11476,9 +11592,9 @@ fn paper_mark_fields(
                 egui::DragValue::new(v)
                     .speed(0.5)
                     .range(-2000.0..=2000.0)
-                    .suffix(" mm"),
+                    .suffix(crate::i18n::t(" mm")),
             )
-            .on_hover_text(tip)
+            .on_hover_text(crate::i18n::tr(tip))
             .changed()
             {
                 label = Some("Place paper mark");
@@ -11864,7 +11980,10 @@ impl eframe::App for CreaBimApp {
                 crate::props::flow(ui, |ui| {
                     ui.label(&self.status);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(format!("{} elements", self.element_count()));
+                        ui.label(crate::i18n::tr(&format!(
+                            "{} elements",
+                            self.element_count()
+                        )));
                     });
                 });
             });

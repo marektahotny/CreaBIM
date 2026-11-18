@@ -339,8 +339,8 @@ impl CreaBimApp {
                 });
             ui.separator();
             if ui
-                .button("New")
-                .on_hover_text("A new style for what the list shows")
+                .button(crate::i18n::t("New"))
+                .on_hover_text(crate::i18n::t("A new style for what the list shows"))
                 .clicked()
             {
                 let s = TextStyle {
@@ -354,15 +354,15 @@ impl CreaBimApp {
                 .style
                 .and_then(|id| self.doc.model().get(id).cloned());
             if let Some(e) = &current {
-                if ui.button("Duplicate").clicked() {
+                if ui.button(crate::i18n::t("Duplicate")).clicked() {
                     if let ElementKind::TextStyle(s) = &e.kind {
                         let name = new_style_name(self.doc.model(), &e.name);
                         self.add_style(name, *s);
                     }
                 }
                 if ui
-                    .button("Delete")
-                    .on_hover_text("Its users go back to the default style")
+                    .button(crate::i18n::t("Delete"))
+                    .on_hover_text(crate::i18n::t("Its users go back to the default style"))
                     .clicked()
                 {
                     self.delete_style(e.id);
@@ -378,7 +378,10 @@ impl CreaBimApp {
                     .max_height(360.0)
                     .show(ui, |ui| {
                         if list.is_empty() {
-                            ui.label(egui::RichText::new("No styles yet: press New.").weak());
+                            ui.label(
+                                egui::RichText::new(crate::i18n::t("No styles yet: press New."))
+                                    .weak(),
+                            );
                         }
                         for (id, name, purpose, users) in &list {
                             let text = format!("{name}  ({users})");
@@ -387,10 +390,10 @@ impl CreaBimApp {
                                     self.drafting.style == Some(*id),
                                     crate::i18n::tw(text),
                                 )
-                                .on_hover_text(format!(
+                                .on_hover_text(crate::i18n::tr(&format!(
                                     "For {}; used by {users}",
                                     purpose.label().to_lowercase()
-                                ));
+                                )));
                             if r.clicked() {
                                 self.drafting.style = Some(*id);
                             }
@@ -415,7 +418,7 @@ impl CreaBimApp {
         };
         let mut name = e.name.clone();
         crate::props::flow(ui, |ui| {
-            ui.label("Name");
+            ui.label(crate::i18n::t("Name"));
             if ui.text_edit_singleline(&mut name).changed() && !name.trim().is_empty() {
                 let r = self
                     .doc
@@ -436,7 +439,7 @@ impl CreaBimApp {
             if ui
                 .add_enabled(
                     users > 0,
-                    egui::Button::new(format!("Select all {users} using it")),
+                    egui::Button::new(crate::i18n::tr(&format!("Select all {users} using it"))),
                 )
                 .clicked()
             {
@@ -458,9 +461,14 @@ impl CreaBimApp {
             if ui
                 .add_enabled(
                     !picked.is_empty(),
-                    egui::Button::new(format!("Apply to {} selected", picked.len())),
+                    egui::Button::new(crate::i18n::tr(&format!(
+                        "Apply to {} selected",
+                        picked.len()
+                    ))),
                 )
-                .on_hover_text("Give the selected dimensions, tags and notes this style")
+                .on_hover_text(crate::i18n::t(
+                    "Give the selected dimensions, tags and notes this style",
+                ))
                 .clicked()
             {
                 let model = self.doc.model();
@@ -477,7 +485,7 @@ impl CreaBimApp {
             }
         });
         crate::props::flow(ui, |ui| {
-            ui.label("New ones get it:");
+            ui.label(crate::i18n::t("New ones get it:"));
             let anno = &mut self.plan.anno;
             for (slot, text) in [
                 (&mut anno.dim_style, "Dimensions"),
@@ -485,7 +493,7 @@ impl CreaBimApp {
                 (&mut anno.tag_style, "Tags"),
             ] {
                 let mut on = *slot == Some(id);
-                if ui.checkbox(&mut on, text).changed() {
+                if ui.checkbox(&mut on, crate::i18n::tr(text)).changed() {
                     *slot = on.then_some(id);
                 }
             }
@@ -561,24 +569,26 @@ impl CreaBimApp {
         }
         ui.label(
             egui::RichText::new(
-                "A template is a title block every sheet using it draws, with {fields} the sheet fills in.",
+                crate::i18n::t("A template is a title block every sheet using it draws, with {fields} the sheet fills in."),
             )
             .weak(),
         );
         crate::props::flow(ui, |ui| {
             if ui
-                .button("Copy of the built-in block")
-                .on_hover_text("Start from the usual title block and change it")
+                .button(crate::i18n::t("Copy of the built-in block"))
+                .on_hover_text(crate::i18n::t(
+                    "Start from the usual title block and change it",
+                ))
                 .clicked()
             {
                 let name = new_style_name(self.doc.model(), "Title block");
                 self.add_template(name, sheets::builtin_template());
             }
             if ui
-                .button("Import DXF or SVG…")
-                .on_hover_text(
+                .button(crate::i18n::t("Import DXF or SVG…"))
+                .on_hover_text(crate::i18n::t(
                     "A title block drawn elsewhere. Text such as {client} becomes a field.",
-                )
+                ))
                 .clicked()
             {
                 if let Some(p) = rfd::FileDialog::new()
@@ -591,7 +601,7 @@ impl CreaBimApp {
                 }
             }
             if let Some(id) = self.drafting.template {
-                if ui.button("Duplicate").clicked() {
+                if ui.button(crate::i18n::t("Duplicate")).clicked() {
                     if let Some(e) = self.doc.model().get(id).cloned() {
                         if let ElementKind::SheetTemplate(t) = e.kind {
                             let name = new_style_name(self.doc.model(), &e.name);
@@ -600,8 +610,8 @@ impl CreaBimApp {
                     }
                 }
                 if ui
-                    .button("Delete")
-                    .on_hover_text("Its sheets go back to the built-in block")
+                    .button(crate::i18n::t("Delete"))
+                    .on_hover_text(crate::i18n::t("Its sheets go back to the built-in block"))
                     .clicked()
                 {
                     self.delete_template(id);
@@ -609,19 +619,21 @@ impl CreaBimApp {
             }
         });
         crate::props::flow(ui, |ui| {
-            ui.label("From a path");
+            ui.label(crate::i18n::t("From a path"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.drafting.path)
                     .vertical_align(egui::Align::Center)
-                    .hint_text(".dxf, .svg or another .creabim project")
+                    .hint_text(crate::i18n::t(".dxf, .svg or another .creabim project"))
                     .desired_width(360.0),
             );
             if ui
                 .add_enabled(
                     !self.drafting.path.trim().is_empty(),
-                    egui::Button::new("Import"),
+                    egui::Button::new(crate::i18n::t("Import")),
                 )
-                .on_hover_text("A .creabim brings its sheet templates and annotation styles")
+                .on_hover_text(crate::i18n::t(
+                    "A .creabim brings its sheet templates and annotation styles",
+                ))
                 .clicked()
             {
                 self.import_templates();
@@ -632,7 +644,7 @@ impl CreaBimApp {
             ui.vertical(|ui| {
                 ui.set_width(170.0);
                 if list.is_empty() {
-                    ui.label(egui::RichText::new("No templates yet.").weak());
+                    ui.label(egui::RichText::new(crate::i18n::t("No templates yet.")).weak());
                 }
                 for (id, name) in &list {
                     let users = template_users(self.doc.model(), *id).len();
@@ -666,7 +678,7 @@ impl CreaBimApp {
         let mut label = None;
         let mut name = e.name.clone();
         crate::props::flow(ui, |ui| {
-            ui.label("Name");
+            ui.label(crate::i18n::t("Name"));
             if ui.text_edit_singleline(&mut name).changed() && !name.trim().is_empty() {
                 let r = self
                     .doc
@@ -687,15 +699,19 @@ impl CreaBimApp {
                 }
             });
         if crate::props::switch(ui, &mut t.border, "Draw the usual border too")
-            .on_hover_text("Off for a template that brings its own frame")
+            .on_hover_text(crate::i18n::t(
+                "Off for a template that brings its own frame",
+            ))
             .changed()
         {
             label = Some("Template border");
         }
         template_preview(ui, &t);
         ui.label(
-            egui::RichText::new("Fields of its own, with what a sheet shows until given one")
-                .weak(),
+            egui::RichText::new(crate::i18n::t(
+                "Fields of its own, with what a sheet shows until given one",
+            ))
+            .weak(),
         );
         let mut remove = None;
         for (i, (k, v)) in t.fields.iter_mut().enumerate() {
@@ -715,7 +731,7 @@ impl CreaBimApp {
                 {
                     label = Some("Field value");
                 }
-                if ui.small_button("Remove").clicked() {
+                if ui.small_button(crate::i18n::t("Remove")).clicked() {
                     remove = Some(i);
                 }
             });
@@ -724,23 +740,23 @@ impl CreaBimApp {
             t.fields.remove(i);
             label = Some("Remove field");
         }
-        if ui.button("Add field").clicked() {
+        if ui.button(crate::i18n::t("Add field")).clicked() {
             t.fields
                 .push((format!("field{}", t.fields.len() + 1), String::new()));
             label = Some("Add field");
         }
         ui.label(
-            egui::RichText::new(format!(
+            egui::RichText::new(crate::i18n::tr(&format!(
                 "Every sheet also fills in {}.",
                 BUILT_IN_FIELDS
                     .iter()
                     .map(|(k, _)| format!("{{{k}}}"))
                     .collect::<Vec<_>>()
                     .join(", ")
-            ))
+            )))
             .weak(),
         );
-        egui::CollapsingHeader::new("Text")
+        egui::CollapsingHeader::new(crate::i18n::t("Text"))
             .id_salt(("template_text", id))
             .show(ui, |ui| {
                 for item in t.items.iter_mut() {
@@ -761,7 +777,7 @@ impl CreaBimApp {
                                     egui::DragValue::new(size)
                                         .speed(0.05)
                                         .range(0.5..=40.0)
-                                        .suffix(" mm"),
+                                        .suffix(crate::i18n::t(" mm")),
                                 )
                                 .changed()
                             {
@@ -785,21 +801,24 @@ impl CreaBimApp {
         crate::props::flow(ui, |ui| {
             let sheet = self.active_view.filter(|v| self.is_sheet(*v));
             if ui
-                .add_enabled(sheet.is_some(), egui::Button::new("Use on this sheet"))
+                .add_enabled(
+                    sheet.is_some(),
+                    egui::Button::new(crate::i18n::t("Use on this sheet")),
+                )
                 .clicked()
             {
                 if let Some(s) = sheet {
                     self.set_sheet_template(&[s], Some(id));
                 }
             }
-            if ui.button("Use on every sheet").clicked() {
+            if ui.button(crate::i18n::t("Use on every sheet")).clicked() {
                 let all: Vec<ElementId> = sheets::sheets(self.doc.model())
                     .into_iter()
                     .map(|(id, _)| id)
                     .collect();
                 self.set_sheet_template(&all, Some(id));
             }
-            if ui.button("New sheet from it").clicked() {
+            if ui.button(crate::i18n::t("New sheet from it")).clicked() {
                 self.new_sheet_from(id);
             }
         });
@@ -941,7 +960,9 @@ impl CreaBimApp {
                 })
         })
         .response
-        .on_hover_text("The master (title block and frame) this sheet is drawn on");
+        .on_hover_text(crate::i18n::t(
+            "The master (title block and frame) this sheet is drawn on",
+        ));
         // its master in the Masters view, to change (MU40: a view, not a
         // window)
         if crate::props::action(

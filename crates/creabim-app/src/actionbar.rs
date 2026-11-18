@@ -333,7 +333,7 @@ impl CreaBimApp {
                                 a.enabled,
                                 egui::Button::new(&a.label).shortcut_text(a.key),
                             )
-                            .on_hover_text(&a.hint)
+                            .on_hover_text(crate::i18n::tr(&a.hint))
                             .clicked()
                         {
                             picked = Some(a.id.clone());
@@ -361,7 +361,7 @@ impl CreaBimApp {
                         ("similar:type.project", "All of this type in the project"),
                         ("similar:cat.project", "All of this category in the project"),
                     ] {
-                        if ui.button(label).clicked() {
+                        if ui.button(crate::i18n::tr(label)).clicked() {
                             picked = Some(id.into());
                         }
                     }
@@ -494,7 +494,7 @@ fn icon_response(
         c = c.gamma_multiply(0.35);
     }
     crate::svgicon::paint(painter, r.shrink(3.5), a.icon, c);
-    resp.on_hover_text(a.tip())
+    resp.on_hover_text(crate::i18n::tr(&a.tip()))
 }
 
 fn icon_button(
