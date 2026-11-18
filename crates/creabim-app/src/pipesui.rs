@@ -380,6 +380,9 @@ pub struct PipeDraft {
     /// Where the run's last pipe ended, so the next starts there (a drain
     /// keeps falling); none at a run's start.
     pub last_z: Option<f64>,
+    /// The height was changed while a run is being drawn: the next click
+    /// first rises or drops to it where the run is.
+    pub height_set: bool,
 }
 
 impl Default for PipeDraft {
@@ -397,6 +400,7 @@ impl PipeDraft {
             nominal_mm: s.nominal_mm,
             height: s.height,
             last_z: None,
+            height_set: false,
         }
     }
 
@@ -420,10 +424,36 @@ impl PipeDraft {
         )
     }
 
+    /// The height the run is at now, m above the floor.
+    pub fn z_now(&self) -> f64 {
+        self.last_z.unwrap_or(self.height)
+    }
+
+    /// The riser the next click draws first: from where the run is to
+    /// the height set since, as (from, to).
+    pub fn rise(&self) -> Option<(f64, f64)> {
+        let z = self.z_now();
+        (self.height_set && (self.height - z).abs() > 1e-3).then_some((z, self.height))
+    }
+
+    /// The height the next pipe starts at: the height set for it, else
+    /// where the run is.
+    pub fn z_next(&self) -> f64 {
+        self.rise().map_or(self.z_now(), |r| r.1)
+    }
+
+    /// A vertical pipe at `at` from `z0` to `z1`.
+    pub fn riser(&self, level: ElementId, at: DVec2, z0: f64, z1: f64) -> Pipe {
+        let mut p = self.pipe(level, at, at);
+        p.start = at.extend(z0);
+        p.end = at.extend(z1);
+        p
+    }
+
     /// A pipe from `a` to `b` (plan points) on `level`: level, or for a
     /// drain falling by its system's slope from where the run is.
     pub fn pipe(&self, level: ElementId, a: DVec2, b: DVec2) -> Pipe {
-        let z0 = self.last_z.unwrap_or(self.height);
+        let z0 = self.z_next();
         let fall = self.system_def().map_or(0.0, |s| s.slope_pct) / 100.0;
         let z1 = z0 - fall * a.distance(b);
         let mut p = Pipe {
@@ -467,10 +497,87 @@ pub fn connector_at(
         .map(|(_, c)| c)
 }
 
+/// How near a click must be to a pipe's end or axis to join it, m.
+const PIPE_REACH: f64 = 0.12;
+
+/// Where a click joins a pipe already drawn.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PipeNode {
+    /// On the pipe's axis, heights above its level.
+    pub at: DVec3,
+    pub system: String,
+    pub pipe_type: String,
+    pub nominal_mm: f64,
+}
+
+/// The place on a pipe of `level` a click at `p` joins: an end within
+/// reach first, else the nearest point of an axis. Of ends one over the
+/// other (a riser's) the one nearest the height `z`. Only pipes of
+/// `system`, where one is given.
+pub fn pipe_node_at(
+    model: &creabim_core::Model,
+    level: ElementId,
+    p: DVec2,
+    z: f64,
+    system: Option<&str>,
+) -> Option<PipeNode> {
+    let mut best: Option<(bool, f64, PipeNode)> = None;
+    for e in model.iter() {
+        let ElementKind::Pipe(q) = &e.kind else {
+            continue;
+        };
+        if q.level != level || system.is_some_and(|s| s != q.system) {
+            continue;
+        }
+        let node = |at: DVec3| PipeNode {
+            at,
+            system: q.system.clone(),
+            pipe_type: q.pipe_type.clone(),
+            nominal_mm: q.nominal_mm,
+        };
+        let mut offer = |end: bool, d: f64, at: DVec3| {
+            if d > PIPE_REACH {
+                return;
+            }
+            // ends before axes; then the nearer in plan, then in height
+            let key = (!end, d + (at.z - z).abs() * 1e-3);
+            if best.as_ref().is_none_or(|b| (!b.0, b.1) > key) {
+                best = Some((end, key.1, node(at)));
+            }
+        };
+        for at in [q.start, q.end] {
+            offer(true, at.truncate().distance(p), at);
+        }
+        let (a, b) = (q.start.truncate(), q.end.truncate());
+        let run = b - a;
+        let len2 = run.length_squared();
+        if len2 < 1e-9 {
+            // a riser: the height asked for, within it
+            let (lo, hi) = (q.start.z.min(q.end.z), q.start.z.max(q.end.z));
+            offer(false, a.distance(p), a.extend(z.clamp(lo, hi)));
+            continue;
+        }
+        let t = ((p - a).dot(run) / len2).clamp(0.0, 1.0);
+        let on = q.start + (q.end - q.start) * t;
+        offer(false, on.truncate().distance(p), on);
+    }
+    best.map(|b| b.2)
+}
+
+fn insert(tx: Transaction, pipe: Pipe) -> (Transaction, ElementId) {
+    let name = format!("{} {}", pipe.system, size_label(&pipe));
+    let e = Element::new(name, ElementKind::Pipe(pipe));
+    let id = e.id;
+    (tx.insert(e), id)
+}
+
 /// A click with the Pipe tool on `level`: the first starts a run, each
 /// next one draws a pipe to it and goes on from there. A run started at
-/// a fixture's connector takes its system and height; one ended at a
-/// connector of its system drops or rises to it there, and ends.
+/// a fixture's connector or on a pipe takes its system and height; one
+/// ended at a connector or on a pipe of its system drops or rises to it
+/// there, and ends. A height set in the bar while a run is drawn makes
+/// the next click rise or drop to it first; a click on the run's own
+/// last point draws that riser alone.
 pub fn click(
     doc: &mut Document,
     level: ElementId,
@@ -483,6 +590,7 @@ pub fn click(
     match state.pending {
         None => {
             draft.last_z = None;
+            draft.height_set = false;
             let mut p = p;
             if let Some(c) = conn {
                 if let Some(def) = creabim_core::mep::system(c.kind.code()) {
@@ -492,45 +600,81 @@ pub fn click(
                 }
                 draft.last_z = Some(c.at.z);
                 p = c.at.truncate();
+            } else if let Some(n) = pipe_node_at(doc.model(), level, p, draft.height, None) {
+                // going on from a pipe: as it is, at its height
+                if draft.system != n.system {
+                    if let Some(def) = creabim_core::mep::system(&n.system) {
+                        *draft = PipeDraft::for_system(def);
+                    }
+                }
+                draft.pipe_type = n.pipe_type.clone();
+                draft.nominal_mm = n.nominal_mm;
+                draft.last_z = Some(n.at.z);
+                p = n.at.truncate();
             }
             state.pending = Some(p);
-            state.status = Some(crate::i18n::tr(
-                "Click where the pipe goes; keep clicking to go on. Esc or right-click ends.",
+            state.status = Some(format!(
+                "Z {} m. {}",
+                crate::i18n::num(draft.z_now(), 3),
+                crate::i18n::tr(
+                    "Click where the pipe goes; change Height in the bar to rise or drop here. Esc or right-click ends."
+                )
             ));
             Ok(())
         }
-        Some(a) if a.distance(p) > 0.01 => {
-            let conn = conn.filter(|c| c.kind.code() == draft.system);
-            let b = conn.map_or(p, |c| c.at.truncate());
-            let pipe = draft.pipe(level, a, b);
+        Some(a) => {
             let mut tx = Transaction::new("Draw pipe");
             let mut last = None;
-            if let Some(c) = conn {
-                if (c.at.z - pipe.end.z).abs() > 0.01 {
-                    let mut drop = pipe.clone();
-                    drop.start = pipe.end;
-                    drop.end = c.at;
-                    let name = format!("{} {}", drop.system, size_label(&drop));
-                    let e = Element::new(name, ElementKind::Pipe(drop));
-                    last = Some(e.id);
-                    tx = tx.insert(e);
-                }
+            // the height was changed: rise or drop to it where the run is
+            if let Some((z0, z1)) = draft.rise() {
+                let (t, id) = insert(tx, draft.riser(level, a, z0, z1));
+                tx = t;
+                last = Some(id);
+                draft.last_z = Some(z1);
             }
-            draft.last_z = Some(pipe.end.z);
-            let name = format!("{} {}", pipe.system, size_label(&pipe));
-            let e = Element::new(name, ElementKind::Pipe(pipe));
-            selection.only(last.unwrap_or(e.id));
-            tx = tx.insert(e);
-            if conn.is_some() {
-                // joined a fixture: the run ends there
+            draft.height_set = false;
+            if a.distance(p) <= 0.01 {
+                // on the run's own point: the riser alone
+                let Some(id) = last else {
+                    return Ok(());
+                };
+                selection.only(id);
+                state.status = Some(format!("Z {} m", crate::i18n::num(draft.z_now(), 3)));
+                return doc.commit(tx);
+            }
+            let conn = conn.filter(|c| c.kind.code() == draft.system);
+            // what the run ends on: a connector, else a pipe of its system
+            // (not the pipe it has just come from)
+            let join: Option<DVec3> = conn.map(|c| c.at).or_else(|| {
+                pipe_node_at(doc.model(), level, p, draft.z_now(), Some(&draft.system))
+                    .map(|n| n.at)
+                    .filter(|at| at.truncate().distance(a) > 0.01)
+            });
+            let b = join.map_or(p, |at| at.truncate());
+            let pipe = draft.pipe(level, a, b);
+            let end = pipe.end;
+            let (t, id) = insert(tx, pipe);
+            tx = t;
+            last = Some(id);
+            draft.last_z = Some(end.z);
+            if let Some(at) = join {
+                if (at.z - end.z).abs() > 0.01 {
+                    let (t, id) = insert(tx, draft.riser(level, b, end.z, at.z));
+                    tx = t;
+                    last = Some(id);
+                }
+                // joined: the run ends there
                 draft.last_z = None;
                 state.pending = None;
             } else {
                 state.pending = Some(b);
+                state.status = Some(format!("Z {} m", crate::i18n::num(end.z, 3)));
+            }
+            if let Some(id) = last {
+                selection.only(id);
             }
             doc.commit(tx)
         }
-        Some(_) => Ok(()),
     }
 }
 
@@ -562,6 +706,26 @@ pub fn preview(
     if let Some(scr) = scr {
         painter.add(egui::Shape::line(scr, egui::Stroke::new(1.5, color)));
     }
+    // the heights it runs at, beside the cursor: a riser first, then
+    // the pipe's own (two where it falls)
+    let num = |v: f64| crate::i18n::num(v, 3);
+    let mut text = String::new();
+    if let Some((z0, z1)) = draft.rise() {
+        text = format!("↕ {} → {}   ", num(z0), num(z1));
+    }
+    if (p.start.z - p.end.z).abs() > 5e-4 {
+        text += &format!("Z {} → {} m", num(p.start.z), num(p.end.z));
+    } else {
+        text += &format!("Z {} m", num(p.start.z));
+    }
+    if let Some(at) = project(b.truncate().extend(a.z)) {
+        let font = egui::FontId::proportional(12.0);
+        let galley = painter.layout_no_wrap(text, font, egui::Color32::BLACK);
+        let pos = at + egui::vec2(14.0, 10.0);
+        let back = egui::Rect::from_min_size(pos, galley.size()).expand(3.0);
+        painter.rect_filled(back, 3.0, egui::Color32::from_white_alpha(230));
+        painter.galley(pos, galley, egui::Color32::BLACK);
+    }
 }
 
 /// The Pipe tool's bar: its system, type, size and height.
@@ -587,7 +751,7 @@ pub fn tool_options(draft: &PipeDraft) -> Vec<serde_json::Value> {
         json!({
             "kind": "number", "key": "member.pipe_height", "label": "Height", "value": draft.height,
             "unit": "m", "step": 0.05, "min": -5.0, "max": 20.0,
-            "hint": "Height of the pipe's axis above the floor where a run starts",
+            "hint": "Height of the pipe's axis above the floor (Z). Changed while a run is drawn, the next click rises or drops to it where the run is; a click on the same point draws the riser alone",
         }),
     ]
 }
@@ -667,6 +831,7 @@ pub fn action(draft: &mut PipeDraft, head: &str, arg: &str) -> bool {
         _ => return false,
     }
     draft.last_z = None;
+    draft.height_set = false;
     true
 }
 
@@ -753,5 +918,127 @@ mod tool_tests {
             .next()
             .unwrap();
         assert!((rise.end - b.at).length() < 1e-9);
+    }
+
+    #[test]
+    fn a_height_set_in_a_run_rises_there_and_the_run_goes_on_at_it() {
+        use creabim_core::Document;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let mut state = crate::planview::PlanState::default();
+        let mut sel = crate::selection::Selection::default();
+        assert!(action(&mut state.members.pipe, "pipe", "SV"));
+        state.members.pipe.height = 0.3;
+        let pipes = |doc: &Document| -> Vec<Pipe> {
+            doc.model()
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ElementKind::Pipe(p) => Some(p.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        let n = pipes(&doc).len();
+        click(&mut doc, level, DVec2::new(1.0, 1.0), &mut state, &mut sel).unwrap();
+        click(&mut doc, level, DVec2::new(3.0, 1.0), &mut state, &mut sel).unwrap();
+        assert_eq!(pipes(&doc).len(), n + 1);
+        // the height changed in the bar while the run is drawn
+        crate::memberstool::set_option(&mut state, "member.pipe_height", 2.7);
+        assert_eq!(state.members.pipe.rise(), Some((0.3, 2.7)));
+        // a click on the run's own point: the riser alone
+        click(&mut doc, level, DVec2::new(3.0, 1.0), &mut state, &mut sel).unwrap();
+        let all = pipes(&doc);
+        assert_eq!(all.len(), n + 2);
+        let riser = all.iter().find(|p| p.is_vertical()).unwrap();
+        assert_eq!(riser.start, DVec3::new(3.0, 1.0, 0.3));
+        assert_eq!(riser.end, DVec3::new(3.0, 1.0, 2.7));
+        assert_eq!(state.members.pipe.rise(), None);
+        // and the run goes on up there
+        click(&mut doc, level, DVec2::new(3.0, 4.0), &mut state, &mut sel).unwrap();
+        let top = pipes(&doc).into_iter().find(|p| p.end.y == 4.0).unwrap();
+        assert_eq!((top.start.z, top.end.z), (2.7, 2.7));
+        // a drop and the next pipe in one click
+        crate::memberstool::set_option(&mut state, "member.pipe_height", 1.0);
+        click(&mut doc, level, DVec2::new(5.0, 4.0), &mut state, &mut sel).unwrap();
+        let all = pipes(&doc);
+        assert_eq!(all.len(), n + 5);
+        assert!(all
+            .iter()
+            .any(|p| p.is_vertical() && p.start.z == 2.7 && p.end.z == 1.0));
+        assert!(all.iter().any(|p| p.end == DVec3::new(5.0, 4.0, 1.0)));
+    }
+
+    #[test]
+    fn a_run_joins_the_pipes_already_drawn() {
+        use creabim_core::Document;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let mut state = crate::planview::PlanState::default();
+        let mut sel = crate::selection::Selection::default();
+        assert!(action(&mut state.members.pipe, "pipe", "SV"));
+        state.members.pipe.height = 2.5;
+        action(&mut state.members.pipe, "pipe.size", "32");
+        click(&mut doc, level, DVec2::new(1.0, 1.0), &mut state, &mut sel).unwrap();
+        click(&mut doc, level, DVec2::new(5.0, 1.0), &mut state, &mut sel).unwrap();
+        state.cancel();
+        // near its end: the end itself, at its height
+        let n = pipe_node_at(doc.model(), level, DVec2::new(5.05, 1.04), 0.0, None).unwrap();
+        assert_eq!(n.at, DVec3::new(5.0, 1.0, 2.5));
+        assert_eq!((n.system.as_str(), n.nominal_mm), ("SV", 32.0));
+        // along it: the point of its axis
+        let m = pipe_node_at(doc.model(), level, DVec2::new(3.0, 1.08), 0.0, None).unwrap();
+        assert!((m.at - DVec3::new(3.0, 1.0, 2.5)).length() < 1e-9);
+        assert!(pipe_node_at(doc.model(), level, DVec2::new(3.0, 1.5), 0.0, None).is_none());
+        assert!(pipe_node_at(doc.model(), level, DVec2::new(3.0, 1.0), 0.0, Some("TV")).is_none());
+
+        // another system and height in the bar; started on the pipe, the
+        // run takes the pipe's system, size and height
+        assert!(action(&mut state.members.pipe, "pipe", "TV"));
+        click(
+            &mut doc,
+            level,
+            DVec2::new(5.03, 1.02),
+            &mut state,
+            &mut sel,
+        )
+        .unwrap();
+        let d = &state.members.pipe;
+        assert_eq!(
+            (d.system.as_str(), d.nominal_mm, d.z_now()),
+            ("SV", 32.0, 2.5)
+        );
+        assert_eq!(state.pending, Some(DVec2::new(5.0, 1.0)));
+        click(&mut doc, level, DVec2::new(5.0, 3.0), &mut state, &mut sel).unwrap();
+        state.cancel();
+
+        // a low run ended on the high pipe rises to it there, and ends
+        assert!(action(&mut state.members.pipe, "pipe", "SV"));
+        state.members.pipe.height = 0.3;
+        click(&mut doc, level, DVec2::new(2.0, 4.0), &mut state, &mut sel).unwrap();
+        let before = doc.model().len();
+        click(
+            &mut doc,
+            level,
+            DVec2::new(2.03, 1.05),
+            &mut state,
+            &mut sel,
+        )
+        .unwrap();
+        assert_eq!(doc.model().len(), before + 2, "the pipe and its rise");
+        assert!(state.pending.is_none());
+        let rise = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Pipe(p) if p.is_vertical() => Some(p.clone()),
+                _ => None,
+            })
+            .next()
+            .unwrap();
+        assert!(
+            (rise.start - DVec3::new(2.03, 1.0, 0.3)).length() < 1e-9,
+            "{rise:?}"
+        );
+        assert!((rise.end - DVec3::new(2.03, 1.0, 2.5)).length() < 1e-9);
     }
 }

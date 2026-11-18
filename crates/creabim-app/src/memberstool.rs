@@ -1525,7 +1525,13 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "beam_width" => m.beam_width = v.clamp(0.05, 2.0),
         "pipe_height" => {
             m.pipe.height = v.clamp(-5.0, 20.0);
-            m.pipe.last_z = None;
+            if state.pending.is_some() {
+                // a run is being drawn: it rises or drops there
+                m.pipe.height_set = true;
+            } else {
+                m.pipe.last_z = None;
+                m.pipe.height_set = false;
+            }
         }
         "beam_depth" => m.beam_depth = v.clamp(0.05, 3.0),
         "pitch" => m.roof_pitch = v.clamp(1.0, 75.0),

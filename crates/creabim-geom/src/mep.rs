@@ -336,6 +336,9 @@ pub fn pipe_mesh(model: &Model, p: &Pipe) -> TriMesh {
     m
 }
 
+/// The least radius a riser's circle is drawn with in plan, m.
+pub const RISER_MARK: f64 = 0.035;
+
 /// The pipe in a plan cut `cut` above its level: its outline in plan,
 /// washed in its system's colour, in the lightest line where it is cut
 /// or seen below, dashed above. Its ends are closed only where it meets no
@@ -367,12 +370,18 @@ pub fn pipe_plan(model: &Model, e: &Element, p: &Pipe, cut: f64) -> Vec<PlanItem
     };
     // a riser shows as its section: a square or a circle round its axis
     if run.length() < 1e-6 {
+        // no smaller than a drawing still shows: a thin pipe's own
+        // section is a dot at 1:50
+        let r = half.max(RISER_MARK);
         let pts: Vec<DVec2> = (0..SIDES)
             .map(|i| {
                 let t = i as f64 / SIDES as f64 * std::f64::consts::TAU;
-                a2 + DVec2::new(t.cos(), t.sin()) * half
+                a2 + DVec2::new(t.cos(), t.sin()) * r
             })
             .collect();
+        // the riser's stroke: out of the circle, up and to the right
+        let d = DVec2::new(1.0, 1.0).normalize();
+        line(&mut items, a2 + d * r, a2 + d * (r + 2.0 * RISER_MARK));
         items.push(PlanItem::Shade {
             id: e.id,
             points: pts.clone(),
