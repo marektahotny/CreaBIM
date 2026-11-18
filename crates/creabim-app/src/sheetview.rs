@@ -566,10 +566,17 @@ impl Canvas for EguiCanvas<'_> {
     }
 
     fn fill_rgb(&mut self, pts: &[DVec2], rgb: [f32; 3]) {
-        let pts: Vec<Pos2> = pts.iter().map(|p| self.xf.to_screen(*p)).collect();
+        // as a mesh: egui's smoothed polygon throws spikes across the
+        // sheet from an outline thinner than a pixel (a pipe's wash)
         let c = crate::annotate::color32(rgb);
-        self.painter
-            .add(egui::Shape::convex_polygon(pts, c, egui::Stroke::NONE));
+        let mut mesh = egui::Mesh::default();
+        for p in pts {
+            mesh.colored_vertex(self.xf.to_screen(*p), c);
+        }
+        for [a, b, c] in triangulate(pts) {
+            mesh.add_triangle(a as u32, b as u32, c as u32);
+        }
+        self.painter.add(egui::Shape::mesh(mesh));
     }
 
     fn styled_text(

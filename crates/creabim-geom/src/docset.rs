@@ -70,6 +70,8 @@ struct Builder {
     m: Model,
     tx: Transaction,
     made: Made,
+    /// A view it found was put right.
+    fixed: bool,
 }
 
 impl Builder {
@@ -159,6 +161,21 @@ impl Builder {
 /// The views and sheets still missing from the drawing set of `model`;
 /// none when it has no walls yet or nothing is missing.
 pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
+    set(model, false)
+}
+
+/// The frame of the drawing set a new project starts with, before
+/// anything is drawn: the site, a plan a storey with its legends, the
+/// sections and elevations, the lists of windows and doors and the list
+/// of documentation.
+pub fn skeleton(model: &Model) -> Option<(Transaction, Made)> {
+    set(model, true)
+}
+
+/// The house a new project's sections and elevations are set round, m.
+const FRAME: DVec2 = DVec2::new(10.0, 8.0);
+
+fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
     let walls: Vec<&creabim_core::Wall> = model
         .iter()
         .filter_map(|e| match &e.kind {
@@ -166,21 +183,28 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
             _ => None,
         })
         .collect();
-    let first = walls.first()?.start;
-    let (lo, hi) = walls
-        .iter()
-        .flat_map(|w| [w.start, w.end])
-        .fold((first, first), |(lo, hi), p| (lo.min(p), hi.max(p)));
+    // a frame is for a project with nothing built yet
+    let frame = frame && walls.is_empty();
+    let (lo, hi) = if frame {
+        (DVec2::ZERO, FRAME)
+    } else {
+        let first = walls.first()?.start;
+        walls
+            .iter()
+            .flat_map(|w| [w.start, w.end])
+            .fold((first, first), |(lo, hi), p| (lo.min(p), hi.max(p)))
+    };
     let mid = (lo + hi) / 2.0;
     let mut b = Builder {
         m: model.clone(),
         tx: Transaction::new("Drawing set"),
         made: Made::default(),
+        fixed: false,
     };
     // the storeys: those with walls of their own, from the lowest up
     let storeys: Vec<(ElementId, String, f64)> = levels::sorted(model)
         .into_iter()
-        .filter(|(id, ..)| walls.iter().any(|w| w.level == *id))
+        .filter(|(id, ..)| frame || walls.iter().any(|w| w.level == *id))
         .map(|(id, name, l)| (id, name, l.elevation))
         .collect();
     let (bottom, top) = (storeys.first()?.clone(), storeys.last()?.clone());
@@ -189,12 +213,32 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
             && !v.graphics.range.from_above
             && DisplayMode::of(v) == DisplayMode::Architecture
     };
+    // the architect's plan of a storey, without the trades' pipes
     let plan_of = |b: &mut Builder, level: ElementId, name: &str, z: f64| {
-        b.find(|_, v| matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level) && plain(v))
-            .unwrap_or_else(|| {
-                let v = levels::plan_of(&b.m, level, z);
-                b.view(levels::plan_name(name), v)
-            })
+        let pipes = creabim_core::visibility::Category::Pipes;
+        let found = b.find(|_, v| {
+            matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level) && plain(v)
+        });
+        let Some(id) = found else {
+            let mut v = levels::plan_of(&b.m, level, z);
+            v.hidden.set_category(pipes, true);
+            return b.view(levels::plan_name(name), v);
+        };
+        if let Some(old) = b.m.get(id).cloned() {
+            let mut now = old.clone();
+            if let ElementKind::View(x) = &mut now.kind {
+                x.hidden.set_category(pipes, true);
+            }
+            if now != old {
+                let one = Transaction::new("one").replace(old.clone(), now.clone());
+                if one.apply(&mut b.m).is_ok() {
+                    let tx = std::mem::replace(&mut b.tx, Transaction::new(""));
+                    b.tx = tx.replace(old, now);
+                    b.fixed = true;
+                }
+            }
+        }
+        id
     };
     let schedule = |b: &mut Builder, c: ScheduleCategory, name: &str| {
         b.find(|_, v| matches!(v.kind, ViewKind::Schedule { category, .. } if category == c))
@@ -237,7 +281,7 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
         b.sheet(number(asr, "VYZ", &mut n), tr("Foundations"), &[v]);
     }
     // the legend of materials beside the plans, once a wall has one
-    let materials = (!crate::matlegend::rows(model).is_empty()).then(|| {
+    let materials = (frame || !crate::matlegend::rows(model).is_empty()).then(|| {
         schedule(
             &mut b,
             ScheduleCategory::MaterialLegend,
@@ -257,21 +301,22 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
         };
         let v = plan_of(&mut b, *id, name, *z);
         // the storey's rooms with their finishes, once it has rooms
-        let rooms = model
-            .iter()
-            .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.level == *id))
-            .then(|| {
-                b.find(|_, v| {
-                    matches!(v.kind, ViewKind::Schedule { category, .. }
+        let rooms = (frame
+            || model
+                .iter()
+                .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.level == *id)))
+        .then(|| {
+            b.find(|_, v| {
+                matches!(v.kind, ViewKind::Schedule { category, .. }
                         if category == ScheduleCategory::RoomLegend)
-                        && v.of_level == Some(*id)
-                })
-                .unwrap_or_else(|| {
-                    let mut v = View::schedule(ScheduleCategory::RoomLegend);
-                    v.of_level = Some(*id);
-                    b.view(format!("{} {name}", tr("Legend of rooms")), v)
-                })
-            });
+                    && v.of_level == Some(*id)
+            })
+            .unwrap_or_else(|| {
+                let mut v = View::schedule(ScheduleCategory::RoomLegend);
+                v.of_level = Some(*id);
+                b.view(format!("{} {name}", tr("Legend of rooms")), v)
+            })
+        });
         b.sheet(
             number(asr, &code, &mut n),
             format!("{} {name}", tr("Floor plan")),
@@ -363,9 +408,10 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
         ),
         (OpeningKind::Door, ScheduleCategory::DoorList, "Door list"),
     ] {
-        if model
-            .iter()
-            .any(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == kind))
+        if frame
+            || model
+                .iter()
+                .any(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == kind))
         {
             let v = schedule(&mut b, category, name);
             b.sheet(number(asr, "VVZ", &mut n), tr(name), &[v]);
@@ -486,7 +532,7 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
     // A: the list of all of it, made last so it lists every sheet
     let list = schedule(&mut b, ScheduleCategory::Documents, "List of documentation");
     b.sheet("A00_TXT_001".into(), tr("List of documentation"), &[list]);
-    (b.made != Made::default()).then_some((b.tx, b.made))
+    (b.made != Made::default() || b.fixed).then_some((b.tx, b.made))
 }
 
 #[cfg(test)]
@@ -600,6 +646,53 @@ mod tests {
         );
         assert_eq!(file_name("", "S01_ASR_001_N01", "00"), None);
         assert_eq!(file_name("24XY456_PSP_01_1111", "A101", "00"), None);
+    }
+
+    #[test]
+    fn a_new_project_starts_with_the_frame_of_its_drawing_set() {
+        use creabim_core::Level;
+        let mut m = Model::new();
+        let mut tx = Transaction::new("t");
+        for (name, z) in [("1. NP", 0.0), ("2. NP", 3.0)] {
+            tx = tx.insert(Element::new(
+                name,
+                ElementKind::Level(Level {
+                    elevation: z,
+                    height: 3.0,
+                }),
+            ));
+        }
+        tx.apply(&mut m).unwrap();
+        // nothing is drawn: the set by itself waits for walls
+        assert!(drawing_set(&m).is_none());
+        let (tx, _) = skeleton(&m).unwrap();
+        tx.apply(&mut m).unwrap();
+        assert_eq!(
+            numbers(&m),
+            [
+                "A00_TXT_001",
+                "C00_SIT_001",
+                "S01_ASR_001_N01",
+                "S01_ASR_002_N02",
+                "S01_ASR_003_REZ",
+                "S01_ASR_004_POH",
+                "S01_ASR_005_VVZ",
+                "S01_ASR_006_VVZ"
+            ]
+        );
+        // the architect's plans leave the trades' pipes out
+        let plans = m
+            .iter()
+            .filter(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                if matches!(v.kind, ViewKind::Plan { .. })
+                    && !v.graphics.range.from_above
+                    && v.hidden.hides_category(creabim_core::visibility::Category::Pipes))
+            })
+            .count();
+        assert_eq!(plans, 2);
+        // and it is made once
+        assert!(skeleton(&m).is_none());
     }
 
     #[test]

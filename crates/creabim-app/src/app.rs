@@ -13059,6 +13059,19 @@ fn with_plan_views(model: Model) -> Model {
             any = true;
         }
     }
+    // a trade's drawing from before the trades dimensioned their own:
+    // its dimensions, tags and notes show again
+    for e in model.iter() {
+        if let ElementKind::View(v) = &e.kind {
+            let mut now = v.clone();
+            if creabim_core::viewmodes::DisplayMode::show_own_annotation(&mut now) {
+                let mut after = e.clone();
+                after.kind = ElementKind::View(now);
+                tx = tx.replace(e.clone(), after);
+                any = true;
+            }
+        }
+    }
     if !any {
         return model;
     }

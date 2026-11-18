@@ -18,6 +18,78 @@ impl CreaBimApp {
             .unwrap_or_default()
     }
 
+    /// Pipes are not drawn in the architect's plan, which leaves them
+    /// out: with the open plan one of those, opens the storey's plan of
+    /// the trade the Pipe tool draws for, made the first time. True when
+    /// the view changed.
+    pub(super) fn open_trade_plan(&mut self) -> bool {
+        use creabim_core::viewmodes::{DisplayMode, Trade};
+        use creabim_core::visibility::Category;
+        use creabim_core::{ElementKind, ViewKind};
+        let model = self.doc.model();
+        let Some((now, level)) = self.active_view.and_then(|id| match &model.get(id)?.kind {
+            ElementKind::View(v) if v.hidden.hides_category(Category::Pipes) => match v.kind {
+                ViewKind::Plan { level, .. } => Some((v.clone(), level)),
+                _ => None,
+            },
+            _ => None,
+        }) else {
+            return false;
+        };
+        let kind = creabim_core::mep::system(&self.plan.members.pipe.system)
+            .map_or(creabim_core::mep::SystemKind::Other, |s| s.kind);
+        let Some(trade) = Trade::ALL.into_iter().find(|t| t.shows(kind)) else {
+            return false;
+        };
+        let code = match trade {
+            Trade::Plumbing => "ZTI",
+            Trade::Heating => "VYK",
+            Trade::Ventilation => "VZT",
+            Trade::MedGas => "MED",
+            Trade::Electrical => "ELI",
+        };
+        let found = model.iter().find_map(|e| match &e.kind {
+            ElementKind::View(v)
+                if matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level)
+                    && DisplayMode::of(v) == DisplayMode::Services
+                    && !v.hidden.hides_category(Category::Pipes)
+                    && v.callout.is_none()
+                    && v.trade.is_none_or(|t| t == trade) =>
+            {
+                Some((e.id, e.name.clone()))
+            }
+            _ => None,
+        });
+        let (id, name) = match found {
+            Some(f) => f,
+            None => {
+                let storey = model.get(level).map_or(String::new(), |e| e.name.clone());
+                let mut v = now;
+                v.browser_order = None;
+                v.scale = 50.0;
+                DisplayMode::Services.apply(&mut v);
+                v.trade = Some(trade);
+                let name = format!("{storey} {code}");
+                let e = creabim_core::Element::new(name.clone(), ElementKind::View(v));
+                let id = e.id;
+                if self
+                    .doc
+                    .commit(creabim_core::Transaction::new("Trade plan").insert(e))
+                    .is_err()
+                {
+                    return false;
+                }
+                (id, name)
+            }
+        };
+        self.active_view = Some(id);
+        self.status = crate::i18n::tr(
+            "Opened the plan {}: the architecture plan leaves pipes out, they are drawn in the trade's plan.",
+        )
+        .replace("{}", &name);
+        true
+    }
+
     /// A pick from the Pipe tool's bar, or `pipe:<system>` from a tab,
     /// which takes up the Pipe tool in that system. False for another.
     pub(super) fn pipe_action(&mut self, head: &str, arg: &str) -> bool {
@@ -27,6 +99,7 @@ impl CreaBimApp {
         if head == "pipe" {
             self.plan.tool = crate::planview::Tool::Pipe;
             self.plan.cancel();
+            self.open_trade_plan();
         } else {
             // a run goes on in what was picked from its next point
             self.plan.pending = None;

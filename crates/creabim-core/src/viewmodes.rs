@@ -2,7 +2,8 @@
 //! as it is, a "blind" drawing (outlines only: no dimensions, tags, notes,
 //! section marks or wall fills) to hand to the other professions, and a services
 //! drawing, where the building is that blind drawing in halftone and the
-//! pipes, ducts and fixtures stand out over it.
+//! pipes, ducts and fixtures stand out over it. Pipes, ducts and wiring
+//! show in the services drawing only.
 //!
 //! A mode is a set of a view's own settings (its drawing style, hidden
 //! categories and category overrides), so everything it sets can still
@@ -96,9 +97,7 @@ impl DisplayMode {
 
     /// The mode `view` is in, by what it shows.
     pub fn of(view: &View) -> DisplayMode {
-        let blind = view.graphics.drawing_style == DrawingStyle::Clean
-            && ANNOTATION.iter().all(|c| view.hidden.hides_category(*c));
-        if !blind {
+        if view.graphics.drawing_style != DrawingStyle::Clean {
             return DisplayMode::Architecture;
         }
         let halftone = view
@@ -108,9 +107,27 @@ impl DisplayMode {
             .any(|o| o.target == Target::Category(Category::Walls) && o.halftone);
         if halftone {
             DisplayMode::Services
-        } else {
+        } else if ANNOTATION.iter().all(|c| view.hidden.hides_category(*c)) {
             DisplayMode::Blind
+        } else {
+            DisplayMode::Architecture
         }
+    }
+
+    /// A services drawing kept its dimensions, tags and notes hidden
+    /// before the trades dimensioned their own drawings: shows them
+    /// again. True when `view` changed.
+    pub fn show_own_annotation(view: &mut View) -> bool {
+        let own = [Category::Dimensions, Category::Tags, Category::Notes];
+        if DisplayMode::of(view) != DisplayMode::Services
+            || !own.iter().all(|c| view.hidden.hides_category(*c))
+        {
+            return false;
+        }
+        for c in own {
+            view.hidden.set_category(c, false);
+        }
+        true
     }
 
     /// Put `view` in this mode.
@@ -122,9 +139,20 @@ impl DisplayMode {
             DrawingStyle::Technical
         };
         view.graphics.below_fill = !blind;
+        // what is written on a drawing belongs to its view: the trade's
+        // drawing shows its own dimensions, tags and notes, never the
+        // architect's
         for c in ANNOTATION {
-            view.hidden.set_category(c, blind);
+            let hide = match self {
+                DisplayMode::Architecture => false,
+                DisplayMode::Blind => true,
+                DisplayMode::Services => c == Category::SectionMarks,
+            };
+            view.hidden.set_category(c, hide);
         }
+        // pipes, ducts and wiring are the trades' to draw
+        view.hidden
+            .set_category(Category::Pipes, self != DisplayMode::Services);
         // rooms stay to be picked; their names go
         view.room_tags = blind.then_some(false);
         if blind {
@@ -165,7 +193,7 @@ mod tests {
         assert_eq!(DisplayMode::of(&v), DisplayMode::Blind);
         assert_eq!(v.graphics.drawing_style, DrawingStyle::Clean);
         assert!(v.hidden.hides_category(Category::Dimensions));
-        assert!(!v.hidden.hides_category(Category::Pipes));
+        assert!(v.hidden.hides_category(Category::Pipes));
         // walls in one thin line, not halftone
         let walls = v
             .look
@@ -180,9 +208,24 @@ mod tests {
     #[test]
     fn services_stand_out_over_the_building_in_halftone_and_it_comes_back() {
         let mut v = plan();
+        // the architect's drawing leaves the trades' pipes out
+        DisplayMode::Architecture.apply(&mut v);
+        assert!(v.hidden.hides_category(Category::Pipes));
         let was = v.clone();
         DisplayMode::Services.apply(&mut v);
         assert_eq!(DisplayMode::of(&v), DisplayMode::Services);
+        assert!(!v.hidden.hides_category(Category::Pipes));
+        // the trade dimensions its own drawing
+        assert!(!v.hidden.hides_category(Category::Dimensions));
+        assert!(v.hidden.hides_category(Category::SectionMarks));
+        // one from before, with all of it hidden, shows it again once
+        let mut old = v.clone();
+        for c in ANNOTATION {
+            old.hidden.set_category(c, true);
+        }
+        assert!(DisplayMode::show_own_annotation(&mut old));
+        assert!(!DisplayMode::show_own_annotation(&mut old));
+        assert_eq!(old, v);
         let half = |c: Category| {
             v.look
                 .overrides

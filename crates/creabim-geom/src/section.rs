@@ -933,6 +933,13 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     if let Some(stage) = v.reno {
         reno_colours(model, stage, &mut d.items);
     }
+    // a drawing without the pipes leaves the wiring's devices out too
+    if v.hidden
+        .hides_category(creabim_core::visibility::Category::Pipes)
+    {
+        d.items
+            .retain(|it| !crate::elplan::is_device(model, it.id()));
+    }
     // a services drawing shows its pipes as lines, each in its system's
     // colour and line type
     if matches!(kind, creabim_core::ViewKind::Plan { .. })

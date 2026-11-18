@@ -1431,6 +1431,9 @@ impl CreaBimApp {
                     self.beam_face = None;
                     self.plan.members.last_beam = None;
                     self.status = t.hint().into();
+                    if *t == Tool::Pipe {
+                        self.open_trade_plan();
+                    }
                     if *t == Tool::Guide && self.shell.settings.guides_hidden {
                         // drawing guides you can't see helps no one
                         self.set_guides_hidden(false);
@@ -1642,10 +1645,16 @@ impl CreaBimApp {
                 // roofs, with a type of each to draw with
                 let tx = creabim_core::skbase::add_base(m.model());
                 let _ = m.commit(tx);
-                self.load_model(m.model().clone());
+                // the frame of the drawing set: plans, sections,
+                // elevations, lists and their sheets, to be filled in
+                let mut model = super::with_plan_views(m.model().clone());
+                if let Some((tx, _)) = creabim_geom::docset::skeleton(&model) {
+                    let _ = tx.apply(&mut model);
+                }
+                self.load_model(model);
                 self.path = new_path("Untitled");
                 self.status =
-                    "New project with two levels and the usual materials and build-ups. Pick the Wall tool to start drawing.".into();
+                    "New project with two levels, the usual materials and build-ups and the frame of the drawing set. Pick the Wall tool to start drawing.".into();
             }
             "new.project" => self.open_new_project(ctx),
             "new.sheet" => self.new_sheet(),
