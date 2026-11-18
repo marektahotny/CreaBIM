@@ -773,7 +773,7 @@ pub fn outer_sills(model: &crate::Model) -> Vec<OuterSill> {
         let crate::ElementKind::Opening(o) = &e.kind else {
             continue;
         };
-        if o.kind != OpeningKind::Window || o.sill < 0.1 {
+        if o.kind != OpeningKind::Window || o.sill < 0.1 || o.no_outer_sill {
             continue;
         }
         let Some(crate::ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
@@ -926,6 +926,31 @@ pub fn outer_sill_of(model: &crate::Model, id: crate::ElementId) -> Option<Outer
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A window's outer sill is counted for the sheet-metal list
+    /// until it is switched off.
+    #[test]
+    fn a_window_without_its_outer_sill_has_none_in_the_list() {
+        let mut m = crate::sample::sample_house();
+        let before: usize = outer_sills(&m).iter().map(|s| s.windows.len()).sum();
+        assert!(before > 0);
+        let e = m
+            .iter()
+            .find(|e| outer_sill_of(&m, e.id).is_some())
+            .cloned()
+            .unwrap();
+        let mut off = e.clone();
+        if let crate::ElementKind::Opening(o) = &mut off.kind {
+            o.no_outer_sill = true;
+        }
+        crate::Transaction::new("t")
+            .replace(e.clone(), off)
+            .apply(&mut m)
+            .unwrap();
+        assert!(outer_sill_of(&m, e.id).is_none());
+        let after: usize = outer_sills(&m).iter().map(|s| s.windows.len()).sum();
+        assert_eq!(after, before - 1);
+    }
 
     #[test]
     fn a_leaf_of_800_needs_900_by_2020_with_a_lining() {

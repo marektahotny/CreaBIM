@@ -208,6 +208,8 @@ pub fn fit(
                 frame: Default::default(),
                 flip_hand: false,
                 flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
                 setback: None,
                 reveal: None,
                 division: None,

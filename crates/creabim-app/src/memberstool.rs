@@ -1549,6 +1549,7 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
                 m.pipe.height_set = false;
             }
         }
+        "pipe_slope" => m.pipe.slope_pct = v.clamp(0.0, 100.0),
         "beam_depth" => m.beam_depth = v.clamp(0.05, 3.0),
         "pitch" => m.roof_pitch = v.clamp(1.0, 75.0),
         "stair_width" => m.stair_width = v.clamp(0.5, 5.0),

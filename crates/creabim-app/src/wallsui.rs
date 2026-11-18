@@ -504,6 +504,27 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
                     label = "Flip window"
                 }
             });
+            // its sills: the outer one of sheet metal (with its mark and
+            // its row in the list of sheet-metal work), the inner board
+            let (mut outer, mut inner) = (!o.no_outer_sill, !o.no_inner_sill);
+            if crate::props::switch(ui, &mut outer, "Outer sill")
+                .on_hover_text(crate::i18n::t(
+                    "The sheet-metal sill outside: drawn in plans and 3D, marked K/n beside the window's mark and counted in the list of sheet-metal work",
+                ))
+                .changed()
+            {
+                o.no_outer_sill = !outer;
+                label = "Outer sill"
+            }
+            if crate::props::switch(ui, &mut inner, "Inner sill")
+                .on_hover_text(crate::i18n::t(
+                    "The sill board inside: drawn in plans and 3D",
+                ))
+                .changed()
+            {
+                o.no_inner_sill = !inner;
+                label = "Inner sill"
+            }
         }
         OpeningKind::Hole => {
             ui.label(crate::i18n::t(

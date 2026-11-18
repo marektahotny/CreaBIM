@@ -610,7 +610,7 @@ impl CreaBimApp {
             level_copy: Default::default(),
             import_report: None,
             drafting: Default::default(),
-            orbit_selection: false,
+            orbit_selection: true,
             rect_3d: None,
             rect_2d: None,
             last_in_2d: false,
@@ -1105,6 +1105,7 @@ impl CreaBimApp {
             return;
         }
         let d = GVec2::new(d.x, d.y);
+        // what is selected is the centre the view turns about
         match self.selection_bounds().filter(|_| self.orbit_selection) {
             Some((lo, hi)) => self.camera.orbit_around((lo + hi) / 2.0, d),
             None => self.camera.orbit(d),
@@ -3153,7 +3154,14 @@ impl CreaBimApp {
                             (p.x - rect.left()) / rect.width().max(1.0) * 2.0 - 1.0,
                             1.0 - (p.y - rect.top()) / rect.height().max(1.0) * 2.0,
                         );
-                        self.camera.zoom_at(scroll / 50.0, ndc, aspect);
+                        // with something selected, its middle is the
+                        // centre of zooming, as it is of turning
+                        match self.selection_bounds().filter(|_| self.orbit_selection) {
+                            Some((lo, hi)) => {
+                                self.camera.zoom_about(scroll / 50.0, (lo + hi) / 2.0)
+                            }
+                            None => self.camera.zoom_at(scroll / 50.0, ndc, aspect),
+                        }
                     }
                     None => self.camera.zoom(scroll / 50.0),
                 }

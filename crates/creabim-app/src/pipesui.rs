@@ -306,15 +306,24 @@ pub fn pipe_fields(ui: &mut egui::Ui, p: &mut Pipe) -> &'static str {
     {
         label = "Pipe height";
     }
-    if p.kind().is_gravity() {
-        ui.label(
-            egui::RichText::new(crate::i18n::tr(&format!(
-                "{}: {} %",
-                crate::i18n::tr("Fall"),
-                crate::i18n::num(p.fall_pct(), 1)
-            )))
-            .weak(),
-        );
+    // a drain's fall in per cent: typed, its end drops or rises to it
+    let run = p.start.truncate().distance(p.end.truncate());
+    if p.kind().is_gravity() && run > 1e-6 {
+        let mut pct = (p.fall_pct() * 100.0).round() / 100.0;
+        crate::props::row(ui, "Slope", |ui| {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut pct)
+                        .speed(0.1)
+                        .range(-100.0..=100.0)
+                        .suffix(" %"),
+                )
+                .changed()
+            {
+                p.end.z = p.start.z - run * pct / 100.0;
+                label = "Pipe slope";
+            }
+        });
     }
     ui.label(
         egui::RichText::new(crate::i18n::tr(&format!(
@@ -383,6 +392,9 @@ pub struct PipeDraft {
     /// The height was changed while a run is being drawn: the next click
     /// first rises or drops to it where the run is.
     pub height_set: bool,
+    /// How much a drain falls along its run, per cent; nothing for the
+    /// systems under pressure.
+    pub slope_pct: f64,
 }
 
 impl Default for PipeDraft {
@@ -401,7 +413,13 @@ impl PipeDraft {
             height: s.height,
             last_z: None,
             height_set: false,
+            slope_pct: s.slope_pct,
         }
+    }
+
+    /// Does the system run by gravity, so its pipes are drawn falling?
+    pub fn falls(&self) -> bool {
+        self.system_def().is_some_and(|s| s.slope_pct > 0.0)
     }
 
     pub fn system_def(&self) -> Option<&'static creabim_core::mep::SystemDef> {
@@ -454,7 +472,7 @@ impl PipeDraft {
     /// drain falling by its system's slope from where the run is.
     pub fn pipe(&self, level: ElementId, a: DVec2, b: DVec2) -> Pipe {
         let z0 = self.z_next();
-        let fall = self.system_def().map_or(0.0, |s| s.slope_pct) / 100.0;
+        let fall = if self.falls() { self.slope_pct } else { 0.0 } / 100.0;
         let z1 = z0 - fall * a.distance(b);
         let mut p = Pipe {
             level,
@@ -714,14 +732,20 @@ pub fn preview(
         text = format!("↕ {} → {}   ", num(z0), num(z1));
     }
     if (p.start.z - p.end.z).abs() > 5e-4 {
-        text += &format!("Z {} → {} m", num(p.start.z), num(p.end.z));
+        text += &format!(
+            "Z {} → {} m   {} %",
+            num(p.start.z),
+            num(p.end.z),
+            crate::i18n::num(draft.slope_pct, 2)
+        );
     } else {
         text += &format!("Z {} m", num(p.start.z));
     }
     if let Some(at) = project(b.truncate().extend(a.z)) {
         let font = egui::FontId::proportional(12.0);
         let galley = painter.layout_no_wrap(text, font, egui::Color32::BLACK);
-        let pos = at + egui::vec2(14.0, 10.0);
+        // under the cursor's own readout of length and angle
+        let pos = at + egui::vec2(14.0, 30.0);
         let back = egui::Rect::from_min_size(pos, galley.size()).expand(3.0);
         painter.rect_filled(back, 3.0, egui::Color32::from_white_alpha(230));
         painter.galley(pos, galley, egui::Color32::BLACK);
@@ -734,7 +758,7 @@ pub fn tool_options(draft: &PipeDraft) -> Vec<serde_json::Value> {
     let sys = draft.system_def().map_or(draft.system.clone(), |s| {
         format!("{} – {}", s.code, crate::i18n::tr(s.name))
     });
-    vec![
+    let mut out = vec![
         json!({
             "kind": "menu", "key": "pipe.system", "label": "System", "value": sys, "icon": "pipe",
             "hint": "The system new pipes are in: cold and hot water, drainage, gas, heating, medical gases, ventilation",
@@ -753,7 +777,15 @@ pub fn tool_options(draft: &PipeDraft) -> Vec<serde_json::Value> {
             "unit": "m", "step": 0.05, "min": -5.0, "max": 20.0,
             "hint": "Height of the pipe's axis above the floor (Z). Changed while a run is drawn, the next click rises or drops to it where the run is; a click on the same point draws the riser alone",
         }),
-    ]
+    ];
+    if draft.falls() {
+        out.push(json!({
+            "kind": "number", "key": "member.pipe_slope", "label": "Slope", "value": draft.slope_pct,
+            "unit": "%", "step": 0.5, "min": 0.0, "max": 100.0,
+            "hint": "How much the drain falls along its run, in per cent: each pipe starts where the last one ended and falls on from there",
+        }));
+    }
+    out
 }
 
 /// The items of the Pipe tool's menus, as (action, text, checked).
@@ -803,11 +835,16 @@ pub fn action(draft: &mut PipeDraft, head: &str, arg: &str) -> bool {
     match head {
         "pipe" | "pipe.system" => {
             if let Some(s) = creabim_core::mep::system(arg) {
-                let height = draft.height;
+                let (height, slope) = (draft.height, draft.slope_pct);
+                let same = draft.system == s.code;
                 let keep_height = head == "pipe.system" && s.kind == draft.kind();
                 *draft = PipeDraft::for_system(s);
                 if keep_height {
                     draft.height = height;
+                }
+                // the slope typed stays while the system does
+                if same {
+                    draft.slope_pct = slope;
                 }
             }
         }
@@ -838,6 +875,26 @@ pub fn action(draft: &mut PipeDraft, head: &str, arg: &str) -> bool {
 #[cfg(test)]
 mod tool_tests {
     use super::*;
+
+    #[test]
+    fn a_drain_falls_by_the_slope_set_for_it() {
+        let mut d = PipeDraft::for_system(creabim_core::mep::system("K").unwrap());
+        assert!(d.falls() && d.slope_pct == 2.0);
+        d.slope_pct = 3.5;
+        let p = d.pipe(ElementId::new(), DVec2::ZERO, DVec2::new(4.0, 0.0));
+        assert!((p.start.z - p.end.z - 0.14).abs() < 1e-9);
+        // the bar offers the slope for drains only
+        let has = |d: &PipeDraft| {
+            tool_options(d)
+                .iter()
+                .any(|o| o["key"] == "member.pipe_slope")
+        };
+        assert!(has(&d));
+        let w = PipeDraft::for_system(creabim_core::mep::system("SV").unwrap());
+        assert!(!w.falls() && !has(&w));
+        let p = w.pipe(ElementId::new(), DVec2::ZERO, DVec2::new(4.0, 0.0));
+        assert_eq!(p.start.z, p.end.z);
+    }
 
     #[test]
     fn a_drain_falls_along_its_run_and_goes_on_from_its_end() {

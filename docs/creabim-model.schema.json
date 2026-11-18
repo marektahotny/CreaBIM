@@ -579,6 +579,16 @@
           "description": "A door opening to the wall's exterior; a window facing its interior.",
           "default": false
         },
+        "no_outer_sill": {
+          "type": "boolean",
+          "description": "A window without its outer sill of sheet metal.",
+          "default": false
+        },
+        "no_inner_sill": {
+          "type": "boolean",
+          "description": "A window without its inner sill board.",
+          "default": false
+        },
         "setback": {
           "type": "number",
           "description": "How far the frame's outer face stands in from the outer edge of the wall's core. Left out: on that edge in a layered wall, in the middle of a plain one."

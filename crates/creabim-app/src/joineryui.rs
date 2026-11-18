@@ -24,6 +24,9 @@ pub(super) struct JoineryEdit {
     sel: Option<Vec<usize>>,
     mode: Mode,
     inside: bool,
+    /// The whole opening's width and height, as typed here, m.
+    w: f64,
+    h: f64,
 }
 
 /// What the opening being edited is, read once a frame.
@@ -50,6 +53,8 @@ impl CreaBimApp {
             sel: None,
             mode: Mode::Select,
             inside: false,
+            w: o.width,
+            h: o.height,
         });
     }
 
@@ -85,14 +90,14 @@ impl CreaBimApp {
                 ElementKind::Opening(o) => {
                     let door = o.kind == OpeningKind::Door;
                     let fw = match (&o.door, door) {
-                        (Some(d), true) => d.members(o.width, o.height).0,
-                        _ => o.frame.fitted(o.width, o.height, 1.0).width,
+                        (Some(d), true) => d.members(ed.w, ed.h).0,
+                        _ => o.frame.fitted(ed.w, ed.h, 1.0).width,
                     };
                     Subject {
                         name: e.name.clone(),
                         door,
-                        w: o.width,
-                        h: o.height,
+                        w: ed.w,
+                        h: ed.h,
                         fw,
                     }
                 }
@@ -209,6 +214,17 @@ impl CreaBimApp {
                 _ => false,
             };
             o.division = if plain { None } else { Some(ed.node.clone()) };
+            // the whole size typed here; a door's leaf keeps its frame's
+            // allowance
+            let (dw, dh) = (ed.w - o.width, ed.h - o.height);
+            if dw.abs() > 1e-6 || dh.abs() > 1e-6 {
+                o.width = ed.w;
+                o.height = ed.h;
+                if let Some(d) = &mut o.door {
+                    d.nom_width = (d.nom_width + dw).max(0.3);
+                    d.nom_height = (d.nom_height + dh).max(1.0);
+                }
+            }
         }
         if after == before {
             return;
@@ -244,13 +260,15 @@ fn mm(v: f64) -> String {
 /// sizes; a click picks or splits.
 fn draw(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject) {
     let pad = 56.0_f32;
+    // room on the left for both rows of heights with their numbers
+    let pad_x = 88.0_f32;
     let room = 500.0_f32;
     let k = (room / s.w as f32).min(room / s.h as f32);
-    let size = Vec2::new(s.w as f32 * k + 2.0 * pad, s.h as f32 * k + 2.0 * pad);
+    let size = Vec2::new(s.w as f32 * k + pad_x + pad, s.h as f32 * k + 2.0 * pad);
     let (resp, painter) = ui.allocate_painter(size, egui::Sense::click());
     let o = resp.rect.min;
     let inside = ed.inside;
-    let px = |x: f64| o.x + pad + (if inside { s.w - x } else { x }) as f32 * k;
+    let px = |x: f64| o.x + pad_x + (if inside { s.w - x } else { x }) as f32 * k;
     let py = |y: f64| o.y + pad + (s.h - y) as f32 * k;
     let rect = |x0: f64, y0: f64, x1: f64, y1: f64| {
         Rect::from_two_pos(Pos2::new(px(x0), py(y0)), Pos2::new(px(x1), py(y1)))
@@ -370,13 +388,13 @@ fn draw(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject) {
             dim_h(f.x0, f.x1, py(0.0) + 16.0, mm(f.x1 - f.x0));
         }
         if (f.x0 - left).abs() < 1e-6 && fields.len() > 1 {
-            dim_v(f.y0, f.y1, x_left - 10.0, mm(f.y1 - f.y0));
+            dim_v(f.y0, f.y1, x_left - 12.0, mm(f.y1 - f.y0));
         }
     }
     dim_h(0.0, s.w, py(0.0) + 38.0, mm(s.w));
-    dim_v(0.0, s.h, x_left - 38.0, mm(s.h));
+    dim_v(0.0, s.h, x_left - 50.0, mm(s.h));
     painter.text(
-        Pos2::new(o.x + pad, o.y + 8.0),
+        Pos2::new(o.x + pad_x, o.y + 8.0),
         egui::Align2::LEFT_TOP,
         crate::i18n::tr(if inside {
             "Seen from inside. A triangle's point is at the hinges."
@@ -393,7 +411,7 @@ fn draw(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject) {
         return;
     };
     let x = {
-        let v = ((p.x - o.x - pad) / k) as f64;
+        let v = ((p.x - o.x - pad_x) / k) as f64;
         if inside {
             s.w - v
         } else {
@@ -435,6 +453,29 @@ fn side(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, others: &[(String,
         .weak(),
     );
     ui.add_space(6.0);
+    // the whole opening's size, typed in millimetres
+    ui.label(egui::RichText::new(t("The whole opening")).strong());
+    for (label, v, lo, hi) in [
+        ("Width", &mut ed.w, 0.3, 12.0),
+        ("Height", &mut ed.h, 0.3, 6.0),
+    ] {
+        ui.horizontal(|ui| {
+            ui.label(t(label));
+            let mut mm = (*v * 1000.0).round();
+            if ui
+                .add(
+                    egui::DragValue::new(&mut mm)
+                        .speed(10.0)
+                        .range(lo * 1000.0..=hi * 1000.0)
+                        .suffix(" mm"),
+                )
+                .changed()
+            {
+                *v = mm / 1000.0;
+            }
+        });
+    }
+    ui.add_space(8.0);
     let sel = ed.sel.clone();
     let picked = sel
         .as_ref()

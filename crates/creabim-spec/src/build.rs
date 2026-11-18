@@ -949,6 +949,8 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         frame: Default::default(),
         flip_hand: o.flip_hand,
         flip_facing: o.flip_facing,
+        no_outer_sill: o.no_outer_sill,
+        no_inner_sill: o.no_inner_sill,
         setback: o.setback.map(|v| c.l(v)),
         reveal: o.reveal.map(|v| c.l(v)),
         division,

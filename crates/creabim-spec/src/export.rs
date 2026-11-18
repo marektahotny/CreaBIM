@@ -809,6 +809,8 @@ fn opening(e: &Element, id: &str, o: &core::Opening, ids: &Ids) -> f::Opening {
         frame: (own(e, Param::Frame) && (typed || !o.frame.is_default())).then(|| frame(&o.frame)),
         flip_hand: o.flip_hand,
         flip_facing: o.flip_facing,
+        no_outer_sill: o.no_outer_sill,
+        no_inner_sill: o.no_inner_sill,
         setback: o.setback,
         reveal: o.reveal,
         division: o.division.as_ref().map(|d| d.code()),

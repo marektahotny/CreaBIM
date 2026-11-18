@@ -98,6 +98,22 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
         }
     };
     let b = DVec3::new;
+    // a window's sills: the outer one of sheet metal from the frame out
+    // over the wall's face, the inner board from the frame in over the
+    // inner face; a window down to the floor has no board
+    let inner = wall.thickness - face;
+    let sills = |add: &mut dyn FnMut(Part, DVec3, DVec3)| {
+        if !o.no_outer_sill && face > hd + 0.005 {
+            add(Part::Frame, b(0.0, hd, 0.0), b(w, face + SILL_NOSE, 0.03));
+        }
+        if !o.no_inner_sill && o.sill >= 0.1 && inner > hd + 0.005 {
+            add(
+                Part::Frame,
+                b(0.0, -inner - INNER_SILL_NOSE, 0.0),
+                b(w, -hd, 0.025),
+            );
+        }
+    };
     // jambs and head, round every opening
     // a door as joinery: its frame is what its leaf leaves of the opening
     let (jw, hh) = match (&o.door, o.kind, &o.division) {
@@ -113,9 +129,7 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
         let door = o.kind == OpeningKind::Door;
         if !door {
             add(Part::Frame, b(fw, -hd, 0.0), b(w - fw, hd, fw));
-            if face > hd + 0.005 {
-                add(Part::Frame, b(0.0, hd, 0.0), b(w, face + SILL_NOSE, 0.03));
-            }
+            sills(&mut add);
         }
         // the division is seen from outside (+y here, −y once turned
         // across): its left is at the far x until then
@@ -143,9 +157,7 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
             add(Part::Frame, b(fw, -hd, 0.0), b(w - fw, hd, fw));
             // the outside sill, from the frame out past the wall's face,
             // on the side the window faces out of (built facing +y)
-            if face > hd + 0.005 {
-                add(Part::Frame, b(0.0, hd, 0.0), b(w, face + SILL_NOSE, 0.03));
-            }
+            sills(&mut add);
             let (x0, x1, z0, z1) = (fw, w - fw, fw, h - fw);
             let (na, nu) = (f.frame.panes_across, f.frame.panes_up);
             let bar = fw * 0.6;
@@ -399,6 +411,8 @@ pub fn division(o: &Opening) -> FrameNode {
 
 /// How far a window's outside sill runs past the wall's face.
 pub const SILL_NOSE: f64 = 0.04;
+/// How far an inner sill board stands over the wall's inner face, m.
+pub const INNER_SILL_NOSE: f64 = 0.03;
 
 /// Which way a door is hung, in words: its hinge side seen from the
 /// side it opens to, and which side that is.
@@ -571,6 +585,8 @@ mod tests {
             frame,
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
             setback: None,
             reveal: None,
             division: None,
@@ -606,8 +622,12 @@ mod tests {
     fn a_window_has_a_frame_round_set_back_glass() {
         let o = opening(OpeningKind::Window, OpeningFrame::default());
         let boxes = opening_boxes(&o, &wall(), None);
-        // four frame members and the outside sill
-        assert_eq!(count(&boxes, Part::Frame), 5);
+        // four frame members, the outside sill and the inner board
+        assert_eq!(count(&boxes, Part::Frame), 6);
+        // without its sills: the frame alone
+        let mut bare = o.clone();
+        (bare.no_outer_sill, bare.no_inner_sill) = (true, true);
+        assert_eq!(count(&opening_boxes(&bare, &wall(), None), Part::Frame), 4);
         assert_eq!(count(&boxes, Part::Glass), 1);
         let glass = boxes.iter().find(|b| b.part == Part::Glass).unwrap();
         // the glass fills the frame's inside, behind its faces
@@ -629,8 +649,8 @@ mod tests {
         };
         let boxes = opening_boxes(&opening(OpeningKind::Window, frame), &wall(), None);
         assert_eq!(count(&boxes, Part::Glass), 6);
-        // the frame and sill, two upright bars, a cross bar in each column
-        assert_eq!(count(&boxes, Part::Frame), 5 + 2 + 3);
+        // the frame and sills, two upright bars, a cross bar in each column
+        assert_eq!(count(&boxes, Part::Frame), 6 + 2 + 3);
         let glass: f64 = boxes
             .iter()
             .filter(|b| b.part == Part::Glass)
@@ -775,8 +795,8 @@ mod tests {
         // seen from outside: a tilt and turn leaf hinged left, then fixed
         o.division = Some(FrameNode::parse("v(1:OS-L,1:FIX)").unwrap());
         let boxes = opening_boxes(&o, &wall(), None);
-        // frame of four, the outside sill, a mullion and a sash of four
-        assert_eq!(count(&boxes, Part::Frame), 5 + 1 + 4);
+        // frame of four, the two sills, a mullion and a sash of four
+        assert_eq!(count(&boxes, Part::Frame), 6 + 1 + 4);
         assert_eq!(count(&boxes, Part::Glass), 2);
         assert_eq!(count(&boxes, Part::Handle), 3);
         // the window faces the wall's right (−y): inside is +y; seen from

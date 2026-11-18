@@ -439,6 +439,10 @@ spec_struct! {
         /// A door opening to the wall's exterior; a window facing its
         /// interior.
         flip_facing: bool = false,
+        /// A window without its outer sill of sheet metal.
+        no_outer_sill: bool = false,
+        /// A window without its inner sill board.
+        no_inner_sill: bool = false,
         /// How far the frame's outer face stands in from the outer edge
         /// of the wall's core. Left out: on that edge in a layered wall,
         /// in the middle of a plain one.

@@ -1563,6 +1563,13 @@ pub struct Opening {
     /// window with its outside face (and its sill) to the wall's interior.
     #[serde(default, skip_serializing_if = "is_false")]
     pub flip_facing: bool,
+    /// A window without its outer sill of sheet metal (no item in the
+    /// list of sheet-metal work, no mark of it), or without its inner
+    /// sill board.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub no_outer_sill: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub no_inner_sill: bool,
     /// How far the frame's outer face stands in from the outer edge of
     /// the wall's load-bearing core (less than nothing: out into the
     /// insulation). Left out, the frame stands on that edge in a layered
