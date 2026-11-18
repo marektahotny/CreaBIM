@@ -1116,6 +1116,9 @@ impl CreaBimApp {
         let mut open = true;
         let mut apply = false;
         let mut close = false;
+        // the project's north turned: by an angle, or by a line picked in a plan
+        let mut north_turn: Option<f64> = None;
+        let mut north_line = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         crate::app::shell::window("Project information")
             .open(&mut open)
@@ -1236,6 +1239,33 @@ impl CreaBimApp {
                     )
                     .on_hover_text(crate::i18n::t("How far true north turns from the drawings' up, anticlockwise"));
                 });
+                crate::props::row(ui, "Rotate project north", |ui| {
+                    let key = egui::Id::new("project.north.turn");
+                    let mut by: f64 = ui.data(|d| d.get_temp(key)).unwrap_or(0.0);
+                    ui.add(
+                        egui::DragValue::new(&mut by)
+                            .range(-180.0..=180.0)
+                            .speed(0.5)
+                            .max_decimals(4)
+                            .suffix("°"),
+                    )
+                    .on_hover_text(crate::i18n::t("The whole project (building, terrain, parcels, maps) turns about its origin by this angle, anticlockwise, so the plans draw turned. True north stays where it is on the ground, and the S-JTSK coordinates and heights stay true"));
+                    ui.data_mut(|d| d.insert_temp(key, by));
+                    if ui
+                        .add_enabled(by != 0.0, egui::Button::new(crate::i18n::t("Rotate")))
+                        .clicked()
+                    {
+                        north_turn = Some(by);
+                        ui.data_mut(|d| d.insert_temp(key, 0.0f64));
+                    }
+                });
+                if ui
+                    .button(crate::i18n::t("Align project north by a line in the plan…"))
+                    .on_hover_text(crate::i18n::t("Then click a line in a plan (a parcel boundary, a map line, a wall): the whole project turns so that it is exactly level or upright, whichever is nearer"))
+                    .clicked()
+                {
+                    north_line = true;
+                }
                 crate::props::section(ui, "Building");
                 text(ui, "Name", &mut draft.building_name, "");
                 text(ui, "Use", &mut draft.building_use, "Dwelling");
@@ -1276,6 +1306,27 @@ impl CreaBimApp {
                 r,
                 "Project information applied: the title blocks show it now.".to_string(),
             );
+        }
+        if let Some(by) = north_turn {
+            let tx = creabim_core::project::rotate_north(self.doc.model(), by);
+            let r = self.doc.commit(tx);
+            let now = self
+                .doc
+                .model()
+                .project_info()
+                .map_or(0.0, |(_, p)| p.true_north);
+            draft.true_north = now;
+            self.report(
+                r,
+                crate::i18n::tr(&format!(
+                    "Project north turned by {by}°: true north is now at {now}°. Ctrl+Z to undo."
+                )),
+            );
+        }
+        if north_line {
+            self.plan.north_pick = true;
+            close = true;
+            self.status = "Click a line in a plan: the project turns so that it is level or upright. Esc leaves it.".into();
         }
         self.project_open = open && !close;
         self.project_draft = self.project_open.then_some(draft);

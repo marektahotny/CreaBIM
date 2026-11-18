@@ -510,6 +510,9 @@ pub struct PlanState {
     pub dim_chain: bool,
     /// New linear dimensions have short witness lines.
     pub dim_short: bool,
+    /// The next click on a line in a plan turns the project so that the
+    /// line is level or upright (project north by a line).
+    pub north_pick: bool,
     /// A dimension's number being typed over.
     pub dim_edit: Option<DimEdit>,
     /// What was selected before the last click: a double-click on a
@@ -710,6 +713,7 @@ impl Default for PlanState {
             dim_axis: None,
             dim_chain: true,
             dim_short: false,
+            north_pick: false,
             dim_edit: None,
             dim_edit_prefer: Vec::new(),
             chain_line: None,
@@ -2136,6 +2140,58 @@ fn show_pane(
     let annotation_drag = state.anno.grab.is_some()
         || !response.drag_started_by(egui::PointerButton::Primary)
         || press_on_selected;
+    if state.north_pick && matches!(kind, PaneKind::Plan { .. }) {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            state.north_pick = false;
+            state.status = Some("Project north is left as it was.".into());
+            return None;
+        }
+        if response.clicked() {
+            let at = xf.to_world(response.interact_pointer_pos()?);
+            let tol = 12.0 / xf.scale as f64;
+            // the nearest drawn line: its whole length gives the direction
+            let mut best: Option<(f64, DVec2, DVec2)> = None;
+            let mut consider = |a: DVec2, b: DVec2| {
+                let d = segment_distance(at, a, b);
+                if a.distance(b) > 1e-6 && d < tol && best.is_none_or(|(bd, ..)| d < bd) {
+                    best = Some((d, a, b));
+                }
+            };
+            for it in &plan.items {
+                match it {
+                    PlanItem::Line { a, b, .. } => consider(*a, *b),
+                    PlanItem::Polygon { points, .. } => {
+                        for k in 0..points.len() {
+                            consider(points[k], points[(k + 1) % points.len()]);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let Some((_, a, b)) = best else {
+                state.status = Some(
+                    "There is no line here: click nearer a boundary, a map line or a wall.".into(),
+                );
+                return None;
+            };
+            state.north_pick = false;
+            let th = (b - a).to_angle().to_degrees();
+            let by = ((th / 90.0).round() * 90.0 - th) * 1e9;
+            let by = by.round() / 1e9;
+            if by.abs() < 1e-7 {
+                state.status = Some("The line is level or upright already.".into());
+                return None;
+            }
+            let tx = creabim_core::project::rotate_north(doc.model(), by);
+            if let Err(e) = doc.commit(tx) {
+                return Some(e.to_string());
+            }
+            state.status = Some(format!(
+                "Project north turned by {by:.4}°: the line is now exactly level or upright. Ctrl+Z to undo."
+            ));
+        }
+        return None;
+    }
     if tool == Tool::Select {
         // what is selected besides dimensions: the end a typed dimension moves
         let chosen = selection.all();

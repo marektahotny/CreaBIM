@@ -298,3 +298,124 @@ mod tests {
         );
     }
 }
+
+/// The project's north turned by `degrees` anticlockwise (PilonDesigner's
+/// "Otočiť projektový sever"): the whole model, the building and what is
+/// round it (terrain, parcels, map underlays), turns about the origin, so
+/// that the plans draw turned; true north stays where it is on the ground
+/// ([`ProjectInfo::true_north`] turns with the model), the origin stays
+/// on its S-JTSK point and every height stays as it is.
+pub fn rotate_north(model: &crate::Model, degrees: f64) -> crate::Transaction {
+    use crate::{ElementKind, ViewKind};
+    let turn = crate::transform::Xform::Rotate {
+        center: glam::DVec2::ZERO,
+        degrees,
+    };
+    let rot = glam::DVec2::from_angle(degrees.to_radians());
+    let in_plan = |view: crate::ElementId| {
+        matches!(
+            model.get(view).map(|e| &e.kind),
+            Some(ElementKind::View(v)) if matches!(v.kind, ViewKind::Plan { .. })
+        )
+    };
+    let mut tx = crate::Transaction::new("Rotate project north");
+    let mut has_project = false;
+    for e in model.iter() {
+        let mut now = e.clone();
+        match &mut now.kind {
+            // these go with what they are in, or lie on paper
+            ElementKind::Opening(_)
+            | ElementKind::Valve(_)
+            | ElementKind::Level(_)
+            | ElementKind::PaperMark(_) => continue,
+            ElementKind::Project(p) => {
+                has_project = true;
+                let n = (p.true_north + degrees + 180.0).rem_euclid(360.0) - 180.0;
+                p.true_north = (n * 1e6).round() / 1e6;
+            }
+            // what is written in a plan turns with the plan
+            ElementKind::Tag(t) if in_plan(t.view) => {
+                t.offset = rot.rotate(t.offset);
+                t.elbow = t.elbow.map(|p| rot.rotate(p));
+                t.end = t.end.map(|p| rot.rotate(p));
+            }
+            ElementKind::Note(n) if in_plan(n.view) => {
+                n.at = rot.rotate(n.at);
+                n.elbow = n.elbow.map(|p| rot.rotate(p));
+                n.leader = n.leader.map(|mut p| {
+                    if p.host.is_none() {
+                        p.local = rot.rotate(p.local);
+                    }
+                    p
+                });
+            }
+            ElementKind::Dimension(d) if in_plan(d.view) => {
+                for p in d.points_mut() {
+                    if p.host.is_none() {
+                        p.local = rot.rotate(p.local);
+                    }
+                }
+                if let Some(c) = &mut d.center {
+                    if c.host.is_none() {
+                        c.local = rot.rotate(c.local);
+                    }
+                }
+            }
+            _ => match crate::transform::transformed(model, e, &turn) {
+                Some(n) => now = n,
+                None => continue,
+            },
+        }
+        if now != *e {
+            tx = tx.replace(e.clone(), now);
+        }
+    }
+    if !has_project {
+        tx = tx.insert(crate::Element::new(
+            "Project",
+            ElementKind::Project(ProjectInfo {
+                true_north: degrees,
+                ..Default::default()
+            }),
+        ));
+    }
+    tx
+}
+
+#[cfg(test)]
+mod north_tests {
+    use crate::{Document, ElementKind};
+
+    #[test]
+    fn the_project_turns_and_true_north_stays_on_the_ground() {
+        let mut doc = Document::from_model(crate::sample::sample_house());
+        let walls = |doc: &Document| -> Vec<(glam::DVec2, glam::DVec2, f64)> {
+            doc.model()
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ElementKind::Wall(w) => Some((w.start, w.end, w.height)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let before = walls(&doc);
+        let north = doc
+            .model()
+            .project_info()
+            .map_or(0.0, |(_, p)| p.true_north);
+        doc.commit(super::rotate_north(doc.model(), 30.0)).unwrap();
+        let rot = glam::DVec2::from_angle(30f64.to_radians());
+        for (b, a) in before.iter().zip(walls(&doc)) {
+            assert!((rot.rotate(b.0) - a.0).length() < 1e-9);
+            assert!((rot.rotate(b.1) - a.1).length() < 1e-9);
+            assert_eq!(b.2, a.2, "heights stay");
+        }
+        let now = doc.model().project_info().unwrap().1.true_north;
+        assert!((now - north - 30.0).abs() < 1e-9);
+        // and back
+        doc.commit(super::rotate_north(doc.model(), -30.0)).unwrap();
+        for (b, a) in before.iter().zip(walls(&doc)) {
+            assert!((b.0 - a.0).length() < 1e-9 && (b.1 - a.1).length() < 1e-9);
+        }
+    }
+}
