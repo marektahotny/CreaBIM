@@ -746,6 +746,90 @@ pub fn apply_door(o: &mut Opening, spec: DoorSpec) {
     o.door = Some(spec);
 }
 
+/// An outer window sill of sheet metal, as the list of sheet-metal work
+/// counts it: every window standing above the floor has one, as long as
+/// the window is wide and as deep as from the frame's outer face to the
+/// wall's outer face with 40 mm of drip; sills alike share a number,
+/// counted in the model's order (`K/1`, `K/2`...).
+#[derive(Clone, Debug, PartialEq)]
+pub struct OuterSill {
+    pub number: usize,
+    /// Along the window and across the wall, m.
+    pub length: f64,
+    pub depth: f64,
+    pub windows: Vec<crate::ElementId>,
+}
+
+/// The letter the sheet-metal items are marked with (klampiarske
+/// výrobky).
+pub const SILL_LETTER: &str = "K";
+/// How far a sill reaches over the wall's face, m.
+const SILL_DRIP: f64 = 0.04;
+
+/// The outer sills of the model's windows.
+pub fn outer_sills(model: &crate::Model) -> Vec<OuterSill> {
+    let mut out: Vec<OuterSill> = vec![];
+    for e in model.iter() {
+        let crate::ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        if o.kind != OpeningKind::Window || o.sill < 0.1 {
+            continue;
+        }
+        let Some(crate::ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+            continue;
+        };
+        if w.curtain.is_some() {
+            continue;
+        }
+        let asm = model
+            .get(o.host)
+            .and_then(|h| crate::assembly_of(model, h))
+            .map(|x| x.1);
+        let frame = o.frame.fitted(o.width, o.height, w.thickness);
+        let (a0, a1) = o.frame_span(w, asm, frame.depth);
+        // the exterior is the wall's right unless it is flipped
+        let t = w.thickness / 2.0;
+        let reveal = if w.flip { t - a1 } else { a0 + t };
+        let mm = |x: f64| (x * 1000.0).round() / 1000.0;
+        // to whole centimetres, up
+        let depth = ((reveal.max(0.0) + SILL_DRIP) * 100.0 - 1e-6).ceil() / 100.0;
+        let length = mm(o.width);
+        match out
+            .iter_mut()
+            .find(|s| (s.length - length).abs() < 5e-4 && (s.depth - depth).abs() < 5e-4)
+        {
+            Some(s) => s.windows.push(e.id),
+            None => out.push(OuterSill {
+                number: out.len() + 1,
+                length,
+                depth,
+                windows: vec![e.id],
+            }),
+        }
+    }
+    out
+}
+
+/// A door's clear passage, width and height: what its frame leaves.
+pub fn clear_passage(o: &Opening) -> Option<(f64, f64)> {
+    if o.kind != OpeningKind::Door {
+        return None;
+    }
+    let d = match &o.door {
+        Some(d) => d.clone(),
+        None => DoorSpec::fitting(DoorFrame::Lining, o.width, o.height),
+    };
+    Some((d.nom_width, d.nom_height))
+}
+
+/// The outer sill of window `id`, if it has one.
+pub fn outer_sill_of(model: &crate::Model, id: crate::ElementId) -> Option<OuterSill> {
+    outer_sills(model)
+        .into_iter()
+        .find(|s| s.windows.contains(&id))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

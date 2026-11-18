@@ -308,6 +308,27 @@ pub fn door_hand(model: &Model, id: ElementId) -> Option<&'static str> {
     })
 }
 
+/// The way a door's or window's tag may stand off its wall in a plan (a
+/// unit vector square to the wall, in the view); none for other tags.
+pub fn tag_normal(model: &Model, view: &View, tag: &creabim_core::Tag) -> Option<DVec2> {
+    if !matches!(view.kind, ViewKind::Plan { .. }) {
+        return None;
+    }
+    let ElementKind::Opening(o) = &model.get(tag.host)?.kind else {
+        return None;
+    };
+    if !matches!(o.kind, OpeningKind::Door | OpeningKind::Window) {
+        return None;
+    }
+    let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+        return None;
+    };
+    let project = Projector::of(model, view)?;
+    let n = w.direction().perp().extend(0.0);
+    let d = project.project(n) - project.project(DVec3::ZERO);
+    (d.length() > 0.5).then(|| d.normalize())
+}
+
 pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
     let Some(e) = model.get(id) else {
         return (String::new(), false);
@@ -323,7 +344,9 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
     // a mark, typed or numbered by the project's rules, is what it reads
     if !matches!(e.kind, ElementKind::Object(_)) {
         if let Some(m) = creabim_core::marks::mark_of(model, id) {
-            let round = matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Door);
+            // doors and windows in a circle, as the office marks them
+            let round = matches!(&e.kind, ElementKind::Opening(o)
+                if matches!(o.kind, OpeningKind::Door | OpeningKind::Window));
             // a door's mark (STN 01 3420): left or right over its number
             if let Some(hand) = door_hand(model, id) {
                 return (format!("{hand}\n{m}"), true);
@@ -1281,11 +1304,109 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 };
                 let mut look = look_of(model, t.style, t.color);
                 look.leader_end = t.leader_end.or(look.leader_end);
+                let mm = view.scale / 1000.0;
+                // a door's or window's mark stands square to its wall, on
+                // a straight leader
+                let square = if t.material {
+                    None
+                } else {
+                    tag_normal(model, view, t)
+                };
+                let (mut offset, elbow) = match square {
+                    Some(n) => (n * t.offset.dot(n), None),
+                    None => (t.offset, t.elbow.map(|p| centre + p)),
+                };
+                // a door's clear passage, written along its leader
+                let passage = square.and_then(|_| match &model.get(t.host)?.kind {
+                    ElementKind::Opening(o) => {
+                        let (w, h) = creabim_core::joinery::clear_passage(o)?;
+                        let ElementKind::Wall(wall) = &model.get(o.host)?.kind else {
+                            return None;
+                        };
+                        let write = |m: f64| spaced(&format!("{:.0}", m * 1000.0));
+                        Some((write(w), write(h), wall.thickness / 2.0))
+                    }
+                    _ => None,
+                });
+                let at = centre + offset;
+                let radius = |text: &str| {
+                    let o = tag_geometry(at, at, None, text, true, &look, mm).outline;
+                    let (lo, hi) = o.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+                        (lo.min(p.x), hi.max(p.x))
+                    });
+                    (hi - lo).max(0.0) / 2.0
+                };
+                // the leader is as long as the numbers on it need
+                if let (Some(n), Some((tw, th, face))) = (square, &passage) {
+                    let long = look.width(tw).max(look.width(th)) * mm;
+                    let need = face + long + 3.0 * mm + radius(&text);
+                    if offset.length() < need {
+                        let side = if t.offset.dot(n) < 0.0 { -n } else { n };
+                        offset = side * need;
+                    }
+                }
+                let at = centre + offset;
+                let anchor = match square {
+                    Some(_) => centre,
+                    None => centre + t.end.unwrap_or(DVec2::ZERO),
+                };
+                let radius = |text: &str| {
+                    let o = tag_geometry(at, at, None, text, true, &look, mm).outline;
+                    let (lo, hi) = o.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+                        (lo.min(p.x), hi.max(p.x))
+                    });
+                    (hi - lo).max(0.0) / 2.0
+                };
+                // beside a window's mark and touching it, its outer sill's
+                // for the list of sheet-metal work: K over its number in a
+                // split circle
+                if let (Some(n), Some(sill)) =
+                    (square, creabim_core::joinery::outer_sill_of(model, t.host))
+                {
+                    let mark = format!("{}\n{}", creabim_core::joinery::SILL_LETTER, sill.number);
+                    let mut u = n.perp();
+                    if u.x < -1e-6 || (u.x.abs() <= 1e-6 && u.y < 0.0) {
+                        u = -u;
+                    }
+                    let beside = at + u * (radius(&text) + radius(&mark));
+                    out.push(PlanItem::Tag {
+                        id: e.id,
+                        anchor: beside,
+                        at: beside,
+                        elbow: None,
+                        text: mark,
+                        round: true,
+                        look,
+                    });
+                }
+                // the width over the line, the height under it, midway
+                // from the bubble to the wall's face
+                if let Some((tw, th, face)) = passage {
+                    let d = anchor - at;
+                    let r = radius(&text);
+                    let dir = d.normalize_or_zero();
+                    let (angle, up) = crate::annotation::upright(dir.to_angle());
+                    let mid = at + dir * (r + (d.length() - face - r) / 2.0);
+                    for (text, side) in [(tw, 1.0), (th, -1.0)] {
+                        out.push(PlanItem::Annotation {
+                            id: e.id,
+                            item: Box::new(Annotation {
+                                shape: Shape::Along {
+                                    at: mid + up * side * look.size * 0.75 * mm,
+                                    angle,
+                                },
+                                text,
+                                look,
+                                mm,
+                            }),
+                        });
+                    }
+                }
                 out.push(PlanItem::Tag {
                     id: e.id,
-                    anchor: centre + t.end.unwrap_or(DVec2::ZERO),
-                    at: centre + t.offset,
-                    elbow: t.elbow.map(|p| centre + p),
+                    anchor,
+                    at,
+                    elbow,
                     text,
                     round,
                     look,

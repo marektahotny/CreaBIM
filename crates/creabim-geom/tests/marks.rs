@@ -99,8 +99,9 @@ fn tag_leaders_bend_at_their_elbow_and_end_in_their_mark() {
     // a tag's own leader end and elbow reach its drawing
     let mut doc = Document::from_model(sample::sample_house());
     let plan = named(doc.model(), "Ground Floor plan");
-    let door = first(doc.model(), is_door);
-    let mut tag = Tag::new(plan, door, DVec2::new(2.0, 2.0));
+    // (a door's or window's mark has a straight leader, square to its wall)
+    let wall = first(doc.model(), |k| matches!(k, ElementKind::Wall(_)));
+    let mut tag = Tag::new(plan, wall, DVec2::new(2.0, 2.0));
     tag.elbow = Some(DVec2::new(2.0, 0.0));
     tag.end = Some(DVec2::new(0.1, 0.0));
     tag.leader_end = Some(Terminator::Arrow);
@@ -413,7 +414,16 @@ fn the_starter_house_plans_with_level_marks_have_no_overlapping_labels() {
         }
         let mm = v.scale / 1000.0;
         let items = view_drawing(m, e.id).unwrap().items;
-        let clash = creabim_geom::declutter::overlapping_labels(&items, mm);
+        // door and window marks stand where they were put
+        let stays = |k: usize| {
+            matches!(m.get(items[k].id()).map(|e| &e.kind),
+                Some(ElementKind::Tag(t))
+                    if creabim_geom::annotate::tag_normal(m, v, t).is_some())
+        };
+        let clash: Vec<_> = creabim_geom::declutter::overlapping_labels(&items, mm)
+            .into_iter()
+            .filter(|(a, b)| !stays(*a) && !stays(*b))
+            .collect();
         assert!(clash.is_empty(), "{}: {clash:?}", e.name);
     }
 }
@@ -448,4 +458,60 @@ fn a_door_mark_is_a_split_circle_with_its_hand_over_its_number() {
     );
     assert_eq!(one.texts.len(), 1);
     assert!(one.divider.is_none());
+}
+
+#[test]
+fn door_and_window_marks_stand_square_to_their_wall() {
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    // a door's tag pushed askew comes back square, on a straight leader
+    let (id, n) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Tag(t) if t.view == plan && is_door(&doc.model().get(t.host)?.kind) => {
+                Some((
+                    e.id,
+                    creabim_geom::annotate::tag_normal(doc.model(), &v, t)?,
+                ))
+            }
+            _ => None,
+        })
+        .unwrap();
+    doc.edit_merged(id, "Move tag", |e| {
+        if let ElementKind::Tag(t) = &mut e.kind {
+            t.offset = n * 3.0 + n.perp() * 2.0;
+        }
+    })
+    .unwrap();
+    let d = view_drawing(doc.model(), plan).unwrap();
+    let (anchor, at) = d
+        .items
+        .iter()
+        .find_map(|i| match i {
+            PlanItem::Tag {
+                id: t, anchor, at, ..
+            } if *t == id => Some((*anchor, *at)),
+            _ => None,
+        })
+        .unwrap();
+    assert!((at - anchor - n * 3.0).length() < 1e-9);
+    // its clear passage is written along the leader: width and height
+    let along: Vec<String> = d
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            PlanItem::Annotation { id: t, item } if *t == id => Some(item.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(along.len(), 2, "{along:?}");
+    // a window's mark has its outer sill's beside it, K over its number
+    assert!(d
+        .items
+        .iter()
+        .any(|i| matches!(i, PlanItem::Tag { text, round: true, .. } if text.starts_with("K\n"))));
 }

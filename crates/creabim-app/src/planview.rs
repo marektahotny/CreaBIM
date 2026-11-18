@@ -7083,7 +7083,13 @@ pub fn opening_tags(
                 } else {
                     -n
                 };
-                out * 0.9 * scale
+                // a door's leader carries its clear passage
+                let far = if o.kind == creabim_core::OpeningKind::Door {
+                    1.6
+                } else {
+                    0.9
+                };
+                out * far * scale
             }
             // in sections and 3D views, above the opening
             None => DVec2::new(0.0, (o.height / 2.0 + 0.5) * scale.max(0.5)),
@@ -7237,10 +7243,25 @@ fn drag_annotation(
         return Some(None);
     }
     let p = xf.to_world(response.interact_pointer_pos()?);
+    let square = match (
+        doc.model().get(id).map(|e| &e.kind),
+        doc.model().get(view).map(|e| &e.kind),
+    ) {
+        (Some(ElementKind::Tag(t)), Some(ElementKind::View(v))) if !t.material => {
+            creabim_geom::annotate::tag_normal(doc.model(), v, t)
+        }
+        _ => None,
+    };
     let r = match doc.model().get(id).map(|e| e.kind.clone()) {
         Some(ElementKind::Tag(_)) => doc.edit_merged(id, "Move tag", |e| {
             if let ElementKind::Tag(t) = &mut e.kind {
                 t.offset = start + p - grab;
+                // a door's or window's mark moves square to its wall only
+                if let Some(n) = square {
+                    t.offset = n * t.offset.dot(n);
+                    t.elbow = None;
+                    t.end = None;
+                }
             }
         }),
         Some(ElementKind::Dimension(_)) if stretch.is_some() => {

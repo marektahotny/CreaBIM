@@ -696,6 +696,56 @@ pub fn drawing(view: ElementId, title: &str, model: &Model, kind: OpeningKind) -
         );
     }
     crate::annotate::place_dimension_texts(&mut items, 1.0);
+    // under the windows, their outer sills for the list of sheet-metal work
+    if !door {
+        let sills = creabim_core::joinery::outer_sills(model);
+        if !sills.is_empty() {
+            let bottom = PlanView {
+                items: items.clone(),
+            }
+            .bounds()
+            .map_or(0.0, |b| b.0.y);
+            let mut p = Pencil {
+                items: &mut items,
+                id: view,
+            };
+            let mut y = bottom - 12.0;
+            p.text(
+                DVec2::new(0.0, y),
+                &tr("Outer window sills (sheet metal)"),
+                3.5,
+                Anchor::Start,
+                false,
+            );
+            y -= 7.0;
+            let cols = [0.0, 20.0, 50.0, 80.0, 110.0];
+            let heads = [
+                tr("Mark"),
+                tr("Length (mm)"),
+                tr("Depth (mm)"),
+                tr("Girth (mm)"),
+                tr("Number of pieces"),
+            ];
+            for (x, h) in cols.iter().zip(&heads) {
+                p.text(DVec2::new(*x, y), h, TEXT, Anchor::Start, false);
+            }
+            for s in &sills {
+                y -= LINE + 1.0;
+                // the sheet unfolded: the depth with its upstand and drip
+                let girth = s.depth + 0.07;
+                let row = [
+                    format!("{}/{}", creabim_core::joinery::SILL_LETTER, s.number),
+                    num(model, s.length),
+                    num(model, s.depth),
+                    num(model, girth),
+                    s.windows.len().to_string(),
+                ];
+                for (x, t) in cols.iter().zip(&row) {
+                    p.text(DVec2::new(*x, y), t, TEXT, Anchor::Start, false);
+                }
+            }
+        }
+    }
     PlanView { items }
 }
 
