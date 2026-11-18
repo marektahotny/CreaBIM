@@ -126,6 +126,9 @@ pub enum HandleKind {
     },
     /// How far a section or elevation sees, from its line.
     ViewDepth,
+    /// Jog `i` of a section line: where along the line it steps, and how
+    /// far aside.
+    ViewJog(usize),
     /// Face `i` of a crop box (see [`creabim_core::CropBox::face`]).
     CropFace(usize),
     /// A crop box as a whole, across the plan.
@@ -219,6 +222,7 @@ impl HandleKind {
                 | HandleKind::GridEnd { .. }
                 | HandleKind::Member { free: true, .. }
                 | HandleKind::ViewEnd { .. }
+                | HandleKind::ViewJog(_)
                 | HandleKind::CropMove
                 | HandleKind::RefMove
                 | HandleKind::RefScale(_)
@@ -260,6 +264,7 @@ impl HandleKind {
             HandleKind::OpeningSill => "Change sill of",
             HandleKind::Face(_) => "Push/pull",
             HandleKind::ViewDepth => "Change depth of",
+            HandleKind::ViewJog(_) => "Move a jog of",
             HandleKind::CropFace(_) => "Resize",
             HandleKind::CropMove
             | HandleKind::RefMove
@@ -301,6 +306,7 @@ impl HandleKind {
             HandleKind::Member { .. } => "Point",
             HandleKind::ViewEnd { .. } => "Line end",
             HandleKind::ViewDepth => "Depth",
+            HandleKind::ViewJog(_) => "Jog",
             HandleKind::CropFace(_) => "Crop face",
             HandleKind::CropMove => "Crop box: move",
             HandleKind::RefMove => "Reference: move",
@@ -361,6 +367,7 @@ impl HandleKind {
             HandleKind::MeshMove => "Drag: move the mass across the plan",
             HandleKind::MeshLift => "Drag: move the mass up or down",
             HandleKind::ViewDepth => "Drag: change how deep it sees",
+            HandleKind::ViewJog(_) => "Drag: move where the line steps, and how far aside",
             HandleKind::CropFace(_) => "Drag: move the crop face",
             HandleKind::RefMove => "Drag: move the reference",
             HandleKind::RefScale(_) => "Drag: scale it about its middle (Calibrate in Properties sets an exact size)",
@@ -974,8 +981,9 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             ViewKind::Section {
                 start, end, depth, ..
             } => {
-                let look = (end - start).normalize_or_zero().perp();
-                vec![
+                let along = (end - start).normalize_or_zero();
+                let look = along.perp();
+                let mut out = vec![
                     flat(HandleKind::ViewEnd { end: false }, start.extend(0.0)),
                     flat(HandleKind::ViewEnd { end: true }, end.extend(0.0)),
                     line(
@@ -983,7 +991,15 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
                         ((start + end) / 2.0 + look * depth).extend(0.0),
                         look.extend(0.0),
                     ),
-                ]
+                ];
+                // a jogged line: a grip at each step's outer corner
+                for (i, j) in v.line.jogs.iter().enumerate() {
+                    out.push(flat(
+                        HandleKind::ViewJog(i),
+                        (start + along * j.at + look * j.offset).extend(0.0),
+                    ));
+                }
+                out
             }
             _ => vec![],
         },
@@ -1616,6 +1632,17 @@ pub fn apply(
                 }
                 if start.distance(*end) < 0.2 {
                     return Err("a view line needs some length".into());
+                }
+            }
+        }
+        (ElementKind::View(v), HandleKind::ViewJog(i)) => {
+            if let ViewKind::Section { start, end, .. } = v.kind {
+                let along = (end - start).normalize_or_zero();
+                let p = now.truncate() - start;
+                let length = start.distance(end);
+                if let Some(j) = v.line.jogs.get_mut(i) {
+                    j.at = round(p.dot(along), step).clamp(0.1, (length - 0.1).max(0.1));
+                    j.offset = round(p.dot(along.perp()), step);
                 }
             }
         }
@@ -5089,6 +5116,45 @@ mod tests {
             }) if (canopy - 5.0).abs() < 1e-9
         ));
         assert!(hs.iter().any(|h| h.kind == HandleKind::PlantHeight));
+    }
+
+    /// A jogged section line has a grip at each step: dragging it moves
+    /// where the line steps and how far aside.
+    #[test]
+    fn a_section_lines_jog_is_dragged_by_its_grip() {
+        use creabim_core::{SectionJog, View};
+        let mut doc = Document::new();
+        let mut section = View::section(DVec2::ZERO, DVec2::new(8.0, 0.0), 3.0, true);
+        section.line.jogs.push(SectionJog {
+            at: 3.0,
+            offset: 1.0,
+        });
+        let s = Element::new("Section", ElementKind::View(section));
+        let sid = s.id;
+        doc.commit(creabim_core::Transaction::new("setup").insert(s))
+            .unwrap();
+        let m = doc.model().clone();
+        let hs = handles(&m, sid, None);
+        let h = *hs
+            .iter()
+            .find(|h| h.kind == HandleKind::ViewJog(0))
+            .expect("a grip at the jog");
+        assert!((h.at.truncate() - DVec2::new(3.0, 1.0)).length() < 1e-9);
+        let (orig, joined) = originals(&m, sid, h.kind);
+        let to = h.at + DVec3::new(1.5, 0.5, 0.0);
+        let out = apply(&m, &orig, &joined, h.kind, h.at, to, 0.0).unwrap();
+        let ElementKind::View(v) = &out[0].kind else {
+            panic!()
+        };
+        assert!((v.line.jogs[0].at - 4.5).abs() < 1e-9);
+        assert!((v.line.jogs[0].offset - 1.5).abs() < 1e-9);
+        // never past the line's ends
+        let far = h.at + DVec3::new(20.0, 0.0, 0.0);
+        let out = apply(&m, &orig, &joined, h.kind, h.at, far, 0.0).unwrap();
+        let ElementKind::View(v) = &out[0].kind else {
+            panic!()
+        };
+        assert!(v.line.jogs[0].at < 8.0);
     }
 
     #[test]

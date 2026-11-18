@@ -2270,10 +2270,14 @@ pub enum ScheduleCategory {
     /// The legend of a services drawing: the pipes' lines by system and
     /// the sanitary fixtures by mark.
     ServicesLegend,
+    /// The list of the documentation (part A of the documentation of a
+    /// construction, decree 60/2025 Z. z.): every sheet by its part, with
+    /// its number, name, scale and paper.
+    Documents,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 12] = [
+    pub const ALL: [ScheduleCategory; 13] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2286,6 +2290,7 @@ impl ScheduleCategory {
         ScheduleCategory::WindowList,
         ScheduleCategory::DoorList,
         ScheduleCategory::ServicesLegend,
+        ScheduleCategory::Documents,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2303,6 +2308,7 @@ impl ScheduleCategory {
             ScheduleCategory::WindowList => return "Window list".into(),
             ScheduleCategory::DoorList => return "Door list".into(),
             ScheduleCategory::ServicesLegend => return "Services legend".into(),
+            ScheduleCategory::Documents => return "List of documentation".into(),
         };
         format!("{one} Schedule")
     }
@@ -2329,12 +2335,17 @@ impl ScheduleCategory {
             ScheduleCategory::WindowList => "Window list",
             ScheduleCategory::DoorList => "Door list",
             ScheduleCategory::ServicesLegend => "Services legend",
+            ScheduleCategory::Documents => "List of documentation",
         }
     }
 
     /// Is it drawn as a sheet of its own rather than set as a table?
     pub fn is_drawn(self) -> bool {
-        self.joinery_list().is_some() || self == ScheduleCategory::ServicesLegend
+        self.joinery_list().is_some()
+            || matches!(
+                self,
+                ScheduleCategory::ServicesLegend | ScheduleCategory::Documents
+            )
     }
 
     /// The drawn list of windows or doors: which of the two.

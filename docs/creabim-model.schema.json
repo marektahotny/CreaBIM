@@ -1336,7 +1336,8 @@
         "materials",
         "window_list",
         "door_list",
-        "services_legend"
+        "services_legend",
+        "documents"
       ]
     },
     "Callout": {

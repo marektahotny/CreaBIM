@@ -124,6 +124,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     if category == ScheduleCategory::Materials {
         return takeoff_schedule(model, by_type);
     }
+    if category == ScheduleCategory::Documents {
+        return crate::doclist::schedule(model);
+    }
     // the drawn lists' tables are the door and window schedules
     let category = match category {
         ScheduleCategory::WindowList => ScheduleCategory::Windows,
@@ -517,7 +520,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
             )
         }
         // answered above, before the element schedules
-        ScheduleCategory::Materials => unreachable!("the take-off is built on its own"),
+        ScheduleCategory::Materials | ScheduleCategory::Documents => {
+            unreachable!("the take-off and the list of documentation are built on their own")
+        }
     };
     // marks sort as text (D01 < D02); walls and slabs by level, then model order
     rows.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
@@ -961,7 +966,7 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
             &mut items,
             view,
             DVec2::new(tx, -TITLE_ROW - ROW / 2.0),
-            c.title,
+            &creabim_core::words::tr(c.title),
             2.5,
             align,
         );

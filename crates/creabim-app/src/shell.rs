@@ -301,6 +301,7 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::WindowList => "app-window",
         ScheduleCategory::DoorList => "door-open",
         ScheduleCategory::ServicesLegend => "fixtures",
+        ScheduleCategory::Documents => "sheet-template",
     }
 }
 
@@ -845,6 +846,9 @@ impl CreaBimApp {
                 .icon("freecad")
                 .hint("Every element as a solid with its BIM type and CreaBIM id; open it in FreeCAD, edit, save, and link it back."),
             Item::new("export.pdf", "Sheets as PDF").icon("file-text"),
+            Item::new("export.summary", "Summary report (part B) for Word (.docx)")
+                .icon("file-text")
+                .hint("The summary report of the building decree 60/2025, its nine chapters filled with what the project knows: who, where, storeys, areas, heights and build-ups. What is left to write is marked [doplniť]."),
             Item::new("export.svg", "This view or sheet as SVG").icon("file"),
             Item::new("export.xlsx", "Schedules to Excel (.xlsx)")
                 .icon("table-2")
@@ -2232,6 +2236,26 @@ impl CreaBimApp {
                     let n = sheets::sheets(self.doc.model()).len();
                     self.report(r, format!("Exported {n} sheets to {out}"));
                 }
+            }
+            "export.summary" => {
+                let number = creabim_geom::doclist::SUMMARY_NUMBER;
+                let name = creabim_geom::docset::file_name(&self.sheets_export.prefix, number)
+                    .unwrap_or_else(|| number.to_string());
+                let dir = std::path::Path::new(&self.path)
+                    .parent()
+                    .map(|d| d.to_path_buf())
+                    .unwrap_or_default();
+                let default = dir.join(format!("{name}.docx"));
+                let Some(out) = self.export_to(default.to_string_lossy().into_owned()) else {
+                    return;
+                };
+                let chapters = creabim_geom::summary::report(self.doc.model());
+                let files = creabim_geom::summary::docx_files(
+                    &creabim_core::words::tr("B Summary report"),
+                    &chapters,
+                );
+                let r = std::fs::write(&out, crate::app::reportui::zip(&files));
+                self.report(r, format!("Exported the summary report to {out}"));
             }
             "export.svg" => {
                 if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {

@@ -856,6 +856,7 @@ What a schedule lists.
 - `"window_list"`: The drawn window list (výpis okien).
 - `"door_list"`: The drawn door list (výpis dverí).
 - `"services_legend"`: The legend of a services drawing: pipes and sanitary fixtures.
+- `"documents"`: The list of the documentation: the sheets by part.
 
 ### Callout
 

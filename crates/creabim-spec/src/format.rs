@@ -959,6 +959,8 @@ spec_enum! {
         DoorList = "door_list",
         /// The legend of a services drawing: pipes and sanitary fixtures.
         ServicesLegend = "services_legend",
+        /// The list of the documentation: the sheets by part.
+        Documents = "documents",
     }
 }
 

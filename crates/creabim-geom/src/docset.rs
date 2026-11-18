@@ -30,7 +30,14 @@ pub struct Made {
 /// The part of the documentation a sheet numbered `number` belongs to,
 /// to list it under: `C00`, or the profession of `S01_ASR_...`.
 pub fn part_of(number: &str) -> Option<&'static str> {
-    const PARTS: [(&str, &str); 8] = [
+    part_order(number).map(|p| p.1)
+}
+
+/// The same with the part's place in the documentation, from 0.
+pub fn part_order(number: &str) -> Option<(usize, &'static str)> {
+    const PARTS: [(&str, &str); 11] = [
+        ("A00_", "A List of documentation"),
+        ("B00_", "B Summary report"),
         ("C00_", "C Site drawings"),
         ("_ASR_", "D.1 Architecture (ASR)"),
         ("_STA_", "D.2 Structure (STA)"),
@@ -39,11 +46,12 @@ pub fn part_of(number: &str) -> Option<&'static str> {
         ("_ELI_", "D.5 Electrical (ELI)"),
         ("_VZT_", "D.6 Ventilation (VZT)"),
         ("_PLY_", "D.7 Gas (PLY)"),
+        ("E00_", "E Annexes"),
     ];
     PARTS
         .iter()
-        .find(|(k, _)| number.starts_with(k) || number.contains(k))
-        .map(|p| p.1)
+        .position(|(k, _)| number.starts_with(k) || number.contains(k))
+        .map(|i| (i, PARTS[i].1))
 }
 
 /// The file a sheet of the set numbered `number` is exported to, as annex
@@ -389,6 +397,9 @@ pub fn drawing_set(model: &Model) -> Option<(Transaction, Made)> {
             );
         }
     }
+    // A: the list of all of it, made last so it lists every sheet
+    let list = schedule(&mut b, ScheduleCategory::Documents, "List of documentation");
+    b.sheet("A00_TXT_001".into(), tr("List of documentation"), &[list]);
     (b.made != Made::default()).then_some((b.tx, b.made))
 }
 
@@ -407,6 +418,54 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    /// Part A lists every sheet under its part, the text of part B and
+    /// the annexes the decree always asks for; its drawing carries the
+    /// construction's data over the table.
+    #[test]
+    fn the_list_of_documentation_lists_every_sheet_by_part() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (tx, _) = drawing_set(doc.model()).unwrap();
+        doc.commit(tx).unwrap();
+        let m = doc.model();
+        let all = numbers(m);
+        assert!(all.iter().any(|x| x == "A00_TXT_001"), "{all:?}");
+        let s = crate::schedule::schedule_by(m, ScheduleCategory::Documents, false);
+        assert_eq!(s.listed, all.len());
+        let first: Vec<&str> = s.rows.iter().map(|r| r.cells[0].as_str()).collect();
+        for n in &all {
+            assert!(first.contains(&n.as_str()), "{n} listed");
+        }
+        assert!(first.contains(&crate::doclist::SUMMARY_NUMBER));
+        // parts in the documentation's order: A before C before D before E
+        let heads: Vec<&str> = s
+            .rows
+            .iter()
+            .filter(|r| r.group)
+            .map(|r| r.cells[0].as_str())
+            .collect();
+        assert!(heads.len() >= 5, "{heads:?}");
+        let mut sorted = heads.clone();
+        sorted.sort();
+        assert_eq!(heads, sorted);
+        // a plan's sheet carries its scale
+        let plan = s.rows.iter().find(|r| r.cells[0] == "S01_ASR_001_N01");
+        assert!(plan.is_some_and(|r| r.cells[2].starts_with("1:")));
+        let list = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, ViewKind::Schedule { category: ScheduleCategory::Documents, .. }))
+            })
+            .unwrap();
+        let d = view_drawing(m, list.id).unwrap();
+        let texts = d
+            .items
+            .iter()
+            .filter(|i| matches!(i, crate::plan::PlanItem::Text { .. }))
+            .count();
+        assert!(texts > s.rows.len() * 2);
     }
 
     #[test]
@@ -484,11 +543,12 @@ mod tests {
         tx.apply(&mut m).unwrap();
         let (tx, made) = drawing_set(&m).unwrap();
         tx.apply(&mut m).unwrap();
-        // the site, the plan, two sections and four elevations
-        assert_eq!(made.views, 8);
+        // the site, the plan, two sections, four elevations and the list
+        assert_eq!(made.views, 9);
         assert_eq!(
             numbers(&m),
             [
+                "A00_TXT_001",
                 "C00_SIT_001",
                 "S01_ASR_001_N01",
                 "S01_ASR_002_REZ",

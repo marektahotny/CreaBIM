@@ -1728,6 +1728,7 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::WindowList => core::ScheduleCategory::WindowList,
                 f::ScheduleCategory::DoorList => core::ScheduleCategory::DoorList,
                 f::ScheduleCategory::ServicesLegend => core::ScheduleCategory::ServicesLegend,
+                f::ScheduleCategory::Documents => core::ScheduleCategory::Documents,
             };
             let mut view = core::View::schedule(category);
             view.kind = core::ViewKind::Schedule {
