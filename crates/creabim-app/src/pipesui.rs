@@ -746,8 +746,10 @@ pub fn preview(
     if let Some(at) = project(b.truncate().extend(a.z)) {
         let font = egui::FontId::proportional(12.0);
         let galley = painter.layout_no_wrap(text, font, egui::Color32::BLACK);
-        // under the cursor's own readout of length and angle
-        let pos = at + egui::vec2(14.0, 30.0);
+        // left of the cursor and under it: the snap's name, the length
+        // along the run and the readout of length and angle are on its
+        // right, and wrote over it there
+        let pos = at + egui::vec2(-14.0 - galley.size().x, 30.0);
         let back = egui::Rect::from_min_size(pos, galley.size()).expand(3.0);
         painter.rect_filled(back, 3.0, egui::Color32::from_white_alpha(230));
         painter.galley(pos, galley, egui::Color32::BLACK);
@@ -775,9 +777,9 @@ pub fn tool_options(draft: &PipeDraft) -> Vec<serde_json::Value> {
             "hint": "Size of new pipes",
         }),
         json!({
-            "kind": "number", "key": "member.pipe_height", "label": "Height", "value": draft.height,
+            "kind": "number", "key": "member.pipe_height", "label": "Height", "value": draft.rise().map_or(draft.z_now(), |r| r.1),
             "unit": "m", "step": 0.05, "min": -5.0, "max": 20.0,
-            "hint": "Height of the pipe's axis above the floor (Z). Changed while a run is drawn, the next click rises or drops to it where the run is; a click on the same point draws the riser alone",
+            "hint": "Height of the pipe's axis above the floor (Z): where the run is now, also after it caught a connection's height. Changed while a run is drawn, the next click rises or drops to it where the run is; a click on the same point draws the riser alone",
         }),
     ];
     if draft.falls() {

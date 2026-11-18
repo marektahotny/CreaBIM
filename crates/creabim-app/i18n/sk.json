@@ -2488,6 +2488,7 @@
  "Height of new voids' undersides above the level": "Výška spodku nových dutín nad podlažím",
  "Height of new {what}s": "Výška nových prvkov ({what})",
  "Height of the pipe's axis above the floor (Z). Changed while a run is drawn, the next click rises or drops to it where the run is; a click on the same point draws the riser alone": "Výška osi potrubia nad podlahou (Z). Ak ju zmeníte počas kreslenia, ďalší klik najprv nakreslí zvislý úsek na novú výšku; klik na ten istý bod nakreslí len zvislý úsek",
+ "Height of the pipe's axis above the floor (Z): where the run is now, also after it caught a connection's height. Changed while a run is drawn, the next click rises or drops to it where the run is; a click on the same point draws the riser alone": "Výška osi potrubia nad podlahou (Z): kde trasa práve je, aj po zachytení na výšku pripojenia. Ak ju zmeníte počas kreslenia, ďalší klik najprv nakreslí zvislý úsek na novú výšku; klik na ten istý bod nakreslí len zvislý úsek",
  "Height of the pipe's axis above the floor where a run starts": "Výška osi potrubia nad podlahou na začiatku trasy",
  "Height {} (to its ceiling or the storey above)": "Výška {} (po podhľad alebo vyššie podlažie)",
  "Height {}, from its top constraint": "Výška {}, z hornej väzby",
