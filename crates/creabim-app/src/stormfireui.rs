@@ -1038,6 +1038,41 @@ fn drain_body(
                 ui.end_row();
             }
         });
+    // the Wavin stacks' installation noise
+    let loud: Vec<&sanitary::PipeResult> =
+        r.pipes.iter().filter(|p| p.noise_db.is_some()).collect();
+    if !loud.is_empty() {
+        ui.add_space(6.0);
+        ui.strong(t("Installation noise of the Wavin stacks"));
+        egui::Grid::new("drain.noise")
+            .striped(true)
+            .num_columns(4)
+            .show(ui, |ui| {
+                for h in ["Stack", "Q l/s", "Clip dB(A)", "Double clip dB(A)"] {
+                    ui.strong(t(h));
+                }
+                ui.end_row();
+                for p in loud {
+                    let (a, b) = p.noise_db.unwrap_or_default();
+                    if ui.link(name_of(p.id)).clicked() {
+                        *select = Some(p.id);
+                    }
+                    ui.label(num(p.flow_ls, 2));
+                    for v in [a, b] {
+                        let text = num(v, 0);
+                        if v > sanitary::NOISE_LIMIT_DB {
+                            ui.colored_label(ui.visuals().warn_fg_color, text);
+                        } else {
+                            ui.label(text);
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+        ui.weak(t(
+            "Wavin's measurements at 2 and 4 l/s, against 30 dB(A) (DIN 4109).",
+        ));
+    }
     ui.add_space(6.0);
     ui.weak(t("Qww = K·√ΣDU, no less than the largest fixture's DU. Horizontal pipes half full (h/d 0.5, kb 1 mm), connecting pipes the fixture's DN, stacks by their capacity, DN 100 downstream of a WC. Yellow: under the least fall, or slower than 0.7 m/s."));
     ui.weak("STN EN 12056-2 · STN 75 6760");

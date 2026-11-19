@@ -118,7 +118,27 @@ pub struct PipeResult {
     pub slow: bool,
     /// Even the largest size is too small.
     pub over: bool,
+    /// A Wavin AS+ or SiTech+ stack's installation noise at its flow,
+    /// dB(A), with the sound-insulating clip and with the double one
+    /// (Wavin's tests at 2 and 4 l/s, P-BA 62 to 64/2019, 9/2020).
+    pub noise_db: Option<(f64, f64)>,
 }
+
+/// The installation noise of a Wavin stack at a flow, dB(A): with the
+/// sound-insulating clip and with the double clip; between Wavin's
+/// figures at 2 and 4 l/s along a line, held at 2 l/s below.
+pub fn stack_noise(pipe_type: &str, flow_ls: f64) -> Option<(f64, f64)> {
+    let ((a2, a4), (b2, b4)) = match pipe_type {
+        "WAS" => ((14.0, 19.0), (10.0, 13.0)),
+        "WSI" => ((21.0, 25.0), (13.0, 16.0)),
+        _ => return None,
+    };
+    let f = ((flow_ls - 2.0) / 2.0).max(0.0);
+    Some((a2 + (a4 - a2) * f, b2 + (b4 - b2) * f))
+}
+
+/// The limit Wavin's figures are held against: DIN 4109, 30 dB(A).
+pub const NOISE_LIMIT_DB: f64 = 30.0;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DrainResult {
@@ -358,6 +378,7 @@ fn calc(m: &ModelNetwork, s: &DrainSettings) -> DrainResult {
             capacity_ls: cap,
             slow: !stack && count[big] > 1 && q[big] > 0.0 && v < s.min_velocity,
             over: parts.iter().any(|&p| over[p]),
+            noise_db: stack.then(|| stack_noise(&node.material, q[big])).flatten(),
         });
     }
     out.stacks = out.pipes.iter().filter(|p| p.stack).count();
@@ -384,6 +405,15 @@ fn calc(m: &ModelNetwork, s: &DrainSettings) -> DrainResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wavin_stacks_are_as_quiet_as_wavin_measured_them() {
+        assert_eq!(stack_noise("WAS", 2.0), Some((14.0, 10.0)));
+        assert_eq!(stack_noise("WAS", 4.0), Some((19.0, 13.0)));
+        assert_eq!(stack_noise("WSI", 3.0), Some((23.0, 14.5)));
+        assert_eq!(stack_noise("WSI", 1.0), Some((21.0, 13.0)));
+        assert_eq!(stack_noise("PPHT", 3.0), None);
+    }
     use creabim_core::mep::Pipe;
     use creabim_core::{Document, Element, ElementKind, Transaction};
     use glam::{DVec2, DVec3};
