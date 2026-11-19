@@ -48,6 +48,12 @@ triangles.
 - **A6-2.3 fewer edges:** 48,000 feature edges for a small house, most of them seams on flat faces; merge them
   before sampling.
 - **A6-2.4 per-element caching:** rebuild only the elements a change touches.
+- **Where a section's time goes (callgrind, East Elevation, 2026-11-19):** filling the depth buffer
+  (`cover_rows`) is about 75 % of the drawing, sampling the edges along it (`runs`) about 15 %. Hoisting the
+  row's terms out of `cover_rows` changes nothing (the compiler does it already). Cells sized from the view's
+  scale (0.1 mm on paper, never finer than now) gave 10 to 30 % on the 1:100 elevations and nothing on the 3D
+  views, and was left out for the coarser line ends. What would pay: skipping triangles that lie wholly behind
+  what is drawn (a coarse tile depth, the per-element test done per tile) and fewer edges (A6-2.3).
 - **A6-5 cached tessellation** of heavy drawings while the camera doesn't move.
 - **A6-6.2 graphics back ends:** only what each platform needs. Also compress the help pictures.
 - **Memory:** about 410 MB for the app with the starter house. Not traced yet.
