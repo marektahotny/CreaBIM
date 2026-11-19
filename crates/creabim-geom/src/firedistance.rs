@@ -287,24 +287,23 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
             }
             _ => (given.map(|d| g.view(at + s.outward * d)), None),
         };
-        let Some(mut limit) = limit.filter(|l| *l > 1e-6) else {
+        let Some(limit) = limit.filter(|l| *l > 1e-6) else {
             continue;
         };
-        let mut space = contour(&g, s, at, limit);
-        // a given distance is the farthest the space reaches, which may
-        // be off the opening's middle
-        if pv.is_none() {
-            if let Some(d) = given {
-                for _ in 0..6 {
-                    if (space.1 - d).abs() < 1e-3 {
-                        break;
-                    }
-                    limit *= (space.1 / d).powi(2);
-                    space = contour(&g, s, at, limit);
-                }
-            }
-        }
-        let (outline, d) = space;
+        // a given distance is taken as it is; otherwise the farthest the
+        // critical flux reaches
+        let d = match (pv, given) {
+            (None, Some(d)) => d,
+            _ => contour(&g, s, at, limit).1,
+        };
+        // the radiating face: the opening and those of other storeys
+        // over or under it, end to end along the wall
+        let (lo, hi) = group.iter().fold((s0, s1), |(lo, hi), o| {
+            let (x, y) = ((o.a - s.a).dot(t), (o.b - s.a).dot(t));
+            (lo.min(x.min(y)), hi.max(x.max(y)))
+        });
+        let at = s.a + t * ((lo + hi) / 2.0);
+        let outline = norm_outline(s.a + t * lo, s.a + t * hi, s.outward, d);
         let mut shared: Vec<String> = group[1..]
             .iter()
             .filter_map(|o| model.get(o.level).map(|l| tr(&l.name)))
@@ -321,6 +320,27 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
             pv,
         });
     }
+    out
+}
+
+/// The space's outline as the norm draws it: from each edge of the
+/// radiating face a straight line out to a third of the distance, then
+/// round in front of it an arc of the ellipse about the face's middle
+/// reaching `d` straight out and half the face plus `d` along the wall.
+pub fn norm_outline(e0: DVec2, e1: DVec2, outward: DVec2, d: f64) -> Vec<DVec2> {
+    let t = (e1 - e0).normalize_or_zero();
+    let c = (e0 + e1) / 2.0;
+    let (a, b) = (e0.distance(e1) / 2.0 + d, d);
+    let start = (1.0f64 / 3.0).asin();
+    let n = 48;
+    let mut out = vec![e0];
+    for i in 0..=n {
+        let th = std::f64::consts::PI
+            - start
+            - (std::f64::consts::PI - 2.0 * start) * i as f64 / n as f64;
+        out.push(c + t * (a * th.cos()) + outward * (b * th.sin()));
+    }
+    out.push(e1);
     out
 }
 
@@ -520,6 +540,22 @@ mod tests {
             assert!((p.d - 3.5).abs() < 0.02, "{}", p.d);
             assert_eq!(p.pv, None);
         }
+    }
+
+    /// The norm's outline of a 1,2 m window with d = 1,83 m: straight
+    /// out of its edges to a third of d some 1,7 m aside, round to d in
+    /// front of it.
+    #[test]
+    fn the_outline_runs_straight_out_of_the_edges_then_round() {
+        let o = norm_outline(DVec2::ZERO, DVec2::new(1.2, 0.0), DVec2::Y, 1.83);
+        assert_eq!(
+            (o[0], *o.last().unwrap()),
+            (DVec2::ZERO, DVec2::new(1.2, 0.0))
+        );
+        assert!((o[1].y - 1.83 / 3.0).abs() < 1e-9);
+        assert!((-o[1].x - 1.69).abs() < 0.01, "{}", o[1].x);
+        let far = o.iter().map(|p| p.y).fold(0.0, f64::max);
+        assert!((far - 1.83).abs() < 1e-9);
     }
 
     #[test]
