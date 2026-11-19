@@ -2361,10 +2361,14 @@ pub enum ScheduleCategory {
     /// The persons the rooms are counted for, by fire zone, from the
     /// project's occupancy table.
     Occupancy,
+    /// The single-line diagram of the distribution boards: each board's
+    /// feed, main switch and circuits with their breakers, cables and
+    /// what they feed.
+    BoardDiagram,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 21] = [
+    pub const ALL: [ScheduleCategory; 22] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2386,6 +2390,7 @@ impl ScheduleCategory {
         ScheduleCategory::FireFacades,
         ScheduleCategory::FireRisk,
         ScheduleCategory::Occupancy,
+        ScheduleCategory::BoardDiagram,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2412,6 +2417,7 @@ impl ScheduleCategory {
             ScheduleCategory::FireFacades => return "Fire-open areas of the facades".into(),
             ScheduleCategory::Occupancy => return "Occupancy by persons".into(),
             ScheduleCategory::FireRisk => return "Fire risk".into(),
+            ScheduleCategory::BoardDiagram => return "Board diagram".into(),
         };
         format!("{one} Schedule")
     }
@@ -2447,6 +2453,7 @@ impl ScheduleCategory {
             ScheduleCategory::FireFacades => "Fire-open areas of the facades",
             ScheduleCategory::Occupancy => "Occupancy by persons",
             ScheduleCategory::FireRisk => "Fire risk",
+            ScheduleCategory::BoardDiagram => "Board diagram",
         }
     }
 
@@ -2458,6 +2465,7 @@ impl ScheduleCategory {
                 ScheduleCategory::ServicesLegend
                     | ScheduleCategory::Documents
                     | ScheduleCategory::MaterialLegend
+                    | ScheduleCategory::BoardDiagram
             )
     }
 

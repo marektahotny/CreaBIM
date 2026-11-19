@@ -1746,6 +1746,7 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::FireZones => core::ScheduleCategory::FireZones,
                 f::ScheduleCategory::FireFacades => core::ScheduleCategory::FireFacades,
                 f::ScheduleCategory::Occupancy => core::ScheduleCategory::Occupancy,
+                f::ScheduleCategory::BoardDiagram => core::ScheduleCategory::BoardDiagram,
                 f::ScheduleCategory::FireRisk => core::ScheduleCategory::FireRisk,
             };
             let mut view = core::View::schedule(category);

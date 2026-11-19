@@ -867,6 +867,7 @@ What a schedule lists.
 - `"fire_zones"`
 - `"fire_facades"`
 - `"occupancy"`
+- `"board_diagram"`
 - `"fire_risk"`
 
 ### Callout

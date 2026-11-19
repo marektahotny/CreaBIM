@@ -107,6 +107,108 @@ pub fn marks(model: &Model, items: &[PlanItem], mm: f64) -> Vec<PlanItem> {
     out
 }
 
+/// Circuits' colours in the electrician's plan, by their order.
+pub const CIRCUIT_COLOURS: [[f32; 3]; 12] = {
+    const fn c(x: u32) -> [f32; 3] {
+        [
+            ((x >> 16) & 0xff) as f32 / 255.0,
+            ((x >> 8) & 0xff) as f32 / 255.0,
+            (x & 0xff) as f32 / 255.0,
+        ]
+    }
+    [
+        c(0xe11d48),
+        c(0x2563eb),
+        c(0x16a34a),
+        c(0xd97706),
+        c(0x9333ea),
+        c(0x0891b2),
+        c(0xdb2777),
+        c(0x65a30d),
+        c(0x7c3aed),
+        c(0xea580c),
+        c(0x0d9488),
+        c(0x4f46e5),
+    ]
+};
+
+/// A quadratic arc from `a` to `b` bowed `bend` of its length to the
+/// left, as wiring is drawn by hand.
+fn arc(a: DVec2, b: DVec2, bend: f64) -> Vec<DVec2> {
+    let d = b - a;
+    if d.length() < 1e-6 {
+        return vec![];
+    }
+    let c = (a + b) / 2.0 + d.perp() * bend;
+    (0..=12)
+        .map(|i| {
+            let t = i as f64 / 12.0;
+            let u = 1.0 - t;
+            a * u * u + c * 2.0 * u * t + b * t * t
+        })
+        .collect()
+}
+
+/// The wiring of each circuit on `level` as hand-drawn arcs, as
+/// PilonDesigner's `wiringArcs`: the shortest tree joining its devices
+/// and the feed from its board to the nearest of them, each circuit in
+/// its colour.
+pub fn wiring(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
+    let devs = el::devices(model);
+    let mut out = vec![];
+    for (k, (ce, c)) in el::circuits(model).into_iter().enumerate() {
+        let rgb = CIRCUIT_COLOURS[k % CIRCUIT_COLOURS.len()];
+        let at: Vec<DVec2> = devs
+            .iter()
+            .filter(|(e, o, kind)| {
+                o.level == level
+                    && *kind != DeviceKind::Board
+                    && el::circuit_of(model, e.id) == Some(ce.id)
+            })
+            .map(|(_, o, _)| o.position)
+            .collect();
+        if at.is_empty() {
+            continue;
+        }
+        let mut draw = |pts: Vec<DVec2>| {
+            if !pts.is_empty() {
+                crate::heatplan::strips(&mut out, ce.id, &pts, rgb, None, mm);
+            }
+        };
+        // Prim: the shortest tree over the devices
+        let mut inside = vec![0];
+        let mut rest: Vec<usize> = (1..at.len()).collect();
+        while !rest.is_empty() {
+            let (mut best, mut bi, mut bj) = (f64::MAX, 0, 0);
+            for &i in &inside {
+                for (jj, &j) in rest.iter().enumerate() {
+                    let d = at[i].distance(at[j]);
+                    if d < best {
+                        (best, bi, bj) = (d, i, jj);
+                    }
+                }
+            }
+            let j = rest.remove(bj);
+            draw(arc(at[bi], at[j], 0.15));
+            inside.push(j);
+        }
+        let board = c.board.and_then(|b| {
+            devs.iter()
+                .find(|(e, o, _)| e.id == b && o.level == level)
+                .map(|(_, o, _)| o.position)
+        });
+        if let Some(b) = board {
+            let near = at
+                .iter()
+                .copied()
+                .min_by(|x, y| x.distance(b).total_cmp(&y.distance(b)))
+                .unwrap_or(b);
+            draw(arc(b, near, 0.1));
+        }
+    }
+    out
+}
+
 /// Is `id` a device of the wiring?
 pub fn is_device(model: &Model, id: ElementId) -> bool {
     model.get(id).is_some_and(|e| {
@@ -147,6 +249,36 @@ mod tests {
         );
         let board = devs.iter().find(|d| d.2 == DeviceKind::Board).unwrap();
         assert_eq!(mark(&m, board.0.id), Some(board.0.name.clone()));
+    }
+
+    #[test]
+    fn each_circuit_is_wired_as_a_tree_and_fed_from_its_board() {
+        let m = starter_with_circuits();
+        let level = el::devices(&m)
+            .iter()
+            .find(|d| d.2 == DeviceKind::Socket)
+            .unwrap()
+            .1
+            .level;
+        let items = wiring(&m, level, 0.05);
+        assert!(!items.is_empty());
+        for (ce, _) in el::circuits(&m) {
+            let n = el::devices(&m)
+                .iter()
+                .filter(|(e, o, k)| {
+                    o.level == level
+                        && *k != DeviceKind::Board
+                        && el::circuit_of(&m, e.id) == Some(ce.id)
+                })
+                .count();
+            let drawn = items.iter().filter(|it| it.id() == ce.id).count();
+            if n > 0 {
+                // n − 1 arcs and the feed, 12 strips each
+                assert!(drawn >= (n - 1) * 12, "{n} {drawn}");
+            }
+        }
+        assert_eq!(arc(DVec2::ZERO, DVec2::X, 0.15).len(), 13);
+        assert!((arc(DVec2::ZERO, DVec2::X, 0.15)[6].y - 0.075).abs() < 1e-9);
     }
 
     #[test]

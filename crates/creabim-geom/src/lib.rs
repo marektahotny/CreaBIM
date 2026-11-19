@@ -12,6 +12,7 @@ pub mod coverpage;
 pub mod crop;
 pub mod netlines;
 
+pub mod boarddiagram;
 pub mod cropbox;
 pub mod curtain;
 pub mod declutter;

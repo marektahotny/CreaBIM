@@ -900,6 +900,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             if *category == creabim_core::ScheduleCategory::MaterialLegend {
                 return Some(crate::matlegend::drawing(view, &e.name, model));
             }
+            if *category == creabim_core::ScheduleCategory::BoardDiagram {
+                return Some(crate::boarddiagram::drawing(view, &e.name, model));
+            }
             if *category == creabim_core::ScheduleCategory::Documents {
                 return Some(crate::doclist::drawing(view, &e.name, model));
             }
@@ -1117,6 +1120,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             crate::elplan::enlarge(model, &mut d.items, mm);
             let marks = crate::elplan::marks(model, &d.items, mm);
             d.items.extend(marks);
+            if let (creabim_core::ViewKind::Plan { level, .. }, false) = (&kind, v.ceiling_plan) {
+                let mut wires = crate::elplan::wiring(model, *level, mm);
+                // under the symbols
+                wires.append(&mut d.items);
+                d.items = wires;
+            }
         }
         // underfloor heating: the loops' supply red, their return blue
         // and dashed, each room's circuits written in it
