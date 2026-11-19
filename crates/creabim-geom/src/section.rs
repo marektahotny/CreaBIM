@@ -946,6 +946,14 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     if let Some(stage) = v.reno {
         reno_colours(model, stage, &mut d.items);
     }
+    // a site plan: the building as its outer walls only, filled grey
+    if let creabim_core::ViewKind::Plan { level, cut_height } = kind {
+        if v.graphics.range.from_above && v.graphics.range.footprint {
+            d.items.retain(|it| !crate::sitefoot::hides(model, it.id()));
+            d.items
+                .extend(crate::sitefoot::footprint(model, *level, *cut_height));
+        }
+    }
     // utility networks: their codes written in, a sewer's arrows, the
     // crosses of one to go
     if matches!(kind, creabim_core::ViewKind::Plan { .. }) {

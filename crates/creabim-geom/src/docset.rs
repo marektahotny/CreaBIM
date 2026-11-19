@@ -260,6 +260,7 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
         .unwrap_or_else(|| {
             let mut v = View::plan(bottom.0);
             v.graphics.range.from_above = true;
+            v.graphics.range.footprint = true;
             v.scale = 200.0;
             b.view(tr("Site plan"), v)
         });

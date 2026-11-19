@@ -297,7 +297,7 @@ pub const FACING: [&str; 8] = [
 ];
 
 /// Is there a room at `p` on `level`?
-fn room_at(model: &Model, level: ElementId, p: DVec2) -> bool {
+pub fn room_at(model: &Model, level: ElementId, p: DVec2) -> bool {
     model.iter().any(|e| match &e.kind {
         ElementKind::Room(r) if r.level == level => creabim_core::room::shape(model, e.id)
             .is_some_and(|s| creabim_core::polygon::contains(&s.outline, p)),

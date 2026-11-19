@@ -135,6 +135,11 @@ pub struct PlanRange {
     /// and roofs hiding what is under them: a roof or site plan.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub from_above: bool,
+    /// Seen from above, the building as a site plan shows it: only its
+    /// outer walls and the columns outside, cut and filled dark grey,
+    /// without plaster, openings, inner walls, pipes or view marks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub footprint: bool,
 }
 
 /// A height given by a level and an offset from it, so it moves with the

@@ -403,6 +403,12 @@ pub(super) fn range_ui(
             ) {
                 label = Some("View range");
             }
+            if crate::props::switch(ui, &mut r.footprint, "Site plan: outer walls only")
+                .on_hover_text(crate::i18n::t("The building as its outer walls and the columns outside, cut and filled dark grey, without plaster; no openings, inner walls, pipes or section marks"))
+                .changed()
+            {
+                label = Some("View range");
+            }
         }
         _ => {}
     }

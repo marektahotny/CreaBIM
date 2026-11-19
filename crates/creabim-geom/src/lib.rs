@@ -48,6 +48,7 @@ pub mod schedule;
 pub mod section;
 pub mod serviceslegend;
 pub mod sheet;
+pub mod sitefoot;
 pub mod slice;
 pub mod summary;
 pub mod titleblock;
