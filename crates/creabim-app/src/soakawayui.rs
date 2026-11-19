@@ -197,7 +197,7 @@ impl CreaBimApp {
                                 need * d.c.across * d.c.layers,
                                 t("pcs")
                             )).strong());
-                            let hours = emptying_hours(w, h, d.kf);
+                            let hours = emptying_hours(h, d.kf);
                             let ok = hours <= 24.0;
                             let text = format!("{} {:.1} h", t("Emptying time"), hours);
                             if ok {
@@ -213,7 +213,7 @@ impl CreaBimApp {
                             ui.weak(t("Type the rain series to work out the length."));
                         }
                     }
-                    if d.c.cover + h > d.c.max_cover() + 0.6 {
+                    if d.c.cover > d.c.max_cover() {
                         ui.colored_label(ui.visuals().warn_fg_color, t("Deeper than the maker allows for this many layers."));
                     }
                     if let Some((_, _, a)) = d.c.filter.size() {

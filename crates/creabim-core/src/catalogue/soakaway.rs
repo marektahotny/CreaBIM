@@ -158,7 +158,7 @@ impl SoakawayConfig {
     pub fn max_cover(&self) -> f64 {
         let n = self.layers.clamp(1, 5) as usize - 1;
         match self.block {
-            Block::Db40 => [4.6, 4.4, 4.2, 4.0, 3.8][n],
+            Block::Db40 => [4.6, 4.3, 4.2, 3.9, 3.7][n],
             Block::Db60 => [4.4, 4.0, 3.7, 3.4, 3.0][n],
         }
     }
@@ -219,15 +219,13 @@ pub fn critical(
         .max_by(|a, b| a.1.total_cmp(&b.1))
 }
 
-/// How long a full trench takes to empty, h (DWA-A 138 wants a day at
-/// most).
-pub fn emptying_hours(width: f64, height: f64, kf: f64) -> f64 {
-    let s = width * height * VOID;
-    let q = (width + height / 2.0) * kf / 2.0;
-    if q <= 0.0 {
+/// How long a full trench takes to empty, h, as EKODREN's sheet works it
+/// out: its height soaking away at kf (DWA-A 138 wants a day at most).
+pub fn emptying_hours(height: f64, kf: f64) -> f64 {
+    if kf <= 0.0 {
         f64::INFINITY
     } else {
-        s / q / 3600.0
+        height / kf / 3600.0
     }
 }
 
@@ -482,7 +480,26 @@ mod tests {
         ];
         let (crit, _) = critical(150.0, &rains, 1.2, 1.2, 1e-6, 1.2).unwrap();
         assert_eq!(crit.minutes, 120.0);
-        assert!(emptying_hours(1.2, 1.2, 1e-5) < 24.0 * 3.0);
+        assert!((emptying_hours(1.2, 1e-5) - 33.33).abs() < 0.01);
         assert_eq!(Filter::for_area(400.0), Filter::Fs400);
+    }
+
+    #[test]
+    fn it_matches_ekodrens_sheet() {
+        // EKODREN's VZOR: 1000 m², Piešťany 5-year rain 180 min at 31
+        // l/(s·ha), kf 1e-5, 2.4 m wide: 13.710 m in 2 layers, 26.038 in 1
+        let rain = Rain {
+            minutes: 180.0,
+            intensity: 31.0,
+        };
+        let two = trench_length(1000.0, rain, 2.4, 1.2, VOID, 1e-5, 1.2);
+        let one = trench_length(1000.0, rain, 2.4, 0.6, VOID, 1e-5, 1.2);
+        assert!((two - 13.710).abs() < 5e-4 && (one - 26.038).abs() < 5e-4);
+        let c = SoakawayConfig {
+            block: Block::Db40,
+            layers: 4,
+            ..Default::default()
+        };
+        assert_eq!(c.max_cover(), 3.9);
     }
 }
