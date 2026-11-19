@@ -1315,13 +1315,15 @@ fn object_type(
     let mut curves = vec![];
     for s in o.plan_symbol() {
         let pts: Vec<DVec2> = match s {
-            creabim_core::objects::SymbolItem::Loop(mut p) => {
+            creabim_core::objects::SymbolItem::Loop(mut p)
+            | creabim_core::objects::SymbolItem::Net { points: mut p, .. } => {
                 if let Some(first) = p.first().copied() {
                     p.push(first);
                 }
                 p
             }
             creabim_core::objects::SymbolItem::Line(a, b) => vec![a, b],
+            creabim_core::objects::SymbolItem::Text { .. } => continue,
         };
         if pts.len() < 2 {
             continue;

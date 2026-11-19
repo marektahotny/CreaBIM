@@ -12,6 +12,8 @@ names+="""drafting-compass radius diameter message-square-text arrow-up-right"""
 names+="""rectangle-vertical rectangle-horizontal tent fence corner-down-right""".split()
 # flipping a section or elevation round
 names+="""flip-horizontal-2""".split()
+# printing sheets
+names+="""printer""".split()
 # the Help menu and the Help panel
 names+="""circle-help book-open keyboard rocket x arrow-right info""".split()
 # folding the project browser's groups

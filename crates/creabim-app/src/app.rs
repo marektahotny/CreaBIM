@@ -107,6 +107,8 @@ mod materials;
 mod medunitui;
 #[path = "objectsui.rs"]
 mod objectsui;
+#[path = "printui.rs"]
+mod printui;
 #[path = "profilesui.rs"]
 mod profilesui;
 #[path = "radiatorsui.rs"]
@@ -258,6 +260,8 @@ pub struct CreaBimApp {
     /// The Export sheets dialog (MU22), and its choices this session.
     sheets_export_open: bool,
     sheets_export: SheetsExport,
+    /// The Print window (Ctrl+P) and the job going out.
+    print: printui::PrintState,
     /// A reference to take away, asked from its Properties (MU23).
     remove_ref: Option<ElementId>,
     /// Copy to view…: the reference, and the view its copy goes to (MU38).
@@ -587,6 +591,7 @@ impl CreaBimApp {
             print_preview: false,
             sheets_export_open: false,
             sheets_export: SheetsExport::default(),
+            print: printui::PrintState::default(),
             remove_ref: None,
             copy_ref: None,
             terrain_ref: None,
@@ -2191,7 +2196,8 @@ impl CreaBimApp {
             }
         }
         self.add_menu_window(ctx);
-        // Ctrl+P: this sheet as a PDF; Ctrl+Shift+P: Export sheets (MU22)
+        // Ctrl+P: Print (the sheet in front, chosen or all, as in
+        // PilonDesigner); Ctrl+Shift+P: Export sheets as PDF (MU22)
         if ctx.input_mut(|i| {
             i.consume_key(
                 egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -2200,11 +2206,7 @@ impl CreaBimApp {
         }) {
             self.sheets_export_open = true;
         } else if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::P)) {
-            if self.active_view.is_some_and(|id| self.is_sheet(id)) {
-                self.export_sheets_now(true);
-            } else {
-                self.sheets_export_open = true;
-            }
+            self.open_print();
         }
         // Alt+F2 shows or hides the active view's references (MU18/MU19)
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::F2)) {
@@ -8056,7 +8058,7 @@ impl CreaBimApp {
         let ids = self.sheets_to_export(this_only);
         if ids.is_empty() {
             self.status = if this_only {
-                "Open a sheet first: Ctrl+P makes a PDF of the sheet in front.".into()
+                "Open a sheet first: Sheet as PDF writes the sheet in front.".into()
             } else {
                 "No sheets to export: pick some, or choose All.".into()
             };
@@ -9732,6 +9734,8 @@ crate::props::row(ui, "File names", |ui| {
         let mut add_valve: Option<&'static str> = None;
         let mut edit_joinery = false;
         let mut equalise = false;
+        // a title page's sets changed: its part's pages are made again
+        let mut cover_sets: Option<usize> = None;
         let show_visibility = matches!(e.kind, ElementKind::View(_));
         let mut object_type = false;
         // a placed view's new scale: (its view, the scale)
@@ -10379,6 +10383,12 @@ crate::props::row(ui, "File names", |ui| {
                                         .clicked()
                                     {
                                         (sh.width, sh.height) = (*w, *h);
+                                        // a title page stands upright
+                                        if creabim_geom::coverpage::cover_of(sh).is_some()
+                                            && sh.width > sh.height
+                                        {
+                                            (sh.width, sh.height) = (sh.height, sh.width);
+                                        }
                                         label = "Sheet size"
                                     }
                                 }
@@ -10388,19 +10398,22 @@ crate::props::row(ui, "File names", |ui| {
                         label = l;
                     }
                     if creabim_geom::coverpage::cover_of(sh).is_some() {
-                        // a title page: filled from the project, only how
-                        // many binder labels go on it is its own
-                        let mut n = creabim_geom::coverpage::volumes(sh);
-                        if crate::props::row(ui, "Labels on the page", |ui| {
-                            ui.add(egui::DragValue::new(&mut n).range(1..=4))
+                        // a title page: filled from the project; how many
+                        // sets of the part's pages, four labels to an A4,
+                        // further pages numbered on (volume 5, 6...)
+                        let mut n = creabim_geom::coverpage::sets(self.doc.model(), id);
+                        if crate::props::row(ui, "Sets", |ui| {
+                            ui.add(
+                                egui::DragValue::new(&mut n)
+                                    .range(1..=creabim_geom::coverpage::MAX_SETS),
+                            )
                         })
                         .on_hover_text(crate::i18n::t(
-                            "A title page is filled from File › Project information. Four A6 labels fit an A4, one for each volume; one fills the page.",
+                            "A title page is filled from File › Project information. Four A6 title pages fit an A4, one for each set; more than four sets go on further pages, numbered on (5, 6, 7, 8...).",
                         ))
                         .changed()
                         {
-                            sh.fields.insert("volumes".into(), n.to_string());
-                            label = "Title page"
+                            cover_sets = Some(n);
                         }
                     } else if sh.template.is_none() {
                         // the office's title block: on or off, and the
@@ -10442,9 +10455,9 @@ crate::props::row(ui, "File names", |ui| {
                     let n = sh.guides.len();
                     crate::props::row(ui, "Guides", |ui| {
                         ui.label(match n {
-                            0 => "None".to_string(),
-                            1 => "1 guide".to_string(),
-                            n => format!("{n} guides"),
+                            0 => crate::i18n::tr("None"),
+                            1 => crate::i18n::tr("1 guide"),
+                            n => crate::i18n::tr("{n} guides").replace("{n}", &n.to_string()),
                         })
                     });
                     if n > 0 {
@@ -11524,6 +11537,12 @@ crate::props::row(ui, "File names", |ui| {
                 self.doc.commit_merged(tx)
             };
             self.report(r, msg);
+        }
+        if let Some(n) = cover_sets {
+            if let Some(tx) = creabim_geom::coverpage::set_sets(self.doc.model(), id, n) {
+                let r = self.doc.commit(tx);
+                self.report(r, crate::i18n::tr("Title page sets"));
+            }
         }
         if equalise {
             let model = self.doc.model();
@@ -13059,6 +13078,7 @@ impl eframe::App for CreaBimApp {
         self.reference_steps();
         self.calibrate_window(&ctx);
         self.sheets_export_window(&ctx);
+        self.print_window(&ctx);
         self.new_project_window(&ctx);
         self.marks_window(&ctx);
         self.dss_window(&ctx);

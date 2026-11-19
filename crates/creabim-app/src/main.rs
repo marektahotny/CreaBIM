@@ -40,6 +40,7 @@ mod paneface;
 mod partstool;
 mod pipesui;
 mod planview;
+mod printing;
 mod props;
 mod render3d;
 mod roomtool;
