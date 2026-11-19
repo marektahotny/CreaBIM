@@ -1147,6 +1147,15 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         d.items
             .extend(crate::firezones::distance_items(model, v.scale / 1000.0));
     }
+    // the fire-dangerous space in front of each opening of the level
+    if let (true, creabim_core::ViewKind::Plan { level, .. }) = (v.fire_distances, kind) {
+        d.items.extend(crate::firedistance::items(
+            model,
+            *level,
+            None,
+            v.scale / 1000.0,
+        ));
+    }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {
         d.items.retain(|it| !hidden.contains(&it.id()));

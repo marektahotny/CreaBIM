@@ -758,6 +758,14 @@ pub enum PlanItem {
         points: Vec<DVec2>,
         rgb: [f32; 3],
     },
+    /// A polyline in a colour of its own, dashed or solid, over what it
+    /// lies on: the fire-dangerous space in front of an opening.
+    Curve {
+        id: ElementId,
+        points: Vec<DVec2>,
+        rgb: [f32; 3],
+        dashed: bool,
+    },
     /// Shaded surfaces as an image spanning `lo`..`hi`, drawn only inside `clip`.
     Image {
         id: ElementId,
@@ -796,6 +804,7 @@ impl PlanItem {
             | PlanItem::Tint { id, .. }
             | PlanItem::Room { id, .. }
             | PlanItem::Shade { id, .. }
+            | PlanItem::Curve { id, .. }
             | PlanItem::Image { id, .. } => *id,
         }
     }
@@ -809,7 +818,8 @@ impl PlanItem {
             | PlanItem::Fill { points, .. }
             | PlanItem::Tint { points, .. }
             | PlanItem::Room { points, .. }
-            | PlanItem::Shade { points, .. } => pts.extend(points.iter().copied()),
+            | PlanItem::Shade { points, .. }
+            | PlanItem::Curve { points, .. } => pts.extend(points.iter().copied()),
             PlanItem::Line {
                 pen: Pen::Guide, ..
             } => {}
