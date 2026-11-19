@@ -1174,6 +1174,8 @@ mod tests {
                 flow_m3h: None,
                 power_kw: None,
                 gas_cat: None,
+                product: None,
+                preset: None,
             }),
         );
         let (run_id, valve_id) = (run.id, valve.id);

@@ -887,6 +887,13 @@ pub struct Valve {
     /// heaters, 3 boilers, 4 industrial; none takes it from its name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gas_cat: Option<u8>,
+    /// The maker's product it is (a HERZ id, "HZ-TS98V"); none takes the
+    /// maker's default on the maker's pipes, "" a generic valve.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product: Option<String>,
+    /// Its presetting, as the maker numbers it ("3,5").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
 }
 
 /// A hose system of a fire main (STN EN 671-1, STN EN 671-2, STN 92 0400).
@@ -940,6 +947,8 @@ impl Valve {
             flow_m3h: None,
             power_kw: None,
             gas_cat: None,
+            product: None,
+            preset: None,
         }
     }
 

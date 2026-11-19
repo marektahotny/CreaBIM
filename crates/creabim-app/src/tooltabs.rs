@@ -304,6 +304,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "pipe",
                 "The Pipe tool in heating supply; the return is in the bar's systems",
             ),
+            act(
+                "calc:heating",
+                "Calculate heating pipes",
+                "gauge",
+                "Size the supply and return to the radiators, find the critical circuit and the pump, and preset the HERZ valves (TS-98-V, STRÖMAX) to balance the circuits",
+            ),
             Sep,
             act(
                 "calc:heatloss",

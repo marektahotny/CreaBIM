@@ -5,7 +5,7 @@
 
 use super::CreaBimApp;
 use creabim_core::{ElementId, ElementKind, Model, Transaction};
-use creabim_services::{firewater, gas, storm};
+use creabim_services::{firewater, gas, heating, storm};
 use eframe::egui::{self, Vec2};
 
 /// The calculation shown.
@@ -13,6 +13,7 @@ pub(super) enum NetCalc {
     Storm(Option<storm::StormResult>),
     Fire(Option<firewater::FireResult>),
     Gas(Option<gas::GasResult>, Box<gas::GasSettings>),
+    Heat(Option<heating::HeatResult>, heating::HeatSettings),
 }
 
 impl NetCalc {
@@ -21,6 +22,9 @@ impl NetCalc {
     }
     fn fire(model: &Model) -> Self {
         NetCalc::Fire(firewater::run(model, "PV"))
+    }
+    fn heat(model: &Model, s: heating::HeatSettings) -> Self {
+        NetCalc::Heat(heating::run(model, &s), s)
     }
     fn gas(model: &Model, s: gas::GasSettings) -> Self {
         NetCalc::Gas(gas::run(model, "ZP", &s), Box::new(s))
@@ -31,6 +35,7 @@ impl NetCalc {
             NetCalc::Storm(Some(r)) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             NetCalc::Fire(Some(r)) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             NetCalc::Gas(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
+            NetCalc::Heat(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             _ => vec![],
         }
     }
@@ -91,6 +96,7 @@ impl CreaBimApp {
         self.net_calc = Some(match arg {
             "storm" => NetCalc::storm(self.doc.model()),
             "fire" => NetCalc::fire(self.doc.model()),
+            "heating" => NetCalc::heat(self.doc.model(), heating::HeatSettings::default()),
             "gas" => NetCalc::gas(self.doc.model(), gas::GasSettings::default()),
             _ => return false,
         });
@@ -115,6 +121,16 @@ impl CreaBimApp {
             NetCalc::Storm(_) => "Storm water drainage calculation",
             NetCalc::Fire(_) => "Fire main calculation",
             NetCalc::Gas(..) => "Gas installation calculation",
+            NetCalc::Heat(..) => "Heating pipes calculation",
+        };
+        let mut heat_settings = match calc {
+            NetCalc::Heat(_, s) => Some(*s),
+            _ => None,
+        };
+        let mut do_presets = false;
+        let presets: Vec<(ElementId, &'static str)> = match calc {
+            NetCalc::Heat(Some(r), _) => r.presets.iter().map(|p| (p.valve, p.preset)).collect(),
+            _ => vec![],
         };
         let mut gas_settings = match calc {
             NetCalc::Gas(_, s) => Some((**s).clone()),
@@ -146,6 +162,27 @@ impl CreaBimApp {
                 egui::ScrollArea::vertical().show(ui, |ui| match calc {
                     NetCalc::Storm(None) => {
                         ui.label(t("Draw rainwater pipes (D) from the roof drains to where they leave the building, put a roof drain on each stack's top, then calculate."));
+                    }
+                    NetCalc::Heat(r, _) => {
+                        if let Some(hs) = heat_settings.as_mut() {
+                            if heat_options(ui, hs) {
+                                again = true;
+                            }
+                        }
+                        match r {
+                            None => {
+                                ui.label(t("Draw the heating supply (UKP) and return (UKS) from the boiler to each radiator's connections, then calculate."));
+                            }
+                            Some(r) => {
+                                if ui
+                                    .add_enabled(!presets.is_empty(), egui::Button::new(t("Write the presettings to the valves")))
+                                    .clicked()
+                                {
+                                    do_presets = true;
+                                }
+                                heat_body(ui, model, r, &mut select)
+                            }
+                        }
                     }
                     NetCalc::Gas(r, _) => {
                         if let Some(gs) = gas_settings.as_mut() {
@@ -324,6 +361,14 @@ impl CreaBimApp {
         }
         let storm = matches!(self.net_calc, Some(NetCalc::Storm(_)));
         let fire = matches!(self.net_calc, Some(NetCalc::Fire(_)));
+        if do_presets {
+            if let Some(tx) = write_presets(self.doc.model(), &presets) {
+                if let Err(e) = self.doc.commit(tx) {
+                    self.status = e.to_string();
+                }
+            }
+            again = true;
+        }
         if do_apply {
             if let Some(tx) = apply(self.doc.model(), &sizes) {
                 if let Err(e) = self.doc.commit(tx) {
@@ -337,6 +382,8 @@ impl CreaBimApp {
                 NetCalc::storm(self.doc.model())
             } else if fire {
                 NetCalc::fire(self.doc.model())
+            } else if let Some(hs) = heat_settings {
+                NetCalc::heat(self.doc.model(), hs)
             } else {
                 NetCalc::gas(self.doc.model(), gas_settings.unwrap_or_default())
             });
@@ -538,4 +585,234 @@ fn gas_body(ui: &mut egui::Ui, model: &Model, r: &gas::GasResult, select: &mut O
     ui.weak(t("Bold: the critical branch. Vr = Σ Ki·Vi (K1 = n^-0.5 cooking, K2 = n^-0.15 local and storage heaters, K3 = n^-0.1 boilers, K4 = 1 industrial); local losses +50 %; a lift of light gas in risers makes up for their losses."));
     ui.weak(t("Cabinet at the boundary: main shut-off (HUP), a pressure regulator with a filter for a medium pressure service pipe, the gas meter, an outlet valve; ventilated, 1 m protective zone."));
     ui.weak("STN EN 1775 · TPP 704 01 · TPP 704 03 · STN EN 1359");
+}
+
+/// The edits that write each valve's presetting.
+fn write_presets(model: &Model, presets: &[(ElementId, &'static str)]) -> Option<Transaction> {
+    let mut tx = Transaction::new("Preset valves");
+    let mut any = false;
+    for &(id, p) in presets {
+        let Some(e) = model.get(id) else { continue };
+        let ElementKind::Valve(v) = &e.kind else {
+            continue;
+        };
+        if v.preset.as_deref() == Some(p) {
+            continue;
+        }
+        let mut after = e.clone();
+        if let ElementKind::Valve(w) = &mut after.kind {
+            w.preset = Some(p.to_string());
+        }
+        tx = tx.replace(e.clone(), after);
+        any = true;
+    }
+    any.then_some(tx)
+}
+
+/// The heating calculation's temperatures: true when one changed.
+fn heat_options(ui: &mut egui::Ui, s: &mut heating::HeatSettings) -> bool {
+    let t = crate::i18n::tr;
+    let mut changed = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label(t("Supply"));
+        changed |= ui
+            .add(
+                egui::DragValue::new(&mut s.supply_c)
+                    .range(25.0..=95.0)
+                    .suffix(" °C"),
+            )
+            .changed();
+        ui.label(t("Return"));
+        changed |= ui
+            .add(
+                egui::DragValue::new(&mut s.return_c)
+                    .range(20.0..=90.0)
+                    .suffix(" °C"),
+            )
+            .changed();
+        ui.label(t("Radiator and valve"));
+        changed |= ui
+            .add(
+                egui::DragValue::new(&mut s.terminal_kpa)
+                    .range(0.0..=50.0)
+                    .suffix(" kPa"),
+            )
+            .changed();
+    });
+    changed
+}
+
+fn heat_body(
+    ui: &mut egui::Ui,
+    model: &Model,
+    r: &heating::HeatResult,
+    select: &mut Option<ElementId>,
+) {
+    let t = crate::i18n::tr;
+    let num = crate::i18n::num;
+    let warn = |ui: &mut egui::Ui, s: String| {
+        ui.colored_label(ui.visuals().warn_fg_color, s);
+    };
+    let row = |ui: &mut egui::Ui, k: &str, v: String| {
+        crate::props::row(ui, k, |ui| ui.label(v));
+    };
+    row(
+        ui,
+        "Radiators / output",
+        format!("{} / {} kW", r.radiators.len(), num(r.power_w / 1000.0, 2)),
+    );
+    row(
+        ui,
+        "Total flow",
+        format!(
+            "{} l/s = {} m³/h",
+            num(r.flow_ls, 3),
+            num(r.flow_ls * 3.6, 2)
+        ),
+    );
+    row(
+        ui,
+        "Critical circuit",
+        format!("{} kPa", num(r.critical_pa / 1000.0, 1)),
+    );
+    row(
+        ui,
+        "Circulation pump",
+        format!(
+            "Q = {} m³/h, H = {} kPa ≈ {} m",
+            num(r.flow_ls * 3.6, 2),
+            num(r.pump_kpa, 1),
+            num(r.pump_m, 2)
+        ),
+    );
+    if r.no_power > 0 {
+        warn(
+            ui,
+            format!(
+                "{}: {}",
+                t("Radiators of no known output, counted with no flow"),
+                r.no_power
+            ),
+        );
+    }
+    if r.no_return {
+        warn(
+            ui,
+            t("No return (UKS) is drawn: the circuits hold the supply only."),
+        );
+    }
+    if r.radiators.iter().any(|x| !x.returned) && !r.no_return {
+        warn(ui, t("Some radiators are not on the return."));
+    }
+    if r.unreached > 0 {
+        warn(
+            ui,
+            format!("{}: {}", t("Pipes not joined to the network"), r.unreached),
+        );
+    }
+    egui::Grid::new("heat.rads")
+        .striped(true)
+        .num_columns(6)
+        .show(ui, |ui| {
+            for h in [
+                "Radiator",
+                "W",
+                "l/h",
+                "Supply kPa",
+                "Return kPa",
+                "Throttle kPa",
+            ] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for x in &r.radiators {
+                let name = if x.critical {
+                    egui::RichText::new(&x.name).strong()
+                } else {
+                    egui::RichText::new(&x.name)
+                };
+                if ui.link(name).clicked() {
+                    *select = Some(x.id);
+                }
+                ui.label(num(x.power_w, 0));
+                ui.label(num(x.flow_ls * 3600.0, 0));
+                ui.label(num(x.supply_pa / 1000.0, 2));
+                ui.label(num(x.return_pa / 1000.0, 2));
+                ui.label(num(x.throttle_pa / 1000.0, 2));
+                ui.end_row();
+            }
+        });
+    if !r.presets.is_empty() {
+        ui.add_space(6.0);
+        ui.strong(t("Valve presettings (HERZ)"));
+        egui::Grid::new("heat.presets").striped(true).num_columns(7).show(ui, |ui| {
+            for h in ["Valve", "DN", "Q m³/h", "Δp target kPa", "kv needed", "Presetting", "Δp kPa"] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for p in &r.presets {
+                if ui.link(p.product).on_hover_text(p.code).clicked() {
+                    *select = Some(p.valve);
+                }
+                ui.label(p.dn.to_string());
+                ui.label(num(p.flow_m3h, 3));
+                ui.label(num(p.target_kpa, 1));
+                ui.label(num(p.kv_req, 3));
+                let pre = format!("{} (kv {})", p.preset, num(p.kv, 3));
+                match p.note {
+                    heating::PresetNote::Under => {
+                        ui.colored_label(ui.visuals().warn_fg_color, pre)
+                            .on_hover_text(t("Even the smallest presetting throttles too little: a smaller valve or a differential pressure regulator"));
+                    }
+                    heating::PresetNote::Open => {
+                        ui.label(pre).on_hover_text(t("Wide open: its circuit is the critical one"));
+                    }
+                    heating::PresetNote::None => {
+                        ui.label(pre);
+                    }
+                }
+                ui.label(num(p.dp_kpa, 1));
+                ui.end_row();
+            }
+        });
+    }
+    ui.add_space(6.0);
+    let name_of = |id: ElementId| model.get(id).map_or(String::new(), |e| e.name.clone());
+    egui::Grid::new("heat.pipes")
+        .striped(true)
+        .num_columns(7)
+        .show(ui, |ui| {
+            for h in [
+                "Pipe", "Size", "Proposed", "Flow l/s", "v m/s", "R Pa/m", "Loss Pa",
+            ] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for p in &r.pipes {
+                let name = format!("{} {}", p.code, name_of(p.id));
+                let name = if p.critical {
+                    egui::RichText::new(name).strong()
+                } else {
+                    egui::RichText::new(name)
+                };
+                if ui.link(name).clicked() {
+                    *select = Some(p.id);
+                }
+                ui.label(&p.size);
+                ui.label(&p.proposed);
+                ui.label(num(p.flow_ls, 3));
+                let v = num(p.velocity_ms, 2);
+                if p.too_fast {
+                    ui.colored_label(ui.visuals().error_fg_color, v);
+                } else {
+                    ui.label(v);
+                }
+                ui.label(num(p.r_pa_m, 0));
+                ui.label(num(p.loss_pa, 0));
+                ui.end_row();
+            }
+        });
+    ui.add_space(6.0);
+    ui.weak(t("Bold: the critical circuit. At most 0.8 m/s on the mains, 0.5 m/s to one radiator, 150 Pa/m; fittings +30 %; a radiator with its valve 10 kPa, the source 15 kPa, the pump +10 %. Presetting as HERZ's programs: kv = Q / √(Δp / 100), the largest kv no more than it, upstream valves first."));
+    ui.weak("STN EN 12828 · STN EN 442 · HERZ STRÖMAX MS, TS-98-V");
 }

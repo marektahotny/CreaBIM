@@ -196,6 +196,100 @@ pub fn valve_fields(
             label = "Air flow";
         }
     }
+    let products: Vec<&creabim_services::herzvalves::HerzValve> =
+        creabim_services::herzvalves::HERZ_VALVES
+            .iter()
+            .filter(|h| h.kind == v.kind)
+            .collect();
+    if !products.is_empty() {
+        use creabim_services::herzvalves;
+        let tr = crate::i18n::tr;
+        let dn = herzvalves::dn_for(pipe.outer_mm, pipe.inner_mm);
+        let shown = match v.product.as_deref() {
+            None => tr("HERZ default on HERZ pipes"),
+            Some("") => tr("Generic valve"),
+            Some(id) => herzvalves::by_id(id).map_or(id.to_string(), |h| h.name.to_string()),
+        };
+        crate::app::helpui::combo(ui, "Product")
+            .selected_text(shown)
+            .width(width)
+            .show_ui(ui, |ui| {
+                let mut set = |ui: &mut egui::Ui, p: Option<String>, text: String| {
+                    if ui.selectable_label(v.product == p, text).clicked() && v.product != p {
+                        v.product = p;
+                        v.preset = None;
+                        label = "Product";
+                    }
+                };
+                set(ui, None, tr("HERZ default on HERZ pipes"));
+                set(ui, Some(String::new()), tr("Generic valve"));
+                for h in &products {
+                    let z = h.size_for(dn);
+                    set(
+                        ui,
+                        Some(h.id.to_string()),
+                        format!("{} DN {} ({})", h.name, z.dn, z.code),
+                    );
+                }
+            });
+        let chosen = match v.product.as_deref() {
+            Some("") => None,
+            Some(id) => herzvalves::by_id(id),
+            None => products.first().copied().filter(|_| {
+                creabim_services::pipe_types::by_id(&pipe.pipe_type)
+                    .and_then(|t| t.manufacturer.as_deref())
+                    .is_some_and(|m| m.starts_with("HERZ"))
+            }),
+        };
+        let chosen = match (v.product.as_deref(), chosen) {
+            (None, Some(_)) => {
+                let medium = match pipe.kind() {
+                    creabim_core::mep::SystemKind::CoolingSupply
+                    | creabim_core::mep::SystemKind::CoolingReturn => "chlad",
+                    creabim_core::mep::SystemKind::HeatingSupply
+                    | creabim_core::mep::SystemKind::HeatingReturn => "ukur",
+                    _ => "voda",
+                };
+                herzvalves::default_for(&v.kind, medium, dn)
+            }
+            (_, c) => c,
+        };
+        if let Some(h) = chosen {
+            let z = h.size_for(dn);
+            let pre = h.presets_of(z);
+            if !pre.is_empty() {
+                let now = v.preset.clone().unwrap_or_default();
+                crate::app::helpui::combo(ui, "Presetting")
+                    .selected_text(if now.is_empty() {
+                        tr("wide open")
+                    } else {
+                        now.clone()
+                    })
+                    .width(width)
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(now.is_empty(), tr("wide open"))
+                            .clicked()
+                            && !now.is_empty()
+                        {
+                            v.preset = None;
+                            label = "Presetting";
+                        }
+                        for (p, kv) in pre {
+                            let text = format!("{p} (kv {})", crate::i18n::num(*kv, 3));
+                            if ui.selectable_label(now == *p, text).clicked() && now != *p {
+                                v.preset = Some(p.to_string());
+                                label = "Presetting";
+                            }
+                        }
+                    });
+            } else if z.kvs > 0.0 {
+                crate::props::row(ui, "kvs", |ui| {
+                    ui.label(format!("{} m³/h", crate::i18n::num(z.kvs, 2)))
+                });
+            }
+        }
+    }
     if v.kind == "spotrebic" {
         let mut q = v.power_kw.unwrap_or(0.0);
         let changed = crate::props::row(ui, "Heat input", |ui| {
