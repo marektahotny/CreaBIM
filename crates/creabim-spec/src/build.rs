@@ -1669,6 +1669,7 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         design_count: None,
         fire_load: String::new(),
         fire_ps: None,
+        fire_pvm: None,
         tiling: None,
         ufh: None,
     };

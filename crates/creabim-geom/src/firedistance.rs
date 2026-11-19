@@ -59,6 +59,10 @@ pub const FIRE_DISTANCE_SINGLE: &str = "fire_distance_single";
 /// Table 2: k10 and k11 (and q) by the fire's equivalent time t.
 pub const FIRE_DISTANCE_K: &str = "fire_distance_k";
 
+/// cos 45°: a wall turned less than this from a face's main way is
+/// projected into its reference plane (George's choice, 2026-11-19).
+const MAIN_WAY_COS: f64 = std::f64::consts::FRAC_1_SQRT_2;
+
 /// The colour the space is drawn in.
 pub const PNP_RED: [f32; 3] = crate::firezones::DANGER;
 
@@ -329,6 +333,20 @@ fn panels(model: &Model) -> Vec<Panel> {
     out
 }
 
+/// The design load pvm of a concentrated fire load in the room at `p`,
+/// where the designer gives one (4.4.5).
+fn concentrated(model: &Model, level: ElementId, p: DVec2) -> Option<f64> {
+    model.iter().find_map(|e| match &e.kind {
+        ElementKind::Room(r) if r.level == level => {
+            let sh = creabim_core::room::shape(model, e.id)?;
+            creabim_core::polygon::contains(&sh.outline, p)
+                .then_some(r.fire_pvm)
+                .flatten()
+        }
+        _ => None,
+    })
+}
+
 /// The fire zone of the room at `p`; empty with none.
 fn zone_at(model: &Model, level: ElementId, p: DVec2) -> String {
     model
@@ -369,21 +387,53 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
     // (chapter 3): the outermost plane first, with the planes behind it
     // nearer than its distance d projected into it (3.1.1, 3.2.2); those
     // further back are reckoned on their own
+    // the main way each stretch faces: of the ways within 45° of its own
+    // (its own among them), the one the zone's face runs longest in; a
+    // wall turned less than that is projected into the main way's
+    // reference plane (the note to 3.1.2, the designer's choice)
+    let len = |j: usize| panels[j].hi - panels[j].lo;
+    let main: Vec<DVec2> = (0..panels.len())
+        .map(|j| {
+            let q = &panels[j];
+            let mut best = (q.outward, -1.0);
+            for k in 0..panels.len() {
+                let r = &panels[k];
+                if r.zone != q.zone || r.outward.dot(q.outward) <= MAIN_WAY_COS {
+                    continue;
+                }
+                let run: f64 = (0..panels.len())
+                    .filter(|&m| {
+                        panels[m].zone == q.zone && panels[m].outward.dot(r.outward) > 0.99
+                    })
+                    .map(len)
+                    .sum();
+                if run > best.1 + 1e-9 {
+                    best = (r.outward, run);
+                }
+            }
+            best.0
+        })
+        .collect();
     let mut used = vec![false; panels.len()];
     for i in 0..panels.len() {
-        if used[i] {
+        if used[i] || main[i].dot(panels[i].outward) < 0.99 {
             continue;
         }
         let p0 = &panels[i];
         let mut family: Vec<usize> = (0..panels.len())
-            .filter(|&j| {
-                !used[j] && panels[j].zone == p0.zone && panels[j].outward.dot(p0.outward) > 0.99
-            })
+            .filter(|&j| !used[j] && panels[j].zone == p0.zone && main[j].dot(p0.outward) > 0.99)
             .collect();
         for &j in &family {
             used[j] = true;
         }
-        let off = |j: usize| (panels[j].origin - p0.origin).dot(p0.outward);
+        // how far out a stretch stands: its outermost end
+        let off = |j: usize| {
+            let q = &panels[j];
+            let (a, b) = (q.origin + q.t * q.lo, q.origin + q.t * q.hi);
+            (a - p0.origin)
+                .dot(p0.outward)
+                .max((b - p0.origin).dot(p0.outward))
+        };
         // fully open area of each stretch, and the zone's all told
         let open_of = |j: usize| -> f64 {
             all.iter()
@@ -482,6 +532,11 @@ struct Part {
     level: ElementId,
     rect: [f64; 4],
     kind: PartKind,
+    /// Its fire-open area, m²: the rectangle's, or for a partly open wall
+    /// its face less its openings.
+    area: f64,
+    /// The design load of a concentrated fire load behind it (4.4.5).
+    pvm: Option<f64>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -532,9 +587,42 @@ impl Ctx<'_> {
                     } else {
                         PartKind::Full
                     },
+                    area: (x - y).abs() * (o.z1 - o.z0),
+                    pvm: (!o.partial)
+                        .then(|| concentrated(model, o.level, o.inside))
+                        .flatten(),
                 }
             })
             .collect();
+        // 4.1.3 (Z3): an outer wall the designer marks as having a
+        // combustible face: its face less its openings, partly open
+        for &w in &walls {
+            let Some(ElementKind::Wall(wall)) = model.get(w).map(|e| &e.kind) else {
+                continue;
+            };
+            if !wall.fire_partial {
+                continue;
+            }
+            let (x, y) = (along(wall.start), along(wall.end));
+            let z0 = model.level(wall.level).map_or(0.0, |l| l.elevation) + wall.base_offset;
+            let h = creabim_core::walls::constrained_height(model, wall).unwrap_or(wall.height);
+            let holes: f64 = parts
+                .iter()
+                .filter(|o| sources.iter().any(|s| s.id == o.id && s.host == w))
+                .map(|o| o.area)
+                .sum();
+            let area = ((x - y).abs() * h - holes).max(0.0);
+            if area > 0.0 {
+                parts.push(Part {
+                    id: w,
+                    level: wall.level,
+                    rect: [x.min(y), x.max(y), z0, z0 + h],
+                    kind: PartKind::Partial,
+                    area,
+                    pvm: None,
+                });
+            }
+        }
         // 4.3: a roof over the stretch, falling toward it or flat, seen
         // square onto the plane of the face: steeper than the limit as
         // high as it rises (at least hu_roof), flatter as long as it
@@ -543,8 +631,11 @@ impl Ctx<'_> {
             .iter()
             .map(|&j| {
                 let q = &self.panels[j];
-                let off = (q.origin - p0.origin).dot(p0.t);
-                (q.level, q.lo + off, q.hi + off)
+                let (a, b) = (
+                    (q.origin + q.t * q.lo - p0.origin).dot(p0.t),
+                    (q.origin + q.t * q.hi - p0.origin).dot(p0.t),
+                );
+                (q.level, a.min(b), a.max(b))
             })
             .collect();
         // 4.1.4: a roof is fire-open where the designer says so, or
@@ -607,6 +698,8 @@ impl Ctx<'_> {
                 level: r.level,
                 rect: [x0, x1, z0, z1],
                 kind: PartKind::Roof,
+                area: (x1 - x0) * (z1 - z0),
+                pvm: None,
             });
         }
         // 2.6.4 f) (Z3): a single fully open area under 0,5 m long and
@@ -656,6 +749,10 @@ impl Ctx<'_> {
                 f64::NEG_INFINITY,
             ];
             let mut spo = [0.0; 3];
+            // 4.4.5: the fully open area in front of a concentrated
+            // load, and its load
+            let mut s2po = 0.0;
+            let mut pvm: Option<f64> = None;
             for &i in group {
                 let q = parts[i].rect;
                 r = [
@@ -664,7 +761,13 @@ impl Ctx<'_> {
                     r[2].min(q[2]),
                     r[3].max(q[3]),
                 ];
-                spo[parts[i].kind as usize] += (q[1] - q[0]) * (q[3] - q[2]);
+                match parts[i].pvm {
+                    Some(m) if parts[i].kind == PartKind::Full => {
+                        s2po += parts[i].area;
+                        pvm = Some(pvm.map_or(m, |x: f64| x.max(m)));
+                    }
+                    _ => spo[parts[i].kind as usize] += parts[i].area,
+                }
             }
             let (lu, hu) = (r[1] - r[0], r[3] - r[2]);
             if lu <= 1e-6 || hu <= 1e-6 {
@@ -684,6 +787,21 @@ impl Ctx<'_> {
                 }
             } else {
                 spo[0]
+            };
+            // 4.4.5: equation (6), or (7) with d read for pvm where (6)
+            // exceeds Sp
+            let open = match pvm {
+                Some(m) if s2po > 0.0 => {
+                    let (q1, q2) = (reader.q(pv?)?, reader.q(m)?);
+                    let s6 = open + q2 / q1 * s2po;
+                    if s6 > sp {
+                        load = Some(m);
+                        q1 / q2 * open + s2po
+                    } else {
+                        s6
+                    }
+                }
+                _ => open,
             };
             let po = (open / sp * 100.0).min(100.0);
             let d = match given {
@@ -985,6 +1103,26 @@ impl<'a> Reader<'a> {
             _ => return 0.0,
         };
         self.pv_adds[i].unwrap_or(0.0)
+    }
+
+    /// Table 2: the heat flux q for t (pv), kW/m², between its rows
+    /// linearly.
+    fn q(&self, t: f64) -> Option<f64> {
+        let tab = self.k?;
+        let n = |s: &str| fireparams::number(s);
+        let rows: Vec<(f64, f64)> = tab
+            .rows
+            .iter()
+            .filter_map(|r| Some((n(r.first()?)?, n(r.get(3)?)?)))
+            .collect();
+        if rows.is_empty() {
+            return None;
+        }
+        let keys = sorted(rows.iter().map(|r| r.0).collect());
+        let (i, j, f) = bracket(&keys, t);
+        let at = |k: f64| rows.iter().find(|r| r.0 == k).map(|r| r.1);
+        let (a, b) = (at(keys[i])?, at(keys[j])?);
+        Some(a + (b - a) * f)
     }
 
     /// Table 2: k10 and k11 for t (pv), between its rows linearly.
@@ -1395,6 +1533,64 @@ mod tests {
         );
         let roofed = spaces(&m, None, None);
         assert!(hu(&roofed) > before + 1.0, "{} {before}", hu(&roofed));
+    }
+
+    /// 4.1.3: a wall marked with a combustible face adds its face less
+    /// its openings × k10; 4.4.5: openings in front of a concentrated
+    /// load count × q''/q'.
+    #[test]
+    fn a_combustible_face_and_a_concentrated_load_count() {
+        let extra = "#table fire_distance\n#columns key\tvalue\tnote\n\
+            table\t3\t\nside_angle\t160\t\npv_default\t50\t\npv_eq3\t30\t\n\
+            #table fire_distance_k\n#columns t\tk10\tk11\tq\n15\t1\t1,5\t59\n100\t0,5\t0,7\t160\n500\t0,2\t0,3\t300\n";
+        let mut m = creabim_core::starter::starter_house();
+        with_tables(&mut m, &format!("{TABLES}{extra}"));
+        let south = |m: &Model| {
+            spaces(m, None, None)
+                .into_iter()
+                .filter(|p| p.outward.y < -0.9)
+                .map(|p| (p.po, p.d))
+                .fold((0.0, 0.0), |a, b| (f64::max(a.0, b.0), f64::max(a.1, b.1)))
+        };
+        let before = south(&m);
+        let wall = spaces(&m, None, None)
+            .into_iter()
+            .find(|p| p.outward.y < -0.9 && p.members.len() > 2)
+            .and_then(|p| {
+                m.get(p.members[0]).and_then(|e| match &e.kind {
+                    ElementKind::Opening(o) => Some(o.host),
+                    _ => None,
+                })
+            })
+            .unwrap();
+        let before_w = m.get(wall).unwrap().clone();
+        let mut w = before_w.clone();
+        if let ElementKind::Wall(x) = &mut w.kind {
+            x.fire_partial = true;
+        }
+        creabim_core::Transaction::new("t")
+            .replace(before_w, w)
+            .apply(&mut m)
+            .unwrap();
+        let partial = south(&m);
+        assert!(partial.1 > before.1 + 0.1, "{partial:?} {before:?}");
+        // a concentrated load in every room
+        let rooms: Vec<_> = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Room(_)))
+            .cloned()
+            .collect();
+        let mut tx = creabim_core::Transaction::new("t");
+        for e in rooms {
+            let mut after = e.clone();
+            if let ElementKind::Room(r) = &mut after.kind {
+                r.fire_pvm = Some(500.0);
+            }
+            tx = tx.replace(e, after);
+        }
+        tx.apply(&mut m).unwrap();
+        let loaded = south(&m);
+        assert!(loaded.1 > partial.1, "{loaded:?} {partial:?}");
     }
 
     #[test]

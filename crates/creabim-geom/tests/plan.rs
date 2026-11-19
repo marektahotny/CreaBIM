@@ -32,6 +32,7 @@ fn door_splits_wall_into_two_cut_pieces_with_a_swing() {
             layer_ends: vec![],
             bulge: 0.0,
             bearing: None,
+            fire_partial: false,
         }),
     );
     let d = Element::new(
@@ -139,6 +140,7 @@ fn a_box_subtracted_from_a_wall_leaves_a_gap_in_the_plan() {
             layer_ends: vec![],
             bulge: 0.0,
             bearing: None,
+            fire_partial: false,
         }),
     );
     // a 1 m box through the wall, 0.5 to 2.5 m up

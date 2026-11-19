@@ -1128,6 +1128,7 @@ impl Builder {
                             layer_ends: vec![],
                             bulge: 0.0,
                             bearing: None,
+                            fire_partial: false,
                         }),
                         of_type: None,
                     });

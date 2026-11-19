@@ -1052,6 +1052,12 @@ pub struct Wall {
     /// [`crate::masonry::is_bearing`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bearing: Option<bool>,
+    /// An outer wall that meets its fire resistance but whose outer face
+    /// is combustible enough to give off more than 100 MJ/m² in a fire:
+    /// a partly fire-open area (STN 92 0201-4 4.1.3 as Z3 has it), set by
+    /// the designer.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fire_partial: bool,
 }
 
 /// One layer's ends moved by hand: how far layer `layer` (counted from the
@@ -1210,6 +1216,7 @@ impl Wall {
             layer_ends: vec![],
             bulge: 0.0,
             bearing: None,
+            fire_partial: false,
         }
     }
 

@@ -200,6 +200,16 @@ pub(super) fn wall_fields(
             });
     });
 
+    // 4.1.3 of STN 92 0201-4 (Z3): an outer wall with a combustible face
+    if crate::props::switch(ui, &mut w.fire_partial, "Combustible outer face")
+        .on_hover_text(crate::i18n::t(
+            "The wall meets its fire resistance, but its outer face can give off more than 100 MJ/m² in a fire: a partly fire-open area in the separation distance (STN 92 0201-4, 4.1.3)",
+        ))
+        .changed()
+    {
+        label = "Wall fire-open face";
+    }
+
     ui.add_space(4.0);
     crate::props::row(ui, "Joins at", |ui| {
         crate::props::flow(ui, |ui| {

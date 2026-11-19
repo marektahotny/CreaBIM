@@ -104,6 +104,7 @@ pub fn sample_house() -> Model {
                     layer_ends: vec![],
                     bulge: 0.0,
                     bearing: None,
+                    fire_partial: false,
                 }),
             );
             let id = wall.id;
@@ -201,6 +202,7 @@ pub fn sample_house() -> Model {
             layer_ends: vec![],
             bulge: 0.0,
             bearing: None,
+            fire_partial: false,
         }),
     );
     let pid = part.id;
