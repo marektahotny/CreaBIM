@@ -2574,6 +2574,74 @@ fn title_block() -> SheetTemplate {
     }
 }
 
+/// The starter house raised to `storeys` storeys (at least 3): its ground
+/// floor, walls, doors, windows, stair, rooms and fittings, copied onto
+/// every storey between it and its first floor, which with the roofs goes
+/// to the top. A test building for timing drawings of a block of flats.
+pub fn starter_tower(storeys: usize) -> Model {
+    let model = starter_house();
+    let level = |name: &str| {
+        model
+            .iter()
+            .find(|e| e.name == name && matches!(e.kind, ElementKind::Level(_)))
+            .map(|e| e.id)
+            .expect("starter levels")
+    };
+    let (ground, first) = (level("Ground Floor"), level("First Floor"));
+    let mut doc = Document::from_model(model.clone());
+    let between = storeys.max(3) - 2;
+    // the first floor goes up over the storeys put in under it
+    let mut tx = Transaction::new("Tower: levels");
+    let before = model.get(first).cloned().expect("first floor");
+    let mut after = before.clone();
+    if let ElementKind::Level(l) = &mut after.kind {
+        l.elevation = 3.0 * (between + 1) as f64;
+    }
+    tx = tx.replace(before, after);
+    let mut new = vec![];
+    for k in 1..=between {
+        let e = Element::new(
+            format!("Floor {k}"),
+            ElementKind::Level(Level {
+                elevation: 3.0 * k as f64,
+                height: 3.0,
+            }),
+        );
+        new.push(e.id);
+        tx = tx.insert(e);
+    }
+    doc.commit(tx).expect("tower levels");
+    // what stood up to the first floor now stands up to the storey above
+    let mut tx = Transaction::new("Tower: tops");
+    for e in doc.model().iter() {
+        let mut after = e.clone();
+        let top = match &mut after.kind {
+            ElementKind::Wall(w) => &mut w.top,
+            ElementKind::Column(c) => &mut c.top,
+            _ => continue,
+        };
+        if let WallTop::UpToLevel { level, .. } = top {
+            if *level == first && crate::levels::level_of(&e.kind) == Some(ground) {
+                *level = new[0];
+                tx = tx.replace(e.clone(), after);
+            }
+        }
+    }
+    doc.commit(tx).expect("tower tops");
+    let m = doc.model().clone();
+    let ids: Vec<ElementId> = m
+        .iter()
+        .filter(|e| {
+            !matches!(e.kind, ElementKind::Footing(_) | ElementKind::Level(_))
+                && crate::levels::level_of(&e.kind) == Some(ground)
+        })
+        .map(|e| e.id)
+        .collect();
+    let (tx, _) = crate::levels::copy_to_levels(&m, &ids, &new);
+    doc.commit(tx).expect("tower storeys");
+    doc.model().clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2744,72 +2812,4 @@ mod tests {
             assert!(placed > 0, "{} has no views", s.number);
         }
     }
-}
-
-/// The starter house raised to `storeys` storeys (at least 3): its ground
-/// floor, walls, doors, windows, stair, rooms and fittings, copied onto
-/// every storey between it and its first floor, which with the roofs goes
-/// to the top. A test building for timing drawings of a block of flats.
-pub fn starter_tower(storeys: usize) -> Model {
-    let model = starter_house();
-    let level = |name: &str| {
-        model
-            .iter()
-            .find(|e| e.name == name && matches!(e.kind, ElementKind::Level(_)))
-            .map(|e| e.id)
-            .expect("starter levels")
-    };
-    let (ground, first) = (level("Ground Floor"), level("First Floor"));
-    let mut doc = Document::from_model(model.clone());
-    let between = storeys.max(3) - 2;
-    // the first floor goes up over the storeys put in under it
-    let mut tx = Transaction::new("Tower: levels");
-    let before = model.get(first).cloned().expect("first floor");
-    let mut after = before.clone();
-    if let ElementKind::Level(l) = &mut after.kind {
-        l.elevation = 3.0 * (between + 1) as f64;
-    }
-    tx = tx.replace(before, after);
-    let mut new = vec![];
-    for k in 1..=between {
-        let e = Element::new(
-            format!("Floor {k}"),
-            ElementKind::Level(Level {
-                elevation: 3.0 * k as f64,
-                height: 3.0,
-            }),
-        );
-        new.push(e.id);
-        tx = tx.insert(e);
-    }
-    doc.commit(tx).expect("tower levels");
-    // what stood up to the first floor now stands up to the storey above
-    let mut tx = Transaction::new("Tower: tops");
-    for e in doc.model().iter() {
-        let mut after = e.clone();
-        let top = match &mut after.kind {
-            ElementKind::Wall(w) => &mut w.top,
-            ElementKind::Column(c) => &mut c.top,
-            _ => continue,
-        };
-        if let WallTop::UpToLevel { level, .. } = top {
-            if *level == first && crate::levels::level_of(&e.kind) == Some(ground) {
-                *level = new[0];
-                tx = tx.replace(e.clone(), after);
-            }
-        }
-    }
-    doc.commit(tx).expect("tower tops");
-    let m = doc.model().clone();
-    let ids: Vec<ElementId> = m
-        .iter()
-        .filter(|e| {
-            !matches!(e.kind, ElementKind::Footing(_) | ElementKind::Level(_))
-                && crate::levels::level_of(&e.kind) == Some(ground)
-        })
-        .map(|e| e.id)
-        .collect();
-    let (tx, _) = crate::levels::copy_to_levels(&m, &ids, &new);
-    doc.commit(tx).expect("tower storeys");
-    doc.model().clone()
 }
