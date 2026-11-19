@@ -3,7 +3,7 @@
 //! of, and the fan-coil that covers it.
 
 use super::CreaBimApp;
-use creabim_services::coolingload::{self, Settings, Shading};
+use creabim_services::coolingload::{self, Mass, Settings, Shading};
 use creabim_services::heatloss;
 use eframe::egui::{self, Vec2};
 
@@ -112,6 +112,31 @@ impl CreaBimApp {
                             .speed(0.01),
                     );
                 });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(t("Summer stability: at most"))
+                        .on_hover_text(t("The highest room air temperature on a summer day without cooling (STN 73 0540-2: 27 °C)"));
+                    ui.add(
+                        egui::DragValue::new(&mut s.summer_tmax)
+                            .range(24.0..=32.0)
+                            .speed(0.5)
+                            .suffix(" °C"),
+                    );
+                    ui.label(t("Airing by windows"));
+                    ui.add(
+                        egui::DragValue::new(&mut s.summer_ach)
+                            .range(0.0..=6.0)
+                            .speed(0.1)
+                            .suffix(" 1/h"),
+                    );
+                    ui.label(t("Inner layers"));
+                    egui::ComboBox::from_id_salt("cooling.mass")
+                        .selected_text(t(s.mass.name()))
+                        .show_ui(ui, |ui| {
+                            for x in Mass::ALL {
+                                ui.selectable_value(&mut s.mass, x, t(x.name()));
+                            }
+                        });
+                });
                 if b.rooms.is_empty() {
                     ui.label(t("No rooms to calculate: place rooms first."));
                     return;
@@ -133,9 +158,9 @@ impl CreaBimApp {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     egui::Grid::new("cooling.rooms")
                         .striped(true)
-                        .num_columns(6)
+                        .num_columns(7)
                         .show(ui, |ui| {
-                            for h in ["Room", "A m²", "Φ W", "W/m²", "Worst hour", "Fan-coil kW"] {
+                            for h in ["Room", "A m²", "Φ W", "W/m²", "Worst hour", "Fan-coil kW", "Summer θmax"] {
                                 ui.strong(t(h));
                             }
                             ui.end_row();
@@ -158,6 +183,13 @@ impl CreaBimApp {
                                 } else {
                                     ui.label("");
                                 }
+                                let text = format!("{} °C", num(r.summer.t_max, 1));
+                                if r.summer.ok {
+                                    ui.label(text);
+                                } else {
+                                    ui.colored_label(egui::Color32::from_rgb(200, 40, 40), text)
+                                        .on_hover_text(t("Above the summer limit"));
+                                }
                                 ui.end_row();
                             }
                         });
@@ -178,11 +210,27 @@ impl CreaBimApp {
                                             ui.end_row();
                                         }
                                     });
+                                let su = &r.summer;
+                                ui.label(format!(
+                                    "{}: {} {} °C, {} {} °C – {}",
+                                    t("Summer without cooling"),
+                                    t("highest"),
+                                    num(su.t_max, 1),
+                                    t("mean"),
+                                    num(su.t_mean, 1),
+                                    if su.ok { t("meets the limit") } else { t("above the limit") },
+                                ));
+                                if !su.ok {
+                                    let fix = coolingload::summer_remedy(self.doc.model(), &o, &s, r.id);
+                                    ui.label(format!("{}: {}", t("What helps"), t(fix)));
+                                }
+                                ui.weak(&su.note);
                             });
                     }
                     ui.add_space(6.0);
                     ui.weak(t("A simplified load: the sun through the windows on 21 July at 50° north by where each faces, heat through walls, roof and windows with the U values of the heat loss, people, lighting, appliances and ventilation. Each room at its own worst hour. Fan-coils: sensible output at 7/12 °C, usual values to design with."));
-                    ui.weak("STN 73 0548 · STN EN ISO 52016-1");
+                    ui.weak(t("Summer stability roughly by the admittance method: the day's mean from the mean gains and the loss, the swing from the peaks damped by what the inner surfaces store; airing by opening windows."));
+                    ui.weak("STN 73 0548 · STN EN ISO 52016-1 · STN 73 0540-2 · STN EN ISO 13792");
                 });
             });
         if let Some(id) = select {
