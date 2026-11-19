@@ -16,6 +16,7 @@ use std::f64::consts::{FRAC_PI_2, TAU};
 mod entourage;
 mod fixtures;
 pub mod heat;
+mod jika;
 pub mod medical;
 pub mod radiators;
 mod services;
@@ -1248,6 +1249,7 @@ pub fn starters() -> Vec<CatalogueObject> {
     .into_iter()
     .chain(services::starters())
     .chain(fixtures::starters())
+    .chain(jika::starters())
     .chain(medical::starters())
     .chain(heat::starters())
     .chain(entourage::starters())

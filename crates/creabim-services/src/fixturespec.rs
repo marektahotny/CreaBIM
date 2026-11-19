@@ -139,6 +139,41 @@ pub fn default_spec(family: &str) -> FixtureSpec {
     }
 }
 
+/// The description of a maker's product from the catalogue (its type's
+/// catalogue key), by its technical sheet; none for a generic fixture.
+pub fn product_spec(key: Option<&str>, family: &str) -> Option<FixtureSpec> {
+    let key = key?.rsplit('/').next()?;
+    let (description, size, trap) = match key {
+        "jika-basin-lyra-plus-400" => (
+            "Umývadielko JIKA Lyra Plus H8153800001041, závesné, s jednopákovou stojankovou batériou",
+            "400×340 mm",
+            "sifón fľašový G 5/4\" × DN 32",
+        ),
+        "jika-basin-cubito-450" => (
+            "Umývadielko asymetrické JIKA Cubito H8114240001061, batéria vpravo, s jednopákovou stojankovou batériou",
+            "450×250 mm",
+            "sifón umývadlový G 5/4\" × DN 32 (JIKA H3742F07160001)",
+        ),
+        "jika-wc-deep-modul" => (
+            "Závesný klozet JIKA Deep Rimless H8206160000001 na podomietkovom module JIKA WC system H8956520000001 v predstene, ovládacie tlačidlo JIKA PL3",
+            "360×510 mm",
+            "",
+        ),
+        _ => return None,
+    };
+    let base = default_spec(family);
+    Some(FixtureSpec {
+        description: description.into(),
+        size: size.into(),
+        trap: if trap.is_empty() {
+            base.trap
+        } else {
+            trap.into()
+        },
+        ..base
+    })
+}
+
 /// A row of the legend: a type, how many there are and which.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LegendRow {
@@ -164,7 +199,8 @@ pub fn legend(model: &Model, level: Option<ElementId>) -> Vec<LegendRow> {
         if !fixture::is_sanitary(family) {
             continue;
         }
-        let spec = default_spec(family);
+        let key = creabim_core::objects::type_of(model, e).and_then(|t| t.catalogue.as_deref());
+        let spec = product_spec(key, family).unwrap_or_else(|| default_spec(family));
         // the same description is one row
         match rows.iter_mut().find(|r| r.spec == spec) {
             Some(r) => r.fixtures.push(e.id),
@@ -227,6 +263,13 @@ mod tests {
         let b = default_spec("Bidet");
         assert_eq!((b.mark.as_str(), b.description.as_str()), ("BI", "Bidet"));
         assert_eq!(legend_lines(&u).len(), 3);
+        let jika = product_spec(Some("starter/jika-basin-cubito-450"), "Umývadlo").unwrap();
+        assert_eq!(
+            (jika.mark.as_str(), jika.size.as_str()),
+            ("U", "450×250 mm")
+        );
+        assert!(jika.description.contains("H8114240001061"));
+        assert!(product_spec(Some("starter/washbasin"), "Umývadlo").is_none());
     }
 
     #[test]
