@@ -79,14 +79,9 @@ impl ZoneRisk {
     }
 }
 
-/// One of the project's fire tables.
+/// One of the fire tables: the project's own, else the application's.
 pub fn table<'a>(model: &'a Model, id: &str) -> Option<&'a ParamTable> {
-    model
-        .project_info()?
-        .1
-        .fire_params
-        .iter()
-        .find(|t| t.id == id)
+    fireparams::find(&model.project_info()?.1.fire_params, id)
 }
 
 /// The fire risk's single value by its key.

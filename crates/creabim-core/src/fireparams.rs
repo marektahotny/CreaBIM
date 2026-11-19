@@ -380,6 +380,39 @@ pub fn write(tables: &[ParamTable]) -> String {
     s
 }
 
+/// The tables kept in the application (the designer's copy, saved once
+/// and used by every project): a project's own table with the same id
+/// wins. Set at start and when the designer saves them; the slices are
+/// kept for the program's life, a few kilobytes each time.
+static APP_TABLES: std::sync::RwLock<&'static [ParamTable]> = std::sync::RwLock::new(&[]);
+
+/// Puts `tables` in place of the application's tables.
+pub fn set_app_tables(tables: Vec<ParamTable>) {
+    let leaked: &'static [ParamTable] = Box::leak(tables.into_boxed_slice());
+    if let Ok(mut t) = APP_TABLES.write() {
+        *t = leaked;
+    }
+}
+
+/// The application's tables.
+pub fn app_tables() -> &'static [ParamTable] {
+    APP_TABLES.read().map(|t| *t).unwrap_or(&[])
+}
+
+/// The table `id`: the project's own, else the application's.
+pub fn find<'a>(own: &'a [ParamTable], id: &str) -> Option<&'a ParamTable> {
+    own.iter()
+        .find(|t| t.id == id)
+        .or_else(|| app_tables().iter().find(|t| t.id == id))
+}
+
+/// The application's tables with the project's own put over them.
+pub fn effective(own: &[ParamTable]) -> Vec<ParamTable> {
+    let mut all = app_tables().to_vec();
+    merge(&mut all, own.to_vec());
+    all
+}
+
 /// Takes the tables of a file into the project's: one with an id the
 /// project has replaces it.
 pub fn merge(into: &mut Vec<ParamTable>, new: Vec<ParamTable>) {
@@ -560,5 +593,19 @@ mod tests {
         let s = steps("prvých 10: 1,3; ďalšie: 0,5");
         assert!((multiplied(14.0, &s) - 15.0).abs() < 1e-9);
         assert!(steps("podľa 1.2.2").is_empty());
+    }
+
+    #[test]
+    fn a_project_table_wins_over_the_application_s() {
+        let app = parse("#table a\n#columns key\tvalue\nx\t1\n#table b\n#columns key\tvalue\nx\t2\n");
+        set_app_tables(app);
+        let own = parse("#table b\n#columns key\tvalue\nx\t3\n");
+        assert_eq!(find(&own, "a").unwrap().cell("x", "value"), "1");
+        assert_eq!(find(&own, "b").unwrap().cell("x", "value"), "3");
+        assert_eq!(find(&[], "b").unwrap().cell("x", "value"), "2");
+        let all = effective(&own);
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[1].cell("x", "value"), "3");
+        set_app_tables(Vec::new());
     }
 }

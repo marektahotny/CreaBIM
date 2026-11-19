@@ -2,7 +2,9 @@
 //! the project (`creabim_core::fireparams`), in a window where a set is
 //! read from the designer's file, every value can be changed after a
 //! norm changes, a changed value shows what the file gave and goes back
-//! to it, and the set is saved to a file for other projects.
+//! to it, and the set is saved to a file for other projects or kept in
+//! the application, where every project finds it (a project keeps only
+//! the tables it changes).
 
 use super::CreaBimApp;
 use creabim_core::fireparams::{
@@ -29,7 +31,17 @@ fn title(t: &ParamTable) -> String {
         FIRE_RISK => crate::i18n::t("Fire risk factors").to_string(),
         other => other.to_string(),
     };
-    format!("{what} ({})", t.norm)
+    if own(t) && !fireparams::app_tables().is_empty() {
+        format!("{what} ({}) · {}", t.norm, crate::i18n::t("project's own"))
+    } else {
+        format!("{what} ({})", t.norm)
+    }
+}
+
+/// Whether the project keeps `t` itself: the application has no table
+/// with its id, or one with other values.
+fn own(t: &ParamTable) -> bool {
+    !fireparams::app_tables().iter().any(|a| a == t)
 }
 
 impl CreaBimApp {
@@ -48,8 +60,8 @@ impl CreaBimApp {
                 .doc
                 .model()
                 .project_info()
-                .map(|(_, p)| p.fire_params.clone())
-                .unwrap_or_default();
+                .map(|(_, p)| fireparams::effective(&p.fire_params))
+                .unwrap_or_else(|| fireparams::app_tables().to_vec());
             self.fire_params = Some(FireParamsDraft { tables, shown: 0 });
         }
     }
@@ -64,6 +76,8 @@ impl CreaBimApp {
         let mut apply = false;
         let mut load = false;
         let mut save = false;
+        let mut keep = false;
+        let mut app_only = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(crate::i18n::tr("Fire calculation parameters"))
             .id(egui::Id::new("fire.params"))
@@ -78,11 +92,45 @@ impl CreaBimApp {
                     ))
                     .weak(),
                 );
+                ui.label(
+                    egui::RichText::new(t(
+                        "Save in the application keeps the tables on this computer: every project, new or old, uses them, and a project keeps only the tables changed in it.",
+                    ))
+                    .weak(),
+                );
                 ui.horizontal(|ui| {
                     load = ui.button(t("Read from a file…")).clicked();
                     save = ui
                         .add_enabled(!d.tables.is_empty(), egui::Button::new(t("Save to a file…")))
                         .clicked();
+                    keep = ui
+                        .add_enabled(
+                            !d.tables.is_empty(),
+                            egui::Button::new(t("Save in the application")),
+                        )
+                        .on_hover_text(t(
+                            "Every project uses these tables; a project keeps only the tables changed in it.",
+                        ))
+                        .clicked();
+                    let app = fireparams::app_tables();
+                    let owns = d.tables.iter().filter(|x| own(x)).count();
+                    if !app.is_empty() && owns > 0 {
+                        app_only = ui
+                            .button(t("Use the application's tables"))
+                            .on_hover_text(t(
+                                "Drops the project's own tables: the project uses the ones saved in the application.",
+                            ))
+                            .clicked();
+                    }
+                    if !app.is_empty() {
+                        ui.label(
+                            egui::RichText::new(crate::i18n::tr(&format!(
+                                "In the application: {} tables",
+                                app.len()
+                            )))
+                            .weak(),
+                        );
+                    }
                 });
                 if d.tables.is_empty() {
                     ui.add_space(8.0);
@@ -216,25 +264,63 @@ impl CreaBimApp {
                 };
             }
         }
+        if keep {
+            match crate::files::app_tables_path() {
+                Some(path) => {
+                    let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+                    match std::fs::write(&path, fireparams::write(&d.tables)) {
+                        Ok(()) => {
+                            fireparams::set_app_tables(d.tables.clone());
+                            apply = true;
+                        }
+                        Err(e) => {
+                            self.status =
+                                crate::i18n::tr(&format!("The file could not be saved: {e}"))
+                        }
+                    }
+                }
+                None => {
+                    self.status =
+                        crate::i18n::tr("The application's settings folder could not be found.")
+                }
+            }
+        }
+        if app_only {
+            d.tables = fireparams::app_tables().to_vec();
+            d.shown = 0;
+            apply = true;
+        }
         if apply {
+            // the project keeps only what differs from the application's
+            let tables: Vec<ParamTable> = d.tables.iter().filter(|x| own(x)).cloned().collect();
             let mut info = self
                 .doc
                 .model()
                 .project_info()
                 .map(|(_, p)| p.clone())
                 .unwrap_or_default();
-            info.fire_params = d.tables.clone();
+            info.fire_params = tables.clone();
             // an open Project information window keeps its own copy
             if let Some(p) = self.project_draft.as_mut() {
-                p.fire_params = d.tables.clone();
+                p.fire_params = tables;
             }
-            let tx = creabim_core::set_project(self.doc.model(), info);
-            let r = self.doc.commit(tx);
-            self.report(
-                r,
+            let same = self
+                .doc
+                .model()
+                .project_info()
+                .is_some_and(|(_, p)| p.fire_params == info.fire_params);
+            let r = if same {
+                Ok(())
+            } else {
+                let tx = creabim_core::set_project(self.doc.model(), info);
+                self.doc.commit(tx).map_err(|e| e.to_string())
+            };
+            let said = if keep {
+                "Tables saved in the application: every project uses them now."
+            } else {
                 "Fire calculation parameters applied: the schedules count with them now."
-                    .to_string(),
-            );
+            };
+            self.report(r, said.to_string());
         }
         self.fire_params = open.then_some(d);
     }

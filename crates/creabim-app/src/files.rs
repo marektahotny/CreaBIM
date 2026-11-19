@@ -326,6 +326,21 @@ pub fn settings_dir() -> Option<std::path::PathBuf> {
     Some(base.join("CreaBIM"))
 }
 
+/// The file of the tables kept in the application (the norms' tables
+/// the designer saved once for every project).
+pub fn app_tables_path() -> Option<std::path::PathBuf> {
+    settings_dir().map(|d| d.join("tabulky-noriem.tsv"))
+}
+
+/// Reads the application's tables, if they were saved.
+pub fn load_app_tables() {
+    let tables = app_tables_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|t| creabim_core::fireparams::parse(&t))
+        .unwrap_or_default();
+    creabim_core::fireparams::set_app_tables(tables);
+}
+
 /// Ask for a file to open with the system's own file picker.
 pub fn pick_open() -> Option<String> {
     rfd::FileDialog::new()

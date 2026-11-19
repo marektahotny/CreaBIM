@@ -119,7 +119,7 @@ impl CreaBimApp {
             .doc
             .model()
             .project_info()
-            .map(|(_, p)| fireparams::rain_stations(&p.fire_params))
+            .map(|(_, p)| fireparams::rain_stations(&fireparams::effective(&p.fire_params)))
             .unwrap_or_default();
         if !own.is_empty() {
             return own;

@@ -481,6 +481,8 @@ impl CreaBimApp {
         let settings = crate::files::Settings::load();
         let theme = crate::theme::Theme::from_id(&settings.theme).unwrap_or_default();
         crate::i18n::set_lang(crate::i18n::Lang::from_id(&settings.language).unwrap_or_default());
+        // the norms' tables saved once for every project
+        crate::files::load_app_tables();
         // drawings write their own words (a window list's headings) in it too
         creabim_core::words::set_translator(crate::i18n::tr);
         crate::handles::set_grip_style(settings.grips);

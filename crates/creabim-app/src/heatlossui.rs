@@ -25,17 +25,17 @@ fn saved_sites_path() -> Option<std::path::PathBuf> {
 }
 
 impl CreaBimApp {
-    /// The climate tables: the project's, else the ones read last.
+    /// The climate tables: the project's or the application's, else the
+    /// ones read last.
     pub(super) fn climate_tables(&self) -> Vec<fireparams::ParamTable> {
         let own: Vec<_> = self
             .doc
             .model()
             .project_info()
             .map(|(_, p)| {
-                p.fire_params
-                    .iter()
+                fireparams::effective(&p.fire_params)
+                    .into_iter()
                     .filter(|t| fireparams::CLIMATE_TABLES.contains(&t.id.as_str()))
-                    .cloned()
                     .collect()
             })
             .unwrap_or_default();
@@ -54,7 +54,7 @@ impl CreaBimApp {
             .doc
             .model()
             .project_info()
-            .map(|(_, p)| fireparams::climate_sites(&p.fire_params))
+            .map(|(_, p)| fireparams::climate_sites(&fireparams::effective(&p.fire_params)))
             .unwrap_or_default();
         if !own.is_empty() {
             return own;
@@ -88,7 +88,7 @@ impl CreaBimApp {
             .map(|(_, p)| p.clone())
             .unwrap_or_default();
         info.climate_site = s.name.clone();
-        if fireparams::climate_sites(&info.fire_params).is_empty() {
+        if fireparams::climate_sites(&fireparams::effective(&info.fire_params)).is_empty() {
             if let Some(t) = saved_sites_path().and_then(|p| std::fs::read_to_string(p).ok()) {
                 let tables = fireparams::parse(&t)
                     .into_iter()

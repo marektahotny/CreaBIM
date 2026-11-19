@@ -37,12 +37,7 @@ pub struct RoomPersons {
 
 /// The project's occupancy table.
 pub fn table(model: &Model) -> Option<&ParamTable> {
-    model
-        .project_info()?
-        .1
-        .fire_params
-        .iter()
-        .find(|t| t.id == OCCUPANCY)
+    creabim_core::fireparams::find(&model.project_info()?.1.fire_params, OCCUPANCY)
 }
 
 /// The persons of an area and a designed count by an item's cells:
