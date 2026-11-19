@@ -1334,6 +1334,26 @@ fn show_pane(
             draw_item(&painter, &xf, item, selected, mm);
         }
     }
+    // a selected window or door of a plan shows its fire-dangerous space,
+    // unless the plan shows every opening's already
+    if let PaneKind::Plan { level } = kind {
+        let shown = matches!(
+            doc.model().get(view).map(|e| &e.kind),
+            Some(ElementKind::View(v)) if v.fire_distances
+        );
+        if !shown {
+            for id in selection.active.iter().chain(&selection.others) {
+                if matches!(
+                    doc.model().get(*id).map(|e| &e.kind),
+                    Some(ElementKind::Opening(_))
+                ) {
+                    for item in selected_pnp(doc.model(), level, *id, mm) {
+                        draw_item(&painter, &xf, &item, false, mm);
+                    }
+                }
+            }
+        }
+    }
     // the references drawn over the model, then the outline of each one
     // selected or hovered, which is where it is picked (MU19)
     if style.decorations {
@@ -5941,6 +5961,32 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
     out
 }
 
+/// The fire-dangerous space of a selected opening, kept while the model
+/// stands as it is.
+fn selected_pnp(
+    model: &creabim_core::Model,
+    level: ElementId,
+    id: ElementId,
+    mm: f64,
+) -> Vec<PlanItem> {
+    type Key = (u64, ElementId, ElementId, u64);
+    thread_local! {
+        static CACHE: std::cell::RefCell<Vec<(Key, Vec<PlanItem>)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+    let key = (model.revision(), level, id, mm.to_bits());
+    CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        if let Some(hit) = c.iter().find(|(k, _)| *k == key) {
+            return hit.1.clone();
+        }
+        let items = creabim_geom::firedistance::items(model, level, Some(id), mm);
+        c.retain(|(k, _)| k.0 == key.0);
+        c.push((key, items.clone()));
+        items
+    })
+}
+
 pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bool, mm: f64) {
     draw_item_with(painter, xf, item, selected, mm, &Ovr::default());
 }
@@ -6315,6 +6361,23 @@ pub fn draw_item_with(
         PlanItem::Shade { points, rgb, .. } => {
             let c = if selected { [0.98, 0.85, 0.70] } else { *rgb };
             fill_polygon(painter, xf, points, crate::annotate::color32(c));
+        }
+        PlanItem::Curve {
+            points,
+            rgb,
+            dashed,
+            ..
+        } => {
+            let pts: Vec<Pos2> = points.iter().map(|p| xf.to_screen(*p)).collect();
+            let stroke = Stroke::new(1.2, crate::annotate::color32(*rgb));
+            if *dashed {
+                // dashes of a fixed length on paper
+                let px = (mm * xf.scale as f64) as f32;
+                let (dash, gap) = ((2.0 * px).max(3.0), (1.2 * px).max(2.0));
+                painter.extend(egui::Shape::dashed_line(&pts, stroke, dash, gap));
+            } else {
+                painter.add(egui::Shape::line(pts, stroke));
+            }
         }
         PlanItem::Image {
             raster,

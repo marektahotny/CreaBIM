@@ -384,6 +384,20 @@ pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, l
             PlanItem::Annotation { item, .. } => {
                 draw_marks(canvas, &item.marks(1.0 / map.k()), &item.look, &to);
             }
+            PlanItem::Curve {
+                points,
+                rgb,
+                dashed,
+                ..
+            } => {
+                let pts: Vec<DVec2> = points.iter().map(|p| to(*p)).collect();
+                let stroke = Stroke {
+                    width: 0.25,
+                    gray: 0.0,
+                    dash: dashed.then_some([2.0, 1.2]),
+                };
+                canvas.line_rgb(&pts, stroke, *rgb);
+            }
             PlanItem::Image {
                 raster,
                 lo,

@@ -3014,6 +3014,7 @@ impl CreaBimApp {
                         | PlanItem::Tint { .. }
                         | PlanItem::Room { .. }
                         | PlanItem::Shade { .. }
+                        | PlanItem::Curve { .. }
                         | PlanItem::Image { .. } => {}
                     }
                 }
@@ -10131,6 +10132,19 @@ crate::props::row(ui, "File names", |ui| {
                             .changed()
                     {
                         label = "Fire zones"
+                    }
+                    if matches!(v.kind, ViewKind::Plan { .. })
+                        && crate::props::switch(
+                            ui,
+                            &mut v.fire_distances,
+                            "Separation distances (PNP)",
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "Draw the fire-dangerous space in front of every window and door of the outer walls with its separation distance d. A selected window shows its own even with this off.",
+                        ))
+                        .changed()
+                    {
+                        label = "Separation distances (PNP)"
                     }
                     if matches!(v.kind, ViewKind::Plan { .. })
                         && crate::props::switch(ui, &mut v.ceiling_plan, "Reflected ceiling plan")

@@ -2085,6 +2085,10 @@ pub struct View {
     /// codes written in them.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fire_zones: bool,
+    /// A plan showing the fire-dangerous space (PNP) in front of every
+    /// opening of the outer walls and its separation distance.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fire_distances: bool,
     /// A plan seen looking up from the cut (a reflected ceiling plan): the
     /// ceilings over the level and what hangs from them, with walls cut but
     /// without the furniture and floors below.
@@ -2540,6 +2544,7 @@ impl View {
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,
+            fire_distances: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2578,6 +2583,7 @@ impl View {
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,
+            fire_distances: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2613,6 +2619,7 @@ impl View {
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,
+            fire_distances: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2649,6 +2656,7 @@ impl View {
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,
+            fire_distances: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2690,6 +2698,7 @@ impl View {
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,
+            fire_distances: false,
             ceiling_plan: parent.ceiling_plan,
             graphics: parent.graphics.clone(),
             callout: Some(Callout::new(parent_id, a, b)),
