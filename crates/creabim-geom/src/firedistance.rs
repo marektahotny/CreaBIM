@@ -21,6 +21,14 @@
 //!   Z3 has it, figure 7).
 //! - Under the tables' lowest values d runs linearly to nought (the
 //!   note to table 3 as Z3 has it).
+//! - Planes of the face set back less than d behind the outermost are
+//!   projected into it, those further back reckoned on their own
+//!   (chapter 3, 3.2.2).
+//! - Partly fire-open areas (fire doors of the ratings the designer
+//!   lists) count × k10 and a fire-open roof × k11 (4.2.2, table 2, the
+//!   roof seen square onto the face by 4.3); equation (3) where (2)
+//!   exceeds Sp. A combustible or mixed structural system adds to pv
+//!   (4.4.1 as Z3 has it).
 //!
 //! Every value of the norm is read from the designer's parameter tables
 //! (`FIRE_DISTANCE` and the tables it names); with none, a side's
@@ -48,6 +56,8 @@ pub const FIRE_DISTANCE_LODGING: &str = "fire_distance_lodging";
 /// Table 4 (as Z3 has it): d of a single opening by its length and
 /// height, a column for each pv.
 pub const FIRE_DISTANCE_SINGLE: &str = "fire_distance_single";
+/// Table 2: k10 and k11 (and q) by the fire's equivalent time t.
+pub const FIRE_DISTANCE_K: &str = "fire_distance_k";
 
 /// The colour the space is drawn in.
 pub const PNP_RED: [f32; 3] = crate::firezones::DANGER;
@@ -58,6 +68,10 @@ pub struct Pnp {
     /// The first of its openings on the storey drawn (or the one asked
     /// for), which the drawing's items carry.
     pub opening: ElementId,
+    /// The storey it is drawn on and the openings (and roofs) it is in
+    /// front of.
+    pub level: ElementId,
+    pub members: Vec<ElementId>,
     /// Its outline in the plan, from one edge of the fire-open area (in
     /// the wall's outer face) round to the other.
     pub outline: Vec<DVec2>,
@@ -82,6 +96,7 @@ pub struct Pnp {
 struct Source {
     id: ElementId,
     level: ElementId,
+    host: ElementId,
     /// The edges along the face at the wall's outer side, and the
     /// heights of the bottom and the top of the opening.
     a: DVec2,
@@ -90,17 +105,31 @@ struct Source {
     z1: f64,
     /// The room behind it.
     inside: DVec2,
+    /// Closed by a construction that makes it partly fire-open (4.1.3 c)).
+    partial: bool,
 }
 
-fn sources(model: &Model) -> Vec<Source> {
+/// The openings of the outer walls: windows and doors, a fire door
+/// whose rating begins with one of `partial` as a partly fire-open
+/// area, other fire doors not at all.
+fn sources(model: &Model, partial: &[String]) -> Vec<Source> {
     let walls = crate::firezones::outer_walls(model);
     let mut out = vec![];
     for e in model.iter() {
         let ElementKind::Opening(o) = &e.kind else {
             continue;
         };
+        let rating = (o.kind == OpeningKind::Door)
+            .then(|| o.door.as_ref().and_then(|d| d.fire.as_ref()))
+            .flatten()
+            .map(|f| f.rating.trim().to_uppercase());
+        let is_partial = rating.as_ref().is_some_and(|r| {
+            partial
+                .iter()
+                .any(|x| !x.is_empty() && r.starts_with(x.as_str()))
+        });
         // a fire door holds the fire in
-        if o.kind == OpeningKind::Door && o.door.as_ref().is_some_and(|d| d.fire.is_some()) {
+        if rating.is_some() && !is_partial {
             continue;
         }
         let Some(w) = walls.iter().find(|w| w.id == o.host) else {
@@ -116,12 +145,51 @@ fn sources(model: &Model) -> Vec<Source> {
         out.push(Source {
             id: e.id,
             level: wall.level,
+            host: o.host,
             a,
             b,
             z0: base + o.sill,
             z1: base + o.sill + o.height,
             inside: mid - w.outward * (wall.thickness + 0.15),
+            partial: is_partial,
         });
+    }
+    out
+}
+
+/// A roof plane over a storey, as fire-open area of the face below its
+/// eave (4.1.4, 4.3).
+struct RoofPiece {
+    id: ElementId,
+    level: ElementId,
+    pitch: f64,
+    /// Its outline in plan and the height of each point.
+    points: Vec<DVec2>,
+    z: Vec<f64>,
+    /// Which way it falls in plan (none for a flat one).
+    down: DVec2,
+}
+
+fn roof_pieces(model: &Model) -> Vec<RoofPiece> {
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Roof(r) = &e.kind else {
+            continue;
+        };
+        let base = r.base(model);
+        for f in r.faces() {
+            if f.outline.len() < 3 {
+                continue;
+            }
+            out.push(RoofPiece {
+                id: e.id,
+                level: r.level,
+                pitch: f.g.length().atan().to_degrees(),
+                z: f.outline.iter().map(|p| base + f.z(*p)).collect(),
+                points: f.outline.clone(),
+                down: -f.g.normalize_or_zero(),
+            });
+        }
     }
     out
 }
@@ -279,93 +347,235 @@ fn zone_at(model: &Model, level: ElementId, p: DVec2) -> String {
 /// The fire-dangerous spaces of the fire zones' planes on `level` (every
 /// level with none), or the one of the plane the opening `only` is in.
 pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) -> Vec<Pnp> {
-    let all = sources(model);
+    let table = crate::firerisk::table(model, FIRE_DISTANCE);
+    let reader = Reader::new(model, table);
+    let all = sources(model, &reader.partial);
     if all.is_empty() {
         return vec![];
     }
     let panels = panels(model);
-    let host_of = |o: &Source| {
-        model.get(o.id).and_then(|e| match &e.kind {
-            ElementKind::Opening(x) => Some(x.host),
-            _ => None,
-        })
+    let roofs = if reader.roof_open {
+        roof_pieces(model)
+    } else {
+        vec![]
     };
-    let wanted_host = only
-        .and_then(|id| all.iter().find(|s| s.id == id))
-        .and_then(host_of);
-    if only.is_some() && wanted_host.is_none() {
-        return vec![];
-    }
-    let table = crate::firerisk::table(model, FIRE_DISTANCE);
-    let reader = Reader::new(model, table);
     let loads = Loads::new(model, table);
+    let ctx = Ctx {
+        model,
+        reader: &reader,
+        loads: &loads,
+        all: &all,
+        roofs: &roofs,
+        panels: &panels,
+    };
     let mut out = vec![];
-    for p in &panels {
-        if level.is_some_and(|l| l != p.level) || wanted_host.is_some_and(|h| !p.walls.contains(&h))
-        {
+    // a fire zone's face in each direction, in its reference planes
+    // (chapter 3): the outermost plane first, with the planes behind it
+    // nearer than its distance d projected into it (3.1.1, 3.2.2); those
+    // further back are reckoned on their own
+    let mut used = vec![false; panels.len()];
+    for i in 0..panels.len() {
+        if used[i] {
             continue;
         }
-        // the same zone's stretches of the other storeys in the plane
-        let mut stack = vec![p];
-        for q in &panels {
-            if q.level == p.level
-                || q.zone != p.zone
-                || q.outward.dot(p.outward) < 0.99
-                || (q.origin - p.origin).dot(p.outward).abs() > 0.05
-            {
+        let p0 = &panels[i];
+        let mut family: Vec<usize> = (0..panels.len())
+            .filter(|&j| {
+                !used[j] && panels[j].zone == p0.zone && panels[j].outward.dot(p0.outward) > 0.99
+            })
+            .collect();
+        for &j in &family {
+            used[j] = true;
+        }
+        let off = |j: usize| (panels[j].origin - p0.origin).dot(p0.outward);
+        while !family.is_empty() {
+            let top = family
+                .iter()
+                .map(|&j| off(j))
+                .fold(f64::NEG_INFINITY, f64::max);
+            let mut members: Vec<usize> = family
+                .iter()
+                .copied()
+                .filter(|&j| top - off(j) < 0.05)
+                .collect();
+            let mut found = ctx.plane(p0, top, &members);
+            loop {
+                let d = found.iter().map(|f| f.d).fold(0.0, f64::max);
+                let more: Vec<usize> = family
+                    .iter()
+                    .copied()
+                    .filter(|&j| !members.contains(&j) && top - off(j) <= d + 1e-9)
+                    .collect();
+                if more.is_empty() {
+                    break;
+                }
+                members.extend(more);
+                found = ctx.plane(p0, top, &members);
+            }
+            family.retain(|j| !members.contains(j));
+            out.extend(found);
+        }
+    }
+    out.retain(|p| level.is_none_or(|l| p.level == l));
+    if let Some(id) = only {
+        out.retain(|p| p.members.contains(&id));
+        for p in &mut out {
+            p.opening = id;
+        }
+    }
+    out
+}
+
+/// One fire-open area of a reference plane: an opening or a roof's
+/// share of it, as a rectangle in the plane (along, from..to,
+/// bottom..top) and how open it is.
+struct Part {
+    id: ElementId,
+    level: ElementId,
+    rect: [f64; 4],
+    kind: PartKind,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum PartKind {
+    /// Fully fire-open (4.1.2).
+    Full,
+    /// Partly fire-open (4.1.3), counted × k10 (4.2.1 b)).
+    Partial,
+    /// The roof (4.1.4), counted × k11.
+    Roof,
+}
+
+struct Ctx<'a> {
+    model: &'a Model,
+    reader: &'a Reader<'a>,
+    loads: &'a Loads,
+    all: &'a [Source],
+    roofs: &'a [RoofPiece],
+    panels: &'a [Panel],
+}
+
+impl Ctx<'_> {
+    /// The spaces of one reference plane, `top` out from `p0`'s line,
+    /// holding the stretches `members` of the face on every storey.
+    fn plane(&self, p0: &Panel, top: f64, members: &[usize]) -> Vec<Pnp> {
+        let model = self.model;
+        let reader = self.reader;
+        let along = |v: DVec2| (v - p0.origin).dot(p0.t);
+        let walls: Vec<ElementId> = members
+            .iter()
+            .flat_map(|&j| self.panels[j].walls.iter().copied())
+            .collect();
+        let sources: Vec<&Source> = self
+            .all
+            .iter()
+            .filter(|o| walls.contains(&o.host))
+            .collect();
+        let mut parts: Vec<Part> = sources
+            .iter()
+            .map(|o| {
+                let (x, y) = (along(o.a), along(o.b));
+                Part {
+                    id: o.id,
+                    level: o.level,
+                    rect: [x.min(y), x.max(y), o.z0, o.z1],
+                    kind: if o.partial {
+                        PartKind::Partial
+                    } else {
+                        PartKind::Full
+                    },
+                }
+            })
+            .collect();
+        // 4.3: a roof over the stretch, falling toward it or flat, seen
+        // square onto the plane of the face: steeper than the limit as
+        // high as it rises (at least hu_roof), flatter as long as it
+        // runs along the face and hu_roof high
+        let lines: Vec<(ElementId, f64, f64)> = members
+            .iter()
+            .map(|&j| {
+                let q = &self.panels[j];
+                let off = (q.origin - p0.origin).dot(p0.t);
+                (q.level, q.lo + off, q.hi + off)
+            })
+            .collect();
+        for r in self.roofs {
+            let Some(&(_, lo, hi)) = lines.iter().find(|l| l.0 == r.level) else {
+                continue;
+            };
+            let flat = r.pitch <= reader.roof_steep;
+            if !flat && r.down.dot(p0.outward) < 0.5 {
                 continue;
             }
-            let off = (q.origin - p.origin).dot(p.t);
-            if q.hi + off > p.lo + 1e-3 && q.lo + off < p.hi - 1e-3 {
-                stack.push(q);
+            // its eave runs along the face (out to the overhang)
+            let near = r.points.iter().any(|p| {
+                let out = (*p - p0.origin).dot(p0.outward) - top;
+                out > -0.05 && out < reader.roof_reach
+            });
+            if !near {
+                continue;
             }
+            let xs: Vec<f64> = r.points.iter().map(|p| along(*p)).collect();
+            let x0 = xs.iter().copied().fold(f64::INFINITY, f64::min).max(lo);
+            let x1 = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max).min(hi);
+            if x1 - x0 < 1e-3 {
+                continue;
+            }
+            let z0 = r.z.iter().copied().fold(f64::INFINITY, f64::min);
+            let z1 = if flat {
+                z0 + reader.hu_roof
+            } else {
+                r.z.iter()
+                    .copied()
+                    .fold(f64::NEG_INFINITY, f64::max)
+                    .max(z0 + reader.hu_roof)
+            };
+            parts.push(Part {
+                id: r.id,
+                level: r.level,
+                rect: [x0, x1, z0, z1],
+                kind: PartKind::Roof,
+            });
         }
-        let openings: Vec<&Source> = all
-            .iter()
-            .filter(|o| host_of(o).is_some_and(|h| stack.iter().any(|q| q.walls.contains(&h))))
-            .collect();
         // 2.6.4 f) (Z3): a single fully open area under 0,5 m long and
         // high has no space; areas whose neighbouring edges are under
         // 1 m apart are not single
-        let along = |v: DVec2| (v - p.origin).dot(p.t);
-        let rect = |o: &Source| {
-            let (x, y) = (along(o.a), along(o.b));
-            [x.min(y), x.max(y), o.z0, o.z1]
-        };
         let small = reader.small.unwrap_or(0.0);
         let near = reader.small_gap.unwrap_or(0.0);
-        let openings: Vec<&Source> = openings
+        let keep: Vec<bool> = parts
             .iter()
-            .copied()
-            .filter(|o| {
-                let r = rect(o);
-                let tiny = r[1] - r[0] < small && r[3] - r[2] < small;
+            .map(|o| {
+                let r = o.rect;
+                let tiny = o.kind == PartKind::Full && r[1] - r[0] < small && r[3] - r[2] < small;
                 !tiny
-                    || openings
+                    || parts
                         .iter()
-                        .any(|q| q.id != o.id && gap(&r, &rect(q)) < near)
+                        .any(|q| q.id != o.id && gap(&r, &q.rect) < near)
             })
             .collect();
-        if !openings.iter().any(|o| o.level == p.level) {
-            continue;
+        let parts: Vec<Part> = parts
+            .into_iter()
+            .zip(keep)
+            .filter_map(|(p, k)| k.then_some(p))
+            .collect();
+        if parts.is_empty() {
+            return vec![];
         }
         let mut pv: Option<f64> = None;
-        let mut no_risk = false;
-        for o in &openings {
-            match loads.of(model, o) {
+        for o in &sources {
+            match self.loads.of(model, o) {
                 Ok(Some(v)) => pv = Some(pv.map_or(v, |x: f64| x.max(v))),
                 Ok(None) => {}
-                Err(()) => no_risk = true,
+                // 2.6.4 a): a zone without fire risk has no space
+                Err(()) => return vec![],
             }
         }
-        // 2.6.4 a): a zone without fire risk has no space
-        if no_risk {
-            continue;
-        }
-        let storeys = storeys_of(model, &p.zone);
-        let given = crate::firezones::distance_of(model, p.facing);
+        // 4.4.1: a combustible or mixed structural system adds to pv
+        let pv = pv.map(|v| v + reader.pv_add(model));
+        let storeys = storeys_of(model, &p0.zone);
+        let given = crate::firezones::distance_of(model, p0.facing);
         // 5.3.1: Sp the smallest rectangle holding the fire-open areas
-        // of a group, po the share of it they make, d off the table
+        // of a group, Spo by 4.2.2, po the share, d off the table
         let combined = |group: &[usize]| -> Option<Group> {
             let mut r = [
                 f64::INFINITY,
@@ -373,25 +583,40 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
                 f64::INFINITY,
                 f64::NEG_INFINITY,
             ];
-            let mut open = 0.0;
+            let mut spo = [0.0; 3];
             for &i in group {
-                let q = rect(openings[i]);
+                let q = parts[i].rect;
                 r = [
                     r[0].min(q[0]),
                     r[1].max(q[1]),
                     r[2].min(q[2]),
                     r[3].max(q[3]),
                 ];
-                open += (q[1] - q[0]) * (q[3] - q[2]);
+                spo[parts[i].kind as usize] += (q[1] - q[0]) * (q[3] - q[2]);
             }
             let (lu, hu) = (r[1] - r[0], r[3] - r[2]);
             if lu <= 1e-6 || hu <= 1e-6 {
                 return None;
             }
-            let po = (open / (lu * hu) * 100.0).min(100.0);
+            let sp = lu * hu;
+            let mut load = pv;
+            let open = if spo[1] + spo[2] > 0.0 {
+                let (k10, k11) = reader.k(pv?)?;
+                let s2 = spo[0] + k10 * spo[1] + k11 * spo[2];
+                if s2 > sp {
+                    // equation (3), d then read for pv_eq3
+                    load = Some(reader.pv_eq3?);
+                    spo[0] / k11 + k10 * spo[1] / k11 + spo[2]
+                } else {
+                    s2
+                }
+            } else {
+                spo[0]
+            };
+            let po = (open / sp * 100.0).min(100.0);
             let d = match given {
                 Some(d) => Some(d),
-                None => reader.distance(lu, hu, po, pv, storeys),
+                None => reader.distance(lu, hu, po, load, storeys),
             }?;
             Some(Group {
                 members: group.to_vec(),
@@ -401,15 +626,16 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
                 po,
                 d,
                 single: false,
+                pv: load,
             })
         };
-        let all_of: Vec<usize> = (0..openings.len()).collect();
+        let all_of: Vec<usize> = (0..parts.len()).collect();
         let Some(whole) = combined(&all_of) else {
-            continue;
+            return vec![];
         };
-        // 3.2.4 (Z3): with po under the limit, d for each opening off
-        // table 4; those closer than 0,6 × (d1 + d2) are taken together
-        // by 5.3.1, until no two groups are that close
+        // 3.2.4 (Z3): with po under the limit, d for each fully open
+        // area off table 4; those closer than 0,6 × (d1 + d2) are taken
+        // together by 5.3.1, until no two groups are that close
         let mut groups = vec![whole];
         if let (None, Some(limit), Some(k), Some(t4)) =
             (given, reader.single_po, reader.single_gap, reader.single)
@@ -419,10 +645,10 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
                 let singles: Option<Vec<Group>> = all_of
                     .iter()
                     .map(|&i| {
-                        let r = rect(openings[i]);
+                        let r = parts[i].rect;
                         let (l, h) = (r[1] - r[0], r[3] - r[2]);
-                        match single(t4, l, h, load) {
-                            Some(d) => Some(Group {
+                        match (parts[i].kind, single(t4, l, h, load)) {
+                            (PartKind::Full, Some(d)) => Some(Group {
                                 members: vec![i],
                                 rect: r,
                                 lu: l,
@@ -430,8 +656,9 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
                                 po: 100.0,
                                 d,
                                 single: true,
+                                pv,
                             }),
-                            None => combined(&[i]),
+                            _ => combined(&[i]),
                         }
                     })
                     .collect();
@@ -457,40 +684,51 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
                 }
             }
         }
+        let base = p0.origin + p0.outward * top;
+        let mut out = vec![];
         for g in groups {
             if g.d <= 1e-3 {
                 continue;
             }
-            let members: Vec<&Source> = g.members.iter().map(|&i| openings[i]).collect();
-            let Some(first) = members.iter().find(|o| o.level == p.level) else {
-                continue;
-            };
-            if only.is_some_and(|id| !members.iter().any(|o| o.id == id)) {
-                continue;
+            let ms: Vec<&Part> = g.members.iter().map(|&i| &parts[i]).collect();
+            let mut levels: Vec<ElementId> = ms.iter().map(|m| m.level).collect();
+            levels.sort_by_key(|l| l.0);
+            levels.dedup();
+            let (e0, e1) = (base + p0.t * g.rect[0], base + p0.t * g.rect[1]);
+            for &l in &levels {
+                // a roof alone on a storey is drawn with its openings'
+                if !ms.iter().any(|m| m.level == l && m.kind != PartKind::Roof) {
+                    continue;
+                }
+                let first = ms
+                    .iter()
+                    .find(|m| m.level == l && m.kind != PartKind::Roof)
+                    .map_or(ms[0].id, |m| m.id);
+                let mut shared: Vec<String> = ms
+                    .iter()
+                    .filter(|m| m.level != l && m.kind != PartKind::Roof)
+                    .filter_map(|m| model.get(m.level).map(|x| tr(&x.name)))
+                    .collect();
+                shared.sort();
+                shared.dedup();
+                out.push(Pnp {
+                    opening: first,
+                    level: l,
+                    members: ms.iter().map(|m| m.id).collect(),
+                    outline: norm_outline(e0, e1, p0.outward, g.d, reader.side_angle),
+                    d: g.d,
+                    at: (e0 + e1) / 2.0,
+                    outward: p0.outward,
+                    shared,
+                    lu: g.lu,
+                    hu: g.hu,
+                    po: g.po,
+                    pv: (reader.table == 3 || g.single).then_some(g.pv).flatten(),
+                });
             }
-            let (e0, e1) = (p.origin + p.t * g.rect[0], p.origin + p.t * g.rect[1]);
-            let mut shared: Vec<String> = members
-                .iter()
-                .filter(|o| o.level != p.level)
-                .filter_map(|o| model.get(o.level).map(|l| tr(&l.name)))
-                .collect();
-            shared.sort();
-            shared.dedup();
-            out.push(Pnp {
-                opening: only.unwrap_or(first.id),
-                outline: norm_outline(e0, e1, p.outward, g.d, reader.side_angle),
-                d: g.d,
-                at: (e0 + e1) / 2.0,
-                outward: p.outward,
-                shared,
-                lu: g.lu,
-                hu: g.hu,
-                po: g.po,
-                pv: (reader.table == 3 || g.single).then_some(pv).flatten(),
-            });
         }
+        out
     }
-    out
 }
 
 /// Fire-open areas taken together, as rectangles in the plane of the
@@ -504,6 +742,8 @@ struct Group {
     d: f64,
     /// d read off table 4 for a single opening.
     single: bool,
+    /// The load d is read for.
+    pv: Option<f64>,
 }
 
 /// The distance between the edges of two areas of the face.
@@ -586,6 +826,20 @@ struct Reader<'a> {
     /// no space, and how near a neighbour makes it not single.
     small: Option<f64>,
     small_gap: Option<f64>,
+    /// Table 2 (k10, k11 by t), 4.2.2's pv for equation (3), the fire
+    /// door ratings that make a partly fire-open area (4.1.3 c)).
+    k: Option<&'a ParamTable>,
+    pv_eq3: Option<f64>,
+    partial: Vec<String>,
+    /// 4.1.4, 4.3: whether the roofs are fire-open (the designer's
+    /// judgement), the pitch over which a roof is seen square onto the
+    /// face, its least height there, how far out its eave may reach.
+    roof_open: bool,
+    roof_steep: f64,
+    hu_roof: f64,
+    roof_reach: f64,
+    /// 4.4.1 (Z3): what each structural system adds to pv.
+    pv_adds: [Option<f64>; 4],
 }
 
 impl<'a> Reader<'a> {
@@ -611,7 +865,61 @@ impl<'a> Reader<'a> {
             single_gap: value(t, "single_gap"),
             small: value(t, "small"),
             small_gap: value(t, "small_gap"),
+            k: t.and(crate::firerisk::table(model, FIRE_DISTANCE_K)),
+            pv_eq3: value(t, "pv_eq3"),
+            partial: t
+                .map(|t| t.cell("partial_ratings", "value"))
+                .unwrap_or_default()
+                .split([',', ';', ' '])
+                .map(|x| x.trim().to_uppercase())
+                .filter(|x| !x.is_empty())
+                .collect(),
+            roof_open: value(t, "roof_open").is_some_and(|v| v > 0.5),
+            roof_steep: value(t, "roof_steep").unwrap_or(15.0),
+            hu_roof: value(t, "hu_roof").unwrap_or(2.0),
+            roof_reach: value(t, "roof_reach").unwrap_or(1.5),
+            pv_adds: [
+                value(t, "pv_add_za"),
+                value(t, "pv_add_zb"),
+                value(t, "pv_add_ha"),
+                value(t, "pv_add_hb"),
+            ],
         }
+    }
+
+    /// 4.4.1: what the building's structural system adds to pv.
+    fn pv_add(&self, model: &Model) -> f64 {
+        let system = model
+            .project_info()
+            .map(|p| p.1.fire_system.trim().to_lowercase())
+            .unwrap_or_default();
+        let i = match system.as_str() {
+            "za" => 0,
+            "zb" => 1,
+            "ha" => 2,
+            "hb" => 3,
+            _ => return 0.0,
+        };
+        self.pv_adds[i].unwrap_or(0.0)
+    }
+
+    /// Table 2: k10 and k11 for t (pv), between its rows linearly.
+    fn k(&self, t: f64) -> Option<(f64, f64)> {
+        let tab = self.k?;
+        let n = |s: &str| fireparams::number(s);
+        let rows: Vec<(f64, f64, f64)> = tab
+            .rows
+            .iter()
+            .filter_map(|r| Some((n(r.first()?)?, n(r.get(1)?)?, n(r.get(2)?)?)))
+            .collect();
+        if rows.is_empty() {
+            return None;
+        }
+        let keys = sorted(rows.iter().map(|r| r.0).collect());
+        let (i, j, f) = bracket(&keys, t);
+        let at = |k: f64| rows.iter().find(|r| r.0 == k).copied();
+        let (a, b) = (at(keys[i])?, at(keys[j])?);
+        Some((a.1 + (b.1 - a.1) * f, a.2 + (b.2 - a.2) * f))
     }
 
     /// d for an area lu × hu with po % open, of a zone with `pv` and
@@ -944,6 +1252,65 @@ mod tests {
         with_tables(&mut m, &extra.replace("0,6", "100"));
         let near = spaces(&m, None, None);
         assert_eq!(near.len(), whole.len());
+    }
+
+    fn given(m: &mut Model, d: f64) {
+        let mut info = m.project_info().map(|p| p.1.clone()).unwrap_or_default();
+        info.fire_distances = vec![d; 8];
+        let tx = creabim_core::set_project(m, info);
+        tx.apply(m).unwrap();
+    }
+
+    /// 3.2.2: a stretch set back behind the reference plane further than
+    /// d is reckoned on its own; nearer, it is projected into the plane.
+    #[test]
+    fn a_stretch_set_back_further_than_d_is_on_its_own() {
+        let south = |m: &Model| {
+            spaces(m, None, None)
+                .into_iter()
+                .filter(|p| p.outward.y < -0.9)
+                .map(|p| p.members.len())
+                .collect::<Vec<_>>()
+        };
+        // the starter house's kitchen wall is 4,6 m back
+        let mut m = creabim_core::starter::starter_house();
+        given(&mut m, 3.5);
+        let apart = south(&m);
+        given(&mut m, 5.0);
+        let together = south(&m);
+        assert!(apart.len() > together.len(), "{apart:?} {together:?}");
+        assert_eq!(apart.iter().max(), Some(&8));
+        assert!(together.iter().all(|&n| n == 9), "{together:?}");
+    }
+
+    /// 4.4.1 (Z3): the structural system adds to pv; 4.1.4: a fire-open
+    /// roof adds its share to the face's area.
+    #[test]
+    fn the_structural_system_and_an_open_roof_count() {
+        let extra = "#table fire_distance\n#columns key\tvalue\tnote\n\
+            table\t3\t\nside_angle\t160\t\npv_default\t50\t\npv_add_hb\t25\t\n\
+            pv_eq3\t30\t\nroof_steep\t15\t\nhu_roof\t2\t\n\
+            #table fire_distance_k\n#columns t\tk10\tk11\tq\n15\t1\t1,5\t59\n100\t0,5\t0,7\t160\n";
+        let mut m = creabim_core::starter::starter_house();
+        with_tables(&mut m, &format!("{TABLES}{extra}"));
+        let plain = spaces(&m, None, None);
+        assert!(plain.iter().all(|p| p.pv == Some(50.0)));
+        let mut info = m.project_info().map(|p| p.1.clone()).unwrap_or_default();
+        info.fire_system = "Hb".into();
+        let tx = creabim_core::set_project(&m, info);
+        tx.apply(&mut m).unwrap();
+        assert!(spaces(&m, None, None).iter().all(|p| p.pv == Some(75.0)));
+        let hu = |v: &[Pnp]| v.iter().map(|p| p.hu).fold(0.0, f64::max);
+        let before = hu(&spaces(&m, None, None));
+        with_tables(
+            &mut m,
+            &format!(
+                "{TABLES}{}",
+                extra.replace("pv_eq3", "roof_open\t1\t\npv_eq3")
+            ),
+        );
+        let roofed = spaces(&m, None, None);
+        assert!(hu(&roofed) > before + 1.0, "{} {before}", hu(&roofed));
     }
 
     #[test]
