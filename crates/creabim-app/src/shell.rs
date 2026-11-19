@@ -791,6 +791,41 @@ impl CreaBimApp {
         }
     }
 
+    /// File > Import: pick a point cloud, a PDF, a picture or a DXF and
+    /// show it as an underlay (a reference) of the open plan or section.
+    fn import_underlay(&mut self, head: &str) {
+        use creabim_core::RefSource;
+        let Some(gridvis::VisTarget::View(v)) = self.vis_target(false) else {
+            self.status = crate::i18n::tr("Open a plan or a section first: the underlay shows in it.");
+            return;
+        };
+        let (title, filter, exts): (&str, &str, &[&str]) = match head {
+            "import.points" => ("Add a point cloud as a reference", "Points", creabim_exchange::cloud::FILES),
+            "import.pdf" => ("Add a PDF as a reference", "PDF", &["pdf"]),
+            "import.picture" => ("Add a picture as a reference", "Pictures", crate::trace::PICTURES),
+            _ => ("Add a DXF drawing as a reference", "DXF", &["dxf"]),
+        };
+        let Some(p) = rfd::FileDialog::new()
+            .set_title(crate::i18n::tr(title))
+            .add_filter(filter, exts)
+            .pick_file()
+        else {
+            return;
+        };
+        let path = p.display().to_string();
+        let src = match head {
+            "import.points" => RefSource::points(path),
+            "import.pdf" => RefSource::Pdf {
+                path,
+                page: 1,
+                scale: 100.0,
+            },
+            "import.picture" => crate::trace::picture_source(&path),
+            _ => RefSource::Dxf { path, unit: None },
+        };
+        self.add_reference(v, src);
+    }
+
     fn file_menu(&self) -> Vec<Item> {
         let mut recent: Vec<Item> = self
             .recent
@@ -850,6 +885,23 @@ impl CreaBimApp {
             Item::new("templates", "Sheet templates…")
                 .icon("sheet-template")
                 .hint("Title blocks for sheets: change the built-in one, or import one from DXF, SVG or another project"),
+            Item::Separator,
+            Item::Header("Import".into()),
+            Item::new("import.points", "Point cloud (XYZ, LAS…)…")
+                .icon("layers")
+                .hint("A laser scan or a survey (XYZ, PTS, TXT, CSV, LAS) as an underlay of the open plan or section: a plan shows its slice, 3D all of it, and drawing snaps to its points."),
+            Item::new("terrain:points", "Terrain from surveyed points (XYZ)…")
+                .icon("mountain")
+                .hint("A terrain made from surveyed points on the working level, as PilonDesigner makes one from teren.xyz."),
+            Item::new("import.pdf", "PDF as an underlay…")
+                .icon("file-text")
+                .hint("A PDF drawing under the open plan or section, at its scale 1:N; a scanned page comes as a picture. Calibrate it to size in its properties."),
+            Item::new("import.picture", "Picture as an underlay (PNG, JPG)…")
+                .icon("image")
+                .hint("A scanned plan or a photo of a sketch under the open plan or section. Calibrate it to size in its properties."),
+            Item::new("import.dxf", "DXF as an underlay…")
+                .icon("file")
+                .hint("A CAD drawing's lines under the open plan or section; S-JTSK coordinates come to the project's origin."),
             Item::Separator,
             Item::Header("Linked files".into()),
             Item::new("link", "Import and link…")
@@ -1743,6 +1795,9 @@ impl CreaBimApp {
                 if let Some(path) = crate::files::pick_open() {
                     self.link_file(&path);
                 }
+            }
+            "import.points" | "import.pdf" | "import.picture" | "import.dxf" => {
+                self.import_underlay(head)
             }
             "live" => self.live_reload = !self.live_reload,
             "import.report" => {
