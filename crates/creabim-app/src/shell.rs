@@ -442,6 +442,34 @@ impl CreaBimApp {
                         .checked(*c == self.plan.members.beam_corner)
                 })
                 .collect(),
+            "footing.align" => creabim_core::FootingAlign::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, a)| {
+                    Item::new(format!("footing.align:{i}"), a.label())
+                        .checked(*a == self.plan.members.footing_align)
+                })
+                .collect(),
+            "footing.material" => {
+                let now = self.plan.members.footing_material.clone();
+                let usage = creabim_core::library::MaterialUse::Member;
+                let mut names: Vec<String> = creabim_core::library::materials(self.doc.model())
+                    .into_iter()
+                    .filter(|(_, _, m)| usage.fits(&m.category))
+                    .map(|(_, n, _)| n.to_string())
+                    .collect();
+                for e in creabim_core::library::LIBRARY {
+                    if usage.fits(e.category) && !names.iter().any(|n| n == e.name) {
+                        names.push(e.name.to_string());
+                    }
+                }
+                std::iter::once(Item::new("footing.material:", "By type").checked(now.is_none()))
+                    .chain(names.into_iter().map(|n| {
+                        let on = now.as_deref() == Some(n.as_str());
+                        Item::new(format!("footing.material:{n}"), n).checked(on)
+                    }))
+                    .collect()
+            }
             "railing.library" => self.library_items(
                 "railing.lib",
                 self.plan.members.railing_section.clone(),

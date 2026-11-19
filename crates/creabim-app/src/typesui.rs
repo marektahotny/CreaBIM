@@ -468,7 +468,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
             {
                 label = "Type length";
             }
-            if len_field(ui, "Thickness", &mut f.thickness, 0.05, 5.0) {
+            if len_field(ui, "Height", &mut f.thickness, 0.05, 5.0) {
                 label = "Type thickness";
             }
             if material_pick(ui, model, "footing", &mut f.material) {

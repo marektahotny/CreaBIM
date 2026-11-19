@@ -93,7 +93,7 @@ pub use element::{
     SectionJog, SectionLine, Sheet, SheetTitle, Sketch, Slab, Source, Tag, Underlay, View,
     ViewKind, ViewStyle, Viewport, Wall, Workplane,
 };
-pub use footing::{Footing, FootingKind};
+pub use footing::{Footing, FootingAlign, FootingKind};
 pub use graphics::{LineWeights, PlanGraphics};
 pub use id::ElementId;
 pub use joins::{

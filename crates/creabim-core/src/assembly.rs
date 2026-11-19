@@ -758,6 +758,20 @@ pub const STARTERS: &[(&str, AssemblyUse, &str, &[Starter])] = &[
             (LayerFunction::Finish, Some("Plasterboard"), 13.0),
         ],
     ),
+    (
+        "Foundation wall 445, formwork block",
+        AssemblyUse::Wall,
+        "Insulation outside, waterproofing between it and the concrete formwork blocks",
+        &[
+            (LayerFunction::Insulation, Some("Insulation, XPS"), 140.0),
+            (LayerFunction::Membrane, Some("Membrane, bitumen"), 5.0),
+            (
+                LayerFunction::Structure,
+                Some("Block, concrete formwork"),
+                300.0,
+            ),
+        ],
+    ),
 ];
 
 /// Add the starter assemblies the model doesn't have yet (by name), with

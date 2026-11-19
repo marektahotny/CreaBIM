@@ -426,6 +426,18 @@ impl CreaBimApp {
                     m.points.reverse();
                 }
             }),
+            "footing.align" => {
+                if let Some(a) = arg
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|i| creabim_core::FootingAlign::ALL.get(i))
+                {
+                    self.plan.members.footing_align = *a;
+                }
+            }
+            "footing.material" => {
+                self.plan.members.footing_material = (!arg.is_empty()).then(|| arg.to_string());
+            }
             "beam.corner" => {
                 if let Some(c) = creabim_core::members::BeamCorner::ALL
                     .into_iter()

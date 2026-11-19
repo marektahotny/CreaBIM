@@ -41,6 +41,7 @@ pub mod plan;
 pub mod prio;
 pub mod ranges;
 pub mod raster;
+pub mod roofplan;
 pub mod roomlegend;
 pub mod rooms;
 pub mod scene;

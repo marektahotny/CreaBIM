@@ -25,6 +25,8 @@ pub enum Pen {
     /// The wall carrying on over a door, above the cut plane: a thin
     /// line of a dash and two dots.
     Overhead,
+    /// Where a footing's underside steps down: a heavy dashed line.
+    HiddenCut,
     /// Another level traced under a plan: halftone, never printed, not
     /// picked, but snapped to.
     Underlay,
@@ -33,6 +35,13 @@ pub enum Pen {
 pub use creabim_core::Hatch;
 
 /// The hatch for an element's cut faces: its material's, or its type's default.
+fn is_footing(model: &Model, id: ElementId) -> bool {
+    matches!(
+        model.get(id).map(|e| &e.kind),
+        Some(ElementKind::Footing(_))
+    )
+}
+
 pub fn hatch_of(model: &Model, id: ElementId) -> Hatch {
     let Some(e) = model.get(id) else {
         return Hatch::Solid;
@@ -263,6 +272,9 @@ impl CutPiece {
     /// The colour of the material this piece cuts: its layer's, else the
     /// element's own (or its core layer's); none for an air gap.
     fn colour(&self, model: &Model) -> Option<[f32; 3]> {
+        if is_footing(model, self.id) {
+            return None;
+        }
         let mat = |id: ElementId| match &model.get(id)?.kind {
             ElementKind::Material(m) => Some(m.color),
             _ => None,
@@ -283,6 +295,10 @@ impl CutPiece {
     }
 
     fn hatch(&self, model: &Model) -> Hatch {
+        // footings are drawn in outline only, cut or not (STN practice)
+        if is_footing(model, self.id) {
+            return Hatch::Empty;
+        }
         match self.layer {
             None => hatch_of(model, self.id),
             Some(l) => match l.material.and_then(|m| model.get(m)).map(|e| &e.kind) {
@@ -979,6 +995,83 @@ fn footing_cut_at(
     top - f.thickness < z && z < top
 }
 
+/// What a foundation plan adds over the footings its plane cuts: a heavy
+/// dashed line where their undersides step, and the load-bearing layer of
+/// each wall standing on them, above the cut, as a thin line of a dash and
+/// two dots.
+fn foundation_lines(
+    model: &Model,
+    level: ElementId,
+    cut_height: f64,
+    joins: &std::collections::HashMap<ElementId, creabim_core::joins::WallEnds>,
+) -> Vec<PlanItem> {
+    let mut out = vec![];
+    let cut: Vec<(ElementId, &creabim_core::Footing)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Footing(f) if footing_cut_at(model, f, level, cut_height) => {
+                Some((e.id, f))
+            }
+            _ => None,
+        })
+        .collect();
+    if cut.is_empty() {
+        return out;
+    }
+    for (id, a, b) in creabim_core::footing::steps(model) {
+        if cut.iter().any(|(c, _)| *c == id) {
+            out.push(PlanItem::Line {
+                id,
+                pen: Pen::HiddenCut,
+                a,
+                b,
+            });
+        }
+    }
+    let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
+    let hosts: Vec<(ElementId, &creabim_core::Wall)> = cut
+        .iter()
+        .filter_map(|(_, f)| Some((f.host?, f.host_wall(model)?)))
+        .filter(|(_, w)| creabim_core::walls::base_z(model, w) >= z && !w.is_arc())
+        .collect();
+    for (wid, w) in &hosts {
+        let len = w.length();
+        if len < 1e-6 {
+            continue;
+        }
+        let d = (w.end - w.start) / len;
+        let n = d.perp();
+        let ends = joins.get(wid).cloned().unwrap_or_default();
+        let (s0, s1) = creabim_core::walls::core_span(model, w);
+        let loc = creabim_core::walls::location_offset(model, w);
+        let (s0, s1) = (s0 - loc, s1 - loc);
+        let at = |u: f64, s: f64| w.start + d * ends.place(w, u, s, true) + n * s;
+        let (p0, p1, q0, q1) = (at(0.0, s0), at(len, s0), at(0.0, s1), at(len, s1));
+        let mut line = |a: DVec2, b: DVec2| {
+            out.push(PlanItem::Line {
+                id: *wid,
+                pen: Pen::Overhead,
+                a,
+                b,
+            })
+        };
+        line(p0, p1);
+        line(q0, q1);
+        // an end meeting no other wall on footings is closed
+        for (p, a, b) in [(w.start, p0, q0), (w.end, p1, q1)] {
+            let joined = hosts.iter().any(|(o, ow)| {
+                o != wid
+                    && creabim_core::footing::segment_distance(p, ow.start, ow.end)
+                        <= (ow.thickness + w.thickness) / 2.0
+            });
+            if !joined {
+                line(a, b);
+            }
+        }
+    }
+    out
+}
+
 pub fn plan_view(model: &Model, level: ElementId, cut_height: f64) -> PlanView {
     plan_view_with(
         model,
@@ -1147,12 +1240,13 @@ pub fn plan_view_with(
                         items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &at));
                     } else if c.v0 >= cut_v {
                         // wholly above the cut (a duct hole, a high
-                        // window): its outline in the wall, dashed
+                        // window): its outline in the wall, a thin line of
+                        // a dash and two dots, as all above the cut
                         let corners = [at(c.u0, -t), at(c.u1, -t), at(c.u1, t), at(c.u0, t)];
                         for i in 0..4 {
                             overhead.push(PlanItem::Line {
                                 id: oid,
-                                pen: Pen::Hidden,
+                                pen: Pen::Overhead,
                                 a: corners[i],
                                 b: corners[(i + 1) % 4],
                             });
@@ -1461,6 +1555,7 @@ pub fn plan_view_with(
     layers.retain(|p| !sliced.contains(&p.id));
     clean_up_pieces(model, &mut items, layers);
     items.append(&mut overhead);
+    items.extend(foundation_lines(model, level, cut_height, &joins));
     if !sliced.is_empty() {
         let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
         // only what is sliced, and what cuts it
@@ -2612,6 +2707,74 @@ mod tests {
         assert_eq!(cut_footings(&m, "Foundation", 0.6), 0);
     }
 
+    #[test]
+    fn a_foundation_plan_draws_footings_bare_their_steps_and_the_wall_cores() {
+        let mut m = creabim_core::starter::starter_house();
+        let level = m
+            .iter()
+            .find(|e| e.name == "Foundation" && matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let footing = |m: &Model, id: ElementId| {
+            matches!(m.get(id).map(|e| &e.kind), Some(ElementKind::Footing(_)))
+        };
+        let items = plan_view(&m, level, 0.25).items;
+        // in outline only: no hatch, no colour
+        assert!(items.iter().all(|it| !matches!(it,
+            PlanItem::Fill { id, hatch, rgb, .. }
+                if footing(&m, *id) && (*hatch != Hatch::Empty || rgb.is_some()))));
+        // the walls on them, their cores a dash and two dots
+        let cores = items
+            .iter()
+            .filter(|it| {
+                matches!(it, PlanItem::Line { pen: Pen::Overhead, id, .. }
+                if matches!(m.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_))))
+            })
+            .count();
+        assert!(cores >= 8, "{cores}");
+        assert!(!items.iter().any(|it| matches!(
+            it,
+            PlanItem::Line {
+                pen: Pen::HiddenCut,
+                ..
+            }
+        )));
+        // one footing set deeper: a heavy dashed line where it steps
+        let one = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::Footing(f) if f.host.is_some()
+                && f.kind == creabim_core::FootingKind::Strip)
+            })
+            .unwrap()
+            .clone();
+        let mut deeper = one.clone();
+        if let ElementKind::Footing(f) = &mut deeper.kind {
+            f.thickness += 0.2;
+        }
+        creabim_core::Transaction::new("deeper")
+            .replace(one, deeper)
+            .apply(&mut m)
+            .unwrap();
+        let steps = plan_view(&m, level, 0.25)
+            .items
+            .iter()
+            .filter(|it| {
+                matches!(
+                    it,
+                    PlanItem::Line {
+                        pen: Pen::HiddenCut,
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert!(steps >= 1, "{steps}");
+        if let Ok(f) = std::env::var("CREABIM_FOUNDATION_SVG") {
+            std::fs::write(f, plan_view(&m, level, 0.25).to_svg(40.0)).unwrap();
+        }
+    }
+
     fn named(m: &Model, name: &str) -> ElementId {
         m.iter().find(|e| e.name == name).expect(name).id
     }
@@ -3010,7 +3173,7 @@ mod tests {
         let items = plan_view(&m, level, 1.2).items;
         let dashed: Vec<&PlanItem> = items
             .iter()
-            .filter(|it| matches!(it, PlanItem::Line { id, pen: Pen::Hidden, .. } if *id == hole))
+            .filter(|it| matches!(it, PlanItem::Line { id, pen: Pen::Overhead, .. } if *id == hole))
             .collect();
         assert_eq!(dashed.len(), 4);
         // drawn over the wall's fill, so it shows

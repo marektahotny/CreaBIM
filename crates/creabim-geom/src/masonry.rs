@@ -32,7 +32,7 @@ pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             None => groups.push((key, vec![e.id])),
         }
     }
-    // each piece's outline, dashed: it lies over the cut
+    // each piece's outline, a dash and two dots: it lies over the cut
     for (_, ids) in &groups {
         for id in ids {
             let Some(ElementKind::Beam(b)) = model.get(*id).map(|e| &e.kind) else {
@@ -42,7 +42,7 @@ pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             for k in 0..pts.len() {
                 out.push(PlanItem::Line {
                     id: *id,
-                    pen: crate::plan::Pen::Hidden,
+                    pen: crate::plan::Pen::Overhead,
                     a: pts[k],
                     b: pts[(k + 1) % pts.len()],
                 });

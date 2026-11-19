@@ -31,6 +31,13 @@ pub struct MemberSettings {
     /// Width of new strips, and the sides of new pads.
     pub footing_width: f64,
     pub footing_thickness: f64,
+    /// Where new strips under walls lie across them, and how far their
+    /// edge stands proud of the core face they are set by.
+    pub footing_align: creabim_core::FootingAlign,
+    pub footing_offset: f64,
+    /// The material new footings are made of, by name: the project's, or
+    /// the library's (added to the project with the first footing).
+    pub footing_material: Option<String>,
     /// New doors', windows' and bare holes' width, height and sill, set in
     /// the bar before placing (MU18); a type, when picked, sets its own.
     pub door: [f64; 3],
@@ -72,6 +79,9 @@ impl Default for MemberSettings {
             footing_pad: false,
             footing_width: creabim_core::footing::STRIP_WIDTH,
             footing_thickness: creabim_core::footing::STRIP_THICKNESS,
+            footing_align: Default::default(),
+            footing_offset: 0.05,
+            footing_material: Some("Concrete, cast in place".into()),
             door: [0.8, 1.97, 0.0],
             window: [1.2, 1.3, 0.9],
             hole: [1.0, 1.0, 1.0],
@@ -331,8 +341,69 @@ fn sized_footing(model: &Model, state: &PlanState, mut f: creabim_core::Footing)
         f.length = m.footing_width;
     }
     f.thickness = m.footing_thickness;
+    f.align = m.footing_align;
+    f.align_offset = m.footing_offset;
     let name = f.kind.label();
     state.typed(model, Element::new(name, ElementKind::Footing(f)))
+}
+
+/// The material the bar picked for new footings: the project's of that
+/// name, or a new one from the library (the element to add with them).
+pub fn footing_material(model: &Model, state: &PlanState) -> (Option<ElementId>, Option<Element>) {
+    let Some(name) = &state.members.footing_material else {
+        return (None, None);
+    };
+    if let Some((id, _, _)) = creabim_core::library::materials(model)
+        .into_iter()
+        .find(|(_, n, _)| n == name)
+    {
+        return (Some(id), None);
+    }
+    match creabim_core::library::LIBRARY
+        .iter()
+        .find(|e| e.name == name)
+    {
+        Some(entry) => {
+            let e = entry.element();
+            (Some(e.id), Some(e))
+        }
+        None => (None, None),
+    }
+}
+
+/// New footings' material from the bar, unless their type gives one, and
+/// their top at the underside of the floor slab they are under; the
+/// material added to the project if it is new.
+pub fn finish_footings(model: &Model, state: &PlanState, tx: Transaction) -> Transaction {
+    let (mat, new) = footing_material(model, state);
+    let mut used = false;
+    let mut tx = tx;
+    for op in &mut tx.ops {
+        let creabim_core::Op::Insert(e) = op else {
+            continue;
+        };
+        if let ElementKind::Footing(f) = &mut e.kind {
+            if f.material.is_none() && e.of_type.is_none() {
+                f.material = mat;
+                used |= mat.is_some();
+            }
+            if f.host.is_none() {
+                // its top on the underside of the storey's floor
+                let at = match f.kind {
+                    creabim_core::FootingKind::Strip => (f.start + f.end) / 2.0,
+                    creabim_core::FootingKind::Pad => f.start,
+                };
+                let base = creabim_core::members::elevation(model, f.level);
+                if let Some(d) = creabim_core::members::slab_depth_at(model, at, base) {
+                    f.below = d;
+                }
+            }
+        }
+    }
+    match new {
+        Some(m) if used => tx.insert(m),
+        _ => tx,
+    }
 }
 
 /// A click with the Footing tool: a strip under the wall clicked, or the
@@ -378,20 +449,21 @@ fn place_footing(
         if let Some(id) = ids.first() {
             selection.only(*id);
         }
-        let mut tx = tx;
+        let mut tx = finish_footings(model, state, tx);
         tx.label = format!("Place {}", kind.label().to_lowercase());
         return doc.commit(tx);
     }
-    let add = |doc: &mut Document, selection: &mut Selection, e: Element| {
+    let add = |doc: &mut Document, selection: &mut Selection, e: Element, state: &PlanState| {
         selection.only(e.id);
         let label = format!("Place {}", kind.label().to_lowercase());
-        doc.commit(Transaction::new(label).insert(e))
+        let tx = finish_footings(doc.model(), state, Transaction::new(label).insert(e));
+        doc.commit(tx)
     };
     match kind {
         FootingKind::Pad => {
             let e = sized_footing(model, state, Footing::pad(level, p));
             state.status = Some("Pad footing placed. Set its size and depth in Properties.".into());
-            add(doc, selection, e)
+            add(doc, selection, e, state)
         }
         FootingKind::Strip => match state.pending.take() {
             None => {
@@ -402,7 +474,7 @@ fn place_footing(
             Some(a) if a.distance(p) > 0.05 => {
                 let e = sized_footing(model, state, Footing::strip(level, a, p));
                 state.status = Some("Strip footing placed.".into());
-                add(doc, selection, e)
+                add(doc, selection, e, state)
             }
             Some(_) => Ok(()),
         },
@@ -1170,7 +1242,7 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
     if f.kind == FootingKind::Pad && num(ui, "Length", &mut f.length, 0.1, 10.0) {
         label = "Footing length";
     }
-    if num(ui, "Thickness", &mut f.thickness, 0.05, 5.0) {
+    if num(ui, "Height", &mut f.thickness, 0.05, 5.0) {
         label = "Footing thickness";
     }
     let host = f.host.and_then(|h| model.get(h));
@@ -1184,6 +1256,25 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
     };
     if num(ui, below, &mut f.below, -50.0, 50.0) {
         label = "Footing depth";
+    }
+    if f.kind == FootingKind::Strip && host.is_some() {
+        crate::app::helpui::combo(ui, "Under the wall")
+            .selected_text(crate::i18n::t(f.align.label()))
+            .show_ui(ui, |ui| {
+                for a in creabim_core::FootingAlign::ALL {
+                    if ui
+                        .selectable_value(&mut f.align, a, crate::i18n::t(a.label()))
+                        .changed()
+                    {
+                        label = "Footing position";
+                    }
+                }
+            });
+        if f.align != creabim_core::FootingAlign::Line
+            && num(ui, "Offset", &mut f.align_offset, -1.0, 2.0)
+        {
+            label = "Footing position";
+        }
     }
     match host {
         Some(h) => {
@@ -1503,7 +1594,7 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             ),
             num(
                 "footing_thickness",
-                "Thickness",
+                "Height",
                 m.footing_thickness,
                 "m",
                 0.05,
@@ -1511,7 +1602,31 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                 5.0,
                 "Thickness of new footings",
             ),
-        ],
+        ]
+        .into_iter()
+        .chain((!m.footing_pad).then(|| json!({
+            "kind": "menu", "key": "footing.align", "label": "Under the wall",
+            "value": m.footing_align.label(), "icon": "footing",
+            "hint": "Where new strips lie across their walls: centred, or with an edge set by the face of the wall's load-bearing layer",
+        })))
+        .chain((!m.footing_pad && m.footing_align != creabim_core::FootingAlign::Line).then(|| {
+            num(
+                "footing_offset",
+                "Offset",
+                m.footing_offset,
+                "m",
+                0.005,
+                -1.0,
+                2.0,
+                "How far the strip's edge stands proud of the core face (negative: set back under the wall)",
+            )
+        }))
+        .chain(std::iter::once(json!({
+            "kind": "menu", "key": "footing.material", "label": "Material",
+            "value": m.footing_material.clone().unwrap_or_else(|| "By type".into()),
+            "hint": "What new footings are made of",
+        })))
+        .collect(),
         Tool::Railing => vec![
             json!({
                 "kind": "menu", "key": "railing.library", "label": "Rail",
@@ -1561,6 +1676,7 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "railing_height" => m.railing_height = v.clamp(0.3, 3.0),
         "footing_width" => m.footing_width = v.clamp(0.1, 10.0),
         "footing_thickness" => m.footing_thickness = v.clamp(0.05, 5.0),
+        "footing_offset" => m.footing_offset = v.clamp(-1.0, 2.0),
         k if k.starts_with("door_") || k.starts_with("window_") || k.starts_with("hole_") => {
             let (kind, what) = k.split_once('_').unwrap_or((k, ""));
             let s = match kind {

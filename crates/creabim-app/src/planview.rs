@@ -6101,6 +6101,15 @@ pub fn draw_item_with(
                         }
                     }
                 }
+                Pen::HiddenCut => {
+                    let c = if selected { highlight } else { ink };
+                    painter.extend(egui::Shape::dashed_line(
+                        &[a, b],
+                        Stroke::new(1.8 * o.cut, c),
+                        9.0,
+                        5.0,
+                    ));
+                }
                 Pen::Hidden => {
                     let (w, c) = if selected {
                         (2.0, highlight)

@@ -180,6 +180,11 @@ pub fn pen_stroke_with(pen: Pen, w: &LineWeights) -> Stroke {
             ..HIDDEN
         },
         Pen::Overhead => Stroke::solid(w.hidden, 0.0),
+        Pen::HiddenCut => Stroke {
+            width: w.cut,
+            gray: 0.0,
+            dash: Some([3.0, 1.5]),
+        },
         Pen::Underlay => Stroke {
             width: w.hatch,
             ..HATCH

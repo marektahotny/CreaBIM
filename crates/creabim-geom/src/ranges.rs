@@ -131,7 +131,7 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
                 under.extend(sub.items.into_iter().filter(|it| theirs(it)));
             }
             Band::Overhead => {
-                // just above its floor, then every line dashed
+                // just above its floor, then every line as overhead
                 let sub = crate::plan::plan_view_with(model, l, 0.001, &g);
                 for it in sub.items.into_iter().filter(|it| theirs(it)) {
                     if let Some(it) = overhead(it) {
@@ -147,18 +147,19 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
 }
 
 /// An item of a level above the cut, as an overhead plan draws it:
-/// its lines dashed, its fills and labels left out.
+/// its lines thin, a dash and two dots, as all above the cut; its fills
+/// and labels left out.
 fn overhead(it: PlanItem) -> Option<PlanItem> {
     Some(match it {
         PlanItem::Line { id, a, b, .. } => PlanItem::Line {
             id,
-            pen: Pen::Hidden,
+            pen: Pen::Overhead,
             a,
             b,
         },
         PlanItem::Polygon { id, points, .. } => PlanItem::Polygon {
             id,
-            pen: Pen::Hidden,
+            pen: Pen::Overhead,
             points,
         },
         PlanItem::Arc {
@@ -170,7 +171,7 @@ fn overhead(it: PlanItem) -> Option<PlanItem> {
             ..
         } => PlanItem::Arc {
             id,
-            pen: Pen::Hidden,
+            pen: Pen::Overhead,
             center,
             radius,
             start,
@@ -440,11 +441,11 @@ mod tests {
         // the site wall, 1.8 m from -0.45, is cut by the plane at +1.2
         assert!(pens(el[0]).contains(&Pen::Cut), "{:?}", pens(el[0]));
         assert!(pens(el[1]).contains(&Pen::Cut));
-        // both roofs above the cut, dashed
+        // both roofs above the cut, a dash and two dots
         for r in [el[2], el[3]] {
             let p = pens(r);
             assert!(
-                !p.is_empty() && p.iter().all(|p| *p == Pen::Hidden),
+                !p.is_empty() && p.iter().all(|p| *p == Pen::Overhead),
                 "{p:?}"
             );
         }

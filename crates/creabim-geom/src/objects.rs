@@ -23,7 +23,7 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
     let floor = model.level(o.level).map_or(0.0, |l| l.elevation);
     let above = objects::base_z_of(model, o, t) - floor + lo.z > cut_height;
     let pen = if above && !t.category.is_services() {
-        Pen::Hidden
+        Pen::Overhead
     } else {
         Pen::Projection
     };
@@ -157,7 +157,7 @@ mod tests {
             (lo.x - 0.15).abs() < 1e-6 && (hi.x - 1.05).abs() < 1e-6,
             "{lo} {hi}"
         );
-        // a wall cupboard is overhead: dashed
+        // a wall cupboard is overhead: a dash and two dots
         let cup = m
             .iter()
             .find(|e| {
@@ -171,7 +171,7 @@ mod tests {
             .all(|i| matches!(
                 i,
                 PlanItem::Polygon {
-                    pen: Pen::Hidden,
+                    pen: Pen::Overhead,
                     ..
                 }
             )));

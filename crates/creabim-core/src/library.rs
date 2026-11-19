@@ -116,9 +116,10 @@ impl MaterialUse {
             ElementKind::Wall(_) => MaterialUse::Wall,
             ElementKind::Slab(_) | ElementKind::Roof(_) => MaterialUse::Slab,
             ElementKind::Opening(_) => MaterialUse::Joinery,
-            ElementKind::Column(_) | ElementKind::Beam(_) | ElementKind::Railing(_) => {
-                MaterialUse::Member
-            }
+            ElementKind::Column(_)
+            | ElementKind::Beam(_)
+            | ElementKind::Railing(_)
+            | ElementKind::Footing(_) => MaterialUse::Member,
             ElementKind::Ceiling(_) => MaterialUse::Ceiling,
             _ => MaterialUse::Any,
         }
@@ -301,6 +302,14 @@ pub const LIBRARY: &[LibraryEntry] = &[
         rgb(168, 166, 160),
         0.95,
         "Dense concrete blockwork",
+    ),
+    entry(
+        "Block, concrete formwork",
+        "block",
+        CON,
+        rgb(172, 170, 164),
+        0.9,
+        "Hollow concrete formwork blocks (DT), filled with concrete",
     ),
     entry(
         "Block, aerated concrete",
@@ -701,6 +710,14 @@ pub const LIBRARY: &[LibraryEntry] = &[
         rgb(240, 240, 236),
         0.95,
         "Expanded polystyrene boards",
+    ),
+    entry(
+        "Insulation, XPS",
+        "insulation",
+        CRS,
+        rgb(196, 222, 236),
+        0.9,
+        "Extruded polystyrene boards, for perimeter and below ground",
     ),
     entry(
         "Insulation, PIR",

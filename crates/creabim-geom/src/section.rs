@@ -952,6 +952,8 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             d.items.retain(|it| !crate::sitefoot::hides(model, it.id()));
             d.items
                 .extend(crate::sitefoot::footprint(model, *level, *cut_height));
+        } else if v.graphics.range.from_above {
+            crate::roofplan::apply(model, &mut d.items);
         }
     }
     // utility networks: their codes written in, a sewer's arrows, the

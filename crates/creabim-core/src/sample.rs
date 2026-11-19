@@ -510,7 +510,7 @@ pub fn layered_house() -> Model {
     let mut doc = Document::from_model(sample_house());
     let (tx, ids) = assembly::add_starters(doc.model());
     doc.commit(tx).expect("starter assemblies are valid");
-    let [outer, inner, floor, roof] = ids[..] else {
+    let [outer, inner, floor, roof, ..] = ids[..] else {
         unreachable!("four starters")
     };
     let model = doc.model().clone();
