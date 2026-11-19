@@ -195,6 +195,19 @@ impl Looks {
                     l.projection = Some(PIPE_LINE);
                 }
             }
+            // a utility network: its kind's colour and line type, heavy
+            // where proposed (PilonDesigner's site plans)
+            if let ElementKind::Sketch(creabim_core::Sketch { net: Some(n), .. }) = &e.kind {
+                if l.colour.is_none() {
+                    l.colour = Some(n.kind.rgb());
+                }
+                if l.dashes.is_none() {
+                    l.dashes = Some(Some(n.pattern()));
+                }
+                if l.projection.is_none() {
+                    l.projection = Some(n.weight());
+                }
+            }
             if beyond.contains(&e.id) {
                 l.projection = Some(w.fine);
                 mix(&mut l.fade, 0.45);

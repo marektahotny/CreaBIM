@@ -903,7 +903,11 @@ pub fn sketch_items(
     let mut out = Vec::new();
     // a closed sketch is a face: a light wash inside it (A7-1)
     let outline = sk.outline();
-    if sk.closed && outline.len() >= 3 && !creabim_core::polygon::self_intersects(&outline, true) {
+    if sk.closed
+        && sk.net.is_none()
+        && outline.len() >= 3
+        && !creabim_core::polygon::self_intersects(&outline, true)
+    {
         out.push(PlanItem::Tint {
             id,
             points: outline.iter().map(|p| at(*p)).collect(),

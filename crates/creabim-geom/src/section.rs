@@ -934,6 +934,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     if let Some(stage) = v.reno {
         reno_colours(model, stage, &mut d.items);
     }
+    // utility networks: their codes written in, a sewer's arrows, the
+    // crosses of one to go
+    if matches!(kind, creabim_core::ViewKind::Plan { .. }) {
+        let marks = crate::netlines::net_marks(model, &d.items, v.scale / 1000.0);
+        d.items.extend(marks);
+    }
     // pipes, ducts and wiring are the trades' to draw: the architect's
     // plans, sections and elevations leave them out, whatever the view
     // shows by category (the site plan keeps its connections)

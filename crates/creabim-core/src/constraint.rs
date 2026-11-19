@@ -337,7 +337,7 @@ fn dependent_row(j: &[Vec<f64>]) -> Option<usize> {
 }
 
 enum Attempt {
-    Solved(Sketch),
+    Solved(Box<Sketch>),
     /// Converged, but a constraint adds nothing to the ones before it.
     Redundant,
     NoSolution,
@@ -350,7 +350,7 @@ fn attempt(start: &Sketch, cons: &[Constraint]) -> Attempt {
     let mut r = residuals(&work, cons);
     let rows = r.len();
     if rows == 0 {
-        return Attempt::Solved(work);
+        return Attempt::Solved(Box::new(work));
     }
     let mut cost = norm2(&r);
     let mut lambda = 1e-6;
@@ -404,7 +404,7 @@ fn attempt(start: &Sketch, cons: &[Constraint]) -> Attempt {
     let j = jacobian(&mut work, cons, &x, rows);
     match dependent_row(&j) {
         Some(_) => Attempt::Redundant,
-        None => Attempt::Solved(work),
+        None => Attempt::Solved(Box::new(work)),
     }
 }
 
@@ -416,7 +416,7 @@ impl Sketch {
         self.check().map_err(SolveError::Invalid)?;
         if let Attempt::Solved(s) = attempt(self, &self.constraints) {
             s.check().map_err(SolveError::Invalid)?;
-            *self = s;
+            *self = *s;
             return Ok(());
         }
         // find the first constraint the ones before it can't take

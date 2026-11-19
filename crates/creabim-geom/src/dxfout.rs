@@ -642,6 +642,10 @@ pub fn layer_of(
     id: creabim_core::ElementId,
     cutters: &std::collections::HashSet<creabim_core::ElementId>,
 ) -> String {
+    // a utility network on a layer of its kind
+    if let Some(n) = crate::netlines::net_of(model, id) {
+        return n.layer();
+    }
     model
         .get(id)
         .and_then(|e| creabim_core::visibility::Category::of(e, cutters))

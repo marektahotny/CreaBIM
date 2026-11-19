@@ -1056,6 +1056,67 @@ pub fn draw_marks_in_pane(
     draw_marks(painter, model, selection, &project, &show);
 }
 
+/// The sketch as a utility network in the site plan (PilonDesigner's
+/// Inžinierska sieť): its kind, whether existing, proposed or to go, and
+/// what is written after its code. The name of the change, if any.
+pub fn network_fields(ui: &mut egui::Ui, sk: &mut Sketch) -> Option<&'static str> {
+    use creabim_core::utility::{NetKind, NetState};
+    let t = crate::i18n::t;
+    let mut label = None;
+    let width = ui.available_width().min(220.0);
+    let now = sk.net.as_ref().map(|n| n.kind);
+    crate::app::helpui::combo(ui, "Utility network")
+        .selected_text(match now {
+            Some(k) => format!("{} – {}", k.code(), t(k.label())),
+            None => t("– a plain line –").to_string(),
+        })
+        .width(width)
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(now.is_none(), t("– a plain line –")).clicked() && now.is_some() {
+                sk.net = None;
+                label = Some("Utility network");
+            }
+            for k in NetKind::ALL {
+                let text = format!("{} – {}", k.code(), t(k.label()));
+                if ui.selectable_label(now == Some(k), text).clicked() && now != Some(k) {
+                    let mut n = sk.net.clone().unwrap_or_default();
+                    n.kind = k;
+                    sk.net = Some(n);
+                    label = Some("Utility network");
+                }
+            }
+        })
+        .response
+        .on_hover_text(t(
+            "Colour, line type, layer and code by the kind of network: proposed heavy, existing thin, cancelled with crosses; a sewer has arrows the way it was drawn",
+        ));
+    let Some(n) = sk.net.as_mut() else {
+        return label;
+    };
+    let state = n.state;
+    crate::app::helpui::combo(ui, "State")
+        .selected_text(t(state.label()))
+        .width(width)
+        .show_ui(ui, |ui| {
+            for st in NetState::ALL {
+                if ui.selectable_label(state == st, t(st.label())).clicked() && state != st {
+                    n.state = st;
+                    label = Some("Utility network");
+                }
+            }
+        });
+    crate::props::row(ui, "Description", |ui| {
+        if ui
+            .add(egui::TextEdit::singleline(&mut n.note).hint_text("DN 150"))
+            .on_hover_text(t("Written after the code in the line: a size, a material"))
+            .changed()
+        {
+            label = Some("Utility network");
+        }
+    });
+    label
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

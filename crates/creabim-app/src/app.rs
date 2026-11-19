@@ -11000,6 +11000,9 @@ crate::props::row(ui, "File names", |ui| {
                         crate::sketch::Edit::Refused(why) => self.status = why,
                         crate::sketch::Edit::None => {}
                     }
+                    if let Some(l) = crate::sketch::network_fields(ui, sk) {
+                        label = l;
+                    }
                     ui.add_space(4.0);
                     if num(ui, "Plane X", &mut sk.plane.origin.x, -1e4, 1e4)
                         | num(ui, "Plane Y", &mut sk.plane.origin.y, -1e4, 1e4)

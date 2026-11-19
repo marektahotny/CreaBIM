@@ -9,6 +9,7 @@ pub mod annotate;
 pub mod annotation;
 pub mod autodims;
 pub mod crop;
+pub mod netlines;
 
 pub mod cropbox;
 pub mod curtain;

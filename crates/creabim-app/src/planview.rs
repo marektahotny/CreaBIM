@@ -5903,6 +5903,27 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
             }
         }
     }
+    // utility networks: their kind's colour (a little lighter, so a dark
+    // sewer reads on the screen; paper gets the exact one), dashed, heavy
+    // where proposed
+    for e in model.iter() {
+        let ElementKind::Sketch(creabim_core::Sketch { net: Some(n), .. }) = &e.kind else {
+            continue;
+        };
+        let r = out.entry(e.id).or_default();
+        if r.colour.is_none() {
+            let [a, b, d] = n.kind.rgb().map(|c| c + (1.0 - c) * 0.3);
+            r.colour = Some(Color32::from_rgb(
+                (a * 255.0) as u8,
+                (b * 255.0) as u8,
+                (d * 255.0) as u8,
+            ));
+        }
+        r.dashed = true;
+        if r.proj == 1.0 {
+            r.proj = (n.weight() / w.projection.max(1e-6)) as f32;
+        }
+    }
     out
 }
 
