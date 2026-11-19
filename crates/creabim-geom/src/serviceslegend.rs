@@ -20,6 +20,8 @@ const LINE: f64 = 3.6;
 const INDENT: f64 = 26.0;
 const SAMPLE: f64 = 20.0;
 const WIDTH: f64 = 150.0;
+/// The sample's and the words' columns as drawn by default, mm.
+pub const COLUMNS: (f64, f64) = (INDENT, WIDTH - INDENT);
 
 /// The systems the model's pipes are in, in the systems' own order, each
 /// with the names of the pipe types it is laid in.
@@ -359,6 +361,8 @@ fn net_sample(
 /// The legend as a drawing in paper millimetres, its top left corner at
 /// the origin.
 pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
+    // the columns' widths as set on the sheet
+    let (ind, tw) = crate::schedule::legend_columns(model, view, INDENT, WIDTH - INDENT);
     let mut items = vec![];
     let text = |items: &mut Vec<PlanItem>, at: DVec2, t: &str, size: f64, rgb| {
         items.push(PlanItem::Text {
@@ -393,14 +397,8 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         for (s, types) in &systems {
             sample(&mut items, view, s, DVec2::new(0.0, y - LINE / 2.0), SAMPLE);
             let name = format!("{} - {}", tr(s.name), types.join(", "));
-            for l in wrap(&name, WIDTH - INDENT, TEXT) {
-                text(
-                    &mut items,
-                    DVec2::new(INDENT, y - LINE / 2.0),
-                    &l,
-                    TEXT,
-                    None,
-                );
+            for l in wrap(&name, tw, TEXT) {
+                text(&mut items, DVec2::new(ind, y - LINE / 2.0), &l, TEXT, None);
                 y -= LINE;
             }
             y -= 1.0;
@@ -424,14 +422,8 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         y -= HEAD + 3.0;
         for n in &nets {
             net_sample(&mut items, view, n, DVec2::new(0.0, y - LINE / 2.0), SAMPLE);
-            for l in wrap(&n.legend(), WIDTH - INDENT, TEXT) {
-                text(
-                    &mut items,
-                    DVec2::new(INDENT, y - LINE / 2.0),
-                    &l,
-                    TEXT,
-                    None,
-                );
+            for l in wrap(&n.legend(), tw, TEXT) {
+                text(&mut items, DVec2::new(ind, y - LINE / 2.0), &l, TEXT, None);
                 y -= LINE;
             }
             y -= 1.0;
@@ -477,7 +469,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             );
             text(
                 &mut items,
-                DVec2::new(INDENT, y - LINE / 2.0),
+                DVec2::new(ind, y - LINE / 2.0),
                 &format!("{} {pipe}", tr(name)),
                 TEXT,
                 None,
@@ -496,7 +488,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         );
         text(
             &mut items,
-            DVec2::new(INDENT, y - LINE / 2.0),
+            DVec2::new(ind, y - LINE / 2.0),
             &tr("edge of a heated field"),
             TEXT,
             None,
@@ -526,14 +518,8 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                 Some(crate::mep::LABEL_GREEN),
             );
             for line in creabim_services::fixturespec::legend_lines(&r.spec) {
-                for l in wrap(&line, WIDTH - INDENT, TEXT) {
-                    text(
-                        &mut items,
-                        DVec2::new(INDENT, y - LINE / 2.0),
-                        &l,
-                        TEXT,
-                        None,
-                    );
+                for l in wrap(&line, tw, TEXT) {
+                    text(&mut items, DVec2::new(ind, y - LINE / 2.0), &l, TEXT, None);
                     y -= LINE;
                 }
             }
@@ -559,14 +545,8 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                 TEXT + 0.6,
                 Some(crate::mep::LABEL_GREEN),
             );
-            for l in wrap(name, WIDTH - INDENT, TEXT) {
-                text(
-                    &mut items,
-                    DVec2::new(INDENT, y - LINE / 2.0),
-                    &l,
-                    TEXT,
-                    None,
-                );
+            for l in wrap(name, tw, TEXT) {
+                text(&mut items, DVec2::new(ind, y - LINE / 2.0), &l, TEXT, None);
                 y -= LINE;
             }
             y -= 1.5;
@@ -589,7 +569,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         y -= HEAD + 3.0;
         for row in &devices {
             let name = format!("{}, {} {}", row.name, row.count, tr("pcs"));
-            let lines = wrap(&name, WIDTH - INDENT, TEXT);
+            let lines = wrap(&name, tw, TEXT);
             let words = lines.len() as f64 * LINE;
             let tall = words.max(symbol_height(row));
             device_symbol(
@@ -600,13 +580,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             );
             let mut ty = y - (tall - words) / 2.0;
             for l in lines {
-                text(
-                    &mut items,
-                    DVec2::new(INDENT, ty - LINE / 2.0),
-                    &l,
-                    TEXT,
-                    None,
-                );
+                text(&mut items, DVec2::new(ind, ty - LINE / 2.0), &l, TEXT, None);
                 ty -= LINE;
             }
             y -= tall + 1.5;
@@ -625,7 +599,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         y -= HEAD + 3.0;
         for n in &notes {
             let n = format!("- {}", n.trim_start_matches("- "));
-            for l in wrap(&n.to_uppercase(), WIDTH, TEXT) {
+            for l in wrap(&n.to_uppercase(), ind + tw, TEXT) {
                 text(&mut items, DVec2::new(0.0, y - LINE / 2.0), &l, TEXT, None);
                 y -= LINE;
             }

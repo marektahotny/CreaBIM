@@ -365,3 +365,53 @@ mod widths {
         assert!((width(&m) - w0 - 20.0).abs() < 0.5, "{} {}", width(&m), w0);
     }
 }
+
+#[cfg(test)]
+mod legend_widths {
+    use creabim_core::{Element, ElementKind, ScheduleCategory, Transaction, View};
+
+    /// The legends of services and materials take the width of their
+    /// words' column from the sheet: the words wrap to it.
+    #[test]
+    fn a_legends_words_column_is_set_on_the_sheet() {
+        for category in [
+            ScheduleCategory::MaterialLegend,
+            ScheduleCategory::ServicesLegend,
+        ] {
+            let mut m = creabim_core::sample::sample_house();
+            let v = Element::new("Legend", ElementKind::View(View::schedule(category)));
+            let id = v.id;
+            Transaction::new("t").insert(v).apply(&mut m).unwrap();
+            let edges = crate::schedule::column_edges(&m, id).unwrap();
+            assert_eq!(edges.len(), 2);
+            let mut e = m.get(id).unwrap().clone();
+            if let ElementKind::View(x) = &mut e.kind {
+                x.column_widths.insert("Symbol".into(), edges[0].2 + 10.0);
+                x.column_widths.insert("Description".into(), 40.0);
+            }
+            Transaction::new("t")
+                .replace(m.get(id).unwrap().clone(), e)
+                .apply(&mut m)
+                .unwrap();
+            let after = crate::schedule::column_edges(&m, id).unwrap();
+            assert!((after[0].1 - edges[0].1 - 10.0).abs() < 1e-9);
+            assert!((after[1].2 - 40.0).abs() < 1e-9);
+            // the words start at the new edge
+            let d = crate::section::view_drawing(&m, id).unwrap();
+            let starts: Vec<f64> = d
+                .items
+                .iter()
+                .filter_map(|i| match i {
+                    crate::plan::PlanItem::Text { at, .. } if at.x > 1.0 => Some(at.x),
+                    _ => None,
+                })
+                .collect();
+            assert!(
+                starts
+                    .iter()
+                    .all(|x| (x - after[0].1).abs() < 1e-9 || *x > after[0].1),
+                "{category:?} {starts:?}"
+            );
+        }
+    }
+}

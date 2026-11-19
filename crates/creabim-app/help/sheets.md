@@ -42,7 +42,7 @@ Under each viewport is its **title**. In the viewport's *Properties*: show or hi
 
 ## Table columns
 
-Select a placed legend of rooms or any other list and its column lines show handles. Drag the line between two columns to make the column on its left wider or narrower, by half a millimetre; the columns after it move along. Double-click a line to give its column its own width back. The widths belong to the list's view, so it looks the same on every sheet it is placed on.
+Select a placed legend of rooms or any other list and its column lines show handles. Drag the line between two columns to make the column on its left wider or narrower, by half a millimetre; the columns after it move along. The legends of services and of materials have two columns, the sample or symbol and its words, which wrap to the width you set. Double-click a line to give its column its own width back. The widths belong to the list's view, so it looks the same on every sheet it is placed on.
 
 ## Title pages
 
