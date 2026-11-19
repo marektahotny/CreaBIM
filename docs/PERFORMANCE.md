@@ -53,9 +53,10 @@ triangles.
 - **Memory:** about 410 MB for the app with the starter house. Not traced yet.
 - **Start-up:** the first launch builds every open view's drawing on the spot (its cost isn't known yet), so the app
   is busy for a few seconds after the window appears. Build the first drawings on workers too, with a placeholder.
-- **Run-to-run differences:** some hidden-line drawings differ slightly between runs. Some data is kept in hash maps
-  keyed by element IDs, so the scene's triangle order can change between launches, and equal-depth ties then resolve
-  differently. Sort those maps, or break ties by element order, to make drawings repeatable.
+- **Run-to-run differences:** fixed. Room and ceiling outlines were walked from a hash set's first edge, so a
+  ceiling's mesh (and every section through it) began at another corner each launch; the edges are walked in a
+  fixed order now (`slab::room_in_lines`). The starter house's plans, sections and elevations come out byte for
+  byte the same from run to run.
 
 ## Measuring
 

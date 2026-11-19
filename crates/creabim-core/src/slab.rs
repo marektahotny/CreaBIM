@@ -155,8 +155,10 @@ pub(crate) fn loose_ends(segs: &[(DVec2, DVec2)], stub: f64) -> Vec<(DVec2, usiz
 pub(crate) fn room_in_lines(segs: &[(DVec2, DVec2)], p: DVec2) -> Option<Vec<DVec2>> {
     // split every segment where others cross it
     let (nodes, edges) = split(segs);
-    // loose ends bound nothing
-    let edges = prune(nodes.len(), edges);
+    // loose ends bound nothing; in a fixed order, so the outline starts
+    // at the same corner every time (drawings come out the same)
+    let mut edges: Vec<(usize, usize)> = prune(nodes.len(), edges).into_iter().collect();
+    edges.sort_unstable();
     let mut around: Vec<Vec<usize>> = vec![vec![]; nodes.len()];
     for &(u, v) in &edges {
         around[u].push(v);
@@ -298,6 +300,29 @@ pub fn slab_from_sketch(model: &Model, sk: &Sketch, thickness: f64) -> Result<Sl
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_room_outline_starts_at_the_same_corner_every_time() {
+        let sq = |x: f64| {
+            vec![
+                (DVec2::new(x, 0.0), DVec2::new(x + 4.0, 0.0)),
+                (DVec2::new(x + 4.0, 0.0), DVec2::new(x + 4.0, 3.0)),
+                (DVec2::new(x + 4.0, 3.0), DVec2::new(x, 3.0)),
+                (DVec2::new(x, 3.0), DVec2::new(x, 0.0)),
+            ]
+        };
+        let mut segs = sq(0.0);
+        segs.extend(sq(4.0));
+        let first = super::room_in_lines(&segs, DVec2::new(1.0, 1.0)).unwrap();
+        // each hash set is seeded anew: twenty tries would show a change
+        for _ in 0..20 {
+            assert_eq!(
+                super::room_in_lines(&segs, DVec2::new(1.0, 1.0)).unwrap(),
+                first
+            );
+        }
+    }
+
     use super::*;
     use crate::{sample, Element, Level, Transaction, Wall, Workplane};
     use glam::DVec3;
