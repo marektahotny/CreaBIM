@@ -14,6 +14,7 @@ impl CreaBimApp {
             return false;
         }
         self.air_balance = true;
+        self.results_due = Some("air");
         true
     }
 
@@ -29,6 +30,7 @@ impl CreaBimApp {
             .as_ref()
             .map_or_else(heatloss::Opts::default, |x| x.0);
         let b = airbalance::balance(self.doc.model(), &o);
+        let mut write_now = self.results_due.take_if(|c| *c == "air").is_some();
         let mut open = true;
         let mut select = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
@@ -39,6 +41,9 @@ impl CreaBimApp {
             .default_size(Vec2::new(640.0, 480.0))
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui) {
+                    write_now = true;
+                }
                 if b.rooms.is_empty() {
                     ui.label(t("No rooms to calculate: place rooms first."));
                     return;
@@ -113,6 +118,9 @@ impl CreaBimApp {
             });
         if let Some(id) = select {
             self.selection.only(id);
+        }
+        if write_now {
+            self.write_results_said(creabim_services::calcresults::air(&b));
         }
         self.air_balance = open;
     }

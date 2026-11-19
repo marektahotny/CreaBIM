@@ -21,6 +21,7 @@ impl CreaBimApp {
         if self.ducts.is_none() {
             self.ducts = Some(Limits::default());
         }
+        self.results_due = Some("ducts");
         true
     }
 
@@ -35,6 +36,12 @@ impl CreaBimApp {
             .heat_loss
             .as_ref()
             .map_or_else(heatloss::Opts::default, |x| x.0);
+        let mut write_now = self.results_due.take_if(|c| *c == "ducts").is_some();
+        let mut found = creabim_core::results::ResultSet::new(
+            "ducts",
+            "Dimenzovanie VZT potrubia",
+            "STN EN 1505",
+        );
         let mut open = true;
         let mut apply: Option<Vec<(ElementId, f64)>> = None;
         let mut select = None;
@@ -46,6 +53,9 @@ impl CreaBimApp {
             .default_size(Vec2::new(660.0, 500.0))
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui) {
+                    write_now = true;
+                }
                 ui.horizontal(|ui| {
                     ui.label(t("Velocity allowed"));
                     ui.label(t("main run"));
@@ -73,6 +83,7 @@ impl CreaBimApp {
                             ui.add_space(6.0);
                             continue;
                         };
+                        creabim_services::calcresults::ducts(&mut found, code, &rows);
                         let change: Vec<(ElementId, f64)> = rows
                             .iter()
                             .filter_map(|r| {
@@ -164,6 +175,9 @@ impl CreaBimApp {
                 Ok(_) => self.status = format!("{}: {}", t("Ducts sized"), change.len()),
                 Err(e) => self.status = format!("Couldn't do that: {e}"),
             }
+        }
+        if write_now {
+            self.write_results_said(found);
         }
         self.ducts = if open { Some(limits) } else { None };
     }

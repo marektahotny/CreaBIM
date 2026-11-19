@@ -16,6 +16,7 @@ impl CreaBimApp {
         if self.cooling.is_none() {
             self.cooling = Some(Settings::default());
         }
+        self.results_due = Some("cooling");
         true
     }
 
@@ -33,6 +34,7 @@ impl CreaBimApp {
         let b = coolingload::building(self.doc.model(), &o, &s);
         let months = creabim_core::fireparams::summer_max(&self.climate_tables());
         let mut load = false;
+        let mut write_now = self.results_due.take_if(|c| *c == "cooling").is_some();
         let mut open = true;
         let mut select = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
@@ -43,6 +45,9 @@ impl CreaBimApp {
             .default_size(Vec2::new(680.0, 520.0))
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui) {
+                    write_now = true;
+                }
                 ui.horizontal_wrapped(|ui| {
                     ui.label(t("Outside in summer"));
                     ui.add(
@@ -187,6 +192,9 @@ impl CreaBimApp {
             });
         if let Some(id) = select {
             self.selection.only(id);
+        }
+        if write_now {
+            self.write_results_said(creabim_services::calcresults::cooling(&b));
         }
         self.cooling = if open { Some(s) } else { None };
         if load {

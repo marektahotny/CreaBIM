@@ -37,6 +37,8 @@ mod assemblies;
 pub(crate) mod autosave;
 #[path = "autovalvesui.rs"]
 mod autovalvesui;
+#[path = "calcresultsui.rs"]
+mod calcresultsui;
 #[path = "circuitsui.rs"]
 mod circuitsui;
 #[path = "circuitui.rs"]
@@ -419,6 +421,9 @@ pub struct CreaBimApp {
     cooling: Option<creabim_services::coolingload::Settings>,
     /// The air balance window is open.
     air_balance: bool,
+    /// The calculation whose window, just opened, writes its results to
+    /// the model when it is next drawn.
+    results_due: Option<&'static str>,
     /// The duct sizing window's velocities, while it is open.
     ducts: Option<creabim_services::ductsizing::Limits>,
     /// The circuit check window, while it is open.
@@ -633,6 +638,7 @@ impl CreaBimApp {
             radiators: None,
             cooling: None,
             air_balance: false,
+            results_due: None,
             ducts: None,
             circuit: None,
             herzdp: None,
@@ -10990,6 +10996,16 @@ crate::props::row(ui, "File names", |ui| {
                         self.marks.open = true;
                     }
                 }
+                ElementKind::Results(r) => {
+                    for set in &r.sets {
+                        ui.label(format!(
+                            "{} · {}: {}",
+                            set.title,
+                            set.at,
+                            set.elements.len()
+                        ));
+                    }
+                }
                 ElementKind::StylePack(p) => {
                     ui.label(egui::RichText::new(p.description.clone()).weak());
                     if ui.button(crate::i18n::t("Graphic styles…")).clicked() {
@@ -11456,6 +11472,25 @@ crate::props::row(ui, "File names", |ui| {
         if let Some(msg) = crate::annotate::style_inline(ui, &mut self.doc, &edited.kind, new_style)
         {
             self.status = msg;
+        }
+        // what the calculations wrote on it: a room's heat loss, a pipe's
+        // flow and pressure loss... (read only; they go to IFC with it)
+        let found = calcresultsui::of_element(self.doc.model(), id);
+        if !found.is_empty() && self.prop_header(ui, "results", "Calculation results", true, None) {
+            for (i, (title, rows)) in found.iter().enumerate() {
+                ui.label(egui::RichText::new(title).strong());
+                egui::Grid::new(("calc.results", i))
+                    .num_columns(2)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for (k, v) in rows {
+                            ui.label(k);
+                            ui.label(v);
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(4.0);
+            }
         }
         // a mass's face tools in a section of their own (MU39: the element
         // section had grown dense)
@@ -13403,6 +13438,7 @@ pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::Reference(_) => "reference",
         ElementKind::PaperMark(_) => "paper mark",
         ElementKind::MarkRules(_) => "mark numbering",
+        ElementKind::Results(_) => "calculation results",
         ElementKind::StylePack(_) => "style pack",
         ElementKind::View(_) => "view",
         ElementKind::Sheet(_) => "sheet",

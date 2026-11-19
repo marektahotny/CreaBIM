@@ -967,6 +967,7 @@ version = "0.1.0"
 dependencies = [
  "creabim-core",
  "creabim-geom",
+ "creabim-services",
  "glam",
  "indexmap",
  "serde_json",
