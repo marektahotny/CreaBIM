@@ -9,6 +9,7 @@ use super::Tool;
 use creabim_core::catalogue::soakaway::{
     self, critical, emptying_hours, Block, Filter, Rain, SoakawayConfig, BLOCK,
 };
+use creabim_core::fireparams;
 use eframe::egui::{self, Vec2};
 
 /// The window's state: the soakaway and what sizes it.
@@ -27,6 +28,9 @@ pub struct SoakawayDraft {
     /// The rain series for the chosen return period: duration, min, and
     /// intensity, l/(s·ha).
     pub rains: Vec<Rain>,
+    /// The rain gauge station and periodicity the series was taken from.
+    pub station: String,
+    pub n: f64,
 }
 
 impl Default for SoakawayDraft {
@@ -49,8 +53,20 @@ impl Default for SoakawayDraft {
                 intensity: 0.0,
             })
             .collect(),
+            station: String::new(),
+            n: 0.2,
         }
     }
+}
+
+/// How a periodicity reads: "5-year rain (n = 0,2)".
+fn periodicity(n: f64) -> String {
+    let years = (1.0 / n).round();
+    format!(
+        "{years:.0}-{} (n = {})",
+        crate::i18n::tr("year rain"),
+        format!("{n}").replace('.', ",")
+    )
 }
 
 impl SoakawayDraft {
@@ -72,11 +88,31 @@ impl CreaBimApp {
         true
     }
 
+    /// The rain gauge stations: the project's table, else the one read
+    /// last with the localities.
+    fn rain_stations(&self) -> Vec<fireparams::RainStation> {
+        let own = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| fireparams::rain_stations(&p.fire_params))
+            .unwrap_or_default();
+        if !own.is_empty() {
+            return own;
+        }
+        crate::files::settings_dir()
+            .and_then(|d| std::fs::read_to_string(d.join("lokality.tsv")).ok())
+            .map(|t| fireparams::rain_stations(&fireparams::parse(&t)))
+            .unwrap_or_default()
+    }
+
     /// The window, while it is open.
     pub(super) fn soakaway_window(&mut self, ctx: &egui::Context) {
         let Some(mut d) = self.soakaway.clone() else {
             return;
         };
+        let stations = self.rain_stations();
+        let mut load = false;
         let t = crate::i18n::tr;
         let mut open = true;
         let mut place = false;
@@ -127,6 +163,55 @@ impl CreaBimApp {
                     ui.add_space(6.0);
                     ui.strong(t("Rain series for the return period (5 years usually)"));
                     ui.weak(t("Intensities in l/(s·ha) for the place, from the SHMÚ rain series or the maker's program: the critical rain is the one that needs the longest trench."));
+                    let before = (d.station.clone(), d.n);
+                    if stations.is_empty() {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.weak(t("No rain gauge stations yet: read the table of localities with the table rain_intensity."));
+                            if ui.button(t("Read the table…")).clicked() {
+                                load = true;
+                            }
+                        });
+                    } else {
+                        ui.horizontal(|ui| {
+                            ui.label(t("Rain gauge station"));
+                            egui::ComboBox::from_id_salt("site.soak.station")
+                                .selected_text(if d.station.is_empty() { t("by hand") } else { d.station.clone() })
+                                .height(400.0)
+                                .show_ui(ui, |ui| {
+                                    for s in &stations {
+                                        ui.selectable_value(&mut d.station, s.name.clone(), &s.name);
+                                    }
+                                });
+                            let ns: Vec<f64> = stations
+                                .iter()
+                                .find(|s| s.name == d.station)
+                                .or(stations.first())
+                                .map(|s| s.series.iter().map(|(n, _)| *n).collect())
+                                .unwrap_or_default();
+                            egui::ComboBox::from_id_salt("site.soak.n")
+                                .selected_text(periodicity(d.n))
+                                .show_ui(ui, |ui| {
+                                    for n in ns {
+                                        ui.selectable_value(&mut d.n, n, periodicity(n));
+                                    }
+                                });
+                        });
+                    }
+                    if (d.station.clone(), d.n) != before {
+                        if let Some(series) = stations
+                            .iter()
+                            .find(|s| s.name == d.station)
+                            .and_then(|s| s.series_for(d.n))
+                        {
+                            d.rains = series
+                                .iter()
+                                .map(|(m, i)| Rain {
+                                    minutes: *m,
+                                    intensity: *i,
+                                })
+                                .collect();
+                        }
+                    }
                     egui::Grid::new("site.soak.rain").num_columns(4).spacing([12.0, 2.0]).show(ui, |ui| {
                         for (i, r) in d.rains.iter_mut().enumerate() {
                             ui.label(format!("{:.0} min", r.minutes));
@@ -249,5 +334,8 @@ impl CreaBimApp {
             self.plan.tool = Tool::Object;
         }
         self.soakaway = if open { Some(d) } else { None };
+        if load {
+            self.load_climate_sites();
+        }
     }
 }

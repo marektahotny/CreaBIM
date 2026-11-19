@@ -48,8 +48,66 @@ pub const SUMMER_MAX: &str = "summer_max";
 /// from, to (an empty bound is open).
 pub const N50_RANGES: &str = "n50_ranges";
 
+/// The rain intensities of the rain gauge stations for soakaways:
+/// station, n (the periodicity, 1/years), then l/(s·ha) for each duration
+/// in minutes named by the column (the designer's table, SHMÚ series).
+pub const RAIN_INTENSITY: &str = "rain_intensity";
+
 /// The tables the climate file carries.
-pub const CLIMATE_TABLES: [&str; 3] = [CLIMATE_SITES, SUMMER_MAX, N50_RANGES];
+pub const CLIMATE_TABLES: [&str; 4] = [CLIMATE_SITES, SUMMER_MAX, N50_RANGES, RAIN_INTENSITY];
+
+/// A rain gauge station's rain series.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RainStation {
+    pub name: String,
+    /// Per periodicity n: (minutes, l/(s·ha)) for each duration.
+    pub series: Vec<(f64, Vec<(f64, f64)>)>,
+}
+
+impl RainStation {
+    /// The series of periodicity `n`.
+    pub fn series_for(&self, n: f64) -> Option<&Vec<(f64, f64)>> {
+        self.series
+            .iter()
+            .find(|(m, _)| (m - n).abs() < 1e-6)
+            .map(|(_, s)| s)
+    }
+}
+
+/// The rain gauge stations among `tables`, in the table's order.
+pub fn rain_stations(tables: &[ParamTable]) -> Vec<RainStation> {
+    let Some(t) = tables.iter().find(|t| t.id == RAIN_INTENSITY) else {
+        return vec![];
+    };
+    let durations: Vec<(usize, f64)> = t
+        .columns
+        .iter()
+        .enumerate()
+        .skip(2)
+        .filter_map(|(i, c)| Some((i, number(c)?)))
+        .collect();
+    let mut out: Vec<RainStation> = vec![];
+    for r in &t.rows {
+        let (Some(name), Some(n)) = (r.first(), r.get(1).and_then(|x| number(x))) else {
+            continue;
+        };
+        if name.is_empty() {
+            continue;
+        }
+        let series: Vec<(f64, f64)> = durations
+            .iter()
+            .filter_map(|(i, m)| Some((*m, number(r.get(*i)?)?)))
+            .collect();
+        match out.iter_mut().find(|s| &s.name == name) {
+            Some(s) => s.series.push((n, series)),
+            None => out.push(RainStation {
+                name: name.clone(),
+                series: vec![(n, series)],
+            }),
+        }
+    }
+    out
+}
 
 /// A range of air changes at 50 Pa.
 #[derive(Clone, Debug, PartialEq)]
@@ -427,6 +485,18 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn rain_stations_group_their_series() {
+        let text = "#table rain_intensity\n#columns station\tn\t5\t180\nPiešťany\t1\t253\t20\nPiešťany\t0.2\t359\t31\nŽilina\t0.2\t300\t30\n";
+        let st = rain_stations(&parse(text));
+        assert_eq!(st.len(), 2);
+        assert_eq!(
+            st[0].series_for(0.2).unwrap(),
+            &vec![(5.0, 359.0), (180.0, 31.0)]
+        );
+        assert!(st[1].series_for(1.0).is_none());
+    }
 
     const FILE: &str = "remark before any table\n#table occupancy\n#norm N 1\n#edition 2012\n# a remark\n#columns item\tname\tarea\tfactor\n1\tOffices\t10,0\t\n2\tHall\t0-100 m2: 0,8; nad 100 m2: 1,2\n";
 
