@@ -807,7 +807,7 @@ impl CreaBimApp {
             Item::new("new.project", "New project…")
                 .key("Ctrl+N")
                 .icon("file-plus")
-                .hint("Start empty or from the starter house, or open a sample made for learning"),
+                .hint("Start empty, reopen a recent project, or open a sample made for learning"),
             Item::new("new.sheet", "New sheet").icon("file-text"),
             Item::sub("New schedule", schedule_items()).icon("table-2"),
             Item::Separator,
@@ -1680,45 +1680,7 @@ impl CreaBimApp {
                 self.load_model(creabim_core::sample::sample_with_buried_beam().0);
                 self.status = "Loaded the sample house with a beam inside its south wall. Hover it in Section A and press Tab to reach the beam.".into();
             }
-            "new.empty" => {
-                // two levels, in the units in use
-                let units = self.doc.model().units();
-                let mut m = Document::new();
-                let mut tx = Transaction::new("New project");
-                for (name, z) in [("Level 0", 0.0), ("Level 1", 3.0)] {
-                    // named as the language counts storeys (1. NP, 2. NP)
-                    let storey = creabim_core::words::tr("Storey {}");
-                    let name = if storey == "Storey {}" {
-                        name.to_string()
-                    } else {
-                        storey.replace("{}", if z > 0.0 { "2" } else { "1" })
-                    };
-                    tx = tx.insert(Element::new(
-                        name,
-                        ElementKind::Level(creabim_core::Level {
-                            elevation: z,
-                            height: 3.0,
-                        }),
-                    ));
-                }
-                let _ = m.commit(tx);
-                let tx = creabim_core::units::set_units(m.model(), units);
-                let _ = m.commit(tx);
-                // the usual materials and build-ups of walls, floors and
-                // roofs, with a type of each to draw with
-                let tx = creabim_core::skbase::add_base(m.model());
-                let _ = m.commit(tx);
-                // the frame of the drawing set: plans, sections,
-                // elevations, lists and their sheets, to be filled in
-                let mut model = super::with_plan_views(m.model().clone());
-                if let Some((tx, _)) = creabim_geom::docset::skeleton(&model) {
-                    let _ = tx.apply(&mut model);
-                }
-                self.load_model(model);
-                self.path = new_path("Untitled");
-                self.status =
-                    "New project with two levels, the usual materials and build-ups and the frame of the drawing set. Pick the Wall tool to start drawing.".into();
-            }
+            "new.empty" => self.new_empty_project(),
             "new.project" => self.open_new_project(ctx),
             "new.sheet" => self.new_sheet(),
             "levels" => self.open_levels(),
@@ -4208,6 +4170,7 @@ impl CreaBimApp {
 
     /// The New project window, in the middle of the window.
     pub(super) fn open_new_project(&mut self, ctx: &egui::Context) {
+        self.read_recent_cards();
         if self.shell.web.is_none() {
             // the classic panels keep the File menu's list
             self.new_project_classic = true;
@@ -4233,7 +4196,13 @@ impl CreaBimApp {
         let card = |s: &crate::app::appmenu::Start| json!({"id": s.id, "title": s.title, "line": s.line, "icon": s.icon});
         json!({
             "title": "New project",
-            "starts": crate::app::appmenu::STARTS.iter().map(card).collect::<Vec<_>>(),
+            "starts": crate::app::appmenu::STARTS
+                .iter()
+                .map(card)
+                .chain(self.recent_cards.iter().map(|(id, title, line)| {
+                    json!({"id": id, "title": title, "line": line, "icon": "folder"})
+                }))
+                .collect::<Vec<_>>(),
             "samples_title": "Samples to learn from · each shows one thing",
             "samples": crate::app::appmenu::SAMPLES.iter().map(card).collect::<Vec<_>>(),
             "note": "A sample opens as a new, unsaved project, so the original is never changed.",
@@ -5085,6 +5054,86 @@ fn align_item() -> Item {
     Item::new("align", "Align to a reference…")
         .icon("align-tool")
         .hint("Pick a reference line (a wall face, an edge, a guide or a grid line), then an edge to bring flush with it")
+}
+
+impl CreaBimApp {
+    /// A new project: two levels, the usual materials and build-ups and
+    /// the frame of the drawing set. The app starts with one.
+    pub(crate) fn new_empty_project(&mut self) {
+        // two levels, in the units in use
+        let units = self.doc.model().units();
+        let mut m = Document::new();
+        let mut tx = Transaction::new("New project");
+        for (name, z) in [("Level 0", 0.0), ("Level 1", 3.0)] {
+            // named as the language counts storeys (1. NP, 2. NP)
+            let storey = creabim_core::words::tr("Storey {}");
+            let name = if storey == "Storey {}" {
+                name.to_string()
+            } else {
+                storey.replace("{}", if z > 0.0 { "2" } else { "1" })
+            };
+            tx = tx.insert(Element::new(
+                name,
+                ElementKind::Level(creabim_core::Level {
+                    elevation: z,
+                    height: 3.0,
+                }),
+            ));
+        }
+        let _ = m.commit(tx);
+        let tx = creabim_core::units::set_units(m.model(), units);
+        let _ = m.commit(tx);
+        // the usual materials and build-ups of walls, floors and
+        // roofs, with a type of each to draw with
+        let tx = creabim_core::skbase::add_base(m.model());
+        let _ = m.commit(tx);
+        // the frame of the drawing set: plans, sections,
+        // elevations, lists and their sheets, to be filled in
+        let mut model = super::with_plan_views(m.model().clone());
+        if let Some((tx, _)) = creabim_geom::docset::skeleton(&model) {
+            let _ = tx.apply(&mut model);
+        }
+        self.load_model(model);
+        self.path = new_path("Untitled");
+        self.status =
+            "New project with two levels, the usual materials and build-ups and the frame of the drawing set. Pick the Wall tool to start drawing.".into();
+    }
+
+    /// The recent projects New project offers, up to four that still
+    /// exist: each with its file's name and its project information.
+    fn read_recent_cards(&mut self) {
+        let tr = crate::i18n::tr;
+        self.recent_cards = self
+            .recent
+            .files
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| std::path::Path::new(f).is_file())
+            .take(4)
+            .map(|(i, f)| {
+                let info = creabim_store::read_project_info(f)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+                let mut parts = vec![];
+                for (label, v) in [
+                    ("Name", &info.name),
+                    ("Number", &info.number),
+                    ("Client", &info.client),
+                ] {
+                    if !v.trim().is_empty() {
+                        parts.push(format!("{}: {}", tr(label), v.trim()));
+                    }
+                }
+                let line = if parts.is_empty() {
+                    f.clone()
+                } else {
+                    parts.join(" · ")
+                };
+                (format!("recent:{i}"), super::file_label(f), line)
+            })
+            .collect();
+    }
 }
 
 #[cfg(test)]

@@ -464,3 +464,25 @@ fn an_autosave_newer_than_its_project_is_found() {
     save(&auto, &doc).unwrap();
     assert_eq!(creabim_store::newer_autosave(&path), Some(auto));
 }
+
+#[test]
+fn the_project_information_reads_without_the_model() {
+    let (_dir, path) = tmp();
+    let mut doc = Document::from_model(sample_house());
+    save(&path, &doc).unwrap();
+    assert!(creabim_store::read_project_info(&path).unwrap().is_none());
+    let info = creabim_core::ProjectInfo {
+        name: "Rodinný dom".into(),
+        number: "24-017".into(),
+        client: "Ján Novák".into(),
+        ..Default::default()
+    };
+    let tx = creabim_core::set_project(doc.model(), info.clone());
+    doc.commit(tx).unwrap();
+    save(&path, &doc).unwrap();
+    let read = creabim_store::read_project_info(&path).unwrap().unwrap();
+    assert_eq!(
+        (read.name, read.number, read.client),
+        (info.name, info.number, info.client)
+    );
+}

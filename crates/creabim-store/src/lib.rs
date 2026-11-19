@@ -168,6 +168,27 @@ pub fn load(path: impl AsRef<Path>) -> Result<Document> {
     }
 }
 
+/// The project information of a project file (name, job number, client),
+/// read without opening the whole model: for the list of recent projects.
+pub fn read_project_info(path: impl AsRef<Path>) -> Result<Option<creabim_core::ProjectInfo>> {
+    let conn = schema::open_existing(path.as_ref())?;
+    let data: Option<String> = conn
+        .query_row(
+            "SELECT data FROM elements WHERE kind = 'Project information' LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(data) = data else {
+        return Ok(None);
+    };
+    let e: creabim_core::Element = from_json(&data)?;
+    Ok(match e.kind {
+        creabim_core::ElementKind::Project(p) => Some(p),
+        _ => None,
+    })
+}
+
 /// Read the `meta` table of a project file.
 pub fn read_meta(path: impl AsRef<Path>) -> Result<Meta> {
     read_meta_from(&schema::open_existing(path.as_ref())?)

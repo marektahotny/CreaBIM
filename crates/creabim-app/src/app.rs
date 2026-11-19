@@ -455,6 +455,9 @@ pub struct CreaBimApp {
     ifc_dialog: bool,
     /// The New project window, with the classic panels.
     new_project_classic: bool,
+    /// The recent projects New project offers (action, file, its
+    /// project information), read when the window opens.
+    recent_cards: Vec<(String, String, String)>,
 }
 
 /// A pointer moving over the drawing area this recently (seconds) can't be
@@ -511,10 +514,8 @@ impl CreaBimApp {
             app.areas.root = root;
         }
         app.shell.settings = settings;
-        app.load_model(crate::planview::with_opening_tags(
-            creabim_core::starter::starter_house(),
-        ));
-        app.status = STARTER_LOADED.into();
+        // a new, empty project: the recent ones are in New project
+        app.new_empty_project();
         // `creabim-app house.creabim` opens that file instead
         if let Some(path) = launch_file(std::env::args().skip(1)) {
             app.open_path(&path);
@@ -651,6 +652,7 @@ impl CreaBimApp {
             project_draft: None,
             ifc_dialog: false,
             new_project_classic: false,
+            recent_cards: Vec::new(),
             marks: Default::default(),
             gstyles: Default::default(),
             level_copy: Default::default(),

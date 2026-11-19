@@ -339,21 +339,14 @@ pub(crate) struct Start {
     pub icon: &'static str,
 }
 
-/// The two large choices at the top of New project.
-pub(crate) const STARTS: [Start; 2] = [
-    Start {
-        id: "new.empty",
-        title: "Empty project",
-        line: "Two levels and nothing else, in your units. The everyday start.",
-        icon: "file-plus",
-    },
-    Start {
-        id: "new.sample",
-        title: "Starter house",
-        line: "A complete two-storey house with drawings and sheets, ready to change.",
-        icon: "house",
-    },
-];
+/// The large choice at the top of New project; the recent projects
+/// follow it.
+pub(crate) const STARTS: [Start; 1] = [Start {
+    id: "new.empty",
+    title: "Empty project",
+    line: "Two levels and nothing else, in your units. The everyday start.",
+    icon: "file-plus",
+}];
 
 /// The samples to learn from, each showing one thing.
 pub(crate) const SAMPLES: [Start; 6] = [
@@ -1026,7 +1019,16 @@ impl CreaBimApp {
                         .on_hover_text(crate::i18n::tr(s.line))
                         .clicked()
                     {
-                        pick = Some(s.id);
+                        pick = Some(s.id.to_string());
+                    }
+                }
+                for (id, title, line) in &self.recent_cards {
+                    if ui
+                        .button(egui::RichText::new(title).strong())
+                        .on_hover_text(line)
+                        .clicked()
+                    {
+                        pick = Some(id.clone());
                     }
                 }
                 crate::props::section(ui, "Samples to learn from");
@@ -1036,13 +1038,13 @@ impl CreaBimApp {
                         .on_hover_text(crate::i18n::tr(s.line))
                         .clicked()
                     {
-                        pick = Some(s.id);
+                        pick = Some(s.id.to_string());
                     }
                 }
             });
         self.new_project_classic = open && pick.is_none();
         if let Some(id) = pick {
-            self.run_action(ctx, id);
+            self.run_action(ctx, &id);
         }
     }
 }
