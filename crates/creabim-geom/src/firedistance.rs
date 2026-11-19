@@ -497,8 +497,8 @@ impl Ctx<'_> {
             .collect();
         // 4.1.4: a roof is fire-open where the designer says so, or
         // where its covering falls short of the fire resistance table 5
-        // of STN 92 0201-2 asks for the zone's grade (its note 4)), a
-        // resistance not stated counting as not shown
+        // of STN 92 0201-2 asks for the zone's grade (its note 4)); one
+        // not stated as the designer says (`roof_unstated`)
         let zone_pv = self
             .loads
             .zones
@@ -512,7 +512,8 @@ impl Ctx<'_> {
         let open = |id: ElementId| {
             reader.roof_open
                 || required.is_some_and(|need| {
-                    crate::firegrade::roof_declared(model, id).is_none_or(|has| has < need)
+                    crate::firegrade::roof_declared(model, id)
+                        .map_or(reader.roof_unstated_open, |has| has < need)
                 })
         };
         for r in self.roofs {
@@ -854,6 +855,9 @@ struct Reader<'a> {
     /// judgement), the pitch over which a roof is seen square onto the
     /// face, its least height there, how far out its eave may reach.
     roof_open: bool,
+    /// A roof whose assembly states no fire resistance: fire-open (not
+    /// shown) unless the designer takes it as meeting the requirement.
+    roof_unstated_open: bool,
     roof_steep: f64,
     hu_roof: f64,
     roof_reach: f64,
@@ -894,6 +898,7 @@ impl<'a> Reader<'a> {
                 .filter(|x| !x.is_empty())
                 .collect(),
             roof_open: value(t, "roof_open").is_some_and(|v| v > 0.5),
+            roof_unstated_open: value(t, "roof_unstated").is_none_or(|v| v > 0.5),
             roof_steep: value(t, "roof_steep").unwrap_or(15.0),
             hu_roof: value(t, "hu_roof").unwrap_or(2.0),
             roof_reach: value(t, "roof_reach").unwrap_or(1.5),
