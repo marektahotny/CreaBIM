@@ -117,6 +117,7 @@ fn nodes(model: &Model) -> BTreeMap<[i64; 3], (DVec3, Vec<End<'_>>)> {
         })
         .collect();
     pipes.sort_by_key(|(id, _)| *id);
+    let pipes_all = pipes.clone();
     for (id, pipe) in pipes {
         let (a, b) = ends(model, pipe);
         let len = a.distance(b);
@@ -133,6 +134,33 @@ fn nodes(model: &Model) -> BTreeMap<[i64; 3], (DVec3, Vec<End<'_>>)> {
                     dir: (far - node) / len,
                     len,
                 });
+        }
+    }
+    // a pipe running on through a node, not split there (a branch joined
+    // to its middle): both its arms meet the branch
+    for (id, pipe) in &pipes_all {
+        let (a, b) = ends(model, pipe);
+        let len = a.distance(b);
+        if len < 0.02 {
+            continue;
+        }
+        let dir = (b - a) / len;
+        for (node, list) in at.values_mut() {
+            if list.iter().any(|x| x.id == *id) {
+                continue;
+            }
+            let s = (*node - a).dot(dir);
+            if s < 0.01 || s > len - 0.01 || (a + dir * s).distance(*node) > 0.003 {
+                continue;
+            }
+            for (d, l) in [(dir, len - s), (-dir, s)] {
+                list.push(End {
+                    id: *id,
+                    pipe,
+                    dir: d,
+                    len: l,
+                });
+            }
         }
     }
     at
@@ -644,6 +672,18 @@ mod tests {
         // counted for the schedule
         let s = summary(&f);
         assert_eq!((s.len(), s[0].count), (1, 1));
+    }
+
+    #[test]
+    fn a_branch_joined_to_the_middle_of_a_pipe_is_a_branch_too() {
+        let m = model(&[
+            ("K", "PPHT", 100.0, [0.0, 0.0, 0.0], [4.0, 0.0, 0.0]),
+            ("K", "PPHT", 50.0, [2.0, 0.0, 0.0], [3.0, 1.0, 0.0]),
+        ]);
+        let f = derive(&m);
+        assert_eq!(f.len(), 1);
+        assert_eq!((f[0].kind, f[0].angle), (FittingKind::Branch, Some(45.0)));
+        assert_eq!(f[0].pipes.len(), 3, "the main counted on both sides");
     }
 
     #[test]

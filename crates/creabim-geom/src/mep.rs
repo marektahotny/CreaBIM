@@ -224,6 +224,37 @@ pub(crate) fn ball(m: &mut TriMesh, c: DVec3, r: f64) {
     }
 }
 
+/// The socket of a fitting on a round pipe's end, as it is drawn: its
+/// radius and its length along the pipe, m. A drain's socket (hrdlo) is
+/// a little wider than the pipe and about half its diameter deep; a
+/// press or welded water fitting's sleeve wider and shorter. None on an
+/// insulated pipe, whose insulation hides it.
+pub fn socket(p: &Pipe) -> Option<(f64, f64)> {
+    if p.height_mm.is_some() || p.insulation_mm > 0.0 {
+        return None;
+    }
+    let d = p.outer_mm;
+    let drain = creabim_services::pipe_types::by_id(&p.pipe_type).map_or_else(
+        || p.system == "K" || p.system.starts_with('K'),
+        |t| {
+            t.media
+                .contains(&creabim_services::pipe_types::Medium::Kanal)
+        },
+    );
+    let (r, l) = if drain {
+        (d * 0.56 + 3.0, d * 0.5 + 15.0)
+    } else {
+        (d * 0.68 + 2.0, d * 0.8 + 10.0)
+    };
+    Some((r / 1000.0, l / 1000.0))
+}
+
+/// Does this end of the pipe sit in a fitting (an elbow, a tee, a
+/// branch, a cross)?
+fn fitted(j: &Joint) -> bool {
+    matches!(j, Joint::Elbow { .. } | Joint::Node { .. })
+}
+
 /// How long a reducer from `big` to `small` (outside diameters, mm) is
 /// drawn, m.
 fn taper_len(big: f64, small: f64) -> f64 {
@@ -271,9 +302,23 @@ pub fn pipe_mesh(model: &Model, p: &Pipe) -> TriMesh {
                     }
                 }
                 Joint::Elbow { owner: true, .. } | Joint::Node { owner: true } => {
-                    ball(&mut m, node, r)
+                    ball(&mut m, node, socket(p).map_or(r, |s| s.0))
                 }
                 _ => {}
+            }
+        }
+        // the fitting's socket on each fitted end, stepping down to the
+        // pipe where it ends
+        if let Some((rs, ls)) = socket(p) {
+            let along = (b - a).normalize_or_zero();
+            let ls = ls.min(a.distance(b) / 2.0);
+            for (i, j) in js.iter().enumerate() {
+                if !fitted(j) || red[i].is_some() {
+                    continue;
+                }
+                let (node, out) = if i == 0 { (a, along) } else { (b, -along) };
+                let tip = node + out * ls;
+                taper(&mut m, &[(node, rs), (tip, rs), (tip + out * 1e-4, r)]);
             }
         }
     }
@@ -823,6 +868,30 @@ pub fn pipe_plan(model: &Model, e: &Element, p: &Pipe, cut: f64) -> Vec<PlanItem
         line(&mut items, node + nb, tip + n);
         line(&mut items, node - nb, node + nb);
     }
+    // the fitting's socket on each fitted end: a band a little wider
+    // than the pipe, in a darker wash
+    if let Some((rs, ls)) = socket(p) {
+        let ls = ls.min(run.length() / 2.0);
+        let ns = d.perp() * rs;
+        let c = color(p);
+        let dark = [c[0] * 0.7, c[1] * 0.7, c[2] * 0.7];
+        for (i, j) in js.iter().enumerate() {
+            if !fitted(j) || red[i].is_some() {
+                continue;
+            }
+            let (node, into) = if i == 0 { (a2, d) } else { (b2, -d) };
+            let tip = node + into * ls;
+            let pts = vec![node - ns, tip - ns, tip + ns, node + ns];
+            items.push(PlanItem::Shade {
+                id: e.id,
+                points: pts.clone(),
+                rgb: dark,
+            });
+            line(&mut items, pts[0], pts[1]);
+            line(&mut items, pts[1], pts[2]);
+            line(&mut items, pts[2], pts[3]);
+        }
+    }
     let [[ar, al], [br, bl]] = corners;
     items.push(PlanItem::Shade {
         id: e.id,
@@ -1321,8 +1390,9 @@ mod tests {
         // closed at its free start only; at the corner the outer side
         // runs on by half the width and the inner stops as short
         let l = lines(&pipe_plan(&m, &e, p, 1.2));
-        assert_eq!(l.len(), 3);
-        let ends: Vec<DVec2> = l.iter().take(2).map(|(_, b)| *b).collect();
+        // the elbow's socket on the fitted end, three lines, first
+        assert_eq!(l.len(), 6);
+        let ends: Vec<DVec2> = l.iter().skip(3).take(2).map(|(_, b)| *b).collect();
         assert!(
             (ends[0] - DVec2::new(2.01, -0.01)).length() < 1e-9,
             "{ends:?}"
@@ -1397,8 +1467,8 @@ mod tests {
             .apply(&mut m)
             .unwrap();
         assert!(matches!(joints(&m, p)[1], Joint::Node { .. }));
-        // two sides and the cap of the free start
-        assert_eq!(lines(&pipe_plan(&m, &e, p, 1.2)).len(), 3);
+        // the tee's socket, two sides and the cap of the free start
+        assert_eq!(lines(&pipe_plan(&m, &e, p, 1.2)).len(), 6);
     }
 
     #[test]

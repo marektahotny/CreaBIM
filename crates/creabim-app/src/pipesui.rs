@@ -763,6 +763,68 @@ pub fn pipe_node_at(
     best.map(|b| b.2)
 }
 
+/// Splits the pipe of `level` whose axis passes through `at` (not at its
+/// ends) into two there, so that a run joined to its middle meets it at
+/// a node and the tee or branch is found and drawn. Valves keep their
+/// place, on whichever part they fall.
+pub fn split_at(
+    model: &creabim_core::Model,
+    mut tx: Transaction,
+    level: ElementId,
+    at: DVec3,
+) -> Transaction {
+    for e in model.iter() {
+        let ElementKind::Pipe(q) = &e.kind else {
+            continue;
+        };
+        if q.level != level {
+            continue;
+        }
+        let run = q.end - q.start;
+        let len2 = run.length_squared();
+        if len2 < 1e-9 {
+            continue;
+        }
+        let s = (at - q.start).dot(run) / len2;
+        let len = len2.sqrt();
+        // well inside it: not within 1 cm of an end
+        if s * len < 0.01 || (1.0 - s) * len < 0.01 {
+            continue;
+        }
+        if (q.start + run * s).distance(at) > 0.003 {
+            continue;
+        }
+        let mut first = e.clone();
+        let mut second = Element::new(e.name.clone(), ElementKind::Pipe(q.clone()));
+        if let (ElementKind::Pipe(a), ElementKind::Pipe(b)) = (&mut first.kind, &mut second.kind) {
+            a.end = at;
+            b.start = at;
+        }
+        let second_id = second.id;
+        tx = tx.replace(e.clone(), first).insert(second);
+        for v in model.iter() {
+            let ElementKind::Valve(x) = &v.kind else {
+                continue;
+            };
+            if x.pipe != e.id {
+                continue;
+            }
+            let mut n = v.clone();
+            if let ElementKind::Valve(y) = &mut n.kind {
+                if x.t <= s {
+                    y.t = x.t / s;
+                } else {
+                    y.pipe = second_id;
+                    y.t = (x.t - s) / (1.0 - s);
+                }
+            }
+            tx = tx.replace(v.clone(), n);
+        }
+        return tx;
+    }
+    tx
+}
+
 fn insert(tx: Transaction, pipe: Pipe) -> (Transaction, ElementId) {
     let name = format!("{} {}", pipe.system, size_label(&pipe));
     let e = Element::new(name, ElementKind::Pipe(pipe));
@@ -851,6 +913,12 @@ pub fn click(
             });
             let b = join.map_or(p, |at| at.truncate());
             let pipe = draft.pipe(level, a, b);
+            // started or ended on the middle of a pipe: that pipe is
+            // split there, so the branch meets it at a fitting
+            tx = split_at(doc.model(), tx, level, pipe.start);
+            if let Some(at) = join {
+                tx = split_at(doc.model(), tx, level, at);
+            }
             let end = pipe.end;
             let (t, id) = insert(tx, pipe);
             tx = t;
@@ -1264,7 +1332,11 @@ mod tool_tests {
             &mut sel,
         )
         .unwrap();
-        assert_eq!(doc.model().len(), before + 2, "the pipe and its rise");
+        assert_eq!(
+            doc.model().len(),
+            before + 3,
+            "the pipe, its rise and the high pipe split where it joins"
+        );
         assert!(state.pending.is_none());
         let rise = doc
             .model()
