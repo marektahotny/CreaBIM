@@ -865,3 +865,40 @@ fn a_typed_dimension_to_a_pipe_moves_the_pipe() {
     assert!(bs.distance(to + d * 1.0) < 1e-6, "{bs:?}");
     assert!(be.distance(at + d * 1.0 + n * 1.0) < 1e-6);
 }
+
+/// A dimension in a section from a level to a footing's top stays on the
+/// footing when it is set deeper, and typing it sets the footing's depth.
+#[test]
+fn a_section_dimension_holds_and_drives_a_footing() {
+    use creabim_core::footing::Footing;
+    use creabim_core::{Dimension, Transaction};
+    use creabim_geom::annotate::{attach, driven, resolve};
+    let mut doc = Document::from_model(sample::sample_house());
+    let level = doc.model().levels().next().map(|(e, _)| e.id).unwrap();
+    let z0 = doc.model().level(level).unwrap().elevation;
+    let mut f = Footing::strip(level, DVec2::new(0.0, 5.0), DVec2::new(4.0, 5.0));
+    f.below = 0.5;
+    let fe = Element::new("Footing", ElementKind::Footing(f));
+    let fid = fe.id;
+    let v = View::section(DVec2::new(2.0, 0.0), DVec2::new(2.0, 10.0), 20.0, true);
+    let ve = Element::new("Section", ElementKind::View(v.clone()));
+    let vid = ve.id;
+    doc.commit(Transaction::new("f").insert(fe).insert(ve)).unwrap();
+    // the footing's top, where the section crosses it, and the level above
+    let top = DVec2::new(5.0, z0 - 0.5);
+    let a = attach(doc.model(), &v, Some(level), DVec2::new(5.0, z0));
+    let b = attach(doc.model(), &v, Some(fid), top);
+    assert_eq!(b.host, Some(fid));
+    assert!(resolve(doc.model(), &v, &b).unwrap().distance(top) < 1e-9);
+    let dim = Dimension::linear(vid, a, b, 0.5);
+    // typed: 800 from the level, so the footing goes 300 deeper
+    let tx = driven(doc.model(), &v, &dim, 0, 0.8, &[]).unwrap();
+    doc.commit(tx).unwrap();
+    let ElementKind::Footing(after) = &doc.model().get(fid).unwrap().kind else {
+        unreachable!()
+    };
+    assert!((after.below - 0.8).abs() < 1e-9, "{}", after.below);
+    // and the dimension's end went down with it
+    let q = resolve(doc.model(), &v, &dim.b).unwrap();
+    assert!((q.y - (z0 - 0.8)).abs() < 1e-9, "{q:?}");
+}

@@ -119,8 +119,28 @@ pub fn host_frame(model: &Model, id: ElementId) -> Option<DAffine3> {
         ElementKind::Slab(s) => {
             let a = *s.boundary.first()?;
             let b = s.boundary.get(1).copied().unwrap_or(a + DVec2::X);
-            along(a.extend(elevation(Some(s.level))), (b - a).extend(0.0))
+            // with its top's offset, so a dimension follows it up or down
+            along(
+                a.extend(elevation(Some(s.level)) + s.top_offset),
+                (b - a).extend(0.0),
+            )
         }
+        // a footing's top along its line (a pad's along its turn), so a
+        // dimension to it in a section follows it when it is moved or set
+        // deeper
+        ElementKind::Footing(f) => match f.kind {
+            creabim_core::footing::FootingKind::Strip => {
+                let (a, b) = f.line(model);
+                along(a.extend(f.top(model)), (b - a).extend(0.0))
+            }
+            _ => {
+                let (c, turn) = f.place(model);
+                along(
+                    c.extend(f.top(model)),
+                    DVec2::from_angle(turn.to_radians()).extend(0.0),
+                )
+            }
+        },
         ElementKind::Grid(g) => along(g.start.extend(0.0), (g.end - g.start).extend(0.0)),
         // a column or an object (furniture, a fixture, equipment): its
         // position and turn, so dimensions to it follow it (PilonDesigner's
@@ -1170,8 +1190,8 @@ pub fn driven(
     value: f64,
     prefer: &[ElementId],
 ) -> Result<creabim_core::Transaction, String> {
-    if !matches!(view.kind, ViewKind::Plan { .. }) {
-        return Err("A dimension moves what it measures in plans only.".into());
+    if !matches!(view.kind, ViewKind::Plan { .. } | ViewKind::Section { .. }) {
+        return Err("A dimension moves what it measures in plans and sections only.".into());
     }
     if value <= 0.0 {
         return Err("Type a distance more than zero.".into());
@@ -1209,6 +1229,12 @@ pub fn driven(
     let id = p.host.ok_or("It is gone.")?;
     let e = model.get(id).ok_or("It is gone.")?;
     let mut tx = creabim_core::Transaction::new("Set dimension");
+    if let ViewKind::Section {
+        start, end, depth, ..
+    } = view.kind
+    {
+        return section_driven(model, e, other.host, by, SectionFrame::new(start, end, depth));
+    }
     match &e.kind {
         ElementKind::Opening(o) => {
             let ElementKind::Wall(w) = &model.get(o.host).ok_or("It is not in a wall.")?.kind
@@ -1289,6 +1315,69 @@ pub fn driven(
                 tx = tx.replace(o, n);
             }
         }
+    }
+    Ok(tx)
+}
+
+/// [`driven`] in a section: `by` in the drawing, x along the section and
+/// y up. A height moves the element up or down (a footing deeper, a
+/// slab's top, an object, a column's base, a pipe's run); a distance
+/// across moves it along the section line.
+fn section_driven(
+    model: &Model,
+    e: &creabim_core::Element,
+    other: Option<ElementId>,
+    by: DVec2,
+    f: SectionFrame,
+) -> Result<creabim_core::Transaction, String> {
+    let mut tx = creabim_core::Transaction::new("Set dimension");
+    let mut now = e.clone();
+    if by.y.abs() >= by.x.abs() {
+        let dz = by.y;
+        match &mut now.kind {
+            ElementKind::Footing(x) => x.below -= dz,
+            ElementKind::Slab(x) => x.top_offset += dz,
+            ElementKind::Object(x) => x.offset += dz,
+            ElementKind::Column(x) => x.base_offset += dz,
+            ElementKind::Wall(x) => x.base_offset += dz,
+            ElementKind::Pipe(_) => {
+                let run = straight_run(model, e.id);
+                let mut moved: Vec<creabim_core::Element> = run
+                    .iter()
+                    .filter_map(|r| {
+                        let mut n = model.get(*r)?.clone();
+                        if let ElementKind::Pipe(p) = &mut n.kind {
+                            p.start.z += dz;
+                            p.end.z += dz;
+                        }
+                        Some(n)
+                    })
+                    .collect();
+                let follow = creabim_core::joins::follow(model, &mut moved);
+                for n in moved {
+                    if let Some(o) = model.get(n.id) {
+                        tx = tx.replace(o.clone(), n);
+                    }
+                }
+                for (o, n) in follow {
+                    if !run.contains(&o.id) && o != n {
+                        tx = tx.replace(o, n);
+                    }
+                }
+                return Ok(tx);
+            }
+            _ => return Err(format!("{} can not be moved up or down by a dimension.", e.name)),
+        }
+        return Ok(tx.replace(e.clone(), now));
+    }
+    let world = f.along * by.x;
+    let keep: std::collections::HashSet<ElementId> = other.into_iter().collect();
+    let moved = creabim_core::holds::shift(model, e.id, world, &keep);
+    if moved.is_empty() {
+        return Err(format!("{} can not be moved by a dimension.", e.name));
+    }
+    for (o, n) in moved {
+        tx = tx.replace(o, n);
     }
     Ok(tx)
 }
