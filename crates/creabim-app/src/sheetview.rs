@@ -869,6 +869,10 @@ pub fn show(
     for v in views {
         if state.active != Some(v.viewport) {
             paper::draw_looks(&mut canvas, &v.drawing, &v.map, &v.looks);
+            // the picture again in the other labels of a title page
+            for d in creabim_geom::coverpage::copies(&s) {
+                paper::draw_looks(&mut canvas, &v.drawing, &v.map.moved(d), &v.looks);
+            }
         }
         sheet::draw_view_title(&mut canvas, v);
         if selection.contains(v.viewport) && state.active.is_none() {

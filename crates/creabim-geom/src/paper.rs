@@ -114,6 +114,14 @@ pub struct PaperMap {
 }
 
 impl PaperMap {
+    /// The same drawing placed `by` paper mm further on.
+    pub fn moved(&self, by: DVec2) -> Self {
+        Self {
+            paper: self.paper + by,
+            ..*self
+        }
+    }
+
     /// Millimetres on paper per metre in the model.
     pub fn k(&self) -> f64 {
         1000.0 / self.scale

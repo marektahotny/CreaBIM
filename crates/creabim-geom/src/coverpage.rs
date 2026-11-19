@@ -10,6 +10,9 @@
 //! filled from the project's information, so a title page never needs
 //! to be written by hand.
 //!
+//! Its words are Slovak whatever the window's language: the pages
+//! belong to the documentation of a Slovak construction.
+//!
 //! A sheet is a title page when its `fields["cover"]` names its part:
 //! [`PROJECT`] for the project's own, else a key of
 //! [`crate::docset::part_order`] (`_ZTI_`); `fields["volumes"]` says
@@ -18,7 +21,6 @@
 use crate::annotation::TextLook;
 use crate::paper::{Anchor, Canvas, Stroke};
 use creabim_core::project::ProjectInfo;
-use creabim_core::words::tr;
 use creabim_core::Sheet;
 use glam::DVec2;
 
@@ -32,19 +34,15 @@ const LH: f64 = 148.5;
 /// The parts of the documentation with a title page of their own: the
 /// key their sheets' numbers carry, the mark and the name.
 pub const PARTS: [(&str, &str, &str); 9] = [
-    ("C00_", "C", "Site drawings"),
-    ("_ASR_", "D.1", "Architecture and construction"),
-    ("_STA_", "D.2", "Structural design"),
-    ("_ZTI_", "D.3", "Plumbing installation"),
-    ("_VYK_", "D.4", "Heating"),
-    (
-        "_ELI_",
-        "D.5",
-        "Electrical installation and lightning protection",
-    ),
-    ("_VZT_", "D.6", "Ventilation"),
-    ("_PLY_", "D.7", "Gas installation"),
-    ("_MPL_", "D.8", "Medical gases"),
+    ("C00_", "C", "Situačné výkresy"),
+    ("_ASR_", "D.1", "Architektonicko stavebné riešenie"),
+    ("_STA_", "D.2", "Statika"),
+    ("_ZTI_", "D.3", "Zdravotechnická inštalácia"),
+    ("_VYK_", "D.4", "Vykurovanie"),
+    ("_ELI_", "D.5", "Elektroinštalácia a bleskozvod"),
+    ("_VZT_", "D.6", "Vzduchotechnika"),
+    ("_PLY_", "D.7", "Plynoinštalácia"),
+    ("_MPL_", "D.8", "Medicinálne plyny"),
 ];
 
 /// The part a sheet is the title page of: [`PROJECT`] or a key of
@@ -57,18 +55,14 @@ pub fn cover_of(sheet: &Sheet) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
-/// How many labels a title page holds: 1 to 4; four by default, the
-/// project's own one.
+/// How many labels a title page holds: 1 to 4; four by default, one
+/// for each volume, as the office's own.
 pub fn volumes(sheet: &Sheet) -> usize {
     sheet
         .fields
         .get("volumes")
         .and_then(|v| v.trim().parse::<usize>().ok())
-        .unwrap_or(if cover_of(sheet) == Some(PROJECT) {
-            1
-        } else {
-            4
-        })
+        .unwrap_or(4)
         .clamp(1, 4)
 }
 
@@ -161,6 +155,17 @@ pub fn picture_box(sheet: &Sheet) -> (DVec2, DVec2) {
     (at(17.4, 83.6), at(87.6, 43.4))
 }
 
+/// Where the picture of the building is drawn again on the project's
+/// title page: its viewport stands in the first label, the others show
+/// it moved by these.
+pub fn copies(sheet: &Sheet) -> Vec<DVec2> {
+    if cover_of(sheet) != Some(PROJECT) {
+        return vec![];
+    }
+    let cells = cells(sheet);
+    cells.iter().skip(1).map(|c| c.0 - cells[0].0).collect()
+}
+
 /// The date as the title page writes it: an ISO day as `11 / 2026`.
 fn month(date: &str) -> String {
     let parts: Vec<&str> = date.trim().split('-').collect();
@@ -238,16 +243,16 @@ pub fn draw(
     let own = PARTS.iter().find(|p| p.0 == part);
     const BLUE: [f32; 3] = [0.043, 0.239, 0.569];
     let rows: [Option<(&str, &str, bool)>; 10] = [
-        Some(("Investor and owner", &v.client, false)),
-        Some(("Construction project", &v.building, true)),
-        Some(("Place of construction", &v.place, true)),
-        Some(("Plot number", &v.plots, true)),
+        Some(("Investor a vlastník", &v.client, false)),
+        Some(("Stavba", &v.building, true)),
+        Some(("Miesto stavby", &v.place, true)),
+        Some(("Číslo parcely", &v.plots, true)),
         None,
-        Some(("Author", &v.author, false)),
-        Some(("Responsible", &v.designer, false)),
-        Some(("Drawn by", &v.drawn, false)),
+        Some(("Autor", &v.author, false)),
+        Some(("Zodpovedný", &v.designer, false)),
+        Some(("Vypracoval", &v.drawn, false)),
         None,
-        Some(("Job number", &v.job, false)),
+        Some(("Zákazkové číslo", &v.job, false)),
     ];
     for (i, (lo, k)) in cells(sheet).into_iter().enumerate() {
         // the label's own millimetres, y down from its top as on paper
@@ -297,7 +302,7 @@ pub fn draw(
         let band = [at(9.0, 43.0), at(96.0, 43.0), at(96.0, 36.5), at(9.0, 36.5)];
         c.fill(&band, 0.0);
         let building = if v.building.is_empty() {
-            tr("Construction project")
+            "Stavba".to_string()
         } else {
             v.building.clone()
         };
@@ -317,7 +322,7 @@ pub fn draw(
                 // a part's page: its mark and name, the documentation of
                 // the building objects over the parts D
                 text(c, 52.5, 58.0, mark, 12.0, mid, 0.0, true, None);
-                for (j, l) in split2(&tr(title)).iter().enumerate() {
+                for (j, l) in split2(title).iter().enumerate() {
                     text(
                         c,
                         52.5,
@@ -331,7 +336,7 @@ pub fn draw(
                     );
                 }
                 if mark.starts_with("D.") {
-                    let d = format!("D {}", tr("Documentation of building objects"));
+                    let d = format!("D {}", "Dokumentácia stavebných objektov");
                     text(c, 52.5, 81.5, &d, 2.8, mid, 84.0, false, None);
                 }
             }
@@ -346,22 +351,12 @@ pub fn draw(
                 y += 1.6;
                 continue;
             };
-            text(c, 11.0, y, &tr(label), 2.9, start, 23.0, bold, None);
+            text(c, 11.0, y, label, 2.9, start, 23.0, bold, None);
             text(c, 35.0, y, ":", 2.9, start, 0.0, false, None);
             text(c, 38.5, y, value, 2.9, start, 56.0, bold, None);
             y += 4.3;
         }
-        text(
-            c,
-            83.0,
-            129.0,
-            &tr("Volume no. :"),
-            2.9,
-            end,
-            0.0,
-            false,
-            None,
-        );
+        text(c, 83.0, 129.0, "Zväzok č. :", 2.9, end, 0.0, false, None);
         text(
             c,
             92.0,
@@ -437,8 +432,11 @@ mod tests {
 
     #[test]
     fn the_projects_own_page_holds_one_label_with_a_picture_frame() {
-        let s = sheet(PROJECT);
-        assert_eq!(volumes(&s), 1);
+        let mut s = sheet(PROJECT);
+        assert_eq!(volumes(&s), 4);
+        assert_eq!(copies(&s).len(), 3);
+        s.fields.insert("volumes".into(), "1".into());
+        assert!(copies(&s).is_empty());
         let (lo, hi) = picture_box(&s);
         assert!(lo.x > 0.0 && hi.x < 210.0 && lo.y > 100.0 && hi.y < 297.0);
         assert!((hi.x - lo.x) > 130.0);

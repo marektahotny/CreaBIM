@@ -657,6 +657,9 @@ pub fn draw_sheet(
     for v in views {
         paper::draw_looks(c, &v.drawing, &v.map, &v.looks);
         draw_view_title(c, v);
+        for d in crate::coverpage::copies(s) {
+            paper::draw_looks(c, &v.drawing, &v.map.moved(d), &v.looks);
+        }
     }
     draw_sheet_notes(c, model, sheet);
 }
@@ -993,6 +996,9 @@ pub fn sheet_dxf(
     for v in &views {
         crate::dxfout::draw_layered(&mut c, model, &v.drawing, &v.map, &v.looks);
         draw_view_title(&mut c, v);
+        for d in crate::coverpage::copies(s) {
+            crate::dxfout::draw_layered(&mut c, model, &v.drawing, &v.map.moved(d), &v.looks);
+        }
     }
     draw_sheet_notes(&mut c, model, sheet);
     Some(c.finish())
