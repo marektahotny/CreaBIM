@@ -24,7 +24,45 @@ pub fn next_name(model: &Model) -> String {
     let taken = |n: &str| model.levels().any(|(e, _)| e.name == n);
     let mut i = model.levels().count();
     loop {
-        let name = format!("Level {i}");
+        let name = format!("{} {i}", crate::words::tr("Level"));
+        if !taken(&name) {
+            return name;
+        }
+        i += 1;
+    }
+}
+
+/// A floor lower than this under the ground is an underground storey
+/// (STN 73 4301: more than 0.8 m).
+const UNDERGROUND: f64 = -0.8;
+
+/// The name of a new level at `elevation`, as the interface's language
+/// counts storeys: in Slovak "1. NP", "2. NP" from the ground up and
+/// "1. PP", "2. PP" down from it; where the language has no such way,
+/// [`next_name`].
+pub fn storey_name(model: &Model, elevation: f64) -> String {
+    let (up, down) = (
+        crate::words::tr("Storey {}"),
+        crate::words::tr("Basement {}"),
+    );
+    if up == "Storey {}" {
+        return next_name(model);
+    }
+    let taken = |n: &str| model.levels().any(|(e, _)| e.name == n);
+    let below = elevation < UNDERGROUND;
+    // the levels between the ground and this one, on its side of it
+    let mut i = 1 + model
+        .levels()
+        .filter(|(_, l)| {
+            if below {
+                l.elevation < UNDERGROUND && l.elevation > elevation + 1e-6
+            } else {
+                l.elevation >= UNDERGROUND && l.elevation < elevation - 1e-6
+            }
+        })
+        .count();
+    loop {
+        let name = if below { &down } else { &up }.replace("{}", &i.to_string());
         if !taken(&name) {
             return name;
         }
@@ -353,13 +391,15 @@ pub fn add(
     height: f64,
     plan: bool,
 ) -> (Transaction, ElementId, Option<ElementId>) {
-    let _ = model;
     let level = Element::new(name, ElementKind::Level(Level { elevation, height }));
     let id = level.id;
     let mut tx = Transaction::new("Add level").insert(level);
     let mut view = None;
     if plan {
-        let v = Element::new(format!("{name} plan"), ElementKind::View(View::plan(id)));
+        let v = Element::new(
+            plan_name(name),
+            ElementKind::View(plan_of(model, id, elevation)),
+        );
         view = Some(v.id);
         tx = tx.insert(v);
     }
@@ -410,15 +450,24 @@ pub fn duplicate(
     Some((tx, id))
 }
 
-/// Is `view` a name made from the level name `level`: the name itself, or
-/// it followed by more words ("Level 2 plan", "Level 2 plan - furniture")?
-/// Those follow the level when it is renamed; a name the user typed for the
-/// plan ("Roof terrace", or "Level 20 plan" for "Level 2") is left alone.
+/// Where in `view` the level name `level` stands as whole words: "1.NP"
+/// in "1.NP", "Pôdorys 1.NP" or "Level 2 plan - furniture" for "Level
+/// 2". Those names follow the level when it is renamed; a name the user
+/// typed for the plan ("Roof terrace", or "Level 20 plan" for "Level 2")
+/// is left alone.
+pub fn name_at(view: &str, level: &str) -> Option<usize> {
+    if level.is_empty() {
+        return None;
+    }
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric());
+    view.match_indices(level).map(|(i, _)| i).find(|&i| {
+        !word(view[..i].chars().next_back()) && !word(view[i + level.len()..].chars().next())
+    })
+}
+
+/// Is `view` a name made with the level name `level` (see [`name_at`])?
 pub fn named_after(view: &str, level: &str) -> bool {
-    !level.is_empty()
-        && view
-            .strip_prefix(level)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
+    name_at(view, level).is_some()
 }
 
 /// Rename a level and the plan views named after it (see [`named_after`]).
@@ -436,9 +485,9 @@ pub fn rename(model: &Model, level: ElementId, name: &str) -> Transaction {
     tx = tx.replace(e.clone(), after);
     for v in plan_views(model, level) {
         let Some(ve) = model.get(v) else { continue };
-        if named_after(&ve.name, &old) {
+        if let Some(i) = name_at(&ve.name, &old) {
             let mut after = ve.clone();
-            after.name = format!("{name}{}", &ve.name[old.len()..]);
+            after.name = format!("{}{name}{}", &ve.name[..i], &ve.name[i + old.len()..]);
             tx = tx.replace(ve.clone(), after);
         }
     }
@@ -503,6 +552,31 @@ pub fn delete(model: &Model, level: ElementId, what: OnDelete) -> Transaction {
     tx = tx.remove_all_cascade(model, &gone);
     tx.ops.push(crate::Op::Remove(e.clone()));
     tx
+}
+
+/// What the plan of level `level` is called, in the interface's
+/// language: "Level 2 plan", "Pôdorys Podlažie 2".
+pub fn plan_name(level: &str) -> String {
+    crate::words::tr("{} plan").replace("{}", &crate::words::tr(level))
+}
+
+/// The plan of level `id` at `elevation`: cut 1.2 m above it, or, with
+/// the next level nearer than that (a level put inside a storey to cut
+/// it there), half way up to that one, so that the cut stays in what
+/// stands between them.
+pub fn plan_of(model: &Model, id: ElementId, elevation: f64) -> View {
+    let mut v = View::plan(id);
+    let next = model
+        .levels()
+        .filter(|(e, l)| e.id != id && l.elevation > elevation + 1e-6)
+        .map(|(_, l)| l.elevation - elevation)
+        .fold(f64::MAX, f64::min);
+    if let ViewKind::Plan { cut_height, .. } = &mut v.kind {
+        if next < *cut_height {
+            *cut_height = next / 2.0;
+        }
+    }
+    v
 }
 
 #[cfg(test)]
@@ -649,6 +723,11 @@ mod tests {
         assert!(named_after("Level 2", "Level 2"));
         assert!(!named_after("Level 20 plan", "Level 2"));
         assert!(!named_after("anything", ""));
+        assert!(named_after("Pôdorys 1.NP", "1.NP"));
+        assert_eq!(
+            name_at("Pôdorys 1.NP - nábytok", "1.NP"),
+            Some("Pôdorys ".len())
+        );
     }
 
     /// The sample house with two more storeys: levels at 0, 3, 6 and 9 m.

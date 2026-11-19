@@ -11,6 +11,9 @@ use creabim_core::{ElementId, ElementKind, LineWeights, Model, View, ViewKind};
 use glam::DVec2;
 use std::collections::{HashMap, HashSet};
 
+/// The line a services drawing draws a pipe with, paper mm.
+pub const PIPE_LINE: f64 = 0.35;
+
 /// The look of one element in one view, where it differs from the pens.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Look {
@@ -71,6 +74,8 @@ impl Looks {
         let cutters = creabim_core::visibility::cutters(model);
         let beyond = crate::ranges::beyond(model, v);
         let fades = distance_fades(model, v);
+        let services = creabim_core::viewmodes::DisplayMode::of(v)
+            == creabim_core::viewmodes::DisplayMode::Services;
         let mut by_id = HashMap::new();
         let mut areas = vec![];
         for e in model.iter() {
@@ -160,6 +165,47 @@ impl Looks {
                 }
                 if let Some(h) = o.hatch {
                     l.hatch_off = !h;
+                }
+            }
+            // a coordination drawing tells the trades apart: each in one
+            // colour, its pipes, what is on them and its devices
+            if services && v.coordination && l.colour.is_none() {
+                use creabim_core::viewmodes::Trade;
+                let of = |p: &creabim_core::mep::Pipe| Trade::of_system(p.kind());
+                let trade = match &e.kind {
+                    ElementKind::Pipe(p) => Some(of(p)),
+                    ElementKind::Valve(x) => x.host(model).map(of),
+                    ElementKind::Object(_) if crate::elplan::is_device(model, e.id) => {
+                        Some(Trade::Electrical)
+                    }
+                    _ => None,
+                };
+                l.colour = trade.map(Trade::colour);
+            }
+            // a services drawing's pipes: lines in their system's colour
+            // and line type, unless the view says otherwise
+            if let (true, ElementKind::Pipe(p)) = (services, &e.kind) {
+                if l.colour.is_none() {
+                    l.colour = Some(crate::mep::color(p));
+                }
+                if l.dashes.is_none() {
+                    l.dashes = Some(p.system_def().and_then(|s| s.dashes()));
+                }
+                if l.projection.is_none() {
+                    l.projection = Some(PIPE_LINE);
+                }
+            }
+            // a utility network: its kind's colour and line type, heavy
+            // where proposed (PilonDesigner's site plans)
+            if let ElementKind::Sketch(creabim_core::Sketch { net: Some(n), .. }) = &e.kind {
+                if l.colour.is_none() {
+                    l.colour = Some(n.kind.rgb());
+                }
+                if l.dashes.is_none() {
+                    l.dashes = Some(Some(n.pattern()));
+                }
+                if l.projection.is_none() {
+                    l.projection = Some(n.weight());
                 }
             }
             if beyond.contains(&e.id) {
@@ -293,8 +339,9 @@ impl Looks {
     /// The stroke of a pen for element `id`, with its colour if it has one.
     pub fn stroke(&self, id: ElementId, pen: Pen) -> (Stroke, Option<[f32; 3]>, Option<Vec<f64>>) {
         let mut s = pen_stroke_with(pen, &self.weights);
+        let overhead = (pen == Pen::Overhead).then(|| crate::paper::OVERHEAD_DASHES.to_vec());
         let Some(l) = self.look(id) else {
-            return (s, None, None);
+            return (s, None, overhead);
         };
         match pen {
             Pen::Cut => {
@@ -309,8 +356,8 @@ impl Looks {
             }
             _ => {}
         }
-        let mut long = None;
-        if pen != Pen::Hidden {
+        let mut long = overhead;
+        if !matches!(pen, Pen::Hidden | Pen::Overhead) {
             match &l.dashes {
                 Some(None) => s.dash = None,
                 Some(Some(d)) if d.len() == 2 && d[0] > 0.0 => s.dash = Some([d[0], d[1]]),

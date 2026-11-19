@@ -276,6 +276,11 @@ pub struct Beam {
     /// next beam of its chain), by that plane's normal.
     #[serde(default, skip_serializing_if = "no_cuts")]
     pub cuts: [Option<DVec3>; 2],
+    /// A system lintel (a Porfix or Porotherm piece) over a door or
+    /// window, placed by hand: it follows its opening (see
+    /// [`crate::masonry`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lintel: Option<crate::masonry::Lintel>,
 }
 
 fn is_zero2(v: &[f64; 2]) -> bool {
@@ -379,6 +384,7 @@ impl Beam {
             up: None,
             extend: [0.0, 0.0],
             cuts: [None, None],
+            lintel: None,
         }
     }
 
@@ -1135,6 +1141,7 @@ pub fn level_of(kind: &ElementKind) -> Option<ElementId> {
         ElementKind::Footing(f) => f.level,
         ElementKind::Part(p) => p.level,
         ElementKind::Site(s) => s.level,
+        ElementKind::Pipe(p) => p.level,
         _ => return None,
     })
 }
@@ -1150,6 +1157,7 @@ pub fn level_mut(kind: &mut ElementKind) -> Option<&mut ElementId> {
         ElementKind::Footing(f) => &mut f.level,
         ElementKind::Part(p) => &mut p.level,
         ElementKind::Site(s) => &mut s.level,
+        ElementKind::Pipe(p) => &mut p.level,
         _ => return None,
     })
 }
@@ -1407,6 +1415,11 @@ pub fn grips(model: &Model, e: &Element) -> Vec<Grip> {
             .into_iter()
             .map(|(g, _)| g)
             .collect(),
+        // a pipe's or duct's two ends, of every trade
+        ElementKind::Pipe(p) => {
+            let z = DVec3::Z * elevation(model, p.level);
+            vec![flat(p.start + z), flat(p.end + z)]
+        }
         _ => vec![],
     }
 }
@@ -1571,6 +1584,19 @@ pub fn drag_grip(
             1 => b.end = now.truncate(),
             _ => b.depth = round(b.depth - d.z, step / 5.0).max(0.05),
         },
+        ElementKind::Pipe(p) => {
+            let to = now.truncate();
+            if p.start.truncate().distance(p.end.truncate()) < 1e-6 {
+                // a riser stays upright: it moves whole
+                p.start = to.extend(p.start.z);
+                p.end = to.extend(p.end.z);
+            } else if i == 0 {
+                p.start = to.extend(p.start.z);
+            } else {
+                p.end = to.extend(p.end.z);
+            }
+            p.validate()?;
+        }
         ElementKind::Roof(r) => {
             let n = r.boundary.len();
             if i < n {

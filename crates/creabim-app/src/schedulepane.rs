@@ -58,6 +58,37 @@ pub fn show(
     (csv_path, xlsx_path): (&str, &str),
     export: Option<&str>,
 ) -> Option<String> {
+    if category == ScheduleCategory::Materials {
+        // the take-off: a spreadsheet of its own; CSV as it is laid out
+        let mut message = None;
+        match export {
+            Some("csv") => {
+                let table = schedule::view_table(doc.model(), view)
+                    .unwrap_or_else(|| schedule::schedule_by(doc.model(), category, by_type));
+                let r = std::fs::write(csv_path, schedule::to_csv(&table));
+                message = Some(match r {
+                    Ok(()) => format!("{} {csv_path}", crate::i18n::tr("Exported")),
+                    Err(e) => format!("{} {csv_path}: {e}", crate::i18n::tr("Couldn't export")),
+                });
+            }
+            Some("xlsx") => {
+                let project = std::path::Path::new(xlsx_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Project")
+                    .to_string();
+                let r = creabim_geom::xlsx::schedules_xlsx(doc.model(), &project)
+                    .and_then(|b| std::fs::write(xlsx_path, b).map_err(|e| e.to_string()));
+                message = Some(match r {
+                    Ok(()) => format!("{} {xlsx_path}", crate::i18n::tr("Exported")),
+                    Err(e) => format!("{} {xlsx_path}: {e}", crate::i18n::tr("Couldn't export")),
+                });
+            }
+            _ => {}
+        }
+        let m = crate::takeoffpane::show(ui, rect, doc, view, by_type, selection);
+        return m.or(message);
+    }
     let table = schedule::schedule_by(doc.model(), category, by_type);
     let listed = table.listed;
     let materials: Vec<(ElementId, String)> = doc
@@ -78,39 +109,24 @@ pub fn show(
     ui.spacing_mut().scroll.fade.strength = 0.0;
     ui.add_space(20.0);
     let takeoff = category == ScheduleCategory::Materials;
-    let noun = if takeoff {
-        "materials".to_string()
-    } else {
-        category.label().to_lowercase()
-    };
+    let t = crate::i18n::tr;
     let count = format!(
-        "{} {} · read live from the model · {}",
+        "{} {} · {} · {}",
         listed,
-        if listed == 1 {
-            noun.trim_end_matches('s').to_string()
-        } else {
-            noun.clone()
-        },
-        if takeoff {
+        t(if listed == 1 { "row" } else { "rows" }),
+        t("read live from the model"),
+        t(if takeoff {
             "set a material's rate in the table to price it"
         } else {
             "edit a cell to change it"
-        }
+        })
     );
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new(if takeoff {
-                "Take-off".to_string()
+                t("Take-off")
             } else {
-                format!(
-                    "{} schedule",
-                    // "Walls" reads "Wall schedule"; "Columns and beams" stays as is
-                    if category.label().contains(' ') {
-                        category.label()
-                    } else {
-                        category.label().trim_end_matches('s')
-                    }
-                )
+                format!("{}: {}", t("Schedule"), t(category.label()))
             })
             .size(17.0)
             .strong()
@@ -129,15 +145,15 @@ pub fn show(
             let r = creabim_geom::xlsx::schedules_xlsx(doc.model(), &project)
                 .and_then(|b| std::fs::write(xlsx_path, b).map_err(|e| e.to_string()));
             message = Some(match r {
-                Ok(()) => format!("Exported {xlsx_path}"),
-                Err(e) => format!("Couldn't export {xlsx_path}: {e}"),
+                Ok(()) => format!("{} {xlsx_path}", crate::i18n::tr("Exported")),
+                Err(e) => format!("{} {xlsx_path}: {e}", crate::i18n::tr("Couldn't export")),
             });
         }
         Some("csv") => {
             let r = std::fs::write(csv_path, schedule::to_csv(&table));
             message = Some(match r {
-                Ok(()) => format!("Exported {csv_path}"),
-                Err(e) => format!("Couldn't export {csv_path}: {e}"),
+                Ok(()) => format!("{} {csv_path}", crate::i18n::tr("Exported")),
+                Err(e) => format!("{} {csv_path}: {e}", crate::i18n::tr("Couldn't export")),
             });
         }
         _ => {}
@@ -162,9 +178,17 @@ pub fn show(
             let cells = table
                 .rows
                 .iter()
-                .map(|r| measure(ui, &r.cells[i], false))
-                .chain(table.totals.get(i).map(|t| measure(ui, t, false)))
-                .fold(measure(ui, c.title, true), f32::max);
+                .map(|r| measure(ui, &crate::i18n::tr(&r.cells[i]), false))
+                .chain(
+                    table
+                        .totals
+                        .get(i)
+                        .map(|t| measure(ui, &crate::i18n::tr(t), false)),
+                )
+                .fold(
+                    measure(ui, &crate::i18n::tr(c.title).to_uppercase(), true),
+                    f32::max,
+                );
             let editor: f32 = match c.field {
                 Some(f) if f.is_length() => 64.0,
                 Some(Field::Name) | Some(Field::Material) => 120.0,
@@ -206,6 +230,9 @@ pub fn show(
         };
         let text_at =
             |ui: &egui::Ui, c: Rect, t: &str, numeric: bool, color: Color32, strong: bool| {
+                // values the model gives in English (a frame's kind,
+                // "12 walls") read in the interface's language
+                let t = &crate::i18n::tr(t);
                 let (anchor, at) = if numeric {
                     (
                         egui::Align2::RIGHT_CENTER,
@@ -228,7 +255,14 @@ pub fn show(
         // header
         let h = row(ui, Some(HEADER));
         for (c, col) in cells(h).into_iter().zip(&table.columns) {
-            text_at(ui, c, &col.title.to_uppercase(), col.numeric, INK, true);
+            text_at(
+                ui,
+                c,
+                &crate::i18n::tr(col.title).to_uppercase(),
+                col.numeric,
+                INK,
+                true,
+            );
         }
         for (n, r) in table.rows.iter().enumerate() {
             if r.group {
@@ -254,7 +288,9 @@ pub fn show(
                 }
                 if r.id != ElementId::NIL
                     && resp
-                        .on_hover_text("Click to select every instance of this type")
+                        .on_hover_text(crate::i18n::t(
+                            "Click to select every instance of this type",
+                        ))
                         .clicked()
                 {
                     selection.extend(creabim_core::types::instances(doc.model(), r.id), false);
@@ -324,7 +360,9 @@ pub fn show(
                                 .max_decimals(2),
                         );
                         if resp
-                            .on_hover_text("Its price, in the currency you price the project in")
+                            .on_hover_text(crate::i18n::t(
+                                "Its price, in the currency you price the project in",
+                            ))
                             .changed()
                         {
                             edit = Some((
@@ -343,11 +381,15 @@ pub fn show(
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                             egui::ComboBox::from_id_salt(("rate_per", n, r.id))
                                 .icon(crate::props::combo_icon)
-                                .selected_text(per.label())
+                                .selected_text(crate::i18n::tw(per.label()))
                                 .width(inner.width())
                                 .show_ui(ui, |ui| {
                                     for u in RateUnit::ALL {
-                                        ui.selectable_value(&mut chosen, u, u.label());
+                                        ui.selectable_value(
+                                            &mut chosen,
+                                            u,
+                                            crate::i18n::tw(u.label()),
+                                        );
                                     }
                                 });
                         });
@@ -373,12 +415,16 @@ pub fn show(
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                             egui::ComboBox::from_id_salt(("material", r.id))
                                 .icon(crate::props::combo_icon)
-                                .selected_text(text.as_str())
+                                .selected_text(crate::i18n::tw(text.as_str()))
                                 .width(inner.width())
                                 .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut chosen, None, "-");
+                                    ui.selectable_value(&mut chosen, None, crate::i18n::tw("-"));
                                     for (id, name) in &materials {
-                                        ui.selectable_value(&mut chosen, Some(*id), name);
+                                        ui.selectable_value(
+                                            &mut chosen,
+                                            Some(*id),
+                                            crate::i18n::tw(name),
+                                        );
                                     }
                                 });
                         });
@@ -407,7 +453,7 @@ pub fn show(
                         } else {
                             "Click to select it"
                         };
-                        if resp.on_hover_text(hint).clicked() {
+                        if resp.on_hover_text(crate::i18n::tr(hint)).clicked() {
                             if material {
                                 let made = takeoff::lines(doc.model())
                                     .into_iter()

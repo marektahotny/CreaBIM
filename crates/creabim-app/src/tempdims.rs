@@ -1,6 +1,9 @@
 //! Temporary dimensions (brief 02, 2.10 part 3): selecting a wall, a grid
-//! line, a door or window, or a column in a plan shows blue dimensions to
-//! its nearest neighbours. Click a value and type a new one: the element
+//! line, a door or window, a column, or any other element on a level
+//! (furniture, fixtures, equipment, a stair…) in a plan shows blue
+//! dimensions to its nearest neighbours. As in PilonDesigner they measure
+//! walls from the faces of their load-bearing core by default, never from
+//! plaster, insulation or the centreline (the view strip's *Measure from*). Click a value and type a new one: the element
 //! moves to make it true, and what it carries follows (the doors in a wall,
 //! the walls on a grid line, the walls joined to a moved wall). The padlock
 //! beside a value keeps it as a dimension that holds the spacing (see
@@ -11,6 +14,7 @@
 //! next value.
 
 use creabim_core::holds::{self, Place};
+use creabim_core::walls::{self, WallRef};
 use creabim_core::{Dimension, Element, ElementId, ElementKind, Model, Transaction, ViewKind};
 use eframe::egui::{self, Color32, Painter, Pos2, Rect, Stroke, Vec2};
 use glam::DVec2;
@@ -117,35 +121,105 @@ fn level_of(model: &Model, id: ElementId) -> Option<ElementId> {
         ElementKind::Wall(w) => Some(w.level),
         ElementKind::Column(c) => Some(c.level),
         ElementKind::Opening(o) => level_of(model, o.host),
+        ElementKind::Object(o) => Some(o.level),
+        ElementKind::Stair(s) => Some(s.level),
+        ElementKind::Slab(s) => Some(s.level),
+        ElementKind::Beam(b) => Some(b.level),
+        ElementKind::Footing(f) => Some(f.level),
+        ElementKind::Railing(r) => Some(r.level),
+        ElementKind::Pipe(p) => Some(p.level),
         _ => None,
     }
 }
 
 /// The lines a selected element measures to, in a plan of `level`: grid
-/// lines, and the walls on that level (but not `id` itself).
-fn lines(
+/// lines, and the walls on that level (but not `id` itself), each wall by
+/// the lines `wref` names on it (its core's faces unless set otherwise):
+/// (owner, a, b).
+fn ref_lines(
     model: &Model,
     level: ElementId,
     id: ElementId,
-    walls: bool,
+    wref: WallRef,
 ) -> Vec<(ElementId, DVec2, DVec2)> {
-    model
-        .iter()
-        .filter(|e| e.id != id)
-        .filter_map(|e| match &e.kind {
-            ElementKind::Grid(g) if g.start.distance(g.end) > 1e-6 => Some((e.id, g.start, g.end)),
-            ElementKind::Wall(w) if walls && w.level == level && w.length() > 1e-6 => {
-                Some((e.id, w.start, w.end))
+    let mut out = vec![];
+    for e in model.iter().filter(|e| e.id != id) {
+        match &e.kind {
+            ElementKind::Grid(g) if g.start.distance(g.end) > 1e-6 => {
+                out.push((e.id, g.start, g.end))
             }
-            _ => None,
-        })
-        .collect()
+            ElementKind::Wall(w) if w.level == level && w.length() > 1e-6 => {
+                let n = w.direction().perp();
+                for o in walls::ref_offsets(model, w, wref) {
+                    out.push((e.id, w.start + n * o, w.end + n * o));
+                }
+            }
+            ElementKind::Column(c) if c.level == level => {
+                let pts = c.outline();
+                for i in 0..pts.len() {
+                    out.push((e.id, pts[i], pts[(i + 1) % pts.len()]));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Where the ray from `p` along unit `d` first crosses the segment `a`–`b`:
+/// the distance along the ray.
+fn ray_hit(p: DVec2, d: DVec2, a: DVec2, b: DVec2) -> Option<f64> {
+    let e = b - a;
+    let den = d.perp_dot(e);
+    if den.abs() < 1e-9 {
+        return None;
+    }
+    let w = a - p;
+    let t = w.perp_dot(e) / den;
+    let s = w.perp_dot(d) / den;
+    (t > 1e-6 && (-1e-9..=1.0 + 1e-9).contains(&s)).then_some(t)
+}
+
+/// The box an element covers in plan, from its own shape where that is
+/// quick to know, else from `foot` (its 3D body's box, from the pane).
+fn footprint(model: &Model, id: ElementId, foot: Option<(DVec2, DVec2)>) -> Option<(DVec2, DVec2)> {
+    let bbox = |pts: &[DVec2]| {
+        let first = *pts.first()?;
+        Some(
+            pts.iter()
+                .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p))),
+        )
+    };
+    match &model.get(id)?.kind {
+        ElementKind::Column(c) => bbox(&c.outline()),
+        ElementKind::Object(o) => {
+            let t = creabim_core::objects::type_of_id(model, id)?;
+            let (lo, hi) = t.bounds();
+            bbox(&[
+                o.to_plan(DVec2::new(lo.x, lo.y)),
+                o.to_plan(DVec2::new(hi.x, lo.y)),
+                o.to_plan(DVec2::new(hi.x, hi.y)),
+                o.to_plan(DVec2::new(lo.x, hi.y)),
+            ])
+        }
+        ElementKind::Slab(s) => bbox(&s.boundary),
+        _ => foot,
+    }
 }
 
 /// The temporary dimensions of `id` in a plan of `level`. `near` (a drawing
 /// point, the middle of the pane) places a grid line's dimensions where they
-/// can be seen.
-pub fn find(model: &Model, level: ElementId, id: ElementId, near: DVec2) -> Vec<TempDim> {
+/// can be seen. Walls are measured by `wref` (PilonDesigner: the faces of
+/// their load-bearing core, never plaster or the centreline); `foot` is the
+/// box the element's body covers, for elements measured by their sides.
+pub fn find(
+    model: &Model,
+    level: ElementId,
+    id: ElementId,
+    near: DVec2,
+    wref: WallRef,
+    foot: Option<(DVec2, DVec2)>,
+) -> Vec<TempDim> {
     let Some(e) = model.get(id) else {
         return vec![];
     };
@@ -201,9 +275,24 @@ pub fn find(model: &Model, level: ElementId, id: ElementId, near: DVec2) -> Vec<
             let n0 = u.perp();
             let len = p.distance(q);
             let is_grid = matches!(e.kind, ElementKind::Grid(_));
+            // the element's own lines across it: a wall's by `wref`
+            let mine: Vec<f64> = match &e.kind {
+                ElementKind::Wall(w) => walls::ref_offsets(model, w, wref),
+                _ => vec![0.0],
+            };
             // a grid measures to grids; a wall to walls and grids
             let mut best: [Option<(f64, TempDim)>; 2] = [None, None];
-            for (oid, r, s) in lines(model, level, id, !is_grid) {
+            for o in model.iter().filter(|o| o.id != id) {
+                let (r, s, theirs) = match &o.kind {
+                    ElementKind::Grid(g) if g.start.distance(g.end) > 1e-6 => {
+                        (g.start, g.end, vec![0.0])
+                    }
+                    ElementKind::Wall(w) if !is_grid && w.level == level && w.length() > 1e-6 => {
+                        (w.start, w.end, walls::ref_offsets(model, w, wref))
+                    }
+                    _ => continue,
+                };
+                let oid = o.id;
                 let v = (s - r).normalize_or_zero();
                 if u.perp_dot(v).abs() > 2e-3 {
                     continue;
@@ -214,8 +303,7 @@ pub fn find(model: &Model, level: ElementId, id: ElementId, near: DVec2) -> Vec<
                 if off.abs() < 0.001 || off.abs() > 10.0 {
                     continue;
                 }
-                let other_is_grid =
-                    matches!(model.get(oid).map(|o| &o.kind), Some(ElementKind::Grid(_)));
+                let other_is_grid = matches!(o.kind, ElementKind::Grid(_));
                 // where along the element the dimension sits: the middle of
                 // where the two run side by side; a grid line's, nearest
                 // the middle of the pane
@@ -234,19 +322,36 @@ pub fn find(model: &Model, level: ElementId, id: ElementId, near: DVec2) -> Vec<
                     // walls side by side only
                     continue;
                 };
-                let side = usize::from(off < 0.0);
-                if best[side].as_ref().is_some_and(|(d, _)| *d <= off.abs()) {
+                // the neighbour's lines in this element's frame (it may run
+                // the other way)
+                let flip = if v.perp().dot(n0) < 0.0 { -1.0 } else { 1.0 };
+                let theirs: Vec<f64> = theirs.iter().map(|x| off + x * flip).collect();
+                let max = |v: &[f64]| v.iter().copied().fold(f64::MIN, f64::max);
+                let min = |v: &[f64]| v.iter().copied().fold(f64::MAX, f64::min);
+                // from this element's line on the neighbour's side to the
+                // neighbour's line facing it
+                let (from, to) = if off > 0.0 {
+                    (max(&mine), min(&theirs))
+                } else {
+                    (min(&mine), max(&theirs))
+                };
+                let gap = (to - from) * off.signum();
+                if gap < 0.001 {
                     continue;
                 }
-                let a = p + u * t;
+                let side = usize::from(off < 0.0);
+                if best[side].as_ref().is_some_and(|(d, _)| *d <= gap) {
+                    continue;
+                }
+                let a = p + u * t + n0 * from;
                 best[side] = Some((
-                    off.abs(),
+                    gap,
                     TempDim {
                         owner: id,
                         other: Some(oid),
                         a,
-                        b: a + n0 * off,
-                        value: off.abs(),
+                        b: p + u * t + n0 * to,
+                        value: gap,
                         how: How::Spacing {
                             n: -n0 * off.signum(),
                         },
@@ -279,102 +384,147 @@ pub fn find(model: &Model, level: ElementId, id: ElementId, near: DVec2) -> Vec<
             }
             out
         }
-        ElementKind::Column(c) => {
-            let at = c.position;
-            let mut found: Vec<(f64, DVec2, TempDim)> = vec![];
-            let mut cands: Vec<(f64, ElementId, DVec2, DVec2)> = lines(model, level, id, true)
-                .into_iter()
-                .filter_map(|(oid, r, s)| {
-                    let v = (s - r).normalize_or_zero();
-                    let foot = r + v * (at - r).dot(v);
-                    let d = at.distance(foot);
-                    (d > 0.001).then_some((d, oid, v, foot))
-                })
-                .collect();
-            cands.sort_by(|x, y| x.0.total_cmp(&y.0));
-            for (d, oid, v, foot) in cands {
-                if found.iter().any(|(_, w, _)| w.perp_dot(v).abs() < 0.05) {
-                    continue;
-                }
-                found.push((
-                    d,
-                    v,
-                    TempDim {
-                        owner: id,
-                        other: Some(oid),
-                        a: at,
-                        b: foot,
-                        value: d,
-                        how: How::Spacing { n: (at - foot) / d },
-                        held: held(oid),
-                        to: name_of(model, oid),
-                    },
-                ));
-                if found.len() == 2 {
-                    break;
-                }
-            }
-            found.into_iter().map(|f| f.2).collect()
-        }
         ElementKind::Opening(o) => {
             let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
                 return vec![];
             };
             let len = w.length();
+            let d = w.direction();
+            let n = d.perp();
             let (u0, u1) = (o.offset, o.offset + o.width);
-            // the nearest edge on each side: another opening's, or the end
-            let mut left: (f64, Option<ElementId>) = (0.0, None);
-            let mut right: (f64, Option<ElementId>) = (len, None);
-            for x in model.iter() {
-                let ElementKind::Opening(p) = &x.kind else {
-                    continue;
-                };
-                if x.id == id || p.host != o.host {
-                    continue;
-                }
-                let (p0, p1) = (p.offset, p.offset + p.width);
-                if p1 <= u0 + 1e-9 && p1 > left.0 {
-                    left = (p1, Some(x.id));
-                }
-                if p0 >= u1 - 1e-9 && p0 < right.0 {
-                    right = (p0, Some(x.id));
+            // what a jamb measures to along its wall: the wall's ends,
+            // other openings' jambs, and where the walls meeting this one
+            // have their reference lines (PilonDesigner: the core faces of
+            // the adjoining walls, not their centrelines)
+            let mut cands: Vec<(f64, Option<ElementId>)> = vec![(0.0, None), (len, None)];
+            for x in model.iter().filter(|x| x.id != id) {
+                match &x.kind {
+                    ElementKind::Opening(p) if p.host == o.host => {
+                        cands.push((p.offset, Some(x.id)));
+                        cands.push((p.offset + p.width, Some(x.id)));
+                    }
+                    ElementKind::Wall(ow)
+                        if x.id != o.host && ow.level == w.level && ow.length() > 1e-6 =>
+                    {
+                        let ou = ow.direction();
+                        if d.perp_dot(ou).abs() < 0.2 {
+                            continue;
+                        }
+                        // it must meet this wall: its centreline reaches it
+                        let Some(tw) = ray_hit(w.start - d * 1e3, d, ow.start, ow.end)
+                            .map(|t| t - 1e3)
+                            .or_else(|| {
+                                // or stops within this wall's thickness of it
+                                let near_end = [ow.start, ow.end].into_iter().find(|e| {
+                                    ((*e - w.start).dot(n)).abs() <= w.thickness / 2.0 + 0.05
+                                })?;
+                                Some((near_end - w.start).dot(d))
+                            })
+                        else {
+                            continue;
+                        };
+                        if tw < -ow.thickness || tw > len + ow.thickness {
+                            continue;
+                        }
+                        let on = ou.perp();
+                        for off in walls::ref_offsets(model, ow, wref) {
+                            if let Some(t) = ray_hit(
+                                w.start - d * 1e3,
+                                d,
+                                ow.start + on * off - ou * 1e3,
+                                ow.end + on * off + ou * 1e3,
+                            ) {
+                                cands.push((t - 1e3, Some(x.id)));
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
-            let d = w.direction();
             let s = w.thickness / 2.0 + 0.35;
-            let on = |u: f64| w.start + d * u + d.perp() * s;
+            let on = |u: f64| w.start + d * u + n * s;
             let to = |o: Option<ElementId>| match o {
                 Some(x) => name_of(model, x),
                 None => "the wall's end".to_string(),
             };
             let mut out = vec![];
-            if u0 - left.0 > 1e-4 {
+            // the nearest on each side of the opening
+            let left = cands
+                .iter()
+                .filter(|c| c.0 < u0 - 1e-4)
+                .max_by(|a, b| a.0.total_cmp(&b.0));
+            if let Some(&(at, other)) = left {
                 out.push(TempDim {
                     owner: id,
-                    other: left.1,
+                    other,
                     a: on(u0),
-                    b: on(left.0),
-                    value: u0 - left.0,
+                    b: on(at),
+                    value: u0 - at,
                     how: How::Along { start_side: true },
                     held: None,
-                    to: to(left.1),
+                    to: to(other),
                 });
             }
-            if right.0 - u1 > 1e-4 {
+            let right = cands
+                .iter()
+                .filter(|c| c.0 > u1 + 1e-4)
+                .min_by(|a, b| a.0.total_cmp(&b.0));
+            if let Some(&(at, other)) = right {
                 out.push(TempDim {
                     owner: id,
-                    other: right.1,
+                    other,
                     a: on(u1),
-                    b: on(right.0),
-                    value: right.0 - u1,
+                    b: on(at),
+                    value: at - u1,
                     how: How::Along { start_side: false },
                     held: None,
-                    to: to(right.1),
+                    to: to(other),
                 });
             }
             out
         }
-        _ => vec![],
+        // a column, furniture, a fixture, equipment, a stair, a footing…:
+        // from the middle of each side of its box straight out to the
+        // nearest wall core, column or grid line (PilonDesigner: every
+        // element has its controlling dimensions, equipment too)
+        _ => {
+            let Some((lo, hi)) = footprint(model, id, foot) else {
+                return vec![];
+            };
+            let c = (lo + hi) / 2.0;
+            let inside = |p: DVec2| {
+                p.x > lo.x - 1e-3 && p.x < hi.x + 1e-3 && p.y > lo.y - 1e-3 && p.y < hi.y + 1e-3
+            };
+            let lines: Vec<(ElementId, DVec2, DVec2)> = ref_lines(model, level, id, wref)
+                .into_iter()
+                .filter(|(_, a, b)| !(inside(*a) && inside(*b)))
+                .collect();
+            let mut out = vec![];
+            for (from, dir) in [
+                (DVec2::new(hi.x, c.y), DVec2::X),
+                (DVec2::new(lo.x, c.y), -DVec2::X),
+                (DVec2::new(c.x, hi.y), DVec2::Y),
+                (DVec2::new(c.x, lo.y), -DVec2::Y),
+            ] {
+                let hit = lines
+                    .iter()
+                    .filter_map(|(o, a, b)| Some((ray_hit(from, dir, *a, *b)?, *o)))
+                    .filter(|(t, _)| *t > 0.001 && *t <= 10.0)
+                    .min_by(|x, y| x.0.total_cmp(&y.0));
+                let Some((t, oid)) = hit else { continue };
+                out.push(TempDim {
+                    owner: id,
+                    other: Some(oid),
+                    a: from,
+                    b: from + dir * t,
+                    value: t,
+                    how: How::Spacing { n: -dir },
+                    held: held(oid),
+                    to: name_of(model, oid),
+                });
+            }
+            out
+        }
     }
 }
 
@@ -545,6 +695,28 @@ fn blue(dark: bool) -> Color32 {
     }
 }
 
+/// The ground of a temporary dimension's value.
+const CHIP: Color32 = Color32::from_rgb(20, 80, 175);
+
+/// Ground and number of a value chip: white on solid blue, or dark
+/// blue on white while a value is typed.
+fn chip(typing: bool) -> (Color32, Color32) {
+    if typing {
+        (Color32::WHITE, Color32::from_rgb(10, 30, 80))
+    } else {
+        (CHIP, Color32::WHITE)
+    }
+}
+
+#[test]
+fn chips_read() {
+    let light = |c: Color32| 0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32;
+    for on in [false, true] {
+        let (g, t) = chip(on);
+        assert!((light(g) - light(t)).abs() > 150.0);
+    }
+}
+
 /// A length's number alone, in the project's units.
 fn bare(metres: f64) -> String {
     let s = crate::units::len(metres);
@@ -567,7 +739,7 @@ fn layout(
 ) -> (Spot, std::sync::Arc<egui::Galley>) {
     let g = painter.layout_no_wrap(
         text.to_string(),
-        egui::FontId::proportional(12.0),
+        egui::FontId::proportional(13.0),
         Color32::WHITE,
     );
     let mid = a + (b - a) / 2.0;
@@ -664,6 +836,8 @@ pub fn interact(
     status: &mut Option<String>,
     hint: &mut Option<&'static str>,
     quiet: bool,
+    wref: WallRef,
+    foot: Option<(DVec2, DVec2)>,
 ) -> Option<Option<String>> {
     let id = match (selection.active, selection.others.is_empty()) {
         (Some(id), true) if !quiet => id,
@@ -676,7 +850,7 @@ pub fn interact(
         }
     };
     let near = xf.to_world(painter.clip_rect().center());
-    let mut dims = find(doc.model(), level, id, near);
+    let mut dims = find(doc.model(), level, id, near, wref, foot);
     if dims.is_empty() {
         dims.extend(dim_level_temp(doc.model(), id, temp.click.unwrap_or(near)));
     }
@@ -743,21 +917,30 @@ pub fn interact(
         } else {
             bare(d.value)
         };
-        let lockable =
-            d.held.is_some() || (d.other.is_some() && matches!(d.how, How::Spacing { .. }));
+        let lockable = d.held.is_some()
+            || (d.other.is_some()
+                && matches!(d.how, How::Spacing { .. })
+                && holds::place_of(doc.model(), d.owner).is_some()
+                && d.other
+                    .and_then(|o| holds::place_of(doc.model(), o))
+                    .is_some());
         let (spot, galley) = layout(painter, a, b, &text, lockable);
         let over_value = pointer.is_some_and(|p| spot.value.expand(2.0).contains(p));
         let over_lock =
             pointer.is_some_and(|p| spot.lock.is_some_and(|l| l.expand(2.0).contains(p)));
-        let ground = if on { look.ground } else { pal.raise };
+        // a solid chip with a white number, or white with a dark number
+        // while typing: readable on any plan colour and in either theme
+        let (ground, color) = chip(on);
         painter.rect(
             spot.value,
             5.0,
             ground,
-            Stroke::new(if on || over_value { 1.6 } else { 1.0 }, ink),
+            Stroke::new(
+                if on || over_value { 2.0 } else { 1.0 },
+                if on { CHIP } else { Color32::WHITE },
+            ),
             egui::StrokeKind::Inside,
         );
-        let color = if on { look.number } else { ink };
         painter.galley_with_override_text_color(
             spot.value.min + Vec2::new(6.0, 3.0),
             galley,
@@ -929,7 +1112,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let dims = find(&m, level, id, DVec2::new(1e3, 1e3));
+        let dims = find(&m, level, id, DVec2::new(1e3, 1e3), WallRef::CoreFace, None);
         let d = dims
             .iter()
             .find(|d| matches!(d.how, How::Length { .. }))
@@ -951,7 +1134,14 @@ mod tests {
     #[test]
     fn typing_a_grid_spacing_moves_the_grid_and_the_walls_on_it() {
         let (mut doc, lid, [a, b, c], wall) = setup();
-        let dims = find(doc.model(), lid, b, DVec2::new(3.0, 3.0));
+        let dims = find(
+            doc.model(),
+            lid,
+            b,
+            DVec2::new(3.0, 3.0),
+            WallRef::CoreFace,
+            None,
+        );
         assert_eq!(dims.len(), 2);
         let to_a = dims.iter().find(|d| d.other == Some(a)).unwrap();
         assert!((to_a.value - 3.4).abs() < 1e-9);
@@ -971,12 +1161,26 @@ mod tests {
             .find(|e| matches!(e.kind, ElementKind::View(_)))
             .unwrap()
             .id;
-        let dims = find(doc.model(), lid, b, DVec2::new(3.0, 3.0));
+        let dims = find(
+            doc.model(),
+            lid,
+            b,
+            DVec2::new(3.0, 3.0),
+            WallRef::CoreFace,
+            None,
+        );
         let to_a = dims.iter().find(|d| d.other == Some(a)).unwrap();
         let (tx, _) = padlock(doc.model(), view, to_a).unwrap();
         doc.commit(tx).unwrap();
         // grid A moves 0.3 left: B keeps 3400 from it
-        let dims_a = find(doc.model(), lid, a, DVec2::new(3.0, 3.0));
+        let dims_a = find(
+            doc.model(),
+            lid,
+            a,
+            DVec2::new(3.0, 3.0),
+            WallRef::CoreFace,
+            None,
+        );
         let a_to_b = dims_a.iter().find(|d| d.other == Some(b)).unwrap();
         assert!(a_to_b.held.is_some());
         let before = doc.model().get(a).unwrap().clone();
@@ -989,7 +1193,14 @@ mod tests {
             .unwrap();
         assert!((x(&doc, b) - 3.1).abs() < 1e-9);
         // and typing the held spacing anew keeps it held at the new value
-        let dims = find(doc.model(), lid, b, DVec2::new(3.0, 3.0));
+        let dims = find(
+            doc.model(),
+            lid,
+            b,
+            DVec2::new(3.0, 3.0),
+            WallRef::CoreFace,
+            None,
+        );
         let to_a = dims.iter().find(|d| d.other == Some(a)).unwrap();
         let (tx, _) = set(doc.model(), to_a, 3.0).unwrap();
         doc.commit(tx).unwrap();
@@ -1014,6 +1225,14 @@ mod tests {
                     frame: Default::default(),
                     flip_hand: false,
                     flip_facing: false,
+                    no_outer_sill: false,
+                    no_inner_sill: false,
+                    threshold: false,
+                    setback: None,
+                    reveal: None,
+                    division: None,
+                    door: None,
+                    texts: None,
                 }),
             )
         };
@@ -1021,7 +1240,7 @@ mod tests {
         let (i1, i2) = (d1.id, d2.id);
         doc.commit(Transaction::new("doors").insert(d1).insert(d2))
             .unwrap();
-        let dims = find(doc.model(), lid, i1, DVec2::ZERO);
+        let dims = find(doc.model(), lid, i1, DVec2::ZERO, WallRef::CoreFace, None);
         // to the wall's start (1000) and to the next door (4000 − 1900)
         let start = dims
             .iter()
@@ -1040,7 +1259,7 @@ mod tests {
         };
         assert!((o.offset - 1.6).abs() < 1e-9);
         // past the wall's end is refused
-        let dims = find(doc.model(), lid, i1, DVec2::ZERO);
+        let dims = find(doc.model(), lid, i1, DVec2::ZERO, WallRef::CoreFace, None);
         let start = dims
             .iter()
             .find(|d| d.how == How::Along { start_side: true })
@@ -1076,7 +1295,14 @@ mod level_tests {
     #[test]
     fn a_level_measures_to_the_levels_below_and_above_and_typing_moves_it() {
         let (mut doc, [g, f, r]) = levels();
-        let dims = find(doc.model(), ElementId::new(), f, DVec2::new(5.0, 0.0));
+        let dims = find(
+            doc.model(),
+            ElementId::new(),
+            f,
+            DVec2::new(5.0, 0.0),
+            WallRef::CoreFace,
+            None,
+        );
         assert_eq!(dims.len(), 2);
         assert_eq!(dims[0].other, Some(g));
         assert_eq!(dims[1].other, Some(r));
@@ -1142,10 +1368,24 @@ mod level_tests {
         let view = v.id;
         doc.commit(Transaction::new("view").insert(v)).unwrap();
         // lock First to Roof, then type First 3.4 m above the ground
-        let dims = find(doc.model(), view, f, DVec2::new(5.0, 0.0));
+        let dims = find(
+            doc.model(),
+            view,
+            f,
+            DVec2::new(5.0, 0.0),
+            WallRef::CoreFace,
+            None,
+        );
         let (tx, _) = padlock(doc.model(), view, &dims[1]).unwrap();
         doc.commit(tx).unwrap();
-        let dims = find(doc.model(), view, f, DVec2::new(5.0, 0.0));
+        let dims = find(
+            doc.model(),
+            view,
+            f,
+            DVec2::new(5.0, 0.0),
+            WallRef::CoreFace,
+            None,
+        );
         assert_eq!(dims[0].other, Some(g));
         let (tx, _) = set(doc.model(), &dims[0], 3.4).unwrap();
         doc.commit(tx).unwrap();
@@ -1154,5 +1394,249 @@ mod level_tests {
             (doc.model().level(r).unwrap().elevation - 6.4).abs() < 1e-9,
             "the roof keeps 3 m above"
         );
+    }
+}
+
+#[cfg(test)]
+mod core_tests {
+    use super::*;
+    use creabim_core::{Document, Level, Wall};
+
+    fn level() -> Element {
+        Element::new(
+            "Ground",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        )
+    }
+
+    fn wall(level: ElementId, a: (f64, f64), b: (f64, f64), t: f64) -> Element {
+        Element::new(
+            "W",
+            ElementKind::Wall(Wall::new(
+                level,
+                DVec2::new(a.0, a.1),
+                DVec2::new(b.0, b.1),
+                t,
+                2.7,
+            )),
+        )
+    }
+
+    #[test]
+    fn parallel_walls_measure_face_to_face_of_their_cores() {
+        let l = level();
+        let lid = l.id;
+        // centrelines 4 m apart, 300 and 200 thick, no layers: all core
+        let (a, b) = (
+            wall(lid, (0.0, 0.0), (0.0, 5.0), 0.3),
+            wall(lid, (4.0, 0.0), (4.0, 5.0), 0.2),
+        );
+        let (ia, ib) = (a.id, b.id);
+        let mut doc = Document::new();
+        doc.commit(Transaction::new("set up").insert(l).insert(a).insert(b))
+            .unwrap();
+        let dims = find(doc.model(), lid, ia, DVec2::ZERO, WallRef::CoreFace, None);
+        let to_b = dims.iter().find(|d| d.other == Some(ib)).unwrap();
+        assert!((to_b.value - 3.75).abs() < 1e-9, "{}", to_b.value);
+        // the centre lines as before, when asked
+        let dims = find(doc.model(), lid, ia, DVec2::ZERO, WallRef::Centre, None);
+        let to_b = dims.iter().find(|d| d.other == Some(ib)).unwrap();
+        assert!((to_b.value - 4.0).abs() < 1e-9);
+        // typing the core gap moves the wall by the difference
+        let dims = find(doc.model(), lid, ib, DVec2::ZERO, WallRef::CoreFace, None);
+        let to_a = dims.iter().find(|d| d.other == Some(ia)).unwrap();
+        let (tx, _) = set(doc.model(), to_a, 3.5).unwrap();
+        doc.commit(tx).unwrap();
+        let ElementKind::Wall(w) = &doc.model().get(ib).unwrap().kind else {
+            unreachable!()
+        };
+        assert!((w.start.x - 3.75).abs() < 1e-9, "{}", w.start.x);
+    }
+
+    #[test]
+    fn a_held_core_gap_holds_between_the_faces() {
+        let l = level();
+        let lid = l.id;
+        let plan = Element::new("Plan", ElementKind::View(creabim_core::View::plan(lid)));
+        let view = plan.id;
+        let (a, b) = (
+            wall(lid, (0.0, 0.0), (0.0, 5.0), 0.3),
+            wall(lid, (4.0, 0.0), (4.0, 5.0), 0.2),
+        );
+        let (ia, ib) = (a.id, b.id);
+        let mut doc = Document::new();
+        doc.commit(
+            Transaction::new("set up")
+                .insert(l)
+                .insert(plan)
+                .insert(a)
+                .insert(b),
+        )
+        .unwrap();
+        let dims = find(doc.model(), lid, ib, DVec2::ZERO, WallRef::CoreFace, None);
+        let to_a = dims.iter().find(|d| d.other == Some(ia)).unwrap();
+        let (tx, _) = padlock(doc.model(), view, to_a).unwrap();
+        doc.commit(tx).unwrap();
+        // wall A moves 0.5 right: B follows and keeps 3750 between faces
+        let before = doc.model().get(ia).unwrap().clone();
+        let mut after = before.clone();
+        if let ElementKind::Wall(w) = &mut after.kind {
+            w.start.x += 0.5;
+            w.end.x += 0.5;
+        }
+        doc.commit(Transaction::new("Move A").replace(before, after))
+            .unwrap();
+        let ElementKind::Wall(w) = &doc.model().get(ib).unwrap().kind else {
+            unreachable!()
+        };
+        assert!((w.start.x - 4.5).abs() < 1e-9, "{}", w.start.x);
+    }
+
+    #[test]
+    fn a_door_measures_to_the_core_face_of_the_wall_it_meets() {
+        let l = level();
+        let lid = l.id;
+        // host along x; a 300 wall meets it at x = 0 (an L) and one at x = 6
+        let host = wall(lid, (0.0, 0.0), (6.0, 0.0), 0.3);
+        let left = wall(lid, (0.0, 0.0), (0.0, 4.0), 0.3);
+        let right = wall(lid, (6.0, 0.0), (6.0, 4.0), 0.3);
+        let (hid, lid_w) = (host.id, left.id);
+        let door = Element::new(
+            "D01",
+            ElementKind::Opening(creabim_core::Opening {
+                host: hid,
+                kind: creabim_core::OpeningKind::Door,
+                offset: 1.0,
+                sill: 0.0,
+                width: 0.9,
+                height: 2.1,
+                material: None,
+                frame: Default::default(),
+                flip_hand: false,
+                flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
+                threshold: false,
+                setback: None,
+                reveal: None,
+                division: None,
+                door: None,
+                texts: None,
+            }),
+        );
+        let did = door.id;
+        let mut doc = Document::new();
+        doc.commit(
+            Transaction::new("set up")
+                .insert(l)
+                .insert(host)
+                .insert(left)
+                .insert(right)
+                .insert(door),
+        )
+        .unwrap();
+        let dims = find(doc.model(), lid, did, DVec2::ZERO, WallRef::CoreFace, None);
+        let start = dims
+            .iter()
+            .find(|d| d.how == How::Along { start_side: true })
+            .unwrap();
+        // from the inner face of the left wall (x = 0.15) to the jamb at 1.0
+        assert!((start.value - 0.85).abs() < 1e-9, "{}", start.value);
+        assert_eq!(start.other, Some(lid_w));
+    }
+
+    #[test]
+    fn a_column_measures_from_its_sides_to_the_wall_cores() {
+        let l = level();
+        let lid = l.id;
+        let w = wall(lid, (0.0, 0.0), (0.0, 5.0), 0.3);
+        let wid = w.id;
+        let col = Element::new(
+            "C01",
+            ElementKind::Column(creabim_core::Column::new(
+                lid,
+                DVec2::new(2.0, 2.0),
+                creabim_core::Profile::Rectangle {
+                    width: 0.4,
+                    depth: 0.4,
+                },
+            )),
+        );
+        let cid = col.id;
+        let mut doc = Document::new();
+        doc.commit(Transaction::new("set up").insert(l).insert(w).insert(col))
+            .unwrap();
+        let dims = find(doc.model(), lid, cid, DVec2::ZERO, WallRef::CoreFace, None);
+        let to_w = dims.iter().find(|d| d.other == Some(wid)).unwrap();
+        // from the column's left side (1.8) to the wall's face (0.15)
+        assert!((to_w.value - 1.65).abs() < 1e-9, "{}", to_w.value);
+        let (tx, _) = set(doc.model(), to_w, 1.0).unwrap();
+        doc.commit(tx).unwrap();
+        let ElementKind::Column(c) = &doc.model().get(cid).unwrap().kind else {
+            unreachable!()
+        };
+        assert!((c.position.x - 1.35).abs() < 1e-9, "{}", c.position.x);
+    }
+
+    #[test]
+    fn plaster_and_insulation_are_left_out_of_the_gap() {
+        use creabim_core::{Assembly, Layer, LayerFunction};
+        let l = level();
+        let lid = l.id;
+        // 20 plaster | 300 masonry | 150 insulation | 10 render = 480;
+        // exterior on the right of start → end
+        let asm = Element::new(
+            "Ext",
+            ElementKind::Assembly(Assembly {
+                usage: Default::default(),
+                layers: vec![
+                    Layer::new(LayerFunction::Finish, None, 0.01),
+                    Layer::new(LayerFunction::Insulation, None, 0.15),
+                    Layer::new(LayerFunction::Structure, None, 0.3),
+                    Layer::new(LayerFunction::Finish, None, 0.02),
+                ],
+                description: String::new(),
+                wrap: Default::default(),
+            }),
+        );
+        let mut a = wall(lid, (0.0, 0.0), (0.0, 5.0), 0.48);
+        if let ElementKind::Wall(w) = &mut a.kind {
+            w.assembly = Some(asm.id);
+        }
+        let b = wall(lid, (4.0, 0.0), (4.0, 5.0), 0.2);
+        let (ia, ib) = (a.id, b.id);
+        let mut doc = Document::new();
+        doc.commit(
+            Transaction::new("set up")
+                .insert(l)
+                .insert(asm)
+                .insert(a)
+                .insert(b),
+        )
+        .unwrap();
+        let core = walls::ref_offsets(
+            doc.model(),
+            match &doc.model().get(ia).unwrap().kind {
+                ElementKind::Wall(w) => w,
+                _ => unreachable!(),
+            },
+            WallRef::CoreFace,
+        );
+        let dims = find(doc.model(), lid, ia, DVec2::ZERO, WallRef::CoreFace, None);
+        let to_b = dims.iter().find(|d| d.other == Some(ib)).unwrap();
+        // the wall runs up y, so its exterior (render, insulation) faces
+        // B at +x: from the masonry's face (x = 0.08) to B's face (3.9)
+        assert!(
+            (to_b.value - 3.82).abs() < 1e-9,
+            "{} {:?}",
+            to_b.value,
+            core
+        );
+        let dims = find(doc.model(), lid, ia, DVec2::ZERO, WallRef::Face, None);
+        let to_b2 = dims.iter().find(|d| d.other == Some(ib)).unwrap();
+        assert!((to_b.value - to_b2.value - 0.16).abs() < 1e-9);
     }
 }

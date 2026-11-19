@@ -129,6 +129,10 @@ pub struct Sketch {
     /// Dimensions and relations kept by [`Sketch::solve`].
     #[serde(default)]
     pub constraints: Vec<Constraint>,
+    /// Drawn as a utility network in plan (water main, sewer, gas...):
+    /// its line type, colour, layer and code (see [`crate::utility`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub net: Option<crate::utility::UtilityLine>,
 }
 
 impl Sketch {
@@ -147,6 +151,7 @@ impl Sketch {
             kinds: vec![],
             circle: None,
             constraints: vec![],
+            net: None,
         }
     }
 

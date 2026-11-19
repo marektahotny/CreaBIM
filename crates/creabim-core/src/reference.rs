@@ -14,10 +14,51 @@ use serde::{Deserialize, Serialize};
 pub enum RefSource {
     /// Another plan or section, drawn at the same place.
     View(ElementId),
-    /// A picture file (PNG, JPEG); `width` metres wide at scale 1.
-    Image { path: String, width: f64 },
-    /// A DXF drawing's lines, in metres from its units.
-    Dxf { path: String },
+    /// A picture file (PNG, JPEG, TIFF, BMP); `width` metres wide at
+    /// scale 1. A scan's resolution, when known, gives its drawing scale
+    /// 1:N (width = pixels / dpi × N).
+    Image {
+        path: String,
+        width: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dpi: Option<f64>,
+    },
+    /// A DXF drawing's lines, in metres from its units: the file's own,
+    /// else `unit` (metres to a drawing unit), else millimetres.
+    Dxf {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        unit: Option<f64>,
+    },
+    /// A PDF page's lines and texts (or a scanned page's picture), at the
+    /// drawing's scale 1:`scale`; `page` from 1.
+    Pdf { path: String, page: u32, scale: f64 },
+    /// A point cloud (a laser scan or a survey: XYZ, PTS, LAS). A plan
+    /// shows its points between the heights `from` and `to` above the
+    /// plan's level, or with `whole` all of them from above; `lift` is
+    /// added to its heights (a scanner's zero is seldom the floor).
+    Points {
+        path: String,
+        from: f64,
+        to: f64,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        whole: bool,
+        #[serde(default)]
+        lift: f64,
+    },
+}
+
+impl RefSource {
+    /// A cloud of a file, cut at breast height as PilonDesigner's.
+    pub fn points(path: String) -> Self {
+        RefSource::Points {
+            path,
+            from: 0.9,
+            to: 1.5,
+            whole: false,
+            lift: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -71,6 +112,13 @@ pub struct Reference {
     /// right), once known: its middle is what it turns and scales about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bounds: Option<[DVec2; 2]>,
+    /// A drawing's layers not shown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers_off: Vec<String>,
+    /// Shown only within this rectangle, in its own coordinates (lower
+    /// left, upper right).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clip: Option<[DVec2; 2]>,
 }
 
 fn yes() -> bool {
@@ -112,12 +160,24 @@ impl Reference {
             in_perspective: true,
             in_orthographic: true,
             bounds: None,
+            layers_off: vec![],
+            clip: None,
         }
     }
 
     /// Shown in 3D: asked to be, and not kept to its profile.
     pub fn shows_in_3d(&self) -> bool {
         self.in_3d && !self.only_profile && !self.hidden
+    }
+
+    /// Placed with its lower left corner at the origin: a drawing in
+    /// national coordinates (S-JTSK, kilometres away) brought to the
+    /// project, as PilonDesigner does.
+    pub fn at_origin(&mut self, bounds: [DVec2; 2]) {
+        self.bounds = Some(bounds);
+        self.at = (bounds[1] - bounds[0]) / 2.0;
+        self.rotation = 0.0;
+        self.scale = 1.0;
     }
 
     /// Shown where it was drawn: its middle at its own middle, upright,
@@ -218,6 +278,7 @@ mod tests {
             RefSource::Image {
                 path: "plan.png".into(),
                 width: 10.0,
+                dpi: None,
             },
             vec![],
         );

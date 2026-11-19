@@ -162,6 +162,8 @@ impl CreaBimApp {
 
     /// Let the close through: saved, or the changes let go.
     fn close_now(&mut self, ctx: &egui::Context) {
+        // saved, or the changes let go on purpose: nothing to offer back
+        self.autosave_clear();
         self.close_ask = false;
         self.close_state = CloseState::Ask;
         self.hide_close_dialog();
@@ -280,20 +282,21 @@ impl CreaBimApp {
         let (mut save, mut discard, mut cancel) = (false, false, false);
         egui::Modal::new(egui::Id::new("close-unsaved")).show(ctx, |ui| {
             ui.set_width(400.0);
-            ui.heading(format!("Save the changes to {name}?"));
+            ui.heading(crate::i18n::tr(&format!("Save the changes to {name}?")));
             ui.add_space(6.0);
-            ui.label("They are lost if you close without saving.");
+            ui.label(crate::i18n::t("They are lost if you close without saving."));
             ui.label(
-                egui::RichText::new("Enter saves, Esc goes back to the project.")
+                egui::RichText::new(crate::i18n::t("Enter saves, Esc goes back to the project."))
                     .small()
                     .color(pal.muted),
             );
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                save = ui.button("Save").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter));
-                discard = ui.button("Don't save").clicked();
-                cancel =
-                    ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+                save = ui.button(crate::i18n::t("Save")).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Enter));
+                discard = ui.button(crate::i18n::t("Don't save")).clicked();
+                cancel = ui.button(crate::i18n::t("Cancel")).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Escape));
             });
         });
         if cancel {
@@ -324,7 +327,7 @@ impl CreaBimApp {
 
 /// Where a manual update check looks: the project's releases page. Nothing
 /// is fetched in the background; the page opens in the browser when asked.
-pub(crate) const RELEASES: &str = "https://github.com/chopinregis/CreaBIM/releases";
+pub(crate) const RELEASES: &str = "https://github.com/marektahotny/CreaBIM/releases";
 
 /// One way to start a project in the New project window.
 pub(crate) struct Start {
@@ -336,21 +339,14 @@ pub(crate) struct Start {
     pub icon: &'static str,
 }
 
-/// The two large choices at the top of New project.
-pub(crate) const STARTS: [Start; 2] = [
-    Start {
-        id: "new.empty",
-        title: "Empty project",
-        line: "Two levels and nothing else, in your units. The everyday start.",
-        icon: "file-plus",
-    },
-    Start {
-        id: "new.sample",
-        title: "Starter house",
-        line: "A complete two-storey house with drawings and sheets, ready to change.",
-        icon: "house",
-    },
-];
+/// The large choice at the top of New project; the recent projects
+/// follow it.
+pub(crate) const STARTS: [Start; 1] = [Start {
+    id: "new.empty",
+    title: "Empty project",
+    line: "Two levels and nothing else, in your units. The everyday start.",
+    icon: "file-plus",
+}];
 
 /// The samples to learn from, each showing one thing.
 pub(crate) const SAMPLES: [Start; 6] = [
@@ -574,8 +570,11 @@ impl CreaBimApp {
         let mut grips = self.shell.settings.grips;
         let mut spacing = self.plan.snap.step_um;
         let mut marks = self.plan.snap.marks;
+        let mut autosave = self.shell.settings.autosave_minutes;
         let mut paper = self.shell.settings.drawing_paper.clone();
         let mut navigation = self.shell.settings.navigation.clone();
+        let mut draw_font = self.shell.settings.drawing_font.clone();
+        let mut text_width = self.shell.settings.text_width;
         let mut grip_hover = None;
         let mut edit_bar = self.shell.settings.edit_bar.clone();
         let mut axis_lines = self.shell.settings.axis_lines;
@@ -599,7 +598,7 @@ impl CreaBimApp {
             ("Keymap", "keyboard"),
         ];
         let height = (area.height() - 80.0).clamp(300.0, 560.0);
-        crate::app::shell::window("Settings")
+        crate::app::shell::window(crate::i18n::tr("Settings"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(310.0, height / 2.0))
             .constrain_to(area)
@@ -638,7 +637,7 @@ impl CreaBimApp {
                         ui.painter().text(
                             egui::pos2(at.right() + 8.0, r.center().y),
                             egui::Align2::LEFT_CENTER,
-                            "Settings",
+                            crate::i18n::tr("Settings"),
                             egui::FontId::proportional(14.0),
                             p.text.gamma_multiply(t),
                         );
@@ -692,7 +691,7 @@ impl CreaBimApp {
                                 let yours = |ui: &mut egui::Ui| {
                                     ui.add_space(6.0);
                                     ui.label(
-                                        egui::RichText::new("Yours alone: it never changes anyone's drawings, and goes with you, not with the project.")
+                                        egui::RichText::new(crate::i18n::t("Yours alone: it never changes anyone's drawings, and goes with you, not with the project."))
                                             .weak()
                                             .small(),
                                     );
@@ -702,11 +701,11 @@ impl CreaBimApp {
                                         crate::props::section(ui, "Look");
                                         crate::props::row(ui, "Theme", |ui| {
                                             egui::ComboBox::from_id_salt("settings.theme").icon(crate::props::combo_icon)
-                                                .selected_text(theme.label())
+                                                .selected_text(crate::i18n::tw(theme.label()))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for t in crate::theme::Theme::ALL {
-                                                        ui.selectable_value(&mut theme, t, t.label());
+                                                        ui.selectable_value(&mut theme, t, crate::i18n::tw(t.label()));
                                                     }
                                                 });
                                         });
@@ -717,15 +716,45 @@ impl CreaBimApp {
                                                 _ => "Follow the theme",
                                             };
                                             egui::ComboBox::from_id_salt("settings.paper").icon(crate::props::combo_icon)
-                                                .selected_text(label(&paper))
+                                                .selected_text(crate::i18n::tw(label(&paper)))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for k in ["theme", "light", "dark"] {
-                                                        ui.selectable_value(&mut paper, k.to_string(), label(k));
+                                                        ui.selectable_value(&mut paper, k.to_string(), crate::i18n::tw(label(k)));
                                                     }
                                                 })
                                                 .response
-                                                .on_hover_text("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white.");
+                                                .on_hover_text(crate::i18n::t("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white."));
+                                        });
+                                        crate::props::section(ui, "Drawing text");
+                                        crate::props::row(ui, "Font", |ui| {
+                                            let name = creabim_geom::font::setup()
+                                                .font
+                                                .map(|f| f.family.clone())
+                                                .unwrap_or_else(|| crate::i18n::tr("Built-in sans"));
+                                            ui.horizontal(|ui| {
+                                                if !draw_font.is_empty()
+                                                    && ui.small_button("×").on_hover_text(crate::i18n::tr("Back to the usual font")).clicked()
+                                                {
+                                                    draw_font.clear();
+                                                }
+                                                if ui.button(name)
+                                                    .on_hover_text(crate::i18n::tr("Pick a font file (TTF or OTF) for the text of drawings: dimensions, tags, notes, title blocks. It is used on screen and carried in PDF and SVG. With none picked, Avenir Next Condensed is used where it is found: in a fonts folder beside the program or among the system's fonts."))
+                                                    .clicked()
+                                                {
+                                                    if let Some(p) = rfd::FileDialog::new()
+                                                        .set_title(crate::i18n::tr("Font of the drawings"))
+                                                        .add_filter("TrueType, OpenType", &["ttf", "otf"])
+                                                        .pick_file()
+                                                    {
+                                                        draw_font = p.display().to_string();
+                                                    }
+                                                }
+                                            });
+                                        });
+                                        crate::props::row(ui, "Letter width", |ui| {
+                                            ui.add(egui::DragValue::new(&mut text_width).range(0.3..=2.0).speed(0.01).fixed_decimals(2))
+                                                .on_hover_text(crate::i18n::tr("1 is the font's own width; 0.7 draws every letter of the drawings at 70 % of it."))
                                         });
                                         crate::props::section(ui, "Move, Rotate and Scale bar");
                                         for (k, name, note) in [
@@ -772,14 +801,14 @@ impl CreaBimApp {
                                         }
                                         crate::props::section(ui, "Edit mode");
                                         crate::props::row(ui, "Edge width", |ui| {
-                                            ui.add(egui::Slider::new(&mut edge_w, 0.5..=3.0).step_by(0.25).suffix(" px"))
+                                            ui.add(egui::Slider::new(&mut edge_w, 0.5..=3.0).step_by(0.25).suffix(crate::i18n::t(" px")))
                                         });
                                         crate::props::row(ui, "Vertex size", |ui| {
-                                            ui.add(egui::Slider::new(&mut vert_s, 2.0..=10.0).step_by(1.0).suffix(" px"))
+                                            ui.add(egui::Slider::new(&mut vert_s, 2.0..=10.0).step_by(1.0).suffix(crate::i18n::t(" px")))
                                         });
                                         crate::props::section(ui, "3D view");
-                                        ui.checkbox(&mut axis_lines, "X and Y axes on the grid")
-                                            .on_hover_text("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it.");
+                                        ui.checkbox(&mut axis_lines, crate::i18n::t("X and Y axes on the grid"))
+                                            .on_hover_text(crate::i18n::t("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it."));
                                         yours(ui);
                                     }
                                     2 => {
@@ -790,16 +819,16 @@ impl CreaBimApp {
                                                 _ => "CreaBIM: middle orbits, left boxes",
                                             };
                                             egui::ComboBox::from_id_salt("settings.navigation").icon(crate::props::combo_icon)
-                                                .selected_text(label(&navigation))
+                                                .selected_text(crate::i18n::tw(label(&navigation)))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for k in ["creabim", "classic"] {
-                                                        ui.selectable_value(&mut navigation, k.to_string(), label(k));
+                                                        ui.selectable_value(&mut navigation, k.to_string(), crate::i18n::tw(label(k)));
                                                     }
                                                 });
                                         });
                                         ui.label(
-                                            egui::RichText::new("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D.")
+                                            egui::RichText::new(crate::i18n::t("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D."))
                                                 .weak()
                                                 .small(),
                                         );
@@ -814,18 +843,18 @@ impl CreaBimApp {
                                                 &crate::snaps::STEPS_METRIC
                                             };
                                             egui::ComboBox::from_id_salt("settings.spacing").icon(crate::props::combo_icon)
-                                                .selected_text(crate::units::len(spacing as f64 / 1e6))
+                                                .selected_text(crate::i18n::tw(crate::units::len(spacing as f64 / 1e6)))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for um in steps {
-                                                        ui.selectable_value(&mut spacing, *um, crate::units::len(*um as f64 / 1e6));
+                                                        ui.selectable_value(&mut spacing, *um, crate::i18n::tw(crate::units::len(*um as f64 / 1e6)));
                                                     }
                                                 });
                                         });
-                                        ui.checkbox(&mut marks, "Distance marks while dragging")
-                                            .on_hover_text("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it.");
+                                        ui.checkbox(&mut marks, crate::i18n::t("Distance marks while dragging"))
+                                            .on_hover_text(crate::i18n::t("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it."));
                                         ui.label(
-                                            egui::RichText::new("Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time.")
+                                            egui::RichText::new(crate::i18n::t("Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time."))
                                                 .weak()
                                                 .small(),
                                         );
@@ -835,29 +864,53 @@ impl CreaBimApp {
                                         crate::props::section(ui, "This project");
                                         crate::props::row(ui, "Units", |ui| {
                                             egui::ComboBox::from_id_salt("settings.units").icon(crate::props::combo_icon)
-                                                .selected_text(unit_row(unit).0)
+                                                .selected_text(crate::i18n::tw(unit_row(unit).0))
                                                 .width(ui.available_width())
                                                 .show_ui(ui, |ui| {
                                                     for u in UNIT_ORDER {
-                                                        ui.selectable_value(&mut unit, u, unit_row(u).0);
+                                                        ui.selectable_value(&mut unit, u, crate::i18n::tw(unit_row(u).0));
                                                     }
                                                 });
                                         });
                                         ui.label(
-                                            egui::RichText::new("Saved with the project: everyone who opens it works in these units.")
+                                            egui::RichText::new(crate::i18n::t("Saved with the project: everyone who opens it works in these units."))
                                                 .weak()
                                                 .small(),
                                         );
                                     }
                                     _ => {
+                                        crate::props::section(ui, "Autosave");
+                                        crate::props::row(ui, "Every", |ui| {
+                                            egui::ComboBox::from_id_salt("settings.autosave").icon(crate::props::combo_icon)
+                                                .selected_text(match autosave {
+                                                    0 => crate::i18n::tr("Off"),
+                                                    m => crate::i18n::tr(&format!("{m} min")),
+                                                })
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for m in [0u32, 2, 5, 10, 15, 30] {
+                                                        let label = match m {
+                                                            0 => crate::i18n::tr("Off"),
+                                                            m => crate::i18n::tr(&format!("{m} min")),
+                                                        };
+                                                        ui.selectable_value(&mut autosave, m, label);
+                                                    }
+                                                });
+                                        });
+                                        ui.label(
+                                            egui::RichText::new(crate::i18n::t("While there are changes the project is written to Name.autosave.creabim beside it, and offered back if CreaBIM closes without saving. Saving keeps the file it replaces as Name.bak.creabim."))
+                                                .weak()
+                                                .small(),
+                                        );
+                                        ui.add_space(8.0);
                                         crate::props::section(ui, "Shortcuts");
                                         ui.label(
-                                            egui::RichText::new("Every key, by what it does. Ctrl+/ opens the list any time.")
+                                            egui::RichText::new(crate::i18n::t("Every key, by what it does. Ctrl+/ opens the list any time."))
                                                 .weak()
                                                 .small(),
                                         );
                                         ui.add_space(4.0);
-                                        keys = ui.button("Keyboard shortcuts…").clicked();
+                                        keys = ui.button(crate::i18n::t("Keyboard shortcuts…")).clicked();
                                     }
                                 }
                             });
@@ -879,6 +932,10 @@ impl CreaBimApp {
             self.shell.settings.edit_vertex_size = vert_s;
             self.shell.settings.store();
         }
+        if autosave != self.shell.settings.autosave_minutes {
+            self.shell.settings.autosave_minutes = autosave;
+            self.shell.settings.store();
+        }
         if interaction != self.shell.settings.interaction {
             self.shell.settings.interaction = interaction;
             self.shell.settings.store();
@@ -892,6 +949,22 @@ impl CreaBimApp {
             crate::modal::set_bar_by_pointer(edit_bar == "pointer");
             self.shell.settings.edit_bar = edit_bar;
             self.shell.settings.store();
+        }
+        if draw_font != self.shell.settings.drawing_font
+            || (text_width - self.shell.settings.text_width).abs() > 1e-9
+        {
+            let picked = draw_font != self.shell.settings.drawing_font;
+            self.shell.settings.drawing_font = draw_font;
+            self.shell.settings.text_width = text_width;
+            let found = crate::drawfont::apply(ctx, &self.shell.settings);
+            if picked && found.is_none() && !self.shell.settings.drawing_font.is_empty() {
+                // what was picked is no font: back to the usual
+                self.status = crate::i18n::tr("That file is not a font CreaBIM can read.");
+                self.shell.settings.drawing_font.clear();
+                crate::drawfont::apply(ctx, &self.shell.settings);
+            }
+            self.shell.settings.store();
+            self.geometry_key = None;
         }
         if navigation != self.shell.settings.navigation {
             self.shell.settings.navigation = navigation;
@@ -934,7 +1007,7 @@ impl CreaBimApp {
         }
         let mut open = true;
         let mut pick = None;
-        crate::app::shell::window("New project")
+        crate::app::shell::window(crate::i18n::tr("New project"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -943,22 +1016,35 @@ impl CreaBimApp {
                 for s in STARTS.iter() {
                     if ui
                         .button(egui::RichText::new(s.title).strong())
-                        .on_hover_text(s.line)
+                        .on_hover_text(crate::i18n::tr(s.line))
                         .clicked()
                     {
-                        pick = Some(s.id);
+                        pick = Some(s.id.to_string());
+                    }
+                }
+                for (id, title, line) in &self.recent_cards {
+                    if ui
+                        .button(egui::RichText::new(title).strong())
+                        .on_hover_text(line)
+                        .clicked()
+                    {
+                        pick = Some(id.clone());
                     }
                 }
                 crate::props::section(ui, "Samples to learn from");
                 for s in SAMPLES.iter() {
-                    if ui.button(s.title).on_hover_text(s.line).clicked() {
-                        pick = Some(s.id);
+                    if ui
+                        .button(crate::i18n::tr(s.title))
+                        .on_hover_text(crate::i18n::tr(s.line))
+                        .clicked()
+                    {
+                        pick = Some(s.id.to_string());
                     }
                 }
             });
         self.new_project_classic = open && pick.is_none();
         if let Some(id) = pick {
-            self.run_action(ctx, id);
+            self.run_action(ctx, &id);
         }
     }
 }
@@ -985,7 +1071,7 @@ impl CreaBimApp {
         let mut go = false;
         let mut cancel = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Export IFC")
+        crate::app::shell::window(crate::i18n::tr("Export IFC"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(230.0, 160.0))
             .constrain_to(area)
@@ -993,7 +1079,7 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.set_width(460.0);
-                ui.label(egui::RichText::new("How walls, slabs and roofs go out").strong());
+                ui.label(egui::RichText::new(crate::i18n::t("How walls, slabs and roofs go out")).strong());
                 let choices = [
                     (
                         IfcBody::Modelled,
@@ -1020,13 +1106,13 @@ impl CreaBimApp {
                 }
                 ui.add_space(6.0);
                 ui.label(
-                    egui::RichText::new("Doors, windows, openings and everything else go out the same way in all three.")
+                    egui::RichText::new(crate::i18n::t("Doors, windows, openings and everything else go out the same way in all three."))
                         .weak(),
                 );
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    go = ui.button("Export…").clicked();
-                    cancel = ui.button("Cancel").clicked();
+                    go = ui.button(crate::i18n::t("Export…")).clicked();
+                    cancel = ui.button(crate::i18n::t("Cancel")).clicked();
                 });
             });
         if key(body) != self.shell.settings.ifc_body {
@@ -1063,8 +1149,14 @@ impl CreaBimApp {
         let mut open = true;
         let mut apply = false;
         let mut close = false;
+        // the project's north turned: by an angle, or by a line picked in a plan
+        let mut north_turn: Option<f64> = None;
+        let mut north_line = false;
+        let mut fire_params = false;
+        // the plot's data asked of the cadastre
+        let mut cadastre = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Project information")
+        crate::app::shell::window(crate::i18n::tr("Project information"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(200.0, 220.0))
             .constrain_to(area)
@@ -1076,7 +1168,7 @@ impl CreaBimApp {
                     crate::props::row(ui, label, |ui| {
                         ui.add(
                             egui::TextEdit::singleline(v).vertical_align(egui::Align::Center)
-                                .hint_text(hint)
+                                .hint_text(crate::i18n::tr(hint))
                                 .desired_width(ui.available_width()),
                         );
                     });
@@ -1085,11 +1177,177 @@ impl CreaBimApp {
                 text(ui, "Name", &mut draft.name, "Maple Lane House");
                 text(ui, "Number", &mut draft.number, "Job number");
                 text(ui, "Client", &mut draft.client, "");
-                text(ui, "Status", &mut draft.status, "Planning application");
+                crate::props::row(ui, "Stage", |ui| {
+                    let shown = match creabim_core::project::stage_code(&draft.status) {
+                        Some(code) => format!("{} ({code})", draft.status.trim()),
+                        None => draft.status.clone(),
+                    };
+                    egui::ComboBox::from_id_salt("project.stage")
+                        .selected_text(shown)
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut draft.status, String::new(), "-");
+                            for (name, code) in creabim_core::project::STAGES {
+                                ui.selectable_value(
+                                    &mut draft.status,
+                                    name.to_string(),
+                                    format!("{name} ({code})"),
+                                );
+                            }
+                        });
+                });
                 text(ui, "Issue date", &mut draft.issue_date, "");
+                text(ui, "Revision", &mut draft.revision, "00");
+                crate::props::section(ui, "Title block");
+                text(ui, "Chief architect", &mut draft.architect, "");
+                text(ui, "Drawn by", &mut draft.drawn_by, "");
+                text(ui, "Responsible designer", &mut draft.designer, "");
+                crate::props::row(ui, "Logo", |ui| {
+                    crate::props::flow(ui, |ui| {
+                        if ui.button(crate::i18n::t("Choose…")).clicked() {
+                            if let Some(img) = rfd::FileDialog::new()
+                                .add_filter("Picture", &["png", "jpg", "jpeg"])
+                                .pick_file()
+                                .and_then(|p| image::open(p).ok())
+                            {
+                                // a logo needs no more; the project stays light
+                                let img = if img.width().max(img.height()) > 1024 {
+                                    img.resize(1024, 1024, image::imageops::FilterType::Triangle)
+                                } else {
+                                    img
+                                };
+                                let rgba = img.to_rgba8();
+                                draft.logo = Some(creabim_core::project::Logo {
+                                    width: rgba.width(),
+                                    height: rgba.height(),
+                                    rgba: creabim_geom::raster::store_image(rgba.as_raw()),
+                                });
+                            }
+                        }
+                        if draft.logo.is_some() {
+                            if ui.button(crate::i18n::t("Remove")).clicked() {
+                                draft.logo = None;
+                            }
+                            ui.label(egui::RichText::new(crate::i18n::t("In the title block")).weak());
+                        }
+                    })
+                });
+                crate::props::section(ui, "Title pages");
+                text(ui, "Design office", &mut draft.office, "");
+                text(ui, "Office address and contact", &mut draft.office_contact, "");
+                let stage = creabim_geom::coverpage::heading(&creabim_core::project::ProjectInfo {
+                    cover_heading: String::new(),
+                    status: draft.status.clone(),
+                    ..Default::default()
+                });
+                crate::props::row(ui, "Heading", |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut draft.cover_heading)
+                            .vertical_align(egui::Align::Center)
+                            .hint_text(stage)
+                            .desired_width(ui.available_width()),
+                    );
+                });
                 crate::props::section(ui, "Site");
                 text(ui, "Site name", &mut draft.site_name, "");
                 text(ui, "Address", &mut draft.address, "");
+                text(ui, "Plots", &mut draft.parcels, "1838/116");
+                text(ui, "Cadastral district", &mut draft.cadastre, "");
+                crate::props::row(ui, "Plot area", |ui| {
+                    let mut on = draft.plot_area.is_some();
+                    if ui.checkbox(&mut on, "").changed() {
+                        draft.plot_area = on.then_some(0.0);
+                    }
+                    if let Some(a) = &mut draft.plot_area {
+                        ui.add(
+                            egui::DragValue::new(a)
+                                .range(0.0..=1e7)
+                                .speed(1.0)
+                                .max_decimals(2)
+                                .suffix(" m²"),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "The summary report works out the built-up index and the green coefficient from it",
+                        ));
+                    }
+                });
+                crate::props::section(ui, "Fire safety");
+                if ui
+                    .button(crate::i18n::t("Fire calculation parameters…"))
+                    .on_hover_text(crate::i18n::t(
+                        "The norms' tables the fire calculations count with: read from your file, changed when a norm changes, saved with the project",
+                    ))
+                    .clicked()
+                {
+                    fire_params = true;
+                }
+                crate::props::row(ui, "Structural system for fire", |ui| {
+                    const SYSTEMS: [(&str, &str); 5] = [
+                        ("N", "Non-combustible"),
+                        ("Za", "Mixed, 2.6.4 a)"),
+                        ("Zb", "Mixed, 2.6.4 b)"),
+                        ("Ha", "Combustible, 2.6.5 a)"),
+                        ("Hb", "Combustible, 2.6.5 b)"),
+                    ];
+                    let now = if draft.fire_system.is_empty() {
+                        "N"
+                    } else {
+                        draft.fire_system.as_str()
+                    };
+                    let shown = SYSTEMS
+                        .iter()
+                        .find(|s| s.0 == now)
+                        .map_or(now.to_string(), |s| crate::i18n::t(s.1).to_string());
+                    let mut picked = None;
+                    egui::ComboBox::from_id_salt("project.fire_system")
+                        .selected_text(shown)
+                        .show_ui(ui, |ui| {
+                            for (code, name) in SYSTEMS {
+                                if ui.selectable_label(now == code, crate::i18n::t(name)).clicked() {
+                                    picked = Some(code);
+                                }
+                            }
+                        });
+                    if let Some(c) = picked {
+                        draft.fire_system = if c == "N" { String::new() } else { c.into() };
+                    }
+                });
+                crate::props::section(ui, "Fire separation distances");
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "The distance of each side of the building, as the norm's tables give it. Plans with the fire zones switched on draw the fire-dangerous space from it.",
+                    ))
+                    .weak(),
+                );
+                draft.fire_distances.resize(8, 0.0);
+                for (i, d) in draft.fire_distances.iter_mut().enumerate() {
+                    let side = creabim_core::words::tr(creabim_geom::firezones::FACING[i]);
+                    ui.horizontal(|ui| {
+                        ui.add_sized([40.0, 18.0], egui::Label::new(side));
+                        ui.add(
+                            egui::DragValue::new(d)
+                                .range(0.0..=200.0)
+                                .speed(0.05)
+                                .max_decimals(2)
+                                .suffix(" m"),
+                        );
+                    });
+                }
+                if draft.fire_distances.iter().all(|d| *d <= 0.0) {
+                    draft.fire_distances.clear();
+                }
+                if ui
+                    .add_enabled(
+                        draft.sjtsk.is_some(),
+                        egui::Button::new(crate::i18n::t("Plot from the cadastre")),
+                    )
+                    .on_hover_text(crate::i18n::t(
+                        "Asks the cadastre's public service for the parcel under the building: its number, district and area. Needs the S-JTSK origin and the internet.",
+                    ))
+                    .clicked()
+                {
+                    cadastre = true;
+                }
                 let degrees = |ui: &mut egui::Ui, label: &str, v: &mut Option<f64>, range: f64| {
                     crate::props::row(ui, label, |ui| {
                         let mut on = v.is_some();
@@ -1109,13 +1367,34 @@ impl CreaBimApp {
                 };
                 degrees(ui, "Latitude", &mut draft.latitude, 90.0);
                 degrees(ui, "Longitude", &mut draft.longitude, 180.0);
-                crate::props::row(ui, "Elevation", |ui| {
+                crate::props::row(ui, "site\u{4}Elevation", |ui| {
                     ui.add(
                         egui::DragValue::new(&mut draft.elevation)
                             .speed(0.01)
                             .suffix(" m"),
                     )
-                    .on_hover_text("The project's zero above sea level");
+                    .on_hover_text(crate::i18n::t("The project's zero above sea level"));
+                });
+                crate::props::row(ui, "S-JTSK origin", |ui| {
+                    let mut on = draft.sjtsk.is_some();
+                    if ui
+                        .checkbox(&mut on, "")
+                        .on_hover_text(crate::i18n::t("Where the project's origin (0, 0) lies in S-JTSK (EPSG:5514), east and north"))
+                        .changed()
+                    {
+                        draft.sjtsk = on.then_some([0.0, 0.0]);
+                    }
+                    if let Some([e, n]) = &mut draft.sjtsk {
+                        for (v, p) in [(e, "E "), (n, "N ")] {
+                            ui.add(
+                                egui::DragValue::new(v)
+                                    .speed(0.01)
+                                    .max_decimals(3)
+                                    .prefix(p)
+                                    .suffix(" m"),
+                            );
+                        }
+                    }
                 });
                 crate::props::row(ui, "True north", |ui| {
                     ui.add(
@@ -1124,23 +1403,66 @@ impl CreaBimApp {
                             .speed(0.5)
                             .suffix("°"),
                     )
-                    .on_hover_text("How far true north turns from the drawings' up, anticlockwise");
+                    .on_hover_text(crate::i18n::t("How far true north turns from the drawings' up, anticlockwise"));
                 });
+                crate::props::row(ui, "Rotate project north", |ui| {
+                    let key = egui::Id::new("project.north.turn");
+                    let mut by: f64 = ui.data(|d| d.get_temp(key)).unwrap_or(0.0);
+                    ui.add(
+                        egui::DragValue::new(&mut by)
+                            .range(-180.0..=180.0)
+                            .speed(0.5)
+                            .max_decimals(4)
+                            .suffix("°"),
+                    )
+                    .on_hover_text(crate::i18n::t("The whole project (building, terrain, parcels, maps) turns about its origin by this angle, anticlockwise, so the plans draw turned. True north stays where it is on the ground, and the S-JTSK coordinates and heights stay true"));
+                    ui.data_mut(|d| d.insert_temp(key, by));
+                    if ui
+                        .add_enabled(by != 0.0, egui::Button::new(crate::i18n::t("Rotate")))
+                        .clicked()
+                    {
+                        north_turn = Some(by);
+                        ui.data_mut(|d| d.insert_temp(key, 0.0f64));
+                    }
+                });
+                if ui
+                    .button(crate::i18n::t("Align project north by a line in the plan…"))
+                    .on_hover_text(crate::i18n::t("Then click a line in a plan (a parcel boundary, a map line, a wall): the whole project turns so that it is exactly level or upright, whichever is nearer"))
+                    .clicked()
+                {
+                    north_line = true;
+                }
                 crate::props::section(ui, "Building");
                 text(ui, "Name", &mut draft.building_name, "");
                 text(ui, "Use", &mut draft.building_use, "Dwelling");
+                crate::props::section(ui, "Standards");
+                crate::props::row(ui, "Codes", |ui| {
+                    egui::ComboBox::from_id_salt("project.norms")
+                        .icon(crate::props::combo_icon)
+                        .selected_text(crate::i18n::tw(draft.norms.label()))
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for set in creabim_core::norms::NormSet::ALL {
+                                ui.selectable_value(&mut draft.norms, set, crate::i18n::tw(set.label()));
+                            }
+                        })
+                        .response
+                        .on_hover_text(crate::i18n::t(
+                            "The standards the building services' calculations follow: Slovak first, Czech where the building is in the Czech Republic",
+                        ));
+                });
                 ui.label(
                     egui::RichText::new(
-                        "These fill the title blocks of every sheet (a value a sheet sets itself still wins) and name the project, site and building in IFC exports.",
+                        crate::i18n::t("These fill the title blocks of every sheet (a value a sheet sets itself still wins) and name the project, site and building in IFC exports."),
                     )
                     .weak(),
                 );
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     apply = ui
-                        .add_enabled(draft != current, egui::Button::new("Apply"))
+                        .add_enabled(draft != current, egui::Button::new(crate::i18n::t("Apply")))
                         .clicked();
-                    close = ui.button("Close").clicked();
+                    close = ui.button(crate::i18n::t("Close")).clicked();
                 });
             });
         if apply {
@@ -1151,9 +1473,109 @@ impl CreaBimApp {
                 "Project information applied: the title blocks show it now.".to_string(),
             );
         }
+        if let Some(by) = north_turn {
+            let tx = creabim_core::project::rotate_north(self.doc.model(), by);
+            let r = self.doc.commit(tx);
+            let now = self
+                .doc
+                .model()
+                .project_info()
+                .map_or(0.0, |(_, p)| p.true_north);
+            draft.true_north = now;
+            self.report(
+                r,
+                crate::i18n::tr(&format!(
+                    "Project north turned by {by}°: true north is now at {now}°. Ctrl+Z to undo."
+                )),
+            );
+        }
+        if cadastre {
+            self.status = match plot_from_cadastre(self.doc.model(), &mut draft) {
+                Ok(s) => s,
+                Err(e) => crate::i18n::tr(&format!(
+                    "The cadastre did not answer ({e}): check the connection, or type the plot's data in."
+                )),
+            };
+        }
+        if fire_params {
+            self.open_fire_params();
+        }
+        if north_line {
+            self.plan.north_pick = true;
+            close = true;
+            self.status = "Click a line in a plan: the project turns so that it is level or upright. Esc leaves it.".into();
+        }
         self.project_open = open && !close;
         self.project_draft = self.project_open.then_some(draft);
     }
+}
+
+/// The parcel under the building asked of the cadastre's public service
+/// and written to `draft`: its number, district and area. The answer for
+/// the status line.
+fn plot_from_cadastre(
+    model: &creabim_core::Model,
+    draft: &mut creabim_core::ProjectInfo,
+) -> Result<String, String> {
+    use creabim_exchange::kataster::{eskn_url, parse_eskn, Register};
+    let [e0, n0] = draft.sjtsk.ok_or("no S-JTSK origin")?;
+    // the middle of the building, else the project's origin
+    let ends: Vec<glam::DVec2> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            creabim_core::ElementKind::Wall(w) => Some([w.start, w.end]),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let mid = if ends.is_empty() {
+        glam::DVec2::ZERO
+    } else {
+        let lo = ends.iter().fold(ends[0], |a, p| a.min(*p));
+        let hi = ends.iter().fold(ends[0], |a, p| a.max(*p));
+        (lo + hi) / 2.0
+    };
+    // true north turns anticlockwise from the drawings' up
+    let p = glam::DVec2::from_angle(-draft.true_north.to_radians()).rotate(mid);
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+    let mut last = String::from("no parcel there");
+    for reg in [Register::C, Register::E] {
+        let url = eskn_url(e0 + p.x, n0 + p.y, reg);
+        let text = match agent.get(&url).call() {
+            Ok(r) => r.into_string().map_err(|e| e.to_string())?,
+            Err(e) => {
+                last = e.to_string();
+                continue;
+            }
+        };
+        let Some(k) = parse_eskn(&text, reg) else {
+            continue;
+        };
+        if let Some(n) = &k.number {
+            draft.parcels = n.clone();
+        }
+        if let Some(d) = &k.district {
+            draft.cadastre = d.clone();
+        }
+        if let Some(a) = k.area {
+            draft.plot_area = Some(a);
+        }
+        return Ok(format!(
+            "{}: {} {}, {} {}, {} m², {} {}. {}",
+            crate::i18n::t("From the cadastre"),
+            crate::i18n::t("plot no."),
+            k.number.as_deref().unwrap_or("?"),
+            crate::i18n::t("district"),
+            k.district.as_deref().unwrap_or("?"),
+            k.area.map_or("?".to_string(), |a| format!("{a:.0}")),
+            crate::i18n::t("sheet of ownership"),
+            k.sheet.as_deref().unwrap_or("?"),
+            crate::i18n::t("Apply writes it to the project. A plot of more parcels: add their numbers and areas by hand."),
+        ));
+    }
+    Err(last)
 }
 
 /// The logo's mark as a white texture, to tint with a theme's colour.

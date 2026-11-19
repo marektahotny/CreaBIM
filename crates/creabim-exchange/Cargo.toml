@@ -13,7 +13,12 @@ creabim-core.workspace = true
 creabim-geom.workspace = true
 creabim-blend.workspace = true
 creabim-freecad.workspace = true
+encoding_rs.workspace = true
 glam.workspace = true
+lopdf.workspace = true
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 serde_json.workspace = true
 uuid.workspace = true
 thiserror.workspace = true

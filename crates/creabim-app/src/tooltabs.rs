@@ -1,6 +1,7 @@
-//! The tools row's tabs (brief 02, 2.1): Model, Annotate, View and Manage
-//! each show their own tools and commands, icons only, while Select and
-//! Align stay at the left on every tab. A tool picked by its key shows its
+//! The tools row's tabs (brief 02, 2.1): Architecture (upstream's Model),
+//! the building services' disciplines, Annotate, View and Manage each show
+//! their own tools and commands, icons only, while Select and Align stay at
+//! the left on every tab. A tool picked by its key shows its
 //! tab. A tool can be on two tabs where it belongs to both: the callout.
 
 use crate::planview::Tool;
@@ -27,7 +28,23 @@ pub enum Entry {
     Sep,
 }
 
-pub const TABS: [&str; 4] = ["Model", "Annotate", "View", "Manage"];
+/// The first is called Model upstream; this fork names it after its
+/// discipline, and puts the building services' disciplines beside it.
+pub const TABS: [&str; 10] = [
+    "Architecture",
+    "Cadastre",
+    "Plumbing and gas",
+    "Heating",
+    "HVAC",
+    "Medical gases",
+    "Electrical installation",
+    "Annotate",
+    "View",
+    "Manage",
+];
+
+/// The tab where annotating starts; the ones before it are disciplines.
+pub const ANNOTATE: usize = 7;
 
 /// On every tab, before it.
 pub const ALWAYS: [Tool; 2] = [Tool::Select, Tool::Align];
@@ -53,6 +70,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::Door),
             T(Tool::Window),
             T(Tool::Opening),
+            act(
+                "joinery:edit",
+                "Window and door editor",
+                "layout-grid",
+                "Split the selected window or door by mullions and transoms and set how each field opens",
+            ),
             Sep,
             T(Tool::Slab),
             T(Tool::Shaft),
@@ -63,6 +86,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::Column),
             T(Tool::Beam),
             T(Tool::Footing),
+            Entry::Menu {
+                key: "tab:masonry",
+                label: "Masonry",
+                icon: "brick-wall",
+                hint: "System lintels (PORFIX, Porotherm) put by hand in the storey's masonry plan, RC columns in walls, and the check of how far masonry walls run between braces",
+            },
             Sep,
             T(Tool::Object),
             act(
@@ -87,6 +116,430 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::Planting),
         ],
         1 => vec![
+            act(
+                "discipline:cadastre",
+                "Cadastre and site",
+                "landmark",
+                "Cadastral map, orthophoto and terrain in S-JTSK: the standards and the tools coming",
+            ),
+            act(
+                "project.info",
+                "Project information",
+                "info",
+                "Site, address, latitude and longitude, and the project's codes (STN or ČSN)",
+            ),
+            act(
+                "view.reference",
+                "Map underlay",
+                "underlay",
+                "Trace over a map or a picture: shown faintly under this view (Alt+F2 hides it)",
+            ),
+            act(
+                "map:open",
+                "Map underlays",
+                "globe",
+                "The map site in a window (Pilon Map Downloader): pick the area, and the cadastre, orthophoto and terrain come into the plan, the project placed in S-JTSK",
+            ),
+            act(
+                "map:zip",
+                "Map package",
+                "map",
+                "A ZIP from Pilon Map Downloader: the cadastre and site plan, the orthophoto under it, the terrain, and where the project lies in S-JTSK and above sea level",
+            ),
+            act(
+                "catalogue.cat:site",
+                "Site and connections",
+                "box",
+                "The water meter shaft with its assembly, Wavin Tegra 425 and 600 inspection chambers, the electricity meter pillar and the gas meter box, from the catalogue",
+            ),
+            act(
+                "site:soakaway",
+                "Soakaway",
+                "droplets",
+                "A rainwater soakaway of DRENBLOK blocks in 1 to 5 layers with its filter shaft and overflow, sized after DWA-A 138 from the connected area, the ground's permeability and the rain series",
+            ),
+            act(
+                "site:retention",
+                "Retention tank",
+                "droplet",
+                "A rainwater retention tank of DRENBLOK blocks wrapped in foil (EKODREN RN), its filter shaft ahead and a throttled outlet to the recipient, sized after DWA-A 117 from the connected area, the allowed outflow and the rain series; with its parts list",
+            ),
+            act(
+                "site:coords",
+                "S-JTSK coordinates",
+                "crosshair",
+                "A coordinate mark: click a point (a plot's corner, a cadastre line's bend, the building's corner), then where the text goes; it writes the point's Y and X in S-JTSK, as the cadastre does",
+            ),
+            Sep,
+            T(Tool::Terrain),
+            act(
+                "terrain:points",
+                "Terrain from points",
+                "mountain",
+                "A terrain through surveyed points (XYZ, TXT, PTS, CSV; S-JTSK too): its outline round them, each a spot height",
+            ),
+            act(
+                "earthworks:schedule",
+                "Earthworks",
+                "calc",
+                "The schedule of earthworks: topsoil, the pit, platforms' cut and fill, trenches, back-fill and haul, with KROS codes. Draw pits and platforms with the Terrain tool",
+            ),
+            T(Tool::Paving),
+            T(Tool::Planting),
+        ],
+        2 => vec![
+            act(
+                "discipline:water",
+                "Water supply",
+                "droplet",
+                "Cold and hot water: the standards (STN EN 806-3, STN 73 6655) and the tools coming",
+            ),
+            T(Tool::Pipe),
+            act(
+                "calc:water",
+                "Calculate water supply",
+                "calc",
+                "Size the cold and hot water pipes drawn to the fixtures (STN EN 806-3) and check the pressure",
+            ),
+            act(
+                "calc:circulation",
+                "Calculate circulation",
+                "refresh-cw",
+                "Size the hot water circulation from the heat its loops keep up (7 W/m in risers, 10 W/m along), find the pump and what each loop's balancing valve takes (STN EN 806-2)",
+            ),
+            act(
+                "valves:auto",
+                "Propose valves",
+                "wrench",
+                "Add the valves the pipes drawn still need: the meter assembly, shut-offs and angle valves on water (STN EN 806-2), vent heads and cleanouts on waste (STN EN 12056-2), radiator valves and shut-offs on heating, the main shut-off and cocks on gas",
+            ),
+            act(
+                "calc:fittings",
+                "Fittings schedule",
+                "table-2",
+                "The elbows, tees, branches and reducers the pipes need where they meet, counted by system",
+            ),
+            act(
+                "catalogue.cat:bathroom",
+                "Sanitary fixtures",
+                "fixtures",
+                "Basins, WCs, baths and showers from the catalogue",
+            ),
+            act(
+                "calc:fixtures",
+                "Legend of fixtures",
+                "file-text",
+                "The sanitary fixtures placed, each type with its mark, trap and connection, as the legend of a plumbing drawing",
+            ),
+            act(
+                "catalogue.cat:plumbing",
+                "Plumbing fixtures",
+                "waves",
+                "Floor drains, taps and water heaters from the catalogue",
+            ),
+            Sep,
+            act(
+                "discipline:drainage",
+                "Drainage",
+                "droplets",
+                "Waste and soil pipes: the standards (STN EN 12056-2, STN 73 6760) and the tools coming",
+            ),
+            act(
+                "pipe:K",
+                "Drain pipe",
+                "pipe-fall",
+                "The Pipe tool in foul drainage: PP-HT DN 100 falling 2 %",
+            ),
+            act(
+                "calc:drain",
+                "Calculate drainage",
+                "calc-drain",
+                "Size the waste pipes and stacks from the fixtures on them: Qww = K·√ΣDU, horizontal pipes half full on their fall, stacks by their capacity (STN EN 12056-2)",
+            ),
+            act(
+                "pipe:D",
+                "Rainwater pipe",
+                "roof-flat",
+                "The Pipe tool in rainwater drainage: PP-HT DN 100 falling 1 %",
+            ),
+            act(
+                "calc:storm",
+                "Calculate storm water",
+                "gauge",
+                "Size the rainwater stacks and drains from the roof drains on them and their areas (STN EN 12056-3)",
+            ),
+            Sep,
+            act(
+                "pipe:PV",
+                "Fire water pipe",
+                "git-commit-horizontal",
+                "The Pipe tool in the fire main to the hose systems",
+            ),
+            act(
+                "calc:fire",
+                "Calculate fire main",
+                "book-check",
+                "Size the fire main for the two worst hose systems at once and find the pressure needed at the inlet (STN 92 0400)",
+            ),
+            Sep,
+            act(
+                "discipline:gas",
+                "Gas installation",
+                "flame",
+                "Gas pipes, the main shut-off and the meter: the standards (TPP 704 01) and the tools coming",
+            ),
+            act(
+                "pipe:ZP",
+                "Gas pipe",
+                "pipe-gas",
+                "The Pipe tool in natural gas: HERZ GASPRESS at 2.4 m",
+            ),
+            act(
+                "calc:gas",
+                "Calculate gas",
+                "calc-gas",
+                "Size the gas pipes from the appliances on them: reduced flow, 100 Pa to the farthest appliance, the meter and the cabinet (TPP 704 01)",
+            ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
+        ],
+        3 => vec![
+            act(
+                "discipline:heating.radiators",
+                "Radiator heating",
+                "heater",
+                "Heat loss, radiators, pipes and balancing: the standards (STN EN 12831-1, STN EN 12828) and the tools coming",
+            ),
+            act(
+                "discipline:heating.floor",
+                "Underfloor heating",
+                "layout-grid",
+                "Loops, spacing and manifolds: the standards (STN EN 1264) and the tools coming",
+            ),
+            act(
+                "discipline:heating.wall",
+                "Wall heating",
+                "columns-3",
+                "Wall heating panels: the standards (STN EN 1264) and the tools coming",
+            ),
+            act(
+                "discipline:heating.ceiling",
+                "Ceiling heating",
+                "rows-3",
+                "Ceiling heating and cooling panels: the standards (STN EN 1264) and the tools coming",
+            ),
+            Sep,
+            act(
+                "pipe:UKP",
+                "Heating pipe",
+                "pipe",
+                "The Pipe tool in heating supply; the return is in the bar's systems",
+            ),
+            act(
+                "calc:heating",
+                "Calculate heating pipes",
+                "calc-heating",
+                "Size the supply and return to the radiators, find the critical circuit and the pump, and preset the HERZ valves (TS-98-V, STRÖMAX) to balance the circuits",
+            ),
+            act(
+                "calc:herzdp",
+                "HERZ differential pressure regulator",
+                "circle-dot-dashed",
+                "A HERZ 4002, 4007 or F 4007 regulator for a circuit's flow and loss: its setting, the STRÖMAX partner valve and the pump's head, as HERZ's design tool works them out",
+            ),
+            Sep,
+            act(
+                "calc:heatloss",
+                "Heat loss",
+                "gauge",
+                "The design heat loss of every room (STN EN 12831-1): through walls, windows, floor and roof and by ventilation, and the building's total",
+            ),
+            act(
+                "calc:floorheat",
+                "Design underfloor heating",
+                "spline",
+                "Give rooms their underfloor loops from their heat loss: spacing, loops of 100 m at most, flows and what to set at the manifold (STN EN 1264)",
+            ),
+            act(
+                "calc:radiators",
+                "Size radiators",
+                "table-2",
+                "Radiators for every room from its heat loss, less what its underfloor heating gives: type, length, output and flow (STN EN 442)",
+            ),
+            act(
+                "heat:source",
+                "Heat source",
+                "flame",
+                "A hot water cylinder, a gas condensing boiler or a heat pump from the range: sized by the heat load, a heat pump by its bivalence point, then placed",
+            ),
+            act(
+                "catalogue.cat:hvac",
+                "Radiators and boilers",
+                "thermometer",
+                "Radiators, boilers and other heating fixtures from the catalogue",
+            ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
+        ],
+        4 => vec![
+            act(
+                "discipline:ventilation",
+                "Ventilation",
+                "wind",
+                "Ducts, terminals and units: the standards (STN EN 16798-3) and the tools coming",
+            ),
+            act(
+                "pipe:VZP",
+                "Duct",
+                "pipe",
+                "The Pipe tool in supply air: a Spiro duct Ø160 at 2.7 m; exhaust and rectangular ducts are in the bar",
+            ),
+            act(
+                "catalogue.cat:hvac",
+                "Diffusers and fans",
+                "fan",
+                "Diffusers, grilles, fans and split units from the catalogue",
+            ),
+            Sep,
+            act(
+                "calc:air",
+                "Air balance",
+                "refresh-cw",
+                "The air every room needs, supply and exhaust through its diffusers and grilles, and the flow of the air handling unit (STN EN 16798-1)",
+            ),
+            act(
+                "calc:ducts",
+                "Duct sizing",
+                "gauge",
+                "The air every duct carries, its velocity as drawn and the diameter for the velocity allowed; sets the proposed diameters on the round ducts",
+            ),
+            act(
+                "calc:cooling",
+                "Cooling load",
+                "sun",
+                "The cooling load of every room in summer (STN 73 0548): sun through the windows by where they face, walls, roof, people and appliances, and the fan-coil that covers it",
+            ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
+        ],
+        5 => vec![
+            act(
+                "discipline:medgas",
+                "Medical gases",
+                "cylinder",
+                "O2, medical air, vacuum, N2O and CO2: the standards (STN EN ISO 7396-1) and the tools coming",
+            ),
+            act(
+                "pipe:O2",
+                "Medical gas pipe",
+                "pipe",
+                "The Pipe tool in oxygen: SANHA copper; AIR, VAC, N2O and CO2 are in the bar's systems",
+            ),
+            act(
+                "calc:medgas",
+                "Calculate medical gases",
+                "gauge",
+                "Size the O2, AIR and VAC pipelines from their outlets by the kind of room they are in (Q1 + (n − 1)·Δ), at most 20 kPa to the worst outlet (STN EN ISO 7396-1)",
+            ),
+            act(
+                "med:unit",
+                "Supply unit",
+                "heart-pulse",
+                "A wall rail NR-H3 or a ceiling bridge SM-P 5.4 made to order: its gas outlets, sockets, data and nurse call, then placed",
+            ),
+            act(
+                "med:box",
+                "Valve box",
+                "columns-3",
+                "A zone valve box for 1 to 4 gases made to order: flush or on the wall, the gas out on top or at the bottom, Cu 18 to 42, its valves, NIST inlet and alarm switch, then placed",
+            ),
+            act(
+                "catalogue.cat:medical",
+                "Medical units",
+                "fixtures",
+                "The usual wall rail and ceiling bridge from the catalogue",
+            ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
+        ],
+        6 => vec![
+            act(
+                "discipline:electrical",
+                "Electrical installation",
+                "zap",
+                "Circuits, cables, protection and lightning: the standards (STN 33 2000) and the tools coming",
+            ),
+            act(
+                "catalogue.cat:electrical",
+                "Sockets and switches",
+                "plug",
+                "Sockets, switches, boards and detectors from the catalogue",
+            ),
+            act(
+                "catalogue.cat:lighting",
+                "Lights",
+                "lightbulb",
+                "Ceiling, wall and recessed lights from the catalogue",
+            ),
+            Sep,
+            act(
+                "calc:circuits",
+                "Circuits",
+                "circuits",
+                "The installation's circuits: devices and their power, breakers, cables, phases, RCDs, the check of each and the building's power balance; proposes circuits for devices that have none",
+            ),
+            act(
+                "calc:circuit",
+                "Circuit check",
+                "calc",
+                "A circuit's design current, voltage drop, protection IB ≤ In ≤ Iz and fault loop, with the smallest breaker and cable that pass (STN 33 2000-5-52)",
+            ),
+        ],
+        ANNOTATE => vec![
             T(Tool::Dimension),
             T(Tool::Angle),
             T(Tool::Radius),
@@ -118,8 +571,21 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "hash",
                 "How doors, windows and other elements are numbered; renumber, and check for marks used twice",
             ),
+            Sep,
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
         ],
-        2 => vec![
+        8 => vec![
             // levels are what plans are cut from, so they sit with the
             // views that come from them (MU20)
             T(Tool::Level),
@@ -138,6 +604,24 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Reference",
                 "underlay",
                 "Trace over another view, a picture or a DXF drawing: shown faintly under this view (Alt+F2 hides it)",
+            ),
+            act(
+                "viewmode:architecture",
+                "Architecture drawing",
+                "pencil",
+                "The open view as the architect draws it: hatches, dimensions, tags and notes",
+            ),
+            act(
+                "viewmode:blind",
+                "Blind drawing",
+                "square-dashed",
+                "The open view in outlines only: no dimensions, tags, notes, room names or wall fills, to hand to the other professions",
+            ),
+            act(
+                "viewmode:services",
+                "Services drawing",
+                "layers-2",
+                "The open view for a services drawing: the building in halftone outlines, pipes, ducts and fixtures in full over it",
             ),
             act("new.sheet", "New sheet", "file-text", "A new drawing sheet"),
             Entry::Menu {
@@ -259,6 +743,11 @@ mod tests {
                     }
                     Entry::Sep => continue,
                 };
+                // an icon icons.js lacks draws as an empty button
+                assert!(
+                    include_str!("../ui/icons.js").contains(&format!("\"{icon}\":")),
+                    "{tab_name}: {name} names {icon}, which icons.js lacks"
+                );
                 if let Some((_, other)) = seen.iter().find(|(i, _)| *i == icon) {
                     panic!("{tab_name}: {name} and {other} both use the {icon} icon");
                 }
@@ -277,11 +766,14 @@ mod tests {
             );
         }
         assert_eq!(home_of(Tool::Wall), 0);
-        assert_eq!(home_of(Tool::Dimension), 1);
-        assert_eq!(home_of(Tool::Section), 2);
-        assert_eq!(home_of(Tool::Grid), 3);
+        assert_eq!(home_of(Tool::Dimension), ANNOTATE);
+        assert_eq!(home_of(Tool::Section), ANNOTATE + 1);
+        assert_eq!(home_of(Tool::Grid), ANNOTATE + 2);
+        // the terrain tools are on Cadastre too, but at home in Architecture
+        assert_eq!(home_of(Tool::Terrain), 0);
+        assert!(holds(1, Tool::Terrain));
         // the callout is on both of its tabs
-        assert!(holds(1, Tool::Callout) && holds(2, Tool::Callout));
+        assert!(holds(ANNOTATE, Tool::Callout) && holds(ANNOTATE + 1, Tool::Callout));
         // Select is on every one
         assert!((0..TABS.len()).all(|t| holds(t, Tool::Select)));
     }

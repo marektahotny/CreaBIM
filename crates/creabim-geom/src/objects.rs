@@ -23,13 +23,37 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
     let floor = model.level(o.level).map_or(0.0, |l| l.elevation);
     let above = objects::base_z_of(model, o, t) - floor + lo.z > cut_height;
     let pen = if above && !t.category.is_services() {
-        Pen::Hidden
+        Pen::Overhead
     } else {
         Pen::Projection
     };
-    t.plan_symbol()
+    let mut items: Vec<PlanItem> = t
+        .plan_symbol()
         .into_iter()
         .map(|s| match s {
+            SymbolItem::Net {
+                points,
+                code,
+                dashed,
+            } => {
+                let rgb = creabim_core::utility::NetKind::ALL
+                    .into_iter()
+                    .find(|k| k.code() == code)
+                    .map_or([0.3, 0.3, 0.3], |k| k.rgb());
+                let mut points: Vec<_> = points.into_iter().map(|p| o.to_plan(p)).collect();
+                points.extend(points.first().copied());
+                PlanItem::Curve {
+                    id: e.id,
+                    points,
+                    rgb,
+                    dashed,
+                }
+            }
+            SymbolItem::Text { at, text } => PlanItem::Label {
+                id: e.id,
+                at: o.to_plan(at),
+                text,
+            },
             SymbolItem::Loop(pts) => PlanItem::Polygon {
                 id: e.id,
                 pen,
@@ -42,7 +66,48 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
                 b: o.to_plan(b),
             },
         })
-        .collect()
+        .collect();
+    items.extend(connector_marks(model, e));
+    items
+}
+
+/// Radius of the mark a fixture's connector shows as, m.
+pub const CONNECTOR_MARK: f64 = 0.025;
+
+/// A fixture's connectors as small discs in their systems' colours, so a
+/// pipe can be drawn to them.
+pub fn connector_marks(model: &Model, e: &Element) -> Vec<PlanItem> {
+    let mut items = Vec::new();
+    for c in creabim_core::fixture::connectors(model, e) {
+        let rgb = creabim_core::mep::system(c.kind.code()).map_or(0x8c8c8c, |s| s.color);
+        let rgb = [
+            ((rgb >> 16) & 0xff) as f32 / 255.0,
+            ((rgb >> 8) & 0xff) as f32 / 255.0,
+            (rgb & 0xff) as f32 / 255.0,
+        ];
+        let points: Vec<glam::DVec2> = (0..12)
+            .map(|i| {
+                let a = i as f64 / 12.0 * std::f64::consts::TAU;
+                c.at.truncate() + glam::DVec2::new(a.cos(), a.sin()) * CONNECTOR_MARK
+            })
+            .collect();
+        // washed over the symbol, not a tint under every line
+        items.push(PlanItem::Tint {
+            id: e.id,
+            points,
+            rgb,
+        });
+        // a circle, so its centre snaps
+        items.push(PlanItem::Arc {
+            id: e.id,
+            pen: Pen::Projection,
+            center: c.at.truncate(),
+            radius: CONNECTOR_MARK,
+            start: 0.0,
+            end: std::f64::consts::TAU,
+        });
+    }
+    items
 }
 
 /// The footprint of an object wholly below the cut (furniture, a bath, a
@@ -115,7 +180,7 @@ mod tests {
             (lo.x - 0.15).abs() < 1e-6 && (hi.x - 1.05).abs() < 1e-6,
             "{lo} {hi}"
         );
-        // a wall cupboard is overhead: dashed
+        // a wall cupboard is overhead: a dash and two dots
         let cup = m
             .iter()
             .find(|e| {
@@ -129,7 +194,7 @@ mod tests {
             .all(|i| matches!(
                 i,
                 PlanItem::Polygon {
-                    pen: Pen::Hidden,
+                    pen: Pen::Overhead,
                     ..
                 }
             )));

@@ -404,7 +404,7 @@ pub fn marks_page(
     let mut hover: Option<StylePack> = None;
     ui.label(
         egui::RichText::new(
-            "What prints on sheets, for the whole project: every tag and mark follows the choice. Rest on an option to see it on the plan; click to keep it.",
+            crate::i18n::t("What prints on sheets, for the whole project: every tag and mark follows the choice. Rest on an option to see it on the plan; click to keep it."),
         )
         .weak(),
     );
@@ -431,11 +431,11 @@ pub fn marks_page(
         }
         crate::props::section(ui, "Membranes in details");
         crate::props::Combo::new("Drawn as")
-            .selected_text(pack.membranes.label())
+            .selected_text(crate::i18n::tw(pack.membranes.label()))
             .show_ui(ui, |ui| {
                 for m in creabim_core::MembraneLook::ALL {
                     changed |= ui
-                        .selectable_value(&mut pack.membranes, m, m.label())
+                        .selectable_value(&mut pack.membranes, m, crate::i18n::tw(m.label()))
                         .changed();
                 }
             });
@@ -465,7 +465,11 @@ pub fn marks_page(
             }
         }
         if !pack.marker_styles.is_empty() {
-            ui.label(egui::RichText::new("YOUR STYLES").small().weak());
+            ui.label(
+                egui::RichText::new(crate::i18n::t("YOUR STYLES"))
+                    .small()
+                    .weak(),
+            );
         }
         let mut remove = None;
         let mut edit = None;
@@ -486,10 +490,10 @@ pub fn marks_page(
             }
             ui.horizontal(|ui| {
                 ui.add_space(104.0);
-                if ui.small_button("Edit…").clicked() {
+                if ui.small_button(crate::i18n::t("Edit…")).clicked() {
                     edit = Some(st.clone());
                 }
-                if ui.small_button("Delete").clicked() {
+                if ui.small_button(crate::i18n::t("Delete")).clicked() {
                     remove = Some(i);
                 }
             });
@@ -506,7 +510,10 @@ pub fn marks_page(
         }
         if designer.open.is_none()
             && ui
-                .button(format!("+ New style from {}…", pack.marker_label()))
+                .button(crate::i18n::tr(&format!(
+                    "+ New style from {}…",
+                    pack.marker_label()
+                )))
                 .clicked()
         {
             let parts = pack.marker_parts().unwrap_or_default();
@@ -575,7 +582,7 @@ pub fn marks_page(
             ],
         );
         ui.horizontal(|ui| {
-            ui.add_sized([96.0, 20.0], egui::Label::new("Colour"));
+            ui.add_sized([96.0, 20.0], egui::Label::new(crate::i18n::t("Colour")));
             for c in MarkerColour::ALL {
                 let [r, g, b] = c.rgb();
                 let col =
@@ -589,16 +596,19 @@ pub fn marks_page(
                         Stroke::new(1.5, crate::theme::Palette::of(ui.ctx()).text),
                     );
                 }
-                if resp.on_hover_text(c.label()).clicked() {
+                if resp.on_hover_text(crate::i18n::tr(c.label())).clicked() {
                     parts.colour = c;
                 }
             }
-            ui.label(egui::RichText::new("ink · accent · annotation blue").weak());
+            ui.label(egui::RichText::new(crate::i18n::t("ink · accent · annotation blue")).weak());
         });
         ui.label(
-            egui::RichText::new(format!("PREVIEW: \"{}\"", name.to_uppercase()))
-                .small()
-                .weak(),
+            egui::RichText::new(crate::i18n::tr(&format!(
+                "PREVIEW: \"{}\"",
+                name.to_uppercase()
+            )))
+            .small()
+            .weak(),
         );
         let (r, _) = ui.allocate_exact_size(
             Vec2::new(ui.available_width().min(640.0), 120.0),
@@ -614,9 +624,12 @@ pub fn marks_page(
                     .desired_width(240.0),
             );
             save = ui
-                .add_enabled(!name.trim().is_empty(), egui::Button::new("Save as style"))
+                .add_enabled(
+                    !name.trim().is_empty(),
+                    egui::Button::new(crate::i18n::t("Save as style")),
+                )
                 .clicked();
-            cancel = ui.button("Cancel").clicked();
+            cancel = ui.button(crate::i18n::t("Cancel")).clicked();
         });
         if save {
             let n = name.trim().to_string();
@@ -642,7 +655,7 @@ fn part_row<T: Copy + PartialEq>(ui: &mut egui::Ui, label: &str, v: &mut T, opti
     ui.horizontal(|ui| {
         ui.add_sized([96.0, 20.0], egui::Label::new(label));
         for (o, text) in options {
-            ui.selectable_value(v, *o, *text);
+            ui.selectable_value(v, *o, crate::i18n::tw(*text));
         }
     });
 }

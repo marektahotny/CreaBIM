@@ -248,6 +248,8 @@ pub fn rules(model: &Model) -> Vec<JoinRule> {
 pub fn category_rank(kind: &ElementKind) -> u8 {
     match kind {
         ElementKind::Column(_) => 3,
+        // a lintel runs through the wall it lies in
+        ElementKind::Beam(b) if b.lintel.is_some() => 3,
         ElementKind::Wall(_) => 2,
         ElementKind::Slab(_) => 1,
         _ => 0,
@@ -1261,6 +1263,97 @@ fn crossing_gap(me: &Joinable, o: &Joinable) -> Option<Gap> {
 
 // ---------------------------------------------------------------- following
 
+/// Pipes stay joined: the end of another pipe that met a moved pipe's
+/// end goes with it, stretching that pipe; a riser standing there moves
+/// with it whole, and takes along what is joined to its other end.
+fn follow_pipes(
+    before: &Model,
+    changed: &[Element],
+    moving: &HashSet<ElementId>,
+    out: &mut HashMap<ElementId, Element>,
+    order: &mut Vec<ElementId>,
+) {
+    use glam::DVec3;
+    const NEAR: f64 = 0.002;
+    let z = |level| before.level(level).map_or(0.0, |l| l.elevation);
+    let world = |p: &crate::mep::Pipe| {
+        let up = DVec3::Z * z(p.level);
+        [p.start + up, p.end + up]
+    };
+    let pipes: Vec<(ElementId, &crate::mep::Pipe)> = before
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Pipe(p) => Some((e.id, p)),
+            _ => None,
+        })
+        .collect();
+    // the ends that moved: where one was, and by how much it went
+    let mut queue: Vec<(DVec3, DVec3)> = vec![];
+    let mut done: HashSet<ElementId> = moving.clone();
+    for c in changed {
+        let (Some(old), ElementKind::Pipe(new)) = (before.get(c.id), &c.kind) else {
+            continue;
+        };
+        let ElementKind::Pipe(old) = &old.kind else {
+            continue;
+        };
+        for (was, now) in world(old).into_iter().zip(world(new)) {
+            if was.distance(now) > 1e-9 {
+                queue.push((was, now - was));
+            }
+        }
+    }
+    while let Some((was, delta)) = queue.pop() {
+        for (id, p) in &pipes {
+            if done.contains(id) {
+                continue;
+            }
+            let ends = world(p);
+            let Some(i) = ends.iter().position(|q| q.distance(was) < NEAR) else {
+                continue;
+            };
+            let mut now = (*p).clone();
+            let upright = p.start.truncate().distance(p.end.truncate()) < 1e-6;
+            let across = delta.truncate().extend(0.0);
+            if upright && across.length() > 1e-9 {
+                // a riser stays upright: it goes along, its joined end
+                // rising or dropping with what it is joined to
+                now.start += across;
+                now.end += across;
+                queue.push((ends[1 - i], across));
+                done.insert(*id);
+                if i == 0 {
+                    now.start.z += delta.z;
+                } else {
+                    now.end.z += delta.z;
+                }
+            } else if i == 0 {
+                now.start += delta;
+            } else {
+                now.end += delta;
+            }
+            if now.validate().is_err() || now.length() < 0.005 {
+                continue;
+            }
+            let Some(e) = before.get(*id) else { continue };
+            let e = out.entry(*id).or_insert_with(|| e.clone());
+            if let ElementKind::Pipe(x) = &mut e.kind {
+                // one stretched from both ends keeps both
+                if done.contains(id) {
+                    *x = now;
+                } else if i == 0 {
+                    x.start = now.start;
+                } else {
+                    x.end = now.end;
+                }
+            }
+            if !order.contains(id) {
+                order.push(*id);
+            }
+        }
+    }
+}
+
 /// The other walls that follow when `changed` replace their originals in
 /// `before` (moved, turned, stretched): ends that met a moved wall's end
 /// go with it, ends on a moved wall's body slide along their own wall to
@@ -1408,6 +1501,7 @@ pub fn follow(before: &Model, changed: &mut [Element]) -> Vec<(Element, Element)
             }
         }
     }
+    follow_pipes(before, changed, &moving, &mut out, &mut order);
     let mut result = vec![];
     for id in order {
         let (Some(b), Some(mut a)) = (before.get(id), out.remove(&id)) else {
@@ -1467,6 +1561,83 @@ fn slide_onto(
 mod tests {
     use super::*;
     use crate::{Element, Level, Transaction};
+
+    #[test]
+    fn pipes_joined_to_a_moved_pipe_stay_joined() {
+        use glam::DVec3;
+        let mut m = Model::new();
+        let level = Element::new(
+            "L",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let l = level.id;
+        let pipe = |a: DVec3, b: DVec3| {
+            Element::new(
+                "Pipe",
+                ElementKind::Pipe(crate::mep::Pipe {
+                    level: l,
+                    system: "SV".into(),
+                    start: a,
+                    end: b,
+                    pipe_type: "HERZ".into(),
+                    nominal_mm: 16.0,
+                    outer_mm: 16.0,
+                    inner_mm: 12.0,
+                    height_mm: None,
+                    insulation_mm: 0.0,
+                    insulation_set: false,
+                    mark: None,
+                }),
+            )
+        };
+        // a run, the run it turns into, a drop at its far end and the
+        // pipe that leads on from the drop's foot
+        let run = pipe(DVec3::new(0.0, 0.0, 1.0), DVec3::new(2.0, 0.0, 1.0));
+        let side = pipe(DVec3::new(0.0, 0.0, 1.0), DVec3::new(0.0, 3.0, 1.0));
+        let drop = pipe(DVec3::new(2.0, 0.0, 1.0), DVec3::new(2.0, 0.0, 0.0));
+        let on = pipe(DVec3::new(2.0, 0.0, 0.0), DVec3::new(5.0, 0.0, 0.0));
+        Transaction::new("t")
+            .insert(level)
+            .insert(run.clone())
+            .insert(side.clone())
+            .insert(drop.clone())
+            .insert(on.clone())
+            .apply(&mut m)
+            .unwrap();
+        let mut moved = run.clone();
+        if let ElementKind::Pipe(p) = &mut moved.kind {
+            p.start.y += 0.5;
+            p.end.y += 0.5;
+        }
+        let mut changed = [moved];
+        let after = follow(&m, &mut changed);
+        let end = |id| {
+            after
+                .iter()
+                .find_map(|(_, a)| match &a.kind {
+                    ElementKind::Pipe(p) if a.id == id => Some((p.start, p.end)),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        // the side run stretches to it
+        assert_eq!(
+            end(side.id),
+            (DVec3::new(0.0, 0.5, 1.0), DVec3::new(0.0, 3.0, 1.0))
+        );
+        // the drop goes along upright, and the pipe at its foot after it
+        assert_eq!(
+            end(drop.id),
+            (DVec3::new(2.0, 0.5, 1.0), DVec3::new(2.0, 0.5, 0.0))
+        );
+        assert_eq!(
+            end(on.id),
+            (DVec3::new(2.0, 0.5, 0.0), DVec3::new(5.0, 0.0, 0.0))
+        );
+    }
 
     fn model(walls: &[(DVec2, DVec2)]) -> (Model, Vec<ElementId>) {
         let mut doc = crate::Document::new();
@@ -1592,6 +1763,7 @@ mod tests {
                     crate::Layer::new(LayerFunction::Finish, None, 0.05),
                 ],
                 description: String::new(),
+                wrap: Default::default(),
             }),
         );
         let aid = a.id;

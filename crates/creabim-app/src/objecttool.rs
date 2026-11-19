@@ -186,6 +186,12 @@ pub fn preview(
                 line(&v, thin);
             }
             objects::SymbolItem::Line(a, b) => line(&[on(a, 0.0), on(b, 0.0)], thin),
+            objects::SymbolItem::Net { points, .. } => {
+                let mut v: Vec<DVec3> = points.iter().map(|q| on(*q, 0.0)).collect();
+                v.extend(v.first().copied());
+                line(&v, thin);
+            }
+            objects::SymbolItem::Text { .. } => {}
         }
     }
     let (lo, hi) = c.object.bounds();

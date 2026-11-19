@@ -561,6 +561,7 @@ impl<'a> Importer<'a> {
             let name = Self::name(e, "Type");
             self.type_elems.push(Element {
                 mark: None,
+                reno: None,
                 id: eid,
                 name,
                 kind: ElementKind::ElementType(t),
@@ -627,6 +628,7 @@ impl<'a> Importer<'a> {
         });
         self.wall_elems.push(Element {
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
@@ -652,6 +654,7 @@ impl<'a> Importer<'a> {
         let name = Self::name(e, f.kind.label());
         self.opening_elems.push(Element {
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
@@ -690,6 +693,7 @@ impl<'a> Importer<'a> {
                 let eid = self.new_id(o);
                 self.opening_elems.push(Element {
                     mark: None,
+                    reno: None,
                     source: None,
                     of_type: None,
                     id: eid,
@@ -705,6 +709,14 @@ impl<'a> Importer<'a> {
                         frame: Default::default(),
                         flip_hand: false,
                         flip_facing: false,
+                        no_outer_sill: false,
+                        no_inner_sill: false,
+                        threshold: false,
+                        setback: None,
+                        reveal: None,
+                        division: None,
+                        door: None,
+                        texts: None,
                     }),
                 });
             } else if let Some(&i) = self.slabs.get(&host) {
@@ -873,6 +885,7 @@ impl<'a> Importer<'a> {
             }
             self.level_elems.push(Element {
                 mark: None,
+                reno: None,
                 source: None,
                 id: lid,
                 name,
@@ -1451,6 +1464,7 @@ impl<'a> Importer<'a> {
         }
         self.wall_elems.push(Element {
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
@@ -1576,6 +1590,8 @@ impl<'a> Importer<'a> {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
         };
         Ok((wall, voids))
     }
@@ -1658,6 +1674,7 @@ impl<'a> Importer<'a> {
         self.slabs.insert(id, self.wall_elems.len());
         self.wall_elems.push(Element {
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
@@ -1734,6 +1751,14 @@ impl<'a> Importer<'a> {
                         frame: Default::default(),
                         flip_hand: false,
                         flip_facing: false,
+                        no_outer_sill: false,
+                        no_inner_sill: false,
+                        threshold: false,
+                        setback: None,
+                        reveal: None,
+                        division: None,
+                        door: None,
+                        texts: None,
                     }),
                 ));
             }
@@ -1851,6 +1876,7 @@ impl<'a> Importer<'a> {
         };
         self.opening_elems.push(Element {
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
@@ -1866,6 +1892,14 @@ impl<'a> Importer<'a> {
                 frame: Default::default(),
                 flip_hand: false,
                 flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
+                threshold: false,
+                setback: None,
+                reveal: None,
+                division: None,
+                door: None,
+                texts: None,
             }),
         });
     }
@@ -1919,6 +1953,7 @@ impl<'a> Importer<'a> {
         let eid = self.new_id(e);
         self.other_elems.push(Element {
             mark: None,
+            reno: None,
             source: None,
             id: eid,
             name: Self::name(e, class),

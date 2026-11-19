@@ -145,7 +145,10 @@ pub fn controls(
                     crate::props::flow(ui, |ui| {
                         if modes {
                             for m in SlabMode::ALL {
-                                if ui.selectable_label(mode == m, m.label()).clicked() {
+                                if ui
+                                    .selectable_label(mode == m, crate::i18n::tw(m.label()))
+                                    .clicked()
+                                {
                                     mode = m;
                                 }
                             }
@@ -154,17 +157,25 @@ pub fn controls(
                             if modes {
                                 ui.separator();
                             }
-                            if ui.selectable_label(!arc, "Line (L)").clicked() {
+                            if ui
+                                .selectable_label(!arc, crate::i18n::tw("Line (L)"))
+                                .clicked()
+                            {
                                 arc = false;
                             }
-                            if ui.selectable_label(arc, "Arc (A)").clicked() {
+                            if ui
+                                .selectable_label(arc, crate::i18n::tw("Arc (A)"))
+                                .clicked()
+                            {
                                 arc = true;
                             }
                             // A5-3: a sure way to close, whatever the pointer is on
                             let can = state.outline.as_ref().is_some_and(|o| o.points.len() >= 3);
                             if ui
-                                .add_enabled(can, egui::Button::new("Close (C)"))
-                                .on_hover_text("Close the outline back to its first point")
+                                .add_enabled(can, egui::Button::new(crate::i18n::t("Close (C)")))
+                                .on_hover_text(crate::i18n::t(
+                                    "Close the outline back to its first point",
+                                ))
                                 .clicked()
                             {
                                 state.close_outline = true;

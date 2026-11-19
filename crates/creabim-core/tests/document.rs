@@ -31,6 +31,8 @@ fn wall(level: ElementId) -> Element {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
         }),
     )
 }
@@ -49,6 +51,14 @@ fn door(host: ElementId) -> Element {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
         }),
     )
 }

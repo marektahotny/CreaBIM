@@ -129,17 +129,17 @@ impl CreaBimApp {
             // choice filling the field column (MU29: it ran off the panel)
             crate::props::row(ui, which, |ui| {
                 egui::ComboBox::from_id_salt(("corner", id, at_end)).icon(crate::props::combo_icon)
-                    .selected_text(now.label())
+                    .selected_text(crate::i18n::tw(now.label()))
                     .width(ui.available_width())
                     .show_ui(ui, |ui| {
                         for p in creabim_core::CornerPreset::ALL {
-                            if ui.selectable_label(p == now, p.label()).clicked() && p != now {
+                            if ui.selectable_label(p == now, crate::i18n::tw(p.label())).clicked() && p != now {
                                 pick = Some((other, p));
                             }
                         }
                     })
                     .response
-                    .on_hover_text(format!("With {name}. How the two walls' layers meet at this corner. Auto mitres every layer; Cores lap runs the stronger wall's core on past the other's; a wall running through has every layer of the other stop at it; Not joined leaves both ends square."))
+                    .on_hover_text(crate::i18n::tr(&format!("With {name}. How the two walls' layers meet at this corner. Auto mitres every layer; Cores lap runs the stronger wall's core on past the other's; a wall running through has every layer of the other stop at it; Not joined leaves both ends square.")))
             });
         }
         if let Some((other, p)) = pick {
@@ -173,7 +173,7 @@ impl CreaBimApp {
         if mine.is_empty() {
             ui.label(
                 egui::RichText::new(
-                    "Joins automatically: layer by layer, the structure through finishes. Select it with another element and right-click to switch the join order or turn cleanup off.",
+                    crate::i18n::t("Joins automatically: layer by layer, the structure through finishes. Select it with another element and right-click to switch the join order or turn cleanup off."),
                 )
                 .weak(),
             );
@@ -186,7 +186,7 @@ impl CreaBimApp {
                 .get(other)
                 .map_or("(missing)".into(), |e| e.name.clone());
             crate::props::flow(ui, |ui| {
-                ui.label(format!("With {name}"));
+                ui.label(crate::i18n::tr(&format!("With {name}")));
                 let now = crate::detailtool::winner_label(model, &r, r.winner);
                 let shown = if r.cleanup {
                     now
@@ -195,13 +195,13 @@ impl CreaBimApp {
                 };
                 egui::ComboBox::from_id_salt(("join", rid))
                     .icon(crate::props::combo_icon)
-                    .selected_text(shown)
+                    .selected_text(crate::i18n::tw(shown))
                     .show_ui(ui, |ui| {
                         let rule = r;
                         for w in JoinWinner::ALL {
                             let text = crate::detailtool::winner_label(model, &rule, w);
                             if ui
-                                .selectable_label(r.cleanup && r.winner == w, text)
+                                .selectable_label(r.cleanup && r.winner == w, crate::i18n::tw(text))
                                 .clicked()
                             {
                                 r.winner = w;
@@ -209,7 +209,10 @@ impl CreaBimApp {
                                 edit = Some((rid, r, "Junction winner"));
                             }
                         }
-                        if ui.selectable_label(!r.cleanup, "Not cleaned up").clicked() {
+                        if ui
+                            .selectable_label(!r.cleanup, crate::i18n::tw("Not cleaned up"))
+                            .clicked()
+                        {
                             r.cleanup = false;
                             edit = Some((rid, r, "Junction cleanup"));
                         }

@@ -1,0 +1,14 @@
+[package]
+name = "creabim-services"
+description = "Building services calculations (water supply, drainage, heating, gas, ventilation), ported from the PilonHydraulika core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+creabim-core.workspace = true
+glam.workspace = true
+serde.workspace = true
+serde_json.workspace = true

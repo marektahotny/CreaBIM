@@ -72,6 +72,7 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
                                        by hand into a gap or an overlap at a
                                        join; fails if there are any
   creabim rooms-from-notes <model> <out>
+  creabim dimension-openings <model> <plan view> <out>
                                        turn room labels written as notes
                                        (a name over an area) into rooms
   creabim glb <model> <out.glb>        export glTF for Blender, with element ids
@@ -256,12 +257,15 @@ fn main() -> ExitCode {
                 .iter()
                 .find(|e| e.name == *name && matches!(e.kind, creabim_core::ElementKind::View(_)))
                 .ok_or_else(|| format!("no view named {name:?}"))?;
-            let scale = match &e.kind {
-                creabim_core::ElementKind::View(v) => v.paper_scale(),
-                _ => 100.0,
+            let creabim_core::ElementKind::View(v) = &e.kind else {
+                unreachable!("found as a view")
             };
+            let scale = v.paper_scale();
             let d = creabim_geom::section::view_drawing(&m, e.id).expect("is a view");
-            std::fs::write(out, d.to_svg(scale)).map_err(|e| e.to_string())
+            // as a sheet prints it: the view's styles and overrides
+            let v = creabim_core::styles::resolved(&m, v);
+            let looks = creabim_geom::looks::Looks::for_view(&m, e.id, &v);
+            std::fs::write(out, d.to_svg_looks(scale, &looks)).map_err(|e| e.to_string())
         }),
         ["views", input] => load(input).map(|m| {
             for e in m.iter() {
@@ -393,6 +397,22 @@ fn main() -> ExitCode {
         ["rooms-from-notes", input, out] => creabim_store::load(input)
             .map_err(|e| format!("{input}: {e}"))
             .and_then(|mut doc| rooms_from_notes(&mut doc, out)),
+        ["dimension-openings", input, view, out] => creabim_store::load(input)
+            .map_err(|e| format!("{input}: {e}"))
+            .and_then(|mut doc| {
+                let id = doc
+                    .model()
+                    .iter()
+                    .find(|e| {
+                        e.name == *view && matches!(e.kind, creabim_core::ElementKind::View(_))
+                    })
+                    .map(|e| e.id)
+                    .ok_or_else(|| format!("no view named {view:?}"))?;
+                let (tx, n) = creabim_geom::autodims::dimension_openings(doc.model(), id);
+                doc.commit(tx).map_err(|e| e.to_string())?;
+                println!("{n} dimension chains added");
+                creabim_store::save(out, &doc).map_err(|e| format!("{out}: {e}"))
+            }),
         _ => Err(USAGE.to_string()),
     };
     match result {

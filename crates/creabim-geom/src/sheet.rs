@@ -77,7 +77,12 @@ pub fn today() -> String {
 pub const MARGIN: f64 = 10.0;
 /// Extra margin on the binding (left) edge.
 pub const BINDING: f64 = 20.0;
-pub const TITLE_BLOCK: DVec2 = DVec2::new(170.0, 45.0);
+pub const TITLE_BLOCK: DVec2 = DVec2::new(160.6, 54.2);
+/// The plain block a template is started from.
+const PLAIN_BLOCK: DVec2 = DVec2::new(170.0, 45.0);
+/// The office block's place: this far from the paper's right and lower
+/// edges.
+const BLOCK_EDGE: DVec2 = DVec2::new(5.0, 7.0);
 
 pub fn sheet_of(model: &Model, id: ElementId) -> Option<&Sheet> {
     match &model.get(id)?.kind {
@@ -305,8 +310,13 @@ pub fn title_block_bounds(model: &Model, sheet: &Sheet) -> (DVec2, DVec2) {
     }) {
         return (lo, hi);
     }
-    let lo = DVec2::new(sheet.width - MARGIN - TITLE_BLOCK.x, MARGIN);
-    (lo, lo + TITLE_BLOCK)
+    if !sheet.title_block {
+        let at = DVec2::new(sheet.width - BLOCK_EDGE.x, BLOCK_EDGE.y);
+        return (at, at);
+    }
+    let lo = DVec2::new(sheet.width - BLOCK_EDGE.x - TITLE_BLOCK.x, BLOCK_EDGE.y);
+    // with the line of the project's height over it
+    (lo, lo + TITLE_BLOCK + DVec2::new(0.0, 5.0))
 }
 
 /// A template's title block on a sheet, its fields filled in.
@@ -420,12 +430,15 @@ pub fn draw_frame(
         };
         &named
     };
+    if crate::coverpage::draw(c, sheet, &project, &info.project, &info.date) {
+        return;
+    }
     match template_of(model, sheet) {
         Some(t) => {
             let values = frame_values(model, sheet, Some(t), title, scales, info);
             draw_template(c, sheet, t, &values);
         }
-        None => draw_builtin_frame(c, sheet, title, scales, info),
+        None => crate::titleblock::draw(c, sheet, &project, title, scales, info),
     }
 }
 
@@ -443,8 +456,8 @@ pub fn draw_builtin_frame(
     c.rect(lo, hi, Stroke::solid(0.5, 0.0));
 
     let thin = Stroke::solid(0.18, 0.0);
-    let tb_lo = DVec2::new(hi.x - TITLE_BLOCK.x, lo.y);
-    let tb_hi = DVec2::new(hi.x, lo.y + TITLE_BLOCK.y);
+    let tb_lo = DVec2::new(hi.x - PLAIN_BLOCK.x, lo.y);
+    let tb_hi = DVec2::new(hi.x, lo.y + PLAIN_BLOCK.y);
     c.rect(tb_lo, tb_hi, Stroke::solid(0.35, 0.0));
     // rows from the top: project, sheet title, then number / scale / date
     let row = |k: f64| tb_hi.y - k;
@@ -474,7 +487,13 @@ pub fn draw_builtin_frame(
     c.text(DVec2::new(x, row(15.5)), small, "SHEET", Anchor::Start);
     c.text(DVec2::new(x, row(21.5)), 5.0, title, Anchor::Start);
     c.text(DVec2::new(x, row(30.5)), small, "NUMBER", Anchor::Start);
-    c.text(DVec2::new(x, row(38.5)), 8.0, &sheet.number, Anchor::Start);
+    // a long number (S01_ASR_001_N01) smaller, to stay in its box
+    let size = if sheet.number.chars().count() > 8 {
+        4.5
+    } else {
+        8.0
+    };
+    c.text(DVec2::new(x, row(38.5)), size, &sheet.number, Anchor::Start);
     let x2 = split + 3.0;
     c.text(DVec2::new(x2, row(30.5)), small, "SCALE", Anchor::Start);
     c.text(DVec2::new(x2, row(35.5)), 3.0, scales, Anchor::Start);
@@ -638,6 +657,9 @@ pub fn draw_sheet(
     for v in views {
         paper::draw_looks(c, &v.drawing, &v.map, &v.looks);
         draw_view_title(c, v);
+        for d in crate::coverpage::copies(s) {
+            paper::draw_looks(c, &v.drawing, &v.map.moved(d), &v.looks);
+        }
     }
     draw_sheet_notes(c, model, sheet);
 }
@@ -686,6 +708,9 @@ pub fn title_block_box(model: &Model, sheet: ElementId) -> Option<(DVec2, DVec2)
         }
     }
     let s = sheet_of(model, sheet)?;
+    if template_of(model, s).is_none() {
+        return Some(title_block_bounds(model, s));
+    }
     let mut c = Points(vec![]);
     let title = model.get(sheet).map(|e| e.name.as_str()).unwrap_or("");
     draw_frame(&mut c, model, s, title, "1:100", &SheetInfo::default());
@@ -952,6 +977,31 @@ pub fn sheet_svg(model: &Model, sheet: ElementId, info: &SheetInfo) -> Option<St
     let mut svg = SvgCanvas::new(DVec2::new(s.width, s.height));
     draw_sheet(&mut svg, model, sheet, &views, info);
     Some(svg.finish())
+}
+
+/// A sheet as DXF in paper millimetres: its frame and title block on a
+/// layer of their own, each drawing's lines on the layers of what they
+/// are.
+pub fn sheet_dxf(
+    model: &Model,
+    sheet: ElementId,
+    info: &SheetInfo,
+    version: crate::dxfout::DxfVersion,
+) -> Option<String> {
+    let s = sheet_of(model, sheet)?;
+    let views = placed_views(model, sheet, &mut |v| view_drawing(model, v));
+    let mut c = crate::dxfout::DxfCanvas::new(version, 1.0);
+    let title = model.get(sheet).map(|e| e.name.as_str()).unwrap_or("");
+    draw_frame(&mut c, model, s, title, &scale_text(model, &views), info);
+    for v in &views {
+        crate::dxfout::draw_layered(&mut c, model, &v.drawing, &v.map, &v.looks);
+        draw_view_title(&mut c, v);
+        for d in crate::coverpage::copies(s) {
+            crate::dxfout::draw_layered(&mut c, model, &v.drawing, &v.map.moved(d), &v.looks);
+        }
+    }
+    draw_sheet_notes(&mut c, model, sheet);
+    Some(c.finish())
 }
 
 /// All sheets as one PDF, a page per sheet in sheet-number order.
@@ -1234,7 +1284,7 @@ mod tests {
         let (sid, _) = sheets(doc.model())[0];
         let info = SheetInfo::default();
         let before = sheet_svg(doc.model(), sid, &info).unwrap();
-        assert!(before.contains("PROJECT"), "the built-in block");
+        assert!(before.contains("DRAWING NO."), "the office block");
         doc.edit(sid, "Use template", |e| {
             if let ElementKind::Sheet(s) = &mut e.kind {
                 s.template = Some(tid);
@@ -1260,6 +1310,6 @@ mod tests {
             .unwrap();
         assert!(sheet_svg(doc.model(), sid, &info)
             .unwrap()
-            .contains("PROJECT"));
+            .contains("DRAWING NO."));
     }
 }

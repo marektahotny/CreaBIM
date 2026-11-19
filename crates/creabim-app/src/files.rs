@@ -154,6 +154,8 @@ impl Recent {
 #[serde(default)]
 pub struct Settings {
     pub theme: String,
+    /// The interface's language: "sk", "cs" or "en" (see `crate::i18n`).
+    pub language: String,
     /// Width of the project browser and of the properties panel, in points.
     pub left_width: f32,
     pub right_width: f32,
@@ -182,6 +184,10 @@ pub struct Settings {
     pub ifc_body: String,
     /// Temporary dimensions muted in drawings (MU21).
     pub temp_dims_off: bool,
+    /// What temporary dimensions measure walls from (core faces by default).
+    pub temp_ref: creabim_core::walls::WallRef,
+    /// Thin lines on screen (TL): every pen one pixel wide.
+    pub thin_lines: bool,
     /// The kinds of element the 3D view leaves out (grids, annotation,
     /// guides…), from its Visibility settings.
     pub hidden_3d: Vec<creabim_core::Category>,
@@ -195,6 +201,8 @@ pub struct Settings {
     pub guides_hidden: bool,
     /// How the 3D view draws: shaded, with edges, hidden line or wireframe.
     pub render_3d: crate::render3d::RenderMode,
+    /// The 3D view's sun and its shadows.
+    pub sun: crate::sun::Sun,
     /// Width of the Help panel, in points.
     pub help_width: f32,
     /// Which sections of Properties are open, by key, where it differs
@@ -229,7 +237,15 @@ pub struct Settings {
     pub interaction: String,
     /// Edit mode's wires and corner dots, in points.
     pub edit_edge_width: f32,
+    /// Minutes between autosaves while there are changes; 0 is off.
+    pub autosave_minutes: u32,
     pub edit_vertex_size: f32,
+    /// The drawings' typeface: a TrueType or OpenType file in place of
+    /// the built-in sans; empty looks for Avenir Next Condensed beside
+    /// the program and among the system's fonts.
+    pub drawing_font: String,
+    /// The width of the drawings' letters: 0.7 is 70 % of the face's own.
+    pub text_width: f64,
 }
 
 impl Default for Settings {
@@ -237,6 +253,8 @@ impl Default for Settings {
         Self {
             // the approved look (brief 02); anyone's saved theme stays theirs
             theme: "sage".into(),
+            language: "sk".into(),
+            autosave_minutes: 5,
             left_width: 264.0,
             right_width: 290.0,
             left_folded: false,
@@ -249,11 +267,14 @@ impl Default for Settings {
             navigation: "creabim".into(),
             ifc_body: "modelled".into(),
             temp_dims_off: false,
+            temp_ref: Default::default(),
+            thin_lines: false,
             hidden_3d: vec![],
             xray: false,
             hidden_colour_3d: false,
             guides_hidden: false,
             render_3d: Default::default(),
+            sun: Default::default(),
             help_width: 400.0,
             props_open: Default::default(),
             tools_tab: 0,
@@ -269,6 +290,8 @@ impl Default for Settings {
             interaction: "orange".into(),
             edit_edge_width: 1.0,
             edit_vertex_size: 4.0,
+            drawing_font: String::new(),
+            text_width: 0.7,
         }
     }
 }

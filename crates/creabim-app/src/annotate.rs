@@ -73,7 +73,8 @@ pub fn text(
     }
     let family = match look.font {
         Font::Mono => egui::FontFamily::Monospace,
-        Font::Sans | Font::Serif => egui::FontFamily::Proportional,
+        Font::Sans => crate::drawfont::family(),
+        Font::Serif => egui::FontFamily::Proportional,
     };
     let mut job = egui::text::LayoutJob::simple_singleline(
         text.to_string(),
@@ -84,7 +85,9 @@ pub fn text(
         s.format.italics = look.italic;
     }
     let galley = painter.layout_job(job);
-    let w = galley.size().x;
+    let stretch = creabim_geom::font::setup().stretch as f32;
+    let size = galley.size();
+    let w = size.x * stretch;
     let shift = match anchor {
         Anchor::Start => w / 2.0,
         Anchor::Middle => 0.0,
@@ -93,10 +96,41 @@ pub fn text(
     // the screen's y runs down, so a counter-clockwise turn is a negative angle
     let rot = egui::emath::Rot2::from_angle(-angle as f32);
     let centre = at + rot * Vec2::new(shift, 0.0);
-    let pos = centre - rot * (galley.size() / 2.0);
+    // no bold face on screen: the text again, a hair to the right
+    let nudge = rot * Vec2::new((px * 0.05).max(0.6), 0.0);
+    if (stretch - 1.0).abs() > 1e-4 {
+        // letters narrower or wider than the face's: its triangles, set
+        // about the text's middle and squeezed along it
+        let ctx = painter.ctx();
+        let mut tess = egui::epaint::Tessellator::new(
+            ctx.pixels_per_point(),
+            egui::epaint::TessellationOptions {
+                round_text_to_pixels: false,
+                coarse_tessellation_culling: false,
+                ..Default::default()
+            },
+            ctx.fonts(|f| f.font_image_size()),
+            vec![],
+        );
+        let mut mesh = egui::Mesh::default();
+        tess.tessellate_text(
+            &egui::epaint::TextShape::new(Pos2::ZERO, galley, color),
+            &mut mesh,
+        );
+        for v in &mut mesh.vertices {
+            let p = Vec2::new((v.pos.x - size.x / 2.0) * stretch, v.pos.y - size.y / 2.0);
+            v.pos = centre + rot * p;
+        }
+        if look.bold {
+            let mut again = mesh.clone();
+            again.translate(nudge);
+            painter.add(egui::Shape::mesh(again));
+        }
+        painter.add(egui::Shape::mesh(mesh));
+        return;
+    }
+    let pos = centre - rot * (size / 2.0);
     if look.bold {
-        // no bold face on screen: the text again, a hair to the right
-        let nudge = rot * Vec2::new((px * 0.05).max(0.6), 0.0);
         painter.add(
             egui::epaint::TextShape::new(pos + nudge, galley.clone(), color)
                 .with_angle(-angle as f32),
@@ -208,6 +242,8 @@ enum Ready {
     Spot {
         point: Picked,
         plan: bool,
+        /// S-JTSK coordinates of the point, not its height
+        coords: bool,
     },
 }
 
@@ -260,6 +296,18 @@ fn grips(model: &Model, it: &PlanItem, mm: f64) -> Vec<(DVec2, Grab)> {
             Shape::Level { at, line_end, .. } => {
                 vec![(*at, Grab::LevelHead(*id, line_end.unwrap_or(*at)))]
             }
+            // a spot level's mark: in a section it slides along its height,
+            // still bound to what it stands on
+            Shape::Spot {
+                at, text_at, plan, ..
+            } => {
+                let g = if *plan {
+                    *text_at
+                } else {
+                    DVec2::new(text_at.x, at.y)
+                };
+                vec![(g, Grab::Shape(*id))]
+            }
             _ => vec![],
         },
         PlanItem::Tag {
@@ -306,6 +354,9 @@ pub struct Draft {
     pub tag_style: Option<ElementId>,
     /// New tags read their host's material build-up (Annotate step 5).
     pub tag_material: bool,
+    /// The spot level tool writes the point's S-JTSK coordinates instead,
+    /// as PilonDesigner's cadastre mark.
+    pub spot_coords: bool,
 }
 
 impl Default for Draft {
@@ -322,6 +373,7 @@ impl Default for Draft {
             note_style: None,
             tag_style: None,
             tag_material: false,
+            spot_coords: false,
         }
     }
 }
@@ -495,15 +547,23 @@ pub fn click(
             Ok(added(tool, d))
         }
         Tool::SpotLevel => {
+            let plan = matches!(view.kind, creabim_core::ViewKind::Plan { .. });
+            let coords = plan && d.spot_coords;
             let point = match view.kind {
+                // coordinates: the point snapped to (a plot's corner, a
+                // cadastre line's bend, the building's corner)
+                creabim_core::ViewKind::Plan { .. } if coords => (hp, p),
                 // in a plan, the top of the slab under the click
                 creabim_core::ViewKind::Plan { level, .. } => {
                     (attach(model, view, slab_under(model, level, raw), raw), raw)
                 }
                 _ => (hp, p),
             };
-            let plan = matches!(view.kind, creabim_core::ViewKind::Plan { .. });
-            d.ready = Some(Ready::Spot { point, plan });
+            d.ready = Some(Ready::Spot {
+                point,
+                plan,
+                coords,
+            });
             Ok("Now click where its text goes.".into())
         }
         Tool::Note => {
@@ -690,13 +750,17 @@ fn place(
                 ElementKind::Dimension(Dimension::about(kind, view_id, center.0, on, on, extra)),
             )
         }
-        Ready::Spot { point, .. } => Element::new(
-            "Spot level",
+        Ready::Spot { point, coords, .. } => Element::new(
+            if coords {
+                "S-JTSK coordinates"
+            } else {
+                "Spot level"
+            },
             ElementKind::Dimension(Dimension::spot(
                 view_id,
                 point.0,
                 attach(model, view, point.0.host, at),
-                None,
+                coords.then(|| creabim_core::annotation::SJTSK_PATTERN.to_string()),
             )),
         ),
         Ready::Arc { center, a, b } => {
@@ -725,13 +789,22 @@ fn place(
 /// The annotation a placing click at `at` would make, for the preview.
 fn shape_of(ready: Ready, at: DVec2) -> (Shape, String) {
     match ready {
-        Ready::Spot { point, plan } => (
+        Ready::Spot {
+            point,
+            plan,
+            coords,
+        } => (
             Shape::Spot {
                 at: point.1,
                 text_at: at,
                 plan,
+                cross: coords,
             },
-            "Spot level".into(),
+            if coords {
+                "Y = …\nX = …".into()
+            } else {
+                "Spot level".into()
+            },
         ),
         Ready::Angle { vertex, a, b } => {
             let (a, b) = if sweep(vertex.1, a.1, at) > sweep(vertex.1, a.1, b.1) {
@@ -995,7 +1068,7 @@ pub fn drag(
                     }
                     // a spot level's text moves, staying with what it is on
                     Shape::Spot { .. } => dim.b = attach(&model, view, dim.a.host, p),
-                    Shape::Note { .. } | Shape::Level { .. } => {}
+                    Shape::Note { .. } | Shape::Level { .. } | Shape::Along { .. } => {}
                 }
             })
         }
@@ -1259,18 +1332,24 @@ pub fn look_ui(
         .to_string();
     let mut out = LookEdit::None;
     crate::app::helpui::combo(ui, "Text style")
-        .selected_text(name)
+        .selected_text(crate::i18n::tw(name))
         .show_ui(ui, |ui| {
-            if ui.selectable_value(style, None, "Default").changed() {
+            if ui
+                .selectable_value(style, None, crate::i18n::tw("Default"))
+                .changed()
+            {
                 out = LookEdit::Changed("Text style");
             }
             for (id, n) in &all {
-                if ui.selectable_value(style, Some(*id), n).changed() {
+                if ui
+                    .selectable_value(style, Some(*id), crate::i18n::tw(n))
+                    .changed()
+                {
                     out = LookEdit::Changed("Text style");
                 }
             }
             ui.separator();
-            if ui.button("New text style…").clicked() {
+            if ui.button(crate::i18n::t("New text style…")).clicked() {
                 out = LookEdit::NewStyle;
             }
         });
@@ -1278,7 +1357,7 @@ pub fn look_ui(
     // sat past the panel's edge)
     let mut own = color.is_some();
     if crate::props::switch(ui, &mut own, "Own colour")
-        .on_hover_text("Override the style's colour for this one")
+        .on_hover_text(crate::i18n::t("Override the style's colour for this one"))
         .changed()
     {
         *color = own.then_some([0.8, 0.1, 0.1]);
@@ -1323,10 +1402,13 @@ pub fn set_style(kind: &mut ElementKind, id: ElementId) {
 pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     let mut label = None;
     crate::app::helpui::combo(ui, "Font")
-        .selected_text(s.font.label())
+        .selected_text(crate::i18n::tw(s.font.label()))
         .show_ui(ui, |ui| {
             for f in Font::ALL {
-                if ui.selectable_value(&mut s.font, f, f.label()).changed() {
+                if ui
+                    .selectable_value(&mut s.font, f, crate::i18n::tw(f.label()))
+                    .changed()
+                {
                     label = Some("Text font");
                 }
             }
@@ -1338,7 +1420,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             egui::DragValue::new(&mut s.size)
                 .speed(0.05)
                 .range(0.5..=50.0)
-                .suffix(" mm"),
+                .suffix(crate::i18n::t(" mm")),
         )
         .changed()
         {
@@ -1348,7 +1430,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     crate::props::flow(ui, |ui| {
         let mut own = s.color.is_some();
         if crate::props::switch(ui, &mut own, "Colour")
-            .on_hover_text("Off: black on paper, blue on screen")
+            .on_hover_text(crate::i18n::t("Off: black on paper, blue on screen"))
             .changed()
         {
             s.color = own.then_some([0.0, 0.0, 0.0]);
@@ -1431,12 +1513,18 @@ fn terminator_combo(
     crate::props::row(ui, text, |ui| {
         egui::ComboBox::from_id_salt(salt)
             .icon(crate::props::combo_icon)
-            .selected_text(t.map_or(usual.to_string(), |t| t.label().to_string()))
+            .selected_text(crate::i18n::tw(
+                t.map_or(usual.to_string(), |t| t.label().to_string()),
+            ))
             .width(ui.available_width())
             .show_ui(ui, |ui| {
-                changed |= ui.selectable_value(t, None, usual).changed();
+                changed |= ui
+                    .selectable_value(t, None, crate::i18n::tw(usual))
+                    .changed();
                 for k in Terminator::ALL {
-                    changed |= ui.selectable_value(t, Some(k), k.label()).changed();
+                    changed |= ui
+                        .selectable_value(t, Some(k), crate::i18n::tw(k.label()))
+                        .changed();
                 }
             });
     });
@@ -1459,8 +1547,10 @@ pub fn leader_ui(
     });
     if elbow.is_some()
         && ui
-            .button("Straighten the leader")
-            .on_hover_text("Take its elbow out; drag the round grip on the leader to bend it again")
+            .button(crate::i18n::t("Straighten the leader"))
+            .on_hover_text(crate::i18n::t(
+                "Take its elbow out; drag the round grip on the leader to bend it again",
+            ))
             .clicked()
     {
         *elbow = None;
@@ -1501,7 +1591,7 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             egui::DragValue::new(&mut size)
                 .speed(0.05)
                 .range(0.5..=10.0)
-                .suffix(" mm"),
+                .suffix(crate::i18n::t(" mm")),
         )
         .changed()
         {
@@ -1510,11 +1600,11 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
         }
     });
     crate::app::helpui::combo(ui, "Tag shape")
-        .selected_text(s.tag_shape.label())
+        .selected_text(crate::i18n::tw(s.tag_shape.label()))
         .show_ui(ui, |ui| {
             for k in TagShape::ALL {
                 if ui
-                    .selectable_value(&mut s.tag_shape, k, k.label())
+                    .selectable_value(&mut s.tag_shape, k, crate::i18n::tw(k.label()))
                     .changed()
                 {
                     label = Some("Tag shape");
@@ -1522,18 +1612,21 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             }
         });
     if crate::props::switch(ui, &mut s.break_at_tags, "Break dimension lines at tags")
-        .on_hover_text(
+        .on_hover_text(crate::i18n::t(
             "Dimension lines in this style leave a gap where a tag or a note sits across them",
-        )
+        ))
         .changed()
     {
         label = Some("Dimension breaks");
     }
     crate::app::helpui::combo(ui, "Meant for")
-        .selected_text(s.purpose.label())
+        .selected_text(crate::i18n::tw(s.purpose.label()))
         .show_ui(ui, |ui| {
             for k in StyleUse::ALL {
-                if ui.selectable_value(&mut s.purpose, k, k.label()).changed() {
+                if ui
+                    .selectable_value(&mut s.purpose, k, crate::i18n::tw(k.label()))
+                    .changed()
+                {
                     label = Some("Style use");
                 }
             }
@@ -1580,7 +1673,12 @@ pub fn style_inline(
     }
     if shown {
         label = style_ui(ui, &mut s);
-        ui.label(egui::RichText::new(format!("Changes every one of its {users} users.")).weak());
+        ui.label(
+            egui::RichText::new(crate::i18n::tr(&format!(
+                "Changes every one of its {users} users."
+            )))
+            .weak(),
+        );
     }
     let label = label?;
     let r = doc.edit_merged(id, label, |e| e.kind = ElementKind::TextStyle(s));
@@ -1627,7 +1725,7 @@ pub fn note_ui(
     // the field keeps its size and scrolls inside; the small button at its
     // corner opens the large editor (MU27)
     crate::props::flow(ui, |ui| {
-        ui.label("Text");
+        ui.label(crate::i18n::t("Text"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if crate::props::icon_button(
                 ui,
@@ -1671,10 +1769,10 @@ pub fn note_ui(
     crate::props::row(ui, "Box", |ui| {
         crate::props::flow(ui, |ui| {
             if ui
-                .checkbox(&mut boxed, "Wrap at")
-                .on_hover_text(
+                .checkbox(&mut boxed, crate::i18n::t("Wrap at"))
+                .on_hover_text(crate::i18n::t(
                     "Lines wrap to this width on paper; off, each line runs as long as it is",
-                )
+                ))
                 .changed()
             {
                 n.width = boxed.then_some(60.0);
@@ -1686,7 +1784,7 @@ pub fn note_ui(
                         egui::DragValue::new(w)
                             .speed(0.5)
                             .range(5.0..=800.0)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                     .changed()
                 {
@@ -1696,14 +1794,16 @@ pub fn note_ui(
         });
     });
     if crate::props::switch(ui, &mut n.markdown, "Markdown")
-        .on_hover_text("# heading (capitals, underlined), - bullet, 1. numbered, - [ ] and - [x] checkboxes; **bold** and *italic* marks are dropped on paper")
+        .on_hover_text(crate::i18n::t("# heading (capitals, underlined), - bullet, 1. numbered, - [ ] and - [x] checkboxes; **bold** and *italic* marks are dropped on paper"))
         .changed()
     {
         label = Some("Note markdown");
     }
     let mut leader = n.leader.is_some();
     if crate::props::switch(ui, &mut leader, "Leader")
-        .on_hover_text("An arrow from the note to what it is about. Drag its square to move it.")
+        .on_hover_text(crate::i18n::t(
+            "An arrow from the note to what it is about. Drag its square to move it.",
+        ))
         .changed()
     {
         n.leader = leader.then(|| HostPoint::free(n.at + DVec2::new(-1.5, -1.0) * unit));
@@ -1711,7 +1811,10 @@ pub fn note_ui(
     }
     if n.leader.is_some_and(|l| l.host.is_some()) {
         ui.label(
-            egui::RichText::new("Its arrow is attached and follows what it points at.").weak(),
+            egui::RichText::new(crate::i18n::t(
+                "Its arrow is attached and follows what it points at.",
+            ))
+            .weak(),
         );
     }
     label

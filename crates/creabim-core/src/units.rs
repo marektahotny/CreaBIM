@@ -574,6 +574,20 @@ impl NumberFormat {
             leading_zero: self.leading_zero.unwrap_or(true),
             trailing_zeros: self.trailing_zeros.unwrap_or(true),
         };
+        // levels in a metric project read in metres to the millimetre with
+        // a decimal comma (STN 01 3420): +1,205, ±0,000
+        let metric = matches!(
+            project.length,
+            LengthUnit::Millimetres | LengthUnit::Centimetres | LengthUnit::Metres
+        );
+        if kind.is_level() && metric {
+            let f = NumberFormat {
+                unit: self.unit.or(Some(LengthUnit::Metres)),
+                precision: self.precision.or(Some(3)),
+                ..*self
+            };
+            return f.units(project).written(metres, w).replace('.', ",");
+        }
         self.units(project).written(metres, w)
     }
 }
@@ -652,15 +666,20 @@ mod format_tests {
             symbol: Some(false),
             ..Default::default()
         };
-        assert_eq!(level.write(&mm, NumberKind::LevelHeads, 3.0), "+3.000");
-        assert_eq!(level.write(&mm, NumberKind::LevelHeads, 0.0), "±0.000");
-        assert_eq!(level.write(&mm, NumberKind::LevelHeads, -0.45), "-0.450");
+        assert_eq!(level.write(&mm, NumberKind::LevelHeads, 3.0), "+3,000");
+        assert_eq!(level.write(&mm, NumberKind::LevelHeads, 0.0), "±0,000");
+        assert_eq!(level.write(&mm, NumberKind::LevelHeads, -0.45), "-0,450");
+        // a level with no format of its own: metres, three places
+        assert_eq!(
+            NumberFormat::default().write(&mm, NumberKind::SpotLevels, 1.205),
+            "+1,205"
+        );
         let bare = NumberFormat {
             leading_zero: Some(false),
             trailing_zeros: Some(false),
             ..level
         };
-        assert_eq!(bare.write(&mm, NumberKind::LevelHeads, -0.45), "-.45");
+        assert_eq!(bare.write(&mm, NumberKind::LevelHeads, -0.45), "-,45");
         assert_eq!(bare.write(&mm, NumberKind::LevelHeads, 3.0), "+3");
         // the project's: as dimensions always were
         assert_eq!(

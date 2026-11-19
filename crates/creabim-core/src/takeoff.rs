@@ -67,6 +67,79 @@ pub struct Rate {
     pub per: RateUnit,
 }
 
+/// What a take-off's rows are grouped by, outermost first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GroupBy {
+    /// Walls, slabs, roofs...: the line's [`Line::category`].
+    Category,
+    /// The storey the element stands on.
+    Level,
+    /// The element's type, or its assembly, or its name.
+    Construction,
+    /// The material.
+    Material,
+}
+
+impl GroupBy {
+    pub const ALL: [GroupBy; 4] = [
+        GroupBy::Category,
+        GroupBy::Level,
+        GroupBy::Construction,
+        GroupBy::Material,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            GroupBy::Category => "Element type",
+            GroupBy::Level => "Level",
+            GroupBy::Construction => "Construction",
+            GroupBy::Material => "Material",
+        }
+    }
+}
+
+/// How a take-off table is laid out: its groups, whether it lists every
+/// element's layer on a row of its own, and the column its rows sort by.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Layout {
+    /// The groups, outermost first; `None` groups by element type (walls,
+    /// slabs...), an empty list not at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<Vec<GroupBy>>,
+    /// A row for each layer of each element, instead of a row for each
+    /// material (and thickness) in a group.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub detail: bool,
+    /// The heading of the column the rows in a group sort by; none keeps
+    /// the order they come in (layer by layer, element by element).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub descending: bool,
+}
+
+impl Layout {
+    pub fn is_default(&self) -> bool {
+        *self == Layout::default()
+    }
+
+    /// The groups in effect; `by_level` is the older switch that put each
+    /// level's materials under a heading.
+    pub fn groups(&self, by_level: bool) -> Vec<GroupBy> {
+        match &self.group {
+            Some(g) => g.clone(),
+            None if by_level => vec![GroupBy::Level, GroupBy::Category],
+            None => vec![GroupBy::Category],
+        }
+    }
+}
+
+/// The order element categories are listed in: as a house is built.
+pub const CATEGORY_ORDER: [&str; 13] = [
+    "Footings", "Walls", "Columns", "Beams", "Slabs", "Stairs", "Roofs", "Ceilings", "Railings",
+    "Doors", "Windows", "Objects", "Masses",
+];
+
 /// Measured amounts, in metres, square metres and cubic metres.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Quantity {

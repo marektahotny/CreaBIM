@@ -248,14 +248,20 @@ impl CreaBimApp {
                             .get(id)
                             .map_or(String::new(), |e| e.name.clone());
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("{name}: its text")).strong());
+                            ui.label(
+                                egui::RichText::new(crate::i18n::tr(&format!("{name}: its text")))
+                                    .strong(),
+                            );
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    ui.checkbox(&mut n.markdown, "Lists and headings")
-                                        .on_hover_text(
+                                    ui.checkbox(
+                                        &mut n.markdown,
+                                        crate::i18n::t("Lists and headings"),
+                                    )
+                                    .on_hover_text(crate::i18n::t(
                                         "- bullets, 1. numbers, # headings drawn as such on paper",
-                                    );
+                                    ));
                                 },
                             );
                         });
@@ -279,9 +285,9 @@ impl CreaBimApp {
                             }
                         }
                         ui.label(
-                            egui::RichText::new(
+                            egui::RichText::new(crate::i18n::t(
                                 "Select something else to see the project's notepad here.",
-                            )
+                            ))
                             .weak(),
                         );
                     }
@@ -408,7 +414,7 @@ impl CreaBimApp {
                     ui.painter().with_clip_rect(body).text(
                         body.center(),
                         egui::Align2::CENTER_CENTER,
-                        "The 3D view is open in another area.\nPick a drawing for this one above.",
+                        crate::i18n::tr("The 3D view is open in another area.\nPick a drawing for this one above."),
                         egui::FontId::proportional(13.0),
                         p.muted,
                     );
@@ -469,9 +475,9 @@ impl CreaBimApp {
             let grip = Rect::from_min_size(r.min, egui::vec2(12.0, HEADER));
             let resp = ui
                 .interact(grip, ui.id().with(("area-corner", i)), Sense::drag())
-                .on_hover_text(
+                .on_hover_text(crate::i18n::t(
                     "Drag into this area to split it, or into the one beside it to join the two",
-                );
+                ));
             let hot = resp.hovered() || resp.dragged();
             let c = if hot {
                 p.accent
@@ -663,6 +669,8 @@ impl CreaBimApp {
             // column now, with zoom and pan: MU24)
             json!({"kind": "toggle", "id": "xray", "icon": "xray", "label": "X-ray", "on": s.xray, "shortcut": "Alt+Z",
                    "hint": "See through walls, slabs and roofs to what is inside them"}),
+            json!({"kind": "toggle", "id": "shadows3d", "icon": "sun", "label": "Shadows", "on": s.sun.shadows,
+                   "hint": "Shadows the sun casts. View › Sun and shadows sets the date, time and how they look"}),
             json!({"kind": "menu", "key": "look", "icon": "rotate-3d", "label": "Look from",
                    "hint": "Look from the top, a side or the corner"}),
             json!({"kind": "toggle", "id": "ground.grid", "icon": "grid-3x3", "label": "Ground grid", "on": s.ground_grid,
@@ -747,9 +755,9 @@ impl CreaBimApp {
         child.spacing_mut().interact_size.y = 24.0;
         let room = head.width() - 20.0;
         // what shows: the kind, then which one
-        let r = pill(&mut child, kind_icon, "", true, &p).on_hover_text(format!(
+        let r = pill(&mut child, kind_icon, "", true, &p).on_hover_text(crate::i18n::tr(&format!(
             "{kind_label}: click to show another kind of view here"
-        ));
+        )));
         if r.clicked() {
             asks.push(Ask::Popup("area.kind".into(), r.rect));
         }
@@ -759,10 +767,11 @@ impl CreaBimApp {
         } else {
             (room * 0.32).clamp(70.0, 220.0)
         };
-        let r = name_button(&mut child, &name, name_w, &p).on_hover_text(format!(
-            "{name}: click to show another of the {}",
-            kind_label.to_lowercase()
-        ));
+        let r =
+            name_button(&mut child, &name, name_w, &p).on_hover_text(crate::i18n::tr(&format!(
+                "{name}: click to show another of the {}",
+                kind_label.to_lowercase()
+            )));
         if r.clicked() {
             asks.push(Ask::Popup(
                 if matches!(shows, Shows::Profiles) {
@@ -782,7 +791,8 @@ impl CreaBimApp {
         let mut plus_w = 0.0;
         if matches!(shows, Shows::Profiles) {
             for (k, (id, icon, tip, on)) in self.profile_buttons().into_iter().enumerate() {
-                let r = icon_btn(&mut child, icon, false, on, &p).on_hover_text(tip);
+                let r =
+                    icon_btn(&mut child, icon, false, on, &p).on_hover_text(crate::i18n::tr(&tip));
                 if r.clicked() && on {
                     asks.push(Ask::Run(id.into()));
                 }
@@ -799,7 +809,8 @@ impl CreaBimApp {
         // what to do with masters, beside the list of them (MU40)
         if matches!(shows, Shows::Masters) {
             for (id, icon, tip, on) in self.master_buttons() {
-                let r = icon_btn(&mut child, icon, false, on, &p).on_hover_text(tip);
+                let r =
+                    icon_btn(&mut child, icon, false, on, &p).on_hover_text(crate::i18n::tr(&tip));
                 if r.clicked() && on {
                     asks.push(if id.ends_with("menu") {
                         Ask::Popup(id.into(), r.rect)
@@ -831,7 +842,7 @@ impl CreaBimApp {
             // narrow, it shrinks to its icon, as Blender's (MU30)
             let compact = room < 600.0;
             let r = mode_button(&mut child, editing, compact, &p).on_hover_text(
-                "Object mode works on whole elements; Edit mode on one element's points, edges and faces. Tab switches",
+                crate::i18n::t("Object mode works on whole elements; Edit mode on one element's points, edges and faces. Tab switches"),
             );
             if r.clicked() {
                 asks.push(Ask::Popup("area.mode".into(), r.rect));
@@ -949,9 +960,8 @@ impl CreaBimApp {
                 let mut items = vec![Item::new("area.show:model", "3D view")
                     .icon("box")
                     .checked(here == Shows::Model)
-                    .enabled(!model_elsewhere)
                     .hint(if model_elsewhere {
-                        "The 3D view is open in another area"
+                        "The 3D view is open in another area: it comes here, and that area takes what this one shows"
                     } else {
                         "The model in 3D"
                     })];
@@ -1213,9 +1223,21 @@ impl CreaBimApp {
                         None => return true,
                     }
                 };
-                if new == Shows::Model && self.areas.root.has_model() {
-                    self.status = "The 3D view is open in another area already.".into();
-                    return true;
+                // the one 3D view is in another area (maybe one hidden while
+                // this is shown alone): the two change places
+                if new == Shows::Model {
+                    let shows = self.areas.root.areas();
+                    let here = shows.get(i).copied();
+                    if let (Some(k), Some(here)) =
+                        (shows.iter().position(|s| *s == Shows::Model), here)
+                    {
+                        if k == i {
+                            return true;
+                        }
+                        if let Some(s) = self.areas.root.get_mut(k) {
+                            *s = here;
+                        }
+                    }
                 }
                 if let Some(s) = self.areas.root.get_mut(i) {
                     *s = new;
@@ -1253,19 +1275,22 @@ impl CreaBimApp {
             return;
         };
         let (mut open, mut done) = (true, false);
-        crate::app::shell::window("Save current layout")
+        crate::app::shell::window(crate::i18n::tr("Save current layout"))
             .collapsible(false)
             .resizable(false)
             .open(&mut open)
             .show(ctx, |ui| {
-                ui.label("A name for these areas, to pick from Workspace at the top right:");
+                ui.label(crate::i18n::t(
+                    "A name for these areas, to pick from Workspace at the top right:",
+                ));
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut name)
                         .vertical_align(egui::Align::Center)
                         .desired_width(220.0),
                 );
                 r.request_focus();
-                done = ui.input(|i| i.key_pressed(egui::Key::Enter)) || ui.button("Save").clicked();
+                done = ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    || ui.button(crate::i18n::t("Save")).clicked();
             });
         let name = name.trim().to_string();
         if done && !name.is_empty() {
@@ -1381,18 +1406,21 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
         .filter(|l| !l.is_empty())
         .or(c["value"].as_str())
         .unwrap_or("");
-    let mut tip = label.to_string();
+    // each part translated by itself: joined, no key would match it and
+    // a loose pattern would catch it half translated
+    let tr = crate::i18n::tr;
+    let mut tip = tr(label);
     if let Some(k) = c["shortcut"].as_str() {
         tip += &format!("  ({k})");
     }
     if let Some(v) = c["value"].as_str().filter(|v| *v != label) {
-        tip += &format!(": {v}");
+        tip += &format!(": {}", tr(v));
     }
     if let Some(h) = c["hint"].as_str() {
         if !tip.is_empty() {
             tip.push('\n');
         }
-        tip += h;
+        tip += &tr(h);
     }
     let icon = c["icon"].as_str().unwrap_or("");
     match c["kind"].as_str()? {
@@ -1406,7 +1434,7 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
                 enabled,
                 p,
             )
-            .on_hover_text(tip);
+            .on_hover_text(tip.clone());
             // a small count at the corner: how many there are (MU36: section
             // boxes added without a sign)
             if let Some(n) = c["badge"].as_u64().filter(|n| *n > 0) {
@@ -1434,11 +1462,16 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
         }
         "menu" => {
             let r = if icon.is_empty() {
-                name_button(ui, c["value"].as_str().unwrap_or(label), 86.0, p)
+                name_button(
+                    ui,
+                    &crate::i18n::tr(c["value"].as_str().unwrap_or(label)),
+                    86.0,
+                    p,
+                )
             } else {
                 pill(ui, icon, "", false, p)
             }
-            .on_hover_text(tip);
+            .on_hover_text(tip.clone());
             r.clicked()
                 .then(|| Ask::Popup(c["key"].as_str().unwrap_or("").into(), r.rect))
         }
@@ -1454,8 +1487,12 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
                 ui.spacing_mut().interact_size.y = 20.0;
                 ui.spacing_mut().button_padding = egui::vec2(5.0, 1.0);
                 ui.style_mut().override_font_id = Some(egui::FontId::proportional(12.0));
-                ui.label(egui::RichText::new(label).size(12.0).color(p.muted))
-                    .on_hover_text(&tip);
+                ui.label(
+                    egui::RichText::new(crate::i18n::tr(label))
+                        .size(12.0)
+                        .color(p.muted),
+                )
+                .on_hover_text(tip.clone());
                 let w = if unit == "m" {
                     ui.add_sized([64.0, 20.0], crate::units::drag(&mut v))
                 } else {
@@ -1578,7 +1615,7 @@ fn mode_button(
     compact: bool,
     p: &crate::theme::Palette,
 ) -> egui::Response {
-    let text = if editing { "Edit mode" } else { "Object mode" };
+    let text = crate::i18n::tr(if editing { "Edit mode" } else { "Object mode" });
     // the theme's colours, the accent while editing (MU29: a fixed orange
     // clashed with the themes)
     let (rect, resp) = ui.allocate_exact_size(
@@ -1641,6 +1678,111 @@ fn mode_button(
     resp
 }
 
+impl CreaBimApp {
+    /// Rows picked in the take-off shown where they are: what they are made
+    /// of selected and framed in the 3D view, or in the floor plan of its
+    /// level; an area beside the take-off opens for it if none shows it.
+    pub(super) fn show_takeoff_rows(&mut self, r: crate::takeoffpane::ShowRequest, area: usize) {
+        use crate::takeoffpane::ShowIn;
+        self.selection.clear();
+        self.selection.extend(r.elements.iter().copied(), false);
+        self.areas.max = None;
+        let area = area.min(self.areas.root.len().saturating_sub(1));
+        let n = r.elements.len();
+        match r.target {
+            ShowIn::Model => {
+                if !self.areas.root.has_model() {
+                    self.areas.root.divide_at(area, true, Shows::Model, 0.55);
+                    self.store_areas();
+                }
+                self.frame_selection_soon = true;
+                self.status = format!(
+                    "{n} {} {}",
+                    crate::i18n::tr(if n == 1 { "element" } else { "elements" }),
+                    crate::i18n::tr("selected and framed in the 3D view.")
+                );
+            }
+            ShowIn::Plan => {
+                let model = self.doc.model();
+                let (lines, _) = creabim_geom::takeoff::lines_now(model);
+                let level = lines
+                    .iter()
+                    .find(|l| r.elements.contains(&l.element))
+                    .and_then(|l| l.level);
+                let plan = level.and_then(|l| floor_plan_of(model, l));
+                let Some(plan) = plan else {
+                    self.status = crate::i18n::tr("Its level has no floor plan to show it in.");
+                    return;
+                };
+                let shows = self.areas.root.areas();
+                if !shows.contains(&Shows::View(plan)) {
+                    // a plan beside the take-off gives way, else the
+                    // take-off's area is split for it
+                    let is_plan = |v: ElementId| {
+                        matches!(
+                            model.get(v).map(|e| &e.kind),
+                            Some(ElementKind::View(View {
+                                kind: ViewKind::Plan { .. },
+                                ..
+                            }))
+                        )
+                    };
+                    let other = shows
+                        .iter()
+                        .enumerate()
+                        .find(|(i, s)| *i != area && matches!(s, Shows::View(v) if is_plan(*v)))
+                        .map(|(i, _)| i);
+                    match other.and_then(|i| self.areas.root.get_mut(i)) {
+                        Some(s) => *s = Shows::View(plan),
+                        None => {
+                            self.areas
+                                .root
+                                .divide_at(area, false, Shows::View(plan), 0.5);
+                        }
+                    }
+                    self.store_areas();
+                }
+                self.plan.frame_selection_in = Some(plan);
+                let name = self
+                    .doc
+                    .model()
+                    .get(plan)
+                    .map(|e| e.name.clone())
+                    .unwrap_or_default();
+                self.status = format!(
+                    "{n} {} {} {name}.",
+                    crate::i18n::tr(if n == 1 { "element" } else { "elements" }),
+                    crate::i18n::tr("selected and framed in the plan")
+                );
+            }
+        }
+    }
+}
+
+/// The floor plan of `level` a take-off shows its rows in: an architect's
+/// plain plan first (not a ceiling, trade, fire or masonry plan).
+fn floor_plan_of(model: &creabim_core::Model, level: ElementId) -> Option<ElementId> {
+    let mut plans: Vec<(u32, ElementId)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::View(v) => match v.kind {
+                ViewKind::Plan { level: l, .. } if l == level => {
+                    let plain = !v.ceiling_plan
+                        && v.trade.is_none()
+                        && !v.fire_zones
+                        && !v.masonry
+                        && !v.coordination;
+                    Some((if plain { 0 } else { 1 }, e.id))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    plans.sort_by_key(|p| p.0);
+    plans.first().map(|p| p.1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1680,10 +1822,11 @@ mod tests {
         assert_eq!(app.areas.max, Some(1));
         assert!(app.area_action("area.max", "1"));
         assert_eq!(app.areas.max, None);
-        // a second 3D area is refused
+        // there is one 3D view: asked for in another area (also while it
+        // is hidden behind one shown alone), the two change places
         app.areas.focus = 1;
         app.area_action("area.show", "model");
-        assert_eq!(app.areas.root.areas()[1], Shows::View(plan));
+        assert_eq!(app.areas.root.areas(), [Shows::View(plan), Shows::Model]);
         // stepping goes round the workspaces
         app.step_workspace(1);
         assert_eq!(app.areas.workspace, "Drawing");

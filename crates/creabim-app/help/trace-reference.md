@@ -3,14 +3,17 @@
 A **reference** is something shown faintly under (or over) a plan or a section, to draw over or compare against:
 
 - **another view**: the floor below, under the floor you are drawing;
-- **a picture**: a scanned plan, a photo of a sketch (PNG or JPEG);
-- **a DXF drawing**: a survey or a consultant's plan. A DWG opens once saved as DXF: any CAD program, or the free ODA File Converter, does it offline.
+- **a picture**: a scanned plan, a photo of a sketch (PNG, JPEG, TIFF or BMP);
+- **a DXF drawing**: a survey or a consultant's plan. A DWG opens once saved as DXF: any CAD program, or the free ODA File Converter, does it offline;
+- **a PDF page**: a plan sent as PDF, drawn at its scale 1:N, or a scanned page.
 
 A reference is saved with the project. One reference can show in **several views** (a site survey under every floor). Pictures and drawings stay where they are on disk, as links: *Reload* reads them again after they change.
 
 ## Adding one
 
-**Reference** on the *View* tab opens the **Trace and reference** tab of *Properties* for the view in the area you last used. Pick another view from *Add*, or click **Picture…** or **DXF drawing…**. It is added in place and selected. A picture or DXF file dropped on a plan or section becomes a reference too.
+**Reference** on the *View* tab opens the **Trace and reference** tab of *Properties* for the view in the area you last used. Pick another view from *Add*, or click **Picture…**, **DXF drawing…** or **PDF…**. It is added in place and selected. A picture, DXF or PDF file dropped on a plan or section becomes a reference too.
+
+The same is in **File › Import**: *Point cloud (XYZ, LAS…)*, *PDF as an underlay*, *Picture as an underlay (PNG, JPG)* and *DXF as an underlay* add one to the open plan or section; *Terrain from surveyed points (XYZ)* makes a terrain on the working level.
 
 ## Placing it
 
@@ -30,6 +33,32 @@ Its dashed outline shows when it is selected or under the pointer, in plans and 
 **Copy to view…** puts a separate copy of the same drawing in another view, with its own place, size and settings.
 
 A trace placed in a [Profile view](profiles#the-profile-view) is kept to that profile: **Only in this profile** is ticked, and it is not drawn in plans, sections or 3D. Untick it to choose the views it shows in, as for any other reference.
+
+## A DXF drawing
+
+A DXF is read as PilonDesigner reads it: lines, polylines with arcs, circles, ellipses and splines, texts (TEXT and MTEXT), hatches (their pattern lines, solid fills as outlines), blocks with their arrays, dimensions, points and 3D faces, by layer and in metres from the file's units (millimetres when it gives none). Drawings saved before AutoCAD 2007 are read in their code page, so Slovak and Czech letters (ANSI 1250) come out right.
+
+- **Layers**: tick the layers to show; *All* and *None* switch them together.
+- **Texts** show at their size and turn once they are big enough on screen to read.
+- **Points**: survey points, small circles marking them and blocks' insertion points snap.
+- A drawing in national coordinates (**S-JTSK**, kilometres from the origin) comes to the project's origin, its lower left corner there; move it in *Properties*.
+- A **3D survey** shows the range of its heights. In 3D its 3D lines and faces stand at their heights, to the project's ±0,000 as a terrain made from it. **Terrain from its heights** makes a terrain through its points, the vertices of its 3D lines and the corners of its faces, on the layers shown and within its clip (see [Site](site#terrain-from-surveyed-points)).
+
+## A picture
+
+A picture comes as wide as its pixels at its **resolution** drawn at **1:100**, as PilonDesigner places a scan: a scan's resolution is read from the file (PNG, JPEG, TIFF), else taken as 150 DPI. In *Properties*, set **Resolution** to the scan's DPI and **Drawing scale** to the scale printed on the drawing, and it comes to size (width = pixels ÷ DPI × N). When neither is known, *Calibrate…* sets the size from a known distance.
+
+## A PDF page
+
+A PDF is read as PilonDesigner reads it: the page's lines, its solid fills in their colour (white areas and the page's background left out) and its texts, at the drawing's **scale 1:N**: a PDF measures paper, so the model is the paper times N. It comes at 1:100; set **Drawing scale** in *Properties* to the scale printed on the drawing, and it grows or shrinks about its middle. A page turned in the PDF is read turned, as it is seen. **Page** picks another page of the file.
+
+Lines, fills and texts are on the layers *PDF*, *PDF výplne* and *PDF texty*, so *Layers* turns them on and off as a DXF's.
+
+A **scanned page** (a picture with no lines) comes as its picture, placed where it lies on the page. Scans saved as JBIG2, CCITT or JPEG 2000 can't be read here: export the page as PNG or JPEG and add that. Check the size with *Calibrate…* when the scale isn't known.
+
+## Clip
+
+**Clip…**: click two opposite corners in the view; only what lies between them shows (lines are cut at the edge). **Whole** shows all of it again.
 
 ## How it looks
 

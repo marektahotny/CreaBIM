@@ -110,7 +110,10 @@ pub fn shape_controls(
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         for s in Shape::ALL {
-                            if ui.selectable_label(chosen == s, s.label()).clicked() {
+                            if ui
+                                .selectable_label(chosen == s, crate::i18n::tw(s.label()))
+                                .clicked()
+                            {
                                 chosen = s;
                             }
                         }
@@ -405,6 +408,14 @@ impl SketchDraft {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
         };
         let e = Element::new("Opening", ElementKind::Opening(o));
         let id = e.id;
@@ -712,7 +723,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
         .count();
     match sk.circle {
         Some(_) => {
-            ui.label("A circle");
+            ui.label(crate::i18n::t("A circle"));
         }
         None => {
             let n = sk.segment_count();
@@ -765,7 +776,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
     // column, a remove icon at its end (MU35)
     ui.add_space(4.0);
     crate::props::row(ui, "Constraints", |ui| {
-        ui.label(format!("{}", sk.constraints.len()))
+        ui.label(crate::i18n::tr(&format!("{}", sk.constraints.len())))
     });
     if sk.constraints.is_empty() {
         crate::props::note(ui, "None yet. Add one below; the sketch moves to meet it.");
@@ -839,10 +850,10 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
                 .icon(crate::props::combo_icon)
                 .width(w)
                 .truncate()
-                .selected_text(name(*v))
+                .selected_text(crate::i18n::tw(name(*v)))
                 .show_ui(ui, |ui| {
                     for i in 0..n {
-                        ui.selectable_value(v, i, name(i));
+                        ui.selectable_value(v, i, crate::i18n::tw(name(i)));
                     }
                 });
         });
@@ -854,10 +865,10 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
                 .icon(crate::props::combo_icon)
                 .width(w)
                 .truncate()
-                .selected_text(KINDS[form.kind])
+                .selected_text(crate::i18n::tw(KINDS[form.kind]))
                 .show_ui(ui, |ui| {
                     for (k, name) in KINDS.iter().enumerate() {
-                        ui.selectable_value(&mut form.kind, k, *name);
+                        ui.selectable_value(&mut form.kind, k, crate::i18n::tw(*name));
                     }
                 });
         });
@@ -1043,6 +1054,67 @@ pub fn draw_marks_in_pane(
         }
     }
     draw_marks(painter, model, selection, &project, &show);
+}
+
+/// The sketch as a utility network in the site plan (PilonDesigner's
+/// Inžinierska sieť): its kind, whether existing, proposed or to go, and
+/// what is written after its code. The name of the change, if any.
+pub fn network_fields(ui: &mut egui::Ui, sk: &mut Sketch) -> Option<&'static str> {
+    use creabim_core::utility::{NetKind, NetState};
+    let t = crate::i18n::t;
+    let mut label = None;
+    let width = ui.available_width().min(220.0);
+    let now = sk.net.as_ref().map(|n| n.kind);
+    crate::app::helpui::combo(ui, "Utility network")
+        .selected_text(match now {
+            Some(k) => format!("{} – {}", k.code(), t(k.label())),
+            None => t("– a plain line –").to_string(),
+        })
+        .width(width)
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(now.is_none(), t("– a plain line –")).clicked() && now.is_some() {
+                sk.net = None;
+                label = Some("Utility network");
+            }
+            for k in NetKind::ALL {
+                let text = format!("{} – {}", k.code(), t(k.label()));
+                if ui.selectable_label(now == Some(k), text).clicked() && now != Some(k) {
+                    let mut n = sk.net.clone().unwrap_or_default();
+                    n.kind = k;
+                    sk.net = Some(n);
+                    label = Some("Utility network");
+                }
+            }
+        })
+        .response
+        .on_hover_text(t(
+            "Colour, line type, layer and code by the kind of network: proposed heavy, existing thin, cancelled with crosses; a sewer has arrows the way it was drawn",
+        ));
+    let Some(n) = sk.net.as_mut() else {
+        return label;
+    };
+    let state = n.state;
+    crate::app::helpui::combo(ui, "State")
+        .selected_text(t(state.label()))
+        .width(width)
+        .show_ui(ui, |ui| {
+            for st in NetState::ALL {
+                if ui.selectable_label(state == st, t(st.label())).clicked() && state != st {
+                    n.state = st;
+                    label = Some("Utility network");
+                }
+            }
+        });
+    crate::props::row(ui, "Description", |ui| {
+        if ui
+            .add(egui::TextEdit::singleline(&mut n.note).hint_text("DN 150"))
+            .on_hover_text(t("Written after the code in the line: a size, a material"))
+            .changed()
+        {
+            label = Some("Utility network");
+        }
+    });
+    label
 }
 
 #[cfg(test)]

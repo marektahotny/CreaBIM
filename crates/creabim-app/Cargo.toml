@@ -12,16 +12,20 @@ creabim-geom.workspace = true
 creabim-ifc.workspace = true
 creabim-store.workspace = true
 creabim-exchange.workspace = true
+creabim-services.workspace = true
 glam.workspace = true
 eframe = "0.36"
 bytemuck = { version = "1", features = ["derive"] }
 rfd = "0.15"
 # pictures traced over (PNG, JPEG), MU18
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "bmp"] }
 serde.workspace = true
 serde_json.workspace = true
+base64 = "0.22"
 wry = "0.57"
 raw-window-handle = "0.6"
+# the cadastre's public parcel service (plot area, sheet of ownership)
+ureq = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
@@ -31,3 +35,7 @@ winit = { version = "0.30", default-features = false, features = ["x11"] }
 # the .exe's icon (the logo's creabim.ico), embedded when built on Windows
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
+
+[dev-dependencies]
+# the 3D view's shader checked in tests (the version wgpu uses)
+naga = { version = "30", features = ["wgsl-in"] }

@@ -5,6 +5,24 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The stages of documentation the Slovak Building Act (25/2025
+/// Z. z.) knows, with their codes as file names carry them.
+pub const STAGES: [(&str, &str); 5] = [
+    ("Stavebný zámer", "SZP"),
+    ("Stavebný zámer/Projekt stavby", "SZP/PSP"),
+    ("Projekt stavby", "PSP"),
+    ("Projekt stavby na ohlásenie", "PSO"),
+    ("Vykonávací projekt", "VPP"),
+];
+
+/// The code of a stage by its name; none for any other text.
+pub fn stage_code(stage: &str) -> Option<&'static str> {
+    STAGES
+        .iter()
+        .find(|(name, _)| *name == stage.trim())
+        .map(|s| s.1)
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProjectInfo {
@@ -13,10 +31,64 @@ pub struct ProjectInfo {
     /// The office's job number.
     pub number: String,
     pub client: String,
-    /// "Planning application", "Tender", "Construction".
+    /// Who signs the drawings: the chief architect, who drew them and
+    /// the designer responsible (the title block's three names).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub architect: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub drawn_by: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub designer: String,
+    /// The plots built on ("1838/116") and their cadastral district.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub parcels: String,
+    /// The area of the building plot, m², as the cadastre gives it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plot_area: Option<f64>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub cadastre: String,
+    /// The fire separation distances of the building's sides, m: eight,
+    /// north first and on clockwise; nothing where none is given. They
+    /// are the designer's, read from the norm's tables.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fire_distances: Vec<f64>,
+    /// The norms' tables the fire calculations run on, read from the
+    /// designer's parameter file and kept with the project.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fire_params: Vec<crate::fireparams::ParamTable>,
+    /// The building's structural system for fire (konštrukčný celok,
+    /// STN 92 0201-2): "N" non-combustible, "Za"/"Zb" mixed, "Ha"/"Hb"
+    /// combustible; empty is non-combustible.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fire_system: String,
+    /// The locality the heat loss and gains take their outside
+    /// temperatures from (a row of the climate table among
+    /// [`ProjectInfo::fire_params`]); empty is none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub climate_site: String,
+    /// The office's logo for the title block: a picture kept with the
+    /// project.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logo: Option<Logo>,
+    /// The office, and its address and contact, at the head of the
+    /// title pages.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub office: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub office_contact: String,
+    /// The title pages' heading in place of the stage's own
+    /// ("Projektová dokumentácia k stavebnému zámeru").
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub cover_heading: String,
+    /// The documentation's stage, one of [`STAGES`] by its name
+    /// ("Projekt stavby").
     pub status: String,
     /// The issue date, as the office writes it.
     pub issue_date: String,
+    /// The documentation's revision ("00", "01"...): in the list of
+    /// documentation and at the end of exported file names.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub revision: String,
     /// The site's postal address.
     pub address: String,
     pub site_name: String,
@@ -28,6 +100,11 @@ pub struct ProjectInfo {
     pub longitude: Option<f64>,
     /// The project's zero above sea level, metres.
     pub elevation: f64,
+    /// Where the project's origin is in S-JTSK (EPSG:5514): east and
+    /// north, metres, both negative in Slovakia (Pilon Map Downloader's
+    /// bod_pociatku).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sjtsk: Option<[f64; 2]>,
     /// How far true north turns from the drawings' up, degrees anticlockwise.
     pub true_north: f64,
     pub building_name: String,
@@ -42,9 +119,25 @@ pub struct ProjectInfo {
     /// a view.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pad: Vec<PadItem>,
+    /// The building codes the project follows: STN, or ČSN.
+    #[serde(skip_serializing_if = "crate::norms::NormSet::is_default")]
+    pub norms: crate::norms::NormSet,
     /// The project's own profiles (MU27 block 5), for sweeps.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub profiles: Vec<crate::profiles::NamedProfile>,
+    /// How long masonry walls may run between braces, and the columns put
+    /// in them (see [`crate::masonry`]).
+    #[serde(skip_serializing_if = "crate::masonry::MasonryRules::boxed_default")]
+    pub masonry: Box<crate::masonry::MasonryRules>,
+}
+
+/// A picture: `width` × `height` pixels, RGBA, stored as text (see
+/// `creabim_geom::raster::store_image`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Logo {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: String,
 }
 
 /// One item of the project's notepad.
@@ -157,6 +250,14 @@ pub fn pad_to_markdown(
 }
 
 impl ProjectInfo {
+    /// The revision as it is written: "00" until one is given.
+    pub fn revision_or_first(&self) -> String {
+        match self.revision.trim() {
+            "" => "00".to_string(),
+            r => r.to_string(),
+        }
+    }
+
     /// The title-block fields this fills, by the names title blocks use:
     /// only those with a value.
     pub fn fields(&self) -> Vec<(&'static str, String)> {
@@ -262,5 +363,151 @@ mod tests {
                 .ops
                 .is_empty()
         );
+    }
+}
+
+/// The project's north turned by `degrees` anticlockwise (PilonDesigner's
+/// "Otočiť projektový sever"): the whole model, the building and what is
+/// round it (terrain, parcels, map underlays), turns about the origin, so
+/// that the plans draw turned; true north stays where it is on the ground
+/// ([`ProjectInfo::true_north`] turns with the model), the origin stays
+/// on its S-JTSK point and every height stays as it is.
+pub fn rotate_north(model: &crate::Model, degrees: f64) -> crate::Transaction {
+    use crate::{ElementKind, ViewKind};
+    let turn = crate::transform::Xform::Rotate {
+        center: glam::DVec2::ZERO,
+        degrees,
+    };
+    let rot = glam::DVec2::from_angle(degrees.to_radians());
+    let in_plan = |view: crate::ElementId| {
+        matches!(
+            model.get(view).map(|e| &e.kind),
+            Some(ElementKind::View(v)) if matches!(v.kind, ViewKind::Plan { .. })
+        )
+    };
+    let mut tx = crate::Transaction::new("Rotate project north");
+    let mut has_project = false;
+    for e in model.iter() {
+        let mut now = e.clone();
+        match &mut now.kind {
+            // these go with what they are in, or lie on paper
+            ElementKind::Opening(_)
+            | ElementKind::Valve(_)
+            | ElementKind::Circuit(_)
+            | ElementKind::Level(_)
+            | ElementKind::PaperMark(_) => continue,
+            ElementKind::Project(p) => {
+                has_project = true;
+                let n = (p.true_north + degrees + 180.0).rem_euclid(360.0) - 180.0;
+                p.true_north = (n * 1e6).round() / 1e6;
+            }
+            // what is written in a plan turns with the plan
+            ElementKind::Tag(t) if in_plan(t.view) => {
+                t.offset = rot.rotate(t.offset);
+                t.elbow = t.elbow.map(|p| rot.rotate(p));
+                t.end = t.end.map(|p| rot.rotate(p));
+            }
+            ElementKind::Note(n) if in_plan(n.view) => {
+                n.at = rot.rotate(n.at);
+                n.elbow = n.elbow.map(|p| rot.rotate(p));
+                n.leader = n.leader.map(|mut p| {
+                    if p.host.is_none() {
+                        p.local = rot.rotate(p.local);
+                    }
+                    p
+                });
+            }
+            ElementKind::Dimension(d) if in_plan(d.view) => {
+                // across and up the drawing swap on a quarter turn; at
+                // any other angle the dimension follows what it measures
+                use crate::annotation::DimAxis;
+                let quarters = (degrees / 90.0).round();
+                let square = (degrees - quarters * 90.0).abs() < 1e-6;
+                d.axis = match (d.axis, square, quarters.rem_euclid(2.0) == 1.0) {
+                    (DimAxis::Aligned, ..) => DimAxis::Aligned,
+                    (a, true, false) => a,
+                    (DimAxis::Horizontal, true, true) => DimAxis::Vertical,
+                    (DimAxis::Vertical, true, true) => DimAxis::Horizontal,
+                    (_, false, _) => DimAxis::Aligned,
+                };
+                for p in d.points_mut() {
+                    if p.host.is_none() {
+                        p.local = rot.rotate(p.local);
+                    }
+                }
+                if let Some(c) = &mut d.center {
+                    if c.host.is_none() {
+                        c.local = rot.rotate(c.local);
+                    }
+                }
+            }
+            _ => match crate::transform::transformed(model, e, &turn) {
+                Some(n) => now = n,
+                None => continue,
+            },
+        }
+        if now != *e {
+            tx = tx.replace(e.clone(), now);
+        }
+    }
+    if !has_project {
+        tx = tx.insert(crate::Element::new(
+            "Project",
+            ElementKind::Project(ProjectInfo {
+                true_north: degrees,
+                ..Default::default()
+            }),
+        ));
+    }
+    tx
+}
+
+#[cfg(test)]
+mod north_tests {
+    use crate::{Document, ElementKind};
+
+    #[test]
+    fn the_project_turns_and_true_north_stays_on_the_ground() {
+        let mut doc = Document::from_model(crate::sample::sample_house());
+        let walls = |doc: &Document| -> Vec<(glam::DVec2, glam::DVec2, f64)> {
+            doc.model()
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ElementKind::Wall(w) => Some((w.start, w.end, w.height)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let before = walls(&doc);
+        let north = doc
+            .model()
+            .project_info()
+            .map_or(0.0, |(_, p)| p.true_north);
+        doc.commit(super::rotate_north(doc.model(), 30.0)).unwrap();
+        let rot = glam::DVec2::from_angle(30f64.to_radians());
+        for (b, a) in before.iter().zip(walls(&doc)) {
+            assert!((rot.rotate(b.0) - a.0).length() < 1e-9);
+            assert!((rot.rotate(b.1) - a.1).length() < 1e-9);
+            assert_eq!(b.2, a.2, "heights stay");
+        }
+        let now = doc.model().project_info().unwrap().1.true_north;
+        assert!((now - north - 30.0).abs() < 1e-9);
+        // and back
+        doc.commit(super::rotate_north(doc.model(), -30.0)).unwrap();
+        for (b, a) in before.iter().zip(walls(&doc)) {
+            assert!((b.0 - a.0).length() < 1e-9 && (b.1 - a.1).length() < 1e-9);
+        }
+    }
+}
+
+#[cfg(test)]
+mod stage_tests {
+    use super::*;
+
+    #[test]
+    fn a_stage_has_its_code_and_other_text_none() {
+        assert_eq!(stage_code("Projekt stavby"), Some("PSP"));
+        assert_eq!(stage_code(" Vykonávací projekt "), Some("VPP"));
+        assert_eq!(stage_code("Planning application"), None);
     }
 }

@@ -1,0 +1,139 @@
+{
+ "name": "random-15",
+ "kind": "cold",
+ "root_is_connection": true,
+ "available_kpa": 120.0,
+ "settings": {
+  "Voda": {
+   "MetodaSucasnosti": "PN_B_01706",
+   "TypBudovy": "Nemocnica"
+  }
+ },
+ "nodes": [
+  {
+   "id": "1",
+   "parent": null,
+   "kind": "pipe",
+   "p1": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    1.16,
+    0.0,
+    -1.0
+   ],
+   "nominal": 26,
+   "inner": 20,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "2",
+   "parent": 0,
+   "kind": "pipe",
+   "p1": [
+    1.16,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    1.16,
+    0.0,
+    0.14
+   ],
+   "nominal": 26,
+   "inner": 20,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "3",
+   "parent": 1,
+   "kind": "accessory",
+   "p1": [
+    1.16,
+    0.0,
+    0.14
+   ],
+   "p2": [
+    1.16,
+    0.0,
+    0.14
+   ],
+   "role": "strainer"
+  },
+  {
+   "id": "4",
+   "parent": 2,
+   "kind": "fixture",
+   "p1": [
+    1.16,
+    0.0,
+    0.14
+   ],
+   "p2": [
+    1.16,
+    0.0,
+    0.14
+   ],
+   "fixture": "WC kombi",
+   "connector_dn": 0
+  }
+ ]
+}

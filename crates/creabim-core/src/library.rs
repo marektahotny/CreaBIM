@@ -52,6 +52,80 @@ pub fn category_label(category: &str) -> String {
     }
 }
 
+/// What a material is picked for: an element offers the materials it
+/// can be made of, not the whole list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MaterialUse {
+    Wall,
+    /// Floors and roofs.
+    Slab,
+    /// Frames of windows, doors and curtain walls.
+    Joinery,
+    /// Columns, beams, railings and other members.
+    Member,
+    Ceiling,
+    /// Free forms: anything.
+    Any,
+}
+
+impl MaterialUse {
+    /// The categories of material this is made of; empty for any.
+    pub fn categories(self) -> &'static [&'static str] {
+        match self {
+            MaterialUse::Wall => &[
+                "concrete", "brick", "block", "stone", "wood", "gypsum", "glass", "earth", "steel",
+            ],
+            MaterialUse::Slab => &[
+                "concrete", "wood", "steel", "block", "roofing", "membrane", "stone", "earth",
+            ],
+            MaterialUse::Joinery => &["aluminium", "steel", "wood", "plastic", "metal"],
+            MaterialUse::Member => &[
+                "concrete",
+                "steel",
+                "wood",
+                "aluminium",
+                "metal",
+                "stone",
+                "brick",
+                "glass",
+            ],
+            MaterialUse::Ceiling => &[
+                "gypsum",
+                "plaster",
+                "wood",
+                "aluminium",
+                "metal",
+                "finish",
+                "textile",
+                "concrete",
+            ],
+            MaterialUse::Any => &[],
+        }
+    }
+
+    /// Is a material of `category` one this is made of?
+    pub fn fits(self, category: &str) -> bool {
+        let c = self.categories();
+        c.is_empty() || c.iter().any(|x| x.eq_ignore_ascii_case(category.trim()))
+    }
+
+    /// What an element is, for picking its material.
+    pub fn of(kind: &ElementKind) -> MaterialUse {
+        match kind {
+            ElementKind::Wall(w) if w.curtain.is_some() => MaterialUse::Joinery,
+            ElementKind::Wall(_) => MaterialUse::Wall,
+            ElementKind::Slab(_) | ElementKind::Roof(_) => MaterialUse::Slab,
+            ElementKind::Opening(_) => MaterialUse::Joinery,
+            ElementKind::Column(_)
+            | ElementKind::Beam(_)
+            | ElementKind::Railing(_)
+            | ElementKind::Footing(_) => MaterialUse::Member,
+            ElementKind::Ceiling(_) => MaterialUse::Ceiling,
+            _ => MaterialUse::Any,
+        }
+    }
+}
+
 /// One material of the built-in library.
 #[derive(Clone, Copy, Debug)]
 pub struct LibraryEntry {
@@ -78,6 +152,9 @@ impl LibraryEntry {
             opacity: self.opacity,
             pattern: None,
             rate: None,
+            lambda: None,
+            density: None,
+            fire: String::new(),
         }
     }
 
@@ -227,6 +304,14 @@ pub const LIBRARY: &[LibraryEntry] = &[
         "Dense concrete blockwork",
     ),
     entry(
+        "Block, concrete formwork",
+        "block",
+        CON,
+        rgb(172, 170, 164),
+        0.9,
+        "Hollow concrete formwork blocks (DT), filled with concrete",
+    ),
+    entry(
         "Block, aerated concrete",
         "block",
         BRK,
@@ -352,6 +437,249 @@ pub const LIBRARY: &[LibraryEntry] = &[
         0.5,
         "Pre-weathered zinc",
     ),
+    // frames of windows and doors, railings, fittings: coated metals
+    LibraryEntry {
+        name: "Aluminium, RAL 9016",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(241, 240, 234),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, RAL 9016 traffic white",
+    },
+    LibraryEntry {
+        name: "Aluminium, RAL 9010",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(241, 236, 225),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, RAL 9010 pure white",
+    },
+    LibraryEntry {
+        name: "Aluminium, RAL 7035",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(203, 208, 204),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, RAL 7035 light grey",
+    },
+    LibraryEntry {
+        name: "Aluminium, RAL 9006",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(161, 161, 160),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, RAL 9006 white aluminium",
+    },
+    LibraryEntry {
+        name: "Aluminium, RAL 9007",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(135, 133, 129),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, RAL 9007 grey aluminium",
+    },
+    LibraryEntry {
+        name: "Aluminium, RAL 7016",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(56, 62, 66),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, RAL 7016 anthracite grey",
+    },
+    LibraryEntry {
+        name: "Aluminium, RAL 7021",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(47, 50, 52),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, RAL 7021 black grey",
+    },
+    LibraryEntry {
+        name: "Aluminium, DB 703",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(74, 75, 77),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, DB 703 iron mica",
+    },
+    LibraryEntry {
+        name: "Aluminium, RAL 8017",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(68, 47, 41),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, RAL 8017 chocolate brown",
+    },
+    LibraryEntry {
+        name: "Aluminium, RAL 9005",
+        category: "aluminium",
+        hatch: SOL,
+        color: rgb(14, 14, 16),
+        roughness: 0.45,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated aluminium profiles, RAL 9005 jet black",
+    },
+    LibraryEntry {
+        name: "Steel, RAL 7016",
+        category: "steel",
+        hatch: SOL,
+        color: rgb(56, 62, 66),
+        roughness: 0.5,
+        metallic: 0.0,
+        opacity: 1.0,
+        description:
+            "Powder-coated steel (frames, door frames, railings), RAL 7016 anthracite grey",
+    },
+    LibraryEntry {
+        name: "Steel, RAL 9005",
+        category: "steel",
+        hatch: SOL,
+        color: rgb(14, 14, 16),
+        roughness: 0.5,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated steel (frames, door frames, railings), RAL 9005 jet black",
+    },
+    LibraryEntry {
+        name: "Steel, RAL 9016",
+        category: "steel",
+        hatch: SOL,
+        color: rgb(241, 240, 234),
+        roughness: 0.5,
+        metallic: 0.0,
+        opacity: 1.0,
+        description: "Powder-coated steel (frames, door frames, railings), RAL 9016 traffic white",
+    },
+    metal(
+        "Steel, S235",
+        "steel",
+        rgb(120, 124, 130),
+        0.5,
+        "Structural steel S235JR, primed",
+    ),
+    metal(
+        "Steel, weathering",
+        "steel",
+        rgb(122, 72, 48),
+        0.8,
+        "Weathering steel (Corten)",
+    ),
+    metal(
+        "Brass",
+        "metal",
+        rgb(181, 150, 82),
+        0.35,
+        "Brushed brass fittings",
+    ),
+    // plastic frames (PVC-U) and their foils
+    entry(
+        "PVC, white",
+        "plastic",
+        SOL,
+        rgb(244, 244, 240),
+        0.5,
+        "White PVC-U window and door profiles",
+    ),
+    entry(
+        "PVC, anthracite",
+        "plastic",
+        SOL,
+        rgb(60, 65, 68),
+        0.5,
+        "PVC-U profiles with an anthracite grey foil (RAL 7016)",
+    ),
+    entry(
+        "PVC, golden oak",
+        "plastic",
+        SOL,
+        rgb(160, 104, 54),
+        0.5,
+        "PVC-U profiles with a golden oak wood-grain foil",
+    ),
+    entry(
+        "PVC, walnut",
+        "plastic",
+        SOL,
+        rgb(92, 58, 38),
+        0.5,
+        "PVC-U profiles with a walnut wood-grain foil",
+    ),
+    entry(
+        "PVC, cream",
+        "plastic",
+        SOL,
+        rgb(232, 222, 196),
+        0.5,
+        "Cream PVC-U profiles (RAL 9001)",
+    ),
+    // timber for joinery and carpentry
+    entry(
+        "Timber, spruce",
+        "wood",
+        TIM,
+        rgb(222, 196, 150),
+        0.7,
+        "Laminated spruce scantlings for windows and doors (IV 68/78/92)",
+    ),
+    entry(
+        "Timber, pine",
+        "wood",
+        TIM,
+        rgb(214, 178, 120),
+        0.7,
+        "Laminated pine scantlings for windows and doors",
+    ),
+    entry(
+        "Timber, larch",
+        "wood",
+        TIM,
+        rgb(196, 140, 90),
+        0.7,
+        "Larch for windows, doors and cladding",
+    ),
+    entry(
+        "Timber, meranti",
+        "wood",
+        TIM,
+        rgb(150, 90, 66),
+        0.7,
+        "Meranti hardwood for windows and doors",
+    ),
+    entry(
+        "Timber, KVH",
+        "wood",
+        TIM,
+        rgb(226, 200, 150),
+        0.7,
+        "Finger-jointed structural timber KVH, C24",
+    ),
+    entry(
+        "Timber, beech",
+        "wood",
+        TIM,
+        rgb(214, 170, 124),
+        0.7,
+        "Beech for stairs, doors and furniture",
+    ),
     // glass
     glass("Glass, clear", rgb(210, 230, 235), 0.3, "Clear float glass"),
     glass(
@@ -382,6 +710,14 @@ pub const LIBRARY: &[LibraryEntry] = &[
         rgb(240, 240, 236),
         0.95,
         "Expanded polystyrene boards",
+    ),
+    entry(
+        "Insulation, XPS",
+        "insulation",
+        CRS,
+        rgb(196, 222, 236),
+        0.9,
+        "Extruded polystyrene boards, for perimeter and below ground",
     ),
     entry(
         "Insulation, PIR",
@@ -929,6 +1265,30 @@ mod tests {
         // every category the editor offers has something in the library
         for (c, _) in CATEGORIES {
             assert!(LIBRARY.iter().any(|e| e.category == *c), "{c}");
+        }
+    }
+
+    #[test]
+    fn elements_offer_the_materials_they_are_made_of() {
+        let frames = MaterialUse::Joinery;
+        for c in ["aluminium", "steel", "wood", "plastic"] {
+            assert!(frames.fits(c), "{c}");
+            // and the library has several of each to choose from
+            assert!(
+                LIBRARY.iter().filter(|e| e.category == c).count() >= 4,
+                "{c}"
+            );
+        }
+        assert!(!frames.fits("concrete") && !frames.fits("insulation") && !frames.fits(""));
+        assert!(MaterialUse::Wall.fits("brick") && !MaterialUse::Wall.fits("plastic"));
+        assert!(MaterialUse::Any.fits("") && MaterialUse::Any.fits("textile"));
+        for name in [
+            "Aluminium, RAL 7016",
+            "PVC, golden oak",
+            "Timber, spruce",
+            "Steel, RAL 9005",
+        ] {
+            assert!(LIBRARY.iter().any(|e| e.name == name), "{name}");
         }
     }
 

@@ -246,8 +246,13 @@ impl TextLook {
     /// Rough width of `text` on paper, mm.
     pub fn width(&self, text: &str) -> f64 {
         let w = match self.font {
-            Font::Mono => text.chars().count() as f64 * 0.6 * self.size,
-            Font::Serif => text_width(text, self.size) * 0.95,
+            Font::Mono => {
+                text.chars().count() as f64 * 0.6 * self.size * crate::font::setup().stretch
+            }
+            Font::Serif => {
+                crate::paper::rough_width(text, self.size) * 0.95 * crate::font::setup().stretch
+            }
+            // the drawings' own face if one is set, by its letters
             Font::Sans => text_width(text, self.size),
         };
         if self.bold {
@@ -381,7 +386,13 @@ pub enum Shape {
         at: DVec2,
         text_at: DVec2,
         plan: bool,
+        /// A coordinate mark (S-JTSK): a cross on the point, the lines of
+        /// its text stacked over the shoulder.
+        cross: bool,
     },
+    /// Lines of text centred on `at`, reading along `angle` (radians):
+    /// a pipe's label, turned along its pipe.
+    Along { at: DVec2, angle: f64 },
     /// A level's head where its datum line ends at `at`, Revit style: a
     /// target symbol, the level's name (the annotation's text) above the
     /// line and its `elevation` below.
@@ -615,35 +626,107 @@ impl Annotation {
                         .collect(),
                 );
             }
-            Shape::Spot { at, text_at, plan } => {
-                let w = look.width(&self.text) * mm;
+            Shape::Along { at, angle } => {
+                let (angle, up) = upright(angle);
+                let step = look.size * 1.25 * mm;
+                let lines: Vec<&str> = self.text.lines().collect();
+                let top = (lines.len() as f64 - 1.0) / 2.0;
+                for (i, l) in lines.iter().enumerate() {
+                    out.texts.push(MarkText {
+                        at: at + up * (top - i as f64) * step,
+                        text: l.to_string(),
+                        angle,
+                        anchor: Anchor::Middle,
+                    });
+                }
+            }
+            Shape::Spot {
+                at,
+                text_at,
+                plan,
+                cross,
+            } => {
+                let w = self.text.lines().map(|l| look.width(l)).fold(0.0, f64::max) * mm;
                 let dir = if text_at.x >= at.x { 1.0 } else { -1.0 };
                 let shoulder = text_at + DVec2::X * dir * (w + 2.0 * TEXT_GAP * mm);
-                let from = if plan {
-                    target(&mut out, at, LEVEL_HEAD * mm);
-                    at + (text_at - at).normalize_or(DVec2::X) * LEVEL_HEAD * mm
-                } else {
-                    // a filled triangle standing on the point
+                if !plan {
+                    // in a section or an elevation the mark slides along its
+                    // height: the triangle's tip at the grip's x on the
+                    // height of the point it is bound to, a thin line back
+                    // to that point, the text on the shoulder over it
                     let (h, half) = (2.0 * mm, 1.15 * mm);
+                    let tip = DVec2::new(text_at.x, at.y);
+                    if (tip.x - at.x).abs() > 0.5 * mm {
+                        out.lines.push(vec![at, tip]);
+                    }
                     out.arrows
-                        .push([at, at + DVec2::new(-half, h), at + DVec2::new(half, h)]);
-                    at + DVec2::Y * h
-                };
-                if from.distance(text_at) > 0.5 * mm {
-                    out.lines.push(vec![from, text_at, shoulder]);
-                } else {
-                    out.lines.push(vec![text_at, shoulder]);
-                }
-                out.texts.push(MarkText {
-                    at: text_at + DVec2::new(dir * TEXT_GAP * mm, (look.size * 0.5 + 0.6) * mm),
-                    text: self.text.clone(),
-                    angle: 0.0,
-                    anchor: if dir > 0.0 {
-                        Anchor::Start
+                        .push([tip, tip + DVec2::new(-half, h), tip + DVec2::new(half, h)]);
+                    let top = tip + DVec2::Y * h;
+                    let end = top + DVec2::X * dir * (w + 2.0 * TEXT_GAP * mm).max(2.0 * half);
+                    out.lines.push(vec![top - DVec2::X * dir * half, end]);
+                    out.texts.push(MarkText {
+                        at: top + DVec2::new(dir * TEXT_GAP * mm, (look.size * 0.5 + 0.6) * mm),
+                        text: self.text.clone(),
+                        angle: 0.0,
+                        anchor: if dir > 0.0 {
+                            Anchor::Start
+                        } else {
+                            Anchor::End
+                        },
+                    });
+                } else if cross {
+                    // a cross on the point, a leader to the shoulder, the
+                    // lines over it (PilonDesigner's coordinate mark)
+                    let r = 1.2 * mm;
+                    out.lines
+                        .push(vec![at - DVec2::splat(r), at + DVec2::splat(r)]);
+                    out.lines
+                        .push(vec![at + DVec2::new(-r, r), at + DVec2::new(r, -r)]);
+                    let end = if at.distance(shoulder) < at.distance(text_at) {
+                        shoulder
                     } else {
-                        Anchor::End
-                    },
-                });
+                        text_at
+                    };
+                    if at.distance(end) > r {
+                        out.lines.push(vec![at, end]);
+                    }
+                    out.lines.push(vec![text_at, shoulder]);
+                    let lines: Vec<&str> = self.text.lines().collect();
+                    let step = look.size * 1.4 * mm;
+                    let left = text_at.x.min(shoulder.x) + TEXT_GAP * mm;
+                    for (i, l) in lines.iter().enumerate() {
+                        let k = (lines.len() - 1 - i) as f64;
+                        out.texts.push(MarkText {
+                            at: DVec2::new(
+                                left,
+                                text_at.y + (look.size * 0.5 + 0.6) * mm + k * step,
+                            ),
+                            text: l.to_string(),
+                            angle: 0.0,
+                            anchor: Anchor::Start,
+                        });
+                    }
+                } else {
+                    let from = {
+                        target(&mut out, at, LEVEL_HEAD * mm);
+                        at + (text_at - at).normalize_or(DVec2::X) * LEVEL_HEAD * mm
+                    };
+                    if from.distance(text_at) > 0.5 * mm {
+                        out.lines.push(vec![from, text_at, shoulder]);
+                    } else {
+                        out.lines.push(vec![text_at, shoulder]);
+                    }
+                    out.texts.push(MarkText {
+                        at: text_at + DVec2::new(dir * TEXT_GAP * mm, (look.size * 0.5 + 0.6) * mm),
+                        text: self.text.clone(),
+                        angle: 0.0,
+                        anchor: if dir > 0.0 {
+                            Anchor::Start
+                        } else {
+                            Anchor::End
+                        },
+                    });
+                }
             }
             Shape::Level {
                 at,

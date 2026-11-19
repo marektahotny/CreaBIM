@@ -103,6 +103,8 @@ pub fn sample_house() -> Model {
                     curtain: None,
                     layer_ends: vec![],
                     bulge: 0.0,
+                    bearing: None,
+                    fire_partial: false,
                 }),
             );
             let id = wall.id;
@@ -138,6 +140,14 @@ pub fn sample_house() -> Model {
                         },
                         flip_hand: false,
                         flip_facing: false,
+                        no_outer_sill: false,
+                        no_inner_sill: false,
+                        threshold: false,
+                        setback: None,
+                        reveal: None,
+                        division: None,
+                        door: None,
+                        texts: None,
                     }),
                 );
                 tagged.push((window.id, level, outside * 0.9));
@@ -158,6 +168,14 @@ pub fn sample_house() -> Model {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
         }),
     );
     let front_door_id = front_door.id;
@@ -183,6 +201,8 @@ pub fn sample_house() -> Model {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
         }),
     );
     let pid = part.id;
@@ -199,6 +219,14 @@ pub fn sample_house() -> Model {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
         }),
     );
     tagged.push((inner_door.id, g, DVec2::new(0.8, 0.0)));
@@ -484,7 +512,7 @@ pub fn layered_house() -> Model {
     let mut doc = Document::from_model(sample_house());
     let (tx, ids) = assembly::add_starters(doc.model());
     doc.commit(tx).expect("starter assemblies are valid");
-    let [outer, inner, floor, roof] = ids[..] else {
+    let [outer, inner, floor, roof, ..] = ids[..] else {
         unreachable!("four starters")
     };
     let model = doc.model().clone();
@@ -632,6 +660,14 @@ pub fn typed_house() -> Model {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
         }),
     );
     types::stamp(doc.model(), &mut door, starter("Single door 900 × 2100"));
@@ -649,6 +685,14 @@ pub fn typed_house() -> Model {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
         }),
     );
     let (g, f) = (named("Ground Floor"), named("First Floor"));

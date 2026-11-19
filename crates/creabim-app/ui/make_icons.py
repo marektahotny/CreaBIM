@@ -1,7 +1,7 @@
 """Make icons.js from the lucide-static icons folder: make_icons.py ICONS_DIR > icons.js"""
 import re, sys, json
 src=sys.argv[1].rstrip('/')+'/'
-names="""mouse-pointer-2 brick-wall door-open app-window layers layers-2 box scissors-line-dashed building building-2 ruler tag pen-tool slash undo-2 redo-2 move rotate-cw scaling copy-plus copy scissors clipboard-paste trash-2 eye-off focus scan-eye eye folder chevron-right chevron-down search file magnet grid-3x3 square-dashed crosshair check arrow-left layers-3 columns-2 scan sticky-note frame panel-left hash axis-3d circle-dot move-3d spline file-plus folder-open save download upload link sheet table-2 refresh-cw cuboid house map-pin layout-dashboard square-dashed-mouse-pointer git-commit-horizontal ellipsis sun moon panel-right panel-bottom maximize-2 minus diamond palette map file-text""".split()
+names="""mouse-pointer-2 brick-wall door-open app-window layers layers-2 box scissors-line-dashed building building-2 ruler tag pen-tool slash undo-2 redo-2 move rotate-cw scaling copy-plus copy scissors clipboard-paste trash-2 eye-off focus scan-eye eye folder chevron-right chevron-down search file magnet grid-3x3 square-dashed crosshair check arrow-left layers-3 columns-2 scan sticky-note frame panel-left hash axis-3d circle-dot move-3d spline file-plus folder-open save download upload link sheet table-2 refresh-cw cuboid house map-pin layout-dashboard square-dashed-mouse-pointer git-commit-horizontal ellipsis sun moon panel-right panel-bottom maximize-2 minus diamond palette languages map file-text""".split()
 # for the 3D view's buttons and the command palette
 names+="""zoom-in zoom-out rotate-3d""".split()
 # for the single view layout
@@ -88,6 +88,8 @@ CUSTOM={
 # Brief 02's final icon set (boards/IconSetFinal.png): Lucide's grammar, a
 # 24 grid, 2.0 stroke, round caps and joins. Lucide icons kept as they are:
 names+="""align-start-vertical lamp-ceiling tree-deciduous circle-dot-dashed square-arrow-out-up-right layout-panel-left arrow-up-to-line align-left settings log-out""".split()
+# the discipline tabs (building services, cadastre)
+names+="""droplet droplets flame wind zap heater fan plug lightbulb waves thermometer landmark cylinder heart-pulse rows-3 columns-3 layout-grid gauge book-check""".split()
 FINAL={
  # model
  "wall": '<rect x="3" y="3" width="18" height="18" rx="2" /> <path d="M3 9h18M3 15h18M9 3v6M15 3v6M12 9v6M7 15v6M17 15v6" />',

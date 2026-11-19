@@ -802,6 +802,7 @@ pub fn import_ifcx(json: &str) -> Result<ImportResult, ImportError> {
         };
         list.push(Element {
             mark: None,
+            reno: None,
             id,
             name,
             kind,
@@ -861,6 +862,7 @@ impl Builder {
         let element = match ours {
             Some((name, kind @ ElementKind::Material(_))) => Element {
                 mark: None,
+                reno: None,
                 id,
                 name,
                 kind,
@@ -886,6 +888,7 @@ impl Builder {
                     .unwrap_or([0.75; 3]);
                 Element {
                     mark: None,
+                    reno: None,
                     source: None,
                     id,
                     kind: ElementKind::Material(creabim_core::library::imported(
@@ -939,6 +942,7 @@ impl Builder {
             };
             self.levels.push(Element {
                 mark: None,
+                reno: None,
                 source: None,
                 id,
                 name,
@@ -1001,6 +1005,7 @@ impl Builder {
                 let id = self.id(&o.path.clone());
                 let e = Element {
                     mark: None,
+                    reno: None,
                     id,
                     name,
                     kind,
@@ -1069,6 +1074,7 @@ impl Builder {
                         let id = self.id(&o.path.clone());
                         self.main.push(Element {
                             mark: None,
+                            reno: None,
                             source: None,
                             id,
                             name,
@@ -1100,6 +1106,7 @@ impl Builder {
                     );
                     self.main.push(Element {
                         mark: None,
+                        reno: None,
                         source: None,
                         id,
                         name,
@@ -1120,6 +1127,8 @@ impl Builder {
                             curtain: None,
                             layer_ends: vec![],
                             bulge: 0.0,
+                            bearing: None,
+                            fire_partial: false,
                         }),
                         of_type: None,
                     });
@@ -1133,6 +1142,7 @@ impl Builder {
                         let id = self.id(&o.path.clone());
                         self.main.push(Element {
                             mark: None,
+                            reno: None,
                             source: None,
                             id,
                             name,
@@ -1171,6 +1181,7 @@ impl Builder {
                     };
                     self.openings.push(Element {
                         mark: None,
+                        reno: None,
                         source: None,
                         id,
                         name,
@@ -1185,6 +1196,14 @@ impl Builder {
                             frame: Default::default(),
                             flip_hand: false,
                             flip_facing: false,
+                            no_outer_sill: false,
+                            no_inner_sill: false,
+                            threshold: false,
+                            setback: None,
+                            reveal: None,
+                            division: None,
+                            door: None,
+                            texts: None,
                         }),
                         of_type: None,
                     });
@@ -1203,6 +1222,7 @@ impl Builder {
             let id = self.id(&o.path.clone());
             self.main.push(Element {
                 mark: None,
+                reno: None,
                 source: None,
                 id,
                 name,

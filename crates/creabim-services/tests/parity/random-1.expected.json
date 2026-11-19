@@ -1,0 +1,95 @@
+{
+  "root_flow_ls": 0.1,
+  "required_pa": 111346.60139486243,
+  "required_pa_current": 98890.71489615837,
+  "available_pa": 140000,
+  "critical_leaf": "5",
+  "critical_path": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+  ],
+  "nodes": [
+    {
+      "id": "1",
+      "flow_ls": 0.1,
+      "sum_lu": 1,
+      "min_nominal_mm": 0,
+      "proposed": [
+        16,
+        12
+      ],
+      "velocity_ms": 0.8841941282883076,
+      "r_pa_per_m": 1089.4271635257348,
+      "linear_loss_pa": 9772.161656825841,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 20000,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "2",
+      "flow_ls": 0.1,
+      "sum_lu": 1,
+      "min_nominal_mm": 0,
+      "proposed": [
+        16,
+        12
+      ],
+      "velocity_ms": 0.8841941282883076,
+      "r_pa_per_m": 1089.4271635257348,
+      "linear_loss_pa": 2679.9908222733075,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "3",
+      "flow_ls": 0.1,
+      "sum_lu": 1,
+      "min_nominal_mm": 0,
+      "proposed": [
+        16,
+        12
+      ],
+      "velocity_ms": 0.8841941282883076,
+      "r_pa_per_m": 1089.4271635257348,
+      "linear_loss_pa": 4651.8539882548885,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    },
+    {
+      "id": "4",
+      "flow_ls": 0.1,
+      "sum_lu": 1,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0.8841941282883076,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 117.23470750838554,
+      "fixed_loss_pa": 0,
+      "zeta": 0.3,
+      "on_critical_path": true
+    },
+    {
+      "id": "5",
+      "flow_ls": 0.1,
+      "sum_lu": 1,
+      "min_nominal_mm": 0,
+      "proposed": null,
+      "velocity_ms": 0,
+      "r_pa_per_m": 0,
+      "linear_loss_pa": 0,
+      "local_loss_pa": 0,
+      "fixed_loss_pa": 0,
+      "zeta": 0,
+      "on_critical_path": true
+    }
+  ]
+}

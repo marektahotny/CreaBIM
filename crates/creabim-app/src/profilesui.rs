@@ -426,6 +426,18 @@ impl CreaBimApp {
                     m.points.reverse();
                 }
             }),
+            "footing.align" => {
+                if let Some(a) = arg
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|i| creabim_core::FootingAlign::ALL.get(i))
+                {
+                    self.plan.members.footing_align = *a;
+                }
+            }
+            "footing.material" => {
+                self.plan.members.footing_material = (!arg.is_empty()).then(|| arg.to_string());
+            }
             "beam.corner" => {
                 if let Some(c) = creabim_core::members::BeamCorner::ALL
                     .into_iter()
@@ -679,11 +691,12 @@ impl CreaBimApp {
         let src = match what {
             "image" => rfd::FileDialog::new()
                 .set_title("A picture to trace over")
-                .add_filter("Pictures", &["png", "jpg", "jpeg"])
+                .add_filter("Pictures", crate::trace::PICTURES)
                 .pick_file()
                 .map(|p| RefSource::Image {
                     path: p.display().to_string(),
                     width: 0.3,
+                    dpi: None,
                 }),
             "dxf" => rfd::FileDialog::new()
                 .set_title("A DXF drawing to trace over")
@@ -691,6 +704,7 @@ impl CreaBimApp {
                 .pick_file()
                 .map(|p| RefSource::Dxf {
                     path: p.display().to_string(),
+                    unit: None,
                 }),
             "view" => id_of(rest).map(RefSource::View),
             _ => None,
@@ -788,7 +802,11 @@ impl CreaBimApp {
         ui.horizontal(|ui| {
             ui.spacing_mut().interact_size.y = 20.0;
             ui.style_mut().override_font_id = Some(egui::FontId::proportional(12.0));
-            ui.label(egui::RichText::new("Name").size(12.0).color(pal.muted));
+            ui.label(
+                egui::RichText::new(crate::i18n::t("Name"))
+                    .size(12.0)
+                    .color(pal.muted),
+            );
             let r = ui
                 .add_enabled(
                     mine,
@@ -801,7 +819,9 @@ impl CreaBimApp {
                 } else {
                     "A preset keeps its name: Duplicate it to make your own"
                 })
-                .on_disabled_hover_text("A preset keeps its name: Duplicate it to make your own");
+                .on_disabled_hover_text(crate::i18n::t(
+                    "A preset keeps its name: Duplicate it to make your own",
+                ));
             let done = r.lost_focus();
             if done {
                 let new = self.profiles.name.trim().to_string();
@@ -843,7 +863,11 @@ impl CreaBimApp {
                     .fold((*first, *first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
                 let d = hi - lo;
                 crate::props::row(ui, "Size", |ui| {
-                    ui.label(format!("{:.0} × {:.0} mm", d.x * 1000.0, d.y * 1000.0))
+                    ui.label(crate::i18n::tr(&format!(
+                        "{:.0} × {:.0} mm",
+                        d.x * 1000.0,
+                        d.y * 1000.0
+                    )))
                 });
             }
             crate::props::row(ui, "Used by", |ui| {
@@ -874,11 +898,11 @@ impl CreaBimApp {
         let filled = faces.len() - voids.len();
         if self.prop_header(ui, "prof_faces", "Faces", true, None) {
             crate::props::row(ui, "Faces", |ui| {
-                ui.label(format!(
+                ui.label(crate::i18n::tr(&format!(
                     "{filled} filled, {} void{}",
                     voids.len(),
                     if voids.len() == 1 { "" } else { "s" }
-                ))
+                )))
             });
             let (fill, pick) = crate::props::actions2(
                 ui,
@@ -963,13 +987,17 @@ impl CreaBimApp {
                     let cx = crate::props::row(ui, "X", |ui| {
                         crate::props::fill(
                             ui,
-                            egui::DragValue::new(&mut x).suffix(" mm").speed(1.0),
+                            egui::DragValue::new(&mut x)
+                                .suffix(crate::i18n::t(" mm"))
+                                .speed(1.0),
                         )
                     });
                     let cy = crate::props::row(ui, "Y", |ui| {
                         crate::props::fill(
                             ui,
-                            egui::DragValue::new(&mut y).suffix(" mm").speed(1.0),
+                            egui::DragValue::new(&mut y)
+                                .suffix(crate::i18n::t(" mm"))
+                                .speed(1.0),
                         )
                     });
                     if cx.changed() || cy.changed() {
@@ -1973,12 +2001,13 @@ impl CreaBimApp {
             body.left_top() + egui::vec2(10.0, 8.0),
             egui::Align2::LEFT_TOP,
             format!(
-                "Profile · {}{}",
+                "{} · {}{}",
+                crate::i18n::tr("Profile"),
                 prof.name,
                 if editable {
-                    ""
+                    String::new()
                 } else {
-                    " · preset (Duplicate to change it)"
+                    format!(" · {}", crate::i18n::tr("preset (Duplicate to change it)"))
                 }
             ),
             egui::FontId::proportional(12.0),
@@ -2877,7 +2906,7 @@ impl CreaBimApp {
                             .show(ui.ctx(), |ui| {
                                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label("Really");
+                                        ui.label(crate::i18n::t("Really"));
                                         let r = ui.add(
                                             egui::TextEdit::singleline(&mut text)
                                                 .vertical_align(egui::Align::Center)
@@ -2988,7 +3017,7 @@ impl CreaBimApp {
                     .show(ui.ctx(), |ui| {
                         egui::Frame::popup(ui.style()).show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label("Length");
+                                ui.label(crate::i18n::t("Length"));
                                 let r = ui.add(
                                     egui::TextEdit::singleline(&mut text)
                                         .vertical_align(egui::Align::Center)
@@ -3274,17 +3303,20 @@ impl CreaBimApp {
                 .icon(crate::props::combo_icon)
                 .width(w)
                 .truncate()
-                .selected_text(link.clone().unwrap_or_else(|| {
+                .selected_text(crate::i18n::tw(link.clone().unwrap_or_else(|| {
                     if member {
                         "Its own (width × depth)".into()
                     } else {
                         "Its own".into()
                     }
-                }))
+                })))
                 .show_ui(ui, |ui| {
                     if member
                         && ui
-                            .selectable_label(link.is_none(), "Its own (width × depth)")
+                            .selectable_label(
+                                link.is_none(),
+                                crate::i18n::tw("Its own (width × depth)"),
+                            )
                             .clicked()
                     {
                         pick = Some(None);

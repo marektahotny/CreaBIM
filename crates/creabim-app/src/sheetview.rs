@@ -24,6 +24,10 @@ pub struct SheetState {
     /// Crop edge being dragged: viewport, edge (left, right, bottom, top)
     /// and the crop when the drag began.
     crop_drag: Option<(ElementId, usize, [DVec2; 2])>,
+    /// A table's column edge being dragged (as PilonDesigner's legends):
+    /// the table's view, the column's heading, its width and where on
+    /// the paper the drag began.
+    col_drag: Option<(ElementId, String, f64, f64)>,
     /// A paper mark being moved: it, where it was, and the grab point.
     mark_drag: Option<(ElementId, DVec2, DVec2)>,
     /// A revision cloud's grip being dragged (MU25): the cloud as it was
@@ -566,10 +570,17 @@ impl Canvas for EguiCanvas<'_> {
     }
 
     fn fill_rgb(&mut self, pts: &[DVec2], rgb: [f32; 3]) {
-        let pts: Vec<Pos2> = pts.iter().map(|p| self.xf.to_screen(*p)).collect();
+        // as a mesh: egui's smoothed polygon throws spikes across the
+        // sheet from an outline thinner than a pixel (a pipe's wash)
         let c = crate::annotate::color32(rgb);
-        self.painter
-            .add(egui::Shape::convex_polygon(pts, c, egui::Stroke::NONE));
+        let mut mesh = egui::Mesh::default();
+        for p in pts {
+            mesh.colored_vertex(self.xf.to_screen(*p), c);
+        }
+        for [a, b, c] in triangulate(pts) {
+            mesh.add_triangle(a as u32, b as u32, c as u32);
+        }
+        self.painter.add(egui::Shape::mesh(mesh));
     }
 
     fn styled_text(
@@ -613,23 +624,15 @@ impl Canvas for EguiCanvas<'_> {
         if px < 3.0 {
             return;
         }
-        let galley = self.painter.layout_no_wrap(
-            text.to_string(),
-            egui::FontId::proportional(px),
+        crate::annotate::text(
+            self.painter,
+            self.xf.to_screen(at),
+            text,
+            px,
             Color32::BLACK,
-        );
-        let w = galley.size().x;
-        // centre of the text, along its baseline direction from the anchor
-        let shift = match anchor {
-            Anchor::Start => w / 2.0,
-            Anchor::Middle => 0.0,
-            Anchor::End => -w / 2.0,
-        };
-        let rot = egui::emath::Rot2::from_angle(-angle as f32);
-        let centre = self.xf.to_screen(at) + rot * Vec2::new(shift, 0.0);
-        let pos = centre - rot * (galley.size() / 2.0);
-        self.painter.add(
-            egui::epaint::TextShape::new(pos, galley, Color32::BLACK).with_angle(-angle as f32),
+            angle,
+            anchor,
+            &creabim_geom::annotation::TextLook::default(),
         );
     }
 
@@ -702,15 +705,18 @@ pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f6
         egui::ComboBox::from_id_salt(("scale", salt))
             .width((ui.available_width() - typed - gap).max(30.0))
             .icon(crate::props::combo_icon)
-            .selected_text(if standard {
+            .selected_text(crate::i18n::tw(if standard {
                 format!("1:{scale:.0}")
             } else {
                 format!("1:{scale:.0} (custom)")
-            })
+            }))
             .show_ui(ui, |ui| {
                 for s in SCALES {
                     if ui
-                        .selectable_label((s - scale).abs() < 1e-6, format!("1:{s:.0}"))
+                        .selectable_label(
+                            (s - scale).abs() < 1e-6,
+                            crate::i18n::tw(format!("1:{s:.0}")),
+                        )
                         .clicked()
                     {
                         out = Some(s);
@@ -726,7 +732,7 @@ pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f6
                     .range(1.0..=5000.0)
                     .prefix("1:"),
             )
-            .on_hover_text("Any other scale: type its denominator")
+            .on_hover_text(crate::i18n::t("Any other scale: type its denominator"))
             .changed()
         {
             out = Some(v.round().max(1.0));
@@ -863,6 +869,10 @@ pub fn show(
     for v in views {
         if state.active != Some(v.viewport) {
             paper::draw_looks(&mut canvas, &v.drawing, &v.map, &v.looks);
+            // the picture again in the other labels of a title page
+            for d in creabim_geom::coverpage::copies(&s) {
+                paper::draw_looks(&mut canvas, &v.drawing, &v.map.moved(d), &v.looks);
+            }
         }
         sheet::draw_view_title(&mut canvas, v);
         if selection.contains(v.viewport) && state.active.is_none() {
@@ -1271,6 +1281,92 @@ pub fn show(
     }
     if response.drag_stopped() {
         state.crop_drag = None;
+    }
+
+    // a table's columns on the selected viewport (the legend of rooms and
+    // any list): drag the line between two columns to widen the one on
+    // its left, double-click it for the column's own width again
+    if let Some(v) = selected {
+        if let (Some(edges), Some((dlo, dhi))) = (
+            creabim_geom::schedule::column_edges(doc.model(), v.view),
+            v.drawing.bounds(),
+        ) {
+            let top = xf.to_screen(v.map.to_paper(DVec2::new(0.0, dhi.y))).y;
+            let bottom = xf.to_screen(v.map.to_paper(DVec2::new(0.0, dlo.y))).y;
+            let (top, bottom) = (top.min(bottom), top.max(bottom));
+            let sx = |x: f64| xf.to_screen(v.map.to_paper(DVec2::new(x, 0.0))).x;
+            let near = |p: Pos2| {
+                (p.y >= top - 4.0 && p.y <= bottom + 4.0)
+                    .then(|| {
+                        edges
+                            .iter()
+                            .enumerate()
+                            .map(|(i, e)| (i, (sx(e.1) - p.x).abs()))
+                            .filter(|(_, d)| *d < 5.0)
+                            .min_by(|a, b| a.1.total_cmp(&b.1))
+                            .map(|(i, _)| i)
+                    })
+                    .flatten()
+            };
+            let over = response.hover_pos().and_then(near);
+            let dragging = state.col_drag.as_ref().map(|d| d.1.clone());
+            for (i, (title, x, _)) in edges.iter().enumerate() {
+                let lit = over == Some(i) || dragging.as_deref() == Some(title.as_str());
+                let at = sx(*x);
+                painter.line_segment(
+                    [Pos2::new(at, top), Pos2::new(at, bottom)],
+                    egui::Stroke::new(if lit { 2.5 } else { 1.0 }, interaction_ink()),
+                );
+                painter.rect(
+                    Rect::from_center_size(Pos2::new(at, top - 5.0), Vec2::new(6.0, 8.0)),
+                    1.0,
+                    if lit {
+                        interaction_ink()
+                    } else {
+                        Color32::WHITE
+                    },
+                    egui::Stroke::new(1.2, interaction_ink()),
+                    egui::StrokeKind::Middle,
+                );
+            }
+            if over.is_some() || state.col_drag.is_some() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            }
+            if response.drag_started_by(egui::PointerButton::Primary) && state.crop_drag.is_none() {
+                let press = ui.input(|i| i.pointer.press_origin()).or(pointer);
+                if let (Some(i), Some(p)) = (press.and_then(near), press) {
+                    let (title, _, w) = &edges[i];
+                    state.col_drag = Some((v.view, title.clone(), *w, xf.to_paper(p).x));
+                }
+            }
+            if let (Some((view, title, w0, x0)), Some(p)) = (state.col_drag.clone(), pointer) {
+                if response.dragged_by(egui::PointerButton::Primary) {
+                    let w = ((w0 + xf.to_paper(p).x - x0) * 2.0).round() / 2.0;
+                    let w = w.max(creabim_geom::schedule::MIN_COLUMN);
+                    let r = doc.edit_merged(view, "Column width", |e| {
+                        if let ElementKind::View(x) = &mut e.kind {
+                            x.column_widths.insert(title.clone(), w);
+                        }
+                    });
+                    error = r.err().map(|e| e.to_string());
+                    plan.status = Some(format!("{}: {w:.1} mm", creabim_core::words::tr(&title)));
+                }
+            }
+            if response.double_clicked() {
+                if let Some(i) = response.hover_pos().and_then(near) {
+                    let title = edges[i].0.clone();
+                    let r = doc.edit(v.view, "Column width", |e| {
+                        if let ElementKind::View(x) = &mut e.kind {
+                            x.column_widths.remove(&title);
+                        }
+                    });
+                    error = r.err().map(|e| e.to_string());
+                }
+            }
+        }
+    }
+    if response.drag_stopped() {
+        state.col_drag = None;
     }
 
     // as everywhere (MU23): a right-click or Esc cancels what a tool has
@@ -1772,7 +1868,10 @@ pub fn show(
         plan.menu_at = None;
         plan.menu_request = pointer;
     }
-    if response.drag_started_by(egui::PointerButton::Primary) && state.crop_drag.is_none() {
+    if response.drag_started_by(egui::PointerButton::Primary)
+        && state.crop_drag.is_none()
+        && state.col_drag.is_none()
+    {
         let press = ui.input(|i| i.pointer.press_origin()).or(pointer);
         let hit = press.and_then(|p| {
             let p = xf.to_paper(p);
@@ -1891,7 +1990,8 @@ pub fn show(
             painter.text(
                 area.left_top() + Vec2::new(0.0, -6.0),
                 egui::Align2::LEFT_BOTTOM,
-                format!("Working in {}. Esc or click outside to finish.", v.title),
+                crate::i18n::tr("Working in {}. Esc or click outside to finish.")
+                    .replacen("{}", &v.title, 1),
                 egui::FontId::proportional(12.0),
                 interaction_ink(),
             );

@@ -1,0 +1,180 @@
+{
+ "name": "random-1",
+ "kind": "cold",
+ "root_is_connection": true,
+ "available_kpa": null,
+ "settings": {},
+ "nodes": [
+  {
+   "id": "1",
+   "parent": null,
+   "kind": "pipe",
+   "p1": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    8.97,
+    0.0,
+    -1.0
+   ],
+   "nominal": 26,
+   "inner": 20,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "2",
+   "parent": 0,
+   "kind": "pipe",
+   "p1": [
+    8.97,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    8.97,
+    0.0,
+    1.46
+   ],
+   "nominal": 16,
+   "inner": 12,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "3",
+   "parent": 1,
+   "kind": "pipe",
+   "p1": [
+    8.97,
+    0.0,
+    1.46
+   ],
+   "p2": [
+    4.7,
+    0.0,
+    1.46
+   ],
+   "nominal": 20,
+   "inner": 16,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "4",
+   "parent": 2,
+   "kind": "accessory",
+   "p1": [
+    4.7,
+    0.0,
+    1.46
+   ],
+   "p2": [
+    4.7,
+    0.0,
+    1.46
+   ],
+   "role": "shut_off"
+  },
+  {
+   "id": "5",
+   "parent": 3,
+   "kind": "fixture",
+   "p1": [
+    4.7,
+    0.0,
+    1.46
+   ],
+   "p2": [
+    4.7,
+    0.0,
+    1.46
+   ],
+   "fixture": "WC kombi",
+   "connector_dn": 0
+  }
+ ]
+}

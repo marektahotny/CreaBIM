@@ -337,17 +337,17 @@ impl CreaBimApp {
                 if ask == LevelAsk::Copy {
                     ui.separator();
                     crate::props::flow(ui, |ui| {
-                        if ui.small_button("All above").clicked() {
+                        if ui.small_button(crate::i18n::t("All above")).clicked() {
                             let z = from.and_then(|f| list.iter().find(|l| l.0 == f)).map_or(f64::MIN, |l| l.2.elevation);
                             self.level_copy.targets =
                                 list.iter().filter(|l| l.2.elevation > z + 1e-6).map(|l| l.0).collect();
                         }
-                        if ui.small_button("All below").clicked() {
+                        if ui.small_button(crate::i18n::t("All below")).clicked() {
                             let z = from.and_then(|f| list.iter().find(|l| l.0 == f)).map_or(f64::MAX, |l| l.2.elevation);
                             self.level_copy.targets =
                                 list.iter().filter(|l| l.2.elevation < z - 1e-6).map(|l| l.0).collect();
                         }
-                        if ui.small_button("None").clicked() {
+                        if ui.small_button(crate::i18n::t("None")).clicked() {
                             self.level_copy.targets.clear();
                         }
                     });
@@ -440,7 +440,7 @@ pub(crate) fn footings_under(
     state: &crate::planview::PlanState,
     ids: &[ElementId],
 ) -> (creabim_core::Transaction, Vec<ElementId>) {
-    let (mut tx, new) = creabim_core::footing::under(model, ids, &|e| {
+    let (tx, new) = creabim_core::footing::under(model, ids, &|e| {
         if let ElementKind::Footing(f) = &e.kind {
             // the tool's type for this kind, if there is one
             let t = creabim_core::types::types_for(model, &e.kind)
@@ -450,14 +450,22 @@ pub(crate) fn footings_under(
             let kind = f.kind;
             if let Some(t) = t {
                 creabim_core::types::stamp(model, e, t);
-            } else if kind == creabim_core::FootingKind::Strip {
-                // as wide as the bar says, but never narrower than the wall
-                if let ElementKind::Footing(f) = &mut e.kind {
-                    f.width = f.width.max(state.members.footing_width);
+            } else if let ElementKind::Footing(f) = &mut e.kind {
+                let m = &state.members;
+                if kind == creabim_core::FootingKind::Strip {
+                    // as wide as the bar says, but never narrower than the wall
+                    f.width = f.width.max(m.footing_width);
+                    f.align = m.footing_align;
+                    f.align_offset = m.footing_offset;
+                }
+                // the bar's height when it is set for this kind
+                if m.footing_pad == (kind == creabim_core::FootingKind::Pad) {
+                    f.thickness = m.footing_thickness;
                 }
             }
         }
     });
+    let mut tx = crate::memberstool::finish_footings(model, state, tx);
     tx.label = "Footings under selection".into();
     (tx, new)
 }

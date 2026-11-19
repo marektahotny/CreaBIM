@@ -359,6 +359,16 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             g.a = origin(g.a, g.level);
             g.b = origin(g.b, g.level);
         }
+        ElementKind::Pipe(p) => {
+            let level = Some(p.level);
+            p.start = origin(p.start, level);
+            p.end = origin(p.end, level);
+            p.validate().ok()?;
+        }
+        // a valve rides its pipe
+        ElementKind::Valve(_) => {}
+        // a circuit is nowhere
+        ElementKind::Circuit(_) => {}
         ElementKind::Shaft(s) => {
             if !t.keeps_upright() {
                 return None;
@@ -467,7 +477,7 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             let dd = frame.to_drawing(o + *d) - frame.to_drawing(o);
             let (a, b) = (drawn_at(model, &dim.a), drawn_at(model, &dim.b));
             let mut moved = false;
-            for p in [&mut dim.a, &mut dim.b] {
+            for p in dim.points_mut() {
                 if p.host.is_none() {
                     p.local += dd;
                     moved = true;
@@ -498,6 +508,8 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         | ElementKind::Units(_)
         | ElementKind::Project(_)
         | ElementKind::MarkRules(_)
+        | ElementKind::Results(_)
+        | ElementKind::Dss(_)
         | ElementKind::StylePack(_)
         | ElementKind::Cut(_)
         | ElementKind::Join(_)
@@ -608,6 +620,11 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
             _ => return None,
         },
         ElementKind::Guide(g) => (g.a + g.b) / 2.0 + DVec3::Z * elevation(g.level),
+        ElementKind::Pipe(p) => (p.start + p.end) / 2.0 + DVec3::Z * elevation(Some(p.level)),
+        ElementKind::Valve(v) => {
+            let p = v.host(model)?;
+            v.at(p) + DVec3::Z * elevation(Some(p.level))
+        }
         ElementKind::CropBox(c) => c.center(),
         // (MU23) a reference turns and scales about its middle; a paper
         // mark and a note are where they are written
@@ -690,6 +707,7 @@ pub fn duplicate(model: &Model, id: ElementId) -> Vec<Element> {
             | ElementKind::Sketch(_)
             | ElementKind::Grid(_)
             | ElementKind::Guide(_)
+            | ElementKind::Pipe(_)
             | ElementKind::Shaft(_)
             | ElementKind::Object(_)
             | ElementKind::Room(_)
@@ -897,8 +915,7 @@ pub fn flip_view(model: &Model, view: ElementId) -> Option<crate::Transaction> {
         let mut changed = e.clone();
         let mine = match &mut changed.kind {
             ElementKind::Dimension(d) if d.view == view => {
-                free(&mut d.a);
-                free(&mut d.b);
+                d.points_mut().for_each(free);
                 if let Some(c) = &mut d.center {
                     free(c);
                 }

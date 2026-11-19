@@ -40,6 +40,14 @@ Under each viewport is its **title**. In the viewport's *Properties*: show or hi
 - **Move** (`M`, or `G` to follow the pointer) moves what is selected on the sheet. It snaps to the paper, the marks, notes, views and guides. Dragging one of several selected items moves them all.
 - The zoom column at the area's right zooms, fits and frames the selection.
 
+## Table columns
+
+Select a placed legend of rooms or any other list and its column lines show handles. Drag the line between two columns to make the column on its left wider or narrower, by half a millimetre; the columns after it move along. The legends of services and of materials have two columns, the sample or symbol and its words, which wrap to the width you set. Double-click a line to give its column its own width back. The widths belong to the list's view, so it looks the same on every sheet it is placed on.
+
+## Title pages
+
+**Drawings to print** makes a title page for the project and one for each part of the documentation that has drawings (C, D.1 ASR, D.3 ZTI, D.4 VYK, D.5 ELI, D.6 VZT, D.7 PLY, D.8 MPL), numbered before the part's drawings (`S01_ZTI_000_TIT`). They are filled from *Project information*: the design office and its contact, the stage's heading (or your own *Heading*), the building, the client, the site and plots, the three names, the job number and the date. A part's page shows its mark and name, the project's page the building in 3D in its frame. Four A6 title pages fit an A4, one for each set, numbered volume 1 to 4. Set *Sets* in the sheet's properties: fewer than four leaves places empty, more than four adds pages numbered on (5 to 8 on the second, 9 to 12 on the third). A title page stays upright whatever paper is picked. Title pages are not listed in the list of documentation.
+
 ## Rulers and guides
 
 Turn **Guides** on in the sheet's header: rulers run along the top and left edges.

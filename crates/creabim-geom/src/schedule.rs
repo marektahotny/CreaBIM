@@ -120,10 +120,148 @@ pub fn schedule(model: &Model, category: ScheduleCategory) -> Schedule {
 
 /// The schedule of one category; `by_type` groups the rows by element
 /// type, each group under a heading row naming the type and its count.
+/// The narrowest a column dragged on the sheet gets, mm.
+pub const MIN_COLUMN: f64 = 5.0;
+
+/// The widths set on the sheet for `view`'s table, over its columns'.
+pub fn apply_widths(model: &Model, view: ElementId, s: &mut Schedule) {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return;
+    };
+    for c in &mut s.columns {
+        if let Some(w) = v.column_widths.get(c.title) {
+            c.width = w.max(MIN_COLUMN);
+        }
+    }
+}
+
+/// The table a schedule view draws, with the widths set on the sheet;
+/// none for a view that is not a plain table (lists of windows and
+/// doors, the legends of services and materials).
+pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return None;
+    };
+    let creabim_core::ViewKind::Schedule { category, by_type } = v.kind else {
+        return None;
+    };
+    if category.joinery_list().is_some()
+        || matches!(
+            category,
+            ScheduleCategory::ServicesLegend
+                | ScheduleCategory::MaterialLegend
+                | ScheduleCategory::BoardDiagram
+        )
+    {
+        return None;
+    }
+    let mut s = match category {
+        ScheduleCategory::PipeList if v.trade.is_some() => crate::tradelists::pipes(model, v.trade),
+        ScheduleCategory::RoomLegend => crate::roomlegend::schedule(model, v.of_level),
+        ScheduleCategory::Materials => {
+            crate::takeoff::table_measured(model, &v.takeoff, by_type).schedule
+        }
+        _ => schedule_by(model, category, by_type),
+    };
+    apply_widths(model, view, &mut s);
+    Some(s)
+}
+
+/// The headings a legend's two columns are known by on the sheet: its
+/// samples or symbols and its words.
+pub const LEGEND_COLUMNS: [&str; 2] = ["Symbol", "Description"];
+
+/// A legend's two columns, its samples' and its words', as set on the
+/// sheet, else as given.
+pub fn legend_columns(model: &Model, view: ElementId, symbol: f64, words: f64) -> (f64, f64) {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return (symbol, words);
+    };
+    let w = |k: &str, d: f64| v.column_widths.get(k).map_or(d, |w| w.max(MIN_COLUMN));
+    (w(LEGEND_COLUMNS[0], symbol), w(LEGEND_COLUMNS[1], words))
+}
+
+/// Where the column edges of `view`'s table stand on its drawing, mm
+/// from its left edge, each with its column's heading: the edge to the
+/// right of each column. None for a view that is not a plain table.
+pub fn column_edges(model: &Model, view: ElementId) -> Option<Vec<(String, f64, f64)>> {
+    // the lists of windows and doors are drawn, not tables
+    if let Some(edges) = crate::joinerylist::column_edges(model, view) {
+        return Some(edges);
+    }
+    // the legends of services and materials: a sample and its words
+    if let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) {
+        if let creabim_core::ViewKind::Schedule { category, .. } = v.kind {
+            let sizes = match category {
+                ScheduleCategory::ServicesLegend => Some(crate::serviceslegend::COLUMNS),
+                ScheduleCategory::MaterialLegend => Some(crate::matlegend::COLUMNS),
+                _ => None,
+            };
+            if let Some((a, b)) = sizes {
+                let (a, b) = legend_columns(model, view, a, b);
+                return Some(vec![
+                    (LEGEND_COLUMNS[0].to_string(), a, a),
+                    (LEGEND_COLUMNS[1].to_string(), a + b, b),
+                ]);
+            }
+        }
+    }
+    let s = view_table(model, view)?;
+    let mut x = 0.0;
+    Some(
+        s.columns
+            .iter()
+            .map(|c| {
+                x += c.width;
+                (c.title.to_string(), x, c.width)
+            })
+            .collect(),
+    )
+}
+
 pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> Schedule {
     if category == ScheduleCategory::Materials {
-        return takeoff_schedule(model, by_type);
+        let layout = creabim_core::takeoff::Layout::default();
+        return crate::takeoff::table_measured(model, &layout, by_type).schedule;
     }
+    if category == ScheduleCategory::Documents {
+        return crate::doclist::schedule(model);
+    }
+    if category == ScheduleCategory::RoomLegend {
+        return crate::roomlegend::schedule(model, None);
+    }
+    if category == ScheduleCategory::FireFacades {
+        return crate::firezones::facade_schedule(model);
+    }
+    if category == ScheduleCategory::FireRisk {
+        return crate::firerisk::schedule(model);
+    }
+    if category == ScheduleCategory::Occupancy {
+        return crate::occupancy::schedule(model);
+    }
+    if category == ScheduleCategory::BoardDiagram {
+        return crate::boarddiagram::schedule(model);
+    }
+    if category == ScheduleCategory::LintelList {
+        return crate::masonry::lintel_schedule(model);
+    }
+    if category == ScheduleCategory::FireZones {
+        return crate::firezones::schedule(model);
+    }
+    if category == ScheduleCategory::PipeList {
+        return crate::tradelists::pipes(model, None);
+    }
+    if category == ScheduleCategory::ElectricalList {
+        return crate::tradelists::electrical(model);
+    }
+    // the drawn lists' tables are the door and window schedules
+    let category = match category {
+        ScheduleCategory::WindowList => ScheduleCategory::Windows,
+        ScheduleCategory::DoorList => ScheduleCategory::Doors,
+        ScheduleCategory::ServicesLegend => ScheduleCategory::Fixtures,
+        ScheduleCategory::MaterialLegend => ScheduleCategory::Walls,
+        c => c,
+    };
     let units = model.units();
     let mm =
         |v: f64| creabim_core::write_number(model, creabim_core::NumberKind::Schedules, None, v);
@@ -158,12 +296,17 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     let mut rows: Vec<(f64, String, Row)> = Vec::new();
     let mut listed = None;
     let (columns, totals) = match category {
-        ScheduleCategory::Furniture | ScheduleCategory::Fixtures => {
+        ScheduleCategory::Furniture
+        | ScheduleCategory::Fixtures
+        | ScheduleCategory::ServicesLegend => {
             let (columns, totals, n) = object_rows(model, category, by_type, &mut rows);
             listed = Some(n);
             (columns, totals)
         }
-        ScheduleCategory::Doors | ScheduleCategory::Windows => {
+        ScheduleCategory::Doors
+        | ScheduleCategory::Windows
+        | ScheduleCategory::WindowList
+        | ScheduleCategory::DoorList => {
             let kind = if category == ScheduleCategory::Doors {
                 OpeningKind::Door
             } else {
@@ -179,9 +322,25 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
                 col("Sill", Some(Field::Sill), 16.0, true),
             ];
             let doors = kind == OpeningKind::Door;
+            let joinery = doors
+                && model.iter().any(
+                    |e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == kind && o.door.is_some()),
+                );
             if doors {
                 // hinge side seen from where it opens to, into or out of the building
                 columns.push(col("Swing", None, 22.0, false));
+                // doors as joinery: the leaf's nominal size, its frame,
+                // what the leaf is and its fire rating
+                if joinery {
+                    columns.push(col("Leaf", None, 24.0, false));
+                    columns.push(col("Door frame", None, 44.0, false));
+                    columns.push(col("Leaf material", None, 22.0, false));
+                    columns.push(col("Fire rating", None, 30.0, false));
+                }
+            } else {
+                // leaf by leaf from the left seen from inside
+                columns.push(col("Operation", None, 30.0, false));
+                columns.push(col("Leaves", None, 14.0, true));
             }
             for e in model.iter() {
                 let ElementKind::Opening(o) = &e.kind else {
@@ -204,6 +363,25 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
                         Some(ElementKind::Wall(w)) => crate::opening::door_hand(o, w).into(),
                         _ => String::new(),
                     });
+                    if joinery {
+                        match &o.door {
+                            Some(d) => cells.extend([
+                                format!("{} × {}", mm(d.nom_width), mm(d.nom_height)),
+                                d.frame.label().to_string(),
+                                d.leaf.label().to_string(),
+                                d.fire.as_ref().map(|f| f.label()).unwrap_or_default(),
+                            ]),
+                            None => cells.extend([const { String::new() }; 4]),
+                        }
+                    }
+                } else {
+                    cells.push(creabim_core::joinery::operation(o));
+                    cells.push(
+                        creabim_core::joinery::division_of(o)
+                            .leaves()
+                            .len()
+                            .to_string(),
+                    );
                 }
                 rows.push((
                     0.0,
@@ -470,7 +648,20 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
             )
         }
         // answered above, before the element schedules
-        ScheduleCategory::Materials => unreachable!("the take-off is built on its own"),
+        ScheduleCategory::Materials
+        | ScheduleCategory::Documents
+        | ScheduleCategory::MaterialLegend
+        | ScheduleCategory::PipeList
+        | ScheduleCategory::RoomLegend
+        | ScheduleCategory::FireZones
+        | ScheduleCategory::FireFacades
+        | ScheduleCategory::Occupancy
+        | ScheduleCategory::FireRisk
+        | ScheduleCategory::BoardDiagram
+        | ScheduleCategory::LintelList
+        | ScheduleCategory::ElectricalList => {
+            unreachable!("the take-offs and the list of documentation are built on their own")
+        }
     };
     // marks sort as text (D01 < D02); walls and slabs by level, then model order
     rows.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
@@ -554,100 +745,6 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         rows,
         totals,
         listed,
-    }
-}
-
-/// The take-off as a schedule: a row for each material with what it adds
-/// up to and what it costs at its rate. `by_level` puts each level's
-/// materials under a heading with the level's totals. Quantities are in
-/// metres, square metres and cubic metres, the units rates are priced in.
-fn takeoff_schedule(model: &Model, by_level: bool) -> Schedule {
-    use creabim_core::takeoff;
-    let columns = vec![
-        col("Material", None, 40.0, false),
-        col("Elements", None, 16.0, true),
-        col("Area", None, 22.0, true),
-        col("Volume", None, 22.0, true),
-        col("Length", None, 20.0, true),
-        col("Rate", Some(Field::Rate), 18.0, true),
-        col("Per", Some(Field::RatePer), 16.0, false),
-        col("Cost", None, 22.0, true),
-    ];
-    let name = |id: Option<ElementId>, none: &str| {
-        id.and_then(|id| model.get(id))
-            .map_or_else(|| none.to_string(), |e| e.name.clone())
-    };
-    let money = |v: Option<f64>| v.map_or_else(|| "-".to_string(), |v| format!("{v:.2}"));
-    let cells = |label: String, t: &takeoff::Total| {
-        vec![
-            label,
-            t.elements.to_string(),
-            format!("{:.2} m²", t.quantity.area),
-            format!("{:.2} m³", t.quantity.volume),
-            format!("{:.2} m", t.quantity.length),
-            t.rate
-                .map_or_else(|| "-".to_string(), |r| format!("{:.2}", r.amount)),
-            t.rate
-                .map_or_else(|| "-".to_string(), |r| r.per.label().to_string()),
-            money(t.cost),
-        ]
-    };
-    let lines = takeoff::lines(model);
-    let materials = takeoff::by_material(model, &lines);
-    let mut rows = Vec::new();
-    let material_rows = |lines: &[takeoff::Line], rows: &mut Vec<Row>| {
-        for t in takeoff::by_material(model, lines) {
-            rows.push(Row {
-                id: t.key.unwrap_or(ElementId::NIL),
-                cells: cells(name(t.key, "No material"), &t),
-                group: false,
-            });
-        }
-    };
-    if by_level {
-        for level in takeoff::by_level(model, &lines) {
-            let mine: Vec<takeoff::Line> = lines
-                .iter()
-                .filter(|l| l.level == level.key)
-                .cloned()
-                .collect();
-            let mut head = cells(name(level.key, "No level"), &level);
-            // a level has no rate of its own
-            head[5] = String::new();
-            head[6] = String::new();
-            rows.push(Row {
-                id: level.key.unwrap_or(ElementId::NIL),
-                cells: head,
-                group: true,
-            });
-            material_rows(&mine, &mut rows);
-        }
-    } else {
-        material_rows(&lines, &mut rows);
-    }
-    let sum =
-        |f: fn(&takeoff::Quantity) -> f64| materials.iter().map(|t| f(&t.quantity)).sum::<f64>();
-    let priced = materials.iter().any(|t| t.cost.is_some());
-    let totals = vec![
-        format!("{} materials", materials.len()),
-        String::new(),
-        format!("{:.2} m²", sum(|q| q.area)),
-        format!("{:.2} m³", sum(|q| q.volume)),
-        format!("{:.2} m", sum(|q| q.length)),
-        String::new(),
-        String::new(),
-        if priced {
-            money(Some(takeoff::total_cost(model, &lines)))
-        } else {
-            "-".to_string()
-        },
-    ];
-    Schedule {
-        category: ScheduleCategory::Materials,
-        columns,
-        rows,
-        totals,
-        listed: materials.len(),
     }
 }
 
@@ -898,8 +995,41 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
         3.5,
         Anchor::Middle,
     );
-    let rows = s.rows.len() + 2; // header, rows, totals
-    let bottom = -TITLE_ROW - rows as f64 * ROW;
+    // a cell's text broken to its column: a long one makes its row taller
+    const LEAD: f64 = 3.4;
+    let lines = |c: &Column, row: &Row, t: &str| -> Vec<String> {
+        let t = &creabim_core::words::tr(t);
+        if c.numeric || row.group || t.is_empty() {
+            return vec![t.to_string()];
+        }
+        let l = crate::joinerylist::wrap(t, c.width - 2.0 * PAD, 2.5);
+        if l.is_empty() {
+            vec![t.to_string()]
+        } else {
+            l
+        }
+    };
+    let heights: Vec<f64> = s
+        .rows
+        .iter()
+        .map(|row| {
+            let n = s
+                .columns
+                .iter()
+                .zip(&row.cells)
+                .map(|(c, t)| lines(c, row, t).len())
+                .max()
+                .unwrap_or(1);
+            ROW.max(n as f64 * LEAD + 2.0)
+        })
+        .collect();
+    // the top of each row, of the totals row after them, and the bottom
+    let mut tops = vec![-TITLE_ROW - ROW];
+    for h in &heights {
+        tops.push(tops[tops.len() - 1] - h);
+    }
+    let totals_top = tops[s.rows.len()];
+    let bottom = totals_top - ROW;
     let mut x = 0.0;
     let cell = |c: &Column, x: f64| {
         if c.numeric {
@@ -914,20 +1044,18 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
             &mut items,
             view,
             DVec2::new(tx, -TITLE_ROW - ROW / 2.0),
-            c.title,
+            &creabim_core::words::tr(c.title),
             2.5,
             align,
         );
         for (r, row) in s.rows.iter().enumerate() {
-            let y = -TITLE_ROW - (r as f64 + 1.5) * ROW;
-            text(
-                &mut items,
-                row.id,
-                DVec2::new(tx, y),
-                &row.cells[i],
-                2.5,
-                align,
-            );
+            let l = lines(c, row, &row.cells[i]);
+            let mid = tops[r] - heights[r] / 2.0;
+            let mut y = mid + (l.len() as f64 - 1.0) * LEAD / 2.0;
+            for t in &l {
+                text(&mut items, row.id, DVec2::new(tx, y), t, 2.5, align);
+                y -= LEAD;
+            }
         }
         if let Some(t) = s.totals.get(i).filter(|t| !t.is_empty()) {
             text(
@@ -946,22 +1074,40 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
             let mut top = -TITLE_ROW;
             for (r, row) in s.rows.iter().enumerate() {
                 if spans(row) {
-                    let y = -TITLE_ROW - (r as f64 + 1.0) * ROW;
+                    let y = tops[r];
                     if y < top {
                         line(&mut items, DVec2::new(x, top), DVec2::new(x, y), false);
                     }
-                    top = y - ROW;
+                    top = tops[r + 1];
                 }
             }
             line(&mut items, DVec2::new(x, top), DVec2::new(x, bottom), false);
         }
         x += c.width;
     }
-    for r in 0..=rows {
-        let y = -TITLE_ROW - r as f64 * ROW;
-        let heavy = r == 0 || r == 1 || r == rows - 1 || r == rows;
-        line(&mut items, DVec2::new(0.0, y), DVec2::new(width, y), heavy);
+    // under the title, under the header, between the rows, over and under
+    // the totals
+    line(
+        &mut items,
+        DVec2::new(0.0, -TITLE_ROW),
+        DVec2::new(width, -TITLE_ROW),
+        true,
+    );
+    for (r, y) in tops.iter().enumerate() {
+        let heavy = r == 0 || r == s.rows.len();
+        line(
+            &mut items,
+            DVec2::new(0.0, *y),
+            DVec2::new(width, *y),
+            heavy,
+        );
     }
+    line(
+        &mut items,
+        DVec2::new(0.0, bottom),
+        DVec2::new(width, bottom),
+        true,
+    );
     // outer frame
     for (a, b) in [
         (DVec2::ZERO, DVec2::new(width, 0.0)),
@@ -1121,6 +1267,7 @@ mod tests {
             [
                 "Bathroom",
                 "Kitchen",
+                "WC",
                 "Electrical",
                 "Lighting",
                 "Plumbing",

@@ -34,6 +34,10 @@ pub struct Element {
     /// [`crate::marks`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<String>,
+    /// Its part in a renovation: existing, demolished or new; none is new
+    /// (see [`crate::reno`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reno: Option<crate::reno::Reno>,
 }
 
 /// An object in another file that an element mirrors.
@@ -58,6 +62,7 @@ impl Element {
             source: None,
             of_type: None,
             mark: None,
+            reno: None,
         }
     }
 
@@ -115,6 +120,8 @@ impl Element {
             ElementKind::Units(_)
             | ElementKind::Project(_)
             | ElementKind::MarkRules(_)
+            | ElementKind::Results(_)
+            | ElementKind::Dss(_)
             | ElementKind::StylePack(_) => vec![],
             // types are soft too: an element whose type is gone keeps its values
             ElementKind::ElementType(_) => vec![],
@@ -139,6 +146,15 @@ impl Element {
             ElementKind::Cut(c) => vec![c.target, c.cutter],
             ElementKind::Join(j) => vec![j.a, j.b],
             ElementKind::Detail(d) => vec![d.view],
+            ElementKind::Pipe(p) => vec![p.level],
+            // a lintel goes with its door or window
+            ElementKind::Beam(b) => std::iter::once(b.level)
+                .chain(b.lintel.as_ref().and_then(|l| l.opening))
+                .collect(),
+            // a valve goes with its pipe
+            ElementKind::Valve(v) => vec![v.pipe],
+            // a circuit's board and devices are soft
+            ElementKind::Circuit(_) => vec![],
             ElementKind::Guide(g) => g.level.into_iter().collect(),
             ElementKind::Railing(r) => std::iter::once(r.level)
                 .chain(r.stair.map(|s| s.stair))
@@ -180,6 +196,8 @@ impl Element {
             ElementKind::Reference(_) => "Reference",
             ElementKind::PaperMark(_) => "IfcAnnotation",
             ElementKind::MarkRules(_) => "MarkRules",
+            ElementKind::Results(_) => "CalcResults",
+            ElementKind::Dss(_) => "DssData",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::Sketch(_) => "Sketch",
@@ -187,6 +205,10 @@ impl Element {
             // drawing rules and drafting, not building elements
             ElementKind::Join(_) => "Join",
             ElementKind::Detail(_) => "DetailItem",
+            ElementKind::Pipe(p) if p.kind().is_air() => "IfcDuctSegment",
+            ElementKind::Pipe(_) => "IfcPipeSegment",
+            ElementKind::Valve(v) => v.kind_def().map_or("IfcValve", |k| k.ifc.0),
+            ElementKind::Circuit(_) => "IfcDistributionCircuit",
             ElementKind::Guide(_) => "Guide",
             ElementKind::Column(_) => "IfcColumn",
             ElementKind::Beam(_) => "IfcBeam",
@@ -199,6 +221,7 @@ impl Element {
             ElementKind::Site(s) => match s.form {
                 crate::SiteForm::Terrain { .. } => "IfcGeographicElement",
                 crate::SiteForm::Area { .. } => "IfcCivilElement",
+                crate::SiteForm::Earthwork { .. } => "IfcEarthworksCut",
                 crate::SiteForm::Plant { .. } => "IfcGeographicElement",
             },
             ElementKind::Room(_) => "IfcSpace",
@@ -328,6 +351,7 @@ impl Element {
                     && [Some(d.a), Some(d.b), d.center]
                         .iter()
                         .flatten()
+                        .chain(d.mids.iter())
                         .all(|p| p.local.is_finite() && p.body.is_none_or(|b| b.is_finite()))
                 {
                     Ok(())
@@ -368,6 +392,8 @@ impl Element {
                 }
             }
             ElementKind::MarkRules(r) => r.validate(),
+            ElementKind::Results(r) => r.validate(),
+            ElementKind::Dss(d) => d.validate(),
             ElementKind::StylePack(p) => p.validate(),
             ElementKind::CropBox(c) => c.validate(),
             ElementKind::Assembly(a) => a.validate(),
@@ -389,6 +415,9 @@ impl Element {
                 }
             }
             ElementKind::Detail(d) => d.validate(),
+            ElementKind::Pipe(p) => p.validate(),
+            ElementKind::Valve(v) => v.validate(),
+            ElementKind::Circuit(c) => c.validate(),
             ElementKind::Cut(c) => {
                 if c.target == c.cutter {
                     Err("an element can't cut itself".into())
@@ -484,6 +513,19 @@ pub enum ElementKind {
     Join(crate::joins::JoinRule),
     /// A detail component drawn in one view: a flashing, a membrane...
     Detail(crate::detail::DetailItem),
+    /// A pipe or duct segment of building services.
+    Pipe(crate::mep::Pipe),
+    /// A valve or accessory on a pipe.
+    Valve(crate::mep::Valve),
+    /// A final circuit of the electrical installation.
+    Circuit(crate::electrical::Circuit),
+    /// What the calculations found about rooms, pipes, valves and
+    /// circuits (at most one per project, read through
+    /// [`crate::results::results`]).
+    Results(crate::results::CalcResults),
+    /// The classes and values of the data standard typed in by hand (at
+    /// most one per project, read through [`crate::dss::data`]).
+    Dss(crate::dss::DssData),
 }
 
 impl ElementKind {
@@ -527,6 +569,8 @@ impl ElementKind {
                 crate::papermark::PaperMarkKind::Vector { .. } => "Vector picture",
             },
             ElementKind::MarkRules(_) => "MarkRules",
+            ElementKind::Results(_) => "CalcResults",
+            ElementKind::Dss(_) => "DssData",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::ElementType(_) => "ElementType",
@@ -540,6 +584,9 @@ impl ElementKind {
             ElementKind::Ceiling(_) => "Ceiling",
             ElementKind::Join(_) => "Join",
             ElementKind::Detail(_) => "Detail",
+            ElementKind::Pipe(_) => "Pipe",
+            ElementKind::Valve(_) => "Valve",
+            ElementKind::Circuit(_) => "Circuit",
         }
     }
 }
@@ -624,6 +671,17 @@ pub struct Material {
     /// [`crate::takeoff`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate: Option<crate::takeoff::Rate>,
+    /// Design thermal conductivity λ, W/(m·K) (STN 73 0540-3), for heat
+    /// loss and U-values; none when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lambda: Option<f64>,
+    /// Density, kg/m³.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub density: Option<f64>,
+    /// Reaction to fire class by STN EN 13501-1 ("A1", "B-s1,d0", "E");
+    /// empty when unknown.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fire: String,
 }
 
 /// The roughness of a material that doesn't say: matte, like most
@@ -658,6 +716,9 @@ impl Default for Material {
             opacity: 1.0,
             pattern: None,
             rate: None,
+            lambda: None,
+            density: None,
+            fire: String::new(),
         }
     }
 }
@@ -776,9 +837,51 @@ pub struct Dimension {
     /// Its own number format over its kind's in the style pack (A5-2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<crate::units::NumberFormat>,
+    /// A linear dimension's further points, as PilonDesigner's chains: one
+    /// dimension line through `a`, these and `b`, measuring each stretch
+    /// between neighbours along it. Their order does not matter; a point
+    /// whose host is gone drops out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mids: Vec<HostPoint>,
+    /// Texts dragged from over their stretch, as PilonDesigner's: for
+    /// each stretch in order along the line, how far its text is from
+    /// where it would sit, in the view's drawing (metres); none is where
+    /// it falls by itself (a short stretch's text beside it).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub texts: Vec<Option<DVec2>>,
+    /// Short witness lines: only by the dimension line, not back to what
+    /// is measured.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub short: bool,
+    /// Its text covers what is drawn under it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub back: bool,
+    /// A chain whose stretches are kept equal: each reads `EQ`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub eq: bool,
 }
 
 impl Dimension {
+    /// Every point a linear dimension measures: `a`, its further points,
+    /// `b`, as stored (not in order along the line).
+    pub fn points(&self) -> impl Iterator<Item = &HostPoint> {
+        std::iter::once(&self.a)
+            .chain(self.mids.iter())
+            .chain(std::iter::once(&self.b))
+    }
+
+    /// The same, to change.
+    pub fn points_mut(&mut self) -> impl Iterator<Item = &mut HostPoint> {
+        std::iter::once(&mut self.a)
+            .chain(self.mids.iter_mut())
+            .chain(std::iter::once(&mut self.b))
+    }
+
+    /// Is it a chain of more than one stretch?
+    pub fn is_chain(&self) -> bool {
+        !self.mids.is_empty()
+    }
+
     /// A linear dimension in the default style.
     pub fn linear(view: ElementId, a: HostPoint, b: HostPoint, offset: f64) -> Self {
         Self {
@@ -794,6 +897,11 @@ impl Dimension {
             pattern: None,
             held: None,
             format: None,
+            mids: Vec::new(),
+            texts: Vec::new(),
+            short: false,
+            back: false,
+            eq: false,
         }
     }
 
@@ -946,6 +1054,17 @@ pub struct Wall {
     /// circle is two half-circle walls.
     #[serde(default, skip_serializing_if = "is_zero_f64")]
     pub bulge: f64,
+    /// Load-bearing (or not), set by hand; left out, a wall whose core is
+    /// as thick as the project's masonry rules say is (see
+    /// [`crate::masonry::is_bearing`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bearing: Option<bool>,
+    /// An outer wall that meets its fire resistance but whose outer face
+    /// is combustible enough to give off more than 100 MJ/m² in a fire:
+    /// a partly fire-open area (STN 92 0201-4 4.1.3 as Z3 has it), set by
+    /// the designer.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fire_partial: bool,
 }
 
 /// One layer's ends moved by hand: how far layer `layer` (counted from the
@@ -1103,6 +1222,8 @@ impl Wall {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
         }
     }
 
@@ -1485,6 +1606,179 @@ pub struct Opening {
     /// window with its outside face (and its sill) to the wall's interior.
     #[serde(default, skip_serializing_if = "is_false")]
     pub flip_facing: bool,
+    /// A window without its outer sill of sheet metal (no item in the
+    /// list of sheet-metal work, no mark of it), or without its inner
+    /// sill board.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub no_outer_sill: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub no_inner_sill: bool,
+    /// A door with a threshold between its jambs.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub threshold: bool,
+    /// How far the frame's outer face stands in from the outer edge of
+    /// the wall's load-bearing core (less than nothing: out into the
+    /// insulation). Left out, the frame stands on that edge in a layered
+    /// wall and in the middle of a plain one; set in a plain wall, it is
+    /// measured from the wall's outside face.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setback: Option<f64>,
+    /// How far the reveal's insulation laps over the frame; left out,
+    /// [`crate::assembly::REVEAL_INSULATION`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reveal: Option<f64>,
+    /// How it is divided into fields and how each opens; left out, a
+    /// window's panes are fixed glazing and a door has one leaf.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub division: Option<crate::joinery::FrameNode>,
+    /// A door as joinery: its leaf's nominal size, its frame, its fire
+    /// rating.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub door: Option<crate::joinery::DoorSpec>,
+    /// What the window or door list says of it in words; left out, the
+    /// list writes what it can tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub texts: Option<crate::joinery::JoineryTexts>,
+}
+
+/// How a field of a window or door opens. Left and right are seen from
+/// outside.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeafOp {
+    /// Fixed glazing, with no sash.
+    #[default]
+    Fixed,
+    /// Turning on hinges on its left or right.
+    TurnLeft,
+    TurnRight,
+    /// Tilting in at its top, hinged at the bottom.
+    Tilt,
+    /// Tilting and turning.
+    TiltTurnLeft,
+    TiltTurnRight,
+    /// Swinging out at its bottom, hinged at the top.
+    TopHung,
+    /// Sliding to the left or right.
+    SlideLeft,
+    SlideRight,
+    /// Lifting and sliding.
+    LiftSlideLeft,
+    LiftSlideRight,
+    /// A door's leaf, hinged on its left or right.
+    DoorLeft,
+    DoorRight,
+}
+
+impl LeafOp {
+    pub const ALL: [LeafOp; 13] = [
+        LeafOp::Fixed,
+        LeafOp::TurnLeft,
+        LeafOp::TurnRight,
+        LeafOp::Tilt,
+        LeafOp::TiltTurnLeft,
+        LeafOp::TiltTurnRight,
+        LeafOp::TopHung,
+        LeafOp::SlideLeft,
+        LeafOp::SlideRight,
+        LeafOp::LiftSlideLeft,
+        LeafOp::LiftSlideRight,
+        LeafOp::DoorLeft,
+        LeafOp::DoorRight,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LeafOp::Fixed => "Fixed glazing",
+            LeafOp::TurnLeft => "Turning, hinges left",
+            LeafOp::TurnRight => "Turning, hinges right",
+            LeafOp::Tilt => "Tilting",
+            LeafOp::TiltTurnLeft => "Tilt and turn, hinges left",
+            LeafOp::TiltTurnRight => "Tilt and turn, hinges right",
+            LeafOp::TopHung => "Top hung",
+            LeafOp::SlideLeft => "Sliding to the left",
+            LeafOp::SlideRight => "Sliding to the right",
+            LeafOp::LiftSlideLeft => "Lift and slide to the left",
+            LeafOp::LiftSlideRight => "Lift and slide to the right",
+            LeafOp::DoorLeft => "Door leaf, hinges left",
+            LeafOp::DoorRight => "Door leaf, hinges right",
+        }
+    }
+
+    /// As window schedules abbreviate it in Slovak practice: FIX, O
+    /// (otváravé), S (sklopné), OS, V (výklopné), P (posuvné), ZP
+    /// (zdvižno-posuvné), D (dvere), with L or P for left or right.
+    pub fn code(self) -> &'static str {
+        match self {
+            LeafOp::Fixed => "FIX",
+            LeafOp::TurnLeft => "O-L",
+            LeafOp::TurnRight => "O-P",
+            LeafOp::Tilt => "S",
+            LeafOp::TiltTurnLeft => "OS-L",
+            LeafOp::TiltTurnRight => "OS-P",
+            LeafOp::TopHung => "V",
+            LeafOp::SlideLeft => "P-L",
+            LeafOp::SlideRight => "P-P",
+            LeafOp::LiftSlideLeft => "ZP-L",
+            LeafOp::LiftSlideRight => "ZP-P",
+            LeafOp::DoorLeft => "D-L",
+            LeafOp::DoorRight => "D-P",
+        }
+    }
+
+    pub fn of_code(s: &str) -> Option<LeafOp> {
+        LeafOp::ALL.into_iter().find(|o| o.code() == s)
+    }
+
+    /// Hinged on a side: on its left?
+    pub fn hinged_left(self) -> Option<bool> {
+        match self {
+            LeafOp::TurnLeft | LeafOp::TiltTurnLeft | LeafOp::DoorLeft => Some(true),
+            LeafOp::TurnRight | LeafOp::TiltTurnRight | LeafOp::DoorRight => Some(false),
+            _ => None,
+        }
+    }
+
+    /// Sliding: to the left?
+    pub fn slides_left(self) -> Option<bool> {
+        match self {
+            LeafOp::SlideLeft | LeafOp::LiftSlideLeft => Some(true),
+            LeafOp::SlideRight | LeafOp::LiftSlideRight => Some(false),
+            _ => None,
+        }
+    }
+
+    pub fn lifts(self) -> bool {
+        matches!(self, LeafOp::LiftSlideLeft | LeafOp::LiftSlideRight)
+    }
+
+    pub fn tilts(self) -> bool {
+        matches!(
+            self,
+            LeafOp::Tilt | LeafOp::TiltTurnLeft | LeafOp::TiltTurnRight
+        )
+    }
+
+    pub fn is_door(self) -> bool {
+        matches!(self, LeafOp::DoorLeft | LeafOp::DoorRight)
+    }
+
+    /// The same with left and right changed over.
+    pub fn mirrored(self) -> LeafOp {
+        match self {
+            LeafOp::TurnLeft => LeafOp::TurnRight,
+            LeafOp::TurnRight => LeafOp::TurnLeft,
+            LeafOp::TiltTurnLeft => LeafOp::TiltTurnRight,
+            LeafOp::TiltTurnRight => LeafOp::TiltTurnLeft,
+            LeafOp::SlideLeft => LeafOp::SlideRight,
+            LeafOp::SlideRight => LeafOp::SlideLeft,
+            LeafOp::LiftSlideLeft => LeafOp::LiftSlideRight,
+            LeafOp::LiftSlideRight => LeafOp::LiftSlideLeft,
+            LeafOp::DoorLeft => LeafOp::DoorRight,
+            LeafOp::DoorRight => LeafOp::DoorLeft,
+            o => o,
+        }
+    }
 }
 
 impl Opening {
@@ -1500,6 +1794,78 @@ impl Opening {
             OpeningKind::Window | OpeningKind::Hole => !interior_left,
         };
         left != self.flip_facing
+    }
+
+    /// Where its frame, `depth` deep, stands across `wall`, built up as
+    /// `a`: from and to, the wall's left positive. See
+    /// [`Opening::setback`].
+    pub fn frame_span(
+        &self,
+        wall: &Wall,
+        a: Option<&crate::assembly::Assembly>,
+        depth: f64,
+    ) -> (f64, f64) {
+        let t = wall.thickness / 2.0;
+        // a door's lining runs through the whole wall
+        if self.is_lining() {
+            return (-t, t);
+        }
+        let depth = depth.min(wall.thickness);
+        // a door left to itself stands in the middle of a partition (a
+        // wall with no insulation)
+        let partition = |a: &crate::assembly::Assembly| {
+            self.kind == OpeningKind::Door
+                && self.setback.is_none()
+                && !a
+                    .layers
+                    .iter()
+                    .any(|l| l.function == crate::assembly::LayerFunction::Insulation)
+        };
+        let layered = a.filter(|a| a.layers.len() >= 2 && !partition(a));
+        let (lo, hi) = match (layered, self.setback) {
+            (Some(a), _) => crate::assembly::wall_core(a, wall),
+            (None, Some(_)) => (-t, t),
+            (None, None) => return (-depth / 2.0, depth / 2.0),
+        };
+        let sb = self.setback.unwrap_or(0.0);
+        // the exterior is the wall's right unless it is flipped
+        let (a0, a1) = if wall.flip {
+            (hi - sb - depth, hi - sb)
+        } else {
+            (lo + sb, lo + sb + depth)
+        };
+        // kept inside the wall
+        let shift = (-t - a0).max(0.0) + (t - a1).min(0.0);
+        (a0 + shift, a1 + shift)
+    }
+
+    /// A door with a lining round its whole reveal.
+    pub fn is_lining(&self) -> bool {
+        self.kind == OpeningKind::Door
+            && self
+                .door
+                .as_ref()
+                .is_some_and(|d| d.frame == crate::joinery::DoorFrame::Lining)
+    }
+
+    /// The setback it has: the one set, or the one it stands at left
+    /// to itself, from the outer edge of the core (of the wall where it
+    /// has no layers).
+    pub fn setback_in(&self, wall: &Wall, a: Option<&crate::assembly::Assembly>) -> f64 {
+        if let Some(s) = self.setback {
+            return s;
+        }
+        let d = self.frame.depth.clamp(0.02, wall.thickness.max(0.02));
+        let span = self.frame_span(wall, a, d);
+        let t = wall.thickness / 2.0;
+        let core = a
+            .filter(|a| a.layers.len() >= 2)
+            .map_or((-t, t), |a| crate::assembly::wall_core(a, wall));
+        if wall.flip {
+            core.1 - span.1
+        } else {
+            span.0 - core.0
+        }
     }
 }
 
@@ -1729,6 +2095,14 @@ pub struct View {
     /// name): a colour-fill plan, or rooms shaded in a section.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub room_colours: bool,
+    /// A fire drawing: rooms washed by their fire zones, the zones'
+    /// codes written in them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fire_zones: bool,
+    /// A plan showing the fire-dangerous space (PNP) in front of every
+    /// opening of the outer walls and its separation distance.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fire_distances: bool,
     /// A plan seen looking up from the cut (a reflected ceiling plan): the
     /// ceilings over the level and what hangs from them, with walls cut but
     /// without the furniture and floors below.
@@ -1760,6 +2134,98 @@ pub struct View {
     /// project's style pack.
     #[serde(default, skip_serializing_if = "crate::styles::boxed_look_is_default")]
     pub look: Box<crate::styles::ViewLook>,
+    /// The stage of a renovation it shows; none shows every element as
+    /// usual (see [`crate::reno`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reno: Option<crate::reno::RenoView>,
+    /// The trade a services drawing is for; none shows every trade's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trade: Option<crate::viewmodes::Trade>,
+    /// A coordination drawing: every trade's pipes and wiring over the
+    /// building, each trade in its colour.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub coordination: bool,
+    /// A masonry plan: it shows the system lintels and the RC columns in
+    /// walls, and the masonry walls that run too far between braces; every
+    /// other plan leaves the lintels out (sections show them as cut).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub masonry: bool,
+    /// A legend for the site plan: only the utility networks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub site_legend: bool,
+    /// The storey a legend of rooms lists; none lists every storey's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub of_level: Option<ElementId>,
+    /// A table's column widths set on the sheet, paper mm, by the
+    /// column's heading; a column not named keeps its own width.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub column_widths: BTreeMap<String, f64>,
+    /// The page of a long list of windows or doors this view draws,
+    /// from 1; none draws the whole list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
+    /// How a material take-off groups, details and sorts its rows.
+    #[serde(default, skip_serializing_if = "crate::takeoff::Layout::is_default")]
+    pub takeoff: crate::takeoff::Layout,
+    /// How a section's line is drawn in plans and where it steps aside.
+    #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
+    pub line: SectionLine,
+    /// A services drawing shows its pipes and valves as they are in
+    /// space (true widths, the valves' bodies) instead of as a scheme
+    /// (a line a pipe, a symbol a valve).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub spatial: bool,
+    /// The notes a services legend writes under its last heading, one a
+    /// line; empty writes the usual ones of its trades.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
+}
+
+/// A section line's own look and course: broken in the middle (only its
+/// ends and corners drawn), and stepped aside along the way (a jogged
+/// section, zalomený rez).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SectionLine {
+    /// Only the ends (and the corners of its jogs) are drawn.
+    #[serde(default)]
+    pub gap: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub jogs: Vec<SectionJog>,
+}
+
+/// From `at` metres along a section line on, its cut plane stands
+/// `offset` metres to the side it looks to (negative: behind).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SectionJog {
+    pub at: f64,
+    pub offset: f64,
+}
+
+impl SectionLine {
+    pub fn is_plain(&self) -> bool {
+        !self.gap && self.jogs.is_empty()
+    }
+
+    /// The stretches of a line `length` long: from, to, and how far the
+    /// cut plane stands aside there.
+    pub fn stretches(&self, length: f64) -> Vec<(f64, f64, f64)> {
+        let mut jogs: Vec<SectionJog> = self
+            .jogs
+            .iter()
+            .copied()
+            .filter(|j| j.at > 1e-6 && j.at < length - 1e-6)
+            .collect();
+        jogs.sort_by(|a, b| a.at.total_cmp(&b.at));
+        let mut out = vec![];
+        let (mut from, mut off) = (0.0, 0.0);
+        for j in jogs {
+            out.push((from, j.at, off));
+            from = j.at;
+            off = j.offset;
+        }
+        out.push((from, length, off));
+        out
+    }
 }
 
 /// Where a detail view comes from: the box `lo`..`hi` (drawing
@@ -1890,10 +2356,55 @@ pub enum ScheduleCategory {
     /// The take-off: what each material adds up to (area, volume, length,
     /// pieces), priced by its rate; grouped, it goes level by level.
     Materials,
+    /// The window list of Slovak practice (výpis okien): each kind of
+    /// window once, drawn with its sizes and how it opens, counted by
+    /// level, with its make, finish and a note.
+    WindowList,
+    /// The door list (výpis dverí), the same for doors, counted left
+    /// and right.
+    DoorList,
+    /// The legend of a services drawing: the pipes' lines by system and
+    /// the sanitary fixtures by mark.
+    ServicesLegend,
+    /// The list of the documentation (part A of the documentation of a
+    /// construction, decree 60/2025 Z. z.): every sheet by its part, with
+    /// its number, name, scale and paper.
+    Documents,
+    /// The legend of materials beside an architectural plan: each
+    /// material cut in the plans with a patch of its hatch.
+    MaterialLegend,
+    /// The pipes and ducts of the services by system, type and size with
+    /// their lengths, and the valves on them by kind.
+    PipeList,
+    /// The electrical devices by kind and type, the cables by their
+    /// cross-section and the breakers of the circuits.
+    ElectricalList,
+    /// The legend of rooms beside an architectural plan: the rooms of a
+    /// storey with their areas and the finishes of floor, walls and
+    /// ceiling, read from the build-ups where a room does not say.
+    RoomLegend,
+    /// The fire zones: each zone with its rooms and area, and the doors
+    /// on the zones' borders with their fire ratings.
+    FireZones,
+    /// The building's sides by storey and where they face: what of each
+    /// is open to fire, for the separation distances.
+    FireFacades,
+    /// The fire risk of the fire zones (STN 92 0201-1).
+    FireRisk,
+    /// The persons the rooms are counted for, by fire zone, from the
+    /// project's occupancy table.
+    Occupancy,
+    /// The single-line diagram of the distribution boards: each board's
+    /// feed, main switch and circuits with their breakers, cables and
+    /// what they feed.
+    BoardDiagram,
+    /// The system lintels by product and storey: pieces, length, size and
+    /// mass, and the openings they span.
+    LintelList,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 9] = [
+    pub const ALL: [ScheduleCategory; 23] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -1903,6 +2414,20 @@ impl ScheduleCategory {
         ScheduleCategory::Fixtures,
         ScheduleCategory::Rooms,
         ScheduleCategory::Materials,
+        ScheduleCategory::WindowList,
+        ScheduleCategory::DoorList,
+        ScheduleCategory::ServicesLegend,
+        ScheduleCategory::Documents,
+        ScheduleCategory::MaterialLegend,
+        ScheduleCategory::PipeList,
+        ScheduleCategory::ElectricalList,
+        ScheduleCategory::RoomLegend,
+        ScheduleCategory::FireZones,
+        ScheduleCategory::FireFacades,
+        ScheduleCategory::FireRisk,
+        ScheduleCategory::Occupancy,
+        ScheduleCategory::BoardDiagram,
+        ScheduleCategory::LintelList,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -1917,6 +2442,20 @@ impl ScheduleCategory {
             ScheduleCategory::Fixtures => "Fixture",
             ScheduleCategory::Rooms => "Room",
             ScheduleCategory::Materials => return "Take-off".into(),
+            ScheduleCategory::WindowList => return "Window list".into(),
+            ScheduleCategory::DoorList => return "Door list".into(),
+            ScheduleCategory::ServicesLegend => return "Services legend".into(),
+            ScheduleCategory::Documents => return "List of documentation".into(),
+            ScheduleCategory::MaterialLegend => return "Legend of materials".into(),
+            ScheduleCategory::PipeList => return "Pipe list".into(),
+            ScheduleCategory::ElectricalList => return "Electrical list".into(),
+            ScheduleCategory::RoomLegend => return "Legend of rooms".into(),
+            ScheduleCategory::FireZones => return "Fire zones".into(),
+            ScheduleCategory::FireFacades => return "Fire-open areas of the facades".into(),
+            ScheduleCategory::Occupancy => return "Occupancy by persons".into(),
+            ScheduleCategory::FireRisk => return "Fire risk".into(),
+            ScheduleCategory::BoardDiagram => return "Board diagram".into(),
+            ScheduleCategory::LintelList => return "Lintel list".into(),
         };
         format!("{one} Schedule")
     }
@@ -1940,6 +2479,41 @@ impl ScheduleCategory {
             ScheduleCategory::Fixtures => "Fixtures",
             ScheduleCategory::Rooms => "Rooms",
             ScheduleCategory::Materials => "Take-off",
+            ScheduleCategory::WindowList => "Window list",
+            ScheduleCategory::DoorList => "Door list",
+            ScheduleCategory::ServicesLegend => "Services legend",
+            ScheduleCategory::Documents => "List of documentation",
+            ScheduleCategory::MaterialLegend => "Legend of materials",
+            ScheduleCategory::PipeList => "Pipe list",
+            ScheduleCategory::ElectricalList => "Electrical list",
+            ScheduleCategory::RoomLegend => "Legend of rooms",
+            ScheduleCategory::FireZones => "Fire zones",
+            ScheduleCategory::FireFacades => "Fire-open areas of the facades",
+            ScheduleCategory::Occupancy => "Occupancy by persons",
+            ScheduleCategory::FireRisk => "Fire risk",
+            ScheduleCategory::BoardDiagram => "Board diagram",
+            ScheduleCategory::LintelList => "Lintel list",
+        }
+    }
+
+    /// Is it drawn as a sheet of its own rather than set as a table?
+    pub fn is_drawn(self) -> bool {
+        self.joinery_list().is_some()
+            || matches!(
+                self,
+                ScheduleCategory::ServicesLegend
+                    | ScheduleCategory::Documents
+                    | ScheduleCategory::MaterialLegend
+                    | ScheduleCategory::BoardDiagram
+            )
+    }
+
+    /// The drawn list of windows or doors: which of the two.
+    pub fn joinery_list(self) -> Option<OpeningKind> {
+        match self {
+            ScheduleCategory::WindowList => Some(OpeningKind::Window),
+            ScheduleCategory::DoorList => Some(OpeningKind::Door),
+            _ => None,
         }
     }
 }
@@ -1987,6 +2561,8 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
+            fire_distances: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -1994,6 +2570,18 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
+            line: Default::default(),
+            trade: None,
+            coordination: false,
+            masonry: false,
+            site_legend: false,
+            of_level: None,
+            column_widths: BTreeMap::new(),
+            page: None,
+            takeoff: Default::default(),
+            notes: String::new(),
+            spatial: false,
         }
     }
 
@@ -2013,6 +2601,8 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
+            fire_distances: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2020,6 +2610,18 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
+            line: Default::default(),
+            trade: None,
+            coordination: false,
+            masonry: false,
+            site_legend: false,
+            of_level: None,
+            column_widths: BTreeMap::new(),
+            page: None,
+            takeoff: Default::default(),
+            notes: String::new(),
+            spatial: false,
         }
     }
 }
@@ -2036,6 +2638,8 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
+            fire_distances: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2043,6 +2647,18 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
+            line: Default::default(),
+            trade: None,
+            coordination: false,
+            masonry: false,
+            site_legend: false,
+            of_level: None,
+            column_widths: BTreeMap::new(),
+            page: None,
+            takeoff: Default::default(),
+            notes: String::new(),
+            spatial: false,
         }
     }
 
@@ -2060,6 +2676,8 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
+            fire_distances: false,
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
@@ -2067,6 +2685,18 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
+            line: Default::default(),
+            trade: None,
+            coordination: false,
+            masonry: false,
+            site_legend: false,
+            of_level: None,
+            column_widths: BTreeMap::new(),
+            page: None,
+            takeoff: Default::default(),
+            notes: String::new(),
+            spatial: false,
         }
     }
 
@@ -2089,6 +2719,8 @@ impl View {
             show_hidden: false,
             hidden_in_colour: false,
             room_colours: false,
+            fire_zones: false,
+            fire_distances: false,
             ceiling_plan: parent.ceiling_plan,
             graphics: parent.graphics.clone(),
             callout: Some(Callout::new(parent_id, a, b)),
@@ -2096,6 +2728,18 @@ impl View {
             sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
+            reno: None,
+            line: Default::default(),
+            trade: None,
+            coordination: false,
+            masonry: false,
+            site_legend: false,
+            of_level: None,
+            column_widths: BTreeMap::new(),
+            page: None,
+            takeoff: Default::default(),
+            notes: String::new(),
+            spatial: false,
         }
     }
 
@@ -2128,6 +2772,18 @@ pub struct Sheet {
     /// `false` for one across at that many mm up.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub guides: Vec<(bool, f64)>,
+    /// Its title block is drawn (a sheet can go without: a picture, a
+    /// cover).
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub title_block: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_yes(b: &bool) -> bool {
+    *b
 }
 
 impl Sheet {
@@ -2138,6 +2794,13 @@ impl Sheet {
         ("A2", 594.0, 420.0),
         ("A3", 420.0, 297.0),
         ("A4", 297.0, 210.0),
+        // lengthened sizes that fold to A4
+        ("3×A4", 630.0, 297.0),
+        ("4×A4", 841.0, 297.0),
+        ("6×A4", 630.0, 420.0),
+        ("8×A4", 841.0, 420.0),
+        ("9×A4", 630.0, 594.0),
+        ("12×A4", 841.0, 594.0),
     ];
 
     pub fn a(number: impl Into<String>, size: &str) -> Self {
@@ -2153,6 +2816,7 @@ impl Sheet {
             template: None,
             fields: Default::default(),
             guides: vec![],
+            title_block: true,
         }
     }
 

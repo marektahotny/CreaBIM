@@ -57,6 +57,20 @@ pub enum SiteForm {
         #[serde(default)]
         pattern: Pattern,
     },
+    /// Earthworks (PilonDesigner's terrain edits): a building pit dug to
+    /// `bottom` (above the level) with sides sloping 1:`slope` up to the
+    /// ground and back-filled after, so the ground stays; or (not `pit`) a
+    /// platform levelled at `bottom` with slopes to the ground round it,
+    /// which changes the ground for good. `topsoil` metres are stripped
+    /// first. See [`crate::earthworks`].
+    Earthwork {
+        boundary: Vec<DVec2>,
+        bottom: f64,
+        slope: f64,
+        pit: bool,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        topsoil: f64,
+    },
     /// A tree or shrub standing at `position`, its base `base` above the
     /// level: `canopy` across its crown, `height` to its top.
     Plant {
@@ -199,6 +213,29 @@ impl Site {
         }
     }
 
+    /// A building pit (or a platform) over `boundary`, its bottom
+    /// `bottom` above the level, its sides sloping 1:`slope`.
+    pub fn earthwork(
+        level: ElementId,
+        mut boundary: Vec<DVec2>,
+        bottom: f64,
+        slope: f64,
+        pit: bool,
+    ) -> Self {
+        ccw(&mut boundary);
+        Self {
+            level,
+            form: SiteForm::Earthwork {
+                boundary,
+                bottom,
+                slope,
+                pit,
+                topsoil: 0.0,
+            },
+            material: None,
+        }
+    }
+
     /// A plant at `position`.
     pub fn plant(
         level: ElementId,
@@ -225,6 +262,8 @@ impl Site {
         match &self.form {
             SiteForm::Terrain { .. } => "Terrain",
             SiteForm::Area { .. } => "Hard landscape",
+            SiteForm::Earthwork { pit: true, .. } => "Building pit",
+            SiteForm::Earthwork { .. } => "Platform",
             SiteForm::Plant { form, .. } => form.label(),
         }
     }
@@ -233,16 +272,22 @@ impl Site {
         matches!(self.form, SiteForm::Plant { .. })
     }
 
+    pub fn is_earthwork(&self) -> bool {
+        matches!(self.form, SiteForm::Earthwork { .. })
+    }
+
     /// Ground and areas can be cut by voids (a pool, a light well);
-    /// plants can't.
+    /// plants and earthworks can't.
     pub fn cuttable(&self) -> bool {
-        !self.is_plant()
+        !self.is_plant() && !self.is_earthwork()
     }
 
     /// The outline of a terrain or an area.
     pub fn boundary(&self) -> Option<&[DVec2]> {
         match &self.form {
-            SiteForm::Terrain { boundary, .. } | SiteForm::Area { boundary, .. } => Some(boundary),
+            SiteForm::Terrain { boundary, .. }
+            | SiteForm::Area { boundary, .. }
+            | SiteForm::Earthwork { boundary, .. } => Some(boundary),
             SiteForm::Plant { .. } => None,
         }
     }
@@ -295,6 +340,22 @@ impl Site {
                 }
                 pattern.validate()
             }
+            SiteForm::Earthwork {
+                boundary,
+                bottom,
+                slope,
+                topsoil,
+                ..
+            } => {
+                outline(boundary)?;
+                if !(bottom.is_finite() && slope.is_finite() && *slope >= 0.0) {
+                    return Err("an earthwork's bottom and slope must be finite".into());
+                }
+                if !(topsoil.is_finite() && *topsoil >= 0.0) {
+                    return Err("topsoil depth can't be negative".into());
+                }
+                Ok(())
+            }
             SiteForm::Plant {
                 position,
                 base,
@@ -311,6 +372,27 @@ impl Site {
         }
     }
 
+    /// [`Site::ground_at`] for many points, its spot heights gathered
+    /// once (a surveyed terrain has hundreds).
+    pub fn ground_heights(&self, ps: &[DVec2]) -> Vec<f64> {
+        let SiteForm::Terrain {
+            boundary,
+            top,
+            points,
+            ..
+        } = &self.form
+        else {
+            return ps.iter().map(|p| self.ground_at(*p)).collect();
+        };
+        if points.is_empty() {
+            return vec![*top; ps.len()];
+        }
+        let controls = controls(boundary, *top, points);
+        ps.iter()
+            .map(|p| surface_height(*top, &controls, *p))
+            .collect()
+    }
+
     /// The height of a terrain's surface above its level at `p`: its top
     /// when flat, else weighted towards the nearest spot heights.
     pub fn ground_at(&self, p: DVec2) -> f64 {
@@ -324,16 +406,10 @@ impl Site {
                 if points.is_empty() {
                     return *top;
                 }
-                // the outline's corners stay at the terrain's top unless a
-                // spot height is on them
-                let corners = boundary
-                    .iter()
-                    .filter(|c| !points.iter().any(|q| q.truncate().distance(**c) < 1e-3))
-                    .map(|c| c.extend(*top));
-                let controls: Vec<DVec3> = points.iter().copied().chain(corners).collect();
-                surface_height(*top, &controls, p)
+                surface_height(*top, &controls(boundary, *top, points), p)
             }
             SiteForm::Area { top, .. } => *top,
+            SiteForm::Earthwork { bottom, .. } => *bottom,
             SiteForm::Plant { base, .. } => *base,
         }
     }
@@ -365,6 +441,12 @@ impl Site {
                 let (lo, hi) = flat_bounds(boundary)?;
                 Some((lo.extend(z + top - thickness), hi.extend(z + top)))
             }
+            SiteForm::Earthwork {
+                boundary, bottom, ..
+            } => {
+                let (lo, hi) = flat_bounds(boundary)?;
+                Some((lo.extend(z + bottom), hi.extend(z + bottom.max(0.0))))
+            }
             SiteForm::Plant {
                 position,
                 base,
@@ -386,6 +468,128 @@ impl Site {
         let (lo, hi) = self.bounds(model)?;
         Some(((lo + hi) / 2.0).truncate().extend(lo.z))
     }
+}
+
+/// A triangulation of `boundary` with `inner` points added as corners,
+/// its edges flipped towards a Delaunay triangulation.
+pub fn tin(boundary: &[DVec2], inner: &[DVec2]) -> (Vec<DVec2>, Vec<[usize; 3]>) {
+    let mut verts = boundary.to_vec();
+    let mut tris = crate::polygon::triangulate(boundary);
+    let n0 = verts.len();
+    let ccw = |t: &[usize; 3], v: &[DVec2]| (v[t[1]] - v[t[0]]).perp_dot(v[t[2]] - v[t[0]]) > 0.0;
+    for t in tris.iter_mut() {
+        if !ccw(t, &verts) {
+            t.swap(1, 2);
+        }
+    }
+    for p in inner {
+        let Some(i) = tris.iter().position(|t| {
+            let [a, b, c] = t.map(|i| verts[i]);
+            (b - a).perp_dot(*p - a) >= 0.0
+                && (c - b).perp_dot(*p - b) >= 0.0
+                && (a - c).perp_dot(*p - c) >= 0.0
+        }) else {
+            continue;
+        };
+        if verts.iter().any(|v| v.distance(*p) < 1e-3) {
+            continue;
+        }
+        let k = verts.len();
+        verts.push(*p);
+        let [a, b, c] = tris[i];
+        // on (or a hair from) an edge, as a survey's grid points are on
+        // the outline: the edge is split, in its other triangle too, so no
+        // flat sliver is left along it
+        let on_edge = [(a, b, c), (b, c, a), (c, a, b)]
+            .into_iter()
+            .find(|&(u, v, _)| {
+                let e = verts[v] - verts[u];
+                e.perp_dot(*p - verts[u]).abs() < 1e-6 * e.length().max(1e-9)
+            });
+        let Some((u, v, w)) = on_edge else {
+            tris[i] = [a, b, k];
+            tris.push([b, c, k]);
+            tris.push([c, a, k]);
+            continue;
+        };
+        tris[i] = [u, k, w];
+        tris.push([k, v, w]);
+        let twin = tris
+            .iter()
+            .position(|t| (0..3).any(|e| t[e] == v && t[(e + 1) % 3] == u));
+        if let Some(j) = twin {
+            let x = tris[j].into_iter().find(|&q| q != u && q != v);
+            if let Some(x) = x {
+                tris[j] = [v, k, x];
+                tris.push([k, u, x]);
+            }
+        }
+    }
+    // Lawson flips: an interior edge whose opposite corner falls inside
+    // the other triangle's circumcircle is swapped
+    let in_circle = |a: DVec2, b: DVec2, c: DVec2, d: DVec2| {
+        let (ax, ay) = (a.x - d.x, a.y - d.y);
+        let (bx, by) = (b.x - d.x, b.y - d.y);
+        let (cx, cy) = (c.x - d.x, c.y - d.y);
+        (ax * ax + ay * ay) * (bx * cy - cx * by) - (bx * bx + by * by) * (ax * cy - cx * ay)
+            + (cx * cx + cy * cy) * (ax * by - bx * ay)
+            > 1e-12
+    };
+    let boundary_edge =
+        |a: usize, b: usize| a < n0 && b < n0 && ((a + 1) % n0 == b || (b + 1) % n0 == a);
+    // each directed edge to the triangle it runs round; edges to check
+    // are kept on a stack, so a flip looks again only at its neighbours
+    let mut edges: std::collections::HashMap<(usize, usize), usize> = Default::default();
+    let mut stack: Vec<(usize, usize)> = vec![];
+    for (i, t) in tris.iter().enumerate() {
+        for e in 0..3 {
+            edges.insert((t[e], t[(e + 1) % 3]), i);
+            stack.push((t[e], t[(e + 1) % 3]));
+        }
+    }
+    let third = |t: &[usize; 3], a: usize, b: usize| t.iter().copied().find(|&v| v != a && v != b);
+    let mut budget = 64 * tris.len().max(1);
+    while let Some((a, b)) = stack.pop() {
+        if budget == 0 {
+            break;
+        }
+        budget -= 1;
+        if boundary_edge(a, b) {
+            continue;
+        }
+        let (Some(&i), Some(&j)) = (edges.get(&(a, b)), edges.get(&(b, a))) else {
+            continue;
+        };
+        let (Some(c), Some(d)) = (third(&tris[i], a, b), third(&tris[j], a, b)) else {
+            continue;
+        };
+        let (pa, pb, pc, pd) = (verts[a], verts[b], verts[c], verts[d]);
+        // only a convex quad can flip
+        let convex = (pd - pc).perp_dot(pa - pc) * (pd - pc).perp_dot(pb - pc) < 0.0;
+        if convex && in_circle(pa, pb, pc, pd) {
+            edges.remove(&(a, b));
+            edges.remove(&(b, a));
+            tris[i] = [c, a, d];
+            tris[j] = [d, b, c];
+            for (k, t) in [(i, tris[i]), (j, tris[j])] {
+                for e in 0..3 {
+                    edges.insert((t[e], t[(e + 1) % 3]), k);
+                }
+            }
+            stack.extend([(a, d), (d, b), (b, c), (c, a)]);
+        }
+    }
+    (verts, tris)
+}
+
+/// What a terrain's surface passes through: its spot heights, and the
+/// outline's corners at its top unless a spot height is on them.
+pub(crate) fn controls(boundary: &[DVec2], top: f64, points: &[DVec3]) -> Vec<DVec3> {
+    let corners = boundary
+        .iter()
+        .filter(|c| !points.iter().any(|q| q.truncate().distance(**c) < 1e-3))
+        .map(|c| c.extend(top));
+    points.iter().copied().chain(corners).collect()
 }
 
 fn ccw(pts: &mut [DVec2]) {
@@ -518,6 +722,15 @@ pub fn transform(site: &mut Site, t: &Xform) -> Option<()> {
             ccw(boundary);
             *top += dz;
         }
+        SiteForm::Earthwork {
+            boundary, bottom, ..
+        } => {
+            for p in boundary.iter_mut() {
+                *p = t.point2(*p);
+            }
+            ccw(boundary);
+            *bottom += dz;
+        }
         SiteForm::Plant {
             position,
             base,
@@ -539,6 +752,31 @@ pub fn transform(site: &mut Site, t: &Xform) -> Option<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_grid_of_points_on_and_inside_the_outline_leaves_no_slivers() {
+        // a survey's grid: its outer points lie on the outline's edges
+        let n = 12;
+        let boundary = [
+            DVec2::ZERO,
+            DVec2::new(11.0, 0.0),
+            DVec2::new(11.0, 11.0),
+            DVec2::new(0.0, 11.0),
+        ];
+        let inner: Vec<DVec2> = (0..n * n)
+            .map(|i| DVec2::new((i % n) as f64, (i / n) as f64))
+            .collect();
+        let (v, tris) = tin(&boundary, &inner);
+        assert_eq!(v.len(), n * n);
+        let areas: Vec<f64> = tris
+            .iter()
+            .map(|t| (v[t[1]] - v[t[0]]).perp_dot(v[t[2]] - v[t[0]]) / 2.0)
+            .collect();
+        assert!((areas.iter().sum::<f64>() - 121.0).abs() < 1e-9);
+        // every triangle is half a cell: none flat, none long and thin
+        assert_eq!(tris.len(), 2 * 11 * 11);
+        assert!(areas.iter().all(|a| (a - 0.5).abs() < 1e-9), "{areas:?}");
+    }
     use crate::{Element, ElementKind, Level};
 
     #[test]

@@ -1,0 +1,187 @@
+{
+ "name": "random-21",
+ "kind": "hot",
+ "root_is_connection": true,
+ "available_kpa": null,
+ "settings": {
+  "Voda": {
+   "LenZvacsovat": false,
+   "DodrzatPostupnostDimenzii": false
+  }
+ },
+ "nodes": [
+  {
+   "id": "1",
+   "parent": null,
+   "kind": "pipe",
+   "p1": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    6.85,
+    0.0,
+    -1.0
+   ],
+   "nominal": 50,
+   "inner": 42,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "2",
+   "parent": 0,
+   "kind": "pipe",
+   "p1": [
+    6.85,
+    0.0,
+    -1.0
+   ],
+   "p2": [
+    6.85,
+    0.0,
+    0.35
+   ],
+   "nominal": 16,
+   "inner": 12,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false
+  },
+  {
+   "id": "3",
+   "parent": 1,
+   "kind": "fitting",
+   "p1": [
+    6.85,
+    0.0,
+    0.35
+   ],
+   "p2": [
+    6.85,
+    0.0,
+    0.35
+   ],
+   "fitting": "elbow",
+   "angle": 90.0
+  },
+  {
+   "id": "4",
+   "parent": 2,
+   "kind": "pipe",
+   "p1": [
+    6.85,
+    0.0,
+    0.35
+   ],
+   "p2": [
+    2.59,
+    0.0,
+    0.35
+   ],
+   "nominal": 32,
+   "inner": 26,
+   "roughness": 7e-06,
+   "material": "Alpex",
+   "sizes": [
+    [
+     16,
+     12
+    ],
+    [
+     20,
+     16
+    ],
+    [
+     26,
+     20
+    ],
+    [
+     32,
+     26
+    ],
+    [
+     40,
+     33
+    ],
+    [
+     50,
+     42
+    ]
+   ],
+   "branch": false,
+   "zeta": 1.32
+  },
+  {
+   "id": "5",
+   "parent": 3,
+   "kind": "fixture",
+   "p1": [
+    2.59,
+    0.0,
+    0.35
+   ],
+   "p2": [
+    2.59,
+    0.0,
+    0.35
+   ],
+   "fixture": "Vaňa",
+   "connector_dn": 0
+  }
+ ]
+}

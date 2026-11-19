@@ -578,6 +578,37 @@
           "type": "boolean",
           "description": "A door opening to the wall's exterior; a window facing its interior.",
           "default": false
+        },
+        "no_outer_sill": {
+          "type": "boolean",
+          "description": "A window without its outer sill of sheet metal.",
+          "default": false
+        },
+        "no_inner_sill": {
+          "type": "boolean",
+          "description": "A window without its inner sill board.",
+          "default": false
+        },
+        "threshold": {
+          "type": "boolean",
+          "description": "A door with a threshold between its jambs.",
+          "default": false
+        },
+        "setback": {
+          "type": "number",
+          "description": "How far the frame's outer face stands in from the outer edge of the wall's core. Left out: on that edge in a layered wall, in the middle of a plain one."
+        },
+        "reveal": {
+          "type": "number",
+          "description": "How far the reveal's insulation laps over the frame."
+        },
+        "division": {
+          "type": "string",
+          "description": "How it is divided into fields, seen from outside, and how each opens. A field is \"FIX\", \"O-L\", \"O-P\" (turning, hinges left or right), \"S\" (tilting), \"OS-L\", \"OS-P\" (tilt and turn), \"V\" (top hung), \"P-L\", \"P-P\" (sliding), \"ZP-L\", \"ZP-P\" (lift and slide), \"D-L\", \"D-P\" (a door's leaf), with `*` after it for a solid panel; a split is \"v(1:OS-L,1:FIX)\" side by side or \"h(0.3:S,0.7:OS-L)\" top to bottom, each part after its share."
+        },
+        "door": {
+          "$ref": "#/$defs/Door",
+          "description": "A door as joinery: the opening's `width` and `height` left out are what its leaf and frame need."
         }
       },
       "required": ["id", "kind", "wall"],
@@ -587,6 +618,46 @@
       "type": "string",
       "description": "What an opening is.",
       "enum": ["door", "window", "hole"]
+    },
+    "Door": {
+      "type": "object",
+      "description": "A door as joinery: its leaf's nominal size, its frame, its fire rating.",
+      "properties": {
+        "leaf_width": {
+          "type": "number",
+          "description": "The leaf's nominal width, without the frame.",
+          "default": 0.8
+        },
+        "leaf_height": {
+          "type": "number",
+          "description": "The leaf's nominal height.",
+          "default": 1.97
+        },
+        "frame": {
+          "type": "string",
+          "description": "\"steel\", \"aluminium\", \"timber\" or \"lining\" (a timber lining with architraves)."
+        },
+        "leaf": {
+          "type": "string",
+          "description": "What the leaf is made of: \"timber\", \"steel\" or \"aluminium\"."
+        },
+        "fire_rating": {
+          "type": "string",
+          "description": "A fire door's rating, as \"EW 30/D3\"."
+        },
+        "self_closing": {
+          "type": "boolean",
+          "description": "A fire door with a closer.",
+          "default": true
+        },
+        "smoke_tight": {
+          "type": "boolean",
+          "description": "A smoke tight fire door.",
+          "default": false
+        }
+      },
+      "required": ["frame"],
+      "additionalProperties": false
     },
     "Slab": {
       "type": "object",
@@ -1021,7 +1092,7 @@
         },
         "top": {
           "type": "number",
-          "description": "Terrain and area: the top above the level.",
+          "description": "Terrain and area: the top above the level; a pit's bottom or a platform's height.",
           "default": 0.0
         },
         "thickness": { "type": "number", "description": "Terrain and area: how deep." },
@@ -1059,6 +1130,15 @@
         "plant": { "$ref": "#/$defs/PlantForm", "default": "tree" },
         "canopy": { "type": "number", "description": "A plant's crown across." },
         "height": { "type": "number", "description": "A plant's height." },
+        "slope": {
+          "type": "number",
+          "description": "A pit's or platform's sides slope 1:n."
+        },
+        "topsoil": {
+          "type": "number",
+          "description": "A pit's or platform's topsoil stripped first, metres.",
+          "default": 0.0
+        },
         "material": { "type": "string" }
       },
       "required": ["id", "kind", "level"],
@@ -1067,7 +1147,7 @@
     "SiteKind": {
       "type": "string",
       "description": "What a site element is.",
-      "enum": ["terrain", "area", "plant"]
+      "enum": ["terrain", "area", "plant", "pit", "platform"]
     },
     "SitePattern": {
       "type": "object",
@@ -1268,7 +1348,21 @@
         "furniture",
         "fixtures",
         "rooms",
-        "materials"
+        "materials",
+        "window_list",
+        "door_list",
+        "services_legend",
+        "documents",
+        "material_legend",
+        "pipe_list",
+        "electrical_list",
+        "room_legend",
+        "fire_zones",
+        "fire_facades",
+        "occupancy",
+        "board_diagram",
+        "lintel_list",
+        "fire_risk"
       ]
     },
     "Callout": {

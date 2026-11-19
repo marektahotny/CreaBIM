@@ -9,13 +9,19 @@
 pub mod assign;
 pub mod blend;
 pub mod catalogue;
+pub mod cloud;
+pub mod dxf;
 pub mod freecad;
 pub mod gltf;
 pub mod gltf_read;
+pub mod kataster;
 pub mod link;
+pub mod mapdl;
 pub mod materials;
+pub mod pdf;
 pub mod shape;
 pub mod titleblock;
+pub mod xyz;
 
 pub use assign::{assign, Assign};
 pub use link::{sync, Incoming, SyncReport};
