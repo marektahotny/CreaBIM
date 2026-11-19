@@ -450,15 +450,24 @@ pub fn duplicate(
     Some((tx, id))
 }
 
-/// Is `view` a name made from the level name `level`: the name itself, or
-/// it followed by more words ("Level 2 plan", "Level 2 plan - furniture")?
-/// Those follow the level when it is renamed; a name the user typed for the
-/// plan ("Roof terrace", or "Level 20 plan" for "Level 2") is left alone.
+/// Where in `view` the level name `level` stands as whole words: "1.NP"
+/// in "1.NP", "Pôdorys 1.NP" or "Level 2 plan - furniture" for "Level
+/// 2". Those names follow the level when it is renamed; a name the user
+/// typed for the plan ("Roof terrace", or "Level 20 plan" for "Level 2")
+/// is left alone.
+pub fn name_at(view: &str, level: &str) -> Option<usize> {
+    if level.is_empty() {
+        return None;
+    }
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric());
+    view.match_indices(level).map(|(i, _)| i).find(|&i| {
+        !word(view[..i].chars().next_back()) && !word(view[i + level.len()..].chars().next())
+    })
+}
+
+/// Is `view` a name made with the level name `level` (see [`name_at`])?
 pub fn named_after(view: &str, level: &str) -> bool {
-    !level.is_empty()
-        && view
-            .strip_prefix(level)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
+    name_at(view, level).is_some()
 }
 
 /// Rename a level and the plan views named after it (see [`named_after`]).
@@ -476,9 +485,9 @@ pub fn rename(model: &Model, level: ElementId, name: &str) -> Transaction {
     tx = tx.replace(e.clone(), after);
     for v in plan_views(model, level) {
         let Some(ve) = model.get(v) else { continue };
-        if named_after(&ve.name, &old) {
+        if let Some(i) = name_at(&ve.name, &old) {
             let mut after = ve.clone();
-            after.name = format!("{name}{}", &ve.name[old.len()..]);
+            after.name = format!("{}{name}{}", &ve.name[..i], &ve.name[i + old.len()..]);
             tx = tx.replace(ve.clone(), after);
         }
     }
@@ -714,6 +723,11 @@ mod tests {
         assert!(named_after("Level 2", "Level 2"));
         assert!(!named_after("Level 20 plan", "Level 2"));
         assert!(!named_after("anything", ""));
+        assert!(named_after("Pôdorys 1.NP", "1.NP"));
+        assert_eq!(
+            name_at("Pôdorys 1.NP - nábytok", "1.NP"),
+            Some("Pôdorys ".len())
+        );
     }
 
     /// The sample house with two more storeys: levels at 0, 3, 6 and 9 m.

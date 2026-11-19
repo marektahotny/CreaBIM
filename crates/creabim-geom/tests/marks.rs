@@ -883,7 +883,8 @@ fn a_section_dimension_holds_and_drives_a_footing() {
     let v = View::section(DVec2::new(2.0, 0.0), DVec2::new(2.0, 10.0), 20.0, true);
     let ve = Element::new("Section", ElementKind::View(v.clone()));
     let vid = ve.id;
-    doc.commit(Transaction::new("f").insert(fe).insert(ve)).unwrap();
+    doc.commit(Transaction::new("f").insert(fe).insert(ve))
+        .unwrap();
     // the footing's top, where the section crosses it, and the level above
     let top = DVec2::new(5.0, z0 - 0.5);
     let a = attach(doc.model(), &v, Some(level), DVec2::new(5.0, z0));

@@ -1233,7 +1233,13 @@ pub fn driven(
         start, end, depth, ..
     } = view.kind
     {
-        return section_driven(model, e, other.host, by, SectionFrame::new(start, end, depth));
+        return section_driven(
+            model,
+            e,
+            other.host,
+            by,
+            SectionFrame::new(start, end, depth),
+        );
     }
     match &e.kind {
         ElementKind::Opening(o) => {
@@ -1366,7 +1372,12 @@ fn section_driven(
                 }
                 return Ok(tx);
             }
-            _ => return Err(format!("{} can not be moved up or down by a dimension.", e.name)),
+            _ => {
+                return Err(format!(
+                    "{} can not be moved up or down by a dimension.",
+                    e.name
+                ))
+            }
         }
         return Ok(tx.replace(e.clone(), now));
     }
