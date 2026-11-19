@@ -473,11 +473,25 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
     // `Joining::cuts`): a wall runs through the end of the slab that sits
     // in it, and the slab's structure through the wall's plaster
     let joining = Joining::of(model);
+    // (only cuts whose boxes meet can touch: a tower's floors have
+    // thousands of pieces)
+    let bb = |p: &[DVec2]| {
+        p.iter().fold((DVec2::MAX, DVec2::MIN), |(lo, hi), q| {
+            (lo.min(*q), hi.max(*q))
+        })
+    };
+    let near = |a: (DVec2, DVec2), b: (DVec2, DVec2), eps: f64| {
+        a.0.x <= b.1.x + eps && b.0.x <= a.1.x + eps && a.0.y <= b.1.y + eps && b.0.y <= a.1.y + eps
+    };
+    let cut_boxes: Vec<_> = cuts.iter().map(|c| bb(&c.points)).collect();
     let mut polys: Vec<CutPiece> = Vec::new();
-    for c in &cuts {
+    for (ci, c) in cuts.iter().enumerate() {
         let mut pieces = vec![c.points.clone()];
-        for other in &cuts {
-            if !joining.cuts(model, other, c) || !is_convex(&other.points) {
+        for (oi, other) in cuts.iter().enumerate() {
+            if !near(cut_boxes[ci], cut_boxes[oi], 1e-6)
+                || !joining.cuts(model, other, c)
+                || !is_convex(&other.points)
+            {
                 continue;
             }
             let hole = &other.points;
@@ -512,7 +526,11 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
             .collect()
     };
     let eps = 1e-4;
+    let boxes: Vec<_> = polys.iter().map(|p| bb(&p.points)).collect();
     for (i, piece) in polys.iter().enumerate() {
+        let touching: Vec<usize> = (0..polys.len())
+            .filter(|&j| near(boxes[i], boxes[j], 2.0 * eps))
+            .collect();
         for (a, b) in edges(&piece.points) {
             let len = a.distance(b);
             if len < eps {
@@ -525,7 +543,8 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
             // of one element (drawn by the first of the two)
             let mut covered: Vec<(f64, f64)> = Vec::new();
             let mut thin: Vec<(f64, f64, bool)> = Vec::new();
-            for (j, other) in polys.iter().enumerate() {
+            for &j in &touching {
+                let other = &polys[j];
                 let same = keys[i] == keys[j];
                 // a thick line only where cut material meets air
                 // (PilonDesigner): an air gap counts as air, and where two
