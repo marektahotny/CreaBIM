@@ -231,13 +231,12 @@ impl Footing {
         let (ext, int) = crate::walls::core_span(model, w);
         let out = if ext < int { -1.0 } else { 1.0 };
         let h = self.width / 2.0;
-        let centre = match self.align {
-            FootingAlign::Line => return 0.0,
+        match self.align {
+            FootingAlign::Line => 0.0,
             // the edge outside the core face by the offset, the strip in
             FootingAlign::CoreExterior => ext + out * self.align_offset - out * h,
             FootingAlign::CoreInterior => int - out * self.align_offset + out * h,
-        };
-        centre
+        }
     }
 
     /// A pad's centre and turn as built.
