@@ -530,6 +530,11 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
                 &[v, legend].into_iter().chain(list).collect::<Vec<_>>(),
             );
         }
+        // the electrician's board diagram on a sheet of its own
+        if trade == Trade::Electrical && !creabim_core::electrical::circuits(&b.m).is_empty() {
+            let d = schedule(&mut b, ScheduleCategory::BoardDiagram, "Board diagram");
+            b.sheet(number(&part, "SCH", &mut n), tr("Board diagram"), &[d]);
+        }
     }
     // the title pages: the project's own and one before each part
     covers(&mut b, frame);

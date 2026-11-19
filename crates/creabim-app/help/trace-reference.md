@@ -13,6 +13,8 @@ A reference is saved with the project. One reference can show in **several views
 
 **Reference** on the *View* tab opens the **Trace and reference** tab of *Properties* for the view in the area you last used. Pick another view from *Add*, or click **Picture…**, **DXF drawing…** or **PDF…**. It is added in place and selected. A picture, DXF or PDF file dropped on a plan or section becomes a reference too.
 
+The same is in **File › Import**: *Point cloud (XYZ, LAS…)*, *PDF as an underlay*, *Picture as an underlay (PNG, JPG)* and *DXF as an underlay* add one to the open plan or section; *Terrain from surveyed points (XYZ)* makes a terrain on the working level.
+
 ## Placing it
 
 - Drag the **square grip** in its middle to move it.

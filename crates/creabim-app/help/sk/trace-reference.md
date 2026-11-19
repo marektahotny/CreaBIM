@@ -13,6 +13,8 @@ Podklad sa ukladá s projektom. Jeden podklad sa môže zobrazovať vo **viacer�
 
 **Podklad** na karte *Pohľad* otvorí kartu **Obkreslenie a podklad** vo *Vlastnostiach* pre pohľad v oblasti, ktorú ste naposledy použili. Vyberte iný pohľad v ponuke *Pridať* alebo kliknite na **Obrázok…**, **DXF výkres…** alebo **PDF…**. Pridá sa na mieste a vyberie sa. Obrázok, súbor DXF alebo PDF pustený na pôdorys či rez sa tiež stane podkladom.
 
+Rovnako to ide z ponuky **Súbor › Import**: *Mračno bodov (XYZ, LAS…)*, *PDF ako podklad*, *Obrázok ako podklad (PNG, JPG)* a *DXF ako podklad* pridajú podklad do otvoreného pôdorysu alebo rezu. *Terén zo zameraných bodov (XYZ)* tam vytvorí terén na pracovnom podlaží.
+
 ## Umiestnenie {#placing-it}
 
 - Potiahnutím **štvorcového úchopu** v strede ho presuniete.

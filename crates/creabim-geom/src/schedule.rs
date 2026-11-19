@@ -148,7 +148,9 @@ pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
     if category.joinery_list().is_some()
         || matches!(
             category,
-            ScheduleCategory::ServicesLegend | ScheduleCategory::MaterialLegend
+            ScheduleCategory::ServicesLegend
+                | ScheduleCategory::MaterialLegend
+                | ScheduleCategory::BoardDiagram
         )
     {
         return None;
@@ -197,6 +199,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     }
     if category == ScheduleCategory::Occupancy {
         return crate::occupancy::schedule(model);
+    }
+    if category == ScheduleCategory::BoardDiagram {
+        return crate::boarddiagram::schedule(model);
     }
     if category == ScheduleCategory::FireZones {
         return crate::firezones::schedule(model);
@@ -610,6 +615,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         | ScheduleCategory::FireFacades
         | ScheduleCategory::Occupancy
         | ScheduleCategory::FireRisk
+        | ScheduleCategory::BoardDiagram
         | ScheduleCategory::ElectricalList => {
             unreachable!("the take-offs and the list of documentation are built on their own")
         }
