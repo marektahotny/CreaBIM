@@ -209,8 +209,10 @@ mod tests {
 
     #[test]
     fn a_project_without_a_file_autosaves_in_the_settings_folder() {
-        let f = file_for("/work/House.creabim").unwrap();
-        assert_eq!(f, PathBuf::from("/work/House.autosave.creabim"));
+        // an absolute path on this system ("/work" is not one on Windows)
+        let dir = std::env::temp_dir();
+        let f = file_for(&dir.join("House.creabim").to_string_lossy()).unwrap();
+        assert_eq!(f, dir.join("House.autosave.creabim"));
         if let Some(f) = file_for("project.creabim") {
             assert!(f.ends_with("autosave/project.autosave.creabim"), "{f:?}");
         }
