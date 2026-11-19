@@ -406,6 +406,63 @@ impl TextStyle {
 /// The pattern a spot level is written with when it has none of its own.
 pub const SPOT_PATTERN: &str = "{elevation}";
 
+/// A coordinate mark's pattern, as PilonDesigner's in its cadastre: the
+/// point's S-JTSK Y and X (positive, as the cadastre writes them).
+pub const SJTSK_PATTERN: &str = "Y = {Y}\nX = {X}";
+
+/// Whether a spot's pattern writes the point's coordinates.
+pub fn writes_coordinates(pattern: &str) -> bool {
+    pattern.contains("{Y}") || pattern.contains("{X}")
+}
+
+/// A metre value as the cadastre writes it: two decimals after a comma,
+/// thousands apart (1 234 567,89).
+pub fn cadastre_number(v: f64) -> String {
+    let t = format!("{:.2}", v.abs());
+    let (whole, frac) = t.split_once('.').unwrap_or((&t, "00"));
+    let mut grouped = String::new();
+    for (i, c) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i) % 3 == 0 {
+            grouped.push('\u{a0}');
+        }
+        grouped.push(c);
+    }
+    format!("{}{grouped},{frac}", if v < 0.0 { "-" } else { "" })
+}
+
+/// `pattern` with the plan point `p`'s S-JTSK coordinates in it: `{Y}`
+/// and `{X}` from the project's S-JTSK origin, turned by its true north
+/// (the model turns with it, the ground stays), and `{Bpv}`, the height
+/// `z` above sea level. Without an origin the local x and y are written,
+/// and said to be so.
+pub fn coordinate_text(model: &Model, pattern: &str, p: glam::DVec2, z: f64) -> String {
+    let info = model
+        .project_info()
+        .map(|(_, i)| i.clone())
+        .unwrap_or_default();
+    let bpv = cadastre_number(info.elevation + z);
+    match info.sjtsk {
+        Some([e0, n0]) => {
+            let q = glam::DVec2::from_angle(-info.true_north.to_radians()).rotate(p);
+            let (e, n) = (e0 + q.x, n0 + q.y);
+            pattern
+                .replace("{Y}", &cadastre_number(-e))
+                .replace("{X}", &cadastre_number(-n))
+                .replace("{Bpv}", &bpv)
+        }
+        None => format!(
+            "{}\n({})",
+            pattern
+                .replace("Y = {Y}", "x = {Y}")
+                .replace("X = {X}", "y = {X}")
+                .replace("{Y}", &cadastre_number(p.x))
+                .replace("{X}", &cadastre_number(p.y))
+                .replace("{Bpv}", &bpv),
+            crate::words::tr("no S-JTSK origin")
+        ),
+    }
+}
+
 /// A spot level's text: `pattern` with `{elevation}` (signed, in the
 /// project's units), `{m}` (signed metres to two places, "+0.45"), `{m3}`
 /// (to three), `{mm}` (signed millimetres) and `{level}` (the name of the
@@ -518,6 +575,25 @@ impl Note {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_coordinate_mark_writes_the_point_in_sjtsk() {
+        use glam::DVec2;
+        assert_eq!(cadastre_number(1234567.891), "1\u{a0}234\u{a0}567,89");
+        assert_eq!(cadastre_number(5.0), "5,00");
+        let mut m = crate::sample::sample_house();
+        let mut info = m.project_info().map(|(_, i)| i.clone()).unwrap_or_default();
+        info.sjtsk = Some([-450_000.0, -1_250_000.0]);
+        info.true_north = 0.0;
+        crate::set_project(&m, info.clone()).apply(&mut m).unwrap();
+        let t = coordinate_text(&m, SJTSK_PATTERN, DVec2::new(10.0, 20.0), 0.0);
+        assert_eq!(t, "Y = 449\u{a0}990,00\nX = 1\u{a0}249\u{a0}980,00");
+        // the model turned 90° anticlockwise: the same ground point
+        info.true_north = 90.0;
+        crate::set_project(&m, info).apply(&mut m).unwrap();
+        let t = coordinate_text(&m, SJTSK_PATTERN, DVec2::new(-20.0, 10.0), 0.0);
+        assert_eq!(t, "Y = 449\u{a0}990,00\nX = 1\u{a0}249\u{a0}980,00");
+    }
     use crate::{Dimension, Element, Transaction};
 
     #[test]

@@ -1497,15 +1497,25 @@ fn spot(
         .pattern
         .as_deref()
         .unwrap_or(creabim_core::annotation::SPOT_PATTERN);
+    let plan = matches!(view.kind, ViewKind::Plan { .. });
+    // a coordinate mark: the point's S-JTSK Y and X, with a cross on it
+    let cross = plan && creabim_core::annotation::writes_coordinates(pattern);
+    let text = creabim_core::annotation::spot_text(model, pattern, z);
+    let text = if cross {
+        creabim_core::annotation::coordinate_text(model, &text, at, z)
+    } else {
+        text
+    };
     Some(PlanItem::Annotation {
         id,
         item: Box::new(Annotation {
             shape: Shape::Spot {
                 at,
                 text_at,
-                plan: matches!(view.kind, ViewKind::Plan { .. }),
+                plan,
+                cross,
             },
-            text: creabim_core::annotation::spot_text(model, pattern, z),
+            text,
             look: look_of(model, d.style, d.color),
             mm: view.scale / 1000.0,
         }),

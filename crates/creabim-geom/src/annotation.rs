@@ -386,6 +386,9 @@ pub enum Shape {
         at: DVec2,
         text_at: DVec2,
         plan: bool,
+        /// A coordinate mark (S-JTSK): a cross on the point, the lines of
+        /// its text stacked over the shoulder.
+        cross: bool,
     },
     /// Lines of text centred on `at`, reading along `angle` (radians):
     /// a pipe's label, turned along its pipe.
@@ -637,8 +640,13 @@ impl Annotation {
                     });
                 }
             }
-            Shape::Spot { at, text_at, plan } => {
-                let w = look.width(&self.text) * mm;
+            Shape::Spot {
+                at,
+                text_at,
+                plan,
+                cross,
+            } => {
+                let w = self.text.lines().map(|l| look.width(l)).fold(0.0, f64::max) * mm;
                 let dir = if text_at.x >= at.x { 1.0 } else { -1.0 };
                 let shoulder = text_at + DVec2::X * dir * (w + 2.0 * TEXT_GAP * mm);
                 if !plan {
@@ -666,6 +674,38 @@ impl Annotation {
                             Anchor::End
                         },
                     });
+                } else if cross {
+                    // a cross on the point, a leader to the shoulder, the
+                    // lines over it (PilonDesigner's coordinate mark)
+                    let r = 1.2 * mm;
+                    out.lines
+                        .push(vec![at - DVec2::splat(r), at + DVec2::splat(r)]);
+                    out.lines
+                        .push(vec![at + DVec2::new(-r, r), at + DVec2::new(r, -r)]);
+                    let end = if at.distance(shoulder) < at.distance(text_at) {
+                        shoulder
+                    } else {
+                        text_at
+                    };
+                    if at.distance(end) > r {
+                        out.lines.push(vec![at, end]);
+                    }
+                    out.lines.push(vec![text_at, shoulder]);
+                    let lines: Vec<&str> = self.text.lines().collect();
+                    let step = look.size * 1.4 * mm;
+                    let left = text_at.x.min(shoulder.x) + TEXT_GAP * mm;
+                    for (i, l) in lines.iter().enumerate() {
+                        let k = (lines.len() - 1 - i) as f64;
+                        out.texts.push(MarkText {
+                            at: DVec2::new(
+                                left,
+                                text_at.y + (look.size * 0.5 + 0.6) * mm + k * step,
+                            ),
+                            text: l.to_string(),
+                            angle: 0.0,
+                            anchor: Anchor::Start,
+                        });
+                    }
                 } else {
                     let from = {
                         target(&mut out, at, LEVEL_HEAD * mm);

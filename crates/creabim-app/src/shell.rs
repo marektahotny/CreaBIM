@@ -1418,6 +1418,17 @@ impl CreaBimApp {
                     _ => self.run_command(ctx, c, at),
                 }
             }
+            // the spot level tool writing S-JTSK coordinates (PilonDesigner's
+            // cadastre mark)
+            "site" if arg == "coords" => {
+                if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::SpotLevel) {
+                    self.run_action(ctx, &format!("tool:{i}"));
+                    self.plan.anno.spot_coords = true;
+                    self.status = crate::i18n::tr(
+                        "S-JTSK coordinates: click a point (a plot's corner, a cadastre line's bend, the building's corner), then where the text goes.",
+                    );
+                }
+            }
             "tab" => {
                 if let Some(i) = index.filter(|i| *i < crate::tooltabs::TABS.len()) {
                     self.shell.settings.tools_tab = i;
@@ -1437,6 +1448,9 @@ impl CreaBimApp {
                     crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
                     self.plan.tool = *t;
                     self.plan.cancel();
+                    // the spot level tool reads heights unless the cadastre's
+                    // coordinates button chose otherwise
+                    self.plan.anno.spot_coords = false;
                     // a chain begun in 3D ends with its tool (MU40)
                     self.pending_3d = None;
                     self.beam_face = None;

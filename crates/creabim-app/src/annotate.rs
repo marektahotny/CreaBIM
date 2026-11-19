@@ -242,6 +242,8 @@ enum Ready {
     Spot {
         point: Picked,
         plan: bool,
+        /// S-JTSK coordinates of the point, not its height
+        coords: bool,
     },
 }
 
@@ -296,7 +298,9 @@ fn grips(model: &Model, it: &PlanItem, mm: f64) -> Vec<(DVec2, Grab)> {
             }
             // a spot level's mark: in a section it slides along its height,
             // still bound to what it stands on
-            Shape::Spot { at, text_at, plan } => {
+            Shape::Spot {
+                at, text_at, plan, ..
+            } => {
                 let g = if *plan {
                     *text_at
                 } else {
@@ -350,6 +354,9 @@ pub struct Draft {
     pub tag_style: Option<ElementId>,
     /// New tags read their host's material build-up (Annotate step 5).
     pub tag_material: bool,
+    /// The spot level tool writes the point's S-JTSK coordinates instead,
+    /// as PilonDesigner's cadastre mark.
+    pub spot_coords: bool,
 }
 
 impl Default for Draft {
@@ -366,6 +373,7 @@ impl Default for Draft {
             note_style: None,
             tag_style: None,
             tag_material: false,
+            spot_coords: false,
         }
     }
 }
@@ -539,15 +547,23 @@ pub fn click(
             Ok(added(tool, d))
         }
         Tool::SpotLevel => {
+            let plan = matches!(view.kind, creabim_core::ViewKind::Plan { .. });
+            let coords = plan && d.spot_coords;
             let point = match view.kind {
+                // coordinates: the point snapped to (a plot's corner, a
+                // cadastre line's bend, the building's corner)
+                creabim_core::ViewKind::Plan { .. } if coords => (hp, p),
                 // in a plan, the top of the slab under the click
                 creabim_core::ViewKind::Plan { level, .. } => {
                     (attach(model, view, slab_under(model, level, raw), raw), raw)
                 }
                 _ => (hp, p),
             };
-            let plan = matches!(view.kind, creabim_core::ViewKind::Plan { .. });
-            d.ready = Some(Ready::Spot { point, plan });
+            d.ready = Some(Ready::Spot {
+                point,
+                plan,
+                coords,
+            });
             Ok("Now click where its text goes.".into())
         }
         Tool::Note => {
@@ -734,13 +750,17 @@ fn place(
                 ElementKind::Dimension(Dimension::about(kind, view_id, center.0, on, on, extra)),
             )
         }
-        Ready::Spot { point, .. } => Element::new(
-            "Spot level",
+        Ready::Spot { point, coords, .. } => Element::new(
+            if coords {
+                "S-JTSK coordinates"
+            } else {
+                "Spot level"
+            },
             ElementKind::Dimension(Dimension::spot(
                 view_id,
                 point.0,
                 attach(model, view, point.0.host, at),
-                None,
+                coords.then(|| creabim_core::annotation::SJTSK_PATTERN.to_string()),
             )),
         ),
         Ready::Arc { center, a, b } => {
@@ -769,13 +789,22 @@ fn place(
 /// The annotation a placing click at `at` would make, for the preview.
 fn shape_of(ready: Ready, at: DVec2) -> (Shape, String) {
     match ready {
-        Ready::Spot { point, plan } => (
+        Ready::Spot {
+            point,
+            plan,
+            coords,
+        } => (
             Shape::Spot {
                 at: point.1,
                 text_at: at,
                 plan,
+                cross: coords,
             },
-            "Spot level".into(),
+            if coords {
+                "Y = …\nX = …".into()
+            } else {
+                "Spot level".into()
+            },
         ),
         Ready::Angle { vertex, a, b } => {
             let (a, b) = if sweep(vertex.1, a.1, at) > sweep(vertex.1, a.1, b.1) {

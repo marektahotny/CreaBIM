@@ -91,6 +91,22 @@ impl CreaBimApp {
                 "hint": "The step between rows of dimensions, millimetres on paper. Typing one turns Even spacing on",
             }));
         }
+        if tool == Tool::SpotLevel {
+            out.push(seg(vec![
+                opt(
+                    "spot.reads:0".into(),
+                    "Height",
+                    !self.plan.anno.spot_coords,
+                    "The spot level writes the point's height",
+                ),
+                opt(
+                    "spot.reads:1".into(),
+                    "S-JTSK coordinates",
+                    self.plan.anno.spot_coords,
+                    "Click a point (a plot's corner, a cadastre line's bend, the building's corner), then where the text goes: it writes the point's Y and X in S-JTSK, as the cadastre does",
+                ),
+            ]));
+        }
         if tool == Tool::Tag {
             out.push(seg(vec![
                 opt(
@@ -224,6 +240,7 @@ impl CreaBimApp {
                 };
             }
             "tag.reads" => self.plan.anno.tag_material = index == Some(1),
+            "spot.reads" => self.plan.anno.spot_coords = index == Some(1),
             "dim.chain" => {
                 self.plan.dim_chain = !self.plan.dim_chain;
                 self.plan.chain_line = None;

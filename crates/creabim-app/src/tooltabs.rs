@@ -140,6 +140,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "map",
                 "A ZIP from Pilon Map Downloader: the cadastre and site plan, the orthophoto under it, the terrain, and where the project lies in S-JTSK and above sea level",
             ),
+            act(
+                "site:coords",
+                "S-JTSK coordinates",
+                "crosshair",
+                "A coordinate mark: click a point (a plot's corner, a cadastre line's bend, the building's corner), then where the text goes; it writes the point's Y and X in S-JTSK, as the cadastre does",
+            ),
             Sep,
             T(Tool::Terrain),
             act(
