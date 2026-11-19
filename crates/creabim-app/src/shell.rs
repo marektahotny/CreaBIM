@@ -796,13 +796,22 @@ impl CreaBimApp {
     fn import_underlay(&mut self, head: &str) {
         use creabim_core::RefSource;
         let Some(gridvis::VisTarget::View(v)) = self.vis_target(false) else {
-            self.status = crate::i18n::tr("Open a plan or a section first: the underlay shows in it.");
+            self.status =
+                crate::i18n::tr("Open a plan or a section first: the underlay shows in it.");
             return;
         };
         let (title, filter, exts): (&str, &str, &[&str]) = match head {
-            "import.points" => ("Add a point cloud as a reference", "Points", creabim_exchange::cloud::FILES),
+            "import.points" => (
+                "Add a point cloud as a reference",
+                "Points",
+                creabim_exchange::cloud::FILES,
+            ),
             "import.pdf" => ("Add a PDF as a reference", "PDF", &["pdf"]),
-            "import.picture" => ("Add a picture as a reference", "Pictures", crate::trace::PICTURES),
+            "import.picture" => (
+                "Add a picture as a reference",
+                "Pictures",
+                crate::trace::PICTURES,
+            ),
             _ => ("Add a DXF drawing as a reference", "DXF", &["dxf"]),
         };
         let Some(p) = rfd::FileDialog::new()
