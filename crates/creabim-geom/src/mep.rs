@@ -1172,6 +1172,8 @@ mod tests {
                 hydrant: None,
                 flow_lmin: None,
                 flow_m3h: None,
+                power_kw: None,
+                gas_cat: None,
             }),
         );
         let (run_id, valve_id) = (run.id, valve.id);

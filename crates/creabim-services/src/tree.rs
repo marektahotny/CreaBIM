@@ -3,12 +3,15 @@
 //! hydrants on a fire main. Pipes are split where another ends on them
 //! and at the terminals standing along them.
 
+use creabim_core::fixture::{self, ConnKind};
 use creabim_core::mep::{Pipe, Valve};
 use creabim_core::{ElementId, ElementKind, Model};
 use glam::DVec3;
 
 /// How near two ends must be to join, m.
 const JOIN: f64 = 0.02;
+/// How near a pipe's end must be to an object's connector, m.
+const REACH: f64 = 0.03;
 
 /// A terminal on the pipes: a valve of a terminal kind.
 #[derive(Clone, Debug)]
@@ -103,6 +106,43 @@ impl Tree {
 /// The tree of system `code`: none when it has no pipes. Its root is
 /// the lowest free end no terminal stands at.
 pub fn build(model: &Model, code: &str) -> Option<Tree> {
+    build_inner(model, code, None)
+}
+
+/// The tree of system `code` with the objects whose connectors of
+/// `kind` a pipe ends at as terminals too (radiators on heating, a boiler
+/// on gas), by their name; its root is where plant (an object that is no
+/// fixture: a boiler) joins it when `plant`, else the lowest free end;
+/// without `plant` every object is a terminal.
+pub fn build_objects(model: &Model, code: &str, kind: ConnKind, plant: bool) -> Option<Tree> {
+    build_inner(model, code, Some((kind, plant)))
+}
+
+/// The connectors of `kind` in the model: where, the object, its name,
+/// and whether it is plant rather than a fixture.
+fn object_connectors(model: &Model, kind: ConnKind) -> Vec<(DVec3, ElementId, String, bool)> {
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Object(o) = &e.kind else {
+            continue;
+        };
+        let floor = model.level(o.level).map_or(0.0, |l| l.elevation);
+        let family = fixture::family_of(model, e);
+        for c in fixture::connectors(model, e) {
+            if c.kind == kind {
+                let name = if e.name.is_empty() {
+                    family.unwrap_or("").to_string()
+                } else {
+                    e.name.clone()
+                };
+                out.push((c.at + DVec3::Z * floor, e.id, name, family.is_none()));
+            }
+        }
+    }
+    out
+}
+
+fn build_inner(model: &Model, code: &str, kind: Option<(ConnKind, bool)>) -> Option<Tree> {
     let pipes: Vec<(ElementId, Pipe, DVec3, DVec3)> = model
         .iter()
         .filter_map(|e| match &e.kind {
@@ -132,6 +172,35 @@ pub fn build(model: &Model, code: &str) -> Option<Tree> {
             })
         })
         .collect();
+    let objects = kind.map_or_else(Vec::new, |k| object_connectors(model, k.0));
+    let plant_roots = kind.is_some_and(|k| k.1);
+    let mut plant: Vec<DVec3> = vec![];
+    let mut terminals = terminals;
+    for (at, id, name, is_plant) in objects {
+        // only where a pipe ends
+        let Some(pipe) = pipes
+            .iter()
+            .find(|p| p.2.distance(at) <= REACH || p.3.distance(at) <= REACH)
+        else {
+            continue;
+        };
+        let end = if pipe.2.distance(at) <= REACH {
+            pipe.2
+        } else {
+            pipe.3
+        };
+        if is_plant && plant_roots {
+            plant.push(end);
+            continue;
+        }
+        let t = if end == pipe.2 { 0.0 } else { 1.0 };
+        terminals.push(Terminal {
+            id,
+            name,
+            valve: Valve::new(pipe.0, t, "teleso"),
+            at: end,
+        });
+    }
     let mut cuts: Vec<DVec3> = pipes.iter().flat_map(|p| [p.2, p.3]).collect();
     cuts.extend(terminals.iter().map(|t| t.at));
     struct Seg {
@@ -189,7 +258,9 @@ pub fn build(model: &Model, code: &str) -> Option<Tree> {
         v.into_iter()
             .min_by(|&i, &j| points[i].z.total_cmp(&points[j].z))
     };
-    let root = lowest(ends().filter(|&i| at_point[i].is_empty()).collect())
+    let at_plant = |i: usize| plant.iter().any(|p| p.distance(points[i]) <= JOIN);
+    let root = lowest(ends().filter(|&i| at_plant(i)).collect())
+        .or_else(|| lowest(ends().filter(|&i| at_point[i].is_empty()).collect()))
         .or_else(|| lowest(ends().collect()))
         .unwrap_or(0);
     let mut out = Tree {

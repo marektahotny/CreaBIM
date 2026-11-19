@@ -5,13 +5,14 @@
 
 use super::CreaBimApp;
 use creabim_core::{ElementId, ElementKind, Model, Transaction};
-use creabim_services::{firewater, storm};
+use creabim_services::{firewater, gas, storm};
 use eframe::egui::{self, Vec2};
 
 /// The calculation shown.
 pub(super) enum NetCalc {
     Storm(Option<storm::StormResult>),
     Fire(Option<firewater::FireResult>),
+    Gas(Option<gas::GasResult>, Box<gas::GasSettings>),
 }
 
 impl NetCalc {
@@ -21,11 +22,15 @@ impl NetCalc {
     fn fire(model: &Model) -> Self {
         NetCalc::Fire(firewater::run(model, "PV"))
     }
+    fn gas(model: &Model, s: gas::GasSettings) -> Self {
+        NetCalc::Gas(gas::run(model, "ZP", &s), Box::new(s))
+    }
     /// Each pipe and the size proposed for it.
     fn proposals(&self) -> Vec<(ElementId, f64)> {
         match self {
             NetCalc::Storm(Some(r)) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             NetCalc::Fire(Some(r)) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
+            NetCalc::Gas(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             _ => vec![],
         }
     }
@@ -86,6 +91,7 @@ impl CreaBimApp {
         self.net_calc = Some(match arg {
             "storm" => NetCalc::storm(self.doc.model()),
             "fire" => NetCalc::fire(self.doc.model()),
+            "gas" => NetCalc::gas(self.doc.model(), gas::GasSettings::default()),
             _ => return false,
         });
         true
@@ -108,6 +114,11 @@ impl CreaBimApp {
         let title = match calc {
             NetCalc::Storm(_) => "Storm water drainage calculation",
             NetCalc::Fire(_) => "Fire main calculation",
+            NetCalc::Gas(..) => "Gas installation calculation",
+        };
+        let mut gas_settings = match calc {
+            NetCalc::Gas(_, s) => Some((**s).clone()),
+            _ => None,
         };
         super::shell::window(t(title))
             .id(egui::Id::new("net.calc"))
@@ -135,6 +146,19 @@ impl CreaBimApp {
                 egui::ScrollArea::vertical().show(ui, |ui| match calc {
                     NetCalc::Storm(None) => {
                         ui.label(t("Draw rainwater pipes (D) from the roof drains to where they leave the building, put a roof drain on each stack's top, then calculate."));
+                    }
+                    NetCalc::Gas(r, _) => {
+                        if let Some(gs) = gas_settings.as_mut() {
+                            if gas_options(ui, gs) {
+                                again = true;
+                            }
+                        }
+                        match r {
+                            None => {
+                                ui.label(t("Draw gas pipes (ZP) from the cabinet at the boundary to the appliances, put a gas appliance on each branch's end, then calculate."));
+                            }
+                            Some(r) => gas_body(ui, model, r, &mut select),
+                        }
                     }
                     NetCalc::Fire(None) => {
                         ui.label(t("Draw fire water pipes (PV) from the connection to the hose systems, put a hydrant on each branch's end, then calculate."));
@@ -299,6 +323,7 @@ impl CreaBimApp {
             self.selection.only(id);
         }
         let storm = matches!(self.net_calc, Some(NetCalc::Storm(_)));
+        let fire = matches!(self.net_calc, Some(NetCalc::Fire(_)));
         if do_apply {
             if let Some(tx) = apply(self.doc.model(), &sizes) {
                 if let Err(e) = self.doc.commit(tx) {
@@ -310,12 +335,207 @@ impl CreaBimApp {
         if again {
             self.net_calc = Some(if storm {
                 NetCalc::storm(self.doc.model())
-            } else {
+            } else if fire {
                 NetCalc::fire(self.doc.model())
+            } else {
+                NetCalc::gas(self.doc.model(), gas_settings.unwrap_or_default())
             });
         }
         if !open {
             self.net_calc = None;
         }
     }
+}
+
+/// The gas calculation's settings: true when one changed.
+fn gas_options(ui: &mut egui::Ui, s: &mut gas::GasSettings) -> bool {
+    let t = crate::i18n::tr;
+    let mut changed = false;
+    ui.horizontal_wrapped(|ui| {
+        egui::ComboBox::from_id_salt("gas.kind")
+            .selected_text(t(s.gas.props().name))
+            .show_ui(ui, |ui| {
+                for k in gas::GasKind::ALL {
+                    changed |= ui.selectable_value(&mut s.gas, k, t(k.props().name)).changed();
+                }
+            });
+        changed |= ui
+            .checkbox(&mut s.medium_pressure, t("Medium pressure inside"))
+            .on_hover_text(t("Low pressure up to 5 kPa (100 Pa loss, 10 m/s); medium 5–400 kPa (10 % loss, 20 m/s, a regulator before each appliance)"))
+            .changed();
+        changed |= ui
+            .checkbox(&mut s.service_medium, t("Medium pressure service pipe"))
+            .on_hover_text(t("The cabinet at the boundary then has a pressure regulator"))
+            .changed();
+        changed |= ui.checkbox(&mut s.metering, t("Gas meter")).changed();
+    });
+    changed
+}
+
+fn gas_body(ui: &mut egui::Ui, model: &Model, r: &gas::GasResult, select: &mut Option<ElementId>) {
+    let t = crate::i18n::tr;
+    let num = crate::i18n::num;
+    let warn = |ui: &mut egui::Ui, s: String| {
+        ui.colored_label(ui.visuals().warn_fg_color, s);
+    };
+    let row = |ui: &mut egui::Ui, k: &str, v: String| {
+        crate::props::row(ui, k, |ui| ui.label(v));
+    };
+    row(ui, "Appliances", r.appliances.len().to_string());
+    row(
+        ui,
+        "Installed flow",
+        format!(
+            "{} m³/h ({} kW)",
+            num(r.installed_m3h, 2),
+            num(r.installed_kw, 1)
+        ),
+    );
+    row(ui, "Design flow Vr", format!("{} m³/h", num(r.vr_m3h, 2)));
+    row(
+        ui,
+        "Loss on the critical branch",
+        format!(
+            "{} Pa ({} {} Pa)",
+            num(r.loss_pa, 1),
+            t("limit"),
+            num(r.allowed_pa, 0)
+        ),
+    );
+    row(
+        ui,
+        "Friction and local losses",
+        format!(
+            "{} {} Pa, {} {} Pa",
+            t("horizontal"),
+            num(r.horizontal_pa, 1),
+            t("risers"),
+            num(r.vertical_pa, 1)
+        ),
+    );
+    row(
+        ui,
+        "Lift of the gas",
+        format!("{} Pa (Δh = {} m)", num(r.lift_pa, 1), num(r.rise_m, 2)),
+    );
+    row(
+        ui,
+        "Pressure before the critical appliance",
+        format!(
+            "{} kPa ({} {} kPa)",
+            num(r.pressure_kpa, 2),
+            t("start"),
+            num(r.start_kpa, 1)
+        ),
+    );
+    row(ui, "Gas density", format!("{} kg/m³", num(r.rho, 3)));
+    row(
+        ui,
+        "Highest velocity",
+        format!("{} m/s", num(r.vmax_found, 1)),
+    );
+    if let Some((g, q)) = r.meter {
+        row(ui, "Gas meter", format!("{g} (Qmax {} m³/h)", num(q, 0)));
+    }
+    if r.loss_pa > r.allowed_pa + 1e-6 {
+        warn(ui, t("The loss is over the allowed: the largest sizes of the critical branch are not enough, choose a larger series."));
+    }
+    if r.enlarged > 0 {
+        ui.label(format!(
+            "{}: {}",
+            t("The critical branch was enlarged, steps"),
+            r.enlarged
+        ));
+    }
+    if r.over_house_set {
+        warn(ui, t("The flow is over 25 m³/h: a house regulator set is not enough, design a regulating station."));
+    }
+    if r.appliances.is_empty() {
+        warn(ui, t("No appliance stands on the pipes: add a gas appliance to each branch's end (the pipe's properties, Add valve)."));
+    }
+    if r.appliances.iter().any(|a| !a.matched) {
+        warn(ui, t("Some appliances were not known by their name and were taken as a 25 kW boiler: give their heat input in their properties."));
+    }
+    if r.unreached > 0 {
+        warn(
+            ui,
+            format!("{}: {}", t("Pipes not joined to the network"), r.unreached),
+        );
+    }
+    let name_of = |id: ElementId| model.get(id).map_or(String::new(), |e| e.name.clone());
+    egui::Grid::new("gas.apps")
+        .striped(true)
+        .num_columns(6)
+        .show(ui, |ui| {
+            for h in [
+                "Appliance",
+                "Kind",
+                "Category",
+                "kW",
+                "m³/h",
+                "Pressure kPa",
+            ] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for a in &r.appliances {
+                let name = if a.critical {
+                    egui::RichText::new(&a.name).strong()
+                } else {
+                    egui::RichText::new(&a.name)
+                };
+                if ui.link(name).clicked() {
+                    *select = Some(a.id);
+                }
+                if a.matched {
+                    ui.label(t(a.kind));
+                } else {
+                    ui.colored_label(ui.visuals().warn_fg_color, t(a.kind));
+                }
+                ui.label(format!("K{}", a.cat));
+                ui.label(num(a.kw, 1));
+                ui.label(num(a.flow_m3h, 2));
+                ui.label(num(a.pressure_kpa, 2));
+                ui.end_row();
+            }
+        });
+    ui.add_space(6.0);
+    egui::Grid::new("gas.pipes")
+        .striped(true)
+        .num_columns(7)
+        .show(ui, |ui| {
+            for h in [
+                "Pipe", "Size", "Proposed", "Vr m³/h", "v m/s", "R Pa/m", "Loss Pa",
+            ] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for p in &r.pipes {
+                let name = name_of(p.id);
+                let name = if p.critical {
+                    egui::RichText::new(name).strong()
+                } else {
+                    egui::RichText::new(name)
+                };
+                if ui.link(name).clicked() {
+                    *select = Some(p.id);
+                }
+                ui.label(&p.size);
+                ui.label(&p.proposed);
+                ui.label(num(p.vr_m3h, 2));
+                let v = num(p.velocity_ms, 2);
+                if p.too_fast {
+                    ui.colored_label(ui.visuals().error_fg_color, v);
+                } else {
+                    ui.label(v);
+                }
+                ui.label(num(p.r_pa_m, 1));
+                ui.label(num(p.loss_pa, 1));
+                ui.end_row();
+            }
+        });
+    ui.add_space(6.0);
+    ui.weak(t("Bold: the critical branch. Vr = Σ Ki·Vi (K1 = n^-0.5 cooking, K2 = n^-0.15 local and storage heaters, K3 = n^-0.1 boilers, K4 = 1 industrial); local losses +50 %; a lift of light gas in risers makes up for their losses."));
+    ui.weak(t("Cabinet at the boundary: main shut-off (HUP), a pressure regulator with a filter for a medium pressure service pipe, the gas meter, an outlet valve; ventilated, 1 m protective zone."));
+    ui.weak("STN EN 1775 · TPP 704 01 · TPP 704 03 · STN EN 1359");
 }

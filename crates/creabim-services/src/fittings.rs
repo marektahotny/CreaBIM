@@ -654,7 +654,11 @@ mod tests {
         ]);
         let f = derive(&m);
         assert_eq!(f[0].code, "HF015350W", "{:?}", f[0]);
-        assert!(f[0].label.contains("Wavin AS+ Koleno 87°"), "{}", f[0].label);
+        assert!(
+            f[0].label.contains("Wavin AS+ Koleno 87°"),
+            "{}",
+            f[0].label
+        );
         let m = model(&[
             ("K", "WSI", 100.0, [0.0, 0.0, 0.0], [2.0, 0.0, 0.0]),
             ("K", "WSI", 100.0, [2.0, 0.0, 0.0], [4.0, 0.0, 0.0]),
@@ -662,7 +666,11 @@ mod tests {
         ]);
         let f = derive(&m);
         assert_eq!(f[0].kind, FittingKind::Branch);
-        assert!(f[0].label.starts_with("Wavin SiTech+ Odbočka 45°"), "{}", f[0].label);
+        assert!(
+            f[0].label.starts_with("Wavin SiTech+ Odbočka 45°"),
+            "{}",
+            f[0].label
+        );
         assert!(!f[0].code.is_empty());
     }
 

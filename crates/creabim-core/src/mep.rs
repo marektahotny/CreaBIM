@@ -879,6 +879,14 @@ pub struct Valve {
     /// the room's other terminals.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow_m3h: Option<f64>,
+    /// A gas appliance's heat input, kW; none takes it from its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power_kw: Option<f64>,
+    /// A gas appliance's category for diversity (TPP 704 01): 1 cooking
+    /// and instantaneous water heaters, 2 local heaters and storage water
+    /// heaters, 3 boilers, 4 industrial; none takes it from its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gas_cat: Option<u8>,
 }
 
 /// A hose system of a fire main (STN EN 671-1, STN EN 671-2, STN 92 0400).
@@ -930,6 +938,8 @@ impl Valve {
             hydrant: None,
             flow_lmin: None,
             flow_m3h: None,
+            power_kw: None,
+            gas_cat: None,
         }
     }
 

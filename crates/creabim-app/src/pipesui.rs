@@ -196,6 +196,45 @@ pub fn valve_fields(
             label = "Air flow";
         }
     }
+    if v.kind == "spotrebic" {
+        let mut q = v.power_kw.unwrap_or(0.0);
+        let changed = crate::props::row(ui, "Heat input", |ui| {
+            crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut q)
+                    .range(0.0..=2000.0)
+                    .speed(0.5)
+                    .suffix(" kW"),
+            )
+            .on_hover_text(crate::i18n::tr(
+                "0 takes it from the appliance's name: a boiler 25 kW, a cooker 8 kW...",
+            ))
+            .changed()
+        });
+        if changed {
+            v.power_kw = (q > 0.0).then_some(q);
+            label = "Heat input";
+        }
+        const CATS: [&str; 5] = [
+            "by its name",
+            "K1 cooking, instantaneous water heater",
+            "K2 local heater, storage water heater",
+            "K3 boiler",
+            "K4 industrial",
+        ];
+        let now = v.gas_cat.unwrap_or(0).min(4) as usize;
+        crate::app::helpui::combo(ui, "Diversity category")
+            .selected_text(crate::i18n::tr(CATS[now]))
+            .width(width)
+            .show_ui(ui, |ui| {
+                for (i, c) in CATS.iter().enumerate() {
+                    if ui.selectable_label(now == i, crate::i18n::tr(c)).clicked() && now != i {
+                        v.gas_cat = (i > 0).then_some(i as u8);
+                        label = "Diversity category";
+                    }
+                }
+            });
+    }
     if v.kind == "hydrant" {
         let now = v.hydrant_def();
         crate::app::helpui::combo(ui, "Hose system")

@@ -303,7 +303,10 @@ mod tests {
             for k in ["Elbow", "Tee", "Reducer", "Coupling"] {
                 assert!(t.fittings.iter().any(|f| f.kind == k), "{id} {k}");
             }
-            assert!(t.sizes.iter().all(|s| s.inner_mm < s.outer_mm && s.dn.is_some()));
+            assert!(t
+                .sizes
+                .iter()
+                .all(|s| s.inner_mm < s.outer_mm && s.dn.is_some()));
         }
         assert!(by_id("CUMED")
             .unwrap()

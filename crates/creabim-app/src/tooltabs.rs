@@ -252,6 +252,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "pipe-gas",
                 "The Pipe tool in natural gas: HERZ GASPRESS at 2.4 m",
             ),
+            act(
+                "calc:gas",
+                "Calculate gas",
+                "gauge",
+                "Size the gas pipes from the appliances on them: reduced flow, 100 Pa to the farthest appliance, the meter and the cabinet (TPP 704 01)",
+            ),
             Sep,
             act(
                 "viewmode:services",
