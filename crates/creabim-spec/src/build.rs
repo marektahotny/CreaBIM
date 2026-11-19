@@ -1666,6 +1666,8 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         fire_zone: String::new(),
         fire_use: String::new(),
         design_count: None,
+        fire_load: String::new(),
+        fire_ps: None,
         tiling: None,
         ufh: None,
     };
@@ -1743,6 +1745,7 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::FireZones => core::ScheduleCategory::FireZones,
                 f::ScheduleCategory::FireFacades => core::ScheduleCategory::FireFacades,
                 f::ScheduleCategory::Occupancy => core::ScheduleCategory::Occupancy,
+                f::ScheduleCategory::FireRisk => core::ScheduleCategory::FireRisk,
             };
             let mut view = core::View::schedule(category);
             view.kind = core::ViewKind::Schedule {

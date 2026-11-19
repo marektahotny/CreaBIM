@@ -5,7 +5,10 @@
 //! to it, and the set is saved to a file for other projects.
 
 use super::CreaBimApp;
-use creabim_core::fireparams::{self, ParamTable, OCCUPANCY};
+use creabim_core::fireparams::{
+    self, ParamTable, FIRE_FIXED_LOAD, FIRE_LOAD, FIRE_OPENING_K, FIRE_OPENING_K_LARGE, FIRE_RISK,
+    OCCUPANCY,
+};
 use eframe::egui::{self, Vec2};
 
 /// The tables as they are edited, and the one shown.
@@ -19,6 +22,11 @@ pub(super) struct FireParamsDraft {
 fn title(t: &ParamTable) -> String {
     let what = match t.id.as_str() {
         OCCUPANCY => crate::i18n::t("Occupancy by persons").to_string(),
+        FIRE_LOAD => crate::i18n::t("Fire load of the spaces").to_string(),
+        FIRE_FIXED_LOAD => crate::i18n::t("Fixed fire load").to_string(),
+        FIRE_OPENING_K => crate::i18n::t("Factor k of the openings").to_string(),
+        FIRE_OPENING_K_LARGE => crate::i18n::t("Factor k of the openings, large zones").to_string(),
+        FIRE_RISK => crate::i18n::t("Fire risk factors").to_string(),
         other => other.to_string(),
     };
     format!("{what} ({})", t.norm)

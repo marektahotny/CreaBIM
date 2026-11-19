@@ -1232,6 +1232,37 @@ impl CreaBimApp {
                 {
                     fire_params = true;
                 }
+                crate::props::row(ui, "Structural system for fire", |ui| {
+                    const SYSTEMS: [(&str, &str); 5] = [
+                        ("N", "Non-combustible"),
+                        ("Za", "Mixed, 2.6.4 a)"),
+                        ("Zb", "Mixed, 2.6.4 b)"),
+                        ("Ha", "Combustible, 2.6.5 a)"),
+                        ("Hb", "Combustible, 2.6.5 b)"),
+                    ];
+                    let now = if draft.fire_system.is_empty() {
+                        "N"
+                    } else {
+                        draft.fire_system.as_str()
+                    };
+                    let shown = SYSTEMS
+                        .iter()
+                        .find(|s| s.0 == now)
+                        .map_or(now.to_string(), |s| crate::i18n::t(s.1).to_string());
+                    let mut picked = None;
+                    egui::ComboBox::from_id_salt("project.fire_system")
+                        .selected_text(shown)
+                        .show_ui(ui, |ui| {
+                            for (code, name) in SYSTEMS {
+                                if ui.selectable_label(now == code, crate::i18n::t(name)).clicked() {
+                                    picked = Some(code);
+                                }
+                            }
+                        });
+                    if let Some(c) = picked {
+                        draft.fire_system = if c == "N" { String::new() } else { c.into() };
+                    }
+                });
                 crate::props::section(ui, "Fire separation distances");
                 ui.label(
                     egui::RichText::new(crate::i18n::t(

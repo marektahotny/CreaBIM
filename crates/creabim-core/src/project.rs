@@ -56,6 +56,11 @@ pub struct ProjectInfo {
     /// designer's parameter file and kept with the project.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fire_params: Vec<crate::fireparams::ParamTable>,
+    /// The building's structural system for fire (konštrukčný celok,
+    /// STN 92 0201-2): "N" non-combustible, "Za"/"Zb" mixed, "Ha"/"Hb"
+    /// combustible; empty is non-combustible.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fire_system: String,
     /// The office's logo for the title block: a picture kept with the
     /// project.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1095,6 +1095,7 @@ fn view(e: &Element, id: &str, v: &core::View, ids: &Ids) -> f::View {
                 core::ScheduleCategory::FireZones => f::ScheduleCategory::FireZones,
                 core::ScheduleCategory::FireFacades => f::ScheduleCategory::FireFacades,
                 core::ScheduleCategory::Occupancy => f::ScheduleCategory::Occupancy,
+                core::ScheduleCategory::FireRisk => f::ScheduleCategory::FireRisk,
             });
         }
     }

@@ -66,6 +66,14 @@ pub struct Room {
     /// beds, seats or parking places.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub design_count: Option<f64>,
+    /// What it is for its fire load: an item of the project's fire load
+    /// table ("1.1"); empty takes it as a corridor's remaining area.
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub fire_load: String,
+    /// Its fixed fire load ps, kg/m², where the designer gives it; none
+    /// takes windows, doors and floors from the table by its area.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fire_ps: Option<f64>,
     /// The tiling of its walls, where it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiling: Option<Tiling>,

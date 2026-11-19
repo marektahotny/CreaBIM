@@ -1359,7 +1359,8 @@
         "room_legend",
         "fire_zones",
         "fire_facades",
-        "occupancy"
+        "occupancy",
+        "fire_risk"
       ]
     },
     "Callout": {

@@ -309,6 +309,7 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::FireZones => "room",
         ScheduleCategory::FireFacades => "brick-wall",
         ScheduleCategory::Occupancy => "room",
+        ScheduleCategory::FireRisk => "flame",
     }
 }
 

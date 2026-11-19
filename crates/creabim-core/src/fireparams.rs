@@ -22,6 +22,18 @@ use serde::{Deserialize, Serialize};
 
 /// The persons a room is counted for (STN 92 0241, table 1).
 pub const OCCUPANCY: &str = "occupancy";
+/// The fire load of a kind of space, random pn and its factor an
+/// (STN 92 0201-1, annex A).
+pub const FIRE_LOAD: &str = "fire_load";
+/// The fixed fire load ps of windows, doors and floors by a room's
+/// area (STN 92 0201-1, table 1).
+pub const FIRE_FIXED_LOAD: &str = "fire_fixed_load";
+/// The factor k of the openings' geometry by n and the room area, for
+/// zones up to the limit and over it (STN 92 0201-1, annex E).
+pub const FIRE_OPENING_K: &str = "fire_opening_k";
+pub const FIRE_OPENING_K_LARGE: &str = "fire_opening_k_large";
+/// The fire risk's single values by key (STN 92 0201-1, 4 to 6).
+pub const FIRE_RISK: &str = "fire_risk";
 
 /// One table of a norm.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

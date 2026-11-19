@@ -18,6 +18,7 @@ pub mod doclist;
 pub mod docset;
 pub mod dxfout;
 pub mod elplan;
+pub mod firerisk;
 pub mod firezones;
 pub mod font;
 pub mod heatplan;

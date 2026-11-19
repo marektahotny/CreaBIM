@@ -464,6 +464,67 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
             label = "Room data";
         }
     }
+    // what it is for its fire load, and its fixed load where given
+    let loads = creabim_geom::firerisk::table(model, creabim_core::fireparams::FIRE_LOAD);
+    let shown = match loads.and_then(|t| t.row(r.fire_load.trim())) {
+        Some(row) => format!("{} {}", row[0], row.get(1).map_or("", |s| s.as_str())),
+        None => r.fire_load.clone(),
+    };
+    let mut picked: Option<String> = None;
+    crate::props::row(ui, "Use for the fire load", |ui| {
+        egui::ComboBox::from_id_salt("room.fire_load")
+            .selected_text(shown)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(r.fire_load.is_empty(), "-").clicked() {
+                    picked = Some(String::new());
+                }
+                match loads {
+                    Some(t) => {
+                        for row in &t.rows {
+                            let name = row.get(1).map_or("", |s| s.as_str());
+                            let text = format!("{} {name}", row[0]);
+                            if ui.selectable_label(r.fire_load == row[0], text).clicked() {
+                                picked = Some(row[0].clone());
+                            }
+                        }
+                    }
+                    None => {
+                        ui.label(crate::i18n::t(
+                            "No fire load table in the project: read it in Project information, Fire calculation parameters.",
+                        ));
+                    }
+                }
+            });
+    });
+    if let Some(p) = picked {
+        r.fire_load = p;
+        label = "Room data";
+    }
+    let mut own_ps = r.fire_ps.is_some();
+    if crate::props::switch(ui, &mut own_ps, "Own fixed fire load")
+        .on_hover_text(crate::i18n::t(
+            "Without it the fixed load of windows, doors and floors is taken from the table by the room's area",
+        ))
+        .changed()
+    {
+        r.fire_ps = own_ps.then_some(0.0);
+        label = "Room data";
+    }
+    if let Some(ps) = r.fire_ps.as_mut() {
+        let changed = crate::props::row(ui, "ps", |ui| {
+            ui.add(
+                egui::DragValue::new(ps)
+                    .range(0.0..=10_000.0)
+                    .speed(0.1)
+                    .suffix(" kg/m²"),
+            )
+            .changed()
+        });
+        if changed {
+            label = "Room data";
+        }
+    }
     if !r.fire_use.is_empty() || r.design_count.is_some() {
         let area = room::shape_of(model, r).map_or(0.0, |s| room::net_area(model, r, &s));
         let cell = |c: &str| table.map_or("", |t| t.cell(r.fire_use.trim(), c));
