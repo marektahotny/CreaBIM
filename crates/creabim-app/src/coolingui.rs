@@ -31,6 +31,8 @@ impl CreaBimApp {
             .as_ref()
             .map_or_else(heatloss::Opts::default, |x| x.0);
         let b = coolingload::building(self.doc.model(), &o, &s);
+        let months = creabim_core::fireparams::summer_max(&self.climate_tables());
+        let mut load = false;
         let mut open = true;
         let mut select = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
@@ -49,6 +51,38 @@ impl CreaBimApp {
                             .speed(0.5)
                             .suffix(" °C"),
                     );
+                    if !months.is_empty() {
+                        egui::ComboBox::from_id_salt("cooling.month")
+                            .selected_text(t("Temperatures"))
+                            .show_ui(ui, |ui| {
+                                for (m, v) in &months {
+                                    let text = format!("{m}   {} °C", num(*v, 1));
+                                    if ui.selectable_label((s.te - *v).abs() < 1e-9, text).clicked() {
+                                        s.te = *v;
+                                    }
+                                }
+                            })
+                            .response
+                            .on_hover_text(t("The highest outside temperature of a summer month (STN 73 0548)"));
+                    } else if ui
+                        .button(t("Temperatures"))
+                        .on_hover_text(t("Read the table of localities and summer temperatures (TSV)"))
+                        .clicked()
+                    {
+                        load = true;
+                    }
+                    ui.label(t("Daily range"))
+                        .on_hover_text(t("The outside air's daily range in the summer months: the hours before and after 15 h are cooler"));
+                    ui.add(
+                        egui::DragValue::new(&mut s.swing)
+                            .range(0.0..=25.0)
+                            .speed(0.5)
+                            .suffix(" °C"),
+                    );
+                    ui.label(t("Used from"));
+                    ui.add(egui::DragValue::new(&mut s.from_h).range(0..=23).suffix(" h"));
+                    ui.label(t("to"));
+                    ui.add(egui::DragValue::new(&mut s.to_h).range(0..=23).suffix(" h"));
                     ui.label(t("Inside"));
                     ui.add(
                         egui::DragValue::new(&mut s.ti)
@@ -155,5 +189,8 @@ impl CreaBimApp {
             self.selection.only(id);
         }
         self.cooling = if open { Some(s) } else { None };
+        if load {
+            self.load_climate_sites();
+        }
     }
 }

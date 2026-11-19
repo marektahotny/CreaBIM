@@ -71,6 +71,10 @@ pub struct Opts {
     pub te: f64,
     /// Mean annual outside temperature θm,e, °C; none takes f_g2 = 1.
     pub te_mean: Option<f64>,
+    /// Mean outside temperature of the heating season, °C, and its
+    /// days: the locality's, for the season's degree days.
+    pub te_heating: Option<f64>,
+    pub heating_days: Option<f64>,
     /// The surcharge for thermal bridges ΔU, W/(m²K).
     pub d_u: f64,
     pub u_window: f64,
@@ -85,12 +89,29 @@ impl Default for Opts {
         Self {
             te: -11.0,
             te_mean: None,
+            te_heating: None,
+            heating_days: None,
             d_u: 0.05,
             u_window: 0.6,
             u_door: 0.65,
             n50: 2.0,
             shielding: Shielding::Moderate,
         }
+    }
+}
+
+impl Opts {
+    /// The heating season's degree days for an inside 20 °C, where the
+    /// locality gives them.
+    pub fn degree_days(&self) -> Option<f64> {
+        Some(self.heating_days? * (20.0 - self.te_heating?))
+    }
+
+    /// A rough yearly heat need, kWh, of a design load `phi` W: the load
+    /// scaled by the degree days (no night setback, no gains).
+    pub fn yearly_kwh(&self, phi: f64) -> Option<f64> {
+        let dt = 20.0 - self.te;
+        (dt > 0.0).then_some(phi * 24.0 * self.degree_days()? / dt / 1000.0)
     }
 }
 

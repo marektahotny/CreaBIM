@@ -61,6 +61,11 @@ pub struct ProjectInfo {
     /// combustible; empty is non-combustible.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub fire_system: String,
+    /// The locality the heat loss and gains take their outside
+    /// temperatures from (a row of the climate table among
+    /// [`ProjectInfo::fire_params`]); empty is none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub climate_site: String,
     /// The office's logo for the title block: a picture kept with the
     /// project.
     #[serde(skip_serializing_if = "Option::is_none")]

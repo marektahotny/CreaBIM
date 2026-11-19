@@ -4,16 +4,164 @@
 //! and a step on to sizing the heat source by it.
 
 use super::CreaBimApp;
+use creabim_core::fireparams::{self, ClimateSite};
 use creabim_services::heatloss::{self, Opts, Shielding};
+
+/// `o` with the temperatures of locality `s`.
+fn with_site(o: Opts, s: &ClimateSite) -> Opts {
+    Opts {
+        te: s.te,
+        te_mean: s.te_year.or(o.te_mean),
+        te_heating: s.te_heating,
+        heating_days: s.days,
+        ..o
+    }
+}
 use eframe::egui::{self, Vec2};
 
+/// The climate table of the designer's PC, kept when a table is read.
+fn saved_sites_path() -> Option<std::path::PathBuf> {
+    crate::files::settings_dir().map(|d| d.join("lokality.tsv"))
+}
+
 impl CreaBimApp {
+    /// The climate tables: the project's, else the ones read last.
+    pub(super) fn climate_tables(&self) -> Vec<fireparams::ParamTable> {
+        let own: Vec<_> = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| {
+                p.fire_params
+                    .iter()
+                    .filter(|t| fireparams::CLIMATE_TABLES.contains(&t.id.as_str()))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !own.is_empty() {
+            return own;
+        }
+        saved_sites_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .map(|t| fireparams::parse(&t))
+            .unwrap_or_default()
+    }
+
+    /// The localities: the project's table, else the one read last.
+    fn climate_sites(&self) -> Vec<ClimateSite> {
+        let own = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| fireparams::climate_sites(&p.fire_params))
+            .unwrap_or_default();
+        if !own.is_empty() {
+            return own;
+        }
+        saved_sites_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .map(|t| fireparams::climate_sites(&fireparams::parse(&t)))
+            .unwrap_or_default()
+    }
+
+    /// `o` with the project's locality's temperatures.
+    fn site_opts(&self, o: Opts) -> Opts {
+        let name = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.climate_site.clone())
+            .unwrap_or_default();
+        match self.climate_sites().into_iter().find(|s| s.name == name) {
+            Some(s) => with_site(o, &s),
+            None => o,
+        }
+    }
+
+    /// Keep the locality chosen, and its table, with the project.
+    fn set_climate_site(&mut self, s: &ClimateSite) {
+        let mut info = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        info.climate_site = s.name.clone();
+        if fireparams::climate_sites(&info.fire_params).is_empty() {
+            if let Some(t) = saved_sites_path().and_then(|p| std::fs::read_to_string(p).ok()) {
+                let tables = fireparams::parse(&t)
+                    .into_iter()
+                    .filter(|t| fireparams::CLIMATE_TABLES.contains(&t.id.as_str()))
+                    .collect();
+                fireparams::merge(&mut info.fire_params, tables);
+            }
+        }
+        if let Some(p) = self.project_draft.as_mut() {
+            p.climate_site = info.climate_site.clone();
+            p.fire_params = info.fire_params.clone();
+        }
+        let tx = creabim_core::set_project(self.doc.model(), info);
+        let r = self.doc.commit(tx);
+        self.report(r, format!("{}: {}", crate::i18n::tr("Locality"), s.name));
+    }
+
+    /// Read a climate table from a file into the project and keep a copy
+    /// for new projects.
+    pub(super) fn load_climate_sites(&mut self) {
+        let t = crate::i18n::tr;
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(t("Table of localities"))
+            .add_filter("TSV", &["tsv", "txt"])
+            .pick_file()
+        else {
+            return;
+        };
+        let text = match std::fs::read_to_string(&path) {
+            Ok(x) => x,
+            Err(e) => {
+                self.status = t(&format!("The file could not be read: {e}"));
+                return;
+            }
+        };
+        let tables: Vec<_> = fireparams::parse(&text)
+            .into_iter()
+            .filter(|t| fireparams::CLIMATE_TABLES.contains(&t.id.as_str()))
+            .collect();
+        let n = fireparams::climate_sites(&tables).len();
+        if n == 0 {
+            self.status =
+                t("No localities found in the file: it needs a table \"#table climate_sites\".");
+            return;
+        }
+        if let Some(p) = saved_sites_path() {
+            let _ = std::fs::create_dir_all(p.parent().unwrap_or(&p));
+            let _ = std::fs::write(&p, fireparams::write(&tables));
+        }
+        let mut info = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        fireparams::merge(&mut info.fire_params, tables);
+        if let Some(p) = self.project_draft.as_mut() {
+            p.fire_params = info.fire_params.clone();
+        }
+        let tx = creabim_core::set_project(self.doc.model(), info);
+        let r = self.doc.commit(tx);
+        self.report(r, format!("{n} {}", t("localities read")));
+    }
+
     /// `calc:heatloss` from the Heating tab: calculate and show the window.
     pub(super) fn heat_loss_action(&mut self, head: &str, arg: &str) -> bool {
         if head != "calc" || arg != "heatloss" {
             return false;
         }
-        let o = self.heat_loss.as_ref().map_or_else(Opts::default, |x| x.0);
+        let o = self
+            .heat_loss
+            .as_ref()
+            .map_or_else(|| self.site_opts(Opts::default()), |x| x.0);
         let b = heatloss::building(self.doc.model(), &o);
         self.status = if b.rooms.is_empty() {
             crate::i18n::tr("No rooms to calculate: place rooms first.")
@@ -34,6 +182,16 @@ impl CreaBimApp {
         let mut open = true;
         let mut select = None;
         let mut to_source = false;
+        let sites = self.climate_sites();
+        let site_name = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.climate_site.clone())
+            .unwrap_or_default();
+        let mut pick: Option<ClimateSite> = None;
+        let n50 = fireparams::n50_ranges(&self.climate_tables());
+        let mut load_sites = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Heat loss of the rooms"))
             .id(egui::Id::new("heat.loss"))
@@ -42,6 +200,60 @@ impl CreaBimApp {
             .default_size(Vec2::new(660.0, 560.0))
             .constrain_to(area)
             .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(t("Locality"));
+                    let shown = if site_name.is_empty() {
+                        t("choose")
+                    } else {
+                        site_name.clone()
+                    };
+                    egui::ComboBox::from_id_salt("heat.loss.site")
+                        .selected_text(shown)
+                        .width(220.0)
+                        .height(420.0)
+                        .show_ui(ui, |ui| {
+                            let mut region = "";
+                            for s in &sites {
+                                if s.region != region {
+                                    region = &s.region;
+                                    ui.colored_label(egui::Color32::from_rgb(40, 130, 40), region);
+                                }
+                                let text = format!(
+                                    "{}   {} °C · {} m",
+                                    s.name,
+                                    num(s.te, 1),
+                                    s.altitude.map_or(String::from("–"), |a| num(a, 0))
+                                );
+                                if ui.selectable_label(s.name == site_name, text).clicked() {
+                                    pick = Some(s.clone());
+                                }
+                            }
+                        });
+                    if ui
+                        .button(t("Read the table…"))
+                        .on_hover_text(t("Read the table of localities (TSV) into the project; it is kept for new projects too"))
+                        .clicked()
+                    {
+                        load_sites = true;
+                    }
+                    if sites.is_empty() {
+                        ui.weak(t("no table of localities read yet"));
+                    }
+                });
+                if let Some(s) = sites.iter().find(|s| s.name == site_name) {
+                    ui.weak(format!(
+                        "θe {} °C · {} {} °C · {} {} °C · {} {} · {} {} m",
+                        num(s.te, 1),
+                        t("mean annual"),
+                        s.te_year.map_or(String::from("–"), |v| num(v, 1)),
+                        t("heating season"),
+                        s.te_heating.map_or(String::from("–"), |v| num(v, 1)),
+                        s.days.map_or(String::from("–"), |v| num(v, 0)),
+                        t("days"),
+                        t("altitude"),
+                        s.altitude.map_or(String::from("–"), |v| num(v, 0)),
+                    ));
+                }
                 egui::Grid::new("heat.loss.opts")
                     .num_columns(4)
                     .spacing([12.0, 5.0])
@@ -72,7 +284,37 @@ impl CreaBimApp {
                             );
                         });
                         o.te_mean = has.then_some(if o.te_mean.is_none() && has { 9.5 } else { mean });
-                        val(ui, "Air changes n50", &mut o.n50, 0.3, 20.0, 0.1, " 1/h");
+                        ui.label(t("Air changes n50"));
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::DragValue::new(&mut o.n50)
+                                    .range(0.3..=20.0)
+                                    .speed(0.1)
+                                    .suffix(" 1/h"),
+                            );
+                            if !n50.is_empty() {
+                                egui::ComboBox::from_id_salt("heat.loss.n50")
+                                    .selected_text(t("Choose"))
+                                    .width(90.0)
+                                    .show_ui(ui, |ui| {
+                                        let mut building = "";
+                                        for r in &n50 {
+                                            if r.building != building {
+                                                building = &r.building;
+                                                ui.colored_label(egui::Color32::from_rgb(40, 130, 40), building);
+                                            }
+                                            let text = format!("{}   ({})", r.tightness, r.text());
+                                            if ui.selectable_label(false, text).clicked() {
+                                                if let Some(v) = r.usual() {
+                                                    o.n50 = v.max(0.3);
+                                                }
+                                            }
+                                        }
+                                    })
+                                    .response
+                                    .on_hover_text(t("Air changes at 50 Pa for the whole building by the building and the tightness of its envelope; the value can be changed within the range"));
+                            }
+                        });
                         ui.end_row();
                         val(ui, "U of windows", &mut o.u_window, 0.3, 6.0, 0.05, " W/(m²K)");
                         val(ui, "U of outside doors", &mut o.u_door, 0.3, 6.0, 0.05, " W/(m²K)");
@@ -110,6 +352,16 @@ impl CreaBimApp {
                         to_source = true;
                     }
                 });
+                if let (Some(d), Some(e)) = (o.degree_days(), o.yearly_kwh(b.phi)) {
+                    ui.weak(format!(
+                        "{}: {} K·d · {}: {} kWh/{}",
+                        t("Degree days"),
+                        num(d, 0),
+                        t("rough yearly heat need"),
+                        num(e, 0),
+                        t("year"),
+                    ));
+                }
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     egui::Grid::new("heat.loss.rooms")
                         .striped(true)
@@ -185,6 +437,13 @@ impl CreaBimApp {
             });
         if let Some(id) = select {
             self.selection.only(id);
+        }
+        if let Some(s) = pick {
+            o = with_site(o, &s);
+            self.set_climate_site(&s);
+        }
+        if load_sites {
+            self.load_climate_sites();
         }
         if to_source {
             let mut s = self.heat_source.clone().unwrap_or_default();

@@ -34,6 +34,150 @@ pub const FIRE_OPENING_K: &str = "fire_opening_k";
 pub const FIRE_OPENING_K_LARGE: &str = "fire_opening_k_large";
 /// The fire risk's single values by key (STN 92 0201-1, 4 to 6).
 pub const FIRE_RISK: &str = "fire_risk";
+/// The localities the heat loss and gain calculations take their outside
+/// temperatures from: name, region, te, te_year, te_heating, days,
+/// altitude (the designer's table, STN 73 0540-3).
+pub const CLIMATE_SITES: &str = "climate_sites";
+
+/// The highest outside temperature of each summer month for the
+/// cooling load: month, te_max (STN 73 0548).
+pub const SUMMER_MAX: &str = "summer_max";
+
+/// The air changes at 50 Pa a building's envelope lets through, by the
+/// building and the tightness of its envelope: building, tightness,
+/// from, to (an empty bound is open).
+pub const N50_RANGES: &str = "n50_ranges";
+
+/// The tables the climate file carries.
+pub const CLIMATE_TABLES: [&str; 3] = [CLIMATE_SITES, SUMMER_MAX, N50_RANGES];
+
+/// A range of air changes at 50 Pa.
+#[derive(Clone, Debug, PartialEq)]
+pub struct N50Range {
+    pub building: String,
+    pub tightness: String,
+    pub from: Option<f64>,
+    pub to: Option<f64>,
+}
+
+impl N50Range {
+    /// How the range reads: "4 – 10", "> 10", "< 4".
+    pub fn text(&self) -> String {
+        let f = |v: f64| format!("{v}").replace('.', ",");
+        match (self.from, self.to) {
+            (Some(a), Some(b)) => format!("{} – {}", f(a), f(b)),
+            (Some(a), None) => format!("> {}", f(a)),
+            (None, Some(b)) => format!("< {}", f(b)),
+            (None, None) => String::new(),
+        }
+    }
+
+    /// A value to start from: the middle, or the open end's bound.
+    pub fn usual(&self) -> Option<f64> {
+        match (self.from, self.to) {
+            (Some(a), Some(b)) => Some((a + b) / 2.0),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
+    /// `v` brought into the range.
+    pub fn clamp(&self, v: f64) -> f64 {
+        let v = self.from.map_or(v, |a| v.max(a));
+        self.to.map_or(v, |b| v.min(b))
+    }
+}
+
+/// The rows of the n50 table among `tables`.
+pub fn n50_ranges(tables: &[ParamTable]) -> Vec<N50Range> {
+    let Some(t) = tables.iter().find(|t| t.id == N50_RANGES) else {
+        return vec![];
+    };
+    let col = |r: &Vec<String>, name: &str| {
+        t.column(name)
+            .and_then(|c| r.get(c))
+            .map_or(String::new(), |s| s.clone())
+    };
+    t.rows
+        .iter()
+        .map(|r| N50Range {
+            building: col(r, "building"),
+            tightness: col(r, "tightness"),
+            from: number(&col(r, "from")),
+            to: number(&col(r, "to")),
+        })
+        .filter(|r| !r.building.is_empty())
+        .collect()
+}
+
+/// The summer months and their highest outside temperature, °C.
+pub fn summer_max(tables: &[ParamTable]) -> Vec<(String, f64)> {
+    let Some(t) = tables.iter().find(|t| t.id == SUMMER_MAX) else {
+        return vec![];
+    };
+    let (Some(m), Some(v)) = (t.column("month"), t.column("te_max")) else {
+        return vec![];
+    };
+    t.rows
+        .iter()
+        .filter_map(|r| Some((r.get(m)?.clone(), number(r.get(v)?)?)))
+        .collect()
+}
+
+/// A locality's climate.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClimateSite {
+    pub name: String,
+    /// Its region ("Žilinský kraj").
+    pub region: String,
+    /// Design outside temperature θe, °C.
+    pub te: f64,
+    /// Mean annual outside temperature, °C.
+    pub te_year: Option<f64>,
+    /// Mean outside temperature of the heating season, °C.
+    pub te_heating: Option<f64>,
+    /// Days of the heating season.
+    pub days: Option<f64>,
+    /// Height above sea level, m.
+    pub altitude: Option<f64>,
+}
+
+impl ClimateSite {
+    /// Degree days of the heating season for an inside `ti`: d (ti − te,m).
+    pub fn degree_days(&self, ti: f64) -> Option<f64> {
+        Some(self.days? * (ti - self.te_heating?))
+    }
+}
+
+/// The localities of the climate table among `tables`, in its order;
+/// rows without a design temperature are left out.
+pub fn climate_sites(tables: &[ParamTable]) -> Vec<ClimateSite> {
+    let Some(t) = tables.iter().find(|t| t.id == CLIMATE_SITES) else {
+        return vec![];
+    };
+    let col = |r: &Vec<String>, name: &str| {
+        t.column(name)
+            .and_then(|c| r.get(c))
+            .map_or("", |s| s.as_str())
+            .to_string()
+    };
+    t.rows
+        .iter()
+        .filter_map(|r| {
+            Some(ClimateSite {
+                name: col(r, "name"),
+                region: col(r, "region"),
+                te: number(&col(r, "te"))?,
+                te_year: number(&col(r, "te_year")),
+                te_heating: number(&col(r, "te_heating")),
+                days: number(&col(r, "days")),
+                altitude: number(&col(r, "altitude")),
+            })
+        })
+        .filter(|s| !s.name.is_empty())
+        .collect()
+}
 
 /// One table of a norm.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -267,6 +411,21 @@ fn stepped(quantity: f64, steps: &[(f64, f64)], f: impl Fn(f64, f64) -> f64) -> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_climate_table_gives_its_localities() {
+        let text = "#table climate_sites\n#norm X\n#columns name\tregion\tte\tte_year\tte_heating\tdays\taltitude\nMesto A\tKraj\t-14,0\t8,0\t3,5\t240\t300\nBez teploty\tKraj\t\t\t\t\t\n";
+        let s = climate_sites(&parse(text));
+        assert_eq!(s.len(), 1);
+        assert_eq!(
+            (s[0].name.as_str(), s[0].te, s[0].te_year),
+            ("Mesto A", -14.0, Some(8.0))
+        );
+        assert_eq!(s[0].degree_days(20.0), Some(240.0 * 16.5));
+        let n = n50_ranges(&parse("#table n50_ranges\n#columns building\ttightness\tfrom\tto\nDom\tstredný\t4\t10\nDom\tvysoký\t\t4\n"));
+        assert_eq!((n[0].text().as_str(), n[0].usual()), ("4 – 10", Some(7.0)));
+        assert_eq!((n[1].text().as_str(), n[1].clamp(6.0)), ("< 4", 4.0));
+    }
+
     use super::*;
 
     const FILE: &str = "remark before any table\n#table occupancy\n#norm N 1\n#edition 2012\n# a remark\n#columns item\tname\tarea\tfactor\n1\tOffices\t10,0\t\n2\tHall\t0-100 m2: 0,8; nad 100 m2: 1,2\n";

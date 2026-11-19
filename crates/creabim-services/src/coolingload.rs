@@ -72,9 +72,25 @@ pub struct Settings {
     /// on a roof, K.
     pub dt_wall: f64,
     pub dt_roof: f64,
+    /// The outside air's daily range in summer, max − min, K: the hours
+    /// before and after the warmest (15 h) are cooler by its half-cosine.
+    pub swing: f64,
+    /// The hours the building is used, from and to: the load is the
+    /// highest of these hours.
+    pub from_h: u32,
+    pub to_h: u32,
     /// Chilled water, °C.
     pub supply_c: f64,
     pub return_c: f64,
+}
+
+impl Settings {
+    /// The outside temperature at hour `h`: the highest at 15 h, lower
+    /// by the daily range's half-cosine either side.
+    pub fn te_at(&self, h: f64) -> f64 {
+        let a = (h - 15.0) / 24.0 * std::f64::consts::TAU;
+        self.te - self.swing / 2.0 * (1.0 - a.cos())
+    }
 }
 
 impl Default for Settings {
@@ -95,6 +111,9 @@ impl Default for Settings {
             m2_office: 10.0,
             dt_wall: 5.0,
             dt_roof: 15.0,
+            swing: 15.0,
+            from_h: 8,
+            to_h: 16,
             supply_c: 7.0,
             return_c: 12.0,
         }
@@ -235,20 +254,19 @@ pub fn fancoil_pick(kw: f64) -> f64 {
 }
 
 fn one(hl: &RoomLoss, d_u: f64, s: &Settings) -> RoomLoad {
-    let dt = s.te - s.ti;
     let sc = s.g / G_SINGLE;
     let fc = s.shading.fc();
     let usage = use_of(&hl.name);
     let mut hourly = [0.0; 15];
     let (mut glazed, mut faces): (f64, Vec<&'static str>) = (0.0, vec![]);
-    let (mut win, mut win_a, mut wall, mut wall_a, mut roof, mut roof_a) =
+    let (mut win_k, mut win_a, mut wall_k, mut wall_a, mut roof_k, mut roof_a) =
         (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     for i in &hl.items {
         // the heat loss adds the thermal bridges' ΔU; summer does not
         let u = (i.u - d_u).max(0.0);
         match i.kind {
             "Window" | "Outside door" => {
-                win += u * i.area * dt;
+                win_k += u * i.area;
                 win_a += i.area;
                 if let ("Window", Some(az)) = (i.kind, i.azimuth) {
                     let ag = i.area * s.glazed;
@@ -262,19 +280,42 @@ fn one(hl: &RoomLoss, d_u: f64, s: &Settings) -> RoomLoad {
                 }
             }
             "Outside wall" => {
-                wall += u * i.area * (dt + s.dt_wall);
+                wall_k += u * i.area;
                 wall_a += i.area;
             }
             "Roof" => {
-                roof += u * i.area * (dt + s.dt_roof);
+                roof_k += u * i.area;
                 roof_a += i.area;
             }
             _ => {}
         }
     }
-    let k = (0..15)
-        .max_by(|a, b| hourly[*a].total_cmp(&hourly[*b]))
+    // the load is the highest of the hours the building is used: the sun
+    // of that hour and the outside air as warm as it is then
+    let gains = |k: usize| {
+        let d = s.te_at(SOLAR_HOURS[k] as f64) - s.ti;
+        hourly[k] * sc * fc * s.storage
+            + (win_k + 0.34 * hl.v_min) * d
+            + wall_k * (d + s.dt_wall)
+            + roof_k * (d + s.dt_roof)
+    };
+    let used: Vec<usize> = (0..15)
+        .filter(|k| (s.from_h..=s.to_h).contains(&SOLAR_HOURS[*k]))
+        .collect();
+    let used = if used.is_empty() {
+        (0..15).collect()
+    } else {
+        used
+    };
+    let k = used
+        .iter()
+        .copied()
+        .max_by(|a, b| gains(*a).total_cmp(&gains(*b)))
         .unwrap_or(7);
+    let dt = s.te_at(SOLAR_HOURS[k] as f64) - s.ti;
+    let win = win_k * dt;
+    let wall = wall_k * (dt + s.dt_wall);
+    let roof = roof_k * (dt + s.dt_roof);
     let sun = hourly[k] * sc * fc * s.storage;
     let mut items = vec![];
     let mut add = |kind: &'static str, phi: f64, note: String| {
