@@ -693,7 +693,10 @@ impl Viewport3d {
             light_view_proj = fit.0;
             shadow = [fit.1, 1.0 / side as f32, 1.0, 0.0];
             if let Some(z) = s.ground {
-                ground = Some(ground_quad(fit.2, fit.3, z));
+                // a little under ±0,000: a floor at that height hides it
+                // instead of fighting it pixel by pixel, which striped
+                // the floors in shade
+                ground = Some(ground_quad(fit.2, fit.3, z - GROUND_DROP));
             }
         }
         let u = Uniforms {
@@ -913,6 +916,9 @@ fn fit_light(
     let covered = view.inverse().transform_point3(Vec3::new(x, y, m.z));
     (proj * view, texel, covered, half)
 }
+
+/// How far the shadow-catching ground sits under its level, m.
+const GROUND_DROP: f32 = 0.05;
 
 /// Two triangles of ground at height `z` around `centre`, wide enough for
 /// shadows thrown long by a low sun.
