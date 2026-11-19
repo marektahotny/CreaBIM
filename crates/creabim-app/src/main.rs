@@ -51,6 +51,7 @@ mod slabtool;
 mod snaps;
 mod sun;
 mod svgicon;
+mod takeoffpane;
 mod tempdims;
 mod textures;
 mod theme;

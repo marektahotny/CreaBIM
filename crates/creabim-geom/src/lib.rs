@@ -53,6 +53,7 @@ pub mod sheet;
 pub mod sitefoot;
 pub mod slice;
 pub mod summary;
+pub mod takeoff;
 pub mod titleblock;
 pub mod tradelists;
 pub mod triangulate;

@@ -2131,6 +2131,9 @@ pub struct View {
     /// column's heading; a column not named keeps its own width.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub column_widths: BTreeMap<String, f64>,
+    /// How a material take-off groups, details and sorts its rows.
+    #[serde(default, skip_serializing_if = "crate::takeoff::Layout::is_default")]
+    pub takeoff: crate::takeoff::Layout,
     /// How a section's line is drawn in plans and where it steps aside.
     #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
     pub line: SectionLine,
@@ -2526,6 +2529,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }
@@ -2562,6 +2566,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }
@@ -2595,6 +2600,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }
@@ -2629,6 +2635,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }
@@ -2668,6 +2675,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }

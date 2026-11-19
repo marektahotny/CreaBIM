@@ -1678,6 +1678,111 @@ fn mode_button(
     resp
 }
 
+impl CreaBimApp {
+    /// Rows picked in the take-off shown where they are: what they are made
+    /// of selected and framed in the 3D view, or in the floor plan of its
+    /// level; an area beside the take-off opens for it if none shows it.
+    pub(super) fn show_takeoff_rows(&mut self, r: crate::takeoffpane::ShowRequest, area: usize) {
+        use crate::takeoffpane::ShowIn;
+        self.selection.clear();
+        self.selection.extend(r.elements.iter().copied(), false);
+        self.areas.max = None;
+        let area = area.min(self.areas.root.len().saturating_sub(1));
+        let n = r.elements.len();
+        match r.target {
+            ShowIn::Model => {
+                if !self.areas.root.has_model() {
+                    self.areas.root.divide_at(area, true, Shows::Model, 0.55);
+                    self.store_areas();
+                }
+                self.frame_selection_soon = true;
+                self.status = format!(
+                    "{n} {} {}",
+                    crate::i18n::tr(if n == 1 { "element" } else { "elements" }),
+                    crate::i18n::tr("selected and framed in the 3D view.")
+                );
+            }
+            ShowIn::Plan => {
+                let model = self.doc.model();
+                let (lines, _) = creabim_geom::takeoff::lines_now(model);
+                let level = lines
+                    .iter()
+                    .find(|l| r.elements.contains(&l.element))
+                    .and_then(|l| l.level);
+                let plan = level.and_then(|l| floor_plan_of(model, l));
+                let Some(plan) = plan else {
+                    self.status = crate::i18n::tr("Its level has no floor plan to show it in.");
+                    return;
+                };
+                let shows = self.areas.root.areas();
+                if !shows.contains(&Shows::View(plan)) {
+                    // a plan beside the take-off gives way, else the
+                    // take-off's area is split for it
+                    let is_plan = |v: ElementId| {
+                        matches!(
+                            model.get(v).map(|e| &e.kind),
+                            Some(ElementKind::View(View {
+                                kind: ViewKind::Plan { .. },
+                                ..
+                            }))
+                        )
+                    };
+                    let other = shows
+                        .iter()
+                        .enumerate()
+                        .find(|(i, s)| *i != area && matches!(s, Shows::View(v) if is_plan(*v)))
+                        .map(|(i, _)| i);
+                    match other.and_then(|i| self.areas.root.get_mut(i)) {
+                        Some(s) => *s = Shows::View(plan),
+                        None => {
+                            self.areas
+                                .root
+                                .divide_at(area, false, Shows::View(plan), 0.5);
+                        }
+                    }
+                    self.store_areas();
+                }
+                self.plan.frame_selection_in = Some(plan);
+                let name = self
+                    .doc
+                    .model()
+                    .get(plan)
+                    .map(|e| e.name.clone())
+                    .unwrap_or_default();
+                self.status = format!(
+                    "{n} {} {} {name}.",
+                    crate::i18n::tr(if n == 1 { "element" } else { "elements" }),
+                    crate::i18n::tr("selected and framed in the plan")
+                );
+            }
+        }
+    }
+}
+
+/// The floor plan of `level` a take-off shows its rows in: an architect's
+/// plain plan first (not a ceiling, trade, fire or masonry plan).
+fn floor_plan_of(model: &creabim_core::Model, level: ElementId) -> Option<ElementId> {
+    let mut plans: Vec<(u32, ElementId)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::View(v) => match v.kind {
+                ViewKind::Plan { level: l, .. } if l == level => {
+                    let plain = !v.ceiling_plan
+                        && v.trade.is_none()
+                        && !v.fire_zones
+                        && !v.masonry
+                        && !v.coordination;
+                    Some((if plain { 0 } else { 1 }, e.id))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    plans.sort_by_key(|p| p.0);
+    plans.first().map(|p| p.1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

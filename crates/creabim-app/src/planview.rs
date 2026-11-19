@@ -554,6 +554,9 @@ pub struct PlanState {
     pub details: crate::detailtool::DetailSettings,
     /// A view made in a pane that the app should open: a new detail view.
     pub want_view: Option<ElementId>,
+    /// Frame the selection in this view the next time it is drawn (the
+    /// take-off's Show in plan).
+    pub frame_selection_in: Option<ElementId>,
     /// The Snap menu's Custom step being typed.
     pub step_prompt: Option<String>,
     /// The tracker's typed length and angle while a line is drawn (2.10).
@@ -731,6 +734,7 @@ impl Default for PlanState {
             types: HashMap::new(),
             details: Default::default(),
             want_view: None,
+            frame_selection_in: None,
             step_prompt: None,
             temp: Default::default(),
             tracker: Default::default(),
@@ -1101,6 +1105,15 @@ fn show_pane(
                 .collect(),
         };
         let fit_sel = (!picked.items.is_empty()).then(|| fit(&picked, rect));
+        // asked from the take-off: frame what it picked, once
+        if state.frame_selection_in == Some(view) {
+            state.frame_selection_in = None;
+            if let Some((c, k)) = fit_sel {
+                center = c;
+                // not closer than a room's width across the pane
+                scale = k.min(rect.width().min(rect.height()) / 4.0);
+            }
+        }
         if let Some((c, k)) = nav_column(ui, rect, view, || fit(plan, rect), fit_sel, center, scale)
         {
             center = c;
