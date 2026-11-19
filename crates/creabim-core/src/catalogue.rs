@@ -284,6 +284,49 @@ impl Build {
         self
     }
 
+    /// A closed outline in a utility network's colour (see
+    /// [`SymbolItem::Net`]).
+    fn net(&mut self, points: Vec<DVec2>, code: &str, dashed: bool) -> &mut Self {
+        self.symbol.push(SymbolItem::Net {
+            points,
+            code: code.into(),
+            dashed,
+        });
+        self
+    }
+
+    /// Every part and the symbol moved by `d`.
+    fn shift(&mut self, d: DVec3) -> &mut Self {
+        for p in &mut self.parts {
+            for v in &mut p.mesh.vertices {
+                *v += d;
+            }
+        }
+        let m = d.truncate();
+        for s in &mut self.symbol {
+            match s {
+                SymbolItem::Loop(p) | SymbolItem::Net { points: p, .. } => {
+                    p.iter_mut().for_each(|q| *q += m)
+                }
+                SymbolItem::Line(a, b) => {
+                    *a += m;
+                    *b += m;
+                }
+                SymbolItem::Text { at, .. } => *at += m,
+            }
+        }
+        self
+    }
+
+    /// A short name by the symbol.
+    fn text(&mut self, at: DVec2, text: &str) -> &mut Self {
+        self.symbol.push(SymbolItem::Text {
+            at,
+            text: text.into(),
+        });
+        self
+    }
+
     fn line(&mut self, a: DVec2, b: DVec2) -> &mut Self {
         self.symbol.push(SymbolItem::Line(a, b));
         self

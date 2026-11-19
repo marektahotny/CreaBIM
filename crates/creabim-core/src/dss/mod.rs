@@ -485,7 +485,7 @@ fn by_ifc(entity: &str, predefined: &str) -> Option<&'static str> {
         .map(|c| c.code)
 }
 
-fn object_class(class: &str, predefined: &str, key: &str) -> Option<&'static str> {
+pub(crate) fn object_class(class: &str, predefined: &str, key: &str) -> Option<&'static str> {
     let key = key.to_ascii_lowercase();
     Some(match (class, predefined) {
         ("IfcSanitaryTerminal", "WASHHANDBASIN") => "XKA003",
@@ -524,6 +524,8 @@ fn object_class(class: &str, predefined: &str, key: &str) -> Option<&'static str
         ("IfcTank", _) if key.contains("zasobnik") => "CPA001",
         ("IfcTank", _) if key.contains("retention") || key.contains("soakaway") => "CMA008",
         ("IfcTank", _) => "CMB003",
+        // a pumping shaft: the standard has no class for it
+        ("IfcDistributionChamberElement", "SUMP") if key.contains("pumping") => return None,
         ("IfcDistributionChamberElement", "SUMP") => "CMA008",
         ("IfcDistributionChamberElement", _) => "XMC001",
         ("IfcUnitaryEquipment", _) if key.contains("heat-tc") => "EGA002",
