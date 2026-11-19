@@ -294,5 +294,8 @@ window.ICONS = {
 "columns-3": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /><path d=\"M9 3v18\" /><path d=\"M15 3v18\" />",
 "layout-grid": "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\" /><rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\" /><rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\" /><rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\" />",
 "gauge": "<path d=\"m12 14 4-4\" /><path d=\"M3.34 19a10 10 0 1 1 17.32 0\" />",
-"book-check": "<path d=\"M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20\" /><path d=\"m9 9.5 2 2 4-4\" />"
+"book-check": "<path d=\"M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20\" /><path d=\"m9 9.5 2 2 4-4\" />",
+"calc-gas": "<path d=\"M3.34 19a10 10 0 1 1 17.32 0\" /><path d=\"M12 19c-1.7 0-3-1.2-3-2.8 0-1.7 3-4.2 3-4.2s3 2.5 3 4.2c0 1.6-1.3 2.8-3 2.8z\" />",
+"calc-heating": "<path d=\"M3.34 19a10 10 0 1 1 17.32 0\" /><path d=\"M8 20v-7\" /><path d=\"M12 20v-7\" /><path d=\"M16 20v-7\" /><path d=\"M6 16h12\" />",
+"calc-drain": "<path d=\"M2 3l20 4\" /><path d=\"M2 9l20 4\" /><path d=\"M12 22a3 3 0 0 1-3-3c0-1.7 3-5 3-5s3 3.3 3 5a3 3 0 0 1-3 3z\" />"
 };

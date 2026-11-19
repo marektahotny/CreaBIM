@@ -217,7 +217,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             act(
                 "calc:drain",
                 "Calculate drainage",
-                "gauge",
+                "calc-drain",
                 "Size the waste pipes and stacks from the fixtures on them: Qww = K·√ΣDU, horizontal pipes half full on their fall, stacks by their capacity (STN EN 12056-2)",
             ),
             act(
@@ -261,7 +261,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             act(
                 "calc:gas",
                 "Calculate gas",
-                "gauge",
+                "calc-gas",
                 "Size the gas pipes from the appliances on them: reduced flow, 100 Pa to the farthest appliance, the meter and the cabinet (TPP 704 01)",
             ),
             Sep,
@@ -313,7 +313,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             act(
                 "calc:heating",
                 "Calculate heating pipes",
-                "gauge",
+                "calc-heating",
                 "Size the supply and return to the radiators, find the critical circuit and the pump, and preset the HERZ valves (TS-98-V, STRÖMAX) to balance the circuits",
             ),
             Sep,
