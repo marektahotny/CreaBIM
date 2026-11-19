@@ -276,6 +276,11 @@ pub struct Beam {
     /// next beam of its chain), by that plane's normal.
     #[serde(default, skip_serializing_if = "no_cuts")]
     pub cuts: [Option<DVec3>; 2],
+    /// A system lintel (a Porfix or Porotherm piece) over a door or
+    /// window, placed by hand: it follows its opening (see
+    /// [`crate::masonry`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lintel: Option<crate::masonry::Lintel>,
 }
 
 fn is_zero2(v: &[f64; 2]) -> bool {
@@ -379,6 +384,7 @@ impl Beam {
             up: None,
             extend: [0.0, 0.0],
             cuts: [None, None],
+            lintel: None,
         }
     }
 

@@ -4131,6 +4131,7 @@ fn section_tool(
                         curtain: None,
                         layer_ends: vec![],
                         bulge: 0.0,
+                        bearing: None,
                     }),
                 );
                 // its type's thickness, but its drawn height

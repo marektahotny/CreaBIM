@@ -896,6 +896,18 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             return Some(crate::schedule::schedule_drawing(view, &e.name, &table));
         }
     };
+    // system lintels belong to the masonry plan; sections show them cut
+    if let creabim_core::ViewKind::Plan { level, .. } = kind {
+        d.items.retain(|it| {
+            !model
+                .get(it.id())
+                .is_some_and(creabim_core::masonry::is_lintel)
+        });
+        if v.masonry {
+            d.items
+                .extend(crate::masonry::plan_marks(model, *level, v.scale / 1000.0));
+        }
+    }
     if reveal && v.hidden_in_colour {
         tint_hidden(model, view, kind, &mut d.items);
     }

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 /// The span across a wall of its core, `(exterior side, interior side)`,
 /// left of start → end positive. A wall without layers is all core.
-fn core_span(model: &Model, wall: &Wall) -> (f64, f64) {
+pub fn core_span(model: &Model, wall: &Wall) -> (f64, f64) {
     let t = wall.thickness / 2.0;
     let (lo, hi) = wall
         .assembly

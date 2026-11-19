@@ -1240,6 +1240,7 @@ fn beam(c: &mut Ctx, b: &f::Beam, at: &Path) {
         up: None,
         extend: [0.0, 0.0],
         cuts: [None, None],
+        lintel: None,
     };
     let mut e = Element::new(name_of(&b.name, &b.id), ElementKind::Beam(beam));
     if !stamp(c, &mut e, &b.r#type, f::TypeCategory::Beam, at) {

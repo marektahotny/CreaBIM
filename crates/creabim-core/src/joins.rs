@@ -248,6 +248,8 @@ pub fn rules(model: &Model) -> Vec<JoinRule> {
 pub fn category_rank(kind: &ElementKind) -> u8 {
     match kind {
         ElementKind::Column(_) => 3,
+        // a lintel runs through the wall it lies in
+        ElementKind::Beam(b) if b.lintel.is_some() => 3,
         ElementKind::Wall(_) => 2,
         ElementKind::Slab(_) => 1,
         _ => 0,

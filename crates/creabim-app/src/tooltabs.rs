@@ -86,6 +86,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::Column),
             T(Tool::Beam),
             T(Tool::Footing),
+            Entry::Menu {
+                key: "tab:masonry",
+                label: "Masonry",
+                icon: "brick-wall",
+                hint: "System lintels (PORFIX, Porotherm) put by hand in the storey's masonry plan, RC columns in walls, and the check of how far masonry walls run between braces",
+            },
             Sep,
             T(Tool::Object),
             act(

@@ -322,6 +322,7 @@ mod tests {
                 curtain: None,
                 layer_ends: vec![],
                 bulge: 0.0,
+                bearing: None,
             }),
         )
     }
