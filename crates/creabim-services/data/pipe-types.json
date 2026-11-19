@@ -1601,6 +1601,43 @@
   "maxBar": 10
  },
  {
+  "id": "WFHE",
+  "short": "PE-RT/EVOH Wavin",
+  "name": "Wavin PE-RT/EVOH/PE-RT podlahové vykurovanie (kyslíková bariéra)",
+  "material": "PE-RT/EVOH (Wavin)",
+  "manufacturer": "Wavin – Vnitřní instalace, katalog 2026",
+  "roughnessMm": 0.007,
+  "sizes": [
+   {
+    "outerMm": 16,
+    "innerMm": 12,
+    "nominalMm": 16,
+    "segment": "16 x 2",
+    "coilM": 200,
+    "code": "TP311606W"
+   },
+   {
+    "outerMm": 17,
+    "innerMm": 13,
+    "nominalMm": 17,
+    "segment": "17 x 2",
+    "coilM": 200,
+    "code": "TP311706W"
+   }
+  ],
+  "media": [
+   "ukur",
+   "chlad"
+  ],
+  "densityKgDm3": 0.95,
+  "joint": "svorné šróbenia k rozdeľovaču Wavin",
+  "standards": "STN EN ISO 22391, STN EN 1264",
+  "maxTempC": 70,
+  "maxBar": 6,
+  "note": "trieda 4, 6 bar; kotúče 200 a 600 m (16), 200 a 560 m (17); 17×2 odporúčaná pre tepelné čerpadlá; α 0,18 mm/m·K",
+  "fittings": []
+ },
+ {
   "id": "HERZG",
   "short": "plasthliník HERZ",
   "name": "Plasthliník HERZ GASPRESS IPANA – plyn (žltý)",

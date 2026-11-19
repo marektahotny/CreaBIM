@@ -267,11 +267,11 @@ mod tests {
     #[test]
     fn the_catalogue_reads_whole() {
         let all = all();
-        assert_eq!(all.len(), 28);
+        assert_eq!(all.len(), 29);
         let mut ids: Vec<_> = all.iter().map(|t| t.id.as_str()).collect();
         ids.sort();
         ids.dedup();
-        assert_eq!(ids.len(), 28, "ids are unique");
+        assert_eq!(ids.len(), 29, "ids are unique");
         for t in all {
             assert!(!t.sizes.is_empty() && !t.media.is_empty(), "{}", t.id);
             assert!(t.roughness_mm > 0.0, "{}", t.id);

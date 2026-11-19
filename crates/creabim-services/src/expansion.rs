@@ -205,6 +205,13 @@ pub fn material(pipe_type: &str) -> Option<Material> {
         "WHDPE" => WAVIN_HDPE,
         "WAS" => WAVIN_AS,
         "WSI" => WAVIN_SITECH,
+        "WFHE" => Material {
+            source: "Wavin PE-RT/EVOH/PE-RT",
+            alpha: Some(0.18),
+            k: 20.0,
+            spacing: &[],
+            by_temp: &[],
+        },
         _ => return None,
     })
 }
