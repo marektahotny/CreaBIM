@@ -695,17 +695,25 @@ fn blue(dark: bool) -> Color32 {
     }
 }
 
-/// `ink` where it reads on `ground`; where the two are close (a pale
-/// blue on a theme's light plate), a dark or a white number.
-fn readable(ink: Color32, ground: Color32) -> Color32 {
-    let light = |c: Color32| 0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32;
-    let (i, g) = (light(ink), light(ground));
-    if (i - g).abs() >= 110.0 {
-        ink
-    } else if g > 128.0 {
-        Color32::from_rgb(15, 35, 80)
+/// The ground of a temporary dimension's value.
+const CHIP: Color32 = Color32::from_rgb(20, 80, 175);
+
+/// Ground and number of a value chip: white on solid blue, or dark
+/// blue on white while a value is typed.
+fn chip(typing: bool) -> (Color32, Color32) {
+    if typing {
+        (Color32::WHITE, Color32::from_rgb(10, 30, 80))
     } else {
-        Color32::WHITE
+        (CHIP, Color32::WHITE)
+    }
+}
+
+#[test]
+fn chips_read() {
+    let light = |c: Color32| 0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32;
+    for on in [false, true] {
+        let (g, t) = chip(on);
+        assert!((light(g) - light(t)).abs() > 150.0);
     }
 }
 
@@ -731,7 +739,7 @@ fn layout(
 ) -> (Spot, std::sync::Arc<egui::Galley>) {
     let g = painter.layout_no_wrap(
         text.to_string(),
-        egui::FontId::proportional(12.0),
+        egui::FontId::proportional(13.0),
         Color32::WHITE,
     );
     let mid = a + (b - a) / 2.0;
@@ -920,19 +928,19 @@ pub fn interact(
         let over_value = pointer.is_some_and(|p| spot.value.expand(2.0).contains(p));
         let over_lock =
             pointer.is_some_and(|p| spot.lock.is_some_and(|l| l.expand(2.0).contains(p)));
-        let ground = if on { look.ground } else { pal.raise };
+        // a solid chip with a white number, or white with a dark number
+        // while typing: readable on any plan colour and in either theme
+        let (ground, color) = chip(on);
         painter.rect(
             spot.value,
             5.0,
             ground,
-            Stroke::new(if on || over_value { 1.6 } else { 1.0 }, ink),
+            Stroke::new(
+                if on || over_value { 2.0 } else { 1.0 },
+                if on { CHIP } else { Color32::WHITE },
+            ),
             egui::StrokeKind::Inside,
         );
-        let color = if on {
-            look.number
-        } else {
-            readable(ink, ground)
-        };
         painter.galley_with_override_text_color(
             spot.value.min + Vec2::new(6.0, 3.0),
             galley,

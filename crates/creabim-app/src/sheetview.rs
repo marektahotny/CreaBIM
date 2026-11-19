@@ -1893,7 +1893,8 @@ pub fn show(
             painter.text(
                 area.left_top() + Vec2::new(0.0, -6.0),
                 egui::Align2::LEFT_BOTTOM,
-                format!("Working in {}. Esc or click outside to finish.", v.title),
+                crate::i18n::tr("Working in {}. Esc or click outside to finish.")
+                    .replacen("{}", &v.title, 1),
                 egui::FontId::proportional(12.0),
                 interaction_ink(),
             );

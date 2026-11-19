@@ -780,3 +780,88 @@ fn a_level_inside_a_storey_shows_the_storeys_floor_and_what_stands_on_it() {
     assert!(shows(&|k| matches!(k, ElementKind::Wall(_))));
     assert!(shows(&|k| matches!(k, ElementKind::Slab(_))));
 }
+
+/// A pipe dimensioned from a wall: typing a new number moves the pipe
+/// (with the pipes in line with it), never the wall, and a branch joined
+/// to it stretches to stay joined.
+#[test]
+fn a_typed_dimension_to_a_pipe_moves_the_pipe() {
+    use creabim_core::mep::Pipe;
+    use creabim_core::{Dimension, Transaction};
+    use creabim_geom::annotate::{attach, driven, stretches};
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let ViewKind::Plan { level, .. } = v.kind else {
+        unreachable!()
+    };
+    let (wall, w) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Wall(w) if w.level == level && w.length() > 3.0 => Some((e.id, w.clone())),
+            _ => None,
+        })
+        .unwrap();
+    let d = w.direction();
+    let n = d.perp();
+    let face = w.start + d * 1.0 + n * (w.thickness / 2.0);
+    let pipe = |a: DVec2, b: DVec2| {
+        Element::new(
+            "Pipe",
+            ElementKind::Pipe(Pipe {
+                level,
+                system: "SV".into(),
+                start: a.extend(0.5),
+                end: b.extend(0.5),
+                pipe_type: "HERZ".into(),
+                nominal_mm: 16.0,
+                outer_mm: 16.0,
+                inner_mm: 12.0,
+                height_mm: None,
+                insulation_mm: 0.0,
+                insulation_set: false,
+                mark: None,
+            }),
+        )
+    };
+    // two pipes in line along the wall, 0.3 m off it, and a branch
+    // leaving square from where they meet
+    let at = face + n * 0.3;
+    let p1 = pipe(at, at + d * 1.0);
+    let p2 = pipe(at + d * 1.0, at + d * 2.0);
+    let br = pipe(at + d * 1.0, at + d * 1.0 + n * 1.0);
+    let (i1, i2, ib) = (p1.id, p2.id, br.id);
+    doc.commit(Transaction::new("pipes").insert(p1).insert(p2).insert(br))
+        .unwrap();
+    let dim = Dimension::linear(
+        plan,
+        attach(doc.model(), &v, Some(wall), face),
+        attach(doc.model(), &v, Some(i1), at),
+        0.5,
+    );
+    assert_eq!(stretches(doc.model(), &v, &dim).len(), 1);
+    // a free point drawn on the pipe is bound to it
+    let free = Dimension::linear(plan, dim.a, creabim_core::HostPoint::free(at), 0.5);
+    let bound = creabim_geom::annotate::rehosted(doc.model(), &v, &free);
+    assert_eq!(bound.b.host, Some(i1));
+    let tx = driven(doc.model(), &v, &dim, 0, 0.5, &[]).unwrap();
+    doc.commit(tx).unwrap();
+    let ElementKind::Wall(after) = &doc.model().get(wall).unwrap().kind else {
+        unreachable!()
+    };
+    assert!(after.start.distance(w.start) < 1e-9 && after.end.distance(w.end) < 1e-9);
+    let ends = |id| match &doc.model().get(id).unwrap().kind {
+        ElementKind::Pipe(p) => (p.start.truncate(), p.end.truncate()),
+        _ => unreachable!(),
+    };
+    let to = at + n * 0.2;
+    assert!(ends(i1).0.distance(to) < 1e-6);
+    assert!(ends(i2).1.distance(to + d * 2.0) < 1e-6);
+    // the branch keeps its far end and stays joined
+    let (bs, be) = ends(ib);
+    assert!(bs.distance(to + d * 1.0) < 1e-6, "{bs:?}");
+    assert!(be.distance(at + d * 1.0 + n * 1.0) < 1e-6);
+}

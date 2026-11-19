@@ -414,7 +414,7 @@ impl CreaBimApp {
                     ui.painter().with_clip_rect(body).text(
                         body.center(),
                         egui::Align2::CENTER_CENTER,
-                        "The 3D view is open in another area.\nPick a drawing for this one above.",
+                        crate::i18n::tr("The 3D view is open in another area.\nPick a drawing for this one above."),
                         egui::FontId::proportional(13.0),
                         p.muted,
                     );
@@ -1406,18 +1406,21 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
         .filter(|l| !l.is_empty())
         .or(c["value"].as_str())
         .unwrap_or("");
-    let mut tip = label.to_string();
+    // each part translated by itself: joined, no key would match it and
+    // a loose pattern would catch it half translated
+    let tr = crate::i18n::tr;
+    let mut tip = tr(label);
     if let Some(k) = c["shortcut"].as_str() {
         tip += &format!("  ({k})");
     }
     if let Some(v) = c["value"].as_str().filter(|v| *v != label) {
-        tip += &format!(": {v}");
+        tip += &format!(": {}", tr(v));
     }
     if let Some(h) = c["hint"].as_str() {
         if !tip.is_empty() {
             tip.push('\n');
         }
-        tip += h;
+        tip += &tr(h);
     }
     let icon = c["icon"].as_str().unwrap_or("");
     match c["kind"].as_str()? {
@@ -1431,7 +1434,7 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
                 enabled,
                 p,
             )
-            .on_hover_text(crate::i18n::tr(&tip));
+            .on_hover_text(tip.clone());
             // a small count at the corner: how many there are (MU36: section
             // boxes added without a sign)
             if let Some(n) = c["badge"].as_u64().filter(|n| *n > 0) {
@@ -1468,7 +1471,7 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
             } else {
                 pill(ui, icon, "", false, p)
             }
-            .on_hover_text(crate::i18n::tr(&tip));
+            .on_hover_text(tip.clone());
             r.clicked()
                 .then(|| Ask::Popup(c["key"].as_str().unwrap_or("").into(), r.rect))
         }
@@ -1489,7 +1492,7 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
                         .size(12.0)
                         .color(p.muted),
                 )
-                .on_hover_text(crate::i18n::tr(&tip));
+                .on_hover_text(tip.clone());
                 let w = if unit == "m" {
                     ui.add_sized([64.0, 20.0], crate::units::drag(&mut v))
                 } else {

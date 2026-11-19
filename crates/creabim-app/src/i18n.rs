@@ -324,8 +324,13 @@ fn with_pattern(l: Lang, english: &str) -> Option<String> {
 }
 
 fn pattern_lookup(l: Lang, english: &str) -> Option<String> {
+    // a key's own words must be at least a third of the text's, or a short key
+    // such as `{} {} with {}` catches whole sentences and leaves them half
+    // translated ("Shaded, s edges")
+    let letters = english.chars().filter(|c| c.is_alphabetic()).count();
     let p = patterns(l)
         .iter()
+        .filter(|p| p.weight * 3 >= letters)
         .find_map(|p| fill(p, english).map(|g| (p, g)))?;
     let (p, got) = p;
     let got: Vec<String> = got

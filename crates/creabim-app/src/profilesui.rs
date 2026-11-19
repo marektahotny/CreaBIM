@@ -1989,12 +1989,13 @@ impl CreaBimApp {
             body.left_top() + egui::vec2(10.0, 8.0),
             egui::Align2::LEFT_TOP,
             format!(
-                "Profile · {}{}",
+                "{} · {}{}",
+                crate::i18n::tr("Profile"),
                 prof.name,
                 if editable {
-                    ""
+                    String::new()
                 } else {
-                    " · preset (Duplicate to change it)"
+                    format!(" · {}", crate::i18n::tr("preset (Duplicate to change it)"))
                 }
             ),
             egui::FontId::proportional(12.0),

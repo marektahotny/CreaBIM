@@ -1081,7 +1081,7 @@ impl CreaBimApp {
             painter.text(
                 body.center(),
                 egui::Align2::CENTER_CENTER,
-                "No masters yet. + in the header makes one from Standard, Minimal or blank,\nor brings in a frame drawn elsewhere.",
+                crate::i18n::tr("No masters yet. + in the header makes one from Standard, Minimal or blank,\nor brings in a frame drawn elsewhere."),
                 egui::FontId::proportional(14.0),
                 pal.muted,
             );

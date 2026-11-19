@@ -134,6 +134,11 @@ pub fn host_frame(model: &Model, id: ElementId) -> Option<DAffine3> {
             o.position.extend(elevation(Some(o.level))),
         ),
         ElementKind::Guide(g) => along(g.a + DVec3::Z * elevation(g.level), g.b - g.a),
+        // a pipe's axis: a dimension to it follows the pipe
+        ElementKind::Pipe(p) => along(
+            p.start + DVec3::Z * elevation(Some(p.level)),
+            p.end - p.start,
+        ),
         ElementKind::FreeMesh(m) => DAffine3::from_mat3_translation(
             DMat3::from_rotation_z(m.rotation.to_radians()) * m.scale,
             m.origin + DVec3::Z * elevation(m.level),
@@ -969,7 +974,10 @@ pub fn rehosted(
     const NEAR: f64 = 2e-3;
     for p in out.points_mut() {
         let on_opening = p.host.is_some_and(|h| {
-            matches!(model.get(h).map(|e| &e.kind), Some(ElementKind::Opening(_)))
+            matches!(
+                model.get(h).map(|e| &e.kind),
+                Some(ElementKind::Opening(_) | ElementKind::Pipe(_))
+            )
         });
         if on_opening {
             continue;
@@ -977,6 +985,29 @@ pub fn rehosted(
         let Some(q) = resolve(model, view, p) else {
             continue;
         };
+        // a point on a pipe (its axis or its outline) is the pipe's: the
+        // dimension then goes with the pipe and moves it when typed
+        let on_pipe = model.iter().find_map(|e| {
+            let ElementKind::Pipe(pp) = &e.kind else {
+                return None;
+            };
+            if pp.level != level {
+                return None;
+            }
+            let (a, b) = (pp.start.truncate(), pp.end.truncate());
+            let ab = b - a;
+            let t = if ab.length_squared() < 1e-12 {
+                0.0
+            } else {
+                ((q - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0)
+            };
+            let r = (pp.outer_mm / 2.0 + pp.insulation_mm) / 1000.0;
+            (q.distance(a + ab * t) <= r + NEAR).then_some(e.id)
+        });
+        if let Some(pipe) = on_pipe {
+            *p = attach(model, view, Some(pipe), q);
+            continue;
+        }
         let mut best: Option<(u8, ElementId)> = None;
         for e in model.iter() {
             let ElementKind::Wall(w) = &e.kind else {
@@ -1091,6 +1122,46 @@ pub fn equalised(
 /// A door or window slides in its wall; a wall measured along itself is
 /// made longer or shorter at that end; anything else moves bodily, with
 /// what is joined to it.
+/// The pipes in one straight line with pipe `id`, joined end to end, on
+/// its level and in its system: what moves when it is dimensioned.
+pub fn straight_run(model: &Model, id: ElementId) -> Vec<ElementId> {
+    let pipes: Vec<(ElementId, &creabim_core::mep::Pipe)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Pipe(p) => Some((e.id, p)),
+            _ => None,
+        })
+        .collect();
+    let Some(first) = pipes.iter().find(|(i, _)| *i == id).map(|x| x.1) else {
+        return vec![];
+    };
+    let dir = (first.end - first.start).normalize_or_zero();
+    let mut run = vec![id];
+    let mut i = 0;
+    while i < run.len() {
+        let Some(p) = pipes.iter().find(|(x, _)| *x == run[i]).map(|x| x.1) else {
+            break;
+        };
+        for (oid, o) in &pipes {
+            if run.contains(oid) || o.level != first.level || o.system != first.system {
+                continue;
+            }
+            let od = (o.end - o.start).normalize_or_zero();
+            if od.cross(dir).length() > 1e-3 {
+                continue;
+            }
+            let touches = [p.start, p.end]
+                .iter()
+                .any(|a| a.distance(o.start) < 0.002 || a.distance(o.end) < 0.002);
+            if touches {
+                run.push(*oid);
+            }
+        }
+        i += 1;
+    }
+    run
+}
+
 pub fn driven(
     model: &Model,
     view: &View,
@@ -1116,7 +1187,19 @@ pub fn driven(
         return Err("Both ends are on the same element: change its size instead.".into());
     }
     let chosen = |h: &HostPoint| h.host.is_some_and(|id| prefer.contains(&id));
-    let (p, other, by) = if chosen(&hb) || (!chosen(&ha) && hb.host.is_some()) {
+    // a pipe dimensioned from the building moves, never the wall
+    let is_pipe = |h: &HostPoint| {
+        h.host
+            .and_then(|id| model.get(id))
+            .is_some_and(|e| matches!(e.kind, ElementKind::Pipe(_)))
+    };
+    let (ha_pipe, hb_pipe) = (is_pipe(&ha), is_pipe(&hb));
+    let take_b = if ha_pipe != hb_pipe {
+        hb_pipe
+    } else {
+        chosen(&hb) || (!chosen(&ha) && hb.host.is_some())
+    };
+    let (p, other, by) = if take_b {
         (hb, ha, u * delta)
     } else if ha.host.is_some() {
         (ha, hb, -u * delta)
@@ -1164,6 +1247,34 @@ pub fn driven(
             }
             for (o, n) in follow {
                 if Some(o.id) != other.host && o != n {
+                    tx = tx.replace(o, n);
+                }
+            }
+        }
+        ElementKind::Pipe(_) => {
+            // the pipe's straight run moves; what joins it stretches to
+            // stay joined
+            let run = straight_run(model, id);
+            let shift = by.extend(0.0);
+            let mut moved: Vec<creabim_core::Element> = run
+                .iter()
+                .filter_map(|r| {
+                    let mut n = model.get(*r)?.clone();
+                    if let ElementKind::Pipe(p) = &mut n.kind {
+                        p.start += shift;
+                        p.end += shift;
+                    }
+                    Some(n)
+                })
+                .collect();
+            let follow = creabim_core::joins::follow(model, &mut moved);
+            for n in moved {
+                if let Some(o) = model.get(n.id) {
+                    tx = tx.replace(o.clone(), n);
+                }
+            }
+            for (o, n) in follow {
+                if !run.contains(&o.id) && o != n {
                     tx = tx.replace(o, n);
                 }
             }

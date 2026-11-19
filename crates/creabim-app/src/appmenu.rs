@@ -641,7 +641,7 @@ impl CreaBimApp {
                         ui.painter().text(
                             egui::pos2(at.right() + 8.0, r.center().y),
                             egui::Align2::LEFT_CENTER,
-                            "Settings",
+                            crate::i18n::tr("Settings"),
                             egui::FontId::proportional(14.0),
                             p.text.gamma_multiply(t),
                         );

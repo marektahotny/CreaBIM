@@ -294,6 +294,16 @@ fn grips(model: &Model, it: &PlanItem, mm: f64) -> Vec<(DVec2, Grab)> {
             Shape::Level { at, line_end, .. } => {
                 vec![(*at, Grab::LevelHead(*id, line_end.unwrap_or(*at)))]
             }
+            // a spot level's mark: in a section it slides along its height,
+            // still bound to what it stands on
+            Shape::Spot { at, text_at, plan } => {
+                let g = if *plan {
+                    *text_at
+                } else {
+                    DVec2::new(text_at.x, at.y)
+                };
+                vec![(g, Grab::Shape(*id))]
+            }
             _ => vec![],
         },
         PlanItem::Tag {
