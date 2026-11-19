@@ -179,7 +179,7 @@ impl Builds {
             let scene = match scene {
                 Ok(s) => s,
                 Err(_) => {
-                    crate::actlog::line("worker: the 3D scene failed".to_string());
+                    crate::actlog::line("worker: the 3D scene failed");
                     Arc::new(vec![])
                 }
             };
