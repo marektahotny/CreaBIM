@@ -215,6 +215,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The Pipe tool in foul drainage: PP-HT DN 100 falling 2 %",
             ),
             act(
+                "calc:drain",
+                "Calculate drainage",
+                "gauge",
+                "Size the waste pipes and stacks from the fixtures on them: Qww = K·√ΣDU, horizontal pipes half full on their fall, stacks by their capacity (STN EN 12056-2)",
+            ),
+            act(
                 "pipe:D",
                 "Rainwater pipe",
                 "roof-flat",

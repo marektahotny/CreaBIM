@@ -5,7 +5,7 @@
 
 use super::CreaBimApp;
 use creabim_core::{ElementId, ElementKind, Model, Transaction};
-use creabim_services::{firewater, gas, heating, storm};
+use creabim_services::{firewater, gas, heating, sanitary, storm};
 use eframe::egui::{self, Vec2};
 
 /// The calculation shown.
@@ -14,6 +14,7 @@ pub(super) enum NetCalc {
     Fire(Option<firewater::FireResult>),
     Gas(Option<gas::GasResult>, Box<gas::GasSettings>),
     Heat(Option<heating::HeatResult>, heating::HeatSettings),
+    Drain(Option<sanitary::DrainResult>, sanitary::DrainSettings),
 }
 
 impl NetCalc {
@@ -22,6 +23,12 @@ impl NetCalc {
     }
     fn fire(model: &Model) -> Self {
         NetCalc::Fire(firewater::run(model, "PV"))
+    }
+    fn drain(model: &Model, s: sanitary::DrainSettings) -> Self {
+        NetCalc::Drain(
+            sanitary::run(model, "K", &creabim_services::Settings::default(), &s),
+            s,
+        )
     }
     fn heat(model: &Model, s: heating::HeatSettings) -> Self {
         NetCalc::Heat(heating::run(model, &s), s)
@@ -36,6 +43,7 @@ impl NetCalc {
             NetCalc::Fire(Some(r)) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             NetCalc::Gas(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             NetCalc::Heat(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
+            NetCalc::Drain(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             _ => vec![],
         }
     }
@@ -96,6 +104,7 @@ impl CreaBimApp {
         self.net_calc = Some(match arg {
             "storm" => NetCalc::storm(self.doc.model()),
             "fire" => NetCalc::fire(self.doc.model()),
+            "drain" => NetCalc::drain(self.doc.model(), sanitary::DrainSettings::default()),
             "heating" => NetCalc::heat(self.doc.model(), heating::HeatSettings::default()),
             "gas" => NetCalc::gas(self.doc.model(), gas::GasSettings::default()),
             _ => return false,
@@ -122,6 +131,11 @@ impl CreaBimApp {
             NetCalc::Fire(_) => "Fire main calculation",
             NetCalc::Gas(..) => "Gas installation calculation",
             NetCalc::Heat(..) => "Heating pipes calculation",
+            NetCalc::Drain(..) => "Foul drainage calculation",
+        };
+        let mut drain_settings = match calc {
+            NetCalc::Drain(_, s) => Some(*s),
+            _ => None,
         };
         let mut heat_settings = match calc {
             NetCalc::Heat(_, s) => Some(*s),
@@ -162,6 +176,19 @@ impl CreaBimApp {
                 egui::ScrollArea::vertical().show(ui, |ui| match calc {
                     NetCalc::Storm(None) => {
                         ui.label(t("Draw rainwater pipes (D) from the roof drains to where they leave the building, put a roof drain on each stack's top, then calculate."));
+                    }
+                    NetCalc::Drain(r, _) => {
+                        if let Some(ds) = drain_settings.as_mut() {
+                            if drain_options(ui, ds) {
+                                again = true;
+                            }
+                        }
+                        match r {
+                            None => {
+                                ui.label(t("Draw the waste pipes (K) from each fixture's waste to where they leave the building, falling towards it, then calculate."));
+                            }
+                            Some(r) => drain_body(ui, model, r, &mut select),
+                        }
                     }
                     NetCalc::Heat(r, _) => {
                         if let Some(hs) = heat_settings.as_mut() {
@@ -382,6 +409,8 @@ impl CreaBimApp {
                 NetCalc::storm(self.doc.model())
             } else if fire {
                 NetCalc::fire(self.doc.model())
+            } else if let Some(ds) = drain_settings {
+                NetCalc::drain(self.doc.model(), ds)
             } else if let Some(hs) = heat_settings {
                 NetCalc::heat(self.doc.model(), hs)
             } else {
@@ -815,4 +844,162 @@ fn heat_body(
     ui.add_space(6.0);
     ui.weak(t("Bold: the critical circuit. At most 0.8 m/s on the mains, 0.5 m/s to one radiator, 150 Pa/m; fittings +30 %; a radiator with its valve 10 kPa, the source 15 kPa, the pump +10 %. Presetting as HERZ's programs: kv = Q / √(Δp / 100), the largest kv no more than it, upstream valves first."));
     ui.weak("STN EN 12828 · STN EN 442 · HERZ STRÖMAX MS, TS-98-V");
+}
+
+/// The drainage calculation's frequency factor: true when it changed.
+fn drain_options(ui: &mut egui::Ui, s: &mut sanitary::DrainSettings) -> bool {
+    let t = crate::i18n::tr;
+    let mut changed = false;
+    ui.horizontal_wrapped(|ui| {
+        const K: [(f64, &str); 4] = [
+            (0.5, "K = 0.5 homes, offices"),
+            (0.7, "K = 0.7 schools, hospitals, restaurants"),
+            (1.0, "K = 1.0 public toilets, showers"),
+            (1.2, "K = 1.2 laboratories"),
+        ];
+        let now = K
+            .iter()
+            .find(|k| (k.0 - s.k).abs() < 1e-9)
+            .map_or(format!("K = {}", s.k), |k| t(k.1));
+        egui::ComboBox::from_id_salt("drain.k")
+            .selected_text(now)
+            .show_ui(ui, |ui| {
+                for (k, name) in K {
+                    changed |= ui.selectable_value(&mut s.k, k, t(name)).changed();
+                }
+            });
+        changed |= ui
+            .checkbox(&mut s.swept, t("Swept branches into the stacks"))
+            .changed();
+    });
+    changed
+}
+
+fn drain_body(
+    ui: &mut egui::Ui,
+    model: &Model,
+    r: &sanitary::DrainResult,
+    select: &mut Option<ElementId>,
+) {
+    let t = crate::i18n::tr;
+    let num = crate::i18n::num;
+    let warn = |ui: &mut egui::Ui, s: String| {
+        ui.colored_label(ui.visuals().warn_fg_color, s);
+    };
+    let row = |ui: &mut egui::Ui, k: &str, v: String| {
+        crate::props::row(ui, k, |ui| ui.label(v));
+    };
+    row(
+        ui,
+        "ΣDU / fixtures",
+        format!("{} l/s / {}", num(r.sum_du, 1), r.fixtures),
+    );
+    row(
+        ui,
+        "Waste flow at the outlet Qww",
+        format!("{} l/s", num(r.flow_ls, 2)),
+    );
+    if r.outlet_dn > 0.0 {
+        row(
+            ui,
+            "Outlet pipe",
+            format!(
+                "DN {}, {} {} %, v = {} m/s",
+                num(r.outlet_dn, 0),
+                t("filled"),
+                num(r.outlet_fill * 100.0, 0),
+                num(r.outlet_velocity, 2)
+            ),
+        );
+    }
+    row(ui, "Stacks", r.stacks.to_string());
+    if r.fixtures == 0 {
+        warn(
+            ui,
+            t("No fixture drains into the pipes: end a pipe at each fixture's waste connection."),
+        );
+    }
+    if !r.unmatched.is_empty() {
+        warn(
+            ui,
+            format!(
+                "{}: {}",
+                t("Fixtures not known by their name"),
+                r.unmatched.join(", ")
+            ),
+        );
+    }
+    let n = r.pipes.iter().filter(|p| p.no_slope).count();
+    if n > 0 {
+        warn(
+            ui,
+            format!("{}: {n}", t("Horizontal pipes with no fall, taken at 2 %")),
+        );
+    }
+    let n = r.pipes.iter().filter(|p| p.too_flat).count();
+    if n > 0 {
+        warn(
+            ui,
+            format!(
+                "{}: {n}",
+                t("Horizontal pipes flatter than the least fall (1 %, connecting 2 %)")
+            ),
+        );
+    }
+    if r.pipes.iter().any(|p| p.over) {
+        warn(ui, t("Some pipes are too small even at the largest size of their type: a larger series, a steeper fall or another stack."));
+    }
+    if r.unreached > 0 {
+        warn(
+            ui,
+            format!("{}: {}", t("Pipes not joined to the network"), r.unreached),
+        );
+    }
+    let name_of = |id: ElementId| model.get(id).map_or(String::new(), |e| e.name.clone());
+    egui::Grid::new("drain.pipes")
+        .striped(true)
+        .num_columns(8)
+        .show(ui, |ui| {
+            for h in [
+                "Pipe", "Size", "Proposed", "ΣDU", "Q l/s", "Fall %", "h/d", "v m/s",
+            ] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for p in &r.pipes {
+                if ui.link(name_of(p.id)).clicked() {
+                    *select = Some(p.id);
+                }
+                ui.label(&p.size);
+                if p.over {
+                    ui.colored_label(ui.visuals().error_fg_color, &p.proposed);
+                } else {
+                    ui.label(&p.proposed);
+                }
+                ui.label(num(p.sum_du, 1));
+                ui.label(num(p.flow_ls, 2));
+                if p.stack {
+                    ui.label(t("stack"));
+                    ui.label(format!("≤ {}", num(p.capacity_ls, 1)));
+                } else {
+                    let s = num(p.slope * 100.0, 1);
+                    if p.too_flat || p.no_slope {
+                        ui.colored_label(ui.visuals().warn_fg_color, s);
+                    } else {
+                        ui.label(s);
+                    }
+                    ui.label(num(p.fill, 2));
+                }
+                let v = num(p.velocity_ms, 2);
+                if p.slow {
+                    ui.colored_label(ui.visuals().warn_fg_color, v);
+                } else {
+                    ui.label(v);
+                }
+                ui.end_row();
+            }
+        });
+    ui.add_space(6.0);
+    ui.weak(t("Qww = K·√ΣDU, no less than the largest fixture's DU. Horizontal pipes half full (h/d 0.5, kb 1 mm), connecting pipes the fixture's DN, stacks by their capacity, DN 100 downstream of a WC. Yellow: under the least fall, or slower than 0.7 m/s."));
+    ui.weak("STN EN 12056-2 · STN 75 6760");
 }

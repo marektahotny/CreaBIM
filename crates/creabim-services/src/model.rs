@@ -152,7 +152,8 @@ pub fn build(model: &Model, code: &str, s: &Settings) -> Option<ModelNetwork> {
         };
         let floor = model.level(o.level).map_or(0.0, |l| l.elevation);
         for c in fixture::connectors(model, e) {
-            if c.kind.code() != code || !matches!(c.kind, ConnKind::SV | ConnKind::TV) {
+            if c.kind.code() != code || !matches!(c.kind, ConnKind::SV | ConnKind::TV | ConnKind::K)
+            {
                 continue;
             }
             let at = c.at + DVec3::Z * floor;
