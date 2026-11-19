@@ -58,6 +58,37 @@ pub fn show(
     (csv_path, xlsx_path): (&str, &str),
     export: Option<&str>,
 ) -> Option<String> {
+    if category == ScheduleCategory::Materials {
+        // the take-off: a spreadsheet of its own; CSV as it is laid out
+        let mut message = None;
+        match export {
+            Some("csv") => {
+                let table = schedule::view_table(doc.model(), view)
+                    .unwrap_or_else(|| schedule::schedule_by(doc.model(), category, by_type));
+                let r = std::fs::write(csv_path, schedule::to_csv(&table));
+                message = Some(match r {
+                    Ok(()) => format!("{} {csv_path}", crate::i18n::tr("Exported")),
+                    Err(e) => format!("{} {csv_path}: {e}", crate::i18n::tr("Couldn't export")),
+                });
+            }
+            Some("xlsx") => {
+                let project = std::path::Path::new(xlsx_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Project")
+                    .to_string();
+                let r = creabim_geom::xlsx::schedules_xlsx(doc.model(), &project)
+                    .and_then(|b| std::fs::write(xlsx_path, b).map_err(|e| e.to_string()));
+                message = Some(match r {
+                    Ok(()) => format!("{} {xlsx_path}", crate::i18n::tr("Exported")),
+                    Err(e) => format!("{} {xlsx_path}: {e}", crate::i18n::tr("Couldn't export")),
+                });
+            }
+            _ => {}
+        }
+        let m = crate::takeoffpane::show(ui, rect, doc, view, by_type, selection);
+        return m.or(message);
+    }
     let table = schedule::schedule_by(doc.model(), category, by_type);
     let listed = table.listed;
     let materials: Vec<(ElementId, String)> = doc

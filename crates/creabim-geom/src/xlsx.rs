@@ -271,7 +271,7 @@ fn build(model: &Model, project: &str) -> Result<Vec<u8>, XlsxError> {
             ws.write_string(r, 1, totals_line(model, s))?;
             r += 1;
         }
-        let lines = takeoff::lines(model);
+        let lines = crate::takeoff::lines(model);
         let cost = takeoff::total_cost(model, &lines);
         if !lines.is_empty() {
             let priced = takeoff::by_material(model, &lines)
@@ -296,8 +296,16 @@ fn build(model: &Model, project: &str) -> Result<Vec<u8>, XlsxError> {
         ws.set_name(sheet_name(s.category.label()))?;
         write_schedule(ws, model, s, &title(s))?;
     }
-    let lines = takeoff::lines(model);
+    let lines = crate::takeoff::lines(model);
     if !lines.is_empty() {
+        // the take-off as the app lays it out by default: by element type,
+        // each material of a layered construction on its own row
+        let t =
+            crate::takeoff::table_measured(model, &creabim_core::takeoff::Layout::default(), false);
+        let ws = book.add_worksheet();
+        ws.set_name("Materials by element")?;
+        print_setup(ws);
+        write_schedule(ws, model, &t.schedule, "Materials by element type")?;
         write_takeoff(book.add_worksheet(), model, &lines)?;
         write_takeoff_lines(book.add_worksheet(), model, &lines)?;
     }
@@ -489,8 +497,8 @@ mod tests {
         // local header and in the central directory)
         let part = b"xl/worksheets/sheet";
         let parts = bytes.windows(part.len()).filter(|w| w == part).count();
-        // and the take-off's two sheets
-        assert_eq!(parts, 2 * (1 + all.len() + 2));
+        // and the take-off's three sheets (by element type, by material, lines)
+        assert_eq!(parts, 2 * (1 + all.len() + 3));
         let doors = all
             .iter()
             .find(|s| s.category == ScheduleCategory::Doors)
