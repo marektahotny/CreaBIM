@@ -984,6 +984,7 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
     // a cell's text broken to its column: a long one makes its row taller
     const LEAD: f64 = 3.4;
     let lines = |c: &Column, row: &Row, t: &str| -> Vec<String> {
+        let t = &creabim_core::words::tr(t);
         if c.numeric || row.group || t.is_empty() {
             return vec![t.to_string()];
         }

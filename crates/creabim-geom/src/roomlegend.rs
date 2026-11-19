@@ -61,7 +61,16 @@ pub fn finishes(model: &Model, e: &Element, r: &Room) -> Finishes {
         if let Some(slab) = slab_at(model, r.level, r.at) {
             if let Some((a, asm)) = creabim_core::assembly_of(model, slab) {
                 if let Some(top) = face(model, asm, false) {
-                    f.floor = format!("{top} ({})", a.name);
+                    // the finish and the floor's mark (P1), not the whole
+                    // build-up's name
+                    let mark = creabim_core::marks::manual(slab)
+                        .or_else(|| creabim_core::marks::manual(a))
+                        .map(str::to_string)
+                        .or_else(|| creabim_core::marks::mark_of(model, slab.id));
+                    f.floor = match mark {
+                        Some(m) => format!("{top} {m}"),
+                        None => top,
+                    };
                 }
             }
         }
