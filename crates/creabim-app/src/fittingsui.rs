@@ -141,6 +141,86 @@ impl CreaBimApp {
                                 }
                             });
                     }
+                    // supports and thermal expansion (the makers' manuals)
+                    let runs = creabim_services::expansion::runs(
+                        self.doc.model(),
+                        &creabim_services::expansion::Temps::default(),
+                    );
+                    let sup = creabim_services::expansion::supports(&runs);
+                    if !sup.is_empty() {
+                        ui.add_space(8.0);
+                        egui::Grid::new("fittings.supports")
+                            .num_columns(3)
+                            .striped(true)
+                            .spacing([14.0, 4.0])
+                            .show(ui, |ui| {
+                                ui.strong(t("Pipe supports (clips)"));
+                                ui.strong(t("System"));
+                                ui.strong(t("Pieces"));
+                                ui.end_row();
+                                for (system, name, d, n) in &sup {
+                                    let text = format!("{} Ø {} mm, {name}", t("Clip"), crate::i18n::num(*d, 0));
+                                    if ui.link(text).clicked() {
+                                        select = Some(
+                                            runs.iter()
+                                                .filter(|r| &r.system == system && (r.outer_mm - d).abs() < 0.05)
+                                                .flat_map(|r| r.pipes.iter().copied())
+                                                .collect(),
+                                        );
+                                    }
+                                    ui.label(system);
+                                    ui.label(n.to_string());
+                                    ui.end_row();
+                                }
+                            });
+                    }
+                    let hot: Vec<_> = runs.iter().filter(|r| r.dl.is_some_and(|d| d >= 1.0)).collect();
+                    if !hot.is_empty() {
+                        ui.add_space(8.0);
+                        ui.strong(t("Thermal expansion of the runs"));
+                        ui.weak(t(
+                            "Δl = α·L·Δt, free arm Ls = k·√(D·Δl), U compensator Lk = 2·Δl + 150 mm, at least 10·D (Wavin, HERZ). Laid at 20 °C.",
+                        ));
+                        egui::Grid::new("fittings.expansion")
+                            .num_columns(6)
+                            .striped(true)
+                            .spacing([12.0, 4.0])
+                            .show(ui, |ui| {
+                                for h in ["Run", "L, m", "Δt, K", "Δl, mm", "Ls / arm, mm", "Compensation"] {
+                                    ui.strong(t(h));
+                                }
+                                ui.end_row();
+                                let num = crate::i18n::num;
+                                for r in hot {
+                                    let name = format!("{} Ø {}", r.system, num(r.outer_mm, 0));
+                                    if ui.link(name).clicked() {
+                                        select = Some(r.pipes.clone());
+                                    }
+                                    ui.label(num(r.length, 2));
+                                    ui.label(num(r.dt, 0));
+                                    ui.label(num(r.dl.unwrap_or(0.0), 1));
+                                    ui.label(format!(
+                                        "{} / {}",
+                                        num(r.arm_needed.unwrap_or(0.0), 0),
+                                        r.arm_there.map_or("-".into(), |a| num(a, 0))
+                                    ));
+                                    if r.arms_ok() {
+                                        ui.label(t("the turn takes it"));
+                                    } else {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(190, 90, 30),
+                                            format!(
+                                                "{} {} mm {}",
+                                                t("U compensator"),
+                                                num(r.compensator.unwrap_or(0.0), 0),
+                                                t("or a fixed point halfway")
+                                            ),
+                                        );
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                    }
                     // the valves and accessories put on the pipes
                     if !valves.is_empty() {
                         ui.add_space(8.0);
