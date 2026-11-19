@@ -375,7 +375,10 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
     text(&mut items, DVec2::new(0.0, 5.0), title, 5.0, None);
     let mut y = -2.0;
     let trade = trade_of(model, view);
-    let of = |t: Trade| trade.is_none_or(|x| x == t);
+    // the site plan's legend: its networks alone
+    let site = matches!(model.get(view).map(|e| &e.kind),
+        Some(ElementKind::View(v)) if v.site_legend);
+    let of = |t: Trade| !site && trade.is_none_or(|x| x == t);
     let mut systems = systems(model);
     systems.retain(|(s, _)| trade.is_none_or(|t| t.shows(s.kind)));
     if !systems.is_empty() {
@@ -405,7 +408,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         y -= 3.0;
     }
     // the utility networks of the site, with the water and drains
-    let nets = if of(Trade::Plumbing) {
+    let nets = if site || of(Trade::Plumbing) {
         networks(model)
     } else {
         vec![]
@@ -846,5 +849,22 @@ mod tests {
             })
             .collect();
         assert!(texts.iter().any(|t| t == "UTILITY NETWORKS"), "{texts:?}");
+        // the site plan's legend: the networks alone
+        let mut v = creabim_core::View::schedule(creabim_core::ScheduleCategory::ServicesLegend);
+        v.site_legend = true;
+        let ve = Element::new("Site legend", ElementKind::View(v));
+        let vid = ve.id;
+        Transaction::new("v").insert(ve).apply(&mut m).unwrap();
+        let d = drawing(vid, "Legend", &m);
+        let heads: Vec<String> = d
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                PlanItem::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(heads.iter().any(|t| t == "UTILITY NETWORKS"));
+        assert!(!heads.iter().any(|t| t == "PIPES"));
     }
 }

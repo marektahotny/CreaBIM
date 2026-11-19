@@ -2136,6 +2136,9 @@ pub struct View {
     /// other plan leaves the lintels out (sections show them as cut).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub masonry: bool,
+    /// A legend for the site plan: only the utility networks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub site_legend: bool,
     /// The storey a legend of rooms lists; none lists every storey's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub of_level: Option<ElementId>,
@@ -2554,6 +2557,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
             takeoff: Default::default(),
@@ -2592,6 +2596,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
             takeoff: Default::default(),
@@ -2627,6 +2632,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
             takeoff: Default::default(),
@@ -2663,6 +2669,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
             takeoff: Default::default(),
@@ -2704,6 +2711,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
             takeoff: Default::default(),

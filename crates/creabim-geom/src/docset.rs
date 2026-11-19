@@ -265,7 +265,19 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
             v.scale = 200.0;
             b.view(tr("Site plan"), v)
         });
-    b.sheet("C00_SIT_001".into(), tr("Site plan"), &[site]);
+    // its legend once networks are drawn
+    let legend = (!crate::serviceslegend::networks(model).is_empty()).then(|| {
+        b.find(|_, v| v.site_legend).unwrap_or_else(|| {
+            let mut v = View::schedule(ScheduleCategory::ServicesLegend);
+            v.site_legend = true;
+            b.view(tr("Site plan legend"), v)
+        })
+    });
+    b.sheet(
+        "C00_SIT_001".into(),
+        tr("Site plan"),
+        &std::iter::once(site).chain(legend).collect::<Vec<_>>(),
+    );
 
     // D S01 ASR: foundations, a plan a storey, the roof, sections,
     // elevations, the lists of windows and doors
@@ -459,6 +471,7 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
             .find(|_, v| {
                 matches!(v.kind, ViewKind::Schedule { category, .. }
                     if category == ScheduleCategory::ServicesLegend)
+                    && !v.site_legend
                     && (v.trade == Some(trade)
                         || (v.trade.is_none() && matches!(trade, Trade::Plumbing | Trade::Heating)))
             })
