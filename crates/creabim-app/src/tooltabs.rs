@@ -141,6 +141,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "A ZIP from Pilon Map Downloader: the cadastre and site plan, the orthophoto under it, the terrain, and where the project lies in S-JTSK and above sea level",
             ),
             act(
+                "catalogue.cat:site",
+                "Site and connections",
+                "box",
+                "The water meter shaft with its assembly, Wavin Tegra 425 and 600 inspection chambers, the electricity meter pillar and the gas meter box, from the catalogue",
+            ),
+            act(
                 "site:coords",
                 "S-JTSK coordinates",
                 "crosshair",

@@ -180,6 +180,7 @@ impl CreaBimApp {
                     "medical" => Some(ObjectCategory::Medical),
                     "electrical" => Some(ObjectCategory::Electrical),
                     "lighting" => Some(ObjectCategory::Lighting),
+                    "site" => Some(ObjectCategory::Site),
                     _ => None,
                 };
                 self.open_catalogue_at(c);

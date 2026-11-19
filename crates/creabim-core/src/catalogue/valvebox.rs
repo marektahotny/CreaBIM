@@ -116,7 +116,7 @@ pub fn gas_rgb(gas: &str) -> [u8; 3] {
 }
 
 /// A round bar of radius `r` from `a` to `b`, closed and facing out.
-fn rod(a: DVec3, b: DVec3, r: f64) -> EditMesh {
+pub(super) fn rod(a: DVec3, b: DVec3, r: f64) -> EditMesh {
     let d = b - a;
     let len = d.length();
     let w = d / len;

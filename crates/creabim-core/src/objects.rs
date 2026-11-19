@@ -46,12 +46,15 @@ pub enum ObjectCategory {
     Medical,
     /// Cars, people and other figures that give a drawing its scale.
     Entourage,
+    /// What stands on the plot where the networks come in: the water
+    /// meter shaft, inspection chambers, the meter pillars, soakaways.
+    Site,
     #[default]
     Other,
 }
 
 impl ObjectCategory {
-    pub const ALL: [ObjectCategory; 13] = [
+    pub const ALL: [ObjectCategory; 14] = [
         ObjectCategory::Bathroom,
         ObjectCategory::Kitchen,
         ObjectCategory::Living,
@@ -64,6 +67,7 @@ impl ObjectCategory {
         ObjectCategory::Hvac,
         ObjectCategory::Medical,
         ObjectCategory::Entourage,
+        ObjectCategory::Site,
         ObjectCategory::Other,
     ];
 
@@ -81,6 +85,7 @@ impl ObjectCategory {
             ObjectCategory::Hvac => "Heating and ventilation",
             ObjectCategory::Medical => "Medical gases",
             ObjectCategory::Entourage => "Entourage",
+            ObjectCategory::Site => "Site and connections",
             ObjectCategory::Other => "Other",
         }
     }
@@ -95,6 +100,7 @@ impl ObjectCategory {
                 | ObjectCategory::Plumbing
                 | ObjectCategory::Hvac
                 | ObjectCategory::Medical
+                | ObjectCategory::Site
         )
     }
 
@@ -109,6 +115,7 @@ impl ObjectCategory {
             ObjectCategory::Plumbing => "P",
             ObjectCategory::Hvac => "M",
             ObjectCategory::Medical => "G",
+            ObjectCategory::Site => "X",
             _ => "F",
         }
     }
@@ -231,6 +238,34 @@ pub const IFC_CLASSES: &[(&str, &str, &[&str])] = &[
             "POINTSOURCE",
             "DIRECTIONSOURCE",
             "SECURITYLIGHTING",
+            "USERDEFINED",
+            "NOTDEFINED",
+        ],
+    ),
+    (
+        "IfcDistributionChamberElement",
+        "IfcDistributionChamberElementType",
+        &[
+            "FORMEDDUCT",
+            "INSPECTIONCHAMBER",
+            "INSPECTIONPIT",
+            "MANHOLE",
+            "METERCHAMBER",
+            "SUMP",
+            "TRENCH",
+            "VALVECHAMBER",
+            "USERDEFINED",
+            "NOTDEFINED",
+        ],
+    ),
+    (
+        "IfcFlowMeter",
+        "IfcFlowMeterType",
+        &[
+            "ENERGYMETER",
+            "GASMETER",
+            "OILMETER",
+            "WATERMETER",
             "USERDEFINED",
             "NOTDEFINED",
         ],
