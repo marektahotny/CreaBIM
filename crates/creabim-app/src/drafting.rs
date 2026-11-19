@@ -316,7 +316,7 @@ impl CreaBimApp {
         }
         let mut open = true;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Annotation styles")
+        crate::app::shell::window(crate::i18n::tr("Annotation styles"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 70.0))
             .constrain_to(area)
@@ -573,7 +573,7 @@ impl CreaBimApp {
         }
         let mut open = true;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Sheet templates")
+        crate::app::shell::window(crate::i18n::tr("Sheet templates"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(60.0, 80.0))
             .constrain_to(area)

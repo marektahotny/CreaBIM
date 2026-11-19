@@ -6200,7 +6200,7 @@ impl CreaBimApp {
         let mut n = n;
         let mut open = true;
         let mut changed = false;
-        crate::app::shell::window("Note text")
+        crate::app::shell::window(crate::i18n::tr("Note text"))
             .id(egui::Id::new(("note-editor", id)))
             .open(&mut open)
             .default_size([520.0, 420.0])
@@ -8091,7 +8091,7 @@ impl CreaBimApp {
         let mut go = false;
         let mut cancel = false;
         let x = &mut self.sheets_export;
-        crate::app::shell::window("Export sheets")
+        crate::app::shell::window(crate::i18n::tr("Export sheets"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -9346,7 +9346,7 @@ crate::props::row(ui, "File names", |ui| {
         let mut go = false;
         let id_d = egui::Id::new("calibrate.distance");
         let mut d: f64 = ctx.data(|m| m.get_temp(id_d)).unwrap_or(a.distance(b));
-        crate::app::shell::window("Calibrate")
+        crate::app::shell::window(crate::i18n::tr("Calibrate"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -13669,7 +13669,7 @@ impl CreaBimApp {
         };
         let mut open = true;
         let mut done = false;
-        crate::app::shell::window("Step")
+        crate::app::shell::window(crate::i18n::tr("Step"))
             .collapsible(false)
             .resizable(false)
             .open(&mut open)

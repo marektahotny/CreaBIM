@@ -51,15 +51,12 @@ pub fn outer_walls(model: &Model, level: ElementId) -> Vec<ElementId> {
                 let p = mid + n * side * (w.thickness / 2.0 + 0.01);
                 [-60.0f64, -30.0, 0.0, 30.0, 60.0].iter().any(|deg| {
                     let d = DVec2::from_angle(deg.to_radians()).rotate(n * *side);
-                    !walls
-                        .iter()
-                        .filter(|(o, _)| o != id)
-                        .any(|(_, o)| {
-                            // a little past its ends, so a ray doesn't slip
-                            // through the corner where two walls meet
-                            let along = (o.end - o.start).normalize() * o.thickness;
-                            ray_hits(p, d, o.start - along, o.end + along)
-                        })
+                    !walls.iter().filter(|(o, _)| o != id).any(|(_, o)| {
+                        // a little past its ends, so a ray doesn't slip
+                        // through the corner where two walls meet
+                        let along = (o.end - o.start).normalize() * o.thickness;
+                        ray_hits(p, d, o.start - along, o.end + along)
+                    })
                 })
             })
         });
@@ -211,8 +208,8 @@ pub fn footprint(model: &Model, own: ElementId, cut_height: f64) -> Vec<PlanItem
     for i in 0..bare_walls.len() {
         for end in 0..2 {
             let p = orig[i][end];
-            let Some(j) = (0..orig.len())
-                .find(|&j| j != i && orig[j].iter().any(|q| q.distance(p) < 1e-3))
+            let Some(j) =
+                (0..orig.len()).find(|&j| j != i && orig[j].iter().any(|q| q.distance(p) < 1e-3))
             else {
                 continue;
             };
@@ -350,7 +347,11 @@ mod tests {
             .iter()
             .filter(|e| matches!(&e.kind, ElementKind::Wall(w) if w.level == ground))
             .count();
-        assert!(!outer.is_empty() && outer.len() < all, "{} of {all}", outer.len());
+        assert!(
+            !outer.is_empty() && outer.len() < all,
+            "{} of {all}",
+            outer.len()
+        );
         let grey: HashSet<ElementId> = d
             .items
             .iter()

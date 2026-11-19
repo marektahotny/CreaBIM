@@ -655,7 +655,7 @@ impl CreaBimApp {
                 (w, egui::pos2(area.max.x - w - 16.0, area.min.y + 64.0))
             }
         };
-        crate::app::shell::window("Catalogue")
+        crate::app::shell::window(crate::i18n::tr("Catalogue"))
             .resizable(true)
             .open(&mut open)
             .default_pos(pos)
@@ -681,6 +681,7 @@ impl CreaBimApp {
                     cat.category.is_none_or(|k| k == c.object.category)
                         && (filter.is_empty()
                             || c.name.to_lowercase().contains(&filter)
+                            || crate::i18n::tr(&c.name).to_lowercase().contains(&filter)
                             || c.description.to_lowercase().contains(&filter))
                 };
                 let tile = |ui: &mut egui::Ui,
@@ -705,11 +706,11 @@ impl CreaBimApp {
                                 )
                                 .selected(picked),
                             ),
-                            None => ui.add(egui::Button::new(&c.name).selected(picked)),
+                            None => ui.add(egui::Button::new(crate::i18n::tr(&c.name)).selected(picked)),
                         };
                         let r = r.on_hover_text(crate::i18n::tr(&format!(
                             "{}\n{} × {} × {}\n{} {}\n{}",
-                            c.name,
+                            crate::i18n::tr(&c.name),
                             crate::units::len(s.x),
                             crate::units::len(s.y),
                             crate::units::len(s.z),
@@ -732,7 +733,7 @@ impl CreaBimApp {
                                 }
                             });
                         }
-                        ui.add(egui::Label::new(egui::RichText::new(&c.name).size(11.5)).wrap());
+                        ui.add(egui::Label::new(egui::RichText::new(crate::i18n::tr(&c.name)).size(11.5)).wrap());
                     });
                 };
                 let bottom = 118.0;
@@ -761,7 +762,7 @@ impl CreaBimApp {
                                 continue;
                             }
                             ui.label(
-                                egui::RichText::new(heading.to_uppercase())
+                                egui::RichText::new(crate::i18n::tr(heading).to_uppercase())
                                     .size(10.5)
                                     .strong()
                                     .color(ui.visuals().weak_text_color()),

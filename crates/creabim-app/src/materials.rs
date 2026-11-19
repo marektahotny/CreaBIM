@@ -622,7 +622,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Materials")
+        crate::app::shell::window(crate::i18n::tr("Materials"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(16.0, 16.0))
             .constrain_to(area)

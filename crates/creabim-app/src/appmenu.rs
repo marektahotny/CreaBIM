@@ -602,7 +602,7 @@ impl CreaBimApp {
             ("Keymap", "keyboard"),
         ];
         let height = (area.height() - 80.0).clamp(300.0, 560.0);
-        crate::app::shell::window("Settings")
+        crate::app::shell::window(crate::i18n::tr("Settings"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(310.0, height / 2.0))
             .constrain_to(area)
@@ -983,7 +983,7 @@ impl CreaBimApp {
         }
         let mut open = true;
         let mut pick = None;
-        crate::app::shell::window("New project")
+        crate::app::shell::window(crate::i18n::tr("New project"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -1038,7 +1038,7 @@ impl CreaBimApp {
         let mut go = false;
         let mut cancel = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Export IFC")
+        crate::app::shell::window(crate::i18n::tr("Export IFC"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(230.0, 160.0))
             .constrain_to(area)
@@ -1123,7 +1123,7 @@ impl CreaBimApp {
         // the plot's data asked of the cadastre
         let mut cadastre = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Project information")
+        crate::app::shell::window(crate::i18n::tr("Project information"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(200.0, 220.0))
             .constrain_to(area)

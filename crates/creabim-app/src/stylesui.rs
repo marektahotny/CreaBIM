@@ -840,7 +840,7 @@ impl CreaBimApp {
             .filter(|i| matches!(model.get(*i).map(|e| &e.kind), Some(ElementKind::View(_))))
             .collect();
         let mut give_template: Option<String> = None;
-        crate::app::shell::window("Graphic styles")
+        crate::app::shell::window(crate::i18n::tr("Graphic styles"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
             .default_size(Vec2::new(940.0, 560.0))
