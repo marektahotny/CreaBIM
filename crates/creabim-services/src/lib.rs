@@ -32,6 +32,7 @@ pub mod herzdp;
 pub mod herzvalves;
 pub mod hpsizing;
 pub mod hydraulics;
+pub mod makerzeta;
 pub mod medgas;
 pub mod model;
 pub mod network;
