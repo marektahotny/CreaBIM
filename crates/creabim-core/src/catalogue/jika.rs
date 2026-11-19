@@ -354,7 +354,7 @@ fn deep_on_modul() -> CatalogueObject {
         "jika-wc-deep-modul",
         "JIKA Deep WC on Modul frame",
         "JIKA Deep wall-hung rimless pan H8206160000001 (360 × 510, top 430 mm) on the JIKA Modul WC system frame H8956520000001 (450 × 1120, concealed cistern 3/6 l, bend DN 90/110) in a plasterboard pre-wall 600 × 175 × 1200 with the flush plate; water DN 15 (R1/2) at the top of the frame, waste DN 100 from the bend",
-        ObjectCategory::Bathroom,
+        ObjectCategory::Toilet,
         ("IfcSanitaryTerminal", "TOILETPAN"),
         Mount::Wall,
     )

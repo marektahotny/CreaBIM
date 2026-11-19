@@ -222,33 +222,16 @@ pub fn compass(az: f64) -> &'static str {
     ["S", "SV", "V", "JV", "J", "JZ", "Z", "SZ"][(az.rem_euclid(360.0) / 45.0).round() as usize % 8]
 }
 
-/// What a room is, for its gains inside.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Use {
-    Home,
-    Kitchen,
-    Office,
-    /// A bathroom, a corridor, a store: not cooled.
-    Service,
-}
+/// What a room is, for its gains inside: [`RoomType`]'s table.
+pub use creabim_core::roomtype::Gains as Use;
+use creabim_core::roomtype::RoomType;
 
-/// A room's use from its name and occupancy.
+/// A room's use from a text naming it (its name or occupancy).
 pub fn use_of(text: &str) -> Use {
-    let t = text.to_lowercase();
-    let has = |keys: &[&str]| keys.iter().any(|k| t.contains(k));
-    if has(&[
-        "kúpeľ", "kupel", "wc", "toalet", "sprch", "bath", "shower", "chodb", "hala", "corridor",
-        "hall", "zádver", "zadver", "garáž", "garaz", "garage", "sklad", "store", "komor", "techn",
-        "kotol", "boiler", "plant", "schod", "stair", "pivni", "cellar", "práč", "laundry", "šatn",
-    ]) {
-        Use::Service
-    } else if has(&["kancel", "office", "zasada", "meeting"]) {
-        Use::Office
-    } else if has(&["kuchy", "kitchen"]) {
-        Use::Kitchen
-    } else {
-        Use::Home
-    }
+    RoomType::find(text)
+        .unwrap_or(RoomType::Other)
+        .needs()
+        .gains
 }
 
 /// One part of a room's load.
@@ -324,7 +307,7 @@ pub fn fancoil_pick(kw: f64) -> f64 {
 fn one(hl: &RoomLoss, d_u: f64, s: &Settings, perimeter: f64) -> RoomLoad {
     let sc = s.g / G_SINGLE;
     let fc = s.shading.fc();
-    let usage = use_of(&hl.name);
+    let usage = hl.kind.needs().gains;
     let mut hourly = [0.0; 15];
     let (mut glazed, mut faces): (f64, Vec<&'static str>) = (0.0, vec![]);
     let (mut win_k, mut win_a, mut wall_k, mut wall_a, mut roof_k, mut roof_a) =

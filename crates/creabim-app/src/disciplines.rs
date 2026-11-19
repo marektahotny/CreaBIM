@@ -195,6 +195,7 @@ impl CreaBimApp {
             "catalogue.cat" => {
                 let c = match arg {
                     "bathroom" => Some(ObjectCategory::Bathroom),
+                    "wc" => Some(ObjectCategory::Toilet),
                     "kitchen" => Some(ObjectCategory::Kitchen),
                     "plumbing" => Some(ObjectCategory::Plumbing),
                     "hvac" => Some(ObjectCategory::Hvac),

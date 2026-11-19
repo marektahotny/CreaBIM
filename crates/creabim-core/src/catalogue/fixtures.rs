@@ -211,7 +211,7 @@ fn wc_wall_hung() -> CatalogueObject {
         f,
         "WC, wall-hung with concealed cistern",
         "Wall-hung pan 360 × 530, rim 400 mm, on an installation frame in the wall (500 wide, 1120 high, 120 deep or more) with its concealed cistern and flush plate; water DN 15 in the frame, waste DN 100",
-        ObjectCategory::Bathroom,
+        ObjectCategory::Toilet,
         ("IfcSanitaryTerminal", "TOILETPAN"),
         Mount::Wall,
     )
@@ -248,7 +248,7 @@ fn urinal() -> CatalogueObject {
         f,
         "Urinal",
         "Wall-hung urinal with a flush valve, rim at 650 mm",
-        ObjectCategory::Bathroom,
+        ObjectCategory::Toilet,
         ("IfcSanitaryTerminal", "URINAL"),
         Mount::Wall,
     )

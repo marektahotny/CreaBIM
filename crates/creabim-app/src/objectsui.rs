@@ -678,7 +678,7 @@ impl CreaBimApp {
                 ui.separator();
                 let filter = cat.filter.to_lowercase();
                 let wanted = |c: &CatalogueObject| {
-                    cat.category.is_none_or(|k| k == c.object.category)
+                    cat.category.is_none_or(|k| k.includes(c.object.category))
                         && (filter.is_empty()
                             || c.name.to_lowercase().contains(&filter)
                             || crate::i18n::tr(&c.name).to_lowercase().contains(&filter)

@@ -32,6 +32,17 @@ pub enum ObjectCategory {
     Dining,
     Bedroom,
     Office,
+    /// WC pans, urinals, their flush valves and small hand basins.
+    Toilet,
+    /// Halls, corridors and entrances: wardrobes, shoe cabinets.
+    Hall,
+    /// Boiler, heat pump and other technical rooms.
+    Utility,
+    Laundry,
+    /// Storerooms and pantries.
+    Storage,
+    Garage,
+    Children,
     /// Sockets, switches, distribution boards and detectors.
     Electrical,
     /// Ceiling, wall and recessed lights.
@@ -54,13 +65,20 @@ pub enum ObjectCategory {
 }
 
 impl ObjectCategory {
-    pub const ALL: [ObjectCategory; 14] = [
+    pub const ALL: [ObjectCategory; 21] = [
         ObjectCategory::Bathroom,
         ObjectCategory::Kitchen,
         ObjectCategory::Living,
         ObjectCategory::Dining,
         ObjectCategory::Bedroom,
         ObjectCategory::Office,
+        ObjectCategory::Toilet,
+        ObjectCategory::Hall,
+        ObjectCategory::Utility,
+        ObjectCategory::Laundry,
+        ObjectCategory::Storage,
+        ObjectCategory::Garage,
+        ObjectCategory::Children,
         ObjectCategory::Electrical,
         ObjectCategory::Lighting,
         ObjectCategory::Plumbing,
@@ -79,6 +97,13 @@ impl ObjectCategory {
             ObjectCategory::Dining => "Dining",
             ObjectCategory::Bedroom => "Bedroom",
             ObjectCategory::Office => "Office",
+            ObjectCategory::Toilet => "WC",
+            ObjectCategory::Hall => "Hall and corridor",
+            ObjectCategory::Utility => "Technical room",
+            ObjectCategory::Laundry => "Laundry",
+            ObjectCategory::Storage => "Storeroom",
+            ObjectCategory::Garage => "Garage",
+            ObjectCategory::Children => "Children's room",
             ObjectCategory::Electrical => "Electrical",
             ObjectCategory::Lighting => "Lighting",
             ObjectCategory::Plumbing => "Plumbing",
@@ -108,7 +133,7 @@ impl ObjectCategory {
     /// a light, F01 for a sofa (see [`crate::marks::object_marks`]).
     pub fn mark_prefix(self) -> &'static str {
         match self {
-            ObjectCategory::Bathroom => "S",
+            ObjectCategory::Bathroom | ObjectCategory::Toilet => "S",
             ObjectCategory::Kitchen => "K",
             ObjectCategory::Electrical => "E",
             ObjectCategory::Lighting => "L",
@@ -118,6 +143,13 @@ impl ObjectCategory {
             ObjectCategory::Site => "X",
             _ => "F",
         }
+    }
+
+    /// Whether the catalogue opened at this category lists `other` too:
+    /// a bathroom has its WC as well, so Bathroom (the sanitary fixtures)
+    /// shows the WC category's pans and urinals.
+    pub fn includes(self, other: ObjectCategory) -> bool {
+        self == other || (self == ObjectCategory::Bathroom && other == ObjectCategory::Toilet)
     }
 
     pub fn from_label(s: &str) -> ObjectCategory {
