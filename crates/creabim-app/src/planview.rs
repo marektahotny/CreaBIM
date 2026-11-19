@@ -4046,6 +4046,7 @@ fn under_pointer(
         if let Some(c) = r.outline() {
             if (0..4).any(|i| segment_distance(p, c[i], c[(i + 1) % 4]) < tol) {
                 under.push(id);
+                continue;
             }
         }
     }
@@ -4055,6 +4056,38 @@ fn under_pointer(
         _ => HashSet::new(),
     };
     for id in ray_pick_all(doc.model(), &scene, view, kind, p, Some(&drawn)) {
+        if !under.contains(&id) {
+            under.push(id);
+        }
+    }
+    // clouds last: their points are everywhere, what is drawn goes first
+    let mut clouds = vec![];
+    // a cloud a section cuts, by any of its points it shows
+    for (id, r) in crate::trace::clouds_in_section(doc.model(), view) {
+        if r.locked || clouds.contains(&id) {
+            continue;
+        }
+        if let Some(slice) = state.ref_cache.section(doc.model(), id, r, view) {
+            if slice.nearest(p, tol).is_some() {
+                clouds.push(id);
+            }
+        }
+    }
+    for (id, r) in creabim_core::reference::in_view(doc.model(), view) {
+        if r.hidden || clouds.contains(&id) {
+            continue;
+        }
+        // a cloud is picked by any of its points the plan shows
+        if matches!(r.source, creabim_core::RefSource::Points { .. }) && !r.locked {
+            if let Some(slice) = state.ref_cache.slice(doc.model(), id, r, view) {
+                let own = r.unplace(p);
+                if slice.nearest(own, tol / r.scale.max(1e-9)).is_some() {
+                    clouds.push(id);
+                }
+            }
+        }
+    }
+    for id in clouds {
         if !under.contains(&id) {
             under.push(id);
         }
@@ -4990,6 +5023,13 @@ fn add_reference_snaps(
 ) {
     // a huge drawing is cut short rather than slowing every snap
     const MOST: usize = 20_000;
+    // a cloud cut by a section, in the section's own coordinates
+    let same = creabim_core::Reference::new(creabim_core::RefSource::View(view), vec![]);
+    for (id, r) in crate::trace::clouds_in_section(model, view) {
+        if let Some(slice) = state.ref_cache.section(model, id, r, view) {
+            s.add_cloud(slice, &same, id);
+        }
+    }
     let mut n = 0;
     for e in model.iter() {
         let ElementKind::Reference(r) = &e.kind else {

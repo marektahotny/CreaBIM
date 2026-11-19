@@ -15,6 +15,8 @@ A reference is saved with the project. One reference can show in **several views
 
 The same is in **File › Import**: *Point cloud (XYZ, LAS…)*, *PDF as an underlay*, *Picture as an underlay (PNG, JPG)* and *DXF as an underlay* add one to the open plan or section; *Terrain from surveyed points (XYZ)* makes a terrain on the working level.
 
+A **point cloud** is read in the background, with how far it has got and *Cancel* (a file kept only in the cloud, such as OneDrive's, is downloaded first). Click any of its points to select it, in a plan, a section or 3D; move and turn it by its grips or in *Properties* (X, Y, Rotation, its height by *Lifted by*). Every section and elevation shows the cloud's points in front of its line, within its depth, and drawing snaps to them.
+
 ## Placing it
 
 - Drag the **square grip** in its middle to move it.

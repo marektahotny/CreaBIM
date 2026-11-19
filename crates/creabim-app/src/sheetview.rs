@@ -653,6 +653,22 @@ fn interaction_ink() -> Color32 {
     crate::theme::interaction()
 }
 
+/// Draw on paper millimetres (y up) shown in `rect`, `center` in its
+/// middle at `zoom` points a millimetre, as a sheet is (the print preview).
+pub fn paint_paper(
+    painter: &egui::Painter,
+    rect: Rect,
+    center: DVec2,
+    zoom: f32,
+    draw: impl FnOnce(&mut dyn Canvas),
+) {
+    let mut canvas = EguiCanvas {
+        painter,
+        xf: PaperXf { rect, center, zoom },
+    };
+    draw(&mut canvas);
+}
+
 /// Draw `d` as it prints, as large as fits in `rect`: a type's preview.
 /// Lines keep their printed weights at three pixels a millimetre.
 pub fn draw_fit(painter: &egui::Painter, rect: Rect, d: &creabim_geom::PlanView) {

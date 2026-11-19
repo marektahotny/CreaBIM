@@ -947,6 +947,10 @@ impl CreaBimApp {
         }
         items.extend([
             Item::Separator,
+            Item::new("file.print", "Print sheets…")
+                .icon("printer")
+                .hint("Sheets on a printer or plotter (Ctrl+P): A4 to A0 or a roll, 1:1 or fit to the paper, colour or black and white, with a preview."),
+            Item::Separator,
             Item::Header("Export".into()),
             Item::new("export.ifc4", "IFC4 (.ifc)").icon("upload"),
             Item::new("export.ifcx", "IFC5 (.ifcx, alpha)")
@@ -1973,7 +1977,7 @@ impl CreaBimApp {
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
             | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.binddims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
-            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
+            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "file.print" | "sheet.print" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
             }
@@ -2738,6 +2742,7 @@ impl CreaBimApp {
                 };
             }
             "export.sheets" => self.sheets_export_open = true,
+            "file.print" | "sheet.print" => self.open_print(),
             "sheet.preview" => {
                 self.print_preview = !self.print_preview;
                 self.status = if self.print_preview {
@@ -3796,8 +3801,12 @@ impl CreaBimApp {
             // output
             options.push(json!({"kind": "sep"}));
             options.push(json!({
+                "kind": "button", "id": "sheet.print", "label": "Print…", "icon": "printer",
+                "hint": "This sheet, chosen sheets or all on a printer or plotter, with a preview (Ctrl+P)",
+            }));
+            options.push(json!({
                 "kind": "button", "id": "sheet.pdf", "label": "Sheet as PDF", "icon": "file-text",
-                "hint": "This sheet as a PDF (Ctrl+P); all or chosen sheets: File › Export › Sheets as PDF (Ctrl+Shift+P)",
+                "hint": "This sheet as a PDF; all or chosen sheets: File › Export › Sheets as PDF (Ctrl+Shift+P)",
             }));
             // the sheet as it prints, on white, while the paper is dark (MU21)
             options.push(json!({

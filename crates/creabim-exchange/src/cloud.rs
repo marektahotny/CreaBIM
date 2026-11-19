@@ -261,9 +261,59 @@ pub fn read_las(mut r: impl Read + Seek, most: usize) -> Result<Cloud, String> {
     Ok(c.done())
 }
 
+/// A reader that tells how far it has read, and stops when told to.
+struct Watched<'a, R> {
+    inner: R,
+    at: u64,
+    told: u64,
+    progress: &'a dyn Fn(u64) -> bool,
+}
+
+impl<R: Read> Read for Watched<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.at += n as u64;
+        if self.at - self.told >= 1 << 20 || n == 0 {
+            self.told = self.at;
+            if !(self.progress)(self.at) {
+                return Err(std::io::Error::other(CANCELLED));
+            }
+        }
+        Ok(n)
+    }
+}
+
+impl<R: Seek> Seek for Watched<'_, R> {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        let p = self.inner.seek(pos)?;
+        self.at = p;
+        Ok(p)
+    }
+}
+
+/// What a read stopped by its caller says.
+pub const CANCELLED: &str = "cancelled";
+
 /// The cloud of a file, by what the file is.
 pub fn read_file(path: &str) -> Result<Cloud, String> {
+    read_file_with(path, MOST, &|_| true)
+}
+
+/// The cloud of a file, at most about `most` points; `progress` is told
+/// the bytes read so far (about every megabyte) and stops the read by
+/// answering false, the read then failing with [`CANCELLED`].
+pub fn read_file_with(
+    path: &str,
+    most: usize,
+    progress: &dyn Fn(u64) -> bool,
+) -> Result<Cloud, String> {
     let f = std::fs::File::open(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
+    let f = Watched {
+        inner: f,
+        at: 0,
+        told: 0,
+        progress,
+    };
     let ext = std::path::Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
@@ -278,14 +328,65 @@ pub fn read_file(path: &str) -> Result<Cloud, String> {
             "{path}: the file is compressed (LAZ); save it as plain LAS (CloudCompare or las2las does it)"
         ));
     } else if las || ext == "las" {
-        read_las(r, MOST).map_err(|e| format!("{path}: {e}"))?
+        read_las(r, most).map_err(|e| {
+            if e.contains(CANCELLED) {
+                CANCELLED.to_string()
+            } else {
+                format!("{path}: {e}")
+            }
+        })?
     } else {
-        read_text(r, MOST)
+        let stop = std::cell::Cell::new(false);
+        let c = read_text(
+            Stopped {
+                inner: r,
+                stop: &stop,
+            },
+            most,
+        );
+        if stop.get() {
+            return Err(CANCELLED.into());
+        }
+        c
     };
     if c.points.is_empty() {
         return Err(format!("{path}: no points in it"));
     }
     Ok(c)
+}
+
+/// A text reader that notes when its read was stopped (read_text takes
+/// an error for the end of the file).
+struct Stopped<'a, R> {
+    inner: R,
+    stop: &'a std::cell::Cell<bool>,
+}
+
+impl<R: Read> Read for Stopped<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.read(buf).inspect_err(|e| {
+            if e.to_string() == CANCELLED {
+                self.stop.set(true);
+            }
+        })
+    }
+}
+
+impl<R: BufRead> BufRead for Stopped<'_, R> {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        match self.inner.fill_buf() {
+            Ok(b) => Ok(b),
+            Err(e) => {
+                if e.to_string() == CANCELLED {
+                    self.stop.set(true);
+                }
+                Err(e)
+            }
+        }
+    }
+    fn consume(&mut self, n: usize) {
+        self.inner.consume(n)
+    }
 }
 
 /// The points of a cloud between two heights, as a plan shows them: one
@@ -416,6 +517,46 @@ impl Cloud {
         .index()
     }
 
+    /// The points a section or an elevation shows: each point (in the
+    /// file's coordinates) `to_view` takes to the view's drawing (along
+    /// its line, height), or leaves out (behind it, past its depth), one
+    /// per cell of a grid fine enough to keep at most `most`. The slice's
+    /// points are the view's own, not the file's.
+    pub fn section(&self, to_view: &dyn Fn(DVec3) -> Option<DVec2>, most: usize) -> Slice {
+        let shown: Vec<(u32, DVec2)> = (0..self.points.len())
+            .filter_map(|n| to_view(self.at(n)).map(|q| (n as u32, q)))
+            .collect();
+        let mut cell = 0.005f64;
+        let kept = loop {
+            let mut kept: HashMap<(i64, i64), (u32, DVec2)> = HashMap::new();
+            let mut over = false;
+            for (n, q) in &shown {
+                let k = ((q.x / cell).floor() as i64, (q.y / cell).floor() as i64);
+                kept.entry(k).or_insert((*n, *q));
+                if kept.len() > most {
+                    over = true;
+                    break;
+                }
+            }
+            if !over {
+                break kept;
+            }
+            cell *= 2.0;
+        };
+        let mut kept: Vec<(u32, DVec2)> = kept.into_values().collect();
+        kept.sort_unstable_by_key(|(n, _)| *n);
+        Slice {
+            points: kept.iter().map(|(_, q)| *q).collect(),
+            rgb: if self.rgb.is_empty() {
+                vec![]
+            } else {
+                kept.iter().map(|(n, _)| self.rgb[*n as usize]).collect()
+            },
+            ..Default::default()
+        }
+        .index()
+    }
+
     /// The ground under it: its lowest point in each `cell` (metres) of
     /// the plan, within `clip`, where the file has it (PilonDesigner's
     /// terrain from a cloud).
@@ -453,6 +594,33 @@ impl Cloud {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_file_read_tells_its_progress_and_stops_when_told() {
+        let dir = std::env::temp_dir().join(format!("creabim-cloud-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("big.xyz");
+        let mut text = String::new();
+        for i in 0..200_000 {
+            text.push_str(&format!("{} {} 1.5\n", i % 100, i / 100));
+        }
+        std::fs::write(&path, &text).unwrap();
+        let path = path.display().to_string();
+        let seen = std::cell::Cell::new(0u64);
+        let c = read_file_with(&path, MOST, &|n| {
+            seen.set(n);
+            true
+        })
+        .unwrap();
+        assert_eq!(c.total, 200_000);
+        assert_eq!(seen.get(), text.len() as u64);
+        let e = read_file_with(&path, MOST, &|n| n < 1 << 20).unwrap_err();
+        assert_eq!(e, CANCELLED);
+        // fewer points kept when asked
+        let c = read_file_with(&path, 10_000, &|_| true).unwrap();
+        assert!(c.points.len() <= 10_001 && c.total == 200_000);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     use super::*;
 
     /// A LAS 1.2 file of `points` in point format 2 (with colour).
