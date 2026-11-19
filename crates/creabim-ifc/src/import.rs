@@ -1590,6 +1590,7 @@ impl<'a> Importer<'a> {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
         };
         Ok((wall, voids))
     }

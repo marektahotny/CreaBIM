@@ -884,6 +884,30 @@ fn apply_joins(model: &Model, items: &mut [SceneItem]) {
             pairs.push(if wall_wins { (sl, w) } else { (w, sl) });
         }
     }
+    // a column standing in a wall and a system lintel lying in one run
+    // through it (as the plans and sections cut them)
+    let inside = |id: ElementId| {
+        matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Column(_)))
+            || model.get(id).is_some_and(creabim_core::masonry::is_lintel)
+    };
+    let members: Vec<usize> = (0..items.len())
+        .filter(|k| boxes[*k].is_some() && inside(items[*k].id))
+        .collect();
+    for &w in &walls {
+        for &m in &members {
+            let (Some(bw), Some(bm)) = (boxes[w], boxes[m]) else {
+                continue;
+            };
+            if !overlap(bw, bm) {
+                continue;
+            }
+            let rule = rules.iter().find(|r| r.joins(items[w].id, items[m].id));
+            if rule.is_some_and(|r| !r.cleanup || r.wins(items[w].id, items[m].id) == Some(true)) {
+                continue;
+            }
+            pairs.push((w, m));
+        }
+    }
     if pairs.is_empty() {
         return;
     }

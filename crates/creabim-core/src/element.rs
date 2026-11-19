@@ -145,6 +145,10 @@ impl Element {
             ElementKind::Join(j) => vec![j.a, j.b],
             ElementKind::Detail(d) => vec![d.view],
             ElementKind::Pipe(p) => vec![p.level],
+            // a lintel goes with its door or window
+            ElementKind::Beam(b) => std::iter::once(b.level)
+                .chain(b.lintel.as_ref().and_then(|l| l.opening))
+                .collect(),
             // a valve goes with its pipe
             ElementKind::Valve(v) => vec![v.pipe],
             // a circuit's board and devices are soft
@@ -1035,6 +1039,11 @@ pub struct Wall {
     /// circle is two half-circle walls.
     #[serde(default, skip_serializing_if = "is_zero_f64")]
     pub bulge: f64,
+    /// Load-bearing (or not), set by hand; left out, a wall whose core is
+    /// as thick as the project's masonry rules say is (see
+    /// [`crate::masonry::is_bearing`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bearing: Option<bool>,
 }
 
 /// One layer's ends moved by hand: how far layer `layer` (counted from the
@@ -1192,6 +1201,7 @@ impl Wall {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
         }
     }
 
@@ -2109,6 +2119,11 @@ pub struct View {
     /// building, each trade in its colour.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub coordination: bool,
+    /// A masonry plan: it shows the system lintels and the RC columns in
+    /// walls, and the masonry walls that run too far between braces; every
+    /// other plan leaves the lintels out (sections show them as cut).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub masonry: bool,
     /// The storey a legend of rooms lists; none lists every storey's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub of_level: Option<ElementId>,
@@ -2504,6 +2519,7 @@ impl View {
             line: Default::default(),
             trade: None,
             coordination: false,
+            masonry: false,
             of_level: None,
             notes: String::new(),
             spatial: false,
@@ -2538,6 +2554,7 @@ impl View {
             line: Default::default(),
             trade: None,
             coordination: false,
+            masonry: false,
             of_level: None,
             notes: String::new(),
             spatial: false,
@@ -2569,6 +2586,7 @@ impl View {
             line: Default::default(),
             trade: None,
             coordination: false,
+            masonry: false,
             of_level: None,
             notes: String::new(),
             spatial: false,
@@ -2601,6 +2619,7 @@ impl View {
             line: Default::default(),
             trade: None,
             coordination: false,
+            masonry: false,
             of_level: None,
             notes: String::new(),
             spatial: false,
@@ -2638,6 +2657,7 @@ impl View {
             line: Default::default(),
             trade: None,
             coordination: false,
+            masonry: false,
             of_level: None,
             notes: String::new(),
             spatial: false,

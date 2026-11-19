@@ -26,6 +26,7 @@ pub mod heatplan;
 pub mod joinerylist;
 pub mod looks;
 pub mod markers;
+pub mod masonry;
 pub mod matlegend;
 pub mod members;
 pub mod mep;

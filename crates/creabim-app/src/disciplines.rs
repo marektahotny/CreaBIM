@@ -42,6 +42,27 @@ impl CreaBimApp {
                     }
                 });
         });
+        // a plan can be the storey's masonry plan: its lintels and the
+        // walls that run too far
+        if let creabim_core::ViewKind::Plan { .. } = v.kind {
+            let mut on = v.masonry;
+            let changed = crate::props::row(ui, "Masonry plan", |ui| {
+                ui.checkbox(&mut on, "")
+                    .on_hover_text(crate::i18n::tr(
+                        "Shows the system lintels and marks the masonry walls that run too far between braces; other plans leave the lintels out",
+                    ))
+                    .changed()
+            });
+            if changed {
+                let r = self.doc.edit(view, "Masonry plan", |e| {
+                    if let creabim_core::ElementKind::View(x) = &mut e.kind {
+                        x.masonry = on;
+                    }
+                });
+                self.report(r, crate::i18n::tr("Masonry plan"));
+                return;
+            }
+        }
         if now != was {
             let r = self.doc.edit(view, "Drawing for", |e| {
                 if let creabim_core::ElementKind::View(x) = &mut e.kind {

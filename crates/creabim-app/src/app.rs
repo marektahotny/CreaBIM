@@ -89,6 +89,8 @@ mod mapimport;
 mod maplink;
 #[path = "marksui.rs"]
 mod marksui;
+#[path = "masonryui.rs"]
+mod masonryui;
 #[path = "mastersui.rs"]
 mod mastersui;
 #[path = "materials.rs"]
@@ -392,6 +394,10 @@ pub struct CreaBimApp {
     valve_box: Option<creabim_core::catalogue::valvebox::ValveBoxConfig>,
     /// The soakaway being sized, while its window is open.
     soakaway: Option<soakawayui::SoakawayDraft>,
+    /// The Masonry window, while open.
+    masonry: Option<masonryui::MasonryDraft>,
+    /// A click in a plan asked for to put lintels or an RC column.
+    masonry_pick: Option<masonryui::MasonryPick>,
     /// The valve proposal window's options, while it is open.
     auto_valves: Option<creabim_core::autovalves::FillOpts>,
     /// The storm water or fire main calculation shown.
@@ -610,6 +616,8 @@ impl CreaBimApp {
             med_unit: None,
             valve_box: None,
             soakaway: None,
+            masonry: None,
+            masonry_pick: None,
             heat_source: None,
             floor_heat: None,
             radiators: None,
@@ -12508,6 +12516,8 @@ impl eframe::App for CreaBimApp {
         // centre picked for it
         if self.split.is_some() {
             self.split_steps(&ctx);
+        } else if self.masonry_pick.is_some() {
+            self.masonry_steps(&ctx);
         } else {
             self.take_picked_centre();
             self.plan.mod_guides = self.modifier_guides();
@@ -12852,6 +12862,7 @@ impl eframe::App for CreaBimApp {
         self.med_unit_window(&ctx);
         self.valve_box_window(&ctx);
         self.soakaway_window(&ctx);
+        self.masonry_window(&ctx);
         self.heat_loss_window(&ctx);
         self.floor_heat_window(&ctx);
         self.radiators_window(&ctx);

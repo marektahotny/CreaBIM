@@ -465,6 +465,16 @@ impl CreaBimApp {
             "menu:Help" => self.help_menu(),
             "menu:Create" => self.create_menu(),
             "tab:schedules" => schedule_items(),
+            "tab:masonry" => vec![
+                Item::new("masonry:plan", "Masonry plan of this storey").icon("brick-wall"),
+                Item::new("masonry:window", "Lintels and wall rules…").icon("settings"),
+                Item::Separator,
+                Item::new("masonry:lintel", "Put lintels over openings").icon("beam"),
+                Item::new("masonry:column", "RC column in a wall").icon("column"),
+                Item::Separator,
+                Item::new("masonry:check", "Check wall lengths").icon("problem"),
+                Item::new("masonry:fill", "RC columns into the long walls").icon("columns-3"),
+            ],
             "tab:ifc" => vec![
                 Item::new("open", "Open an IFC file…").icon("folder-open"),
                 Item::Separator,

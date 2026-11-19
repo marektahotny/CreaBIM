@@ -168,6 +168,38 @@ pub(super) fn wall_fields(
         }
     }
 
+    // load-bearing or not: what the masonry check measures it by
+    let auto = creabim_core::masonry::is_bearing(
+        model,
+        &Wall {
+            bearing: None,
+            ..w.clone()
+        },
+        &creabim_core::masonry::rules(model),
+    );
+    let says = |b: Option<bool>| match b {
+        None if auto => "Auto: load-bearing (by its core)",
+        None => "Auto: partition (by its core)",
+        Some(true) => "Load-bearing",
+        Some(false) => "Partition",
+    };
+    crate::props::row(ui, "Masonry", |ui| {
+        egui::ComboBox::from_id_salt(("wall.bearing", id))
+            .icon(crate::props::combo_icon)
+            .selected_text(crate::i18n::tr(says(w.bearing)))
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for b in [None, Some(true), Some(false)] {
+                    if ui
+                        .selectable_value(&mut w.bearing, b, crate::i18n::tr(says(b)))
+                        .changed()
+                    {
+                        label = "Wall load-bearing";
+                    }
+                }
+            });
+    });
+
     ui.add_space(4.0);
     crate::props::row(ui, "Joins at", |ui| {
         crate::props::flow(ui, |ui| {

@@ -115,6 +115,10 @@ pub struct ProjectInfo {
     /// The project's own profiles (MU27 block 5), for sweeps.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub profiles: Vec<crate::profiles::NamedProfile>,
+    /// How long masonry walls may run between braces, and the columns put
+    /// in them (see [`crate::masonry`]).
+    #[serde(skip_serializing_if = "crate::masonry::MasonryRules::is_default")]
+    pub masonry: crate::masonry::MasonryRules,
 }
 
 /// A picture: `width` × `height` pixels, RGBA, stored as text (see
