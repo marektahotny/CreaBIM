@@ -495,6 +495,14 @@ mod tests {
         let two = trench_length(1000.0, rain, 2.4, 1.2, VOID, 1e-5, 1.2);
         let one = trench_length(1000.0, rain, 2.4, 0.6, VOID, 1e-5, 1.2);
         assert!((two - 13.710).abs() < 5e-4 && (one - 26.038).abs() < 5e-4);
+        // its Bratislava sheet: 100 m², 50-year rain 120 min raised to
+        // 80.6 l/(s·ha), chosen by hand: 2.430 m
+        let ba = Rain {
+            minutes: 120.0,
+            intensity: 80.6,
+        };
+        let len = trench_length(100.0, ba, 2.4, 1.2, VOID, 1e-5, 1.2);
+        assert!((len - 2.43015).abs() < 1e-4, "{len}");
         let c = SoakawayConfig {
             block: Block::Db40,
             layers: 4,

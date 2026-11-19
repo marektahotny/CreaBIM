@@ -31,6 +31,9 @@ pub struct SoakawayDraft {
     /// The rain gauge station and periodicity the series was taken from.
     pub station: String,
     pub n: f64,
+    /// The rain's duration chosen by hand, min; none takes the critical
+    /// one (the one that needs the longest trench).
+    pub duration: Option<f64>,
 }
 
 impl Default for SoakawayDraft {
@@ -55,6 +58,7 @@ impl Default for SoakawayDraft {
             .collect(),
             station: String::new(),
             n: 0.2,
+            duration: None,
         }
     }
 }
@@ -262,15 +266,34 @@ impl CreaBimApp {
                             });
                         ui.end_row();
                     });
+                    ui.horizontal(|ui| {
+                        ui.label(t("Rain duration"));
+                        let text = |m: Option<f64>| match m {
+                            Some(m) => format!("{m:.0} min"),
+                            None => t("critical (worked out)"),
+                        };
+                        egui::ComboBox::from_id_salt("site.soak.duration")
+                            .selected_text(text(d.duration))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut d.duration, None, text(None));
+                                for r in &d.rains {
+                                    ui.selectable_value(&mut d.duration, Some(r.minutes), text(Some(r.minutes)));
+                                }
+                            });
+                    });
                     ui.separator();
                     let (_, w, h) = d.c.size();
                     let au = d.area_u();
-                    match critical(au, &d.rains, w, h, d.kf, d.fz) {
+                    let rains: Vec<Rain> = match d.duration {
+                        Some(m) => d.rains.iter().copied().filter(|r| (r.minutes - m).abs() < 1e-6).collect(),
+                        None => d.rains.clone(),
+                    };
+                    match critical(au, &rains, w, h, d.kf, d.fz) {
                         Some((r, len)) => {
                             let need = (len / BLOCK).ceil().max(1.0) as u32;
                             ui.label(egui::RichText::new(format!(
                                 "{}: {:.0} min, {:.0} l/(s·ha) · {} {:.2} m · {} {} × {} × {} = {} {}",
-                                t("Critical rain"),
+                                if d.duration.is_some() { t("Design rain") } else { t("Critical rain") },
                                 r.minutes,
                                 r.intensity,
                                 t("trench length"),
