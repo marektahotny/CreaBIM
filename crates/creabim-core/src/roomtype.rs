@@ -172,10 +172,18 @@ impl RoomType {
             .find(|r| r.words().iter().any(|w| t.contains(w)))
     }
 
-    /// What the calculations take from it. Temperatures after STN EN
-    /// 12831-1's national annex as the heat loss used them; extract flows
-    /// for dwellings (kitchen 100, bathroom 90, WC 50 m³/h), an office's
-    /// 25 m³/h a person's worth.
+    /// What the calculations take from it.
+    ///
+    /// θint: STN EN 12831-1:2019 table B.14 gives a dwelling's rooms and
+    /// an office 20 °C, a bathroom 24 °C; it has no WC, hall, stairs,
+    /// store, garage or technical room, so those keep the values the heat
+    /// loss used before (WC 20, hall, stairs and stores 15, technical
+    /// room 15, garage 5, ward 22 °C) until a national value is given.
+    /// Least air changes: its table B.7, 0.5/h in rooms people stay in
+    /// and in kitchens, bathrooms and WCs, 0 in secondary and inner
+    /// rooms. Extract flows for dwellings (kitchen 100, bathroom 90, WC
+    /// 50 m³/h) and an office's 25 m³/h are not from that norm; the
+    /// larger of the two is taken.
     pub fn needs(self) -> RoomNeeds {
         let n =
             |temp: f64, ach: Option<f64>, flow: Option<f64>, exhaust: bool, gains, wet| RoomNeeds {
@@ -194,15 +202,15 @@ impl RoomType {
             | RoomType::Dining
             | RoomType::Other => n(20.0, Some(0.5), None, false, Home, false),
             RoomType::Kitchen => n(20.0, Some(0.5), Some(100.0), true, Kitchen, false),
-            RoomType::Bathroom => n(24.0, None, Some(90.0), true, Service, true),
-            RoomType::Toilet => n(20.0, None, Some(50.0), true, Service, true),
-            RoomType::Hall | RoomType::Staircase => n(15.0, None, None, false, Service, false),
-            RoomType::Wardrobe | RoomType::Pantry => n(15.0, None, None, true, Service, false),
+            RoomType::Bathroom => n(24.0, Some(0.5), Some(90.0), true, Service, true),
+            RoomType::Toilet => n(20.0, Some(0.5), Some(50.0), true, Service, true),
+            RoomType::Hall | RoomType::Staircase => n(15.0, Some(0.0), None, false, Service, false),
+            RoomType::Wardrobe | RoomType::Pantry => n(15.0, Some(0.0), None, true, Service, false),
             RoomType::Laundry => n(20.0, Some(0.5), Some(50.0), true, Service, true),
-            RoomType::Utility => n(15.0, Some(1.0), None, true, Service, false),
-            RoomType::Garage => n(5.0, None, None, true, Service, false),
-            RoomType::Office => n(20.0, None, Some(25.0), false, Office, false),
-            RoomType::Ward => n(22.0, Some(1.0), None, false, Home, false),
+            RoomType::Utility => n(15.0, Some(0.0), None, true, Service, false),
+            RoomType::Garage => n(5.0, Some(0.0), None, true, Service, false),
+            RoomType::Office => n(20.0, Some(0.5), Some(25.0), false, Office, false),
+            RoomType::Ward => n(22.0, Some(0.5), None, false, Home, false),
         }
     }
 }
