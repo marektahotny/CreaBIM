@@ -31,6 +31,29 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
         .plan_symbol()
         .into_iter()
         .map(|s| match s {
+            SymbolItem::Net {
+                points,
+                code,
+                dashed,
+            } => {
+                let rgb = creabim_core::utility::NetKind::ALL
+                    .into_iter()
+                    .find(|k| k.code() == code)
+                    .map_or([0.3, 0.3, 0.3], |k| k.rgb());
+                let mut points: Vec<_> = points.into_iter().map(|p| o.to_plan(p)).collect();
+                points.extend(points.first().copied());
+                PlanItem::Curve {
+                    id: e.id,
+                    points,
+                    rgb,
+                    dashed,
+                }
+            }
+            SymbolItem::Text { at, text } => PlanItem::Label {
+                id: e.id,
+                at: o.to_plan(at),
+                text,
+            },
             SymbolItem::Loop(pts) => PlanItem::Polygon {
                 id: e.id,
                 pen,

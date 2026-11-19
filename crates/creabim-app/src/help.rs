@@ -445,6 +445,7 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
         ElementKind::PaperMark(_) => "sheets",
         ElementKind::MarkRules(_) => "marks",
         ElementKind::Results(_) => "ifc",
+        ElementKind::Dss(_) => "ifc",
         ElementKind::StylePack(_) => "graphic-styles",
     }
 }
@@ -637,7 +638,7 @@ pub const KEYS: &[Binding] = &[
     key(VIEWS, "Shift+G", "Show or hide the guides in every view"),
     key(VIEWS, "Alt+Z", "X-ray: see through walls, slabs and roofs"),
     key(VIEWS, "Alt+F2", "Show or hide the trace reference under the view"),
-    key(VIEWS, "Ctrl+P", "The sheet in front as a PDF"),
+    key(VIEWS, "Ctrl+P", "Print sheets: printer or plotter, paper, scale, preview"),
     key(VIEWS, "D", "Dimension (with nothing selected; with a selection, D shows or hides its live dimensions)"),
     key(VIEWS, "T", "Tag"),
     key(VIEWS, "Ctrl+OpenBracket", "Fold the project browser to a rail, or open it"),

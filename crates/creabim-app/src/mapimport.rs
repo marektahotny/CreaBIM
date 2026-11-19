@@ -162,6 +162,16 @@ impl CreaBimApp {
             r.in_place(b);
             // over the model, so the terrain's fill doesn't cover its lines
             r.over = true;
+            // its layers drawn as a site plan's: parcel boundaries thin
+            // black, contours dashed light brown, the main ones darker,
+            // buildings grey (changed under Layers)
+            if let crate::trace::Shown::Lines(l) = &shown {
+                r.layer_styles = l
+                    .layers
+                    .iter()
+                    .filter_map(|n| creabim_core::LayerStyle::for_map_layer(n))
+                    .collect();
+            }
             // named so, or kilometres away (a package in S-JTSK only)
             if *jtsk || xyz::is_jtsk(b[0].x, b[0].y) {
                 if origin.is_some() {
@@ -220,5 +230,89 @@ impl CreaBimApp {
             self.selection.only(id);
         }
         self.status = format!("{}: {}.", t("Map package put in"), done.join(", "));
+    }
+
+    /// Break drawing reference `id` into lines of the model: each of its
+    /// lines (on the layers shown, within its clip) a line on the level of
+    /// the plan it shows in, named by its layer; the reference hidden.
+    pub(super) fn explode_reference(&mut self, id: ElementId) {
+        let t = crate::i18n::tr;
+        let model = self.doc.model();
+        let Some(ElementKind::Reference(r)) = model.get(id).map(|e| e.kind.clone()) else {
+            return;
+        };
+        let level = r
+            .shown_in
+            .iter()
+            .find_map(|v| match model.get(*v).map(|e| &e.kind) {
+                Some(ElementKind::View(View {
+                    kind: ViewKind::Plan { level, .. },
+                    ..
+                })) => Some(*level),
+                _ => None,
+            });
+        let Some(level) = level.or_else(|| self.work_level().map(|(l, _)| l)) else {
+            self.status = t("Open a plan first: the map goes under it.");
+            return;
+        };
+        let crate::trace::Shown::Lines(lines) = self.plan.ref_cache.get(self.doc.model(), id, &r)
+        else {
+            self.status = t("Only a drawing (DXF, PDF) breaks into lines.");
+            return;
+        };
+        const MOST: usize = 50_000;
+        if lines.len() > MOST {
+            self.status = format!(
+                "{} {} {}",
+                t("Too many lines to break up:"),
+                lines.len(),
+                t("Turn some layers off or clip it first.")
+            );
+            return;
+        }
+        let mut tx = Transaction::new("Explode reference");
+        let mut n = 0;
+        for (i, l) in lines.iter().enumerate() {
+            let pts: Vec<DVec2> = l.iter().map(|p| r.place(*p)).collect();
+            if pts.len() < 2 {
+                continue;
+            }
+            let closed = pts.len() > 3 && pts[0].distance(pts[pts.len() - 1]) < 1e-6;
+            let pts = if closed {
+                pts[..pts.len() - 1].to_vec()
+            } else {
+                pts
+            };
+            let sk = creabim_core::Sketch::polyline(
+                Some(level),
+                creabim_core::Workplane::ground(0.0),
+                pts,
+                closed,
+            );
+            let name = lines.layer(i).unwrap_or("Line").to_string();
+            tx = tx.insert(Element::new(name, ElementKind::Sketch(sk)));
+            n += 1;
+        }
+        if n == 0 {
+            self.status = t("It has no lines to break up.");
+            return;
+        }
+        if let Some(before) = self.doc.model().get(id).cloned() {
+            let mut after = before.clone();
+            if let ElementKind::Reference(r) = &mut after.kind {
+                r.hidden = true;
+            }
+            tx = tx.replace(before, after);
+        }
+        match self.doc.commit(tx) {
+            Ok(_) => {
+                self.status = format!(
+                    "{} {n} {}",
+                    t("Reference broken into"),
+                    t("lines; the reference is hidden.")
+                )
+            }
+            Err(e) => self.status = e.to_string(),
+        }
     }
 }

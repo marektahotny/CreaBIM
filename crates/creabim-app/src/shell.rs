@@ -888,6 +888,9 @@ impl CreaBimApp {
             Item::new("marks", "Mark numbering…")
                 .icon("tag")
                 .hint("How doors, windows and other elements are numbered: prefixes, digits, level-based marks, order. Renumber, and check for marks used twice."),
+            Item::new("dss", "Dátový štandard (DSS)…")
+                .icon("tag")
+                .hint("Zaradenie prvkov do tried dátového štandardu stavieb pre IFC: čo nemá triedu, ktoré povinné vlastnosti chýbajú, triedy budovy a systémov rozvodov."),
             Item::new("graphicstyles", "Graphic styles…")
                 .icon("align-left")
                 .hint("Style packs: pens by scale, object styles, hatch patterns and view templates. Load an office's pack to restyle every drawing."),
@@ -943,6 +946,10 @@ impl CreaBimApp {
             );
         }
         items.extend([
+            Item::Separator,
+            Item::new("file.print", "Print sheets…")
+                .icon("printer")
+                .hint("Sheets on a printer or plotter (Ctrl+P): A4 to A0 or a roll, 1:1 or fit to the paper, colour or black and white, with a preview."),
             Item::Separator,
             Item::Header("Export".into()),
             Item::new("export.ifc4", "IFC4 (.ifc)").icon("upload"),
@@ -1526,6 +1533,9 @@ impl CreaBimApp {
                 if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::SpotLevel) {
                     self.run_action(ctx, &format!("tool:{i}"));
                     self.plan.anno.spot_coords = true;
+                    // it stays on the Cadastre tab it was picked from (it
+                    // jumped to Annotations, which read as another tool)
+                    self.shell.tab_tool = Some(Tool::SpotLevel);
                     self.status = crate::i18n::tr(
                         "S-JTSK coordinates: click a point (a plot's corner, a cadastre line's bend, the building's corner), then where the text goes.",
                     );
@@ -1548,11 +1558,15 @@ impl CreaBimApp {
                 if let Some(t) = index.and_then(|i| Tool::ALL.get(i)) {
                     // a detail path being drawn is kept, not dropped
                     crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
+                    let again = self.plan.tool == *t;
                     self.plan.tool = *t;
                     self.plan.cancel();
                     // the spot level tool reads heights unless the cadastre's
-                    // coordinates button chose otherwise
-                    self.plan.anno.spot_coords = false;
+                    // coordinates button chose otherwise; picked again (the
+                    // ribbon showing it), it keeps what it reads
+                    if !again || !matches!(*t, Tool::SpotLevel) {
+                        self.plan.anno.spot_coords = false;
+                    }
                     // a chain begun in 3D ends with its tool (MU40)
                     self.pending_3d = None;
                     self.beam_face = None;
@@ -1752,6 +1766,20 @@ impl CreaBimApp {
             "level.add" => self.add_level_above(),
             "browser.section" => self.pick_tool(ctx, Tool::Section),
             "browser.elevation" => self.pick_tool(ctx, Tool::Elevation),
+            "browser.schedule" => {
+                // the New schedule list, beside the project panel
+                let at = ctx
+                    .input(|i| i.pointer.latest_pos())
+                    .unwrap_or(egui::pos2(240.0, 200.0));
+                let n = schedule_items().len() as f32;
+                self.shell.popup = Some(Popup {
+                    key: "tab:schedules".into(),
+                    at,
+                    up: None,
+                    above: None,
+                    size: egui::vec2(260.0, 12.0 + 29.0 * n),
+                });
+            }
             "sheets.set" => self.make_drawing_set(),
             "browser.sort" => {
                 if let Some(g) = crate::browser::ViewGroup::from_key(arg) {
@@ -1770,6 +1798,7 @@ impl CreaBimApp {
             }
             "units" => self.levels.units_open = true,
             "marks" => self.marks.open = true,
+            "dss" => self.dss.open = true,
             "graphicstyles" => self.gstyles.open = true,
             "underlay" => {
                 if let Some((view, level)) = self.active_plan() {
@@ -1778,6 +1807,9 @@ impl CreaBimApp {
                         "above" => Underlay::Above,
                         "none" => Underlay::None,
                         _ => match by_uuid(self) {
+                            Some(v) if matches!(self.doc.model().get(v).map(|e| &e.kind), Some(ElementKind::View(_))) => {
+                                Underlay::View(v)
+                            }
                             Some(l) if l != level => Underlay::Level(l),
                             _ => return,
                         },
@@ -1955,7 +1987,7 @@ impl CreaBimApp {
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
             | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.binddims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
-            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
+            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "file.print" | "sheet.print" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
             }
@@ -2720,6 +2752,7 @@ impl CreaBimApp {
                 };
             }
             "export.sheets" => self.sheets_export_open = true,
+            "file.print" | "sheet.print" => self.open_print(),
             "sheet.preview" => {
                 self.print_preview = !self.print_preview;
                 self.status = if self.print_preview {
@@ -3778,8 +3811,12 @@ impl CreaBimApp {
             // output
             options.push(json!({"kind": "sep"}));
             options.push(json!({
+                "kind": "button", "id": "sheet.print", "label": "Print…", "icon": "printer",
+                "hint": "This sheet, chosen sheets or all on a printer or plotter, with a preview (Ctrl+P)",
+            }));
+            options.push(json!({
                 "kind": "button", "id": "sheet.pdf", "label": "Sheet as PDF", "icon": "file-text",
-                "hint": "This sheet as a PDF (Ctrl+P); all or chosen sheets: File › Export › Sheets as PDF (Ctrl+Shift+P)",
+                "hint": "This sheet as a PDF; all or chosen sheets: File › Export › Sheets as PDF (Ctrl+Shift+P)",
             }));
             // the sheet as it prints, on white, while the paper is dark (MU21)
             options.push(json!({
@@ -3891,6 +3928,12 @@ impl CreaBimApp {
                 "elevation",
                 "browser.elevation",
                 "Elevation: draw its line in front of the building in a plan with two clicks",
+            ),
+            (
+                crate::browser::ViewGroup::Schedules,
+                "table-2",
+                "browser.schedule",
+                "New schedule: pick what it lists (material take-off, doors, windows…)",
             ),
         ] {
             let act = json!({"id": act, "icon": "plus", "hint": hint});
@@ -5006,7 +5049,8 @@ fn popup_size(p: &Popup, screen: egui::Rect) -> egui::Vec2 {
 /// Where a new project or a sample would be saved: beside the projects
 /// opened before, never over one of them.
 fn new_path(name: &str) -> String {
-    format!("{name}.creabim")
+    // the file's name in the window's language ("Bez názvu.creabim")
+    format!("{}.creabim", crate::i18n::tr(name))
 }
 
 /// egui's spacing and type, roomier than its defaults.

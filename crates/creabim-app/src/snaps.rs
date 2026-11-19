@@ -531,6 +531,135 @@ pub struct Snapper {
     /// Point clouds' slices shown in the plan: their points snap as end
     /// points, looked up near the pointer rather than kept one by one.
     clouds: Vec<CloudSnap>,
+    /// Drawings shown in the plan (DXF references, a map's cadastre): their
+    /// lines and points, put in near the pointer by [`Snapper::focus`]
+    /// rather than all at once, so a large one snaps as a small one does.
+    drawings: Vec<(std::sync::Arc<LineIndex>, ElementId)>,
+    /// How many segments and points were there before the drawings' were
+    /// put in near the pointer, and where that was.
+    focused: Option<(usize, usize, [i64; 5])>,
+}
+
+/// A drawing's lines and points where a view shows them, found by the
+/// cells of a grid they pass through.
+#[derive(Debug, Default)]
+pub struct LineIndex {
+    cell: f64,
+    segments: Vec<[DVec2; 2]>,
+    points: Vec<DVec2>,
+    /// Per cell, its segments (index) and points (index + segments).
+    cells: HashMap<(i64, i64), Vec<u32>>,
+}
+
+impl LineIndex {
+    /// The lines and points of a drawing, already where the view has them.
+    pub fn new(lines: &[Vec<DVec2>], points: &[DVec2]) -> Self {
+        let mut lo = DVec2::splat(f64::INFINITY);
+        let mut hi = DVec2::splat(f64::NEG_INFINITY);
+        let mut segments = vec![];
+        for l in lines {
+            for w in l.windows(2) {
+                if w[0].distance(w[1]) > 1e-9 {
+                    segments.push([w[0], w[1]]);
+                    lo = lo.min(w[0]).min(w[1]);
+                    hi = hi.max(w[0]).max(w[1]);
+                }
+            }
+        }
+        for p in points {
+            lo = lo.min(*p);
+            hi = hi.max(*p);
+        }
+        let n = (segments.len() + points.len()).max(1) as f64;
+        let size = if lo.x.is_finite() {
+            hi - lo
+        } else {
+            DVec2::ONE
+        };
+        // about four things to a cell, if they were spread evenly
+        let cell = (size.x.max(1e-3) * size.y.max(1e-3) * 4.0 / n)
+            .sqrt()
+            .clamp(0.05, 50.0);
+        let mut ix = LineIndex {
+            cell,
+            segments,
+            points: points.to_vec(),
+            cells: HashMap::new(),
+        };
+        let key = |p: DVec2| ((p.x / cell).floor() as i64, (p.y / cell).floor() as i64);
+        for (i, [a, b]) in ix.segments.iter().enumerate() {
+            // along it, half a cell at a time
+            let steps = ((a.distance(*b) / cell * 2.0).ceil() as usize).clamp(1, 100_000);
+            let mut last = None;
+            for k in 0..=steps {
+                let c = key(*a + (*b - *a) * (k as f64 / steps as f64));
+                if last != Some(c) {
+                    let v = ix.cells.entry(c).or_default();
+                    if v.last() != Some(&(i as u32)) {
+                        v.push(i as u32);
+                    }
+                    last = Some(c);
+                }
+            }
+        }
+        let n = ix.segments.len();
+        for (i, p) in ix.points.iter().enumerate() {
+            ix.cells.entry(key(*p)).or_default().push((n + i) as u32);
+        }
+        ix
+    }
+
+    /// The segments and points within `reach` of `at`, at most `most`.
+    pub fn near(&self, at: DVec2, reach: f64, most: usize) -> (Vec<[DVec2; 2]>, Vec<DVec2>) {
+        let (mut segs, mut pts) = (vec![], vec![]);
+        let c = self.cell;
+        let (x0, x1) = (
+            ((at.x - reach) / c).floor() as i64,
+            ((at.x + reach) / c).floor() as i64,
+        );
+        let (y0, y1) = (
+            ((at.y - reach) / c).floor() as i64,
+            ((at.y + reach) / c).floor() as i64,
+        );
+        // zoomed far out: too many cells to be worth snapping to
+        if (x1 - x0 + 1) * (y1 - y0 + 1) > 4096 {
+            return (segs, pts);
+        }
+        let mut seen = std::collections::HashSet::new();
+        let n = self.segments.len();
+        for x in x0..=x1 {
+            for y in y0..=y1 {
+                let Some(v) = self.cells.get(&(x, y)) else {
+                    continue;
+                };
+                for &i in v {
+                    if segs.len() + pts.len() >= most {
+                        return (segs, pts);
+                    }
+                    if !seen.insert(i) {
+                        continue;
+                    }
+                    let i = i as usize;
+                    if i < n {
+                        let [a, b] = self.segments[i];
+                        let q = closest_on_segment(a.extend(0.0), b.extend(0.0), at.extend(0.0));
+                        if q.truncate().distance(at) <= reach {
+                            segs.push([a, b]);
+                        }
+                    } else if self.points[i - n].distance(at) <= reach {
+                        pts.push(self.points[i - n]);
+                    }
+                }
+            }
+        }
+        (segs, pts)
+    }
+
+    /// Is a line of it within `reach` of `at`?
+    pub fn touches(&self, at: DVec2, reach: f64) -> bool {
+        let (s, p) = self.near(at, reach, 1);
+        !(s.is_empty() && p.is_empty())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -959,6 +1088,51 @@ impl Snapper {
             placed: placed.clone(),
             host,
         });
+    }
+
+    /// A drawing's lines and points (where the view shows them) to snap
+    /// to, looked up near the pointer.
+    pub fn add_drawing(&mut self, index: std::sync::Arc<LineIndex>, host: ElementId) {
+        self.drawings.push((index, host));
+    }
+
+    /// Put in the drawings' lines and points within `reach` of `at` (the
+    /// pointer), in place of those put in for where it was before.
+    pub fn focus(&mut self, at: DVec2, reach: f64) {
+        if self.drawings.is_empty() || reach.is_nan() || reach <= 0.0 || !at.is_finite() {
+            return;
+        }
+        // the same cells as last time: nothing to change
+        let step = reach.max(1e-6);
+        let key = [
+            (at.x / step).floor() as i64,
+            (at.y / step).floor() as i64,
+            (step.log2() * 4.0).round() as i64,
+            self.drawings.len() as i64,
+            self.hide.len() as i64,
+        ];
+        let (ns, np) = match self.focused {
+            Some((_, _, k)) if k == key => return,
+            Some((ns, np, _)) => (ns, np),
+            None => (self.segments.len(), self.points.len()),
+        };
+        self.segments.truncate(ns);
+        self.points.truncate(np);
+        self.focused = Some((ns, np, key));
+        // a little more than the pointer reaches, for its next moves
+        let around = DVec2::new(key[0] as f64 + 0.5, key[1] as f64 + 0.5) * step;
+        let wide = step * 2.0;
+        let drawings = std::mem::take(&mut self.drawings);
+        for (ix, host) in &drawings {
+            let (segs, pts) = ix.near(around, wide, 4000);
+            for [a, b] in segs {
+                self.add_segment(a.extend(0.0), b.extend(0.0), Source::Underlay, Some(*host));
+            }
+            for p in pts {
+                self.add_point(p.extend(0.0), Source::Underlay, Some(*host));
+            }
+        }
+        self.drawings = drawings;
     }
 
     /// The cloud point nearest the pointer, with its distance in pixels.
@@ -2370,6 +2544,58 @@ mod tests {
     }
 
     const ALL: SnapSettings = SnapSettings::ALL;
+
+    /// A large drawing (a map's contours and cadastre: 60 000 lines, past
+    /// the 20 000 snapped to before) snaps everywhere, and so does a
+    /// small one put in after it.
+    #[test]
+    fn a_large_drawing_snaps_near_the_pointer_and_so_does_the_next() {
+        let mut big = vec![];
+        for i in 0..300 {
+            for j in 0..200 {
+                let p = DVec2::new(i as f64 * 0.5, j as f64 * 0.5);
+                big.push(vec![p, p + DVec2::new(0.4, 0.0)]);
+            }
+        }
+        let small = vec![vec![DVec2::new(500.0, 500.0), DVec2::new(510.0, 500.0)]];
+        let (a, b) = (ElementId::new(), ElementId::new());
+        let mut s = Snapper::new();
+        s.add_drawing(std::sync::Arc::new(LineIndex::new(&big, &[])), a);
+        s.add_drawing(
+            std::sync::Arc::new(LineIndex::new(&small, &[DVec2::new(505.0, 503.0)])),
+            b,
+        );
+        let snap = |s: &mut Snapper, x: f64, y: f64| {
+            s.focus(DVec2::new(x, y), 0.1);
+            s.snap(&ALL, at(x, y), &flat, None, Some(DVec3::new(x, y, 0.0)))
+        };
+        // the end of the very last line of the large one
+        let p = snap(&mut s, 149.92, 99.52).unwrap();
+        assert!(
+            p.p.distance(DVec3::new(149.9, 99.5, 0.0)) < 1e-9,
+            "{:?}",
+            p.p
+        );
+        assert_eq!(p.host, Some(a));
+        // the small one's end, and its survey point
+        let p = snap(&mut s, 510.03, 500.02).unwrap();
+        assert!(p.p.distance(DVec3::new(510.0, 500.0, 0.0)) < 1e-9);
+        assert_eq!(p.host, Some(b));
+        let p = snap(&mut s, 505.02, 503.03).unwrap();
+        assert!(p.p.distance(DVec3::new(505.0, 503.0, 0.0)) < 1e-9);
+        // only what is near the pointer is kept in
+        assert!(s.segments.len() < 100, "{}", s.segments.len());
+        // hidden while it is picked
+        s.hide(&[b]);
+        assert!(snap(&mut s, 510.03, 500.02).is_none_or(|p| p.host != Some(b)));
+    }
+
+    #[test]
+    fn a_drawing_is_picked_by_its_lines() {
+        let ix = LineIndex::new(&[vec![DVec2::ZERO, DVec2::new(100.0, 0.0)]], &[]);
+        assert!(ix.touches(DVec2::new(50.0, 0.05), 0.1));
+        assert!(!ix.touches(DVec2::new(50.0, 1.0), 0.1));
+    }
 
     #[test]
     fn corners_beat_edges_and_midpoints_are_found() {

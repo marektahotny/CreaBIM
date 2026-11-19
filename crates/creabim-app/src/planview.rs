@@ -1255,8 +1255,21 @@ fn show_pane(
             state.point_pick = false;
         }
     }
-    // the references shown in this view, under the drawing (MU19)
+    // the references shown in this view, under the drawing (MU19); first
+    // those of the plan traced under it (the site plan's cadastre)
     if style.decorations {
+        if let Some(under) = underlay_view(doc.model(), view) {
+            for over in [false, true] {
+                crate::trace::draw_view(
+                    &painter,
+                    doc.model(),
+                    &mut state.ref_cache,
+                    under,
+                    over,
+                    &|p| xf.to_screen(p),
+                );
+            }
+        }
         crate::trace::draw_view(
             &painter,
             doc.model(),
@@ -1545,6 +1558,13 @@ fn show_pane(
     };
     if matches!(kind, PaneKind::Plan { .. } | PaneKind::Section { .. }) {
         refresh_snaps(state, doc.model(), view, plan, &exclude);
+        // the drawings' lines near the pointer, to snap to
+        if let (Some(h), Some((_, _, s))) = (response.hover_pos(), state.snaps.get_mut(&view)) {
+            s.focus(
+                xf.to_world(h),
+                snaps::TOLERANCE as f64 / (xf.scale as f64).max(1e-9),
+            );
+        }
     }
     let pane_project = |p: DVec3| Some(xf.to_screen(p.truncate()));
     // a line starts from the tool's first click, or the sketch's last corner
@@ -4046,6 +4066,7 @@ fn under_pointer(
         if let Some(c) = r.outline() {
             if (0..4).any(|i| segment_distance(p, c[i], c[(i + 1) % 4]) < tol) {
                 under.push(id);
+                continue;
             }
         }
     }
@@ -4055,6 +4076,48 @@ fn under_pointer(
         _ => HashSet::new(),
     };
     for id in ray_pick_all(doc.model(), &scene, view, kind, p, Some(&drawn)) {
+        if !under.contains(&id) {
+            under.push(id);
+        }
+    }
+    // clouds last: their points are everywhere, what is drawn goes first
+    let mut clouds = vec![];
+    // a cloud a section cuts, by any of its points it shows
+    for (id, r) in crate::trace::clouds_in_section(doc.model(), view) {
+        if r.locked || clouds.contains(&id) {
+            continue;
+        }
+        if let Some(slice) = state.ref_cache.section(doc.model(), id, r, view) {
+            if slice.nearest(p, tol).is_some() {
+                clouds.push(id);
+            }
+        }
+    }
+    for (id, r) in creabim_core::reference::in_view(doc.model(), view) {
+        if r.hidden || clouds.contains(&id) {
+            continue;
+        }
+        // a drawing (a DXF, a map's cadastre) by any of its lines, after
+        // what is drawn in the model
+        if !r.locked && !matches!(r.source, creabim_core::RefSource::Points { .. }) {
+            if let Some(ix) = state.ref_cache.index(doc.model(), id, r) {
+                if ix.touches(p, tol) {
+                    clouds.push(id);
+                }
+            }
+            continue;
+        }
+        // a cloud is picked by any of its points the plan shows
+        if matches!(r.source, creabim_core::RefSource::Points { .. }) && !r.locked {
+            if let Some(slice) = state.ref_cache.slice(doc.model(), id, r, view) {
+                let own = r.unplace(p);
+                if slice.nearest(own, tol / r.scale.max(1e-9)).is_some() {
+                    clouds.push(id);
+                }
+            }
+        }
+    }
+    for id in clouds {
         if !under.contains(&id) {
             under.push(id);
         }
@@ -4943,6 +5006,14 @@ pub fn joined_with(doc: &Document, id: ElementId) -> Vec<ElementId> {
     out
 }
 
+/// The plan view drawn under plan `view` (its underlay), if any.
+pub fn underlay_view(model: &creabim_core::Model, view: ElementId) -> Option<ElementId> {
+    match model.get(view).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => v.underlay.view(model, view),
+        _ => None,
+    }
+}
+
 /// Rebuild a view's snaps when the model changed, but not during a drag,
 /// which changes the model every frame.
 fn refresh_snaps(
@@ -4969,6 +5040,9 @@ fn refresh_snaps(
         let mut s = Snapper::from_drawing(&plan.items, &[]);
         s.add_underlay_centres(model, view);
         add_reference_snaps(&mut s, state, model, view);
+        if let Some(under) = underlay_view(model, view) {
+            add_reference_snaps(&mut s, state, model, under);
+        }
         state.snaps.insert(view, (revision, vec![], s));
     }
     if let Some((_, ex, s)) = state.snaps.get_mut(&view) {
@@ -4988,9 +5062,13 @@ fn add_reference_snaps(
     model: &creabim_core::Model,
     view: ElementId,
 ) {
-    // a huge drawing is cut short rather than slowing every snap
-    const MOST: usize = 20_000;
-    let mut n = 0;
+    // a cloud cut by a section, in the section's own coordinates
+    let same = creabim_core::Reference::new(creabim_core::RefSource::View(view), vec![]);
+    for (id, r) in crate::trace::clouds_in_section(model, view) {
+        if let Some(slice) = state.ref_cache.section(model, id, r, view) {
+            s.add_cloud(slice, &same, id);
+        }
+    }
     for e in model.iter() {
         let ElementKind::Reference(r) = &e.kind else {
             continue;
@@ -5006,30 +5084,11 @@ fn add_reference_snaps(
             }
             continue;
         }
-        let crate::trace::Shown::Lines(lines) = shown else {
-            continue;
-        };
-        // a drawing's survey marks and blocks' insertion points
-        for p in lines.points.iter().take(MOST) {
-            s.add_point(
-                r.place(*p).extend(0.0),
-                crate::snaps::Source::Underlay,
-                Some(e.id),
-            );
-        }
-        for l in lines.iter() {
-            for w in l.windows(2) {
-                if n >= MOST {
-                    return;
-                }
-                s.add_segment(
-                    r.place(w[0]).extend(0.0),
-                    r.place(w[1]).extend(0.0),
-                    crate::snaps::Source::Underlay,
-                    Some(e.id),
-                );
-                n += 1;
-            }
+        // a drawing's lines and points, all of them, looked up near the
+        // pointer (a map's cadastre ran past the 20 000 lines snapped to
+        // before, and no other drawing in the plan snapped after it)
+        if let Some(ix) = state.ref_cache.index(model, e.id, r) {
+            s.add_drawing(ix, e.id);
         }
     }
 }

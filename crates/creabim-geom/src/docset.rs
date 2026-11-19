@@ -635,6 +635,8 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
     // the title pages: the project's own and one before each part
     covers(&mut b, frame);
     // A: the list of all of it, made last so it lists every sheet
+    // the material take-off, every material of every construction
+    schedule(&mut b, ScheduleCategory::Materials, "Material take-off");
     let list = schedule(&mut b, ScheduleCategory::Documents, "List of documentation");
     b.sheet("A00_TXT_001".into(), tr("List of documentation"), &[list]);
     (b.made != Made::default() || b.fixed).then_some((b.tx, b.made))
@@ -933,9 +935,9 @@ mod tests {
         tx.apply(&mut m).unwrap();
         let (tx, made) = drawing_set(&m).unwrap();
         tx.apply(&mut m).unwrap();
-        // the site, the plan, two sections, four elevations, the list and
-        // the picture on the title page
-        assert_eq!(made.views, 10);
+        // the site, the plan, two sections, four elevations, the material
+        // take-off, the list and the picture on the title page
+        assert_eq!(made.views, 11);
         let cover = m
             .iter()
             .find(|e| matches!(&e.kind, ElementKind::Sheet(s) if crate::coverpage::cover_of(s) == Some("project")))

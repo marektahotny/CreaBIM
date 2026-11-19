@@ -103,6 +103,34 @@ pub fn equipment(model: &Model, trade: Option<Trade>) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The site plan's objects with a legend line of their own (see
+/// [`creabim_core::catalogue::site::legend`]), each type once: its plan
+/// symbol and the line.
+pub fn site_objects(model: &Model) -> Vec<(Vec<creabim_core::objects::SymbolItem>, String)> {
+    let mut seen = vec![];
+    let mut out = vec![];
+    for e in model.iter() {
+        if !matches!(e.kind, ElementKind::Object(_)) {
+            continue;
+        }
+        let Some(t) = creabim_core::objects::type_of(model, e) else {
+            continue;
+        };
+        let Some(key) = t.catalogue.as_deref() else {
+            continue;
+        };
+        let Some(line) = creabim_core::catalogue::site::legend(key) else {
+            continue;
+        };
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key);
+        out.push((t.plan_symbol(), tr(line)));
+    }
+    out
+}
+
 /// The trade the legend drawn as `view` is for; none is for all of them.
 pub fn trade_of(model: &Model, view: ElementId) -> Option<Trade> {
     match model.get(view).map(|e| &e.kind) {
@@ -126,7 +154,6 @@ pub struct DeviceRow {
 /// draw it.
 pub fn devices(model: &Model) -> Vec<DeviceRow> {
     use creabim_core::electrical as el;
-    use creabim_core::objects::SymbolItem;
     let mut found: Vec<(el::DeviceKind, String, DeviceRow)> = vec![];
     for (e, _, kind) in el::devices(model) {
         let name = e
@@ -143,14 +170,7 @@ pub fn devices(model: &Model) -> Vec<DeviceRow> {
             .map(|t| t.plan_symbol())
             .unwrap_or_default()
         {
-            match s {
-                SymbolItem::Line(a, b) => symbol.push((a, b)),
-                SymbolItem::Loop(pts) => {
-                    for i in 0..pts.len() {
-                        symbol.push((pts[i], pts[(i + 1) % pts.len()]));
-                    }
-                }
-            }
+            symbol.extend(s.segments());
         }
         let row = DeviceRow {
             count: 1,
@@ -430,6 +450,77 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         }
         y -= 3.0;
     }
+    // the site plan's objects that have their own mark: a water meter
+    // shaft, a pumping shaft
+    let marked = if site { site_objects(model) } else { vec![] };
+    for (symbol, line) in &marked {
+        let lines = wrap(line, tw, TEXT);
+        let words = lines.len() as f64 * LINE;
+        let row = DeviceRow {
+            count: 1,
+            name: String::new(),
+            symbol: symbol.iter().flat_map(|s| s.segments()).collect(),
+        };
+        let tall = words.max(symbol_height(&row));
+        if let Some((lo, hi, k)) = symbol_fit(&row) {
+            let mid = (lo + hi) / 2.0;
+            let centre = DVec2::new(SYMBOL_BOX.x / 2.0, y - tall / 2.0);
+            let at = |p: DVec2| centre + (p - mid) * k;
+            for s in symbol {
+                match s {
+                    creabim_core::objects::SymbolItem::Net {
+                        points,
+                        code,
+                        dashed,
+                    } => {
+                        let rgb = creabim_core::utility::NetKind::ALL
+                            .into_iter()
+                            .find(|n| n.code() == code)
+                            .map_or([0.3, 0.3, 0.3], |n| n.rgb());
+                        let mut points: Vec<_> = points.iter().map(|p| at(*p)).collect();
+                        points.extend(points.first().copied());
+                        items.push(PlanItem::Curve {
+                            id: view,
+                            points,
+                            rgb,
+                            dashed: *dashed,
+                        });
+                    }
+                    creabim_core::objects::SymbolItem::Text { at: p, text: t } => {
+                        let rgb = symbol.iter().find_map(|s| match s {
+                            creabim_core::objects::SymbolItem::Net { code, .. } => {
+                                creabim_core::utility::NetKind::ALL
+                                    .into_iter()
+                                    .find(|n| n.code() == code)
+                                    .map(|n| n.rgb())
+                            }
+                            _ => None,
+                        });
+                        text(&mut items, at(*p), t, TEXT, rgb);
+                    }
+                    other => {
+                        for (a, b) in other.segments() {
+                            items.push(PlanItem::Line {
+                                id: view,
+                                pen: Pen::Projection,
+                                a: at(a),
+                                b: at(b),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        let mut ty = y - (tall - words) / 2.0;
+        for l in lines {
+            text(&mut items, DVec2::new(ind, ty - LINE / 2.0), &l, TEXT, None);
+            ty -= LINE;
+        }
+        y -= tall + 1.5;
+    }
+    if !marked.is_empty() {
+        y -= 3.0;
+    }
     let heated = model
         .iter()
         .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.ufh.is_some()))
@@ -636,6 +727,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         && !heated
         && equipment.is_empty()
         && devices.is_empty()
+        && marked.is_empty()
     {
         text(
             &mut items,
@@ -840,5 +932,34 @@ mod tests {
             .collect();
         assert!(heads.iter().any(|t| t == "UTILITY NETWORKS"));
         assert!(!heads.iter().any(|t| t == "PIPES"));
+        // a pumping shaft on the site: its circle in the sewer's colour,
+        // its mark and its line
+        let le = Element::new(
+            "L",
+            ElementKind::Level(creabim_core::Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let level = le.id;
+        Transaction::new("l").insert(le).apply(&mut m).unwrap();
+        let ps = creabim_core::catalogue::starter("starter/site-pumping-shaft-laura-l").unwrap();
+        for at in [DVec2::new(10.0, 0.0), DVec2::new(14.0, 0.0)] {
+            let (tx, _) = creabim_core::objects::place(&m, &ps, level, at, 0.0);
+            tx.apply(&mut m).unwrap();
+        }
+        assert_eq!(site_objects(&m).len(), 1, "each type once");
+        let d = drawing(vid, "Legend", &m);
+        let texts: Vec<String> = d
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                PlanItem::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t == "PS PRŠ"), "{texts:?}");
+        assert!(texts.iter().any(|t| t.contains("NORIA LUCA")), "{texts:?}");
+        assert!(d.items.iter().any(|i| matches!(i, PlanItem::Curve { .. })));
     }
 }

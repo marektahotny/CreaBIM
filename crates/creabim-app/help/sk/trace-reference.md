@@ -15,6 +15,8 @@ Podklad sa ukladá s projektom. Jeden podklad sa môže zobrazovať vo **viacer�
 
 Rovnako to ide z ponuky **Súbor › Import**: *Mračno bodov (XYZ, LAS…)*, *PDF ako podklad*, *Obrázok ako podklad (PNG, JPG)* a *DXF ako podklad* pridajú podklad do otvoreného pôdorysu alebo rezu. *Terén zo zameraných bodov (XYZ)* tam vytvorí terén na pracovnom podlaží.
 
+**Mračno bodov** sa načítava na pozadí s ukazovateľom priebehu a tlačidlom *Zrušiť* (súbor uložený iba v cloude, napr. na OneDrive, sa najprv stiahne). Vyberiete ho kliknutím na ktorýkoľvek jeho bod v pôdoryse, reze aj v 3D; presuniete a otočíte ho úchopmi alebo vo *Vlastnostiach* (X, Y, Otočenie, výšku cez *Zdvihnuté o*). Každý rez a pohľad ukazuje body mračna pred svojou čiarou do svojej hĺbky a kreslenie sa na ne prichytáva.
+
 ## Umiestnenie {#placing-it}
 
 - Potiahnutím **štvorcového úchopu** v strede ho presuniete.

@@ -43,6 +43,8 @@ mod calcresultsui;
 mod circuitsui;
 #[path = "circuitui.rs"]
 mod circuitui;
+#[path = "cloudload.rs"]
+mod cloudload;
 #[path = "coolingui.rs"]
 mod coolingui;
 #[path = "cropui.rs"]
@@ -53,6 +55,8 @@ mod disciplines;
 mod divideui;
 #[path = "drafting.rs"]
 mod drafting;
+#[path = "dssui.rs"]
+mod dssui;
 #[path = "ductsui.rs"]
 mod ductsui;
 #[path = "earthworksui.rs"]
@@ -103,6 +107,8 @@ mod materials;
 mod medunitui;
 #[path = "objectsui.rs"]
 mod objectsui;
+#[path = "printui.rs"]
+mod printui;
 #[path = "profilesui.rs"]
 mod profilesui;
 #[path = "radiatorsui.rs"]
@@ -254,6 +260,8 @@ pub struct CreaBimApp {
     /// The Export sheets dialog (MU22), and its choices this session.
     sheets_export_open: bool,
     sheets_export: SheetsExport,
+    /// The Print window (Ctrl+P) and the job going out.
+    print: printui::PrintState,
     /// A reference to take away, asked from its Properties (MU23).
     remove_ref: Option<ElementId>,
     /// Copy to view…: the reference, and the view its copy goes to (MU38).
@@ -261,6 +269,9 @@ pub struct CreaBimApp {
     /// A 3D drawing reference to make a terrain from, asked from its
     /// Properties.
     terrain_ref: Option<ElementId>,
+    /// A drawing reference to break into lines of the model, asked from
+    /// its Properties.
+    explode_ref: Option<ElementId>,
     /// The map site's window (Pilon Map Downloader): open, where its page
     /// goes, and the listener it sends to.
     maps_open: bool,
@@ -352,11 +363,14 @@ pub struct CreaBimApp {
     /// The Levels manager and the Project units dialog.
     levels: levelsui::LevelsUi,
     marks: marksui::MarksUi,
+    dss: dssui::DssUi,
     gstyles: stylesui::StylesUi,
     /// The Copy to levels and Move to level windows.
     level_copy: levelcopy::LevelCopyUi,
     /// What the last IFC import brought across, and what it couldn't.
     import_report: Option<importui::ImportReport>,
+    /// A point cloud being read in the background.
+    cloud_load: Option<cloudload::CloudLoad>,
     /// The annotation styles and sheet templates windows.
     drafting: drafting::DraftingUi,
     /// Orbit about the selection rather than the middle of the view.
@@ -582,9 +596,11 @@ impl CreaBimApp {
             print_preview: false,
             sheets_export_open: false,
             sheets_export: SheetsExport::default(),
+            print: printui::PrintState::default(),
             remove_ref: None,
             copy_ref: None,
             terrain_ref: None,
+            explode_ref: None,
             maps_open: false,
             maps_rect: None,
             maplink: None,
@@ -668,9 +684,11 @@ impl CreaBimApp {
             new_project_classic: false,
             recent_cards: Vec::new(),
             marks: Default::default(),
+            dss: Default::default(),
             gstyles: Default::default(),
             level_copy: Default::default(),
             import_report: None,
+            cloud_load: None,
             drafting: Default::default(),
             orbit_selection: true,
             rect_3d: None,
@@ -1484,6 +1502,7 @@ impl CreaBimApp {
         &mut self,
         p: egui::Pos2,
         project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+        clouds: bool,
     ) -> Option<ElementId> {
         let near = |a: egui::Pos2, b: egui::Pos2| {
             let ab = b - a;
@@ -1491,6 +1510,29 @@ impl CreaBimApp {
             (a + ab * t).distance(p) < 6.0
         };
         for (id, r) in self.refs_in_3d() {
+            // a cloud is picked by any of the points 3D shows of it
+            if let creabim_core::RefSource::Points { path, .. } = &r.source {
+                if !clouds || r.locked {
+                    continue;
+                }
+                if let (Ok(c), Some(sample)) = (
+                    self.plan.ref_cache.cloud(path),
+                    self.plan.ref_cache.sample(path),
+                ) {
+                    let off = crate::trace::cloud_lift(self.doc.model(), &r.source, &c);
+                    let hit = sample.iter().any(|k| {
+                        let q = c.at(*k as usize);
+                        r.clip.is_none_or(|[a, b]| {
+                            q.truncate().cmpge(a).all() && q.truncate().cmple(b).all()
+                        }) && project(r.place(q.truncate()).extend(q.z + off))
+                            .is_some_and(|s| s.distance(p) < 6.0)
+                    });
+                    if hit {
+                        return Some(id);
+                    }
+                }
+                continue;
+            }
             let model = self.doc.model();
             let world = |q: DVec2| crate::handles::ref_world(model, &r, q);
             let polys: Vec<Vec<DVec2>> = match self.plan.ref_cache.get(model, id, &r) {
@@ -2160,7 +2202,8 @@ impl CreaBimApp {
             }
         }
         self.add_menu_window(ctx);
-        // Ctrl+P: this sheet as a PDF; Ctrl+Shift+P: Export sheets (MU22)
+        // Ctrl+P: Print (the sheet in front, chosen or all, as in
+        // PilonDesigner); Ctrl+Shift+P: Export sheets as PDF (MU22)
         if ctx.input_mut(|i| {
             i.consume_key(
                 egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -2169,11 +2212,7 @@ impl CreaBimApp {
         }) {
             self.sheets_export_open = true;
         } else if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::P)) {
-            if self.active_view.is_some_and(|id| self.is_sheet(id)) {
-                self.export_sheets_now(true);
-            } else {
-                self.sheets_export_open = true;
-            }
+            self.open_print();
         }
         // Alt+F2 shows or hides the active view's references (MU18/MU19)
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::F2)) {
@@ -3980,7 +4019,7 @@ impl CreaBimApp {
                 let bubble = self.grid_bubble_near(p, &project);
                 // a reference's lines, as a sketch's (MU33: only a 2D view
                 // could pick one)
-                let reference = self.reference_near_3d(p, &project);
+                let reference = self.reference_near_3d(p, &project, false);
                 // and so are crop box frames
                 let frame = || self.crop_frame_near(p, &project);
                 if let Some(id) = near_sketch.or(bubble).or(reference).or_else(frame) {
@@ -3995,7 +4034,9 @@ impl CreaBimApp {
                     let near = self
                         .grid_line_near(p, &project)
                         .map(|g| g.0)
-                        .or_else(|| self.guide_near(p, &project));
+                        .or_else(|| self.guide_near(p, &project))
+                        // a cloud's points, where nothing of the model is
+                        .or_else(|| self.reference_near_3d(p, &project, true));
                     if let Some(id) = near {
                         pick(&mut self.selection, Some(id));
                         self.face = None;
@@ -8023,7 +8064,7 @@ impl CreaBimApp {
         let ids = self.sheets_to_export(this_only);
         if ids.is_empty() {
             self.status = if this_only {
-                "Open a sheet first: Ctrl+P makes a PDF of the sheet in front.".into()
+                "Open a sheet first: Sheet as PDF writes the sheet in front.".into()
             } else {
                 "No sheets to export: pick some, or choose All.".into()
             };
@@ -8258,8 +8299,20 @@ crate::props::row(ui, "File names", |ui| {
 
     /// A new reference shown in view `v`, in place, selected.
     fn add_reference(&mut self, v: ElementId, source: creabim_core::RefSource) {
+        // a cloud is read in the background first, then added (a big scan,
+        // or one a cloud drive fetches, took the window with it)
+        let shown = if let creabim_core::RefSource::Points { path, .. } = &source {
+            match self.plan.ref_cache.cached_cloud(path) {
+                Some(c) => crate::trace::Shown::Cloud(c),
+                None => {
+                    self.load_cloud(v, path.clone());
+                    return;
+                }
+            }
+        } else {
+            crate::trace::read(self.doc.model(), &source)
+        };
         let model = self.doc.model();
-        let shown = crate::trace::read(model, &source);
         if let crate::trace::Shown::Missing(why) = &shown {
             self.status = why.clone();
             return;
@@ -9080,15 +9133,27 @@ crate::props::row(ui, "File names", |ui| {
                         .max_height(200.0)
                         .show(ui, |ui| {
                             for l in &layers {
-                                let mut on = !r.layers_off.contains(l);
-                                if ui.checkbox(&mut on, crate::i18n::tr(l)).changed() {
-                                    if on {
-                                        r.layers_off.retain(|x| x != l);
-                                    } else {
-                                        r.layers_off.push(l.clone());
+                                ui.horizontal(|ui| {
+                                    let mut on = !r.layers_off.contains(l);
+                                    if ui.checkbox(&mut on, crate::i18n::tr(l)).changed() {
+                                        if on {
+                                            r.layers_off.retain(|x| x != l);
+                                        } else {
+                                            r.layers_off.push(l.clone());
+                                        }
+                                        label = Some("Reference layers");
                                     }
-                                    label = Some("Reference layers");
-                                }
+                                    // its own colour, line and width, or the
+                                    // drawing's ink
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if let Some(c) = ref_layer_style_ui(ui, r, l) {
+                                                label = Some(c);
+                                            }
+                                        },
+                                    );
+                                });
                             }
                         });
                 }
@@ -9117,6 +9182,21 @@ crate::props::row(ui, "File names", |ui| {
                     }
                 }
             }
+        }
+        // its lines as lines of the model, each picked, moved and
+        // snapped to on its own (a map's parcel boundaries to work with)
+        if matches!(r.source, RefSource::Dxf { .. } | RefSource::Pdf { .. })
+            && ui
+                .add_sized(
+                    [ui.available_width(), 24.0],
+                    egui::Button::new(crate::i18n::t("Explode into lines")).truncate(),
+                )
+                .on_hover_text(crate::i18n::t(
+                    "Its lines on the layers shown, within its clip, become lines of the plan's level, each picked and edited on its own; the reference is hidden",
+                ))
+                .clicked()
+        {
+            self.explode_ref = Some(id);
         }
         // what of it shows: all, or a rectangle picked in the view
         crate::props::row(ui, "Clip", |ui| {
@@ -9159,8 +9239,13 @@ crate::props::row(ui, "File names", |ui| {
             .enumerate()
             {
                 if ui
-                    .add_sized([w, 24.0], egui::Button::new(text).truncate())
-                    .on_hover_text(crate::i18n::tr(tip))
+                    .add_sized([w, 24.0], egui::Button::new(crate::i18n::t(text)).truncate())
+                    // narrow and wrapped: the panel is at the window's
+                    // right edge, where a long line was cut off
+                    .on_hover_ui(|ui| {
+                        ui.set_max_width(260.0);
+                        ui.add(egui::Label::new(crate::i18n::tr(tip)).wrap());
+                    })
                     .clicked()
                 {
                     pressed = Some(i);
@@ -9274,6 +9359,9 @@ crate::props::row(ui, "File names", |ui| {
             } else {
                 self.terrain_from_reference(id);
             }
+        }
+        if let Some(id) = self.explode_ref.take() {
+            self.explode_reference(id);
         }
         if let Some(id) = self.remove_ref.take() {
             let tx = creabim_core::Transaction::new("Remove reference")
@@ -9682,6 +9770,8 @@ crate::props::row(ui, "File names", |ui| {
         let mut add_valve: Option<&'static str> = None;
         let mut edit_joinery = false;
         let mut equalise = false;
+        // a title page's sets changed: its part's pages are made again
+        let mut cover_sets: Option<usize> = None;
         let show_visibility = matches!(e.kind, ElementKind::View(_));
         let mut object_type = false;
         // a placed view's new scale: (its view, the scale)
@@ -10057,7 +10147,7 @@ crate::props::row(ui, "File names", |ui| {
                                 });
                             ui.label(
                             egui::RichText::new(
-                                crate::i18n::t("Another level drawn faintly under this one, to trace and snap to. Not printed."),
+                                crate::i18n::t("Another level or the site plan (with its cadastre) drawn faintly under this one, to trace and snap to. Not printed."),
                             )
                             .weak(),
                         );
@@ -10329,6 +10419,12 @@ crate::props::row(ui, "File names", |ui| {
                                         .clicked()
                                     {
                                         (sh.width, sh.height) = (*w, *h);
+                                        // a title page stands upright
+                                        if creabim_geom::coverpage::cover_of(sh).is_some()
+                                            && sh.width > sh.height
+                                        {
+                                            (sh.width, sh.height) = (sh.height, sh.width);
+                                        }
                                         label = "Sheet size"
                                     }
                                 }
@@ -10338,19 +10434,22 @@ crate::props::row(ui, "File names", |ui| {
                         label = l;
                     }
                     if creabim_geom::coverpage::cover_of(sh).is_some() {
-                        // a title page: filled from the project, only how
-                        // many binder labels go on it is its own
-                        let mut n = creabim_geom::coverpage::volumes(sh);
-                        if crate::props::row(ui, "Labels on the page", |ui| {
-                            ui.add(egui::DragValue::new(&mut n).range(1..=4))
+                        // a title page: filled from the project; how many
+                        // sets of the part's pages, four labels to an A4,
+                        // further pages numbered on (volume 5, 6...)
+                        let mut n = creabim_geom::coverpage::sets(self.doc.model(), id);
+                        if crate::props::row(ui, "Sets", |ui| {
+                            ui.add(
+                                egui::DragValue::new(&mut n)
+                                    .range(1..=creabim_geom::coverpage::MAX_SETS),
+                            )
                         })
                         .on_hover_text(crate::i18n::t(
-                            "A title page is filled from File › Project information. Four A6 labels fit an A4, one for each volume; one fills the page.",
+                            "A title page is filled from File › Project information. Four A6 title pages fit an A4, one for each set; more than four sets go on further pages, numbered on (5, 6, 7, 8...).",
                         ))
                         .changed()
                         {
-                            sh.fields.insert("volumes".into(), n.to_string());
-                            label = "Title page"
+                            cover_sets = Some(n);
                         }
                     } else if sh.template.is_none() {
                         // the office's title block: on or off, and the
@@ -10392,9 +10491,9 @@ crate::props::row(ui, "File names", |ui| {
                     let n = sh.guides.len();
                     crate::props::row(ui, "Guides", |ui| {
                         ui.label(match n {
-                            0 => "None".to_string(),
-                            1 => "1 guide".to_string(),
-                            n => format!("{n} guides"),
+                            0 => crate::i18n::tr("None"),
+                            1 => crate::i18n::tr("1 guide"),
+                            n => crate::i18n::tr("{n} guides").replace("{n}", &n.to_string()),
                         })
                     });
                     if n > 0 {
@@ -11035,6 +11134,12 @@ crate::props::row(ui, "File names", |ui| {
                         ));
                     }
                 }
+                ElementKind::Dss(d) => {
+                    ui.label(format!(
+                        "Prvky s triedou alebo hodnotami zadanými ručne: {}",
+                        d.elements.len()
+                    ));
+                }
                 ElementKind::StylePack(p) => {
                     ui.label(egui::RichText::new(p.description.clone()).weak());
                     if ui.button(crate::i18n::t("Graphic styles…")).clicked() {
@@ -11469,6 +11574,12 @@ crate::props::row(ui, "File names", |ui| {
             };
             self.report(r, msg);
         }
+        if let Some(n) = cover_sets {
+            if let Some(tx) = creabim_geom::coverpage::set_sets(self.doc.model(), id, n) {
+                let r = self.doc.commit(tx);
+                self.report(r, crate::i18n::tr("Title page sets"));
+            }
+        }
         if equalise {
             let model = self.doc.model();
             let tx = match model.get(id).map(|e| &e.kind) {
@@ -11521,6 +11632,8 @@ crate::props::row(ui, "File names", |ui| {
                 ui.add_space(4.0);
             }
         }
+        // its class of the data standard and the values it asks for
+        self.dss_section(ui, id);
         // a mass's face tools in a section of their own (MU39: the element
         // section had grown dense)
         self.mesh_edit_section(ui, id);
@@ -11694,8 +11807,16 @@ crate::props::row(ui, "File names", |ui| {
                 self.quick_help_button(ui, page, title);
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.add(
-                        egui::Label::new(egui::RichText::new(class.clone()).color(pal.accent))
-                            .truncate(),
+                        // a view, a sheet: no IFC class, what it is in words
+                        egui::Label::new(
+                            egui::RichText::new(if class.starts_with("Ifc") {
+                                class.clone()
+                            } else {
+                                crate::i18n::tr(&class)
+                            })
+                            .color(pal.accent),
+                        )
+                        .truncate(),
                     )
                     .on_hover_text(class.clone());
                 });
@@ -13001,11 +13122,14 @@ impl eframe::App for CreaBimApp {
         self.reference_steps();
         self.calibrate_window(&ctx);
         self.sheets_export_window(&ctx);
+        self.print_window(&ctx);
         self.new_project_window(&ctx);
         self.marks_window(&ctx);
+        self.dss_window(&ctx);
         self.graphic_styles_window(&ctx);
         self.ground_spacing_window(&ctx);
         self.import_report_window(&ctx);
+        self.cloud_load_window(&ctx);
         self.help_window(&ctx);
         self.report_window(&ctx);
         self.close_window(&ctx);
@@ -13394,7 +13518,66 @@ fn with_extension(path: &str, ext: &str) -> String {
 }
 
 /// Give every level a plan view so older files open with something to show.
-fn with_plan_views(model: Model) -> Model {
+/// A reference layer's style in its Layers list: its colour, dashed and
+/// width, or a button to give it one; the undo label of a change.
+fn ref_layer_style_ui(
+    ui: &mut egui::Ui,
+    r: &mut creabim_core::Reference,
+    layer: &str,
+) -> Option<&'static str> {
+    let t = crate::i18n::t;
+    let mut out = None;
+    let Some(k) = r.layer_styles.iter().position(|s| s.layer == layer) else {
+        if ui
+            .small_button("🎨")
+            .on_hover_text(t("Give this layer a colour and line of its own"))
+            .clicked()
+        {
+            r.layer_styles.push(creabim_core::LayerStyle::new(
+                layer,
+                [20, 20, 20],
+                false,
+                1.0,
+            ));
+            out = Some("Reference layer style");
+        }
+        return out;
+    };
+    if ui
+        .small_button("✕")
+        .on_hover_text(t("Back to the drawing's colour"))
+        .clicked()
+    {
+        r.layer_styles.remove(k);
+        return Some("Reference layer style");
+    }
+    let st = &mut r.layer_styles[k];
+    if ui
+        .add(
+            egui::DragValue::new(&mut st.width)
+                .range(0.5..=4.0)
+                .speed(0.05)
+                .max_decimals(1),
+        )
+        .on_hover_text(t("Line width"))
+        .changed()
+    {
+        out = Some("Reference layer style");
+    }
+    if ui
+        .checkbox(&mut st.dashed, "")
+        .on_hover_text(t("Dashed"))
+        .changed()
+    {
+        out = Some("Reference layer style");
+    }
+    if ui.color_edit_button_srgb(&mut st.rgb).changed() {
+        out = Some("Reference layer style");
+    }
+    out
+}
+
+pub(crate) fn with_plan_views(model: Model) -> Model {
     let planned: Vec<ElementId> = model
         .iter()
         .filter_map(|e| match &e.kind {
@@ -13419,6 +13602,26 @@ fn with_plan_views(model: Model) -> Model {
             ));
             any = true;
         }
+    }
+    // every project lists its material take-off under Schedules
+    let has_takeoff = model.iter().any(|e| {
+        matches!(
+            &e.kind,
+            ElementKind::View(View {
+                kind: ViewKind::Schedule {
+                    category: ScheduleCategory::Materials,
+                    ..
+                },
+                ..
+            })
+        )
+    });
+    if !has_takeoff {
+        tx = tx.insert(Element::new(
+            crate::i18n::tr("Material take-off"),
+            ElementKind::View(View::schedule(ScheduleCategory::Materials)),
+        ));
+        any = true;
     }
     // a trade's drawing from before the trades dimensioned their own:
     // its dimensions, tags and notes show again
@@ -13471,6 +13674,7 @@ pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::PaperMark(_) => "paper mark",
         ElementKind::MarkRules(_) => "mark numbering",
         ElementKind::Results(_) => "calculation results",
+        ElementKind::Dss(_) => "data standard",
         ElementKind::StylePack(_) => "style pack",
         ElementKind::View(_) => "view",
         ElementKind::Sheet(_) => "sheet",
@@ -13933,6 +14137,27 @@ mod sheet_tools_tests {
     }
 
     #[test]
+    fn the_cadastre_coordinates_tool_stays_on_its_tab_and_writes_coordinates() {
+        let mut app = crate::app::test_app();
+        let ctx = egui::Context::default();
+        app.run_action(&ctx, "site:coords");
+        assert_eq!(app.plan.tool, Tool::SpotLevel);
+        assert!(app.plan.anno.spot_coords);
+        // the ribbon picking the tool shown again keeps it reading S-JTSK
+        let i = Tool::ALL
+            .iter()
+            .position(|t| *t == Tool::SpotLevel)
+            .unwrap();
+        app.run_action(&ctx, &format!("tool:{i}"));
+        assert!(app.plan.anno.spot_coords);
+        // another tool, then the spot level: heights again
+        let w = Tool::ALL.iter().position(|t| *t == Tool::Wall).unwrap();
+        app.run_action(&ctx, &format!("tool:{w}"));
+        app.run_action(&ctx, &format!("tool:{i}"));
+        assert!(!app.plan.anno.spot_coords);
+    }
+
+    #[test]
     fn the_header_buttons_reach_their_actions() {
         // MU22: these were handled but never routed from a click
         let mut app = crate::app::test_app();
@@ -14117,6 +14342,106 @@ mod prop_tab_tests {
         assert_eq!(app.prop_tabs()[0], PropTab::Next);
         app.prop_tab = PropTab::Next;
         draw(&mut app);
+    }
+
+    #[test]
+    fn a_cloud_is_read_in_the_background_then_cut_by_sections() {
+        let dir = std::env::temp_dir().join(format!("creabim-cloudload-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("room.xyz");
+        // a wall of points along x, 0 to 4 m, 0 to 2,5 m high, at y = 1
+        let mut text = String::new();
+        for i in 0..=40 {
+            for k in 0..=25 {
+                text.push_str(&format!("{} 1.0 {}\n", i as f64 * 0.1, k as f64 * 0.1));
+            }
+        }
+        std::fs::write(&path, text).unwrap();
+        let mut app = crate::app::test_app();
+        let view = app
+            .doc
+            .model()
+            .iter()
+            .find(|e| e.name == "Ground Floor plan")
+            .unwrap()
+            .id;
+        app.active_view = Some(view);
+        let path = path.display().to_string();
+        app.add_reference(view, creabim_core::RefSource::points(path.clone()));
+        assert!(app.cloud_load.is_some(), "read in the background");
+        let ctx = egui::Context::default();
+        let t0 = std::time::Instant::now();
+        while app.cloud_load.is_some() && t0.elapsed().as_secs() < 20 {
+            let raw = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200.0, 900.0),
+                )),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(raw, |ui| app.cloud_load_window(ui.ctx()));
+            out.textures_delta.clear();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let id = app
+            .selection
+            .active
+            .expect("the cloud is added and selected");
+        let Some(ElementKind::Reference(r)) = app.doc.model().get(id).map(|e| e.kind.clone())
+        else {
+            panic!("a reference")
+        };
+        // a section from y = -2 looking to its left (+y) sees the wall
+        let mut e = Element::new(
+            "Cloud section",
+            ElementKind::View(creabim_core::View::section(
+                r.place(DVec2::new(-0.5, -2.0)),
+                r.place(DVec2::new(4.5, -2.0)),
+                5.0,
+                true,
+            )),
+        );
+        let sec = e.id;
+        app.doc
+            .commit(
+                creabim_core::Transaction::new("section").insert(std::mem::replace(
+                    &mut e,
+                    Element::new("x", ElementKind::View(creabim_core::View::plan(view))),
+                )),
+            )
+            .unwrap();
+        let s = app
+            .plan
+            .ref_cache
+            .section(app.doc.model(), id, &r, sec)
+            .expect("a section shows it");
+        assert!(s.points.len() > 500, "{} points", s.points.len());
+        // looking the other way, it is behind the line: nothing
+        let mut e = Element::new(
+            "Back",
+            ElementKind::View(creabim_core::View::section(
+                r.place(DVec2::new(4.5, -2.0)),
+                r.place(DVec2::new(-0.5, -2.0)),
+                5.0,
+                true,
+            )),
+        );
+        let back = e.id;
+        app.doc
+            .commit(
+                creabim_core::Transaction::new("section").insert(std::mem::replace(
+                    &mut e,
+                    Element::new("x", ElementKind::View(creabim_core::View::plan(view))),
+                )),
+            )
+            .unwrap();
+        let s = app
+            .plan
+            .ref_cache
+            .section(app.doc.model(), id, &r, back)
+            .unwrap();
+        assert!(s.points.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

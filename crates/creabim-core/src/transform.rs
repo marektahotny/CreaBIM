@@ -509,6 +509,7 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         | ElementKind::Project(_)
         | ElementKind::MarkRules(_)
         | ElementKind::Results(_)
+        | ElementKind::Dss(_)
         | ElementKind::StylePack(_)
         | ElementKind::Cut(_)
         | ElementKind::Join(_)
