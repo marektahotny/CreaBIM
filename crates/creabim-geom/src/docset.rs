@@ -86,6 +86,25 @@ impl Builder {
         id
     }
 
+    /// Change the element `id` as `f` does, in the model and the
+    /// transaction.
+    fn edit(&mut self, id: ElementId, f: impl Fn(&mut Element)) {
+        let Some(old) = self.m.get(id).cloned() else {
+            return;
+        };
+        let mut now = old.clone();
+        f(&mut now);
+        if now == old {
+            return;
+        }
+        let one = Transaction::new("one").replace(old.clone(), now.clone());
+        if one.apply(&mut self.m).is_ok() {
+            let tx = std::mem::replace(&mut self.tx, Transaction::new(""));
+            self.tx = tx.replace(old, now);
+            self.fixed = true;
+        }
+    }
+
     fn view(&mut self, name: String, v: View) -> ElementId {
         self.made.views += 1;
         self.add(Element::new(name, ElementKind::View(v)))
@@ -427,8 +446,67 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
                 .iter()
                 .any(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == kind))
         {
-            let v = schedule(&mut b, category, name);
-            b.sheet(number(asr, "VVZ", &mut n), tr(name), &[v]);
+            // a long list page by page, each on its own sheet (Okná 1,
+            // Okná 2); a list already set whole stays whole
+            let whole = b.find(|_, v| {
+                matches!(v.kind, ViewKind::Schedule { category: c, .. } if c == category)
+                    && v.page.is_none()
+            });
+            let split = crate::joinerylist::pages(model, kind);
+            if split.len() < 2 {
+                let v = schedule(&mut b, category, name);
+                b.sheet(number(asr, "VVZ", &mut n), tr(name), &[v]);
+            } else {
+                // the whole list grown too long: its sheet takes the first
+                // page
+                if let Some(id) = whole {
+                    let title = format!("{} 1", tr(name));
+                    b.edit(id, |e| {
+                        e.name = title.clone();
+                        if let ElementKind::View(v) = &mut e.kind {
+                            v.page = Some(1);
+                        }
+                    });
+                    let sheets: Vec<ElementId> =
+                        b.m.iter()
+                            .filter_map(|e| match &e.kind {
+                                ElementKind::Viewport(vp) if vp.view == id => Some(vp.sheet),
+                                _ => None,
+                            })
+                            .collect();
+                    for sh in sheets {
+                        b.edit(sh, |e| e.name = title.clone());
+                    }
+                }
+                for page in 1..=split.len() as u32 {
+                    let title = format!("{} {page}", tr(name));
+                    let v = b
+                        .find(|_, v| {
+                            matches!(v.kind, ViewKind::Schedule { category: c, .. } if c == category)
+                                && v.page == Some(page)
+                        })
+                        .unwrap_or_else(|| {
+                            let mut v = View::schedule(category);
+                            v.page = Some(page);
+                            b.view(title.clone(), v)
+                        });
+                    // a number taken by another sheet: this page's after it
+                    let mut no = number(asr, "VVZ", &mut n);
+                    let shown =
+                        b.m.iter()
+                            .any(|e| matches!(&e.kind, ElementKind::Viewport(vp) if vp.view == v));
+                    let taken = |b: &Builder, no: &str| {
+                        b.m.iter()
+                            .any(|e| matches!(&e.kind, ElementKind::Sheet(s) if s.number == no))
+                    };
+                    if !shown && taken(&b, &no) {
+                        no = format!("{no}_{page}");
+                    }
+                    if !shown {
+                        b.sheet(no, title, &[v]);
+                    }
+                }
+            }
         }
     }
     // the system lintels placed by hand, listed

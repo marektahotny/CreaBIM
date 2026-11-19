@@ -2153,6 +2153,10 @@ pub struct View {
     /// column's heading; a column not named keeps its own width.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub column_widths: BTreeMap<String, f64>,
+    /// The page of a long list of windows or doors this view draws,
+    /// from 1; none draws the whole list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
     /// How a material take-off groups, details and sorts its rows.
     #[serde(default, skip_serializing_if = "crate::takeoff::Layout::is_default")]
     pub takeoff: crate::takeoff::Layout,
@@ -2567,6 +2571,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            page: None,
             takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
@@ -2606,6 +2611,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            page: None,
             takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
@@ -2642,6 +2648,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            page: None,
             takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
@@ -2679,6 +2686,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            page: None,
             takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
@@ -2721,6 +2729,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            page: None,
             takeoff: Default::default(),
             notes: String::new(),
             spatial: false,

@@ -18,6 +18,8 @@ const LINE: f64 = 3.6;
 const PATCH: DVec2 = DVec2::new(16.0, 7.0);
 const INDENT: f64 = 22.0;
 const WIDTH: f64 = 150.0;
+/// The sample's and the words' columns as drawn by default, mm.
+pub const COLUMNS: (f64, f64) = (INDENT, WIDTH - INDENT);
 
 /// One row of the legend.
 #[derive(Clone, Debug, PartialEq)]
@@ -105,6 +107,8 @@ pub fn rows(model: &Model) -> Vec<Row> {
 /// The legend as a drawing in paper millimetres, its top left corner at
 /// the origin.
 pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
+    // the columns' widths as set on the sheet
+    let (ind, tw) = crate::schedule::legend_columns(model, view, INDENT, WIDTH - INDENT);
     let mut items = vec![];
     let text = |items: &mut Vec<PlanItem>, at: DVec2, t: &str, size: f64| {
         items.push(PlanItem::Text {
@@ -127,7 +131,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
     let mut y = 0.0;
     let rows = rows(model);
     for r in &rows {
-        let lines = wrap(&r.text, WIDTH - INDENT, TEXT);
+        let lines = wrap(&r.text, tw, TEXT);
         let h = PATCH.y.max(lines.len() as f64 * LINE);
         let top = y - (h - PATCH.y) / 2.0;
         let patch = vec![
@@ -153,7 +157,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         }
         let mut ty = y - h / 2.0 + (lines.len() as f64 - 1.0) * LINE / 2.0;
         for l in &lines {
-            text(&mut items, DVec2::new(INDENT, ty), l, TEXT);
+            text(&mut items, DVec2::new(ind, ty), l, TEXT);
             ty -= LINE;
         }
         y -= h + 3.0;
@@ -187,7 +191,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         );
         y -= HEAD + 3.0;
         for n in &notes {
-            for l in wrap(&n.to_uppercase(), WIDTH, TEXT) {
+            for l in wrap(&n.to_uppercase(), ind + tw, TEXT) {
                 text(&mut items, DVec2::new(0.0, y - LINE / 2.0), &l, TEXT);
                 y -= LINE;
             }

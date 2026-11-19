@@ -167,10 +167,45 @@ pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
     Some(s)
 }
 
+/// The headings a legend's two columns are known by on the sheet: its
+/// samples or symbols and its words.
+pub const LEGEND_COLUMNS: [&str; 2] = ["Symbol", "Description"];
+
+/// A legend's two columns, its samples' and its words', as set on the
+/// sheet, else as given.
+pub fn legend_columns(model: &Model, view: ElementId, symbol: f64, words: f64) -> (f64, f64) {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return (symbol, words);
+    };
+    let w = |k: &str, d: f64| v.column_widths.get(k).map_or(d, |w| w.max(MIN_COLUMN));
+    (w(LEGEND_COLUMNS[0], symbol), w(LEGEND_COLUMNS[1], words))
+}
+
 /// Where the column edges of `view`'s table stand on its drawing, mm
 /// from its left edge, each with its column's heading: the edge to the
 /// right of each column. None for a view that is not a plain table.
 pub fn column_edges(model: &Model, view: ElementId) -> Option<Vec<(String, f64, f64)>> {
+    // the lists of windows and doors are drawn, not tables
+    if let Some(edges) = crate::joinerylist::column_edges(model, view) {
+        return Some(edges);
+    }
+    // the legends of services and materials: a sample and its words
+    if let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) {
+        if let creabim_core::ViewKind::Schedule { category, .. } = v.kind {
+            let sizes = match category {
+                ScheduleCategory::ServicesLegend => Some(crate::serviceslegend::COLUMNS),
+                ScheduleCategory::MaterialLegend => Some(crate::matlegend::COLUMNS),
+                _ => None,
+            };
+            if let Some((a, b)) = sizes {
+                let (a, b) = legend_columns(model, view, a, b);
+                return Some(vec![
+                    (LEGEND_COLUMNS[0].to_string(), a, a),
+                    (LEGEND_COLUMNS[1].to_string(), a + b, b),
+                ]);
+            }
+        }
+    }
     let s = view_table(model, view)?;
     let mut x = 0.0;
     Some(
