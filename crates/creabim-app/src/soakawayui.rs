@@ -7,7 +7,8 @@
 use super::CreaBimApp;
 use super::Tool;
 use creabim_core::catalogue::soakaway::{
-    self, critical, emptying_hours, Block, Filter, Rain, SoakawayConfig, BLOCK,
+    self, blocks_along, critical, critical_volume, draining_hours, emptying_hours, Block, Filter,
+    Rain, SoakawayConfig, BLOCK,
 };
 use creabim_core::fireparams;
 use eframe::egui::{self, Vec2};
@@ -73,6 +74,14 @@ fn periodicity(n: f64) -> String {
     )
 }
 
+/// A part's name in the user's language: "Inlet blend Ø160" keeps its size.
+fn part_name(name: &str) -> String {
+    match name.split_once(" Ø") {
+        Some((a, b)) => format!("{} Ø{b}", crate::i18n::tr(a)),
+        None => crate::i18n::tr(name),
+    }
+}
+
 impl SoakawayDraft {
     /// The connected area A_u, m².
     pub fn area_u(&self) -> f64 {
@@ -82,12 +91,23 @@ impl SoakawayDraft {
 
 impl CreaBimApp {
     /// `site:soakaway`: open the window.
+    /// `site:retention`: the same window, as a retention tank.
     pub(super) fn soakaway_action(&mut self, head: &str, arg: &str) -> bool {
-        if head != "site" || arg != "soakaway" {
+        if head != "site" || !matches!(arg, "soakaway" | "retention") {
             return false;
         }
-        if self.soakaway.is_none() {
-            self.soakaway = Some(SoakawayDraft::default());
+        let retention = arg == "retention";
+        let d = self.soakaway.get_or_insert_with(SoakawayDraft::default);
+        if d.c.retention != retention {
+            let keep = d.c.inlet_dn;
+            d.c = if retention {
+                SoakawayConfig::rn20()
+            } else {
+                SoakawayConfig {
+                    inlet_dn: keep,
+                    ..SoakawayConfig::default()
+                }
+            };
         }
         true
     }
@@ -121,7 +141,12 @@ impl CreaBimApp {
         let mut open = true;
         let mut place = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        super::shell::window(t("Soakaway (DRENBLOK)"))
+        let title = if d.c.retention {
+            t("Retention tank (DRENBLOK)")
+        } else {
+            t("Soakaway (DRENBLOK)")
+        };
+        super::shell::window(title)
             .id(egui::Id::new("site.soakaway"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(260.0, 300.0))
@@ -129,6 +154,17 @@ impl CreaBimApp {
             .constrain_to(area)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let was = d.c.retention;
+                        ui.selectable_value(&mut d.c.retention, false, t("Soakaway"));
+                        ui.selectable_value(&mut d.c.retention, true, t("Retention tank, outlet to a recipient"));
+                        if d.c.retention && !was {
+                            d.c = SoakawayConfig::rn20();
+                        }
+                        if d.c.retention && ui.button("EKODREN RN20").clicked() {
+                            d.c = SoakawayConfig::rn20();
+                        }
+                    });
                     ui.strong(t("What drains into it"));
                     egui::Grid::new("site.soak.area").num_columns(3).spacing([12.0, 4.0]).show(ui, |ui| {
                         ui.label(t("Roofs"));
@@ -142,6 +178,12 @@ impl CreaBimApp {
                         ui.label(t("Connected area A_u"));
                         ui.label(format!("{:.1} m²", d.area_u()));
                         ui.end_row();
+                        if d.c.retention {
+                            ui.label(t("Outflow to the recipient Q_o"));
+                            ui.add(egui::DragValue::new(&mut d.c.outflow).range(0.0..=500.0).speed(0.1).suffix(" l/s"));
+                            ui.label(t("as the sewer's or stream's administrator allows"));
+                            ui.end_row();
+                        } else {
                         ui.label(t("Permeability k_f"));
                         egui::ComboBox::from_id_salt("site.soak.kf")
                             .selected_text(format!("{:.0e} m/s", d.kf))
@@ -160,6 +202,7 @@ impl CreaBimApp {
                             });
                         ui.label(t("from the soil survey"));
                         ui.end_row();
+                        }
                         ui.label(t("Surcharge factor f_z"));
                         ui.add(egui::DragValue::new(&mut d.fz).range(1.0..=1.5).speed(0.01));
                         ui.end_row();
@@ -265,6 +308,17 @@ impl CreaBimApp {
                                 }
                             });
                         ui.end_row();
+                        if d.c.retention {
+                            ui.label(t("Outlet to the recipient"));
+                            egui::ComboBox::from_id_salt("site.soak.out")
+                                .selected_text(format!("DN {}", d.c.outlet_dn))
+                                .show_ui(ui, |ui| {
+                                    for dn in [110, 160, 200, 250] {
+                                        ui.selectable_value(&mut d.c.outlet_dn, dn, format!("DN {dn}"));
+                                    }
+                                });
+                            ui.end_row();
+                        }
                     });
                     ui.horizontal(|ui| {
                         ui.label(t("Rain duration"));
@@ -288,6 +342,39 @@ impl CreaBimApp {
                         Some(m) => d.rains.iter().copied().filter(|r| (r.minutes - m).abs() < 1e-6).collect(),
                         None => d.rains.clone(),
                     };
+                    if d.c.retention {
+                        match critical_volume(au, &rains, d.c.outflow, d.fz) {
+                            Some((r, v)) => {
+                                let need = blocks_along(&d.c, v);
+                                ui.label(egui::RichText::new(format!(
+                                    "{}: {:.0} min, {:.0} l/(s·ha) · {} {:.2} m³ · {} {} × {} × {} = {} {}",
+                                    if d.duration.is_some() { t("Design rain") } else { t("Critical rain") },
+                                    r.minutes,
+                                    r.intensity,
+                                    t("volume to hold"),
+                                    v,
+                                    t("blocks"),
+                                    need,
+                                    d.c.across,
+                                    d.c.layers,
+                                    need * d.c.across * d.c.layers,
+                                    t("pcs")
+                                )).strong());
+                                let hours = draining_hours(d.c.storage(), d.c.outflow);
+                                ui.label(format!("{} {:.1} h", t("Draining time when full"), hours));
+                                if d.c.storage() < v {
+                                    ui.colored_label(ui.visuals().warn_fg_color, format!("{} {:.2} m³", t("The blocks hold too little:"), d.c.storage()));
+                                }
+                                if d.c.along != need && ui.button(format!("{} {need}", t("Blocks along:"))).clicked() {
+                                    d.c.along = need;
+                                }
+                            }
+                            None => {
+                                ui.weak(t("Type the rain series to work out the volume."));
+                            }
+                        }
+                        ui.weak(t("Its bottom above the highest ground water; from buildings without a basement 1.5 times their foundations' depth, with a basement 3 times its depth (not by a basement sealed against pressing water); from trees their crown's width. A safety overflow to another recipient for heavier rains."));
+                    } else {
                     match critical(au, &rains, w, h, d.kf, d.fz) {
                         Some((r, len)) => {
                             let need = (len / BLOCK).ceil().max(1.0) as u32;
@@ -321,6 +408,7 @@ impl CreaBimApp {
                             ui.weak(t("Type the rain series to work out the length."));
                         }
                     }
+                    }
                     if d.c.cover > d.c.max_cover() {
                         ui.colored_label(ui.visuals().warn_fg_color, t("Deeper than the maker allows for this many layers."));
                     }
@@ -337,6 +425,24 @@ impl CreaBimApp {
                         w,
                         h
                     ));
+                    ui.collapsing(t("Parts list"), |ui| {
+                        egui::Grid::new("site.soak.parts").num_columns(3).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
+                            for p in soakaway::parts(&d.c) {
+                                ui.label(part_name(&p.name));
+                                let qty = if p.unit == "m³" { format!("{:.2}", p.qty) } else { format!("{:.0}", p.qty) };
+                                ui.label(qty.replace('.', ","));
+                                ui.label(t(p.unit));
+                                ui.end_row();
+                            }
+                        });
+                        if ui.button(t("Copy the list")).clicked() {
+                            let text: String = soakaway::parts(&d.c)
+                                .iter()
+                                .map(|p| format!("{}\t{}\t{}\n", part_name(&p.name), format!("{:.2}", p.qty).replace('.', ","), t(p.unit)))
+                                .collect();
+                            ui.ctx().copy_text(format!("{}\n{text}", d.c.code()));
+                        }
+                    });
                     ui.add_space(4.0);
                     if ui.button(t("Place it")).clicked() {
                         place = true;

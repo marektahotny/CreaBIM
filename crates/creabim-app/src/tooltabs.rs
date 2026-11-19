@@ -159,6 +159,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "A rainwater soakaway of DRENBLOK blocks in 1 to 5 layers with its filter shaft and overflow, sized after DWA-A 138 from the connected area, the ground's permeability and the rain series",
             ),
             act(
+                "site:retention",
+                "Retention tank",
+                "droplet",
+                "A rainwater retention tank of DRENBLOK blocks wrapped in foil (EKODREN RN), its filter shaft ahead and a throttled outlet to the recipient, sized after DWA-A 117 from the connected area, the allowed outflow and the rain series; with its parts list",
+            ),
+            act(
                 "site:coords",
                 "S-JTSK coordinates",
                 "crosshair",
