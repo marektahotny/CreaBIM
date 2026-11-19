@@ -1880,8 +1880,32 @@ impl DepthBuffer {
                 })
             })
             .collect();
-        // bands of rows on every core; each band takes the triangles in
-        // the same order, so every cell ends as the one scan left it
+        // each element's triangles, its box in cells and its nearest depth;
+        // the nearest elements go first, so what stands wholly behind them
+        // can be passed over (the flats behind a tower's front walls)
+        let mut spans: Vec<(usize, usize, [f64; 4], f32)> = Vec::with_capacity(faces.len());
+        let mut at = 0;
+        for (_, _, ts) in faces {
+            let mut b = [
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ];
+            let mut z = f64::INFINITY;
+            for (t, _, _) in &tris[at..at + ts.len()] {
+                for p in t {
+                    b = [b[0].min(p.x), b[1].min(p.y), b[2].max(p.x), b[3].max(p.y)];
+                    z = z.min(p.z);
+                }
+            }
+            spans.push((at, at + ts.len(), b, z as f32));
+            at += ts.len();
+        }
+        let mut order: Vec<usize> = (0..spans.len()).collect();
+        order.sort_by(|&i, &j| spans[i].3.total_cmp(&spans[j].3));
+        // bands of rows on every core; an element's index settles a tie
+        // in depth, so every cell ends as a scan in scene order left it
         let rows = band_rows(h);
         let (depth, nearest) = (&mut buf.depth, &mut buf.nearest);
         let mut rgba: Vec<Option<&mut [u8]>> = match &mut buf.rgba {
@@ -1895,21 +1919,42 @@ impl DepthBuffer {
                 .zip(rgba.iter_mut())
                 .enumerate()
             {
-                let tris = &tris;
+                let (tris, spans, order) = (&tris, &spans, &order);
                 scope.spawn(move || {
                     let y0 = k * rows;
+                    let y1 = (y0 + rows).min(h);
                     let base = y0 * w;
-                    for (t, c, index) in tris {
-                        cover_rows(t, w, h, y0..(y0 + rows).min(h), |i, d| {
-                            let j = i - base;
-                            if d < dc[j] {
-                                dc[j] = d;
-                                nc[j] = *index;
-                                if let Some(rc) = rc.as_deref_mut() {
-                                    rc[j * 4..j * 4 + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+                    for &e in order {
+                        let (from, to, b, z) = spans[e];
+                        let ylo = (b[1].floor() - 1.0).max(y0 as f64) as usize;
+                        let yhi = ((b[3].ceil() + 1.0).max(0.0) as usize).min(y1 - 1);
+                        if b[1] > b[3] || ylo > yhi || b[3] + 1.0 < y0 as f64 {
+                            continue;
+                        }
+                        let xlo = (b[0].floor() - 1.0).max(0.0) as usize;
+                        let xhi = ((b[2].ceil() + 1.0).max(0.0) as usize).min(w - 1);
+                        let hidden = xlo <= xhi
+                            && (ylo..=yhi).all(|y| {
+                                dc[(y - y0) * w + xlo..=(y - y0) * w + xhi]
+                                    .iter()
+                                    .all(|d| *d < z - 1e-3)
+                            });
+                        if hidden {
+                            continue;
+                        }
+                        for (t, c, index) in &tris[from..to] {
+                            cover_rows(t, w, h, y0..y1, |i, d| {
+                                let j = i - base;
+                                if d < dc[j] || (d == dc[j] && *index < nc[j]) {
+                                    dc[j] = d;
+                                    nc[j] = *index;
+                                    if let Some(rc) = rc.as_deref_mut() {
+                                        rc[j * 4..j * 4 + 4]
+                                            .copy_from_slice(&[c[0], c[1], c[2], 255]);
+                                    }
                                 }
-                            }
-                        });
+                            });
+                        }
                     }
                 });
             }
