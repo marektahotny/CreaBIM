@@ -24,6 +24,10 @@
 //!   over them): Wienerberger's technical sheets (bearing 125 mm up to
 //!   1,75 m long, 200 mm for 2,00 and 2,25 m, 250 mm from 2,50 m; the
 //!   flat ones 120 mm).
+//! - Porotherm KP XL 30 and 38 (300 / 380 wide, 3,75 to 6,50 m): KP Vario
+//!   pieces with added reinforcement cast with the ring beam over them,
+//!   bearing 250 mm, from Wienerberger's technical sheet *Porotherm KP XL*,
+//!   with MRd, VRd and gRd for a ring beam 210 to 250 mm high.
 //!
 //! **Wall lengths.** A masonry wall is braced by the walls across it and by
 //! RC columns in it. Its stretches between them are checked against:
@@ -81,10 +85,14 @@ pub enum Family {
     /// Porotherm KP 11,5 and KP 14,5: flat, made up with masonry on top.
     Kp115,
     Kp145,
+    /// Porotherm KP XL: KP Vario pieces with added reinforcement, cast
+    /// together with the ring beam, for 3 to 6 m openings (300 and 380
+    /// wide).
+    KpXl,
 }
 
 impl Family {
-    pub const ALL: [Family; 7] = [
+    pub const ALL: [Family; 8] = [
         Family::PorfixNp,
         Family::PorfixP,
         Family::PorfixU,
@@ -92,6 +100,7 @@ impl Family {
         Family::KpVario,
         Family::Kp115,
         Family::Kp145,
+        Family::KpXl,
     ];
 
     pub fn label(self) -> &'static str {
@@ -103,6 +112,7 @@ impl Family {
             Family::KpVario => "Porotherm KP Vario",
             Family::Kp115 => "Porotherm KP 11,5 (flat)",
             Family::Kp145 => "Porotherm KP 14,5 (flat)",
+            Family::KpXl => "Porotherm KP XL (3 to 6 m)",
         }
     }
 
@@ -127,6 +137,7 @@ impl Family {
             Family::KpVario => "kp-vario",
             Family::Kp115 => "kp115",
             Family::Kp145 => "kp145",
+            Family::KpXl => "kp-xl",
         }
     }
 
@@ -990,7 +1001,204 @@ pub const PRODUCTS: &[LintelProduct] = &[
         2.5,
         55.0
     ),
+    // Porotherm KP XL (technical sheet KP XL, Wienerberger): composite,
+    // cast with the ring beam; bearing 250, mass of the precast pieces
+    p!(
+        "kp-xl-30-375",
+        KpXl,
+        "KP XL 30 - 375",
+        3.75,
+        0.3,
+        0.238,
+        0.25,
+        3.25,
+        279.2
+    ),
+    p!(
+        "kp-xl-30-400",
+        KpXl,
+        "KP XL 30 - 400",
+        4.0,
+        0.3,
+        0.238,
+        0.25,
+        3.5,
+        297.8
+    ),
+    p!(
+        "kp-xl-30-425",
+        KpXl,
+        "KP XL 30 - 425",
+        4.25,
+        0.3,
+        0.238,
+        0.25,
+        3.75,
+        316.6
+    ),
+    p!(
+        "kp-xl-30-450",
+        KpXl,
+        "KP XL 30 - 450",
+        4.5,
+        0.3,
+        0.238,
+        0.25,
+        4.0,
+        335.4
+    ),
+    p!(
+        "kp-xl-30-475",
+        KpXl,
+        "KP XL 30 - 475",
+        4.75,
+        0.3,
+        0.238,
+        0.25,
+        4.25,
+        352.2
+    ),
+    p!(
+        "kp-xl-30-500",
+        KpXl,
+        "KP XL 30 - 500",
+        5.0,
+        0.3,
+        0.238,
+        0.25,
+        4.5,
+        370.8
+    ),
+    p!(
+        "kp-xl-30-525",
+        KpXl,
+        "KP XL 30 - 525",
+        5.25,
+        0.3,
+        0.238,
+        0.25,
+        4.75,
+        389.6
+    ),
+    p!(
+        "kp-xl-30-550",
+        KpXl,
+        "KP XL 30 - 550",
+        5.5,
+        0.3,
+        0.238,
+        0.25,
+        5.0,
+        408.4
+    ),
+    p!(
+        "kp-xl-38-575",
+        KpXl,
+        "KP XL 38 - 575",
+        5.75,
+        0.38,
+        0.238,
+        0.25,
+        5.25,
+        428.6
+    ),
+    p!(
+        "kp-xl-38-600",
+        KpXl,
+        "KP XL 38 - 600",
+        6.0,
+        0.38,
+        0.238,
+        0.25,
+        5.5,
+        447.0
+    ),
+    p!(
+        "kp-xl-38-625",
+        KpXl,
+        "KP XL 38 - 625",
+        6.25,
+        0.38,
+        0.238,
+        0.25,
+        5.75,
+        462.6
+    ),
+    p!(
+        "kp-xl-38-650",
+        KpXl,
+        "KP XL 38 - 650",
+        6.5,
+        0.38,
+        0.238,
+        0.25,
+        6.0,
+        481.4
+    ),
 ];
+
+/// Porotherm KP XL after casting, from its sheet: for a ring beam (or
+/// slab) over it 210 mm and 250 mm high, MRd kNm, VRd kN and gRd kN/m
+/// (the most uniform design load, its own weight left out).
+const KP_XL_CAPACITY: &[(&str, [[f64; 3]; 2])] = &[
+    (
+        "kp-xl-30-375",
+        [[53.23, 125.18, 30.23], [59.05, 138.09, 33.62]],
+    ),
+    (
+        "kp-xl-30-400",
+        [[58.39, 122.72, 28.68], [64.81, 135.63, 31.93]],
+    ),
+    (
+        "kp-xl-30-425",
+        [[65.00, 122.72, 27.96], [72.17, 135.63, 31.14]],
+    ),
+    (
+        "kp-xl-30-450",
+        [[75.00, 120.72, 28.68], [83.36, 133.63, 31.98]],
+    ),
+    (
+        "kp-xl-30-475",
+        [[77.04, 118.56, 25.90], [85.72, 131.47, 28.92]],
+    ),
+    (
+        "kp-xl-30-500",
+        [[90.12, 116.24, 27.42], [100.41, 129.15, 30.66]],
+    ),
+    (
+        "kp-xl-30-525",
+        [[104.36, 113.75, 28.86], [126.40, 129.07, 35.51]],
+    ),
+    (
+        "kp-xl-30-550",
+        [[128.03, 111.07, 32.62], [143.28, 123.98, 36.65]],
+    ),
+    (
+        "kp-xl-38-575",
+        [[151.36, 112.62, 33.26], [163.73, 125.13, 35.94]],
+    ),
+    (
+        "kp-xl-38-600",
+        [[146.55, 112.62, 28.80], [163.73, 125.53, 32.35]],
+    ),
+    (
+        "kp-xl-38-625",
+        [[173.50, 110.41, 30.45], [194.34, 123.32, 34.18]],
+    ),
+    (
+        "kp-xl-38-650",
+        [[165.11, 110.41, 27.23], [194.34, 123.32, 32.56]],
+    ),
+];
+
+/// A KP XL lintel's MRd (kNm), VRd (kN) and gRd (kN/m) under a ring
+/// beam `ring` m high: between the sheet's 210 and 250 mm by straight
+/// interpolation, as the sheet allows; outside them the nearer.
+pub fn kp_xl_capacity(id: &str, ring: f64) -> Option<[f64; 3]> {
+    let (_, [a, b]) = KP_XL_CAPACITY.iter().find(|x| x.0 == id)?;
+    let t = ((ring - 0.21) / 0.04).clamp(0.0, 1.0);
+    Some([0, 1, 2].map(|i| a[i] + (b[i] - a[i]) * t))
+}
 
 pub fn product(id: &str) -> Option<&'static LintelProduct> {
     PRODUCTS.iter().find(|p| p.id == id)
@@ -1013,7 +1221,12 @@ pub fn widths(family: Family) -> Vec<f64> {
 pub fn fit(family: Family, width: f64, span: f64) -> Option<&'static LintelProduct> {
     PRODUCTS
         .iter()
-        .filter(|p| p.family == family && (p.width - width).abs() < 1e-6)
+        // a KP XL 30 serves a wider wall too (300 is its least width)
+        .filter(|p| {
+            p.family == family
+                && ((p.width - width).abs() < 1e-6
+                    || (family == Family::KpXl && p.width < width + 1e-6))
+        })
         .filter(|p| p.max_span + 1e-6 >= span)
         .min_by(|a, b| a.length.total_cmp(&b.length))
 }
@@ -1073,6 +1286,8 @@ pub fn usual_set(model: &Model, wall: &Wall, family: Family) -> LintelSet {
             }
         }
         Family::PorfixU => (near(core), 1),
+        // one composite lintel the wall's width: 380 from a 380 core
+        Family::KpXl => (if core + 1e-6 >= 0.38 { 0.38 } else { 0.3 }, 1),
         _ => {
             let w = widths.first().copied().unwrap_or(0.07);
             // pieces with a joint of mortar between, at least one
@@ -1895,6 +2110,26 @@ mod tests {
         let id = e.id;
         doc.commit(Transaction::new("o").insert(e)).unwrap();
         id
+    }
+
+    #[test]
+    fn kp_xl_spans_three_to_six_metres_and_its_capacity_interpolates() {
+        // a 4,1 m opening in a 300 wall: KP XL 30 - 475 (clear 4,25)
+        assert_eq!(fit(Family::KpXl, 0.3, 4.1).unwrap().id, "kp-xl-30-475");
+        // in a 380 wall the 30 series serves up to 5 m, then the 38
+        assert_eq!(fit(Family::KpXl, 0.38, 4.1).unwrap().id, "kp-xl-30-475");
+        assert_eq!(fit(Family::KpXl, 0.38, 5.4).unwrap().id, "kp-xl-38-600");
+        assert!(fit(Family::KpXl, 0.3, 5.4).is_none());
+        assert!(fit(Family::KpXl, 0.38, 6.1).is_none());
+        let p = product("kp-xl-30-450").unwrap();
+        assert_eq!((p.length, p.bearing, p.mass), (4.5, 0.25, 335.4));
+        let lo = kp_xl_capacity("kp-xl-30-450", 0.21).unwrap();
+        let hi = kp_xl_capacity("kp-xl-30-450", 0.25).unwrap();
+        let mid = kp_xl_capacity("kp-xl-30-450", 0.23).unwrap();
+        assert_eq!(lo[2], 28.68);
+        assert_eq!(hi[2], 31.98);
+        assert!((mid[2] - (28.68 + 31.98) / 2.0).abs() < 1e-9);
+        assert_eq!(kp_xl_capacity("kp-xl-30-450", 0.4).unwrap(), hi);
     }
 
     #[test]

@@ -193,6 +193,8 @@ pub fn lintel_schedule(model: &Model) -> crate::schedule::Schedule {
     );
     let mut groups: Vec<Group> = vec![];
     let marks = creabim_core::marks::marks(model);
+    // a KP XL carries what its sheet gives under the project's ring beam
+    let ring = masonry::rules(model).ring_depth;
     for e in model.iter() {
         let ElementKind::Beam(b) = &e.kind else {
             continue;
@@ -240,7 +242,12 @@ pub fn lintel_schedule(model: &Model) -> crate::schedule::Schedule {
                 id,
                 cells: vec![
                     storey,
-                    p.name.to_string(),
+                    match masonry::kp_xl_capacity(p.id, ring) {
+                        Some([_, _, g]) => {
+                            format!("{} (gRd {g:.1} kN/m)", p.name).replace('.', ",")
+                        }
+                        None => p.name.to_string(),
+                    },
                     p.family.maker().to_string(),
                     format!("{:.0}", p.length * 1000.0),
                     format!("{:.0}×{:.0}", p.width * 1000.0, p.height * 1000.0),
