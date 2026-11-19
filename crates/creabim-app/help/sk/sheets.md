@@ -42,7 +42,7 @@ Pod každým výrezom je jeho **názov**. Vo *Vlastnostiach* výrezu: zobraziť 
 
 ## Stĺpce tabuliek {#table-columns}
 
-Vyber umiestnenú legendu miestností alebo iný výkaz a na čiarach jeho stĺpcov sa ukážu úchopy. Ťahaním čiary medzi dvoma stĺpcami zúžiš alebo rozšíriš stĺpec vľavo od nej, po pol milimetri; stĺpce za ním sa posunú. Dvojklik na čiaru vráti stĺpcu jeho predvolenú šírku. Šírky patria pohľadu výkazu, takže vyzerá rovnako na každom liste, kde je umiestnený.
+Vyber umiestnenú legendu miestností alebo iný výkaz a na čiarach jeho stĺpcov sa ukážu úchopy. Ťahaním čiary medzi dvoma stĺpcami zúžiš alebo rozšíriš stĺpec vľavo od nej, po pol milimetri; stĺpce za ním sa posunú. Legenda TZB a legenda materiálov majú dva stĺpce, vzorku alebo značku a jej popis, ktorý sa zalomí na nastavenú šírku. Dvojklik na čiaru vráti stĺpcu jeho predvolenú šírku. Šírky patria pohľadu výkazu, takže vyzerá rovnako na každom liste, kde je umiestnený.
 
 ## Titulné strany {#title-pages}
 

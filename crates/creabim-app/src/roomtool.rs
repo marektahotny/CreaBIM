@@ -580,6 +580,32 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
             label = "Room data";
         }
     }
+    // 4.4.5 of STN 92 0201-4: a concentrated fire load, its openings
+    // with their own heat flux in the separation distance
+    let mut has_pvm = r.fire_pvm.is_some();
+    if crate::props::switch(ui, &mut has_pvm, "Concentrated fire load")
+        .on_hover_text(crate::i18n::t(
+            "A concentrated fire load in the room: its openings count with their own heat flux in the separation distance (STN 92 0201-4, 4.4.5)",
+        ))
+        .changed()
+    {
+        r.fire_pvm = has_pvm.then_some(0.0);
+        label = "Room data";
+    }
+    if let Some(pvm) = r.fire_pvm.as_mut() {
+        let changed = crate::props::row(ui, "pvm", |ui| {
+            ui.add(
+                egui::DragValue::new(pvm)
+                    .range(0.0..=10_000.0)
+                    .speed(0.1)
+                    .suffix(" kg/m²"),
+            )
+            .changed()
+        });
+        if changed {
+            label = "Room data";
+        }
+    }
     if !r.fire_use.is_empty() || r.design_count.is_some() {
         let area = room::shape_of(model, r).map_or(0.0, |s| room::net_area(model, r, &s));
         let cell = |c: &str| table.map_or("", |t| t.cell(r.fire_use.trim(), c));

@@ -74,6 +74,11 @@ pub struct Room {
     /// takes windows, doors and floors from the table by its area.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fire_ps: Option<f64>,
+    /// The design fire load pvm of a concentrated fire load in it,
+    /// kg/m², where the designer gives one: its openings have their own
+    /// heat flux (STN 92 0201-4 4.4.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fire_pvm: Option<f64>,
     /// The tiling of its walls, where it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiling: Option<Tiling>,

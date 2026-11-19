@@ -1591,6 +1591,7 @@ impl<'a> Importer<'a> {
             layer_ends: vec![],
             bulge: 0.0,
             bearing: None,
+            fire_partial: false,
         };
         Ok((wall, voids))
     }
