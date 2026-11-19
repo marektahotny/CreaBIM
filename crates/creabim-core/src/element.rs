@@ -2373,10 +2373,13 @@ pub enum ScheduleCategory {
     /// feed, main switch and circuits with their breakers, cables and
     /// what they feed.
     BoardDiagram,
+    /// The system lintels by product and storey: pieces, length, size and
+    /// mass, and the openings they span.
+    LintelList,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 22] = [
+    pub const ALL: [ScheduleCategory; 23] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2399,6 +2402,7 @@ impl ScheduleCategory {
         ScheduleCategory::FireRisk,
         ScheduleCategory::Occupancy,
         ScheduleCategory::BoardDiagram,
+        ScheduleCategory::LintelList,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2426,6 +2430,7 @@ impl ScheduleCategory {
             ScheduleCategory::Occupancy => return "Occupancy by persons".into(),
             ScheduleCategory::FireRisk => return "Fire risk".into(),
             ScheduleCategory::BoardDiagram => return "Board diagram".into(),
+            ScheduleCategory::LintelList => return "Lintel list".into(),
         };
         format!("{one} Schedule")
     }
@@ -2462,6 +2467,7 @@ impl ScheduleCategory {
             ScheduleCategory::Occupancy => "Occupancy by persons",
             ScheduleCategory::FireRisk => "Fire risk",
             ScheduleCategory::BoardDiagram => "Board diagram",
+            ScheduleCategory::LintelList => "Lintel list",
         }
     }
 

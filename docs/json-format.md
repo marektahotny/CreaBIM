@@ -868,6 +868,7 @@ What a schedule lists.
 - `"fire_facades"`
 - `"occupancy"`
 - `"board_diagram"`
+- `"lintel_list"`
 - `"fire_risk"`
 
 ### Callout

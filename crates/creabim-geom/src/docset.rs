@@ -419,6 +419,11 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
             b.sheet(number(asr, "VVZ", &mut n), tr(name), &[v]);
         }
     }
+    // the system lintels placed by hand, listed
+    if model.iter().any(creabim_core::masonry::is_lintel) {
+        let v = schedule(&mut b, ScheduleCategory::LintelList, "Lintel list");
+        b.sheet(number(asr, "VVZ", &mut n), tr("Lintel list"), &[v]);
+    }
 
     // D S01 ZTI and VYK: a services plan a storey with the legend
     let object = |pick: &dyn Fn(&str) -> bool| {

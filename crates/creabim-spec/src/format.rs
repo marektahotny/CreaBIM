@@ -975,6 +975,7 @@ spec_enum! {
         FireFacades = "fire_facades",
         Occupancy = "occupancy",
         BoardDiagram = "board_diagram",
+        LintelList = "lintel_list",
         FireRisk = "fire_risk",
     }
 }
