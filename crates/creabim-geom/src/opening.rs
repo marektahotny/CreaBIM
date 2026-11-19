@@ -118,9 +118,15 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
     // a door as joinery: its frame is what its leaf leaves of the opening
     let (jw, hh) = match (&o.door, o.kind, &o.division) {
         (Some(d), OpeningKind::Door, None) => d.members(w, h),
+        // a divided door in its own frame, as the editor and the list
+        // draw it
+        (Some(d), OpeningKind::Door, Some(_)) => {
+            let j = d.members(w, h).0;
+            (j, j)
+        }
         _ => (fw, fw),
     };
-    let fw = if o.division.is_some() { fw } else { jw };
+    let fw = jw;
     add(Part::Frame, b(0.0, -hd, 0.0), b(fw, hd, h));
     add(Part::Frame, b(w - fw, -hd, 0.0), b(w, hd, h));
     add(Part::Frame, b(fw, -hd, h - hh), b(w - fw, hd, h));
@@ -134,7 +140,7 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
         // the division is seen from outside (+y here, −y once turned
         // across): its left is at the far x until then
         let x_of = |x: f64| if across { x } else { w - x };
-        let (fields, bars) = node.layout(w, h, fw, fw, !door);
+        let (fields, bars) = node.layout_of(door, w, h, fw);
         for bar in &bars {
             let (xa, xb) = (
                 x_of(bar.x0).min(x_of(bar.x1)),
@@ -854,6 +860,23 @@ mod tests {
         let boxes = opening_boxes(&o, &wall(), None);
         assert_eq!(count(&boxes, Part::Leaf), 1);
         assert_eq!(count(&boxes, Part::Glass), 1);
+        // a turning leaf in a door is a door leaf (it swings in plan),
+        // and the side light is no passage: the mark says the leaf only
+        o.division = Some(FrameNode::parse("v(0.7:O-P,0.3:FIX)").unwrap());
+        let boxes = opening_boxes(&o, &wall(), None);
+        assert_eq!(count(&boxes, Part::Leaf), 1);
+        let (pw, _) = creabim_core::joinery::clear_passage(&o).unwrap();
+        let fw = creabim_core::joinery::frame_width(&o);
+        assert!((pw - ((o.width - 2.0 * fw) * 0.7 * 1000.0).round() / 1000.0).abs() < 1e-9, "{pw}");
+        // both opening: two leaves meeting with no mullion between, the
+        // passage the whole width between the jambs
+        o.division = Some(FrameNode::parse("v(0.7:D-L,0.3:O-P)").unwrap());
+        let boxes = opening_boxes(&o, &wall(), None);
+        assert_eq!(count(&boxes, Part::Leaf), 2);
+        let (pw, _) = creabim_core::joinery::clear_passage(&o).unwrap();
+        assert!((pw - ((o.width - 2.0 * fw) * 1000.0).round() / 1000.0).abs() < 1e-9, "{pw}");
+        let (_, bars) = o.division.as_ref().unwrap().layout_of(true, o.width, o.height, fw);
+        assert!(bars.is_empty());
     }
 
     #[test]

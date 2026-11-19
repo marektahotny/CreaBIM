@@ -1730,6 +1730,17 @@ impl LeafOp {
         LeafOp::ALL.into_iter().find(|o| o.code() == s)
     }
 
+    /// The way a field of a door opens: a turning leaf in a door is a
+    /// door leaf hinged on the same side (George: the shorter part of a
+    /// two-leaf door may open too, and then it swings in the plan).
+    pub fn in_door(self) -> LeafOp {
+        match self {
+            LeafOp::TurnLeft | LeafOp::TiltTurnLeft => LeafOp::DoorLeft,
+            LeafOp::TurnRight | LeafOp::TiltTurnRight => LeafOp::DoorRight,
+            o => o,
+        }
+    }
+
     /// Hinged on a side: on its left?
     pub fn hinged_left(self) -> Option<bool> {
         match self {

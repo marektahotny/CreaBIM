@@ -507,7 +507,7 @@ fn scheme(p: &mut Pencil, model: &Model, o: &Opening, at: DVec2, k: f64) {
     } else {
         p.rect(pt(0.0, 0.0), pt(w, h), Pen::Cut);
         let node = division_of(o);
-        let (fields, bars) = node.layout(w, h, fw, fw, !door);
+        let (fields, bars) = node.layout_of(door, w, h, fw);
         for b in &bars {
             p.rect(pt(b.x0, b.y0), pt(b.x1, b.y1), Pen::Symbol);
         }

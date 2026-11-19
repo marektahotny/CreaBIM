@@ -126,7 +126,12 @@ impl CreaBimApp {
         }
         self.joinery = Some(JoineryEdit {
             id,
-            node: division_of(o),
+            // a door's turning leaves are its door leaves
+            node: if o.kind == OpeningKind::Door {
+                division_of(o).as_door()
+            } else {
+                division_of(o)
+            },
             sel: None,
             mode: Mode::Select,
             inside: false,
@@ -337,10 +342,18 @@ impl CreaBimApp {
 }
 
 /// The ops a field of a window or of a door can have.
+/// The ways a field can open: a door's leaves are door leaves (no
+/// turning or tilting sashes), fixed or sliding parts beside them.
 fn ops(door: bool) -> Vec<LeafOp> {
     LeafOp::ALL
         .into_iter()
-        .filter(|o| door || !o.is_door())
+        .filter(|o| {
+            if door {
+                *o == o.in_door() && !o.tilts() && *o != LeafOp::TopHung
+            } else {
+                !o.is_door()
+            }
+        })
         .collect()
 }
 
@@ -385,7 +398,7 @@ fn draw(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject) {
         line,
         egui::StrokeKind::Inside,
     );
-    let (fields, bars) = ed.node.layout(s.w, s.h, s.fw, s.fw, !s.door);
+    let (fields, bars) = ed.node.layout_of(s.door, s.w, s.h, s.fw);
     for b in &bars {
         painter.rect_stroke(
             rect(b.x0, b.y0, b.x1, b.y1),
@@ -637,7 +650,7 @@ fn typing_on(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, spots: &[(Rec
 /// The side panel: the field picked, and the whole division.
 fn side(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, others: &[(String, FrameNode)]) {
     let t = crate::i18n::tr;
-    let (fields, _) = ed.node.layout(s.w, s.h, s.fw, s.fw, !s.door);
+    let (fields, _) = ed.node.layout_of(s.door, s.w, s.h, s.fw);
     ui.label(
         egui::RichText::new(format!(
             "{} × {} mm · {} {}",
@@ -651,9 +664,15 @@ fn side(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, others: &[(String,
     ui.add_space(6.0);
     // a door is typed by its leaf, the opening following from the
     // frame; a window by its whole opening, in millimetres
-    let (aw, ah) = s.allow.unwrap_or((0.0, 0.0));
+    // a door divided into leaves and fixed parts: its whole opening
+    let divided = matches!(ed.node, FrameNode::Split { .. });
+    let (aw, ah) = if divided {
+        (0.0, 0.0)
+    } else {
+        s.allow.unwrap_or((0.0, 0.0))
+    };
     ui.label(
-        egui::RichText::new(t(if s.door {
+        egui::RichText::new(t(if s.door && !divided {
             "Door leaf"
         } else {
             "The whole opening"
@@ -683,7 +702,7 @@ fn side(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, others: &[(String,
             }
         });
     }
-    if s.door {
+    if s.door && !divided {
         ui.label(
             egui::RichText::new(format!(
                 "{}: {} × {} mm",

@@ -79,12 +79,61 @@ impl FrameNode {
         mw: f64,
         threshold: bool,
     ) -> (Vec<Field>, Vec<Bar>) {
+        self.layout_bars(w, h, fw, mw, mw, threshold)
+    }
+
+    /// The fields and bars of a window (`door` false) or a door of `w`
+    /// × `h` in a frame `fw` wide. A door's leaves meet with no mullion
+    /// between them, one closing against the other, and a turning leaf
+    /// in it is a door leaf; a transom over it is as wide as its frame.
+    pub fn layout_of(&self, door: bool, w: f64, h: f64, fw: f64) -> (Vec<Field>, Vec<Bar>) {
+        if !door {
+            return self.layout(w, h, fw, fw, true);
+        }
+        let (mut fields, bars) = self.layout_bars(w, h, fw, 0.0, fw, false);
+        for f in &mut fields {
+            f.sash.op = f.sash.op.in_door();
+        }
+        (fields, bars)
+    }
+
+    /// Every turning leaf of a door made a door leaf, as
+    /// [`FrameNode::layout_of`] reads it.
+    pub fn as_door(&self) -> FrameNode {
+        match self {
+            FrameNode::Leaf(s) => FrameNode::Leaf(Sash {
+                op: s.op.in_door(),
+                panel: s.panel,
+            }),
+            FrameNode::Split {
+                across,
+                sizes,
+                parts,
+            } => FrameNode::Split {
+                across: *across,
+                sizes: sizes.clone(),
+                parts: parts.iter().map(|p| p.as_door()).collect(),
+            },
+        }
+    }
+
+    /// [`FrameNode::layout`] with mullions `ma` and transoms `mt` wide;
+    /// a mullion of no width is no bar, the fields meeting.
+    fn layout_bars(
+        &self,
+        w: f64,
+        h: f64,
+        fw: f64,
+        ma: f64,
+        mt: f64,
+        threshold: bool,
+    ) -> (Vec<Field>, Vec<Bar>) {
         let (mut fields, mut bars) = (vec![], vec![]);
         fn walk(
             n: &FrameNode,
             path: Vec<usize>,
             r: [f64; 4],
-            mw: f64,
+            mw: (f64, f64),
             fields: &mut Vec<Field>,
             bars: &mut Vec<Bar>,
         ) {
@@ -105,7 +154,8 @@ impl FrameNode {
                 } => {
                     let n = parts.len().max(1);
                     let along = if *across { x1 - x0 } else { y1 - y0 };
-                    let free = (along - mw * (n - 1) as f64).max(0.0);
+                    let bw = if *across { mw.0 } else { mw.1 };
+                    let free = (along - bw * (n - 1) as f64).max(0.0);
                     let size = |i: usize| sizes.get(i).copied().unwrap_or(1.0).max(0.0);
                     let sum: f64 = (0..n).map(size).sum();
                     let sum = if sum > 1e-9 { sum } else { 1.0 };
@@ -118,26 +168,26 @@ impl FrameNode {
                         if *across {
                             walk(p, pp, [c, y0, c + len, y1], mw, fields, bars);
                             c += len;
-                            if i + 1 < n {
+                            if i + 1 < n && bw > 0.0 {
                                 bars.push(Bar {
                                     x0: c,
                                     y0,
-                                    x1: c + mw,
+                                    x1: c + bw,
                                     y1,
                                 });
-                                c += mw;
+                                c += bw;
                             }
                         } else {
                             walk(p, pp, [x0, c - len, x1, c], mw, fields, bars);
                             c -= len;
-                            if i + 1 < n {
+                            if i + 1 < n && bw > 0.0 {
                                 bars.push(Bar {
                                     x0,
-                                    y0: c - mw,
+                                    y0: c - bw,
                                     x1,
                                     y1: c,
                                 });
-                                c -= mw;
+                                c -= bw;
                             }
                         }
                     }
@@ -149,7 +199,7 @@ impl FrameNode {
             self,
             vec![],
             [fw, y0, w - fw, h - fw],
-            mw,
+            (ma, mt),
             &mut fields,
             &mut bars,
         );
@@ -909,11 +959,32 @@ pub fn clear_passage(o: &Opening) -> Option<(f64, f64)> {
     if o.kind != OpeningKind::Door {
         return None;
     }
+    // a divided door: only the leaves that open, side by side with the
+    // stile they meet at; a fixed part is no passage
+    if let Some(node) = &o.division {
+        let (fields, _) = node.layout_of(true, o.width, o.height, frame_width(o));
+        let leaves: Vec<&Field> = fields.iter().filter(|f| f.sash.op.is_door()).collect();
+        if !leaves.is_empty() {
+            let x0 = leaves.iter().map(|f| f.x0).fold(f64::MAX, f64::min);
+            let x1 = leaves.iter().map(|f| f.x1).fold(f64::MIN, f64::max);
+            let h = leaves.iter().map(|f| f.y1 - f.y0).fold(0.0, f64::max);
+            return Some((mm(x1 - x0), mm(h)));
+        }
+    }
     let d = match &o.door {
         Some(d) => d.clone(),
         None => DoorSpec::fitting(DoorFrame::Lining, o.width, o.height),
     };
     Some((d.nom_width, d.nom_height))
+}
+
+/// How wide the frame of a window or door is at its jambs: a door's
+/// own frame where it is given as joinery.
+pub fn frame_width(o: &Opening) -> f64 {
+    match (&o.door, o.kind) {
+        (Some(d), OpeningKind::Door) => d.members(o.width, o.height).0,
+        _ => o.frame.fitted(o.width, o.height, 1.0).width,
+    }
 }
 
 /// The outer sill of window `id`, if it has one.

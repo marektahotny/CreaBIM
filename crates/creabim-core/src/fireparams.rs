@@ -597,7 +597,8 @@ mod tests {
 
     #[test]
     fn a_project_table_wins_over_the_application_s() {
-        let app = parse("#table a\n#columns key\tvalue\nx\t1\n#table b\n#columns key\tvalue\nx\t2\n");
+        let app =
+            parse("#table a\n#columns key\tvalue\nx\t1\n#table b\n#columns key\tvalue\nx\t2\n");
         set_app_tables(app);
         let own = parse("#table b\n#columns key\tvalue\nx\t3\n");
         assert_eq!(find(&own, "a").unwrap().cell("x", "value"), "1");
