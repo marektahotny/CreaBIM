@@ -66,6 +66,130 @@ pub fn volumes(sheet: &Sheet) -> usize {
         .clamp(1, 4)
 }
 
+/// The number of the first label on a title page: 5 on the second
+/// page of a part's sets, 9 on the third.
+pub fn first_volume(sheet: &Sheet) -> usize {
+    sheet
+        .fields
+        .get("first_volume")
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(1)
+        .max(1)
+}
+
+/// The most sets a part's title pages are made for.
+pub const MAX_SETS: usize = 40;
+
+/// The title pages of the part `sheet` is one of, in order of their
+/// labels' numbers.
+pub fn pages_of(
+    model: &creabim_core::Model,
+    sheet: creabim_core::ElementId,
+) -> Vec<creabim_core::ElementId> {
+    use creabim_core::ElementKind;
+    let Some(part) = model.get(sheet).and_then(|e| match &e.kind {
+        ElementKind::Sheet(s) => cover_of(s).map(str::to_string),
+        _ => None,
+    }) else {
+        return vec![];
+    };
+    let mut v: Vec<(usize, creabim_core::ElementId)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Sheet(s) if cover_of(s) == Some(part.as_str()) => {
+                Some((first_volume(s), e.id))
+            }
+            _ => None,
+        })
+        .collect();
+    v.sort();
+    v.into_iter().map(|x| x.1).collect()
+}
+
+/// How many sets a part's title pages make: the labels on all its pages.
+pub fn sets(model: &creabim_core::Model, sheet: creabim_core::ElementId) -> usize {
+    pages_of(model, sheet)
+        .iter()
+        .filter_map(|id| match model.get(*id).map(|e| &e.kind) {
+            Some(creabim_core::ElementKind::Sheet(s)) => Some(volumes(s)),
+            _ => None,
+        })
+        .sum()
+}
+
+/// The part's title pages made for `n` sets: four labels to an A4,
+/// numbered on from page to page (volume 5 on the second page), pages
+/// added as copies of the first (its picture too) or taken away.
+pub fn set_sets(
+    model: &creabim_core::Model,
+    sheet: creabim_core::ElementId,
+    n: usize,
+) -> Option<creabim_core::Transaction> {
+    use creabim_core::{Element, ElementKind, Transaction};
+    let n = n.clamp(1, MAX_SETS);
+    let pages = pages_of(model, sheet);
+    let first = model.get(*pages.first()?)?.clone();
+    let ElementKind::Sheet(base) = &first.kind else {
+        return None;
+    };
+    let need = n.div_ceil(4);
+    let base_number = base.number.clone();
+    let mut tx = Transaction::new("Title page sets");
+    let mut changed = false;
+    for j in 0..need {
+        let labels = (n - 4 * j).min(4);
+        let want = |s: &mut Sheet| {
+            s.fields.insert("volumes".into(), labels.to_string());
+            if s.width > s.height {
+                (s.width, s.height) = (s.height, s.width);
+            }
+            if j == 0 {
+                s.fields.remove("first_volume");
+            } else {
+                s.fields
+                    .insert("first_volume".into(), (4 * j + 1).to_string());
+            }
+        };
+        match pages.get(j).and_then(|id| model.get(*id)) {
+            Some(old) => {
+                let mut now = old.clone();
+                if let ElementKind::Sheet(s) = &mut now.kind {
+                    want(s);
+                }
+                if now != *old {
+                    tx = tx.replace(old.clone(), now);
+                    changed = true;
+                }
+            }
+            None => {
+                let mut s = base.clone();
+                want(&mut s);
+                s.number = format!("{base_number}_{:02}", j + 1);
+                let page = Element::new(first.name.clone(), ElementKind::Sheet(s));
+                let id = page.id;
+                tx = tx.insert(page);
+                // the picture as on the first page
+                for e in model.iter() {
+                    if let ElementKind::Viewport(v) = &e.kind {
+                        if v.sheet == first.id {
+                            let mut v = v.clone();
+                            v.sheet = id;
+                            tx = tx.insert(Element::new(e.name.clone(), ElementKind::Viewport(v)));
+                        }
+                    }
+                }
+                changed = true;
+            }
+        }
+    }
+    let extra: Vec<creabim_core::ElementId> = pages.iter().skip(need).copied().collect();
+    if !extra.is_empty() {
+        tx = tx.remove_all_cascade(model, &extra);
+        changed = true;
+    }
+    changed.then_some(tx)
+}
+
 /// The number a part's title page takes: `S01_ZTI_000_TIT`, before the
 /// part's drawings; `000_TIT` for the project's own.
 pub fn number(part: &str) -> String {
@@ -134,7 +258,8 @@ fn cells(sheet: &Sheet) -> Vec<(DVec2, f64)> {
         let k = (cw / LW).min(ch / LH);
         (lo + DVec2::new((cw - LW * k) / 2.0, (ch - LH * k) / 2.0), k)
     };
-    if n == 1 || w < 200.0 || h < 280.0 {
+    // four to an A4 either way up, a quarter each
+    if n == 1 || w.min(h) < 200.0 || w.max(h) < 280.0 {
         return vec![fit(w, h, DVec2::ZERO)];
     }
     let (cw, ch) = (w / 2.0, h / 2.0);
@@ -215,7 +340,10 @@ pub fn values(project: &ProjectInfo, name: &str, date: &str) -> Values {
         office: or(&project.office, &project.designer),
         contact: t(&project.office_contact),
         heading: heading(project),
-        building: or(&or(&project.building_name, &project.name), name),
+        building: or(
+            &or(&project.building_name, &project.name),
+            &creabim_core::words::tr(name),
+        ),
         client: t(&project.client),
         place: or(&project.address, &project.site_name),
         plots,
@@ -361,7 +489,7 @@ pub fn draw(
             c,
             92.0,
             131.0,
-            &(i + 1).to_string(),
+            &(first_volume(sheet) + i).to_string(),
             7.5,
             start,
             0.0,
@@ -508,5 +636,90 @@ mod look {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod sets_tests {
+    use super::*;
+    use creabim_core::{Element, ElementKind, Model, Transaction, View, Viewport};
+
+    fn pages(m: &Model, part: &str) -> Vec<(String, usize, usize)> {
+        let mut v: Vec<_> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Sheet(s) if cover_of(s) == Some(part) => {
+                    Some((s.number.clone(), first_volume(s), volumes(s)))
+                }
+                _ => None,
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// More than four sets go on further pages numbered on; fewer take
+    /// them away again; a page turned on its side stands up again.
+    #[test]
+    fn sets_beyond_four_go_on_further_pages_numbered_on() {
+        let mut m = Model::new();
+        let mut s = sheet(PROJECT);
+        (s.width, s.height) = (297.0, 210.0);
+        let page = Element::new("Titulná strana", ElementKind::Sheet(s));
+        let id = page.id;
+        let view = Element::new("3D", ElementKind::View(View::axonometric(35.0, 30.0)));
+        let vp = Viewport {
+            sheet: id,
+            view: view.id,
+            center: DVec2::new(100.0, 200.0),
+            target: DVec2::ZERO,
+            crop: None,
+        };
+        Transaction::new("t")
+            .insert(page)
+            .insert(view)
+            .insert(Element::new("Viewport", ElementKind::Viewport(vp)))
+            .apply(&mut m)
+            .unwrap();
+        assert_eq!(sets(&m, id), 4);
+        set_sets(&m, id, 7).unwrap().apply(&mut m).unwrap();
+        assert_eq!(
+            pages(&m, PROJECT),
+            [
+                ("000_TIT".to_string(), 1, 4),
+                ("000_TIT_02".to_string(), 5, 3)
+            ]
+        );
+        assert_eq!(sets(&m, id), 7);
+        // the second page has the picture too, and says volume 5 to 7
+        let viewports = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Viewport(_)))
+            .count();
+        assert_eq!(viewports, 2);
+        let second = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Sheet(s) if s.number == "000_TIT_02" => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!((second.width, second.height), (210.0, 297.0));
+        let mut c = crate::paper::SvgCanvas::new(DVec2::new(210.0, 297.0));
+        draw(&mut c, &second, &ProjectInfo::default(), "", "");
+        let svg = c.finish();
+        assert!(svg.contains(">5<") && svg.contains(">7<") && !svg.contains(">8<"));
+        // back to two: one page again
+        set_sets(&m, id, 2).unwrap().apply(&mut m).unwrap();
+        assert_eq!(pages(&m, PROJECT), [("000_TIT".to_string(), 1, 2)]);
+        let viewports = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Viewport(_)))
+            .count();
+        assert_eq!(viewports, 1);
+        // and four again
+        set_sets(&m, id, 4).unwrap().apply(&mut m).unwrap();
+        assert_eq!(pages(&m, PROJECT), [("000_TIT".to_string(), 1, 4)]);
+        assert!(set_sets(&m, id, 4).is_none());
     }
 }

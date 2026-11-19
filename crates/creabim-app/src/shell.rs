@@ -5019,7 +5019,8 @@ fn popup_size(p: &Popup, screen: egui::Rect) -> egui::Vec2 {
 /// Where a new project or a sample would be saved: beside the projects
 /// opened before, never over one of them.
 fn new_path(name: &str) -> String {
-    format!("{name}.creabim")
+    // the file's name in the window's language ("Bez názvu.creabim")
+    format!("{}.creabim", crate::i18n::tr(name))
 }
 
 /// egui's spacing and type, roomier than its defaults.

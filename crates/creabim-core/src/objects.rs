@@ -590,6 +590,35 @@ pub enum SymbolItem {
     /// A closed outline.
     Loop(Vec<DVec2>),
     Line(DVec2, DVec2),
+    /// A closed outline thin in the colour of a utility network (its
+    /// code, "V" for water: [`crate::utility::NetKind::code`]), dashed
+    /// or solid: what lies in the ground, as a site plan draws it.
+    Net {
+        points: Vec<DVec2>,
+        code: String,
+        dashed: bool,
+    },
+    /// A short name by the symbol ("PS PRŠ").
+    Text {
+        at: DVec2,
+        text: String,
+    },
+}
+
+impl SymbolItem {
+    /// Its lines as segments, whatever it is (a text has none).
+    pub fn segments(&self) -> Vec<(DVec2, DVec2)> {
+        let closed = |p: &[DVec2]| {
+            (0..p.len())
+                .map(|i| (p[i], p[(i + 1) % p.len()]))
+                .collect::<Vec<_>>()
+        };
+        match self {
+            SymbolItem::Loop(p) | SymbolItem::Net { points: p, .. } => closed(p),
+            SymbolItem::Line(a, b) => vec![(*a, *b)],
+            SymbolItem::Text { .. } => vec![],
+        }
+    }
 }
 
 /// One piece of an object, of one material.

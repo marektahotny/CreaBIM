@@ -46,7 +46,7 @@ Vyber umiestnenú legendu miestností alebo iný výkaz a na čiarach jeho stĺp
 
 ## Titulné strany {#title-pages}
 
-**Výkresy na tlač** vytvorí titulnú stranu projektu a jednu pre každú časť dokumentácie, ktorá má výkresy (C, D.1 ASR, D.3 ZTI, D.4 VYK, D.5 ELI, D.6 VZT, D.7 PLY, D.8 MPL), s číslom pred výkresmi časti (`S01_ZTI_000_TIT`). Vypĺňajú sa samé z *Údajov o stavbe*: ateliér a jeho kontakt, nadpis podľa stupňa (alebo tvoj vlastný *Nadpis*), stavba, investor, miesto a parcely, tri mená, zákazkové číslo a dátum. Titulka časti ukazuje jej označenie a názov, titulka projektu stavbu v 3D v ráme. Na A4 sa zmestia štyri štítky A6 na zväzky, očíslované 1 až 4; vo vlastnostiach listu nastav *Štítky na liste* na 1 pre jednu cez celý list. Titulné strany sa neuvádzajú v zozname dokumentácie.
+**Výkresy na tlač** vytvorí titulnú stranu projektu a jednu pre každú časť dokumentácie, ktorá má výkresy (C, D.1 ASR, D.3 ZTI, D.4 VYK, D.5 ELI, D.6 VZT, D.7 PLY, D.8 MPL), s číslom pred výkresmi časti (`S01_ZTI_000_TIT`). Vypĺňajú sa samé z *Údajov o stavbe*: ateliér a jeho kontakt, nadpis podľa stupňa (alebo tvoj vlastný *Nadpis*), stavba, investor, miesto a parcely, tri mená, zákazkové číslo a dátum. Titulka časti ukazuje jej označenie a názov, titulka projektu stavbu v 3D v ráme. Na A4 sa zmestia štyri titulné strany A6, jedna na každú sadu, očíslované zväzok 1 až 4. Vo vlastnostiach listu nastav *Sady*: menej ako štyri nechá miesta prázdne, viac ako štyri pridá ďalšie listy s pokračujúcim číslovaním (5 až 8 na druhom, 9 až 12 na treťom). Titulná strana ostane na výšku pri akomkoľvek papieri. Titulné strany sa neuvádzajú v zozname dokumentácie.
 
 ## Pravítka a pomocné čiary {#rulers-and-guides}
 

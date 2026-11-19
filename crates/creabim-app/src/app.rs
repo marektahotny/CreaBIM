@@ -9686,6 +9686,8 @@ crate::props::row(ui, "File names", |ui| {
         let mut add_valve: Option<&'static str> = None;
         let mut edit_joinery = false;
         let mut equalise = false;
+        // a title page's sets changed: its part's pages are made again
+        let mut cover_sets: Option<usize> = None;
         let show_visibility = matches!(e.kind, ElementKind::View(_));
         let mut object_type = false;
         // a placed view's new scale: (its view, the scale)
@@ -10333,6 +10335,12 @@ crate::props::row(ui, "File names", |ui| {
                                         .clicked()
                                     {
                                         (sh.width, sh.height) = (*w, *h);
+                                        // a title page stands upright
+                                        if creabim_geom::coverpage::cover_of(sh).is_some()
+                                            && sh.width > sh.height
+                                        {
+                                            (sh.width, sh.height) = (sh.height, sh.width);
+                                        }
                                         label = "Sheet size"
                                     }
                                 }
@@ -10342,19 +10350,22 @@ crate::props::row(ui, "File names", |ui| {
                         label = l;
                     }
                     if creabim_geom::coverpage::cover_of(sh).is_some() {
-                        // a title page: filled from the project, only how
-                        // many binder labels go on it is its own
-                        let mut n = creabim_geom::coverpage::volumes(sh);
-                        if crate::props::row(ui, "Labels on the page", |ui| {
-                            ui.add(egui::DragValue::new(&mut n).range(1..=4))
+                        // a title page: filled from the project; how many
+                        // sets of the part's pages, four labels to an A4,
+                        // further pages numbered on (volume 5, 6...)
+                        let mut n = creabim_geom::coverpage::sets(self.doc.model(), id);
+                        if crate::props::row(ui, "Sets", |ui| {
+                            ui.add(
+                                egui::DragValue::new(&mut n)
+                                    .range(1..=creabim_geom::coverpage::MAX_SETS),
+                            )
                         })
                         .on_hover_text(crate::i18n::t(
-                            "A title page is filled from File › Project information. Four A6 labels fit an A4, one for each volume; one fills the page.",
+                            "A title page is filled from File › Project information. Four A6 title pages fit an A4, one for each set; more than four sets go on further pages, numbered on (5, 6, 7, 8...).",
                         ))
                         .changed()
                         {
-                            sh.fields.insert("volumes".into(), n.to_string());
-                            label = "Title page"
+                            cover_sets = Some(n);
                         }
                     } else if sh.template.is_none() {
                         // the office's title block: on or off, and the
@@ -10396,9 +10407,9 @@ crate::props::row(ui, "File names", |ui| {
                     let n = sh.guides.len();
                     crate::props::row(ui, "Guides", |ui| {
                         ui.label(match n {
-                            0 => "None".to_string(),
-                            1 => "1 guide".to_string(),
-                            n => format!("{n} guides"),
+                            0 => crate::i18n::tr("None"),
+                            1 => crate::i18n::tr("1 guide"),
+                            n => crate::i18n::tr("{n} guides").replace("{n}", &n.to_string()),
                         })
                     });
                     if n > 0 {
@@ -11478,6 +11489,12 @@ crate::props::row(ui, "File names", |ui| {
                 self.doc.commit_merged(tx)
             };
             self.report(r, msg);
+        }
+        if let Some(n) = cover_sets {
+            if let Some(tx) = creabim_geom::coverpage::set_sets(self.doc.model(), id, n) {
+                let r = self.doc.commit(tx);
+                self.report(r, crate::i18n::tr("Title page sets"));
+            }
         }
         if equalise {
             let model = self.doc.model();
