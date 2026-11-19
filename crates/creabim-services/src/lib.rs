@@ -27,6 +27,7 @@ pub mod gas;
 pub mod groundloss;
 pub mod heating;
 pub mod heatloss;
+pub mod herzdp;
 pub mod herzvalves;
 pub mod hpsizing;
 pub mod hydraulics;

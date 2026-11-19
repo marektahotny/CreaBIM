@@ -322,6 +322,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "calc-heating",
                 "Size the supply and return to the radiators, find the critical circuit and the pump, and preset the HERZ valves (TS-98-V, STRÖMAX) to balance the circuits",
             ),
+            act(
+                "calc:herzdp",
+                "HERZ differential pressure regulator",
+                "circle-dot-dashed",
+                "A HERZ 4002, 4007 or F 4007 regulator for a circuit's flow and loss: its setting, the STRÖMAX partner valve and the pump's head, as HERZ's design tool works them out",
+            ),
             Sep,
             act(
                 "calc:heatloss",
