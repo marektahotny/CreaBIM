@@ -162,6 +162,8 @@ impl CreaBimApp {
 
     /// Let the close through: saved, or the changes let go.
     fn close_now(&mut self, ctx: &egui::Context) {
+        // saved, or the changes let go on purpose: nothing to offer back
+        self.autosave_clear();
         self.close_ask = false;
         self.close_state = CloseState::Ask;
         self.hide_close_dialog();
@@ -575,6 +577,7 @@ impl CreaBimApp {
         let mut grips = self.shell.settings.grips;
         let mut spacing = self.plan.snap.step_um;
         let mut marks = self.plan.snap.marks;
+        let mut autosave = self.shell.settings.autosave_minutes;
         let mut paper = self.shell.settings.drawing_paper.clone();
         let mut navigation = self.shell.settings.navigation.clone();
         let mut draw_font = self.shell.settings.drawing_font.clone();
@@ -883,6 +886,30 @@ impl CreaBimApp {
                                         );
                                     }
                                     _ => {
+                                        crate::props::section(ui, "Autosave");
+                                        crate::props::row(ui, "Every", |ui| {
+                                            egui::ComboBox::from_id_salt("settings.autosave").icon(crate::props::combo_icon)
+                                                .selected_text(match autosave {
+                                                    0 => crate::i18n::tr("Off"),
+                                                    m => crate::i18n::tr(&format!("{m} min")),
+                                                })
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for m in [0u32, 2, 5, 10, 15, 30] {
+                                                        let label = match m {
+                                                            0 => crate::i18n::tr("Off"),
+                                                            m => crate::i18n::tr(&format!("{m} min")),
+                                                        };
+                                                        ui.selectable_value(&mut autosave, m, label);
+                                                    }
+                                                });
+                                        });
+                                        ui.label(
+                                            egui::RichText::new(crate::i18n::t("While there are changes the project is written to Name.autosave.creabim beside it, and offered back if CreaBIM closes without saving. Saving keeps the file it replaces as Name.bak.creabim."))
+                                                .weak()
+                                                .small(),
+                                        );
+                                        ui.add_space(8.0);
                                         crate::props::section(ui, "Shortcuts");
                                         ui.label(
                                             egui::RichText::new(crate::i18n::t("Every key, by what it does. Ctrl+/ opens the list any time."))
@@ -910,6 +937,10 @@ impl CreaBimApp {
             crate::handles::set_edit_display(edge_w, vert_s);
             self.shell.settings.edit_edge_width = edge_w;
             self.shell.settings.edit_vertex_size = vert_s;
+            self.shell.settings.store();
+        }
+        if autosave != self.shell.settings.autosave_minutes {
+            self.shell.settings.autosave_minutes = autosave;
             self.shell.settings.store();
         }
         if interaction != self.shell.settings.interaction {

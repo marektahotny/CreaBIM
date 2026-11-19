@@ -1043,8 +1043,6 @@ fn foundation_lines(
         let n = d.perp();
         let ends = joins.get(wid).cloned().unwrap_or_default();
         let (s0, s1) = creabim_core::walls::core_span(model, w);
-        let loc = creabim_core::walls::location_offset(model, w);
-        let (s0, s1) = (s0 - loc, s1 - loc);
         let at = |u: f64, s: f64| w.start + d * ends.place(w, u, s, true) + n * s;
         let (p0, p1, q0, q1) = (at(0.0, s0), at(len, s0), at(0.0, s1), at(len, s1));
         let mut line = |a: DVec2, b: DVec2| {

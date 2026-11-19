@@ -33,6 +33,8 @@ pub(crate) mod appmenu;
 mod areasui;
 #[path = "assemblies.rs"]
 mod assemblies;
+#[path = "autosave.rs"]
+pub(crate) mod autosave;
 #[path = "autovalvesui.rs"]
 mod autovalvesui;
 #[path = "circuitsui.rs"]
@@ -205,6 +207,8 @@ pub struct CreaBimApp {
     report_ask: Option<bool>,
     /// Closing with unsaved changes: Save, Don't save or Cancel is asked.
     close_ask: bool,
+    /// Saving on its own every few minutes, and work brought back.
+    autosave: autosave::State,
     /// Where the Save the changes window is: asking, saving, saved, failed.
     close_state: appmenu::CloseState,
     /// The close was settled (saved, or the changes let go): let it through.
@@ -514,6 +518,10 @@ impl CreaBimApp {
         // `creabim-app house.creabim` opens that file instead
         if let Some(path) = launch_file(std::env::args().skip(1)) {
             app.open_path(&path);
+        } else {
+            // work on a project never saved, left by a crash
+            let path = app.path.clone();
+            app.autosave_check(&path);
         }
         app
     }
@@ -540,6 +548,7 @@ impl CreaBimApp {
             log_ui: Default::default(),
             report_ask: None,
             close_ask: false,
+            autosave: Default::default(),
             close_state: Default::default(),
             close_ok: false,
             pointer_away: true,
@@ -750,6 +759,7 @@ impl CreaBimApp {
                 self.recent.add(path);
                 self.path = path.to_string();
                 self.mark_saved();
+                self.autosave_check(path);
                 self.status = format!("Opened {path}");
                 // copies a Duplicate left on their originals (MU24)
                 let stacked = creabim_core::checks::stacked_copies(self.doc.model()).len();
@@ -811,10 +821,11 @@ impl CreaBimApp {
         if !self.path.to_ascii_lowercase().ends_with(".creabim") {
             self.path = with_extension(&self.path, "creabim");
         }
-        creabim_store::save(&self.path, &self.doc).map_err(|e| e.to_string())?;
+        creabim_store::save_with_backup(&self.path, &self.doc).map_err(|e| e.to_string())?;
         let path = self.path.clone();
         self.recent.add(&path);
         self.mark_saved();
+        self.autosave_clear();
         Ok(())
     }
 
@@ -827,6 +838,8 @@ impl CreaBimApp {
     fn save_as(&mut self) {
         let start = with_extension(&self.path, "creabim");
         if let Some(path) = crate::files::pick_save(&start, "Save the project as", "creabim") {
+            // the old name's autosave goes with it
+            self.autosave_clear();
             self.path = path;
             self.save();
         }
@@ -12535,6 +12548,9 @@ impl eframe::App for CreaBimApp {
             crate::actlog::line(format!("tool: {:?}", self.plan.tool));
             self.logged.1 = Some(self.plan.tool);
         }
+        self.autosave_tick(&ctx);
+        self.autosave_window(&ctx);
+        self.busy_note(&ctx);
         let title = window_title(&self.path, self.unsaved());
         if title != self.title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));

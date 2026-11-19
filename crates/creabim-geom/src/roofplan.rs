@@ -107,9 +107,8 @@ pub fn apply(model: &Model, items: &mut Vec<PlanItem>) {
             let d = (w.end - w.start) / len;
             let n = d.perp();
             let ends = joins.get(&wid).cloned().unwrap_or_default();
-            let loc = creabim_core::walls::location_offset(model, w);
             let (s0, s1) = creabim_core::walls::core_span(model, w);
-            for s in [s0 - loc, s1 - loc] {
+            for s in [s0, s1] {
                 let at = |u: f64| w.start + d * ends.place(w, u, s, true) + n * s;
                 add(wid, at(0.0), at(len), items);
             }

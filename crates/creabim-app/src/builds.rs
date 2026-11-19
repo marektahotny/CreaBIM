@@ -107,6 +107,11 @@ impl Builds {
         self.cost.get(&key).is_some_and(|ms| *ms < CHEAP_MS)
     }
 
+    /// How many drawings (and the 3D scene) the workers are building now.
+    pub fn busy(&self) -> usize {
+        self.running.len() + self.scene_running.is_some() as usize
+    }
+
     /// Can work go to a worker thread at all?
     pub fn enabled(&self) -> bool {
         self.ctx.is_some()
@@ -134,7 +139,14 @@ impl Builds {
         std::thread::spawn(move || {
             creabim_geom::prio::background();
             let t = Instant::now();
-            let drawing = creabim_geom::section::view_drawing_with(&snapshot, key.0, key.1);
+            // a drawing that fails is left out, not the app closed
+            let drawing = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                creabim_geom::section::view_drawing_with(&snapshot, key.0, key.1)
+            }))
+            .unwrap_or_else(|_| {
+                crate::actlog::line(format!("worker: drawing {:?} failed", key.0));
+                None
+            });
             let ms = t.elapsed().as_secs_f64() * 1000.0;
             let _ = tx.send(Done::Drawing {
                 key,
@@ -161,7 +173,16 @@ impl Builds {
         self.scene_running = Some(revision);
         std::thread::spawn(move || {
             creabim_geom::prio::background();
-            let scene = creabim_geom::shared_scene(&snapshot);
+            let scene = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                creabim_geom::shared_scene(&snapshot)
+            }));
+            let scene = match scene {
+                Ok(s) => s,
+                Err(_) => {
+                    crate::actlog::line("worker: the 3D scene failed".to_string());
+                    Arc::new(vec![])
+                }
+            };
             let _ = tx.send(Done::Scene { revision, scene });
             ctx.request_repaint();
         });

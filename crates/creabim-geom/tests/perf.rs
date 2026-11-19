@@ -77,3 +77,64 @@ fn starter_house_within_budgets() {
     }
     assert!(failures.is_empty(), "over budget:\n{}", failures.join("\n"));
 }
+
+/// A 13-storey block: what a real project asks of the drawings. Prints
+/// the times (no budgets yet: they are set from these runs).
+#[test]
+#[ignore = "timing: run with --release -- --ignored"]
+fn tower_timings() {
+    let storeys: usize = std::env::var("CREABIM_STOREYS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(13);
+    let t = Instant::now();
+    let m = creabim_core::starter::starter_tower(storeys);
+    println!(
+        "{storeys} storeys: {} elements, built in {:.0} ms",
+        m.len(),
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+    let mut failures = vec![];
+    let ms = best_ms(|| {
+        let _ = creabim_geom::build_scene(&m);
+    });
+    check("3D scene", ms, f64::INFINITY, &mut failures);
+    let scene = creabim_geom::build_scene(&m);
+    let tris: usize = scene.iter().map(|i| i.mesh.indices.len() / 3).sum();
+    println!("{tris} triangles");
+    for (kind, test) in [
+        (
+            "plan",
+            (|k: &ViewKind| matches!(k, ViewKind::Plan { .. })) as fn(&ViewKind) -> bool,
+        ),
+        ("section", |k| matches!(k, ViewKind::Section { .. })),
+        ("3D", |k| matches!(k, ViewKind::Axonometric { .. })),
+    ] {
+        for (name, id) in views(&m, test) {
+            let ms = best_ms(|| {
+                let _ = creabim_geom::section::view_drawing_with(&m, id, false);
+            });
+            check(&format!("{kind}: {name}"), ms, f64::INFINITY, &mut failures);
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnosis"]
+fn tower_slow_elements() {
+    let m = creabim_core::starter::starter_tower(3);
+    for e in m.iter() {
+        let t = Instant::now();
+        let set: std::collections::HashSet<_> = [e.id].into_iter().collect();
+        let s = creabim_geom::scene::build_scene_of(&m, Some(&set));
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        let tris: usize = s.iter().map(|i| i.mesh.indices.len() / 3).sum();
+        if ms > 20.0 || tris > 20000 {
+            println!(
+                "{:<30} {:?} {ms:.0} ms {tris} tris",
+                e.name,
+                std::mem::discriminant(&e.kind)
+            );
+        }
+    }
+}

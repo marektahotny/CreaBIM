@@ -53,7 +53,7 @@ impl FootingKind {
 /// Where a strip under a wall lies across it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FootingAlign {
-    /// Centred on the line the wall is drawn on.
+    /// Centred on the wall's centreline.
     #[default]
     Line,
     /// Its outer edge set by the outer face of the wall's load-bearing
@@ -221,13 +221,13 @@ impl Footing {
     }
 
     /// How far across its wall (left of start → end positive) a strip's
-    /// line lies from the line the wall is drawn on.
+    /// line lies from the wall's centreline.
     pub fn shift(&self, model: &Model, w: &Wall) -> f64 {
         // a curved wall keeps its strip on its own line
         if w.is_arc() {
             return 0.0;
         }
-        let loc = crate::walls::location_offset(model, w);
+        // across the wall from its centreline, which `start` and `end` are
         let (ext, int) = crate::walls::core_span(model, w);
         let out = if ext < int { -1.0 } else { 1.0 };
         let h = self.width / 2.0;
@@ -237,7 +237,7 @@ impl Footing {
             FootingAlign::CoreExterior => ext + out * self.align_offset - out * h,
             FootingAlign::CoreInterior => int - out * self.align_offset + out * h,
         };
-        centre - loc
+        centre
     }
 
     /// A pad's centre and turn as built.
@@ -745,6 +745,38 @@ mod tests {
         f.align = FootingAlign::CoreInterior;
         let y = f.line(&m).0.y;
         assert!((y + f.width / 2.0 - 0.2).abs() < 1e-9, "{y}");
+    }
+
+    #[test]
+    fn a_strip_set_by_the_core_of_a_layered_wall_drawn_on_its_face() {
+        let (mut m, _, ids) = model_with(&[(DVec2::ZERO, DVec2::new(10.0, 0.0))]);
+        let (tx, starters) = crate::assembly::add_starters(&m);
+        tx.apply(&mut m).unwrap();
+        // insulation 140, membrane 5, formwork blocks 300, outside first
+        let asm = *starters.last().unwrap();
+        let before = m.get(ids[0]).unwrap().clone();
+        let mut after = before.clone();
+        if let ElementKind::Wall(w) = &mut after.kind {
+            w.thickness = 0.445;
+            w.assembly = Some(asm);
+            // drawn on its outer face: start and end stay its centreline
+            w.location = crate::LocationLine::ExteriorFace;
+        }
+        Transaction::new("t")
+            .replace(before, after)
+            .apply(&mut m)
+            .unwrap();
+        let ElementKind::Wall(w) = &m.get(ids[0]).unwrap().kind else {
+            unreachable!()
+        };
+        let mut f = Footing::under_wall(ids[0], w);
+        f.width = 0.6;
+        f.align = FootingAlign::CoreExterior;
+        f.align_offset = 0.15;
+        // the outside (−y) face of the blocks lies 145 in from the wall's
+        let core = -0.2225 + 0.145;
+        let edge = f.line(&m).0.y - 0.3;
+        assert!((edge - (core - 0.15)).abs() < 1e-9, "{edge}");
     }
 
     fn area(p: &[DVec2]) -> f64 {

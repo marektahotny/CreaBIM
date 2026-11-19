@@ -237,6 +237,8 @@ pub struct Settings {
     pub interaction: String,
     /// Edit mode's wires and corner dots, in points.
     pub edit_edge_width: f32,
+    /// Minutes between autosaves while there are changes; 0 is off.
+    pub autosave_minutes: u32,
     pub edit_vertex_size: f32,
     /// The drawings' typeface: a TrueType or OpenType file in place of
     /// the built-in sans; empty looks for Avenir Next Condensed beside
@@ -252,6 +254,7 @@ impl Default for Settings {
             // the approved look (brief 02); anyone's saved theme stays theirs
             theme: "sage".into(),
             language: "sk".into(),
+            autosave_minutes: 5,
             left_width: 264.0,
             right_width: 290.0,
             left_folded: false,

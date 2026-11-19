@@ -81,6 +81,64 @@ pub fn save(path: impl AsRef<Path>, doc: &Document) -> Result<()> {
     save_fresh(path.as_ref(), doc).map(|_| ())
 }
 
+/// The one backup kept beside a project: the file as it was before the
+/// last save (`House.creabim` → `House.bak.creabim`).
+pub fn backup_path(path: impl AsRef<Path>) -> PathBuf {
+    beside(path.as_ref(), "bak")
+}
+
+/// Where the project is saved on its own every few minutes while it has
+/// changes (`House.creabim` → `House.autosave.creabim`); gone once the
+/// project is saved.
+pub fn autosave_path(path: impl AsRef<Path>) -> PathBuf {
+    beside(path.as_ref(), "autosave")
+}
+
+fn beside(path: &Path, tag: &str) -> PathBuf {
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "project".into());
+    path.with_file_name(format!("{stem}.{tag}.creabim"))
+}
+
+/// [`save`], keeping the file it replaces as the project's one backup
+/// ([`backup_path`]). The backup is only replaced once the new file is
+/// written in full.
+pub fn save_with_backup(path: impl AsRef<Path>, doc: &Document) -> Result<()> {
+    let path = path.as_ref();
+    let bak = backup_path(path);
+    let mut tmp = bak.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    let had = path.exists() && std::fs::copy(path, &tmp).is_ok();
+    match save(path, doc) {
+        Ok(()) => {
+            if had {
+                let _ = std::fs::rename(&tmp, &bak);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
+}
+
+/// Is there an autosave of `path` newer than the file itself (left by a
+/// crash or a close without saving)?
+pub fn newer_autosave(path: impl AsRef<Path>) -> Option<PathBuf> {
+    let path = path.as_ref();
+    let auto = autosave_path(path);
+    let when = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let a = when(&auto)?;
+    match when(path) {
+        Some(f) if f >= a => None,
+        _ => Some(auto),
+    }
+}
+
 /// Read a project: the model plus the undo and redo stacks it was saved with.
 pub fn open(path: impl AsRef<Path>) -> Result<Document> {
     let mut conn = schema::open_existing(path.as_ref())?;
