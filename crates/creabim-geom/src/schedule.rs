@@ -171,6 +171,10 @@ pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
 /// from its left edge, each with its column's heading: the edge to the
 /// right of each column. None for a view that is not a plain table.
 pub fn column_edges(model: &Model, view: ElementId) -> Option<Vec<(String, f64, f64)>> {
+    // the lists of windows and doors are drawn, not tables
+    if let Some(edges) = crate::joinerylist::column_edges(model, view) {
+        return Some(edges);
+    }
     let s = view_table(model, view)?;
     let mut x = 0.0;
     Some(
