@@ -1117,7 +1117,12 @@ pub fn plan_view_with(
     cut_height: f64,
     graphics: &creabim_core::PlanGraphics,
 ) -> PlanView {
+    let own = level;
     let (level, cut_height) = storey_cut(model, level, cut_height);
+    // an empty storey drawn as the one under it, cut higher: the ground
+    // (terrain, paving, plants) stays on its own level's plan and the
+    // site plan (a downloaded terrain showed on 2. NP)
+    let borrowed = level != own;
     let mut items = Vec::new();
     // tinted footprints, drawn under everything else
     let mut shades: Vec<PlanItem> = Vec::new();
@@ -1132,7 +1137,7 @@ pub fn plan_view_with(
     // the layers of layered walls, cut
     let mut layers: Vec<CutPiece> = Vec::new();
     for e in model.iter() {
-        if cutters.contains(&e.id) {
+        if cutters.contains(&e.id) || (borrowed && matches!(e.kind, ElementKind::Site(_))) {
             continue;
         }
         let on_level = match &e.kind {
@@ -1954,6 +1959,12 @@ fn clip_to_holes(a: DVec2, b: DVec2, holes: &[Vec<DVec2>]) -> Vec<(DVec2, DVec2)
 /// projection, symbols) as halftone lines and arcs, without fills, text,
 /// grids, guides or view marks.
 pub fn underlay_items(model: &Model, level: ElementId, cut_height: f64) -> Vec<PlanItem> {
+    as_underlay(model, plan_view(model, level, cut_height).items)
+}
+
+/// A drawing's `items` as an underlay: halftone lines and arcs, without
+/// fills, text, grids, guides or view marks.
+pub fn as_underlay(model: &Model, items: Vec<PlanItem>) -> Vec<PlanItem> {
     let skip = |id: ElementId| {
         matches!(
             model.get(id).map(|e| &e.kind),
@@ -1961,7 +1972,7 @@ pub fn underlay_items(model: &Model, level: ElementId, cut_height: f64) -> Vec<P
         )
     };
     let mut out = Vec::new();
-    for it in plan_view(model, level, cut_height).items {
+    for it in items {
         match it {
             PlanItem::Line { id, pen, a, b } if pen != Pen::Guide && pen != Pen::Grid => {
                 if !skip(id) {

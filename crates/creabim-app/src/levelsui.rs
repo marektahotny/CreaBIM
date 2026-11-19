@@ -158,7 +158,7 @@ impl CreaBimApp {
                 Underlay::None => "underlay:none".to_string(),
                 Underlay::Below => "underlay:below".to_string(),
                 Underlay::Above => "underlay:above".to_string(),
-                Underlay::Level(l) => format!("underlay:{}", l.0),
+                Underlay::Level(l) | Underlay::View(l) => format!("underlay:{}", l.0),
             };
             items.push(Item::new(id, label).checked(u == current));
         }
@@ -189,6 +189,15 @@ impl CreaBimApp {
                 out.push((Underlay::Level(id), n));
             }
         }
+        // the plans seen from above (the site plan with its cadastre and
+        // terrain, the roof plan), as they are drawn
+        for e in model.iter() {
+            if let ElementKind::View(v) = &e.kind {
+                if matches!(v.kind, ViewKind::Plan { .. }) && v.graphics.range.from_above {
+                    out.push((Underlay::View(e.id), e.name.clone()));
+                }
+            }
+        }
         out
     }
 
@@ -203,7 +212,9 @@ impl CreaBimApp {
             Underlay::None => "Underlay off.".to_string(),
             u => {
                 let level = match self.view(view).map(|v| &v.kind) {
-                    Some(ViewKind::Plan { level, .. }) => u.level(self.doc.model(), *level),
+                    Some(ViewKind::Plan { level, .. }) => u
+                        .level(self.doc.model(), *level)
+                        .or_else(|| u.view(self.doc.model(), view)),
                     _ => None,
                 };
                 match level.and_then(|l| self.doc.model().get(l)) {

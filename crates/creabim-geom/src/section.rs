@@ -784,6 +784,11 @@ fn reno_colours(model: &Model, stage: creabim_core::reno::RenoView, items: &mut 
     items.extend(tints);
 }
 
+thread_local! {
+    /// Set while a plan drawn as another plan's underlay is drawn.
+    static UNDERLAID: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 pub fn view_drawing(model: &Model, view: ElementId) -> Option<Drawing> {
     view_drawing_with(model, view, false)
 }
@@ -864,8 +869,22 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             d.items = rooms;
             // another level traced underneath, under the linework but
             // (over the fills, so a footing's or a slab's doesn't hide it)
-            if let Some(under) = v.underlay.level(model, *level) {
-                let items = crate::plan::underlay_items(model, under, *cut_height);
+            let under = match (
+                v.underlay.level(model, *level),
+                v.underlay.view(model, view),
+            ) {
+                (Some(under), _) => Some(crate::plan::underlay_items(model, under, *cut_height)),
+                // another plan as it is drawn: the site plan under a floor
+                // (one deep: an underlay's own underlay isn't drawn)
+                (None, Some(other)) if !UNDERLAID.with(|u| u.get()) => {
+                    UNDERLAID.with(|u| u.set(true));
+                    let d = view_drawing(model, other);
+                    UNDERLAID.with(|u| u.set(false));
+                    d.map(|d| crate::plan::as_underlay(model, d.items))
+                }
+                _ => None,
+            };
+            if let Some(items) = under {
                 let at = d
                     .items
                     .iter()

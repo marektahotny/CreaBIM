@@ -52,6 +52,19 @@ pub struct Linework {
     pub lines: Vec<Vec<DVec2>>,
     pub texts: Vec<RefText>,
     pub points: Vec<DVec2>,
+    /// Each line's layer, by its index in `layers` (a drawing's; none for
+    /// a view's linework).
+    pub layer_of: Vec<u32>,
+    pub layers: Vec<String>,
+}
+
+impl Linework {
+    /// The layer line `i` is on, if known.
+    pub fn layer(&self, i: usize) -> Option<&str> {
+        self.layers
+            .get(*self.layer_of.get(i)? as usize)
+            .map(|s| s.as_str())
+    }
 }
 
 impl std::ops::Deref for Linework {
@@ -98,6 +111,9 @@ pub struct RefCache {
     slices: HashMap<(ElementId, ElementId), (String, Arc<creabim_exchange::cloud::Slice>)>,
     /// The points 3D shows of a cloud, by source key.
     samples: HashMap<String, Arc<Vec<u32>>>,
+    /// A drawing's lines where the views show it, indexed to snap to and
+    /// pick by, with the reference as it was when they were put there.
+    indexes: HashMap<ElementId, (String, Arc<crate::snaps::LineIndex>)>,
 }
 
 /// Most points a plan shows of a cloud's slice, and 3D of a cloud.
@@ -245,6 +261,43 @@ impl RefCache {
         };
         self.read.insert(id, (k, rev, s.clone()));
         s
+    }
+
+    /// The lines and points reference `id` shows (a DXF or PDF drawing,
+    /// another view's linework) where the views show them, indexed; none
+    /// for a picture or a cloud.
+    pub fn index(
+        &mut self,
+        model: &Model,
+        id: ElementId,
+        r: &Reference,
+    ) -> Option<Arc<crate::snaps::LineIndex>> {
+        let Shown::Lines(lines) = self.get(model, id, r) else {
+            self.indexes.remove(&id);
+            return None;
+        };
+        let k = format!(
+            "{}|{:?}|{}|{}|{:?}|{}",
+            ref_key(r),
+            r.at,
+            r.rotation,
+            r.scale,
+            r.bounds,
+            Arc::as_ptr(&lines) as usize
+        );
+        if let Some((kk, ix)) = self.indexes.get(&id) {
+            if *kk == k {
+                return Some(ix.clone());
+            }
+        }
+        let placed: Vec<Vec<DVec2>> = lines
+            .iter()
+            .map(|l| l.iter().map(|p| r.place(*p)).collect())
+            .collect();
+        let points: Vec<DVec2> = lines.points.iter().map(|p| r.place(*p)).collect();
+        let ix = Arc::new(crate::snaps::LineIndex::new(&placed, &points));
+        self.indexes.insert(id, (k, ix.clone()));
+        Some(ix)
     }
 
     /// A point cloud's file, read once.
@@ -420,6 +473,7 @@ impl RefCache {
             self.samples.remove(&k);
         }
         self.slices.retain(|(r, _), _| *r != id);
+        self.indexes.remove(&id);
     }
 }
 
@@ -445,27 +499,44 @@ pub fn dxf_linework(
     let on = |l: &str| !off.iter().any(|x| x == l);
     let inside = |p: DVec2| clip.is_none_or(|[a, b]| p.cmpge(a).all() && p.cmple(b).all());
     let mut lines = vec![];
+    let mut layer_of: Vec<u32> = vec![];
+    let mut layers: Vec<String> = vec![];
+    let mut put = |layer: &str, pts: &[DVec2]| {
+        let k = match layers.iter().position(|l| l == layer) {
+            Some(k) => k,
+            None => {
+                layers.push(layer.to_string());
+                layers.len() - 1
+            }
+        } as u32;
+        for l in clip_line(pts, clip) {
+            lines.push(l);
+            layer_of.push(k);
+        }
+    };
     for p in d.polys.iter().filter(|p| on(&p.layer)) {
         let mut pts = p.pts.clone();
         if p.closed {
             pts.push(pts[0]);
         }
-        lines.extend(clip_line(&pts, clip));
+        put(&p.layer, &pts);
     }
     for f in d.fills.iter().filter(|f| on(&f.layer)) {
         for r in &f.rings {
             let mut pts = r.clone();
             pts.push(r[0]);
-            lines.extend(clip_line(&pts, clip));
+            put(&f.layer, &pts);
         }
     }
     for f in d.faces.iter().filter(|f| on(&f.layer)) {
         let mut pts: Vec<DVec2> = f.pts.iter().map(|q| q.truncate()).collect();
         pts.push(pts[0]);
-        lines.extend(clip_line(&pts, clip));
+        put(&f.layer, &pts);
     }
     Linework {
         lines,
+        layer_of,
+        layers,
         texts: d
             .texts
             .iter()
@@ -493,6 +564,7 @@ fn clip_shown(s: Shown, clip: Option<[DVec2; 2]>) -> Shown {
     match (s, clip) {
         (Shown::Lines(l), Some(_)) => Shown::Lines(Arc::new(Linework {
             lines: l.lines.iter().flat_map(|p| clip_line(p, clip)).collect(),
+            layer_of: vec![],
             ..(*l).clone()
         })),
         (s, _) => s,
@@ -820,10 +892,36 @@ pub fn draw(
                 .unwrap_or(Color32::from_gray(70))
                 .gamma_multiply(a);
             let stroke = Stroke::new(1.0, ink);
-            for line in lines.iter() {
+            // each layer as its style has it (a map's boundaries black, its
+            // contours dashed brown), else in the drawing's ink
+            let styles: Vec<Option<&creabim_core::LayerStyle>> = lines
+                .layers
+                .iter()
+                .map(|l| r.layer_styles.iter().find(|s| s.layer == *l))
+                .collect();
+            for (i, line) in lines.iter().enumerate() {
                 let pts: Vec<Pos2> = line.iter().map(|p| to_screen(r.place(*p))).collect();
-                if pts.len() >= 2 {
-                    painter.add(egui::Shape::line(pts, stroke));
+                if pts.len() < 2 {
+                    continue;
+                }
+                let style = lines
+                    .layer_of
+                    .get(i)
+                    .and_then(|k| styles.get(*k as usize).copied().flatten());
+                match style {
+                    Some(st) => {
+                        let [cr, cg, cb] = st.rgb;
+                        let s =
+                            Stroke::new(st.width, Color32::from_rgb(cr, cg, cb).gamma_multiply(a));
+                        if st.dashed {
+                            painter.extend(egui::Shape::dashed_line(&pts, s, 6.0, 4.0));
+                        } else {
+                            painter.add(egui::Shape::line(pts, s));
+                        }
+                    }
+                    None => {
+                        painter.add(egui::Shape::line(pts, stroke));
+                    }
                 }
             }
             draw_texts(painter, r, &lines.texts, ink, to_screen);

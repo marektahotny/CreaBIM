@@ -269,6 +269,9 @@ pub struct CreaBimApp {
     /// A 3D drawing reference to make a terrain from, asked from its
     /// Properties.
     terrain_ref: Option<ElementId>,
+    /// A drawing reference to break into lines of the model, asked from
+    /// its Properties.
+    explode_ref: Option<ElementId>,
     /// The map site's window (Pilon Map Downloader): open, where its page
     /// goes, and the listener it sends to.
     maps_open: bool,
@@ -595,6 +598,7 @@ impl CreaBimApp {
             remove_ref: None,
             copy_ref: None,
             terrain_ref: None,
+            explode_ref: None,
             maps_open: false,
             maps_rect: None,
             maplink: None,
@@ -9127,15 +9131,27 @@ crate::props::row(ui, "File names", |ui| {
                         .max_height(200.0)
                         .show(ui, |ui| {
                             for l in &layers {
-                                let mut on = !r.layers_off.contains(l);
-                                if ui.checkbox(&mut on, crate::i18n::tr(l)).changed() {
-                                    if on {
-                                        r.layers_off.retain(|x| x != l);
-                                    } else {
-                                        r.layers_off.push(l.clone());
+                                ui.horizontal(|ui| {
+                                    let mut on = !r.layers_off.contains(l);
+                                    if ui.checkbox(&mut on, crate::i18n::tr(l)).changed() {
+                                        if on {
+                                            r.layers_off.retain(|x| x != l);
+                                        } else {
+                                            r.layers_off.push(l.clone());
+                                        }
+                                        label = Some("Reference layers");
                                     }
-                                    label = Some("Reference layers");
-                                }
+                                    // its own colour, line and width, or the
+                                    // drawing's ink
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if let Some(c) = ref_layer_style_ui(ui, r, l) {
+                                                label = Some(c);
+                                            }
+                                        },
+                                    );
+                                });
                             }
                         });
                 }
@@ -9164,6 +9180,21 @@ crate::props::row(ui, "File names", |ui| {
                     }
                 }
             }
+        }
+        // its lines as lines of the model, each picked, moved and
+        // snapped to on its own (a map's parcel boundaries to work with)
+        if matches!(r.source, RefSource::Dxf { .. } | RefSource::Pdf { .. })
+            && ui
+                .add_sized(
+                    [ui.available_width(), 24.0],
+                    egui::Button::new(crate::i18n::t("Explode into lines")).truncate(),
+                )
+                .on_hover_text(crate::i18n::t(
+                    "Its lines on the layers shown, within its clip, become lines of the plan's level, each picked and edited on its own; the reference is hidden",
+                ))
+                .clicked()
+        {
+            self.explode_ref = Some(id);
         }
         // what of it shows: all, or a rectangle picked in the view
         crate::props::row(ui, "Clip", |ui| {
@@ -9326,6 +9357,9 @@ crate::props::row(ui, "File names", |ui| {
             } else {
                 self.terrain_from_reference(id);
             }
+        }
+        if let Some(id) = self.explode_ref.take() {
+            self.explode_reference(id);
         }
         if let Some(id) = self.remove_ref.take() {
             let tx = creabim_core::Transaction::new("Remove reference")
@@ -10111,7 +10145,7 @@ crate::props::row(ui, "File names", |ui| {
                                 });
                             ui.label(
                             egui::RichText::new(
-                                crate::i18n::t("Another level drawn faintly under this one, to trace and snap to. Not printed."),
+                                crate::i18n::t("Another level or the site plan (with its cadastre) drawn faintly under this one, to trace and snap to. Not printed."),
                             )
                             .weak(),
                         );
@@ -11771,8 +11805,16 @@ crate::props::row(ui, "File names", |ui| {
                 self.quick_help_button(ui, page, title);
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.add(
-                        egui::Label::new(egui::RichText::new(class.clone()).color(pal.accent))
-                            .truncate(),
+                        // a view, a sheet: no IFC class, what it is in words
+                        egui::Label::new(
+                            egui::RichText::new(if class.starts_with("Ifc") {
+                                class.clone()
+                            } else {
+                                crate::i18n::tr(&class)
+                            })
+                            .color(pal.accent),
+                        )
+                        .truncate(),
                     )
                     .on_hover_text(class.clone());
                 });
@@ -13474,7 +13516,66 @@ fn with_extension(path: &str, ext: &str) -> String {
 }
 
 /// Give every level a plan view so older files open with something to show.
-fn with_plan_views(model: Model) -> Model {
+/// A reference layer's style in its Layers list: its colour, dashed and
+/// width, or a button to give it one; the undo label of a change.
+fn ref_layer_style_ui(
+    ui: &mut egui::Ui,
+    r: &mut creabim_core::Reference,
+    layer: &str,
+) -> Option<&'static str> {
+    let t = crate::i18n::t;
+    let mut out = None;
+    let Some(k) = r.layer_styles.iter().position(|s| s.layer == layer) else {
+        if ui
+            .small_button("🎨")
+            .on_hover_text(t("Give this layer a colour and line of its own"))
+            .clicked()
+        {
+            r.layer_styles.push(creabim_core::LayerStyle::new(
+                layer,
+                [20, 20, 20],
+                false,
+                1.0,
+            ));
+            out = Some("Reference layer style");
+        }
+        return out;
+    };
+    if ui
+        .small_button("✕")
+        .on_hover_text(t("Back to the drawing's colour"))
+        .clicked()
+    {
+        r.layer_styles.remove(k);
+        return Some("Reference layer style");
+    }
+    let st = &mut r.layer_styles[k];
+    if ui
+        .add(
+            egui::DragValue::new(&mut st.width)
+                .range(0.5..=4.0)
+                .speed(0.05)
+                .max_decimals(1),
+        )
+        .on_hover_text(t("Line width"))
+        .changed()
+    {
+        out = Some("Reference layer style");
+    }
+    if ui
+        .checkbox(&mut st.dashed, "")
+        .on_hover_text(t("Dashed"))
+        .changed()
+    {
+        out = Some("Reference layer style");
+    }
+    if ui.color_edit_button_srgb(&mut st.rgb).changed() {
+        out = Some("Reference layer style");
+    }
+    out
+}
+
+pub(crate) fn with_plan_views(model: Model) -> Model {
     let planned: Vec<ElementId> = model
         .iter()
         .filter_map(|e| match &e.kind {
@@ -14031,6 +14132,27 @@ mod sheet_tools_tests {
             .first()
             .map(|(id, _)| *id)
             .expect("the test project has sheets")
+    }
+
+    #[test]
+    fn the_cadastre_coordinates_tool_stays_on_its_tab_and_writes_coordinates() {
+        let mut app = crate::app::test_app();
+        let ctx = egui::Context::default();
+        app.run_action(&ctx, "site:coords");
+        assert_eq!(app.plan.tool, Tool::SpotLevel);
+        assert!(app.plan.anno.spot_coords);
+        // the ribbon picking the tool shown again keeps it reading S-JTSK
+        let i = Tool::ALL
+            .iter()
+            .position(|t| *t == Tool::SpotLevel)
+            .unwrap();
+        app.run_action(&ctx, &format!("tool:{i}"));
+        assert!(app.plan.anno.spot_coords);
+        // another tool, then the spot level: heights again
+        let w = Tool::ALL.iter().position(|t| *t == Tool::Wall).unwrap();
+        app.run_action(&ctx, &format!("tool:{w}"));
+        app.run_action(&ctx, &format!("tool:{i}"));
+        assert!(!app.plan.anno.spot_coords);
     }
 
     #[test]

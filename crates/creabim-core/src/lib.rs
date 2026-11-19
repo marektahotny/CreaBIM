@@ -111,7 +111,7 @@ pub use ops::{Op, Transaction};
 pub use papermark::{PaperMark, PaperMarkKind};
 pub use parts::Part;
 pub use project::{set_project, ProjectInfo};
-pub use reference::{RefSource, Reference};
+pub use reference::{LayerStyle, RefSource, Reference};
 pub use room::{Ceiling, Room, RoomField, Separator};
 pub use screen::ScreenPattern;
 pub use site::{PlantForm, Site, SiteForm};

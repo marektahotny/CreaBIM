@@ -2281,6 +2281,10 @@ pub enum Underlay {
     /// A chosen level. Not a hard reference: deleting the level just turns
     /// the underlay off.
     Level(ElementId),
+    /// Another plan view as it is drawn, with the references shown in it:
+    /// the site plan (its cadastre and terrain) under a floor plan. Not a
+    /// hard reference either.
+    View(ElementId),
 }
 
 impl Underlay {
@@ -2302,6 +2306,23 @@ impl Underlay {
             Underlay::Below => others.iter().rev().find(|o| o.1 <= here).map(|o| o.0),
             Underlay::Above => others.iter().find(|o| o.1 >= here).map(|o| o.0),
             Underlay::Level(id) => (*id != level && model.level(*id).is_some()).then_some(*id),
+            Underlay::View(_) => None,
+        }
+    }
+
+    /// The plan view this underlay shows under `view`, if it shows one
+    /// that is still there.
+    pub fn view(&self, model: &crate::Model, view: ElementId) -> Option<ElementId> {
+        match self {
+            Underlay::View(id) if *id != view => match model.get(*id).map(|e| &e.kind) {
+                Some(crate::ElementKind::View(v))
+                    if matches!(v.kind, crate::ViewKind::Plan { .. }) =>
+                {
+                    Some(*id)
+                }
+                _ => None,
+            },
+            _ => None,
         }
     }
 }

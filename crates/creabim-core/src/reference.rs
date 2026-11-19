@@ -119,6 +119,91 @@ pub struct Reference {
     /// left, upper right).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clip: Option<[DVec2; 2]>,
+    /// How a drawing's layers are drawn, where not in its colour: a
+    /// map's parcel boundaries thin black, its contours dashed brown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_styles: Vec<LayerStyle>,
+}
+
+/// How the lines of one layer of a drawing are drawn.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LayerStyle {
+    pub layer: String,
+    pub rgb: [u8; 3],
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dashed: bool,
+    /// Line width, in points on the screen (1 is thin).
+    #[serde(default = "thin")]
+    pub width: f32,
+}
+
+/// Lower case without accents, to match a layer's name.
+fn fold(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'ä' => 'a',
+            'č' => 'c',
+            'ď' => 'd',
+            'é' | 'ě' => 'e',
+            'í' => 'i',
+            'ĺ' | 'ľ' => 'l',
+            'ň' => 'n',
+            'ó' | 'ô' => 'o',
+            'ŕ' | 'ř' => 'r',
+            'š' => 's',
+            'ť' => 't',
+            'ú' | 'ů' => 'u',
+            'ý' => 'y',
+            'ž' => 'z',
+            c => c,
+        })
+        .collect()
+}
+
+fn thin() -> f32 {
+    1.0
+}
+
+impl LayerStyle {
+    pub fn new(layer: &str, rgb: [u8; 3], dashed: bool, width: f32) -> Self {
+        LayerStyle {
+            layer: layer.to_string(),
+            rgb,
+            dashed,
+            width,
+        }
+    }
+
+    /// The style a map's layer (Pilon Map Downloader's site plan) gets by
+    /// its name: parcel boundaries thin black, contours thin dashed light
+    /// brown, the main contours darker brown, ZBGIS buildings thin grey.
+    /// None for the rest (texts, the origin), which keep the drawing's ink.
+    pub fn for_map_layer(layer: &str) -> Option<Self> {
+        let n = fold(layer);
+        let has = |w: &[&str]| w.iter().any(|w| n.contains(w));
+        // numbers and texts keep the drawing's ink
+        if has(&["cisl", "text", "kot", "popis", "label"]) {
+            return None;
+        }
+        if has(&["vrstev", "contour"]) {
+            return Some(if has(&["hlav", "major", "zosil", "zesil", "index"]) {
+                LayerStyle::new(layer, [122, 72, 28], false, 1.2)
+            } else {
+                LayerStyle::new(layer, [196, 160, 112], true, 1.0)
+            });
+        }
+        if has(&["budov", "zbgis", "build", "objekt"]) {
+            return Some(LayerStyle::new(layer, [140, 140, 140], false, 1.0));
+        }
+        if has(&[
+            "katast", "cadast", "parcel", "hranic", "pozem", "plot", "kn_", "kn-", "kn ",
+        ]) || n == "kn"
+        {
+            return Some(LayerStyle::new(layer, [20, 20, 20], false, 1.0));
+        }
+        None
+    }
 }
 
 fn yes() -> bool {
@@ -162,6 +247,7 @@ impl Reference {
             bounds: None,
             layers_off: vec![],
             clip: None,
+            layer_styles: vec![],
         }
     }
 
@@ -271,6 +357,22 @@ pub fn in_view(model: &crate::Model, view: ElementId) -> Vec<(ElementId, &Refere
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_maps_layers_get_their_site_plan_styles() {
+        let st = |l: &str| LayerStyle::for_map_layer(l);
+        assert_eq!(st("Kataster C – hranice").unwrap().rgb, [20, 20, 20]);
+        assert_eq!(st("KN_HRANICE").unwrap().rgb, [20, 20, 20]);
+        assert_eq!(st("Hranica pozemku").unwrap().rgb, [20, 20, 20]);
+        let c = st("Vrstevnice").unwrap();
+        assert!(c.dashed && c.rgb == [196, 160, 112]);
+        let m = st("Vrstevnice hlavné").unwrap();
+        assert!(!m.dashed && m.rgb == [122, 72, 28]);
+        assert_eq!(st("Budovy ZBGIS").unwrap().rgb, [140, 140, 140]);
+        assert!(st("Kataster C – čísla").is_none());
+        assert!(st("Kóty vrstevníc").is_none());
+        assert!(st("Počiatok").is_none());
+    }
 
     #[test]
     fn a_reference_turns_and_scales_about_its_centre_and_calibrates() {

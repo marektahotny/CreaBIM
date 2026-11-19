@@ -1533,6 +1533,9 @@ impl CreaBimApp {
                 if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::SpotLevel) {
                     self.run_action(ctx, &format!("tool:{i}"));
                     self.plan.anno.spot_coords = true;
+                    // it stays on the Cadastre tab it was picked from (it
+                    // jumped to Annotations, which read as another tool)
+                    self.shell.tab_tool = Some(Tool::SpotLevel);
                     self.status = crate::i18n::tr(
                         "S-JTSK coordinates: click a point (a plot's corner, a cadastre line's bend, the building's corner), then where the text goes.",
                     );
@@ -1555,11 +1558,15 @@ impl CreaBimApp {
                 if let Some(t) = index.and_then(|i| Tool::ALL.get(i)) {
                     // a detail path being drawn is kept, not dropped
                     crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
+                    let again = self.plan.tool == *t;
                     self.plan.tool = *t;
                     self.plan.cancel();
                     // the spot level tool reads heights unless the cadastre's
-                    // coordinates button chose otherwise
-                    self.plan.anno.spot_coords = false;
+                    // coordinates button chose otherwise; picked again (the
+                    // ribbon showing it), it keeps what it reads
+                    if !again || !matches!(*t, Tool::SpotLevel) {
+                        self.plan.anno.spot_coords = false;
+                    }
                     // a chain begun in 3D ends with its tool (MU40)
                     self.pending_3d = None;
                     self.beam_face = None;
@@ -1800,6 +1807,9 @@ impl CreaBimApp {
                         "above" => Underlay::Above,
                         "none" => Underlay::None,
                         _ => match by_uuid(self) {
+                            Some(v) if matches!(self.doc.model().get(v).map(|e| &e.kind), Some(ElementKind::View(_))) => {
+                                Underlay::View(v)
+                            }
                             Some(l) if l != level => Underlay::Level(l),
                             _ => return,
                         },
