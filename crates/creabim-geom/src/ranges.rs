@@ -141,7 +141,27 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
             }
         }
     }
+    // what of the storeys below lies under this storey's cut walls and
+    // slabs: a thin dashed line over them (a foundation wall under the
+    // ground floor's wall), so it shows and can be picked
+    let mut probe: Vec<PlanItem> = d
+        .items
+        .iter()
+        .filter(|it| matches!(it, PlanItem::Fill { .. }))
+        .cloned()
+        .collect();
+    let n = probe.len();
+    probe.extend(
+        under
+            .iter()
+            .filter(|it| !matches!(it, PlanItem::Fill { .. }))
+            .cloned(),
+    );
+    let m = probe.len();
+    crate::plan::reveal_covered(model, &mut probe);
+    let covered: Vec<PlanItem> = probe.drain(m.max(n)..).collect();
     under.append(&mut d.items);
+    under.extend(covered);
     under.append(&mut over);
     PlanView { items: under }
 }
@@ -412,6 +432,57 @@ mod tests {
             .filter(|it| it.id() == el[0] && matches!(it, PlanItem::Polygon { .. }))
             .count();
         assert_eq!(walls, 1);
+    }
+
+    #[test]
+    fn a_foundation_wall_under_the_ground_floor_wall_shows_dashed() {
+        let mut m = Model::new();
+        let found = Element::new(
+            "Foundation",
+            ElementKind::Level(Level {
+                elevation: -0.8,
+                height: 0.8,
+            }),
+        );
+        let ground = Element::new(
+            "Ground",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let (lf, lg) = (found.id, ground.id);
+        let dt = Element::new(
+            "DT wall",
+            ElementKind::Wall(Wall::new(lf, DVec2::ZERO, DVec2::new(10.0, 0.0), 0.3, 0.8)),
+        );
+        let above = Element::new(
+            "GF wall",
+            ElementKind::Wall(Wall::new(lg, DVec2::ZERO, DVec2::new(10.0, 0.0), 0.45, 3.0)),
+        );
+        let dt_id = dt.id;
+        Transaction::new("t")
+            .insert(found)
+            .insert(ground)
+            .insert(dt)
+            .insert(above)
+            .apply(&mut m)
+            .unwrap();
+        let mut v = View::plan(lg);
+        v.graphics.range.bottom = Some(RangeLimit {
+            level: lg,
+            offset: -0.8,
+        });
+        let d = plan(&m, &v, lg, 1.2);
+        let dashed = d
+            .items
+            .iter()
+            .filter(|it| matches!(it, PlanItem::Line { id, pen: Pen::Hidden, .. } if *id == dt_id))
+            .count();
+        assert!(dashed >= 2, "{dashed}");
+        // a plan down to its own floor leaves it out
+        let d = plan(&m, &View::plan(lg), lg, 1.2);
+        assert!(!ids(&d).contains(&dt_id));
     }
 
     #[test]

@@ -473,10 +473,17 @@ fn place_footing(
             }
             Some(a) if a.distance(p) > 0.05 => {
                 let e = sized_footing(model, state, Footing::strip(level, a, p));
-                state.status = Some("Strip footing placed.".into());
+                // drawn on in a chain, as walls are: each strip from where
+                // the last ended, until Esc (they join at the corners)
+                state.pending = Some(p);
+                state.status =
+                    Some("Strip footing placed. Click the next point, or Esc to finish.".into());
                 add(doc, selection, e, state)
             }
-            Some(_) => Ok(()),
+            Some(a) => {
+                state.pending = Some(a);
+                Ok(())
+            }
         },
     }
 }
@@ -1573,7 +1580,7 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                 "Strip",
                 !m.footing_pad,
                 "footing",
-                "Strip footings: click a wall, or two points",
+                "Strip footings: click a wall, or draw them point by point as walls (Esc ends the chain)",
             ),
             toggle(
                 "footing.pad",
@@ -1934,6 +1941,12 @@ mod tests {
                 .count()
         };
         assert_eq!(free(&doc, FootingKind::Strip), 1);
+        // drawn on in a chain as walls: the next click adds the next strip
+        go(&mut doc, &mut st, 54.0, 54.0);
+        assert_eq!(free(&doc, FootingKind::Strip), 2);
+        assert_eq!(st.pending, Some(DVec2::new(54.0, 54.0)));
+        // Esc ends the chain
+        st.pending = None;
         // pads: under a column, and on their own, at the pad size
         click(
             &mut doc,

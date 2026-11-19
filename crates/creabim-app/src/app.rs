@@ -9994,6 +9994,22 @@ crate::props::row(ui, "File names", |ui| {
                             if num(ui, "Cut height", cut_height, 0.1, 50.0) {
                                 label = "View cut height"
                             }
+                            // the bottom of what the plan draws, from its
+                            // own level: 0 is the floor of this storey, below
+                            // it reaches the storey under (a foundation wall)
+                            let own = self.doc.model().level(*level).map_or(0.0, |l| l.elevation);
+                            let r = &mut v.graphics.range;
+                            let mut bottom =
+                                r.bottom.map_or(0.0, |b| b.z(self.doc.model(), own) - own);
+                            if num(ui, "Cut bottom", &mut bottom, -50.0, 50.0) {
+                                r.bottom = (bottom.abs() > 1e-6).then_some(
+                                    creabim_core::graphics::RangeLimit {
+                                        level: *level,
+                                        offset: bottom,
+                                    },
+                                );
+                                label = "View cut bottom"
+                            }
                             let choices = self.underlay_choices(*level);
                             let current = choices
                                 .iter()

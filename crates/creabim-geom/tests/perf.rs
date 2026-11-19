@@ -123,18 +123,52 @@ fn tower_timings() {
 #[ignore = "diagnosis"]
 fn tower_slow_elements() {
     let m = creabim_core::starter::starter_tower(3);
+    let mut kinds: std::collections::BTreeMap<
+        String,
+        std::collections::HashSet<creabim_core::ElementId>,
+    > = Default::default();
     for e in m.iter() {
+        let k = format!("{:?}", e.kind)
+            .split('(')
+            .next()
+            .unwrap()
+            .to_string();
+        kinds.entry(k).or_default().insert(e.id);
+    }
+    let name = |id: &creabim_core::ElementId| m.get(*id).unwrap().name.clone();
+    use std::io::Write;
+    for sl in &kinds["Slab"] {
+        let mut set = kinds["Wall"].clone();
+        set.insert(*sl);
+        eprint!("all walls + {} {:?}... ", name(sl), sl);
+        std::io::stderr().flush().unwrap();
         let t = Instant::now();
-        let set: std::collections::HashSet<_> = [e.id].into_iter().collect();
-        let s = creabim_geom::scene::build_scene_of(&m, Some(&set));
-        let ms = t.elapsed().as_secs_f64() * 1000.0;
-        let tris: usize = s.iter().map(|i| i.mesh.indices.len() / 3).sum();
-        if ms > 20.0 || tris > 20000 {
-            println!(
-                "{:<30} {:?} {ms:.0} ms {tris} tris",
-                e.name,
-                std::mem::discriminant(&e.kind)
-            );
+        let _ = creabim_geom::scene::build_scene_of(&m, Some(&set));
+        eprintln!("{:.0} ms", t.elapsed().as_secs_f64() * 1000.0);
+    }
+    let geo = [
+        "Wall", "Slab", "Opening", "Object", "Roof", "Column", "Beam", "Stair", "Footing",
+        "Ceiling", "Shaft", "Railing",
+    ];
+    for (i, a) in geo.iter().enumerate() {
+        for b in &geo[i + 1..] {
+            let set: std::collections::HashSet<_> = kinds[*a].union(&kinds[*b]).copied().collect();
+            let t = Instant::now();
+            let _ = creabim_geom::scene::build_scene_of(&m, Some(&set));
+            let ms = t.elapsed().as_secs_f64() * 1000.0;
+            if ms > 50.0 {
+                println!("{a}+{b}: {ms:.0} ms");
+            }
         }
+    }
+    for (k, set) in &kinds {
+        let t = Instant::now();
+        let s = creabim_geom::scene::build_scene_of(&m, Some(set));
+        let tris: usize = s.iter().map(|i| i.mesh.indices.len() / 3).sum();
+        println!(
+            "{k:<16} {:>4} el {:>8.0} ms {tris} tris",
+            set.len(),
+            t.elapsed().as_secs_f64() * 1000.0
+        );
     }
 }
