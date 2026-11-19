@@ -416,7 +416,7 @@ fn wc() -> CatalogueObject {
         "wc",
         "WC, close-coupled",
         "Floor-standing pan with its cistern, seat height 420 mm",
-        ObjectCategory::Bathroom,
+        ObjectCategory::Toilet,
         ("IfcSanitaryTerminal", "TOILETPAN"),
         Mount::Wall,
     )

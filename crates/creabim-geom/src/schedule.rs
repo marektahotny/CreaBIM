@@ -1232,6 +1232,7 @@ mod tests {
             [
                 "Bathroom",
                 "Kitchen",
+                "WC",
                 "Electrical",
                 "Lighting",
                 "Plumbing",

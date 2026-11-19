@@ -507,6 +507,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_room_type_picked_in_slovak_or_czech_is_found_again() {
+        use creabim_core::roomtype::RoomType;
+        for l in [Lang::Sk, Lang::Cs] {
+            for t in RoomType::ALL {
+                if t == RoomType::Other {
+                    continue;
+                }
+                let text = lookup(l, t.label()).unwrap_or(t.label());
+                assert_eq!(RoomType::find(text), Some(t), "{l:?}: {text}");
+            }
+        }
+    }
+
+    #[test]
     fn every_language_file_parses() {
         for l in Lang::ALL {
             parse(l.source()).unwrap_or_else(|e| panic!("i18n/{}.json: {e}", l.id()));

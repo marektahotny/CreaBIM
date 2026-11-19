@@ -408,6 +408,61 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
             label = "Room data";
         }
     }
+    // its type for heat loss, cooling, air and floor heating: picking one
+    // writes the occupancy
+    {
+        use creabim_core::roomtype::{Gains, RoomType};
+        let tr = crate::i18n::tr;
+        let found = RoomType::find(&r.occupancy);
+        crate::props::row(ui, "Room type", |ui| {
+            ui.spacing_mut().combo_width = ui.available_width();
+            egui::ComboBox::from_id_salt("room_type")
+                .icon(crate::props::combo_icon)
+                .selected_text(found.map_or_else(|| tr("by its name"), |t| tr(t.label())))
+                .show_ui(ui, |ui| {
+                    for t in RoomType::ALL {
+                        if ui
+                            .selectable_label(found == Some(t), tr(t.label()))
+                            .clicked()
+                        {
+                            r.occupancy = tr(t.label());
+                            label = "Room data";
+                        }
+                    }
+                });
+        });
+        let n = found.unwrap_or(RoomType::Other).needs();
+        let mut air = vec![];
+        if let Some(a) = n.ach {
+            air.push(format!("{} {a} 1/h", tr("air change")));
+        }
+        if let Some(f) = n.flow {
+            air.push(format!("{} {f:.0} m³/h", tr("extract")));
+        }
+        ui.label(
+            egui::RichText::new(format!(
+                "θint {:.0} °C · {} · {} · {}",
+                n.temp,
+                if air.is_empty() {
+                    tr("no least air flow")
+                } else {
+                    air.join(", ")
+                },
+                if n.exhaust {
+                    tr("air taken out")
+                } else {
+                    tr("air supplied")
+                },
+                match n.gains {
+                    Gains::Service => tr("not cooled"),
+                    Gains::Kitchen => tr("cooled, kitchen gains"),
+                    Gains::Office => tr("cooled, office gains"),
+                    Gains::Home => tr("cooled, dwelling gains"),
+                }
+            ))
+            .weak(),
+        );
+    }
     // what it counts as for its persons, and the designed count
     let table = creabim_geom::occupancy::table(model);
     let shown = match table.and_then(|t| t.row(r.fire_use.trim())) {
