@@ -706,10 +706,13 @@ pub fn pick(presets: &'static [(&'static str, f64)], q_m3h: f64, dp: f64) -> Opt
     sorted.sort_by(|a, b| a.1.total_cmp(&b.1));
     let first = **sorted.first()?;
     let last = **sorted.last()?;
+    // HERZ's program rounds the kv asked for to hundredths before it
+    // looks the presetting up
+    let kv_round = (kv_req * 100.0).round() / 100.0;
     let (p, under) = sorted
         .iter()
         .rev()
-        .find(|x| x.1 <= kv_req + 1e-9)
+        .find(|x| x.1 <= kv_round + 1e-9)
         .map_or((first, true), |x| (**x, false));
     Some(Pick {
         preset: p.0,
@@ -724,6 +727,16 @@ pub fn pick(presets: &'static [(&'static str, f64)], q_m3h: f64, dp: f64) -> Opt
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// HERZ's program "Nastavenie STRÖMAX MS a TS-98-V": 80 kPa and
+    /// 660 l/h ask kv 0,74, presetting 3 on the MS and 6 on the TS-98-V.
+    #[test]
+    fn presettings_come_out_as_herzs_program_gives_them() {
+        let ms = by_id("HZ-STROMAX-MS").unwrap();
+        let ts = by_id("HZ-TS98V").unwrap();
+        assert_eq!(pick(ms.presets, 0.66, 80.0).unwrap().preset, "3");
+        assert_eq!(pick(ts.presets, 0.66, 80.0).unwrap().preset, "6");
+    }
 
     #[test]
     fn the_presetting_throttles_at_least_what_is_asked() {
