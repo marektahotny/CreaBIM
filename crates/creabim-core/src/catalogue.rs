@@ -20,6 +20,7 @@ mod jika;
 pub mod medical;
 pub mod radiators;
 mod services;
+pub mod valvebox;
 
 // ---- outlines and solids ----
 
@@ -1251,6 +1252,7 @@ pub fn starters() -> Vec<CatalogueObject> {
     .chain(fixtures::starters())
     .chain(jika::starters())
     .chain(medical::starters())
+    .chain(valvebox::starters())
     .chain(heat::starters())
     .chain(entourage::starters())
     .collect()

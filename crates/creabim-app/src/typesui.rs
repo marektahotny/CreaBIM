@@ -736,6 +736,7 @@ impl CreaBimApp {
                     || self.fittings_action(head, arg)
                     || self.fixture_legend_action(head, arg)
                     || self.med_unit_action(head, arg)
+                    || self.valve_box_action(head, arg)
                     || self.heat_source_action(head, arg)
                     || self.floor_heat_action(head, arg)
                     || self.radiators_action(head, arg)

@@ -451,6 +451,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "A wall rail NR-H3 or a ceiling bridge SM-P 5.4 made to order: its gas outlets, sockets, data and nurse call, then placed",
             ),
             act(
+                "med:box",
+                "Valve box",
+                "columns-3",
+                "A zone valve box for 1 to 4 gases made to order: flush or on the wall, the gas out on top or at the bottom, Cu 18 to 42, its valves, NIST inlet and alarm switch, then placed",
+            ),
+            act(
                 "catalogue.cat:medical",
                 "Medical units",
                 "fixtures",

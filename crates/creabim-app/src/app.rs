@@ -119,6 +119,8 @@ pub(crate) mod terrainimport;
 mod typepreview;
 #[path = "typesui.rs"]
 mod typesui;
+#[path = "valveboxui.rs"]
+mod valveboxui;
 #[path = "wallsui.rs"]
 mod wallsui;
 #[path = "watercalc.rs"]
@@ -384,6 +386,8 @@ pub struct CreaBimApp {
     fixture_legend: bool,
     /// The medical supply unit being made to order, while its window is open.
     med_unit: Option<creabim_core::catalogue::medical::MedUnitConfig>,
+    /// The medical gas valve box being made to order, while its window is open.
+    valve_box: Option<creabim_core::catalogue::valvebox::ValveBoxConfig>,
     /// The valve proposal window's options, while it is open.
     auto_valves: Option<creabim_core::autovalves::FillOpts>,
     /// The storm water or fire main calculation shown.
@@ -600,6 +604,7 @@ impl CreaBimApp {
             fittings: None,
             fixture_legend: false,
             med_unit: None,
+            valve_box: None,
             heat_source: None,
             floor_heat: None,
             radiators: None,
@@ -12837,6 +12842,7 @@ impl eframe::App for CreaBimApp {
         self.fittings_window(&ctx);
         self.fixture_legend_window(&ctx);
         self.med_unit_window(&ctx);
+        self.valve_box_window(&ctx);
         self.heat_loss_window(&ctx);
         self.floor_heat_window(&ctx);
         self.radiators_window(&ctx);
