@@ -354,11 +354,7 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
         return vec![];
     }
     let panels = panels(model);
-    let roofs = if reader.roof_open {
-        roof_pieces(model)
-    } else {
-        vec![]
-    };
+    let roofs = roof_pieces(model);
     let loads = Loads::new(model, table);
     let ctx = Ctx {
         model,
@@ -499,7 +495,30 @@ impl Ctx<'_> {
                 (q.level, q.lo + off, q.hi + off)
             })
             .collect();
+        // 4.1.4: a roof is fire-open where the designer says so, or
+        // where its covering falls short of the fire resistance table 5
+        // of STN 92 0201-2 asks for the zone's grade (its note 4)), a
+        // resistance not stated counting as not shown
+        let zone_pv = self
+            .loads
+            .zones
+            .iter()
+            .find(|z| !p0.zone.is_empty() && z.code == p0.zone)
+            .map(|z| z.pv)
+            .or(self.loads.default);
+        let required = zone_pv
+            .and_then(|pv| crate::firegrade::grade(model, pv))
+            .and_then(|g| crate::firegrade::roof_required(model, g));
+        let open = |id: ElementId| {
+            reader.roof_open
+                || required.is_some_and(|need| {
+                    crate::firegrade::roof_declared(model, id).is_none_or(|has| has < need)
+                })
+        };
         for r in self.roofs {
+            if !open(r.id) {
+                continue;
+            }
             let Some(&(_, lo, hi)) = lines.iter().find(|l| l.0 == r.level) else {
                 continue;
             };

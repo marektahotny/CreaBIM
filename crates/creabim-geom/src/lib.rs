@@ -22,6 +22,7 @@ pub mod docset;
 pub mod dxfout;
 pub mod elplan;
 pub mod firedistance;
+pub mod firegrade;
 pub mod firerisk;
 pub mod firezones;
 pub mod font;
