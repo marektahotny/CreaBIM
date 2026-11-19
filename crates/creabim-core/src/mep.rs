@@ -345,8 +345,9 @@ pub struct Pipe {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub insulation_set: bool,
     /// Where a riser's mark (its stack's circle with the sizes beside
-    /// it) was dragged to in plan, from the riser, m; none where the
-    /// drawing sets it by itself.
+    /// it) was dragged to in plan, from the riser, m; for a run, how far
+    /// its size label was dragged from where it falls by itself. None
+    /// where the drawing sets it by itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<glam::DVec2>,
 }

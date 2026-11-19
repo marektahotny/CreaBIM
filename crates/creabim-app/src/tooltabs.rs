@@ -499,7 +499,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             act(
                 "calc:circuits",
                 "Circuits",
-                "list",
+                "circuits",
                 "The installation's circuits: devices and their power, breakers, cables, phases, RCDs, the check of each and the building's power balance; proposes circuits for devices that have none",
             ),
             act(
@@ -713,6 +713,11 @@ mod tests {
                     }
                     Entry::Sep => continue,
                 };
+                // an icon icons.js lacks draws as an empty button
+                assert!(
+                    include_str!("../ui/icons.js").contains(&format!("\"{icon}\":")),
+                    "{tab_name}: {name} names {icon}, which icons.js lacks"
+                );
                 if let Some((_, other)) = seen.iter().find(|(i, _)| *i == icon) {
                     panic!("{tab_name}: {name} and {other} both use the {icon} icon");
                 }

@@ -1047,6 +1047,18 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                     _ => DVec2::ZERO,
                 };
                 let at = DVec2::new(lo.x - (w / 2.0 + 1.5) * mm, (lo.y + hi.y) / 2.0) + moved;
+                // dragged away: a fine leader from the fixture to its mark
+                if moved.length() > 3.0 * mm {
+                    // the fixture's outline nearest the mark
+                    let from = at.clamp(lo, hi);
+                    let to = at - (at - from).normalize_or_zero() * (w / 2.0 + 0.5) * mm;
+                    marks.push(PlanItem::Line {
+                        id,
+                        pen: crate::plan::Pen::Fine,
+                        a: from,
+                        b: to,
+                    });
+                }
                 marks.push(PlanItem::Annotation {
                     id,
                     item: Box::new(crate::annotation::Annotation {

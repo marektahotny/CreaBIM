@@ -591,6 +591,8 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
         z: f64,
         level: creabim_core::ElementId,
         text: String,
+        /// where its label was dragged to, from where it falls by itself
+        moved: Option<DVec2>,
     }
     let mut out = vec![];
     let mut runs: Vec<Run> = vec![];
@@ -647,6 +649,7 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
             z: (p.start.z + p.end.z) / 2.0,
             level: p.level,
             text: pipe_text(p),
+            moved: p.mark,
         });
     }
     for (mark, id, a, sizes, moved) in stacks {
@@ -742,7 +745,19 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
         // beside the bundle, clear of its outermost pipe
         let top = members.first().map_or(0.0, |m| m.0);
         let half = lines.len() as f64 * look.size * 1.25 / 2.0;
-        let at = mid + n * (top + (half + 1.0) * mm);
+        let home = mid + n * (top + (half + 1.0) * mm);
+        let moved = seed.moved.unwrap_or(DVec2::ZERO);
+        let at = home + moved;
+        // dragged away: a fine leader from the pipe to the label
+        if moved.length() > 3.0 * mm {
+            let to = at - (at - mid).normalize_or_zero() * (half + 0.5) * mm;
+            out.push(PlanItem::Line {
+                id: seed.id,
+                pen: crate::plan::Pen::Fine,
+                a: mid,
+                b: to,
+            });
+        }
         out.push(label(seed.id, at, u.to_angle(), text));
     }
     out
@@ -1145,6 +1160,27 @@ mod tests {
         };
         assert_eq!(angle, 0.0);
         assert!((at.x - 2.5).abs() < 1e-9 && at.y > 2.2);
+        // dragged away: the label goes with the drag, a leader to the pipe
+        let mut moved = es[0].clone();
+        if let ElementKind::Pipe(p) = &mut moved.kind {
+            p.mark = Some(DVec2::new(0.5, 1.0));
+        }
+        let lone = pipe_labels(&m, &[&moved], 0.05);
+        let (_, shape) = read(lone.last().unwrap());
+        let Shape::Along { at: now, .. } = shape else {
+            unreachable!()
+        };
+        let mut home = es[0].clone();
+        if let ElementKind::Pipe(p) = &mut home.kind {
+            p.mark = None;
+        }
+        let first = pipe_labels(&m, &[&home], 0.05);
+        let (_, shape) = read(first.last().unwrap());
+        let Shape::Along { at: was, .. } = shape else {
+            unreachable!()
+        };
+        assert!((now - was - DVec2::new(0.5, 1.0)).length() < 1e-9);
+        assert!(matches!(lone[0], PlanItem::Line { .. }) && first.len() == 1);
     }
 
     #[test]

@@ -2137,9 +2137,16 @@ fn show_pane(
                 .into_iter()
                 .any(|id| selection.contains(id))
         });
+    // a pipe's size label or a fixture's mark (S 16x2, WC, U) is dragged
+    // straight away, selected or not: it is text only, never the pipe
+    let press_on_mark = response.drag_started_by(egui::PointerButton::Primary)
+        && ui
+            .input(|i| i.pointer.press_origin())
+            .is_some_and(|p0| on_mark(doc.model(), &plan.items, xf.to_world(p0), mm));
     let annotation_drag = state.anno.grab.is_some()
         || !response.drag_started_by(egui::PointerButton::Primary)
-        || press_on_selected;
+        || press_on_selected
+        || press_on_mark;
     if state.north_pick && matches!(kind, PaneKind::Plan { .. }) {
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             state.north_pick = false;
@@ -7407,6 +7414,29 @@ fn edit_dimension_value(
     Some(None)
 }
 
+/// A pipe's size label or a fixture's or device's mark at `w`.
+fn on_mark(model: &creabim_core::Model, items: &[PlanItem], w: DVec2, mm: f64) -> bool {
+    items.iter().any(|it| match it {
+        PlanItem::Annotation { id, item }
+            if matches!(
+                model.get(*id).map(|e| &e.kind),
+                Some(ElementKind::Pipe(_) | ElementKind::Object(_))
+            ) =>
+        {
+            let pts = item.extent();
+            let Some(first) = pts.first().copied() else {
+                return false;
+            };
+            let (lo, hi) = pts
+                .iter()
+                .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+            let pad = DVec2::splat(mm * 0.5);
+            w.cmpge(lo - pad).all() && w.cmple(hi + pad).all()
+        }
+        _ => false,
+    })
+}
+
 /// Drag a tag (moves it) or a dimension (moves its line) in the Select
 /// tool. Returns `Some` while a drag is in progress.
 #[allow(clippy::too_many_arguments)]
@@ -7443,10 +7473,8 @@ fn drag_annotation(
             PlanItem::Annotation { id, item }
                 if match doc.model().get(*id).map(|e| &e.kind) {
                     Some(ElementKind::Tag(_)) => true,
-                    Some(ElementKind::Pipe(_)) => drawing
-                        .items
-                        .iter()
-                        .any(|t| matches!(t, PlanItem::Tag { id: i, .. } if i == id)),
+                    // a pipe's size label, or a stack's sizes
+                    Some(ElementKind::Pipe(_)) => true,
                     // a fixture's or device's mark in a trade's plan
                     Some(ElementKind::Object(_)) => true,
                     _ => false,
@@ -7504,13 +7532,18 @@ fn drag_annotation(
                     ElementKind::Dimension(d) if d.view == view => DVec2::new(d.offset, 0.0),
                     // a fixture's mark moves, the fixture stays
                     ElementKind::Object(o) => o.mark.unwrap_or(DVec2::ZERO),
-                    // a stack's mark: the circle moves, its riser stays
-                    ElementKind::Pipe(_) => drawing.items.iter().find_map(|it| match it {
-                        PlanItem::Tag {
-                            id: i, anchor, at, ..
-                        } if *i == id => Some(*at - *anchor),
-                        _ => None,
-                    })?,
+                    // a stack's mark: the circle moves, its riser stays;
+                    // a run's size label moves, the pipe stays
+                    ElementKind::Pipe(p) => drawing
+                        .items
+                        .iter()
+                        .find_map(|it| match it {
+                            PlanItem::Tag {
+                                id: i, anchor, at, ..
+                            } if *i == id => Some(*at - *anchor),
+                            _ => None,
+                        })
+                        .unwrap_or(p.mark.unwrap_or(DVec2::ZERO)),
                     _ => return None,
                 };
                 Some((id, w, start, None))
