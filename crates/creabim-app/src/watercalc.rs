@@ -36,6 +36,16 @@ pub fn calculate(model: &Model) -> Vec<SystemCalc> {
         .collect()
 }
 
+/// What the calculation found, for the model.
+fn water_results(calcs: &[SystemCalc]) -> creabim_core::results::ResultSet {
+    let mut set =
+        creabim_core::results::ResultSet::new("water", "Vodovod", "STN EN 806-3, STN 73 6655");
+    for c in calcs {
+        creabim_services::calcresults::water(&mut set, c.code, &c.net, &c.result);
+    }
+    set
+}
+
 /// The edits that give every calculated pipe its proposed size.
 pub fn apply_sizes(model: &Model, calcs: &[SystemCalc]) -> Option<Transaction> {
     let mut tx = Transaction::new("Apply proposed pipe sizes");
@@ -91,6 +101,7 @@ impl CreaBimApp {
         } else {
             crate::i18n::tr("Water supply calculated")
         };
+        self.write_results(water_results(&calcs));
         self.water_calc = Some(calcs);
         true
     }
@@ -105,6 +116,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut apply = false;
         let mut again = false;
+        let mut write_now = false;
         let mut select = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Water supply calculation"))
@@ -115,6 +127,9 @@ impl CreaBimApp {
             .min_width(640.0)
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui) {
+                    write_now = true;
+                }
                 if calcs.is_empty() {
                     ui.label(t("Draw cold (SV) or hot (TV) water pipes to the fixtures' connectors, then calculate."));
                 }
@@ -295,6 +310,10 @@ impl CreaBimApp {
         }
         if again {
             self.water_calc = Some(calculate(self.doc.model()));
+        }
+        if write_now {
+            let set = water_results(self.water_calc.as_deref().unwrap_or(&[]));
+            self.write_results_said(set);
         }
         if !open {
             self.water_calc = None;

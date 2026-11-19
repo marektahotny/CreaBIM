@@ -11,6 +11,7 @@
 //! needs at its root.
 
 pub mod airbalance;
+pub mod calcresults;
 pub mod circuits;
 pub mod circulation;
 pub mod coolingload;

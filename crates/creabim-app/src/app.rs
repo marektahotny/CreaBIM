@@ -37,6 +37,8 @@ mod assemblies;
 pub(crate) mod autosave;
 #[path = "autovalvesui.rs"]
 mod autovalvesui;
+#[path = "calcresultsui.rs"]
+mod calcresultsui;
 #[path = "circuitsui.rs"]
 mod circuitsui;
 #[path = "circuitui.rs"]
@@ -302,6 +304,10 @@ pub struct CreaBimApp {
     /// The modifier card last worked in: its guides show in the views,
     /// and Pick sets its centre (MU39).
     mod_focus: Option<(ElementId, usize)>,
+    /// Rows of the take-off to show in 3D or in a plan, asked from area `.1`.
+    takeoff_request: Option<(crate::takeoffpane::ShowRequest, usize)>,
+    /// Frame the selection in 3D once the view has its size and scene.
+    frame_selection_soon: bool,
     /// First point of a guide being drawn on the workplane.
     guide_from: Option<DVec3>,
     extrude_distance: f64,
@@ -419,6 +425,9 @@ pub struct CreaBimApp {
     cooling: Option<creabim_services::coolingload::Settings>,
     /// The air balance window is open.
     air_balance: bool,
+    /// The calculation whose window, just opened, writes its results to
+    /// the model when it is next drawn.
+    results_due: Option<&'static str>,
     /// The duct sizing window's velocities, while it is open.
     ducts: Option<creabim_services::ductsizing::Limits>,
     /// The circuit check window, while it is open.
@@ -597,6 +606,8 @@ impl CreaBimApp {
             workplane: None,
             plane_pick: None,
             mod_focus: None,
+            takeoff_request: None,
+            frame_selection_soon: false,
             extrude_distance: 1.0,
             path: "project.creabim".into(),
             saved_revision: None,
@@ -633,6 +644,7 @@ impl CreaBimApp {
             radiators: None,
             cooling: None,
             air_balance: false,
+            results_due: None,
             ducts: None,
             circuit: None,
             herzdp: None,
@@ -3267,6 +3279,10 @@ impl CreaBimApp {
         }
         self.rebuild_geometry(rs);
         self.rebuild_selection(rs);
+        if self.frame_selection_soon && self.selection_bounds().is_some() {
+            self.frame_selection_soon = false;
+            self.frame_selection();
+        }
         let ppp = ui.ctx().pixels_per_point();
         let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
         let lighting = self.lighting_3d();
@@ -6893,6 +6909,18 @@ impl CreaBimApp {
             if let Some(m) = msg {
                 self.status = m;
             }
+            if let Some(r) = crate::takeoffpane::take_request(ui.ctx()) {
+                self.takeoff_request = Some((r, self.area_now));
+            }
+            // the take-off waits for the 3D scene of the model as it is
+            if crate::takeoffpane::wants_scene(ui.ctx()) {
+                if self.builds.enabled() {
+                    self.builds.start_scene(self.doc.model());
+                    self.builds.poll();
+                } else {
+                    creabim_geom::shared_scene(self.doc.model());
+                }
+            }
             None
         } else if self.is_sheet(view) {
             let views = self.placed_views(view);
@@ -9960,24 +9988,15 @@ crate::props::row(ui, "File names", |ui| {
                                     }
                                 }
                             });
-                        let (what, hint, undo) = if *category == ScheduleCategory::Materials {
-                            (
-                                "Group by level",
-                                "List each level's materials under a heading with its totals.",
-                                "Group take-off by level",
-                            )
-                        } else {
-                            (
-                                "Group by type",
-                                "List the rows under a heading per element type, with its count.",
-                                "Group schedule by type",
-                            )
-                        };
-                        if crate::props::switch(ui, by_type, what)
-                            .on_hover_text(crate::i18n::tr(hint))
-                            .changed()
+                        // the take-off groups and sorts in its own bar
+                        if *category != ScheduleCategory::Materials
+                            && crate::props::switch(ui, by_type, "Group by type")
+                                .on_hover_text(crate::i18n::tr(
+                                    "List the rows under a heading per element type, with its count.",
+                                ))
+                                .changed()
                         {
-                            label = undo
+                            label = "Group schedule by type"
                         }
                     }
                     if self.active_view != Some(id)
@@ -10990,6 +11009,16 @@ crate::props::row(ui, "File names", |ui| {
                         self.marks.open = true;
                     }
                 }
+                ElementKind::Results(r) => {
+                    for set in &r.sets {
+                        ui.label(format!(
+                            "{} · {}: {}",
+                            set.title,
+                            set.at,
+                            set.elements.len()
+                        ));
+                    }
+                }
                 ElementKind::StylePack(p) => {
                     ui.label(egui::RichText::new(p.description.clone()).weak());
                     if ui.button(crate::i18n::t("Graphic styles…")).clicked() {
@@ -11456,6 +11485,25 @@ crate::props::row(ui, "File names", |ui| {
         if let Some(msg) = crate::annotate::style_inline(ui, &mut self.doc, &edited.kind, new_style)
         {
             self.status = msg;
+        }
+        // what the calculations wrote on it: a room's heat loss, a pipe's
+        // flow and pressure loss... (read only; they go to IFC with it)
+        let found = calcresultsui::of_element(self.doc.model(), id);
+        if !found.is_empty() && self.prop_header(ui, "results", "Calculation results", true, None) {
+            for (i, (title, rows)) in found.iter().enumerate() {
+                ui.label(egui::RichText::new(title).strong());
+                egui::Grid::new(("calc.results", i))
+                    .num_columns(2)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for (k, v) in rows {
+                            ui.label(k);
+                            ui.label(v);
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(4.0);
+            }
         }
         // a mass's face tools in a section of their own (MU39: the element
         // section had grown dense)
@@ -12868,6 +12916,9 @@ impl eframe::App for CreaBimApp {
         if let Some(v) = self.plan.want_view.take() {
             self.active_view = Some(v);
         }
+        if let Some((r, area)) = self.takeoff_request.take() {
+            self.show_takeoff_rows(r, area);
+        }
         if std::mem::take(&mut self.plan.want_catalogue) {
             self.catalogue.open = true;
         }
@@ -13403,6 +13454,7 @@ pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::Reference(_) => "reference",
         ElementKind::PaperMark(_) => "paper mark",
         ElementKind::MarkRules(_) => "mark numbering",
+        ElementKind::Results(_) => "calculation results",
         ElementKind::StylePack(_) => "style pack",
         ElementKind::View(_) => "view",
         ElementKind::Sheet(_) => "sheet",

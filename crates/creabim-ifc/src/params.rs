@@ -33,6 +33,9 @@ pub(crate) enum Prop {
     Bool(bool),
     /// Text of any length (a label is at most 255 characters).
     Text(String),
+    /// A value of an IFC measure type ("IFCPOWERMEASURE"), in the
+    /// project's units.
+    Measure(&'static str, f64),
 }
 
 impl Prop {
@@ -45,6 +48,7 @@ impl Prop {
             Prop::Label(s) => format!("IFCLABEL({})", string(s)),
             Prop::Bool(b) => format!("IFCBOOLEAN({})", if *b { ".T." } else { ".F." }),
             Prop::Text(s) => format!("IFCTEXT({})", string(s)),
+            Prop::Measure(t, v) => format!("{t}({})", real(*v)),
         }
     }
 }
@@ -514,7 +518,7 @@ mod tests {
                 let r = match v {
                     Prop::Length(x) => (Some(*x), None),
                     Prop::Count(n) => (Some(*n as f64), None),
-                    Prop::Real(x) => (Some(*x), None),
+                    Prop::Real(x) | Prop::Measure(_, x) => (Some(*x), None),
                     Prop::Label(s) | Prop::Text(s) => (None, Some(s.clone())),
                     Prop::Bool(b) => (Some(*b as i64 as f64), None),
                 };

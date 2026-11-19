@@ -168,6 +168,7 @@ impl CreaBimApp {
         } else {
             crate::i18n::tr("Heat loss calculated")
         };
+        self.write_results(heatloss_results(&b, &o));
         self.heat_loss = Some((o, b));
         true
     }
@@ -182,6 +183,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut select = None;
         let mut to_source = false;
+        let mut write_now = false;
         let sites = self.climate_sites();
         let site_name = self
             .doc
@@ -200,6 +202,9 @@ impl CreaBimApp {
             .default_size(Vec2::new(660.0, 560.0))
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui) {
+                    write_now = true;
+                }
                 ui.horizontal(|ui| {
                     ui.label(t("Locality"));
                     let shown = if site_name.is_empty() {
@@ -451,6 +456,9 @@ impl CreaBimApp {
             s.input.te = o.te.clamp(-25.0, 0.0);
             self.heat_source = Some(s);
         }
+        if write_now {
+            self.write_results_said(heatloss_results(&b, &o));
+        }
         if !open {
             self.heat_loss = None;
         } else if self.heat_loss.as_ref().is_some_and(|x| x.0 != o) {
@@ -458,4 +466,8 @@ impl CreaBimApp {
             self.heat_loss = Some((o, b));
         }
     }
+}
+
+fn heatloss_results(b: &heatloss::BuildingLoss, o: &Opts) -> creabim_core::results::ResultSet {
+    creabim_services::calcresults::heat_loss(b, o)
 }

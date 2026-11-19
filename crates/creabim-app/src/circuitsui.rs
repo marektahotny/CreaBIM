@@ -71,6 +71,7 @@ impl CreaBimApp {
         if self.circuits.is_none() {
             self.circuits = Some(CircuitsWindow::default());
         }
+        self.results_due = Some("circuits");
         true
     }
 
@@ -118,6 +119,7 @@ impl CreaBimApp {
             })
             .collect();
         let mut ask: Option<Ask> = None;
+        let mut write_now = self.results_due.take_if(|c| *c == "circuits").is_some();
         let mut open = true;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Circuits"))
@@ -127,6 +129,9 @@ impl CreaBimApp {
             .default_size(Vec2::new(860.0, 560.0))
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui) {
+                    write_now = true;
+                }
                 ui.horizontal_wrapped(|ui| {
                     if ui
                         .button(t("Propose circuits"))
@@ -468,6 +473,9 @@ impl CreaBimApp {
                     },
                 ));
             });
+        if write_now {
+            self.write_results_said(creabim_services::calcresults::circuits(&results));
+        }
         if let Some(a) = ask {
             self.circuits_apply(a, &w, method);
         }

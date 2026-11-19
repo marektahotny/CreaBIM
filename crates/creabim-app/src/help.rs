@@ -444,6 +444,7 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
         ElementKind::Reference(_) => "trace-reference",
         ElementKind::PaperMark(_) => "sheets",
         ElementKind::MarkRules(_) => "marks",
+        ElementKind::Results(_) => "ifc",
         ElementKind::StylePack(_) => "graphic-styles",
     }
 }

@@ -120,6 +120,7 @@ impl Element {
             ElementKind::Units(_)
             | ElementKind::Project(_)
             | ElementKind::MarkRules(_)
+            | ElementKind::Results(_)
             | ElementKind::StylePack(_) => vec![],
             // types are soft too: an element whose type is gone keeps its values
             ElementKind::ElementType(_) => vec![],
@@ -194,6 +195,7 @@ impl Element {
             ElementKind::Reference(_) => "Reference",
             ElementKind::PaperMark(_) => "IfcAnnotation",
             ElementKind::MarkRules(_) => "MarkRules",
+            ElementKind::Results(_) => "CalcResults",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::Sketch(_) => "Sketch",
@@ -388,6 +390,7 @@ impl Element {
                 }
             }
             ElementKind::MarkRules(r) => r.validate(),
+            ElementKind::Results(r) => r.validate(),
             ElementKind::StylePack(p) => p.validate(),
             ElementKind::CropBox(c) => c.validate(),
             ElementKind::Assembly(a) => a.validate(),
@@ -513,6 +516,10 @@ pub enum ElementKind {
     Valve(crate::mep::Valve),
     /// A final circuit of the electrical installation.
     Circuit(crate::electrical::Circuit),
+    /// What the calculations found about rooms, pipes, valves and
+    /// circuits (at most one per project, read through
+    /// [`crate::results::results`]).
+    Results(crate::results::CalcResults),
 }
 
 impl ElementKind {
@@ -556,6 +563,7 @@ impl ElementKind {
                 crate::papermark::PaperMarkKind::Vector { .. } => "Vector picture",
             },
             ElementKind::MarkRules(_) => "MarkRules",
+            ElementKind::Results(_) => "CalcResults",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::ElementType(_) => "ElementType",
@@ -2131,6 +2139,9 @@ pub struct View {
     /// column's heading; a column not named keeps its own width.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub column_widths: BTreeMap<String, f64>,
+    /// How a material take-off groups, details and sorts its rows.
+    #[serde(default, skip_serializing_if = "crate::takeoff::Layout::is_default")]
+    pub takeoff: crate::takeoff::Layout,
     /// How a section's line is drawn in plans and where it steps aside.
     #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
     pub line: SectionLine,
@@ -2534,6 +2545,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }
@@ -2570,6 +2582,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }
@@ -2603,6 +2616,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }
@@ -2637,6 +2651,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }
@@ -2676,6 +2691,7 @@ impl View {
             masonry: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            takeoff: Default::default(),
             notes: String::new(),
             spatial: false,
         }

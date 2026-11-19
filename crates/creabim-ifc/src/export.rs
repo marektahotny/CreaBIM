@@ -3,6 +3,8 @@ use crate::params::{
     CURTAIN_PSET, FOOTING_PSET, ROOM_PSET, TYPE_PSET,
 };
 use crate::step::{list, point2, point3, real, string, Ref, StepWriter};
+
+mod results;
 use creabim_core::{Element, ElementId, ElementKind, Model, OpeningKind};
 use glam::{DVec2, DVec3};
 use std::collections::HashMap;
@@ -142,13 +144,13 @@ impl Ctx {
     }
 
     /// A property set of single values.
-    fn pset(&mut self, name: &str, props: &[(&'static str, Prop)]) -> Ref {
+    fn pset<K: AsRef<str>>(&mut self, name: &str, props: &[(K, Prop)]) -> Ref {
         let refs: Vec<Ref> = props
             .iter()
             .map(|(k, v)| {
                 self.w.add(
                     "IFCPROPERTYSINGLEVALUE",
-                    format!("{},$,{},$", string(k), v.step()),
+                    format!("{},$,{},$", string(k.as_ref()), v.step()),
                 )
             })
             .collect();
@@ -160,7 +162,7 @@ impl Ctx {
     }
 
     /// A property set, given to `objects`.
-    fn pset_on(&mut self, objects: &[Ref], name: &str, props: &[(&'static str, Prop)]) {
+    fn pset_on<K: AsRef<str>>(&mut self, objects: &[Ref], name: &str, props: &[(K, Prop)]) {
         let set = self.pset(name, props);
         let g = self.guid();
         self.w.add(
@@ -264,6 +266,8 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
         c.w.add("IFCSIUNIT", "*,.VOLUMEUNIT.,$,.CUBIC_METRE."),
         c.w.add("IFCSIUNIT", "*,.PLANEANGLEUNIT.,$,.RADIAN."),
     ];
+    // what the calculations' results are measured in
+    let units: Vec<Ref> = units.into_iter().chain(results::units(&mut c)).collect();
     let unit_assignment = c.w.add("IFCUNITASSIGNMENT", list(units));
     let project = c.w.add(
         "IFCPROJECT",
@@ -1230,6 +1234,9 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
         );
     }
 
+    // the services' systems and circuits, and what the calculations found
+    results::write(&mut c, model, building);
+
     let header = format!(
         "FILE_DESCRIPTION(('ViewDefinition [DesignTransferView]'),'2;1');\n\
          FILE_NAME({},{},(''),(''),{},{},'');\n\
@@ -1422,6 +1429,7 @@ fn object_type(
                 kind.predefined
             ),
         );
+        c.products.insert(oe.id, r);
         out.push((ob.level, r));
     }
     if !out.is_empty() {
@@ -1777,6 +1785,7 @@ fn spaces(
             ),
         );
         by_storey.entry(r.level).or_default().push(space);
+        c.products.insert(e.id, space);
         let outdoor = [&r.occupancy, &r.department]
             .iter()
             .any(|s| s.eq_ignore_ascii_case("outdoor"));

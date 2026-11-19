@@ -47,6 +47,20 @@ impl NetCalc {
     fn gas(model: &Model, s: gas::GasSettings) -> Self {
         NetCalc::Gas(gas::run(model, "ZP", &s), Box::new(s))
     }
+    /// What it found, for the model.
+    fn results(&self) -> Option<creabim_core::results::ResultSet> {
+        use creabim_services::calcresults as cr;
+        Some(match self {
+            NetCalc::Storm(Some(r)) => cr::storm(r),
+            NetCalc::Fire(Some(r)) => cr::fire(r),
+            NetCalc::Gas(Some(r), _) => cr::gas(r),
+            NetCalc::Heat(Some(r), _) => cr::heating(r),
+            NetCalc::Drain(Some(r), _) => cr::drain(r),
+            NetCalc::Circ(Some(r)) => cr::circulation(r),
+            NetCalc::Med(rs) if !rs.is_empty() => cr::med(rs),
+            _ => return None,
+        })
+    }
     /// Each pipe and the size proposed for it.
     fn proposals(&self) -> Vec<(ElementId, f64)> {
         match self {
@@ -127,6 +141,9 @@ impl CreaBimApp {
             "gas" => NetCalc::gas(self.doc.model(), gas::GasSettings::default()),
             _ => return false,
         });
+        if let Some(set) = self.net_calc.as_ref().and_then(NetCalc::results) {
+            self.write_results(set);
+        }
         true
     }
 
@@ -140,6 +157,7 @@ impl CreaBimApp {
         let model = self.doc.model();
         let mut open = true;
         let (mut do_apply, mut again) = (false, false);
+        let mut write_now = false;
         let mut select = None;
         let sizes = calc.proposals();
         let n_changes = changes(model, &sizes).len();
@@ -177,6 +195,9 @@ impl CreaBimApp {
             .default_size(Vec2::new(620.0, 500.0))
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui) {
+                    write_now = true;
+                }
                 ui.horizontal(|ui| {
                     if ui.button(t("Calculate again")).clicked() {
                         again = true;
@@ -455,6 +476,11 @@ impl CreaBimApp {
             } else {
                 NetCalc::gas(self.doc.model(), gas_settings.unwrap_or_default())
             });
+        }
+        if write_now {
+            if let Some(set) = self.net_calc.as_ref().and_then(NetCalc::results) {
+                self.write_results_said(set);
+            }
         }
         if !open {
             self.net_calc = None;
