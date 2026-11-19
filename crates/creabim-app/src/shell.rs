@@ -1755,6 +1755,20 @@ impl CreaBimApp {
             "level.add" => self.add_level_above(),
             "browser.section" => self.pick_tool(ctx, Tool::Section),
             "browser.elevation" => self.pick_tool(ctx, Tool::Elevation),
+            "browser.schedule" => {
+                // the New schedule list, beside the project panel
+                let at = ctx
+                    .input(|i| i.pointer.latest_pos())
+                    .unwrap_or(egui::pos2(240.0, 200.0));
+                let n = schedule_items().len() as f32;
+                self.shell.popup = Some(Popup {
+                    key: "tab:schedules".into(),
+                    at,
+                    up: None,
+                    above: None,
+                    size: egui::vec2(260.0, 12.0 + 29.0 * n),
+                });
+            }
             "sheets.set" => self.make_drawing_set(),
             "browser.sort" => {
                 if let Some(g) = crate::browser::ViewGroup::from_key(arg) {
@@ -3895,6 +3909,12 @@ impl CreaBimApp {
                 "elevation",
                 "browser.elevation",
                 "Elevation: draw its line in front of the building in a plan with two clicks",
+            ),
+            (
+                crate::browser::ViewGroup::Schedules,
+                "table-2",
+                "browser.schedule",
+                "New schedule: pick what it lists (material take-off, doors, windows…)",
             ),
         ] {
             let act = json!({"id": act, "icon": "plus", "hint": hint});

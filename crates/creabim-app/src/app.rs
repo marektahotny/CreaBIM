@@ -13448,6 +13448,26 @@ fn with_plan_views(model: Model) -> Model {
             any = true;
         }
     }
+    // every project lists its material take-off under Schedules
+    let has_takeoff = model.iter().any(|e| {
+        matches!(
+            &e.kind,
+            ElementKind::View(View {
+                kind: ViewKind::Schedule {
+                    category: ScheduleCategory::Materials,
+                    ..
+                },
+                ..
+            })
+        )
+    });
+    if !has_takeoff {
+        tx = tx.insert(Element::new(
+            crate::i18n::tr("Material take-off"),
+            ElementKind::View(View::schedule(ScheduleCategory::Materials)),
+        ));
+        any = true;
+    }
     // a trade's drawing from before the trades dimensioned their own:
     // its dimensions, tags and notes show again
     for e in model.iter() {

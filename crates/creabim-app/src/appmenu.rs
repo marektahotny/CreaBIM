@@ -1932,6 +1932,15 @@ mod tests {
         std::fs::write(&path, model.to_json()).unwrap();
         let mut app = CreaBimApp::blank(None);
         app.open_path(path.to_str().unwrap());
-        assert_eq!(app.doc.model().len(), model.len());
+        // every element, and the material take-off a project always lists
+        let takeoff = |m: &creabim_core::Model| {
+            m.iter().any(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, ViewKind::Schedule { category: ScheduleCategory::Materials, .. }))
+            })
+        };
+        assert!(takeoff(app.doc.model()));
+        let added = usize::from(!takeoff(&model));
+        assert_eq!(app.doc.model().len(), model.len() + added);
     }
 }
