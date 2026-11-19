@@ -82,6 +82,41 @@ fn profiles(model: &Model, id: ElementId) -> &'static str {
     }
 }
 
+/// Whether the door `id` in its wall leads outside: no room on one side
+/// of its wall, a room on the other; none where the storey has no
+/// rooms to tell by, or rooms on neither side.
+pub fn leads_outside(model: &Model, id: ElementId) -> Option<bool> {
+    let ElementKind::Opening(o) = &model.get(id)?.kind else {
+        return None;
+    };
+    let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+        return None;
+    };
+    let along = w.end - w.start;
+    let len = along.length();
+    if len < 1e-6 {
+        return None;
+    }
+    let dir = along / len;
+    let at = w.start + dir * (o.offset + o.width / 2.0);
+    // past the wall's faces wherever its line runs in it
+    let d = w.thickness + 0.25;
+    let rooms: Vec<Vec<DVec2>> = model
+        .iter()
+        .filter(|e| matches!(&e.kind, ElementKind::Room(r) if r.level == w.level))
+        .filter_map(|e| creabim_core::room::outline(model, e.id))
+        .collect();
+    if rooms.is_empty() {
+        return None;
+    }
+    let roomed = |p: DVec2| rooms.iter().any(|r| creabim_core::polygon::contains(r, p));
+    match (roomed(at + dir.perp() * d), roomed(at - dir.perp() * d)) {
+        (true, true) => Some(false),
+        (true, false) | (false, true) => Some(true),
+        (false, false) => None,
+    }
+}
+
 /// What the list says of `o` where its own texts say nothing, worded
 /// as PilonDesigner's list and the lists of Slovak practice: how it is
 /// made and opens, its finish (its material), and a note (a window's
@@ -116,6 +151,12 @@ fn told(model: &Model, id: ElementId, o: &Opening) -> (String, String, String) {
         };
         s.push(' ');
         s.push_str(&tr(if glazed { "glazed" } else { "without glazing" }));
+        if let Some(out) = leads_outside(model, id) {
+            s.push_str(&format!(
+                ", {}",
+                tr(if out { "external" } else { "internal" })
+            ));
+        }
         let doors = leaves.iter().filter(|l| l.op.is_door()).count().max(1);
         s.push_str(&format!(", {}", leaves_word(doors)));
         if leaves.len() > doors {
@@ -545,14 +586,85 @@ fn scheme(p: &mut Pencil, model: &Model, o: &Opening, at: DVec2, k: f64) {
     }
 }
 
+/// The scale of a list's drawings: 1:100, smaller where the drawing's
+/// column is too narrow for the widest.
+fn scale_of(es: &[Entry], cols: &[f64]) -> f64 {
+    let widest = es.iter().map(|e| e.opening.width).fold(0.0, f64::max);
+    if widest > 0.0 {
+        K.min((cols[2] - 20.0).max(5.0) / widest)
+    } else {
+        K
+    }
+}
+
+/// How tall the row of `en` is, paper mm: room for its drawing, its
+/// words and its levels' names on their side.
+fn row_height(en: &Entry, cols: &[f64], exe: usize, k: f64) -> f64 {
+    let text_lines = |t: &str, w: f64| wrap(t, w - 3.0, TEXT).len() as f64;
+    let need = text_lines(&en.execution, cols[exe])
+        .max(text_lines(&en.finish, cols[exe + 1]))
+        .max(text_lines(&en.note, cols[exe + 2]))
+        * LINE
+        + 5.0;
+    let names = en
+        .counts
+        .iter()
+        .map(|c| crate::paper::text_width(&tr(&c.0), TEXT) + 4.0)
+        .sum::<f64>();
+    MIN_ROW
+        .max(en.opening.height * k + 17.0)
+        .max(need)
+        .max(names + TOTAL_ROW)
+}
+
+/// The rows a page of a list holds at most, paper mm: as many as an A4
+/// sheet takes under its heading, above the title block (ASR_008).
+pub const PAGE: f64 = 190.0;
+
+/// The kinds of a long list page by page (Okná 1, Okná 2), each page's
+/// rows no taller than [`PAGE`] in the columns' own widths; one page
+/// for a short list.
+pub fn pages(model: &Model, kind: OpeningKind) -> Vec<std::ops::Range<usize>> {
+    let es = entries(model, kind);
+    let cols: Vec<f64> = columns(kind).iter().map(|c| c.1).collect();
+    let exe = if kind == OpeningKind::Door { 6 } else { 5 };
+    let k = scale_of(&es, &cols);
+    let mut out = vec![];
+    let (mut from, mut h) = (0, 0.0);
+    for (i, en) in es.iter().enumerate() {
+        let r = row_height(en, &cols, exe, k);
+        if i > from && h + r > PAGE {
+            out.push(from..i);
+            from = i;
+            h = 0.0;
+        }
+        h += r;
+    }
+    out.push(from..es.len());
+    out
+}
+
 /// The list as a drawing in paper millimetres, its top left corner at
 /// the origin; laid out as the lists of PilonDesigner and of Slovak
 /// practice: the level's name and the totals turned on their side, the
 /// totals boxed, a note on measuring the openings under it all.
 pub fn drawing(view: ElementId, title: &str, model: &Model, kind: OpeningKind) -> PlanView {
-    let es = entries(model, kind);
+    let all = entries(model, kind);
     let door = kind == OpeningKind::Door;
     let cols = widths(model, view, kind);
+    // one page of a long list; the last ends with the tables and note
+    let page = match model.get(view).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => v.page,
+        _ => None,
+    };
+    let split = pages(model, kind);
+    let (es, last) = match page {
+        Some(n) => {
+            let i = (n.max(1) as usize - 1).min(split.len() - 1);
+            (&all[split[i].clone()], i + 1 == split.len())
+        }
+        None => (&all[..], true),
+    };
     // the pieces' columns: doors left and right, windows one
     let np = if door { 2 } else { 1 };
     let (lev, pcs, exe) = (3, 4, 4 + np);
@@ -562,12 +674,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model, kind: OpeningKind) -
     let mid_of = |i: usize| x_of(i) + cols[i] / 2.0;
     // one scale for every drawing of the list, small enough for the
     // widest in its column
-    let widest = es.iter().map(|e| e.opening.width).fold(0.0, f64::max);
-    let k = if widest > 0.0 {
-        K.min((cols[2] - 20.0).max(5.0) / widest)
-    } else {
-        K
-    };
+    let k = scale_of(&all, &cols);
     let mut p = Pencil {
         items: &mut items,
         id: view,
@@ -669,24 +776,9 @@ pub fn drawing(view: ElementId, title: &str, model: &Model, kind: OpeningKind) -
             v.to_string()
         }
     };
-    for en in &es {
+    for en in es {
         let o = &en.opening;
-        let text_lines = |t: &str, w: f64| wrap(t, w - 3.0, TEXT).len() as f64;
-        let need = text_lines(&en.execution, cols[exe])
-            .max(text_lines(&en.finish, cols[exe + 1]))
-            .max(text_lines(&en.note, cols[exe + 2]))
-            * LINE
-            + 5.0;
-        // each level's name stands on its side: room for it
-        let names = en
-            .counts
-            .iter()
-            .map(|c| crate::paper::text_width(&c.0, TEXT) + 4.0)
-            .sum::<f64>();
-        let row = MIN_ROW
-            .max(o.height * k + 17.0)
-            .max(need)
-            .max(names + TOTAL_ROW);
+        let row = row_height(en, &cols, exe, k);
         p.id = en.ids.first().copied().unwrap_or(view);
         let mid = y - row / 2.0;
         let marks = wrap(&en.mark, cols[0] - 2.0, TEXT);
@@ -863,6 +955,9 @@ pub fn drawing(view: ElementId, title: &str, model: &Model, kind: OpeningKind) -
         );
     }
     crate::annotate::place_dimension_texts(&mut items, 1.0);
+    if !last {
+        return PlanView { items };
+    }
     // under the windows, their outer sills for the list of sheet-metal work
     if !door {
         let sills = creabim_core::joinery::outer_sills(model);
@@ -1113,6 +1208,81 @@ mod tests {
             .filter(|i| matches!(i, PlanItem::Dimension { .. }))
             .count();
         assert_eq!(n, 4);
+    }
+
+    #[test]
+    fn a_long_list_goes_page_by_page_and_doors_say_where_they_lead() {
+        // windows each a size of its own: too many rows for one page
+        let h = house();
+        let ws: Vec<_> = h
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Window))
+            .cloned()
+            .collect();
+        let mut tx = Transaction::new("sizes");
+        for (i, before) in ws.into_iter().enumerate() {
+            let mut after = before.clone();
+            if let ElementKind::Opening(o) = &mut after.kind {
+                o.width = 0.6 + 0.1 * i as f64;
+            }
+            tx = tx.replace(before, after);
+        }
+        let mut d = creabim_core::Document::from_model(h);
+        d.commit(tx).unwrap();
+        let m = d.model().clone();
+        let split = pages(&m, OpeningKind::Window);
+        assert!(split.len() >= 2, "{split:?}");
+        assert_eq!(
+            split.last().unwrap().end,
+            entries(&m, OpeningKind::Window).len()
+        );
+        // the sheets: one a page
+        let (tx, _) = crate::docset::drawing_set(&m).unwrap();
+        let mut d = creabim_core::Document::from_model(m.clone());
+        d.commit(tx).unwrap();
+        let paged: Vec<u32> = d
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::View(v)
+                    if matches!(
+                        v.kind,
+                        creabim_core::ViewKind::Schedule {
+                            category: creabim_core::ScheduleCategory::WindowList,
+                            ..
+                        }
+                    ) =>
+                {
+                    v.page
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(paged.len(), split.len(), "{paged:?}");
+        // a room inside the house: a door in its outer wall leads out
+        let level = m.levels().next().unwrap().0.id;
+        let walls: Vec<DVec2> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.level == level => Some(w.start),
+                _ => None,
+            })
+            .collect();
+        let mid = walls.iter().fold(DVec2::ZERO, |a, p| a + *p) / walls.len() as f64;
+        let mut tx = Transaction::new("room");
+        tx = tx.insert(creabim_core::Element::new(
+            "Room",
+            ElementKind::Room(creabim_core::Room::new(level, mid)),
+        ));
+        let mut d = creabim_core::Document::from_model(m);
+        d.commit(tx).unwrap();
+        let m = d.model();
+        let said: Vec<Option<bool>> = m
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Door))
+            .map(|e| leads_outside(m, e.id))
+            .collect();
+        assert!(said.iter().any(|x| x.is_some()), "{said:?}");
     }
 
     #[test]
