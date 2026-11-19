@@ -141,6 +141,7 @@ impl CreaBimApp {
             "column" => self.start_masonry_pick(MasonryPick::Column),
             "check" => self.check_masonry(),
             "fill" => self.fill_wall_columns(),
+            "ring" => self.add_ring_beams(),
             _ => return false,
         }
         true
@@ -407,6 +408,31 @@ impl CreaBimApp {
         );
     }
 
+    /// RC ring beams along the top of the load-bearing walls of the open
+    /// plan's storey (every storey without a plan open).
+    fn add_ring_beams(&mut self) {
+        let level = self.active_plan().map(|(_, l)| l);
+        let rings = masonry::ring_beams(self.doc.model(), level);
+        if rings.is_empty() {
+            self.status = tr("Every load-bearing wall has its ring beam already.");
+            return;
+        }
+        let ids: Vec<_> = rings.iter().map(|e| e.id).collect();
+        let n = ids.len();
+        let mut tx = Transaction::new("Ring beams");
+        for r in rings {
+            tx = tx.insert(r);
+        }
+        let r = self.doc.commit(tx);
+        self.selection.clear();
+        self.selection.extend(ids, false);
+        self.report(
+            r,
+            tr("{} RC ring beams along the load-bearing walls (selected). Ctrl+Z undoes it.")
+                .replace("{}", &n.to_string()),
+        );
+    }
+
     /// The Masonry window: the lintels to put and the rules walls are
     /// checked against.
     pub(super) fn masonry_window(&mut self, ctx: &egui::Context) {
@@ -548,6 +574,33 @@ impl CreaBimApp {
                             act = Some("fill");
                         }
                     });
+                    ui.separator();
+                    ui.strong(tr("Ring beams"));
+                    egui::Grid::new("masonry.ring")
+                        .num_columns(2)
+                        .spacing([12.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label(tr("Ring beam height"));
+                            ui.add(
+                                egui::DragValue::new(&mut rules.ring_depth)
+                                    .range(0.1..=0.6)
+                                    .speed(0.005)
+                                    .suffix(" m"),
+                            );
+                            ui.end_row();
+                            ui.label(tr("Outer shuttering"))
+                                .on_hover_text(tr("What of the core the shuttering on the outer side takes: a ring beam block and insulation, e.g. Porotherm VT 8 + 50 mm = 0,13 m; 0 for the full core."));
+                            ui.add(
+                                egui::DragValue::new(&mut rules.ring_shutter)
+                                    .range(0.0..=0.3)
+                                    .speed(0.005)
+                                    .suffix(" m"),
+                            );
+                            ui.end_row();
+                        });
+                    if ui.button(tr("Ring beams on the load-bearing walls")).clicked() {
+                        act = Some("ring");
+                    }
                     // the open storey's faults, listed
                     let level = self.active_plan().map(|(_, l)| l);
                     let issues = masonry::check_walls(self.doc.model(), level);
@@ -575,6 +628,7 @@ impl CreaBimApp {
             Some("check") => self.check_masonry(),
             Some("column") => self.start_masonry_pick(MasonryPick::Column),
             Some("fill") => self.fill_wall_columns(),
+            Some("ring") => self.add_ring_beams(),
             _ => {}
         }
     }

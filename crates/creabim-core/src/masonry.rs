@@ -1303,6 +1303,11 @@ pub struct MasonryRules {
     pub seismic: bool,
     /// The width of the RC columns put into walls, along the wall, m.
     pub column_width: f64,
+    /// The RC ring beam's height, m, and what of the core's thickness
+    /// its shuttering on the outer side takes (a ring beam block and
+    /// insulation, Porotherm VT 8 + 50 mm: 0,13), m.
+    pub ring_depth: f64,
+    pub ring_shutter: f64,
 }
 
 /// STN EN 1998-1, 9.5.3 (2): confining elements no more than 5 m apart.
@@ -1315,6 +1320,8 @@ impl Default for MasonryRules {
             bearing_from: 0.24,
             seismic: false,
             column_width: 0.25,
+            ring_depth: 0.25,
+            ring_shutter: 0.0,
         }
     }
 }
@@ -1704,6 +1711,83 @@ pub fn wall_column(model: &Model, wall_id: ElementId, p: DVec2) -> Option<Elemen
     Some(Element::new("ŽB stĺp v stene", ElementKind::Column(c)))
 }
 
+/// The name of a ring beam, as the office writes it.
+pub const RING_BEAM: &str = "ŽB stužujúci veniec";
+
+/// An RC ring beam (stužujúci veniec) along the top of the wall
+/// `wall_id`: as wide as the wall's core less its shuttering on the outer
+/// side, [`MasonryRules::ring_depth`] high, its top at the wall's top,
+/// running past the wall's ends by half its width so the corners meet.
+pub fn ring_beam(model: &Model, wall_id: ElementId) -> Option<Element> {
+    let ElementKind::Wall(w) = &model.get(wall_id)?.kind else {
+        return None;
+    };
+    if w.is_arc() || w.length() < 1e-6 {
+        return None;
+    }
+    let rules = rules(model);
+    let (ext, int) = crate::walls::core_span(model, w);
+    let core = (int - ext).abs();
+    let shutter = rules.ring_shutter.clamp(0.0, (core - 0.1).max(0.0));
+    let width = (core - shutter).max(0.05);
+    // the shuttering on the core's outer side
+    let sign = if int >= ext { 1.0 } else { -1.0 };
+    let mid = ext + sign * (shutter + width / 2.0);
+    let n = w.direction().perp();
+    let mut b = Beam::new(w.level, w.start + n * mid, w.end + n * mid);
+    b.width = width;
+    b.depth = rules.ring_depth.max(0.05);
+    let top = wall_top(model, w);
+    let level_top = b.top(model) + b.top_offset;
+    b.top_offset = level_top - top;
+    b.extend = [width / 2.0, width / 2.0];
+    b.material = concrete(model);
+    Some(Element::new(RING_BEAM, ElementKind::Beam(b)))
+}
+
+/// The height of a wall's top: its level, base offset and height (kept
+/// in step with a top tied to a level).
+fn wall_top(model: &Model, w: &Wall) -> f64 {
+    model.level(w.level).map_or(0.0, |l| l.elevation) + w.base_offset + w.height
+}
+
+/// The ring beams still missing on the load-bearing walls of `level`
+/// (or every level): one along each wall that has none at its top.
+pub fn ring_beams(model: &Model, level: Option<ElementId>) -> Vec<Element> {
+    let rules = rules(model);
+    let have: Vec<&Beam> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Beam(b) if e.name == RING_BEAM => Some(b),
+            _ => None,
+        })
+        .collect();
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Wall(w) = &e.kind else {
+            continue;
+        };
+        if level.is_some_and(|l| l != w.level) || !is_bearing(model, w, &rules) {
+            continue;
+        }
+        let Some(r) = ring_beam(model, e.id) else {
+            continue;
+        };
+        let ElementKind::Beam(nb) = &r.kind else {
+            continue;
+        };
+        let same = |b: &&Beam| {
+            b.level == nb.level
+                && ((b.start.distance(nb.start) < 0.02 && b.end.distance(nb.end) < 0.02)
+                    || (b.start.distance(nb.end) < 0.02 && b.end.distance(nb.start) < 0.02))
+        };
+        if !have.iter().any(same) {
+            out.push(r);
+        }
+    }
+    out
+}
+
 /// The project's reinforced concrete, by its name.
 pub fn concrete(model: &Model) -> Option<ElementId> {
     model.iter().find_map(|e| match &e.kind {
@@ -1964,5 +2048,44 @@ mod tests {
         assert_eq!(c, 5.07);
         let (_, _, c) = partition_limits(0.1125, true);
         assert!((c - (7.22 + 9.04) / 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ring_beams_run_on_the_bearing_walls_at_their_tops_once() {
+        let mut m = crate::starter::starter_house();
+        let mut tx = Transaction::new("bearing");
+        for e in m.iter() {
+            if let ElementKind::Wall(w) = &e.kind {
+                let mut n = e.clone();
+                let mut w = w.clone();
+                w.bearing = Some(true);
+                n.kind = ElementKind::Wall(w);
+                tx = tx.replace(e.clone(), n);
+            }
+        }
+        tx.apply(&mut m).unwrap();
+        let rings = ring_beams(&m, None);
+        assert!(!rings.is_empty());
+        let rules = rules(&m);
+        for r in &rings {
+            let ElementKind::Beam(b) = &r.kind else {
+                panic!()
+            };
+            assert!((b.depth - rules.ring_depth).abs() < 1e-9);
+            // its top at the top of a wall of its level
+            let top = b.top(&m);
+            assert!(
+                m.iter().any(|e| matches!(&e.kind, ElementKind::Wall(w)
+                    if w.level == b.level && (wall_top(&m, w) - top).abs() < 1e-6)),
+                "{top}"
+            );
+        }
+        let mut m2 = m.clone();
+        let mut tx = Transaction::new("rings");
+        for r in rings {
+            tx = tx.insert(r);
+        }
+        tx.apply(&mut m2).unwrap();
+        assert!(ring_beams(&m2, None).is_empty());
     }
 }
