@@ -201,7 +201,11 @@ fn calc(tv: &Tree, ci: &Tree, s: &CircSettings) -> CircResult {
         if !circulated[i] {
             continue;
         }
-        let cs: Vec<usize> = tkids[i].iter().copied().filter(|&c| circulated[c]).collect();
+        let cs: Vec<usize> = tkids[i]
+            .iter()
+            .copied()
+            .filter(|&c| circulated[c])
+            .collect();
         if cs.is_empty() {
             continue;
         }
@@ -218,7 +222,11 @@ fn calc(tv: &Tree, ci: &Tree, s: &CircSettings) -> CircResult {
     // each loop takes what its branch needs, beyond where it joins
     let mut cq = vec![0.0; ci.stretches.len()];
     for &(e, k) in &ends {
-        let down: f64 = tkids[k].iter().filter(|&&c| circulated[c]).map(|&c| q[c]).sum();
+        let down: f64 = tkids[k]
+            .iter()
+            .filter(|&&c| circulated[c])
+            .map(|&c| q[c])
+            .sum();
         cq[e] += (q[k] - down).max(0.02 * q[k]);
     }
     let loop_q: Vec<f64> = ends.iter().map(|&(e, _)| cq[e]).collect();
@@ -246,7 +254,8 @@ fn calc(tv: &Tree, ci: &Tree, s: &CircSettings) -> CircResult {
             })
         })
         .collect();
-    let kb = |ty: Option<&crate::pipe_types::PipeType>| ty.map_or(0.007, |t| t.roughness_mm) / 1000.0;
+    let kb =
+        |ty: Option<&crate::pipe_types::PipeType>| ty.map_or(0.007, |t| t.roughness_mm) / 1000.0;
     let m = ci.stretches.len();
     let mut pick: Vec<Option<usize>> = (0..m)
         .map(|i| {
@@ -259,7 +268,9 @@ fn calc(tv: &Tree, ci: &Tree, s: &CircSettings) -> CircResult {
                 .or(sizes[i].len().checked_sub(1))
         })
         .collect();
-    let inner = |i: usize, pick: &[Option<usize>]| pick[i].map_or(ci.stretches[i].pipe.inner_mm, |k| sizes[i][k].1);
+    let inner = |i: usize, pick: &[Option<usize>]| {
+        pick[i].map_or(ci.stretches[i].pipe.inner_mm, |k| sizes[i][k].1)
+    };
     for _ in 0..4 {
         for i in (0..m).rev() {
             let Some(p) = ci.stretches[i].parent else {
@@ -288,14 +299,20 @@ fn calc(tv: &Tree, ci: &Tree, s: &CircSettings) -> CircResult {
         .map(|i| {
             let d = inner(i, &pick) / 1000.0;
             let r = hydraulics::r(cq[i], d, kb(types[i]), &fluid);
-            (r, hydraulics::velocity(cq[i], d), r * ci.stretches[i].length() * (1.0 + s.local_share))
+            (
+                r,
+                hydraulics::velocity(cq[i], d),
+                r * ci.stretches[i].length() * (1.0 + s.local_share),
+            )
         })
         .collect();
     let tloss: Vec<f64> = (0..n)
         .map(|i| {
             let st = &tv.stretches[i];
             let ty = crate::pipe_types::by_id(&st.pipe.pipe_type);
-            hydraulics::r(q[i], st.pipe.inner_mm / 1000.0, kb(ty), &fluid) * st.length() * (1.0 + s.local_share)
+            hydraulics::r(q[i], st.pipe.inner_mm / 1000.0, kb(ty), &fluid)
+                * st.length()
+                * (1.0 + s.local_share)
         })
         .collect();
     let totals: Vec<(f64, f64)> = ends
@@ -338,8 +355,13 @@ fn calc(tv: &Tree, ci: &Tree, s: &CircSettings) -> CircResult {
             .max_by(|&a, &b| cq[a].total_cmp(&cq[b]))
             .unwrap_or(parts[0]);
         let st = &ci.stretches[big];
-        let size = types[big].map_or_else(|| format!("{}", st.pipe.nominal_mm), |t| t.size_label(st.pipe.nominal_mm, None));
-        let (proposed, proposed_mm) = pick[big].map_or((size.clone(), st.pipe.nominal_mm), |k| (sizes[big][k].2.clone(), sizes[big][k].0));
+        let size = types[big].map_or_else(
+            || format!("{}", st.pipe.nominal_mm),
+            |t| t.size_label(st.pipe.nominal_mm, None),
+        );
+        let (proposed, proposed_mm) = pick[big].map_or((size.clone(), st.pipe.nominal_mm), |k| {
+            (sizes[big][k].2.clone(), sizes[big][k].0)
+        });
         out.pipes.push(PipeResult {
             id,
             flow_ls: cq[big],
@@ -418,7 +440,10 @@ mod tests {
         let lp = |id| r.loops.iter().find(|l| l.circ_pipe == id).unwrap();
         let (a, b) = (lp(near_id), lp(far_id));
         // the near riser loses 42 W, the far branch 60 + 42 W
-        assert!((a.flow_ls / b.flow_ls - 42.0 / 102.0).abs() < 1e-9, "{a:?} {b:?}");
+        assert!(
+            (a.flow_ls / b.flow_ls - 42.0 / 102.0).abs() < 1e-9,
+            "{a:?} {b:?}"
+        );
         assert!((a.flow_ls + b.flow_ls - want).abs() < 1e-12);
         assert!(b.critical && !a.critical);
         assert!((b.valve_kpa - s.valve_min_kpa).abs() < 1e-9 && a.valve_kpa > b.valve_kpa);

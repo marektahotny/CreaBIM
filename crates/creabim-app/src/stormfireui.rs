@@ -5,7 +5,7 @@
 
 use super::CreaBimApp;
 use creabim_core::{ElementId, ElementKind, Model, Transaction};
-use creabim_services::{firewater, gas, heating, sanitary, storm};
+use creabim_services::{circulation, firewater, gas, heating, sanitary, storm};
 use eframe::egui::{self, Vec2};
 
 /// The calculation shown.
@@ -15,6 +15,7 @@ pub(super) enum NetCalc {
     Gas(Option<gas::GasResult>, Box<gas::GasSettings>),
     Heat(Option<heating::HeatResult>, heating::HeatSettings),
     Drain(Option<sanitary::DrainResult>, sanitary::DrainSettings),
+    Circ(Option<circulation::CircResult>),
 }
 
 impl NetCalc {
@@ -23,6 +24,12 @@ impl NetCalc {
     }
     fn fire(model: &Model) -> Self {
         NetCalc::Fire(firewater::run(model, "PV"))
+    }
+    fn circ(model: &Model) -> Self {
+        NetCalc::Circ(circulation::run(
+            model,
+            &circulation::CircSettings::default(),
+        ))
     }
     fn drain(model: &Model, s: sanitary::DrainSettings) -> Self {
         NetCalc::Drain(
@@ -44,6 +51,7 @@ impl NetCalc {
             NetCalc::Gas(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             NetCalc::Heat(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             NetCalc::Drain(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
+            NetCalc::Circ(Some(r)) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             _ => vec![],
         }
     }
@@ -104,6 +112,7 @@ impl CreaBimApp {
         self.net_calc = Some(match arg {
             "storm" => NetCalc::storm(self.doc.model()),
             "fire" => NetCalc::fire(self.doc.model()),
+            "circulation" => NetCalc::circ(self.doc.model()),
             "drain" => NetCalc::drain(self.doc.model(), sanitary::DrainSettings::default()),
             "heating" => NetCalc::heat(self.doc.model(), heating::HeatSettings::default()),
             "gas" => NetCalc::gas(self.doc.model(), gas::GasSettings::default()),
@@ -132,6 +141,7 @@ impl CreaBimApp {
             NetCalc::Gas(..) => "Gas installation calculation",
             NetCalc::Heat(..) => "Heating pipes calculation",
             NetCalc::Drain(..) => "Foul drainage calculation",
+            NetCalc::Circ(_) => "Hot water circulation calculation",
         };
         let mut drain_settings = match calc {
             NetCalc::Drain(_, s) => Some(*s),
@@ -177,6 +187,10 @@ impl CreaBimApp {
                     NetCalc::Storm(None) => {
                         ui.label(t("Draw rainwater pipes (D) from the roof drains to where they leave the building, put a roof drain on each stack's top, then calculate."));
                     }
+                    NetCalc::Circ(None) => {
+                        ui.label(t("Draw the hot water (TV) from the heater and the circulation (C) from the heater's circulation inlet, ending each loop by a hot water pipe, then calculate."));
+                    }
+                    NetCalc::Circ(Some(r)) => circ_body(ui, model, r, &mut select),
                     NetCalc::Drain(r, _) => {
                         if let Some(ds) = drain_settings.as_mut() {
                             if drain_options(ui, ds) {
@@ -388,6 +402,7 @@ impl CreaBimApp {
         }
         let storm = matches!(self.net_calc, Some(NetCalc::Storm(_)));
         let fire = matches!(self.net_calc, Some(NetCalc::Fire(_)));
+        let circ = matches!(self.net_calc, Some(NetCalc::Circ(_)));
         if do_presets {
             if let Some(tx) = write_presets(self.doc.model(), &presets) {
                 if let Err(e) = self.doc.commit(tx) {
@@ -409,6 +424,8 @@ impl CreaBimApp {
                 NetCalc::storm(self.doc.model())
             } else if fire {
                 NetCalc::fire(self.doc.model())
+            } else if circ {
+                NetCalc::circ(self.doc.model())
             } else if let Some(ds) = drain_settings {
                 NetCalc::drain(self.doc.model(), ds)
             } else if let Some(hs) = heat_settings {
@@ -1002,4 +1019,126 @@ fn drain_body(
     ui.add_space(6.0);
     ui.weak(t("Qww = K·√ΣDU, no less than the largest fixture's DU. Horizontal pipes half full (h/d 0.5, kb 1 mm), connecting pipes the fixture's DN, stacks by their capacity, DN 100 downstream of a WC. Yellow: under the least fall, or slower than 0.7 m/s."));
     ui.weak("STN EN 12056-2 · STN 75 6760");
+}
+
+fn circ_body(
+    ui: &mut egui::Ui,
+    model: &Model,
+    r: &circulation::CircResult,
+    select: &mut Option<ElementId>,
+) {
+    let t = crate::i18n::tr;
+    let num = crate::i18n::num;
+    let warn = |ui: &mut egui::Ui, s: String| {
+        ui.colored_label(ui.visuals().warn_fg_color, s);
+    };
+    let row = |ui: &mut egui::Ui, k: &str, v: String| {
+        crate::props::row(ui, k, |ui| ui.label(v));
+    };
+    row(
+        ui,
+        "Heat lost by the circulated pipes",
+        format!("{} W ({} m)", num(r.loss_w, 0), num(r.circulated_m, 1)),
+    );
+    row(
+        ui,
+        "Circulation flow Qc",
+        format!(
+            "{} l/s = {} l/h",
+            num(r.flow_ls, 3),
+            num(r.flow_ls * 3600.0, 0)
+        ),
+    );
+    row(
+        ui,
+        "Circulation pump",
+        format!(
+            "Q = {} l/h, H = {} kPa ≈ {} m",
+            num(r.flow_ls * 3600.0, 0),
+            num(r.pump_kpa, 1),
+            num(r.pump_m, 2)
+        ),
+    );
+    if r.loops.is_empty() {
+        warn(ui, t("No circulation pipe ends by a hot water pipe: end each loop within 1 m of the hot water it keeps hot."));
+    }
+    if r.loose_ends > 0 {
+        warn(
+            ui,
+            format!(
+                "{}: {}",
+                t("Circulation ends by no hot water pipe"),
+                r.loose_ends
+            ),
+        );
+    }
+    if r.unreached > 0 {
+        warn(
+            ui,
+            format!("{}: {}", t("Pipes not joined to the network"), r.unreached),
+        );
+    }
+    let name_of = |id: ElementId| model.get(id).map_or(String::new(), |e| e.name.clone());
+    egui::Grid::new("circ.loops")
+        .striped(true)
+        .num_columns(6)
+        .show(ui, |ui| {
+            for h in [
+                "Loop",
+                "l/h",
+                "Hot water kPa",
+                "Circulation kPa",
+                "Valve Δp kPa",
+                "kv",
+            ] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for l in &r.loops {
+                let name = name_of(l.circ_pipe);
+                let name = if l.critical {
+                    egui::RichText::new(name).strong()
+                } else {
+                    egui::RichText::new(name)
+                };
+                if ui.link(name).clicked() {
+                    *select = Some(l.circ_pipe);
+                }
+                ui.label(num(l.flow_ls * 3600.0, 0));
+                ui.label(num(l.hot_pa / 1000.0, 2));
+                ui.label(num(l.circ_pa / 1000.0, 2));
+                ui.label(num(l.valve_kpa, 1));
+                ui.label(num(l.kv, 3));
+                ui.end_row();
+            }
+        });
+    ui.add_space(6.0);
+    egui::Grid::new("circ.pipes")
+        .striped(true)
+        .num_columns(6)
+        .show(ui, |ui| {
+            for h in ["Pipe", "Size", "Proposed", "Flow l/s", "v m/s", "R Pa/m"] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for p in &r.pipes {
+                if ui.link(name_of(p.id)).clicked() {
+                    *select = Some(p.id);
+                }
+                ui.label(&p.size);
+                ui.label(&p.proposed);
+                ui.label(num(p.flow_ls, 3));
+                let v = num(p.velocity_ms, 2);
+                if p.too_fast {
+                    ui.colored_label(ui.visuals().error_fg_color, v);
+                } else {
+                    ui.label(v);
+                }
+                ui.label(num(p.r_pa_m, 0));
+                ui.end_row();
+            }
+        });
+    ui.add_space(6.0);
+    ui.weak(t("Bold: the critical loop. Hot water at 55 °C cooling 5 K; insulated pipes lose 7 W/m in risers and 10 W/m along; the circulation at most 0.5 m/s and 100 Pa/m; each loop's balancing valve (HERZ STRÖMAX 4117 MW) takes at least 5 kPa; the heater and check valve 3 kPa, the pump +10 %."));
+    ui.weak("STN EN 806-2 · STN 06 0320");
 }

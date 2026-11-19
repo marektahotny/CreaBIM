@@ -12,6 +12,7 @@
 
 pub mod airbalance;
 pub mod circuits;
+pub mod circulation;
 pub mod coolingload;
 pub mod ductsizing;
 pub mod electrical;

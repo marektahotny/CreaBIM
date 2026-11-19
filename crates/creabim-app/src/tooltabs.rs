@@ -172,6 +172,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Size the cold and hot water pipes drawn to the fixtures (STN EN 806-3) and check the pressure",
             ),
             act(
+                "calc:circulation",
+                "Calculate circulation",
+                "refresh-cw",
+                "Size the hot water circulation from the heat its loops keep up (7 W/m in risers, 10 W/m along), find the pump and what each loop's balancing valve takes (STN EN 806-2)",
+            ),
+            act(
                 "valves:auto",
                 "Propose valves",
                 "wrench",
