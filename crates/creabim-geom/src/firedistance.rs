@@ -14,7 +14,13 @@
 //! - The space reaches d straight out of the plane and to the sides is
 //!   bounded by an arc of radius d about each edge of the area and the
 //!   plane from the edge at 160° to the area (2.2.1, 2.2.2, figure 1).
-//! - A zone without fire risk has none (2.6.4).
+//! - A zone without fire risk has none (2.6.4), nor a single fully
+//!   open area under 0,5 m long and high (2.6.4 f), Z3).
+//! - With po under 40 % each opening gets its own d off table 4; those
+//!   nearer than 0,6 × (d1 + d2) are taken together by 5.3.1 (3.2.4 as
+//!   Z3 has it, figure 7).
+//! - Under the tables' lowest values d runs linearly to nought (the
+//!   note to table 3 as Z3 has it).
 //!
 //! Every value of the norm is read from the designer's parameter tables
 //! (`FIRE_DISTANCE` and the tables it names); with none, a side's
@@ -39,6 +45,9 @@ pub const FIRE_DISTANCE_D: &str = "fire_distance_d";
 pub const FIRE_DISTANCE_DWELLING: &str = "fire_distance_dwelling";
 /// Table 7: the same for lodging.
 pub const FIRE_DISTANCE_LODGING: &str = "fire_distance_lodging";
+/// Table 4 (as Z3 has it): d of a single opening by its length and
+/// height, a column for each pv.
+pub const FIRE_DISTANCE_SINGLE: &str = "fire_distance_single";
 
 /// The colour the space is drawn in.
 pub const PNP_RED: [f32; 3] = crate::firezones::DANGER;
@@ -315,27 +324,31 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
             .iter()
             .filter(|o| host_of(o).is_some_and(|h| stack.iter().any(|q| q.walls.contains(&h))))
             .collect();
-        let Some(first) = openings.iter().find(|o| o.level == p.level) else {
-            continue;
-        };
-        // Sp: the smallest rectangle holding all the fire-open areas
+        // 2.6.4 f) (Z3): a single fully open area under 0,5 m long and
+        // high has no space; areas whose neighbouring edges are under
+        // 1 m apart are not single
         let along = |v: DVec2| (v - p.origin).dot(p.t);
-        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
-        let (mut z0, mut z1) = (f64::INFINITY, f64::NEG_INFINITY);
-        let mut open = 0.0;
-        for o in &openings {
+        let rect = |o: &Source| {
             let (x, y) = (along(o.a), along(o.b));
-            lo = lo.min(x.min(y));
-            hi = hi.max(x.max(y));
-            z0 = z0.min(o.z0);
-            z1 = z1.max(o.z1);
-            open += o.a.distance(o.b) * (o.z1 - o.z0);
-        }
-        let (lu, hu) = (hi - lo, z1 - z0);
-        if lu <= 1e-6 || hu <= 1e-6 {
+            [x.min(y), x.max(y), o.z0, o.z1]
+        };
+        let small = reader.small.unwrap_or(0.0);
+        let near = reader.small_gap.unwrap_or(0.0);
+        let openings: Vec<&Source> = openings
+            .iter()
+            .copied()
+            .filter(|o| {
+                let r = rect(o);
+                let tiny = r[1] - r[0] < small && r[3] - r[2] < small;
+                !tiny
+                    || openings
+                        .iter()
+                        .any(|q| q.id != o.id && gap(&r, &rect(q)) < near)
+            })
+            .collect();
+        if !openings.iter().any(|o| o.level == p.level) {
             continue;
         }
-        let po = (open / (lu * hu) * 100.0).min(100.0);
         let mut pv: Option<f64> = None;
         let mut no_risk = false;
         for o in &openings {
@@ -350,35 +363,195 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
             continue;
         }
         let storeys = storeys_of(model, &p.zone);
-        let d = match crate::firezones::distance_of(model, p.facing) {
-            Some(d) => Some(d),
-            None => reader.distance(lu, hu, po, pv, storeys),
+        let given = crate::firezones::distance_of(model, p.facing);
+        // 5.3.1: Sp the smallest rectangle holding the fire-open areas
+        // of a group, po the share of it they make, d off the table
+        let combined = |group: &[usize]| -> Option<Group> {
+            let mut r = [
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+            ];
+            let mut open = 0.0;
+            for &i in group {
+                let q = rect(openings[i]);
+                r = [
+                    r[0].min(q[0]),
+                    r[1].max(q[1]),
+                    r[2].min(q[2]),
+                    r[3].max(q[3]),
+                ];
+                open += (q[1] - q[0]) * (q[3] - q[2]);
+            }
+            let (lu, hu) = (r[1] - r[0], r[3] - r[2]);
+            if lu <= 1e-6 || hu <= 1e-6 {
+                return None;
+            }
+            let po = (open / (lu * hu) * 100.0).min(100.0);
+            let d = match given {
+                Some(d) => Some(d),
+                None => reader.distance(lu, hu, po, pv, storeys),
+            }?;
+            Some(Group {
+                members: group.to_vec(),
+                rect: r,
+                lu,
+                hu,
+                po,
+                d,
+                single: false,
+            })
         };
-        let Some(d) = d.filter(|d| *d > 1e-3) else {
+        let all_of: Vec<usize> = (0..openings.len()).collect();
+        let Some(whole) = combined(&all_of) else {
             continue;
         };
-        let (e0, e1) = (p.origin + p.t * lo, p.origin + p.t * hi);
-        let mut shared: Vec<String> = openings
-            .iter()
-            .filter(|o| o.level != p.level)
-            .filter_map(|o| model.get(o.level).map(|l| tr(&l.name)))
-            .collect();
-        shared.sort();
-        shared.dedup();
-        out.push(Pnp {
-            opening: only.unwrap_or(first.id),
-            outline: norm_outline(e0, e1, p.outward, d, reader.side_angle),
-            d,
-            at: (e0 + e1) / 2.0,
-            outward: p.outward,
-            shared,
-            lu,
-            hu,
-            po,
-            pv: (reader.table == 3).then_some(pv).flatten(),
-        });
+        // 3.2.4 (Z3): with po under the limit, d for each opening off
+        // table 4; those closer than 0,6 × (d1 + d2) are taken together
+        // by 5.3.1, until no two groups are that close
+        let mut groups = vec![whole];
+        if let (None, Some(limit), Some(k), Some(t4)) =
+            (given, reader.single_po, reader.single_gap, reader.single)
+        {
+            if groups[0].po < limit {
+                let load = pv.unwrap_or(0.0);
+                let singles: Option<Vec<Group>> = all_of
+                    .iter()
+                    .map(|&i| {
+                        let r = rect(openings[i]);
+                        let (l, h) = (r[1] - r[0], r[3] - r[2]);
+                        match single(t4, l, h, load) {
+                            Some(d) => Some(Group {
+                                members: vec![i],
+                                rect: r,
+                                lu: l,
+                                hu: h,
+                                po: 100.0,
+                                d,
+                                single: true,
+                            }),
+                            None => combined(&[i]),
+                        }
+                    })
+                    .collect();
+                if let Some(mut gs) = singles {
+                    loop {
+                        let pair = (0..gs.len()).find_map(|i| {
+                            (i + 1..gs.len())
+                                .find(|&j| gap(&gs[i].rect, &gs[j].rect) < k * (gs[i].d + gs[j].d))
+                                .map(|j| (i, j))
+                        });
+                        let Some((i, j)) = pair else {
+                            break;
+                        };
+                        let b = gs.remove(j);
+                        let mut m = gs[i].members.clone();
+                        m.extend(b.members);
+                        match combined(&m) {
+                            Some(g) => gs[i] = g,
+                            None => break,
+                        }
+                    }
+                    groups = gs;
+                }
+            }
+        }
+        for g in groups {
+            if g.d <= 1e-3 {
+                continue;
+            }
+            let members: Vec<&Source> = g.members.iter().map(|&i| openings[i]).collect();
+            let Some(first) = members.iter().find(|o| o.level == p.level) else {
+                continue;
+            };
+            if only.is_some_and(|id| !members.iter().any(|o| o.id == id)) {
+                continue;
+            }
+            let (e0, e1) = (p.origin + p.t * g.rect[0], p.origin + p.t * g.rect[1]);
+            let mut shared: Vec<String> = members
+                .iter()
+                .filter(|o| o.level != p.level)
+                .filter_map(|o| model.get(o.level).map(|l| tr(&l.name)))
+                .collect();
+            shared.sort();
+            shared.dedup();
+            out.push(Pnp {
+                opening: only.unwrap_or(first.id),
+                outline: norm_outline(e0, e1, p.outward, g.d, reader.side_angle),
+                d: g.d,
+                at: (e0 + e1) / 2.0,
+                outward: p.outward,
+                shared,
+                lu: g.lu,
+                hu: g.hu,
+                po: g.po,
+                pv: (reader.table == 3 || g.single).then_some(pv).flatten(),
+            });
+        }
     }
     out
+}
+
+/// Fire-open areas taken together, as rectangles in the plane of the
+/// face: along it from..to, bottom..top.
+struct Group {
+    members: Vec<usize>,
+    rect: [f64; 4],
+    lu: f64,
+    hu: f64,
+    po: f64,
+    d: f64,
+    /// d read off table 4 for a single opening.
+    single: bool,
+}
+
+/// The distance between the edges of two areas of the face.
+fn gap(a: &[f64; 4], b: &[f64; 4]) -> f64 {
+    let dx = (b[0] - a[1]).max(a[0] - b[1]).max(0.0);
+    let dz = (b[2] - a[3]).max(a[2] - b[3]).max(0.0);
+    dx.hypot(dz)
+}
+
+/// Table 4 (Z3): d of a single opening l × h; between the lengths and
+/// heights linearly (its note 2), pv in the next higher column; none
+/// beyond the table's openings.
+fn single(t: &ParamTable, l: f64, h: f64, pv: f64) -> Option<f64> {
+    let n = |s: &str| fireparams::number(s);
+    let rows: Vec<(f64, f64, &Vec<String>)> = t
+        .rows
+        .iter()
+        .filter_map(|r| Some((n(r.first()?)?, n(r.get(1)?)?, r)))
+        .collect();
+    let pvs: Vec<(usize, f64)> = (2..t.columns.len())
+        .filter_map(|c| Some((c, n(&t.columns[c])?)))
+        .collect();
+    if rows.is_empty() || pvs.is_empty() {
+        return None;
+    }
+    let ls = sorted(rows.iter().map(|r| r.0).collect());
+    let hs = sorted(rows.iter().map(|r| r.1).collect());
+    if l > ls[ls.len() - 1] + 1e-9 || h > hs[hs.len() - 1] + 1e-9 {
+        return None;
+    }
+    let col = pvs
+        .iter()
+        .find(|c| c.1 >= pv - 1e-9)
+        .unwrap_or(&pvs[pvs.len() - 1])
+        .0;
+    let cell = |a: f64, b: f64| {
+        rows.iter()
+            .find(|r| r.0 == a && r.1 == b)
+            .and_then(|r| n(r.2.get(col)?))
+    };
+    let (i, j, fl) = bracket(&ls, l);
+    let (u, v, fh) = bracket(&hs, h);
+    let at = |x: f64| -> Option<f64> {
+        let (a, b) = (cell(x, hs[u])?, cell(x, hs[v])?);
+        Some(a + (b - a) * fh)
+    };
+    let (a, b) = (at(ls[i])?, at(ls[j])?);
+    Some(a + (b - a) * fl)
 }
 
 /// The storeys a fire zone's rooms are on (the rooms with no zone for
@@ -404,6 +577,15 @@ struct Reader<'a> {
     factors: (f64, f64),
     d: Option<&'a ParamTable>,
     cells: Option<&'a ParamTable>,
+    /// 3.2.4: table 4, the po under which it is used and the share of
+    /// the sum of two distances neighbours must be apart.
+    single: Option<&'a ParamTable>,
+    single_po: Option<f64>,
+    single_gap: Option<f64>,
+    /// 2.6.4 f): the length and height a single area is under to have
+    /// no space, and how near a neighbour makes it not single.
+    small: Option<f64>,
+    small_gap: Option<f64>,
 }
 
 impl<'a> Reader<'a> {
@@ -424,6 +606,11 @@ impl<'a> Reader<'a> {
             ),
             d: t.and(crate::firerisk::table(model, FIRE_DISTANCE_D)),
             cells: t.and(cells),
+            single: t.and(crate::firerisk::table(model, FIRE_DISTANCE_SINGLE)),
+            single_po: value(t, "single_po"),
+            single_gap: value(t, "single_gap"),
+            small: value(t, "small"),
+            small_gap: value(t, "small_gap"),
         }
     }
 
@@ -491,10 +678,19 @@ fn table3(t: &ParamTable, hu: f64, lu: f64, po: f64, pv: f64) -> Option<f64> {
     }
     let pv_keys: Vec<f64> = pvs.iter().map(|p| p.1).collect();
     let (c0, c1, fc) = bracket(&pv_keys, pv);
+    // the note (as Z3 has it): linearly also between the lowest values
+    // and nought
+    let toward = |x: f64, low: f64| {
+        if x < low && low > 0.0 {
+            x.max(0.0) / low
+        } else {
+            1.0
+        }
+    };
     let cell = |r: &Vec<String>| -> Option<f64> {
         let a = n(r.get(pvs[c0].0)?)?;
         let b = n(r.get(pvs[c1].0)?)?;
-        Some(a + (b - a) * fc)
+        Some((a + (b - a) * fc) * toward(pv, pv_keys[0]))
     };
     let at_po = |h: f64, l: f64| -> Option<f64> {
         let these: Vec<_> = rows.iter().filter(|r| r.0 == h && r.1 == l).collect();
@@ -505,18 +701,20 @@ fn table3(t: &ParamTable, hu: f64, lu: f64, po: f64, pv: f64) -> Option<f64> {
         let (i, j, f) = bracket(&keys, po);
         let v = |k: f64| these.iter().find(|r| r.2 == k).and_then(|r| cell(r.3));
         let (a, b) = (v(keys[i])?, v(keys[j])?);
-        Some(a + (b - a) * f)
+        Some((a + (b - a) * f) * toward(po, keys[0]))
     };
     let at_lu = |h: f64| -> Option<f64> {
         let keys = sorted(rows.iter().filter(|r| r.0 == h).map(|r| r.1).collect());
         let (i, j, f) = bracket(&keys, lu);
         let (a, b) = (at_po(h, keys[i])?, at_po(h, keys[j])?);
-        Some(a + (b - a) * f)
+        Some((a + (b - a) * f) * toward(lu, keys[0]))
     };
     let keys = sorted(rows.iter().map(|r| r.0).collect());
     let (i, j, f) = bracket(&keys, hu);
     let (a, b) = (at_lu(keys[i])?, at_lu(keys[j])?);
-    Some(a + (b - a) * f)
+    // the note (as Z3 has it): linearly also between the lowest values
+    // and nought
+    Some((a + (b - a) * f) * toward(hu, keys[0]))
 }
 
 /// Tables 6 and 7: rows po, a column for each lu, cells "a/b".
@@ -658,8 +856,11 @@ mod tests {
         assert_eq!(table3(t, 3.0, 4.5, 100.0, 10.0), Some(2.0));
         assert_eq!(table3(t, 3.0, 4.5, 100.0, 55.0), Some(4.0));
         assert_eq!(table3(t, 3.0, 4.5, 60.0, 100.0), Some(4.0));
-        // under the lowest and over the highest values: held
-        assert_eq!(table3(t, 1.0, 2.0, 100.0, 5.0), Some(2.0));
+        // under the lowest values toward nought (the note as Z3 has it),
+        // over the highest held
+        let low = table3(t, 1.5, 4.5, 100.0, 10.0).unwrap();
+        assert!((low - 1.0).abs() < 1e-9);
+        assert!((table3(t, 3.0, 4.5, 100.0, 5.0).unwrap() - 1.0).abs() < 1e-9);
         assert_eq!(table3(t, 30.0, 60.0, 100.0, 300.0), Some(44.0));
         // half way between two heights
         let mid = table3(t, 10.5, 9.0, 100.0, 10.0).unwrap();
@@ -721,6 +922,28 @@ mod tests {
         with_tables(&mut m, &TABLES.replace("table\t3", "table\t6"));
         let dw = spaces(&m, None, None);
         assert!(dw.iter().all(|p| p.pv.is_none() && p.d > 0.0));
+    }
+
+    /// 3.2.4: openings far apart for their own distances get a space
+    /// each; near ones are taken together.
+    #[test]
+    fn single_openings_far_apart_get_their_own_spaces() {
+        let mut m = creabim_core::starter::starter_house();
+        with_tables(&mut m, TABLES);
+        let whole = spaces(&m, None, None);
+        let single = "#table fire_distance_single\n#columns l\th\t10\t100\n\
+            0,5\t0,5\t0,1\t0,2\n0,5\t3\t0,2\t0,3\n5\t0,5\t0,2\t0,3\n5\t3\t0,3\t0,4\n";
+        let extra = "#table fire_distance\n#columns key\tvalue\tnote\n\
+            table\t3\t\nside_angle\t160\t\ntwo_storey\t1,5\t\nthree_storey\t2\t\npv_default\t50\t\n\
+            single_po\t100\t\nsingle_gap\t0,6\t\n";
+        with_tables(&mut m, &format!("{extra}{single}"));
+        let apart = spaces(&m, None, None);
+        assert!(apart.len() > whole.len(), "{} {}", apart.len(), whole.len());
+        assert!(apart.iter().any(|p| p.d <= 0.4 && p.po == 100.0));
+        // so near that every pair is taken together: as before
+        with_tables(&mut m, &extra.replace("0,6", "100"));
+        let near = spaces(&m, None, None);
+        assert_eq!(near.len(), whole.len());
     }
 
     #[test]
