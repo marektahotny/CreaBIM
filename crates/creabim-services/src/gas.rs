@@ -553,16 +553,28 @@ fn calc(t: &Tree, s: &GasSettings) -> GasResult {
         }
     };
     even(&mut pick);
+    // the maker's ζ of its fittings where it gives them, else the share
+    let joints = crate::makerzeta::joints(t);
     let losses = |pick: &[Option<usize>]| -> Vec<(f64, f64, f64)> {
+        let nominal =
+            |i: usize| pick[i].map_or(t.stretches[i].pipe.nominal_mm, |k| sizes[i][k].nominal);
         (0..n)
             .map(|i| {
                 let d = inner(i, pick);
                 let r = r_of(i, d);
-                (
-                    r,
-                    v_of(i, d),
-                    r * t.stretches[i].length() * (1.0 + s.local_share),
-                )
+                let v = v_of(i, d);
+                let st = &t.stretches[i];
+                let local = crate::makerzeta::stretch_zeta(
+                    &st.pipe.pipe_type,
+                    joints[i],
+                    nominal(i),
+                    st.parent.map(nominal),
+                );
+                let z = match local {
+                    Some(z) => r * st.length() + z * fluid.rho * v * v / 2.0,
+                    None => r * st.length() * (1.0 + s.local_share),
+                };
+                (r, v, z)
             })
             .collect()
     };

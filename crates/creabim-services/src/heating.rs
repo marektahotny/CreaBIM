@@ -334,15 +334,26 @@ fn side(
             }
         }
     }
+    // the maker's ζ of its fittings where it gives them, else the share
+    let joints = crate::makerzeta::joints(&tree);
+    let nominal = |i: usize| pick[i].map_or(tree.stretches[i].pipe.nominal_mm, |k| sizes[i][k].0);
     let loss = (0..n)
         .map(|i| {
             let d = inner(i, &pick) / 1000.0;
             let r = hydraulics::r(q[i], d, kb[i], fluid);
-            (
-                r,
-                hydraulics::velocity(q[i], d),
-                r * tree.stretches[i].length() * (1.0 + s.local_share),
-            )
+            let v = hydraulics::velocity(q[i], d);
+            let st = &tree.stretches[i];
+            let local = crate::makerzeta::stretch_zeta(
+                &st.pipe.pipe_type,
+                joints[i],
+                nominal(i),
+                st.parent.map(nominal),
+            );
+            let z = match local {
+                Some(z) => r * st.length() + z * fluid.rho * v * v / 2.0,
+                None => r * st.length() * (1.0 + s.local_share),
+            };
+            (r, v, z)
         })
         .collect();
     let medium = "ukur";

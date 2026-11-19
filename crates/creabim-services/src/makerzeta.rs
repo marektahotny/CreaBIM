@@ -65,6 +65,76 @@ pub fn zeta(pipe_type: &str, part: Part, outer_mm: f64, reduced: bool) -> Option
     }
 }
 
+/// Does the maker of `pipe_type` give the ζ of its fittings?
+pub fn known(pipe_type: &str) -> bool {
+    zeta(pipe_type, Part::Elbow, 20.0, false).is_some()
+}
+
+/// The fitting at the start of each stretch of a tree, where it joins
+/// its parent: a tee (through or branch) where the parent has more than
+/// one stretch hanging on it, an elbow where the way turns more than
+/// 60°, a coupling where another pipe carries straight on; none at the
+/// root and where a pipe goes on past a tap. A change of size is
+/// decided with the sizes (see [`stretch_zeta`]).
+pub fn joints(tree: &crate::tree::Tree) -> Vec<Option<Part>> {
+    let kids = tree.children();
+    let dir = |i: usize| {
+        let st = &tree.stretches[i];
+        (st.b - st.a).normalize_or_zero()
+    };
+    tree.stretches
+        .iter()
+        .enumerate()
+        .map(|(i, st)| {
+            let p = st.parent?;
+            let straight = dir(i).dot(dir(p)) > 0.5f64.sqrt() * 1.2;
+            if kids[p].len() > 1 {
+                // the one going on straightest is the through way
+                let through = kids[p]
+                    .iter()
+                    .copied()
+                    .max_by(|&a, &b| dir(a).dot(dir(p)).total_cmp(&dir(b).dot(dir(p))));
+                return Some(if through == Some(i) && straight {
+                    Part::TeeThrough
+                } else {
+                    Part::TeeBranch
+                });
+            }
+            if dir(i).dot(dir(p)) < 0.5 {
+                Some(Part::Elbow)
+            } else if tree.stretches[p].id != st.id {
+                Some(Part::Coupling)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// The maker's ζ at the start of stretch `i` of `pipe_type`, `nominal`
+/// its size and `parent` its parent's: a coupling or a plain run between
+/// two sizes is a reducer. None where the maker gives no ζ (the general
+/// share of local losses is taken there); 0 where there is no fitting.
+pub fn stretch_zeta(
+    pipe_type: &str,
+    joint: Option<Part>,
+    nominal: f64,
+    parent: Option<f64>,
+) -> Option<f64> {
+    if !known(pipe_type) {
+        return None;
+    }
+    let reduced = parent.is_some_and(|p| (p - nominal).abs() > 0.5);
+    let part = match joint {
+        Some(Part::Coupling) | None if reduced => Part::Reducer,
+        Some(p) => p,
+        None => return Some(0.0),
+    };
+    // a size the maker lists no reducer for: as a coupling
+    zeta(pipe_type, part, nominal, reduced)
+        .or_else(|| zeta(pipe_type, Part::Coupling, nominal, false))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,5 +146,13 @@ mod tests {
         assert_eq!(zeta("HERZ", Part::Elbow, 20.0, false), Some(8.5));
         assert_eq!(zeta("HERZG", Part::TeeBranch, 16.0, false), Some(18.7));
         assert_eq!(zeta("PPHT", Part::Elbow, 110.0, false), None);
+        assert!(known("HERZG") && !known("Cu"));
+        assert_eq!(stretch_zeta("HERZ", None, 20.0, Some(20.0)), Some(0.0));
+        assert_eq!(stretch_zeta("HERZ", None, 16.0, Some(20.0)), Some(4.0));
+        assert_eq!(
+            stretch_zeta("HERZG", Some(Part::Elbow), 20.0, Some(20.0)),
+            Some(6.6)
+        );
+        assert_eq!(stretch_zeta("Cu", Some(Part::Elbow), 18.0, None), None);
     }
 }
