@@ -620,6 +620,7 @@ fn build_scene_unjoined(
             | ElementKind::PaperMark(_)
             | ElementKind::MarkRules(_)
             | ElementKind::Results(_)
+            | ElementKind::Dss(_)
             | ElementKind::StylePack(_)
             | ElementKind::ElementType(_)
             | ElementKind::Sketch(_)

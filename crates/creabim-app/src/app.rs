@@ -53,6 +53,8 @@ mod disciplines;
 mod divideui;
 #[path = "drafting.rs"]
 mod drafting;
+#[path = "dssui.rs"]
+mod dssui;
 #[path = "ductsui.rs"]
 mod ductsui;
 #[path = "earthworksui.rs"]
@@ -352,6 +354,7 @@ pub struct CreaBimApp {
     /// The Levels manager and the Project units dialog.
     levels: levelsui::LevelsUi,
     marks: marksui::MarksUi,
+    dss: dssui::DssUi,
     gstyles: stylesui::StylesUi,
     /// The Copy to levels and Move to level windows.
     level_copy: levelcopy::LevelCopyUi,
@@ -666,6 +669,7 @@ impl CreaBimApp {
             new_project_classic: false,
             recent_cards: Vec::new(),
             marks: Default::default(),
+            dss: Default::default(),
             gstyles: Default::default(),
             level_copy: Default::default(),
             import_report: None,
@@ -11033,6 +11037,12 @@ crate::props::row(ui, "File names", |ui| {
                         ));
                     }
                 }
+                ElementKind::Dss(d) => {
+                    ui.label(format!(
+                        "Prvky s triedou alebo hodnotami zadanými ručne: {}",
+                        d.elements.len()
+                    ));
+                }
                 ElementKind::StylePack(p) => {
                     ui.label(egui::RichText::new(p.description.clone()).weak());
                     if ui.button(crate::i18n::t("Graphic styles…")).clicked() {
@@ -11519,6 +11529,8 @@ crate::props::row(ui, "File names", |ui| {
                 ui.add_space(4.0);
             }
         }
+        // its class of the data standard and the values it asks for
+        self.dss_section(ui, id);
         // a mass's face tools in a section of their own (MU39: the element
         // section had grown dense)
         self.mesh_edit_section(ui, id);
@@ -13001,6 +13013,7 @@ impl eframe::App for CreaBimApp {
         self.sheets_export_window(&ctx);
         self.new_project_window(&ctx);
         self.marks_window(&ctx);
+        self.dss_window(&ctx);
         self.graphic_styles_window(&ctx);
         self.ground_spacing_window(&ctx);
         self.import_report_window(&ctx);
@@ -13469,6 +13482,7 @@ pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::PaperMark(_) => "paper mark",
         ElementKind::MarkRules(_) => "mark numbering",
         ElementKind::Results(_) => "calculation results",
+        ElementKind::Dss(_) => "data standard",
         ElementKind::StylePack(_) => "style pack",
         ElementKind::View(_) => "view",
         ElementKind::Sheet(_) => "sheet",

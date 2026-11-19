@@ -16,6 +16,7 @@ pub mod curtain;
 pub mod detail;
 pub mod divide;
 pub mod document;
+pub mod dss;
 pub mod earthworks;
 pub mod editmesh;
 pub mod electrical;

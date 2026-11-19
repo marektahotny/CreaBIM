@@ -196,7 +196,7 @@ fn system_type(kind: creabim_core::mep::SystemKind) -> (&'static str, Option<&'s
 }
 
 /// The services' systems and circuits, and every calculation's results.
-pub(super) fn write(c: &mut Ctx, model: &Model, building: Ref) {
+pub(super) fn write(c: &mut Ctx, model: &Model, building: Ref) -> HashMap<String, Ref> {
     let systems = systems(c, model, building);
     circuits(c, model, building);
     let all = creabim_core::results::results(model);
@@ -252,6 +252,10 @@ pub(super) fn write(c: &mut Ctx, model: &Model, building: Ref) {
             _ => {}
         }
     }
+    systems
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect()
 }
 
 /// A room's heat loss, heat gain, temperature and air, where IFC keeps

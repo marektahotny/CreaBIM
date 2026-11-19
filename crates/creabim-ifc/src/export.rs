@@ -4,6 +4,7 @@ use crate::params::{
 };
 use crate::step::{list, point2, point3, real, string, Ref, StepWriter};
 
+mod dss;
 mod results;
 use creabim_core::{Element, ElementId, ElementKind, Model, OpeningKind};
 use glam::{DVec2, DVec3};
@@ -320,6 +321,7 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                                                                         // how far each wall's axis (its location line) is from its centreline
     let mut wall_axes: HashMap<ElementId, f64> = HashMap::new();
     let joins = creabim_core::wall_joins(model);
+    let masonry_rules = creabim_core::masonry::rules(model);
     let mut by_material: HashMap<ElementId, Vec<Ref>> = HashMap::new();
     // layered elements, associated with their assembly's layer set instead
     let mut layered: Vec<(Ref, ElementId, LayerUse)> = Vec::new();
@@ -570,7 +572,14 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                     "IFCPRODUCTDEFINITIONSHAPE",
                     format!("$,$,({body_rep},{axis_rep})"),
                 );
-                let r = product(&mut c, "IFCWALL", e, pl, shape, ",$,.STANDARD.");
+                // a wall that carries nothing is a partition, as the data
+                // standard has it (DSS NAB003)
+                let tail = if creabim_core::masonry::is_bearing(model, wall, &masonry_rules) {
+                    ",$,.STANDARD."
+                } else {
+                    ",$,.PARTITIONING."
+                };
+                let r = product(&mut c, "IFCWALL", e, pl, shape, tail);
                 of_type(e, r);
                 wall_refs.insert(e.id, (r, pl));
                 contained.entry(Some(wall.level)).or_default().push(r);
@@ -1235,7 +1244,9 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
     }
 
     // the services' systems and circuits, and what the calculations found
-    results::write(&mut c, model, building);
+    let systems = results::write(&mut c, model, building);
+    // the classes of the data standard and their values
+    dss::write(&mut c, model, building, &systems);
 
     let header = format!(
         "FILE_DESCRIPTION(('ViewDefinition [DesignTransferView]'),'2;1');\n\

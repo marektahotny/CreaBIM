@@ -888,6 +888,9 @@ impl CreaBimApp {
             Item::new("marks", "Mark numbering…")
                 .icon("tag")
                 .hint("How doors, windows and other elements are numbered: prefixes, digits, level-based marks, order. Renumber, and check for marks used twice."),
+            Item::new("dss", "Dátový štandard (DSS)…")
+                .icon("tag")
+                .hint("Zaradenie prvkov do tried dátového štandardu stavieb pre IFC: čo nemá triedu, ktoré povinné vlastnosti chýbajú, triedy budovy a systémov rozvodov."),
             Item::new("graphicstyles", "Graphic styles…")
                 .icon("align-left")
                 .hint("Style packs: pens by scale, object styles, hatch patterns and view templates. Load an office's pack to restyle every drawing."),
@@ -1770,6 +1773,7 @@ impl CreaBimApp {
             }
             "units" => self.levels.units_open = true,
             "marks" => self.marks.open = true,
+            "dss" => self.dss.open = true,
             "graphicstyles" => self.gstyles.open = true,
             "underlay" => {
                 if let Some((view, level)) = self.active_plan() {

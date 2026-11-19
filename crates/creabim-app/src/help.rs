@@ -445,6 +445,7 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
         ElementKind::PaperMark(_) => "sheets",
         ElementKind::MarkRules(_) => "marks",
         ElementKind::Results(_) => "ifc",
+        ElementKind::Dss(_) => "ifc",
         ElementKind::StylePack(_) => "graphic-styles",
     }
 }

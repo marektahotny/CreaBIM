@@ -121,6 +121,7 @@ impl Element {
             | ElementKind::Project(_)
             | ElementKind::MarkRules(_)
             | ElementKind::Results(_)
+            | ElementKind::Dss(_)
             | ElementKind::StylePack(_) => vec![],
             // types are soft too: an element whose type is gone keeps its values
             ElementKind::ElementType(_) => vec![],
@@ -196,6 +197,7 @@ impl Element {
             ElementKind::PaperMark(_) => "IfcAnnotation",
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::Results(_) => "CalcResults",
+            ElementKind::Dss(_) => "DssData",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::Sketch(_) => "Sketch",
@@ -391,6 +393,7 @@ impl Element {
             }
             ElementKind::MarkRules(r) => r.validate(),
             ElementKind::Results(r) => r.validate(),
+            ElementKind::Dss(d) => d.validate(),
             ElementKind::StylePack(p) => p.validate(),
             ElementKind::CropBox(c) => c.validate(),
             ElementKind::Assembly(a) => a.validate(),
@@ -520,6 +523,9 @@ pub enum ElementKind {
     /// circuits (at most one per project, read through
     /// [`crate::results::results`]).
     Results(crate::results::CalcResults),
+    /// The classes and values of the data standard typed in by hand (at
+    /// most one per project, read through [`crate::dss::data`]).
+    Dss(crate::dss::DssData),
 }
 
 impl ElementKind {
@@ -564,6 +570,7 @@ impl ElementKind {
             },
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::Results(_) => "CalcResults",
+            ElementKind::Dss(_) => "DssData",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::ElementType(_) => "ElementType",
