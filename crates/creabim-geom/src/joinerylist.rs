@@ -536,8 +536,9 @@ fn scheme(p: &mut Pencil, model: &Model, o: &Opening, at: DVec2, k: f64) {
                     Pen::Fine,
                 );
             }
+            // how it opens, dashed
             for l in sash_symbol(f, sw) {
-                p.line(pt(l[0], l[1]), pt(l[2], l[3]), Pen::Fine);
+                p.line(pt(l[0], l[1]), pt(l[2], l[3]), Pen::Hidden);
             }
             // the handle, on the stile away from the hinges
             if let Some(left) = op.hinged_left().or(op.slides_left()) {
