@@ -1331,6 +1331,12 @@ impl MasonryRules {
         *self == Self::default()
     }
 
+    /// The same, as the project keeps them (boxed, to keep elements small).
+    #[allow(clippy::borrowed_box)]
+    pub fn boxed_default(b: &Box<Self>) -> bool {
+        b.is_default()
+    }
+
     /// The longest stretch of a load-bearing wall.
     pub fn bearing_limit(&self) -> f64 {
         if self.seismic {
@@ -1345,7 +1351,7 @@ impl MasonryRules {
 pub fn rules(model: &Model) -> MasonryRules {
     model
         .project_info()
-        .map(|(_, p)| p.masonry.clone())
+        .map(|(_, p)| p.masonry.as_ref().clone())
         .unwrap_or_default()
 }
 
@@ -2000,11 +2006,11 @@ mod tests {
             let e = Element::new(
                 "Projekt",
                 ElementKind::Project(crate::ProjectInfo {
-                    masonry: MasonryRules {
+                    masonry: Box::new(MasonryRules {
                         seismic: true,
                         bearing_max: 4.0,
                         ..Default::default()
-                    },
+                    }),
                     ..Default::default()
                 }),
             );

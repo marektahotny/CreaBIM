@@ -127,8 +127,8 @@ pub struct ProjectInfo {
     pub profiles: Vec<crate::profiles::NamedProfile>,
     /// How long masonry walls may run between braces, and the columns put
     /// in them (see [`crate::masonry`]).
-    #[serde(skip_serializing_if = "crate::masonry::MasonryRules::is_default")]
-    pub masonry: crate::masonry::MasonryRules,
+    #[serde(skip_serializing_if = "crate::masonry::MasonryRules::boxed_default")]
+    pub masonry: Box<crate::masonry::MasonryRules>,
 }
 
 /// A picture: `width` × `height` pixels, RGBA, stored as text (see

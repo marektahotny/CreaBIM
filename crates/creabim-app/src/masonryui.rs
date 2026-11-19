@@ -638,7 +638,7 @@ impl CreaBimApp {
         let r = match model.project_info() {
             Some((id, _)) => self.doc.edit_merged(id, "Masonry rules", |e| {
                 if let ElementKind::Project(p) = &mut e.kind {
-                    p.masonry = rules;
+                    *p.masonry = rules;
                 }
             }),
             None => self
@@ -646,7 +646,7 @@ impl CreaBimApp {
                 .commit(Transaction::new("Masonry rules").insert(Element::new(
                     "Project",
                     ElementKind::Project(creabim_core::ProjectInfo {
-                        masonry: rules,
+                        masonry: Box::new(rules),
                         ..Default::default()
                     }),
                 ))),
