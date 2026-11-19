@@ -14255,7 +14255,8 @@ mod prop_tab_tests {
                 )),
                 ..Default::default()
             };
-            let _ = ctx.run_ui(raw, |ui| app.cloud_load_window(ui.ctx()));
+            let mut out = ctx.run_ui(raw, |ui| app.cloud_load_window(ui.ctx()));
+            out.textures_delta.clear();
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         let id = app
