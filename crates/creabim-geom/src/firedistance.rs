@@ -384,11 +384,20 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
             used[j] = true;
         }
         let off = |j: usize| (panels[j].origin - p0.origin).dot(p0.outward);
-        while !family.is_empty() {
-            let top = family
-                .iter()
-                .map(|&j| off(j))
-                .fold(f64::NEG_INFINITY, f64::max);
+        // fully open area of each stretch, and the zone's all told
+        let open_of = |j: usize| -> f64 {
+            all.iter()
+                .filter(|o| !o.partial && panels[j].walls.contains(&o.host))
+                .map(|o| o.a.distance(o.b) * (o.z1 - o.z0))
+                .sum()
+        };
+        let zone_open: f64 = (0..panels.len())
+            .filter(|&j| panels[j].zone == p0.zone)
+            .map(open_of)
+            .sum();
+        // the stretches set back no more than d behind `top` (or in front
+        // of it), and their spaces
+        let solve = |family: &[usize], top: f64| {
             let mut members: Vec<usize> = family
                 .iter()
                 .copied()
@@ -408,6 +417,49 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
                 members.extend(more);
                 found = ctx.plane(p0, top, &members);
             }
+            (members, found)
+        };
+        while !family.is_empty() {
+            // 3.2.1: a projection with no fire-open area (a)) is no
+            // reference plane; one with at most a share of the zone's
+            // fire-open area standing out no more than d/10 (and a most)
+            // in front of the next plane (b)) is projected into that one
+            let mut planes: Vec<f64> = family
+                .iter()
+                .filter(|&&j| open_of(j) > 0.0)
+                .map(|&j| off(j))
+                .collect();
+            planes.sort_by(|a, b| b.total_cmp(a));
+            planes.dedup_by(|a, b| (*a - *b).abs() < 0.05);
+            let Some(&first) = planes.first() else {
+                break;
+            };
+            let mut top = first;
+            let mut solved = solve(&family, top);
+            if let (Some(share), Some(part), Some(most)) = (
+                reader.protrusion_share,
+                reader.protrusion_depth,
+                reader.protrusion_max,
+            ) {
+                for &next in &planes[1..] {
+                    let front: f64 = family
+                        .iter()
+                        .filter(|&&j| off(j) > next + 0.05)
+                        .map(|&j| open_of(j))
+                        .sum();
+                    if zone_open <= 0.0 || front / zone_open * 100.0 > share + 1e-9 {
+                        break;
+                    }
+                    let behind = solve(&family, next);
+                    let d = behind.1.iter().map(|f| f.d).fold(0.0, f64::max);
+                    if top - next > (d * part).min(most) + 1e-9 {
+                        break;
+                    }
+                    top = next;
+                    solved = behind;
+                }
+            }
+            let (members, found) = solved;
             family.retain(|j| !members.contains(j));
             out.extend(found);
         }
@@ -846,6 +898,11 @@ struct Reader<'a> {
     /// no space, and how near a neighbour makes it not single.
     small: Option<f64>,
     small_gap: Option<f64>,
+    /// 3.2.1 b): the share of the zone's fire-open area, %, a projection
+    /// may hold, and how far it may stand out: a part of d and at most.
+    protrusion_share: Option<f64>,
+    protrusion_depth: Option<f64>,
+    protrusion_max: Option<f64>,
     /// Table 2 (k10, k11 by t), 4.2.2's pv for equation (3), the fire
     /// door ratings that make a partly fire-open area (4.1.3 c)).
     k: Option<&'a ParamTable>,
@@ -888,6 +945,9 @@ impl<'a> Reader<'a> {
             single_gap: value(t, "single_gap"),
             small: value(t, "small"),
             small_gap: value(t, "small_gap"),
+            protrusion_share: value(t, "protrusion_share"),
+            protrusion_depth: value(t, "protrusion_depth"),
+            protrusion_max: value(t, "protrusion_max"),
             k: t.and(crate::firerisk::table(model, FIRE_DISTANCE_K)),
             pv_eq3: value(t, "pv_eq3"),
             partial: t
