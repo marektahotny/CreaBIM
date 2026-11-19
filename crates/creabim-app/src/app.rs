@@ -105,6 +105,8 @@ mod materials;
 mod medunitui;
 #[path = "objectsui.rs"]
 mod objectsui;
+#[path = "printui.rs"]
+mod printui;
 #[path = "profilesui.rs"]
 mod profilesui;
 #[path = "radiatorsui.rs"]
@@ -256,6 +258,8 @@ pub struct CreaBimApp {
     /// The Export sheets dialog (MU22), and its choices this session.
     sheets_export_open: bool,
     sheets_export: SheetsExport,
+    /// The Print window (Ctrl+P) and the job going out.
+    print: printui::PrintState,
     /// A reference to take away, asked from its Properties (MU23).
     remove_ref: Option<ElementId>,
     /// Copy to view…: the reference, and the view its copy goes to (MU38).
@@ -583,6 +587,7 @@ impl CreaBimApp {
             print_preview: false,
             sheets_export_open: false,
             sheets_export: SheetsExport::default(),
+            print: printui::PrintState::default(),
             remove_ref: None,
             copy_ref: None,
             terrain_ref: None,
@@ -2162,7 +2167,8 @@ impl CreaBimApp {
             }
         }
         self.add_menu_window(ctx);
-        // Ctrl+P: this sheet as a PDF; Ctrl+Shift+P: Export sheets (MU22)
+        // Ctrl+P: Print (the sheet in front, chosen or all, as in
+        // PilonDesigner); Ctrl+Shift+P: Export sheets as PDF (MU22)
         if ctx.input_mut(|i| {
             i.consume_key(
                 egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -2171,11 +2177,7 @@ impl CreaBimApp {
         }) {
             self.sheets_export_open = true;
         } else if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::P)) {
-            if self.active_view.is_some_and(|id| self.is_sheet(id)) {
-                self.export_sheets_now(true);
-            } else {
-                self.sheets_export_open = true;
-            }
+            self.open_print();
         }
         // Alt+F2 shows or hides the active view's references (MU18/MU19)
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::F2)) {
@@ -8025,7 +8027,7 @@ impl CreaBimApp {
         let ids = self.sheets_to_export(this_only);
         if ids.is_empty() {
             self.status = if this_only {
-                "Open a sheet first: Ctrl+P makes a PDF of the sheet in front.".into()
+                "Open a sheet first: Sheet as PDF writes the sheet in front.".into()
             } else {
                 "No sheets to export: pick some, or choose All.".into()
             };
@@ -13011,6 +13013,7 @@ impl eframe::App for CreaBimApp {
         self.reference_steps();
         self.calibrate_window(&ctx);
         self.sheets_export_window(&ctx);
+        self.print_window(&ctx);
         self.new_project_window(&ctx);
         self.marks_window(&ctx);
         self.dss_window(&ctx);
