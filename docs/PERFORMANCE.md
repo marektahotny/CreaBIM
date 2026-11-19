@@ -45,6 +45,29 @@ triangles.
 - **A6-1.1 the live overlay:** during a drag, only the dragged elements redrawn in every area at 60 fps. Today the
   other areas update as fast as their background builds (about 10 a second for a section).
 - **A6-2.2 depth buffer size from the view:** a fixed 2,048 cells across, whatever the view's size on screen.
+- **Hidden geometry skipped, 2026-11-19** (all drawings byte for byte the same, checked with the `dump_views`
+  test on the starter house and the 13-storey block, 80 drawings). Measured on a 4-core cloud machine, `fast`
+  profile, best of three, before → after:
+
+  | Drawing | Starter house | 13-storey block |
+  | --- | --- | --- |
+  | Section A-A | 81 → 59 ms | 391 → 246 ms |
+  | Section B-B | 37 → 31 ms | 253 → 176 ms |
+  | Elevations | 76–108 → 49–76 ms | 234–342 → 129–174 ms |
+  | 3D Street / Garden view | 210 / 179 → 86 / 95 ms | 922 / 815 → 308 / 302 ms |
+
+  What changed: (1) a triangle is skipped when every cell it could reach is already nearer than its nearest
+  corner, judged by 8 × 8 blocks of the band's furthest depth (kept up to date lazily, `Tiles`); the per-element
+  test uses the same blocks. (2) The depth buffer is filled in narrow bands, several a core, taken in turn
+  (a tower's sky left one core idle). (3) An edge whose cells all lie in blocks nearer than it is skipped
+  without sampling (`hidden_along`); with over 100,000 triangles the 3 × 3 neighbourhood each sample compares
+  with is worked out once (`around`). (4) `floor`/`ceil` were library calls (no SSE 4.1 in the target): an
+  exact inline version. (5) A view's model without what it hides gets a revision derived from the model's and
+  what was left out (`Model::retain_derived`), so the 3D frame no longer rebuilt the whole scene on every
+  draw (half a second on the block), and views hiding the same things share one scene. (6) Sections and 3D
+  views without crop boxes read the shared scene instead of copying it; triangles are projected on every core.
+  Edge merging (A6-2.3) was left out: joining collinear edges moves the sample points, so line ends would shift
+  by up to half a cell.
 - **A6-2.3 fewer edges:** 48,000 feature edges for a small house, most of them seams on flat faces; merge them
   before sampling.
 - **A6-2.4 per-element caching:** rebuild only the elements a change touches.
@@ -67,6 +90,9 @@ triangles.
 ## Measuring
 
 ```bash
+# every drawing as SVG, to check a speed-up changes nothing (diff -r before after)
+CREABIM_DUMP=before cargo test --release -p creabim-geom --test perf dump_views -- --ignored
+
 # drawing and scene budgets (fails when a drawing is clearly slower than recorded)
 cargo test --release -p creabim-geom --test perf -- --ignored --nocapture
 

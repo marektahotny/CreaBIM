@@ -172,3 +172,58 @@ fn tower_slow_elements() {
         );
     }
 }
+
+/// Every view (plans, sections, elevations, 3D views, schedules) of the starter house and a
+/// 13-storey block written as SVG to `CREABIM_DUMP` (a folder), so a
+/// speed-up can be checked to leave the drawings byte for byte the same:
+///
+/// ```text
+/// CREABIM_DUMP=before cargo test --release -p creabim-geom --test perf dump_views -- --ignored
+/// # change, then the same with CREABIM_DUMP=after, and diff -r before after
+/// ```
+#[test]
+#[ignore = "writes files: set CREABIM_DUMP"]
+fn dump_views() {
+    let Ok(dir) = std::env::var("CREABIM_DUMP") else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).unwrap();
+    let models = [
+        ("house", creabim_core::starter::starter_house()),
+        ("tower", creabim_core::starter::starter_tower(13)),
+    ];
+    for (tag, m) in &models {
+        for xray in [false, true] {
+            for (name, id) in views(m, |_| true) {
+                let d = creabim_geom::section::view_drawing_with(m, id, xray).unwrap();
+                let file = format!(
+                    "{dir}/{tag}-{}{}.svg",
+                    name.replace(['/', ' '], "_"),
+                    if xray { "-xray" } else { "" }
+                );
+                std::fs::write(file, d.to_svg(100.0)).unwrap();
+            }
+        }
+    }
+}
+
+/// One view of the 13-storey block (`CREABIM_VIEW`, by name) drawn once:
+/// for a profiler (`valgrind --tool=callgrind`).
+#[test]
+#[ignore = "diagnosis"]
+fn tower_one_view() {
+    let name = std::env::var("CREABIM_VIEW").unwrap_or_else(|_| "South Elevation".into());
+    let m = creabim_core::starter::starter_tower(13);
+    let _ = creabim_geom::build_scene(&m);
+    let (_, id) = views(&m, |_| true)
+        .into_iter()
+        .find(|(n, _)| *n == name)
+        .expect("a view of that name");
+    let times: usize = std::env::var("CREABIM_TIMES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+    for _ in 0..times {
+        let _ = creabim_geom::section::view_drawing_with(&m, id, false);
+    }
+}

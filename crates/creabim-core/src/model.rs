@@ -127,6 +127,24 @@ impl Model {
         self.bump(true);
     }
 
+    /// [`Model::retain`] for a copy that is always the same for the same
+    /// model and `key` (what was left out): its revision is worked out from
+    /// both instead of handed out afresh, so caches keyed by revision (the
+    /// shared 3D scene) serve every such copy, as each view of a drawing
+    /// set that hides the same things makes one. Derived revisions have
+    /// the top bit set, so they never meet a handed-out one.
+    pub fn retain_derived(&mut self, key: u64, keep: impl FnMut(&Element) -> bool) {
+        let source = self.revision;
+        self.retain(keep);
+        if source != 0 {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (source, key).hash(&mut h);
+            self.revision = h.finish() | 1 << 63;
+            self.drawn = self.revision;
+        }
+    }
+
     /// Elements that directly reference `id`.
     pub fn dependents(&self, id: ElementId) -> Vec<ElementId> {
         self.iter()

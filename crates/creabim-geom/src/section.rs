@@ -134,9 +134,9 @@ pub fn section_view_in(
 /// far its cut plane stands to the side the view looks to) is cut and seen
 /// from its own plane, and drawn side by side as one section.
 #[allow(clippy::too_many_arguments)]
-pub fn section_view_jogged(
+pub fn section_view_jogged<S: std::borrow::Borrow<SceneItem> + Sync>(
     model: &Model,
-    scene: &[SceneItem],
+    scene: &[S],
     start: DVec2,
     end: DVec2,
     depth: f64,
@@ -174,6 +174,7 @@ pub fn section_view_jogged(
             continue;
         }
         for s in scene {
+            let s: &SceneItem = s.borrow();
             for loop_ in cut_loops(s, &frame) {
                 let pts: Vec<DVec2> = loop_.iter().map(|p| DVec2::new(p.x, p.y)).collect();
                 let (x0, x1) = (from - 1e-6, to + 1e-6);
@@ -472,12 +473,25 @@ pub fn axonometric_view_in(
     reveal: bool,
     crop: &[creabim_core::CropBox],
 ) -> Drawing {
-    let frame = AxoFrame::new(model, azimuth, altitude);
     crate::cropbox::crop_scene(model, &mut scene, crop);
+    axo_drawing(model, &scene, azimuth, altitude, style, reveal, crop)
+}
+
+/// [`axonometric_view_in`] of a scene already cropped.
+fn axo_drawing<S: std::borrow::Borrow<SceneItem> + Sync>(
+    model: &Model,
+    scene: &[S],
+    azimuth: f64,
+    altitude: f64,
+    style: ViewStyle,
+    reveal: bool,
+    crop: &[creabim_core::CropBox],
+) -> Drawing {
+    let frame = AxoFrame::new(model, azimuth, altitude);
     let project = |p: DVec3| frame.project(p);
     let revealed = reveal.then(|| revealable(model));
     let (lines, image) = hidden_lines(
-        &scene,
+        scene,
         &project,
         frame.radius * 2.0,
         None,
@@ -593,8 +607,8 @@ fn revealable(model: &Model) -> HashSet<ElementId> {
 /// `reveal` elements that are hidden because they are inside another
 /// element (behind its near face and in front of its far one) come back
 /// dashed, as [`Pen::Hidden`].
-pub(crate) fn hidden_lines(
-    scene: &[SceneItem],
+pub(crate) fn hidden_lines<S: std::borrow::Borrow<SceneItem> + Sync>(
+    scene: &[S],
     project: &(dyn Fn(DVec3) -> DVec3 + Sync),
     depth: f64,
     crop: Option<(f64, f64)>,
@@ -610,6 +624,11 @@ pub(crate) fn hidden_lines(
         zbuf.render_backs(&faces);
     }
     let image = zbuf.image();
+    if !wire {
+        // the 3 × 3 lookup pays for itself only with many edges to sample
+        let tris: usize = faces.iter().map(|f| f.2.len()).sum();
+        zbuf.prepare_sampling(tris > 100_000);
+    }
     let zbuf = &zbuf;
     // each element's edges on its own core; the lines kept in scene order
     // the direction depth grows in, in world terms: a curved wall's seams
@@ -621,6 +640,7 @@ pub(crate) fn hidden_lines(
         (project(DVec3::Z).z - o.z) as f32,
     );
     let per_item = par_map(scene, |index, s| {
+        let s: &SceneItem = s.borrow();
         let mut items = Vec::new();
         let revealed = reveal.is_some_and(|r| r.contains(&s.id));
         // wholly behind what is drawn in front of it: no edge can show
@@ -660,6 +680,9 @@ pub(crate) fn hidden_lines(
                     a: a.truncate(),
                     b: b.truncate(),
                 });
+                continue;
+            }
+            if !revealed && zbuf.hidden_along(a, b) {
                 continue;
             }
             let across = (b - a).truncate().perp().normalize_or_zero();
@@ -866,9 +889,15 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             depth,
             cut,
         } => {
+            // the shared scene itself, not a copy of it
+            let shared = crate::scene::shared_scene(full);
+            let items: Vec<&SceneItem> = shared
+                .iter()
+                .filter(|i| !i.ghost && !i.is_lining() && !hidden.contains(&i.id))
+                .collect();
             let mut d = section_view_jogged(
                 model,
-                &scene(),
+                &items,
                 *start,
                 *end,
                 *depth,
@@ -888,7 +917,17 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         }
         creabim_core::ViewKind::Axonometric { azimuth, altitude } => {
             let crop = crate::cropbox::active(model, Some(view));
-            axonometric_view_in(model, scene(), *azimuth, *altitude, style, reveal, &crop)
+            if crop.is_empty() {
+                // nothing to crop: the shared scene itself, not a copy
+                let shared = crate::scene::shared_scene(full);
+                let items: Vec<&SceneItem> = shared
+                    .iter()
+                    .filter(|i| !i.ghost && !i.is_lining() && !hidden.contains(&i.id))
+                    .collect();
+                axo_drawing(model, &items, *azimuth, *altitude, style, reveal, &crop)
+            } else {
+                axonometric_view_in(model, scene(), *azimuth, *altitude, style, reveal, &crop)
+            }
         }
         creabim_core::ViewKind::Schedule { category, by_type } => {
             if let Some(kind) = category.joinery_list() {
@@ -1464,6 +1503,17 @@ fn extents(faces: &Faces, crop: Option<(f64, f64)>) -> (DVec2, DVec2) {
 }
 
 /// Keep the part of a triangle with `0 <= d <= depth` (d = z component).
+/// [`clip_triangle`] onto the end of `out`, without the allocation for a
+/// triangle wholly inside the depth (as most are).
+fn clip_triangle_into(tri: [DVec3; 3], depth: f64, out: &mut Vec<[DVec3; 3]>) {
+    // the tests clip_triangle makes, so the same triangles come through
+    if tri.iter().all(|p| p.z >= 0.0 && -p.z >= -depth) {
+        out.push(tri);
+    } else {
+        out.extend(clip_triangle(tri, depth));
+    }
+}
+
 fn clip_triangle(tri: [DVec3; 3], depth: f64) -> Vec<[DVec3; 3]> {
     let mut poly: Vec<DVec3> = tri.to_vec();
     for (sign, limit) in [(1.0, 0.0), (-1.0, -depth)] {
@@ -1726,17 +1776,20 @@ fn simplify(pts: Vec<DVec2>) -> Vec<DVec2> {
 
 /// Every scene item's triangles seen through `project`, clipped to the
 /// view's depth.
-fn project_faces(scene: &[SceneItem], project: &dyn Fn(DVec3) -> DVec3, depth: f64) -> Faces {
-    let mut faces: Faces = Vec::new();
-    for s in scene {
-        let mut tris = Vec::new();
+fn project_faces<S: std::borrow::Borrow<SceneItem> + Sync>(
+    scene: &[S],
+    project: &(dyn Fn(DVec3) -> DVec3 + Sync),
+    depth: f64,
+) -> Faces {
+    par_map(scene, |_, s| {
+        let s: &SceneItem = s.borrow();
+        let mut tris = Vec::with_capacity(s.mesh.indices.len() / 3);
         for t in s.mesh.indices.chunks(3) {
             let p = |i: u32| project(Vec3::from(s.mesh.positions[i as usize]).as_dvec3());
-            tris.extend(clip_triangle([p(t[0]), p(t[1]), p(t[2])], depth));
+            clip_triangle_into([p(t[0]), p(t[1]), p(t[2])], depth, &mut tris);
         }
-        faces.push((s.id, s.color, tris));
-    }
-    faces
+        (s.id, s.color, tris)
+    })
 }
 
 /// `f` over `items` on every core, the results in `items`' order.
@@ -1781,6 +1834,43 @@ fn band_rows(h: usize) -> usize {
     h.div_ceil(n).max(1)
 }
 
+/// `floor` and `ceil` without the library call they make on a processor
+/// with no rounding instruction (x86-64 before SSE 4.1, which the release
+/// builds target): ten per cent of a drawing went on them. The same value
+/// for every input whose result is cast to a whole number.
+trait Round {
+    fn ffloor(self) -> f64;
+    fn fceil(self) -> f64;
+}
+
+impl Round for f64 {
+    #[inline(always)]
+    fn ffloor(self) -> f64 {
+        if self.is_nan() || self.abs() >= 4.0e15 {
+            return self.floor(); // NaN, infinite or huge
+        }
+        let i = self as i64 as f64;
+        if i > self {
+            i - 1.0
+        } else {
+            i
+        }
+    }
+
+    #[inline(always)]
+    fn fceil(self) -> f64 {
+        if self.is_nan() || self.abs() >= 4.0e15 {
+            return self.ceil();
+        }
+        let i = self as i64 as f64;
+        if i < self {
+            i + 1.0
+        } else {
+            i
+        }
+    }
+}
+
 /// Call `f` with each cell (index into a `w` wide grid `h` high) of rows
 /// `rows` that triangle `t` (in cells, depth in z) covers, and its depth
 /// there. Each cell is tested exactly as a scan of the triangle's whole
@@ -1798,10 +1888,10 @@ fn cover_rows(
     if area.abs() < 1e-12 {
         return; // seen edge-on
     }
-    let x0 = a.x.min(b.x).min(c.x).floor().max(0.0) as usize;
-    let x1 = (a.x.max(b.x).max(c.x).ceil() as usize).min(w - 1);
-    let y0 = a.y.min(b.y).min(c.y).floor().max(0.0) as usize;
-    let y1 = (a.y.max(b.y).max(c.y).ceil() as usize).min(h - 1);
+    let x0 = a.x.min(b.x).min(c.x).ffloor().max(0.0) as usize;
+    let x1 = (a.x.max(b.x).max(c.x).fceil() as usize).min(w - 1);
+    let y0 = a.y.min(b.y).min(c.y).ffloor().max(0.0) as usize;
+    let y1 = (a.y.max(b.y).max(c.y).fceil() as usize).min(h - 1);
     let (ylo, yhi) = (y0.max(rows.start), y1.min(rows.end.saturating_sub(1)));
     if x0 > x1 || ylo > yhi || rows.is_empty() {
         return;
@@ -1820,8 +1910,8 @@ fn cover_rows(
                 hi = hi.min(-s0 / k);
             }
         }
-        let xs = ((lo - 0.5).floor() - 2.0).max(x0 as f64);
-        let xe = ((hi - 0.5).ceil() + 2.0).min(x1 as f64);
+        let xs = ((lo - 0.5).ffloor() - 2.0).max(x0 as f64);
+        let xe = ((hi - 0.5).fceil() + 2.0).min(x1 as f64);
         if xs.is_nan() || xe.is_nan() || xs > xe {
             continue;
         }
@@ -1839,6 +1929,89 @@ fn cover_rows(
     }
 }
 
+/// The furthest depth in each 8 × 8 block of a band of a depth buffer,
+/// worked out again only for blocks drawn in since: to tell at a glance
+/// that a triangle or an element lies wholly behind what is drawn.
+struct Tiles {
+    w: usize,
+    h: usize,
+    across: usize,
+    far: Vec<f32>,
+    stale: Vec<bool>,
+}
+
+const TILE: usize = 8;
+
+impl Tiles {
+    fn new(w: usize, h: usize) -> Self {
+        let across = w.div_ceil(TILE);
+        let n = across * h.div_ceil(TILE);
+        Self {
+            w,
+            h,
+            across,
+            far: vec![f32::INFINITY; n],
+            stale: vec![false; n],
+        }
+    }
+
+    /// Mark the blocks over cells `xs` × `ys` (rows of the band) as drawn in.
+    fn touch(&mut self, xs: std::ops::RangeInclusive<usize>, ys: std::ops::RangeInclusive<usize>) {
+        for ty in ys.start() / TILE..=ys.end() / TILE {
+            for tx in xs.start() / TILE..=xs.end() / TILE {
+                self.stale[ty * self.across + tx] = true;
+            }
+        }
+    }
+
+    /// Is every cell `xs` × `ys` of `depth` (the band's) nearer than `z`?
+    /// Whole blocks are judged by their furthest cell, blocks the box only
+    /// partly covers cell by cell, so the answer is the cell-by-cell one.
+    fn behind(
+        &mut self,
+        depth: &[f32],
+        xs: std::ops::RangeInclusive<usize>,
+        ys: std::ops::RangeInclusive<usize>,
+        z: f32,
+    ) -> bool {
+        let (x0, x1, y0, y1) = (*xs.start(), *xs.end(), *ys.start(), *ys.end());
+        for ty in y0 / TILE..=y1 / TILE {
+            let (r0, r1) = (ty * TILE, ((ty + 1) * TILE).min(self.h) - 1);
+            for tx in x0 / TILE..=x1 / TILE {
+                let (c0, c1) = (tx * TILE, ((tx + 1) * TILE).min(self.w) - 1);
+                let k = ty * self.across + tx;
+                if self.stale[k] {
+                    let mut far = f32::NEG_INFINITY;
+                    for y in r0..=r1 {
+                        for d in &depth[y * self.w + c0..=y * self.w + c1] {
+                            far = far.max(*d);
+                        }
+                    }
+                    self.far[k] = far;
+                    self.stale[k] = false;
+                }
+                if self.far[k] < z {
+                    continue;
+                }
+                // only part of the block in the box: its own cells decide
+                let (a0, a1, b0, b1) = (c0.max(x0), c1.min(x1), r0.max(y0), r1.min(y1));
+                if (a0, a1, b0, b1) == (c0, c1, r0, r1) {
+                    return false;
+                }
+                for y in b0..=b1 {
+                    if depth[y * self.w + a0..=y * self.w + a1]
+                        .iter()
+                        .any(|d| d.is_nan() || *d >= z)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+}
+
 struct DepthBuffer {
     lo: DVec2,
     px: f64,
@@ -1852,6 +2025,15 @@ struct DepthBuffer {
     /// How deep that element goes in each cell (its far side), once
     /// [`DepthBuffer::render_backs`] has run.
     back: Vec<f32>,
+    /// The furthest depth in the 3 × 3 cells around each cell (what
+    /// [`DepthBuffer::visible`] compares with), once
+    /// [`DepthBuffer::prepare_sampling`] has run; nothing for the cells on
+    /// the border.
+    around: Vec<f32>,
+    /// The furthest depth in each 8 × 8 block, rows of blocks from the
+    /// bottom: an edge whose cells (and their neighbours) all lie in blocks
+    /// nearer than it is hidden all along.
+    blocks: Vec<f32>,
 }
 
 /// No element in the cell.
@@ -1864,8 +2046,8 @@ impl DepthBuffer {
     fn render(faces: &Faces, lo: DVec2, hi: DVec2, shade: bool) -> Self {
         let size = hi - lo;
         let px = (size.x.max(size.y) / 2048.0).max(0.005);
-        let w = (size.x / px).ceil() as usize + 1;
-        let h = (size.y / px).ceil() as usize + 1;
+        let w = (size.x / px).fceil() as usize + 1;
+        let h = (size.y / px).fceil() as usize + 1;
         let mut buf = Self {
             lo,
             px,
@@ -1875,6 +2057,8 @@ impl DepthBuffer {
             rgba: shade.then(|| vec![0; w * h * 4]),
             nearest: vec![EMPTY; w * h],
             back: vec![f32::NEG_INFINITY; w * h],
+            around: Vec::new(),
+            blocks: Vec::new(),
         };
         let light = LIGHT.normalize();
         // every triangle in cells, with its shade and its element, in order
@@ -1917,54 +2101,87 @@ impl DepthBuffer {
         order.sort_by(|&i, &j| spans[i].3.total_cmp(&spans[j].3));
         // bands of rows on every core; an element's index settles a tie
         // in depth, so every cell ends as a scan in scene order left it
-        let rows = band_rows(h);
+        // narrow bands, several a core, taken in turn: what is drawn is
+        // seldom spread evenly down the view (sky over a tower, ground
+        // under a house)
+        let cores = std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .clamp(1, 16);
+        let rows = h.div_ceil(cores * 4).max(TILE);
         let (depth, nearest) = (&mut buf.depth, &mut buf.nearest);
-        let mut rgba: Vec<Option<&mut [u8]>> = match &mut buf.rgba {
+        let rgba: Vec<Option<&mut [u8]>> = match &mut buf.rgba {
             Some(r) => r.chunks_mut(rows * w * 4).map(Some).collect(),
             None => (0..h.div_ceil(rows)).map(|_| None).collect(),
         };
-        std::thread::scope(|scope| {
-            for (k, ((dc, nc), rc)) in depth
+        let bands = std::sync::Mutex::new(
+            depth
                 .chunks_mut(rows * w)
                 .zip(nearest.chunks_mut(rows * w))
-                .zip(rgba.iter_mut())
-                .enumerate()
-            {
-                let (tris, spans, order) = (&tris, &spans, &order);
-                scope.spawn(move || {
+                .zip(rgba)
+                .enumerate(),
+        );
+        std::thread::scope(|scope| {
+            for _ in 0..cores {
+                let (tris, spans, order, bands) = (&tris, &spans, &order, &bands);
+                scope.spawn(move || loop {
+                    let next = bands.lock().unwrap_or_else(|e| e.into_inner()).next();
+                    let Some((k, ((dc, nc), mut rc))) = next else {
+                        break;
+                    };
                     let y0 = k * rows;
                     let y1 = (y0 + rows).min(h);
                     let base = y0 * w;
+                    let mut tiles = Tiles::new(w, y1 - y0);
                     for &e in order {
                         let (from, to, b, z) = spans[e];
-                        let ylo = (b[1].floor() - 1.0).max(y0 as f64) as usize;
-                        let yhi = ((b[3].ceil() + 1.0).max(0.0) as usize).min(y1 - 1);
+                        let ylo = (b[1].ffloor() - 1.0).max(y0 as f64) as usize;
+                        let yhi = ((b[3].fceil() + 1.0).max(0.0) as usize).min(y1 - 1);
                         if b[1] > b[3] || ylo > yhi || b[3] + 1.0 < y0 as f64 {
                             continue;
                         }
-                        let xlo = (b[0].floor() - 1.0).max(0.0) as usize;
-                        let xhi = ((b[2].ceil() + 1.0).max(0.0) as usize).min(w - 1);
-                        let hidden = xlo <= xhi
-                            && (ylo..=yhi).all(|y| {
-                                dc[(y - y0) * w + xlo..=(y - y0) * w + xhi]
-                                    .iter()
-                                    .all(|d| *d < z - 1e-3)
-                            });
-                        if hidden {
+                        let xlo = (b[0].ffloor() - 1.0).max(0.0) as usize;
+                        let xhi = ((b[2].fceil() + 1.0).max(0.0) as usize).min(w - 1);
+                        // wholly behind what is drawn: every cell of its
+                        // box nearer than its nearest point
+                        if xlo <= xhi && tiles.behind(dc, xlo..=xhi, ylo - y0..=yhi - y0, z - 1e-3)
+                        {
                             continue;
                         }
                         for (t, c, index) in &tris[from..to] {
+                            // the cells the triangle can reach, as cover_rows
+                            // works them out; skipped when every one of them
+                            // is nearer than the triangle's nearest corner
+                            // (it could change none of them)
+                            let tx0 = t[0].x.min(t[1].x).min(t[2].x).ffloor().max(0.0) as usize;
+                            let tx1 = (t[0].x.max(t[1].x).max(t[2].x).fceil() as usize).min(w - 1);
+                            let ty0 =
+                                (t[0].y.min(t[1].y).min(t[2].y).ffloor().max(0.0) as usize).max(y0);
+                            let ty1 = (t[0].y.max(t[1].y).max(t[2].y).fceil() as usize)
+                                .min(h - 1)
+                                .min(y1 - 1);
+                            if tx0 > tx1 || ty0 > ty1 {
+                                continue;
+                            }
+                            let tz = t[0].z.min(t[1].z).min(t[2].z) as f32;
+                            if tiles.behind(dc, tx0..=tx1, ty0 - y0..=ty1 - y0, tz - 1e-3) {
+                                continue;
+                            }
+                            let mut drew = false;
                             cover_rows(t, w, h, y0..y1, |i, d| {
                                 let j = i - base;
                                 if d < dc[j] || (d == dc[j] && *index < nc[j]) {
                                     dc[j] = d;
                                     nc[j] = *index;
+                                    drew = true;
                                     if let Some(rc) = rc.as_deref_mut() {
                                         rc[j * 4..j * 4 + 4]
                                             .copy_from_slice(&[c[0], c[1], c[2], 255]);
                                     }
                                 }
                             });
+                            if drew {
+                                tiles.touch(tx0..=tx1, ty0 - y0..=ty1 - y0);
+                            }
                         }
                     }
                 });
@@ -2006,11 +2223,110 @@ impl DepthBuffer {
         });
     }
 
+    /// Work out [`DepthBuffer::blocks`], and with `neighbours`
+    /// [`DepthBuffer::around`] (so sampling an edge looks up one cell
+    /// instead of nine), on every core.
+    fn prepare_sampling(&mut self, neighbours: bool) {
+        let (w, h) = (self.w, self.h);
+        if w < 3 || h < 3 {
+            return;
+        }
+        // in bands of whole blocks, on every core
+        let rows = band_rows(h).div_ceil(TILE) * TILE;
+        let across = w.div_ceil(TILE);
+        let mut blocks = vec![f32::NEG_INFINITY; across * h.div_ceil(TILE)];
+        let mut around = if neighbours {
+            vec![0.0f32; w * h]
+        } else {
+            Vec::new()
+        };
+        let mut pieces: Vec<Option<&mut [f32]>> = if neighbours {
+            around.chunks_mut(rows * w).map(Some).collect()
+        } else {
+            (0..h.div_ceil(rows)).map(|_| None).collect()
+        };
+        let depth = &self.depth;
+        std::thread::scope(|scope| {
+            for (k, (bl, piece)) in blocks
+                .chunks_mut(rows / TILE * across)
+                .zip(pieces.iter_mut())
+                .enumerate()
+            {
+                scope.spawn(move || {
+                    let y0 = k * rows;
+                    let mut tall = vec![0.0f32; w];
+                    for y in y0..(y0 + rows).min(h) {
+                        let line = &mut bl[((y - y0) / TILE) * across..][..across];
+                        for (t, cells) in depth[y * w..][..w].chunks(TILE).enumerate() {
+                            for d in cells {
+                                line[t] = line[t].max(*d);
+                            }
+                        }
+                        let Some(piece) = piece.as_deref_mut() else {
+                            continue;
+                        };
+                        // the furthest of the three cells above, at and
+                        // below each cell, then of three of those side by
+                        // side; nothing to compare on the border
+                        let row = &mut piece[(y - y0) * w..][..w];
+                        if y == 0 || y == h - 1 {
+                            row.fill(f32::INFINITY);
+                            continue;
+                        }
+                        let (a, b, c) = (
+                            &depth[(y - 1) * w..][..w],
+                            &depth[y * w..][..w],
+                            &depth[(y + 1) * w..][..w],
+                        );
+                        for x in 0..w {
+                            tall[x] = a[x].max(b[x]).max(c[x]);
+                        }
+                        row[0] = f32::INFINITY;
+                        row[w - 1] = f32::INFINITY;
+                        for x in 1..w - 1 {
+                            row[x] = tall[x - 1].max(tall[x]).max(tall[x + 1]);
+                        }
+                    }
+                });
+            }
+        });
+        drop(pieces);
+        self.around = around;
+        self.blocks = blocks;
+    }
+
+    /// Is `a`-`b` hidden all along, without sampling it: every cell its
+    /// samples look at (with their neighbours) nearer than its nearest
+    /// end by more than [`DepthBuffer::visible`]'s tolerance? Only says
+    /// yes when sampling would find no visible point.
+    fn hidden_along(&self, a: DVec3, b: DVec3) -> bool {
+        if self.blocks.is_empty() {
+            return false;
+        }
+        let (p, q) = (self.to_px(a), self.to_px(b));
+        // the cells around each sample's, and one more: a point along the
+        // edge may round past its end
+        let (x0, y0) = (p.x.min(q.x).ffloor() - 2.0, p.y.min(q.y).ffloor() - 2.0);
+        let (x1, y1) = (p.x.max(q.x).ffloor() + 2.0, p.y.max(q.y).ffloor() + 2.0);
+        // a sample by the border is always visible
+        if !(x0 >= 0.0 && y0 >= 0.0 && x1 <= (self.w - 1) as f64 && y1 <= (self.h - 1) as f64) {
+            return false;
+        }
+        let z = a.z.min(b.z) as f32 - 0.03;
+        let across = self.w.div_ceil(TILE);
+        let (tx0, tx1) = (x0 as usize / TILE, x1 as usize / TILE);
+        (y0 as usize / TILE..=y1 as usize / TILE).all(|ty| {
+            self.blocks[ty * across + tx0..=ty * across + tx1]
+                .iter()
+                .all(|f| *f < z)
+        })
+    }
+
     /// Is the point inside another element than `own`: behind the near
     /// face of the element nearest there and in front of its far one?
     fn inside_other(&self, p: DVec3, own: usize) -> bool {
         let q = self.to_px(p);
-        let (x, y) = (q.x.floor(), q.y.floor());
+        let (x, y) = (q.x.ffloor(), q.y.ffloor());
         if x < 0.0 || y < 0.0 || x as usize >= self.w || y as usize >= self.h {
             return false;
         }
@@ -2057,8 +2373,8 @@ impl DepthBuffer {
     /// its front walls.
     fn hides_box(&self, lo: DVec3, hi: DVec3) -> bool {
         let (a, b) = (self.to_px(lo), self.to_px(hi));
-        let (x0, y0) = (a.x.floor() as isize - 1, a.y.floor() as isize - 1);
-        let (x1, y1) = (b.x.ceil() as isize + 1, b.y.ceil() as isize + 1);
+        let (x0, y0) = (a.x.ffloor() as isize - 1, a.y.ffloor() as isize - 1);
+        let (x1, y1) = (b.x.fceil() as isize + 1, b.y.fceil() as isize + 1);
         if x0 < 0 || y0 < 0 || x1 as usize >= self.w || y1 as usize >= self.h {
             return false;
         }
@@ -2071,7 +2387,14 @@ impl DepthBuffer {
 
     fn visible(&self, p: DVec3) -> bool {
         let q = self.to_px(p);
-        let (cx, cy) = (q.x.floor() as isize, q.y.floor() as isize);
+        let (cx, cy) = (q.x.ffloor() as isize, q.y.ffloor() as isize);
+        if !self.around.is_empty() {
+            // a neighbour off the buffer: visible
+            if cx < 1 || cy < 1 || cx as usize >= self.w - 1 || cy as usize >= self.h - 1 {
+                return true;
+            }
+            return p.z as f32 <= self.around[cy as usize * self.w + cx as usize] + 0.02;
+        }
         let mut far = f32::NEG_INFINITY;
         for dy in -1..=1 {
             for dx in -1..=1 {
@@ -2094,7 +2417,7 @@ impl DepthBuffer {
         const FLUSH: f32 = 0.001;
         let side = |k: f64| {
             let q = self.to_px(p + (across * (k * self.px)).extend(0.0));
-            let (x, y) = (q.x.floor() as isize, q.y.floor() as isize);
+            let (x, y) = (q.x.ffloor() as isize, q.y.ffloor() as isize);
             if x < 0 || y < 0 || x as usize >= self.w || y as usize >= self.h {
                 return None;
             }
@@ -2111,7 +2434,7 @@ impl DepthBuffer {
 
     /// The stretches of `a`-`b` where `keep` holds, in drawing coordinates.
     fn runs(&self, a: DVec3, b: DVec3, keep: impl Fn(DVec3) -> bool) -> Vec<(DVec2, DVec2)> {
-        let len_px = ((b - a).truncate().length() / self.px).ceil().max(1.0) as usize;
+        let len_px = ((b - a).truncate().length() / self.px).fceil().max(1.0) as usize;
         let steps = len_px * 2;
         let mut runs = Vec::new();
         let mut start: Option<f64> = None;
