@@ -8,6 +8,7 @@
 pub mod annotate;
 pub mod annotation;
 pub mod autodims;
+pub mod coverpage;
 pub mod crop;
 pub mod netlines;
 

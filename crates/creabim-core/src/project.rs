@@ -70,6 +70,16 @@ pub struct ProjectInfo {
     /// project.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logo: Option<Logo>,
+    /// The office, and its address and contact, at the head of the
+    /// title pages.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub office: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub office_contact: String,
+    /// The title pages' heading in place of the stage's own
+    /// ("Projektová dokumentácia k stavebnému zámeru").
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub cover_heading: String,
     /// The documentation's stage, one of [`STAGES`] by its name
     /// ("Projekt stavby").
     pub status: String,

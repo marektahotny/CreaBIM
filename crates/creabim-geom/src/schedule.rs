@@ -120,6 +120,65 @@ pub fn schedule(model: &Model, category: ScheduleCategory) -> Schedule {
 
 /// The schedule of one category; `by_type` groups the rows by element
 /// type, each group under a heading row naming the type and its count.
+/// The narrowest a column dragged on the sheet gets, mm.
+pub const MIN_COLUMN: f64 = 5.0;
+
+/// The widths set on the sheet for `view`'s table, over its columns'.
+pub fn apply_widths(model: &Model, view: ElementId, s: &mut Schedule) {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return;
+    };
+    for c in &mut s.columns {
+        if let Some(w) = v.column_widths.get(c.title) {
+            c.width = w.max(MIN_COLUMN);
+        }
+    }
+}
+
+/// The table a schedule view draws, with the widths set on the sheet;
+/// none for a view that is not a plain table (lists of windows and
+/// doors, the legends of services and materials).
+pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return None;
+    };
+    let creabim_core::ViewKind::Schedule { category, by_type } = v.kind else {
+        return None;
+    };
+    if category.joinery_list().is_some()
+        || matches!(
+            category,
+            ScheduleCategory::ServicesLegend | ScheduleCategory::MaterialLegend
+        )
+    {
+        return None;
+    }
+    let mut s = match category {
+        ScheduleCategory::PipeList if v.trade.is_some() => crate::tradelists::pipes(model, v.trade),
+        ScheduleCategory::RoomLegend => crate::roomlegend::schedule(model, v.of_level),
+        _ => schedule_by(model, category, by_type),
+    };
+    apply_widths(model, view, &mut s);
+    Some(s)
+}
+
+/// Where the column edges of `view`'s table stand on its drawing, mm
+/// from its left edge, each with its column's heading: the edge to the
+/// right of each column. None for a view that is not a plain table.
+pub fn column_edges(model: &Model, view: ElementId) -> Option<Vec<(String, f64, f64)>> {
+    let s = view_table(model, view)?;
+    let mut x = 0.0;
+    Some(
+        s.columns
+            .iter()
+            .map(|c| {
+                x += c.width;
+                (c.title.to_string(), x, c.width)
+            })
+            .collect(),
+    )
+}
+
 pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> Schedule {
     if category == ScheduleCategory::Materials {
         return takeoff_schedule(model, by_type);

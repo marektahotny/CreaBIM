@@ -430,6 +430,9 @@ pub fn draw_frame(
         };
         &named
     };
+    if crate::coverpage::draw(c, sheet, &project, &info.project, &info.date) {
+        return;
+    }
     match template_of(model, sheet) {
         Some(t) => {
             let values = frame_values(model, sheet, Some(t), title, scales, info);

@@ -79,6 +79,10 @@ pub fn schedule(model: &Model) -> Schedule {
         let ElementKind::Sheet(s) = &e.kind else {
             continue;
         };
+        // title pages are no drawings
+        if crate::coverpage::cover_of(s).is_some() {
+            continue;
+        }
         let (order, part) = crate::docset::part_order(&s.number)
             .map_or((usize::MAX, tr("Other sheets")), |(i, p)| (i, tr(p)));
         sheets.push((
@@ -154,7 +158,9 @@ pub fn schedule(model: &Model) -> Schedule {
 /// The list as a drawing in paper millimetres: the table with its top
 /// left corner at the origin, the construction's data over it.
 pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
-    let mut d = crate::schedule::schedule_drawing(view, title, &schedule(model));
+    let mut table = schedule(model);
+    crate::schedule::apply_widths(model, view, &mut table);
+    let mut d = crate::schedule::schedule_drawing(view, title, &table);
     let info = model
         .project_info()
         .map(|p| p.1.clone())

@@ -10302,7 +10302,22 @@ crate::props::row(ui, "File names", |ui| {
                     if let Some(l) = self.sheet_template_ui(ui, sh) {
                         label = l;
                     }
-                    if sh.template.is_none() {
+                    if creabim_geom::coverpage::cover_of(sh).is_some() {
+                        // a title page: filled from the project, only how
+                        // many binder labels go on it is its own
+                        let mut n = creabim_geom::coverpage::volumes(sh);
+                        if crate::props::row(ui, "Labels on the page", |ui| {
+                            ui.add(egui::DragValue::new(&mut n).range(1..=4))
+                        })
+                        .on_hover_text(crate::i18n::t(
+                            "A title page is filled from File › Project information. Four A6 labels fit an A4, one for each volume; one fills the page.",
+                        ))
+                        .changed()
+                        {
+                            sh.fields.insert("volumes".into(), n.to_string());
+                            label = "Title page"
+                        }
+                    } else if sh.template.is_none() {
                         // the office's title block: on or off, and the
                         // profession it names
                         if crate::props::row(ui, "Title block", |ui| {

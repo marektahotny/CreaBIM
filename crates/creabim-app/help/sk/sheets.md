@@ -40,6 +40,14 @@ Pod každým výrezom je jeho **názov**. Vo *Vlastnostiach* výrezu: zobraziť 
 - **Presunúť** (`M`, alebo `G` na sledovanie ukazovateľa) presúva vybrané na liste. Prichytáva sa k papieru, značkám, poznámkam, pohľadom a pomocným čiaram. Ťahanie jednej z viacerých vybraných položiek presunie všetky.
 - Stĺpec priblíženia vpravo v oblasti približuje, prispôsobuje a zobrazí výber.
 
+## Stĺpce tabuliek {#table-columns}
+
+Vyber umiestnenú legendu miestností alebo iný výkaz a na čiarach jeho stĺpcov sa ukážu úchopy. Ťahaním čiary medzi dvoma stĺpcami zúžiš alebo rozšíriš stĺpec vľavo od nej, po pol milimetri; stĺpce za ním sa posunú. Dvojklik na čiaru vráti stĺpcu jeho predvolenú šírku. Šírky patria pohľadu výkazu, takže vyzerá rovnako na každom liste, kde je umiestnený.
+
+## Titulné strany {#title-pages}
+
+**Výkresy na tlač** vytvorí titulnú stranu projektu a jednu pre každú časť dokumentácie, ktorá má výkresy (C, D.1 ASR, D.3 ZTI, D.4 VYK, D.5 ELI, D.6 VZT, D.7 PLY, D.8 MPL), s číslom pred výkresmi časti (`S01_ZTI_000_TIT`). Vypĺňajú sa samé z *Údajov o stavbe*: ateliér a jeho kontakt, nadpis podľa stupňa (alebo tvoj vlastný *Nadpis*), stavba, investor, miesto a parcely, tri mená, zákazkové číslo a dátum. Titulka časti ukazuje jej označenie a názov, titulka projektu stavbu v 3D v ráme. Na A4 sa zmestia štyri štítky A6 na zväzky, očíslované 1 až 4; vo vlastnostiach listu nastav *Štítky na liste* na 1 pre jednu cez celý list. Titulné strany sa neuvádzajú v zozname dokumentácie.
+
 ## Pravítka a pomocné čiary {#rulers-and-guides}
 
 V hlavičke listu zapnite **Pomocné čiary**: pozdĺž horného a ľavého okraja sa zobrazia pravítka.

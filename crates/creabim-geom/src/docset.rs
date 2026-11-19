@@ -35,7 +35,7 @@ pub fn part_of(number: &str) -> Option<&'static str> {
 
 /// The same with the part's place in the documentation, from 0.
 pub fn part_order(number: &str) -> Option<(usize, &'static str)> {
-    const PARTS: [(&str, &str); 11] = [
+    const PARTS: [(&str, &str); 12] = [
         ("A00_", "A List of documentation"),
         ("B00_", "B Summary report"),
         ("C00_", "C Site drawings"),
@@ -46,6 +46,7 @@ pub fn part_order(number: &str) -> Option<(usize, &'static str)> {
         ("_ELI_", "D.5 Electrical (ELI)"),
         ("_VZT_", "D.6 Ventilation (VZT)"),
         ("_PLY_", "D.7 Gas (PLY)"),
+        ("_MPL_", "D.8 Medical gases (MPL)"),
         ("E00_", "E Annexes"),
     ];
     PARTS
@@ -530,10 +531,99 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
             );
         }
     }
+    // the title pages: the project's own and one before each part
+    covers(&mut b, frame);
     // A: the list of all of it, made last so it lists every sheet
     let list = schedule(&mut b, ScheduleCategory::Documents, "List of documentation");
     b.sheet("A00_TXT_001".into(), tr("List of documentation"), &[list]);
     (b.made != Made::default() || b.fixed).then_some((b.tx, b.made))
+}
+
+/// The title pages still missing: the project's own, with the picture
+/// of the building once there is one to show, and one for each part
+/// that has drawings (see [`crate::coverpage`]).
+fn covers(b: &mut Builder, frame: bool) {
+    use crate::coverpage;
+    let has = |m: &Model, part: &str| {
+        m.iter().find_map(|e| match &e.kind {
+            ElementKind::Sheet(s) if coverpage::cover_of(s) == Some(part) => Some(e.id),
+            _ => None,
+        })
+    };
+    let mut parts = vec![coverpage::PROJECT];
+    for (key, ..) in coverpage::PARTS {
+        let drawn = b.m.iter().any(|e| {
+            matches!(&e.kind, ElementKind::Sheet(s)
+                if coverpage::cover_of(s).is_none()
+                    && (s.number.starts_with(key) || s.number.contains(key)))
+        });
+        if drawn {
+            parts.push(key);
+        }
+    }
+    for part in parts {
+        if has(&b.m, part).is_none() {
+            let name = if part == coverpage::PROJECT {
+                tr("Title page")
+            } else {
+                format!(
+                    "{} {}",
+                    tr("Title page"),
+                    part.trim_matches('_').trim_end_matches("00")
+                )
+            };
+            b.add(Element::new(
+                name,
+                ElementKind::Sheet(coverpage::sheet(part)),
+            ));
+            b.made.sheets += 1;
+        }
+    }
+    // the picture: a view of the building from above at an angle, sized
+    // to the frame, once there is a building
+    let Some(main) = has(&b.m, coverpage::PROJECT) else {
+        return;
+    };
+    let placed =
+        b.m.iter()
+            .any(|e| matches!(&e.kind, ElementKind::Viewport(v) if v.sheet == main));
+    if placed || frame {
+        return;
+    }
+    let Some(ElementKind::Sheet(sheet)) = b.m.get(main).map(|e| e.kind.clone()) else {
+        return;
+    };
+    let mut v = View::axonometric(35.0, 30.0);
+    v.sheet_title.hidden = true;
+    v.browser_order = None;
+    let view = b.view(tr("Title page picture"), v);
+    let Some((lo, hi)) = view_drawing(&b.m, view).and_then(|d| d.bounds()) else {
+        return;
+    };
+    let (blo, bhi) = coverpage::picture_box(&sheet);
+    let (room, size) = (bhi - blo - DVec2::splat(4.0), hi - lo);
+    let need = (size.x * 1000.0 / room.x).max(size.y * 1000.0 / room.y);
+    // the next round scale it fits at
+    let scale = [
+        20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 200.0, 250.0, 300.0, 400.0, 500.0, 750.0, 1000.0,
+        1500.0, 2000.0,
+    ]
+    .into_iter()
+    .find(|s| *s >= need)
+    .unwrap_or(need.ceil());
+    if let Some(old) = b.m.get(view).cloned() {
+        let mut now = old.clone();
+        if let ElementKind::View(x) = &mut now.kind {
+            x.scale = scale;
+        }
+        let one = Transaction::new("one").replace(old.clone(), now.clone());
+        if one.apply(&mut b.m).is_ok() {
+            let tx = std::mem::replace(&mut b.tx, Transaction::new(""));
+            b.tx = tx.replace(old, now);
+        }
+    }
+    let vp = crate::sheet::new_viewport(&b.m, main, view, (blo + bhi) / 2.0);
+    b.add(Element::new("Viewport", ElementKind::Viewport(vp)));
 }
 
 #[cfg(test)]
@@ -545,7 +635,22 @@ mod tests {
         let mut v: Vec<String> = m
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Sheet(s) => Some(s.number.clone()),
+                ElementKind::Sheet(s) if crate::coverpage::cover_of(s).is_none() => {
+                    Some(s.number.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// The parts with a title page, the project's own first.
+    fn covers(m: &Model) -> Vec<String> {
+        let mut v: Vec<String> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Sheet(s) => crate::coverpage::cover_of(s).map(str::to_string),
                 _ => None,
             })
             .collect();
@@ -609,7 +714,9 @@ mod tests {
         doc.commit(tx).unwrap();
         let m = doc.model();
         let all = numbers(m);
-        assert_eq!(all.len(), before + made.sheets);
+        assert_eq!(all.len() + covers(m).len(), before + made.sheets);
+        // a title page for the project and each part drawn
+        assert_eq!(covers(m), ["C00_", "_ASR_", "project"]);
         for want in ["C00_SIT_001", "S01_ASR_001_N01", "S01_ASR_002_N02"] {
             assert!(all.iter().any(|x| x == want), "{want} in {all:?}");
         }
@@ -681,6 +788,8 @@ mod tests {
                 "S01_ASR_006_VVZ"
             ]
         );
+        // title pages, the project's without a picture of nothing yet
+        assert_eq!(covers(&m), ["C00_", "_ASR_", "project"]);
         // the architect's plans leave the trades' pipes out
         let plans = m
             .iter()
@@ -723,8 +832,27 @@ mod tests {
         tx.apply(&mut m).unwrap();
         let (tx, made) = drawing_set(&m).unwrap();
         tx.apply(&mut m).unwrap();
-        // the site, the plan, two sections, four elevations and the list
-        assert_eq!(made.views, 9);
+        // the site, the plan, two sections, four elevations, the list and
+        // the picture on the title page
+        assert_eq!(made.views, 10);
+        let cover = m
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Sheet(s) if crate::coverpage::cover_of(s) == Some("project")))
+            .unwrap();
+        let ElementKind::Sheet(sheet) = &cover.kind else {
+            unreachable!()
+        };
+        let (lo, hi) = crate::coverpage::picture_box(sheet);
+        let vp = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Viewport(v) if v.sheet == cover.id => Some(v.clone()),
+                _ => None,
+            })
+            .expect("the picture on the title page");
+        assert!(
+            vp.center.x > lo.x && vp.center.x < hi.x && vp.center.y > lo.y && vp.center.y < hi.y
+        );
         assert_eq!(
             numbers(&m),
             [

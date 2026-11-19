@@ -1232,6 +1232,22 @@ impl CreaBimApp {
                         }
                     })
                 });
+                crate::props::section(ui, "Title pages");
+                text(ui, "Design office", &mut draft.office, "");
+                text(ui, "Office address and contact", &mut draft.office_contact, "");
+                let stage = creabim_geom::coverpage::heading(&creabim_core::project::ProjectInfo {
+                    cover_heading: String::new(),
+                    status: draft.status.clone(),
+                    ..Default::default()
+                });
+                crate::props::row(ui, "Heading", |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut draft.cover_heading)
+                            .vertical_align(egui::Align::Center)
+                            .hint_text(stage)
+                            .desired_width(ui.available_width()),
+                    );
+                });
                 crate::props::section(ui, "Site");
                 text(ui, "Site name", &mut draft.site_name, "");
                 text(ui, "Address", &mut draft.address, "");

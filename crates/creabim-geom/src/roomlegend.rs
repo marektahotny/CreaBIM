@@ -323,3 +323,45 @@ mod tests {
         assert!(f.walls.contains("Ceramic tiles up to 2000 mm ("), "{f:?}");
     }
 }
+
+#[cfg(test)]
+mod widths {
+    use creabim_core::{Element, ElementKind, ScheduleCategory, Transaction, View};
+
+    /// A column dragged wider on the sheet keeps its width by its
+    /// heading; the table draws wider by as much and the columns after it
+    /// move along.
+    #[test]
+    fn a_column_widened_on_the_sheet_widens_the_legend() {
+        let mut m = creabim_core::starter::starter_house();
+        let v = Element::new(
+            "Legend",
+            ElementKind::View(View::schedule(ScheduleCategory::RoomLegend)),
+        );
+        let id = v.id;
+        Transaction::new("t").insert(v).apply(&mut m).unwrap();
+        let before = crate::schedule::column_edges(&m, id).unwrap();
+        let width = |m: &creabim_core::Model| {
+            let (lo, hi) = crate::section::view_drawing(m, id)
+                .unwrap()
+                .bounds()
+                .unwrap();
+            hi.x - lo.x
+        };
+        let w0 = width(&m);
+        let name = before[1].0.clone();
+        let mut e = m.get(id).unwrap().clone();
+        if let ElementKind::View(x) = &mut e.kind {
+            x.column_widths.insert(name.clone(), before[1].2 + 20.0);
+        }
+        Transaction::new("t")
+            .replace(m.get(id).unwrap().clone(), e)
+            .apply(&mut m)
+            .unwrap();
+        let after = crate::schedule::column_edges(&m, id).unwrap();
+        assert_eq!(after[0], before[0]);
+        assert!((after[1].2 - before[1].2 - 20.0).abs() < 1e-9);
+        assert!((after.last().unwrap().1 - before.last().unwrap().1 - 20.0).abs() < 1e-9);
+        assert!((width(&m) - w0 - 20.0).abs() < 0.5, "{} {}", width(&m), w0);
+    }
+}

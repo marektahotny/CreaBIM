@@ -2127,6 +2127,10 @@ pub struct View {
     /// The storey a legend of rooms lists; none lists every storey's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub of_level: Option<ElementId>,
+    /// A table's column widths set on the sheet, paper mm, by the
+    /// column's heading; a column not named keeps its own width.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub column_widths: BTreeMap<String, f64>,
     /// How a section's line is drawn in plans and where it steps aside.
     #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
     pub line: SectionLine,
@@ -2521,6 +2525,7 @@ impl View {
             coordination: false,
             masonry: false,
             of_level: None,
+            column_widths: BTreeMap::new(),
             notes: String::new(),
             spatial: false,
         }
@@ -2556,6 +2561,7 @@ impl View {
             coordination: false,
             masonry: false,
             of_level: None,
+            column_widths: BTreeMap::new(),
             notes: String::new(),
             spatial: false,
         }
@@ -2588,6 +2594,7 @@ impl View {
             coordination: false,
             masonry: false,
             of_level: None,
+            column_widths: BTreeMap::new(),
             notes: String::new(),
             spatial: false,
         }
@@ -2621,6 +2628,7 @@ impl View {
             coordination: false,
             masonry: false,
             of_level: None,
+            column_widths: BTreeMap::new(),
             notes: String::new(),
             spatial: false,
         }
@@ -2659,6 +2667,7 @@ impl View {
             coordination: false,
             masonry: false,
             of_level: None,
+            column_widths: BTreeMap::new(),
             notes: String::new(),
             spatial: false,
         }

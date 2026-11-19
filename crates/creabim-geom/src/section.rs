@@ -897,21 +897,14 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             if *category == creabim_core::ScheduleCategory::ServicesLegend {
                 return Some(crate::serviceslegend::drawing(view, &e.name, model));
             }
-            if *category == creabim_core::ScheduleCategory::PipeList && v.trade.is_some() {
-                let table = crate::tradelists::pipes(model, v.trade);
-                return Some(crate::schedule::schedule_drawing(view, &e.name, &table));
-            }
-            if *category == creabim_core::ScheduleCategory::RoomLegend {
-                let table = crate::roomlegend::schedule(model, v.of_level);
-                return Some(crate::schedule::schedule_drawing(view, &e.name, &table));
-            }
             if *category == creabim_core::ScheduleCategory::MaterialLegend {
                 return Some(crate::matlegend::drawing(view, &e.name, model));
             }
             if *category == creabim_core::ScheduleCategory::Documents {
                 return Some(crate::doclist::drawing(view, &e.name, model));
             }
-            let table = crate::schedule::schedule_by(model, *category, *by_type);
+            let _ = by_type;
+            let table = crate::schedule::view_table(model, view)?;
             return Some(crate::schedule::schedule_drawing(view, &e.name, &table));
         }
     };
