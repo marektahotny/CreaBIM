@@ -43,6 +43,8 @@ mod calcresultsui;
 mod circuitsui;
 #[path = "circuitui.rs"]
 mod circuitui;
+#[path = "cloudload.rs"]
+mod cloudload;
 #[path = "coolingui.rs"]
 mod coolingui;
 #[path = "cropui.rs"]
@@ -360,6 +362,8 @@ pub struct CreaBimApp {
     level_copy: levelcopy::LevelCopyUi,
     /// What the last IFC import brought across, and what it couldn't.
     import_report: Option<importui::ImportReport>,
+    /// A point cloud being read in the background.
+    cloud_load: Option<cloudload::CloudLoad>,
     /// The annotation styles and sheet templates windows.
     drafting: drafting::DraftingUi,
     /// Orbit about the selection rather than the middle of the view.
@@ -673,6 +677,7 @@ impl CreaBimApp {
             gstyles: Default::default(),
             level_copy: Default::default(),
             import_report: None,
+            cloud_load: None,
             drafting: Default::default(),
             orbit_selection: true,
             rect_3d: None,
@@ -1486,6 +1491,7 @@ impl CreaBimApp {
         &mut self,
         p: egui::Pos2,
         project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+        clouds: bool,
     ) -> Option<ElementId> {
         let near = |a: egui::Pos2, b: egui::Pos2| {
             let ab = b - a;
@@ -1493,6 +1499,29 @@ impl CreaBimApp {
             (a + ab * t).distance(p) < 6.0
         };
         for (id, r) in self.refs_in_3d() {
+            // a cloud is picked by any of the points 3D shows of it
+            if let creabim_core::RefSource::Points { path, .. } = &r.source {
+                if !clouds || r.locked {
+                    continue;
+                }
+                if let (Ok(c), Some(sample)) = (
+                    self.plan.ref_cache.cloud(path),
+                    self.plan.ref_cache.sample(path),
+                ) {
+                    let off = crate::trace::cloud_lift(self.doc.model(), &r.source, &c);
+                    let hit = sample.iter().any(|k| {
+                        let q = c.at(*k as usize);
+                        r.clip.is_none_or(|[a, b]| {
+                            q.truncate().cmpge(a).all() && q.truncate().cmple(b).all()
+                        }) && project(r.place(q.truncate()).extend(q.z + off))
+                            .is_some_and(|s| s.distance(p) < 6.0)
+                    });
+                    if hit {
+                        return Some(id);
+                    }
+                }
+                continue;
+            }
             let model = self.doc.model();
             let world = |q: DVec2| crate::handles::ref_world(model, &r, q);
             let polys: Vec<Vec<DVec2>> = match self.plan.ref_cache.get(model, id, &r) {
@@ -3982,7 +4011,7 @@ impl CreaBimApp {
                 let bubble = self.grid_bubble_near(p, &project);
                 // a reference's lines, as a sketch's (MU33: only a 2D view
                 // could pick one)
-                let reference = self.reference_near_3d(p, &project);
+                let reference = self.reference_near_3d(p, &project, false);
                 // and so are crop box frames
                 let frame = || self.crop_frame_near(p, &project);
                 if let Some(id) = near_sketch.or(bubble).or(reference).or_else(frame) {
@@ -3997,7 +4026,9 @@ impl CreaBimApp {
                     let near = self
                         .grid_line_near(p, &project)
                         .map(|g| g.0)
-                        .or_else(|| self.guide_near(p, &project));
+                        .or_else(|| self.guide_near(p, &project))
+                        // a cloud's points, where nothing of the model is
+                        .or_else(|| self.reference_near_3d(p, &project, true));
                     if let Some(id) = near {
                         pick(&mut self.selection, Some(id));
                         self.face = None;
@@ -8260,8 +8291,20 @@ crate::props::row(ui, "File names", |ui| {
 
     /// A new reference shown in view `v`, in place, selected.
     fn add_reference(&mut self, v: ElementId, source: creabim_core::RefSource) {
+        // a cloud is read in the background first, then added (a big scan,
+        // or one a cloud drive fetches, took the window with it)
+        let shown = if let creabim_core::RefSource::Points { path, .. } = &source {
+            match self.plan.ref_cache.cached_cloud(path) {
+                Some(c) => crate::trace::Shown::Cloud(c),
+                None => {
+                    self.load_cloud(v, path.clone());
+                    return;
+                }
+            }
+        } else {
+            crate::trace::read(self.doc.model(), &source)
+        };
         let model = self.doc.model();
-        let shown = crate::trace::read(model, &source);
         if let crate::trace::Shown::Missing(why) = &shown {
             self.status = why.clone();
             return;
@@ -9161,8 +9204,13 @@ crate::props::row(ui, "File names", |ui| {
             .enumerate()
             {
                 if ui
-                    .add_sized([w, 24.0], egui::Button::new(text).truncate())
-                    .on_hover_text(crate::i18n::tr(tip))
+                    .add_sized([w, 24.0], egui::Button::new(crate::i18n::t(text)).truncate())
+                    // narrow and wrapped: the panel is at the window's
+                    // right edge, where a long line was cut off
+                    .on_hover_ui(|ui| {
+                        ui.set_max_width(260.0);
+                        ui.add(egui::Label::new(crate::i18n::tr(tip)).wrap());
+                    })
                     .clicked()
                 {
                     pressed = Some(i);
@@ -13017,6 +13065,7 @@ impl eframe::App for CreaBimApp {
         self.graphic_styles_window(&ctx);
         self.ground_spacing_window(&ctx);
         self.import_report_window(&ctx);
+        self.cloud_load_window(&ctx);
         self.help_window(&ctx);
         self.report_window(&ctx);
         self.close_window(&ctx);
@@ -14129,6 +14178,105 @@ mod prop_tab_tests {
         assert_eq!(app.prop_tabs()[0], PropTab::Next);
         app.prop_tab = PropTab::Next;
         draw(&mut app);
+    }
+
+    #[test]
+    fn a_cloud_is_read_in_the_background_then_cut_by_sections() {
+        let dir = std::env::temp_dir().join(format!("creabim-cloudload-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("room.xyz");
+        // a wall of points along x, 0 to 4 m, 0 to 2,5 m high, at y = 1
+        let mut text = String::new();
+        for i in 0..=40 {
+            for k in 0..=25 {
+                text.push_str(&format!("{} 1.0 {}\n", i as f64 * 0.1, k as f64 * 0.1));
+            }
+        }
+        std::fs::write(&path, text).unwrap();
+        let mut app = crate::app::test_app();
+        let view = app
+            .doc
+            .model()
+            .iter()
+            .find(|e| e.name == "Ground Floor plan")
+            .unwrap()
+            .id;
+        app.active_view = Some(view);
+        let path = path.display().to_string();
+        app.add_reference(view, creabim_core::RefSource::points(path.clone()));
+        assert!(app.cloud_load.is_some(), "read in the background");
+        let ctx = egui::Context::default();
+        let t0 = std::time::Instant::now();
+        while app.cloud_load.is_some() && t0.elapsed().as_secs() < 20 {
+            let raw = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200.0, 900.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run_ui(raw, |ui| app.cloud_load_window(ui.ctx()));
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let id = app
+            .selection
+            .active
+            .expect("the cloud is added and selected");
+        let Some(ElementKind::Reference(r)) = app.doc.model().get(id).map(|e| e.kind.clone())
+        else {
+            panic!("a reference")
+        };
+        // a section from y = -2 looking to its left (+y) sees the wall
+        let mut e = Element::new(
+            "Cloud section",
+            ElementKind::View(creabim_core::View::section(
+                r.place(DVec2::new(-0.5, -2.0)),
+                r.place(DVec2::new(4.5, -2.0)),
+                5.0,
+                true,
+            )),
+        );
+        let sec = e.id;
+        app.doc
+            .commit(
+                creabim_core::Transaction::new("section").insert(std::mem::replace(
+                    &mut e,
+                    Element::new("x", ElementKind::View(creabim_core::View::plan(view))),
+                )),
+            )
+            .unwrap();
+        let s = app
+            .plan
+            .ref_cache
+            .section(app.doc.model(), id, &r, sec)
+            .expect("a section shows it");
+        assert!(s.points.len() > 500, "{} points", s.points.len());
+        // looking the other way, it is behind the line: nothing
+        let mut e = Element::new(
+            "Back",
+            ElementKind::View(creabim_core::View::section(
+                r.place(DVec2::new(4.5, -2.0)),
+                r.place(DVec2::new(-0.5, -2.0)),
+                5.0,
+                true,
+            )),
+        );
+        let back = e.id;
+        app.doc
+            .commit(
+                creabim_core::Transaction::new("section").insert(std::mem::replace(
+                    &mut e,
+                    Element::new("x", ElementKind::View(creabim_core::View::plan(view))),
+                )),
+            )
+            .unwrap();
+        let s = app
+            .plan
+            .ref_cache
+            .section(app.doc.model(), id, &r, back)
+            .unwrap();
+        assert!(s.points.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

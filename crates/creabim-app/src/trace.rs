@@ -258,6 +258,18 @@ impl RefCache {
         Ok(c)
     }
 
+    /// A point cloud's file, if read already.
+    pub fn cached_cloud(&self, path: &str) -> Option<Arc<creabim_exchange::cloud::Cloud>> {
+        self.clouds.get(&format!("points:{path}")).cloned()
+    }
+
+    /// A point cloud read elsewhere (in the background), kept as read.
+    pub fn put_cloud(&mut self, path: &str, c: Arc<creabim_exchange::cloud::Cloud>) {
+        let k = format!("points:{path}");
+        self.samples.remove(&k);
+        self.clouds.insert(k, c);
+    }
+
     /// What the plan `view` shows of the cloud reference `id`: its points
     /// between the slice's heights, within its clip.
     pub fn slice(
@@ -279,6 +291,61 @@ impl RefCache {
             }
         }
         let s = Arc::new(c.slice(from, to, r.clip, SLICE_POINTS));
+        self.slices.insert((id, view), (k, s.clone()));
+        Some(s)
+    }
+
+    /// What the section or elevation `view` shows of the cloud reference
+    /// `id`: its points in front of the view's line, within its depth,
+    /// in the view's own coordinates (along the line, height).
+    pub fn section(
+        &mut self,
+        model: &Model,
+        id: ElementId,
+        r: &Reference,
+        view: ElementId,
+    ) -> Option<Arc<creabim_exchange::cloud::Slice>> {
+        let RefSource::Points { path, .. } = &r.source else {
+            return None;
+        };
+        let creabim_core::ElementKind::View(v) = &model.get(view)?.kind else {
+            return None;
+        };
+        let creabim_core::ViewKind::Section {
+            start, end, depth, ..
+        } = v.kind
+        else {
+            return None;
+        };
+        let c = self.cloud(path).ok()?;
+        let off = cloud_lift(model, &r.source, &c);
+        let k = format!(
+            "{}|{start}:{end}:{depth}|{}:{}:{}:{off}",
+            ref_key(r),
+            r.at,
+            r.rotation,
+            r.scale
+        );
+        if let Some((kk, s)) = self.slices.get(&(id, view)) {
+            if *kk == k {
+                return Some(s.clone());
+            }
+        }
+        let along = (end - start).normalize_or_zero();
+        let look = along.perp();
+        let clip = r.clip;
+        let s = Arc::new(c.section(
+            &|q| {
+                let own = q.truncate();
+                if clip.is_some_and(|[a, b]| !(own.cmpge(a).all() && own.cmple(b).all())) {
+                    return None;
+                }
+                let w = r.place(own) - start;
+                let d = w.dot(look);
+                (d >= 0.0 && d <= depth.max(0.0)).then(|| DVec2::new(w.dot(along), q.z + off))
+            },
+            SLICE_POINTS,
+        ));
         self.slices.insert((id, view), (k, s.clone()));
         Some(s)
     }
@@ -591,6 +658,23 @@ pub fn draw_view(
     over: bool,
     to_screen: &dyn Fn(DVec2) -> Pos2,
 ) {
+    // a cloud is in the model: a section or an elevation shows what of it
+    // stands in front of its line, within its depth
+    for (id, r) in clouds_in_section(model, view) {
+        if r.over != over || r.opacity <= 0.0 {
+            continue;
+        }
+        if let Some(s) = cache.section(model, id, r, view) {
+            let ink = colour(r).map(|c| c.gamma_multiply(r.opacity.clamp(0.0, 1.0)));
+            let mut dots = Dots::new(painter.clip_rect());
+            for (n, p) in s.points.iter().enumerate() {
+                dots.add(to_screen(*p), || {
+                    ink.unwrap_or_else(|| own_colour(s.rgb.get(n), r.opacity))
+                });
+            }
+            dots.paint(painter);
+        }
+    }
     for (id, r) in creabim_core::reference::in_view(model, view) {
         if r.hidden || r.over != over || r.opacity <= 0.0 {
             continue;
@@ -611,6 +695,29 @@ pub fn draw_view(
         }
         draw(painter, r, &shown, to_screen);
     }
+}
+
+/// The clouds a section or an elevation `view` shows: every cloud not
+/// hidden (a cloud is placed in plans; a section cuts it where it stands).
+pub fn clouds_in_section(model: &Model, view: ElementId) -> Vec<(ElementId, &Reference)> {
+    let is_section = matches!(
+        model.get(view).map(|e| &e.kind),
+        Some(creabim_core::ElementKind::View(v)) if matches!(v.kind, creabim_core::ViewKind::Section { .. })
+    );
+    if !is_section {
+        return vec![];
+    }
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            creabim_core::ElementKind::Reference(r)
+                if !r.hidden && matches!(r.source, RefSource::Points { .. }) =>
+            {
+                Some((e.id, r))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// A cloud point's own colour, or grey where its file has none.
