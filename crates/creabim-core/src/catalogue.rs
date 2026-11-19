@@ -21,6 +21,7 @@ pub mod medical;
 pub mod radiators;
 mod services;
 pub mod site;
+pub mod soakaway;
 pub mod valvebox;
 
 // ---- outlines and solids ----
@@ -1255,6 +1256,7 @@ pub fn starters() -> Vec<CatalogueObject> {
     .chain(medical::starters())
     .chain(valvebox::starters())
     .chain(site::starters())
+    .chain(soakaway::starters())
     .chain(heat::starters())
     .chain(entourage::starters())
     .collect()

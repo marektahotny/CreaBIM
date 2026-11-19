@@ -147,6 +147,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The water meter shaft with its assembly, Wavin Tegra 425 and 600 inspection chambers, the electricity meter pillar and the gas meter box, from the catalogue",
             ),
             act(
+                "site:soakaway",
+                "Soakaway",
+                "droplets",
+                "A rainwater soakaway of DRENBLOK blocks in 1 to 5 layers with its filter shaft and overflow, sized after DWA-A 138 from the connected area, the ground's permeability and the rain series",
+            ),
+            act(
                 "site:coords",
                 "S-JTSK coordinates",
                 "crosshair",
