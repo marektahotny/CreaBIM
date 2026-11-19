@@ -940,7 +940,7 @@ thread_local! {
 }
 
 /// A fingerprint of a mesh's shape.
-fn mesh_key(m: &TriMesh) -> u64 {
+pub(crate) fn mesh_key(m: &TriMesh) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     m.indices.hash(&mut h);

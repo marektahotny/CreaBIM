@@ -623,6 +623,25 @@ pub(crate) fn hidden_lines(
     let per_item = par_map(scene, |index, s| {
         let mut items = Vec::new();
         let revealed = reveal.is_some_and(|r| r.contains(&s.id));
+        // wholly behind what is drawn in front of it: no edge can show
+        if !wire && !revealed {
+            if let Some((lo, hi)) = s.mesh.bounds() {
+                let corners = (0..8).map(|k| {
+                    project(DVec3::new(
+                        if k & 1 == 0 { lo.x } else { hi.x } as f64,
+                        if k & 2 == 0 { lo.y } else { hi.y } as f64,
+                        if k & 4 == 0 { lo.z } else { hi.z } as f64,
+                    ))
+                });
+                let (a, b) = corners.fold(
+                    (DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY)),
+                    |(a, b), p| (a.min(p), b.max(p)),
+                );
+                if a.z > 1e-4 && zbuf.hides_box(a, b) {
+                    return items;
+                }
+            }
+        }
         for (a, b) in feature_edges_seen(s, view) {
             let Some((a, b)) = clip_segment(project(a), project(b), 1e-4, depth) else {
                 continue;
@@ -1523,15 +1542,46 @@ pub fn feature_edges_over(item: &SceneItem, cos: f32) -> Vec<(DVec3, DVec3)> {
     })
 }
 
-/// The mesh's edges whose faces' normals pass `keep`.
-fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, DVec3)> {
+/// One edge of a mesh with the normals of the faces meeting on it.
+struct Edge {
+    a: DVec3,
+    b: DVec3,
+    normals: Box<[Vec3]>,
+}
+
+/// Every mesh's edges, by its shape: found once, then each view only
+/// picks those it draws (half a million edges for a 13-storey block,
+/// found again for every section and elevation, and in no fixed order).
+static EDGES: std::sync::Mutex<Option<HashMap<u64, std::sync::Arc<Vec<Edge>>>>> =
+    std::sync::Mutex::new(None);
+
+fn mesh_edges(item: &SceneItem) -> std::sync::Arc<Vec<Edge>> {
+    let key = crate::scene::mesh_key(&item.mesh);
+    if let Some(e) = EDGES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(HashMap::new)
+        .get(&key)
+    {
+        return e.clone();
+    }
+    let edges = std::sync::Arc::new(find_edges(&item.mesh));
+    let mut cache = EDGES.lock().unwrap_or_else(|e| e.into_inner());
+    let cache = cache.get_or_insert_with(HashMap::new);
+    if cache.len() > 20_000 {
+        cache.clear();
+    }
+    cache.insert(key, edges.clone());
+    edges
+}
+
+fn find_edges(m: &crate::mesh::TriMesh) -> Vec<Edge> {
     let key = |p: [f32; 3]| {
         let q = |v: f32| (v as f64 * 1e4).round() as i64;
         (q(p[0]), q(p[1]), q(p[2]))
     };
     type Key = (i64, i64, i64);
     let mut edges: HashMap<(Key, Key), (DVec3, DVec3, Vec<Vec3>)> = HashMap::new();
-    let m = &item.mesh;
     for t in m.indices.chunks(3) {
         let n = Vec3::from(m.normals[t[0] as usize]);
         for k in 0..3 {
@@ -1551,17 +1601,31 @@ fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, 
                 .push(n);
         }
     }
-    let mut out: Vec<(DVec3, DVec3)> = edges
-        .into_values()
-        .filter(|(_, _, ns)| keep(ns))
-        .map(|(a, b, _)| (a, b))
+    // in a fixed order, so drawings come out the same every time
+    let mut out: Vec<((Key, Key), Edge)> = edges
+        .into_iter()
+        .map(|(k, (a, b, ns))| {
+            (
+                k,
+                Edge {
+                    a,
+                    b,
+                    normals: ns.into_boxed_slice(),
+                },
+            )
+        })
         .collect();
-    out.sort_by(|x, y| {
-        (x.0.x, x.0.y, x.0.z)
-            .partial_cmp(&(y.0.x, y.0.y, y.0.z))
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    out
+    out.sort_by_key(|x| x.0);
+    out.into_iter().map(|(_, e)| e).collect()
+}
+
+/// The mesh's edges whose faces' normals pass `keep`.
+fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, DVec3)> {
+    mesh_edges(item)
+        .iter()
+        .filter(|e| keep(&e.normals))
+        .map(|e| (e.a, e.b))
+        .collect()
 }
 
 /// Closed outlines where the plane d = 0 slices an element's mesh, in drawing coordinates.
@@ -1931,6 +1995,24 @@ impl DepthBuffer {
     }
 
     /// Is the point no further than the nearest face around it (with tolerance)?
+    /// Is everything in the view box `lo`–`hi` (x and y across the view,
+    /// z its depth) behind what is drawn there already? Then nothing of an
+    /// element inside it can show: the furniture of a tower's flats behind
+    /// its front walls.
+    fn hides_box(&self, lo: DVec3, hi: DVec3) -> bool {
+        let (a, b) = (self.to_px(lo), self.to_px(hi));
+        let (x0, y0) = (a.x.floor() as isize - 1, a.y.floor() as isize - 1);
+        let (x1, y1) = (b.x.ceil() as isize + 1, b.y.ceil() as isize + 1);
+        if x0 < 0 || y0 < 0 || x1 as usize >= self.w || y1 as usize >= self.h {
+            return false;
+        }
+        let z = lo.z as f32 - 0.05;
+        (y0..=y1).all(|y| {
+            let row = &self.depth[y as usize * self.w..][..self.w];
+            row[x0 as usize..=x1 as usize].iter().all(|d| *d < z)
+        })
+    }
+
     fn visible(&self, p: DVec3) -> bool {
         let q = self.to_px(p);
         let (cx, cy) = (q.x.floor() as isize, q.y.floor() as isize);
