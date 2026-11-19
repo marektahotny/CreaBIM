@@ -6,7 +6,7 @@
 
 use crate::joinerylist::wrap;
 use crate::paper::Anchor;
-use crate::plan::{PlanItem, PlanView};
+use crate::plan::{Pen, PlanItem, PlanView};
 use creabim_core::mep::{SystemDef, SYSTEMS};
 use creabim_core::viewmodes::Trade;
 use creabim_core::words::tr;
@@ -283,6 +283,79 @@ fn sample(items: &mut Vec<PlanItem>, id: ElementId, s: &SystemDef, a: DVec2, len
     }
 }
 
+/// The utility networks drawn in the model, each kind, state and note
+/// once, in the order of their kinds and states.
+pub fn networks(model: &Model) -> Vec<creabim_core::utility::UtilityLine> {
+    use creabim_core::utility::{NetKind, NetState};
+    let mut out: Vec<creabim_core::utility::UtilityLine> = vec![];
+    for e in model.iter() {
+        if let ElementKind::Sketch(sk) = &e.kind {
+            if let Some(n) = &sk.net {
+                if !out.contains(n) {
+                    out.push(n.clone());
+                }
+            }
+        }
+    }
+    let rank = |k: NetKind| NetKind::ALL.iter().position(|x| *x == k).unwrap_or(99);
+    let st = |k: NetState| NetState::ALL.iter().position(|x| *x == k).unwrap_or(99);
+    out.sort_by(|a, b| {
+        (rank(a.kind), st(a.state), &a.note).cmp(&(rank(b.kind), st(b.state), &b.note))
+    });
+    out
+}
+
+/// A sample of a network's line from `a`, `len` long: its pattern (dash,
+/// gap, …; a dash of nothing a dot) in its colour and weight, crossed
+/// when cancelled.
+fn net_sample(
+    items: &mut Vec<PlanItem>,
+    id: ElementId,
+    n: &creabim_core::utility::UtilityLine,
+    a: DVec2,
+    len: f64,
+) {
+    let rgb = n.kind.rgb();
+    let half = n.weight() / 2.0;
+    let mut strip = |x0: f64, x1: f64| {
+        items.push(PlanItem::Shade {
+            id,
+            points: vec![
+                a + DVec2::new(x0, -half),
+                a + DVec2::new(x1, -half),
+                a + DVec2::new(x1, half),
+                a + DVec2::new(x0, half),
+            ],
+            rgb,
+        })
+    };
+    let pattern = n.pattern();
+    if pattern.iter().sum::<f64>() <= 0.0 {
+        strip(0.0, len);
+    } else {
+        let (mut x, mut i) = (0.0, 0);
+        while x < len {
+            let d = pattern[i % pattern.len()];
+            if i % 2 == 0 {
+                strip(x, (x + d.max(2.0 * half)).min(len));
+            }
+            x += d;
+            i += 1;
+        }
+    }
+    if n.crossed() {
+        for k in [0.3, 0.7] {
+            let c = a + DVec2::X * len * k;
+            items.push(PlanItem::Line {
+                id,
+                pen: Pen::Symbol,
+                a: c + DVec2::new(-1.0, -1.2),
+                b: c + DVec2::new(1.0, 1.2),
+            });
+        }
+    }
+}
+
 /// The legend as a drawing in paper millimetres, its top left corner at
 /// the origin.
 pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
@@ -318,6 +391,37 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             sample(&mut items, view, s, DVec2::new(0.0, y - LINE / 2.0), SAMPLE);
             let name = format!("{} - {}", tr(s.name), types.join(", "));
             for l in wrap(&name, WIDTH - INDENT, TEXT) {
+                text(
+                    &mut items,
+                    DVec2::new(INDENT, y - LINE / 2.0),
+                    &l,
+                    TEXT,
+                    None,
+                );
+                y -= LINE;
+            }
+            y -= 1.0;
+        }
+        y -= 3.0;
+    }
+    // the utility networks of the site, with the water and drains
+    let nets = if of(Trade::Plumbing) {
+        networks(model)
+    } else {
+        vec![]
+    };
+    if !nets.is_empty() {
+        text(
+            &mut items,
+            DVec2::new(0.0, y - HEAD / 2.0),
+            &tr("UTILITY NETWORKS"),
+            HEAD,
+            None,
+        );
+        y -= HEAD + 3.0;
+        for n in &nets {
+            net_sample(&mut items, view, n, DVec2::new(0.0, y - LINE / 2.0), SAMPLE);
+            for l in wrap(&n.legend(), WIDTH - INDENT, TEXT) {
                 text(
                     &mut items,
                     DVec2::new(INDENT, y - LINE / 2.0),
@@ -702,5 +806,45 @@ mod tests {
             assert!((hi.x - lo.x) * k <= SYMBOL_BOX.x + 1e-9);
             assert!(symbol_height(r) <= SYMBOL_BOX.y + 1e-9);
         }
+    }
+
+    #[test]
+    fn the_site_networks_have_their_lines_in_the_legend() {
+        use creabim_core::utility::{NetKind, NetState, UtilityLine};
+        use creabim_core::{Element, Sketch, Transaction, Workplane};
+        let mut m = Model::new();
+        let mut tx = Transaction::new("nets");
+        for (kind, state) in [
+            (NetKind::FoulSewer, NetState::Proposed),
+            (NetKind::Water, NetState::Existing),
+            (NetKind::FoulSewer, NetState::Proposed),
+        ] {
+            let mut sk = Sketch::polyline(
+                None,
+                Workplane::ground(0.0),
+                vec![DVec2::ZERO, DVec2::new(5.0, 0.0)],
+                false,
+            );
+            sk.net = Some(UtilityLine {
+                kind,
+                state,
+                note: String::new(),
+            });
+            tx = tx.insert(Element::new("n", ElementKind::Sketch(sk)));
+        }
+        tx.apply(&mut m).unwrap();
+        let nets = networks(&m);
+        assert_eq!(nets.len(), 2);
+        assert_eq!(nets[0].kind, NetKind::Water);
+        let d = drawing(ElementId::default(), "Legend", &m);
+        let texts: Vec<String> = d
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                PlanItem::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t == "UTILITY NETWORKS"), "{texts:?}");
     }
 }
