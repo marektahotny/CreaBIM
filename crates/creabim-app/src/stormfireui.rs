@@ -5,7 +5,7 @@
 
 use super::CreaBimApp;
 use creabim_core::{ElementId, ElementKind, Model, Transaction};
-use creabim_services::{circulation, firewater, gas, heating, sanitary, storm};
+use creabim_services::{circulation, firewater, gas, heating, medgas, sanitary, storm};
 use eframe::egui::{self, Vec2};
 
 /// The calculation shown.
@@ -16,6 +16,7 @@ pub(super) enum NetCalc {
     Heat(Option<heating::HeatResult>, heating::HeatSettings),
     Drain(Option<sanitary::DrainResult>, sanitary::DrainSettings),
     Circ(Option<circulation::CircResult>),
+    Med(Vec<medgas::MedResult>),
 }
 
 impl NetCalc {
@@ -24,6 +25,9 @@ impl NetCalc {
     }
     fn fire(model: &Model) -> Self {
         NetCalc::Fire(firewater::run(model, "PV"))
+    }
+    fn med(model: &Model) -> Self {
+        NetCalc::Med(medgas::run_all(model))
     }
     fn circ(model: &Model) -> Self {
         NetCalc::Circ(circulation::run(
@@ -52,6 +56,10 @@ impl NetCalc {
             NetCalc::Heat(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             NetCalc::Drain(Some(r), _) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
             NetCalc::Circ(Some(r)) => r.pipes.iter().map(|p| (p.id, p.proposed_mm)).collect(),
+            NetCalc::Med(rs) => rs
+                .iter()
+                .flat_map(|r| r.pipes.iter().map(|p| (p.id, p.proposed_mm)))
+                .collect(),
             _ => vec![],
         }
     }
@@ -112,6 +120,7 @@ impl CreaBimApp {
         self.net_calc = Some(match arg {
             "storm" => NetCalc::storm(self.doc.model()),
             "fire" => NetCalc::fire(self.doc.model()),
+            "medgas" => NetCalc::med(self.doc.model()),
             "circulation" => NetCalc::circ(self.doc.model()),
             "drain" => NetCalc::drain(self.doc.model(), sanitary::DrainSettings::default()),
             "heating" => NetCalc::heat(self.doc.model(), heating::HeatSettings::default()),
@@ -142,6 +151,7 @@ impl CreaBimApp {
             NetCalc::Heat(..) => "Heating pipes calculation",
             NetCalc::Drain(..) => "Foul drainage calculation",
             NetCalc::Circ(_) => "Hot water circulation calculation",
+            NetCalc::Med(_) => "Medical gases calculation",
         };
         let mut drain_settings = match calc {
             NetCalc::Drain(_, s) => Some(*s),
@@ -186,6 +196,15 @@ impl CreaBimApp {
                 egui::ScrollArea::vertical().show(ui, |ui| match calc {
                     NetCalc::Storm(None) => {
                         ui.label(t("Draw rainwater pipes (D) from the roof drains to where they leave the building, put a roof drain on each stack's top, then calculate."));
+                    }
+                    NetCalc::Med(rs) => {
+                        if rs.is_empty() {
+                            ui.label(t("Draw the medical gas pipes (O2, AIR, VAC) from the source to the outlets, end each with an outlet or a supply unit, then calculate."));
+                        }
+                        for r in rs {
+                            med_body(ui, model, r, &mut select);
+                            ui.separator();
+                        }
                     }
                     NetCalc::Circ(None) => {
                         ui.label(t("Draw the hot water (TV) from the heater and the circulation (C) from the heater's circulation inlet, ending each loop by a hot water pipe, then calculate."));
@@ -403,6 +422,7 @@ impl CreaBimApp {
         let storm = matches!(self.net_calc, Some(NetCalc::Storm(_)));
         let fire = matches!(self.net_calc, Some(NetCalc::Fire(_)));
         let circ = matches!(self.net_calc, Some(NetCalc::Circ(_)));
+        let med = matches!(self.net_calc, Some(NetCalc::Med(_)));
         if do_presets {
             if let Some(tx) = write_presets(self.doc.model(), &presets) {
                 if let Err(e) = self.doc.commit(tx) {
@@ -424,6 +444,8 @@ impl CreaBimApp {
                 NetCalc::storm(self.doc.model())
             } else if fire {
                 NetCalc::fire(self.doc.model())
+            } else if med {
+                NetCalc::med(self.doc.model())
             } else if circ {
                 NetCalc::circ(self.doc.model())
             } else if let Some(ds) = drain_settings {
@@ -1141,4 +1163,147 @@ fn circ_body(
     ui.add_space(6.0);
     ui.weak(t("Bold: the critical loop. Hot water at 55 °C cooling 5 K; insulated pipes lose 7 W/m in risers and 10 W/m along; the circulation at most 0.5 m/s and 100 Pa/m; each loop's balancing valve (HERZ STRÖMAX 4117 MW) takes at least 5 kPa; the heater and check valve 3 kPa, the pump +10 %."));
     ui.weak("STN EN 806-2 · STN 06 0320");
+}
+
+fn med_body(
+    ui: &mut egui::Ui,
+    model: &Model,
+    r: &medgas::MedResult,
+    select: &mut Option<ElementId>,
+) {
+    let t = crate::i18n::tr;
+    let num = crate::i18n::num;
+    let warn = |ui: &mut egui::Ui, s: String| {
+        ui.colored_label(ui.visuals().warn_fg_color, s);
+    };
+    let row = |ui: &mut egui::Ui, k: &str, v: String| {
+        crate::props::row(ui, k, |ui| ui.label(v));
+    };
+    ui.strong(t(r.gas.name()));
+    row(ui, "Outlets", r.outlets.len().to_string());
+    row(ui, "Design flow", format!("{} l/min", num(r.flow_lmin, 1)));
+    row(
+        ui,
+        "Loss on the critical branch",
+        format!(
+            "{} kPa ({} {} kPa)",
+            num(r.loss_pa / 1000.0, 2),
+            t("limit"),
+            num(r.limit_pa / 1000.0, 0)
+        ),
+    );
+    row(
+        ui,
+        "At the critical outlet",
+        format!(
+            "{} kPa ({} {} kPa, {} {} kPa)",
+            num(r.outlet_kpa, 1),
+            t("source"),
+            num(r.source_kpa, 0),
+            t("least"),
+            num(r.min_kpa, 0)
+        ),
+    );
+    row(ui, "Gas density", format!("{} kg/m³", num(r.rho, 3)));
+    if r.loss_pa > r.limit_pa + 1e-6 {
+        warn(ui, t("The loss is over the allowed: the largest sizes of the critical branch are not enough, choose a larger series."));
+    }
+    if r.enlarged > 0 {
+        ui.label(format!(
+            "{}: {}",
+            t("The critical branch was enlarged, steps"),
+            r.enlarged
+        ));
+    }
+    if r.unreached > 0 {
+        warn(
+            ui,
+            format!("{}: {}", t("Pipes not joined to the network"), r.unreached),
+        );
+    }
+    egui::Grid::new(("med.kinds", r.gas.code()))
+        .striped(true)
+        .num_columns(5)
+        .show(ui, |ui| {
+            for h in [
+                "Kind of room",
+                "Outlets",
+                "Q1 l/min",
+                "Each further l/min",
+                "Q l/min",
+            ] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for k in &r.kinds {
+                ui.label(t(k.kind));
+                ui.label(k.n.to_string());
+                ui.label(num(k.q1, 1));
+                ui.label(num(k.add, 2));
+                ui.label(num(k.q, 1));
+                ui.end_row();
+            }
+        });
+    ui.add_space(6.0);
+    let name_of = |id: ElementId| model.get(id).map_or(String::new(), |e| e.name.clone());
+    egui::Grid::new(("med.outlets", r.gas.code()))
+        .striped(true)
+        .num_columns(4)
+        .show(ui, |ui| {
+            for h in ["Outlet", "Room", "Kind of room", "Loss kPa"] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for o in &r.outlets {
+                let name = if o.critical {
+                    egui::RichText::new(&o.name).strong()
+                } else {
+                    egui::RichText::new(&o.name)
+                };
+                if ui.link(name).clicked() {
+                    *select = Some(o.id);
+                }
+                ui.label(&o.room);
+                ui.label(t(o.kind));
+                ui.label(num(o.loss_pa / 1000.0, 2));
+                ui.end_row();
+            }
+        });
+    ui.add_space(6.0);
+    egui::Grid::new(("med.pipes", r.gas.code()))
+        .striped(true)
+        .num_columns(7)
+        .show(ui, |ui| {
+            for h in [
+                "Pipe", "Size", "Proposed", "l/min", "v m/s", "R Pa/m", "Outlets",
+            ] {
+                ui.strong(t(h));
+            }
+            ui.end_row();
+            for p in &r.pipes {
+                let name = if p.critical {
+                    egui::RichText::new(name_of(p.id)).strong()
+                } else {
+                    egui::RichText::new(name_of(p.id))
+                };
+                if ui.link(name).clicked() {
+                    *select = Some(p.id);
+                }
+                ui.label(&p.size);
+                ui.label(&p.proposed);
+                ui.label(num(p.flow_lmin, 1));
+                let v = num(p.velocity_ms, 2);
+                if p.too_fast {
+                    ui.colored_label(ui.visuals().error_fg_color, v);
+                } else {
+                    ui.label(v);
+                }
+                ui.label(num(p.r_pa_m, 0));
+                ui.label(p.outlets.to_string());
+                ui.end_row();
+            }
+        });
+    ui.add_space(6.0);
+    ui.weak(t("Bold: the critical branch. Each kind of room: Q = Q1 + (n − 1)·Δ (HTM 02-01); copper at most 10 m/s, vacuum 15 m/s; fittings +30 %; O2 and AIR from 420 kPa, at least 370 kPa at the outlets; VAC 60 kPa below the atmosphere, at least 40 kPa."));
+    ui.weak("STN EN ISO 7396-1 · STN EN 13348 · STN EN ISO 9170-1");
 }

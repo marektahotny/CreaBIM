@@ -433,6 +433,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The Pipe tool in oxygen: SANHA copper; AIR, VAC, N2O and CO2 are in the bar's systems",
             ),
             act(
+                "calc:medgas",
+                "Calculate medical gases",
+                "gauge",
+                "Size the O2, AIR and VAC pipelines from their outlets by the kind of room they are in (Q1 + (n − 1)·Δ), at most 20 kPa to the worst outlet (STN EN ISO 7396-1)",
+            ),
+            act(
                 "med:unit",
                 "Supply unit",
                 "heart-pulse",

@@ -30,6 +30,7 @@ pub mod heatloss;
 pub mod herzvalves;
 pub mod hpsizing;
 pub mod hydraulics;
+pub mod medgas;
 pub mod model;
 pub mod network;
 pub mod peak_flow;
