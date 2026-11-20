@@ -7654,5 +7654,6 @@
  "⇅ Look the other way": "⇅ Otočit směr pohledu",
  "⚠ {m} is also the mark of {n} other element{}.": "⚠ {m} je zároveň označení dalších prvků ({n}).",
  "⚠ {} mark{} used more than once:": "⚠ Označení použitá vícekrát ({}):",
- "✔ No two elements share a mark.": "✔ Žádné dva prvky nemají stejné označení."
+ "✔ No two elements share a mark.": "✔ Žádné dva prvky nemají stejné označení.",
+ "The file already exists. Replace it?": "Soubor už existuje. Přepsat ho?"
 }

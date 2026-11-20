@@ -34,7 +34,7 @@ winit = { version = "0.30", default-features = false, features = ["x11"] }
 
 # printing sheets on the system's printers (GDI)
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Storage_Xps", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Storage_Xps", "Win32_UI_Controls_Dialogs", "Win32_UI_WindowsAndMessaging"] }
 
 # the .exe's icon (the logo's creabim.ico), embedded when built on Windows
 [target.'cfg(windows)'.build-dependencies]
