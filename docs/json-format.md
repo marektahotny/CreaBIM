@@ -263,6 +263,14 @@ The pattern on a material's cut faces.
 - `"brick"`
 - `"concrete"`
 - `"timber"`
+- `"masonry-outer"`
+- `"masonry-inner"`
+- `"reinforced"`
+- `"ground"`
+- `"earth-fill"`
+- `"gravel"`
+- `"insulation"`
+- `"membrane"`
 
 ### RatePer
 

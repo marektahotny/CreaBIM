@@ -127,8 +127,73 @@ const EXTRA: &str = r##"{
 }"##;
 
 /// The IFC category and the cut hatch of a material of PilonDesigner's
-/// group `category`.
+/// group `category`, the hatch as the office's ASR legend of materials
+/// draws it (George's sample section ASR_006, 2026-11-20): outer
+/// load-bearing blocks, inner load-bearing blocks and partitions each
+/// their own, reinforced and plain concrete, undisturbed ground, fills of
+/// earth and of gravel, and every thermal insulation in batt loops.
 fn kind_of(m: &BaseMaterial) -> (&'static str, Hatch) {
+    let (category, _) = kind_of_before(m);
+    let c = m.category.as_str();
+    let n = m.name.to_lowercase();
+    // the thickness a block's name gives, mm
+    let mm = n
+        .rsplit(|c: char| !c.is_ascii_digit())
+        .filter_map(|w| w.parse::<u32>().ok())
+        .find(|v| (50..=500).contains(v));
+    let masonry = |m: &BaseMaterial| {
+        if n.contains("priečkov")
+            || n.contains("nenosn")
+            // Porotherm's partition bricks 8 to 14 cm
+            || (m.id.starts_with("porotherm-") && !m.id.starts_with("porotherm-17"))
+        {
+            Hatch::Diagonal
+        } else if n.contains("nosná vnútorná")
+            || m.category.contains("AKU")
+            || m.id == "vapennopiesk"
+            || m.id.starts_with("porotherm-")
+        {
+            Hatch::MasonryInner
+        } else if m.id.starts_with("porobeton-") {
+            // the light ones build outer walls, the dense ones inner
+            if m.id.ends_with("350") || m.id.ends_with("400") {
+                Hatch::MasonryOuter
+            } else {
+                Hatch::MasonryInner
+            }
+        } else {
+            match mm {
+                Some(t) if t >= 300 => Hatch::MasonryOuter,
+                _ => Hatch::MasonryInner,
+            }
+        }
+    };
+    let hatch = if m.id == "tehla-plna" {
+        Hatch::Brick
+    } else if c.starts_with("Tehly") || c.contains("AKU") || c.contains("órobetón") {
+        masonry(m)
+    } else if m.id == "zelezobeton" {
+        Hatch::Reinforced
+    } else if c == "Minerálna vlna" || c == "Polystyrén" {
+        Hatch::Insulation
+    } else if m.id == "zemina" {
+        Hatch::Ground
+    } else if m.id == "nasyp-zemina" {
+        Hatch::EarthFill
+    } else if m.id == "strk" {
+        Hatch::Gravel
+    } else if m.id.starts_with("hydroizolacia") {
+        Hatch::Membrane
+    } else {
+        kind_of_before(m).1
+    };
+    (category, hatch)
+}
+
+/// The category and hatch the base gave its materials before the hatches
+/// of the ASR legend: a project's material still in its old hatch takes
+/// the new one ([`refresh_hatches`]).
+fn kind_of_before(m: &BaseMaterial) -> (&'static str, Hatch) {
     let c = m.category.as_str();
     if m.id == "tehla-plna" {
         ("brick", Hatch::Brick)
@@ -179,6 +244,34 @@ fn kind_of(m: &BaseMaterial) -> (&'static str, Hatch) {
     } else {
         ("", Hatch::Solid)
     }
+}
+
+/// The base's materials of a project still in the hatch the base gave
+/// them before the ASR legend's hatches, in the new hatch; none when
+/// there is nothing to change. A hatch picked by hand stays.
+pub fn refresh_hatches(model: &Model) -> Option<Transaction> {
+    let b = base();
+    let mut tx = Transaction::new("Hatches of the legend of materials");
+    let mut any = false;
+    for e in model.iter() {
+        let ElementKind::Material(mat) = &e.kind else {
+            continue;
+        };
+        let Some(m) = b.materials.iter().find(|m| m.name == e.name) else {
+            continue;
+        };
+        let (old, new) = (kind_of_before(m).1, kind_of(m).1);
+        if mat.hatch == old && old != new && mat.pattern.is_none() {
+            let mut after = e.clone();
+            after.kind = ElementKind::Material(Material {
+                hatch: new,
+                ..mat.clone()
+            });
+            tx = tx.replace(e.clone(), after);
+            any = true;
+        }
+    }
+    any.then_some(tx)
 }
 
 fn colour(hex: &str) -> [f32; 3] {
@@ -499,7 +592,7 @@ mod tests {
         let ElementKind::Material(mat) = &brick.kind else {
             panic!()
         };
-        assert_eq!((mat.lambda, mat.hatch), (Some(0.34), Hatch::Brick));
+        assert_eq!((mat.lambda, mat.hatch), (Some(0.34), Hatch::Diagonal));
         // the PORFIX partition block takes λ10,dry from porfix.sk
         let (_, _, a) = all
             .iter()

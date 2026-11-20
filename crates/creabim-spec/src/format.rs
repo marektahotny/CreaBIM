@@ -162,6 +162,14 @@ spec_enum! {
         Brick = "brick",
         Concrete = "concrete",
         Timber = "timber",
+        MasonryOuter = "masonry-outer",
+        MasonryInner = "masonry-inner",
+        Reinforced = "reinforced",
+        Ground = "ground",
+        EarthFill = "earth-fill",
+        Gravel = "gravel",
+        Insulation = "insulation",
+        Membrane = "membrane",
     }
 }
 

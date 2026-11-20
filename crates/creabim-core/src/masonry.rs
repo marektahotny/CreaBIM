@@ -153,7 +153,7 @@ impl Family {
                 [0.87, 0.85, 0.80],
                 crate::Hatch::Diagonal,
             ),
-            Family::PorfixU => ("Železobetón", [0.60, 0.64, 0.68], crate::Hatch::Concrete),
+            Family::PorfixU => ("Železobetón", [0.60, 0.64, 0.68], crate::Hatch::Reinforced),
             _ => (
                 "Keramobetón – preklad",
                 [0.78, 0.45, 0.32],

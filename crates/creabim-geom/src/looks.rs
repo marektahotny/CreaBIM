@@ -82,6 +82,20 @@ impl Looks {
             if e.id == view {
                 continue;
             }
+            // a material's own pattern, for the patches of a legend of
+            // materials, which draw in the material's id
+            if let ElementKind::Material(m) = &e.kind {
+                if let Some(p) = &m.pattern {
+                    by_id.insert(
+                        e.id,
+                        Look {
+                            material_pattern: Some((m.hatch, p.clone())),
+                            ..Look::default()
+                        },
+                    );
+                }
+                continue;
+            }
             let Some(cat) = Category::of(e, &cutters) else {
                 continue;
             };
@@ -584,6 +598,12 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
             return vec![];
         }
     }
+    if p.batt {
+        out.extend(batt_lines(polygon, unit));
+    }
+    if p.membrane {
+        out.extend(membrane_lines(polygon, unit));
+    }
     if let Some(t) = &p.tile {
         let (w, h) = (t.size[0] * unit, t.size[1] * unit);
         let (lo, hi) = bounds(polygon);
@@ -607,6 +627,144 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
                 }
             }
         }
+    }
+    out
+}
+
+/// Batt insulation loops along a fill's longest side, as wide as the fill
+/// is thick there; a thick fill takes several rows. `unit` is drawing
+/// units per paper mm.
+fn batt_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
+    let n = polygon.len();
+    let Some(dir) = (0..n)
+        .map(|i| polygon[(i + 1) % n] - polygon[i])
+        .max_by(|a, b| a.length().total_cmp(&b.length()))
+        .map(|d| d.normalize_or_zero())
+    else {
+        return vec![];
+    };
+    if dir == DVec2::ZERO {
+        return vec![];
+    }
+    let nrm = dir.perp();
+    let local: Vec<DVec2> = polygon
+        .iter()
+        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
+        .collect();
+    let (lo, hi) = bounds(&local);
+    let longest = (0..n)
+        .map(|i| (polygon[(i + 1) % n] - polygon[i]).length())
+        .fold(0.0, f64::max);
+    let area = (0..n)
+        .map(|i| local[i].perp_dot(local[(i + 1) % n]))
+        .sum::<f64>()
+        .abs()
+        / 2.0;
+    // a band's thickness: across the fill, or its mean width for an L
+    let band = (hi.y - lo.y).min(area / longest.max(1e-12));
+    // a very thick fill (a whole roof's insulation in a patch) in rows of
+    // at most 25 mm on paper
+    let t = band / (band / (25.0 * unit)).ceil().max(1.0);
+    if t < 0.3 * unit || (hi.x - lo.x) / t > 4000.0 {
+        return vec![];
+    }
+    // loops about as far apart as the sample's (EPS 140, MW 160, 220 mm)
+    let p = (t * 0.6).clamp(0.6 * unit, 3.0 * unit);
+    let r = p / 2.0;
+    let at = |x: f64, y: f64| dir * x + nrm * y;
+    let mut out = vec![];
+    let push = |a: DVec2, b: DVec2, out: &mut Vec<(DVec2, DVec2)>| {
+        for (u0, u1) in inside(a, b, polygon) {
+            out.push((a.lerp(b, u0), a.lerp(b, u1)));
+        }
+    };
+    let mut y0 = lo.y;
+    while y0 < hi.y - t * 0.5 {
+        let top = y0 + t;
+        let r = r.min(t / 2.0);
+        let mut k = ((lo.x - p) / p).floor() as i64;
+        while (k as f64) * p < hi.x + p {
+            let x = k as f64 * p;
+            // a half circle at the top round x, one at the bottom half a
+            // pitch on, and the two straights between them, crossing
+            let arc = |c: DVec2, from: f64| -> Vec<DVec2> {
+                (0..=8)
+                    .map(|i| {
+                        let a = from + std::f64::consts::PI * i as f64 / 8.0;
+                        c + DVec2::new(a.cos(), a.sin()) * r
+                    })
+                    .collect()
+            };
+            let ct = DVec2::new(x, top - r);
+            let cb = DVec2::new(x + p / 2.0, y0 + r);
+            for arcs in [arc(ct, 0.0), arc(cb, std::f64::consts::PI)] {
+                for w in arcs.windows(2) {
+                    push(at(w[0].x, w[0].y), at(w[1].x, w[1].y), &mut out);
+                }
+            }
+            push(at(x + r, top - r), at(x + p / 2.0 - r, y0 + r), &mut out);
+            push(
+                at(x + p / 2.0 + r, y0 + r),
+                at(x + p - r, top - r),
+                &mut out,
+            );
+            k += 1;
+        }
+        y0 = top;
+    }
+    out
+}
+
+/// A waterproofing strip along a fill's middle, as the ASR legend draws an
+/// asphalt strip: a thin line, and on it dashes 4 mm long and 0.8 mm
+/// thick on paper (close lines, so screen and paper show them alike).
+/// `unit` is drawing units per paper mm.
+fn membrane_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
+    let n = polygon.len();
+    let Some(dir) = (0..n)
+        .map(|i| polygon[(i + 1) % n] - polygon[i])
+        .max_by(|a, b| a.length().total_cmp(&b.length()))
+        .map(|d| d.normalize_or_zero())
+        .filter(|d| *d != DVec2::ZERO)
+    else {
+        return vec![];
+    };
+    let nrm = dir.perp();
+    let local: Vec<DVec2> = polygon
+        .iter()
+        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
+        .collect();
+    let (lo, hi) = bounds(&local);
+    let (dash, half) = (4.0 * unit, 0.4 * unit);
+    if (hi.x - lo.x) / dash > 4000.0 {
+        return vec![];
+    }
+    let mid = (lo.y + hi.y) / 2.0;
+    let at = |x: f64, y: f64| dir * x + nrm * y;
+    let mut out = vec![];
+    // the strip's line along its middle, cut to the fill; the dashes
+    // stand over it wider than a thin layer is on paper
+    let (a, b) = (at(lo.x, mid), at(hi.x, mid));
+    let runs: Vec<(f64, f64)> = inside(a, b, polygon)
+        .into_iter()
+        .map(|(u0, u1)| (lo.x + (hi.x - lo.x) * u0, lo.x + (hi.x - lo.x) * u1))
+        .collect();
+    for (x0, x1) in &runs {
+        out.push((at(*x0, mid), at(*x1, mid)));
+    }
+    let mut x = (lo.x / (2.0 * dash)).floor() * 2.0 * dash;
+    while x < hi.x {
+        for (x0, x1) in &runs {
+            let (d0, d1) = (x.max(*x0), (x + dash).min(*x1));
+            if d1 <= d0 {
+                continue;
+            }
+            for k in 0..16 {
+                let y = mid - half + 2.0 * half * k as f64 / 15.0;
+                out.push((at(d0, y), at(d1, y)));
+            }
+        }
+        x += 2.0 * dash;
     }
     out
 }
@@ -850,6 +1008,8 @@ mod tests {
                 size: [0.5, 0.5],
                 strokes: vec![vec![[0.0, 0.25], [0.5, 0.25]]],
             }),
+            batt: false,
+            membrane: false,
         };
         let lines = pattern_lines(&p, &square(1.0), 10.0);
         assert_eq!(lines.len(), 4);

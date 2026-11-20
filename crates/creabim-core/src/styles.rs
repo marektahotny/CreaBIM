@@ -300,6 +300,14 @@ pub struct HatchPattern {
     pub lines: Vec<HatchLine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tile: Option<Tile>,
+    /// Draw batt insulation loops along the fill's longest side, as wide
+    /// as the fill is thick (a layer of insulation), on top of the lines.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub batt: bool,
+    /// Draw a waterproofing strip along the fill's middle: a thin line
+    /// with heavy dashes on it, whatever the fill's thickness.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub membrane: bool,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -325,7 +333,8 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
     let (fill, lines) = match h {
         Hatch::Empty => (None, vec![]),
         Hatch::Solid => (grey(0.6), vec![]),
-        Hatch::Diagonal => (grey(0.88), vec![line(45.0, s, 0.0)]),
+        // partitions in the ASR legend: plain 45° lines 1.6 mm apart
+        Hatch::Diagonal => (grey(0.88), vec![line(45.0, 1.6, 0.0)]),
         Hatch::Cross => (
             grey(0.88),
             vec![line(45.0, s * 1.4, 0.0), line(-45.0, s * 1.4, 0.0)],
@@ -334,14 +343,20 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
             grey(0.88),
             vec![line(45.0, s * 2.0, 0.0), line(45.0, s * 2.0, s * 0.5)],
         ),
+        // plain concrete as the ASR legend draws it: broken 45° lines
+        // with a few dots
         Hatch::Concrete => (
             grey(0.88),
             vec![
-                line(45.0, s * 4.0, 0.0),
                 HatchLine {
-                    dashes: vec![0.0, s * 1.3],
-                    shift: s * 0.65,
-                    ..line(0.0, s * 1.3, 0.0)
+                    dashes: vec![3.6, 1.1, 0.9, 1.1],
+                    shift: 2.3,
+                    ..line(45.0, 1.65, 0.0)
+                },
+                HatchLine {
+                    dashes: vec![0.0, 3.9],
+                    shift: 1.5,
+                    ..line(0.0, 2.6, 0.9)
                 },
             ],
         ),
@@ -352,14 +367,168 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
                 ..line(0.0, s * 1.2, s * 0.3)
             }],
         ),
+        // the patterns of the office's ASR legend of materials (George's
+        // sample section ASR_006), sizes measured off it in paper mm
+        Hatch::MasonryOuter => (grey(0.88), vec![line(45.0, 1.5, 0.0)]),
+        Hatch::MasonryInner => (
+            grey(0.88),
+            vec![
+                line(45.0, 2.85, 0.0),
+                line(45.0, 2.85, 0.45),
+                line(-45.0, 2.85, 0.0),
+                line(-45.0, 2.85, 0.45),
+            ],
+        ),
+        Hatch::Reinforced => (
+            grey(0.88),
+            vec![
+                HatchLine {
+                    dashes: vec![5.0, 0.7, 1.4, 0.7],
+                    shift: 2.9,
+                    ..line(45.0, 1.1, 0.0)
+                },
+                HatchLine {
+                    dashes: vec![0.0, 3.1],
+                    shift: 1.3,
+                    ..line(0.0, 1.9, 0.6)
+                },
+            ],
+        ),
+        Hatch::Ground => (
+            grey(0.88),
+            vec![HatchLine {
+                dashes: vec![2.4, 6.0],
+                shift: 3.3,
+                ..line(45.0, 2.7, 0.0)
+            }],
+        ),
+        Hatch::EarthFill | Hatch::Gravel | Hatch::Insulation | Hatch::Membrane => {
+            (grey(0.88), vec![])
+        }
+    };
+    let tile = match h {
+        Hatch::MasonryOuter => Some(rings_tile(
+            [4.8, 5.1],
+            &[([0.0, 0.0], 0.14), ([2.95, 1.7], 0.14), ([1.45, 3.4], 0.14)],
+        )),
+        Hatch::EarthFill => Some(herringbone_tile(3.4, 4)),
+        Hatch::Gravel => Some(rings_tile([4.0, 4.0], GRAVEL)),
+        _ => None,
     };
     HatchPattern {
         name: h.label().to_string(),
         units: PatternUnits::Paper,
         fill,
         lines,
-        tile: None,
+        tile,
+        batt: h == Hatch::Insulation,
+        membrane: h == Hatch::Membrane,
     }
+}
+
+/// The pebbles of a gravel fill in a 4 mm tile: centre and radius, mm,
+/// packed loosely as on the office's legend.
+const GRAVEL: &[([f64; 2], f64)] = &[
+    ([0.45, 0.5], 0.42),
+    ([1.45, 0.35], 0.3),
+    ([2.35, 0.55], 0.45),
+    ([3.4, 0.4], 0.33),
+    ([0.3, 1.45], 0.28),
+    ([1.1, 1.3], 0.38),
+    ([2.0, 1.45], 0.32),
+    ([2.95, 1.35], 0.4),
+    ([3.75, 1.4], 0.22),
+    ([0.6, 2.35], 0.45),
+    ([1.65, 2.3], 0.42),
+    ([2.6, 2.3], 0.3),
+    ([3.45, 2.45], 0.42),
+    ([0.25, 3.25], 0.24),
+    ([1.0, 3.35], 0.4),
+    ([1.95, 3.3], 0.3),
+    ([2.85, 3.35], 0.43),
+    ([3.75, 3.3], 0.24),
+];
+
+/// A tile of small circles, as polylines.
+fn rings_tile(size: [f64; 2], rings: &[([f64; 2], f64)]) -> Tile {
+    let strokes = rings
+        .iter()
+        .map(|(c, r)| {
+            let n = if *r < 0.2 { 8 } else { 14 };
+            (0..=n)
+                .map(|i| {
+                    let a = std::f64::consts::TAU * i as f64 / n as f64;
+                    [c[0] + r * a.cos(), c[1] + r * a.sin()]
+                })
+                .collect()
+        })
+        .collect();
+    Tile { size, strokes }
+}
+
+/// A herringbone of compacted earth: squares of side `a` turned 45°,
+/// each with `n` lines, the lines of neighbours across each other.
+fn herringbone_tile(a: f64, n: usize) -> Tile {
+    let w = a * std::f64::consts::SQRT_2;
+    let (u, v) = (
+        [
+            std::f64::consts::FRAC_1_SQRT_2,
+            std::f64::consts::FRAC_1_SQRT_2,
+        ],
+        [
+            -std::f64::consts::FRAC_1_SQRT_2,
+            std::f64::consts::FRAC_1_SQRT_2,
+        ],
+    );
+    let at = |p: f64, q: f64| [p * u[0] + q * v[0], p * u[1] + q * v[1]];
+    let mut strokes = vec![];
+    for i in -3i32..4 {
+        for j in -3i32..4 {
+            let (p0, q0) = (i as f64 * a, j as f64 * a);
+            let along_u = (i + j).rem_euclid(2) == 0;
+            for k in 1..=n {
+                let t = k as f64 * a / (n as f64 + 1.0);
+                let (a0, b0) = if along_u {
+                    (at(p0, q0 + t), at(p0 + a, q0 + t))
+                } else {
+                    (at(p0 + t, q0), at(p0 + t, q0 + a))
+                };
+                if let Some(seg) = clip_box(a0, b0, [w, w]) {
+                    strokes.push(seg.to_vec());
+                }
+            }
+        }
+    }
+    Tile {
+        size: [w, w],
+        strokes,
+    }
+}
+
+/// The part of segment a → b inside the box [0, size].
+fn clip_box(a: [f64; 2], b: [f64; 2], size: [f64; 2]) -> Option<[[f64; 2]; 2]> {
+    let (mut t0, mut t1) = (0.0f64, 1.0f64);
+    for k in 0..2 {
+        let d = b[k] - a[k];
+        for (p, q) in [(-d, a[k]), (d, size[k] - a[k])] {
+            if p.abs() < 1e-12 {
+                if q < 0.0 {
+                    return None;
+                }
+            } else {
+                let r = q / p;
+                if p < 0.0 {
+                    t0 = t0.max(r);
+                } else {
+                    t1 = t1.min(r);
+                }
+            }
+        }
+    }
+    (t1 - t0 > 1e-9).then(|| {
+        let l = |t: f64| [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        [l(t0), l(t1)]
+    })
 }
 
 /// The pens for drawings up to a scale: `up_to` 75 covers 1:75 and larger.
