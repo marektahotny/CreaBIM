@@ -21,6 +21,15 @@ const WIDTH: f64 = 150.0;
 /// The sample's and the words' columns as drawn by default, mm.
 pub const COLUMNS: (f64, f64) = (INDENT, WIDTH - INDENT);
 
+/// The airborne sound reduction a text gives: `Rw 56 dB`, dB.
+fn rw_in(text: &str) -> Option<u32> {
+    let t = text.to_lowercase();
+    let at = t.find("rw")? + 2;
+    let rest = t[at..].trim_start_matches([' ', '=', ':']);
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
 /// One row of the legend.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Row {
@@ -37,17 +46,21 @@ pub struct Row {
 /// the thickest first, then what columns and beams are of.
 pub fn rows(model: &Model) -> Vec<Row> {
     let mut out: Vec<Row> = vec![];
-    let mut add = |id: ElementId, t: Option<f64>| {
-        let Some(e) = model.get(id) else { return };
+    // what each row adds after its thickness: λ for an outer wall's
+    // materials, Rw for a wall between dwellings
+    let mut lambda: Vec<(ElementId, Option<i64>)> = vec![];
+    let mut rw: Vec<((ElementId, Option<i64>), u32)> = vec![];
+    let mut add = |id: ElementId, t: Option<f64>| -> Option<(ElementId, Option<i64>)> {
+        let e = model.get(id)?;
         let ElementKind::Material(m) = &e.kind else {
-            return;
+            return None;
         };
         if m.hatch == Hatch::Empty && m.pattern.is_none() {
-            return;
+            return None;
         }
         let mm = t.map(|t| (t * 1000.0).round() as i64);
         if out.iter().any(|r| r.material == id && r.thickness_mm == mm) {
-            return;
+            return Some((id, mm));
         }
         let what = if m.description.trim().is_empty() {
             e.name.clone()
@@ -64,13 +77,22 @@ pub fn rows(model: &Model) -> Vec<Row> {
             text,
             thickness_mm: mm,
         });
+        Some((id, mm))
     };
+    // the outer walls of each storey
+    let mut outer: Vec<ElementId> = vec![];
+    for (level, ..) in creabim_core::levels::sorted(model) {
+        outer.extend(crate::sitefoot::outer_walls(model, level));
+    }
     for e in model.iter() {
         let ElementKind::Wall(w) = &e.kind else {
             continue;
         };
+        let is_outer = outer.contains(&e.id);
+        let mut made = vec![];
+        let mut sound = None;
         match creabim_core::assembly_of(model, e) {
-            Some((_, a)) => {
+            Some((ae, a)) => {
                 // what the wall is built of, not its plasters and foils
                 let built = |l: &&creabim_core::Layer| {
                     a.layers.len() == 1
@@ -82,13 +104,35 @@ pub fn rows(model: &Model) -> Vec<Row> {
                 };
                 for l in a.layers.iter().filter(built) {
                     if let Some(m) = l.material {
-                        add(m, Some(l.thickness));
+                        made.extend(add(m, Some(l.thickness)));
                     }
+                }
+                // a wall between dwellings, as its build-up is named
+                let words = format!("{} {}", ae.name, a.description).to_lowercase();
+                if words.contains("medzibyt") || words.contains("between dwellings") {
+                    sound = rw_in(&words).or_else(|| {
+                        made.iter().find_map(|(m, _)| {
+                            model.get(*m).and_then(|x| match &x.kind {
+                                ElementKind::Material(mat) => rw_in(&mat.description),
+                                _ => None,
+                            })
+                        })
+                    });
                 }
             }
             None => {
                 if let Some(m) = w.material {
-                    add(m, Some(w.thickness));
+                    made.extend(add(m, Some(w.thickness)));
+                }
+            }
+        }
+        for k in made {
+            if is_outer && !lambda.contains(&k) {
+                lambda.push(k);
+            }
+            if let Some(r) = sound {
+                if !rw.iter().any(|x| x.0 == k) {
+                    rw.push((k, r));
                 }
             }
         }
@@ -97,6 +141,22 @@ pub fn rows(model: &Model) -> Vec<Row> {
         if creabim_core::members::is_member(&e.kind) {
             if let Some(m) = creabim_core::members::material(&e.kind) {
                 add(m, None);
+            }
+        }
+    }
+    for r in &mut out {
+        let k = (r.material, r.thickness_mm);
+        if lambda.contains(&k) {
+            if let Some(l) = model.get(r.material).and_then(|e| match &e.kind {
+                ElementKind::Material(m) => m.lambda.filter(|l| *l > 0.0),
+                _ => None,
+            }) {
+                r.text += &format!(", λ = {} W/(m·K)", format!("{l:.3}").replace('.', ","));
+            }
+        }
+        if let Some((_, v)) = rw.iter().find(|x| x.0 == k) {
+            if rw_in(&r.text).is_none() {
+                r.text += &format!(", Rw = {v} dB");
             }
         }
     }
@@ -255,5 +315,64 @@ mod tests {
             .items
             .iter()
             .any(|i| matches!(i, PlanItem::Text { text, .. } if text == "LEGEND OF MATERIALS")));
+    }
+}
+
+#[cfg(test)]
+mod thermal_sound {
+    use super::*;
+    use creabim_core::Transaction;
+
+    /// An outer wall's materials say their λ; a wall between dwellings
+    /// its Rw, as its build-up's name gives it.
+    #[test]
+    fn outer_walls_give_lambda_and_walls_between_dwellings_rw() {
+        let mut m = creabim_core::starter::starter_house();
+        // the starter's materials know no λ: give them one
+        let mut tx = Transaction::new("λ");
+        for e in m.iter() {
+            if let ElementKind::Material(x) = &e.kind {
+                let mut now = e.clone();
+                let mut x = x.clone();
+                x.lambda = Some(0.45);
+                now.kind = ElementKind::Material(x);
+                tx = tx.replace(e.clone(), now);
+            }
+        }
+        tx.apply(&mut m).unwrap();
+        let before = rows(&m);
+        assert!(
+            before.iter().any(|r| r.text.contains("λ = 0,450 W/(m·K)")),
+            "{:?}",
+            before.iter().map(|r| &r.text).collect::<Vec<_>>()
+        );
+        // an inner wall's build-up named as a wall between flats
+        let outer: Vec<ElementId> = creabim_core::levels::sorted(&m)
+            .into_iter()
+            .flat_map(|(l, ..)| crate::sitefoot::outer_walls(&m, l))
+            .collect();
+        let inner = m
+            .iter()
+            .find(|e| {
+                matches!(e.kind, ElementKind::Wall(_))
+                    && !outer.contains(&e.id)
+                    && creabim_core::assembly_of(&m, e).is_some()
+            })
+            .expect("an inner wall with a build-up");
+        let (a, _) = creabim_core::assembly_of(&m, inner).unwrap();
+        let mut now = a.clone();
+        now.name = "Medzibytová – PORFIX AKU 248 (Rw 56 dB)".into();
+        Transaction::new("t")
+            .replace(a.clone(), now)
+            .apply(&mut m)
+            .unwrap();
+        let after = rows(&m);
+        assert!(
+            after.iter().any(|r| r.text.contains("Rw = 56 dB")),
+            "{:?}",
+            after.iter().map(|r| &r.text).collect::<Vec<_>>()
+        );
+        assert_eq!(rw_in("Medzibytová (Rw 56 dB)"), Some(56));
+        assert_eq!(rw_in("Rw = 52 dB"), Some(52));
     }
 }
