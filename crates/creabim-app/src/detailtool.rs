@@ -5,7 +5,7 @@
 //! the view. Also the Properties fields of a detail component and of a
 //! junction rule.
 
-use crate::planview::{PlanState, Xf};
+use crate::planview::{PlanState, Tool, Xf};
 use crate::selection::Selection;
 use creabim_core::{
     DetailItem, DetailKind, Document, Element, ElementId, ElementKind, Hatch, JoinRule, JoinWinner,
@@ -31,6 +31,8 @@ pub struct DetailSettings {
     pub view: Option<ElementId>,
     /// Scale of the next detail view, 1:`callout_scale`.
     pub callout_scale: f64,
+    /// The pen and line type the Line and Polyline tools draw with.
+    pub line: creabim_core::LineLook,
 }
 
 impl Default for DetailSettings {
@@ -43,6 +45,7 @@ impl Default for DetailSettings {
             swap: false,
             view: None,
             callout_scale: 10.0,
+            line: Default::default(),
         }
     }
 }
@@ -80,6 +83,38 @@ impl DetailSettings {
         self.kind = kind;
         self.width = kind.default_width();
     }
+}
+
+/// Does `tool` draw a detail path: the Detail tool, and the Line and
+/// Polyline tools, which draw plain lines the same way?
+pub fn drafts(tool: Tool) -> bool {
+    matches!(tool, Tool::Detail | Tool::Line | Tool::Polyline)
+}
+
+/// What the tool in hand draws: a drafted line for Line and Polyline,
+/// else the kind picked for the Detail tool.
+pub fn kind_now(state: &PlanState) -> DetailKind {
+    match state.tool {
+        Tool::Line | Tool::Polyline => DetailKind::Line(state.details.line),
+        _ => state.details.kind,
+    }
+}
+
+/// What the element the tool in hand makes is called.
+fn label_now(state: &PlanState) -> &'static str {
+    match state.tool {
+        Tool::Polyline => "Polyline",
+        _ => kind_now(state).label(),
+    }
+}
+
+/// The last point of the path being drawn in `view`: where the next
+/// segment starts, for Shift, snaps lined up with it and a typed length.
+pub fn last_point(state: &PlanState, view: ElementId) -> Option<DVec2> {
+    if !drafts(state.tool) || state.details.view != Some(view) {
+        return None;
+    }
+    state.details.path.last().copied()
 }
 
 fn view_of(model: &Model, id: ElementId) -> Option<&View> {
@@ -151,6 +186,9 @@ pub fn detail_click(
     state: &mut PlanState,
     selection: &mut Selection,
 ) -> Result<(), ModelError> {
+    let kind = kind_now(state);
+    let tool = state.tool;
+    let label = label_now(state);
     let d = &mut state.details;
     if d.view != Some(view) {
         d.path.clear();
@@ -159,7 +197,13 @@ pub fn detail_click(
     }
     let near = |a: DVec2| a.distance(p) < 0.004_f64.max(view_scale(doc.model(), view) * 0.0015);
     let done = match (d.path.first(), d.path.last()) {
-        (Some(first), _) if d.kind.is_area() && d.path.len() >= 3 && near(*first) => true,
+        (Some(first), _) if kind.is_area() && d.path.len() >= 3 && near(*first) => true,
+        // a polyline closed on its first point
+        (Some(first), _) if tool == Tool::Polyline && d.path.len() >= 3 && near(*first) => {
+            let first = *first;
+            d.path.push(first);
+            true
+        }
         (_, Some(last)) if near(*last) => true,
         _ => {
             if d.path.is_empty() {
@@ -169,25 +213,28 @@ pub fn detail_click(
             d.off.truncate(d.path.len() - 1);
             d.off.resize(d.path.len() - 1, DVec2::ZERO);
             d.off.push(raw - p);
-            matches!(d.kind, DetailKind::BreakLine) && d.path.len() == 2
+            (matches!(kind, DetailKind::BreakLine) || tool == Tool::Line) && d.path.len() == 2
         }
     };
     if done {
         return finish(doc, state, selection);
     }
-    state.status = Some(path_hint(d.kind, d.path.len()));
+    state.status = Some(match tool {
+        Tool::Line => "Line: click its end (or type its length and press Enter). Shift keeps it square.".into(),
+        Tool::Polyline if d.path.len() == 1 => "Polyline: click the next point (or type a length and press Enter). Shift keeps it square.".into(),
+        _ => path_hint(label, kind, d.path.len()),
+    });
     Ok(())
 }
 
 /// What the status bar says while a path is drawn: how many points it has
 /// and how to finish it.
-pub fn path_hint(kind: DetailKind, n: usize) -> String {
+fn path_hint(label: &str, kind: DetailKind, n: usize) -> String {
     let points = if n == 1 {
         "1 point".to_string()
     } else {
         format!("{n} points")
     };
-    let label = kind.label();
     match (kind.is_area(), n) {
         (true, n) if n >= 3 => format!(
             "{label}: {points}. Enter to finish (or click the first corner); double-click or right-click also finish."
@@ -206,7 +253,7 @@ pub fn path_hint(kind: DetailKind, n: usize) -> String {
 /// Has the path enough points to make its component?
 pub fn finishable(state: &PlanState) -> bool {
     let d = &state.details;
-    let need = if d.kind.is_area() { 3 } else { 2 };
+    let need = if kind_now(state).is_area() { 3 } else { 2 };
     d.view.is_some() && d.path.len() >= need
 }
 
@@ -217,7 +264,7 @@ pub fn keep(doc: &mut Document, state: &mut PlanState, selection: &mut Selection
         return false;
     }
     let n = state.details.path.len();
-    let label = state.details.kind.label();
+    let label = label_now(state);
     match finish(doc, state, selection) {
         Ok(()) => {
             state.status = Some(format!(
@@ -242,15 +289,18 @@ pub fn finish(
     state: &mut PlanState,
     selection: &mut Selection,
 ) -> Result<(), ModelError> {
+    let kind = kind_now(state);
+    let label = label_now(state);
+    let line = matches!(kind, DetailKind::Line(_));
     let d = &mut state.details;
     let (Some(view), path) = (d.view, std::mem::take(&mut d.path)) else {
         return Ok(());
     };
-    let need = if d.kind.is_area() { 3 } else { 2 };
+    let need = if kind.is_area() { 3 } else { 2 };
     if path.len() < need {
         state.status = Some(format!(
             "A {} needs {need} points or more.",
-            d.kind.label().to_lowercase()
+            label.to_lowercase()
         ));
         return Ok(());
     }
@@ -258,15 +308,22 @@ pub fn finish(
     let flip = d.clicked_right();
     let path = std::mem::take(&mut d.path);
     d.off.clear();
-    let mut item = DetailItem::new(view, d.kind, path);
-    item.width = d.width;
-    item.flip = flip && matches!(d.kind, DetailKind::Membrane);
-    let label = d.kind.label();
+    let mut item = DetailItem::new(view, kind, path);
+    item.width = if line { 0.0 } else { d.width };
+    item.flip = flip && matches!(kind, DetailKind::Membrane);
     let e = Element::new(label, ElementKind::Detail(item));
-    selection.only(e.id);
-    state.status = Some(format!(
-        "{label} drawn. Its width and kind are in Properties; it shows in this view only."
-    ));
+    // a line drawn after another is not selected, so the next is not
+    // drawn over a selection's grips
+    if line {
+        selection.clear();
+    } else {
+        selection.only(e.id);
+    }
+    state.status = Some(if line {
+        format!("{label} drawn, in this view only. Its pen and line type are in Properties; click on for the next.")
+    } else {
+        format!("{label} drawn. Its width and kind are in Properties; it shows in this view only.")
+    });
     doc.commit(Transaction::new(format!("Draw {}", label.to_lowercase())).insert(e))
 }
 
@@ -290,7 +347,7 @@ pub fn preview(
                 painter.rect_stroke(r, 0.0, accent, egui::StrokeKind::Middle);
             }
         }
-        crate::planview::Tool::Detail => {
+        t if drafts(t) => {
             let d = &state.details;
             if d.view != Some(view) || d.path.is_empty() {
                 return;
@@ -301,8 +358,13 @@ pub fn preview(
             let mut next = d.clone();
             next.path = pts.clone();
             next.off.resize(pts.len(), DVec2::ZERO);
-            let mut item = DetailItem::new(view, d.kind, pts);
-            item.width = d.width;
+            let kind = kind_now(state);
+            let mut item = DetailItem::new(view, kind, pts);
+            item.width = if matches!(kind, DetailKind::Line(_)) {
+                0.0
+            } else {
+                d.width
+            };
             item.flip = next.clicked_right();
             let look = creabim_core::styles::active_pack(model).membranes;
             for it in creabim_geom::detail::detail_items(ElementId::new(), &item, mm, look) {
@@ -337,7 +399,10 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
         });
     if !matches!(
         d.kind,
-        DetailKind::Membrane | DetailKind::Region { .. } | DetailKind::BreakLine
+        DetailKind::Membrane
+            | DetailKind::Region { .. }
+            | DetailKind::BreakLine
+            | DetailKind::Line(_)
     ) {
         crate::props::flow(ui, |ui| {
             ui.label(crate::i18n::t("Width"));
@@ -372,6 +437,11 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
                 }
             });
         }
+        DetailKind::Line(look) => {
+            if line_look_ui(ui, look) {
+                label = "Line look";
+            }
+        }
         DetailKind::Region { hatch } => {
             egui::ComboBox::from_id_salt("detail.hatch")
                 .icon(crate::props::combo_icon)
@@ -398,6 +468,46 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
         .weak(),
     );
     label
+}
+
+/// A drafted line's pen and line type as two pickers; true when one
+/// changed.
+pub fn line_look_ui(ui: &mut egui::Ui, look: &mut creabim_core::LineLook) -> bool {
+    let mut changed = false;
+    crate::props::flow(ui, |ui| {
+        ui.label(crate::i18n::t("Line type"));
+        egui::ComboBox::from_id_salt("detail.linetype")
+            .icon(crate::props::combo_icon)
+            .selected_text(crate::i18n::tw(look.kind.label()))
+            .show_ui(ui, |ui| {
+                for k in creabim_core::LineType::ALL {
+                    changed |= ui
+                        .selectable_value(&mut look.kind, k, crate::i18n::tw(k.label()))
+                        .changed();
+                }
+            });
+    });
+    crate::props::flow(ui, |ui| {
+        ui.label(crate::i18n::t("Pen"));
+        egui::ComboBox::from_id_salt("detail.linepen")
+            .icon(crate::props::combo_icon)
+            .selected_text(pen_text(look.pen))
+            .show_ui(ui, |ui| {
+                for p in creabim_core::LinePen::ALL {
+                    changed |= ui.selectable_value(&mut look.pen, p, pen_text(p)).changed();
+                }
+            });
+    });
+    changed
+}
+
+/// A pen as offered: its name and width, "Thin (0,15 mm)".
+pub fn pen_text(p: creabim_core::LinePen) -> String {
+    format!(
+        "{} ({} mm)",
+        crate::i18n::t(p.label()),
+        format!("{:.2}", p.mm()).replace('.', ",")
+    )
 }
 
 fn name_of(model: &Model, id: ElementId) -> String {
@@ -560,5 +670,64 @@ mod tests {
         )
         .unwrap();
         assert!(!keep(&mut doc, &mut state, &mut sel));
+    }
+
+    fn lines(doc: &Document) -> Vec<DetailItem> {
+        doc.model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Detail(d) if matches!(d.kind, DetailKind::Line(_)) => Some(d.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_line_tool_makes_a_line_of_every_two_clicks_in_its_look() {
+        let (mut doc, section) = doc_with_section();
+        let mut state = PlanState::default();
+        state.tool = Tool::Line;
+        state.details.line = creabim_core::LineLook {
+            pen: creabim_core::LinePen::VeryThick,
+            kind: creabim_core::LineType::DashDot,
+        };
+        let mut sel = Selection::default();
+        let p = DVec2::new;
+        for q in [p(0.0, 0.0), p(2.0, 0.0), p(0.0, 1.0), p(2.0, 1.0)] {
+            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+        }
+        let l = lines(&doc);
+        assert_eq!(l.len(), 2);
+        assert!(l.iter().all(|d| d.points.len() == 2 && d.width == 0.0));
+        assert_eq!(l[0].kind, DetailKind::Line(state.details.line));
+        // the Detail tool still draws what it had picked
+        state.tool = Tool::Detail;
+        assert_eq!(kind_now(&state), DetailKind::Batt);
+    }
+
+    #[test]
+    fn the_polyline_tool_goes_on_until_finished_and_closes_on_its_first_point() {
+        let (mut doc, section) = doc_with_section();
+        let mut state = PlanState::default();
+        state.tool = Tool::Polyline;
+        let mut sel = Selection::default();
+        let p = DVec2::new;
+        for q in [p(0.0, 0.0), p(2.0, 0.0), p(2.0, 1.0)] {
+            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+        }
+        assert!(lines(&doc).is_empty());
+        assert_eq!(last_point(&state, section), Some(p(2.0, 1.0)));
+        // Enter, a double-click or Esc finish it
+        assert!(keep(&mut doc, &mut state, &mut sel));
+        assert_eq!(lines(&doc)[0].points.len(), 3);
+        // a second one, closed on its first point
+        for q in [p(0.0, 2.0), p(2.0, 2.0), p(2.0, 3.0), p(0.0, 2.0)] {
+            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+        }
+        let l = lines(&doc);
+        assert_eq!(l.len(), 2);
+        let closed = l.iter().find(|d| d.points.len() == 4).unwrap();
+        assert_eq!(closed.points.first(), closed.points.last());
+        assert!(state.details.path.is_empty());
     }
 }

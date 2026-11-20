@@ -344,6 +344,7 @@ pub fn measure(units: &Units, kind: DimensionKind, center: DVec2, a: DVec2, b: D
         DimensionKind::ArcLength => l(center.distance(a) * sweep(center, a, b)),
         // its height comes from the model, not its points
         DimensionKind::Spot => String::new(),
+        DimensionKind::Slope => creabim_core::annotation::slope_text(b - a, None),
     }
 }
 
@@ -394,6 +395,15 @@ pub enum Shape {
         /// A coordinate mark (S-JTSK): a cross on the point, the lines of
         /// its text stacked over the shoulder.
         cross: bool,
+    },
+    /// A slope: an arrow `offset` to the left of the line from `a` to
+    /// `b`, along it and pointing down it (in a plan, where lines are
+    /// level, from `a` towards `b`), with the slope written over it.
+    Slope {
+        a: DVec2,
+        b: DVec2,
+        offset: f64,
+        plan: bool,
     },
     /// Lines of text centred on `at`, reading along `angle` (radians):
     /// a pipe's label, turned along its pipe.
@@ -630,6 +640,29 @@ impl Annotation {
                         })
                         .collect(),
                 );
+            }
+            Shape::Slope { a, b, offset, plan } => {
+                let len = a.distance(b);
+                if len < 1e-9 {
+                    return out;
+                }
+                let u = (b - a) / len;
+                // down the slope; a level line points the way it was drawn
+                let down = if !plan && b.y > a.y + 1e-9 { -u } else { u };
+                let n = u.perp();
+                let side = if offset < 0.0 { -1.0 } else { 1.0 };
+                let base = (a + b) / 2.0 + n * offset;
+                let half = ((look.width(&self.text) + 4.0).max(10.0) * mm / 2.0).min(len * 0.6);
+                let (tail, tip) = (base - down * half, base + down * half);
+                out.lines.push(vec![tail, tip]);
+                out.arrows.push(arrow(tip, down, mm));
+                let (angle, _) = upright(u.to_angle());
+                out.texts.push(MarkText {
+                    at: base + n * side * (TEXT_GAP + look.size / 2.0) * mm,
+                    text: self.text.clone(),
+                    angle,
+                    anchor: Anchor::Middle,
+                });
             }
             Shape::Along { at, angle } => {
                 let (angle, up) = upright(angle);

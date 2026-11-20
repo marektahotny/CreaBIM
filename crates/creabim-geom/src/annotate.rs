@@ -1514,7 +1514,7 @@ fn measured(
         return None;
     }
     let shape = match d.kind {
-        DimensionKind::Linear | DimensionKind::Spot => return None,
+        DimensionKind::Linear | DimensionKind::Spot | DimensionKind::Slope => return None,
         DimensionKind::Angular => {
             if c.distance(b) < 1e-6 {
                 return None;
@@ -1559,6 +1559,46 @@ fn measured(
             mm: view.scale / 1000.0,
         }),
     })
+}
+
+/// A slope dimension as a drawing item, if its line can be drawn in the
+/// view.
+fn slope(
+    model: &Model,
+    view: &View,
+    id: ElementId,
+    d: &creabim_core::Dimension,
+) -> Option<PlanItem> {
+    let a = resolve(model, view, &d.a)?;
+    let b = resolve(model, view, &d.b)?;
+    if a.distance(b) < 1e-6 {
+        return None;
+    }
+    let plan = matches!(view.kind, ViewKind::Plan { .. });
+    Some(PlanItem::Annotation {
+        id,
+        item: Box::new(Annotation {
+            shape: Shape::Slope {
+                a,
+                b,
+                offset: d.offset,
+                plan,
+            },
+            text: slope_reading(d.pattern.as_deref(), b - a, plan),
+            look: look_of(model, d.style, d.color),
+            mm: view.scale / 1000.0,
+        }),
+    })
+}
+
+/// What a slope over the run `d` reads with `pattern`: in a plan, where
+/// lines are level, only typed text (a format there reads `? %`).
+pub fn slope_reading(pattern: Option<&str>, d: DVec2, plan: bool) -> String {
+    let p = pattern.map(str::trim).unwrap_or("%");
+    if plan && (p.is_empty() || creabim_core::annotation::SLOPE_FORMATS.contains(&p)) {
+        return "? %".into();
+    }
+    creabim_core::annotation::slope_text(d, Some(p))
 }
 
 /// The height a spot level reads at `at`: in a section or elevation the
@@ -1704,6 +1744,9 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
             }
             ElementKind::Dimension(d) if d.view == view_id && d.kind == DimensionKind::Spot => {
                 out.extend(spot(model, view, e.id, d));
+            }
+            ElementKind::Dimension(d) if d.view == view_id && d.kind == DimensionKind::Slope => {
+                out.extend(slope(model, view, e.id, d));
             }
             ElementKind::Dimension(d) if d.view == view_id && !d.kind.is_linear() => {
                 out.extend(measured(model, view, e.id, d));

@@ -1324,7 +1324,9 @@ fn pivot_of(model: &Model, e: &Element) -> Option<DVec2> {
         ElementKind::FreeMesh(m) => Some(m.origin.truncate()),
         ElementKind::Reference(r) => Some(r.at),
         ElementKind::View(v) => match v.kind {
-            ViewKind::Section { start, end, .. } if v.callout.is_none() => Some((start + end) / 2.0),
+            ViewKind::Section { start, end, .. } if v.callout.is_none() => {
+                Some((start + end) / 2.0)
+            }
             _ => None,
         },
         _ => None,
@@ -2639,7 +2641,11 @@ fn draw_flip_icon(painter: &Painter, c: Pos2, across: Vec2, state: GripState, lo
         let tip = c + d * a;
         let head = 2.8;
         painter.add(egui::Shape::convex_polygon(
-            vec![tip + d * 1.0, tip - d * head + side * head, tip - d * head - side * head],
+            vec![
+                tip + d * 1.0,
+                tip - d * head + side * head,
+                tip - d * head - side * head,
+            ],
             ink,
             Stroke::NONE,
         ));
@@ -5269,24 +5275,45 @@ mod tests {
             .unwrap();
         let m = doc.model().clone();
         let hs = handles(&m, sid, None);
-        let flip = hs.iter().find(|h| h.kind == HandleKind::ViewFlip).expect("a flip icon");
+        let flip = hs
+            .iter()
+            .find(|h| h.kind == HandleKind::ViewFlip)
+            .expect("a flip icon");
         // behind the line (it looks to +y), by its middle
         assert!(flip.at.y < 0.0 && (flip.at.x - 4.0).abs() < 1e-9);
-        let turn = hs.iter().find(|h| h.kind == HandleKind::Rotate).expect("a turn grip");
+        let turn = hs
+            .iter()
+            .find(|h| h.kind == HandleKind::Rotate)
+            .expect("a turn grip");
         assert!(turn.at.y > 0.0);
         // a quarter turn about the middle (4, 0)
         let out = drag_to(&m, sid, HandleKind::Rotate, |h| {
             let r = h.at.truncate() - DVec2::new(4.0, 0.0);
             (DVec2::new(4.0, 0.0) + r.perp()).extend(0.0)
         });
-        let ElementKind::View(v) = &out.kind else { panic!() };
-        let ViewKind::Section { start, end, .. } = v.kind else { panic!() };
+        let ElementKind::View(v) = &out.kind else {
+            panic!()
+        };
+        let ViewKind::Section { start, end, .. } = v.kind else {
+            panic!()
+        };
         assert!(start.distance(DVec2::new(4.0, -4.0)) < 1e-6, "{start:?}");
         assert!(end.distance(DVec2::new(4.0, 4.0)) < 1e-6, "{end:?}");
         // a click on the icon: it looks the other way, one undo step
         let mut grips = GripSel::default();
-        tap_grip(&mut doc, sid, HandleKind::ViewFlip, false, false, 0.0, Pos2::ZERO, &mut grips);
-        let ElementKind::View(v) = &doc.model().get(sid).unwrap().kind else { panic!() };
+        tap_grip(
+            &mut doc,
+            sid,
+            HandleKind::ViewFlip,
+            false,
+            false,
+            0.0,
+            Pos2::ZERO,
+            &mut grips,
+        );
+        let ElementKind::View(v) = &doc.model().get(sid).unwrap().kind else {
+            panic!()
+        };
         assert!(matches!(v.kind, ViewKind::Section { start, .. } if start == DVec2::new(8.0, 0.0)));
         assert_eq!(doc.undo_label(), Some("Flip section"));
     }

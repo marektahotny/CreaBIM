@@ -914,6 +914,22 @@ impl Dimension {
         }
     }
 
+    /// The slope of the line from `a` to `b`, written `offset` to its left
+    /// as `pattern` says (see [`crate::annotation::slope_text`]).
+    pub fn slope(
+        view: ElementId,
+        a: HostPoint,
+        b: HostPoint,
+        offset: f64,
+        pattern: Option<String>,
+    ) -> Self {
+        Self {
+            kind: DimensionKind::Slope,
+            pattern,
+            ..Self::linear(view, a, b, offset)
+        }
+    }
+
     /// A dimension of `kind` about `center`, in the default style.
     pub fn about(
         kind: DimensionKind,

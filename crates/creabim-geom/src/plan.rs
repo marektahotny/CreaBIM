@@ -30,6 +30,9 @@ pub enum Pen {
     /// Another level traced under a plan: halftone, never printed, not
     /// picked, but snapped to.
     Underlay,
+    /// A drafted line in a pen and line type of its own (the Line and
+    /// Polyline tools).
+    Drafted(creabim_core::LineLook),
 }
 
 pub use creabim_core::Hatch;
