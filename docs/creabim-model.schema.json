@@ -217,7 +217,8 @@
         "ground",
         "earth-fill",
         "gravel",
-        "insulation"
+        "insulation",
+        "membrane"
       ]
     },
     "RatePer": {

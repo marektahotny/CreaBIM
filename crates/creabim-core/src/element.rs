@@ -629,10 +629,13 @@ pub enum Hatch {
     Gravel,
     /// Thermal insulation: the batt loops, as wide as the layer.
     Insulation,
+    /// Waterproofing against ground moisture and radon: a heavy dashed
+    /// line along the layer, as the ASR legend draws an asphalt strip.
+    Membrane,
 }
 
 impl Hatch {
-    pub const ALL: [Hatch; 14] = [
+    pub const ALL: [Hatch; 15] = [
         Hatch::Empty,
         Hatch::Solid,
         Hatch::Diagonal,
@@ -647,6 +650,7 @@ impl Hatch {
         Hatch::EarthFill,
         Hatch::Gravel,
         Hatch::Insulation,
+        Hatch::Membrane,
     ];
 
     pub fn label(self) -> &'static str {
@@ -665,6 +669,7 @@ impl Hatch {
             Hatch::EarthFill => "Earth fill",
             Hatch::Gravel => "Gravel fill",
             Hatch::Insulation => "Insulation",
+            Hatch::Membrane => "Waterproofing",
         }
     }
 }

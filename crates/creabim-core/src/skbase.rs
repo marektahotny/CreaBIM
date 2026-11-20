@@ -182,6 +182,8 @@ fn kind_of(m: &BaseMaterial) -> (&'static str, Hatch) {
         Hatch::EarthFill
     } else if m.id == "strk" {
         Hatch::Gravel
+    } else if m.id.starts_with("hydroizolacia") {
+        Hatch::Membrane
     } else {
         kind_of_before(m).1
     };

@@ -30,6 +30,19 @@ fn rw_in(text: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
+/// A layer the legend lists: structure and insulation, and a membrane
+/// drawn as waterproofing (not a vapour foil).
+fn built_of(model: &Model, l: &creabim_core::Layer) -> bool {
+    use creabim_core::LayerFunction as F;
+    match l.function {
+        F::Structure | F::Insulation => true,
+        F::Membrane => l.material.and_then(|m| model.get(m)).is_some_and(
+            |e| matches!(&e.kind, ElementKind::Material(m) if m.hatch == Hatch::Membrane),
+        ),
+        _ => false,
+    }
+}
+
 /// One row of the legend.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Row {
@@ -93,15 +106,9 @@ pub fn rows(model: &Model) -> Vec<Row> {
         let mut sound = None;
         match creabim_core::assembly_of(model, e) {
             Some((ae, a)) => {
-                // what the wall is built of, not its plasters and foils
-                let built = |l: &&creabim_core::Layer| {
-                    a.layers.len() == 1
-                        || matches!(
-                            l.function,
-                            creabim_core::LayerFunction::Structure
-                                | creabim_core::LayerFunction::Insulation
-                        )
-                };
+                // what the wall is built of, not its plasters and foils;
+                // a waterproofing strip as the ASR legend lists it
+                let built = |l: &&creabim_core::Layer| a.layers.len() == 1 || built_of(model, l);
                 for l in a.layers.iter().filter(built) {
                     if let Some(m) = l.material {
                         made.extend(add(m, Some(l.thickness)));
@@ -133,6 +140,20 @@ pub fn rows(model: &Model) -> Vec<Row> {
             if let Some(r) = sound {
                 if !rw.iter().any(|x| x.0 == k) {
                     rw.push((k, r));
+                }
+            }
+        }
+    }
+    // what floors and roofs are built of: their structure, insulation and
+    // waterproofing, as the legend of the ASR sections lists them
+    for e in model.iter() {
+        if !matches!(e.kind, ElementKind::Slab(_) | ElementKind::Roof(_)) {
+            continue;
+        }
+        if let Some((_, a)) = creabim_core::assembly_of(model, e) {
+            for l in a.layers.iter().filter(|l| built_of(model, l)) {
+                if let Some(m) = l.material {
+                    add(m, Some(l.thickness));
                 }
             }
         }

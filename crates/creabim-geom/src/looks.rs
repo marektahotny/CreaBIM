@@ -601,6 +601,9 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
     if p.batt {
         out.extend(batt_lines(polygon, unit));
     }
+    if p.membrane {
+        out.extend(membrane_lines(polygon, unit));
+    }
     if let Some(t) = &p.tile {
         let (w, h) = (t.size[0] * unit, t.size[1] * unit);
         let (lo, hi) = bounds(polygon);
@@ -708,6 +711,60 @@ fn batt_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
             k += 1;
         }
         y0 = top;
+    }
+    out
+}
+
+/// A waterproofing strip along a fill's middle, as the ASR legend draws an
+/// asphalt strip: a thin line, and on it dashes 4 mm long and 0.8 mm
+/// thick on paper (close lines, so screen and paper show them alike).
+/// `unit` is drawing units per paper mm.
+fn membrane_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
+    let n = polygon.len();
+    let Some(dir) = (0..n)
+        .map(|i| polygon[(i + 1) % n] - polygon[i])
+        .max_by(|a, b| a.length().total_cmp(&b.length()))
+        .map(|d| d.normalize_or_zero())
+        .filter(|d| *d != DVec2::ZERO)
+    else {
+        return vec![];
+    };
+    let nrm = dir.perp();
+    let local: Vec<DVec2> = polygon
+        .iter()
+        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
+        .collect();
+    let (lo, hi) = bounds(&local);
+    let (dash, half) = (4.0 * unit, 0.4 * unit);
+    if (hi.x - lo.x) / dash > 4000.0 {
+        return vec![];
+    }
+    let mid = (lo.y + hi.y) / 2.0;
+    let at = |x: f64, y: f64| dir * x + nrm * y;
+    let mut out = vec![];
+    // the strip's line along its middle, cut to the fill; the dashes
+    // stand over it wider than a thin layer is on paper
+    let (a, b) = (at(lo.x, mid), at(hi.x, mid));
+    let runs: Vec<(f64, f64)> = inside(a, b, polygon)
+        .into_iter()
+        .map(|(u0, u1)| (lo.x + (hi.x - lo.x) * u0, lo.x + (hi.x - lo.x) * u1))
+        .collect();
+    for (x0, x1) in &runs {
+        out.push((at(*x0, mid), at(*x1, mid)));
+    }
+    let mut x = (lo.x / (2.0 * dash)).floor() * 2.0 * dash;
+    while x < hi.x {
+        for (x0, x1) in &runs {
+            let (d0, d1) = (x.max(*x0), (x + dash).min(*x1));
+            if d1 <= d0 {
+                continue;
+            }
+            for k in 0..16 {
+                let y = mid - half + 2.0 * half * k as f64 / 15.0;
+                out.push((at(d0, y), at(d1, y)));
+            }
+        }
+        x += 2.0 * dash;
     }
     out
 }
@@ -952,6 +1009,7 @@ mod tests {
                 strokes: vec![vec![[0.0, 0.25], [0.5, 0.25]]],
             }),
             batt: false,
+            membrane: false,
         };
         let lines = pattern_lines(&p, &square(1.0), 10.0);
         assert_eq!(lines.len(), 4);

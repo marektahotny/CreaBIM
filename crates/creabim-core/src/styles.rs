@@ -304,6 +304,10 @@ pub struct HatchPattern {
     /// as the fill is thick (a layer of insulation), on top of the lines.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub batt: bool,
+    /// Draw a waterproofing strip along the fill's middle: a thin line
+    /// with heavy dashes on it, whatever the fill's thickness.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub membrane: bool,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -398,7 +402,9 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
                 ..line(45.0, 2.7, 0.0)
             }],
         ),
-        Hatch::EarthFill | Hatch::Gravel | Hatch::Insulation => (grey(0.88), vec![]),
+        Hatch::EarthFill | Hatch::Gravel | Hatch::Insulation | Hatch::Membrane => {
+            (grey(0.88), vec![])
+        }
     };
     let tile = match h {
         Hatch::MasonryOuter => Some(rings_tile(
@@ -416,6 +422,7 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
         lines,
         tile,
         batt: h == Hatch::Insulation,
+        membrane: h == Hatch::Membrane,
     }
 }
 
