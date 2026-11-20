@@ -837,12 +837,32 @@ const SILL_DRIP: f64 = 0.04;
 
 /// The outer sills of the model's windows.
 pub fn outer_sills(model: &crate::Model) -> Vec<OuterSill> {
+    sills(model, true)
+}
+
+/// The inner sills (window boards) of the model's windows: as deep as from
+/// the frame's inner face to the wall's inner face with 20 mm over it, to
+/// whole centimetres up, and 20 mm into each jamb longer than the window
+/// is wide; alike ones share a number.
+pub fn inner_sills(model: &crate::Model) -> Vec<OuterSill> {
+    sills(model, false)
+}
+
+/// How far an inner sill reaches over the wall's face, and into each jamb, m.
+const INNER_SILL_OVER: f64 = 0.02;
+
+fn sills(model: &crate::Model, outer: bool) -> Vec<OuterSill> {
     let mut out: Vec<OuterSill> = vec![];
     for e in model.iter() {
         let crate::ElementKind::Opening(o) = &e.kind else {
             continue;
         };
-        if o.kind != OpeningKind::Window || o.sill < 0.1 || o.no_outer_sill {
+        let off = if outer {
+            o.no_outer_sill
+        } else {
+            o.no_inner_sill
+        };
+        if o.kind != OpeningKind::Window || o.sill < 0.1 || off {
             continue;
         }
         let Some(crate::ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
@@ -859,11 +879,20 @@ pub fn outer_sills(model: &crate::Model) -> Vec<OuterSill> {
         let (a0, a1) = o.frame_span(w, asm, frame.depth);
         // the exterior is the wall's right unless it is flipped
         let t = w.thickness / 2.0;
-        let reveal = if w.flip { t - a1 } else { a0 + t };
+        let (outside, inside) = if w.flip {
+            (t - a1, a0 + t)
+        } else {
+            (a0 + t, t - a1)
+        };
         let mm = |x: f64| (x * 1000.0).round() / 1000.0;
+        let (reveal, over, ears) = if outer {
+            (outside, SILL_DRIP, 0.0)
+        } else {
+            (inside, INNER_SILL_OVER, 2.0 * INNER_SILL_OVER)
+        };
         // to whole centimetres, up
-        let depth = ((reveal.max(0.0) + SILL_DRIP) * 100.0 - 1e-6).ceil() / 100.0;
-        let length = mm(o.width);
+        let depth = ((reveal.max(0.0) + over) * 100.0 - 1e-6).ceil() / 100.0;
+        let length = mm(o.width + ears);
         match out
             .iter_mut()
             .find(|s| (s.length - length).abs() < 5e-4 && (s.depth - depth).abs() < 5e-4)

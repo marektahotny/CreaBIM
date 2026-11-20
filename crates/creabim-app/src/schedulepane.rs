@@ -89,7 +89,9 @@ pub fn show(
         let m = crate::takeoffpane::show(ui, rect, doc, view, by_type, selection);
         return m.or(message);
     }
-    let table = schedule::schedule_by(doc.model(), category, by_type);
+    // as the view lays it out (a room schedule's perimeter switched off)
+    let table = schedule::view_table(doc.model(), view)
+        .unwrap_or_else(|| schedule::schedule_by(doc.model(), category, by_type));
     let listed = table.listed;
     let materials: Vec<(ElementId, String)> = doc
         .model()

@@ -163,8 +163,64 @@ pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
         }
         _ => schedule_by(model, category, by_type),
     };
+    room_perimeter(model, v.perimeter, &mut s);
     apply_widths(model, view, &mut s);
     Some(s)
+}
+
+/// Does a table of `category` show rooms' perimeters, by the view's
+/// switch `on` (none: the room schedule does, the room legend doesn't)?
+pub fn shows_perimeter(category: ScheduleCategory, on: Option<bool>) -> bool {
+    on.unwrap_or(category == ScheduleCategory::Rooms)
+}
+
+/// The room schedule's or legend's perimeter column as the view's switch
+/// asks: left out of the schedule, or added to the legend after the area.
+fn room_perimeter(model: &Model, on: Option<bool>, s: &mut Schedule) {
+    let show = shows_perimeter(s.category, on);
+    let at = s.columns.iter().position(|c| c.title == "Perimeter");
+    match (s.category, at, show) {
+        (ScheduleCategory::Rooms, Some(i), false) => {
+            s.columns.remove(i);
+            for r in &mut s.rows {
+                if i < r.cells.len() {
+                    r.cells.remove(i);
+                }
+            }
+            if i < s.totals.len() {
+                s.totals.remove(i);
+            }
+        }
+        (ScheduleCategory::RoomLegend, None, true) => {
+            let i = s
+                .columns
+                .iter()
+                .position(|c| c.title == "Area")
+                .map_or(s.columns.len(), |a| a + 1);
+            s.columns.insert(
+                i,
+                Column {
+                    title: "Perimeter",
+                    field: None,
+                    width: 18.0,
+                    numeric: true,
+                },
+            );
+            let mm = |v: f64| {
+                creabim_core::write_number(model, creabim_core::NumberKind::Schedules, None, v)
+            };
+            for r in &mut s.rows {
+                let p = creabim_core::room::shape(model, r.id)
+                    .map(|sh| mm(sh.perimeter()))
+                    .unwrap_or_default();
+                let i = i.min(r.cells.len());
+                r.cells.insert(i, if r.group { String::new() } else { p });
+            }
+            let i = i.min(s.totals.len());
+            s.totals.insert(i, String::new());
+        }
+        _ => {}
+    }
 }
 
 /// The headings a legend's two columns are known by on the sheet: its
@@ -1364,5 +1420,35 @@ mod tests {
         let width: f64 = s.columns.iter().map(|c| c.width).sum();
         assert!((hi.x - lo.x - width).abs() < 1e-9);
         assert!((lo.y + TITLE_ROW + (s.rows.len() + 2) as f64 * ROW).abs() < 1e-9);
+    }
+
+    /// A room schedule's perimeter can be switched off, a room legend's on.
+    #[test]
+    fn room_perimeters_switch_on_and_off() {
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let mk = |c: ScheduleCategory, on: Option<bool>| {
+            let mut v = creabim_core::View::schedule(c);
+            v.perimeter = on;
+            Element::new("t", ElementKind::View(v))
+        };
+        let views = [
+            mk(ScheduleCategory::Rooms, None),
+            mk(ScheduleCategory::Rooms, Some(false)),
+            mk(ScheduleCategory::RoomLegend, None),
+            mk(ScheduleCategory::RoomLegend, Some(true)),
+        ];
+        let ids: Vec<ElementId> = views.iter().map(|e| e.id).collect();
+        let mut tx = creabim_core::Transaction::new("views");
+        for v in views {
+            tx = tx.insert(v);
+        }
+        doc.commit(tx).unwrap();
+        let has = |i: usize| {
+            let s = view_table(doc.model(), ids[i]).unwrap();
+            let n = s.columns.len();
+            assert!(s.rows.iter().all(|r| r.cells.len() == n));
+            s.columns.iter().any(|c| c.title == "Perimeter")
+        };
+        assert!(has(0) && !has(1) && !has(2) && has(3));
     }
 }

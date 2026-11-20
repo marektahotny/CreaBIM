@@ -45,6 +45,8 @@ A material without a rate is measured but left out of the priced total.
 - **Sorting:** a click on a column's heading sorts the rows in each group by it, a second click turns the order round, a third leaves them as they come.
 - **Find** keeps only the rows whose material, element, construction or element type holds the text.
 - **Showing where it is:** click a row (Ctrl adds more, a group's row takes the whole group) and press **Show in 3D** or **Show in plan**. The elements are selected and framed; a 3D view opens beside the table, or the level's floor plan under it, if none is open. A double-click on a row shows it in 3D.
+- **Doors and windows** have a *Perimeter* column (twice width plus height, added up).
+- **Window sills**, outer (sheet metal) and inner (boards), are listed under *Outer sills* and *Inner sills*: a row for each size, named with its width (across the wall) and length, with the number of pieces and their length and area. An outer sill reaches 40 mm over the wall's outer face; an inner one 20 mm over the inner face and 20 mm into each jamb. A window's *Outer sill* / *Inner sill* switches leave it out.
 - A material's *Rate* and *Per* are edited right in its row.
 - The grouping, the element rows and the sorting are saved with the take-off and print the same on a sheet. See [Sheets](sheets).
 
