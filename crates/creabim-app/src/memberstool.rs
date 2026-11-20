@@ -965,7 +965,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 } else {
                     weak(
                         ui,
-                        crate::i18n::tr("RC column in a wall: it sits in the wall's load-bearing core, as deep as the core, and moves only along the wall."),
+                        crate::i18n::tr("RC column in a wall: it sits in the wall's load-bearing core, as deep as the core, moves only along the wall and takes its base, top and height from the wall."),
                     );
                     if crate::props::check(
                         ui,

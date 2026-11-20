@@ -186,6 +186,43 @@ pub fn set_network(kind: Option<creabim_core::utility::NetKind>) {
     if let Ok(mut n) = NETWORK.lock() {
         *n = kind;
     }
+    if kind.is_some() {
+        set_mark(None);
+    }
+}
+
+static NET_STATE: std::sync::Mutex<creabim_core::utility::NetState> =
+    std::sync::Mutex::new(creabim_core::utility::NetState::Proposed);
+
+/// Whether the networks drawn now are proposed, existing or to go.
+pub fn net_state() -> creabim_core::utility::NetState {
+    NET_STATE.lock().map(|n| *n).unwrap_or_default()
+}
+
+pub fn set_net_state(s: creabim_core::utility::NetState) {
+    if let Ok(mut n) = NET_STATE.lock() {
+        *n = s;
+    }
+}
+
+static MARK: std::sync::Mutex<Option<creabim_core::utility::SiteMark>> =
+    std::sync::Mutex::new(None);
+
+/// The site plan symbol the sketch tool places now (two clicks: where,
+/// and the way it faces), or none.
+pub fn mark() -> Option<creabim_core::utility::SiteMark> {
+    MARK.lock().map(|n| *n).unwrap_or(None)
+}
+
+pub fn set_mark(m: Option<creabim_core::utility::SiteMark>) {
+    if let Ok(mut n) = MARK.lock() {
+        *n = m;
+    }
+    if m.is_some() {
+        if let Ok(mut n) = NETWORK.lock() {
+            *n = None;
+        }
+    }
 }
 
 /// A sketch being drawn. The plane is in model coordinates (absolute
@@ -447,9 +484,14 @@ impl SketchDraft {
         }
         let mut sketch = self.placed(doc, closed);
         // drawn with the Cadastre tab's utility network button
-        if let Some(kind) = network() {
+        if let Some(m) = mark() {
+            sketch.mark = Some(m);
+            sketch.points.truncate(2);
+            sketch.closed = false;
+        } else if let Some(kind) = network() {
             sketch.net = Some(creabim_core::utility::UtilityLine {
                 kind,
+                state: net_state(),
                 ..Default::default()
             });
         }

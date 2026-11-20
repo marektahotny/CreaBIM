@@ -121,6 +121,8 @@ mod routecheckui;
 mod selectsimilar;
 #[path = "shell.rs"]
 pub(crate) mod shell;
+#[path = "sitesymbolsui.rs"]
+mod sitesymbolsui;
 #[path = "soakawayui.rs"]
 mod soakawayui;
 #[path = "stormfireui.rs"]
@@ -420,6 +422,8 @@ pub struct CreaBimApp {
     valve_box: Option<creabim_core::catalogue::valvebox::ValveBoxConfig>,
     /// The soakaway being sized, while its window is open.
     soakaway: Option<soakawayui::SoakawayDraft>,
+    /// The cadastre's window of site symbols and networks is open.
+    site_symbols_open: bool,
     /// The Masonry window, while open.
     masonry: Option<masonryui::MasonryDraft>,
     /// A click in a plan asked for to put lintels or an RC column.
@@ -658,6 +662,7 @@ impl CreaBimApp {
             med_unit: None,
             valve_box: None,
             soakaway: None,
+            site_symbols_open: false,
             masonry: None,
             masonry_pick: None,
             heat_source: None,
@@ -13453,6 +13458,7 @@ impl eframe::App for CreaBimApp {
         self.med_unit_window(&ctx);
         self.valve_box_window(&ctx);
         self.soakaway_window(&ctx);
+        self.site_symbols_window(&ctx);
         self.masonry_window(&ctx);
         self.heat_loss_window(&ctx);
         self.floor_heat_window(&ctx);

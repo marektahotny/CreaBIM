@@ -337,45 +337,31 @@ fn net_sample(
     a: DVec2,
     len: f64,
 ) {
-    let rgb = n.kind.rgb();
-    let half = n.weight() / 2.0;
-    let mut strip = |x0: f64, x1: f64| {
-        items.push(PlanItem::Shade {
-            id,
-            points: vec![
-                a + DVec2::new(x0, -half),
-                a + DVec2::new(x1, -half),
-                a + DVec2::new(x1, half),
-                a + DVec2::new(x0, half),
-            ],
-            rgb,
+    // as on the plan, at paper size: dashes, its symbol, crossed if to go
+    let strokes = crate::netlines::run(n, a, a + DVec2::X * len, 1.0, true);
+    items.extend(crate::netlines::paper_items(
+        id,
+        strokes,
+        n.kind.rgb(),
+        n.weight(),
+    ));
+}
+
+/// The site plan's own symbols placed in the model (hydrants, manholes,
+/// the entrances…), each once, in the order of the tables.
+pub fn site_marks(model: &Model) -> Vec<creabim_core::utility::SiteMark> {
+    use creabim_core::utility::SiteMark;
+    let used: Vec<SiteMark> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Sketch(sk) => sk.mark,
+            _ => None,
         })
-    };
-    let pattern = n.pattern();
-    if pattern.iter().sum::<f64>() <= 0.0 {
-        strip(0.0, len);
-    } else {
-        let (mut x, mut i) = (0.0, 0);
-        while x < len {
-            let d = pattern[i % pattern.len()];
-            if i % 2 == 0 {
-                strip(x, (x + d.max(2.0 * half)).min(len));
-            }
-            x += d;
-            i += 1;
-        }
-    }
-    if n.crossed() {
-        for k in [0.3, 0.7] {
-            let c = a + DVec2::X * len * k;
-            items.push(PlanItem::Line {
-                id,
-                pen: Pen::Symbol,
-                a: c + DVec2::new(-1.0, -1.2),
-                b: c + DVec2::new(1.0, 1.2),
-            });
-        }
-    }
+        .collect();
+    SiteMark::ALL
+        .into_iter()
+        .filter(|m| used.contains(m))
+        .collect()
 }
 
 /// The legend as a drawing in paper millimetres, its top left corner at
@@ -450,6 +436,36 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         }
         y -= 3.0;
     }
+    // the site plan's own symbols placed: each drawn and named
+    let marks = if site || of(Trade::Plumbing) {
+        site_marks(model)
+    } else {
+        vec![]
+    };
+    if !marks.is_empty() {
+        text(
+            &mut items,
+            DVec2::new(0.0, y - HEAD / 2.0),
+            &tr("SITE SYMBOLS"),
+            HEAD,
+            None,
+        );
+        y -= HEAD + 3.0;
+        for m in &marks {
+            let lines = wrap(&m.legend(), tw, TEXT);
+            let tall = (lines.len() as f64 * LINE).max(4.0);
+            let at = DVec2::new(SYMBOL_BOX.x / 2.0, y - tall / 2.0);
+            let strokes = crate::netlines::mark(*m, at, DVec2::Y, 1.0);
+            items.extend(crate::netlines::paper_items(view, strokes, m.rgb(), 0.25));
+            let mut ty = y - (tall - lines.len() as f64 * LINE) / 2.0;
+            for l in lines {
+                text(&mut items, DVec2::new(ind, ty - LINE / 2.0), &l, TEXT, None);
+                ty -= LINE;
+            }
+            y -= tall + 1.5;
+        }
+        y -= 3.0;
+    }
     // the site plan's objects that have their own mark: a water meter
     // shaft, a pumping shaft
     let marked = if site { site_objects(model) } else { vec![] };
@@ -473,9 +489,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                         code,
                         dashed,
                     } => {
-                        let rgb = creabim_core::utility::NetKind::ALL
-                            .into_iter()
-                            .find(|n| n.code() == code)
+                        let rgb = creabim_core::utility::NetKind::of_code(code)
                             .map_or([0.3, 0.3, 0.3], |n| n.rgb());
                         let mut points: Vec<_> = points.iter().map(|p| at(*p)).collect();
                         points.extend(points.first().copied());
@@ -489,10 +503,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                     creabim_core::objects::SymbolItem::Text { at: p, text: t } => {
                         let rgb = symbol.iter().find_map(|s| match s {
                             creabim_core::objects::SymbolItem::Net { code, .. } => {
-                                creabim_core::utility::NetKind::ALL
-                                    .into_iter()
-                                    .find(|n| n.code() == code)
-                                    .map(|n| n.rgb())
+                                creabim_core::utility::NetKind::of_code(code).map(|n| n.rgb())
                             }
                             _ => None,
                         });

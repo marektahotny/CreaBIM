@@ -36,9 +36,7 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
                 code,
                 dashed,
             } => {
-                let rgb = creabim_core::utility::NetKind::ALL
-                    .into_iter()
-                    .find(|k| k.code() == code)
+                let rgb = creabim_core::utility::NetKind::of_code(&code)
                     .map_or([0.3, 0.3, 0.3], |k| k.rgb());
                 let mut points: Vec<_> = points.into_iter().map(|p| o.to_plan(p)).collect();
                 points.extend(points.first().copied());

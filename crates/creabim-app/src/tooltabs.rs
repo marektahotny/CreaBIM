@@ -171,6 +171,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Draw a utility network in the site plan: water, sewers, gas, power, lighting, telecom, heating, drainage. Colour, line type, DXF layer and code by its kind; proposed heavy, existing thin, cancelled crossed; set in Properties",
             ),
             act(
+                "site:symbols",
+                "Site symbols and networks",
+                "map-pin",
+                "The site plan's networks (6.152–6.732, 8.021) and point symbols (hydrant, valve, manhole, gully, overflow, gas sniffer, outdoor lamps 6.120–6.580, the entrances to the building and the plot) after the map symbol tables. What is placed goes into the site plan's legend",
+            ),
+            act(
                 "site:coords",
                 "S-JTSK coordinates",
                 "crosshair",

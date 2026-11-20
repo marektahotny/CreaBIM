@@ -2004,7 +2004,8 @@ fn along(c: &Column, model: &Model) -> f64 {
 }
 
 /// The column `c` put back where its wall allows: on the wall's line
-/// (moved only along it, kept inside its length), turned with it, as deep
+/// (moved only along it, kept inside its length), as high as the wall
+/// (its base and top levels and offsets), turned with it, as deep
 /// as the core less the XPS, which takes the core's exterior side. `None`
 /// when it is not in a wall or the wall is gone.
 pub fn fit_wall_column(model: &Model, c: &Column) -> Option<Column> {
@@ -2038,7 +2039,12 @@ pub fn fit_wall_column(model: &Model, c: &Column) -> Option<Column> {
         depth: (core - ins).max(0.05),
     };
     out.section = None;
+    // its heights are the wall's: base level and offset, top level and
+    // offset, or the wall's own height
     out.level = w.level;
+    out.base_offset = w.base_offset;
+    out.top = w.top;
+    out.height = w.top.is_unconnected().then_some(w.height);
     Some(out)
 }
 
@@ -2529,6 +2535,25 @@ mod tests {
         };
         let c = col(&doc);
         assert!((c.position - DVec2::new(3.0, 0.0)).length() < 1e-9);
+        assert_eq!(c.height, Some(2.8));
+        // the wall raised and lifted: the column goes with it
+        doc.edit(wall, "taller", |e| {
+            if let ElementKind::Wall(w) = &mut e.kind {
+                w.height = 3.1;
+                w.base_offset = 0.2;
+            }
+        })
+        .unwrap();
+        let c = col(&doc);
+        assert_eq!((c.height, c.base_offset), (Some(3.1), 0.2));
+        // its own height edited: back to the wall's
+        doc.edit(id, "h", |e| {
+            if let ElementKind::Column(c) = &mut e.kind {
+                c.height = Some(1.0);
+            }
+        })
+        .unwrap();
+        assert_eq!(col(&doc).height, Some(3.1));
         let Profile::Rectangle { width, depth } = c.profile else {
             panic!()
         };

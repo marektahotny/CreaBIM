@@ -211,15 +211,28 @@ impl Looks {
             }
             // a utility network: its kind's colour and line type, heavy
             // where proposed (PilonDesigner's site plans)
+            // (its dashes are drawn as pieces, see crate::netlines)
             if let ElementKind::Sketch(creabim_core::Sketch { net: Some(n), .. }) = &e.kind {
                 if l.colour.is_none() {
                     l.colour = Some(n.kind.rgb());
                 }
                 if l.dashes.is_none() {
-                    l.dashes = Some(Some(n.pattern()));
+                    l.dashes = Some(None);
                 }
                 if l.projection.is_none() {
                     l.projection = Some(n.weight());
+                }
+            }
+            // a site plan's symbol: thin, in its network's colour
+            if let ElementKind::Sketch(creabim_core::Sketch { mark: Some(m), .. }) = &e.kind {
+                if l.colour.is_none() {
+                    l.colour = Some(m.rgb());
+                }
+                if l.dashes.is_none() {
+                    l.dashes = Some(None);
+                }
+                if l.projection.is_none() {
+                    l.projection = Some(0.25);
                 }
             }
             if beyond.contains(&e.id) {

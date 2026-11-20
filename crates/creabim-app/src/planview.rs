@@ -5290,8 +5290,16 @@ fn sketch_tool(
         }
         Some(d) => match d.click(on_plane?) {
             Some(Click::Closed) => finish(doc, state, selection, true),
+            // a site plan symbol: its point, then the way it faces
+            Some(Click::Added) if crate::sketch::mark().is_some() && d.points.len() >= 2 => {
+                finish(doc, state, selection, false)
+            }
             Some(Click::Added) => {
-                state.status = Some(crate::sketch::hint(d.shape, Some(d)));
+                state.status = Some(if crate::sketch::mark().is_some() {
+                    crate::i18n::tr("Now click the way it faces (an entrance: where it leads).")
+                } else {
+                    crate::sketch::hint(d.shape, Some(d))
+                });
                 Some(None)
             }
             None => Some(None),
@@ -6277,12 +6285,11 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
     let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
         return out;
     };
-    if v.look.overrides.is_empty() {
-        return out;
-    }
     let w = creabim_core::styles::view_weights(model, v);
     let cutters = creabim_core::visibility::cutters(model);
-    for e in model.iter() {
+    // (networks and pipes below get their colours whether or not the
+    // view sets overrides of its own)
+    for e in model.iter().filter(|_| !v.look.overrides.is_empty()) {
         let Some(cat) = creabim_core::visibility::Category::of(e, &cutters) else {
             continue;
         };
@@ -6358,22 +6365,28 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
     // utility networks: their kind's colour (a little lighter, so a dark
     // sewer reads on the screen; paper gets the exact one), dashed, heavy
     // where proposed
+    // (dashed as pieces already, see creabim_geom::netlines); the site
+    // plan's symbols the same, thin
     for e in model.iter() {
-        let ElementKind::Sketch(creabim_core::Sketch { net: Some(n), .. }) = &e.kind else {
-            continue;
+        let (rgb, weight) = match &e.kind {
+            ElementKind::Sketch(creabim_core::Sketch { net: Some(n), .. }) => {
+                (n.kind.rgb(), n.weight())
+            }
+            ElementKind::Sketch(creabim_core::Sketch { mark: Some(m), .. }) => (m.rgb(), 0.25),
+            _ => continue,
         };
         let r = out.entry(e.id).or_default();
         if r.colour.is_none() {
-            let [a, b, d] = n.kind.rgb().map(|c| c + (1.0 - c) * 0.3);
+            let [a, b, d] = rgb.map(|c| c + (1.0 - c) * 0.3);
             r.colour = Some(Color32::from_rgb(
                 (a * 255.0) as u8,
                 (b * 255.0) as u8,
                 (d * 255.0) as u8,
             ));
         }
-        r.dashed = true;
+        r.dashed = false;
         if r.proj == 1.0 {
-            r.proj = (n.weight() / w.projection.max(1e-6)) as f32;
+            r.proj = (weight / w.projection.max(1e-6)) as f32;
         }
     }
     out

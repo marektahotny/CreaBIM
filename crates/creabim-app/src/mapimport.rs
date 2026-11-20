@@ -526,6 +526,68 @@ mod shot_project {
             let t = crate::planview::turn_to_line(0.0, shift * 0.0, r.rotate(DVec2::Y));
             crate::planview::set_view_turn(&mut app.doc, *v, t).unwrap();
         }
+        // networks in each state and the point symbols, for the shots
+        use creabim_core::utility::{NetKind, NetState, SiteMark, UtilityLine};
+        use creabim_core::{Sketch, Workplane};
+        let mut tx = Transaction::new("nets");
+        let nets = [
+            (NetKind::Water, NetState::Proposed, -4.0),
+            (NetKind::FoulSewer, NetState::Proposed, -7.0),
+            (NetKind::GasLow, NetState::Existing, -10.0),
+            (NetKind::PowerLow, NetState::ExistingConnection, -13.0),
+            (NetKind::Telecom, NetState::Cancelled, -16.0),
+            (NetKind::DistrictHeating, NetState::Existing, -19.0),
+        ];
+        for (kind, state, y) in nets {
+            let mut sk = Sketch::polyline(
+                Some(ground),
+                Workplane::ground(0.0),
+                vec![DVec2::new(-10.0, y), DVec2::new(22.0, y)],
+                false,
+            );
+            sk.net = Some(UtilityLine {
+                kind,
+                state,
+                note: String::new(),
+            });
+            tx = tx.insert(Element::new("net", ElementKind::Sketch(sk)));
+        }
+        for (i, m) in [
+            SiteMark::HydrantAbove,
+            SiteMark::Valve,
+            SiteMark::SewerManhole,
+            SiteMark::Gully,
+            SiteMark::GasSniffer,
+            SiteMark::LampOnMast,
+            SiteMark::EntryBuilding,
+            SiteMark::EntryPlot,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let at = DVec2::new(-10.0 + i as f64 * 4.0, -22.5);
+            let mut sk = Sketch::polyline(
+                Some(ground),
+                Workplane::ground(0.0),
+                vec![at, at + DVec2::Y],
+                false,
+            );
+            sk.mark = Some(m);
+            tx = tx.insert(Element::new("mark", ElementKind::Sketch(sk)));
+        }
+        app.doc.commit(tx).unwrap();
+        for v in &views {
+            let d = creabim_geom::section::view_drawing(app.doc.model(), *v).unwrap();
+            let n = d
+                .items
+                .iter()
+                .filter(|it| creabim_geom::netlines::is_site_only(app.doc.model(), it.id()))
+                .count();
+            eprintln!("site view: {n} network/symbol items of {}", d.items.len());
+        }
+        let legend =
+            creabim_geom::serviceslegend::drawing(views[0], "Legenda situácie", app.doc.model());
+        std::fs::write(dir.join("legend.svg"), legend.to_svg(1000.0)).unwrap();
         creabim_store::save(dir.join("turned.creabim"), &app.doc).unwrap();
     }
 }

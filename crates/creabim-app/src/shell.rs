@@ -54,7 +54,7 @@ pub(super) struct Shell {
     pub bar: Option<crate::optionbar::Measure>,
     /// The tool the tools row last showed its tab for: a tool picked by
     /// its key, off the tab shown, brings its own tab.
-    tab_tool: Option<Tool>,
+    pub(super) tab_tool: Option<Tool>,
 }
 
 impl Default for Shell {
@@ -1621,6 +1621,9 @@ impl CreaBimApp {
                     Err(e) => self.status = e.to_string(),
                 }
             }
+            "site" if arg == "symbols" => {
+                self.site_symbols_open = true;
+            }
             // the sketch tool drawing utility networks (PilonDesigner's
             // Inžinierska sieť): kind, state and text in Properties
             "site" if arg == "network" => {
@@ -1662,6 +1665,7 @@ impl CreaBimApp {
                     }
                     if !again || *t != Tool::Sketch {
                         crate::sketch::set_network(None);
+                        crate::sketch::set_mark(None);
                     }
                     // a chain begun in 3D ends with its tool (MU40)
                     self.pending_3d = None;
