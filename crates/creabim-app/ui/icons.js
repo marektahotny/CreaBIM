@@ -302,5 +302,7 @@ window.ICONS = {
 "calc-drain": "<path d=\"M2 3l20 4\" /><path d=\"M2 9l20 4\" /><path d=\"M12 22a3 3 0 0 1-3-3c0-1.7 3-5 3-5s3 3.3 3 5a3 3 0 0 1-3 3z\" />",
 "draft-line": "<path d=\"M4 20 20 4\" /> <circle cx=\"4\" cy=\"20\" r=\"1.5\" /> <circle cx=\"20\" cy=\"4\" r=\"1.5\" />",
 "polyline": "<path d=\"M3 19 8 8l6 7 7-11\" /> <circle cx=\"3\" cy=\"19\" r=\"1.3\" /> <circle cx=\"21\" cy=\"4\" r=\"1.3\" />",
-"slope-dim": "<path d=\"M2 20 22 10\" /> <path d=\"M17 4.5 6 10\" /> <path d=\"m6 10 3.6-.1M6 10l2-3\" /> <path d=\"M15 20h7\" stroke-dasharray=\"2 1.5\" />"
+"slope-dim": "<path d=\"M2 20 22 10\" /> <path d=\"M17 4.5 6 10\" /> <path d=\"m6 10 3.6-.1M6 10l2-3\" /> <path d=\"M15 20h7\" stroke-dasharray=\"2 1.5\" />",
+"arc-3pt": "<path d=\"M4 18A9 9 0 0 1 20 18\" /> <circle cx=\"4\" cy=\"18\" r=\"1.5\" /> <circle cx=\"20\" cy=\"18\" r=\"1.5\" /> <circle cx=\"12\" cy=\"9.1\" r=\"1.5\" />",
+"curve-line": "<path d=\"M3 18c3-9 6-9 9-4s6 5 9-6\" /> <circle cx=\"3\" cy=\"18\" r=\"1.3\" /> <circle cx=\"21\" cy=\"8\" r=\"1.3\" />"
 };

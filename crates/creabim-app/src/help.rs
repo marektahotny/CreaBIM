@@ -370,7 +370,7 @@ pub fn tool_page(t: Tool) -> &'static str {
         Tool::Dimension => "dimensions",
         Tool::Angle => "dimensions#angles",
         Tool::Slope => "dimensions#slopes",
-        Tool::Line | Tool::Polyline => "details#lines",
+        Tool::Line | Tool::Polyline | Tool::Arc | Tool::Curve => "details#lines",
         Tool::Radius | Tool::Diameter => "dimensions#radius-and-diameter",
         Tool::ArcLength => "dimensions#arc-length",
         Tool::Tag => "tags",

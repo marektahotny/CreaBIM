@@ -88,7 +88,10 @@ impl DetailSettings {
 /// Does `tool` draw a detail path: the Detail tool, and the Line and
 /// Polyline tools, which draw plain lines the same way?
 pub fn drafts(tool: Tool) -> bool {
-    matches!(tool, Tool::Detail | Tool::Line | Tool::Polyline)
+    matches!(
+        tool,
+        Tool::Detail | Tool::Line | Tool::Polyline | Tool::Arc | Tool::Curve
+    )
 }
 
 /// What the tool in hand draws: a drafted line for Line and Polyline,
@@ -96,6 +99,8 @@ pub fn drafts(tool: Tool) -> bool {
 pub fn kind_now(state: &PlanState) -> DetailKind {
     match state.tool {
         Tool::Line | Tool::Polyline => DetailKind::Line(state.details.line),
+        Tool::Arc => DetailKind::Arc(state.details.line),
+        Tool::Curve => DetailKind::Curve(state.details.line),
         _ => state.details.kind,
     }
 }
@@ -198,8 +203,12 @@ pub fn detail_click(
     let near = |a: DVec2| a.distance(p) < 0.004_f64.max(view_scale(doc.model(), view) * 0.0015);
     let done = match (d.path.first(), d.path.last()) {
         (Some(first), _) if kind.is_area() && d.path.len() >= 3 && near(*first) => true,
-        // a polyline closed on its first point
-        (Some(first), _) if tool == Tool::Polyline && d.path.len() >= 3 && near(*first) => {
+        // a polyline or curve closed on its first point
+        (Some(first), _)
+            if matches!(tool, Tool::Polyline | Tool::Curve)
+                && d.path.len() >= 3
+                && near(*first) =>
+        {
             let first = *first;
             d.path.push(first);
             true
@@ -213,7 +222,8 @@ pub fn detail_click(
             d.off.truncate(d.path.len() - 1);
             d.off.resize(d.path.len() - 1, DVec2::ZERO);
             d.off.push(raw - p);
-            (matches!(kind, DetailKind::BreakLine) || tool == Tool::Line) && d.path.len() == 2
+            ((matches!(kind, DetailKind::BreakLine) || tool == Tool::Line) && d.path.len() == 2)
+                || (tool == Tool::Arc && d.path.len() == 3)
         }
     };
     if done {
@@ -222,6 +232,9 @@ pub fn detail_click(
     state.status = Some(match tool {
         Tool::Line => "Line: click its end (or type its length and press Enter). Shift keeps it square.".into(),
         Tool::Polyline if d.path.len() == 1 => "Polyline: click the next point (or type a length and press Enter). Shift keeps it square.".into(),
+        Tool::Arc if d.path.len() == 1 => "Arc: click its end.".into(),
+        Tool::Arc => "Arc: click a point it passes through.".into(),
+        Tool::Curve if d.path.len() == 1 => "Curve: click the next point it passes through.".into(),
         _ => path_hint(label, kind, d.path.len()),
     });
     Ok(())
@@ -253,7 +266,7 @@ fn path_hint(label: &str, kind: DetailKind, n: usize) -> String {
 /// Has the path enough points to make its component?
 pub fn finishable(state: &PlanState) -> bool {
     let d = &state.details;
-    let need = if kind_now(state).is_area() { 3 } else { 2 };
+    let need = kind_now(state).min_points();
     d.view.is_some() && d.path.len() >= need
 }
 
@@ -291,12 +304,12 @@ pub fn finish(
 ) -> Result<(), ModelError> {
     let kind = kind_now(state);
     let label = label_now(state);
-    let line = matches!(kind, DetailKind::Line(_));
+    let line = kind.is_drafted();
     let d = &mut state.details;
     let (Some(view), path) = (d.view, std::mem::take(&mut d.path)) else {
         return Ok(());
     };
-    let need = if kind.is_area() { 3 } else { 2 };
+    let need = kind.min_points();
     if path.len() < need {
         state.status = Some(format!(
             "A {} needs {need} points or more.",
@@ -360,11 +373,7 @@ pub fn preview(
             next.off.resize(pts.len(), DVec2::ZERO);
             let kind = kind_now(state);
             let mut item = DetailItem::new(view, kind, pts);
-            item.width = if matches!(kind, DetailKind::Line(_)) {
-                0.0
-            } else {
-                d.width
-            };
+            item.width = if kind.is_drafted() { 0.0 } else { d.width };
             item.flip = next.clicked_right();
             let look = creabim_core::styles::active_pack(model).membranes;
             for it in creabim_geom::detail::detail_items(ElementId::new(), &item, mm, look) {
@@ -403,6 +412,8 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
             | DetailKind::Region { .. }
             | DetailKind::BreakLine
             | DetailKind::Line(_)
+            | DetailKind::Arc(_)
+            | DetailKind::Curve(_)
     ) {
         crate::props::flow(ui, |ui| {
             ui.label(crate::i18n::t("Width"));
@@ -437,7 +448,7 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
                 }
             });
         }
-        DetailKind::Line(look) => {
+        DetailKind::Line(look) | DetailKind::Arc(look) | DetailKind::Curve(look) => {
             if line_look_ui(ui, look) {
                 label = "Line look";
             }
@@ -729,5 +740,42 @@ mod tests {
         let closed = l.iter().find(|d| d.points.len() == 4).unwrap();
         assert_eq!(closed.points.first(), closed.points.last());
         assert!(state.details.path.is_empty());
+    }
+
+    #[test]
+    fn the_arc_tool_takes_three_points_and_the_curve_closes_on_its_first() {
+        let (mut doc, section) = doc_with_section();
+        let mut state = PlanState::default();
+        state.tool = Tool::Arc;
+        let mut sel = Selection::default();
+        let p = DVec2::new;
+        for q in [p(0.0, 0.0), p(2.0, 0.0), p(1.0, 1.0)] {
+            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+        }
+        let all: Vec<DetailItem> = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Detail(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(all.len(), 1);
+        assert!(matches!(all[0].kind, DetailKind::Arc(_)));
+        assert_eq!(all[0].points.len(), 3);
+        state.tool = Tool::Curve;
+        for q in [p(0.0, 2.0), p(2.0, 2.0), p(2.0, 3.0), p(0.0, 2.0)] {
+            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+        }
+        let curve = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Detail(d) if matches!(d.kind, DetailKind::Curve(_)) => Some(d.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(curve.points.len(), 4);
+        assert_eq!(curve.points.first(), curve.points.last());
     }
 }
