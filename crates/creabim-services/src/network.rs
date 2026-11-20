@@ -54,6 +54,9 @@ pub enum AccessoryRole {
     GasCabinet,
     GasRegulator,
     GasThermal,
+    /// An air vent or a drain cock on a tee the water runs straight
+    /// through: the tee's ζ straight through.
+    TeeTap,
 }
 
 /// A size a pipe can take: nominal (DN, or the outside diameter of

@@ -324,6 +324,7 @@ fn valve_role(k: &creabim_core::mep::ValveKind) -> (AccessoryRole, Option<f64>) 
         "vyvazovaci" => (R::Balancing, None),
         "vodomer" => (R::WaterMeter, None),
         "krabica" => (R::ValveBox, None),
+        "odvzdusnenie" | "vypustenie" => (R::TeeTap, None),
         _ => (R::Other, k.zeta),
     }
 }

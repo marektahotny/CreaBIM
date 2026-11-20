@@ -115,6 +115,8 @@ mod profilesui;
 mod radiatorsui;
 #[path = "reportui.rs"]
 mod reportui;
+#[path = "routecheckui.rs"]
+mod routecheckui;
 #[path = "selectsimilar.rs"]
 mod selectsimilar;
 #[path = "shell.rs"]
@@ -424,6 +426,7 @@ pub struct CreaBimApp {
     masonry_pick: Option<masonryui::MasonryPick>,
     /// The valve proposal window's options, while it is open.
     auto_valves: Option<creabim_core::autovalves::FillOpts>,
+    route_check: Option<routecheckui::RouteCheck>,
     /// The storm water or fire main calculation shown.
     net_calc: Option<stormfireui::NetCalc>,
     /// The heat loss calculation shown, with what it was given.
@@ -672,6 +675,7 @@ impl CreaBimApp {
             heat_loss: None,
             net_calc: None,
             auto_valves: None,
+            route_check: None,
             sun_open: false,
             gpu: None,
             earthworks: None,
@@ -13282,6 +13286,7 @@ impl eframe::App for CreaBimApp {
         self.heat_source_window(&ctx);
         self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);
+        self.route_check_window(&ctx);
         self.sun_window(&ctx);
         self.earthworks_window(&ctx);
         self.maps_window(&ctx);

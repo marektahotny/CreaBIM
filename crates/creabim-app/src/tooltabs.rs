@@ -214,6 +214,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Add the valves the pipes drawn still need: the meter assembly, shut-offs and angle valves on water (STN EN 806-2), vent heads and cleanouts on waste (STN EN 12056-2), radiator valves and shut-offs on heating, the main shut-off and cocks on gas",
             ),
             act(
+                "routes:check",
+                "Check routes",
+                "problem",
+                "Pipes and ducts through beams and lintels (a level pipe can be led under), gas nearer other pipes than 20 mm (TPH 03 2012 F.5.7), passages into another fire zone",
+            ),
+            act(
                 "calc:fittings",
                 "Fittings schedule",
                 "table-2",
@@ -353,6 +359,18 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Size the supply and return to the radiators, find the critical circuit and the pump, and preset the HERZ valves (TS-98-V, STRÖMAX) to balance the circuits",
             ),
             act(
+                "valves:auto",
+                "Propose valves",
+                "wrench",
+                "Radiator valves, shut-offs and a strainer, air vents at the high points and drain cocks at the low points of the heating and cooling pipes (STN EN 12828)",
+            ),
+            act(
+                "routes:check",
+                "Check routes",
+                "problem",
+                "Pipes and ducts through beams and lintels (a level pipe can be led under), gas nearer other pipes than 20 mm (TPH 03 2012 F.5.7), passages into another fire zone",
+            ),
+            act(
                 "calc:herzdp",
                 "HERZ differential pressure regulator",
                 "circle-dot-dashed",
@@ -436,6 +454,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The air every duct carries, its velocity as drawn and the diameter for the velocity allowed; sets the proposed diameters on the round ducts",
             ),
             act(
+                "routes:check",
+                "Check routes",
+                "problem",
+                "Pipes and ducts through beams and lintels (a level pipe can be led under), gas nearer other pipes than 20 mm (TPH 03 2012 F.5.7), passages into another fire zone",
+            ),
+            act(
                 "calc:cooling",
                 "Cooling load",
                 "sun",
@@ -473,6 +497,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Calculate medical gases",
                 "gauge",
                 "Size the O2, AIR and VAC pipelines from their outlets by the kind of room they are in (Q1 + (n − 1)·Δ), at most 20 kPa to the worst outlet (STN EN ISO 7396-1)",
+            ),
+            act(
+                "routes:check",
+                "Check routes",
+                "problem",
+                "Pipes and ducts through beams and lintels (a level pipe can be led under), gas nearer other pipes than 20 mm (TPH 03 2012 F.5.7), passages into another fire zone",
             ),
             act(
                 "med:unit",

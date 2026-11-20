@@ -114,6 +114,31 @@ pub fn symbol(kind: &str, c: DVec2, u: DVec2, h: f64) -> Symbol {
             out.segs.push([p(0.0, 0.0), p(0.0, w * 1.5)]);
             out.circles.push((p(0.0, w * 2.0), w * 0.5));
         }
+        // a stem off the pipe to a small vent: "O"
+        "odvzdusnenie" => {
+            out.segs.push([p(0.0, 0.0), p(0.0, w * 1.4)]);
+            out.circles.push((p(0.0, w * 1.9), w * 0.5));
+            out.text = Some("O");
+        }
+        // a stem off the pipe to a drain cock
+        "vypustenie" => {
+            out.segs.extend([
+                [p(0.0, 0.0), p(0.0, -w * 1.4)],
+                [p(-h * 0.4, -w * 1.4), p(h * 0.4, -w * 1.4)],
+            ]);
+            bow(&mut out);
+            out.text = Some("V");
+        }
+        // a sleeve: two lines along the pipe on either side
+        "chranicka" => {
+            out.segs
+                .extend([[p(-h, w), p(h, w)], [p(-h, -w), p(h, -w)]]);
+        }
+        "ppUtesnenie" => {
+            out.segs
+                .extend([[p(-h, w), p(h, w)], [p(-h, -w), p(h, -w)]]);
+            cross(&mut out, w * 0.7);
+        }
         "tap" => {
             bow(&mut out);
             out.text = Some("T");

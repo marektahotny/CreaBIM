@@ -151,6 +151,11 @@ struct OnPipe {
     stretch: usize,
     product: Option<(&'static HerzValve, &'static herzvalves::HerzSize)>,
     preset: Option<String>,
+    /// Its local loss coefficient where it has no HERZ product: its
+    /// kind's, or for an air vent or a drain cock on a tee the maker's ζ
+    /// of the tee straight through (none on other pipes: the share of
+    /// local losses takes it).
+    zeta: Option<f64>,
 }
 
 /// One tree, sized.
@@ -162,6 +167,8 @@ struct Side {
     pick: Vec<Option<usize>>,
     loss: Vec<(f64, f64, f64)>,
     valves: Vec<OnPipe>,
+    /// The water's density, kg/m³.
+    rho: f64,
 }
 
 /// The heating system of the model (supply `UKP`, return `UKS`).
@@ -203,11 +210,23 @@ fn valves_on(model: &Model, t: &Tree, medium: &str) -> Vec<OnPipe> {
         }) else {
             continue;
         };
+        let product = product_of(v, p, medium);
+        let zeta = match v.kind.as_str() {
+            "odvzdusnenie" | "vypustenie" => crate::makerzeta::zeta(
+                &p.pipe_type,
+                crate::makerzeta::Part::TeeThrough,
+                p.nominal_mm,
+                false,
+            ),
+            _ if product.is_none() => v.kind_def().and_then(|k| k.zeta),
+            _ => None,
+        };
         out.push(OnPipe {
             id: e.id,
             stretch: i,
-            product: product_of(v, p, medium),
+            product,
             preset: v.preset.clone(),
+            zeta,
         });
     }
     out
@@ -366,6 +385,7 @@ fn side(
         pick,
         loss,
         valves,
+        rho: fluid.rho,
     }
 }
 
@@ -393,6 +413,9 @@ impl Side {
             if way.contains(&v.stretch) {
                 if let Some(kv) = kv_of(v, open) {
                     p += herzvalves::dp_kpa(self.q[v.stretch] * 3.6, kv) * 1000.0;
+                } else if let Some(z) = v.zeta {
+                    let w = self.loss[v.stretch].1;
+                    p += z * self.rho * w * w / 2.0;
                 }
             }
         }
@@ -692,5 +715,38 @@ mod tests {
         );
         assert!(r.pump_kpa > s.source_kpa + s.terminal_kpa);
         assert!(r.pipes.iter().all(|p| !p.too_fast));
+    }
+
+    #[test]
+    fn an_air_vent_on_the_main_adds_its_tee_to_the_circuits_beyond_it() {
+        let (mut doc, rads, _) = house();
+        let s = HeatSettings::default();
+        let far = |doc: &Document| {
+            let r = run(doc.model(), &s).unwrap();
+            r.radiators
+                .iter()
+                .find(|x| x.id == rads[1])
+                .unwrap()
+                .supply_pa
+        };
+        let before = far(&doc);
+        // the supply main between the two radiators' tees
+        let main = doc
+            .model()
+            .iter()
+            .find(|e| match &e.kind {
+                ElementKind::Pipe(p) => p.system == "UKP" && p.start.x > 1.0 && p.length() > 3.0,
+                _ => false,
+            })
+            .unwrap()
+            .id;
+        let v = Element::new(
+            "O",
+            ElementKind::Valve(Valve::new(main, 0.5, "odvzdusnenie")),
+        );
+        doc.commit(Transaction::new("vent").insert(v)).unwrap();
+        let after = far(&doc);
+        // HERZ gives the tee straight through its ζ
+        assert!(after > before + 1.0, "{before} {after}");
     }
 }

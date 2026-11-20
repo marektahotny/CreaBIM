@@ -56,6 +56,7 @@ pub mod reno;
 pub mod results;
 pub mod room;
 pub mod roomtype;
+pub mod routecheck;
 pub mod sample;
 pub mod screen;
 pub mod site;
