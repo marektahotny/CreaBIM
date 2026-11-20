@@ -209,7 +209,7 @@ pub fn section_view_jogged<S: std::borrow::Borrow<SceneItem> + Sync>(
     }
     items.extend(fills);
 
-    crate::plan::clean_up_pieces(model, &mut items, layers);
+    crate::plan::clean_up_pieces_in(model, &mut items, layers, true);
     if reveal {
         crate::plan::reveal_covered(model, &mut items);
     }

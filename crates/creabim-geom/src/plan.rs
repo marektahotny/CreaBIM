@@ -45,6 +45,11 @@ fn is_footing(model: &Model, id: ElementId) -> bool {
     )
 }
 
+/// Ground, paving or a plant: what everything built cuts through.
+fn is_site(model: &Model, id: ElementId) -> bool {
+    matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Site(_)))
+}
+
 pub fn hatch_of(model: &Model, id: ElementId) -> Hatch {
     let Some(e) = model.get(id) else {
         return Hatch::Solid;
@@ -274,8 +279,8 @@ impl CutPiece {
 
     /// The colour of the material this piece cuts: its layer's, else the
     /// element's own (or its core layer's); none for an air gap.
-    fn colour(&self, model: &Model) -> Option<[f32; 3]> {
-        if is_footing(model, self.id) {
+    fn colour(&self, model: &Model, section: bool) -> Option<[f32; 3]> {
+        if is_footing(model, self.id) && !section {
             return None;
         }
         let mat = |id: ElementId| match &model.get(id)?.kind {
@@ -297,10 +302,21 @@ impl CutPiece {
         }
     }
 
-    fn hatch(&self, model: &Model) -> Hatch {
-        // footings are drawn in outline only, cut or not (STN practice)
+    fn hatch(&self, model: &Model, section: bool) -> Hatch {
+        // footings are drawn in outline only in plans (STN practice); a
+        // section fills them with their material like any cut, concrete
+        // when none is chosen
         if is_footing(model, self.id) {
-            return Hatch::Empty;
+            if !section {
+                return Hatch::Empty;
+            }
+            if self.layer.is_none() {
+                return match model.get(self.id) {
+                    Some(e) => creabim_core::material_of(model, e)
+                        .map_or(Hatch::Concrete, |(_, m)| m.hatch),
+                    None => Hatch::Concrete,
+                };
+            }
         }
         match self.layer {
             None => hatch_of(model, self.id),
@@ -393,6 +409,34 @@ pub fn subtract_convex(subject: &[DVec2], hole: &[DVec2]) -> Vec<Vec<DVec2>> {
     pieces
 }
 
+/// [`subtract_convex`] for a long, not convex subject such as the ground
+/// in a section: it is first cut into the part left of the hole, the part
+/// right of it and the band across it, so that the hole's top and bottom
+/// edges only clip that band (cut along the whole ground, a dip in its
+/// surface would leave a sliver joining its two sides).
+pub fn subtract_convex_banded(subject: &[DVec2], hole: &[DVec2]) -> Vec<Vec<DVec2>> {
+    let (lo, hi) = hole.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+        (lo.min(p.x), hi.max(p.x))
+    });
+    let up = DVec2::Y;
+    let (l0, l1) = (DVec2::new(lo, 0.0), DVec2::new(hi, 0.0));
+    // left of the line going up is x < lo
+    let left = clip_half(subject, l0, l0 + up, true);
+    let rest = clip_half(subject, l0, l0 + up, false);
+    let right = clip_half(&rest, l1, l1 + up, false);
+    let band = clip_half(&rest, l1, l1 + up, true);
+    let mut out = vec![];
+    for p in [left, right] {
+        if p.len() >= 3 && signed_area(&p).abs() > 1e-9 {
+            out.push(p);
+        }
+    }
+    if band.len() >= 3 && signed_area(&band).abs() > 1e-9 {
+        out.extend(subtract_convex(&band, hole));
+    }
+    out
+}
+
 /// Do two polygons' bounding boxes overlap by more than a sliver?
 fn boxes_overlap(a: &[DVec2], b: &[DVec2]) -> bool {
     let bb = |p: &[DVec2]| {
@@ -455,6 +499,17 @@ pub fn clean_up_cuts(model: &Model, items: &mut Vec<PlanItem>) {
 /// material's hatch; the line between two layers of one element is a thin
 /// one, and layers of the same material merge across joined walls.
 pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<CutPiece>) {
+    clean_up_pieces_in(model, items, layers, false)
+}
+
+/// [`clean_up_pieces`] for a plan, or with `section` for a section: there
+/// footings are filled with their material.
+pub fn clean_up_pieces_in(
+    model: &Model,
+    items: &mut Vec<PlanItem>,
+    layers: Vec<CutPiece>,
+    section: bool,
+) {
     let mut cuts: Vec<CutPiece> = Vec::new();
     items.retain(|it| match it {
         PlanItem::Polygon {
@@ -490,21 +545,33 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
     let mut polys: Vec<CutPiece> = Vec::new();
     for (ci, c) in cuts.iter().enumerate() {
         let mut pieces = vec![c.points.clone()];
+        // the ground is cut by everything built in it (footings, walls,
+        // slabs), never the other way round, so the line where they meet
+        // is a thin one and its thick line stays only where it meets air
+        // (in sections: plans keep their own rules)
+        let ground = section && is_site(model, c.id);
         for (oi, other) in cuts.iter().enumerate() {
-            if !near(cut_boxes[ci], cut_boxes[oi], 1e-6)
-                || !joining.cuts(model, other, c)
-                || !is_convex(&other.points)
-            {
+            let built = !is_site(model, other.id);
+            let cuts_it = if ground && built {
+                true
+            } else if section && !ground && !built {
+                false
+            } else {
+                joining.cuts(model, other, c)
+            };
+            if !near(cut_boxes[ci], cut_boxes[oi], 1e-6) || !cuts_it || !is_convex(&other.points) {
                 continue;
             }
             let hole = &other.points;
             pieces = pieces
                 .into_iter()
                 .flat_map(|p| {
-                    if boxes_overlap(&p, hole) {
-                        subtract_convex(&p, hole)
-                    } else {
+                    if !boxes_overlap(&p, hole) {
                         vec![p]
+                    } else if ground {
+                        subtract_convex_banded(&p, hole)
+                    } else {
+                        subtract_convex(&p, hole)
                     }
                 })
                 .collect();
@@ -519,8 +586,8 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
         items.push(PlanItem::Fill {
             id: p.id,
             points: p.points.clone(),
-            hatch: p.hatch(model),
-            rgb: p.colour(model),
+            hatch: p.hatch(model, section),
+            rgb: p.colour(model, section),
         });
     }
     let edges = |pts: &Vec<DVec2>| -> Vec<(DVec2, DVec2)> {
@@ -2508,8 +2575,8 @@ pub(crate) fn sliced_plan_creased(
         items.push(PlanItem::Fill {
             id: item.id,
             points: lp,
-            hatch: piece.hatch(model),
-            rgb: piece.colour(model),
+            hatch: piece.hatch(model, false),
+            rgb: piece.colour(model, false),
         });
     }
     for (a, b) in crate::section::feature_edges_over(item, crease) {
