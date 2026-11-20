@@ -1094,10 +1094,44 @@ fn footing_cut_at(
     top - f.thickness < z && z < top
 }
 
+/// Is `material` hollow concrete formwork blocks (DT, "debniace
+/// tvárnice"), by its name or description?
+fn is_formwork_block(model: &Model, material: Option<ElementId>) -> bool {
+    let Some(e) = material.and_then(|m| model.get(m)) else {
+        return false;
+    };
+    let ElementKind::Material(m) = &e.kind else {
+        return false;
+    };
+    let text = format!(" {} {} ", e.name, m.description).to_lowercase();
+    [
+        "formwork", "debnia", "debnic", "bednic", "bedněn", "(dt)", " dt ",
+    ]
+    .iter()
+    .any(|k| text.contains(k))
+}
+
+/// Is the wall's load-bearing core of formwork blocks (DT): the masonry
+/// on the footings, above the ground?
+fn formwork_block_wall(model: &Model, w: &creabim_core::Wall) -> bool {
+    let core = w.assembly.and_then(|a| match &model.get(a)?.kind {
+        ElementKind::Assembly(asm) if !asm.layers.is_empty() => Some(asm),
+        _ => None,
+    });
+    match core {
+        Some(asm) => (0..asm.layers.len())
+            .filter(|i| asm.is_core(*i))
+            .any(|i| is_formwork_block(model, asm.layers[i].material)),
+        None => is_formwork_block(model, w.material),
+    }
+}
+
 /// What a foundation plan adds over the footings its plane cuts: a heavy
 /// dashed line where their undersides step, and the load-bearing layer of
-/// each wall standing on them, above the cut, as a thin line of a dash and
-/// two dots.
+/// each wall of formwork blocks (DT) standing on them, above the cut, as
+/// a thin line of a dash and two dots. Other walls on the footings draw
+/// no such line (George 2026-11-20: it is there only once the masonry on
+/// the footings is drawn in DT blocks).
 fn foundation_lines(
     model: &Model,
     level: ElementId,
@@ -1128,11 +1162,35 @@ fn foundation_lines(
         }
     }
     let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
-    let hosts: Vec<(ElementId, &creabim_core::Wall)> = cut
+    // the walls standing on the cut footings: those they are under, and
+    // walls drawn on their own along a strip, with their base on its top
+    let on_strip = |w: &creabim_core::Wall| {
+        let base = creabim_core::walls::base_z(model, w);
+        cut.iter().any(|(_, f)| {
+            if f.kind != creabim_core::FootingKind::Strip || (base - f.top(model)).abs() > 0.05 {
+                return false;
+            }
+            let (a, b) = f.line(model);
+            let reach = (f.width + w.thickness) / 2.0;
+            [w.start, w.end, (w.start + w.end) / 2.0]
+                .iter()
+                .all(|p| creabim_core::footing::segment_distance(*p, a, b) <= reach)
+        })
+    };
+    let mut hosts: Vec<(ElementId, &creabim_core::Wall)> = cut
         .iter()
         .filter_map(|(_, f)| Some((f.host?, f.host_wall(model)?)))
-        .filter(|(_, w)| creabim_core::walls::base_z(model, w) >= z && !w.is_arc())
         .collect();
+    for e in model.iter() {
+        if let ElementKind::Wall(w) = &e.kind {
+            if !hosts.iter().any(|(h, _)| *h == e.id) && on_strip(w) {
+                hosts.push((e.id, w));
+            }
+        }
+    }
+    hosts.retain(|(_, w)| {
+        creabim_core::walls::base_z(model, w) >= z && !w.is_arc() && formwork_block_wall(model, w)
+    });
     for (wid, w) in &hosts {
         let len = w.length();
         if len < 1e-6 {
@@ -2832,6 +2890,44 @@ mod tests {
             PlanItem::Fill { id, hatch, rgb, .. }
                 if footing(&m, *id) && (*hatch != Hatch::Empty || rgb.is_some()))));
         // the walls on them, their cores a dash and two dots
+        let cores = items
+            .iter()
+            .filter(|it| {
+                matches!(it, PlanItem::Line { pen: Pen::Overhead, id, .. }
+                if matches!(m.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_))))
+            })
+            .count();
+        // none drawn by itself (George 2026-11-20)
+        assert_eq!(cores, 0);
+        // the walls on the footings made of formwork blocks (DT): their
+        // cores a dash and two dots
+        let dt = creabim_core::Element::new(
+            "Block, concrete formwork",
+            ElementKind::Material(creabim_core::Material {
+                description: "Hollow concrete formwork blocks (DT)".into(),
+                ..Default::default()
+            }),
+        );
+        let dt_id = dt.id;
+        let hosts: Vec<ElementId> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Footing(f) => f.host,
+                _ => None,
+            })
+            .collect();
+        let mut tx = creabim_core::Transaction::new("dt").insert(dt);
+        for h in hosts {
+            let before = m.get(h).unwrap().clone();
+            let mut after = before.clone();
+            if let ElementKind::Wall(w) = &mut after.kind {
+                w.assembly = None;
+                w.material = Some(dt_id);
+                tx = tx.replace(before, after);
+            }
+        }
+        tx.apply(&mut m).unwrap();
+        let items = plan_view(&m, level, 0.25).items;
         let cores = items
             .iter()
             .filter(|it| {

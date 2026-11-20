@@ -660,6 +660,12 @@ impl CreaBimApp {
                         self.plan.members.beam_width = b.width;
                         self.plan.members.beam_depth = b.depth;
                     }
+                    TypeParams::Footing(f) => {
+                        let m = &mut self.plan.members;
+                        m.footing_pad = f.kind == creabim_core::FootingKind::Pad;
+                        m.footing_width = f.width;
+                        m.footing_thickness = f.thickness;
+                    }
                     _ => {}
                 }
             }

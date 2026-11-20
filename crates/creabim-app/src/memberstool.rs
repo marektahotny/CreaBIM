@@ -332,11 +332,10 @@ pub fn footing_kind(model: &Model, state: &PlanState) -> creabim_core::FootingKi
 /// A new footing sized from the tool bar, of the tool's type if it fits.
 fn sized_footing(model: &Model, state: &PlanState, mut f: creabim_core::Footing) -> Element {
     let m = &state.members;
-    f.width = match (f.kind, f.host) {
-        // a strip under a wall is at least as wide as the wall
-        (creabim_core::FootingKind::Strip, Some(_)) => f.width.max(m.footing_width),
-        _ => m.footing_width,
-    };
+    // as wide as the bar says, under a wall too (George 2026-11-20: the
+    // width typed before placing is the one built, not widened to the
+    // wall's thickness and 300 mm)
+    f.width = m.footing_width;
     if f.kind == creabim_core::FootingKind::Pad {
         f.length = m.footing_width;
     }
@@ -344,7 +343,43 @@ fn sized_footing(model: &Model, state: &PlanState, mut f: creabim_core::Footing)
     f.align = m.footing_align;
     f.align_offset = m.footing_offset;
     let name = f.kind.label();
-    state.typed(model, Element::new(name, ElementKind::Footing(f)))
+    let mut e = state.typed(model, Element::new(name, ElementKind::Footing(f)));
+    keep_bar_sizes(&mut e, state);
+    e
+}
+
+/// A new footing of a type keeps the width and height typed in the bar
+/// before placing it, as the type's own overridden where they differ
+/// (George 2026-11-20: the width typed is the width built).
+pub fn keep_bar_sizes(e: &mut Element, state: &PlanState) {
+    use creabim_core::types::Param;
+    let m = &state.members;
+    let ElementKind::Footing(f) = &mut e.kind else {
+        return;
+    };
+    if m.footing_pad != (f.kind == creabim_core::FootingKind::Pad) {
+        return;
+    }
+    let mut changed = vec![];
+    if (f.width - m.footing_width).abs() > 1e-9 {
+        f.width = m.footing_width;
+        changed.push(Param::Width);
+    }
+    if f.kind == creabim_core::FootingKind::Pad && (f.length - m.footing_width).abs() > 1e-9 {
+        f.length = m.footing_width;
+        changed.push(Param::Length);
+    }
+    if (f.thickness - m.footing_thickness).abs() > 1e-9 {
+        f.thickness = m.footing_thickness;
+        changed.push(Param::Thickness);
+    }
+    if let Some(r) = &mut e.of_type {
+        for p in changed {
+            if !r.overrides.contains(&p) {
+                r.overrides.push(p);
+            }
+        }
+    }
 }
 
 /// The material the bar picked for new footings: the project's of that
