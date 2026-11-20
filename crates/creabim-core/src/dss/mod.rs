@@ -1016,10 +1016,82 @@ fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Know
                 put(&mut out, "typové označenie", Known::Text(t.name.clone()));
             }
         }
-        ElementKind::Column(c) => {
-            if let Some(h) = c.height {
-                put(&mut out, "výška", Known::Len(h));
+        ElementKind::Footing(f) => match f.kind {
+            crate::FootingKind::Strip => {
+                put(&mut out, "šírka", Known::Len(f.width));
+                put(&mut out, "výška", Known::Len(f.thickness));
+                put(
+                    &mut out,
+                    "plocha prierezu",
+                    Known::Area(f.width * f.thickness),
+                );
+                put(&mut out, "dĺžka", Known::Len(f.start.distance(f.end)));
             }
+            crate::FootingKind::Pad => {
+                put(&mut out, "šírka", Known::Len(f.width));
+                put(&mut out, "dĺžka", Known::Len(f.length));
+                put(&mut out, "hrúbka", Known::Len(f.thickness));
+                put(&mut out, "výška", Known::Len(f.thickness));
+                put(&mut out, "obvod", Known::Len(2.0 * (f.width + f.length)));
+                put(&mut out, "plocha", Known::Area(f.width * f.length));
+                put(
+                    &mut out,
+                    "objem",
+                    Known::Vol(f.width * f.length * f.thickness),
+                );
+            }
+        },
+        ElementKind::Column(c) => {
+            put(&mut out, "výška", Known::Len(c.height_in(model)));
+            match &c.section {
+                Some(s) => section_values(&mut out, s, "šírka", "dĺžka"),
+                None => {
+                    put(&mut out, "plocha prierezu", Known::Area(c.profile.area()));
+                    match c.profile {
+                        crate::Profile::Rectangle { width, depth } => {
+                            put(&mut out, "typ prierezu", Known::Text("obdĺžnikový".into()));
+                            put(&mut out, "šírka", Known::Len(width));
+                            put(&mut out, "obvod", Known::Len(2.0 * (width + depth)));
+                        }
+                        crate::Profile::Round { diameter } => {
+                            put(&mut out, "typ prierezu", Known::Text("kruhový".into()));
+                            put(&mut out, "šírka", Known::Len(diameter));
+                            put(&mut out, "priemer", Known::Len(diameter));
+                            put(
+                                &mut out,
+                                "obvod",
+                                Known::Len(std::f64::consts::PI * diameter),
+                            );
+                        }
+                    }
+                    put(&mut out, "rozmery prierezu", Known::Text(c.profile.label()));
+                }
+            }
+        }
+        ElementKind::Beam(b) => {
+            match &b.section {
+                Some(s) => section_values(&mut out, s, "šírka", "výška prierezu"),
+                None => {
+                    put(&mut out, "typ prierezu", Known::Text("obdĺžnikový".into()));
+                    put(&mut out, "šírka", Known::Len(b.width));
+                    put(&mut out, "výška prierezu", Known::Len(b.depth));
+                    put(&mut out, "plocha prierezu", Known::Area(b.width * b.depth));
+                }
+            }
+            put(&mut out, "dĺžka", Known::Len(b.length()));
+        }
+        ElementKind::Stair(s) => {
+            put(&mut out, "šírka", Known::Len(s.width));
+            put(&mut out, "hrúbka", Known::Len(s.waist));
+        }
+        ElementKind::Railing(r) => {
+            let len = r.length(model);
+            put(&mut out, "výška", Known::Len(r.height));
+            if len > 0.0 {
+                put(&mut out, "dĺžka", Known::Len(len));
+                put(&mut out, "plocha", Known::Area(len * r.height));
+            }
+            put(&mut out, "šírka", Known::Len(crate::members::RAIL_SIZE));
         }
         ElementKind::Site(s) => {
             if let crate::SiteForm::Plant { height, canopy, .. } = &s.form {
@@ -1071,6 +1143,36 @@ fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Know
         }
     }
     out
+}
+
+/// A library section's type, area, perimeter and extents (`across` along
+/// its x, `up` along its y).
+fn section_values(
+    out: &mut Vec<(&'static str, Known, Source)>,
+    s: &crate::members::Section,
+    across: &'static str,
+    up: &'static str,
+) {
+    if !s.name.trim().is_empty() {
+        put(out, "typ prierezu", Known::Text(s.name.clone()));
+    }
+    let p = &s.points;
+    if p.len() < 3 {
+        return;
+    }
+    let (mut area, mut per) = (0.0_f64, 0.0_f64);
+    let (mut lo, mut hi) = (p[0], p[0]);
+    for i in 0..p.len() {
+        let (a, b) = (p[i], p[(i + 1) % p.len()]);
+        area += a.perp_dot(b) / 2.0;
+        per += a.distance(b);
+        lo = lo.min(a);
+        hi = hi.max(a);
+    }
+    put(out, "plocha prierezu", Known::Area(area.abs()));
+    put(out, "obvod", Known::Len(per));
+    put(out, across, Known::Len(hi.x - lo.x));
+    put(out, up, Known::Len(hi.y - lo.y));
 }
 
 fn to_kw(v: f64, u: crate::results::Unit) -> f64 {
@@ -1366,5 +1468,65 @@ mod tests {
         assert_eq!(d.of(id).unwrap().value("výrobca"), Some("Wavin"));
         d.of_mut(id).set_value("výrobca", "");
         assert_eq!(d.of(id).unwrap().value("výrobca"), None);
+    }
+
+    #[test]
+    fn footings_columns_and_beams_fill_their_sizes() {
+        use glam::DVec2;
+        let mut m = crate::sample::sample_house();
+        let level = m.levels().next().map(|(e, _)| e.id).unwrap();
+        let strip = crate::Element::new(
+            "Pás",
+            ElementKind::Footing(crate::footing::Footing::strip(
+                level,
+                DVec2::new(0.0, -5.0),
+                DVec2::new(4.0, -5.0),
+            )),
+        );
+        let pad = crate::Element::new(
+            "Pätka",
+            ElementKind::Footing(crate::footing::Footing::pad(level, DVec2::new(10.0, -5.0))),
+        );
+        let col = crate::Element::new(
+            "Stĺp",
+            ElementKind::Column(crate::Column::new(
+                level,
+                DVec2::new(10.0, -5.0),
+                crate::Profile::Rectangle {
+                    width: 0.3,
+                    depth: 0.4,
+                },
+            )),
+        );
+        let ids = [strip.id, pad.id, col.id];
+        crate::Transaction::new("t")
+            .insert(strip)
+            .insert(pad)
+            .insert(col)
+            .apply(&mut m)
+            .unwrap();
+        let cx = Ctx::new(&m);
+        let num = |id, name: &str| -> f64 {
+            let (_, props) = filled(&m, &cx, m.get(id).unwrap()).unwrap();
+            match props
+                .iter()
+                .find(|f| f.prop.name == name)
+                .and_then(|f| f.value.clone())
+            {
+                Some((Value::Num(n), _)) => n,
+                v => panic!("{name}: {v:?}"),
+            }
+        };
+        let near = |a: f64, b: f64| assert!((a - b).abs() < 1e-6, "{a} != {b}");
+        near(num(ids[0], "šírka"), 0.6);
+        near(num(ids[0], "výška"), 0.3);
+        near(num(ids[0], "plocha prierezu"), 0.18);
+        near(num(ids[1], "šírka"), 1.2);
+        near(num(ids[1], "dĺžka"), 1.2);
+        near(num(ids[1], "hrúbka"), 400.0); // in mm, as hrúbka is
+        near(num(ids[1], "obvod"), 4800.0);
+        near(num(ids[2], "plocha prierezu"), 0.12);
+        near(num(ids[2], "šírka"), 0.3);
+        near(num(ids[2], "obvod"), 1400.0);
     }
 }
