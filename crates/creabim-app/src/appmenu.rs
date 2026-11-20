@@ -1860,8 +1860,8 @@ mod tests {
                 .find(|c| c["id"] == "footing.foundation")
                 .map(|c| c["label"].as_str().unwrap().to_string())
         };
-        // without one, it is made: 600 below the lowest level, the floor
-        // above as its underlay, and opened
+        // without one, it is made through the footings, with nothing of
+        // the floor above (George 2026-11-20), and opened
         placed(&mut app);
         assert_eq!(offered(&app).as_deref(), Some("Make a Foundation plan"));
         app.show_foundation_plan();
@@ -1870,7 +1870,7 @@ mod tests {
         let ElementKind::View(v) = &app.doc.model().get(made).unwrap().kind else {
             panic!()
         };
-        assert_eq!(v.underlay, creabim_core::Underlay::Above);
+        assert_eq!(v.underlay, creabim_core::Underlay::None);
         // once there is one, it is shown
         app.active_view = None;
         placed(&mut app);

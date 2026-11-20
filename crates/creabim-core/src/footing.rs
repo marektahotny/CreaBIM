@@ -655,9 +655,18 @@ pub fn under(
             ElementKind::Wall(w) if w.curtain.is_none() => {
                 let mut f = Footing::under_wall(*id, w);
                 // its top at the underside of a ground slab the wall stands in
+                // (or beside it: a floor between the walls stops at their
+                // faces, and a slab drawn to their centrelines has its edge
+                // right under the wall's middle)
                 let base = crate::walls::base_z(model, w);
-                if let Some(d) = crate::members::slab_depth_at(model, (w.start + w.end) / 2.0, base)
-                {
+                let mid = (w.start + w.end) / 2.0;
+                let n = (w.end - w.start).normalize_or_zero().perp();
+                let off = w.thickness / 2.0 + 0.05;
+                let depth = [mid, mid + n * off, mid - n * off]
+                    .into_iter()
+                    .filter_map(|p| crate::members::slab_depth_at(model, p, base))
+                    .fold(None, |m: Option<f64>, d| Some(m.map_or(d, |m| m.max(d))));
+                if let Some(d) = depth {
                     f.below = d;
                 }
                 ("Strip footing", f)

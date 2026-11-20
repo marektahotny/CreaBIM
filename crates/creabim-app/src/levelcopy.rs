@@ -167,6 +167,12 @@ impl CreaBimApp {
         if r.is_ok() {
             self.selection.clear();
             self.selection.extend(new.clone(), false);
+            // the foundation plan cut through them
+            if let Some(v) = crate::memberstool::foundation_plan(self.doc.model()) {
+                if let Some(fit) = crate::memberstool::fit_foundation_cut(self.doc.model(), v) {
+                    let _ = self.doc.commit(fit);
+                }
+            }
         }
         let mut said = footings_placed(new.len());
         if skipped > 0 {
@@ -660,5 +666,160 @@ mod tests {
             .filter(|e| matches!(e.kind, ElementKind::Footing(_)))
             .count();
         assert_eq!(again, footings);
+    }
+}
+
+#[cfg(test)]
+mod new_project_footings {
+    use super::*;
+    use creabim_core::{Element, Transaction};
+    use glam::DVec2;
+
+    /// A new project as George works it (2026-11-20): walls of 1. NP with
+    /// a floor on the ground, footings under the selected walls, the
+    /// Foundation plan, DT masonry drawn on the footings with the Wall
+    /// tool. The storey's plan shows no footing; the foundation plan cuts
+    /// the footings and draws only the DT blocks' outline above, a dash
+    /// and two dots; a section fills the footings with their concrete.
+    #[test]
+    fn footings_in_a_new_project_draw_as_george_asked() {
+        let mut app = CreaBimApp::blank(None);
+        app.new_empty_project();
+        let m = app.doc.model();
+        let (lvl, _) = m.levels().next().unwrap();
+        let lvl = lvl.id;
+        let ty = creabim_core::types::types(m)
+            .into_iter()
+            .find(|(_, n, _)| n.starts_with("Obvodová – tehla 300"))
+            .unwrap()
+            .0;
+        let pts = [
+            DVec2::new(0.0, 0.0),
+            DVec2::new(10.0, 0.0),
+            DVec2::new(10.0, 8.0),
+            DVec2::new(0.0, 8.0),
+        ];
+        let mut tx = Transaction::new("walls");
+        let mut ids = vec![];
+        for i in 0..4 {
+            let w = creabim_core::Wall::new(lvl, pts[i], pts[(i + 1) % 4], 0.3, 3.0);
+            let mut e = Element::new("W", ElementKind::Wall(w));
+            creabim_core::types::stamp(app.doc.model(), &mut e, ty);
+            ids.push(e.id);
+            tx = tx.insert(e);
+        }
+        // the ground floor slab, of the base's floor on the ground
+        let fty = creabim_core::types::types(app.doc.model())
+            .into_iter()
+            .find(|(_, n, t)| {
+                matches!(t.params, creabim_core::types::TypeParams::Slab(_))
+                    && n.to_lowercase().contains("terén")
+            })
+            .map(|(id, _, _)| id);
+        let slab = creabim_core::Slab::new(lvl, pts.to_vec(), 0.3);
+        let mut se = Element::new("Floor", ElementKind::Slab(slab));
+        if let Some(t) = fty {
+            creabim_core::types::stamp(app.doc.model(), &mut se, t);
+        }
+        tx = tx.insert(se);
+        app.doc.commit(tx).unwrap();
+        app.selection.clear();
+        app.selection.extend(ids, false);
+        app.plan.members.footing_material = Some("Prostý betón".into());
+        let ctx = egui::Context::default();
+        app.run_action(&ctx, "footing.under");
+        app.show_foundation_plan();
+        // the masonry on the footings: DT 300, drawn with the Wall tool on
+        // the foundation level, from the footing's top to the floor
+        {
+            let m = app.doc.model();
+            let fl = m
+                .iter()
+                .find(|e| e.name == "Foundation" && matches!(e.kind, ElementKind::Level(_)))
+                .unwrap()
+                .id;
+            let fz = m.level(fl).unwrap().elevation;
+            let lines: Vec<(f64, DVec2, DVec2)> = m
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ElementKind::Footing(f) => {
+                        let (a, b) = f.line(m);
+                        Some((f.top(m), a, b))
+                    }
+                    _ => None,
+                })
+                .collect();
+            let dt = creabim_core::types::types(m)
+                .into_iter()
+                .find(|(_, n, _)| n.starts_with("Nadzákladová stena"))
+                .unwrap()
+                .0;
+            let mut tx = Transaction::new("dt");
+            for (top, a, b) in lines {
+                let mut w = creabim_core::Wall::new(fl, a, b, 0.445, 0.3);
+                w.base_offset = top - fz;
+                w.height = (0.0 - top).max(0.05);
+                let mut e = Element::new("DT", ElementKind::Wall(w));
+                creabim_core::types::stamp(m, &mut e, dt);
+                tx = tx.insert(e);
+            }
+            app.doc.commit(tx).unwrap();
+        }
+        let m = app.doc.model();
+        let footing =
+            |id: ElementId| matches!(m.get(id).map(|e| &e.kind), Some(ElementKind::Footing(_)));
+        let wall = |id: ElementId| matches!(m.get(id).map(|e| &e.kind), Some(ElementKind::Wall(_)));
+        let view = |name: &str| {
+            let id = m
+                .iter()
+                .find(|e| e.name == name && matches!(e.kind, ElementKind::View(_)))
+                .unwrap()
+                .id;
+            creabim_geom::section::view_drawing(m, id).unwrap().items
+        };
+        // all at the floor's underside, one height
+        let tops: Vec<f64> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Footing(f) => Some(f.top(m)),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            tops.iter().all(|t| (t - tops[0]).abs() < 1e-9 && *t < -0.1),
+            "{tops:?}"
+        );
+        // 1. NP: no footing, dashed or not
+        assert!(!view("Level 0 plan").iter().any(|it| footing(it.id())));
+        // the foundation plan: the footings cut, of the walls only the DT
+        // blocks' outline, a dash and two dots
+        let f = view("Foundation plan");
+        assert!(f.iter().any(|it| footing(it.id())
+            && matches!(it, creabim_geom::PlanItem::Line { pen: Pen::Cut, .. })));
+        let walls: Vec<&creabim_geom::PlanItem> = f.iter().filter(|it| wall(it.id())).collect();
+        assert!(walls.len() >= 8, "{}", walls.len());
+        assert!(walls.iter().all(|it| matches!(
+            it,
+            creabim_geom::PlanItem::Line {
+                pen: Pen::Overhead,
+                ..
+            }
+        ) && m.get(it.id()).unwrap().name == "DT"));
+        // the section: footings filled with concrete
+        let s = view("Section A-A");
+        let fills: Vec<creabim_core::Hatch> = s
+            .iter()
+            .filter_map(|it| match it {
+                creabim_geom::PlanItem::Fill { id, hatch, .. } if footing(*id) => Some(*hatch),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            !fills.is_empty() && fills.iter().all(|h| *h == creabim_core::Hatch::Concrete),
+            "{fills:?}"
+        );
+        if let Ok(dir) = std::env::var("CREABIM_REPRO") {
+            creabim_store::save(format!("{dir}/repro.creabim"), &app.doc).unwrap();
+        }
     }
 }

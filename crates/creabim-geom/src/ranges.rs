@@ -127,6 +127,7 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
     // walls of other levels that stand in this storey are in its own
     // plan already
     let drawn: HashSet<ElementId> = d.items.iter().map(|it| it.id()).collect();
+    let foundation = crate::plan::is_foundation_plan(model, level, cut);
     for (l, z, band) in bands(model, level, cut, r) {
         let theirs =
             |it: &PlanItem| element_level(model, it.id()) == Some(l) && !drawn.contains(&it.id());
@@ -135,6 +136,10 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
                 let sub = crate::plan::plan_view_with(model, l, own + cut - z, &g);
                 under.extend(sub.items.into_iter().filter(|it| theirs(it)));
             }
+            // a foundation plan draws nothing of the storey above (George
+            // 2026-11-20): only the DT masonry standing on the footings,
+            // its load-bearing outline (see `plan::foundation_lines`)
+            Band::Overhead if foundation => {}
             Band::Overhead => {
                 // just above its floor, then every line as overhead
                 let sub = crate::plan::plan_view_with(model, l, 0.001, &g);
@@ -177,7 +182,8 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
 /// them shows them again, dashed.
 fn drop_footings_below(model: &Model, items: &mut Vec<PlanItem>, bottom: f64) {
     let under = |id: ElementId| match model.get(id).map(|e| &e.kind) {
-        Some(creabim_core::ElementKind::Footing(f)) => f.top(model) < bottom - 1e-6,
+        // a footing whose top is at the floor is under it too
+        Some(creabim_core::ElementKind::Footing(f)) => f.top(model) <= bottom + 1e-6,
         _ => false,
     };
     items.retain(|it| !under(it.id()));
