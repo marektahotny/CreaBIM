@@ -368,7 +368,7 @@ fn length(ui: &mut egui::Ui, label: &str, v: &mut f64, lo: f64, hi: f64) -> bool
 
 /// A room's properties: what it measures, then its number, finishes,
 /// occupancy, department and height. Returns the edit's label, or "".
-pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static str {
+pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room, name: &str) -> &'static str {
     let mut label = "";
     match room::shape_of(model, r) {
         Some(s) => {
@@ -465,10 +465,21 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
     }
     // what it counts as for its persons, and the designed count
     let table = creabim_geom::occupancy::table(model);
-    let shown = match table.and_then(|t| t.row(r.fire_use.trim())) {
-        Some(row) => format!("{} {}", row[0], row.get(1).map_or("", |s| s.as_str())),
-        None => r.fire_use.clone(),
+    // with none given, the item its type gives (Fire calculation
+    // parameters, table of room types)
+    let auto = creabim_geom::firerisk::AutoUses::new(model);
+    let by_type = |own: &str, item: String, t: Option<&creabim_core::fireparams::ParamTable>| {
+        let text = |item: &str| match t.and_then(|t| t.row(item)) {
+            Some(row) => format!("{} {}", row[0], row.get(1).map_or("", |s| s.as_str())),
+            None => item.to_string(),
+        };
+        if own.trim().is_empty() && !item.is_empty() {
+            format!("{} ({})", text(&item), crate::i18n::t("by the room type"))
+        } else {
+            text(own.trim())
+        }
     };
+    let shown = by_type(&r.fire_use, auto.occupancy(r, name), table);
     let mut picked: Option<String> = None;
     crate::props::row(ui, "Use for the persons", |ui| {
         egui::ComboBox::from_id_salt("room.fire_use")
@@ -521,10 +532,7 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
     }
     // what it is for its fire load, and its fixed load where given
     let loads = creabim_geom::firerisk::table(model, creabim_core::fireparams::FIRE_LOAD);
-    let shown = match loads.and_then(|t| t.row(r.fire_load.trim())) {
-        Some(row) => format!("{} {}", row[0], row.get(1).map_or("", |s| s.as_str())),
-        None => r.fire_load.clone(),
-    };
+    let shown = by_type(&r.fire_load, auto.fire_load(r, name), loads);
     let mut picked: Option<String> = None;
     crate::props::row(ui, "Use for the fire load", |ui| {
         egui::ComboBox::from_id_salt("room.fire_load")
@@ -606,9 +614,10 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
             label = "Room data";
         }
     }
-    if !r.fire_use.is_empty() || r.design_count.is_some() {
+    let use_item = auto.occupancy(r, name);
+    if !use_item.is_empty() || r.design_count.is_some() {
         let area = room::shape_of(model, r).map_or(0.0, |s| room::net_area(model, r, &s));
-        let cell = |c: &str| table.map_or("", |t| t.cell(r.fire_use.trim(), c));
+        let cell = |c: &str| table.map_or("", |t| t.cell(&use_item, c));
         let p = creabim_geom::occupancy::persons(
             cell(creabim_geom::occupancy::AREA),
             cell(creabim_geom::occupancy::FACTOR),

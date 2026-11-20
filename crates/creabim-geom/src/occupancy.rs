@@ -62,12 +62,14 @@ pub fn persons(per_person: &str, factor: &str, area: f64, count: Option<f64>) ->
 /// Every room with an item or a designed count, by zone and number.
 pub fn rooms(model: &Model) -> Vec<RoomPersons> {
     let table = table(model);
+    let auto = crate::firerisk::AutoUses::new(model);
     let mut out = vec![];
     for e in model.iter() {
         let ElementKind::Room(r) = &e.kind else {
             continue;
         };
-        let item = r.fire_use.trim();
+        let item = auto.occupancy(r, &e.name);
+        let item = item.as_str();
         if item.is_empty() && r.design_count.is_none() {
             continue;
         }

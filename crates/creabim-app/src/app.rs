@@ -11483,7 +11483,7 @@ crate::props::row(ui, "File names", |ui| {
                     }
                 }
                 ElementKind::Room(r) => {
-                    label = crate::roomtool::room_fields(ui, self.doc.model(), r);
+                    label = crate::roomtool::room_fields(ui, self.doc.model(), r, &edited.name);
                 }
                 ElementKind::Ceiling(c) => {
                     label = crate::roomtool::ceiling_fields(ui, self.doc.model(), c);

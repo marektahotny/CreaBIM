@@ -24,8 +24,10 @@
 use crate::schedule::{Column, Row, Schedule};
 use creabim_core::fireparams::{
     self, ParamTable, FIRE_FIXED_LOAD, FIRE_LOAD, FIRE_OPENING_K, FIRE_OPENING_K_LARGE, FIRE_RISK,
+    ROOM_TYPE_USES,
 };
 use creabim_core::room;
+use creabim_core::roomtype::RoomType;
 use creabim_core::{ElementId, ElementKind, Model, OpeningKind, ScheduleCategory};
 use glam::DVec2;
 
@@ -82,6 +84,75 @@ impl ZoneRisk {
 /// One of the fire tables: the project's own, else the application's.
 pub fn table<'a>(model: &'a Model, id: &str) -> Option<&'a ParamTable> {
     fireparams::find(&model.project_info()?.1.fire_params, id)
+}
+
+/// The occupancy and fire load items rooms take from their type where
+/// the designer has given none (the table [`ROOM_TYPE_USES`] of the
+/// designer's parameters): a row marked "byt" only in a building that
+/// has a room of a row without the mark (a bedroom tells a dwelling).
+pub struct AutoUses {
+    rows: Vec<(RoomType, String, String, bool)>,
+    dwelling: bool,
+}
+
+impl AutoUses {
+    pub fn new(model: &Model) -> Self {
+        let rows: Vec<(RoomType, String, String, bool)> = table(model, ROOM_TYPE_USES)
+            .map(|t| {
+                let col = |r: &Vec<String>, c: &str| {
+                    t.column(c)
+                        .and_then(|i| r.get(i))
+                        .map_or(String::new(), |v| v.trim().to_string())
+                };
+                t.rows
+                    .iter()
+                    .filter_map(|r| {
+                        let ty = RoomType::find(&col(r, "type"))?;
+                        Some((
+                            ty,
+                            col(r, "occupancy"),
+                            col(r, FIRE_LOAD),
+                            !col(r, "when").is_empty(),
+                        ))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let dwelling = model.iter().any(|e| match &e.kind {
+            ElementKind::Room(r) => {
+                let ty = RoomType::of(&r.occupancy, &e.name);
+                rows.iter().any(|row| row.0 == ty && !row.3)
+            }
+            _ => false,
+        });
+        Self { rows, dwelling }
+    }
+
+    fn row(&self, r: &creabim_core::Room, name: &str) -> Option<&(RoomType, String, String, bool)> {
+        let ty = RoomType::of(&r.occupancy, name);
+        self.rows
+            .iter()
+            .find(|row| row.0 == ty && (!row.3 || self.dwelling))
+    }
+
+    /// The occupancy item of the room named `name`: its own, else its
+    /// type's; empty with neither.
+    pub fn occupancy(&self, r: &creabim_core::Room, name: &str) -> String {
+        let own = r.fire_use.trim();
+        if !own.is_empty() {
+            return own.to_string();
+        }
+        self.row(r, name).map_or(String::new(), |row| row.1.clone())
+    }
+
+    /// The room's fire load item: its own, else its type's.
+    pub fn fire_load(&self, r: &creabim_core::Room, name: &str) -> String {
+        let own = r.fire_load.trim();
+        if !own.is_empty() {
+            return own.to_string();
+        }
+        self.row(r, name).map_or(String::new(), |row| row.2.clone())
+    }
 }
 
 /// The fire risk's single value by its key.
@@ -234,6 +305,7 @@ fn storeys(model: &Model) -> (usize, usize) {
 pub fn zones(model: &Model) -> Vec<ZoneRisk> {
     let risk = table(model, FIRE_RISK);
     let loads = table(model, FIRE_LOAD);
+    let auto = AutoUses::new(model);
     let system = model
         .project_info()
         .map(|p| p.1.fire_system.trim().to_string())
@@ -272,9 +344,9 @@ pub fn zones(model: &Model) -> Vec<ZoneRisk> {
             if model.level(r.level).is_none_or(|l| l.elevation >= -1.0) {
                 underground = false;
             }
-            let row = loads.and_then(|t| t.row(r.fire_load.trim()));
-            let cell =
-                |c: &str| row.and_then(|_| fireparams::number(loads?.cell(r.fire_load.trim(), c)));
+            let item = auto.fire_load(r, &model.get(id).map_or(String::new(), |e| e.name.clone()));
+            let row = loads.and_then(|t| t.row(&item));
+            let cell = |c: &str| row.and_then(|_| fireparams::number(loads?.cell(&item, c)));
             let (pn, an) = match cell("pn") {
                 Some(pn) => (pn, cell("an").unwrap_or(an_default)),
                 None => {
@@ -566,5 +638,50 @@ mod tests {
         assert!((v - 0.0825).abs() < 1e-9, "{v}");
         assert_eq!(grid(t, 0.0, 0.0, &[1, 2]), Some(0.01));
         assert_eq!(grid(t, 1.0, 1000.0, &[1, 2]), Some(0.2));
+    }
+
+    /// A room with no item takes its type's; a row marked "byt" only
+    /// where the building has a room of an unmarked row; a given item
+    /// wins.
+    #[test]
+    fn a_room_type_gives_the_items_the_designer_left_out() {
+        let tables = "#table room_type_uses\n#columns type\toccupancy\tfire_load\twhen\n\
+            Spálňa\tU1\tT1\t\nKuchyňa\tU1\tT1\tbyt\n";
+        let mut m = Model::default();
+        let level = Element::new(
+            "1.NP",
+            ElementKind::Level(creabim_core::Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let lid = level.id;
+        Transaction::new("l").insert(level).apply(&mut m).unwrap();
+        let room = |name: &str, own: &str| -> (Element, creabim_core::Room) {
+            let r = creabim_core::Room {
+                level: lid,
+                fire_load: own.into(),
+                ..Default::default()
+            };
+            (Element::new(name, ElementKind::Room(r.clone())), r)
+        };
+        let info = creabim_core::ProjectInfo {
+            fire_params: fireparams::parse(tables),
+            ..Default::default()
+        };
+        creabim_core::set_project(&m, info).apply(&mut m).unwrap();
+        let (k, kitchen) = room("Kuchyňa", "");
+        Transaction::new("k").insert(k).apply(&mut m).unwrap();
+        // a kitchen alone tells no dwelling
+        let auto = AutoUses::new(&m);
+        assert_eq!(auto.fire_load(&kitchen, "Kuchyňa"), "");
+        let (b, bed) = room("Spálňa 1", "");
+        Transaction::new("b").insert(b).apply(&mut m).unwrap();
+        let auto = AutoUses::new(&m);
+        assert_eq!(auto.fire_load(&kitchen, "Kuchyňa"), "T1");
+        assert_eq!(auto.occupancy(&bed, "Spálňa 1"), "U1");
+        let (_, own) = room("Spálňa 2", "X9");
+        assert_eq!(auto.fire_load(&own, "Spálňa 2"), "X9");
+        assert_eq!(auto.fire_load(&kitchen, "Garáž"), "");
     }
 }

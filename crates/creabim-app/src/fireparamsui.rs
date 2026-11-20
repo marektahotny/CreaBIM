@@ -52,6 +52,9 @@ fn title(t: &ParamTable) -> String {
         fireparams::SUMMER_MAX => crate::i18n::t("Summer outdoor temperatures").to_string(),
         fireparams::RAIN_INTENSITY => crate::i18n::t("Rain intensity").to_string(),
         "n50_ranges" => crate::i18n::t("Air tightness n50").to_string(),
+        fireparams::ROOM_TYPE_USES => {
+            crate::i18n::t("Room types for the fire calculations").to_string()
+        }
         other => other.to_string(),
     };
     if own(t) && !fireparams::app_tables().is_empty() {

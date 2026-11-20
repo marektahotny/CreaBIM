@@ -53,6 +53,12 @@ pub const N50_RANGES: &str = "n50_ranges";
 /// in minutes named by the column (the designer's table, SHMÚ series).
 pub const RAIN_INTENSITY: &str = "rain_intensity";
 
+/// What a room type is counted as where the designer has not said:
+/// type (a room type's name, "Spálňa"), occupancy (an item of
+/// [`OCCUPANCY`]), fire_load (an item of [`FIRE_LOAD`]), when ("byt":
+/// only in a building with a room of a row without it).
+pub const ROOM_TYPE_USES: &str = "room_type_uses";
+
 /// The tables the climate file carries.
 pub const CLIMATE_TABLES: [&str; 4] = [CLIMATE_SITES, SUMMER_MAX, N50_RANGES, RAIN_INTENSITY];
 

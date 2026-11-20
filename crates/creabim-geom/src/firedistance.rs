@@ -788,6 +788,7 @@ impl Ctx<'_> {
         // 4.4.1: a combustible or mixed structural system adds to pv
         let pv = pv.map(|v| v + reader.pv_add(model));
         let storeys = storeys_of(model, &p0.zone);
+        let table = reader.table_of(model, &p0.zone);
         let given = crate::firezones::distance_of(model, p0.facing);
         // 5.3.1: Sp the smallest rectangle holding the fire-open areas
         // of a group, Spo by 4.2.2, po the share, d off the table
@@ -856,7 +857,7 @@ impl Ctx<'_> {
             let po = (open / sp * 100.0).min(100.0);
             let d = match given {
                 Some(d) => Some(d),
-                None => reader.distance(lu, hu, po, load, storeys),
+                None => reader.distance(table, lu, hu, po, load, storeys),
             }?;
             Some(Group {
                 members: group.to_vec(),
@@ -963,7 +964,7 @@ impl Ctx<'_> {
                     lu: g.lu,
                     hu: g.hu,
                     po: g.po,
-                    pv: (reader.table == 3 || g.single).then_some(g.pv).flatten(),
+                    pv: (table == 3 || g.single).then_some(g.pv).flatten(),
                 });
             }
         }
@@ -1056,7 +1057,13 @@ struct Reader<'a> {
     side_angle: f64,
     factors: (f64, f64),
     d: Option<&'a ParamTable>,
-    cells: Option<&'a ParamTable>,
+    /// Tables 6 and 7; with `table` 0 a zone takes 6 when all its
+    /// rooms' fire load items are among `dwelling_loads`, 7 when among
+    /// `lodging_loads`, else table 3.
+    dwelling_cells: Option<&'a ParamTable>,
+    lodging_cells: Option<&'a ParamTable>,
+    dwelling_loads: Vec<String>,
+    lodging_loads: Vec<String>,
     /// 3.2.4: table 4, the po under which it is used and the share of
     /// the sum of two distances neighbours must be apart.
     single: Option<&'a ParamTable>,
@@ -1093,13 +1100,20 @@ struct Reader<'a> {
 impl<'a> Reader<'a> {
     fn new(model: &'a Model, t: Option<&'a ParamTable>) -> Self {
         let table = value(t, "table").map_or(3, |v| v.round() as u32);
-        let cells = match table {
-            6 => crate::firerisk::table(model, FIRE_DISTANCE_DWELLING),
-            7 => crate::firerisk::table(model, FIRE_DISTANCE_LODGING),
-            _ => None,
+        let items = |key: &str| -> Vec<String> {
+            t.map(|t| t.cell(key, "value"))
+                .unwrap_or_default()
+                .split([';', ' '])
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
         };
         Self {
             table,
+            dwelling_cells: t.and(crate::firerisk::table(model, FIRE_DISTANCE_DWELLING)),
+            lodging_cells: t.and(crate::firerisk::table(model, FIRE_DISTANCE_LODGING)),
+            dwelling_loads: items("dwelling_loads"),
+            lodging_loads: items("lodging_loads"),
             d3: value(t, "d3").is_some_and(|v| v > 0.5),
             side_angle: value(t, "side_angle").unwrap_or(160.0),
             factors: (
@@ -1107,7 +1121,6 @@ impl<'a> Reader<'a> {
                 value(t, "three_storey").unwrap_or(1.0),
             ),
             d: t.and(crate::firerisk::table(model, FIRE_DISTANCE_D)),
-            cells: t.and(cells),
             single: t.and(crate::firerisk::table(model, FIRE_DISTANCE_SINGLE)),
             single_po: value(t, "single_po"),
             single_gap: value(t, "single_gap"),
@@ -1194,12 +1207,54 @@ impl<'a> Reader<'a> {
         Some((a.1 + (b.1 - a.1) * f, a.2 + (b.2 - a.2) * f))
     }
 
+    /// The table a zone's d is read off: the one set, or with 0 by what
+    /// its rooms are for (their fire load items, given or by type).
+    fn table_of(&self, model: &Model, zone: &str) -> u32 {
+        if self.table != 0 {
+            return self.table;
+        }
+        let auto = crate::firerisk::AutoUses::new(model);
+        let items: Vec<String> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Room(r) if r.fire_zone.trim() == zone => {
+                    Some(auto.fire_load(r, &e.name))
+                }
+                _ => None,
+            })
+            .collect();
+        let all_in = |list: &[String]| {
+            !items.is_empty() && !list.is_empty() && items.iter().all(|i| list.contains(i))
+        };
+        if all_in(&self.dwelling_loads) {
+            6
+        } else if all_in(&self.lodging_loads) {
+            7
+        } else {
+            3
+        }
+    }
+
     /// d for an area lu × hu with po % open, of a zone with `pv` and
     /// `storeys` storeys; none without the table it needs.
-    fn distance(&self, lu: f64, hu: f64, po: f64, pv: Option<f64>, storeys: usize) -> Option<f64> {
-        match self.table {
+    #[allow(clippy::too_many_arguments)]
+    fn distance(
+        &self,
+        table: u32,
+        lu: f64,
+        hu: f64,
+        po: f64,
+        pv: Option<f64>,
+        storeys: usize,
+    ) -> Option<f64> {
+        match table {
             6 | 7 => {
-                let d = dwelling(self.cells?, lu, po, self.d3)?;
+                let cells = if table == 6 {
+                    self.dwelling_cells
+                } else {
+                    self.lodging_cells
+                };
+                let d = dwelling(cells?, lu, po, self.d3)?;
                 let f = match storeys {
                     0 | 1 => 1.0,
                     2 => self.factors.0,
@@ -1702,5 +1757,41 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// With table 0 a zone whose rooms are all dwellings by their fire
+    /// load items takes table 6, others table 3.
+    #[test]
+    fn a_dwelling_zone_takes_table_6_by_itself() {
+        let mut m = creabim_core::starter::starter_house();
+        let mut tx = creabim_core::Transaction::new("items");
+        let rooms: Vec<creabim_core::Element> = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Room(_)))
+            .cloned()
+            .collect();
+        for before in rooms {
+            let mut after = before.clone();
+            if let ElementKind::Room(r) = &mut after.kind {
+                r.fire_load = "B1".into();
+            }
+            tx = tx.replace(before, after);
+        }
+        tx.apply(&mut m).unwrap();
+        with_tables(&mut m, &TABLES.replace("table\t3", "table\t6"));
+        let six: Vec<f64> = spaces(&m, None, None).iter().map(|p| p.d).collect();
+        with_tables(&mut m, TABLES);
+        let three: Vec<f64> = spaces(&m, None, None).iter().map(|p| p.d).collect();
+        assert_ne!(six, three);
+        let auto = TABLES.replace("table\t3\t", "table\t0\t\ndwelling_loads\tB1\t");
+        with_tables(&mut m, &auto);
+        let found: Vec<f64> = spaces(&m, None, None).iter().map(|p| p.d).collect();
+        assert_eq!(found, six);
+        with_tables(
+            &mut m,
+            &auto.replace("dwelling_loads\tB1", "dwelling_loads\tB2"),
+        );
+        let found: Vec<f64> = spaces(&m, None, None).iter().map(|p| p.d).collect();
+        assert_eq!(found, three);
     }
 }
