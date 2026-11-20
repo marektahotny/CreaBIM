@@ -2240,6 +2240,10 @@ pub struct View {
     /// How a material take-off groups, details and sorts its rows.
     #[serde(default, skip_serializing_if = "crate::takeoff::Layout::is_default")]
     pub takeoff: crate::takeoff::Layout,
+    /// A room schedule's or room legend's perimeter column shown (true) or
+    /// left out (false); none: the schedule shows it, the legend doesn't.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perimeter: Option<bool>,
     /// How a section's line is drawn in plans and where it steps aside.
     #[serde(default, skip_serializing_if = "SectionLine::is_plain")]
     pub line: SectionLine,
@@ -2680,6 +2684,7 @@ impl View {
             column_widths: BTreeMap::new(),
             page: None,
             takeoff: Default::default(),
+            perimeter: None,
             notes: String::new(),
             turn: 0.0,
             spatial: false,
@@ -2721,6 +2726,7 @@ impl View {
             column_widths: BTreeMap::new(),
             page: None,
             takeoff: Default::default(),
+            perimeter: None,
             notes: String::new(),
             turn: 0.0,
             spatial: false,
@@ -2759,6 +2765,7 @@ impl View {
             column_widths: BTreeMap::new(),
             page: None,
             takeoff: Default::default(),
+            perimeter: None,
             notes: String::new(),
             turn: 0.0,
             spatial: false,
@@ -2798,6 +2805,7 @@ impl View {
             column_widths: BTreeMap::new(),
             page: None,
             takeoff: Default::default(),
+            perimeter: None,
             notes: String::new(),
             turn: 0.0,
             spatial: false,
@@ -2842,6 +2850,7 @@ impl View {
             column_widths: BTreeMap::new(),
             page: None,
             takeoff: Default::default(),
+            perimeter: None,
             notes: String::new(),
             turn: 0.0,
             spatial: false,

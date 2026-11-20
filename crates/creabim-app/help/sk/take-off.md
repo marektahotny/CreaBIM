@@ -45,6 +45,8 @@ Materiál bez sadzby sa meria, ale nezapočíta sa do oceneného súčtu.
 - **Triedenie:** klik na hlavičku stĺpca zoradí riadky v skupinách vzostupne, druhý klik zostupne, tretí zruší zoradenie.
 - **Hľadať** ponechá len riadky, ktorých materiál, prvok, konštrukcia alebo typ prvku obsahuje zadaný text.
 - **Ukázať, kde to je:** kliknite na riadok (s Ctrl pridáte ďalšie, klik na skupinu vyberie celú skupinu) a stlačte **Ukázať v 3D** alebo **Ukázať v pôdoryse**. Prvky sa označia a priblížia; ak 3D pohľad nie je otvorený, otvorí sa vedľa tabuľky, pôdorys podlažia pod ňou. Dvojklik na riadok ich ukáže v 3D.
+- **Dvere a okná** majú stĺpec *Obvod* (dvakrát šírka plus výška, sčítané).
+- **Parapety**, vonkajšie (klampiarske) aj vnútorné, sú v skupinách *Vonkajšie parapety* a *Vnútorné parapety*: riadok pre každý rozmer, s jeho šírkou (cez stenu) a dĺžkou, počtom kusov, dĺžkou a plochou. Vonkajší presahuje vonkajší líc steny o 40 mm, vnútorný vnútorný líc o 20 mm a zasahuje 20 mm do každého ostenia. Prepínače okna *Vonkajší parapet* / *Vnútorný parapet* ho vynechajú.
 - *Sadzbu* a *Za* materiálu meníte priamo v riadku.
 - Zoskupenie, zobrazenie po prvkoch a triedenie sa ukladajú s výkazom a rovnako sa vytlačí na liste. Pozri [Listy](sheets).
 

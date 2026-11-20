@@ -10119,6 +10119,23 @@ crate::props::row(ui, "File names", |ui| {
                                     }
                                 }
                             });
+                        // rooms' perimeters, on or off in the schedule and the legend
+                        if matches!(
+                            *category,
+                            ScheduleCategory::Rooms | ScheduleCategory::RoomLegend
+                        ) {
+                            let mut on =
+                                creabim_geom::schedule::shows_perimeter(*category, v.perimeter);
+                            if crate::props::switch(ui, &mut on, "Perimeter")
+                                .on_hover_text(crate::i18n::tr(
+                                    "Show each room's perimeter in a column of its own",
+                                ))
+                                .changed()
+                            {
+                                v.perimeter = Some(on);
+                                label = "Room perimeter column";
+                            }
+                        }
                         // the take-off groups and sorts in its own bar
                         if *category != ScheduleCategory::Materials
                             && crate::props::switch(ui, by_type, "Group by type")

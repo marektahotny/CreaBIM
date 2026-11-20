@@ -135,9 +135,22 @@ impl Layout {
 }
 
 /// The order element categories are listed in: as a house is built.
-pub const CATEGORY_ORDER: [&str; 13] = [
-    "Footings", "Walls", "Columns", "Beams", "Slabs", "Stairs", "Roofs", "Ceilings", "Railings",
-    "Doors", "Windows", "Objects", "Masses",
+pub const CATEGORY_ORDER: [&str; 15] = [
+    "Footings",
+    "Walls",
+    "Columns",
+    "Beams",
+    "Slabs",
+    "Stairs",
+    "Roofs",
+    "Ceilings",
+    "Railings",
+    "Doors",
+    "Windows",
+    "Outer sills",
+    "Inner sills",
+    "Objects",
+    "Masses",
 ];
 
 /// Measured amounts, in metres, square metres and cubic metres.
@@ -163,7 +176,8 @@ impl Quantity {
 pub struct Line {
     pub element: ElementId,
     /// "Walls", "Slabs", "Roofs", "Ceilings", "Columns", "Beams", "Footings",
-    /// "Doors", "Windows", "Objects", "Stairs", "Railings", "Masses".
+    /// "Doors", "Windows", "Outer sills", "Inner sills", "Objects", "Stairs",
+    /// "Railings", "Masses".
     pub category: &'static str,
     pub level: Option<ElementId>,
     pub material: Option<ElementId>,
@@ -174,6 +188,11 @@ pub struct Line {
     /// Thickness of the layer, or of the element, metres.
     pub thickness: f64,
     pub quantity: Quantity,
+    /// A door's or window's perimeter, m (0 for anything else).
+    pub perimeter: f64,
+    /// What the line is listed as when it is not by its material: a
+    /// window sill by its kind and size.
+    pub label: Option<String>,
 }
 
 /// Every take-off line of the model, element by element in model order.
@@ -430,6 +449,8 @@ pub fn lines(model: &Model) -> Vec<Line> {
                         volume: whole.area * l.thickness,
                         ..whole
                     },
+                    perimeter: 0.0,
+                    label: None,
                 });
             }
         } else {
@@ -441,7 +462,58 @@ pub fn lines(model: &Model) -> Vec<Line> {
                 layer: None,
                 thickness,
                 quantity: whole,
+                perimeter: match &e.kind {
+                    ElementKind::Opening(o) => 2.0 * (o.width + o.height),
+                    _ => 0.0,
+                },
+                label: None,
             });
+        }
+    }
+    // window sills, outer (sheet metal) and inner (boards): pieces of a
+    // size, listed by kind and size
+    for (outer, category) in [(true, "Outer sills"), (false, "Inner sills")] {
+        let all = if outer {
+            crate::joinery::outer_sills(model)
+        } else {
+            crate::joinery::inner_sills(model)
+        };
+        for s in all {
+            let mm = |v: f64| (v * 1000.0).round() as i64;
+            // its size: width (across the wall) × length, mm
+            let label = format!(
+                "{} {} {} × {} {} mm",
+                crate::words::tr(if outer { "Outer sill" } else { "Inner sill" }),
+                crate::words::tr("w."),
+                mm(s.depth),
+                crate::words::tr("l."),
+                mm(s.length)
+            );
+            for w in &s.windows {
+                let level = match model.get(*w).map(|e| &e.kind) {
+                    Some(ElementKind::Opening(o)) => match model.get(o.host).map(|h| &h.kind) {
+                        Some(ElementKind::Wall(h)) => Some(h.level),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                out.push(Line {
+                    element: *w,
+                    category,
+                    level,
+                    material: None,
+                    layer: None,
+                    thickness: 0.0,
+                    quantity: Quantity {
+                        area: s.length * s.depth,
+                        length: s.length,
+                        count: 1,
+                        ..Default::default()
+                    },
+                    perimeter: 0.0,
+                    label: Some(label.clone()),
+                });
+            }
         }
     }
     out

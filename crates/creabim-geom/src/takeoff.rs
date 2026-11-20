@@ -241,6 +241,9 @@ fn group_of(model: &Model, l: &Line, g: GroupBy) -> (Key, String) {
 /// A line's material by name; a door, window or object without one by
 /// its construction.
 fn material_label(model: &Model, l: &Line) -> String {
+    if let Some(label) = &l.label {
+        return label.clone();
+    }
     name_of(model, l.material).unwrap_or_else(|| {
         if matches!(l.category, "Doors" | "Windows" | "Objects" | "Railings") {
             construction(model, l.element)
@@ -274,7 +277,7 @@ fn col(title: &'static str, field: Option<Field>, width: f64, numeric: bool) -> 
 }
 
 /// The columns of a table laid out by `layout` grouped by `groups`.
-fn columns(layout: &Layout, groups: &[GroupBy]) -> Vec<Column> {
+fn columns(layout: &Layout, groups: &[GroupBy], perimeter: bool) -> Vec<Column> {
     let mut c = vec![
         col("Material", None, 44.0, false),
         col("Thickness", None, 16.0, true),
@@ -294,8 +297,12 @@ fn columns(layout: &Layout, groups: &[GroupBy]) -> Vec<Column> {
     } else {
         c.push(col("Elements", None, 14.0, true));
     }
+    c.push(col("Length", None, 18.0, true));
+    // doors' and windows' perimeters, when there are any
+    if perimeter {
+        c.push(col("Perimeter", None, 18.0, true));
+    }
     c.extend([
-        col("Length", None, 18.0, true),
         col("Area", None, 20.0, true),
         col("Volume", None, 20.0, true),
         col("Rate", Some(Field::Rate), 18.0, true),
@@ -310,6 +317,15 @@ struct Leaf {
     material: Option<ElementId>,
     elements: Vec<ElementId>,
     cells: HashMap<&'static str, (String, Key)>,
+}
+
+/// A perimeter's cell: metres, or a dash for none.
+fn perimeter_cell(p: f64) -> (String, Key) {
+    if p > 1e-9 {
+        (format!("{p:.2} m"), Key::Num(p))
+    } else {
+        ("-".into(), Key::Num(0.0))
+    }
 }
 
 fn leaf_cells(
@@ -390,6 +406,7 @@ fn leaves(model: &Model, lines: &[&Line], detail: bool) -> Vec<Leaf> {
                     &l.quantity,
                     1,
                 );
+                c.insert("Perimeter", perimeter_cell(l.perimeter));
                 let e = model.get(l.element);
                 let element = e.map(|e| e.name.clone()).unwrap_or_default();
                 c.insert(
@@ -417,7 +434,7 @@ fn leaves(model: &Model, lines: &[&Line], detail: bool) -> Vec<Leaf> {
     // (material or label, thickness in tenths of a millimetre)
     type LeafKey = (Option<ElementId>, String, i64);
     let mut order: Vec<LeafKey> = vec![];
-    let mut sums: HashMap<LeafKey, (Quantity, Vec<ElementId>, f64)> = HashMap::new();
+    let mut sums: HashMap<LeafKey, (Quantity, Vec<ElementId>, f64, f64)> = HashMap::new();
     for l in lines {
         let label = material_label(model, l);
         let key = (
@@ -431,8 +448,9 @@ fn leaves(model: &Model, lines: &[&Line], detail: bool) -> Vec<Leaf> {
         );
         let e = sums.entry(key.clone()).or_insert_with(|| {
             order.push(key);
-            (Quantity::default(), vec![], l.thickness)
+            (Quantity::default(), vec![], l.thickness, 0.0)
         });
+        e.3 += l.perimeter;
         e.0.area += l.quantity.area;
         e.0.volume += l.quantity.volume;
         e.0.length += l.quantity.length;
@@ -443,12 +461,14 @@ fn leaves(model: &Model, lines: &[&Line], detail: bool) -> Vec<Leaf> {
     order
         .into_iter()
         .filter_map(|k| {
-            let (mut q, elements, t) = sums.remove(&k)?;
+            let (mut q, elements, t, perimeter) = sums.remove(&k)?;
             q.count = elements.len();
             let label = name_of(model, k.0).unwrap_or(k.1);
+            let mut cells = leaf_cells(model, label, t, k.0, &q, elements.len());
+            cells.insert("Perimeter", perimeter_cell(perimeter));
             Some(Leaf {
                 material: k.0,
-                cells: leaf_cells(model, label, t, k.0, &q, elements.len()),
+                cells,
                 elements,
             })
         })
@@ -479,7 +499,7 @@ fn table_of(
     filter: &str,
 ) -> Table {
     let groups = layout.groups(by_level);
-    let cols = columns(layout, &groups);
+    let cols = columns(layout, &groups, all.iter().any(|l| l.perimeter > 1e-9));
     let needle = filter.trim().to_lowercase();
     let picked: Vec<&Line> = all
         .iter()
@@ -629,6 +649,7 @@ fn build(
     // a material's own group adds its areas and lengths up; other groups
     // mix layers, whose areas would count a wall's face once a layer
     let one_material = *g == GroupBy::Material;
+
     for (_, label, mine) in keyed {
         let here = format!("{path}/{}:{label}", g.label());
         let mut elements: Vec<ElementId> = vec![];
@@ -640,6 +661,11 @@ fn build(
         let volume: f64 = mine.iter().map(|l| l.quantity.volume).sum();
         let area: f64 = mine.iter().map(|l| l.quantity.area).sum();
         let length: f64 = mine.iter().map(|l| l.quantity.length).sum();
+        let perimeter: f64 = mine.iter().map(|l| l.perimeter).sum();
+        // sills are pieces of one kind: their lengths add up too
+        let pieces = mine
+            .iter()
+            .all(|l| matches!(l.category, "Outer sills" | "Inner sills"));
         let costs: Vec<f64> = mine
             .iter()
             .filter_map(|l| line_cost(model, l.material, &l.quantity))
@@ -655,7 +681,10 @@ fn build(
                 "Elements" => elements.len().to_string(),
                 "Volume" if volume > 1e-9 => format!("{volume:.2} m³"),
                 "Area" if one_material && area > 1e-9 => format!("{area:.2} m²"),
-                "Length" if one_material && length > 1e-9 => format!("{length:.2} m"),
+                "Length" if (one_material || pieces) && length > 1e-9 => {
+                    format!("{length:.2} m")
+                }
+                "Perimeter" if perimeter > 1e-9 => format!("{perimeter:.2} m"),
                 "Cost" if !costs.is_empty() => format!("{:.2}", costs.iter().sum::<f64>()),
                 _ => std::mem::take(&mut cells[i]),
             };
@@ -840,5 +869,71 @@ mod tests {
         let some = table(&model, &Layout::default(), false, &tr("Walls"));
         assert!(some.schedule.rows.len() < all.schedule.rows.len());
         assert!(some.schedule.rows.iter().any(|r| r.group));
+    }
+
+    #[test]
+    fn openings_have_their_perimeter_and_sills_count_by_size() {
+        let model = starter();
+        let all = lines(&model);
+        // a window's or door's perimeter is round its size
+        for l in all
+            .iter()
+            .filter(|l| matches!(l.category, "Doors" | "Windows"))
+        {
+            let Some(ElementKind::Opening(o)) = model.get(l.element).map(|e| &e.kind) else {
+                panic!("an opening");
+            };
+            assert!((l.perimeter - 2.0 * (o.width + o.height)).abs() < 1e-9);
+        }
+        let t = table_measured(&model, &Layout::default(), false);
+        let at = |title: &str| {
+            t.schedule
+                .columns
+                .iter()
+                .position(|c| c.title == title)
+                .unwrap()
+        };
+        let (p, n) = (at("Perimeter"), at("Elements"));
+        let windows = t
+            .schedule
+            .rows
+            .iter()
+            .find(|r| r.group && r.cells[0].trim() == tr("Windows"))
+            .expect("the windows' heading");
+        assert!(windows.cells[p].ends_with(" m"), "{:?}", windows.cells);
+        let length = at("Length");
+        // sills: outer and inner, a row for each size, pieces adding up to
+        // the windows that have them
+        for (cat, sills) in [
+            ("Outer sills", creabim_core::joinery::outer_sills(&model)),
+            ("Inner sills", creabim_core::joinery::inner_sills(&model)),
+        ] {
+            assert!(!sills.is_empty(), "{cat}");
+            let head = t
+                .schedule
+                .rows
+                .iter()
+                .position(|r| r.group && r.cells[0].trim() == tr(cat))
+                .expect("a heading for the sills");
+            let rows: Vec<_> = t.schedule.rows[head + 1..]
+                .iter()
+                .take_while(|r| !r.group)
+                .collect();
+            assert_eq!(rows.len(), sills.len(), "{cat}: one row a size");
+            assert!(t.schedule.rows[head].cells[length].ends_with(" m"));
+            let pieces: usize = rows
+                .iter()
+                .map(|r| r.cells[n].parse::<usize>().unwrap())
+                .sum();
+            let windows: usize = sills.iter().map(|s| s.windows.len()).sum();
+            assert_eq!(pieces, windows);
+            assert!(rows.iter().all(|r| r.cells[0].contains(" × ")));
+        }
+        // an inner sill is longer than its window by its ears
+        let inner = &creabim_core::joinery::inner_sills(&model)[0];
+        let Some(ElementKind::Opening(o)) = model.get(inner.windows[0]).map(|e| &e.kind) else {
+            panic!("a window");
+        };
+        assert!((inner.length - (o.width + 0.04)).abs() < 1e-3);
     }
 }
