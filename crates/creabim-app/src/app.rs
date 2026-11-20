@@ -12787,6 +12787,77 @@ impl Drop for Perf {
     }
 }
 
+impl CreaBimApp {
+    /// For checking a change by eye (`CREABIM_SHOT_VIEW=<view name>`,
+    /// `CREABIM_SHOT=<file.png>`, optional `CREABIM_SHOT_ZOOM=<factor>`):
+    /// open that view, wait a few frames, save the window as a PNG and quit.
+    fn dev_shot(&mut self, ctx: &egui::Context) {
+        let (Ok(name), Ok(out)) = (
+            std::env::var("CREABIM_SHOT_VIEW"),
+            std::env::var("CREABIM_SHOT"),
+        ) else {
+            return;
+        };
+        let frame = ctx.cumulative_frame_nr();
+        if frame == 3 {
+            let id = self
+                .doc
+                .model()
+                .iter()
+                .find(|e| e.name == name && matches!(e.kind, ElementKind::View(_)))
+                .map(|e| e.id);
+            self.active_view = id;
+            // where it looks: "x,y,pixels per metre"
+            if let (Some(id), Ok(cam)) = (id, std::env::var("CREABIM_SHOT_CAM")) {
+                let v: Vec<f64> = cam
+                    .split(',')
+                    .filter_map(|t| t.trim().parse().ok())
+                    .collect();
+                if v.len() == 3 {
+                    self.plan
+                        .cameras
+                        .insert(id, (glam::DVec2::new(v[0], v[1]), v[2] as f32));
+                }
+            }
+        }
+        if frame > 3 && frame < 40 {
+            ctx.request_repaint();
+            if let (Some(id), Ok(cam)) = (self.active_view, std::env::var("CREABIM_SHOT_CAM")) {
+                let v: Vec<f64> = cam
+                    .split(',')
+                    .filter_map(|t| t.trim().parse().ok())
+                    .collect();
+                if v.len() == 3 {
+                    let c = (glam::DVec2::new(v[0], v[1]), v[2] as f32);
+                    for (k, val) in self.plan.area_cameras.iter_mut() {
+                        if k.1 == id {
+                            *val = c;
+                        }
+                    }
+                }
+            }
+        }
+        if frame == 30 {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+        }
+        let shot = ctx.input(|i| {
+            i.events.iter().find_map(|e| match e {
+                egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+        });
+        if let Some(img) = shot {
+            let [w, h] = img.size;
+            let bytes: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
+            if let Some(buf) = image::RgbaImage::from_raw(w as u32, h as u32, bytes) {
+                let _ = buf.save(&out);
+            }
+            self.close_ok = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+}
+
 impl eframe::App for CreaBimApp {
     /// Keys typed while a web pane had the keyboard reach the views.
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
@@ -12846,6 +12917,7 @@ impl eframe::App for CreaBimApp {
             self.close_ask = true;
         }
         let ctx = ui.ctx().clone();
+        self.dev_shot(&ctx);
         // on the drawing area a bar's tooltip goes: the bar never hears the
         // pointer leave it. Back from a bar (or after a pause in the moves
         // here, in case leaving went unreported) the bars forget the

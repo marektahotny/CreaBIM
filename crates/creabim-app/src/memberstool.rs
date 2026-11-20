@@ -486,7 +486,14 @@ fn place_footing(
         }
         let mut tx = finish_footings(model, state, tx);
         tx.label = format!("Place {}", kind.label().to_lowercase());
-        return doc.commit(tx);
+        doc.commit(tx)?;
+        // the foundation plan cut through it
+        if let Some(v) = foundation_plan(doc.model()) {
+            if let Some(fit) = fit_foundation_cut(doc.model(), v) {
+                doc.commit(fit)?;
+            }
+        }
+        return Ok(());
     }
     let add = |doc: &mut Document, selection: &mut Selection, e: Element, state: &PlanState| {
         selection.only(e.id);
@@ -558,6 +565,47 @@ pub fn foundation_plan(model: &Model) -> Option<ElementId> {
         }
         _ => None,
     })
+}
+
+/// The foundation plan `view` cut through the footings, when its plane
+/// passes through none of them: the plane moved to halfway down the
+/// shallowest footing, its underlay of the floor above dropped.
+pub fn fit_foundation_cut(model: &Model, view: ElementId) -> Option<Transaction> {
+    let e = model.get(view)?;
+    let ElementKind::View(v) = &e.kind else {
+        return None;
+    };
+    let creabim_core::ViewKind::Plan { level, cut_height } = v.kind else {
+        return None;
+    };
+    if creabim_geom::plan::is_foundation_plan(model, level, cut_height) {
+        return None;
+    }
+    let z0 = model.level(level)?.elevation;
+    // the footings under the plan's level's storey: the shallowest top
+    let (top, bottom) = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Footing(f) => {
+                let t = f.top(model);
+                Some((t, t - f.thickness))
+            }
+            _ => None,
+        })
+        .filter(|(t, _)| *t > z0)
+        .min_by(|a, b| a.0.total_cmp(&b.0))?;
+    let mid = (top + bottom.max(z0)) / 2.0 - z0;
+    let mut after = e.clone();
+    if let ElementKind::View(v) = &mut after.kind {
+        v.kind = creabim_core::ViewKind::Plan {
+            level,
+            cut_height: mid,
+        };
+        if v.underlay == creabim_core::Underlay::Above {
+            v.underlay = creabim_core::Underlay::None;
+        }
+    }
+    Some(Transaction::new("Foundation plan through the footings").replace(e.clone(), after))
 }
 
 /// Does `tool` go on a host it is clicked onto (a footing under a wall or
