@@ -224,6 +224,22 @@ pub fn schedule(model: &Model) -> Schedule {
             ],
         });
     }
+    // outer walls with no fire resistance stated: counted as wholly
+    // fire-open (unless the designer's `wall_unstated` says otherwise)
+    for (id, w, _) in crate::fireexposure::unstated_walls(model) {
+        rows.push(Row {
+            id,
+            group: false,
+            cells: vec![
+                tr("Outer wall"),
+                level_name(w.level),
+                format!("{} {:.2} m", tr("Outer wall"), w.start.distance(w.end)),
+                String::new(),
+                tr("NO FIRE RESISTANCE STATED"),
+                tr("counted as a wholly fire-open area (STN 92 0201-2 tab. 5 note 3)"),
+            ],
+        });
+    }
     // 5.4.9 to 5.4.11: outer walls in another zone's fire-dangerous
     // space, and their openings
     let marks = creabim_core::marks(model);
