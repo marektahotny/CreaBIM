@@ -628,9 +628,22 @@ impl Ctx<'_> {
                 }
             })
             .collect();
-        // 4.1.3 (Z3): an outer wall the designer marks as having a
-        // combustible face: its face less its openings, partly open
-        // (the wall's piece in each stretch)
+        // the zone's grade by STN 92 0201-2 (what its table 5 asks of
+        // the outer walls and the roof)
+        let zone_pv = self
+            .loads
+            .zones
+            .iter()
+            .find(|z| !p0.zone.is_empty() && z.code == p0.zone)
+            .map(|z| z.pv)
+            .or(self.loads.default);
+        let grade = zone_pv.and_then(|pv| crate::firegrade::grade(model, pv));
+        // 4.1.2 and 4.1.3 (Z3), STN 92 0201-2 5.4.4 and table 5 note 3):
+        // an outer wall short of the fire resistance table 5 items 2/14
+        // ask for the zone's grade is wholly open; one that meets it but
+        // the designer marks as having a combustible face is partly
+        // open; either its face less its openings (the wall's piece in
+        // each stretch)
         let pieces: Vec<(ElementId, f64, f64)> = members
             .iter()
             .flat_map(|&j| {
@@ -643,7 +656,13 @@ impl Ctx<'_> {
             let Some(ElementKind::Wall(wall)) = model.get(w).map(|e| &e.kind) else {
                 continue;
             };
-            if !wall.fire_partial {
+            let short = grade
+                .and_then(|g| crate::firegrade::wall_required(model, g, wall))
+                .is_some_and(|need| {
+                    crate::firegrade::wall_declared(model, wall)
+                        .map_or(reader.wall_unstated_open, |has| has < need)
+                });
+            if !short && !wall.fire_partial {
                 continue;
             }
             let (x, y) = (along(wall.start), along(wall.end));
@@ -667,7 +686,11 @@ impl Ctx<'_> {
                     id: w,
                     level: wall.level,
                     rect: [x.min(y), x.max(y), z0, z0 + h],
-                    kind: PartKind::Partial,
+                    kind: if short {
+                        PartKind::Full
+                    } else {
+                        PartKind::Partial
+                    },
                     area,
                     pvm: None,
                 });
@@ -692,16 +715,7 @@ impl Ctx<'_> {
         // where its covering falls short of the fire resistance table 5
         // of STN 92 0201-2 asks for the zone's grade (its note 4)); one
         // not stated as the designer says (`roof_unstated`)
-        let zone_pv = self
-            .loads
-            .zones
-            .iter()
-            .find(|z| !p0.zone.is_empty() && z.code == p0.zone)
-            .map(|z| z.pv)
-            .or(self.loads.default);
-        let required = zone_pv
-            .and_then(|pv| crate::firegrade::grade(model, pv))
-            .and_then(|g| crate::firegrade::roof_required(model, g));
+        let required = grade.and_then(|g| crate::firegrade::roof_required(model, g));
         let open = |id: ElementId| {
             reader.roof_open
                 || required.is_some_and(|need| {
@@ -1090,6 +1104,9 @@ struct Reader<'a> {
     /// A roof whose assembly states no fire resistance: fire-open (not
     /// shown) unless the designer takes it as meeting the requirement.
     roof_unstated_open: bool,
+    /// An outer wall whose assembly states no fire resistance: wholly
+    /// fire-open (not shown) only where the designer says so.
+    wall_unstated_open: bool,
     roof_steep: f64,
     hu_roof: f64,
     roof_reach: f64,
@@ -1140,6 +1157,7 @@ impl<'a> Reader<'a> {
                 .collect(),
             roof_open: value(t, "roof_open").is_some_and(|v| v > 0.5),
             roof_unstated_open: value(t, "roof_unstated").is_none_or(|v| v > 0.5),
+            wall_unstated_open: value(t, "wall_unstated").is_some_and(|v| v > 0.5),
             roof_steep: value(t, "roof_steep").unwrap_or(15.0),
             hu_roof: value(t, "hu_roof").unwrap_or(2.0),
             roof_reach: value(t, "roof_reach").unwrap_or(1.5),
@@ -1696,6 +1714,37 @@ mod tests {
         tx.apply(&mut m).unwrap();
         let loaded = south(&m);
         assert!(loaded.1 > partial.1, "{loaded:?} {partial:?}");
+    }
+
+    /// STN 92 0201-2 table 5 note 3): an outer wall short of the fire
+    /// resistance its zone's grade asks is wholly open, more so than one
+    /// with only a combustible face.
+    #[test]
+    fn a_wall_short_of_its_fire_resistance_is_wholly_open() {
+        let extra = |unstated: u8| {
+            format!(
+                "#table fire_distance\n#columns key\tvalue\tnote\n\
+                table\t3\t\nside_angle\t160\t\npv_default\t50\t\npv_eq3\t30\t\n\
+                wall_unstated\t{unstated}\t\n\
+                #table fire_distance_k\n#columns t\tk10\tk11\tq\n15\t1\t1,5\t59\n100\t0,5\t0,7\t160\n\
+                #table fire_grade\n#columns key\tvalue\tnote\nrule\t1\t\n\
+                #table fire_outer_wall\n#columns grade\tabove\tlast\tnonbearing\tsingle\n\
+                1\t30\t15\t15\t15\n"
+            )
+        };
+        let south = |m: &Model| {
+            spaces(m, None, None)
+                .into_iter()
+                .filter(|p| p.outward.y < -0.9)
+                .map(|p| p.d)
+                .fold(0.0, f64::max)
+        };
+        let mut m = creabim_core::starter::starter_house();
+        with_tables(&mut m, &format!("{TABLES}{}", extra(0)));
+        let meets = south(&m);
+        with_tables(&mut m, &format!("{TABLES}{}", extra(1)));
+        let short = south(&m);
+        assert!(short > meets + 0.1, "{short} {meets}");
     }
 
     #[test]

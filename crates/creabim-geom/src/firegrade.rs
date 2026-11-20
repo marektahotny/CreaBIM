@@ -29,6 +29,11 @@ pub const FIRE_GRADE_DWELLING: &str = "fire_grade_dwelling";
 /// Table 5 item 3: grade, the roof covering's least fire resistance,
 /// minutes.
 pub const FIRE_ROOF: &str = "fire_roof";
+/// Table 5 items 2 and 14: grade, then an outer wall's least fire
+/// resistance, minutes: `above` load-bearing in a storey above ground
+/// (2a2), `last` load-bearing in the last storey above ground (2a3),
+/// `nonbearing` (2b), `single` in a single-storey building (14).
+pub const FIRE_OUTER_WALL: &str = "fire_outer_wall";
 
 fn value(t: Option<&ParamTable>, key: &str) -> Option<f64> {
     fireparams::number(t?.cell(key, "value"))
@@ -129,6 +134,52 @@ pub fn roof_required(model: &Model, grade: u32) -> Option<f64> {
                 .is_some_and(|g| g.round() as u32 == grade)
         })
         .and_then(|r| n(r.get(1)?))
+}
+
+/// Table 5 items 2 and 14: an outer wall's least fire resistance for
+/// `grade`, minutes, short of which it is a wholly fire-open area (its
+/// note 3), 5.4.4); none where the table or the figures are missing, or
+/// for a wall under ground.
+pub fn wall_required(model: &Model, grade: u32, wall: &creabim_core::Wall) -> Option<f64> {
+    let fh = crate::firezones::fire_height(model)?;
+    let t = crate::firerisk::table(model, FIRE_OUTER_WALL)?;
+    let column = if fh.above <= 1 && fh.below == 0 {
+        "single"
+    } else {
+        let elev = |id: ElementId| model.level(id).map(|l| l.elevation);
+        let (here, first) = (elev(wall.level)?, elev(fh.first)?);
+        if here < first - 1e-6 {
+            return None;
+        }
+        let bearing =
+            creabim_core::masonry::is_bearing(model, wall, &creabim_core::masonry::rules(model));
+        if !bearing {
+            "nonbearing"
+        } else if wall.level == fh.last {
+            "last"
+        } else {
+            "above"
+        }
+    };
+    let i = t.columns.iter().position(|c| c == column)?;
+    let n = |s: &str| fireparams::number(s);
+    t.rows
+        .iter()
+        .find(|r| {
+            r.first()
+                .and_then(|s| n(s))
+                .is_some_and(|g| g.round() as u32 == grade)
+        })
+        .and_then(|r| n(r.get(i)?))
+}
+
+/// The fire resistance a wall's assembly states (its description, as
+/// "REW 60" or "EW 30"), minutes; none where it states none.
+pub fn wall_declared(model: &Model, wall: &creabim_core::Wall) -> Option<f64> {
+    let ElementKind::Assembly(a) = &model.get(wall.assembly?)?.kind else {
+        return None;
+    };
+    declared(&a.description)
 }
 
 /// The fire resistance a roof's assembly states (its description, as
