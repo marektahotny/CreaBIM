@@ -505,6 +505,7 @@ mod shot_project {
         rf.in_place(b);
         rf.at -= shift;
         rf.over = true;
+        rf.in_3d = true;
         let e = Element::new("Situácia z mapy", ElementKind::Reference(rf));
         let id = e.id;
         let info = creabim_core::ProjectInfo {
@@ -519,7 +520,38 @@ mod shot_project {
                 .unwrap_or_default()
         };
         app.doc.commit(Transaction::new("map").insert(e)).unwrap();
+        // an orthophoto under the house, shown in 3D too
+        let png = dir.join("ortofoto.png");
+        let mut img = image::RgbaImage::new(64, 64);
+        for (x, y, p) in img.enumerate_pixels_mut() {
+            *p = if (x / 8 + y / 8) % 2 == 0 {
+                image::Rgba([90, 140, 70, 255])
+            } else {
+                image::Rgba([200, 190, 150, 255])
+            };
+        }
+        img.save(&png).unwrap();
+        let src = RefSource::Image {
+            path: png.to_string_lossy().into(),
+            width: 40.0,
+            dpi: None,
+        };
+        let shown = crate::trace::read(app.doc.model(), &src);
+        let b = crate::trace::bounds_of(&src, &shown).unwrap();
+        let mut photo = Reference::new(src, views.clone());
+        photo.in_place(b);
+        photo.at = DVec2::new(-15.0, -17.0);
+        photo.in_3d = true;
+        let photo = Element::new("Ortofoto", ElementKind::Reference(photo));
+        let photo_id = photo.id;
+        app.doc
+            .commit(Transaction::new("photo").insert(photo))
+            .unwrap();
         let tx = creabim_core::set_project(app.doc.model(), info);
+        app.doc.commit(tx).unwrap();
+        let mut info2 = app.doc.model().project_info().unwrap().1.clone();
+        info2.map_group.push(photo_id);
+        let tx = creabim_core::set_project(app.doc.model(), info2);
         app.doc.commit(tx).unwrap();
         // the site plan turned square to the parcels
         for v in &views {

@@ -1662,6 +1662,86 @@ impl CreaBimApp {
         Some(out)
     }
 
+    /// The references' lines and pictures as 3D geometry, so the model
+    /// hides them where it stands in front (George: the map's lines and
+    /// the orthophoto were drawn over the house): line vertices in pairs,
+    /// each picture its triangles with uv in `color.xy`. Strength in
+    /// `surface.z`.
+    #[allow(clippy::type_complexity)]
+    fn reference_geometry_3d(
+        &mut self,
+    ) -> (
+        Vec<Vertex>,
+        Vec<(std::sync::Arc<creabim_geom::raster::Raster>, Vec<Vertex>)>,
+    ) {
+        let mut lines = vec![];
+        let mut pictures = vec![];
+        // a huge drawing is cut short rather than slowing the 3D view
+        let mut budget = 200_000usize;
+        for (id, r) in self.refs_in_3d() {
+            if matches!(r.source, creabim_core::RefSource::Points { .. }) {
+                continue;
+            }
+            let ink = crate::trace::colour(&r).unwrap_or(Color32::from_gray(150));
+            let rgb = [ink.r(), ink.g(), ink.b()].map(|c| c as f32 / 255.0);
+            let strength = r.opacity.clamp(0.15, 1.0);
+            let v = |p: DVec3| Vertex {
+                pos: p.as_vec3().to_array(),
+                normal: [0.0, 0.0, 1.0],
+                color: rgb,
+                surface: [0.8, 0.0, strength],
+            };
+            if let Some(segs) = self.reference_3d(&r) {
+                for s in segs.chunks(2) {
+                    if budget == 0 {
+                        break;
+                    }
+                    if s[0] != s[1] {
+                        budget -= 1;
+                        lines.extend([v(s[0]), v(s[1])]);
+                    }
+                }
+                continue;
+            }
+            let model = self.doc.model();
+            let world = |p: DVec2| crate::handles::ref_world(model, &r, p);
+            match self.plan.ref_cache.get(model, id, &r) {
+                crate::trace::Shown::Lines(ls) => {
+                    for l in ls.iter() {
+                        for w in l.windows(2) {
+                            if budget == 0 {
+                                break;
+                            }
+                            budget -= 1;
+                            lines.extend([v(world(r.place(w[0]))), v(world(r.place(w[1])))]);
+                        }
+                    }
+                }
+                crate::trace::Shown::Picture(raster) => {
+                    let Some([lo, hi]) = r.bounds else { continue };
+                    let corner = |fu: f64, fv: f64| {
+                        let q = DVec2::new(lo.x + (hi.x - lo.x) * fu, lo.y + (hi.y - lo.y) * fv);
+                        Vertex {
+                            pos: world(r.place(q)).as_vec3().to_array(),
+                            normal: [0.0, 0.0, 1.0],
+                            color: [fu as f32, 1.0 - fv as f32, 0.0],
+                            surface: [0.8, 0.0, r.opacity.clamp(0.0, 1.0)],
+                        }
+                    };
+                    let (a, b, c, d) = (
+                        corner(0.0, 0.0),
+                        corner(1.0, 0.0),
+                        corner(1.0, 1.0),
+                        corner(0.0, 1.0),
+                    );
+                    pictures.push((raster.clone(), vec![a, b, c, a, c, d]));
+                }
+                _ => {}
+            }
+        }
+        (lines, pictures)
+    }
+
     fn draw_reference_lines_3d(
         &mut self,
         painter: &egui::Painter,
@@ -1674,7 +1754,6 @@ impl CreaBimApp {
             let ink = crate::trace::colour(&r)
                 .unwrap_or(Color32::from_gray(150))
                 .gamma_multiply(r.opacity.clamp(0.15, 1.0));
-            let stroke = egui::Stroke::new(1.0, ink);
             // a 3D drawing (a survey) at its heights, to ±0,000 as a
             // terrain made from it is
             if let Some(segs) = self.reference_3d(&r) {
@@ -1683,11 +1762,11 @@ impl CreaBimApp {
                         return;
                     }
                     budget -= 1;
-                    if let (Some(a), Some(b)) = (project(s[0]), project(s[1])) {
-                        if s[0] == s[1] {
+                    // its lines are the 3D view's own (see
+                    // reference_geometry_3d); its survey points are dots
+                    if s[0] == s[1] {
+                        if let Some(a) = project(s[0]) {
                             painter.circle_filled(a, 1.5, ink);
-                        } else {
-                            painter.line_segment([a, b], stroke);
                         }
                     }
                 }
@@ -1724,59 +1803,9 @@ impl CreaBimApp {
             let model = self.doc.model();
             let world = |p: DVec2| crate::handles::ref_world(model, &r, p);
             match self.plan.ref_cache.get(model, id, &r) {
-                crate::trace::Shown::Lines(lines) => {
-                    for l in lines.iter() {
-                        if budget == 0 {
-                            return;
-                        }
-                        let pts: Vec<egui::Pos2> = l
-                            .iter()
-                            .filter_map(|p| project(world(r.place(*p))))
-                            .collect();
-                        budget = budget.saturating_sub(pts.len());
-                        if pts.len() >= 2 {
-                            painter.add(egui::Shape::line(pts, stroke));
-                        }
-                    }
-                }
-                // a picture: its pixels on its plane, in a grid of small
-                // pieces so its perspective holds (MU34)
-                crate::trace::Shown::Picture(raster) => {
-                    let Some([lo, hi]) = r.bounds else { continue };
-                    let tex = crate::textures::texture(painter.ctx(), &raster);
-                    let tint = crate::trace::colour(&r)
-                        .unwrap_or(Color32::WHITE)
-                        .gamma_multiply(r.opacity.clamp(0.0, 1.0));
-                    const N: usize = 12;
-                    let mut mesh = egui::Mesh::with_texture(tex);
-                    let mut ok = true;
-                    for j in 0..=N {
-                        for i in 0..=N {
-                            let (fu, fv) = (i as f64 / N as f64, j as f64 / N as f64);
-                            let q =
-                                DVec2::new(lo.x + (hi.x - lo.x) * fu, lo.y + (hi.y - lo.y) * fv);
-                            let Some(pos) = project(world(r.place(q))) else {
-                                ok = false;
-                                break;
-                            };
-                            mesh.vertices.push(egui::epaint::Vertex {
-                                pos,
-                                uv: egui::pos2(fu as f32, 1.0 - fv as f32),
-                                color: tint,
-                            });
-                        }
-                    }
-                    if ok {
-                        for j in 0..N as u32 {
-                            for i in 0..N as u32 {
-                                let a = j * (N as u32 + 1) + i;
-                                let (b, c, d) = (a + 1, a + N as u32 + 2, a + N as u32 + 1);
-                                mesh.indices.extend([a, b, c, a, c, d]);
-                            }
-                        }
-                        painter.add(egui::Shape::mesh(mesh));
-                    }
-                }
+                // drawn by the 3D view itself, behind the model (see
+                // reference_geometry_3d)
+                crate::trace::Shown::Lines(_) | crate::trace::Shown::Picture(_) => {}
                 _ => {
                     if let Some(c) = r.outline() {
                         let pts: Vec<egui::Pos2> = c
@@ -3348,7 +3377,9 @@ impl CreaBimApp {
         let ppp = ui.ctx().pixels_per_point();
         let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
         let lighting = self.lighting_3d();
+        let (ref_lines, ref_pictures) = self.reference_geometry_3d();
         if let Some(vp) = &mut self.viewport {
+            vp.set_references(&rs.device, &rs.queue, &ref_lines, &ref_pictures);
             let tex = vp.render(
                 rs,
                 size,
@@ -6530,7 +6561,9 @@ impl CreaBimApp {
             let ElementKind::Sketch(sk) = &e.kind else {
                 continue;
             };
-            if !sk.closed || left_out.contains(&e.id) {
+            // what was drawn on the site plan's ground is the site plan's
+            let on_site = sk.view.is_some() || sk.net.is_some() || sk.mark.is_some();
+            if !sk.closed || on_site || left_out.contains(&e.id) {
                 continue;
             }
             let outline = sk.outline();
@@ -6562,8 +6595,14 @@ impl CreaBimApp {
             }
             painter.add(egui::Shape::mesh(mesh));
         }
-        for (id, a, b) in creabim_geom::scene::sketch_lines(self.doc.model()) {
-            if left_out.contains(&id) {
+        let model = self.doc.model();
+        let on_site = |id: ElementId| {
+            matches!(model.get(id).map(|e| &e.kind),
+                Some(ElementKind::Sketch(sk)) if sk.view.is_some() || sk.net.is_some() || sk.mark.is_some())
+        };
+        for (id, a, b) in creabim_geom::scene::sketch_lines(model) {
+            // what was drawn on the site plan's ground is the site plan's
+            if left_out.contains(&id) || on_site(id) {
                 continue;
             }
             let selected = self.selection.contains(id);

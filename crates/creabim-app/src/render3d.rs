@@ -237,6 +237,20 @@ fn sunlight(world: vec3<f32>, n: vec3<f32>) -> f32 {
 @fragment fn fs_flat(i: VOut) -> @location(0) vec4<f32> {
     return vec4<f32>(pow(i.color, vec3<f32>(2.2)), 1.0);
 }
+
+// A reference's line: its colour at its strength (surface.z).
+@fragment fn fs_flat_alpha(i: VOut) -> @location(0) vec4<f32> {
+    return vec4<f32>(pow(i.color, vec3<f32>(2.2)), clamp(i.surface.z, 0.0, 1.0));
+}
+
+// A picture shown in 3D (an orthophoto): its pixels at uv = color.xy, at
+// its strength (surface.z), hidden by what stands in front of it.
+@group(2) @binding(0) var picture: texture_2d<f32>;
+@group(2) @binding(1) var picture_sampler: sampler;
+@fragment fn fs_picture(i: VOut) -> @location(0) vec4<f32> {
+    let c = textureSample(picture, picture_sampler, i.color.xy);
+    return vec4<f32>(pow(c.rgb, vec3<f32>(2.2)), c.a * clamp(i.surface.z, 0.0, 1.0));
+}
 "#;
 
 struct Mesh {
@@ -281,6 +295,18 @@ pub struct Viewport3d {
     glass_mesh: Option<Mesh>,
     line_mesh: Option<Mesh>,
     overlay_mesh: Option<Mesh>,
+    /// References' lines, hidden by what stands in front of them, at
+    /// their strength (George: a map's lines ran over the house).
+    ref_line_pipe: wgpu::RenderPipeline,
+    ref_lines: Option<Mesh>,
+    /// References' pictures (an orthophoto) on their planes, hidden by the
+    /// model in front of them: each its triangles and its texture.
+    picture_pipe: wgpu::RenderPipeline,
+    picture_layout: wgpu::BindGroupLayout,
+    picture_sampler: wgpu::Sampler,
+    pictures: Vec<(Mesh, usize)>,
+    /// One texture per picture shown, by its pixels' address.
+    picture_textures: std::collections::HashMap<usize, wgpu::BindGroup>,
     behind_mesh: Option<Mesh>,
     sel_mesh: Option<Mesh>,
     sel_lines: Option<Mesh>,
@@ -444,6 +470,87 @@ impl Viewport3d {
                 cache: None,
             })
         };
+        let ref_line_pipe = pipeline(
+            wgpu::PrimitiveTopology::LineList,
+            "fs_flat_alpha",
+            wgpu::CompareFunction::LessEqual,
+            true,
+        );
+        let picture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("creabim_picture_bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let picture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("creabim_picture_sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let picture_pipe = {
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("creabim_picture_layout"),
+                bind_group_layouts: &[Some(&bgl), Some(&shadow_layout), Some(&picture_layout)],
+                immediate_size: 0,
+            });
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("fs_picture"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("vs_main"),
+                    buffers: &[Some(vertex_layout.clone())],
+                    compilation_options: Default::default(),
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                // tested against the model, written by nothing: the lines
+                // drawn after it still lie on the ground under it
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState {
+                    count: SAMPLES,
+                    ..Default::default()
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some("fs_picture"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: COLOR_FORMAT,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
         let shadow_map = shadow_target(device, &shadow_layout, &shadow_sampler, 1);
         let ground_mesh = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("creabim_ground"),
@@ -506,6 +613,13 @@ impl Viewport3d {
             glass_mesh: None,
             line_mesh: None,
             overlay_mesh: None,
+            ref_line_pipe,
+            ref_lines: None,
+            picture_pipe,
+            picture_layout,
+            picture_sampler,
+            pictures: vec![],
+            picture_textures: Default::default(),
             behind_mesh: None,
             sel_mesh: None,
             sel_lines: None,
@@ -558,6 +672,97 @@ impl Viewport3d {
         };
         self.line_mesh = line_mesh(lines);
         self.overlay_mesh = line_mesh(overlay);
+    }
+
+    /// Replace the references shown in 3D: their lines (pairs of
+    /// vertices, strength in `surface.z`) and their pictures, each its
+    /// triangles (uv in `color.xy`) and its pixels.
+    pub fn set_references(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        lines: &[Vertex],
+        pictures: &[(std::sync::Arc<creabim_geom::raster::Raster>, Vec<Vertex>)],
+    ) {
+        let mesh = |v: &[Vertex]| {
+            (!v.is_empty()).then(|| Mesh {
+                vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(v),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }),
+                indices: None,
+                count: v.len() as u32,
+            })
+        };
+        self.ref_lines = mesh(lines);
+        let shown: Vec<usize> = pictures
+            .iter()
+            .map(|(r, _)| std::sync::Arc::as_ptr(r) as usize)
+            .collect();
+        self.picture_textures.retain(|k, _| shown.contains(k));
+        self.pictures.clear();
+        let max = device.limits().max_texture_dimension_2d as usize;
+        for (raster, tris) in pictures {
+            let key = std::sync::Arc::as_ptr(raster) as usize;
+            let Some(m) = mesh(tris) else { continue };
+            if raster.width == 0 || raster.height == 0 {
+                continue;
+            }
+            if !self.picture_textures.contains_key(&key) {
+                // a picture larger than the GPU holds, taken every n-th pixel
+                let step = raster.width.max(raster.height).div_ceil(max).max(1);
+                let (w, h) = (raster.width.div_ceil(step), raster.height.div_ceil(step));
+                let rgba: std::borrow::Cow<[u8]> = if step == 1 {
+                    std::borrow::Cow::Borrowed(&raster.rgba)
+                } else {
+                    let mut out = Vec::with_capacity(w * h * 4);
+                    for y in 0..h {
+                        for x in 0..w {
+                            let i = ((y * step) * raster.width + x * step) * 4;
+                            out.extend_from_slice(&raster.rgba[i..i + 4]);
+                        }
+                    }
+                    std::borrow::Cow::Owned(out)
+                };
+                let tex = device.create_texture_with_data(
+                    queue,
+                    &wgpu::TextureDescriptor {
+                        label: Some("creabim_picture"),
+                        size: wgpu::Extent3d {
+                            width: w as u32,
+                            height: h as u32,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    },
+                    wgpu::util::TextureDataOrder::LayerMajor,
+                    &rgba,
+                );
+                let view = tex.create_view(&Default::default());
+                let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("creabim_picture_bg"),
+                    layout: &self.picture_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.picture_sampler),
+                        },
+                    ],
+                });
+                self.picture_textures.insert(key, bg);
+            }
+            self.pictures.push((m, key));
+        }
     }
 
     /// Replace the selection's highlight: its triangles (three vertices
@@ -781,9 +986,36 @@ impl Viewport3d {
                 indices: None,
                 count: 6,
             });
+            let draw = |pass: &mut wgpu::RenderPass, pipeline: &wgpu::RenderPipeline, m: &Mesh| {
+                pass.set_pipeline(pipeline);
+                pass.set_vertex_buffer(0, m.vertices.slice(..));
+                match &m.indices {
+                    Some(ib) => {
+                        pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.draw_indexed(0..m.count, 0, 0..1);
+                    }
+                    None => pass.draw(0..m.count, 0..1),
+                }
+            };
             for (pipeline, mesh) in [
                 (&self.shaded, &self.triangles),
                 (&self.ground, &ground_mesh),
+            ] {
+                if let Some(m) = mesh {
+                    draw(&mut pass, pipeline, m);
+                }
+            }
+            // the references on the ground, behind the model standing on it
+            for (m, key) in &self.pictures {
+                if let Some(bg) = self.picture_textures.get(key) {
+                    pass.set_bind_group(2, bg, &[]);
+                    draw(&mut pass, &self.picture_pipe, m);
+                }
+            }
+            if let Some(m) = &self.ref_lines {
+                draw(&mut pass, &self.ref_line_pipe, m);
+            }
+            for (pipeline, mesh) in [
                 (&self.highlight, &self.sel_mesh),
                 (&self.glass, &self.glass_mesh),
                 (&self.behind, &self.behind_mesh),
