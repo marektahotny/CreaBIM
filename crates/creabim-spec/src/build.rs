@@ -1185,6 +1185,7 @@ fn column(c: &mut Ctx, col: &f::Column, at: &Path) {
         height: col.height.map(|h| c.l(h)),
         material: None,
         section: None,
+        in_wall: None,
         top: match top {
             Some(t) => core::WallTop::UpToLevel {
                 level: t,

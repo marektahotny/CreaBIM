@@ -828,6 +828,32 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             if !l.is_empty() {
                 label = l;
             }
+            if let Some(iw) = &mut c.in_wall {
+                if iw.of.is_some() {
+                    weak(
+                        ui,
+                        crate::i18n::tr("XPS board of an RC column in a wall: it follows the column; switch it on the column."),
+                    );
+                } else {
+                    weak(
+                        ui,
+                        crate::i18n::tr("RC column in a wall: it sits in the wall's load-bearing core, as deep as the core, and moves only along the wall."),
+                    );
+                    if crate::props::check(
+                        ui,
+                        "Insulation",
+                        &mut iw.xps,
+                        "XPS (Styrodur) on the exterior side",
+                    )
+                    .changed()
+                    {
+                        label = "Column XPS";
+                    }
+                    if iw.xps && num(ui, "XPS thickness", &mut iw.xps_thickness, 0.01, 0.2) {
+                        label = "Column XPS";
+                    }
+                }
+            }
             if num(ui, "X", &mut c.position.x, -1e4, 1e4)
                 | num(ui, "Y", &mut c.position.y, -1e4, 1e4)
             {
