@@ -189,6 +189,10 @@ pub struct Assembly {
     /// Which of a wall's layers turn into its windows' reveals.
     #[serde(default, skip_serializing_if = "RevealWrap::is_default")]
     pub wrap: RevealWrap,
+    /// What its U is counted for ([`crate::thermal`]); none takes its
+    /// use's usual: an outside wall, a floor over outside air, a roof.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal: Option<crate::thermal::Boundary>,
 }
 
 /// Which layers of a wall turn round the core's edge into the reveal of
@@ -363,6 +367,7 @@ impl Assembly {
             layers,
             description: String::new(),
             wrap: RevealWrap::default(),
+            thermal: None,
         }
     }
 

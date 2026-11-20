@@ -1245,6 +1245,8 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
 
     // the services' systems and circuits, and what the calculations found
     let systems = results::write(&mut c, model, building);
+    // the walls', slabs' and roofs' U
+    results::thermal(&mut c, model);
     // the classes of the data standard and their values
     dss::write(&mut c, model, building, &systems);
 
