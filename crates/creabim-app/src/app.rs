@@ -14052,7 +14052,9 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // the base's materials take the hatches of the ASR legend of
     // materials, unless their hatch was picked by hand
     let hatches = creabim_core::skbase::refresh_hatches(&model);
-    if !any && hatches.is_none() {
+    // the masonry on the footings made of DT blocks (George 2026-11-20)
+    let dt = creabim_core::skbase::dt_blocks(&model);
+    if !any && hatches.is_none() && dt.is_none() {
         return model;
     }
     let mut doc = Document::from_model(model);
@@ -14061,6 +14063,9 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
         let _ = doc.commit(tx);
     }
     if let Some(tx) = hatches {
+        let _ = doc.commit(tx);
+    }
+    if let Some(tx) = dt {
         let _ = doc.commit(tx);
     }
     doc.model().clone()
