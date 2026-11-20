@@ -589,6 +589,7 @@ fn assembly(c: &mut Ctx, a: &f::Assembly, at: &Path) {
         layers,
         description: a.description.clone().unwrap_or_default(),
         wrap: Default::default(),
+        thermal: None,
     };
     c.insert(
         &a.id,

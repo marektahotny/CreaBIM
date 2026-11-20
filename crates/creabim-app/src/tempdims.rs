@@ -1600,6 +1600,7 @@ mod core_tests {
                 ],
                 description: String::new(),
                 wrap: Default::default(),
+                thermal: None,
             }),
         );
         let mut a = wall(lid, (0.0, 0.0), (0.0, 5.0), 0.48);

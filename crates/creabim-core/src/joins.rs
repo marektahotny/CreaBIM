@@ -1764,6 +1764,7 @@ mod tests {
                 ],
                 description: String::new(),
                 wrap: Default::default(),
+                thermal: None,
             }),
         );
         let aid = a.id;
