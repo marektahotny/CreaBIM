@@ -596,7 +596,17 @@ pub fn sample_with_buried_beam() -> (Model, ElementId) {
     beam.material = timber;
     let e = Element::new("Lintel beam", ElementKind::Beam(beam));
     let id = e.id;
-    doc.commit(Transaction::new("Add beam").insert(e))
+    // a beam runs through the wall it lies in by default: here the wall
+    // is set to win, so the beam stays hidden inside it
+    let wall = model
+        .iter()
+        .find(|e| e.name == "GF Wall 1")
+        .map(|e| e.id)
+        .expect("the sample has a south wall");
+    let mut rule = crate::JoinRule::new(wall, id);
+    rule.winner = crate::JoinWinner::First;
+    let join = Element::new("Wall over beam", ElementKind::Join(rule));
+    doc.commit(Transaction::new("Add beam").insert(e).insert(join))
         .expect("the beam goes in");
     (doc.model().clone(), id)
 }

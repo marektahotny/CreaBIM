@@ -872,18 +872,23 @@ fn apply_cuts(model: &Model, items: &mut [SceneItem]) {
     }
 }
 
-/// Where a wall and a slab overlap in 3D, the one the drawings let run
-/// through cuts the other (A4-6), so 3D, sections and plans agree: by the
-/// junction's own rule if it has one, else layer by layer (the lower join
-/// priority runs through: cores through finishes), then walls through
-/// slabs. As strong, they are left as they are. Each result is kept, keyed
-/// by the two shapes, so editing one wall redoes only its own joins.
+/// Where two built elements overlap in 3D, the one the drawings let run
+/// through cuts the other (A4-6), so 3D, sections, plans and the material
+/// take-off agree and no volume is counted twice: by the junction's own
+/// rule if it has one, else layer by layer (the lower join priority runs
+/// through: cores through finishes), then by kind (columns, beams, walls,
+/// slabs, footings, roofs, ceilings: see `joins::category_rank`), then
+/// the element drawn first. Walls, slabs, roofs, footings, columns, beams
+/// and ceilings all take part. Each result is kept, keyed by the two
+/// shapes, so editing one wall redoes only its own joins.
 fn apply_joins(model: &Model, items: &mut [SceneItem]) {
     let rules = creabim_core::joins::rules(model);
-    let is = |id: ElementId, wall: bool| match model.get(id).map(|e| &e.kind) {
-        Some(ElementKind::Wall(w)) => wall && w.curtain.is_none(),
-        Some(ElementKind::Slab(_)) => !wall,
-        _ => false,
+    let order: std::collections::HashMap<ElementId, usize> =
+        model.iter().enumerate().map(|(i, e)| (e.id, i)).collect();
+    let built = |id: ElementId| match model.get(id).map(|e| &e.kind) {
+        Some(ElementKind::Wall(w)) => w.curtain.is_none(),
+        Some(k) => creabim_core::joins::joinable(k),
+        None => false,
     };
     let strength = |i: &SceneItem| {
         (
@@ -895,69 +900,55 @@ fn apply_joins(model: &Model, items: &mut [SceneItem]) {
     };
     let boxes: Vec<Option<(glam::Vec3, glam::Vec3)>> = items
         .iter()
-        .map(|i| if i.ghost { None } else { i.mesh.bounds() })
+        .map(|i| {
+            if i.ghost || i.is_lining() {
+                None
+            } else {
+                i.mesh.bounds()
+            }
+        })
         .collect();
     let overlap = |a: (glam::Vec3, glam::Vec3), b: (glam::Vec3, glam::Vec3)| {
         let lo = a.0.max(b.0);
         let hi = a.1.min(b.1);
         (hi - lo).min_element() > 1e-4
     };
-    let walls: Vec<usize> = (0..items.len())
-        .filter(|k| boxes[*k].is_some() && is(items[*k].id, true))
-        .collect();
-    let slabs: Vec<usize> = (0..items.len())
-        .filter(|k| boxes[*k].is_some() && is(items[*k].id, false))
+    let solids: Vec<usize> = (0..items.len())
+        .filter(|k| boxes[*k].is_some() && built(items[*k].id))
         .collect();
     // (target, cutter) pairs, in item indices
     let mut pairs: Vec<(usize, usize)> = vec![];
-    for &w in &walls {
-        for &sl in &slabs {
-            let (Some(bw), Some(bs)) = (boxes[w], boxes[sl]) else {
-                continue;
-            };
-            if !overlap(bw, bs) {
+    for (n, &i) in solids.iter().enumerate() {
+        for &j in &solids[n + 1..] {
+            let (a, b) = (&items[i], &items[j]);
+            if a.id == b.id {
                 continue;
             }
-            let (a, b) = (&items[w], &items[sl]);
+            let (Some(ba), Some(bb)) = (boxes[i], boxes[j]) else {
+                continue;
+            };
+            if !overlap(ba, bb) {
+                continue;
+            }
             let rule = rules.iter().find(|r| r.joins(a.id, b.id));
             if rule.is_some_and(|r| !r.cleanup) {
                 continue;
             }
-            let wall_wins = match rule.and_then(|r| r.wins(a.id, b.id)) {
+            let a_wins = match rule.and_then(|r| r.wins(a.id, b.id)) {
                 Some(w) => w,
                 None => {
                     let (sa, sb) = (strength(a), strength(b));
-                    if sa == sb {
-                        continue;
+                    if sa != sb {
+                        sa > sb
+                    } else {
+                        // as strong: the one drawn first (the same
+                        // material reads as one mass either way)
+                        let at = |id| order.get(&id).copied().unwrap_or(usize::MAX);
+                        at(a.id) < at(b.id)
                     }
-                    sa > sb
                 }
             };
-            pairs.push(if wall_wins { (sl, w) } else { (w, sl) });
-        }
-    }
-    // a column standing in a wall and a system lintel lying in one run
-    // through it (as the plans and sections cut them)
-    let inside = |id: ElementId| {
-        matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Column(_)))
-            || model.get(id).is_some_and(creabim_core::masonry::is_lintel)
-    };
-    let members: Vec<usize> = (0..items.len())
-        .filter(|k| boxes[*k].is_some() && inside(items[*k].id))
-        .collect();
-    for &w in &walls {
-        for &m in &members {
-            let (Some(bw), Some(bm)) = (boxes[w], boxes[m]) else {
-                continue;
-            };
-            if !overlap(bw, bm) {
-                continue;
-            }
-            let rule = rules.iter().find(|r| r.joins(items[w].id, items[m].id));
-            if rule.is_some_and(|r| !r.cleanup || r.wins(items[w].id, items[m].id) == Some(true)) {
-                continue;
-            }
-            pairs.push((w, m));
+            pairs.push(if a_wins { (j, i) } else { (i, j) });
         }
     }
     if pairs.is_empty() {
@@ -971,7 +962,20 @@ fn apply_joins(model: &Model, items: &mut [SceneItem]) {
         let mesh = match done {
             Some(m) => m,
             None => {
-                let m = boolean_mesh(&items[t].mesh, &originals[c], BoolOp::Difference);
+                let before = &items[t].mesh;
+                let cut = boolean_mesh(before, &originals[c], BoolOp::Difference);
+                // where the boxes meet but the solids don't (a mitred
+                // corner), the shape stays as it was, not split up for
+                // nothing; a cut that came out broken (more than it was,
+                // or less than nothing) is left undone, and an element
+                // wholly inside the one that wins (a beam set to stay
+                // buried in its wall) stays as it is, for X-ray to show
+                let (v0, v1) = (closed_volume(before), closed_volume(&cut));
+                let m = if v1 >= v0 - 1e-7 || v1 < 1e-6 || v1 > v0 + 1e-7 {
+                    before.clone()
+                } else {
+                    cut
+                };
                 JOIN_CACHE.with(|cache| {
                     let mut cache = cache.borrow_mut();
                     if cache.len() > 4000 {
@@ -989,6 +993,22 @@ fn apply_joins(model: &Model, items: &mut [SceneItem]) {
 thread_local! {
     static JOIN_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, u64), TriMesh>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// The volume a closed mesh holds, measured about its first corner so
+/// that coordinates far from the origin lose no precision.
+pub fn closed_volume(m: &TriMesh) -> f64 {
+    let Some(o) = m.positions.first() else {
+        return 0.0;
+    };
+    let o = glam::Vec3::from(*o).as_dvec3();
+    m.indices
+        .chunks_exact(3)
+        .map(|t| {
+            let p = |i: u32| glam::Vec3::from(m.positions[i as usize]).as_dvec3() - o;
+            p(t[0]).dot(p(t[1]).cross(p(t[2]))) / 6.0
+        })
+        .sum()
 }
 
 /// A fingerprint of a mesh's shape.

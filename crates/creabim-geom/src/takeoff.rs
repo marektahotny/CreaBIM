@@ -11,7 +11,6 @@
 //! from its size.
 
 use crate::schedule::{Column, Field, Row, Schedule};
-use crate::TriMesh;
 use creabim_core::takeoff::{self, GroupBy, Layout, Line, Quantity, CATEGORY_ORDER};
 use creabim_core::words::tr;
 use creabim_core::{ElementId, Model, ScheduleCategory};
@@ -23,21 +22,7 @@ const TRIMMED: [&str; 8] = [
     "Walls", "Slabs", "Roofs", "Ceilings", "Columns", "Beams", "Footings", "Stairs",
 ];
 
-/// The enclosed volume of a mesh, measured about its first corner so
-/// that coordinates far from the origin lose no precision.
-fn mesh_volume(m: &TriMesh) -> f64 {
-    let Some(o) = m.positions.first() else {
-        return 0.0;
-    };
-    let o = glam::Vec3::from(*o).as_dvec3();
-    m.indices
-        .chunks_exact(3)
-        .map(|t| {
-            let p = |i: u32| glam::Vec3::from(m.positions[i as usize]).as_dvec3() - o;
-            p(t[0]).dot(p(t[1]).cross(p(t[2]))) / 6.0
-        })
-        .sum()
-}
+use crate::scene::closed_volume as mesh_volume;
 
 /// The take-off lines with their volumes measured on `scene`.
 pub fn measure(model: &Model, scene: &[crate::scene::SceneItem]) -> Vec<Line> {
@@ -90,8 +75,16 @@ pub fn measure(model: &Model, scene: &[crate::scene::SceneItem]) -> Vec<Line> {
         solid.contains_key(&key) || !solid.keys().any(|k| k.0 == l.element && k.1 == Some(layer))
     });
     for l in lines.iter_mut().filter(|l| TRIMMED.contains(&l.category)) {
+        // an element of one material (not layered) is one solid, keyed
+        // without it
         let Some((v, room)) = solid
             .get(&(l.element, l.layer.map(|x| x.0), l.material))
+            .or_else(|| {
+                l.layer
+                    .is_none()
+                    .then(|| solid.get(&(l.element, None, None)))
+                    .flatten()
+            })
             .copied()
         else {
             continue;
