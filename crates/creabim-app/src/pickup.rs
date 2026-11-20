@@ -312,7 +312,7 @@ pub fn pick_up(state: &mut PlanState, model: &Model, id: ElementId) -> Result<St
         ElementKind::Detail(d) => match &d.kind {
             DetailKind::Line(l) | DetailKind::Arc(l) | DetailKind::Curve(l) => s.details.line = *l,
             k => {
-                s.details.kind = k.clone();
+                s.details.kind = *k;
                 s.details.width = d.width;
             }
         },
