@@ -689,8 +689,8 @@ impl CreaBimApp {
         let id_of = ElementId::from_ifc_guid;
         let (what, rest) = arg.split_once(':').unwrap_or((arg, ""));
         let src = match what {
-            "image" => rfd::FileDialog::new()
-                .set_title("A picture to trace over")
+            "image" => crate::files::file_dialog()
+                .set_title(crate::i18n::tr("A picture to trace over"))
                 .add_filter("Pictures", crate::trace::PICTURES)
                 .pick_file()
                 .map(|p| RefSource::Image {
@@ -698,8 +698,8 @@ impl CreaBimApp {
                     width: 0.3,
                     dpi: None,
                 }),
-            "dxf" => rfd::FileDialog::new()
-                .set_title("A DXF drawing to trace over")
+            "dxf" => crate::files::file_dialog()
+                .set_title(crate::i18n::tr("A DXF drawing to trace over"))
                 .add_filter("DXF", &["dxf"])
                 .pick_file()
                 .map(|p| RefSource::Dxf {

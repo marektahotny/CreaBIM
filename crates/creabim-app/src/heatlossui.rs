@@ -110,7 +110,7 @@ impl CreaBimApp {
     /// for new projects.
     pub(super) fn load_climate_sites(&mut self) {
         let t = crate::i18n::tr;
-        let Some(path) = rfd::FileDialog::new()
+        let Some(path) = crate::files::file_dialog()
             .set_title(t("Table of localities"))
             .add_filter("TSV", &["tsv", "txt"])
             .pick_file()

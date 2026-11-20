@@ -617,8 +617,8 @@ impl CreaBimApp {
                 ))
                 .clicked()
             {
-                if let Some(p) = rfd::FileDialog::new()
-                    .set_title("Import a title block")
+                if let Some(p) = crate::files::file_dialog()
+                    .set_title(crate::i18n::tr("Import a title block"))
                     .add_filter("Drawings", &["dxf", "svg", "creabim"])
                     .pick_file()
                 {

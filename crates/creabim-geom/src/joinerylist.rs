@@ -64,11 +64,15 @@ fn leaves_word(n: usize) -> String {
 /// What a window's profiles are made of, read from its material's name
 /// as PilonDesigner sorts them; plastic where the name tells nothing.
 fn profiles(model: &Model, id: ElementId) -> &'static str {
-    let name = model
+    let (name, category) = model
         .get(id)
         .and_then(|e| creabim_core::material_of(model, e))
-        .map(|(m, _)| m.name.to_lowercase())
+        .map(|(e, m)| (e.name.to_lowercase(), m.category.to_lowercase()))
         .unwrap_or_default();
+    // a plastic one by its category, though its foil looks like oak
+    if category == "plastic" || name.contains("pvc") || name.contains("plast") {
+        return "Plastic window profiles";
+    }
     let has = |w: &[&str]| w.iter().any(|w| name.contains(w));
     let wood = has(&[
         "drev", "dřev", "wood", "timber", "smrek", "dub", "oak", "pine",
@@ -141,7 +145,12 @@ fn told(model: &Model, id: ElementId, o: &Opening) -> (String, String, String) {
     } else if o.kind == OpeningKind::Door {
         // a door drawn by its division has glass where a field is no panel
         let glazed = o.division.is_some() && leaves.iter().any(|l| !l.panel);
+        let plastic = model
+            .get(id)
+            .and_then(|e| creabim_core::material_of(model, e))
+            .is_some_and(|(_, m)| m.category.eq_ignore_ascii_case("plastic"));
         let mut s = match &o.door {
+            _ if plastic => tr("Plastic door"),
             Some(d) => tr(match d.leaf {
                 creabim_core::joinery::DoorMaterial::Timber => "Timber door",
                 creabim_core::joinery::DoorMaterial::Steel => "Steel door",
@@ -186,7 +195,7 @@ fn told(model: &Model, id: ElementId, o: &Opening) -> (String, String, String) {
         model
             .get(id)
             .and_then(|e| creabim_core::material_of(model, e))
-            .map(|(m, _)| m.name.clone())
+            .map(|(m, _)| tr(&m.name))
             .unwrap_or_default()
     };
     let note = if !own.note.is_empty() {
@@ -1284,6 +1293,42 @@ mod tests {
             .map(|e| leads_outside(m, e.id))
             .collect();
         assert!(said.iter().any(|x| x.is_some()), "{said:?}");
+    }
+
+    #[test]
+    fn plastic_windows_in_ral_colours_say_so() {
+        let h = house();
+        let entry = creabim_core::library::LIBRARY
+            .iter()
+            .find(|e| e.name == "PVC, RAL 7016 anthracite")
+            .unwrap();
+        let mat = creabim_core::Element::new(entry.name, ElementKind::Material(entry.material()));
+        let mut tx = Transaction::new("pvc").insert(mat.clone());
+        for e in h
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::Opening(_)))
+        {
+            let mut after = e.clone();
+            if let ElementKind::Opening(o) = &mut after.kind {
+                o.material = Some(mat.id);
+            }
+            tx = tx.replace(e.clone(), after);
+        }
+        let mut d = creabim_core::Document::from_model(h);
+        d.commit(tx).unwrap();
+        let w = entries(d.model(), OpeningKind::Window);
+        assert!(
+            w[0].execution.starts_with("Plastic window profiles"),
+            "{}",
+            w[0].execution
+        );
+        assert_eq!(w[0].finish, "PVC, RAL 7016 anthracite");
+        let ds = entries(d.model(), OpeningKind::Door);
+        assert!(
+            ds[0].execution.starts_with("Plastic door"),
+            "{}",
+            ds[0].execution
+        );
     }
 
     #[test]

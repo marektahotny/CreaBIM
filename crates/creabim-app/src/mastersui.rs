@@ -747,8 +747,8 @@ impl CreaBimApp {
                 }
             }
             "master.import" => {
-                let Some(p) = rfd::FileDialog::new()
-                    .set_title("Bring in a frame or title block")
+                let Some(p) = crate::files::file_dialog()
+                    .set_title(crate::i18n::tr("Bring in a frame or title block"))
                     .add_filter("Drawings", &["svg", "dxf"])
                     .pick_file()
                 else {
@@ -772,8 +772,8 @@ impl CreaBimApp {
                 let Some((_, n, t)) = self.master() else {
                     return true;
                 };
-                let Some(p) = rfd::FileDialog::new()
-                    .set_title("Write the master out as SVG")
+                let Some(p) = crate::files::file_dialog()
+                    .set_title(crate::i18n::tr("Write the master out as SVG"))
                     .add_filter("SVG drawing", &["svg"])
                     .set_file_name(format!("{n}.svg"))
                     .save_file()
@@ -839,8 +839,10 @@ impl CreaBimApp {
     /// mood boards): as many as picked at once, side by side; an SVG as
     /// crisp vector shapes, a PNG or JPEG as a picture.
     pub(super) fn add_sheet_picture(&mut self, sheet: ElementId) {
-        let Some(files) = rfd::FileDialog::new()
-            .set_title("Pictures for the sheet: pick one or several")
+        let Some(files) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr(
+                "Pictures for the sheet: pick one or several",
+            ))
             .add_filter(
                 "Pictures",
                 &["png", "jpg", "jpeg", "bmp", "gif", "webp", "svg"],
@@ -916,8 +918,10 @@ impl CreaBimApp {
     /// A picture from a file onto the master, 40 mm across in the middle
     /// of the view, picked to size and place (MU40: a logo, or several).
     fn add_master_picture(&mut self) {
-        let Some(p) = rfd::FileDialog::new()
-            .set_title("A picture for the master: a logo, a stamp, a background")
+        let Some(p) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr(
+                "A picture for the master: a logo, a stamp, a background",
+            ))
             .add_filter(
                 "Logos and pictures",
                 &["svg", "png", "jpg", "jpeg", "bmp", "gif", "webp"],

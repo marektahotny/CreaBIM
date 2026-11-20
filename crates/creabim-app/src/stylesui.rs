@@ -1004,8 +1004,8 @@ impl CreaBimApp {
 
     fn save_style_pack(&mut self, pack: &StylePack) {
         let file = format!("{}.json", pack.name.to_lowercase().replace(' ', "-"));
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Save style pack")
+        let Some(path) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr("Save style pack"))
             .set_file_name(file)
             .add_filter("Style pack", &["json"])
             .save_file()
@@ -1019,8 +1019,8 @@ impl CreaBimApp {
     }
 
     fn load_style_pack(&mut self) {
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Load style pack")
+        let Some(path) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr("Load style pack"))
             .add_filter("Style pack", &["json"])
             .pick_file()
         else {

@@ -253,7 +253,7 @@ impl CreaBimApp {
                 apply = ui.button(t("Apply")).clicked();
             });
         if load {
-            if let Some(path) = rfd::FileDialog::new()
+            if let Some(path) = crate::files::file_dialog()
                 .set_title(crate::i18n::tr("Fire calculation parameters"))
                 .add_filter("TSV", &["tsv", "txt"])
                 .pick_file()
@@ -280,7 +280,7 @@ impl CreaBimApp {
             }
         }
         if save {
-            if let Some(path) = rfd::FileDialog::new()
+            if let Some(path) = crate::files::file_dialog()
                 .set_title(crate::i18n::tr("Fire calculation parameters"))
                 .set_file_name("pbs-parametre.tsv")
                 .add_filter("TSV", &["tsv"])
