@@ -1164,6 +1164,12 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.set_width(400.0);
+                // the fields scroll; the buttons stay in sight however tall
+                egui::ScrollArea::vertical()
+                    .id_salt("project.info.scroll")
+                    .max_height((area.height() - 120.0).max(200.0))
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
                 let text = |ui: &mut egui::Ui, label: &str, v: &mut String, hint: &str| {
                     crate::props::row(ui, label, |ui| {
                         ui.add(
@@ -1457,6 +1463,7 @@ impl CreaBimApp {
                     )
                     .weak(),
                 );
+                    });
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     apply = ui
