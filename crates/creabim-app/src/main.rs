@@ -38,6 +38,7 @@ mod optionbar;
 mod outline;
 mod paneface;
 mod partstool;
+mod pickup;
 mod pipesui;
 mod planview;
 mod printing;

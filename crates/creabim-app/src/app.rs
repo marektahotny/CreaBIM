@@ -3987,6 +3987,28 @@ impl CreaBimApp {
             self.outline_3d(ui, &response, &painter, &project, &ray);
             return;
         }
+        // Alt+click picks up what it is on (see crate::pickup), as in
+        // the drawings
+        if response.clicked()
+            && ui.input(|i| i.modifiers.alt && !i.modifiers.command)
+            && !self.plan.has_input()
+            && self.pending_3d.is_none()
+        {
+            if let Some(p) = response.interact_pointer_pos() {
+                let mut under = self.under_3d(p, &project, &ray);
+                if let Some(id) = self.sketch_near(p, &project) {
+                    under.insert(0, id);
+                }
+                let sel = self.selection.all();
+                if let Some(id) = crate::pickup::choose(&under, &sel) {
+                    self.status = match crate::pickup::pick_up(&mut self.plan, self.doc.model(), id)
+                    {
+                        Ok(m) | Err(m) => m,
+                    };
+                    return;
+                }
+            }
+        }
         if self.plan.tool == Tool::Align {
             self.align_3d(ui, &response, &painter, &project, &ray);
             return;
@@ -13068,6 +13090,23 @@ impl eframe::App for CreaBimApp {
             }
         }
         crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
+        // a template picked up with Alt+click lasts while its tool and
+        // the tool bar stay as it set them; its tool's tab comes up
+        crate::pickup::sync(&mut self.doc, &mut self.plan);
+        if std::mem::take(&mut self.plan.picked_now) {
+            let t = self.plan.tool;
+            let tab = self.shell.settings.tools_tab;
+            let on = |i: usize| {
+                crate::tooltabs::entries(i)
+                    .iter()
+                    .any(|e| matches!(e, crate::tooltabs::Entry::Tool(x) if *x == t))
+            };
+            if !on(tab) {
+                if let Some(i) = (0..crate::tooltabs::TABS.len()).find(|i| on(*i)) {
+                    self.shell.settings.tools_tab = i;
+                }
+            }
+        }
         let m = ctx.input(|i| i.modifiers);
         shell::MODS.store(
             m.shift as u8 | (m.command as u8) << 1 | (m.alt as u8) << 2,

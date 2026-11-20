@@ -38,6 +38,9 @@ pub struct Document {
     model: Model,
     undo: Vec<Step>,
     redo: Vec<Step>,
+    /// An element whose parameters new elements of its kind take (Alt+click
+    /// picks one up; see [`crate::pickup`]).
+    pickup: Option<Element>,
 }
 
 impl Document {
@@ -73,6 +76,7 @@ impl Document {
             model,
             undo: undo.into_iter().map(Step::new).collect(),
             redo: redo.into_iter().map(Step::new).collect(),
+            pickup: None,
         })
     }
 
@@ -96,11 +100,28 @@ impl Document {
         &self.redo
     }
 
+    /// New elements of the kind of `template` take its parameters until
+    /// it is set to none (see [`crate::pickup`]).
+    pub fn set_pickup(&mut self, template: Option<Element>) {
+        self.pickup = template;
+    }
+
+    pub fn pickup(&self) -> Option<&Element> {
+        self.pickup.as_ref()
+    }
+
     pub fn commit(&mut self, tx: Transaction) -> Result<(), ModelError> {
         if tx.ops.is_empty() {
             return Ok(());
         }
         let mut tx = tx;
+        if let Some(t) = &self.pickup {
+            for op in &mut tx.ops {
+                if let crate::Op::Insert(e) = op {
+                    crate::pickup::adopt(&self.model, t, e);
+                }
+            }
+        }
         self.apply_settled(&mut tx)?;
         self.undo.push(Step::new(tx));
         self.redo.clear();
