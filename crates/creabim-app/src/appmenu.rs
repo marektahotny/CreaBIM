@@ -1156,29 +1156,26 @@ impl CreaBimApp {
         let mut fire_doors = false;
         // the plot's data asked of the cadastre
         let mut cadastre = false;
-        let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
+        let screen = crate::app::shell::window_room(ctx);
+        // side by side in columns as the room right of the project
+        // browser allows: project and sheets, site and place, fire safety
+        let n = (((screen.width() - 30.0) / 386.0).floor() as usize).clamp(1, 3);
         crate::app::shell::window(crate::i18n::tr("Project information"))
+            // an id by the columns: a size kept from another layout (the
+            // one-column window) is not reused
+            .id(egui::Id::new(("project.info.columns", n)))
             .open(&mut open)
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(area.center())
-            .constrain_to(area)
+            .default_pos(screen.center())
+            .constrain_to(screen)
             .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
-                // side by side in columns as the screen allows: project and
-                // sheets, site and place, fire safety; the fields scroll and
-                // the buttons stay in sight
-                let n = if area.width() >= 1320.0 {
-                    3
-                } else if area.width() >= 900.0 {
-                    2
-                } else {
-                    1
-                };
-                ui.set_width(n as f32 * 400.0 + (n - 1) as f32 * 20.0);
+                // the fields scroll and the buttons stay in sight
+                ui.set_width(n as f32 * 370.0 + (n - 1) as f32 * 16.0);
                 egui::ScrollArea::vertical()
                     .id_salt("project.info.scroll")
-                    .max_height((area.height() - 120.0).max(200.0))
+                    .max_height((screen.height() - 140.0).max(200.0))
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                 let text = |ui: &mut egui::Ui, label: &str, v: &mut String, hint: &str| {
