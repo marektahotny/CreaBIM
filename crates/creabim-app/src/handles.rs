@@ -5393,7 +5393,13 @@ mod tests {
         let dir = DVec2::from_angle(30f64.to_radians());
         let w = Element::new(
             "Wall",
-            ElementKind::Wall(creabim_core::Wall::new(lvl, DVec2::ZERO, dir * 5.0, 0.3, 3.0)),
+            ElementKind::Wall(creabim_core::Wall::new(
+                lvl,
+                DVec2::ZERO,
+                dir * 5.0,
+                0.3,
+                3.0,
+            )),
         );
         let s = Element::new(
             "Section",
@@ -5403,7 +5409,10 @@ mod tests {
         doc.commit(creabim_core::Transaction::new("setup").insert(w).insert(s))
             .unwrap();
         let m = doc.model().clone();
-        assert_eq!(align_bearing(&m, 31.5, 2.0).unwrap().1, "Parallel to a wall");
+        assert_eq!(
+            align_bearing(&m, 31.5, 2.0).unwrap().1,
+            "Parallel to a wall"
+        );
         assert_eq!(align_bearing(&m, 119.0, 2.0).unwrap().1, "Square to a wall");
         assert_eq!(align_bearing(&m, 181.0, 2.0).unwrap().1, "Horizontal");
         assert!(align_bearing(&m, 50.0, 2.0).is_none());
@@ -5413,7 +5422,9 @@ mod tests {
             let r = h.at.truncate() - c;
             (c + DVec2::from_angle(29f64.to_radians()).rotate(r)).extend(0.0)
         });
-        let ElementKind::View(v) = &out.kind else { panic!() };
+        let ElementKind::View(v) = &out.kind else {
+            panic!()
+        };
         let a = creabim_core::transform::view_angle(v).unwrap();
         assert!((a - 30.0).abs() < 1e-6, "{a}");
     }
