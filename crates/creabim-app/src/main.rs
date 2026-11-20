@@ -99,11 +99,27 @@ fn main() -> eframe::Result {
         })),
         ..Default::default()
     };
+    #[cfg(target_os = "macos")]
+    let options = metal(options);
     eframe::run_native(
         "CreaBIM",
         options,
         Box::new(|cc| Ok(Box::new(app::CreaBimApp::new(cc)))),
     )
+}
+
+/// On a Mac the window and the 3D view draw through Metal, Apple's own
+/// GPU interface (the only one Apple Silicon runs natively), on the GPU
+/// that draws the screen; `WGPU_BACKEND` still overrides it.
+#[cfg(target_os = "macos")]
+fn metal(mut o: eframe::NativeOptions) -> eframe::NativeOptions {
+    use eframe::egui_wgpu::{wgpu, WgpuSetup};
+    if let WgpuSetup::CreateNew(s) = &mut o.wgpu_options.wgpu_setup {
+        if std::env::var_os("WGPU_BACKEND").is_none() {
+            s.instance_descriptor.backends = wgpu::Backends::METAL;
+        }
+    }
+    o
 }
 
 /// The web panes are GTK child windows of an X11 window, so on Wayland the

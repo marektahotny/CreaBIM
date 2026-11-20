@@ -435,7 +435,7 @@ fn settings_ui(
                 }
             });
     });
-    if x.printer != printing::PDF {
+    if x.printer != printing::PDF && printing::has_properties() {
         row(ui, "", |ui| {
             *props = ui
                 .button(crate::i18n::t("Printer properties…"))

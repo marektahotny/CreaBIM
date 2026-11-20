@@ -2,8 +2,9 @@
 set -euo pipefail
 umask 022
 
-if [[ $# -ne 4 ]]; then
-    echo "Usage: $0 VERSION DATE TARGET_DIR OUTPUT.dmg" >&2
+# OUTPUT.zip (optional): the app alone, zipped as the Finder would.
+if [[ $# -ne 4 && $# -ne 5 ]]; then
+    echo "Usage: $0 VERSION DATE TARGET_DIR OUTPUT.dmg [OUTPUT.zip]" >&2
     exit 2
 fi
 
@@ -11,6 +12,7 @@ version=$1
 date=$2
 target_dir=$3
 output=$4
+zip_output=${5:-}
 
 if [[ ! $version =~ ^[0-9][A-Za-z0-9.+~-]*$ ]]; then
     echo "Invalid macOS package version: $version" >&2
@@ -64,11 +66,25 @@ cat > "$contents/Info.plist" <<PLIST
     <string>11.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.graphics-design</string>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
 </dict>
 </plist>
 PLIST
 
+# Ad-hoc signed: Apple Silicon runs no unsigned code, and a bundle signed
+# as a whole opens with right-click › Open instead of "is damaged".
+if command -v codesign >/dev/null; then
+    codesign --force --deep --sign - "$app"
+    codesign --verify --deep --strict "$app"
+fi
+
 mkdir -p "$(dirname "$output")"
+if [[ -n $zip_output ]]; then
+    ditto -c -k --keepParent "$app" "$zip_output"
+fi
 hdiutil create -volname "CreaBIM $version" -srcfolder "$stage" \
     -ov -format UDZO "$output"
 echo "Created $output for CreaBIM $version (release date $date)"
