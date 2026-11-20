@@ -2091,8 +2091,8 @@ fn annotate(b: &mut Builder, views: &Views) {
             Some(v(11.8, 11.4)),
         ),
         // the slope arrows give the pitch and the fall
-        (views.roof, v(2.4, 3.3), "SLATE\nnatural slate on battens", None),
-        (views.roof, v(0.6, 8.8), "SLATE\nnatural slate on battens", None),
+        (views.roof, v(2.4, 3.3), "SLATE\non battens", None),
+        (views.roof, v(0.6, 8.8), "SLATE\non battens", None),
         (views.roof, v(12.4, 7.6), "GREEN ROOF\nsedum on EPDM\nfalls 1:60 to the east", None),
         (views.roof, v(4.4, -2.4), "ZINC CANOPY", Some(v(5.6, -0.9))),
     ];
@@ -2442,6 +2442,7 @@ fn sheets(b: &mut Builder, views: &Views) {
                     center,
                     target,
                     crop,
+                    ink: Default::default(),
                 }),
             ));
         }

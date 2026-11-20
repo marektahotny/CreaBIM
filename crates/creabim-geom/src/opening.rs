@@ -867,15 +867,25 @@ mod tests {
         assert_eq!(count(&boxes, Part::Leaf), 1);
         let (pw, _) = creabim_core::joinery::clear_passage(&o).unwrap();
         let fw = creabim_core::joinery::frame_width(&o);
-        assert!((pw - ((o.width - 2.0 * fw) * 0.7 * 1000.0).round() / 1000.0).abs() < 1e-9, "{pw}");
+        assert!(
+            (pw - ((o.width - 2.0 * fw) * 0.7 * 1000.0).round() / 1000.0).abs() < 1e-9,
+            "{pw}"
+        );
         // both opening: two leaves meeting with no mullion between, the
         // passage the whole width between the jambs
         o.division = Some(FrameNode::parse("v(0.7:D-L,0.3:O-P)").unwrap());
         let boxes = opening_boxes(&o, &wall(), None);
         assert_eq!(count(&boxes, Part::Leaf), 2);
         let (pw, _) = creabim_core::joinery::clear_passage(&o).unwrap();
-        assert!((pw - ((o.width - 2.0 * fw) * 1000.0).round() / 1000.0).abs() < 1e-9, "{pw}");
-        let (_, bars) = o.division.as_ref().unwrap().layout_of(true, o.width, o.height, fw);
+        assert!(
+            (pw - ((o.width - 2.0 * fw) * 1000.0).round() / 1000.0).abs() < 1e-9,
+            "{pw}"
+        );
+        let (_, bars) = o
+            .division
+            .as_ref()
+            .unwrap()
+            .layout_of(true, o.width, o.height, fw);
         assert!(bars.is_empty());
     }
 

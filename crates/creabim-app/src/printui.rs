@@ -6,7 +6,7 @@
 
 use super::{CreaBimApp, ExportScope};
 use crate::printing::{self, Job, Page, Settings};
-use creabim_core::ElementId;
+use creabim_core::{ElementId, Ink};
 use creabim_geom::printing::{paper_for, place, Fit, OnPaper, PaperChoice, PaperGot, Placement};
 use creabim_geom::sheet::{self as sheets, PlacedView, SheetInfo};
 use eframe::egui::{self, Color32};
@@ -25,7 +25,8 @@ pub(crate) struct PrintState {
     settings: HashMap<String, Settings>,
     paper: PaperChoice,
     fit: Fit,
-    mono: bool,
+    /// Over each drawing's own ink: colour keeps each as set on its sheet.
+    ink: Ink,
     copies: u32,
     /// The page the preview shows.
     page: usize,
@@ -45,7 +46,7 @@ impl Default for PrintState {
             settings: HashMap::new(),
             paper: PaperChoice::Sheet,
             fit: Fit::Actual,
-            mono: false,
+            ink: Ink::Colour,
             copies: 1,
             page: 0,
             got: HashMap::new(),
@@ -94,12 +95,12 @@ fn draw_on_paper(
     views: &[PlacedView],
     info: &SheetInfo,
     place: Placement,
-    mono: bool,
+    ink: Ink,
 ) {
     let mut on = OnPaper {
         inner: c,
         place,
-        mono,
+        ink,
     };
     sheets::draw_sheet(&mut on, model, id, views, info);
 }
@@ -224,9 +225,9 @@ impl CreaBimApp {
             title,
             pages,
             copies: self.print.copies.max(1),
-            mono: self.print.mono,
+            mono: self.print.ink == Ink::Black,
         };
-        let (fit, mono) = (self.print.fit, self.print.mono);
+        let (fit, ink) = (self.print.fit, self.print.ink);
         if job.printer == printing::PDF {
             let default = with_pdf(&self.path, ids.len() == 1, &job.title);
             let Some(out) = self.export_to(default) else {
@@ -234,7 +235,7 @@ impl CreaBimApp {
             };
             let bytes = printing::pdf(&job, &mut |i, got, c| {
                 let p = placement(&job.pages[i], got, fit);
-                draw_on_paper(c, &model, ids[i], &views[i], &info, p, mono);
+                draw_on_paper(c, &model, ids[i], &views[i], &info, p, ink);
             });
             let n = job.pages.len() * job.copies as usize;
             let r = std::fs::write(&out, bytes);
@@ -246,7 +247,7 @@ impl CreaBimApp {
         self.print.job = Some(std::thread::spawn(move || {
             printing::print(&job, &mut |i, got, c| {
                 let p = placement(&job.pages[i], got, fit);
-                draw_on_paper(c, &model, ids[i], &views[i], &info, p, mono);
+                draw_on_paper(c, &model, ids[i], &views[i], &info, p, ink);
             })
         }));
         self.status = format!("Printing {n} pages on {printer}…");
@@ -517,8 +518,15 @@ fn settings_ui(
     });
     row(ui, "Colour", |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut x.mono, false, crate::i18n::tw("Colour"));
-            ui.selectable_value(&mut x.mono, true, crate::i18n::tw("Black and white"))
+            ui.selectable_value(&mut x.ink, Ink::Colour, crate::i18n::tw("As on the sheets"))
+                .on_hover_text(crate::i18n::t(
+                    "Each drawing as set on its sheet: in colour, in shades of grey or black and white (the drawing's Properties on the sheet)",
+                ));
+            ui.selectable_value(&mut x.ink, Ink::Grey, crate::i18n::tw("Shades of grey"))
+                .on_hover_text(crate::i18n::t(
+                    "Every drawing in shades of grey: each colour by its lightness",
+                ));
+            ui.selectable_value(&mut x.ink, Ink::Black, crate::i18n::tw("Black and white"))
                 .on_hover_text(crate::i18n::t(
                     "Every line and text black, colour fills grey by their lightness",
                 ));
@@ -583,7 +591,7 @@ fn preview_ui(
     painter.rect_filled(paper, 0.0, Color32::WHITE);
     let clip = painter.with_clip_rect(paper);
     crate::sheetview::paint_paper(&clip, paper, got.size / 2.0, zoom, |c| {
-        draw_on_paper(c, model, *id, views, info, place, x.mono);
+        draw_on_paper(c, model, *id, views, info, place, x.ink);
     });
     // where the printer cannot reach
     let at = |p: DVec2| {

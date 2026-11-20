@@ -101,8 +101,8 @@ fn tag_leaders_bend_at_their_elbow_and_end_in_their_mark() {
     let plan = named(doc.model(), "Ground Floor plan");
     // (a door's or window's mark has a straight leader, square to its wall)
     let wall = first(doc.model(), |k| matches!(k, ElementKind::Wall(_)));
-    let mut tag = Tag::new(plan, wall, DVec2::new(2.0, 2.0));
-    tag.elbow = Some(DVec2::new(2.0, 0.0));
+    let mut tag = Tag::new(plan, wall, DVec2::new(3.0, 2.0));
+    tag.elbow = Some(DVec2::new(3.0, 0.0));
     tag.end = Some(DVec2::new(0.1, 0.0));
     tag.leader_end = Some(Terminator::Arrow);
     let id = add(&mut doc, Element::new("Tag", ElementKind::Tag(tag)));
@@ -122,8 +122,13 @@ fn tag_leaders_bend_at_their_elbow_and_end_in_their_mark() {
             _ => None,
         })
         .unwrap();
-    assert!((at - anchor - DVec2::new(1.9, 2.0)).length() < 1e-9);
-    assert!((elbow.unwrap() - anchor - DVec2::new(1.9, 0.0)).length() < 1e-9);
+    assert!(
+        (at - anchor - DVec2::new(2.9, 2.0)).length() < 1e-9,
+        "{:?} {:?}",
+        at - anchor,
+        elbow.map(|e| e - anchor)
+    );
+    assert!((elbow.unwrap() - anchor - DVec2::new(2.9, 0.0)).length() < 1e-9);
     assert_eq!(look.leader_end, Some(Terminator::Arrow));
 }
 

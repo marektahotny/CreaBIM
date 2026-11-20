@@ -76,9 +76,11 @@ pub fn text(
         Font::Sans => crate::drawfont::family(),
         Font::Serif => egui::FontFamily::Proportional,
     };
+    // `px` is the capitals' height: the face is set at its em
+    let em = creabim_geom::font::em(px as f64, look.font) as f32;
     let mut job = egui::text::LayoutJob::simple_singleline(
         text.to_string(),
-        egui::FontId::new(px, family),
+        egui::FontId::new(em, family),
         color,
     );
     for s in &mut job.sections {

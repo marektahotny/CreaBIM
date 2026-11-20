@@ -883,14 +883,19 @@ pub fn show(
         info,
     );
     for v in views {
+        // each drawing in its own ink, as it prints
+        let mut inked = paper::Inked {
+            inner: &mut canvas,
+            ink: v.ink,
+        };
         if state.active != Some(v.viewport) {
-            paper::draw_looks(&mut canvas, &v.drawing, &v.map, &v.looks);
+            paper::draw_looks(&mut inked, &v.drawing, &v.map, &v.looks);
             // the picture again in the other labels of a title page
             for d in creabim_geom::coverpage::copies(&s) {
-                paper::draw_looks(&mut canvas, &v.drawing, &v.map.moved(d), &v.looks);
+                paper::draw_looks(&mut inked, &v.drawing, &v.map.moved(d), &v.looks);
             }
         }
-        sheet::draw_view_title(&mut canvas, v);
+        sheet::draw_view_title(&mut inked, v);
         if selection.contains(v.viewport) && state.active.is_none() {
             let (lo, hi) = v.bounds;
             painter.rect_stroke(
@@ -2039,6 +2044,7 @@ mod tests {
             center: DVec2::new(100.0, 100.0),
             target: DVec2::ZERO,
             crop: None,
+            ink: Default::default(),
         };
         let mid = DVec2::new(10.0, 5.0);
         let map = |c: DVec2, s: f64| c + (mid - vp.target) * (1000.0 / s);

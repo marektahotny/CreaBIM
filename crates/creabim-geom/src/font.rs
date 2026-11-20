@@ -146,6 +146,39 @@ impl TextSetup {
     }
 }
 
+/// How high the capitals of the standard faces stand, a share of their
+/// em: Helvetica (and Arial), Times, Courier.
+pub const SANS_CAP: f64 = 0.718;
+pub const SERIF_CAP: f64 = 0.662;
+pub const MONO_CAP: f64 = 0.571;
+
+impl TextSetup {
+    /// How high capitals stand in `font`, a share of its em: the drawings'
+    /// own face by its own measure, else the standard face's.
+    pub fn cap_ratio(&self, font: creabim_core::Font) -> f64 {
+        match self.face(font) {
+            Some(f) if f.units > 0.0 => f.cap_height / f.units,
+            _ => match font {
+                creabim_core::Font::Sans => SANS_CAP,
+                creabim_core::Font::Serif => SERIF_CAP,
+                creabim_core::Font::Mono => MONO_CAP,
+            },
+        }
+    }
+
+    /// The em (the size a face is set at) of letters whose capitals stand
+    /// `cap` high. A drawing's text size is the height of its capitals, as
+    /// ISO 3098 measures it: 2.5 mm text has 2.5 mm high capitals on paper.
+    pub fn em(&self, cap: f64, font: creabim_core::Font) -> f64 {
+        cap / self.cap_ratio(font)
+    }
+}
+
+/// [`TextSetup::em`] in the setup in use.
+pub fn em(cap: f64, font: creabim_core::Font) -> f64 {
+    setup().em(cap, font)
+}
+
 static SETUP: RwLock<Option<TextSetup>> = RwLock::new(None);
 
 /// The setup in use.
