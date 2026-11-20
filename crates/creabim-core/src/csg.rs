@@ -5,7 +5,7 @@
 
 use glam::DVec3;
 
-const EPS: f64 = 1e-7;
+const EPS: f64 = 1e-5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BoolOp {
@@ -284,7 +284,11 @@ pub fn boolean(a: Vec<Polygon>, b: Vec<Polygon>, op: BoolOp) -> Vec<Polygon> {
                 .is_some_and(|(pl, ph)| pl.cmple(hi).all() && ph.cmpge(lo).all())
         });
         if near.is_empty() {
-            return far;
+            // no face of `a` about `b`: `b` is wholly outside it, or
+            // wholly inside (a beam buried in a wall), leaving a cavity
+            let inside =
+                bounds(&far).is_some_and(|(al, ah)| al.cmple(lo).all() && ah.cmpge(hi).all());
+            return if inside { whole(far, b, op) } else { far };
         }
         let mut out = whole(near, b, op);
         out.extend(far);

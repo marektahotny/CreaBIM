@@ -244,14 +244,20 @@ pub fn rules(model: &Model) -> Vec<JoinRule> {
 }
 
 /// Which kind of element runs through which where two are as strong:
-/// columns through walls, walls through slabs.
+/// columns through beams and lintels, those through walls, walls through
+/// slabs, slabs through footings and roofs, everything through a
+/// suspended ceiling. Plans, sections, the 3D view and the material
+/// take-off all go by it, so each overlap is counted once, in the winner.
 pub fn category_rank(kind: &ElementKind) -> u8 {
     match kind {
-        ElementKind::Column(_) => 3,
-        // a lintel runs through the wall it lies in
-        ElementKind::Beam(b) if b.lintel.is_some() => 3,
-        ElementKind::Wall(_) => 2,
-        ElementKind::Slab(_) => 1,
+        ElementKind::Column(_) => 7,
+        // a lintel (or any beam) runs through the wall it lies in
+        ElementKind::Beam(_) => 6,
+        ElementKind::Wall(_) => 5,
+        ElementKind::Slab(_) => 4,
+        ElementKind::Footing(_) => 3,
+        ElementKind::Roof(_) => 2,
+        ElementKind::Ceiling(_) => 1,
         _ => 0,
     }
 }
