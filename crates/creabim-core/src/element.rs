@@ -2211,6 +2211,12 @@ pub struct View {
     /// line; empty writes the usual ones of its trades.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
+    /// How far a plan is turned on screen and on paper, degrees
+    /// anticlockwise (Revit's "true north" orientation of a site plan):
+    /// the model stays as it is, so the floor plans keep square to the
+    /// building while the site plan lies square to the parcel.
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub turn: f64,
 }
 
 /// A section line's own look and course: broken in the middle (only its
@@ -2634,6 +2640,7 @@ impl View {
             page: None,
             takeoff: Default::default(),
             notes: String::new(),
+            turn: 0.0,
             spatial: false,
         }
     }
@@ -2674,6 +2681,7 @@ impl View {
             page: None,
             takeoff: Default::default(),
             notes: String::new(),
+            turn: 0.0,
             spatial: false,
         }
     }
@@ -2711,6 +2719,7 @@ impl View {
             page: None,
             takeoff: Default::default(),
             notes: String::new(),
+            turn: 0.0,
             spatial: false,
         }
     }
@@ -2749,6 +2758,7 @@ impl View {
             page: None,
             takeoff: Default::default(),
             notes: String::new(),
+            turn: 0.0,
             spatial: false,
         }
     }
@@ -2792,6 +2802,7 @@ impl View {
             page: None,
             takeoff: Default::default(),
             notes: String::new(),
+            turn: 0.0,
             spatial: false,
         }
     }

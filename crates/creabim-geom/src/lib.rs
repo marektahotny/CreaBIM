@@ -11,6 +11,7 @@ pub mod autodims;
 pub mod coverpage;
 pub mod crop;
 pub mod netlines;
+pub mod turn;
 
 pub mod boarddiagram;
 pub mod cropbox;

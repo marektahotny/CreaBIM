@@ -165,6 +165,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "A rainwater retention tank of DRENBLOK blocks wrapped in foil (EKODREN RN), its filter shaft ahead and a throttled outlet to the recipient, sized after DWA-A 117 from the connected area, the allowed outflow and the rain series; with its parts list",
             ),
             act(
+                "site:network",
+                "Utility network",
+                "spline",
+                "Draw a utility network in the site plan: water, sewers, gas, power, lighting, telecom, heating, drainage. Colour, line type, DXF layer and code by its kind; proposed heavy, existing thin, cancelled crossed; set in Properties",
+            ),
+            act(
                 "site:coords",
                 "S-JTSK coordinates",
                 "crosshair",

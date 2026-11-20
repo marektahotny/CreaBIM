@@ -33,6 +33,7 @@ pub mod joinery;
 pub mod joins;
 pub mod levels;
 pub mod library;
+pub mod mapgroup;
 pub mod marks;
 pub mod masonry;
 pub mod members;

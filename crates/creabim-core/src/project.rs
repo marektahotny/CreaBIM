@@ -111,6 +111,15 @@ pub struct ProjectInfo {
     pub site_level: Option<crate::ElementId>,
     /// How far true north turns from the drawings' up, degrees anticlockwise.
     pub true_north: f64,
+    /// What came down from the map site (Pilon Map Downloader): its
+    /// drawings, orthophoto and terrain. They move and turn as one, and
+    /// the S-JTSK coordinates with them (see [`crate::mapgroup`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub map_group: Vec<crate::ElementId>,
+    /// The map drawing in S-JTSK the coordinates are read from: a model
+    /// point's S-JTSK east and north are its point in that drawing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub map_ref: Option<crate::ElementId>,
     pub building_name: String,
     /// "Dwelling", "Office", "School".
     pub building_use: String,

@@ -1805,6 +1805,7 @@ impl CreaBimApp {
         };
         {
             let xf = crate::planview::Xf {
+                turn: 0.0,
                 rect: body,
                 center,
                 scale,
@@ -2820,6 +2821,7 @@ impl CreaBimApp {
                     });
                     if let Some(f) = under {
                         let xf = crate::planview::Xf {
+                            turn: 0.0,
                             rect: body,
                             center,
                             scale,

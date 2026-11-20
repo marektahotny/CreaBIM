@@ -1115,6 +1115,7 @@ fn style_preview(ui: &mut egui::Ui, s: &TextStyle) {
     painter.rect_filled(rect, 4.0, Color32::WHITE);
     // paper mm, four pixels to the mm
     let xf = planview::Xf {
+        turn: 0.0,
         rect,
         center: DVec2::new(45.0, 10.0),
         scale: 4.0,

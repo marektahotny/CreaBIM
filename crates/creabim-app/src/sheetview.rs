@@ -1191,6 +1191,7 @@ pub fn show(
         if let creabim_geom::PlanItem::Annotation { id, item } = it {
             if Some(*id) == lit {
                 let pxf = planview::Xf {
+                    turn: 0.0,
                     rect,
                     center,
                     scale: zoom,
@@ -1718,6 +1719,7 @@ pub fn show(
     // notes written on the sheet itself
     if state.active.is_none() {
         let pxf = planview::Xf {
+            turn: 0.0,
             rect,
             center,
             scale: zoom,
@@ -1806,6 +1808,7 @@ pub fn show(
                     }
                 }
                 let pxf = planview::Xf {
+                    turn: 0.0,
                     rect,
                     center,
                     scale: zoom,
@@ -1975,7 +1978,11 @@ pub fn show(
         let (lo, hi) = v.bounds;
         let area = xf.rect_of(lo, hi).expand(6.0).intersect(rect);
         let paper_mid = xf.to_paper(area.center());
-        let camera = (v.map.to_model(paper_mid), zoom * v.map.k() as f32);
+        // the pane works in the model's frame: a turned view's paper
+        // point turned back
+        let turn = creabim_geom::turn::view_turn(doc.model(), v.view);
+        let mid = DVec2::from_angle(-turn.to_radians()).rotate(v.map.to_model(paper_mid));
+        let camera = (mid, zoom * v.map.k() as f32);
         let kind = doc.model().get(v.view).and_then(|e| match &e.kind {
             ElementKind::View(view) => Some(planview::pane_kind(view)),
             _ => None,
@@ -1989,7 +1996,8 @@ pub fn show(
             };
             // work on the whole view, not just its cropped part
             let full;
-            let drawing = if matches!(doc.model().get(v.viewport).map(|e| &e.kind), Some(ElementKind::Viewport(vp)) if vp.crop.is_some())
+            let drawing = if turn != 0.0
+                || matches!(doc.model().get(v.viewport).map(|e| &e.kind), Some(ElementKind::Viewport(vp)) if vp.crop.is_some())
             {
                 full = creabim_geom::section::view_drawing(doc.model(), v.view).unwrap_or_default();
                 &full

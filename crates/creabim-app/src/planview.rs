@@ -538,6 +538,9 @@ pub struct PlanState {
     /// The next click on a line in a plan turns the project so that the
     /// line is level or upright (project north by a line).
     pub north_pick: bool,
+    /// The next click on a line in this view turns the view (not the
+    /// model) so that the line lies level or upright on screen and paper.
+    pub turn_pick: Option<ElementId>,
     /// A dimension's number being typed over.
     pub dim_edit: Option<DimEdit>,
     /// What was selected before the last click: a double-click on a
@@ -742,6 +745,7 @@ impl Default for PlanState {
             dim_chain: true,
             dim_short: false,
             north_pick: false,
+            turn_pick: None,
             dim_edit: None,
             dim_edit_prefer: Vec::new(),
             chain_line: None,
@@ -1029,21 +1033,95 @@ fn flip_arrows(
     msg
 }
 
+/// A view's turn, degrees anticlockwise, after which the line `a`–`b`
+/// (model points) lies level or upright on screen: the nearest such.
+pub fn turn_to_line(now: f64, a: DVec2, b: DVec2) -> f64 {
+    let th = (b - a).to_angle().to_degrees() + now;
+    let by = (th / 90.0).round() * 90.0 - th;
+    let t = ((now + by + 180.0).rem_euclid(360.0) - 180.0) * 1e9;
+    t.round() / 1e9
+}
+
+/// Turn `view` to `degrees` anticlockwise (folded to -180..180).
+pub fn set_view_turn(
+    doc: &mut Document,
+    view: ElementId,
+    degrees: f64,
+) -> Result<(), creabim_core::ModelError> {
+    let t = (degrees + 180.0).rem_euclid(360.0) - 180.0;
+    let t = if (t + 180.0).abs() < 1e-9 { 180.0 } else { t };
+    doc.edit(view, "Turn view", |e| {
+        if let ElementKind::View(v) = &mut e.kind {
+            v.turn = if t.abs() < 1e-9 { 0.0 } else { t };
+        }
+    })
+}
+
 pub struct Xf {
     pub rect: Rect,
     pub center: DVec2,
     pub scale: f32,
+    /// How far the drawing is turned on screen, radians anticlockwise:
+    /// a turned site plan ([`creabim_core::View::turn`]). `center` and
+    /// every point given or returned stay in the model's own frame.
+    pub turn: f64,
 }
 
 impl Xf {
+    /// The same view unturned, for drawing an item already turned on
+    /// paper ([`creabim_geom::turn`]): its centre turned with it.
+    pub fn unturned(&self) -> Xf {
+        Xf {
+            rect: self.rect,
+            center: DVec2::from_angle(self.turn).rotate(self.center),
+            scale: self.scale,
+            turn: 0.0,
+        }
+    }
+
     pub fn to_screen(&self, p: DVec2) -> Pos2 {
-        let d = (p - self.center).as_vec2() * self.scale;
+        let d = p - self.center;
+        let d = if self.turn == 0.0 {
+            d
+        } else {
+            DVec2::from_angle(self.turn).rotate(d)
+        };
+        let d = d.as_vec2() * self.scale;
         self.rect.center() + Vec2::new(d.x, -d.y)
     }
 
     pub fn to_world(&self, p: Pos2) -> DVec2 {
-        let d = (p - self.rect.center()) / self.scale;
-        self.center + DVec2::new(d.x as f64, -d.y as f64)
+        self.center + self.unturn(self.screen_delta(p - self.rect.center()))
+    }
+
+    /// A move on screen as a move in the drawing's (turned) frame, metres.
+    pub fn screen_delta(&self, d: Vec2) -> DVec2 {
+        let d = d / self.scale;
+        DVec2::new(d.x as f64, -d.y as f64)
+    }
+
+    /// A direction in the turned frame of the screen back in the model's.
+    pub fn unturn(&self, v: DVec2) -> DVec2 {
+        if self.turn == 0.0 {
+            v
+        } else {
+            DVec2::from_angle(-self.turn).rotate(v)
+        }
+    }
+
+    /// The model area the pane shows: the corners of its rect.
+    pub fn world_bounds(&self) -> (DVec2, DVec2) {
+        let r = self.rect;
+        let c = [
+            r.left_top(),
+            r.right_top(),
+            r.left_bottom(),
+            r.right_bottom(),
+        ]
+        .map(|p| self.to_world(p));
+        let lo = c.iter().fold(c[0], |a, b| a.min(*b));
+        let hi = c.iter().fold(c[0], |a, b| a.max(*b));
+        (lo, hi)
     }
 }
 
@@ -1061,8 +1139,56 @@ pub fn show(
     style: PaneStyle,
 ) -> Option<String> {
     let out = show_pane(ui, rect, doc, view, kind, plan, state, selection, style);
+    if style.decorations && matches!(kind, PaneKind::Plan { .. }) {
+        north_mark(ui, rect, doc.model(), view);
+    }
     work_cursor(ui, rect, state);
     out
+}
+
+/// Where north is, at the top right of a plan beside its zoom buttons
+/// (George, 2026-11-20): true north turned as the view is turned. Not
+/// printed; a sheet's own north arrow is a paper mark.
+fn north_mark(ui: &egui::Ui, rect: Rect, model: &creabim_core::Model, view: ElementId) {
+    if rect.width() < 260.0 || rect.height() < 120.0 {
+        return;
+    }
+    let north = model.project_info().map_or(0.0, |(_, p)| p.true_north)
+        + creabim_geom::turn::view_turn(model, view);
+    let c = egui::pos2(rect.right() - 74.0, rect.top() + 40.0);
+    let r = 15.0_f32;
+    // degrees anticlockwise from up, on a screen whose y runs down
+    let a = north.to_radians() as f32;
+    let up = egui::vec2(-a.sin(), -a.cos());
+    let side = egui::vec2(up.y, -up.x);
+    let p = crate::theme::Palette::of(ui.ctx());
+    let ink = p.text.gamma_multiply(0.8);
+    let painter = ui.painter_at(rect);
+    painter.circle_stroke(c, r, Stroke::new(1.0, ink.gamma_multiply(0.6)));
+    let tip = c + up * r;
+    let tail = c - up * r * 0.7;
+    // a kite: its left half filled, as on drawings
+    painter.add(egui::Shape::convex_polygon(
+        vec![tip, c - side * r * 0.42 - up * r * 0.25, tail],
+        ink,
+        Stroke::NONE,
+    ));
+    painter.add(egui::Shape::closed_line(
+        vec![
+            tip,
+            c - side * r * 0.42 - up * r * 0.25,
+            tail,
+            c + side * r * 0.42 - up * r * 0.25,
+        ],
+        Stroke::new(1.0, ink),
+    ));
+    painter.text(
+        c + up * (r + 9.0),
+        egui::Align2::CENTER_CENTER,
+        crate::i18n::t("N"),
+        egui::FontId::proportional(12.0),
+        ink,
+    );
 }
 
 /// The working cursor (PilonDesigner, as Revit): while a tool draws or a
@@ -1122,6 +1248,9 @@ fn show_pane(
     if let Some(bg) = style.background {
         painter.rect_filled(rect, 0.0, bg);
     }
+    // a site plan turned square to its parcel; the model stays put
+    let turn = creabim_geom::turn::view_turn(doc.model(), view).to_radians();
+    let unturn = |v: DVec2| DVec2::from_angle(-turn).rotate(v);
 
     let (mut center, mut scale) = match style.camera {
         Some(c) => c,
@@ -1178,6 +1307,7 @@ fn show_pane(
                 rect,
                 center,
                 scale,
+                turn,
             };
             let before = xf.to_world(at);
             scale = (scale * k).clamp(2.0, 2000.0);
@@ -1185,6 +1315,7 @@ fn show_pane(
                 rect,
                 center,
                 scale,
+                turn,
             };
             center += before - xf.to_world(at);
         }
@@ -1192,18 +1323,19 @@ fn show_pane(
         || response.dragged_by(egui::PointerButton::Middle)
     {
         let d = response.drag_delta() / scale;
-        center -= DVec2::new(d.x as f64, -d.y as f64);
+        center -= unturn(DVec2::new(d.x as f64, -d.y as f64));
     }
     if response.hovered() {
         // a touchpad's two fingers pan; a wheel and a pinch zoom (MU24)
         let (pan, scroll) = wheel(ui);
-        center -= DVec2::new(pan.x as f64, -pan.y as f64) / scale as f64;
+        center -= unturn(DVec2::new(pan.x as f64, -pan.y as f64)) / scale as f64;
         if scroll != 0.0 {
             if let Some(hover) = response.hover_pos() {
                 let xf = Xf {
                     rect,
                     center,
                     scale,
+                    turn,
                 };
                 let before = xf.to_world(hover);
                 scale = (scale * (1.0 + scroll * 0.002)).clamp(2.0, 2000.0);
@@ -1211,6 +1343,7 @@ fn show_pane(
                     rect,
                     center,
                     scale,
+                    turn,
                 };
                 center += before - xf.to_world(hover);
             }
@@ -1258,6 +1391,7 @@ fn show_pane(
         rect,
         center,
         scale,
+        turn,
     };
 
     if style.decorations && kind != PaneKind::Schedule {
@@ -2335,6 +2469,44 @@ fn show_pane(
         || !response.drag_started_by(egui::PointerButton::Primary)
         || press_on_selected
         || press_on_mark;
+    // a site plan turns itself by a line, the model stays put
+    let site_plan = matches!(doc.model().get(view).map(|e| &e.kind),
+        Some(ElementKind::View(v)) if v.graphics.range.from_above);
+    if state.north_pick && site_plan {
+        state.north_pick = false;
+        state.turn_pick = Some(view);
+    }
+    if state.turn_pick == Some(view) {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            state.turn_pick = None;
+            state.status = Some("The view is left as it was.".into());
+            return None;
+        }
+        if response.clicked() {
+            let at = xf.to_world(response.interact_pointer_pos()?);
+            let tol = 12.0 / xf.scale as f64;
+            let Some((a, b)) = line_at(state, doc.model(), view, plan, at, tol) else {
+                state.status = Some(
+                    "There is no line here: click nearer a boundary, a map line or a wall.".into(),
+                );
+                return None;
+            };
+            state.turn_pick = None;
+            let now = creabim_geom::turn::view_turn(doc.model(), view);
+            let turn = turn_to_line(now, a, b);
+            if (turn - now).abs() < 1e-7 {
+                state.status = Some("The line is level or upright already.".into());
+                return None;
+            }
+            if let Err(e) = set_view_turn(doc, view, turn) {
+                return Some(e.to_string());
+            }
+            state.status = Some(crate::i18n::tr(&format!(
+                "View turned to {turn}°: the line lies level or upright, the model has not moved. Ctrl+Z to undo."
+            )));
+        }
+        return None;
+    }
     if state.north_pick && matches!(kind, PaneKind::Plan { .. }) {
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             state.north_pick = false;
@@ -2454,10 +2626,10 @@ fn show_pane(
                         return None;
                     }
                     let (lo, hi) = it.bounds()?;
-                    Some((
-                        it.id(),
-                        Rect::from_two_pos(xf.to_screen(lo), xf.to_screen(hi)),
-                    ))
+                    // all four corners: a turned site plan turns the box
+                    let c = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)]
+                        .map(|p| xf.to_screen(p));
+                    Some((it.id(), Rect::from_points(&c)))
                 });
                 let ids = boxsel::pick(p0, now, parts)
                     .into_iter()
@@ -4652,8 +4824,7 @@ fn add_section_view(
 /// Preview of a section or elevation being placed in a section: a vertical
 /// line at the first click with an arrow to the side it will look.
 fn preview_cross_section(painter: &egui::Painter, xf: &Xf, a: DVec2, b: DVec2, accent: Color32) {
-    let lo = xf.to_world(xf.rect.left_bottom());
-    let hi = xf.to_world(xf.rect.right_top());
+    let (lo, hi) = xf.world_bounds();
     let stroke = Stroke::new(1.5, accent);
     painter.line_segment(
         [
@@ -6035,8 +6206,7 @@ fn draw_metric_grid(painter: &egui::Painter, xf: &Xf) {
     } else {
         25.0
     };
-    let lo = xf.to_world(xf.rect.left_bottom());
-    let hi = xf.to_world(xf.rect.right_top());
+    let (lo, hi) = xf.world_bounds();
     let stroke = Stroke::new(1.0, Color32::from_gray(236));
     let mut x = (lo.x / step).floor() * step;
     while x <= hi.x {
@@ -6240,6 +6410,12 @@ pub fn draw_item_with(
     mm: f64,
     o: &Ovr,
 ) {
+    // a turned site plan: the item turned as on paper, its text upright
+    if xf.turn != 0.0 {
+        let mut it = item.clone();
+        creabim_geom::turn::turn_item_by(&mut it, xf.turn);
+        return draw_item_with(painter, &xf.unturned(), &it, selected, mm, o);
+    }
     // thin lines: cut and projection pens one pixel wide
     let thin = Ovr {
         cut: 1.0 / 1.8,
@@ -6675,6 +6851,11 @@ fn draw_item_xray(
     mm: f64,
     model: &creabim_core::Model,
 ) {
+    if xf.turn != 0.0 {
+        let mut it = item.clone();
+        creabim_geom::turn::turn_item_by(&mut it, xf.turn);
+        return draw_item_xray(painter, &xf.unturned(), &it, selected, mm, model);
+    }
     let host = || model.get(item.id()).is_some_and(|e| is_xray_host(&e.kind));
     match item {
         PlanItem::Fill { points, .. } if !selected && host() => {
@@ -6779,6 +6960,18 @@ pub const TRACE: f32 = 1.5;
 /// its fills washed in the hover colour, over the drawing. Marks, text,
 /// tags and dimensions are traced themselves, never boxed.
 pub fn draw_hover(painter: &egui::Painter, xf: &Xf, items: &[PlanItem], id: ElementId, mm: f64) {
+    if xf.turn != 0.0 {
+        let turned: Vec<PlanItem> = items
+            .iter()
+            .filter(|it| it.id() == id)
+            .map(|it| {
+                let mut it = it.clone();
+                creabim_geom::turn::turn_item_by(&mut it, xf.turn);
+                it
+            })
+            .collect();
+        return draw_hover(painter, &xf.unturned(), &turned, id, mm);
+    }
     let line = Stroke::new(2.5, hoverpick::HOVER.gamma_multiply(0.75));
     let wash = hoverpick::HOVER.gamma_multiply(0.16);
     for it in items.iter().filter(|it| it.id() == id) {
@@ -8960,6 +9153,7 @@ mod tests {
             rect: left,
             center: DVec2::new(32.0, 1.5),
             scale: 100.0,
+            turn: 0.0,
         };
         let end = xf.to_screen(DVec2::new(34.0, 0.0));
         let mut t = 0.0;
@@ -9098,6 +9292,7 @@ mod tests {
             rect,
             center: DVec2::new(33.0, 0.5),
             scale: 100.0,
+            turn: 0.0,
         };
         let mut t = 0.0;
         let mut frame = |events: Vec<egui::Event>,
@@ -9579,6 +9774,7 @@ mod tests {
             rect: Rect::from_min_size(Pos2::ZERO, Vec2::splat(1000.0)),
             center: first,
             scale: 100.0,
+            turn: 0.0,
         };
         let snapper = Snapper::from_drawing(&[], &[]);
         let cfg = snaps::SnapSettings::default();
@@ -9638,6 +9834,7 @@ mod tests {
             rect: Rect::from_min_size(Pos2::ZERO, Vec2::splat(1000.0)),
             center: DVec2::new(20.0, 5.0),
             scale: 100.0,
+            turn: 0.0,
         };
         let cursor = xf.to_screen(DVec2::new(21.03, 6.98));
         let cfg = snaps::SnapSettings::default();

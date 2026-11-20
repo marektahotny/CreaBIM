@@ -487,10 +487,11 @@ pub fn coordinate_text(model: &Model, pattern: &str, p: glam::DVec2, z: f64) -> 
         .map(|(_, i)| i.clone())
         .unwrap_or_default();
     let bpv = cadastre_number(info.elevation + z);
-    match info.sjtsk {
-        Some([e0, n0]) => {
-            let q = glam::DVec2::from_angle(-info.true_north.to_radians()).rotate(p);
-            let (e, n) = (e0 + q.x, n0 + q.y);
+    // read off the map drawing under it when there is one: the map may
+    // have been moved and turned under the building since
+    match crate::mapgroup::sjtsk_of(model, p) {
+        Some(q) => {
+            let (e, n) = (q.x, q.y);
             pattern
                 .replace("{Y}", &cadastre_number(-e))
                 .replace("{X}", &cadastre_number(-n))

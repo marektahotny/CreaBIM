@@ -172,6 +172,22 @@ pub fn hint(shape: Shape, draft: Option<&SketchDraft>) -> String {
     .into()
 }
 
+static NETWORK: std::sync::Mutex<Option<creabim_core::utility::NetKind>> =
+    std::sync::Mutex::new(None);
+
+/// The kind of utility network the sketch tool draws now (the Cadastre
+/// tab's "Utility network" button), or none for plain sketches.
+pub fn network() -> Option<creabim_core::utility::NetKind> {
+    NETWORK.lock().map(|n| *n).unwrap_or(None)
+}
+
+/// Make the sketch tool draw utility networks of `kind`, or plain sketches.
+pub fn set_network(kind: Option<creabim_core::utility::NetKind>) {
+    if let Ok(mut n) = NETWORK.lock() {
+        *n = kind;
+    }
+}
+
 /// A sketch being drawn. The plane is in model coordinates (absolute
 /// heights) until the sketch is finished and given a level.
 #[derive(Clone, Debug)]
@@ -429,7 +445,14 @@ impl SketchDraft {
         if self.points.len() < 2 && self.radius.is_none() {
             return Ok(None);
         }
-        let sketch = self.placed(doc, closed);
+        let mut sketch = self.placed(doc, closed);
+        // drawn with the Cadastre tab's utility network button
+        if let Some(kind) = network() {
+            sketch.net = Some(creabim_core::utility::UtilityLine {
+                kind,
+                ..Default::default()
+            });
+        }
         let e = Element::new("Sketch", ElementKind::Sketch(sketch));
         let id = e.id;
         doc.commit(Transaction::new("Draw sketch").insert(e))?;

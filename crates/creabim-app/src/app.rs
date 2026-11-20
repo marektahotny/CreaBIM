@@ -9785,6 +9785,7 @@ crate::props::row(ui, "File names", |ui| {
         let mut object_type = false;
         // a placed view's new scale: (its view, the scale)
         let mut rescale: Option<(ElementId, f64)> = None;
+        let mut turn_by_line: Option<ElementId> = None;
         // who it is comes first (above), then its sizes and build here,
         // then how views show it; each section folds and stays folded
         let section = if creabim_core::types::TypeCategory::of(&e.kind).is_some() {
@@ -10188,6 +10189,47 @@ crate::props::row(ui, "File names", |ui| {
                             )
                             .weak(),
                         );
+                            // a site plan lies square to its parcel, the
+                            // floor plans square to the building: only the
+                            // drawing turns, the model stays put
+                            crate::props::row(ui, "Turn of the view", |ui| {
+                                let mut t = v.turn;
+                                let r = ui.add(
+                                    egui::DragValue::new(&mut t)
+                                        .speed(0.5)
+                                        .range(-180.0..=180.0)
+                                        .max_decimals(4)
+                                        .suffix("°"),
+                                );
+                                if r.changed() {
+                                    v.turn = t;
+                                    label = "Turn view";
+                                }
+                                for (text, by) in [("−90°", -90.0), ("+90°", 90.0)] {
+                                    if ui
+                                        .small_button(text)
+                                        .on_hover_text(crate::i18n::t(if by < 0.0 {
+                                            "A quarter turn clockwise"
+                                        } else {
+                                            "A quarter turn anticlockwise"
+                                        }))
+                                        .clicked()
+                                    {
+                                        let t = (v.turn + by + 180.0).rem_euclid(360.0) - 180.0;
+                                        v.turn = if t.abs() < 1e-9 { 0.0 } else { t };
+                                        label = "Turn view";
+                                    }
+                                }
+                            });
+                            if ui
+                                .button(crate::i18n::t("Turn the view by a line…"))
+                                .on_hover_text(crate::i18n::t(
+                                    "Click a parcel boundary, a map line or a wall: the view turns so that it lies level or upright. The model, the map and the S-JTSK coordinates stay where they are.",
+                                ))
+                                .clicked()
+                            {
+                                turn_by_line = Some(id);
+                            }
                             if let Some(l) = plan_graphics_ui(ui, &mut v.graphics, v.scale, true) {
                                 label = l;
                             }
@@ -11773,6 +11815,13 @@ crate::props::row(ui, "File names", |ui| {
         }
         if object_type {
             self.object_type_section(ui, id);
+        }
+        if let Some(view) = turn_by_line {
+            self.plan.turn_pick = Some(view);
+            self.active_view = Some(view);
+            self.status = crate::i18n::tr(
+                "Click a line in the view: it turns so that the line lies level or upright. Esc leaves it.",
+            );
         }
         if let Some((view, scale)) = rescale {
             self.set_view_scale(view, scale);

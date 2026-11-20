@@ -144,6 +144,8 @@ pub fn placed_views_with(
         let (Some(view), Some(mut d)) = (view_of(model, vp.view), drawing(vp.view)) else {
             continue;
         };
+        // a turned site plan lies turned on paper
+        d = crate::turn::turned(d, view.turn);
         // its scale and pens as its view template gives them
         let view = creabim_core::styles::resolved(model, view);
         let looks = looks(vp.view, &view);
@@ -151,7 +153,8 @@ pub fn placed_views_with(
             d = crate::crop::crop(&d, lo, hi);
         }
         let map = PaperMap {
-            model: vp.target,
+            // the target is a model point; on paper it lies turned too
+            model: DVec2::from_angle(view.turn.to_radians()).rotate(vp.target),
             paper: vp.center,
             scale: view.paper_scale(),
         };
@@ -210,7 +213,7 @@ pub fn free_spot(model: &Model, sheet: ElementId, view: ElementId) -> DVec2 {
     let middle = DVec2::new(s.width, s.height) / 2.0;
     let (Some(v), Some((lo, hi))) = (
         view_of(model, view),
-        view_drawing(model, view).and_then(|d| d.bounds()),
+        crate::turn::paper_drawing(model, view).and_then(|d| d.bounds()),
     ) else {
         return middle;
     };
@@ -769,11 +772,27 @@ pub fn draw_paper_marks(c: &mut dyn Canvas, model: &Model, sheet: ElementId) {
                 if matches!(m.kind, creabim_core::PaperMarkKind::RevisionTable) {
                     draw_revision_table(c, m, &revs);
                 } else {
-                    draw_paper_mark(c, m, north);
+                    draw_paper_mark(c, m, north + turn_near(model, sheet, m.at));
                 }
             }
         }
     }
+}
+
+/// How far the drawing nearest `at` on `sheet` is turned (a site plan
+/// lying square to its parcel), degrees: a north arrow by it turns too.
+pub fn turn_near(model: &Model, sheet: ElementId, at: DVec2) -> f64 {
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Viewport(vp) if vp.sheet == sheet => Some((
+                vp.center.distance_squared(at),
+                crate::turn::view_turn(model, vp.view),
+            )),
+            _ => None,
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map_or(0.0, |(_, t)| t)
 }
 
 /// The revisions table: REV, DATE, DESCRIPTION, a row per revision.

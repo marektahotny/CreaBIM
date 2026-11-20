@@ -1588,8 +1588,18 @@ fn plot_from_cadastre(
         let hi = ends.iter().fold(ends[0], |a, p| a.max(*p));
         (lo + hi) / 2.0
     };
-    // true north turns anticlockwise from the drawings' up
-    let p = glam::DVec2::from_angle(-draft.true_north.to_radians()).rotate(mid);
+    // read off the map under it (moved with the ground), else the origin
+    // turned by true north (anticlockwise from the drawings' up)
+    let p = match creabim_core::mapgroup::sjtsk_of(model, mid) {
+        Some(q)
+            if model
+                .project_info()
+                .is_some_and(|(_, i)| i.map_ref.is_some()) =>
+        {
+            q - glam::DVec2::new(e0, n0)
+        }
+        _ => glam::DVec2::from_angle(-draft.true_north.to_radians()).rotate(mid),
+    };
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(10))
         .build();

@@ -127,6 +127,11 @@ impl Document {
                 tx.ops.extend(extra.ops);
             }
         }
+        // what came down from the map moves as one, S-JTSK with it
+        let extra = crate::mapgroup::settle(&self.model, tx);
+        if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
+            tx.ops.extend(extra.ops);
+        }
         // system lintels follow their doors and windows
         let extra = crate::masonry::settle(&self.model, tx);
         if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {

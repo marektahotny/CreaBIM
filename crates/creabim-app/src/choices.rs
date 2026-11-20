@@ -126,6 +126,7 @@ fn draw_fitted(painter: &Painter, r: Rect, items: &[PlanItem]) {
     let inner = r.shrink(4.0);
     let scale = (inner.width() as f64 / size.x).min(inner.height() as f64 / size.y) as f32;
     let xf = crate::planview::Xf {
+        turn: 0.0,
         rect: inner,
         center: (lo + hi) / 2.0,
         scale,

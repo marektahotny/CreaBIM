@@ -1359,6 +1359,19 @@ impl CreaBimApp {
             Item::sub("Underlay", self.underlay_items())
                 .icon("layers")
                 .enabled(self.active_plan().is_some()),
+            Item::sub(
+                "Turn the view",
+                vec![
+                    Item::new("view.turn:line", "Turn the view by a line…").hint(
+                        "Click a parcel boundary, a map line or a wall: the view turns so that it lies level or upright. The model, the map and the S-JTSK coordinates stay where they are.",
+                    ),
+                    Item::new("view.turn:-90", "A quarter turn clockwise"),
+                    Item::new("view.turn:90", "A quarter turn anticlockwise"),
+                    Item::new("view.turn:0", "Straight again (0°)"),
+                ],
+            )
+            .icon("rotate-cw")
+            .enabled(self.active_plan().is_some()),
             Item::new("levels", "Levels…").icon("level").hint(
                 "Add, rename, move and delete levels, and make their floor plans, from any view",
             ),
@@ -1580,6 +1593,47 @@ impl CreaBimApp {
                     );
                 }
             }
+            // a plan turned on screen and paper; the model stays put
+            "view.turn" => {
+                let Some((view, _)) = self.active_plan() else {
+                    return;
+                };
+                if arg == "line" {
+                    self.plan.turn_pick = Some(view);
+                    self.status = crate::i18n::tr(
+                        "Click a line in the view: it turns so that the line lies level or upright. Esc leaves it.",
+                    );
+                    return;
+                }
+                let now = creabim_geom::turn::view_turn(self.doc.model(), view);
+                let to = match arg.parse::<f64>() {
+                    Ok(0.0) => 0.0,
+                    Ok(by) => now + by,
+                    Err(_) => return,
+                };
+                match crate::planview::set_view_turn(&mut self.doc, view, to) {
+                    Ok(()) => {
+                        let t = creabim_geom::turn::view_turn(self.doc.model(), view);
+                        self.status = crate::i18n::tr(&format!(
+                            "View turned to {t}°: the model has not moved. Ctrl+Z to undo."
+                        ));
+                    }
+                    Err(e) => self.status = e.to_string(),
+                }
+            }
+            // the sketch tool drawing utility networks (PilonDesigner's
+            // Inžinierska sieť): kind, state and text in Properties
+            "site" if arg == "network" => {
+                if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::Sketch) {
+                    self.run_action(ctx, &format!("tool:{i}"));
+                    let kind = crate::sketch::network().unwrap_or_default();
+                    crate::sketch::set_network(Some(kind));
+                    self.shell.tab_tool = Some(Tool::Sketch);
+                    self.status = crate::i18n::tr(
+                        "Utility network: click its bends, Enter or right-click ends it. Its kind (water, sewer, gas, power…), state and text are in Properties.",
+                    );
+                }
+            }
             "tab" => {
                 if let Some(i) = index.filter(|i| *i < crate::tooltabs::TABS.len()) {
                     self.shell.settings.tools_tab = i;
@@ -1605,6 +1659,9 @@ impl CreaBimApp {
                     // ribbon showing it), it keeps what it reads
                     if !again || !matches!(*t, Tool::SpotLevel) {
                         self.plan.anno.spot_coords = false;
+                    }
+                    if !again || *t != Tool::Sketch {
+                        crate::sketch::set_network(None);
                     }
                     // a chain begun in 3D ends with its tool (MU40)
                     self.pending_3d = None;

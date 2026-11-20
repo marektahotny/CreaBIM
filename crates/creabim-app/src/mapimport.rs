@@ -292,7 +292,44 @@ impl CreaBimApp {
                 done.push(format!("{} ({} {})", t("terrain"), made.kept, t("points")));
             }
         }
+        // all of it moves and turns as one, S-JTSK read off its drawing
+        let group: Vec<ElementId> = tx
+            .ops
+            .iter()
+            .filter_map(|o| match o {
+                creabim_core::Op::Insert(e) => Some(e.id),
+                _ => None,
+            })
+            .collect();
+        let jtsk_ref = tx.ops.iter().find_map(|o| match o {
+            creabim_core::Op::Insert(e) => match &e.kind {
+                ElementKind::Reference(r)
+                    if matches!(r.source, RefSource::Dxf { .. })
+                        && origin.is_some()
+                        && r.bounds.is_some_and(|[a, _]| xyz::is_jtsk(a.x, a.y)) =>
+                {
+                    Some(e.id)
+                }
+                _ => None,
+            },
+            _ => None,
+        });
         if !tx.ops.is_empty() {
+            if let Some((pid, info)) = self.doc.model().project_info() {
+                let mut info = info.clone();
+                // a map put in again replaces the old one's part in it
+                info.map_group
+                    .retain(|id| self.doc.model().get(*id).is_some());
+                info.map_group.extend(&group);
+                if jtsk_ref.is_some() {
+                    info.map_ref = jtsk_ref;
+                }
+                if let Some(e) = self.doc.model().get(pid) {
+                    let mut now = e.clone();
+                    now.kind = ElementKind::Project(info);
+                    tx = tx.replace(e.clone(), now);
+                }
+            }
             if let Err(e) = self.doc.commit(tx) {
                 self.status = e.to_string();
                 return;
@@ -386,5 +423,109 @@ impl CreaBimApp {
             }
             Err(e) => self.status = e.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod shot_project {
+    use creabim_core::{Element, ElementKind, RefSource, Reference, Transaction};
+    use glam::DVec2;
+
+    /// Writes a project for checking the turned site plan by eye:
+    /// `CREABIM_SHOT_PROJECT=<dir> cargo test -p creabim-app shot_project -- --ignored`.
+    #[test]
+    #[ignore]
+    fn write_a_turned_site_plan_project() {
+        let Ok(dir) = std::env::var("CREABIM_SHOT_PROJECT") else {
+            return;
+        };
+        let dir = std::path::PathBuf::from(dir);
+        let mut app = crate::app::test_app();
+        for e in app.doc.model().iter() {
+            if let ElementKind::View(v) = &e.kind {
+                eprintln!(
+                    "view {:?} from_above={} footprint={}",
+                    e.name, v.graphics.range.from_above, v.graphics.range.footprint
+                );
+            }
+        }
+        // a cadastre in S-JTSK: parcels at 25° to the building
+        let shift = DVec2::new(-547382.28, -1253318.85);
+        let r = DVec2::from_angle(25f64.to_radians());
+        let mut dxf = String::from("0\nSECTION\n2\nENTITIES\n");
+        let mut line = |a: DVec2, b: DVec2, layer: &str| {
+            let (a, b) = (shift + r.rotate(a), shift + r.rotate(b));
+            dxf += &format!(
+                "0\nLINE\n8\n{layer}\n10\n{}\n20\n{}\n11\n{}\n21\n{}\n",
+                a.x, a.y, b.x, b.y
+            );
+        };
+        for k in -2..=2 {
+            let x = k as f64 * 20.0 - 4.0;
+            line(DVec2::new(x, -40.0), DVec2::new(x, 40.0), "hranice");
+            let y = k as f64 * 20.0 - 5.0;
+            line(DVec2::new(-44.0, y), DVec2::new(36.0, y), "hranice");
+        }
+        for k in 0..12 {
+            let y = -30.0 + k as f64 * 5.0;
+            line(
+                DVec2::new(-44.0, y),
+                DVec2::new(36.0, y + 6.0),
+                "vrstevnice",
+            );
+        }
+        dxf += "0\nENDSEC\n0\nEOF\n";
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("situacia_jtsk.dxf");
+        std::fs::write(&path, dxf).unwrap();
+        let ground = app.doc.model().levels().next().unwrap().0.id;
+        let mut sv = creabim_core::View::plan(ground);
+        sv.graphics.range.from_above = true;
+        sv.graphics.range.footprint = true;
+        sv.scale = 200.0;
+        app.doc
+            .commit(
+                Transaction::new("site").insert(Element::new("Situácia", ElementKind::View(sv))),
+            )
+            .unwrap();
+        let views: Vec<_> = app
+            .doc
+            .model()
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::View(v) if v.graphics.range.from_above))
+            .map(|e| e.id)
+            .collect();
+        let source = RefSource::Dxf {
+            path: path.to_string_lossy().into(),
+            unit: Some(1.0),
+        };
+        let shown = crate::trace::read(app.doc.model(), &source);
+        let b = crate::trace::bounds_of(&source, &shown).unwrap();
+        let mut rf = Reference::new(source, views.clone());
+        rf.in_place(b);
+        rf.at -= shift;
+        rf.over = true;
+        let e = Element::new("Situácia z mapy", ElementKind::Reference(rf));
+        let id = e.id;
+        let info = creabim_core::ProjectInfo {
+            sjtsk: Some([shift.x, shift.y]),
+            map_group: vec![id],
+            map_ref: Some(id),
+            ..app
+                .doc
+                .model()
+                .project_info()
+                .map(|p| p.1.clone())
+                .unwrap_or_default()
+        };
+        app.doc.commit(Transaction::new("map").insert(e)).unwrap();
+        let tx = creabim_core::set_project(app.doc.model(), info);
+        app.doc.commit(tx).unwrap();
+        // the site plan turned square to the parcels
+        for v in &views {
+            let t = crate::planview::turn_to_line(0.0, shift * 0.0, r.rotate(DVec2::Y));
+            crate::planview::set_view_turn(&mut app.doc, *v, t).unwrap();
+        }
+        creabim_store::save(dir.join("turned.creabim"), &app.doc).unwrap();
     }
 }
