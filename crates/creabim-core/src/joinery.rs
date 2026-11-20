@@ -597,8 +597,13 @@ impl DoorFrame {
             DoorFrame::Steel => (0.15, 0.08),
             DoorFrame::Lining => (0.10, 0.05),
             DoorFrame::Timber => (0.20, 0.10),
-            // a plastic frame as wide as an aluminium one
-            DoorFrame::Aluminium | DoorFrame::Plastic => (0.16, 0.08),
+            DoorFrame::Aluminium => (0.16, 0.08),
+            // a plastic entrance door by REHAU SYNEGO (80 mm system):
+            // frame and sash seen 174 mm at each jamb and at the head,
+            // 136 mm over the 20 mm threshold (makers' data sheets as
+            // resold, mjlogi.lv and plastikinesdurys.lt, 2026-11); no
+            // fitting joint is stated, so none is added
+            DoorFrame::Plastic => (2.0 * 0.174, 0.174 + 0.136),
         }
     }
 
