@@ -13989,6 +13989,27 @@ fn plan_graphics_ui(
                 }
             });
     });
+    // the ground under cut hatches (George 2026-11-20)
+    crate::props::row(ui, "Under hatches", |ui| {
+        egui::ComboBox::from_id_salt("view.hatch_ground")
+            .icon(crate::props::combo_icon)
+            .selected_text(crate::i18n::tw(g.hatch_ground.label()))
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for h in creabim_core::graphics::HatchGround::ALL {
+                    if ui
+                        .selectable_value(&mut g.hatch_ground, h, crate::i18n::tw(h.label()))
+                        .changed()
+                    {
+                        label = Some("Under hatches");
+                    }
+                }
+            })
+            .response
+            .on_hover_text(
+                "The fill behind the hatch of cut walls and slabs. Renovation stages keep their own colours.",
+            );
+    });
     if crate::props::check(ui, "Below the cut", &mut g.below_fill, "Tinted")
         .on_hover_text("Furniture, fittings and imported meshes under the cut get a light fill.")
         .changed()
