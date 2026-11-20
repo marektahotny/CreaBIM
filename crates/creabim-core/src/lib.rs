@@ -66,6 +66,7 @@ pub mod split;
 pub mod starter;
 pub mod styles;
 pub mod takeoff;
+pub mod thermal;
 pub mod titleblock;
 pub mod transform;
 pub mod types;

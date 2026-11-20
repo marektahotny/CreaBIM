@@ -50,8 +50,27 @@ pub(super) fn units(c: &mut Ctx) -> Vec<Ref> {
     let mass_flow = derived(c, "MASSFLOWRATEUNIT", &[(kilogram, 1), (second, -1)]);
     let velocity = derived(c, "LINEARVELOCITYUNIT", &[(metre, 1), (second, -1)]);
     let flux = derived(c, "HEATFLUXDENSITYUNIT", &[(watt, 1), (m2, -1)]);
+    // W/(m²K) for the walls', slabs' and roofs' U; kelvin only as its
+    // part, the project's temperatures stay in °C
+    let kelvin = si(c, "THERMODYNAMICTEMPERATUREUNIT", "$", "KELVIN");
+    let transmittance = derived(
+        c,
+        "THERMALTRANSMITTANCEUNIT",
+        &[(watt, 1), (m2, -1), (kelvin, -1)],
+    );
     vec![
-        watt, pascal, celsius, ampere, volt, second, kilogram, flow, mass_flow, velocity, flux,
+        watt,
+        pascal,
+        celsius,
+        ampere,
+        volt,
+        second,
+        kilogram,
+        flow,
+        mass_flow,
+        velocity,
+        flux,
+        transmittance,
     ]
 }
 
@@ -256,6 +275,36 @@ pub(super) fn write(c: &mut Ctx, model: &Model, building: Ref) -> HashMap<String
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
         .collect()
+}
+
+/// Each wall's, slab's and roof's U, counted from its layers
+/// ([`creabim_core::thermal`]), in `Pset_WallCommon` /
+/// `Pset_SlabCommon` / `Pset_RoofCommon`.ThermalTransmittance.
+pub(super) fn thermal(c: &mut Ctx, model: &Model) {
+    let mut ids: Vec<ElementId> = c.products.keys().copied().collect();
+    ids.sort();
+    for id in ids {
+        let Some(e) = model.get(id) else { continue };
+        let set = match &e.kind {
+            ElementKind::Wall(_) => "Pset_WallCommon",
+            ElementKind::Slab(_) => "Pset_SlabCommon",
+            ElementKind::Roof(_) => "Pset_RoofCommon",
+            _ => continue,
+        };
+        let Some(t) = creabim_core::thermal::of_element(model, e) else {
+            continue;
+        };
+        let Some(u) = t.u else { continue };
+        let r = c.products[&id];
+        c.pset_on(
+            &[r],
+            set,
+            &[(
+                "ThermalTransmittance",
+                Prop::Measure("IFCTHERMALTRANSMITTANCEMEASURE", u),
+            )],
+        );
+    }
 }
 
 /// A room's heat loss, heat gain, temperature and air, where IFC keeps

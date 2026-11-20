@@ -1032,6 +1032,14 @@ fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Know
     if let Some(m) = cx.marks.get(&e.id) {
         put(&mut out, "označenie", Known::Text(m.clone()));
     }
+    // U of what a wall, slab or roof is built of (STN EN ISO 6946)
+    if let Some(u) = crate::thermal::of_element(model, e).and_then(|t| t.u) {
+        out.push((
+            "súčiniteľ prechodu tepla – navrhnutý",
+            Known::Raw(u),
+            Source::Calc,
+        ));
+    }
     // the calculations' results
     for (_, values) in crate::results::of(model, e.id) {
         for v in values {

@@ -274,6 +274,12 @@ pub fn add_base(model: &Model) -> Transaction {
                         d.push(format!("Rw {rw} dB"));
                     }
                     a.description = d.join("; ");
+                    let mut b = crate::thermal::Boundary::of(&a);
+                    // a ceiling under a cold attic gives its heat upwards
+                    if usage == AssemblyUse::Floor && t.name.contains("podkrov") {
+                        b.flow = crate::thermal::HeatFlow::Up;
+                    }
+                    a.thermal = Some(b);
                     let total = a.total();
                     let e = Element::new(t.name.as_str(), ElementKind::Assembly(a));
                     let id = e.id;

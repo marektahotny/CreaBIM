@@ -72,12 +72,31 @@ fn results_go_to_the_rooms_pipes_and_systems_in_ifc() {
     assert_eq!(got[0].0.title, "Tepelné straty");
     assert!(got[0].1.iter().any(|v| v.key == "phi_hl"));
 
+    // the materials' λ, for the walls' U
+    let mut tx = creabim_core::Transaction::new("λ");
+    let mats: Vec<creabim_core::Element> = doc
+        .model()
+        .iter()
+        .filter(|e| matches!(e.kind, creabim_core::ElementKind::Material(_)))
+        .cloned()
+        .collect();
+    for before in mats {
+        let mut after = before.clone();
+        if let creabim_core::ElementKind::Material(m) = &mut after.kind {
+            m.lambda = Some(0.5);
+        }
+        tx = tx.replace(before, after);
+    }
+    doc.commit(tx).unwrap();
     let ifc = export_ifc4(doc.model(), &ExportOptions::for_model(doc.model(), "Test"));
     if let Ok(path) = std::env::var("CREABIM_IFC_OUT") {
         std::fs::write(path, &ifc).unwrap();
     }
     for want in [
         "'Pset_SpaceThermalDesign'",
+        "'Pset_WallCommon'",
+        "'ThermalTransmittance',$,IFCTHERMALTRANSMITTANCEMEASURE(",
+        ".THERMALTRANSMITTANCEUNIT.",
         "'TotalHeatLoss',$,IFCPOWERMEASURE(",
         "'HeatingDryBulb',$,IFCTHERMODYNAMICTEMPERATUREMEASURE(",
         "'CreaBIM_TepelneStraty'",

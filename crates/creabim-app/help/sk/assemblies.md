@@ -28,3 +28,9 @@ Vrstvené steny sa napájajú po vrstvách: rohy L sú na pokos a v styku T nosn
 ## Dvere a okná vo vrstvených stenách {#doors-and-windows-in-layered-walls}
 
 V 3D sú ostenia okolo dverí alebo okna vo vrstvenej stene obložené povrchovými vrstvami steny: vonkajšou na vonkajšej časti ostenia, vnútornou na vnútornej. Tepelná izolácia a fólie sa tak neukazujú tam, kde nimi prechádza otvor. Obklady slúžia len 3D pohľadu; výkresy a exporty zobrazujú vrstvy tak, ako sú.
+
+## Súčiniteľ prechodu tepla U {#thermal-transmittance-u}
+
+Editor skladieb počas úprav počíta súčiniteľ prechodu tepla skladby podľa STN EN ISO 6946: tepelný odpor každej vrstvy R = d / λ z tepelnej vodivosti jej materiálu (zadáva sa v Materiáloch), k tomu odpory pri prestupe tepla, RT = Rsi + ΣR + Rse a U = 1 / RT. Zvoľte smer tepelného toku (Rsi 0,10 nahor, 0,13 vodorovne, 0,17 nadol) a čo je na vonkajšej strane (vonkajší vzduch Rse 0,04, iná miestnosť Rse = Rsi, zemina 0). Steny začínajú s vodorovným tokom do vonkajšieho vzduchu, podlahy s tokom nadol, strechy s tokom nahor. Vrstva s funkciou Vzduchová medzera je vetraná (jej materiál, ak ho má, sú laty): ona a všetko za ňou smerom von sa nezapočítava a Rse = Rsi, takže krytina a laty nad vetranou medzerou sa nerátajú. Vnútorné skladby zo slovenskej základne začínajú s inou miestnosťou na vonkajšej strane, skladby pri teréne so zeminou. Kým materiál niektorej vrstvy nemá λ, U ostáva neznáme a editor túto vrstvu vymenuje.
+
+Vlastnosti ukazujú U a R pod skladbou steny, dosky alebo strechy. Z neho sa vyplní vlastnosť dátového štandardu „súčiniteľ prechodu tepla – navrhnutý“ nosných stien a dosiek a export IFC ho zapíše do Pset_WallCommon, Pset_SlabCommon a Pset_RoofCommon ako ThermalTransmittance.
