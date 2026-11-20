@@ -4534,6 +4534,7 @@ fn section_tool(
                         bulge: 0.0,
                         bearing: None,
                         fire_partial: false,
+                        no_fire_barriers: false,
                     }),
                 );
                 // its type's thickness, but its drawn height

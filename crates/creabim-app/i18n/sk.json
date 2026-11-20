@@ -7763,5 +7763,15 @@
  "Its underside set from the floor of its level by an offset, as a wall's base, moving with the level": "Spodná hrana sa zadáva odsadením od podlahy podlažia ako pri stene a posúva sa spolu s podlažím",
  "How far above the floor of the level they are modelled on new footings' undersides sit": "O koľko nad ±0 podlažia, do ktorého sa modelujú, je spodná hrana nových základov",
  "insulation at least": "izolácia aspoň",
- "fire barriers": "požiarne zábrany"
+ "fire barriers": "požiarne zábrany",
+ "ETICS fire barriers": "Požiarne zábrany ETICS",
+ "Made automatically": "Vytvárať automaticky",
+ "Bands of mineral wool in the burning insulation (EPS) of outer walls: the plinth one and the first about the lowest upper floor, over 12 m one about every floor (Weber ETICS manual p. 16, after STN 73 0802). The walls stay whole; the bands show in elevations, sections and 3D and the material take-off counts them.": "Pásy minerálnej vlny v horľavej izolácii (EPS) obvodových stien: soklová a prvá pri najnižšom vyššom strope, nad 12 m pri každom strope (Weber, technologický predpis ETICS s. 16, podľa STN 73 0802). Steny zostávajú celé; pásy vidno v pohľadoch, rezoch a 3D a výkaz materiálov ich započíta.",
+ "Plinth barrier top over ground": "Horná hrana soklovej zábrany nad terénom",
+ "Barrier height": "Šírka zábrany",
+ "At every floor": "Pri každom strope",
+ "Barrier material": "Materiál zábran",
+ "Façade mineral wool": "Minerálna vlna fasádna",
+ "No fire barriers": "Bez požiarnych zábran",
+ "Leave the automatic ETICS fire barriers out of this wall, as on a gable wall without openings (Project information › ETICS fire barriers)": "Táto stena nedostane automatické požiarne zábrany ETICS, napr. štítová stena bez otvorov (Informácie o projekte › Požiarne zábrany ETICS)"
 }

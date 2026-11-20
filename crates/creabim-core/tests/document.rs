@@ -33,6 +33,7 @@ fn wall(level: ElementId) -> Element {
             bulge: 0.0,
             bearing: None,
             fire_partial: false,
+            no_fire_barriers: false,
         }),
     )
 }

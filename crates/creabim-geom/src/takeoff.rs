@@ -44,20 +44,47 @@ pub fn measure(model: &Model, scene: &[crate::scene::SceneItem]) -> Vec<Line> {
     let mut lines = takeoff::lines(model);
     // each solid's volume and the volume of its box: no closed solid holds
     // more than its box, a boolean that came out broken may
-    let mut solid: HashMap<(ElementId, Option<usize>), (f64, f64)> = HashMap::new();
+    // keyed by material too: a layer may hold parts of another material
+    // (the mineral wool fire barriers in an ETICS of EPS)
+    type Key = (ElementId, Option<usize>, Option<ElementId>);
+    let mut solid: HashMap<Key, (f64, f64)> = HashMap::new();
     for item in scene.iter().filter(|i| !i.ghost && !i.is_lining()) {
         let room = item.mesh.bounds().map_or(0.0, |(lo, hi)| {
             let d = (hi - lo).as_dvec3();
             d.x * d.y * d.z
         });
         let e = solid
-            .entry((item.id, item.layer.map(|l| l.index)))
+            .entry((
+                item.id,
+                item.layer.map(|l| l.index),
+                item.layer.and_then(|l| l.material),
+            ))
             .or_default();
         e.0 += mesh_volume(&item.mesh);
         e.1 += room;
     }
+    // a part of a layer in another material than the layer's: a line of
+    // its own, like the layer's
+    let mut more: Vec<Line> = vec![];
+    for &(id, layer, material) in solid.keys() {
+        let Some(layer) = layer else { continue };
+        let known = |l: &&Line| l.element == id && l.layer.map(|x| x.0) == Some(layer);
+        if lines.iter().filter(known).any(|l| l.material == material) {
+            continue;
+        }
+        if let Some(l) = lines.iter().find(known) {
+            let mut extra = l.clone();
+            extra.material = material;
+            more.push(extra);
+        }
+    }
+    more.sort_by_key(|l| (l.element, l.layer.map(|x| x.0)));
+    lines.extend(more);
     for l in lines.iter_mut().filter(|l| TRIMMED.contains(&l.category)) {
-        let Some((v, room)) = solid.get(&(l.element, l.layer.map(|x| x.0))).copied() else {
+        let Some((v, room)) = solid
+            .get(&(l.element, l.layer.map(|x| x.0), l.material))
+            .copied()
+        else {
             continue;
         };
         if v <= 1e-9 || v > room * 1.01 + 1e-6 {

@@ -957,6 +957,7 @@ mod tests {
             bulge: 0.0,
             bearing: None,
             fire_partial: false,
+            no_fire_barriers: false,
         };
         let b = wall_bands(a, &w);
         assert!((b[0].s0 + 0.1825).abs() < 1e-9 && (b[0].s1 + 0.0805).abs() < 1e-9);

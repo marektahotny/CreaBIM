@@ -113,7 +113,7 @@ pub use objects::{CatalogueObject, Object, ObjectCategory, ObjectType};
 pub use ops::{Op, Transaction};
 pub use papermark::{PaperMark, PaperMarkKind};
 pub use parts::Part;
-pub use project::{set_project, ProjectInfo};
+pub use project::{set_project, EticsBarriers, ProjectInfo};
 pub use reference::{LayerStyle, RefSource, Reference};
 pub use room::{Ceiling, Room, RoomField, Separator};
 pub use screen::ScreenPattern;

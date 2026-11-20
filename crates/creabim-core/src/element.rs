@@ -446,6 +446,8 @@ impl Element {
     }
 }
 
+// a wall is the largest kind; boxing it would touch every use of it
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ElementKind {
     Level(Level),
@@ -1120,6 +1122,10 @@ pub struct Wall {
     /// the designer.
     #[serde(default, skip_serializing_if = "is_false")]
     pub fire_partial: bool,
+    /// No fire barriers made in its outer insulation (a gable without
+    /// openings, say), whatever the project's ETICS setting.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub no_fire_barriers: bool,
 }
 
 /// One layer's ends moved by hand: how far layer `layer` (counted from the
@@ -1279,6 +1285,7 @@ impl Wall {
             bulge: 0.0,
             bearing: None,
             fire_partial: false,
+            no_fire_barriers: false,
         }
     }
 

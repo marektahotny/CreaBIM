@@ -210,6 +210,16 @@ pub(super) fn wall_fields(
         label = "Wall fire-open face";
     }
 
+    // no ETICS fire barriers in this wall (a gable without openings)
+    if crate::props::switch(ui, &mut w.no_fire_barriers, "No fire barriers")
+        .on_hover_text(crate::i18n::t(
+            "Leave the automatic ETICS fire barriers out of this wall, as on a gable wall without openings (Project information › ETICS fire barriers)",
+        ))
+        .changed()
+    {
+        label = "Wall fire barriers";
+    }
+
     ui.add_space(4.0);
     crate::props::row(ui, "Joins at", |ui| {
         crate::props::flow(ui, |ui| {

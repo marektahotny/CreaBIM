@@ -105,6 +105,7 @@ pub fn sample_house() -> Model {
                     bulge: 0.0,
                     bearing: None,
                     fire_partial: false,
+                    no_fire_barriers: false,
                 }),
             );
             let id = wall.id;
@@ -203,6 +204,7 @@ pub fn sample_house() -> Model {
             bulge: 0.0,
             bearing: None,
             fire_partial: false,
+            no_fire_barriers: false,
         }),
     );
     let pid = part.id;

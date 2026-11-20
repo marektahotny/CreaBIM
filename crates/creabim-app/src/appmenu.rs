@@ -1465,6 +1465,71 @@ impl CreaBimApp {
                         draft.fire_system = if c == "N" { String::new() } else { c.into() };
                     }
                 });
+                // the ETICS fire barriers (Weber ETICS manual s. 16-17)
+                crate::props::section(ui, "ETICS fire barriers");
+                {
+                    let eb = &mut draft.etics_barriers;
+                    let mut on = !eb.off;
+                    if crate::props::switch(ui, &mut on, "Made automatically")
+                        .on_hover_text(crate::i18n::t(
+                            "Bands of mineral wool in the burning insulation (EPS) of outer walls: the plinth one and the first about the lowest upper floor, over 12 m one about every floor (Weber ETICS manual p. 16, after STN 73 0802). The walls stay whole; the bands show in elevations, sections and 3D and the material take-off counts them.",
+                        ))
+                        .changed()
+                    {
+                        eb.off = !on;
+                    }
+                    if on {
+                        let mm = |ui: &mut egui::Ui, label: &str, v: f64, lo: f64, hi: f64| -> f64 {
+                            let mut x = (v * 1000.0).round();
+                            crate::props::row(ui, label, |ui| {
+                                ui.add(
+                                    egui::DragValue::new(&mut x)
+                                        .range(lo..=hi)
+                                        .speed(10.0)
+                                        .suffix(" mm"),
+                                );
+                            });
+                            x / 1000.0
+                        };
+                        let top = mm(ui, "Plinth barrier top over ground", eb.plinth_top(), 100.0, 600.0);
+                        if (top - eb.plinth_top()).abs() > 1e-9 {
+                            eb.plinth_top = Some(top);
+                        }
+                        let w = mm(ui, "Barrier height", eb.width(), 150.0, 400.0);
+                        if (w - eb.width()).abs() > 1e-9 {
+                            eb.width = Some(w);
+                        }
+                        crate::props::switch(ui, &mut eb.every_floor, "At every floor");
+                        let model = self.doc.model();
+                        let wools: Vec<(creabim_core::ElementId, String)> =
+                            creabim_core::library::materials(model)
+                                .into_iter()
+                                .filter(|(_, _, m)| m.category == "insulation")
+                                .map(|(id, n, _)| (id, n.to_string()))
+                                .collect();
+                        crate::props::row(ui, "Barrier material", |ui| {
+                            let shown = eb
+                                .material
+                                .and_then(|id| wools.iter().find(|w| w.0 == id))
+                                .map_or_else(|| crate::i18n::t("Façade mineral wool").to_string(), |w| w.1.clone());
+                            egui::ComboBox::from_id_salt("project.etics_wool")
+                                .selected_text(shown)
+                                .show_ui(ui, |ui| {
+                                    if ui
+                                        .selectable_label(eb.material.is_none(), crate::i18n::t("Façade mineral wool"))
+                                        .clicked()
+                                    {
+                                        eb.material = None;
+                                    }
+                                    for (id, n) in &wools {
+                                        if ui.selectable_label(eb.material == Some(*id), n).clicked() {
+                                            eb.material = Some(*id);
+                                        }
+                                    }
+                                });
+                        });
+                    }
+                }
                 crate::props::section(ui, "Fire separation distances");
                 ui.label(
                     egui::RichText::new(crate::i18n::t(

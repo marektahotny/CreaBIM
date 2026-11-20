@@ -349,6 +349,7 @@ mod tests {
                 bulge: 0.0,
                 bearing: None,
                 fire_partial: false,
+                no_fire_barriers: false,
             }),
         )
     }

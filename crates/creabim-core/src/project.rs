@@ -61,6 +61,10 @@ pub struct ProjectInfo {
     /// combustible; empty is non-combustible.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub fire_system: String,
+    /// The fire barriers of mineral wool in an outer insulation that
+    /// burns (ETICS of EPS): made automatically unless turned off.
+    #[serde(default, skip_serializing_if = "EticsBarriers::is_default")]
+    pub etics_barriers: EticsBarriers,
     /// The locality the heat loss and gains take their outside
     /// temperatures from (a row of the climate table among
     /// [`ProjectInfo::fire_params`]); empty is none.
@@ -562,5 +566,42 @@ mod stage_tests {
         assert_eq!(stage_code("Projekt stavby"), Some("PSP"));
         assert_eq!(stage_code(" Vykonávací projekt "), Some("VPP"));
         assert_eq!(stage_code("Planning application"), None);
+    }
+}
+
+/// How the fire barriers of an ETICS of combustible insulation are made
+/// (Weber ETICS manual s. 16-17, after STN 73 0802): bands of mineral
+/// wool in the insulation layer of outer walls, at the plinth and about
+/// the floors, as the building's fire height asks.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EticsBarriers {
+    /// No barriers made (the designer draws them some other way).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub off: bool,
+    /// The top of the plinth barrier over the ground, m (most 0.6).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plinth_top: Option<f64>,
+    /// A barrier's height, m (0.2; 0.15 to 0.4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    /// Their material; none takes the base's façade mineral wool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub material: Option<crate::ElementId>,
+    /// A barrier at every floor, not only the first (up to 7 m) the
+    /// table asks of buildings up to 12 m.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub every_floor: bool,
+}
+
+impl EticsBarriers {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+    pub fn plinth_top(&self) -> f64 {
+        self.plinth_top.unwrap_or(0.6)
+    }
+    pub fn width(&self) -> f64 {
+        self.width.unwrap_or(0.2)
     }
 }
