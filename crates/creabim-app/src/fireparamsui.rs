@@ -109,8 +109,7 @@ impl CreaBimApp {
         if n == 0 {
             self.status = crate::i18n::tr(
                 "Every door already has the fire rating STN 92 0201-2 asks (or no tables to tell).",
-            )
-            .into();
+            );
             return;
         }
         let r = self.doc.commit(tx);
