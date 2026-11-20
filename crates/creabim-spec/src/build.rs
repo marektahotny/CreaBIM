@@ -596,6 +596,7 @@ fn assembly(c: &mut Ctx, a: &f::Assembly, at: &Path) {
         },
         layers,
         description: a.description.clone().unwrap_or_default(),
+        fire_resistance: String::new(),
         wrap: Default::default(),
         thermal: None,
     };
