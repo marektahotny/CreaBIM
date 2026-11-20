@@ -7773,5 +7773,8 @@
  "Barrier material": "Materiál zábran",
  "Façade mineral wool": "Minerálna vlna fasádna",
  "No fire barriers": "Bez požiarnych zábran",
- "Leave the automatic ETICS fire barriers out of this wall, as on a gable wall without openings (Project information › ETICS fire barriers)": "Táto stena nedostane automatické požiarne zábrany ETICS, napr. štítová stena bez otvorov (Informácie o projekte › Požiarne zábrany ETICS)"
+ "Leave the automatic ETICS fire barriers out of this wall, as on a gable wall without openings (Project information › ETICS fire barriers)": "Táto stena nedostane automatické požiarne zábrany ETICS, napr. štítová stena bez otvorov (Informácie o projekte › Požiarne zábrany ETICS)",
+ "Over the openings": "Nad otvormi",
+ "Bands over each opening, 500 mm past its sides, instead of round the building about the floors; none over openings of at most 500 × 500 mm (Weber p. 17)": "Zábrany nad každým otvorom s presahom 500 mm na obe strany namiesto súvislých pásov pri stropoch; nad otvormi najviac 500 × 500 mm sa nerobia (Weber s. 17)",
+ "Parapet band under a roof that burns": "Atiková zábrana pod horľavou strechou"
 }

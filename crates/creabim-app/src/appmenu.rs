@@ -1500,6 +1500,16 @@ impl CreaBimApp {
                             eb.width = Some(w);
                         }
                         crate::props::switch(ui, &mut eb.every_floor, "At every floor");
+                        crate::props::switch(ui, &mut eb.over_openings, "Over the openings")
+                            .on_hover_text(crate::i18n::t(
+                                "Bands over each opening, 500 mm past its sides, instead of round the building about the floors; none over openings of at most 500 × 500 mm (Weber p. 17)",
+                            ));
+                        let mut parapet = !eb.no_parapet;
+                        if crate::props::switch(ui, &mut parapet, "Parapet band under a roof that burns")
+                            .changed()
+                        {
+                            eb.no_parapet = !parapet;
+                        }
                         let model = self.doc.model();
                         let wools: Vec<(creabim_core::ElementId, String)> =
                             creabim_core::library::materials(model)

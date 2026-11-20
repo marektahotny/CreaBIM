@@ -7773,5 +7773,8 @@
  "Façade mineral wool": "Minerální vlna fasádní",
  "No fire barriers": "Bez požárních zábran",
  "Bands of mineral wool in the burning insulation (EPS) of outer walls: the plinth one and the first about the lowest upper floor, over 12 m one about every floor (Weber ETICS manual p. 16, after STN 73 0802). The walls stay whole; the bands show in elevations, sections and 3D and the material take-off counts them.": "Pásy minerální vlny v hořlavé izolaci (EPS) obvodových stěn: soklový a první u nejnižšího vyššího stropu, nad 12 m u každého stropu (Weber, technologický předpis ETICS s. 16, podle STN 73 0802). Stěny zůstávají celé; pásy jsou vidět v pohledech, řezech a 3D a výkaz materiálů je započítá.",
- "Leave the automatic ETICS fire barriers out of this wall, as on a gable wall without openings (Project information › ETICS fire barriers)": "Tato stěna nedostane automatické požární zábrany ETICS, např. štítová stěna bez otvorů (Informace o projektu › Požární zábrany ETICS)"
+ "Leave the automatic ETICS fire barriers out of this wall, as on a gable wall without openings (Project information › ETICS fire barriers)": "Tato stěna nedostane automatické požární zábrany ETICS, např. štítová stěna bez otvorů (Informace o projektu › Požární zábrany ETICS)",
+ "Over the openings": "Nad otvory",
+ "Bands over each opening, 500 mm past its sides, instead of round the building about the floors; none over openings of at most 500 × 500 mm (Weber p. 17)": "Zábrany nad každým otvorem s přesahem 500 mm na obě strany místo souvislých pásů u stropů; nad otvory nejvýše 500 × 500 mm se nedělají (Weber s. 17)",
+ "Parapet band under a roof that burns": "Atiková zábrana pod hořlavou střechou"
 }

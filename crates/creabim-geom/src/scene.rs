@@ -127,16 +127,15 @@ fn layer_items(
             // the ETICS fire barriers: bands of mineral wool cut out of its
             // burning insulation, a part of their own in that layer
             let barriers = crate::etics::barriers(model);
-            if let Some(&i) = barriers.walls.get(&e.id) {
-                if let Some(k) = parts.iter().position(|(p, _)| p.index == i) {
+            if let Some(wb) = barriers.walls.get(&e.id) {
+                if let Some(k) = parts.iter().position(|(p, _)| p.index == wb.layer) {
                     let (band, eps) = parts[k].clone();
                     let d = w.direction();
                     let n = DVec2::new(-d.y, d.x);
-                    let len = w.start.distance(w.end);
                     let mut cutter = TriMesh::default();
-                    for &(z0, z1) in &barriers.zs {
+                    for &[u0, u1, z0, z1] in &wb.boxes {
                         let p = |j: usize| {
-                            let u = if j & 1 == 0 { -1.0 } else { len + 1.0 };
+                            let u = if j & 1 == 0 { u0 } else { u1 };
                             let z = if j & 2 == 0 { z0 } else { z1 };
                             let s = if j & 4 == 0 {
                                 band.s0 - 0.01

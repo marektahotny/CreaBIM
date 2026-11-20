@@ -926,6 +926,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 reveal,
                 &v.line.stretches(start.distance(*end)),
             );
+            // an elevation: the ETICS fire barriers under the render, their
+            // edges a thin dashed line (George 2026-11-20)
+            if !*cut {
+                d.items
+                    .extend(crate::etics::elevation_lines(model, *start, *end, *depth));
+            }
             // rooms washed behind the cut, from floor to ceiling
             if v.room_colours && *cut {
                 let mut rooms = crate::rooms::section_items(model, *start, *end);

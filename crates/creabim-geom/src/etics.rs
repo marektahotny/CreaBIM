@@ -115,15 +115,34 @@ pub fn checks(model: &Model) -> Vec<EticsCheck> {
     out
 }
 
-/// The fire barriers made in the model's ETICS: the heights of the
-/// bands, the material they are of, and for each wall that gets them
-/// the index of its layer they are cut into.
+/// The fire barriers made in the model's ETICS: the material they are
+/// of and, for each wall that gets them, the layer they are cut into
+/// and the bands.
 #[derive(Clone, Debug, Default)]
 pub struct Barriers {
-    /// Bottom and top of each band, m, absolute.
+    /// The heights of the bands running round the building (plinth,
+    /// floors), m, absolute: bottom and top.
     pub zs: Vec<(f64, f64)>,
     pub material: Option<ElementId>,
-    pub walls: std::collections::HashMap<ElementId, usize>,
+    pub walls: std::collections::HashMap<ElementId, WallBarriers>,
+}
+
+/// One wall's barriers.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WallBarriers {
+    /// The index of its burning insulation layer.
+    pub layer: usize,
+    /// Each band: from and to along the wall (from its start, m; a band
+    /// round the building runs past both ends) and its bottom and top
+    /// (absolute, m).
+    pub boxes: Vec<[f64; 4]>,
+}
+
+impl WallBarriers {
+    /// Whether a band runs the wall's whole length.
+    pub fn continuous(b: &[f64; 4], length: f64) -> bool {
+        b[0] < 0.0 && b[1] > length
+    }
 }
 
 /// The ETICS layer of a wall's assembly: its first insulation outside
@@ -166,23 +185,23 @@ fn barrier_material(model: &Model, set: &creabim_core::EticsBarriers) -> Option<
 }
 
 /// Where the barriers go, by the Weber table: none on one storey or
-/// over 30 m (all of it must then be A2-s1,d0); the plinth one with its
-/// top `plinth_top` over the ground; the first about the lowest floor
-/// over the ground storey; above 12 m (or when asked) one about every
-/// floor.
-pub fn barrier_heights(model: &Model, set: &creabim_core::EticsBarriers) -> Vec<(f64, f64)> {
-    let Some(fh) = crate::firezones::fire_height(model) else {
-        return vec![];
-    };
+/// over 30 m (all of it must then be A2-s1,d0). The plinth band with its
+/// top `plinth_top` over the ground, and the floors they go about: the
+/// lowest over the ground storey, above 12 m (or when asked) every one.
+/// Each floor with the floor under it.
+pub fn barrier_heights(
+    model: &Model,
+    set: &creabim_core::EticsBarriers,
+) -> Option<((f64, f64), Vec<(f64, f64)>)> {
+    let fh = crate::firezones::fire_height(model)?;
     if fh.above <= 1 || fh.height > 30.0 {
-        return vec![];
+        return None;
     }
     let w = set.width().clamp(0.05, 1.0);
     let ground = fh.ground.unwrap_or(0.0);
     let first_z = model.level(fh.first).map_or(0.0, |l| l.elevation);
-    let mut zs = vec![(ground + set.plinth_top() - w, ground + set.plinth_top())];
-    // the floors over the first above-ground storey, as fire counts them
-    let mut floors: Vec<f64> = creabim_core::levels::sorted(model)
+    let plinth = (ground + set.plinth_top() - w, ground + set.plinth_top());
+    let mut all: Vec<f64> = creabim_core::levels::sorted(model)
         .into_iter()
         .filter(|(id, ..)| {
             model
@@ -192,12 +211,129 @@ pub fn barrier_heights(model: &Model, set: &creabim_core::EticsBarriers) -> Vec<
         .map(|(_, _, l)| l.elevation)
         .filter(|z| *z > first_z + 1e-6)
         .collect();
-    floors.sort_by(f64::total_cmp);
+    all.sort_by(f64::total_cmp);
+    let mut floors: Vec<(f64, f64)> = all
+        .iter()
+        .enumerate()
+        .map(|(i, z)| (*z, if i == 0 { first_z } else { all[i - 1] }))
+        .collect();
     if !(set.every_floor || fh.height > 12.0) {
         floors.truncate(1);
     }
-    zs.extend(floors.into_iter().map(|z| (z - w / 2.0, z + w / 2.0)));
-    zs
+    Some((plinth, floors))
+}
+
+/// Whether some roof is carried by a structure that burns (a timber
+/// truss): the walls under it then get a band at their top (atiková
+/// zábrana, Weber s. 16).
+fn roof_burns(model: &Model) -> bool {
+    model.iter().any(|e| {
+        matches!(e.kind, ElementKind::Roof(_))
+            && creabim_core::assembly::assembly_of(model, e).is_some_and(|(_, a)| {
+                a.layers.iter().any(|l| {
+                    l.function == LayerFunction::Structure
+                        && l.material
+                            .and_then(|m| match &model.get(m)?.kind {
+                                ElementKind::Material(m) => {
+                                    Some(!m.fire.is_empty() && !noncombustible(&m.fire))
+                                }
+                                _ => None,
+                            })
+                            .unwrap_or(false)
+                })
+            })
+    })
+}
+
+/// One wall's bands.
+fn wall_boxes(
+    model: &Model,
+    id: ElementId,
+    w: &creabim_core::Wall,
+    set: &creabim_core::EticsBarriers,
+    plinth: (f64, f64),
+    floors: &[(f64, f64)],
+    parapet: bool,
+) -> Vec<[f64; 4]> {
+    let wd = set.width().clamp(0.05, 1.0);
+    let len = w.start.distance(w.end);
+    let base = model.level(w.level).map_or(0.0, |l| l.elevation) + w.base_offset;
+    let top = base + w.height;
+    let stands = |z0: f64, z1: f64| z1 > base + 1e-6 && z0 < top - 1e-6;
+    let whole = |z0: f64, z1: f64| [-1.0, len + 1.0, z0, z1];
+    let mut out = vec![];
+    if stands(plinth.0, plinth.1) {
+        out.push(whole(plinth.0, plinth.1));
+    }
+    let openings = creabim_core::curtain::wall_openings(model, id);
+    for &(z, under) in floors {
+        if !set.over_openings {
+            if stands(z - wd / 2.0, z + wd / 2.0) {
+                out.push(whole(z - wd / 2.0, z + wd / 2.0));
+            }
+            continue;
+        }
+        // over each opening of the storey under the floor, 500 mm past
+        // its sides; none over one of at most 500 x 500 mm (Weber s. 17)
+        for o in &openings {
+            let Some(c) = crate::wall::Cut::of(o, w) else {
+                continue;
+            };
+            if c.u1 - c.u0 <= 0.5 + 1e-6 && c.v1 - c.v0 <= 0.5 + 1e-6 {
+                continue;
+            }
+            let head = base + c.v1;
+            if head <= under + 1e-6 || head > z + 1e-6 {
+                continue;
+            }
+            let (z0, z1) = (head, (head + wd).min(top));
+            if z1 > z0 + 1e-6 {
+                out.push([c.u0 - 0.5, c.u1 + 0.5, z0, z1]);
+            }
+        }
+    }
+    // the parapet band under a roof that burns, at the top of the walls
+    // of the last storey
+    if parapet && floors.last().is_none_or(|f| base >= f.0 - 1e-6) && top - wd > base {
+        out.push(whole(top - wd, top));
+    }
+    merge(out)
+}
+
+/// Bands at one height that touch or overlap as one: the cutter is a set
+/// of separate boxes.
+fn merge(mut boxes: Vec<[f64; 4]>) -> Vec<[f64; 4]> {
+    boxes.sort_by(|a, b| {
+        (a[2], a[3], a[0])
+            .partial_cmp(&(b[2], b[3], b[0]))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut out: Vec<[f64; 4]> = vec![];
+    for b in boxes {
+        match out.last_mut() {
+            Some(l)
+                if (l[2] - b[2]).abs() < 1e-6
+                    && (l[3] - b[3]).abs() < 1e-6
+                    && b[0] <= l[1] + 1e-6 =>
+            {
+                l[1] = l[1].max(b[1]);
+            }
+            _ => out.push(b),
+        }
+    }
+    // bands of different heights that overlap: the lower one stops under
+    // the higher one where they meet is rare; keep the first of any two
+    // that cross
+    let mut kept: Vec<[f64; 4]> = vec![];
+    for b in out {
+        let crosses = kept.iter().any(|k| {
+            b[0] < k[1] - 1e-6 && b[1] > k[0] + 1e-6 && b[2] < k[3] - 1e-6 && b[3] > k[2] + 1e-6
+        });
+        if !crosses {
+            kept.push(b);
+        }
+    }
+    kept
 }
 
 /// The model's ETICS fire barriers, worked out once per revision.
@@ -219,10 +355,14 @@ pub fn barriers(model: &Model) -> std::sync::Arc<Barriers> {
     let mut b = Barriers::default();
     if !set.off {
         b.material = barrier_material(model, &set);
-        if b.material.is_some() {
-            b.zs = barrier_heights(model, &set);
-        }
-        if !b.zs.is_empty() {
+        let heights = b.material.and_then(|_| barrier_heights(model, &set));
+        if let Some((plinth, floors)) = heights {
+            let wd = set.width().clamp(0.05, 1.0);
+            b.zs.push(plinth);
+            if !set.over_openings {
+                b.zs.extend(floors.iter().map(|f| (f.0 - wd / 2.0, f.0 + wd / 2.0)));
+            }
+            let parapet = !set.no_parapet && roof_burns(model);
             for e in model.iter() {
                 let ElementKind::Wall(w) = &e.kind else {
                     continue;
@@ -233,8 +373,11 @@ pub fn barriers(model: &Model) -> std::sync::Arc<Barriers> {
                 let Some((_, a)) = creabim_core::assembly::assembly_of(model, e) else {
                     continue;
                 };
-                if let Some(i) = combustible_layer(model, a) {
-                    b.walls.insert(e.id, i);
+                if let Some(layer) = combustible_layer(model, a) {
+                    let boxes = wall_boxes(model, e.id, w, &set, plinth, &floors, parapet);
+                    if !boxes.is_empty() {
+                        b.walls.insert(e.id, WallBarriers { layer, boxes });
+                    }
                 }
             }
         }
@@ -244,6 +387,109 @@ pub fn barriers(model: &Model) -> std::sync::Arc<Barriers> {
         *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((key.0, key.1, b.clone()));
     }
     b
+}
+
+/// The edges of the fire barriers as an elevation from `start` to `end`
+/// sees them: on the outer face of every wall turned to it, each band's
+/// bottom and top a thin dashed line (they lie under the render).
+pub fn elevation_lines(
+    model: &Model,
+    start: glam::DVec2,
+    end: glam::DVec2,
+    depth: f64,
+) -> Vec<crate::plan::PlanItem> {
+    let b = barriers(model);
+    let frame = crate::section::SectionFrame::new(start, end, depth);
+    let mut out = vec![];
+    for (&id, wb) in b.walls.iter() {
+        let Some(e) = model.get(id) else { continue };
+        let ElementKind::Wall(w) = &e.kind else {
+            continue;
+        };
+        let Some((_, a)) = creabim_core::assembly::assembly_of(model, e) else {
+            continue;
+        };
+        let bands = creabim_core::assembly::wall_bands(a, w);
+        let Some(first) = bands.first() else { continue };
+        let d = w.direction();
+        let n = glam::DVec2::new(-d.y, d.x);
+        // the outer face, and which way it looks
+        let s = if first.s0.abs() > first.s1.abs() {
+            first.s0
+        } else {
+            first.s1
+        };
+        let outward = n * s.signum();
+        if outward.dot(frame.look) > -0.1 {
+            continue;
+        }
+        let len = w.start.distance(w.end);
+        let at = |u: f64, z: f64| {
+            let p = frame.project((w.start + d * u.clamp(0.0, len) + n * s).extend(0.0));
+            (glam::DVec2::new(p.x, z), p.z)
+        };
+        let (_, near) = at(0.0, 0.0);
+        let (_, far) = at(len, 0.0);
+        if near.max(far) < 0.0 || near.min(far) > depth {
+            continue;
+        }
+        let mut line = |p: glam::DVec2, q: glam::DVec2| {
+            out.push(crate::plan::PlanItem::Line {
+                id,
+                pen: crate::plan::Pen::Hidden,
+                a: p,
+                b: q,
+            })
+        };
+        // the openings, absolute: a band's edge stops at a door or window
+        let base = model.level(w.level).map_or(0.0, |l| l.elevation) + w.base_offset;
+        let holes: Vec<[f64; 4]> = creabim_core::curtain::wall_openings(model, id)
+            .iter()
+            .filter_map(|o| crate::wall::Cut::of(o, w))
+            .map(|c| [c.u0, c.u1, base + c.v0, base + c.v1])
+            .collect();
+        let pieces = |u0: f64, u1: f64, z: f64| -> Vec<(f64, f64)> {
+            let mut runs = vec![(u0.max(0.0), u1.min(len))];
+            for h in holes.iter().filter(|h| z > h[2] + 1e-6 && z < h[3] - 1e-6) {
+                runs = runs
+                    .into_iter()
+                    .flat_map(|(a, b)| {
+                        let mut v = vec![];
+                        if h[0] > a {
+                            v.push((a, b.min(h[0])));
+                        }
+                        if h[1] < b {
+                            v.push((a.max(h[1]), b));
+                        }
+                        v
+                    })
+                    .filter(|(a, b)| b > a)
+                    .collect();
+            }
+            runs
+        };
+        for bx in &wb.boxes {
+            for z in [bx[2], bx[3]] {
+                for (a, b) in pieces(bx[0], bx[1], z) {
+                    line(at(a, z).0, at(b, z).0);
+                }
+            }
+            let (p0, _) = at(bx[0], bx[2]);
+            let (p1, _) = at(bx[1], bx[2]);
+            let (q0, _) = at(bx[0], bx[3]);
+            let (q1, _) = at(bx[1], bx[3]);
+            // a band over an opening shows its ends too
+            if !WallBarriers::continuous(bx, len) {
+                if bx[0] >= 0.0 {
+                    line(p0, q0);
+                }
+                if bx[1] <= len {
+                    line(p1, q1);
+                }
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -343,6 +589,31 @@ mod tests {
             .apply(&mut off)
             .unwrap();
         assert!(barriers(&off).walls.is_empty());
+        // an elevation draws their edges dashed on the faces it sees
+        let elevation = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) => match &v.kind {
+                    creabim_core::ViewKind::Section {
+                        start,
+                        end,
+                        depth,
+                        cut: false,
+                    } => Some((*start, *end, *depth)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        let lines = elevation_lines(&m, elevation.0, elevation.1, elevation.2);
+        assert!(!lines.is_empty());
+        assert!(lines.iter().all(|l| matches!(
+            l,
+            crate::plan::PlanItem::Line {
+                pen: crate::plan::Pen::Hidden,
+                ..
+            }
+        )));
     }
 
     #[test]

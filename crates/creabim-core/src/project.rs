@@ -592,6 +592,13 @@ pub struct EticsBarriers {
     /// table asks of buildings up to 12 m.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub every_floor: bool,
+    /// Bands over the openings of each storey, 500 mm past their sides,
+    /// instead of round the building about the floors.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub over_openings: bool,
+    /// No parapet band at the top of the walls under a roof that burns.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub no_parapet: bool,
 }
 
 impl EticsBarriers {
