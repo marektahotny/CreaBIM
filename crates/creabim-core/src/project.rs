@@ -105,6 +105,10 @@ pub struct ProjectInfo {
     /// bod_pociatku).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sjtsk: Option<[f64; 2]>,
+    /// The level the site is modelled on (the map's terrain, its plan "3D
+    /// terén"): not a storey, see [`crate::Model::site_level`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub site_level: Option<crate::ElementId>,
     /// How far true north turns from the drawings' up, degrees anticlockwise.
     pub true_north: f64,
     pub building_name: String,

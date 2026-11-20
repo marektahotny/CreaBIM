@@ -301,7 +301,7 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
     // Storeys, one per level.
     let mut storeys: HashMap<ElementId, (Ref, Ref)> = HashMap::new();
     let mut storey_order = Vec::new();
-    for (e, l) in model.levels() {
+    for (e, l) in model.all_levels() {
         let pl = c.local_placement(Some(bldg_pl), DVec3::new(0.0, 0.0, l.elevation), None);
         let s = c.w.add(
             "IFCBUILDINGSTOREY",

@@ -50,6 +50,63 @@ impl CreaBimApp {
             .find(|(_, l)| *l == level)
     }
 
+    /// The site's level, "3D terén", and its plan: made (and kept in the
+    /// project's information) the first time a map is put in.
+    pub(super) fn site_level_plan(&mut self) -> Result<(ElementId, ElementId), String> {
+        let name = "3D terén";
+        let model = self.doc.model();
+        let level = match model.site_level() {
+            Some(l) => l,
+            None => {
+                let e = Element::new(
+                    name,
+                    ElementKind::Level(creabim_core::Level {
+                        elevation: 0.0,
+                        height: 3.0,
+                    }),
+                );
+                let id = e.id;
+                self.doc
+                    .commit(Transaction::new("Site level").insert(e))
+                    .map_err(|e| e.to_string())?;
+                let mut info = self
+                    .doc
+                    .model()
+                    .project_info()
+                    .map(|(_, p)| p.clone())
+                    .unwrap_or_default();
+                info.site_level = Some(id);
+                let tx = creabim_core::set_project(self.doc.model(), info);
+                self.doc.commit(tx).map_err(|e| e.to_string())?;
+                id
+            }
+        };
+        let model = self.doc.model();
+        let plan = model.iter().find_map(|e| match &e.kind {
+            ElementKind::View(v)
+                if matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level)
+                    && !v.graphics.range.from_above =>
+            {
+                Some(e.id)
+            }
+            _ => None,
+        });
+        let plan = match plan {
+            Some(p) => p,
+            None => {
+                let z = model.level(level).map_or(0.0, |l| l.elevation);
+                let v = creabim_core::levels::plan_of(model, level, z);
+                let e = Element::new(name, ElementKind::View(v));
+                let id = e.id;
+                self.doc
+                    .commit(Transaction::new("Site level").insert(e))
+                    .map_err(|e| e.to_string())?;
+                id
+            }
+        };
+        Ok((plan, level))
+    }
+
     /// Put in the package at `path`, in the plan `view` if given.
     pub(super) fn map_from_zip(&mut self, path: &std::path::Path, view: Option<ElementId>) {
         let t = crate::i18n::tr;
@@ -77,10 +134,25 @@ impl CreaBimApp {
             self.status = t("The package holds no site plan, orthophoto, terrain or origin point.");
             return;
         }
-        let Some((view, level)) = self.map_plan(view) else {
-            self.status = t("Open a plan first: the map goes under it.");
-            return;
+        let _ = view;
+        // the site gets a level of its own, "3D terén", drawn in its own
+        // plan and the site plan only: no floor plan shows the terrain
+        let (view, level) = match self.site_level_plan() {
+            Ok(v) => v,
+            Err(e) => {
+                self.status = e;
+                return;
+            }
         };
+        // the map's drawings show there and in the site plan
+        let mut shown_in = vec![view];
+        for e in self.doc.model().iter() {
+            if let ElementKind::View(v) = &e.kind {
+                if matches!(v.kind, ViewKind::Plan { .. }) && v.graphics.range.from_above {
+                    shown_in.push(e.id);
+                }
+            }
+        }
         let file = |name: &str| dir.join(name).display().to_string();
         if let Err(e) = std::fs::create_dir_all(dir).and_then(|_| {
             files
@@ -135,7 +207,7 @@ impl CreaBimApp {
                         width: size.x,
                         dpi: None,
                     },
-                    vec![view],
+                    shown_in.clone(),
                 );
                 r.bounds = Some([DVec2::ZERO, size]);
                 r.at = min + size / 2.0;
@@ -158,7 +230,7 @@ impl CreaBimApp {
             let Some(b) = crate::trace::bounds_of(&source, &shown) else {
                 continue;
             };
-            let mut r = Reference::new(source, vec![view]);
+            let mut r = Reference::new(source, shown_in.clone());
             r.in_place(b);
             // over the model, so the terrain's fill doesn't cover its lines
             r.over = true;
