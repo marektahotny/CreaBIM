@@ -729,7 +729,7 @@ fn batt_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
 }
 
 /// A waterproofing strip along a fill's middle, as the ASR legend draws an
-/// asphalt strip: a thin line, and on it dashes 4 mm long and 0.8 mm
+/// asphalt strip: a thin line, and on it dashes 4 mm long and 0.45 mm (as thick as the sample's)
 /// thick on paper (close lines, so screen and paper show them alike).
 /// `unit` is drawing units per paper mm.
 fn membrane_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
@@ -748,7 +748,7 @@ fn membrane_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
         .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
         .collect();
     let (lo, hi) = bounds(&local);
-    let (dash, half) = (4.0 * unit, 0.4 * unit);
+    let (dash, half) = (4.0 * unit, 0.225 * unit);
     if (hi.x - lo.x) / dash > 4000.0 {
         return vec![];
     }
@@ -772,8 +772,8 @@ fn membrane_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
             if d1 <= d0 {
                 continue;
             }
-            for k in 0..16 {
-                let y = mid - half + 2.0 * half * k as f64 / 15.0;
+            for k in 0..10 {
+                let y = mid - half + 2.0 * half * k as f64 / 9.0;
                 out.push((at(d0, y), at(d1, y)));
             }
         }
