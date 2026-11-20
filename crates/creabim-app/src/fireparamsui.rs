@@ -73,11 +73,54 @@ fn own(t: &ParamTable) -> bool {
 impl CreaBimApp {
     /// `fire:params`: open the window on the project's tables.
     pub(super) fn fire_params_action(&mut self, head: &str, arg: &str) -> bool {
-        if head != "fire" || arg != "params" {
-            return false;
+        match (head, arg) {
+            ("fire", "params") => self.open_fire_params(),
+            ("fire", "doors") => self.propose_fire_doors(),
+            _ => return false,
         }
-        self.open_fire_params();
         true
+    }
+
+    /// `fire:doors`: give each door the fire rating STN 92 0201-2 asks
+    /// of it where it has none or a weaker one.
+    pub(super) fn propose_fire_doors(&mut self) {
+        let model = self.doc.model();
+        let proposals = creabim_geom::fireexposure::door_proposals(model);
+        let mut tx = creabim_core::Transaction::new("Propose fire closures of doors");
+        let mut n = 0;
+        for (id, rating) in &proposals {
+            let Some(before) = model.get(*id).cloned() else {
+                continue;
+            };
+            let mut after = before.clone();
+            let creabim_core::ElementKind::Opening(o) = &mut after.kind else {
+                continue;
+            };
+            let Some(door) = o.door.as_mut() else {
+                continue;
+            };
+            let mut fire = door.fire.clone().unwrap_or_default();
+            fire.rating = rating.clone();
+            fire.self_closing = true;
+            door.fire = Some(fire);
+            tx = tx.replace(before, after);
+            n += 1;
+        }
+        if n == 0 {
+            self.status = crate::i18n::tr(
+                "Every door already has the fire rating STN 92 0201-2 asks (or no tables to tell).",
+            )
+            .into();
+            return;
+        }
+        let r = self.doc.commit(tx);
+        self.report(
+            r,
+            format!(
+                "{} {n}",
+                crate::i18n::tr("Fire ratings proposed for doors:")
+            ),
+        );
     }
 
     pub(super) fn open_fire_params(&mut self) {

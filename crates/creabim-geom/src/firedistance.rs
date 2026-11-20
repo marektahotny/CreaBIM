@@ -94,6 +94,8 @@ pub struct Pnp {
     /// The design fire load the distance is read for, kg/m²; none where
     /// a table without it or a given distance is used.
     pub pv: Option<f64>,
+    /// The fire zone whose fire-open area it is ("" none).
+    pub zone: String,
 }
 
 /// An opening fire can pass, as it sits in an outer wall's face.
@@ -979,6 +981,7 @@ impl Ctx<'_> {
                     hu: g.hu,
                     po: g.po,
                     pv: (table == 3 || g.single).then_some(g.pv).flatten(),
+                    zone: p0.zone.clone(),
                 });
             }
         }
