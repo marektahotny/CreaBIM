@@ -194,15 +194,16 @@ fn base() -> Base {
 /// footings (George 2026-11-20): concrete formwork blocks DT 300 filled
 /// with concrete as its load-bearing part, a 5 mm membrane and 140 mm of
 /// XPS on its outer face; its layers as George set them by hand (XPS,
-/// PVC membrane, reinforced concrete for the filled blocks), so its U
-/// is worked out; a foundation plan draws the blocks' outline
-/// above as a thin dash and two dots. λ and ρ of the filled blocks are
-/// plain concrete's (its fill) until the maker's sheet says otherwise.
+/// PVC membrane, the blocks), so its U is worked out; a foundation plan
+/// draws the blocks' outline above as a thin dash and two dots. The
+/// blocks are a material of their own, "DT tvarovky", with every property
+/// and the hatch of reinforced concrete, so the take-off lists them apart
+/// (George 2026-11-20).
 const EXTRA: &str = r##"{
  "materials": [
-  {"id": "dt-300", "category": "Betón", "name": "Debniaca tvárnica DT 300, vyplnená betónom",
-   "lambda": 1.3, "density": 2300, "fire": "A1", "color": "#aeb3b8",
-   "block": "DT 300", "note": "debniace tvárnice (DT) vyplnené betónom; λ a ρ ako prostý betón (výplň), upraviť podľa listu výrobcu"}
+  {"id": "dt-300", "category": "Betón", "name": "DT tvarovky",
+   "lambda": 1.58, "density": 2500, "fire": "A1", "color": "#9aa3ad",
+   "block": "DT 300", "note": "debniace tvarovky (DT) vyplnené betónom s výstužou; vlastnosti ako železobetón"}
  ],
  "walls": [
   {"id": "NADZ-DT300-XPS140", "name": "Nadzákladová stena – DT 300 + hydroizolácia 5 + XPS 140",
@@ -210,7 +211,7 @@ const EXTRA: &str = r##"{
    "layers": [
     {"material": "xps", "mm": 140},
     {"material": "hydroizolacia-pvc", "mm": 5},
-    {"material": "zelezobeton", "mm": 300, "core": true}
+    {"material": "dt-300", "mm": 300, "core": true}
    ]}
  ],
  "floors": [],
@@ -263,7 +264,7 @@ fn kind_of(m: &BaseMaterial) -> (&'static str, Hatch) {
         Hatch::Brick
     } else if c.starts_with("Tehly") || c.contains("AKU") || c.contains("órobetón") {
         masonry(m)
-    } else if m.id == "zelezobeton" {
+    } else if m.id == "zelezobeton" || m.id == "dt-300" {
         Hatch::Reinforced
     } else if c == "Minerálna vlna" || c == "Polystyrén" {
         Hatch::Insulation
@@ -363,6 +364,70 @@ pub fn refresh_hatches(model: &Model) -> Option<Transaction> {
         }
     }
     any.then_some(tx)
+}
+
+/// The masonry on the footings of a project made before the material
+/// "DT tvarovky" (George 2026-11-20): its load-bearing layer of
+/// reinforced concrete, or of the old "Debniaca tvárnica DT 300", made of
+/// DT blocks, the material added when the project has none. Only the
+/// build-ups of that masonry: the base's "Nadzákladová stena…" and any
+/// whose name has DT in it. None when there is nothing to change.
+pub fn dt_blocks(model: &Model) -> Option<Transaction> {
+    let b = base();
+    let m = b.materials.iter().find(|m| m.id == "dt-300")?;
+    let mut swaps: Vec<(Element, Element)> = vec![];
+    let dt = model
+        .iter()
+        .find(|e| e.name == m.name && matches!(e.kind, ElementKind::Material(_)))
+        .map(|e| e.id);
+    let (dt, new) = match dt {
+        Some(id) => (id, None),
+        None => {
+            let e = Element::new(m.name.as_str(), ElementKind::Material(material(m)));
+            (e.id, Some(e))
+        }
+    };
+    let named = |id: Option<ElementId>, n: &str| {
+        id.and_then(|i| model.get(i))
+            .is_some_and(|e| e.name == n || e.name.starts_with("Debniaca tvárnica DT 300"))
+    };
+    for e in model.iter() {
+        let ElementKind::Assembly(a) = &e.kind else {
+            continue;
+        };
+        let words: Vec<&str> = e.name.split(|c: char| !c.is_alphanumeric()).collect();
+        let dt_wall = e.name.starts_with("Nadzákladová stena")
+            || words
+                .iter()
+                .any(|w| w.eq_ignore_ascii_case("dt") || w.starts_with("DT"));
+        if !dt_wall || a.usage != AssemblyUse::Wall {
+            continue;
+        }
+        let mut after = a.clone();
+        let mut changed = false;
+        for (i, l) in after.layers.iter_mut().enumerate() {
+            if a.is_core(i) && l.material != Some(dt) && named(l.material, "Železobetón") {
+                l.material = Some(dt);
+                changed = true;
+            }
+        }
+        if changed {
+            let mut ae = e.clone();
+            ae.kind = ElementKind::Assembly(after);
+            swaps.push((e.clone(), ae));
+        }
+    }
+    if swaps.is_empty() {
+        return None;
+    }
+    let mut tx = Transaction::new("DT blocks in the masonry on the footings");
+    if let Some(n) = new {
+        tx = tx.insert(n);
+    }
+    for (before, after) in swaps {
+        tx = tx.replace(before, after);
+    }
+    Some(tx)
 }
 
 fn colour(hex: &str) -> [f32; 3] {
@@ -616,11 +681,52 @@ mod tests {
             ]
         );
         let core = m.get(a.layers[2].material.unwrap()).unwrap();
-        assert_eq!(core.name, "Železobetón");
+        assert_eq!(core.name, "DT tvarovky");
         // and a wall type to draw it with
         assert!(types::types(m)
             .iter()
             .any(|(_, n, _)| n.starts_with("Nadzákladová stena – DT 300")));
+    }
+
+    #[test]
+    fn an_older_masonry_on_the_footings_takes_the_dt_blocks() {
+        let mut doc = Document::new();
+        doc.commit(add_base(doc.model())).unwrap();
+        // as George had it: his own build-up, its core reinforced concrete
+        let m = doc.model();
+        let rc = m.iter().find(|e| e.name == "Železobetón").unwrap().id;
+        let (id, _, a) = assembly::assemblies(m)
+            .into_iter()
+            .find(|(_, n, _)| n.starts_with("Nadzákladová stena"))
+            .unwrap();
+        let mut a = a.clone();
+        a.layers[2].material = Some(rc);
+        let before = m.get(id).unwrap().clone();
+        let mut mine = before.clone();
+        mine.name = "DT 30, Hydroizolacia, XPS".into();
+        mine.kind = ElementKind::Assembly(a);
+        doc.commit(Transaction::new("t").replace(before, mine))
+            .unwrap();
+        let tx = dt_blocks(doc.model()).unwrap();
+        doc.commit(tx).unwrap();
+        let m = doc.model();
+        let ElementKind::Assembly(a) = &m.get(id).unwrap().kind else {
+            unreachable!()
+        };
+        let core = m.get(a.layers[2].material.unwrap()).unwrap();
+        assert_eq!(core.name, "DT tvarovky");
+        let ElementKind::Material(dt) = &core.kind else {
+            unreachable!()
+        };
+        let ElementKind::Material(r) = &m.get(rc).unwrap().kind else {
+            unreachable!()
+        };
+        assert_eq!(
+            (dt.lambda, dt.density, dt.hatch),
+            (r.lambda, r.density, r.hatch)
+        );
+        // once is enough
+        assert!(dt_blocks(m).is_none());
     }
 
     #[test]

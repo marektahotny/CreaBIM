@@ -2348,6 +2348,7 @@ mod tests {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         };
         let e = Element::new("Okno", ElementKind::Opening(o));
         let id = e.id;

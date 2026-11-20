@@ -242,6 +242,9 @@ pub struct OpeningType {
     pub division: Option<crate::joinery::FrameNode>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub threshold: bool,
+    /// Uw, g, τv and Rw from the maker's data sheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub performance: Option<crate::joinery::Performance>,
 }
 
 /// What slabs or roofs of a type share.
@@ -534,6 +537,7 @@ pub fn from_instance(e: &Element) -> Option<TypeParams> {
                 door: o.door.clone(),
                 division: o.division.clone(),
                 threshold: o.threshold,
+                performance: o.performance.clone(),
             };
             match o.kind {
                 OpeningKind::Door => TypeParams::Door(t),
@@ -601,7 +605,10 @@ pub fn differences(params: &TypeParams, kind: &ElementKind) -> Vec<Param> {
             flag(Param::Frame, t.frame != o.frame);
             flag(
                 Param::Joinery,
-                t.door != o.door || t.division != o.division || t.threshold != o.threshold,
+                t.door != o.door
+                    || t.division != o.division
+                    || t.threshold != o.threshold
+                    || t.performance != o.performance,
             );
             flag(Param::Material, t.material != o.material);
         }
@@ -693,6 +700,7 @@ pub fn apply(model: &Model, params: &TypeParams, e: &mut Element, keep: &[Param]
                 o.door = t.door.clone();
                 o.division = t.division.clone();
                 o.threshold = t.threshold;
+                o.performance = t.performance.clone();
             }
             if set(Param::Material) {
                 o.material = t.material;
@@ -1074,6 +1082,13 @@ fn opening(width: f64, height: f64, sill: f64, across: u32, up: u32) -> OpeningT
         door: None,
         division: None,
         threshold: false,
+        // a window as its maker's data sheet gives one; a door's depends on
+        // where it leads, so it is left to be picked
+        performance: if sill > 0.0 {
+            crate::joinery::default_window_performance()
+        } else {
+            None
+        },
     }
 }
 

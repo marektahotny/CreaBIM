@@ -151,6 +151,7 @@ pub fn sample_house() -> Model {
                         division: None,
                         door: None,
                         texts: None,
+                        performance: None,
                     }),
                 );
                 tagged.push((window.id, level, outside * 0.9));
@@ -180,6 +181,7 @@ pub fn sample_house() -> Model {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     );
     let front_door_id = front_door.id;
@@ -233,6 +235,7 @@ pub fn sample_house() -> Model {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     );
     tagged.push((inner_door.id, g, DVec2::new(0.8, 0.0)));
@@ -686,6 +689,7 @@ pub fn typed_house() -> Model {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     );
     types::stamp(doc.model(), &mut door, starter("Single door 900 × 2100"));
@@ -712,6 +716,7 @@ pub fn typed_house() -> Model {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     );
     let (g, f) = (named("Ground Floor"), named("First Floor"));

@@ -1207,6 +1207,7 @@ impl Builder {
                             division: None,
                             door: None,
                             texts: None,
+                            performance: None,
                         }),
                         of_type: None,
                     });

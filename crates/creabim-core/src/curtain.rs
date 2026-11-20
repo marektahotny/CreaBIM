@@ -387,6 +387,7 @@ fn arc_void(model: &Model, host_id: ElementId, host: &Wall, cw: &Wall) -> Option
         division: None,
         door: None,
         texts: None,
+        performance: None,
     })
 }
 
@@ -440,6 +441,7 @@ pub fn void_of(model: &Model, host_id: ElementId, host: &Wall, cw: &Wall) -> Opt
         division: None,
         door: None,
         texts: None,
+        performance: None,
     })
 }
 

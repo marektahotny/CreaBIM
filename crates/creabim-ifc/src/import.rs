@@ -471,13 +471,15 @@ impl<'a> Importer<'a> {
         for e in &mut self.out {
             if let Some(r) = &mut e.of_type {
                 if let Some(p) = params.get(&r.id) {
-                    // a door's or window's frame is only written on its type
+                    // a door's or window's frame is only written on its type,
                     if let (
                         creabim_core::TypeParams::Door(t) | creabim_core::TypeParams::Window(t),
                         ElementKind::Opening(o),
                     ) = (p, &mut e.kind)
                     {
                         o.frame = t.frame;
+                        // and so are its maker's values (Uw, g, τv, Rw)
+                        o.performance = t.performance.clone();
                     }
                     r.overrides = creabim_core::types::differences(p, &e.kind);
                 }
@@ -718,6 +720,7 @@ impl<'a> Importer<'a> {
                         division: None,
                         door: None,
                         texts: None,
+                        performance: None,
                     }),
                 });
             } else if let Some(&i) = self.slabs.get(&host) {
@@ -1763,6 +1766,7 @@ impl<'a> Importer<'a> {
                         division: None,
                         door: None,
                         texts: None,
+                        performance: None,
                     }),
                 ));
             }
@@ -1905,6 +1909,7 @@ impl<'a> Importer<'a> {
                 division: None,
                 door: None,
                 texts: None,
+                performance: None,
             }),
         });
     }

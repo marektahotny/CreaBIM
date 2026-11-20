@@ -968,6 +968,7 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         division,
         door,
         texts: None,
+        performance: None,
     };
     let mut e = Element::new(name_of(&o.name, &o.id), ElementKind::Opening(opening));
     let typed = match o.kind {

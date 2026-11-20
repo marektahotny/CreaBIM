@@ -347,6 +347,7 @@ mod tests {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         };
         use crate::OpeningKind::{Door, Window};
         let door = Element::new(
