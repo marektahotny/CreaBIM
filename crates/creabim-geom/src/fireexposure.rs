@@ -313,6 +313,25 @@ pub fn exposed_in(model: &Model, pnps: &[Pnp]) -> Vec<Exposed> {
     out
 }
 
+/// The outer walls a fire zone asks a fire resistance of (table 5 items
+/// 2/14) whose assembly states none: each with its way out.
+pub fn unstated_walls(model: &Model) -> Vec<(ElementId, &creabim_core::Wall, glam::DVec2)> {
+    let zones = crate::firerisk::zones(model);
+    crate::firezones::outer_walls(model)
+        .into_iter()
+        .filter(|w| {
+            let wall = w.wall;
+            let mid = (wall.start + wall.end) / 2.0 - w.outward * (wall.thickness / 2.0 + 0.15);
+            let zone = crate::firezones::zone_at(model, wall.level, mid);
+            zone_grade(model, &zones, &zone)
+                .and_then(|g| firegrade::wall_required(model, g, wall))
+                .is_some()
+                && firegrade::wall_declared(model, wall).is_none()
+        })
+        .map(|w| (w.id, w.wall, w.outward))
+        .collect()
+}
+
 /// The same, over the spaces of the whole model.
 pub fn exposed(model: &Model) -> Vec<Exposed> {
     exposed_in(model, &crate::firedistance::spaces(model, None, None))
@@ -415,6 +434,36 @@ mod tests {
                 .all(|(_, r)| ["EW 30/D3", "EW 20/D3", "EW 25/D1"].contains(&r.as_str())),
             "{p:?}"
         );
+    }
+
+    /// Outer walls asked for a fire resistance their assembly does not
+    /// state are listed (for the warning); none without the tables.
+    #[test]
+    fn outer_walls_stating_no_fire_resistance_are_listed() {
+        use creabim_core::{Element, Transaction};
+        let mut m = creabim_core::starter::starter_house();
+        let rooms: Vec<Element> = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Room(_)))
+            .cloned()
+            .collect();
+        let mut tx = Transaction::new("zones");
+        for e in &rooms {
+            let mut n = e.clone();
+            if let ElementKind::Room(r) = &mut n.kind {
+                r.fire_zone = "N1.01".into();
+            }
+            tx = tx.replace(e.clone(), n);
+        }
+        tx.apply(&mut m).unwrap();
+        assert!(unstated_walls(&m).is_empty());
+        let tables = "#table fire_grade\n#columns key\tvalue\tnote\nrule\t1\t\n\
+            #table fire_outer_wall\n#columns grade\tabove\tlast\tnonbearing\tsingle\n\
+            1\t30\t15\t15\t15\n";
+        let mut info = m.project_info().map(|p| p.1.clone()).unwrap_or_default();
+        fireparams::merge(&mut info.fire_params, fireparams::parse(tables));
+        creabim_core::set_project(&m, info).apply(&mut m).unwrap();
+        assert!(!unstated_walls(&m).is_empty());
     }
 
     #[test]

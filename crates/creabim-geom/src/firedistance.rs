@@ -1108,7 +1108,8 @@ struct Reader<'a> {
     /// shown) unless the designer takes it as meeting the requirement.
     roof_unstated_open: bool,
     /// An outer wall whose assembly states no fire resistance: wholly
-    /// fire-open (not shown) only where the designer says so.
+    /// fire-open (not shown) unless the designer takes it as meeting the
+    /// requirement (George 2026-11-20: open, and say so).
     wall_unstated_open: bool,
     roof_steep: f64,
     hu_roof: f64,
@@ -1160,7 +1161,7 @@ impl<'a> Reader<'a> {
                 .collect(),
             roof_open: value(t, "roof_open").is_some_and(|v| v > 0.5),
             roof_unstated_open: value(t, "roof_unstated").is_none_or(|v| v > 0.5),
-            wall_unstated_open: value(t, "wall_unstated").is_some_and(|v| v > 0.5),
+            wall_unstated_open: value(t, "wall_unstated").is_none_or(|v| v > 0.5),
             roof_steep: value(t, "roof_steep").unwrap_or(15.0),
             hu_roof: value(t, "hu_roof").unwrap_or(2.0),
             roof_reach: value(t, "roof_reach").unwrap_or(1.5),
@@ -1452,6 +1453,35 @@ pub fn items(model: &Model, level: ElementId, only: Option<ElementId>, mm: f64) 
     let mut items = vec![];
     for p in spaces(model, Some(level), only) {
         items.extend(items_of(&p, mm));
+    }
+    // outer walls whose assembly states no fire resistance where one is
+    // asked: a note on the wall's outer face
+    if only.is_none() {
+        for (id, w, outward) in crate::fireexposure::unstated_walls(model) {
+            if w.level != level {
+                continue;
+            }
+            let mid = (w.start + w.end) / 2.0 + outward * (w.thickness / 2.0 + 2.5 * mm);
+            let along = (w.end - w.start).normalize_or_zero();
+            let angle = if along.x < -1e-9 || (along.x.abs() < 1e-9 && along.y < 0.0) {
+                (-along).to_angle()
+            } else {
+                along.to_angle()
+            };
+            items.push(PlanItem::Annotation {
+                id,
+                item: Box::new(Annotation {
+                    shape: Shape::Along { at: mid, angle },
+                    text: tr("NO FIRE RESISTANCE STATED: fire-open area"),
+                    look: TextLook {
+                        size: 2.0,
+                        rgb: Some(PNP_RED),
+                        ..TextLook::default()
+                    },
+                    mm,
+                }),
+            });
+        }
     }
     items
 }
