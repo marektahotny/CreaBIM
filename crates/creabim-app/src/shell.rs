@@ -5416,6 +5416,15 @@ thread_local! {
 /// A window kept inside the part of the screen the app draws itself: web
 /// panels paint over anything under them (MU28: the note editor slid
 /// behind the browser).
+/// Where the app's own windows may stand: right of the browser pane,
+/// between the bars; the whole screen before the panes are known.
+pub(crate) fn window_room(ctx: &egui::Context) -> egui::Rect {
+    match NATIVE.with(|n| n.get()) {
+        Some(r) if r.width() > 200.0 && r.height() > 150.0 => r,
+        _ => ctx.content_rect(),
+    }
+}
+
 pub(crate) fn window(title: impl Into<egui::WidgetText>) -> egui::Window<'static> {
     let w = egui::Window::new(title);
     match NATIVE.with(|n| n.get()) {
