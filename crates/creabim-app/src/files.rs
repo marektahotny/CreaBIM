@@ -448,9 +448,18 @@ pub fn open_folder(dir: &Path) -> Result<(), String> {
 pub fn pick_save(current: &str, title: &str, ext: &str) -> Option<String> {
     // a project not saved yet starts in the folder CreaBIM was started in
     let abs = std::path::absolute(current).unwrap_or_else(|_| current.into());
-    let p = abs.as_path();
+    pick_save_in(&abs, &crate::i18n::tr(title), ext)
+}
+
+#[cfg(windows)]
+fn pick_save_in(p: &Path, title: &str, ext: &str) -> Option<String> {
+    win_save::pick(p, title, ext)
+}
+
+#[cfg(not(windows))]
+fn pick_save_in(p: &Path, title: &str, ext: &str) -> Option<String> {
     let mut d = file_dialog()
-        .set_title(crate::i18n::tr(title))
+        .set_title(title)
         .add_filter(ext.to_uppercase(), &[ext]);
     if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
         d = d.set_file_name(name);
@@ -459,6 +468,110 @@ pub fn pick_save(current: &str, title: &str, ext: &str) -> Option<String> {
         d = d.set_directory(dir);
     }
     d.save_file().map(|p| p.display().to_string())
+}
+
+/// Save as on Windows: the system's own picker, owned by the main window,
+/// but without its built-in "replace the file?" question, which opened
+/// behind the app window and held everything. CreaBIM asks itself, with a
+/// message box kept on top of every window.
+#[cfg(windows)]
+mod win_save {
+    use std::path::Path;
+    use windows_sys::Win32::UI::Controls::Dialogs::{
+        GetSaveFileNameW, OFN_ENABLESIZING, OFN_EXPLORER, OFN_HIDEREADONLY, OFN_NOCHANGEDIR,
+        OFN_PATHMUSTEXIST, OPENFILENAMEW,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, SetForegroundWindow, IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_SETFOREGROUND,
+        MB_TOPMOST, MB_YESNO,
+    };
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn owner() -> windows_sys::Win32::Foundation::HWND {
+        super::MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed) as _
+    }
+
+    pub fn pick(start: &Path, title: &str, ext: &str) -> Option<String> {
+        let hwnd = owner();
+        let title_w = wide(title);
+        let filter: Vec<u16> = format!("{} (*.{ext})\0*.{ext}\0\0", ext.to_uppercase())
+            .encode_utf16()
+            .collect();
+        let def_ext = wide(ext);
+        let dir = start
+            .parent()
+            .filter(|d| d.is_dir())
+            .map(|d| wide(&d.display().to_string()));
+        let mut name: String = start
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        loop {
+            let mut buf = vec![0u16; 4096];
+            for (i, c) in name.encode_utf16().take(4000).enumerate() {
+                buf[i] = c;
+            }
+            let mut ofn: OPENFILENAMEW = unsafe { std::mem::zeroed() };
+            ofn.lStructSize = std::mem::size_of::<OPENFILENAMEW>() as u32;
+            ofn.hwndOwner = hwnd;
+            ofn.lpstrFilter = filter.as_ptr();
+            ofn.nFilterIndex = 1;
+            ofn.lpstrFile = buf.as_mut_ptr();
+            ofn.nMaxFile = buf.len() as u32;
+            ofn.lpstrInitialDir = dir.as_ref().map_or(std::ptr::null(), |d| d.as_ptr());
+            ofn.lpstrTitle = title_w.as_ptr();
+            ofn.lpstrDefExt = def_ext.as_ptr();
+            ofn.Flags = OFN_EXPLORER
+                | OFN_PATHMUSTEXIST
+                | OFN_HIDEREADONLY
+                | OFN_NOCHANGEDIR
+                | OFN_ENABLESIZING;
+            unsafe {
+                if !hwnd.is_null() {
+                    SetForegroundWindow(hwnd);
+                }
+                if GetSaveFileNameW(&mut ofn) == 0 {
+                    return None;
+                }
+            }
+            let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            let picked = String::from_utf16_lossy(&buf[..len]);
+            if !Path::new(&picked).exists() || replace(hwnd, &picked, title) {
+                return Some(picked);
+            }
+            // not replaced: the picker again, on the name chosen
+            name = Path::new(&picked)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+        }
+    }
+
+    fn replace(hwnd: windows_sys::Win32::Foundation::HWND, path: &str, title: &str) -> bool {
+        let file = Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path);
+        let text = format!(
+            "{}\n\n{file}",
+            crate::i18n::tr("The file already exists. Replace it?")
+        );
+        let text = wide(&text);
+        let title = wide(title);
+        unsafe {
+            MessageBoxW(
+                hwnd,
+                text.as_ptr(),
+                title.as_ptr(),
+                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST,
+            ) == IDYES
+        }
+    }
 }
 
 #[cfg(test)]

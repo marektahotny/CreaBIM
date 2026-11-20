@@ -356,6 +356,156 @@ pub(super) fn layer_table(
     (!label.is_empty()).then_some((label, edited))
 }
 
+/// U of the assembly (STN EN ISO 6946): the boundary it is counted
+/// for, each layer's d, λ and R, the surface resistances and U. Returns
+/// an edit of the boundary: (undo label, new assembly).
+pub(super) fn thermal_panel(
+    ui: &mut egui::Ui,
+    model: &Model,
+    id: ElementId,
+    a: &Assembly,
+) -> Option<(&'static str, Assembly)> {
+    use creabim_core::thermal::{self, HeatFlow, Outside};
+    let t = thermal::of_assembly(model, a, None);
+    let mut b = t.boundary;
+    let weak = ui.visuals().weak_text_color();
+    ui.label(
+        egui::RichText::new(crate::i18n::t("Thermal transmittance U"))
+            .strong()
+            .size(13.0),
+    );
+    crate::props::flow(ui, |ui| {
+        egui::ComboBox::from_id_salt(("asm.flow", id))
+            .selected_text(crate::i18n::t(b.flow.label()))
+            .show_ui(ui, |ui| {
+                for f in HeatFlow::ALL {
+                    ui.selectable_value(&mut b.flow, f, crate::i18n::t(f.label()));
+                }
+            })
+            .response
+            .on_hover_text(crate::i18n::t(
+                "Sets Rsi: 0.10 upwards, 0.13 horizontal, 0.17 downwards (STN EN ISO 6946)",
+            ));
+        ui.label(crate::i18n::t("On the outer side"));
+        egui::ComboBox::from_id_salt(("asm.outside", id))
+            .selected_text(crate::i18n::t(b.outside.label()))
+            .show_ui(ui, |ui| {
+                for o in Outside::ALL {
+                    ui.selectable_value(&mut b.outside, o, crate::i18n::t(o.label()));
+                }
+            })
+            .response
+            .on_hover_text(crate::i18n::t(
+                "Sets Rse: 0.04 outside air, Rse = Rsi towards another room, 0 against the ground",
+            ));
+    });
+    let num = |v: f64| thermal::shown(v);
+    egui::Grid::new(("asm.u", id))
+        .num_columns(4)
+        .spacing([12.0, 2.0])
+        .striped(true)
+        .show(ui, |ui| {
+            for h in ["Layer", "d [m]", "λ [W/(m·K)]", "R [m²K/W]"] {
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(h))
+                        .size(11.0)
+                        .color(weak),
+                );
+            }
+            ui.end_row();
+            let row = |ui: &mut egui::Ui, name: &str, d: &str, l: &str, r: &str, dim: bool| {
+                let txt = |s: &str| {
+                    let r = egui::RichText::new(s.to_string());
+                    if dim {
+                        r.color(weak)
+                    } else {
+                        r
+                    }
+                };
+                ui.label(txt(name));
+                ui.label(txt(d));
+                ui.label(txt(l));
+                ui.label(txt(r));
+                ui.end_row();
+            };
+            row(ui, "Rsi", "", "", &num(t.rsi), false);
+            for l in &t.layers {
+                let name = crate::i18n::tr(&l.name);
+                let lambda = l.lambda.map_or("—".to_string(), num);
+                let r = if l.skipped {
+                    crate::i18n::tr("not counted")
+                } else {
+                    l.r.map_or("?".to_string(), num)
+                };
+                row(ui, &name, &num(l.thickness), &lambda, &r, l.skipped);
+            }
+            row(ui, "Rse", "", "", &num(t.rse), false);
+        });
+    ui.label(format!(
+        "R = {} m²K/W · RT = Rsi + R + Rse = {} m²K/W",
+        num(t.r),
+        num(t.r_total)
+    ));
+    match t.u {
+        Some(u) => {
+            ui.label(
+                egui::RichText::new(format!("U = {} W/(m²·K)", num(u)))
+                    .strong()
+                    .size(15.0),
+            );
+        }
+        None => {
+            let names: Vec<String> = t
+                .missing()
+                .iter()
+                .map(|l| format!("{}. {}", l.index + 1, crate::i18n::tr(&l.name)))
+                .collect();
+            ui.label(
+                egui::RichText::new(format!(
+                    "{} {}",
+                    crate::i18n::t(
+                        "U is not known yet. Give these layers a material with λ (Materials):"
+                    ),
+                    names.join(", ")
+                ))
+                .color(ui.visuals().warn_fg_color),
+            );
+        }
+    }
+    if t.layers.iter().any(|l| l.skipped && l.thickness > 0.0) {
+        ui.label(
+            egui::RichText::new(crate::i18n::t(
+                "A ventilated air gap: it and the layers outside it are not counted, Rse = Rsi.",
+            ))
+            .size(11.0)
+            .color(weak),
+        );
+    }
+    if b == t.boundary {
+        return None;
+    }
+    let mut new = a.clone();
+    new.thermal = Some(b);
+    Some(("Thermal boundary", new))
+}
+
+/// "U = 0,245 W/(m²·K)" of an assembly, for Properties.
+fn u_line(ui: &mut egui::Ui, model: &Model, a: &Assembly) {
+    let t = creabim_core::thermal::of_assembly(model, a, None);
+    let text = match t.u {
+        Some(u) => format!(
+            "U = {} W/(m²·K) · R = {} m²K/W",
+            creabim_core::thermal::shown(u),
+            creabim_core::thermal::shown(t.r)
+        ),
+        None => crate::i18n::tr("U: a layer has no λ"),
+    };
+    ui.label(egui::RichText::new(text).weak())
+        .on_hover_text(crate::i18n::t(
+            "Thermal transmittance by STN EN ISO 6946, counted from the layers; the assembly editor shows how",
+        ));
+}
+
 impl CreaBimApp {
     pub(super) fn open_assemblies(&mut self, current: Option<ElementId>) {
         self.asm.open = true;
@@ -483,6 +633,7 @@ impl CreaBimApp {
                 26.0,
             );
             ui.label(egui::RichText::new(a.summary(self.doc.model())).weak());
+            u_line(ui, self.doc.model(), &a);
             edit = ui
                 .button(crate::i18n::t("Edit layers…"))
                 .on_hover_text(crate::i18n::t(
@@ -524,6 +675,7 @@ impl CreaBimApp {
         );
         strip(ui, model, &a, ui.available_width().min(240.0), 30.0);
         let edit = layer_table(ui, model, id, &a, true);
+        u_line(ui, model, &a);
         let users = assembly::users(model, id).len();
         ui.label(
             egui::RichText::new(match users {
@@ -722,6 +874,11 @@ impl CreaBimApp {
                 strip(ui, model, a, ui.available_width().min(460.0), 44.0);
                 ui.add_space(6.0);
                 if let Some((label, new)) = layer_table(ui, model, id, a, false) {
+                    asks.push(AsmAsk::Edit(id, label, new));
+                }
+                ui.add_space(8.0);
+                ui.separator();
+                if let Some((label, new)) = thermal_panel(ui, model, id, a) {
                     asks.push(AsmAsk::Edit(id, label, new));
                 }
                 ui.add_space(6.0);

@@ -155,6 +155,7 @@ fn told(model: &Model, id: ElementId, o: &Opening) -> (String, String, String) {
                 creabim_core::joinery::DoorMaterial::Timber => "Timber door",
                 creabim_core::joinery::DoorMaterial::Steel => "Steel door",
                 creabim_core::joinery::DoorMaterial::Aluminium => "Aluminium door",
+                creabim_core::joinery::DoorMaterial::Plastic => "Plastic door",
             }),
             None => tr("Door"),
         };
@@ -1329,6 +1330,35 @@ mod tests {
             "{}",
             ds[0].execution
         );
+    }
+
+    #[test]
+    fn a_plastic_door_by_its_frame_and_leaf() {
+        let h = house();
+        let mut tx = Transaction::new("pvc");
+        for e in h
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Door))
+        {
+            let mut after = e.clone();
+            if let ElementKind::Opening(o) = &mut after.kind {
+                let mut d = DoorSpec::fitting(DoorFrame::Plastic, 1.06, 2.05);
+                d.leaf = creabim_core::joinery::DoorMaterial::Plastic;
+                apply_door(o, d);
+            }
+            tx = tx.replace(e.clone(), after);
+        }
+        let mut d = creabim_core::Document::from_model(h);
+        d.commit(tx).unwrap();
+        let ds = entries(d.model(), OpeningKind::Door);
+        assert!(
+            ds[0].execution.starts_with("Plastic door"),
+            "{}",
+            ds[0].execution
+        );
+        assert_eq!(ds[0].note, "Plastic frame");
+        // 900 leaf in a plastic frame: an opening 1060 × 2050
+        assert_eq!((ds[0].opening.width, ds[0].opening.height), (1.06, 2.05));
     }
 
     #[test]

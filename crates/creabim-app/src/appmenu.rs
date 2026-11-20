@@ -1158,13 +1158,23 @@ impl CreaBimApp {
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         crate::app::shell::window(crate::i18n::tr("Project information"))
             .open(&mut open)
-            .default_pos(area.center() - Vec2::new(200.0, 220.0))
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(area.center())
             .constrain_to(area)
             .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.set_width(400.0);
-                // the fields scroll; the buttons stay in sight however tall
+                // side by side in columns as the screen allows: project and
+                // sheets, site and place, fire safety; the fields scroll and
+                // the buttons stay in sight
+                let n = if area.width() >= 1320.0 {
+                    3
+                } else if area.width() >= 900.0 {
+                    2
+                } else {
+                    1
+                };
+                ui.set_width(n as f32 * 400.0 + (n - 1) as f32 * 20.0);
                 egui::ScrollArea::vertical()
                     .id_salt("project.info.scroll")
                     .max_height((area.height() - 120.0).max(200.0))
@@ -1179,6 +1189,34 @@ impl CreaBimApp {
                         );
                     });
                 };
+                let degrees = |ui: &mut egui::Ui, label: &str, v: &mut Option<f64>, range: f64| {
+                    crate::props::row(ui, label, |ui| {
+                        let mut on = v.is_some();
+                        if ui.checkbox(&mut on, "").changed() {
+                            *v = on.then_some(0.0);
+                        }
+                        if let Some(d) = v {
+                            ui.add(
+                                egui::DragValue::new(d)
+                                    .range(-range..=range)
+                                    .speed(0.0001)
+                                    .max_decimals(6)
+                                    .suffix("°"),
+                            );
+                        }
+                    });
+                };
+                // the parts: 0 project and sheets, 1 site and place, 2 fire
+                let parts: &[&[u8]] = match n {
+                    3 => &[&[0], &[1], &[2]],
+                    2 => &[&[0, 2], &[1]],
+                    _ => &[&[0, 1, 2]],
+                };
+                ui.columns(n, |cols| {
+                for (c, ui) in cols.iter_mut().enumerate() {
+                for &part in parts[c] {
+                match part {
+                0 => {
                 crate::props::section(ui, "Project");
                 text(ui, "Name", &mut draft.name, "Maple Lane House");
                 text(ui, "Number", &mut draft.number, "Job number");
@@ -1254,6 +1292,8 @@ impl CreaBimApp {
                             .desired_width(ui.available_width()),
                     );
                 });
+                }
+                1 => {
                 crate::props::section(ui, "Site");
                 text(ui, "Site name", &mut draft.site_name, "");
                 text(ui, "Address", &mut draft.address, "");
@@ -1277,71 +1317,6 @@ impl CreaBimApp {
                         ));
                     }
                 });
-                crate::props::section(ui, "Fire safety");
-                if ui
-                    .button(crate::i18n::t("Fire calculation parameters…"))
-                    .on_hover_text(crate::i18n::t(
-                        "The norms' tables the fire calculations count with: read from your file, changed when a norm changes, saved with the project",
-                    ))
-                    .clicked()
-                {
-                    fire_params = true;
-                }
-                crate::props::row(ui, "Structural system for fire", |ui| {
-                    const SYSTEMS: [(&str, &str); 5] = [
-                        ("N", "Non-combustible"),
-                        ("Za", "Mixed, 2.6.4 a)"),
-                        ("Zb", "Mixed, 2.6.4 b)"),
-                        ("Ha", "Combustible, 2.6.5 a)"),
-                        ("Hb", "Combustible, 2.6.5 b)"),
-                    ];
-                    let now = if draft.fire_system.is_empty() {
-                        "N"
-                    } else {
-                        draft.fire_system.as_str()
-                    };
-                    let shown = SYSTEMS
-                        .iter()
-                        .find(|s| s.0 == now)
-                        .map_or(now.to_string(), |s| crate::i18n::t(s.1).to_string());
-                    let mut picked = None;
-                    egui::ComboBox::from_id_salt("project.fire_system")
-                        .selected_text(shown)
-                        .show_ui(ui, |ui| {
-                            for (code, name) in SYSTEMS {
-                                if ui.selectable_label(now == code, crate::i18n::t(name)).clicked() {
-                                    picked = Some(code);
-                                }
-                            }
-                        });
-                    if let Some(c) = picked {
-                        draft.fire_system = if c == "N" { String::new() } else { c.into() };
-                    }
-                });
-                crate::props::section(ui, "Fire separation distances");
-                ui.label(
-                    egui::RichText::new(crate::i18n::t(
-                        "The distance of each side of the building, as the norm's tables give it. Plans with the fire zones switched on draw the fire-dangerous space from it.",
-                    ))
-                    .weak(),
-                );
-                draft.fire_distances.resize(8, 0.0);
-                for (i, d) in draft.fire_distances.iter_mut().enumerate() {
-                    let side = creabim_core::words::tr(creabim_geom::firezones::FACING[i]);
-                    ui.horizontal(|ui| {
-                        ui.add_sized([40.0, 18.0], egui::Label::new(side));
-                        ui.add(
-                            egui::DragValue::new(d)
-                                .range(0.0..=200.0)
-                                .speed(0.05)
-                                .max_decimals(2)
-                                .suffix(" m"),
-                        );
-                    });
-                }
-                if draft.fire_distances.iter().all(|d| *d <= 0.0) {
-                    draft.fire_distances.clear();
-                }
                 if ui
                     .add_enabled(
                         draft.sjtsk.is_some(),
@@ -1354,23 +1329,6 @@ impl CreaBimApp {
                 {
                     cadastre = true;
                 }
-                let degrees = |ui: &mut egui::Ui, label: &str, v: &mut Option<f64>, range: f64| {
-                    crate::props::row(ui, label, |ui| {
-                        let mut on = v.is_some();
-                        if ui.checkbox(&mut on, "").changed() {
-                            *v = on.then_some(0.0);
-                        }
-                        if let Some(d) = v {
-                            ui.add(
-                                egui::DragValue::new(d)
-                                    .range(-range..=range)
-                                    .speed(0.0001)
-                                    .max_decimals(6)
-                                    .suffix("°"),
-                            );
-                        }
-                    });
-                };
                 degrees(ui, "Latitude", &mut draft.latitude, 90.0);
                 degrees(ui, "Longitude", &mut draft.longitude, 180.0);
                 crate::props::row(ui, "site\u{4}Elevation", |ui| {
@@ -1456,6 +1414,84 @@ impl CreaBimApp {
                         .on_hover_text(crate::i18n::t(
                             "The standards the building services' calculations follow: Slovak first, Czech where the building is in the Czech Republic",
                         ));
+                });
+                }
+                _ => {
+                crate::props::section(ui, "Fire safety");
+                if ui
+                    .button(crate::i18n::t("Fire calculation parameters…"))
+                    .on_hover_text(crate::i18n::t(
+                        "The norms' tables the fire calculations count with: read from your file, changed when a norm changes, saved with the project",
+                    ))
+                    .clicked()
+                {
+                    fire_params = true;
+                }
+                crate::props::row(ui, "Structural system for fire", |ui| {
+                    const SYSTEMS: [(&str, &str); 5] = [
+                        ("N", "Non-combustible"),
+                        ("Za", "Mixed, 2.6.4 a)"),
+                        ("Zb", "Mixed, 2.6.4 b)"),
+                        ("Ha", "Combustible, 2.6.5 a)"),
+                        ("Hb", "Combustible, 2.6.5 b)"),
+                    ];
+                    let now = if draft.fire_system.is_empty() {
+                        "N"
+                    } else {
+                        draft.fire_system.as_str()
+                    };
+                    let shown = SYSTEMS
+                        .iter()
+                        .find(|s| s.0 == now)
+                        .map_or(now.to_string(), |s| crate::i18n::t(s.1).to_string());
+                    let mut picked = None;
+                    egui::ComboBox::from_id_salt("project.fire_system")
+                        .selected_text(shown)
+                        .show_ui(ui, |ui| {
+                            for (code, name) in SYSTEMS {
+                                if ui.selectable_label(now == code, crate::i18n::t(name)).clicked() {
+                                    picked = Some(code);
+                                }
+                            }
+                        });
+                    if let Some(c) = picked {
+                        draft.fire_system = if c == "N" { String::new() } else { c.into() };
+                    }
+                });
+                crate::props::section(ui, "Fire separation distances");
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "The distance of each side of the building, as the norm's tables give it. Plans with the fire zones switched on draw the fire-dangerous space from it.",
+                    ))
+                    .weak(),
+                );
+                draft.fire_distances.resize(8, 0.0);
+                egui::Grid::new("project.fire_distances")
+                    .num_columns(4)
+                    .spacing([8.0, 4.0])
+                    .show(ui, |ui| {
+                        for (i, d) in draft.fire_distances.iter_mut().enumerate() {
+                            let side = creabim_core::words::tr(creabim_geom::firezones::FACING[i]);
+                            ui.label(side);
+                            ui.add(
+                                egui::DragValue::new(d)
+                                    .range(0.0..=200.0)
+                                    .speed(0.05)
+                                    .max_decimals(2)
+                                    .suffix(" m"),
+                            );
+                            if i % 2 == 1 {
+                                ui.end_row();
+                            }
+                        }
+                    });
+                if draft.fire_distances.iter().all(|d| *d <= 0.0) {
+                    draft.fire_distances.clear();
+                }
+                }
+                }
+                }
+                }
                 });
                 ui.label(
                     egui::RichText::new(

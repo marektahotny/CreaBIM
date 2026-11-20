@@ -1902,6 +1902,19 @@ pub fn apply(
                 ElementKind::FreeMesh(m) => m.rotation = (m.rotation + by).rem_euclid(360.0),
                 ElementKind::Reference(r) => r.rotation = (r.rotation + by).rem_euclid(360.0),
                 ElementKind::View(v) => {
+                    // the line holds level, plumb, or along or square to
+                    // a wall when it comes within 2° of one
+                    let by = match creabim_core::transform::view_angle(v).filter(|_| step > 0.0) {
+                        Some(was) => match align_bearing(model, was + raw, 2.0) {
+                            Some((t, _)) => {
+                                let d = (t - (was + raw)).rem_euclid(180.0);
+                                let d = if d > 90.0 { d - 180.0 } else { d };
+                                raw + d
+                            }
+                            None => by,
+                        },
+                        None => by,
+                    };
                     if !creabim_core::transform::turn_view(v, by) {
                         return Err("this doesn't turn".into());
                     }
@@ -4361,6 +4374,14 @@ pub fn interact(
             let (a, b) = walls::location_line(doc.model(), w);
             Some(if end { a } else { b }.extend(free.z))
         }
+        // a section line's end: from its other end, so it snaps level,
+        // plumb and square to walls
+        (Some(HandleKind::ViewEnd { end }), Some(ElementKind::View(v))) => match v.kind {
+            ViewKind::Section { start, end: e, .. } => {
+                Some(if end { start } else { e }.extend(free.z))
+            }
+            _ => None,
+        },
         (None, _) => Some(d.grab),
         _ => None,
     };
@@ -4441,11 +4462,108 @@ pub fn interact(
         crate::actlog::mm(crate::snaps::current_step()),
         painter.ctx().input(|i| i.unstable_dt) * 1000.0,
     ));
+    // a section line's end not caught by a point: the line holds level,
+    // plumb, or along or square to a wall when it comes within a few
+    // pixels of one
+    let now = match (d.kind, fixed) {
+        (Some(HandleKind::ViewEnd { .. }), Some(f))
+            if snapped.as_ref().is_none_or(|(_, sn)| {
+                !matches!(
+                    sn.kind,
+                    SnapKind::Endpoint
+                        | SnapKind::Midpoint
+                        | SnapKind::Center
+                        | SnapKind::Intersection
+                        | SnapKind::Quadrant
+                )
+            }) =>
+        {
+            match align_line_end(doc.model(), input, f, now) {
+                Some((on, what)) => {
+                    if let (Some(a), Some(b)) = ((input.project)(f), (input.project)(on)) {
+                        let ink = Color32::from_rgb(60, 140, 220);
+                        let far = a + (b - a) * 1.5;
+                        painter.add(egui::Shape::dashed_line(
+                            &[a - (b - a) * 0.5, far],
+                            Stroke::new(1.0, ink),
+                            6.0,
+                            4.0,
+                        ));
+                        painter.text(
+                            b + Vec2::new(12.0, 12.0),
+                            egui::Align2::LEFT_TOP,
+                            crate::i18n::t(what),
+                            egui::FontId::proportional(12.0),
+                            ink,
+                        );
+                    }
+                    on
+                }
+                None => now,
+            }
+        }
+        _ => now,
+    };
     d.last = now;
     let grid = snapped.is_none_or(|(_, s)| s.kind == SnapKind::Grid);
     follow(doc, painter, d, input, now, grid, Some(pos), status);
     painter.ctx().request_repaint();
     true
+}
+
+/// The bearings (degrees, 0..180) a line can hold to: level, plumb, and
+/// along and square to every wall of the model.
+fn line_bearings(model: &Model) -> Vec<(f64, &'static str)> {
+    let mut out = vec![(0.0, "Horizontal"), (90.0, "Vertical")];
+    for e in model.iter() {
+        if let ElementKind::Wall(w) = &e.kind {
+            let d = w.end - w.start;
+            if d.length() < 1e-6 {
+                continue;
+            }
+            let a = d.y.atan2(d.x).to_degrees().rem_euclid(180.0);
+            out.push((a, "Parallel to a wall"));
+            out.push(((a + 90.0).rem_euclid(180.0), "Square to a wall"));
+        }
+    }
+    out
+}
+
+/// `now` turned about `from` onto the nearest bearing of
+/// [`line_bearings`] within 8 pixels on screen, with what it holds to.
+fn align_line_end(
+    model: &Model,
+    input: &PaneInput,
+    from: DVec3,
+    now: DVec3,
+) -> Option<(DVec3, &'static str)> {
+    let v = (now - from).truncate();
+    let len = v.length();
+    let (a, b) = ((input.project)(from)?, (input.project)(now)?);
+    let px = a.distance(b) as f64;
+    if len < 1e-6 || px < 20.0 {
+        return None;
+    }
+    let tol = (8.0 / px).atan().to_degrees();
+    let (t, what) = align_bearing(model, v.y.atan2(v.x).to_degrees(), tol)?;
+    let dir = DVec2::from_angle(t.to_radians());
+    let dir = if dir.dot(v) < 0.0 { -dir } else { dir };
+    Some((from + (dir * v.dot(dir)).extend(0.0), what))
+}
+
+/// The bearing among [`line_bearings`] nearest `deg` (mod 180), within
+/// `tol` degrees: level and plumb first when equally near.
+fn align_bearing(model: &Model, deg: f64, tol: f64) -> Option<(f64, &'static str)> {
+    let here = deg.rem_euclid(180.0);
+    let off = |t: f64| {
+        let d = (here - t).rem_euclid(180.0);
+        d.min(180.0 - d)
+    };
+    // level and plumb come first in the list, so they win a tie
+    line_bearings(model)
+        .into_iter()
+        .filter(|(t, _)| off(*t) <= tol)
+        .min_by(|x, y| off(x.0).total_cmp(&off(y.0)))
 }
 
 /// Distance marks (the Grid snap menu): faint marks every `every` metres
@@ -5258,6 +5376,57 @@ mod tests {
             }) if (canopy - 5.0).abs() < 1e-9
         ));
         assert!(hs.iter().any(|h| h.kind == HandleKind::PlantHeight));
+    }
+
+    /// A section line turned by its grip, or drawn by its end, holds
+    /// level, plumb, and along or square to a wall when near one.
+    #[test]
+    fn a_section_line_holds_to_walls_level_and_plumb() {
+        use creabim_core::View;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let lvl = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let dir = DVec2::from_angle(30f64.to_radians());
+        let w = Element::new(
+            "Wall",
+            ElementKind::Wall(creabim_core::Wall::new(
+                lvl,
+                DVec2::ZERO,
+                dir * 5.0,
+                0.3,
+                3.0,
+            )),
+        );
+        let s = Element::new(
+            "Section",
+            ElementKind::View(View::section(DVec2::ZERO, DVec2::new(8.0, 0.0), 3.0, true)),
+        );
+        let sid = s.id;
+        doc.commit(creabim_core::Transaction::new("setup").insert(w).insert(s))
+            .unwrap();
+        let m = doc.model().clone();
+        assert_eq!(
+            align_bearing(&m, 31.5, 2.0).unwrap().1,
+            "Parallel to a wall"
+        );
+        assert_eq!(align_bearing(&m, 119.0, 2.0).unwrap().1, "Square to a wall");
+        assert_eq!(align_bearing(&m, 181.0, 2.0).unwrap().1, "Horizontal");
+        assert!(align_bearing(&m, 50.0, 2.0).is_none());
+        // turned about 29°: it holds along the wall, at 30°
+        let out = drag_to(&m, sid, HandleKind::Rotate, |h| {
+            let c = DVec2::new(4.0, 0.0);
+            let r = h.at.truncate() - c;
+            (c + DVec2::from_angle(29f64.to_radians()).rotate(r)).extend(0.0)
+        });
+        let ElementKind::View(v) = &out.kind else {
+            panic!()
+        };
+        let a = creabim_core::transform::view_angle(v).unwrap();
+        assert!((a - 30.0).abs() < 1e-6, "{a}");
     }
 
     /// A section line has a flip icon beside it (a click looks the other

@@ -10042,6 +10042,34 @@ crate::props::row(ui, "File names", |ui| {
                     if !l.is_empty() {
                         label = l;
                     }
+                    // a plastic colour picked for a door: the library's
+                    // material, taken into the project once
+                    let pvc = egui::Id::new(wallsui::PVC_PICK);
+                    if let Some(name) = ui.data_mut(|d| d.remove_temp::<&'static str>(pvc)) {
+                        let had = creabim_core::library::materials(self.doc.model())
+                            .into_iter()
+                            .find(|(_, n, _)| *n == name)
+                            .map(|(id, _, _)| id);
+                        let id = match had {
+                            Some(id) => Some(id),
+                            None => creabim_core::library::LIBRARY
+                                .iter()
+                                .find(|e| e.name == name)
+                                .map(|entry| {
+                                    let e = entry.element();
+                                    let id = e.id;
+                                    let r = self.doc.commit(
+                                        Transaction::new("Material from the library").insert(e),
+                                    );
+                                    self.report(r, format!("{name} added from the library."));
+                                    id
+                                }),
+                        };
+                        if id.is_some() && o.material != id {
+                            o.material = id;
+                            label = "Material";
+                        }
+                    }
                     ui.separator();
                     ui.label(egui::RichText::new(crate::i18n::t("Frame")).strong());
                     if num(ui, "Frame width", &mut o.frame.width, 0.01, 0.5) {

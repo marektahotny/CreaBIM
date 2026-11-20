@@ -550,12 +550,16 @@ pub enum DoorFrame {
     /// A timber lining round the whole reveal, with architraves on both
     /// faces, fitted into the finished opening.
     Lining,
+    /// A plastic (PVC-U) frame, as plastic entrance doors have; its
+    /// colour is the door's material (RAL).
+    Plastic,
 }
 
 impl DoorFrame {
-    pub const ALL: [DoorFrame; 4] = [
+    pub const ALL: [DoorFrame; 5] = [
         DoorFrame::Steel,
         DoorFrame::Aluminium,
+        DoorFrame::Plastic,
         DoorFrame::Timber,
         DoorFrame::Lining,
     ];
@@ -566,6 +570,7 @@ impl DoorFrame {
             DoorFrame::Aluminium => "Aluminium frame",
             DoorFrame::Timber => "Timber frame",
             DoorFrame::Lining => "Timber lining with architraves",
+            DoorFrame::Plastic => "Plastic frame",
         }
     }
 
@@ -575,6 +580,7 @@ impl DoorFrame {
             DoorFrame::Aluminium => "aluminium",
             DoorFrame::Timber => "timber",
             DoorFrame::Lining => "lining",
+            DoorFrame::Plastic => "plastic",
         }
     }
 
@@ -591,7 +597,8 @@ impl DoorFrame {
             DoorFrame::Steel => (0.15, 0.08),
             DoorFrame::Lining => (0.10, 0.05),
             DoorFrame::Timber => (0.20, 0.10),
-            DoorFrame::Aluminium => (0.16, 0.08),
+            // a plastic frame as wide as an aluminium one
+            DoorFrame::Aluminium | DoorFrame::Plastic => (0.16, 0.08),
         }
     }
 
@@ -608,6 +615,7 @@ impl DoorFrame {
             DoorFrame::Aluminium => [0.73, 0.76, 0.80],
             DoorFrame::Timber => [0.60, 0.44, 0.28],
             DoorFrame::Lining => [0.78, 0.65, 0.48],
+            DoorFrame::Plastic => [0.94, 0.94, 0.92],
         }
     }
 }
@@ -624,13 +632,16 @@ pub enum DoorMaterial {
     Timber,
     Steel,
     Aluminium,
+    /// Plastic (PVC-U), its colour the door's material (RAL).
+    Plastic,
 }
 
 impl DoorMaterial {
-    pub const ALL: [DoorMaterial; 3] = [
+    pub const ALL: [DoorMaterial; 4] = [
         DoorMaterial::Timber,
         DoorMaterial::Steel,
         DoorMaterial::Aluminium,
+        DoorMaterial::Plastic,
     ];
 
     pub fn label(self) -> &'static str {
@@ -638,6 +649,7 @@ impl DoorMaterial {
             DoorMaterial::Timber => "Timber",
             DoorMaterial::Steel => "Steel",
             DoorMaterial::Aluminium => "Aluminium",
+            DoorMaterial::Plastic => "Plastic",
         }
     }
 
@@ -646,6 +658,7 @@ impl DoorMaterial {
             DoorMaterial::Timber => "timber",
             DoorMaterial::Steel => "steel",
             DoorMaterial::Aluminium => "aluminium",
+            DoorMaterial::Plastic => "plastic",
         }
     }
 
@@ -658,6 +671,7 @@ impl DoorMaterial {
             DoorMaterial::Timber => [0.62, 0.45, 0.30],
             DoorMaterial::Steel => [0.50, 0.53, 0.58],
             DoorMaterial::Aluminium => [0.70, 0.73, 0.77],
+            DoorMaterial::Plastic => [0.94, 0.94, 0.92],
         }
     }
 }
