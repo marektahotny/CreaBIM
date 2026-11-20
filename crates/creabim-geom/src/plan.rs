@@ -1582,7 +1582,7 @@ pub fn plan_view_with(
                     }
                 }
             }
-            ElementKind::Sketch(sk) if sk.level == Some(level) => {
+            ElementKind::Sketch(sk) if sk.level == Some(level) && sk.view.is_none() => {
                 items.extend(sketch_items(e.id, sk, &|p| p));
             }
             // guides lying flat; one standing on a wall face shows in sections

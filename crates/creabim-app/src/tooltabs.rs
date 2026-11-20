@@ -171,6 +171,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Draw a utility network in the site plan: water, sewers, gas, power, lighting, telecom, heating, drainage. Colour, line type, DXF layer and code by its kind; proposed heavy, existing thin, cancelled crossed; set in Properties",
             ),
             act(
+                "site:place",
+                "Place the building",
+                "move",
+                "Lays the site under the building: click a side of the place drawn on the map near its corner, then the building's matching side near its corner. The map, terrain and what was drawn on them move and turn as one; the building and the floor plans stay as drawn",
+            ),
+            act(
                 "site:symbols",
                 "Site symbols and networks",
                 "map-pin",

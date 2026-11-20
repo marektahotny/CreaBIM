@@ -1621,6 +1621,15 @@ impl CreaBimApp {
                     Err(e) => self.status = e.to_string(),
                 }
             }
+            "site" if arg == "place" => {
+                if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::Select) {
+                    self.run_action(ctx, &format!("tool:{i}"));
+                }
+                self.plan.place_pick = Some(None);
+                self.status = crate::i18n::tr(
+                    "In the site plan, click a side of the place drawn on the map (a rectangle's edge) near the corner the building's corner goes to. Esc leaves it.",
+                );
+            }
             "site" if arg == "symbols" => {
                 self.site_symbols_open = true;
             }

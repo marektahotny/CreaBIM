@@ -180,7 +180,9 @@ pub fn settle(model: &Model, tx: &Transaction) -> Transaction {
     }) else {
         return out;
     };
-    for id in &members {
+    let mut moving = members.clone();
+    moving.extend(ground_sketches(model));
+    for id in &moving {
         if touched(*id) {
             continue;
         }
@@ -206,6 +208,70 @@ pub fn settle(model: &Model, tx: &Transaction) -> Transaction {
     out
 }
 
+/// What was drawn on the ground in a site plan (utility networks, the
+/// site's symbols, a sketch made there): it lies on the map, so it moves
+/// with it.
+pub fn ground_sketches(model: &Model) -> Vec<ElementId> {
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Sketch(s) if s.net.is_some() || s.mark.is_some() || s.view.is_some() => {
+                Some(e.id)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The ground (the map, the terrain, what was drawn on it in a site
+/// plan) moved by `r`, the building staying where it is: true north turns
+/// with the ground. Empty without a map.
+pub fn move_ground(model: &Model, r: &Rigid) -> Transaction {
+    let mut out = Transaction::new("Place the building on the site");
+    let (mut members, _) = group(model);
+    if members.is_empty() || r.is_nothing() {
+        return out;
+    }
+    members.extend(ground_sketches(model));
+    for id in &members {
+        let Some(e) = model.get(*id) else {
+            continue;
+        };
+        if let Some(n) = moved(model, e, r) {
+            if n != *e {
+                out = out.replace(e.clone(), n);
+            }
+        }
+    }
+    if r.degrees.abs() > 1e-12 {
+        if let Some((pid, info)) = model.project_info() {
+            let mut p = info.clone();
+            let n = (p.true_north + r.degrees + 180.0).rem_euclid(360.0) - 180.0;
+            p.true_north = (n * 1e9).round() / 1e9;
+            if let Some(e) = model.get(pid) {
+                let mut now = e.clone();
+                now.kind = ElementKind::Project(p);
+                out = out.replace(e.clone(), now);
+            }
+        }
+    }
+    out
+}
+
+/// The rigid move that lays the ground's corner `ground.0`, its side
+/// running to `ground.1`, on the building's corner `building.0`, its side
+/// running to `building.1`.
+pub fn fit(ground: (DVec2, DVec2), building: (DVec2, DVec2)) -> Rigid {
+    let turn =
+        ((building.1 - building.0).to_angle() - (ground.1 - ground.0).to_angle()).to_degrees();
+    let degrees = (turn + 180.0).rem_euclid(360.0) - 180.0;
+    Rigid {
+        about: ground.0,
+        degrees,
+        by: building.0 - ground.0,
+    }
+}
+
 /// A model point's S-JTSK east and north (both negative in Slovakia):
 /// read off the map drawing where it lies under the point, else from the
 /// project's S-JTSK origin turned by true north. None without either.
@@ -223,6 +289,20 @@ pub fn sjtsk_of(model: &Model, p: DVec2) -> Option<DVec2> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn fit_lays_the_ground_corner_and_side_on_the_building() {
+        let g = (
+            DVec2::new(-25.0, 12.0),
+            DVec2::new(-25.0, 12.0) + DVec2::from_angle(0.35),
+        );
+        let b = (DVec2::new(-0.15, -0.15), DVec2::new(10.15, -0.15));
+        let r = fit(g, b);
+        assert!(r.apply(g.0).distance(b.0) < 1e-9);
+        let dir = (r.apply(g.1) - r.apply(g.0)).normalize();
+        assert!(dir.distance(DVec2::X) < 1e-9, "{dir}");
+    }
+
     use super::*;
     use crate::{Document, ProjectInfo, RefSource, Reference};
 
