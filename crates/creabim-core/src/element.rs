@@ -2897,6 +2897,37 @@ pub struct Viewport {
     /// coordinates, lower-left and upper-right) is shown.
     #[serde(default)]
     pub crop: Option<[DVec2; 2]>,
+    /// How it prints: in colour, in shades of grey or black and white.
+    #[serde(default, skip_serializing_if = "Ink::is_colour")]
+    pub ink: Ink,
+}
+
+/// How a drawing on a sheet is inked: in its colours, in shades of grey
+/// (each colour by its lightness), or black and white (lines and text
+/// black, fills grey).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Ink {
+    #[default]
+    Colour,
+    Grey,
+    Black,
+}
+
+impl Ink {
+    pub const ALL: [Ink; 3] = [Ink::Colour, Ink::Grey, Ink::Black];
+
+    pub fn is_colour(&self) -> bool {
+        *self == Ink::Colour
+    }
+
+    /// Its name in a list (English; the app translates it).
+    pub fn label(self) -> &'static str {
+        match self {
+            Ink::Colour => "Colour",
+            Ink::Grey => "Shades of grey",
+            Ink::Black => "Black and white",
+        }
+    }
 }
 
 /// A view's title on a sheet: shown or not, its scale shown or not, moved

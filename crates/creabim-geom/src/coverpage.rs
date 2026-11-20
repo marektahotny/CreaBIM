@@ -674,6 +674,7 @@ mod sets_tests {
             center: DVec2::new(100.0, 200.0),
             target: DVec2::ZERO,
             crop: None,
+            ink: Default::default(),
         };
         Transaction::new("t")
             .insert(page)

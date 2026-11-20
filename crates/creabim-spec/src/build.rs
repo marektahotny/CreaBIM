@@ -1844,6 +1844,7 @@ fn sheet(c: &mut Ctx, s: &f::Sheet, at: &Path) {
             center: vp.at,
             target,
             crop: vp.crop.as_ref().map(|r| [c.p(r.min), c.p(r.max)]),
+            ink: Default::default(),
         };
         c.commit(
             &s.id,

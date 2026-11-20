@@ -36,6 +36,8 @@ pub struct PlacedView {
     pub title_look: creabim_core::SheetTitle,
     /// Its title's text style, resolved (MU28).
     pub title_text: crate::annotation::TextLook,
+    /// How it is inked: colour, shades of grey or black and white.
+    pub ink: creabim_core::Ink,
 }
 
 impl PlacedView {
@@ -172,6 +174,7 @@ pub fn placed_views_with(
                 l.size = view.sheet_title.size;
                 l
             },
+            ink: vp.ink,
             map,
             drawing: d,
             weights: looks.weights,
@@ -194,6 +197,7 @@ pub fn new_viewport(model: &Model, sheet: ElementId, view: ElementId, at: DVec2)
         center: at,
         target,
         crop: None,
+        ink: Default::default(),
     }
 }
 
@@ -655,10 +659,15 @@ pub fn draw_sheet(
     let title = model.get(sheet).map(|e| e.name.as_str()).unwrap_or("");
     draw_frame(c, model, s, title, &scale_text(model, views), info);
     for v in views {
-        paper::draw_looks(c, &v.drawing, &v.map, &v.looks);
-        draw_view_title(c, v);
+        // each drawing in its own ink
+        let mut c = paper::Inked {
+            inner: &mut *c,
+            ink: v.ink,
+        };
+        paper::draw_looks(&mut c, &v.drawing, &v.map, &v.looks);
+        draw_view_title(&mut c, v);
         for d in crate::coverpage::copies(s) {
-            paper::draw_looks(c, &v.drawing, &v.map.moved(d), &v.looks);
+            paper::draw_looks(&mut c, &v.drawing, &v.map.moved(d), &v.looks);
         }
     }
     draw_sheet_notes(c, model, sheet);

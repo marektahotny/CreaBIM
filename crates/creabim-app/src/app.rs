@@ -10656,6 +10656,31 @@ crate::props::row(ui, "File names", |ui| {
                         };
                         label = "Crop view"
                     }
+                    // how it prints: in colour, shades of grey or black
+                    let mut inked = false;
+                    crate::props::row(ui, "Prints in", |ui| {
+                        egui::ComboBox::from_id_salt(("viewport.ink", id))
+                            .selected_text(crate::i18n::tr(vp.ink.label()))
+                            .width(ui.available_width().max(60.0))
+                            .show_ui(ui, |ui| {
+                                for ink in creabim_core::Ink::ALL {
+                                    inked |= ui
+                                        .selectable_value(
+                                            &mut vp.ink,
+                                            ink,
+                                            crate::i18n::tr(ink.label()),
+                                        )
+                                        .changed();
+                                }
+                            })
+                            .response
+                            .on_hover_text(crate::i18n::t(
+                                "How this drawing prints and shows on the sheet: in its colours, in shades of grey (each colour by its lightness) or black and white (lines and text black, fills grey)",
+                            ));
+                    });
+                    if inked {
+                        label = "Change how the view prints"
+                    }
                     if let Some([lo, hi]) = &mut vp.crop {
                         if num(ui, "Crop left", &mut lo.x, -1e4, hi.x - 0.1)
                             | num(ui, "Crop right", &mut hi.x, lo.x + 0.1, 1e4)
@@ -13963,6 +13988,27 @@ fn plan_graphics_ui(
                     }
                 }
             });
+    });
+    // the ground under cut hatches (George 2026-11-20)
+    crate::props::row(ui, "Under hatches", |ui| {
+        egui::ComboBox::from_id_salt("view.hatch_ground")
+            .icon(crate::props::combo_icon)
+            .selected_text(crate::i18n::tw(g.hatch_ground.label()))
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for h in creabim_core::graphics::HatchGround::ALL {
+                    if ui
+                        .selectable_value(&mut g.hatch_ground, h, crate::i18n::tw(h.label()))
+                        .changed()
+                    {
+                        label = Some("Under hatches");
+                    }
+                }
+            })
+            .response
+            .on_hover_text(
+                "The fill behind the hatch of cut walls and slabs. Renovation stages keep their own colours.",
+            );
     });
     if crate::props::check(ui, "Below the cut", &mut g.below_fill, "Tinted")
         .on_hover_text("Furniture, fittings and imported meshes under the cut get a light fill.")

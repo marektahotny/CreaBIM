@@ -247,10 +247,15 @@ impl TextLook {
     pub fn width(&self, text: &str) -> f64 {
         let w = match self.font {
             Font::Mono => {
-                text.chars().count() as f64 * 0.6 * self.size * crate::font::setup().stretch
+                let s = crate::font::setup();
+                text.chars().count() as f64 * 0.6 * s.em(self.size, Font::Mono) * s.stretch
             }
             Font::Serif => {
-                crate::paper::rough_width(text, self.size) * 0.95 * crate::font::setup().stretch
+                // Times is about 0.95 as wide as Helvetica at one em
+                crate::paper::rough_width(text, self.size) * crate::font::SANS_CAP
+                    / crate::font::SERIF_CAP
+                    * 0.95
+                    * crate::font::setup().stretch
             }
             // the drawings' own face if one is set, by its letters
             Font::Sans => text_width(text, self.size),

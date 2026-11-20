@@ -498,6 +498,7 @@ pub fn sample_house() -> Model {
                 // the entrance detail shows only the front of the house
                 crop: (view == entrance_id)
                     .then_some([DVec2::new(-0.8, -2.8), DVec2::new(5.0, 2.0)]),
+                ink: Default::default(),
             }),
         ));
     }

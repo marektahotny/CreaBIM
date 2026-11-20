@@ -6,8 +6,9 @@
 //! it as well.
 
 use crate::annotation::TextLook;
-use crate::paper::{Anchor, Canvas, Stroke};
+use crate::paper::{Anchor, Canvas, Inked, Stroke};
 use crate::raster::Raster;
+pub use creabim_core::Ink;
 use glam::DVec2;
 use std::sync::Arc;
 
@@ -275,19 +276,15 @@ pub fn place(sheet: DVec2, paper: &PaperGot, fit: Fit, turned: bool) -> Placemen
     p
 }
 
-/// The grey a colour prints as in black and white.
-pub fn luma([r, g, b]: [f32; 3]) -> f64 {
-    (0.299 * r + 0.587 * g + 0.114 * b) as f64
-}
+pub use crate::paper::luma;
 
 /// A [`Canvas`] that puts what is drawn in sheet millimetres onto paper
-/// millimetres by a [`Placement`], in colour or in black and white.
+/// millimetres by a [`Placement`], inked as `ink` says over what each
+/// drawing's own ink is (in colour, each keeps its own).
 pub struct OnPaper<'a> {
     pub inner: &'a mut dyn Canvas,
     pub place: Placement,
-    /// Black and white: lines and text black, fills grey by their
-    /// lightness.
-    pub mono: bool,
+    pub ink: Ink,
 }
 
 impl OnPaper<'_> {
@@ -298,7 +295,7 @@ impl OnPaper<'_> {
     fn stroke(&self, s: Stroke) -> Stroke {
         Stroke {
             width: s.width * self.place.scale,
-            gray: if self.mono { 0.0 } else { s.gray },
+            gray: s.gray,
             dash: s.dash.map(|d| d.map(|v| v * self.place.scale)),
         }
     }
@@ -310,62 +307,54 @@ impl OnPaper<'_> {
             a
         }
     }
+
+    /// The paper, inked.
+    fn out(&mut self) -> Inked<'_> {
+        Inked {
+            inner: &mut *self.inner,
+            ink: self.ink,
+        }
+    }
 }
 
 impl Canvas for OnPaper<'_> {
     fn line(&mut self, pts: &[DVec2], s: Stroke) {
         let (p, s) = (self.pts(pts), self.stroke(s));
-        self.inner.line(&p, s);
+        self.out().line(&p, s);
     }
 
     fn line_rgb(&mut self, pts: &[DVec2], s: Stroke, rgb: [f32; 3]) {
         let (p, s) = (self.pts(pts), self.stroke(s));
-        if self.mono {
-            self.inner.line(&p, s);
-        } else {
-            self.inner.line_rgb(&p, s, rgb);
-        }
+        self.out().line_rgb(&p, s, rgb);
     }
 
     fn fill(&mut self, pts: &[DVec2], gray: f64) {
         let p = self.pts(pts);
-        self.inner.fill(&p, gray);
+        self.out().fill(&p, gray);
     }
 
     fn fill_rgb(&mut self, pts: &[DVec2], rgb: [f32; 3]) {
         let p = self.pts(pts);
-        if self.mono {
-            self.inner.fill(&p, luma(rgb));
-        } else {
-            self.inner.fill_rgb(&p, rgb);
-        }
+        self.out().fill_rgb(&p, rgb);
     }
 
     fn tint(&mut self, pts: &[DVec2], rgb: [f32; 3]) {
         let p = self.pts(pts);
-        let rgb = if self.mono {
-            [luma(rgb) as f32; 3]
-        } else {
-            rgb
-        };
-        self.inner.tint(&p, rgb);
+        self.out().tint(&p, rgb);
     }
 
     fn text_angle(&mut self, at: DVec2, size: f64, text: &str, anchor: Anchor, angle: f64) {
         let (at, a) = (self.place.map(at), self.angle(angle));
-        self.inner
-            .text_angle(at, size * self.place.scale, text, anchor, a);
+        let size = size * self.place.scale;
+        self.out().text_angle(at, size, text, anchor, a);
     }
 
     fn styled_text(&mut self, at: DVec2, text: &str, anchor: Anchor, angle: f64, look: &TextLook) {
         let mut look = *look;
         look.size *= self.place.scale;
         look.end_size *= self.place.scale;
-        if self.mono {
-            look.rgb = None;
-        }
         let (at, a) = (self.place.map(at), self.angle(angle));
-        self.inner.styled_text(at, text, anchor, a, &look);
+        self.out().styled_text(at, text, anchor, a, &look);
     }
 
     fn image(&mut self, lo: DVec2, hi: DVec2, clip: Option<(DVec2, DVec2)>, raster: &Arc<Raster>) {
@@ -377,9 +366,9 @@ impl Canvas for OnPaper<'_> {
         let clip = clip.map(|(a, b)| boxed(a, b));
         if self.place.turned {
             let r = Arc::new(turned(raster));
-            self.inner.image(l, h, clip, &r);
+            self.out().image(l, h, clip, &r);
         } else {
-            self.inner.image(l, h, clip, raster);
+            self.out().image(l, h, clip, raster);
         }
     }
 }
@@ -520,7 +509,7 @@ mod tests {
         let mut c = OnPaper {
             inner: &mut log,
             place,
-            mono: true,
+            ink: Ink::Black,
         };
         c.line_rgb(
             &[DVec2::ZERO, DVec2::new(100.0, 0.0)],
@@ -559,7 +548,7 @@ mod tests {
                 offset: DVec2::new(100.0, 0.0),
                 cut: 0.0,
             },
-            mono: false,
+            ink: Ink::Colour,
         };
         c.image(DVec2::ZERO, DVec2::new(20.0, 10.0), None, &Arc::new(r));
         c.text_angle(DVec2::ZERO, 2.0, "x", Anchor::Start, 0.0);

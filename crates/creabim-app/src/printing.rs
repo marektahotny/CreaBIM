@@ -635,11 +635,12 @@ mod win {
         }
 
         fn text(&mut self, at: DVec2, text: &str, anchor: Anchor, angle: f64, look: &TextLook) {
-            let size = look.size;
-            if text.is_empty() || size <= 0.0 {
+            if text.is_empty() || look.size <= 0.0 {
                 return;
             }
             let setup = creabim_geom::font::setup();
+            // set at the em whose capitals stand the look's size high
+            let size = setup.em(look.size, look.font);
             let own = setup.face(look.font).cloned();
             let w = look.width(text);
             let along = match anchor {

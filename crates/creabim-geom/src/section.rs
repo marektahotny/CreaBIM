@@ -1233,6 +1233,14 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     // finally sit
     crate::annotate::break_dimensions(&mut d.items, v.scale / 1000.0);
     apply_drawing_style(model, &mut d.items, v.graphics.drawing_style);
+    // the ground under cut hatches; a renovation stage keeps its own
+    if v.reno.is_none() {
+        apply_hatch_ground(
+            &mut d.items,
+            v.graphics.drawing_style,
+            v.graphics.hatch_ground,
+        );
+    }
     // roofs seen from above, under a plan's cut: the colour styles wash
     // them in their material's colour too (MU33: a roof plan stayed white,
     // its roofs never being cut)
@@ -1290,6 +1298,37 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         }
     }
     Some(d)
+}
+
+/// The ground under the hatches of what is cut (George 2026-11-20: very
+/// light grey or the paper's colour in an ordinary drawing): fills with a
+/// pattern and no colour of their own get `ground`'s, solid and empty ones
+/// stay as they are.
+pub fn apply_hatch_ground(
+    items: &mut [PlanItem],
+    style: creabim_core::graphics::DrawingStyle,
+    ground: creabim_core::graphics::HatchGround,
+) {
+    use creabim_core::graphics::DrawingStyle as S;
+    let Some(c) = ground.rgb() else { return };
+    if !matches!(style, S::Technical | S::ColourHatch) {
+        return;
+    }
+    for it in items.iter_mut() {
+        if let PlanItem::Fill {
+            hatch,
+            rgb: rgb @ None,
+            ..
+        } = it
+        {
+            if !matches!(
+                hatch,
+                creabim_core::Hatch::Solid | creabim_core::Hatch::Empty
+            ) {
+                *rgb = Some(c);
+            }
+        }
+    }
 }
 
 /// A view's drawing style over its cut fills (A4-11).
@@ -2592,6 +2631,50 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn cut_hatches_lie_on_a_very_light_ground_except_in_renovation() {
+        use creabim_core::graphics::HatchGround;
+        let m = creabim_core::starter::starter_house();
+        let plan = m.iter().find(|e| e.name == "Ground Floor plan").unwrap().id;
+        let grounds = |m: &Model| -> Vec<Option<[f32; 3]>> {
+            view_drawing(m, plan)
+                .unwrap()
+                .items
+                .iter()
+                .filter_map(|i| match i {
+                    PlanItem::Fill { hatch, rgb, .. }
+                        if !matches!(
+                            hatch,
+                            creabim_core::Hatch::Solid | creabim_core::Hatch::Empty
+                        ) =>
+                    {
+                        Some(*rgb)
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let base = grounds(&m);
+        assert!(!base.is_empty());
+        assert!(base.iter().all(|c| *c == Some([0.965; 3])), "{base:?}");
+        let with = |f: &dyn Fn(&mut creabim_core::View)| {
+            let mut doc = creabim_core::document::Document::from_model(m.clone());
+            doc.edit(plan, "g", |e| {
+                if let ElementKind::View(v) = &mut e.kind {
+                    f(v);
+                }
+            })
+            .unwrap();
+            grounds(doc.model())
+        };
+        let paper = with(&|v| v.graphics.hatch_ground = HatchGround::Paper);
+        assert!(paper.iter().all(|c| *c == Some([1.0; 3])));
+        let grey = with(&|v| v.graphics.hatch_ground = HatchGround::Grey);
+        assert!(grey.iter().all(|c| c.is_none()));
+        let reno = with(&|v| v.reno = Some(creabim_core::reno::RenoView::New));
+        assert!(reno.iter().all(|c| c.is_none()));
+    }
 
     #[test]
     fn a_views_drawing_style_changes_its_cut_fills_on_screen_and_paper() {

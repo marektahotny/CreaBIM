@@ -103,6 +103,104 @@ pub trait Canvas {
     }
 }
 
+/// The grey a colour prints as without colour: its lightness, 0 black.
+pub fn luma([r, g, b]: [f32; 3]) -> f64 {
+    (0.299 * r + 0.587 * g + 0.114 * b) as f64
+}
+
+/// Lines and text in shades of grey stay this dark at least, so that a
+/// pale colour (yellow) still shows.
+const PALEST_INK: f64 = 0.6;
+
+/// A [`Canvas`] that inks what is drawn on it as `ink` says: in its
+/// colours, in shades of grey, or black and white (lines and text black,
+/// fills grey by their lightness).
+pub struct Inked<'a> {
+    pub inner: &'a mut dyn Canvas,
+    pub ink: creabim_core::Ink,
+}
+
+impl Inked<'_> {
+    fn grey_line(&self, g: f64) -> f64 {
+        match self.ink {
+            creabim_core::Ink::Black => 0.0,
+            _ => g.min(PALEST_INK),
+        }
+    }
+}
+
+impl Canvas for Inked<'_> {
+    fn line(&mut self, pts: &[DVec2], s: Stroke) {
+        let s = match self.ink {
+            creabim_core::Ink::Black => Stroke { gray: 0.0, ..s },
+            _ => s,
+        };
+        self.inner.line(pts, s);
+    }
+
+    fn line_rgb(&mut self, pts: &[DVec2], s: Stroke, rgb: [f32; 3]) {
+        match self.ink {
+            creabim_core::Ink::Colour => self.inner.line_rgb(pts, s, rgb),
+            _ => {
+                let gray = self.grey_line(luma(rgb));
+                self.inner.line(pts, Stroke { gray, ..s });
+            }
+        }
+    }
+
+    fn fill(&mut self, pts: &[DVec2], gray: f64) {
+        self.inner.fill(pts, gray);
+    }
+
+    fn fill_rgb(&mut self, pts: &[DVec2], rgb: [f32; 3]) {
+        match self.ink {
+            creabim_core::Ink::Colour => self.inner.fill_rgb(pts, rgb),
+            _ => self.inner.fill(pts, luma(rgb)),
+        }
+    }
+
+    fn tint(&mut self, pts: &[DVec2], rgb: [f32; 3]) {
+        let rgb = match self.ink {
+            creabim_core::Ink::Colour => rgb,
+            _ => [luma(rgb) as f32; 3],
+        };
+        self.inner.tint(pts, rgb);
+    }
+
+    fn text_angle(&mut self, at: DVec2, size: f64, text: &str, anchor: Anchor, angle: f64) {
+        self.inner.text_angle(at, size, text, anchor, angle);
+    }
+
+    fn styled_text(&mut self, at: DVec2, text: &str, anchor: Anchor, angle: f64, look: &TextLook) {
+        let mut look = *look;
+        look.rgb = match (self.ink, look.rgb) {
+            (creabim_core::Ink::Colour, rgb) => rgb,
+            (creabim_core::Ink::Black, _) | (_, None) => None,
+            (_, Some(rgb)) => Some([self.grey_line(luma(rgb)) as f32; 3]),
+        };
+        self.inner.styled_text(at, text, anchor, angle, &look);
+    }
+
+    fn image(&mut self, lo: DVec2, hi: DVec2, clip: Option<(DVec2, DVec2)>, raster: &Arc<Raster>) {
+        if self.ink.is_colour() {
+            self.inner.image(lo, hi, clip, raster);
+            return;
+        }
+        let mut rgba = raster.rgba.clone();
+        for px in rgba.chunks_mut(4) {
+            let l = (luma([px[0], px[1], px[2]].map(|c| c as f32 / 255.0)) * 255.0).round() as u8;
+            px[..3].fill(l);
+        }
+        let grey = Arc::new(Raster {
+            width: raster.width,
+            height: raster.height,
+            rgba,
+            key: raster.key ^ 0x9e37_79b9,
+        });
+        self.inner.image(lo, hi, clip, &grey);
+    }
+}
+
 /// Maps drawing coordinates (model metres) to paper millimetres.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PaperMap {
@@ -476,12 +574,13 @@ pub fn hex(rgb: [f32; 3]) -> String {
 pub fn text_width(text: &str, size: f64) -> f64 {
     let setup = crate::font::setup();
     match &setup.font {
-        Some(f) => f.width(text, size) * setup.stretch,
+        Some(f) => f.width(text, setup.em(size, creabim_core::Font::Sans)) * setup.stretch,
         None => rough_width(text, size) * setup.stretch,
     }
 }
 
-/// Width of `text` in a face like Helvetica, by its kinds of letter.
+/// Width of `text` in a face like Helvetica, its capitals `size` high,
+/// by its kinds of letter.
 pub fn rough_width(text: &str, size: f64) -> f64 {
     text.chars()
         .map(|c| match c {
@@ -493,6 +592,7 @@ pub fn rough_width(text: &str, size: f64) -> f64 {
         })
         .sum::<f64>()
         * size
+        / crate::font::SANS_CAP
 }
 
 // ---- SVG -----------------------------------------------------------------
@@ -585,7 +685,7 @@ impl SvgCanvas {
     }
 
     fn svg_text(&mut self, at: DVec2, text: &str, anchor: Anchor, angle: f64, look: &TextLook) {
-        let size = look.size;
+        let size = self.setup.em(look.size, look.font);
         let family = match (look.font, self.setup.face(look.font)) {
             (_, Some(f)) => {
                 self.faced = true;
@@ -1086,7 +1186,8 @@ impl PdfPage<'_> {
     }
 
     fn pdf_text(&mut self, at: DVec2, text: &str, anchor: Anchor, angle: f64, look: &TextLook) {
-        let size = look.size;
+        // set at the em whose capitals stand the look's size high
+        let size = self.page.setup.em(look.size, look.font);
         let w = look.width(text);
         let along = match anchor {
             Anchor::Start => 0.0,
@@ -1281,12 +1382,16 @@ mod tests {
         }
         let bytes = pdf.finish();
         let s = String::from_utf8_lossy(&bytes);
-        // the user's face by glyph numbers, 70 % wide; Times as before, as wide
+        // the user's face by glyph numbers, 70 % wide, set so its capitals
+        // stand 3 mm high; Times as before, as wide, capitals 2.5 mm
+        let f = ubuntu(0.7).font.unwrap();
+        let em = 3.0 * f.units / f.cap_height;
         assert!(
-            s.contains("/F13 3.000 Tf 0.70000 0.00000 0.00000 1.00000"),
+            s.contains(&format!("/F13 {em:.3} Tf 0.70000 0.00000 0.00000 1.00000")),
             "{s}"
         );
-        assert!(s.contains("/F5 2.500 Tf 0.70000 0.00000"));
+        let times = 2.5 / crate::font::SERIF_CAP;
+        assert!(s.contains(&format!("/F5 {times:.3} Tf 0.70000 0.00000")));
         assert!(s.contains("(Times) Tj"));
         assert!(s.contains("/Subtype /Type0 /BaseFont /Ubuntu-Light /Encoding /Identity-H"));
         assert!(s.contains("/FontFile2") && s.contains("/CIDToGIDMap /Identity"));
