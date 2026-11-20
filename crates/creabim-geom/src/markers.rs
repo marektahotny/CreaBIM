@@ -233,6 +233,21 @@ pub fn head(
     let ink = ink_of(parts, filled);
     let long = number.chars().count() > 2;
     match parts.text {
+        // no sheet number: the view's number alone, in the middle
+        MarkerText::Split if sheet.is_empty() => {
+            out.push(text_in(
+                id,
+                c,
+                number,
+                if long { 2.6 } else { 3.2 },
+                Anchor::Middle,
+                Ink {
+                    bold: ink.bold || shape.is_none(),
+                    ..ink
+                },
+                mm,
+            ));
+        }
         MarkerText::Split => {
             if shape.is_some() && !filled {
                 out.push(PlanItem::Line {
@@ -280,7 +295,11 @@ pub fn head(
                 out.push(text_in(
                     id,
                     c,
-                    &format!("{number} · {sheet}"),
+                    &if sheet.is_empty() {
+                        number.to_string()
+                    } else {
+                        format!("{number} · {sheet}")
+                    },
                     size,
                     Anchor::Middle,
                     ink,
@@ -312,6 +331,7 @@ pub fn head(
             }
         }
     }
+    out.retain(|it| !matches!(it, PlanItem::Text { text, .. } if text.is_empty()));
     out
 }
 
@@ -361,18 +381,20 @@ pub fn section(
                 Ink { bold: true, ..ink },
                 mm,
             ));
-            out.push(text_in(
-                id,
-                c + look * 5.6 * mm,
-                sheet,
-                1.9,
-                crate::paper::Anchor::Middle,
-                Ink {
-                    rgb: ink.rgb.or(Some(GREY)),
-                    bold: false,
-                },
-                mm,
-            ));
+            if !sheet.is_empty() {
+                out.push(text_in(
+                    id,
+                    c + look * 5.6 * mm,
+                    sheet,
+                    1.9,
+                    crate::paper::Anchor::Middle,
+                    Ink {
+                        rgb: ink.rgb.or(Some(GREY)),
+                        bold: false,
+                    },
+                    mm,
+                ));
+            }
         } else {
             out.extend(head(id, c, number, sheet, Some(look), parts, mm));
         }
@@ -690,7 +712,9 @@ pub fn restyle_sections(model: &Model, items: &mut Vec<PlanItem>, parts: &Marker
         } = v.kind
         {
             let number = number_of(model, id);
-            let sheet = sheet_ref(model, id);
+            // a section's or an elevation's mark carries its number only:
+            // no sheet reference is printed by it (George, 2026-11-20)
+            let sheet = String::new();
             if cut && !v.line.is_plain() {
                 items.extend(section_along(
                     id, &number, &sheet, start, end, &v.line, parts, mm,
@@ -705,6 +729,36 @@ pub fn restyle_sections(model: &Model, items: &mut Vec<PlanItem>, parts: &Marker
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mark_without_a_sheet_shows_only_its_number() {
+        for parts in creabim_core::styles::MarkerFamily::ALL
+            .iter()
+            .filter_map(|f| f.parts())
+        {
+            for cut in [true, false] {
+                let items = section(
+                    ElementId::new(),
+                    "A",
+                    "",
+                    DVec2::ZERO,
+                    DVec2::new(10.0, 0.0),
+                    cut,
+                    &parts,
+                    0.1,
+                );
+                let texts: Vec<&str> = items
+                    .iter()
+                    .filter_map(|i| match i {
+                        PlanItem::Text { text, .. } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(texts.iter().all(|t| *t == "A"), "{texts:?}");
+                assert!(!texts.is_empty());
+            }
+        }
+    }
 
     #[test]
     fn a_classic_section_has_two_split_bubbles_and_heavy_ends() {
