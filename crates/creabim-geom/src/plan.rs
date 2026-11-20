@@ -67,81 +67,15 @@ pub fn hatch_of(model: &Model, id: ElementId) -> Hatch {
 /// Hatch line segments clipped to `polygon`, with a base spacing of
 /// `spacing` drawing units. Stipple dots come back as very short segments.
 pub fn hatch_lines(hatch: Hatch, polygon: &[DVec2], spacing: f64) -> Vec<(DVec2, DVec2)> {
-    let s = spacing;
-    let deg = |d: f64| d.to_radians();
-    match hatch {
-        Hatch::Empty | Hatch::Solid => vec![],
-        Hatch::Diagonal => scan_lines(polygon, deg(45.0), s, 0.0),
-        Hatch::Cross => {
-            let mut v = scan_lines(polygon, deg(45.0), s * 1.4, 0.0);
-            v.extend(scan_lines(polygon, deg(-45.0), s * 1.4, 0.0));
-            v
-        }
-        Hatch::Brick => {
-            let mut v = scan_lines(polygon, deg(45.0), s * 2.0, 0.0);
-            v.extend(scan_lines(polygon, deg(45.0), s * 2.0, s * 0.5));
-            v
-        }
-        Hatch::Concrete => {
-            // about 2.4 mm apart on paper, as concrete reads in the sample
-            // sections (ASR_006): at 4x the lines missed a footing
-            let mut v = scan_lines(polygon, deg(45.0), s * 2.0, 0.0);
-            v.extend(stipple(polygon, s * 1.3));
-            v
-        }
-        Hatch::MasonryOuter
-        | Hatch::MasonryInner
-        | Hatch::Reinforced
-        | Hatch::Ground
-        | Hatch::EarthFill
-        | Hatch::Gravel
-        | Hatch::Insulation => crate::looks::pattern_lines(
-            &creabim_core::styles::builtin_pattern(hatch),
-            polygon,
-            creabim_core::styles::BASE_SPACING / s,
-        ),
-        Hatch::Timber => {
-            // grain runs along the polygon's longest side
-            let n = polygon.len();
-            let angle = (0..n)
-                .map(|i| polygon[(i + 1) % n] - polygon[i])
-                .max_by(|a, b| a.length().total_cmp(&b.length()))
-                .map_or(0.0, |d| d.to_angle());
-            scan_lines(polygon, angle, s * 1.2, s * 0.3)
-        }
-    }
-}
-
-/// A staggered grid of dots inside a polygon.
-fn stipple(polygon: &[DVec2], spacing: f64) -> Vec<(DVec2, DVec2)> {
-    if polygon.len() < 3 || spacing <= 0.0 {
+    // the built-in pattern, so the screen draws what paper prints
+    if spacing <= 0.0 {
         return vec![];
     }
-    let (lo, hi) = polygon
-        .iter()
-        .fold((DVec2::MAX, DVec2::MIN), |(a, b), p| (a.min(*p), b.max(*p)));
-    let dot = DVec2::new(spacing * 0.2, 0.0);
-    let mut out = Vec::new();
-    let mut j = (lo.y / spacing).floor() as i64;
-    while (j as f64) * spacing <= hi.y {
-        let y = j as f64 * spacing;
-        // offset alternate rows, and jitter a little so it reads as stipple
-        let shift = if j % 2 == 0 { 0.0 } else { 0.5 };
-        let mut i = (lo.x / spacing).floor() as i64 - 1;
-        while (i as f64) * spacing <= hi.x {
-            let h = ((i * 73 + j * 151).rem_euclid(97)) as f64 / 97.0 - 0.5;
-            let p = DVec2::new(
-                (i as f64 + shift + h * 0.4) * spacing,
-                y + h * 0.3 * spacing,
-            );
-            if point_in(p, polygon) {
-                out.push((p, p + dot));
-            }
-            i += 1;
-        }
-        j += 1;
-    }
-    out
+    crate::looks::pattern_lines(
+        &creabim_core::styles::builtin_pattern(hatch),
+        polygon,
+        creabim_core::styles::BASE_SPACING / spacing,
+    )
 }
 
 fn point_in(p: DVec2, poly: &[DVec2]) -> bool {
@@ -154,45 +88,6 @@ fn point_in(p: DVec2, poly: &[DVec2]) -> bool {
         }
     }
     inside
-}
-
-/// Parallel lines at `angle`, `spacing` apart and shifted by `phase`,
-/// clipped to a polygon (even-odd).
-fn scan_lines(polygon: &[DVec2], angle: f64, spacing: f64, phase: f64) -> Vec<(DVec2, DVec2)> {
-    if polygon.len() < 3 || spacing <= 0.0 {
-        return vec![];
-    }
-    // rotate so the lines run along x; lines sit at y = k * spacing, so
-    // neighbouring polygons share one continuous pattern
-    let (dir, nrm) = (DVec2::from_angle(angle), DVec2::from_angle(angle).perp());
-    let local: Vec<DVec2> = polygon
-        .iter()
-        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm) - phase))
-        .collect();
-    let (y0, y1) = local
-        .iter()
-        .fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p.y), b.max(p.y)));
-    let mut out = Vec::new();
-    let mut k = (y0 / spacing).ceil() as i64;
-    while (k as f64) * spacing < y1 {
-        let y = k as f64 * spacing;
-        let mut xs: Vec<f64> = Vec::new();
-        for i in 0..local.len() {
-            let (a, b) = (local[i], local[(i + 1) % local.len()]);
-            if (a.y > y) != (b.y > y) {
-                xs.push(a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x));
-            }
-        }
-        xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        for pair in xs.chunks(2) {
-            if let [xa, xb] = pair {
-                let y = y + phase;
-                out.push((dir * *xa + nrm * y, dir * *xb + nrm * y));
-            }
-        }
-        k += 1;
-    }
-    out
 }
 
 /// Which cut wins where two overlap: higher numbers cut through lower ones.

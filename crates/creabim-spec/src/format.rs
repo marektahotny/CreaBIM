@@ -169,6 +169,7 @@ spec_enum! {
         EarthFill = "earth-fill",
         Gravel = "gravel",
         Insulation = "insulation",
+        Membrane = "membrane",
     }
 }
 

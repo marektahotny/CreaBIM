@@ -270,6 +270,7 @@ The pattern on a material's cut faces.
 - `"earth-fill"`
 - `"gravel"`
 - `"insulation"`
+- `"membrane"`
 
 ### RatePer
 

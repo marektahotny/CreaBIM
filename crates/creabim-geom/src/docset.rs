@@ -399,7 +399,17 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
             sections.push(b.view(tr(name), View::section(a, c, 30.0, true)));
         }
     }
-    b.sheet(number(asr, "REZ", &mut n), tr("Sections"), &sections);
+    // the sections carry the legend of materials too, as the office's
+    // ASR_006 does
+    b.sheet(
+        number(asr, "REZ", &mut n),
+        tr("Sections"),
+        &sections
+            .iter()
+            .copied()
+            .chain(materials)
+            .collect::<Vec<_>>(),
+    );
     let mut elevations: Vec<ElementId> =
         b.m.iter()
             .filter_map(|e| match &e.kind {

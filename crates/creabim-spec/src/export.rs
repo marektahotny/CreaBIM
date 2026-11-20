@@ -603,6 +603,7 @@ fn material(e: &Element, id: &str, m: &core::Material) -> f::Material {
         core::Hatch::EarthFill => f::Hatch::EarthFill,
         core::Hatch::Gravel => f::Hatch::Gravel,
         core::Hatch::Insulation => f::Hatch::Insulation,
+        core::Hatch::Membrane => f::Hatch::Membrane,
     };
     let text = |s: &String| (!s.is_empty()).then(|| s.clone());
     let unit = |v: f32, d: f32| (v != d).then_some(short(v));

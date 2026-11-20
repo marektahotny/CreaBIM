@@ -481,6 +481,7 @@ fn hatch(h: f::Hatch) -> core::Hatch {
         f::Hatch::EarthFill => core::Hatch::EarthFill,
         f::Hatch::Gravel => core::Hatch::Gravel,
         f::Hatch::Insulation => core::Hatch::Insulation,
+        f::Hatch::Membrane => core::Hatch::Membrane,
     }
 }
 
