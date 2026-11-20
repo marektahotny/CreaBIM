@@ -203,7 +203,22 @@
     "Hatch": {
       "type": "string",
       "description": "The pattern on a material's cut faces.",
-      "enum": ["empty", "solid", "diagonal", "cross", "brick", "concrete", "timber"]
+      "enum": [
+        "empty",
+        "solid",
+        "diagonal",
+        "cross",
+        "brick",
+        "concrete",
+        "timber",
+        "masonry-outer",
+        "masonry-inner",
+        "reinforced",
+        "ground",
+        "earth-fill",
+        "gravel",
+        "insulation"
+      ]
     },
     "RatePer": {
       "type": "string",

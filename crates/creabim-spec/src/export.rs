@@ -596,6 +596,13 @@ fn material(e: &Element, id: &str, m: &core::Material) -> f::Material {
         core::Hatch::Brick => f::Hatch::Brick,
         core::Hatch::Concrete => f::Hatch::Concrete,
         core::Hatch::Timber => f::Hatch::Timber,
+        core::Hatch::MasonryOuter => f::Hatch::MasonryOuter,
+        core::Hatch::MasonryInner => f::Hatch::MasonryInner,
+        core::Hatch::Reinforced => f::Hatch::Reinforced,
+        core::Hatch::Ground => f::Hatch::Ground,
+        core::Hatch::EarthFill => f::Hatch::EarthFill,
+        core::Hatch::Gravel => f::Hatch::Gravel,
+        core::Hatch::Insulation => f::Hatch::Insulation,
     };
     let text = |s: &String| (!s.is_empty()).then(|| s.clone());
     let unit = |v: f32, d: f32| (v != d).then_some(short(v));

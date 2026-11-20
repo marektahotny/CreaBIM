@@ -474,6 +474,13 @@ fn hatch(h: f::Hatch) -> core::Hatch {
         f::Hatch::Brick => core::Hatch::Brick,
         f::Hatch::Concrete => core::Hatch::Concrete,
         f::Hatch::Timber => core::Hatch::Timber,
+        f::Hatch::MasonryOuter => core::Hatch::MasonryOuter,
+        f::Hatch::MasonryInner => core::Hatch::MasonryInner,
+        f::Hatch::Reinforced => core::Hatch::Reinforced,
+        f::Hatch::Ground => core::Hatch::Ground,
+        f::Hatch::EarthFill => core::Hatch::EarthFill,
+        f::Hatch::Gravel => core::Hatch::Gravel,
+        f::Hatch::Insulation => core::Hatch::Insulation,
     }
 }
 

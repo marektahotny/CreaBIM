@@ -614,10 +614,25 @@ pub enum Hatch {
     Concrete,
     /// Lines along the cut, like grain.
     Timber,
+    /// Outer load-bearing masonry of blocks, as the office's ASR legend:
+    /// 45° lines with small rings.
+    MasonryOuter,
+    /// Inner load-bearing masonry: crossed pairs of 45° lines.
+    MasonryInner,
+    /// Reinforced concrete: dense broken 45° lines.
+    Reinforced,
+    /// Undisturbed ground: sparse short fine 45° lines.
+    Ground,
+    /// Fill of compacted earth: a herringbone of short lines.
+    EarthFill,
+    /// Fill of compacted gravel: small rings of many sizes.
+    Gravel,
+    /// Thermal insulation: the batt loops, as wide as the layer.
+    Insulation,
 }
 
 impl Hatch {
-    pub const ALL: [Hatch; 7] = [
+    pub const ALL: [Hatch; 14] = [
         Hatch::Empty,
         Hatch::Solid,
         Hatch::Diagonal,
@@ -625,6 +640,13 @@ impl Hatch {
         Hatch::Brick,
         Hatch::Concrete,
         Hatch::Timber,
+        Hatch::MasonryOuter,
+        Hatch::MasonryInner,
+        Hatch::Reinforced,
+        Hatch::Ground,
+        Hatch::EarthFill,
+        Hatch::Gravel,
+        Hatch::Insulation,
     ];
 
     pub fn label(self) -> &'static str {
@@ -636,6 +658,13 @@ impl Hatch {
             Hatch::Brick => "Brick",
             Hatch::Concrete => "Concrete",
             Hatch::Timber => "Timber",
+            Hatch::MasonryOuter => "Masonry, outer",
+            Hatch::MasonryInner => "Masonry, inner",
+            Hatch::Reinforced => "Reinforced concrete",
+            Hatch::Ground => "Ground",
+            Hatch::EarthFill => "Earth fill",
+            Hatch::Gravel => "Gravel fill",
+            Hatch::Insulation => "Insulation",
         }
     }
 }

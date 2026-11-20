@@ -87,6 +87,17 @@ pub fn hatch_lines(hatch: Hatch, polygon: &[DVec2], spacing: f64) -> Vec<(DVec2,
             v.extend(stipple(polygon, s * 1.3));
             v
         }
+        Hatch::MasonryOuter
+        | Hatch::MasonryInner
+        | Hatch::Reinforced
+        | Hatch::Ground
+        | Hatch::EarthFill
+        | Hatch::Gravel
+        | Hatch::Insulation => crate::looks::pattern_lines(
+            &creabim_core::styles::builtin_pattern(hatch),
+            polygon,
+            creabim_core::styles::BASE_SPACING / s,
+        ),
         Hatch::Timber => {
             // grain runs along the polygon's longest side
             let n = polygon.len();

@@ -13809,12 +13809,20 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
             }
         }
     }
-    if !any {
+    // the base's materials take the hatches of the ASR legend of
+    // materials, unless their hatch was picked by hand
+    let hatches = creabim_core::skbase::refresh_hatches(&model);
+    if !any && hatches.is_none() {
         return model;
     }
     let mut doc = Document::from_model(model);
     // a failed insert leaves the model as it was, which still opens
-    let _ = doc.commit(tx);
+    if any {
+        let _ = doc.commit(tx);
+    }
+    if let Some(tx) = hatches {
+        let _ = doc.commit(tx);
+    }
     doc.model().clone()
 }
 

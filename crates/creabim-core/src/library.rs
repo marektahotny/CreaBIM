@@ -724,7 +724,7 @@ pub const LIBRARY: &[LibraryEntry] = &[
     entry(
         "Insulation, mineral wool",
         "insulation",
-        CRS,
+        Hatch::Insulation,
         rgb(236, 214, 120),
         1.0,
         "Glass or stone wool batts",
@@ -732,7 +732,7 @@ pub const LIBRARY: &[LibraryEntry] = &[
     entry(
         "Insulation, EPS",
         "insulation",
-        CRS,
+        Hatch::Insulation,
         rgb(240, 240, 236),
         0.95,
         "Expanded polystyrene boards",
@@ -740,7 +740,7 @@ pub const LIBRARY: &[LibraryEntry] = &[
     entry(
         "Insulation, XPS",
         "insulation",
-        CRS,
+        Hatch::Insulation,
         rgb(196, 222, 236),
         0.9,
         "Extruded polystyrene boards, for perimeter and below ground",
@@ -748,7 +748,7 @@ pub const LIBRARY: &[LibraryEntry] = &[
     entry(
         "Insulation, PIR",
         "insulation",
-        CRS,
+        Hatch::Insulation,
         rgb(232, 210, 160),
         0.9,
         "Foil-faced polyisocyanurate boards",
@@ -756,7 +756,7 @@ pub const LIBRARY: &[LibraryEntry] = &[
     entry(
         "Insulation, wood fibre",
         "insulation",
-        CRS,
+        Hatch::Insulation,
         rgb(176, 140, 96),
         1.0,
         "Wood fibre boards",
@@ -1061,7 +1061,8 @@ pub fn hatch_for_category(category: &str) -> Hatch {
         "brick" | "block" => Hatch::Brick,
         "wood" => Hatch::Timber,
         "stone" | "earth" => Hatch::Diagonal,
-        "insulation" | "gypsum" => Hatch::Cross,
+        "insulation" => Hatch::Insulation,
+        "gypsum" => Hatch::Cross,
         "glass" | "finish" | "plastic" => Hatch::Empty,
         _ => Hatch::Solid,
     }
