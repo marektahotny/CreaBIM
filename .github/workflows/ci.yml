@@ -113,9 +113,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release -p creabim-app -p creabim-cli
+      - name: Version
+        shell: bash
+        run: echo "VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
-          name: creabim-windows
+          name: creabim-windows-${{ env.VERSION }}
           path: |
             target/release/creabim-app.exe
             target/release/creabim.exe
@@ -150,6 +153,7 @@ jobs:
       - name: Disk image and zip
         run: |
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           DATE=$(git log -1 --format=%cs)
           name="CreaBIM-${VERSION}-${DATE}-macos-apple-silicon"
           bash packaging/macos/make-dmg.sh "$VERSION" "$DATE" \
@@ -166,7 +170,7 @@ jobs:
           tail -n 40 ~/Library/Logs/CreaBIM/activity.log || true
       - uses: actions/upload-artifact@v4
         with:
-          name: creabim-macos-apple-silicon
+          name: creabim-macos-apple-silicon-${{ env.VERSION }}
           path: |
             CreaBIM-*-macos-apple-silicon.dmg
             CreaBIM-*-macos-apple-silicon.zip

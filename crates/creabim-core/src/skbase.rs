@@ -13,9 +13,13 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct Base {
+    #[serde(default)]
     materials: Vec<BaseMaterial>,
+    #[serde(default)]
     walls: Vec<BuildUp>,
+    #[serde(default)]
     floors: Vec<BuildUp>,
+    #[serde(default)]
     roofs: Vec<BuildUp>,
 }
 
@@ -68,6 +72,11 @@ struct BaseLayer {
     vent: bool,
 }
 
+/// PilonDesigner's base, with CreaBIM's own additions over it
+/// (`data/sk-partitions.json`: partitions of the PORFIX and Porotherm
+/// catalogues, 10 mm plaster both sides). An addition's material takes
+/// the place of the base's of the same id, so a value checked against the
+/// maker's sheet wins; its build-ups come after the base's.
 fn base() -> Base {
     let mut b: Base =
         serde_json::from_str(include_str!("../data/sk-base.json")).expect("sk-base.json");
@@ -77,6 +86,17 @@ fn base() -> Base {
     b.walls.extend(extra.walls);
     b.floors.extend(extra.floors);
     b.roofs.extend(extra.roofs);
+    let more: Base = serde_json::from_str(include_str!("../data/sk-partitions.json"))
+        .expect("sk-partitions.json");
+    for m in more.materials {
+        match b.materials.iter_mut().find(|x| x.id == m.id) {
+            Some(x) => *x = m,
+            None => b.materials.push(m),
+        }
+    }
+    b.walls.extend(more.walls);
+    b.floors.extend(more.floors);
+    b.roofs.extend(more.roofs);
     b
 }
 
@@ -365,7 +385,7 @@ mod tests {
         doc.commit(add_base(doc.model())).unwrap();
         let m = doc.model();
         let (materials, walls, floors, roofs) = counts();
-        assert_eq!((materials, walls, floors, roofs), (72, 21, 4, 3));
+        assert_eq!((materials, walls, floors, roofs), (79, 34, 4, 3));
         assert_eq!(crate::library::materials(m).len(), materials);
         assert_eq!(assembly::assemblies(m).len(), walls + floors + roofs);
         assert_eq!(types::types(m).len(), walls + floors + roofs);
@@ -445,5 +465,49 @@ mod tests {
             panic!()
         };
         assert!((w.thickness - 0.47).abs() < 1e-9 && w.assembly.is_some());
+    }
+
+    #[test]
+    fn partitions_of_porfix_and_porotherm_are_plastered_10_mm() {
+        let mut doc = Document::new();
+        doc.commit(add_base(doc.model())).unwrap();
+        let m = doc.model();
+        let all = assembly::assemblies(m);
+        let parts: Vec<_> = all
+            .iter()
+            .filter(|(_, n, _)| {
+                n.starts_with("Priečka – PORFIX") || n.starts_with("Priečka – Porotherm")
+            })
+            .collect();
+        assert!(parts.len() >= 15, "{}", parts.len());
+        for (_, n, a) in &parts {
+            let l = &a.layers;
+            assert_eq!(l.len(), 3, "{n}");
+            assert!((l[0].thickness - 0.01).abs() < 1e-9, "{n}");
+            assert!((l[2].thickness - 0.01).abs() < 1e-9, "{n}");
+            assert_eq!(l[1].function, LayerFunction::Structure, "{n}");
+            // every block has its λ, so the U is counted
+            let u = crate::thermal::of_assembly(m, a, None);
+            assert!(u.u.is_some(), "{n}");
+        }
+        let (_, _, a) = all
+            .iter()
+            .find(|(_, n, _)| *n == "Priečka – Porotherm 11,5 AKU")
+            .unwrap();
+        assert!((a.total() - 0.135).abs() < 1e-9);
+        let brick = m.get(a.layers[1].material.unwrap()).unwrap();
+        let ElementKind::Material(mat) = &brick.kind else {
+            panic!()
+        };
+        assert_eq!((mat.lambda, mat.hatch), (Some(0.34), Hatch::Brick));
+        // the PORFIX partition block takes λ10,dry from porfix.sk
+        let (_, _, a) = all
+            .iter()
+            .find(|(_, n, _)| *n == "Priečka – PORFIX priečkovka P2-500 125")
+            .unwrap();
+        let ElementKind::Material(mat) = &m.get(a.layers[1].material.unwrap()).unwrap().kind else {
+            panic!()
+        };
+        assert_eq!((mat.lambda, mat.hatch), (Some(0.12), Hatch::Diagonal));
     }
 }

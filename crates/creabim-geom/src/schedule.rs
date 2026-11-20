@@ -1081,7 +1081,15 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
                     top = tops[r + 1];
                 }
             }
-            line(&mut items, DVec2::new(x, top), DVec2::new(x, bottom), false);
+            // in the totals row a label runs on across the empty cells
+            // up to its value (Úžitková plocha ... 72.37 m²), so the line
+            // stops over it
+            let t = |k: usize| s.totals.get(k).is_some_and(|t| !t.is_empty());
+            let merged = !t(i) && (0..i).any(t) && (i + 1..s.columns.len()).any(t);
+            let end = if merged { totals_top } else { bottom };
+            if end < top {
+                line(&mut items, DVec2::new(x, top), DVec2::new(x, end), false);
+            }
         }
         x += c.width;
     }
