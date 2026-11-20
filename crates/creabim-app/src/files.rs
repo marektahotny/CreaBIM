@@ -453,7 +453,32 @@ pub fn pick_save(current: &str, title: &str, ext: &str) -> Option<String> {
 
 #[cfg(windows)]
 fn pick_save_in(p: &Path, title: &str, ext: &str) -> Option<String> {
-    win_save::pick(p, title, ext)
+    win_save::pick(p, title, ext, true)
+}
+
+/// Save as for the project: like [`pick_save`], but on Windows a file that
+/// is there already is not asked about here. [`ask_overwrite`] says when
+/// the app is to ask Replace it? in its own window (Windows' questions
+/// could fall behind the app window, where nothing reached them).
+pub fn pick_save_path(current: &str, title: &str, ext: &str) -> Option<String> {
+    let abs = std::path::absolute(current).unwrap_or_else(|_| current.into());
+    pick_save_path_in(&abs, &crate::i18n::tr(title), ext)
+}
+
+#[cfg(windows)]
+fn pick_save_path_in(p: &Path, title: &str, ext: &str) -> Option<String> {
+    win_save::pick(p, title, ext, false)
+}
+
+#[cfg(not(windows))]
+fn pick_save_path_in(p: &Path, title: &str, ext: &str) -> Option<String> {
+    pick_save_in(p, title, ext)
+}
+
+/// The app asks Replace it? itself for a file picked by
+/// [`pick_save_path`]: on Windows, where the picker doesn't.
+pub fn ask_overwrite(path: &str) -> bool {
+    cfg!(windows) && Path::new(path).exists()
 }
 
 #[cfg(not(windows))]
@@ -571,7 +596,7 @@ mod win_save {
         super::MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed) as _
     }
 
-    pub fn pick(start: &Path, title: &str, ext: &str) -> Option<String> {
+    pub fn pick(start: &Path, title: &str, ext: &str, confirm: bool) -> Option<String> {
         let hwnd = owner();
         let mut name: String = start
             .file_name()
@@ -594,7 +619,7 @@ mod win_save {
                 }
                 picked
             }?;
-            if !Path::new(&picked).exists() || replace(hwnd, &picked, title) {
+            if !confirm || !Path::new(&picked).exists() || replace(hwnd, &picked, title) {
                 return Some(picked);
             }
             // not replaced: the picker again, on the name chosen

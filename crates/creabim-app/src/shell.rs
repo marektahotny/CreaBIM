@@ -4501,6 +4501,16 @@ impl CreaBimApp {
     }
 
     fn close_popup(&mut self) {
+        // Replace the file? goes only by its own buttons and Esc
+        if self.overwrite.is_some()
+            && self
+                .shell
+                .popup
+                .as_ref()
+                .is_some_and(|p| p.key == OVERWRITE_KEY)
+        {
+            return;
+        }
         // the Save the changes window goes only by its own buttons and keys
         if self.close_ask
             && self
@@ -4541,6 +4551,43 @@ impl CreaBimApp {
         self.shell.focus_popup = true;
     }
 
+    /// Replace the file?, in the middle of the app window.
+    pub(super) fn show_overwrite_dialog(&mut self, ctx: &egui::Context) {
+        if self
+            .shell
+            .popup
+            .as_ref()
+            .is_some_and(|p| p.key == OVERWRITE_KEY)
+        {
+            return;
+        }
+        let screen = ctx.viewport_rect();
+        // the page says how tall it is once drawn
+        let size = egui::vec2(480.0, 170.0);
+        self.shell.popup = Some(Popup {
+            key: OVERWRITE_KEY.into(),
+            at: screen.center() - size / 2.0,
+            up: None,
+            above: None,
+            size,
+        });
+        self.shell.focus_popup = true;
+    }
+
+    pub(super) fn hide_overwrite_dialog(&mut self) {
+        if self
+            .shell
+            .popup
+            .as_ref()
+            .is_some_and(|p| p.key == OVERWRITE_KEY)
+        {
+            self.shell.popup = None;
+            if let Some(web) = &mut self.shell.web {
+                web.hide_popup();
+            }
+        }
+    }
+
     pub(super) fn hide_close_dialog(&mut self) {
         if self
             .shell
@@ -4578,6 +4625,11 @@ impl CreaBimApp {
             "closeask" => {
                 let what = b["do"].as_str().unwrap_or("").to_string();
                 self.close_do(ctx, &what);
+            }
+            // Replace the file?: replace or back
+            "overwrite" => {
+                let yes = b["do"].as_str() == Some("yes");
+                self.overwrite_answer(ctx, yes);
             }
             "bar" => self.shell.bar = Some(crate::optionbar::Measure::from_json(b)),
             // a double-click in the project browser: a type opens on its
@@ -4658,7 +4710,7 @@ impl CreaBimApp {
                 let above = b["top"].as_f64().map(|u| origin.y + u as f32);
                 let key = b["key"].as_str().unwrap_or("").to_string();
                 // no menus over the Save the changes window
-                if self.close_ask {
+                if self.close_ask || self.overwrite.is_some() {
                     return;
                 }
                 let n = self.menu_items(&key).len() as f32;
@@ -4677,7 +4729,7 @@ impl CreaBimApp {
                     // the palette and Save the changes keep the width they
                     // were opened with
                     let w = match p.key.as_str() {
-                        "palette" | CLOSE_KEY => p.size.x,
+                        "palette" | CLOSE_KEY | OVERWRITE_KEY => p.size.x,
                         _ => b["w"].as_f64().unwrap_or(200.0) as f32,
                     };
                     p.size = egui::vec2(w, h);
@@ -5028,6 +5080,13 @@ impl CreaBimApp {
                 }
                 // Save the changes: in the middle, as tall as its page asks,
                 // never more than the window (it scrolls then)
+                // Replace the file?: like Save the changes
+                OVERWRITE_KEY => {
+                    let room = (screen.size() - egui::vec2(32.0, 32.0)).max(egui::vec2(240.0, 120.0));
+                    let rect = egui::Rect::from_center_size(screen.center(), p.size.min(room));
+                    let state = json!({"theme": self.theme(), "key": p.key, "items": [], "overwrite": self.overwrite_state_json()});
+                    return (rect, state, false);
+                }
                 CLOSE_KEY => {
                     let room = (screen.size() - egui::vec2(32.0, 32.0)).max(egui::vec2(240.0, 120.0));
                     let rect = egui::Rect::from_center_size(screen.center(), p.size.min(room));
@@ -5209,6 +5268,8 @@ fn opens_up(p: &Popup, screen: egui::Rect) -> Option<f32> {
 
 /// The popup key of the Save the changes window.
 const CLOSE_KEY: &str = "closeask";
+/// The popup's key while Replace the file? is asked.
+const OVERWRITE_KEY: &str = "overwrite";
 
 fn popup_size(p: &Popup, screen: egui::Rect) -> egui::Vec2 {
     let margin = 6.0;

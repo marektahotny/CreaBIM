@@ -219,6 +219,9 @@ pub struct CreaBimApp {
     report_ask: Option<bool>,
     /// Closing with unsaved changes: Save, Don't save or Cancel is asked.
     close_ask: bool,
+    /// Save as picked a file that is there already: Replace or not is
+    /// asked in the app's own window (Windows' own question fell behind it).
+    overwrite: Option<appmenu::Overwrite>,
     /// Saving on its own every few minutes, and work brought back.
     autosave: autosave::State,
     /// Where the Save the changes window is: asking, saving, saved, failed.
@@ -581,6 +584,7 @@ impl CreaBimApp {
             log_ui: Default::default(),
             report_ask: None,
             close_ask: false,
+            overwrite: None,
             autosave: Default::default(),
             close_state: Default::default(),
             close_ok: false,
@@ -891,12 +895,20 @@ impl CreaBimApp {
 
     fn save_as(&mut self) {
         let start = with_extension(&self.path, "creabim");
-        if let Some(path) = crate::files::pick_save(&start, "Save the project as", "creabim") {
-            // the old name's autosave goes with it
-            self.autosave_clear();
-            self.path = path;
-            self.save();
+        if let Some(path) = crate::files::pick_save_path(&start, "Save the project as", "creabim") {
+            if crate::files::ask_overwrite(&path) {
+                self.ask_overwrite(path, appmenu::OverwriteThen::SaveAs);
+            } else {
+                self.save_as_to(path);
+            }
         }
+    }
+
+    pub(crate) fn save_as_to(&mut self, path: String) {
+        // the old name's autosave goes with it
+        self.autosave_clear();
+        self.path = path;
+        self.save();
     }
 
     /// Bring a file's objects in as linked elements.
@@ -13668,6 +13680,7 @@ impl eframe::App for CreaBimApp {
         self.help_window(&ctx);
         self.report_window(&ctx);
         self.close_window(&ctx);
+        self.overwrite_window(&ctx);
         // a plan in its own window keeps egui's menus
         self.plan.web_menus = false;
 
