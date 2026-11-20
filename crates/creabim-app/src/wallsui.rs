@@ -385,6 +385,48 @@ pub(super) fn seat_fields(
                 });
             c
         });
+        // a plastic frame or leaf in its RAL colour: the door's material,
+        // from the library's plastics (George: as the lists and 3D show it)
+        if d.frame == DoorFrame::Plastic || d.leaf == DoorMaterial::Plastic {
+            let current = o
+                .material
+                .and_then(|m| model.get(m))
+                .map(|e| e.name.clone());
+            let plastic = o.material.and_then(|m| model.get(m)).is_some_and(
+                |e| matches!(&e.kind, ElementKind::Material(m) if m.category == "plastic"),
+            );
+            let mut pick = None;
+            crate::props::row(ui, "Colour (RAL)", |ui| {
+                egui::ComboBox::from_id_salt("door_ral")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(if plastic {
+                        crate::i18n::tw(current.as_deref().unwrap_or(""))
+                    } else {
+                        crate::i18n::tw("Pick a colour")
+                    })
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for e in creabim_core::library::LIBRARY
+                            .iter()
+                            .filter(|e| e.category == "plastic")
+                        {
+                            let on = current.as_deref() == Some(e.name);
+                            if ui.selectable_label(on, crate::i18n::tw(e.name)).clicked() {
+                                pick = Some(e.name);
+                            }
+                        }
+                    });
+                false
+            });
+            // a door just made plastic starts white
+            let fresh = !plastic
+                && o.door.as_ref().is_some_and(|x| {
+                    x.frame != DoorFrame::Plastic && x.leaf != DoorMaterial::Plastic
+                });
+            if let Some(name) = pick.or(fresh.then_some(PVC_WHITE)) {
+                ui.data_mut(|m| m.insert_temp(egui::Id::new(PVC_PICK), name));
+            }
+        }
         let mut fire = d.fire.is_some();
         if crate::props::row(ui, "Fire door", |ui| ui.checkbox(&mut fire, "").changed()) {
             d.fire = fire.then(FireDoor::default);
@@ -504,6 +546,12 @@ pub(super) fn seat_fields(
 }
 
 /// A door's hand and swing, or a window's facing. Returns the edit's name.
+/// Where the door fields leave the plastic colour picked, for the
+/// properties to take from the library and give the door.
+pub(super) const PVC_PICK: &str = "door.pvc_pick";
+/// The colour a door made plastic starts in.
+const PVC_WHITE: &str = "PVC, RAL 9016 white";
+
 pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) -> &'static str {
     let mut label = "";
     let host = match model.get(o.host).map(|e| &e.kind) {
