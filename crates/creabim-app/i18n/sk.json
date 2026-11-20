@@ -4674,7 +4674,7 @@
  "R [Pa/m]": "R [Pa/m]",
  "R [m²K/W]": "R [m²K/W]",
  "RC column in a wall": "ŽB stĺp v stene",
- "RC column in a wall: it sits in the wall's load-bearing core, as deep as the core, and moves only along the wall.": "ŽB stĺp v stene: sedí v nosnej časti steny, hĺbku má podľa nej a posúva sa len v smere steny.",
+ "RC column in a wall: it sits in the wall's load-bearing core, as deep as the core, moves only along the wall and takes its base, top and height from the wall.": "ŽB stĺp v stene: sedí v nosnej časti steny, hĺbku má podľa nej, posúva sa len v smere steny a spodok, vrch aj výšku preberá od steny.",
  "RC column in a wall…": "ŽB stĺp v stene…",
  "RC column in wall": "ŽB stĺp v stene",
  "RC column put in the wall: in its load-bearing core, it moves only along the wall; XPS on the exterior side is in its Properties. Click the next one, Esc leaves.": "ŽB stĺp vložený do steny: sedí v nosnej časti steny a posúva sa len v smere steny; zateplenie XPS z exteriéru zapnete vo Vlastnostiach. Kliknite na ďalší, Esc ukončí.",
