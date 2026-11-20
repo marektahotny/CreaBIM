@@ -62,8 +62,8 @@ fn layered_walls_and_slabs_round_trip_through_ifc() {
     assert_eq!(before.len(), 11, "nine walls and two slabs");
     let ifc = export_ifc4(&model, &ExportOptions::default());
     assert_eq!(ifc.matches("IFCMATERIALLAYERSETUSAGE(").count(), 11);
-    // the five starter assemblies, the foundation wall one unused
-    assert_eq!(ifc.matches("IFCMATERIALLAYERSET(").count(), 5);
+    // the four starter assemblies
+    assert_eq!(ifc.matches("IFCMATERIALLAYERSET(").count(), 4);
     assert!(ifc.contains(".AXIS2.,.POSITIVE.") && ifc.contains(".AXIS2.,.NEGATIVE."));
     assert!(ifc.contains(".AXIS3.,.NEGATIVE."));
     let back = import_ifc(&ifc).unwrap().model;
