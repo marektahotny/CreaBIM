@@ -392,7 +392,21 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
         .icon(crate::props::combo_icon)
         .selected_text(crate::i18n::tw(d.kind.label()))
         .show_ui(ui, |ui| {
-            for k in DetailKind::ALL {
+            // a drafted line, arc or curve can always be turned back into
+            // one, in the pen and line type it had (or the usual ones)
+            let look = d.kind.line_look().copied().unwrap_or_default();
+            let kinds = [
+                DetailKind::Line(look),
+                DetailKind::Arc(look),
+                DetailKind::Curve(look),
+            ]
+            .into_iter()
+            .chain(DetailKind::ALL);
+            for k in kinds {
+                // an arc needs three points
+                if d.points.len() < k.min_points() {
+                    continue;
+                }
                 if ui
                     .selectable_label(d.kind.same(k), crate::i18n::tw(k.label()))
                     .clicked()
