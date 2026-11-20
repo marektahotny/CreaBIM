@@ -562,32 +562,11 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
         OpeningKind::Door => {
             // a label-column row, then two equal buttons, as Blender (MU29)
             crate::props::row(ui, "Hung", |ui| {
-                ui.label(creabim_geom::opening::door_hand(o, &host).to_lowercase())
+                ui.label(crate::i18n::t(creabim_geom::opening::door_hand(o, &host)))
                     .on_hover_text(crate::i18n::t("The hinge side seen from the side it opens to, and whether it opens into the building or out of it."))
             });
-            crate::props::row(ui, "Flip", |ui| {
-                crate::props::flow(ui, |ui| {
-                    let w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                    if ui
-                        .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("Hand")))
-                        .on_hover_text(crate::i18n::t("Hinge it on the other jamb (Shift+Space)."))
-                        .clicked()
-                    {
-                        walls::flip_hand(o);
-                        label = "Flip door hand"
-                    }
-                    if ui
-                        .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("Swing")))
-                        .on_hover_text(crate::i18n::t(
-                            "Open it to the other side of the wall (Space).",
-                        ))
-                        .clicked()
-                    {
-                        walls::flip_facing(o);
-                        label = "Flip door swing"
-                    }
-                })
-            });
+            // flipped by the arrows beside it in the plan (as Revit),
+            // or Space and Shift+Space
             if crate::props::switch(ui, &mut o.threshold, "Threshold")
                 .on_hover_text(crate::i18n::t(
                     "A threshold between the jambs: drawn in plans and 3D",
@@ -602,23 +581,13 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
             let out = o.faces_left(&host) == host.flip;
             // the same rows as a door's (MU29)
             crate::props::row(ui, "Outside", |ui| {
-                ui.label(if out {
+                ui.label(crate::i18n::t(if out {
                     "faces the exterior"
                 } else {
                     "turned to the interior"
-                })
+                }))
             });
-            crate::props::row(ui, "Flip", |ui| {
-                let w = ui.available_width();
-                if ui
-                    .add_sized([w, 22.0], egui::Button::new(crate::i18n::t("Inside / outside")))
-                    .on_hover_text(crate::i18n::t("Turn it round in its wall: its sill board and frame move to the other face (Space)."))
-                    .clicked()
-                {
-                    walls::flip_facing(o);
-                    label = "Flip window"
-                }
-            });
+            // turned round by the arrow beside it in the plan, or Space
             // its sills: the outer one of sheet metal (with its mark and
             // its row in the list of sheet-metal work), the inner board
             let (mut outer, mut inner) = (!o.no_outer_sill, !o.no_inner_sill);

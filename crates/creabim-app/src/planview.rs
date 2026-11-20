@@ -930,6 +930,105 @@ pub fn esc_once(ctx: &egui::Context) -> bool {
     })
 }
 
+/// The flip controls of the one door or window selected in a plan,
+/// clicked as Revit's: a double arrow along the wall beside it hinges a
+/// door on its other jamb, one across the wall turns its swing (a
+/// window's outside) to the wall's other face. The edit's message.
+fn flip_arrows(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    xf: &Xf,
+    doc: &mut Document,
+    selection: &Selection,
+) -> Option<String> {
+    let id = selection.active?;
+    if selection.all().len() != 1 {
+        return None;
+    }
+    let ElementKind::Opening(o) = &doc.model().get(id)?.kind else {
+        return None;
+    };
+    if o.kind == creabim_core::OpeningKind::Hole {
+        return None;
+    }
+    let ElementKind::Wall(w) = &doc.model().get(o.host)?.kind else {
+        return None;
+    };
+    let door = o.kind == creabim_core::OpeningKind::Door;
+    let mid = o.offset + o.width / 2.0;
+    let t = w.tangent_at(mid).normalize_or_zero();
+    let n = t.perp();
+    // the side it opens to (a window's outside)
+    let side = if o.faces_left(w) { 1.0 } else { -1.0 };
+    let reach = w.thickness / 2.0;
+    let centre = xf.to_screen(w.place(mid, 0.0));
+    let to = |v: DVec2| {
+        let d = xf.to_screen(w.place(mid, 0.0) + v) - centre;
+        d.normalized()
+    };
+    let (ts, ns) = (to(t), to(n * side));
+    // past the wall's face away from the side it opens to, clear of its
+    // swing and its tag
+    let wall_px = (reach as f32 * xf.scale).max(6.0);
+    let base = centre - ns * (wall_px + 18.0);
+    let mut spots: Vec<(Pos2, Vec2, bool)> = vec![(base, ns, false)];
+    if door {
+        spots.push((base + ts * 26.0, ts, true));
+    }
+    let ink = egui::Color32::from_rgb(59, 130, 246);
+    let mut msg = None;
+    for (i, (at, dir, hand)) in spots.into_iter().enumerate() {
+        let r = Rect::from_center_size(at, Vec2::splat(22.0));
+        let resp = ui
+            .interact(r, egui::Id::new(("flip_arrow", id, i)), egui::Sense::click())
+            .on_hover_text(crate::i18n::t(if hand {
+                "Hinge it on the other jamb (Shift+Space)."
+            } else if door {
+                "Open it to the other side of the wall (Space)."
+            } else {
+                "Turn it round in its wall: its sill board and frame move to the other face (Space)."
+            }));
+        let lit = resp.hovered();
+        painter.circle(
+            at,
+            10.0,
+            if lit { ink } else { egui::Color32::WHITE },
+            Stroke::new(1.2, ink),
+        );
+        let fg = if lit { egui::Color32::WHITE } else { ink };
+        // a double arrow along `dir`
+        let (a, b) = (at - dir * 6.5, at + dir * 6.5);
+        let st = Stroke::new(1.6, fg);
+        painter.line_segment([a, b], st);
+        let q = dir.rot90();
+        for (tip, back) in [(b, -dir), (a, dir)] {
+            painter.line_segment([tip, tip + (back + q) * 3.5], st);
+            painter.line_segment([tip, tip + (back - q) * 3.5], st);
+        }
+        if resp.clicked() {
+            let (label, done) = match (door, hand) {
+                (_, true) => ("Flip door hand", "Door hinged on its other jamb."),
+                (true, false) => ("Flip door swing", "Door opens to the other side."),
+                (false, false) => ("Flip window", "Window turned round in its wall."),
+            };
+            let r = doc.edit(id, label, |e| {
+                if let ElementKind::Opening(o) = &mut e.kind {
+                    if hand {
+                        creabim_core::walls::flip_hand(o);
+                    } else {
+                        creabim_core::walls::flip_facing(o);
+                    }
+                }
+            });
+            msg = Some(match r {
+                Ok(()) => crate::i18n::t(done).to_string(),
+                Err(e) => e.to_string(),
+            });
+        }
+    }
+    msg
+}
+
 pub struct Xf {
     pub rect: Rect,
     pub center: DVec2,
@@ -1524,6 +1623,12 @@ fn show_pane(
         painter.add(egui::Shape::closed_line(pts, Stroke::new(2.0, SLAB_EDGE)));
     }
     crate::annotate::draw_grips(&painter, &xf, doc.model(), &plan.items, selection, mm);
+    // a selected door's or window's flip arrows beside it, as Revit's
+    if matches!(kind, PaneKind::Plan { .. }) && tool == Tool::Select {
+        if let Some(msg) = flip_arrows(ui, &painter, &xf, doc, selection) {
+            state.status = Some(msg);
+        }
+    }
     crate::sketch::draw_marks_in_pane(&painter, doc.model(), selection.active, kind, &xf);
     // the centre lines the Align tool can take here
     let centre_lines = match (tool, kind) {
