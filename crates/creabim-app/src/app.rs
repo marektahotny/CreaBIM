@@ -13883,7 +13883,7 @@ pub(crate) fn plural(kind: &str, n: usize) -> String {
 }
 
 /// The window's title: the project, a • while it has unsaved changes,
-/// then the app, with its version on test builds (0.x) (A7-8).
+/// then the app, with its version (A7-8).
 fn window_title(path: &str, unsaved: bool) -> String {
     let name = std::path::Path::new(path)
         .file_stem()
@@ -13893,7 +13893,6 @@ fn window_title(path: &str, unsaved: bool) -> String {
     // (MU39: 1.0 showed while 1.0.1 was out and the next one in hand)
     let app = match version.split('.').collect::<Vec<_>>().as_slice() {
         _ if version.contains('-') => format!("CreaBIM {version}"),
-        ["0", minor, ..] => format!("CreaBIM 0.{minor} beta"),
         [major, minor, ..] => format!("CreaBIM {major}.{minor}"),
         _ => "CreaBIM".to_string(),
     };
@@ -14239,8 +14238,12 @@ mod title_tests {
         let v = env!("CARGO_PKG_VERSION");
         let saved = window_title("projects/Starter house.creabim", false);
         assert!(saved.starts_with("Starter house — CreaBIM"), "{saved}");
-        if v.starts_with("0.") {
-            assert!(saved.ends_with(" beta"), "{saved}");
+        if !v.contains('-') {
+            let mm: Vec<&str> = v.split('.').take(2).collect();
+            assert!(
+                saved.ends_with(&format!("CreaBIM {}", mm.join("."))),
+                "{saved}"
+            );
         }
         let unsaved = window_title("Starter house.creabim", true);
         assert!(unsaved.starts_with("• Starter house — "), "{unsaved}");
