@@ -1159,7 +1159,9 @@ impl CreaBimApp {
         let screen = crate::app::shell::window_room(ctx);
         // side by side in columns as the room right of the project
         // browser allows: project and sheets, site and place, fire safety
-        let n = (((screen.width() - 30.0) / 386.0).floor() as usize).clamp(1, 3);
+        // (440 a column: the fire column's long labels and the S-JTSK fields
+        // fit without cutting or running into the next column)
+        let n = (((screen.width() - 30.0) / 456.0).floor() as usize).clamp(1, 3);
         crate::app::shell::window(crate::i18n::tr("Project information"))
             // an id by the columns: a size kept from another layout (the
             // one-column window) is not reused
@@ -1172,14 +1174,14 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 // the fields scroll and the buttons stay in sight
-                ui.set_width(n as f32 * 370.0 + (n - 1) as f32 * 16.0);
+                ui.set_width(n as f32 * 440.0 + (n - 1) as f32 * 16.0);
                 egui::ScrollArea::vertical()
                     .id_salt("project.info.scroll")
                     .max_height((screen.height() - 140.0).max(200.0))
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                 let text = |ui: &mut egui::Ui, label: &str, v: &mut String, hint: &str| {
-                    crate::props::row(ui, label, |ui| {
+                    crate::props::row_wrapped(ui, label, |ui| {
                         ui.add(
                             egui::TextEdit::singleline(v).vertical_align(egui::Align::Center)
                                 .hint_text(crate::i18n::tr(hint))
@@ -1212,6 +1214,9 @@ impl CreaBimApp {
                 };
                 ui.columns(n, |cols| {
                 for (c, ui) in cols.iter_mut().enumerate() {
+                // nothing in a column reaches into the next one
+                let col = ui.max_rect();
+                ui.set_clip_rect(col.intersect(ui.clip_rect()));
                 for &part in parts[c] {
                 match part {
                 0 => {
@@ -1346,18 +1351,29 @@ impl CreaBimApp {
                     {
                         draft.sjtsk = on.then_some([0.0, 0.0]);
                     }
-                    if let Some([e, n]) = &mut draft.sjtsk {
-                        for (v, p) in [(e, "E "), (n, "N ")] {
-                            ui.add(
-                                egui::DragValue::new(v)
-                                    .speed(0.01)
-                                    .max_decimals(3)
-                                    .prefix(p)
-                                    .suffix(" m"),
-                            );
-                        }
+                    if let Some([e, _]) = &mut draft.sjtsk {
+                        ui.add(
+                            egui::DragValue::new(e)
+                                .speed(0.01)
+                                .max_decimals(3)
+                                .prefix("E ")
+                                .suffix(" m"),
+                        );
                     }
                 });
+                // north under east: both on one line ran into the next column
+                if let Some([_, n]) = &mut draft.sjtsk {
+                    crate::props::row(ui, "", |ui| {
+                        ui.add_space(22.0);
+                        ui.add(
+                            egui::DragValue::new(n)
+                                .speed(0.01)
+                                .max_decimals(3)
+                                .prefix("N ")
+                                .suffix(" m"),
+                        );
+                    });
+                }
                 crate::props::row(ui, "True north", |ui| {
                     ui.add(
                         egui::DragValue::new(&mut draft.true_north)
@@ -1367,7 +1383,7 @@ impl CreaBimApp {
                     )
                     .on_hover_text(crate::i18n::t("How far true north turns from the drawings' up, anticlockwise"));
                 });
-                crate::props::row(ui, "Rotate project north", |ui| {
+                crate::props::row_wrapped(ui, "Rotate project north", |ui| {
                     let key = egui::Id::new("project.north.turn");
                     let mut by: f64 = ui.data(|d| d.get_temp(key)).unwrap_or(0.0);
                     ui.add(
@@ -1434,7 +1450,7 @@ impl CreaBimApp {
                 {
                     fire_doors = true;
                 }
-                crate::props::row(ui, "Structural system for fire", |ui| {
+                crate::props::row_wrapped(ui, "Structural system for fire", |ui| {
                     const SYSTEMS: [(&str, &str); 5] = [
                         ("N", "Non-combustible"),
                         ("Za", "Mixed, 2.6.4 a)"),
@@ -1481,7 +1497,7 @@ impl CreaBimApp {
                     if on {
                         let mm = |ui: &mut egui::Ui, label: &str, v: f64, lo: f64, hi: f64| -> f64 {
                             let mut x = (v * 1000.0).round();
-                            crate::props::row(ui, label, |ui| {
+                            crate::props::row_wrapped(ui, label, |ui| {
                                 ui.add(
                                     egui::DragValue::new(&mut x)
                                         .range(lo..=hi)
@@ -1517,7 +1533,7 @@ impl CreaBimApp {
                                 .filter(|(_, _, m)| m.category == "insulation")
                                 .map(|(id, n, _)| (id, n.to_string()))
                                 .collect();
-                        crate::props::row(ui, "Barrier material", |ui| {
+                        crate::props::row_wrapped(ui, "Barrier material", |ui| {
                             let shown = eb
                                 .material
                                 .and_then(|id| wools.iter().find(|w| w.0 == id))

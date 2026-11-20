@@ -196,6 +196,17 @@ pub fn head_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> 
 /// filling the rest. A label too long for its column is cut with … and
 /// shows whole when hovered.
 pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    row_with(ui, label, false, add)
+}
+
+/// A row as [`row`], but a label too long for its column wraps onto more
+/// lines (the row growing taller) instead of being cut: for dialogs
+/// whose labels are long sentences (Project information).
+pub fn row_wrapped<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    row_with(ui, label, true, add)
+}
+
+fn row_with<R>(ui: &mut Ui, label: &str, wrap: bool, add: impl FnOnce(&mut Ui) -> R) -> R {
     let label = crate::i18n::tr(label);
     let label = label.as_str();
     // a control's own text never wraps: a value too long is cut with …
@@ -215,7 +226,36 @@ pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     }
     let w = ui.available_width() - inset(ui);
     let lw = label_width(w);
-    let h0 = ui.spacing().interact_size.y;
+    let mut h0 = ui.spacing().interact_size.y;
+    if wrap {
+        let muted = ui.visuals().widgets.noninteractive.fg_stroke.color;
+        let mut job = egui::text::LayoutJob::single_section(
+            label.to_string(),
+            egui::TextFormat::simple(egui::TextStyle::Body.resolve(ui.style()), muted),
+        );
+        job.wrap.max_width = lw - 6.0;
+        job.halign = egui::Align::RIGHT;
+        let g = ui.painter().layout_job(job);
+        if g.size().y > h0 {
+            h0 = g.size().y + 2.0;
+            return ui
+                .allocate_ui_with_layout(
+                    Vec2::new(w, h0),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        let (rect, _) = ui.allocate_exact_size(Vec2::new(lw, h0), Sense::hover());
+                        // right-aligned lines: the galley's origin is its right edge
+                        ui.painter().galley(
+                            egui::pos2(rect.right() - 6.0, rect.center().y - g.size().y / 2.0),
+                            g,
+                            muted,
+                        );
+                        add(ui)
+                    },
+                )
+                .inner;
+        }
+    }
     ui.allocate_ui_with_layout(
         Vec2::new(w, h0),
         egui::Layout::left_to_right(egui::Align::Center),

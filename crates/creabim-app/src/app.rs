@@ -12917,6 +12917,19 @@ impl CreaBimApp {
                     self.selection.only(e.id);
                 }
             }
+            // the Project information window open
+            if std::env::var("CREABIM_SHOT_PROJECT_INFO").is_ok() {
+                self.project_open = true;
+                // with the S-JTSK origin set, its fields showing
+                let mut p = self
+                    .doc
+                    .model()
+                    .project_info()
+                    .map(|(_, p)| p.clone())
+                    .unwrap_or_default();
+                p.sjtsk.get_or_insert([-547382.28, -1253318.85]);
+                self.project_draft = Some(p);
+            }
             // the assembly editor open on an assembly of that name
             if let Ok(a) = std::env::var("CREABIM_SHOT_ASSEMBLY") {
                 let id = self.doc.model().iter().find(|e| e.name == a).map(|e| e.id);
@@ -15023,7 +15036,9 @@ pub(crate) fn fold_handle(
     let p = crate::theme::Palette::of(ctx);
     let mut clicked = false;
     egui::Area::new(egui::Id::new(("fold-handle", id)))
-        .order(egui::Order::Foreground)
+        // under the windows (Project information...): it lay over their
+        // fields, a › in the middle of a text
+        .order(egui::Order::Middle)
         .fixed_pos(at)
         .show(ctx, |ui| {
             let (r, resp) = ui.allocate_exact_size(egui::vec2(11.0, 46.0), egui::Sense::click());
