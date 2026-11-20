@@ -184,6 +184,9 @@ fn barrier_material(model: &Model, set: &creabim_core::EticsBarriers) -> Option<
         .map(|(e, _)| e.id)
 }
 
+/// A bottom and a top, m.
+pub type Span = (f64, f64);
+
 /// Where the barriers go, by the Weber table: none on one storey or
 /// over 30 m (all of it must then be A2-s1,d0). The plinth band with its
 /// top `plinth_top` over the ground, and the floors they go about: the
@@ -192,7 +195,7 @@ fn barrier_material(model: &Model, set: &creabim_core::EticsBarriers) -> Option<
 pub fn barrier_heights(
     model: &Model,
     set: &creabim_core::EticsBarriers,
-) -> Option<((f64, f64), Vec<(f64, f64)>)> {
+) -> Option<(Span, Vec<(f64, f64)>)> {
     let fh = crate::firezones::fire_height(model)?;
     if fh.above <= 1 || fh.height > 30.0 {
         return None;
