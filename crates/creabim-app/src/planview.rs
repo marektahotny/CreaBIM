@@ -2248,6 +2248,25 @@ fn show_pane(
                     _ => {}
                 }
             }
+            // and the lines of the drawings under it: a map's parcel
+            // boundary (a DXF from the map site), its own or the traced
+            // site plan's
+            let model = doc.model();
+            let shown_in: Vec<ElementId> = std::iter::once(view)
+                .chain(underlay_view(model, view))
+                .collect();
+            for v in shown_in {
+                for (id, r) in creabim_core::reference::in_view(model, v) {
+                    if r.hidden {
+                        continue;
+                    }
+                    if let Some(ix) = state.ref_cache.index(model, id, r) {
+                        for [a, b] in ix.near(at, tol, 500).0 {
+                            consider(a, b);
+                        }
+                    }
+                }
+            }
             let Some((_, a, b)) = best else {
                 state.status = Some(
                     "There is no line here: click nearer a boundary, a map line or a wall.".into(),

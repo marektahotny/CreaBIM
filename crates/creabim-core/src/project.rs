@@ -466,6 +466,46 @@ pub fn rotate_north(model: &crate::Model, degrees: f64) -> crate::Transaction {
 mod north_tests {
     use crate::{Document, ElementKind};
 
+    /// A map's parcel boundary (a line of a DXF reference) picked: the
+    /// map turns with the model, so the boundary ends up level.
+    #[test]
+    fn a_reference_line_turned_level_turns_the_map_with_it() {
+        use crate::{Element, RefSource, Reference, View};
+        use glam::DVec2;
+        let mut doc = Document::from_model(crate::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let view = Element::new("Situácia", ElementKind::View(View::plan(level)));
+        let vid = view.id;
+        let mut r = Reference::new(
+            RefSource::Dxf {
+                path: "situacia.dxf".into(),
+                unit: Some(1.0),
+            },
+            vec![vid],
+        );
+        r.in_place([DVec2::new(-10.0, -10.0), DVec2::new(30.0, 30.0)]);
+        r.at += DVec2::new(5.0, 3.0);
+        let e = Element::new("Map", ElementKind::Reference(r));
+        let rid = e.id;
+        doc.commit(crate::Transaction::new("Map").insert(view).insert(e))
+            .unwrap();
+        let line = |doc: &Document| {
+            let ElementKind::Reference(r) = &doc.model().get(rid).unwrap().kind else {
+                panic!()
+            };
+            (
+                r.place(DVec2::new(0.0, 0.0)),
+                r.place(DVec2::new(10.0, 3.0)),
+            )
+        };
+        let (a, b) = line(&doc);
+        let th = (b - a).to_angle().to_degrees();
+        let by = (th / 90.0).round() * 90.0 - th;
+        doc.commit(super::rotate_north(doc.model(), by)).unwrap();
+        let (a, b) = line(&doc);
+        assert!((a.y - b.y).abs() < 1e-9, "{a} {b}");
+    }
+
     #[test]
     fn the_project_turns_and_true_north_stays_on_the_ground() {
         let mut doc = Document::from_model(crate::sample::sample_house());
