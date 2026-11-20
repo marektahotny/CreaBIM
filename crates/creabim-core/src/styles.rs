@@ -467,6 +467,9 @@ pub struct ViewTemplate {
     pub weights: Option<LineWeights>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub below_fill: Option<bool>,
+    /// The ground under cut hatches, for views that keep the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hatch_ground: Option<crate::graphics::HatchGround>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cues: Option<DepthCues>,
 }
@@ -481,6 +484,7 @@ impl ViewTemplate {
             overrides: vec![],
             weights: None,
             below_fill: None,
+            hatch_ground: None,
             cues: None,
         }
     }
@@ -1153,6 +1157,9 @@ pub fn resolved<'a>(model: &Model, v: &'a View) -> Cow<'a, View> {
     }
     if let Some(b) = t.below_fill {
         out.graphics.below_fill = b;
+    }
+    if let (Some(h), true) = (t.hatch_ground, v.graphics.hatch_ground.is_default()) {
+        out.graphics.hatch_ground = h;
     }
     if let (Some(c), true) = (t.cues, v.look.cues.is_default()) {
         out.look.cues = c;
