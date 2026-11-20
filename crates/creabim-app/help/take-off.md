@@ -47,6 +47,9 @@ A material without a rate is measured but left out of the priced total.
 - **Showing where it is:** click a row (Ctrl adds more, a group's row takes the whole group) and press **Show in 3D** or **Show in plan**. The elements are selected and framed; a 3D view opens beside the table, or the level's floor plan under it, if none is open. A double-click on a row shows it in 3D.
 - **Doors and windows** have a *Perimeter* column (twice width plus height, added up).
 - **Window sills**, outer (sheet metal) and inner (boards), are listed under *Outer sills* and *Inner sills*: a row for each size, named with its width (across the wall) and length, with the number of pieces and their length and area. An outer sill reaches 40 mm over the wall's outer face; an inner one 20 mm over the inner face and 20 mm into each jamb. A window's *Outer sill* / *Inner sill* switches leave it out.
+- **Door thresholds** are listed under *Thresholds*: a row for each material and size, named with the material, its width (the frame's depth) and length (the clear width between the jambs), with the number of pieces. Switch *Threshold* on for the door and pick its *Threshold material* (wood, aluminium, stone...); without one it is listed with no material.
+- **Doors and windows** are split by the material set on each (plastic, aluminium, wood...), so each kind can be priced on its own, e.g. in Cenkros.
+- **Foundation slabs** are listed apart from floor slabs. A slab with no other slab under it counts as a foundation slab; set *Slab type* on the slab (Floor / Foundation) where that guess is wrong, e.g. for paving. IFC export writes them as BASESLAB and FLOOR.
 - A material's *Rate* and *Per* are edited right in its row.
 - The grouping, the element rows and the sorting are saved with the take-off and print the same on a sheet. See [Sheets](sheets).
 

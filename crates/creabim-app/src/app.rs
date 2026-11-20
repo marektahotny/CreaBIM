@@ -219,6 +219,9 @@ pub struct CreaBimApp {
     report_ask: Option<bool>,
     /// Closing with unsaved changes: Save, Don't save or Cancel is asked.
     close_ask: bool,
+    /// Save as picked a file that is there already: Replace or not is
+    /// asked in the app's own window (Windows' own question fell behind it).
+    overwrite: Option<appmenu::Overwrite>,
     /// Saving on its own every few minutes, and work brought back.
     autosave: autosave::State,
     /// Where the Save the changes window is: asking, saving, saved, failed.
@@ -581,6 +584,7 @@ impl CreaBimApp {
             log_ui: Default::default(),
             report_ask: None,
             close_ask: false,
+            overwrite: None,
             autosave: Default::default(),
             close_state: Default::default(),
             close_ok: false,
@@ -891,12 +895,20 @@ impl CreaBimApp {
 
     fn save_as(&mut self) {
         let start = with_extension(&self.path, "creabim");
-        if let Some(path) = crate::files::pick_save(&start, "Save the project as", "creabim") {
-            // the old name's autosave goes with it
-            self.autosave_clear();
-            self.path = path;
-            self.save();
+        if let Some(path) = crate::files::pick_save_path(&start, "Save the project as", "creabim") {
+            if crate::files::ask_overwrite(&path) {
+                self.ask_overwrite(path, appmenu::OverwriteThen::SaveAs);
+            } else {
+                self.save_as_to(path);
+            }
         }
+    }
+
+    pub(crate) fn save_as_to(&mut self, path: String) {
+        // the old name's autosave goes with it
+        self.autosave_clear();
+        self.path = path;
+        self.save();
     }
 
     /// Bring a file's objects in as linked elements.
@@ -7497,6 +7509,17 @@ impl CreaBimApp {
         current: &mut Option<ElementId>,
         usage: creabim_core::library::MaterialUse,
     ) -> bool {
+        self.material_combo_as(ui, "Material", current, usage)
+    }
+
+    /// [`Self::material_combo`] under its own label.
+    fn material_combo_as(
+        &mut self,
+        ui: &mut egui::Ui,
+        label: &str,
+        current: &mut Option<ElementId>,
+        usage: creabim_core::library::MaterialUse,
+    ) -> bool {
         let all_id = egui::Id::new("material_combo.all");
         let mut all = ui.data(|d| d.get_temp::<bool>(all_id).unwrap_or(false));
         let narrow = !usage.categories().is_empty();
@@ -7521,7 +7544,7 @@ impl CreaBimApp {
         let mut changed = false;
         let mut create = false;
         let mut take = None;
-        crate::app::helpui::combo(ui, "Material")
+        crate::app::helpui::combo(ui, label)
             .selected_text(crate::i18n::tw(name))
             .show_ui(ui, |ui| {
                 changed |= ui
@@ -10037,6 +10060,39 @@ crate::props::row(ui, "File names", |ui| {
                     if num(ui, "Top offset", &mut s.top_offset, -100.0, 100.0) {
                         label = "Slab top offset"
                     }
+                    // floor or foundation slab: priced apart, apart in the take-off
+                    let auto = match creabim_core::slab::kind_of(
+                        self.doc.model(),
+                        &creabim_core::Slab {
+                            kind: None,
+                            ..s.clone()
+                        },
+                    ) {
+                        creabim_core::SlabKind::Foundation => {
+                            "Automatic: foundation slab (no slab under it)."
+                        }
+                        creabim_core::SlabKind::Floor => "Automatic: floor slab (a slab under it).",
+                    };
+                    if crate::props::choice(
+                        ui,
+                        "Slab type",
+                        &mut s.kind,
+                        &[
+                            (None, "Auto", auto),
+                            (
+                                Some(creabim_core::SlabKind::Floor),
+                                "Floor slab",
+                                "A floor or ceiling slab (stropná doska).",
+                            ),
+                            (
+                                Some(creabim_core::SlabKind::Foundation),
+                                "Foundation slab",
+                                "A foundation slab (základová doska), listed apart in the take-off and exported as IFC BASESLAB.",
+                            ),
+                        ],
+                    ) {
+                        label = "Slab type"
+                    }
                     let level = self.doc.model().level(s.level).map_or(0.0, |l| l.elevation);
                     crate::props::note(
                         ui,
@@ -10130,6 +10186,18 @@ crate::props::row(ui, "File names", |ui| {
                     let l = wallsui::opening_fields(ui, self.doc.model(), o);
                     if !l.is_empty() {
                         label = l;
+                    }
+                    // what a door's threshold is made of, for the take-off
+                    if o.kind == creabim_core::OpeningKind::Door
+                        && o.threshold
+                        && self.material_combo_as(
+                            ui,
+                            "Threshold material",
+                            &mut o.threshold_material,
+                            creabim_core::library::MaterialUse::Any,
+                        )
+                    {
+                        label = "Threshold material";
                     }
                     // a plastic colour picked for a door: the library's
                     // material, taken into the project once
@@ -10667,6 +10735,72 @@ crate::props::row(ui, "File names", |ui| {
                                     }
                                 });
                         });
+                    }
+                    // a legend of rooms or materials: the storey it lists, and
+                    // the materials it leaves out
+                    if let ViewKind::Schedule { category, .. } = v.kind {
+                        use creabim_core::ScheduleCategory as C;
+                        if matches!(category, C::RoomLegend | C::MaterialLegend) {
+                            let levels = creabim_core::levels::sorted(self.doc.model());
+                            let shown = v
+                                .of_level
+                                .and_then(|l| levels.iter().find(|x| x.0 == l))
+                                .map_or(crate::i18n::tr("All storeys"), |x| x.1.clone());
+                            crate::props::row(ui, "Storey", |ui| {
+                                egui::ComboBox::from_id_salt(("legend.level", id))
+                                    .selected_text(shown)
+                                    .width(ui.available_width())
+                                    .show_ui(ui, |ui| {
+                                        if ui
+                                            .selectable_label(
+                                                v.of_level.is_none(),
+                                                crate::i18n::tr("All storeys"),
+                                            )
+                                            .clicked()
+                                        {
+                                            v.of_level = None;
+                                            label = "Storey";
+                                        }
+                                        for (l, name, _) in &levels {
+                                            if ui
+                                                .selectable_label(v.of_level == Some(*l), name)
+                                                .clicked()
+                                            {
+                                                v.of_level = Some(*l);
+                                                label = "Storey";
+                                            }
+                                        }
+                                    });
+                            });
+                        }
+                        if category == C::MaterialLegend {
+                            // what the storey's plan cuts, each to keep or
+                            // leave out
+                            let all =
+                                creabim_geom::matlegend::rows_of(self.doc.model(), v.of_level, &[]);
+                            crate::props::section(ui, "Materials in the legend");
+                            let mut seen = vec![];
+                            for r in &all {
+                                if seen.contains(&r.material) {
+                                    continue;
+                                }
+                                seen.push(r.material);
+                                let name = self
+                                    .doc
+                                    .model()
+                                    .get(r.material)
+                                    .map_or(String::new(), |e| e.name.clone());
+                                let mut on = !v.left_out.contains(&r.material);
+                                if ui.checkbox(&mut on, name).changed() {
+                                    if on {
+                                        v.left_out.retain(|m| *m != r.material);
+                                    } else {
+                                        v.left_out.push(r.material);
+                                    }
+                                    label = "Materials in the legend";
+                                }
+                            }
+                        }
                     }
                     if matches!(v.kind, ViewKind::Axonometric { .. }) {
                         ui.add_space(6.0);
@@ -13585,6 +13719,7 @@ impl eframe::App for CreaBimApp {
         self.help_window(&ctx);
         self.report_window(&ctx);
         self.close_window(&ctx);
+        self.overwrite_window(&ctx);
         // a plan in its own window keeps egui's menus
         self.plan.web_menus = false;
 
@@ -14091,7 +14226,9 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // the base's materials take the hatches of the ASR legend of
     // materials, unless their hatch was picked by hand
     let hatches = creabim_core::skbase::refresh_hatches(&model);
-    if !any && hatches.is_none() {
+    // the masonry on the footings made of DT blocks (George 2026-11-20)
+    let dt = creabim_core::skbase::dt_blocks(&model);
+    if !any && hatches.is_none() && dt.is_none() {
         return model;
     }
     let mut doc = Document::from_model(model);
@@ -14100,6 +14237,9 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
         let _ = doc.commit(tx);
     }
     if let Some(tx) = hatches {
+        let _ = doc.commit(tx);
+    }
+    if let Some(tx) = dt {
         let _ = doc.commit(tx);
     }
     doc.model().clone()

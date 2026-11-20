@@ -1834,7 +1834,9 @@ pub fn storey_cut(model: &Model, level: ElementId, cut_height: f64) -> (ElementI
         })
 }
 
-fn wall_rise(
+/// Whether a plan of `level` cut at `cut_height` cuts wall `w`, and how
+/// far below the level its own level is.
+pub(crate) fn wall_rise(
     model: &Model,
     w: &creabim_core::Wall,
     level: ElementId,
@@ -3266,11 +3268,13 @@ mod tests {
                 no_outer_sill: false,
                 no_inner_sill: false,
                 threshold: false,
+                threshold_material: None,
                 setback: None,
                 reveal: None,
                 division: None,
                 door: None,
                 texts: None,
+                performance: None,
             }),
         );
         let hole = duct.id;

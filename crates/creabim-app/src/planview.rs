@@ -4701,11 +4701,17 @@ fn section_tool(
                         no_outer_sill: false,
                         no_inner_sill: false,
                         threshold: false,
+                        threshold_material: None,
                         setback: None,
                         reveal: None,
                         division: None,
                         door: None,
                         texts: None,
+                        performance: if kind == OpeningKind::Window {
+                            creabim_core::joinery::default_window_performance()
+                        } else {
+                            None
+                        },
                     }),
                 ),
             );
@@ -4783,6 +4789,7 @@ fn section_tool(
                     "Slab",
                     ElementKind::Slab(Slab {
                         layer_edges: vec![],
+                        kind: None,
                         level,
                         boundary,
                         thickness,
@@ -8828,11 +8835,17 @@ fn place_opening(
                 no_outer_sill: false,
                 no_inner_sill: false,
                 threshold: false,
+                threshold_material: None,
                 setback: None,
                 reveal: None,
                 division: None,
                 door: None,
                 texts: None,
+                performance: if kind == OpeningKind::Window {
+                    creabim_core::joinery::default_window_performance()
+                } else {
+                    None
+                },
             }),
         ),
     );

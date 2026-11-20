@@ -26,6 +26,37 @@ pub(crate) enum CloseState {
     Failed(String),
 }
 
+/// Save as picked a file that is there already: the app's own question,
+/// Replace or not (Windows' own one could fall behind the app window).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Overwrite {
+    pub path: String,
+    pub then: OverwriteThen,
+}
+
+/// What a Replace goes on with.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum OverwriteThen {
+    /// Save as… from the menu.
+    SaveAs,
+    /// Saving before closing (Save the changes).
+    CloseSave,
+}
+
+/// Replace the file?: its heading, its line and the file's name.
+fn overwrite_texts(path: &str) -> (String, String, String) {
+    let file = std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
+        .to_string();
+    (
+        crate::i18n::tr("The file already exists. Replace it?"),
+        crate::i18n::tr("What is in it now is lost; the project is written there instead."),
+        file,
+    )
+}
+
 /// How long Save spins at least, so it is seen, and how long "Saved."
 /// holds before CreaBIM closes (the page fades out in its last 0.3 s).
 const SAVING_AT_LEAST: std::time::Duration = std::time::Duration::from_millis(450);
@@ -188,7 +219,15 @@ impl CreaBimApp {
                 }
                 let r = if self.never_saved() || retry.is_some() {
                     let start = with_extension(&self.path, "creabim");
-                    match crate::files::pick_save(&start, "Save the project as", "creabim") {
+                    match crate::files::pick_save_path(&start, "Save the project as", "creabim") {
+                        // a file there already: the app asks first, the
+                        // question waits meanwhile
+                        Some(path) if crate::files::ask_overwrite(&path) => {
+                            self.close_state = retry.map_or(CloseState::Ask, CloseState::Failed);
+                            self.ask_overwrite(path, OverwriteThen::CloseSave);
+                            ctx.request_repaint();
+                            return;
+                        }
                         Some(path) => {
                             let was = std::mem::replace(&mut self.path, path);
                             let r = self.save_file();
@@ -242,10 +281,115 @@ impl CreaBimApp {
         }
     }
 
+    /// Save as picked `path`, a file there already: Replace or not is
+    /// asked in the app's own window.
+    pub(crate) fn ask_overwrite(&mut self, path: String, then: OverwriteThen) {
+        crate::actlog::line(format!("save as: {path} is there, asking to replace it"));
+        self.overwrite = Some(Overwrite { path, then });
+    }
+
+    /// The answer to Replace the file?: `yes` writes over it, no goes back.
+    pub(crate) fn overwrite_answer(&mut self, ctx: &egui::Context, yes: bool) {
+        let Some(o) = self.overwrite.take() else {
+            return;
+        };
+        self.hide_overwrite_dialog();
+        crate::actlog::line(format!(
+            "save as: {} {}",
+            o.path,
+            if yes {
+                "replaced"
+            } else {
+                "kept, nothing saved"
+            }
+        ));
+        match (o.then, yes) {
+            (OverwriteThen::SaveAs, true) => self.save_as_to(o.path),
+            (OverwriteThen::SaveAs, false) => {
+                self.status = crate::i18n::tr("Save as cancelled: the file there is kept.");
+            }
+            (OverwriteThen::CloseSave, true) => {
+                // the file is there now: Save writes it, then CreaBIM closes
+                self.path = o.path;
+                self.close_state = CloseState::Saving {
+                    since: std::time::Instant::now() - std::time::Duration::from_millis(50),
+                    done: None,
+                    retry: None,
+                };
+            }
+            // back to Save the changes
+            (OverwriteThen::CloseSave, false) => {}
+        }
+        ctx.request_repaint();
+    }
+
+    /// Replace the file?: the web window in the middle of the app (a page
+    /// of the app window, so never behind it), or egui's own without pages.
+    pub(super) fn overwrite_window(&mut self, ctx: &egui::Context) {
+        let Some(o) = self.overwrite.clone() else {
+            return;
+        };
+        if self.shell.web.is_some() {
+            self.show_overwrite_dialog(ctx);
+            // the project behind waits
+            egui::Modal::new(egui::Id::new("overwrite-ask"))
+                .frame(egui::Frame::NONE)
+                .backdrop_color(egui::Color32::TRANSPARENT)
+                .show(ctx, |_| {});
+            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                self.overwrite_answer(ctx, false);
+            }
+            return;
+        }
+        let (title, line, file) = overwrite_texts(&o.path);
+        let (mut yes, mut no) = (false, false);
+        egui::Modal::new(egui::Id::new("overwrite-ask")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.heading(&title);
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new(&file).strong());
+            ui.label(&line);
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                yes = ui.button(crate::i18n::tr("Replace")).clicked();
+                no = ui.button(crate::i18n::tr("Cancel")).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Escape));
+            });
+        });
+        if yes || no {
+            self.overwrite_answer(ctx, yes);
+        }
+    }
+
+    /// The Replace the file? window's state, for its page.
+    pub(super) fn overwrite_state_json(&self) -> serde_json::Value {
+        let Some(o) = &self.overwrite else {
+            return serde_json::Value::Null;
+        };
+        let (title, line, file) = overwrite_texts(&o.path);
+        let dir = std::path::Path::new(&o.path)
+            .parent()
+            .map(|d| d.display().to_string())
+            .unwrap_or_default();
+        serde_json::json!({
+            "title": title,
+            "line": line,
+            "file": file,
+            "dir": dir,
+            "yes": crate::i18n::tr("Replace"),
+            "no": crate::i18n::tr("Cancel"),
+            "hint": crate::i18n::tr("back without saving"),
+        })
+    }
+
     /// Closing with unsaved changes: Save, Don't save or Cancel. The web
     /// window of REV02 where the pages are; the plain one otherwise.
     pub(super) fn close_window(&mut self, ctx: &egui::Context) {
         if !self.close_ask {
+            return;
+        }
+        // Replace the file? is asked over it
+        if self.overwrite.is_some() {
             return;
         }
         if self.shell.web.is_some() {
@@ -1891,6 +2035,31 @@ mod close_tests {
         std::thread::sleep(SAVED_HOLDS);
         app.close_step(&ctx);
         assert!(app.close_ok && !app.close_ask, "then CreaBIM closes");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn replace_the_file_is_asked_in_the_app_and_answered_there() {
+        let ctx = egui::Context::default();
+        let (mut app, dir) = saved_app("overwrite");
+        edit(&mut app, "A");
+        let there = dir.join("there.creabim");
+        std::fs::write(&there, "old").unwrap();
+        let there = there.display().to_string();
+        // Cancel: nothing is written, the project keeps its file
+        let was = app.path.clone();
+        app.ask_overwrite(there.clone(), OverwriteThen::SaveAs);
+        assert_eq!(app.overwrite_state_json()["file"], "there.creabim");
+        app.overwrite_answer(&ctx, false);
+        assert!(app.overwrite.is_none() && app.unsaved());
+        assert_eq!(app.path, was);
+        assert_eq!(std::fs::read_to_string(&there).unwrap(), "old");
+        // Replace: the project is written over it
+        app.ask_overwrite(there.clone(), OverwriteThen::SaveAs);
+        app.overwrite_answer(&ctx, true);
+        assert!(app.overwrite.is_none() && !app.unsaved());
+        assert_eq!(app.path, there);
+        assert_ne!(std::fs::read_to_string(&there).unwrap_or_default(), "old");
         let _ = std::fs::remove_dir_all(dir);
     }
 

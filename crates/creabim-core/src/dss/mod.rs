@@ -898,6 +898,9 @@ fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Know
                     Known::Len(o.sill_from_floor(model)),
                 );
             }
+            if o.kind != crate::OpeningKind::Hole {
+                joinery_values(&mut out, o);
+            }
         }
         ElementKind::Room(r) => {
             put(&mut out, "názov miestnosti", Known::Text(e.name.clone()));
@@ -1147,6 +1150,91 @@ fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Know
         }
     }
     out
+}
+
+/// A window's or door's leaves (the fields that open), how they open,
+/// the active leaf's width, a door's clear passage and its fire closure.
+fn joinery_values(out: &mut Vec<(&'static str, Known, Source)>, o: &crate::Opening) {
+    use crate::joinery;
+    use crate::LeafOp;
+    let door = o.kind == crate::OpeningKind::Door;
+    let (fields, _) =
+        joinery::division_of(o).layout_of(door, o.width, o.height, joinery::frame_width(o));
+    let opens: Vec<_> = fields
+        .iter()
+        .filter(|f| f.sash.op != LeafOp::Fixed)
+        .collect();
+    put(out, "počet krídel", Known::Raw(opens.len() as f64));
+    let words: Vec<String> = fields.iter().map(|f| op_words(f.sash.op)).collect();
+    let mut kinds: Vec<String> = vec![];
+    for w in words {
+        if !kinds.contains(&w) {
+            kinds.push(w);
+        }
+    }
+    put(
+        out,
+        "typ otvárania",
+        Known::Text(format!("{} ({})", kinds.join(" + "), joinery::operation(o))),
+    );
+    // the active leaf: the widest that opens; an undivided door's is its
+    // leaf's nominal width
+    let active = match (&o.division, &o.door, door) {
+        (None, Some(d), true) => Some(d.nom_width),
+        _ => opens.iter().map(|f| f.x1 - f.x0).reduce(f64::max),
+    };
+    if let Some(w) = active.filter(|w| *w > 0.0) {
+        put(out, "šírka aktívneho krídla", Known::Len(w));
+    }
+    if let Some((w, h)) = joinery::clear_passage(o) {
+        put(out, "priechodná šírka", Known::Len(w));
+        put(out, "priechodná výška", Known::Len(h));
+    }
+    if let Some(p) = &o.performance {
+        if let Some(u) = p.uw {
+            put(out, "súčiniteľ prechodu tepla – navrhnutý", Known::Raw(u));
+        }
+        if let Some(g) = p.g {
+            put(out, "solárny faktor", Known::Raw(g));
+        }
+        if let Some(t) = p.tv {
+            put(out, "činiteľ prestupu svetla", Known::Raw(t));
+        }
+        if let Some(r) = p.rw {
+            put(out, "vážená nepriezvučnosť", Known::Raw(r));
+        }
+        if !p.product.trim().is_empty() {
+            put(out, "typové označenie", Known::Text(p.product.clone()));
+        }
+    }
+    if let Some(f) = o.door.as_ref().and_then(|d| d.fire.as_ref()) {
+        if !f.rating.trim().is_empty() {
+            put(out, "požiarna odolnosť", Known::Text(f.rating.clone()));
+        }
+        put(out, "samozatvárač", Known::Bool(f.self_closing));
+        put(out, "dymotesnosť", Known::Bool(f.smoke_tight));
+    }
+}
+
+/// How a field opens, in words (left and right seen from outside).
+fn op_words(op: crate::LeafOp) -> String {
+    use crate::LeafOp::*;
+    match op {
+        Fixed => "pevné zasklenie",
+        TurnLeft => "otváravé ľavé",
+        TurnRight => "otváravé pravé",
+        Tilt => "sklopné",
+        TiltTurnLeft => "otváravo-sklopné ľavé",
+        TiltTurnRight => "otváravo-sklopné pravé",
+        TopHung => "výklopné",
+        SlideLeft => "posuvné ľavé",
+        SlideRight => "posuvné pravé",
+        LiftSlideLeft => "zdvižno-posuvné ľavé",
+        LiftSlideRight => "zdvižno-posuvné pravé",
+        DoorLeft => "otočné ľavé",
+        DoorRight => "otočné pravé",
+    }
+    .to_string()
 }
 
 /// A library section's type, area, perimeter and extents (`across` along
@@ -1532,5 +1620,88 @@ mod tests {
         near(num(ids[2], "plocha prierezu"), 0.12);
         near(num(ids[2], "šírka"), 0.3);
         near(num(ids[2], "obvod"), 1400.0);
+    }
+
+    #[test]
+    fn windows_and_doors_fill_leaves_passage_and_fire() {
+        let mut m = crate::sample::sample_house();
+        let pick = |m: &Model, k: crate::OpeningKind| {
+            m.iter()
+                .find(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == k))
+                .map(|e| e.id)
+                .unwrap()
+        };
+        let win = pick(&m, crate::OpeningKind::Window);
+        let door = pick(&m, crate::OpeningKind::Door);
+        let before = m.get(door).unwrap().clone();
+        let mut d = before.clone();
+        if let ElementKind::Opening(o) = &mut d.kind {
+            let mut spec = crate::joinery::DoorSpec::fitting(
+                crate::joinery::DoorFrame::Steel,
+                o.width,
+                o.height,
+            );
+            spec.fire = Some(crate::joinery::FireDoor::default());
+            crate::joinery::apply_door(o, spec);
+        }
+        crate::Transaction::new("t")
+            .replace(before, d)
+            .apply(&mut m)
+            .unwrap();
+        let cx = Ctx::new(&m);
+        let val = |id, name: &str| {
+            let (_, props) = filled(&m, &cx, m.get(id).unwrap()).unwrap();
+            props
+                .iter()
+                .find(|f| f.prop.name == name)
+                .and_then(|f| f.value.clone())
+                .map(|(v, _)| v)
+        };
+        assert!(matches!(val(win, "počet krídel"), Some(Value::Int(_))));
+        assert!(matches!(val(win, "typ otvárania"), Some(Value::Text(_))));
+        assert!(matches!(val(door, "priechodná šírka"), Some(Value::Num(w)) if w > 0.0));
+        assert!(matches!(val(door, "priechodná výška"), Some(Value::Num(h)) if h > 1000.0));
+        assert!(matches!(
+            val(door, "šírka aktívneho krídla"),
+            Some(Value::Num(_))
+        ));
+        assert_eq!(val(door, "počet krídel"), Some(Value::Int(1)));
+        assert_eq!(
+            val(door, "požiarna odolnosť"),
+            Some(Value::Text("EW 30/D3".into()))
+        );
+        assert_eq!(val(door, "samozatvárač"), Some(Value::Bool(true)));
+        assert_eq!(val(door, "dymotesnosť"), Some(Value::Bool(false)));
+        // a window as drawn has its maker's values
+        let mut w = m.get(win).unwrap().clone();
+        if let ElementKind::Opening(o) = &mut w.kind {
+            o.performance = crate::joinery::default_window_performance();
+        }
+        let before = m.get(win).unwrap().clone();
+        crate::Transaction::new("w")
+            .replace(before, w)
+            .apply(&mut m)
+            .unwrap();
+        let cx = Ctx::new(&m);
+        let val = |id, name: &str| {
+            let (_, props) = filled(&m, &cx, m.get(id).unwrap()).unwrap();
+            props
+                .iter()
+                .find(|f| f.prop.name == name)
+                .and_then(|f| f.value.clone())
+                .map(|(v, _)| v)
+        };
+        assert_eq!(
+            val(win, "súčiniteľ prechodu tepla – navrhnutý"),
+            Some(Value::Num(0.6))
+        );
+        // what the maker does not give stays missing
+        assert_eq!(val(win, "solárny faktor"), None);
+        // the default window meets the 0,60 asked for; REHAU's best does not
+        let p = crate::joinery::default_window_performance().unwrap();
+        assert_eq!(crate::joinery::over_requirement(&p, false), None);
+        let rehau = crate::joinery::preset("REHAU ARTEVO max, trojsklo").unwrap();
+        assert_eq!(rehau.g, Some(0.53));
+        assert_eq!(crate::joinery::over_requirement(&rehau, false), Some(0.6));
     }
 }

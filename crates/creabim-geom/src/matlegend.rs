@@ -43,6 +43,36 @@ fn built_of(model: &Model, l: &creabim_core::Layer) -> bool {
     }
 }
 
+/// The renovation states of what the plan of `level` holds (every
+/// storey's when none); none in a project that is not a renovation.
+pub fn reno_states(model: &Model, level: Option<ElementId>) -> Vec<creabim_core::reno::Reno> {
+    use creabim_core::reno::{has_state, state, Reno};
+    let renovation = model
+        .iter()
+        .any(|e| has_state(&e.kind) && matches!(e.reno, Some(Reno::Existing | Reno::Demolished)));
+    if !renovation {
+        return vec![];
+    }
+    let mut out = vec![];
+    for e in model.iter().filter(|e| has_state(&e.kind)) {
+        let on = match (&e.kind, level) {
+            (_, None) => true,
+            (ElementKind::Wall(w), Some(l)) => crate::plan::wall_rise(model, w, l, 1.2).is_some(),
+            (k, Some(l)) => {
+                creabim_core::levels::level_of(k).or_else(|| creabim_core::members::level_of(k))
+                    == Some(l)
+            }
+        };
+        let st = state(e);
+        if on && !out.contains(&st) {
+            out.push(st);
+        }
+    }
+    // in the order the legend gives them
+    out.sort_by_key(|s| Reno::ALL.iter().position(|x| x == s));
+    out
+}
+
 /// One row of the legend.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Row {
@@ -58,6 +88,132 @@ pub struct Row {
 /// The materials the plans cut, each once for a thickness: walls first,
 /// the thickest first, then what columns and beams are of.
 pub fn rows(model: &Model) -> Vec<Row> {
+    rows_of(model, None, &[])
+}
+
+/// The rows of the legend `view` draws: the materials its storey's plan
+/// cuts (every storey's when it names none), less those it leaves out.
+pub fn rows_of_view(model: &Model, view: ElementId) -> Vec<Row> {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return rows(model);
+    };
+    match storeys(model, view) {
+        None => rows_of(model, None, &v.left_out),
+        Some(levels) => {
+            let mut out: Vec<Row> = vec![];
+            for l in levels {
+                for r in rows_of(model, Some(l), &v.left_out) {
+                    if !out
+                        .iter()
+                        .any(|x| x.material == r.material && x.thickness_mm == r.thickness_mm)
+                    {
+                        out.push(r);
+                    }
+                }
+            }
+            out.sort_by_key(|r| (r.thickness_mm.is_none(), -r.thickness_mm.unwrap_or(0)));
+            out
+        }
+    }
+}
+
+/// The plans a legend stands beside: those placed on the sheets it is
+/// placed on.
+pub fn beside(model: &Model, view: ElementId) -> Vec<&creabim_core::View> {
+    let sheets: Vec<ElementId> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Viewport(vp) if vp.view == view => Some(vp.sheet),
+            _ => None,
+        })
+        .collect();
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Viewport(vp) = &e.kind else {
+            continue;
+        };
+        if !sheets.contains(&vp.sheet) {
+            continue;
+        }
+        if let Some(ElementKind::View(p)) = model.get(vp.view).map(|x| &x.kind) {
+            if matches!(p.kind, creabim_core::ViewKind::Plan { .. })
+                && !p.ceiling_plan
+                && !p.graphics.range.from_above
+            {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
+/// The storeys a legend lists: its own, else those of the plans it
+/// stands beside; none for every storey (beside sections, or not placed).
+pub fn storeys(model: &Model, view: ElementId) -> Option<Vec<ElementId>> {
+    if let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) {
+        if let Some(l) = v.of_level {
+            return Some(vec![l]);
+        }
+    }
+    let mut out = vec![];
+    for p in beside(model, view) {
+        if let creabim_core::ViewKind::Plan { level, .. } = p.kind {
+            if !out.contains(&level) {
+                out.push(level);
+            }
+        }
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// The renovation states a legend explains: those the drawings beside it
+/// show in colour, with black for what stays; the whole renovation's when
+/// it stands beside no plan.
+pub fn reno_of_view(model: &Model, view: ElementId) -> Vec<creabim_core::reno::Reno> {
+    use creabim_core::reno::Reno;
+    let plans = beside(model, view);
+    if plans.is_empty() {
+        let level = match model.get(view).map(|e| &e.kind) {
+            Some(ElementKind::View(v)) => v.of_level,
+            _ => None,
+        };
+        return reno_states(model, level);
+    }
+    let mut out = vec![];
+    for p in plans {
+        let (Some(stage), creabim_core::ViewKind::Plan { level, .. }) = (p.reno, &p.kind) else {
+            continue;
+        };
+        for r in reno_states(model, Some(*level)) {
+            let shown = stage.shows(r) && (r == Reno::Existing || stage.colour(r).is_some());
+            if shown && !out.contains(&r) {
+                out.push(r);
+            }
+        }
+    }
+    out.sort_by_key(|s| Reno::ALL.iter().position(|x| x == s));
+    out
+}
+
+/// The materials the plan of `level` cuts (every plan's when none),
+/// less those `left_out`.
+pub fn rows_of(model: &Model, level: Option<ElementId>, left_out: &[ElementId]) -> Vec<Row> {
+    let mut all = cut(model, level);
+    all.retain(|r| !left_out.contains(&r.material));
+    all
+}
+
+fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
+    // what a plan of the storey cuts: its walls and those rising through
+    // it from below, its columns
+    let on = |e: &creabim_core::Element| match (&e.kind, level) {
+        (_, None) => true,
+        (ElementKind::Wall(w), Some(l)) => crate::plan::wall_rise(model, w, l, 1.2).is_some(),
+        // of the members only columns are cut; beams, footings and the
+        // slabs are seen, not cut, so their materials show no hatch
+        (k @ ElementKind::Column(_), Some(l)) => creabim_core::members::level_of(k) == Some(l),
+        (_, Some(_)) => false,
+    };
     let mut out: Vec<Row> = vec![];
     // what each row adds after its thickness: λ for an outer wall's
     // materials, Rw for a wall between dwellings
@@ -97,7 +253,7 @@ pub fn rows(model: &Model) -> Vec<Row> {
     for (level, ..) in creabim_core::levels::sorted(model) {
         outer.extend(crate::sitefoot::outer_walls(model, level));
     }
-    for e in model.iter() {
+    for e in model.iter().filter(|e| on(e)) {
         let ElementKind::Wall(w) = &e.kind else {
             continue;
         };
@@ -158,7 +314,7 @@ pub fn rows(model: &Model) -> Vec<Row> {
             }
         }
     }
-    for e in model.iter() {
+    for e in model.iter().filter(|e| on(e)) {
         if creabim_core::members::is_member(&e.kind) {
             if let Some(m) = creabim_core::members::material(&e.kind) {
                 add(m, None);
@@ -210,7 +366,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         HEAD + 0.8,
     );
     let mut y = 0.0;
-    let rows = rows(model);
+    let rows = rows_of_view(model, view);
     for r in &rows {
         let lines = wrap(&r.text, tw, TEXT);
         let h = PATCH.y.max(lines.len() as f64 * LINE);
@@ -251,6 +407,86 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             TEXT,
         );
     }
+    // the ground under the hatches and the drawing style as in the plans
+    // it stands beside: its storey's plan, else the legend's own
+    let (level, own) = match model.get(view).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => (v.of_level, Some(v.graphics.clone())),
+        _ => (None, None),
+    };
+    let placed = beside(model, view).first().map(|p| p.graphics.clone());
+    let plan = placed.or_else(|| {
+        level.and_then(|l| {
+            model.iter().find_map(|x| match &x.kind {
+                ElementKind::View(p)
+                    if matches!(p.kind, creabim_core::ViewKind::Plan { level, .. } if level == l)
+                        && !p.ceiling_plan
+                        && !p.graphics.range.from_above
+                        && p.callout.is_none() =>
+                {
+                    Some(p.graphics.clone())
+                }
+                _ => None,
+            })
+        })
+    });
+    if let Some(g) = plan.or(own) {
+        crate::section::apply_drawing_style(model, &mut items, g.drawing_style);
+        crate::section::apply_hatch_ground(&mut items, g.drawing_style, g.hatch_ground);
+    }
+    // a renovation: what stays black, what is taken down yellow, what is
+    // built red, for the states the storey has
+    let states = reno_of_view(model, view);
+    if !states.is_empty() {
+        y -= 2.0;
+        for (state, rgb, words) in [
+            (
+                creabim_core::reno::Reno::Existing,
+                [0.0, 0.0, 0.0],
+                "Existing constructions, staying unchanged",
+            ),
+            (
+                creabim_core::reno::Reno::Demolished,
+                creabim_core::reno::DEMOLISHED,
+                "Demolished constructions and elements",
+            ),
+            (
+                creabim_core::reno::Reno::New,
+                creabim_core::reno::NEW,
+                "Proposed constructions and elements",
+            ),
+        ] {
+            if !states.contains(&state) {
+                continue;
+            }
+            let patch = vec![
+                DVec2::new(0.0, y - PATCH.y),
+                DVec2::new(PATCH.x, y - PATCH.y),
+                DVec2::new(PATCH.x, y),
+                DVec2::new(0.0, y),
+            ];
+            items.push(PlanItem::Fill {
+                id: view,
+                points: patch.clone(),
+                hatch: Hatch::Solid,
+                rgb: Some(rgb),
+            });
+            for i in 0..4 {
+                items.push(PlanItem::Line {
+                    id: view,
+                    pen: Pen::Symbol,
+                    a: patch[i],
+                    b: patch[(i + 1) % 4],
+                });
+            }
+            text(
+                &mut items,
+                DVec2::new(ind, y - PATCH.y / 2.0),
+                &tr(words),
+                TEXT,
+            );
+            y -= PATCH.y + 3.0;
+        }
+    }
     // the notes of the drawing, the legend view's own, a line each
     let notes: Vec<String> = match model.get(view).map(|e| &e.kind) {
         Some(ElementKind::View(v)) => v
@@ -279,33 +515,9 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             y -= 1.0;
         }
     }
-    // the project's zero above the sea, as the office's plans close
-    let zero = model.project_info().map_or(0.0, |p| p.1.elevation);
-    if zero.abs() > 1e-9 {
-        y -= 3.0;
-        text(
-            &mut items,
-            DVec2::new(0.0, y - LINE / 2.0),
-            &format!("±0,000 = {}", format!("{zero:.2}").replace('.', ",")),
-            TEXT + 0.6,
-        );
-        y -= LINE + 0.6;
-    }
-    // where the ground is against it at the building, from the site
-    if let Some((lo, hi)) = crate::summary::ground_at_building(model) {
-        let n = |v: f64| format!("{v:+.3}").replace('.', ",").replace('-', "−");
-        let at = if (hi - lo).abs() < 0.0005 {
-            n(lo)
-        } else {
-            format!("{} {} {}", n(lo), tr("to"), n(hi))
-        };
-        text(
-            &mut items,
-            DVec2::new(0.0, y - LINE / 2.0),
-            &format!("{}: {at}", tr("Ground at the building")),
-            TEXT + 0.6,
-        );
-    }
+    // (George 2026-11-20: the project's zero and the ground at the
+    // building are not the legend's; the title block carries the zero)
+    let _ = y;
     PlanView { items }
 }
 
@@ -395,5 +607,119 @@ mod thermal_sound {
         );
         assert_eq!(rw_in("Medzibytová (Rw 56 dB)"), Some(56));
         assert_eq!(rw_in("Rw = 52 dB"), Some(52));
+    }
+}
+
+#[cfg(test)]
+mod by_storey {
+    use super::*;
+
+    /// A storey's legend lists only what its plan cuts: not the
+    /// foundations' materials below it, nor what a slab or beam is of.
+    #[test]
+    fn a_storeys_legend_lists_only_what_its_plan_cuts() {
+        let m = creabim_core::starter::starter_house();
+        let all = rows(&m);
+        let levels = creabim_core::levels::sorted(&m);
+        let mut union: Vec<(ElementId, Option<i64>)> = vec![];
+        for (l, name, _) in &levels {
+            let own = rows_of(&m, Some(*l), &[]);
+            for r in &own {
+                // every row is one of the whole legend's and has a thickness
+                // (walls) or comes from a column
+                assert!(all.iter().any(|a| a.material == r.material), "{name}");
+                union.push((r.material, r.thickness_mm));
+            }
+        }
+        // some storey lists less than the whole
+        assert!(levels
+            .iter()
+            .any(|(l, ..)| rows_of(&m, Some(*l), &[]).len() < all.len()));
+        // and a material left out goes
+        let first = all[0].material;
+        assert!(rows_of(&m, None, &[first])
+            .iter()
+            .all(|r| r.material != first));
+    }
+}
+
+#[cfg(test)]
+mod renovation {
+    use super::*;
+    use creabim_core::reno::Reno;
+    use creabim_core::Transaction;
+
+    /// A renovation's legend says what black, yellow and red mean, for
+    /// the states the storey has; an ordinary project's says nothing.
+    #[test]
+    fn a_renovation_legend_explains_its_colours() {
+        let mut m = creabim_core::starter::starter_house();
+        assert!(reno_states(&m, None).is_empty());
+        let walls: Vec<_> = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Wall(_)))
+            .cloned()
+            .collect();
+        let mut tx = Transaction::new("reno");
+        for (i, w) in walls.iter().enumerate() {
+            let mut now = w.clone();
+            now.reno = Some(match i % 3 {
+                0 => Reno::Existing,
+                1 => Reno::Demolished,
+                _ => Reno::New,
+            });
+            tx = tx.replace(w.clone(), now);
+        }
+        tx.apply(&mut m).unwrap();
+        assert_eq!(
+            reno_states(&m, None),
+            [Reno::Existing, Reno::Demolished, Reno::New]
+        );
+        let v = creabim_core::Element::new(
+            "Legend",
+            ElementKind::View(creabim_core::View::schedule(
+                creabim_core::ScheduleCategory::MaterialLegend,
+            )),
+        );
+        let id = v.id;
+        Transaction::new("t").insert(v).apply(&mut m).unwrap();
+        let d = crate::section::view_drawing(&m, id).unwrap();
+        let has = |t: &str| {
+            d.items
+                .iter()
+                .any(|i| matches!(i, PlanItem::Text { text, .. } if text == t))
+        };
+        assert!(has("Demolished constructions and elements"));
+        assert!(has("Proposed constructions and elements"));
+        assert!(d.items.iter().any(|i| matches!(i,
+            PlanItem::Fill { rgb: Some(c), .. } if *c == creabim_core::reno::DEMOLISHED)));
+        // placed beside a plan of the demolition: black and yellow only
+        let level = creabim_core::levels::sorted(&m)
+            .into_iter()
+            .find(|(l, ..)| reno_states(&m, Some(*l)).len() == 3)
+            .unwrap()
+            .0;
+        let mut plan = creabim_core::View::plan(level);
+        plan.reno = Some(creabim_core::reno::RenoView::Demolition);
+        let plan = creabim_core::Element::new("Búracie práce", ElementKind::View(plan));
+        let sheet = creabim_core::Element::new(
+            "Sheet",
+            ElementKind::Sheet(creabim_core::Sheet::a("S01_ASR_009_N01", "A3")),
+        );
+        let vp = |view: ElementId| {
+            creabim_core::Element::new(
+                "Viewport",
+                ElementKind::Viewport(crate::sheet::new_viewport(&m, sheet.id, view, DVec2::ZERO)),
+            )
+        };
+        let tx = Transaction::new("t").insert(vp(plan.id)).insert(vp(id));
+        Transaction::new("t")
+            .insert(sheet.clone())
+            .insert(plan.clone())
+            .apply(&mut m)
+            .unwrap();
+        tx.apply(&mut m).unwrap();
+        assert_eq!(reno_of_view(&m, id), [Reno::Existing, Reno::Demolished]);
+        assert_eq!(storeys(&m, id), Some(vec![level]));
     }
 }

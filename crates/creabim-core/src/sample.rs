@@ -73,6 +73,7 @@ pub fn sample_house() -> Model {
             format!("{lname} Slab"),
             ElementKind::Slab(Slab {
                 layer_edges: vec![],
+                kind: None,
                 level,
                 boundary: corners.to_vec(),
                 thickness: 0.25,
@@ -144,11 +145,13 @@ pub fn sample_house() -> Model {
                         no_outer_sill: false,
                         no_inner_sill: false,
                         threshold: false,
+                        threshold_material: None,
                         setback: None,
                         reveal: None,
                         division: None,
                         door: None,
                         texts: None,
+                        performance: None,
                     }),
                 );
                 tagged.push((window.id, level, outside * 0.9));
@@ -172,11 +175,13 @@ pub fn sample_house() -> Model {
             no_outer_sill: false,
             no_inner_sill: false,
             threshold: false,
+            threshold_material: None,
             setback: None,
             reveal: None,
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     );
     let front_door_id = front_door.id;
@@ -224,11 +229,13 @@ pub fn sample_house() -> Model {
             no_outer_sill: false,
             no_inner_sill: false,
             threshold: false,
+            threshold_material: None,
             setback: None,
             reveal: None,
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     );
     tagged.push((inner_door.id, g, DVec2::new(0.8, 0.0)));
@@ -593,7 +600,17 @@ pub fn sample_with_buried_beam() -> (Model, ElementId) {
     beam.material = timber;
     let e = Element::new("Lintel beam", ElementKind::Beam(beam));
     let id = e.id;
-    doc.commit(Transaction::new("Add beam").insert(e))
+    // a beam runs through the wall it lies in by default: here the wall
+    // is set to win, so the beam stays hidden inside it
+    let wall = model
+        .iter()
+        .find(|e| e.name == "GF Wall 1")
+        .map(|e| e.id)
+        .expect("the sample has a south wall");
+    let mut rule = crate::JoinRule::new(wall, id);
+    rule.winner = crate::JoinWinner::First;
+    let join = Element::new("Wall over beam", ElementKind::Join(rule));
+    doc.commit(Transaction::new("Add beam").insert(e).insert(join))
         .expect("the beam goes in");
     (doc.model().clone(), id)
 }
@@ -666,11 +683,13 @@ pub fn typed_house() -> Model {
             no_outer_sill: false,
             no_inner_sill: false,
             threshold: false,
+            threshold_material: None,
             setback: None,
             reveal: None,
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     );
     types::stamp(doc.model(), &mut door, starter("Single door 900 × 2100"));
@@ -691,11 +710,13 @@ pub fn typed_house() -> Model {
             no_outer_sill: false,
             no_inner_sill: false,
             threshold: false,
+            threshold_material: None,
             setback: None,
             reveal: None,
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     );
     let (g, f) = (named("Ground Floor"), named("First Floor"));

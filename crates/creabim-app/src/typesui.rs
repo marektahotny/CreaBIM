@@ -388,6 +388,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
             if material_pick(ui, model, "opening", &mut o.material) {
                 label = "Type material";
             }
+            let door = o.door.is_some() || o.sill <= 0.0;
+            if super::wallsui::performance_fields(ui, &mut o.performance, door, "type") {
+                label = "Type window or door values";
+            }
         }
         TypeParams::Slab(s) | TypeParams::Roof(s) => {
             if assembly_pick(ui, model, usage, &mut s.assembly) {
