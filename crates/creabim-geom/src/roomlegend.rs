@@ -415,3 +415,38 @@ mod legend_widths {
         }
     }
 }
+
+#[cfg(test)]
+mod totals_row {
+    /// The usable area's label runs on to its value: no column line
+    /// crosses it in the totals row.
+    #[test]
+    fn the_usable_area_label_is_not_crossed_by_a_column_line() {
+        let m = creabim_core::starter::starter_house();
+        let s = super::schedule(&m, None);
+        let d = crate::schedule::schedule_drawing(creabim_core::ElementId::NIL, "x", &s);
+        let x1 = s.columns[0].width;
+        // the line between the first two columns stops above the totals
+        let low = d
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                crate::plan::PlanItem::Line { a, b, .. }
+                    if (a.x - x1).abs() < 1e-9 && (b.x - x1).abs() < 1e-9 =>
+                {
+                    Some(a.y.min(b.y))
+                }
+                _ => None,
+            })
+            .fold(f64::INFINITY, f64::min);
+        let bottom = d
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                crate::plan::PlanItem::Line { a, b, .. } => Some(a.y.min(b.y)),
+                _ => None,
+            })
+            .fold(f64::INFINITY, f64::min);
+        assert!(low > bottom + 1.0, "{low} {bottom}");
+    }
+}
