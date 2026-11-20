@@ -286,8 +286,8 @@ impl CreaBimApp {
     }
 
     fn save_mark_rules(&mut self, rules: &MarkRules) {
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Save mark numbering")
+        let Some(path) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr("Save mark numbering"))
             .set_file_name("mark-numbering.json")
             .add_filter("Mark numbering", &["json"])
             .save_file()
@@ -299,8 +299,8 @@ impl CreaBimApp {
     }
 
     fn load_mark_rules(&mut self) {
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Load mark numbering")
+        let Some(path) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr("Load mark numbering"))
             .add_filter("Mark numbering", &["json"])
             .pick_file()
         else {

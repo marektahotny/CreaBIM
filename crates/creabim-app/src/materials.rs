@@ -557,8 +557,8 @@ impl CreaBimApp {
     }
 
     pub(super) fn import_materials_dialog(&mut self) {
-        let picked = rfd::FileDialog::new()
-            .set_title("Import materials")
+        let picked = crate::files::file_dialog()
+            .set_title(crate::i18n::tr("Import materials"))
             .add_filter("Materials (IFC, FreeCAD, glTF, Blender)", MATERIAL_FILES)
             .add_filter("IFC", &["ifc"])
             .add_filter("FreeCAD material card", &["FCMat", "fcmat"])

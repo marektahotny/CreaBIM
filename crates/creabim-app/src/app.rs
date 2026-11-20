@@ -8125,7 +8125,8 @@ impl CreaBimApp {
             let start = std::path::absolute(&self.path)
                 .ok()
                 .and_then(|p| p.parent().map(|d| d.to_path_buf()));
-            let mut d = rfd::FileDialog::new().set_title("Export sheets: a PDF each, into…");
+            let mut d = crate::files::file_dialog()
+                .set_title(crate::i18n::tr("Export sheets: a PDF each, into…"));
             if let Some(s) = start {
                 d = d.set_directory(s);
             }
@@ -8436,8 +8437,8 @@ crate::props::row(ui, "File names", |ui| {
                 .on_hover_text(crate::i18n::t("A picture to trace over: a scanned plan, a photo of a sketch (PNG or JPEG). Calibrate it to size in its properties."))
                 .clicked()
             {
-                if let Some(p) = rfd::FileDialog::new()
-                    .set_title("Add a picture as a reference")
+                if let Some(p) = crate::files::file_dialog()
+                    .set_title(crate::i18n::tr("Add a picture as a reference"))
                     .add_filter("Pictures", crate::trace::PICTURES)
                     .pick_file()
                 {
@@ -8449,8 +8450,8 @@ crate::props::row(ui, "File names", |ui| {
                 .on_hover_text(crate::i18n::t("A CAD drawing's lines (DXF). A DWG opens here once saved as DXF: any CAD program, or the free ODA File Converter, does it offline."))
                 .clicked()
             {
-                if let Some(p) = rfd::FileDialog::new()
-                    .set_title("Add a DXF drawing as a reference")
+                if let Some(p) = crate::files::file_dialog()
+                    .set_title(crate::i18n::tr("Add a DXF drawing as a reference"))
                     .add_filter("DXF", &["dxf"])
                     .pick_file()
                 {
@@ -8465,7 +8466,7 @@ crate::props::row(ui, "File names", |ui| {
                 .on_hover_text(crate::i18n::tr("A PDF drawing's lines, fills and texts at its scale 1:N (100 unless changed in its properties); a scanned page comes as a picture."))
                 .clicked()
             {
-                if let Some(p) = rfd::FileDialog::new()
+                if let Some(p) = crate::files::file_dialog()
                     .set_title(crate::i18n::tr("Add a PDF as a reference"))
                     .add_filter("PDF", &["pdf"])
                     .pick_file()
@@ -8482,7 +8483,7 @@ crate::props::row(ui, "File names", |ui| {
                 .on_hover_text(crate::i18n::t("A point cloud (a laser scan or a survey of a building or a room: XYZ, PTS, TXT, CSV, LAS). A plan shows its slice at breast height, 3D all of it, and drawing snaps to its points."))
                 .clicked()
             {
-                if let Some(p) = rfd::FileDialog::new()
+                if let Some(p) = crate::files::file_dialog()
                     .set_title(crate::i18n::tr("Add a point cloud as a reference"))
                     .add_filter("Points", creabim_exchange::cloud::FILES)
                     .pick_file()
@@ -8634,8 +8635,8 @@ crate::props::row(ui, "File names", |ui| {
                 RefSource::Points { .. } => ("Points", creabim_exchange::cloud::FILES),
                 _ => ("Pictures", crate::trace::PICTURES),
             };
-            if let Some(p) = rfd::FileDialog::new()
-                .set_title("Another file for this reference")
+            if let Some(p) = crate::files::file_dialog()
+                .set_title(crate::i18n::tr("Another file for this reference"))
                 .add_filter(filter.0, filter.1)
                 .pick_file()
             {
@@ -12802,6 +12803,7 @@ impl eframe::App for CreaBimApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let _perf = Perf::new("frame");
+        crate::files::remember_main_window(frame);
         // never lose work to a close: unsaved changes ask first
         if ui.ctx().input(|i| i.viewport().close_requested()) && !self.close_ok && self.unsaved() {
             ui.ctx()

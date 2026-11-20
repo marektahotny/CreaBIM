@@ -102,7 +102,7 @@ impl CreaBimApp {
         if head != "terrain" || arg != "points" {
             return false;
         }
-        let Some(path) = rfd::FileDialog::new()
+        let Some(path) = crate::files::file_dialog()
             .set_title(crate::i18n::tr("Terrain from surveyed points"))
             .add_filter(
                 crate::i18n::tr("Points (XYZ, TXT, PTS, CSV, LAS)"),

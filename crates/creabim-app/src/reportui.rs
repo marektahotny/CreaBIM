@@ -279,8 +279,8 @@ impl CreaBimApp {
         let secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        let Some(to) = rfd::FileDialog::new()
-            .set_title("Save the problem report")
+        let Some(to) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr("Save the problem report"))
             .add_filter("Zip", &["zip"])
             .set_file_name(format!("CreaBIM-report-{secs}.zip"))
             .save_file()

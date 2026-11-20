@@ -18,7 +18,7 @@ impl CreaBimApp {
         if head != "map" || arg != "zip" {
             return false;
         }
-        let Some(path) = rfd::FileDialog::new()
+        let Some(path) = crate::files::file_dialog()
             .set_title(crate::i18n::tr("Map package (Pilon Map Downloader)"))
             .add_filter("ZIP", &["zip"])
             .pick_file()

@@ -840,8 +840,8 @@ impl CreaBimApp {
                 self.plan.tool = Tool::Object;
             }
             CatAsk::Import => {
-                let Some(path) = rfd::FileDialog::new()
-                    .set_title("Import an object")
+                let Some(path) = crate::files::file_dialog()
+                    .set_title(crate::i18n::tr("Import an object"))
                     .add_filter(
                         "Objects (Blender, FreeCAD, glTF)",
                         &["blend", "FCStd", "fcstd", "gltf", "glb"],
