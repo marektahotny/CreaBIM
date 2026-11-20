@@ -24,7 +24,9 @@ const GROUP: [Color32; 3] = [
     Color32::from_rgb(242, 244, 246),
 ];
 const STRIPE: Color32 = Color32::from_rgb(247, 248, 246);
-const SELECTED: Color32 = Color32::from_rgb(206, 222, 244);
+// a grey-blue that dark paper turns dark too, so the row's text reads on
+// it in both themes (a clear blue stayed light under light text)
+const SELECTED: Color32 = Color32::from_rgb(208, 214, 224);
 const GRID: Color32 = Color32::from_rgb(214, 217, 212);
 const ACCENT: Color32 = Color32::from_rgb(200, 100, 20);
 const ROW_H: f32 = 24.0;

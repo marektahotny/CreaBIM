@@ -7071,8 +7071,11 @@ impl CreaBimApp {
             .get(view)
             .map(|e| e.name.clone())
             .unwrap_or_default();
+        // a schedule heads itself: a second name over it overlapped
+        if schedule.is_some() {
+            return;
+        }
         let label = match (self.view(view), sheets::sheet_of(self.doc.model(), view)) {
-            (Some(_), _) if schedule.is_some() => format!("{name}  ·  schedule"),
             (Some(v), _) => format!("{name}  ·  1:{:.0}", v.scale),
             (_, Some(s)) => format!(
                 "Sheet {} {name}  ·  {}",
