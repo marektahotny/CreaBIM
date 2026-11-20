@@ -313,14 +313,6 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
         let v = plan_of(&mut b, id, &name, l.elevation);
         b.sheet(number(asr, "VYZ", &mut n), tr("Foundations"), &[v]);
     }
-    // the legend of materials beside the plans, once a wall has one
-    let materials = (frame || !crate::matlegend::rows(model).is_empty()).then(|| {
-        schedule(
-            &mut b,
-            ScheduleCategory::MaterialLegend,
-            "Legend of materials",
-        )
-    });
     let (mut above, mut below) = (0, storeys.iter().filter(|s| s.2 < -1.0).count() + 1);
     // each storey's code and its plan
     let mut plans = vec![];
@@ -350,6 +342,20 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
                 b.view(format!("{} {name}", tr("Legend of rooms")), v)
             })
         });
+        // the materials the storey's plan cuts, once it cuts one
+        let materials = (frame || !crate::matlegend::rows_of(model, Some(*id), &[]).is_empty())
+            .then(|| {
+                b.find(|_, v| {
+                    matches!(v.kind, ViewKind::Schedule { category, .. }
+                        if category == ScheduleCategory::MaterialLegend)
+                        && v.of_level == Some(*id)
+                })
+                .unwrap_or_else(|| {
+                    let mut v = View::schedule(ScheduleCategory::MaterialLegend);
+                    v.of_level = Some(*id);
+                    b.view(format!("{} {name}", tr("Legend of materials")), v)
+                })
+            });
         b.sheet(
             number(asr, &code, &mut n),
             format!("{} {name}", tr("Floor plan")),
@@ -360,6 +366,7 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
         );
         plans.push((*id, name.clone(), code, v));
     }
+    one_legend_a_storey(&mut b);
     if model.iter().any(|e| matches!(e.kind, ElementKind::Roof(_))) {
         let roof = b
             .find(|_, v| v.graphics.range.from_above && v.scale <= 150.0)
@@ -400,7 +407,20 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
         }
     }
     // the sections carry the legend of materials too, as the office's
-    // ASR_006 does
+    // ASR_006 does: of all the storeys
+    let materials = (frame || !crate::matlegend::rows(model).is_empty()).then(|| {
+        b.find(|_, v| {
+            matches!(v.kind, ViewKind::Schedule { category, .. }
+                if category == ScheduleCategory::MaterialLegend)
+                && v.of_level.is_none()
+        })
+        .unwrap_or_else(|| {
+            b.view(
+                tr("Legend of materials"),
+                View::schedule(ScheduleCategory::MaterialLegend),
+            )
+        })
+    });
     b.sheet(
         number(asr, "REZ", &mut n),
         tr("Sections"),
@@ -650,6 +670,68 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
     let list = schedule(&mut b, ScheduleCategory::Documents, "List of documentation");
     b.sheet("A00_TXT_001".into(), tr("List of documentation"), &[list]);
     (b.made != Made::default() || b.fixed).then_some((b.tx, b.made))
+}
+
+/// A legend of materials for every storey once shared by the plans'
+/// sheets: on a sheet with a plan, the storey's own legend takes its
+/// place, so a plan lists only what it cuts.
+fn one_legend_a_storey(b: &mut Builder) {
+    let shared = |m: &Model, id: ElementId| {
+        matches!(m.get(id).map(|e| &e.kind), Some(ElementKind::View(v))
+            if matches!(v.kind, ViewKind::Schedule { category: ScheduleCategory::MaterialLegend, .. })
+                && v.of_level.is_none())
+    };
+    let plan_level = |m: &Model, id: ElementId| match m.get(id).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) if !v.graphics.range.from_above && v.callout.is_none() => {
+            match v.kind {
+                ViewKind::Plan { level, .. } => Some(level),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    let viewports: Vec<Element> =
+        b.m.iter()
+            .filter(|e| matches!(&e.kind, ElementKind::Viewport(v) if shared(&b.m, v.view)))
+            .cloned()
+            .collect();
+    for old in viewports {
+        let ElementKind::Viewport(vp) = &old.kind else {
+            continue;
+        };
+        let level = b.m.iter().find_map(|e| match &e.kind {
+            ElementKind::Viewport(x) if x.sheet == vp.sheet => plan_level(&b.m, x.view),
+            _ => None,
+        });
+        let Some(level) = level else { continue };
+        let found = b.find(|_, v| {
+            matches!(v.kind, ViewKind::Schedule { category, .. }
+                if category == ScheduleCategory::MaterialLegend)
+                && v.of_level == Some(level)
+        });
+        let legend = found.unwrap_or_else(|| {
+            let name = b.m.get(level).map(|e| e.name.clone()).unwrap_or_default();
+            let mut v = View::schedule(ScheduleCategory::MaterialLegend);
+            v.of_level = Some(level);
+            // what the shared one was set to keep
+            if let Some(ElementKind::View(was)) = b.m.get(vp.view).map(|e| &e.kind) {
+                v.column_widths = was.column_widths.clone();
+                v.left_out = was.left_out.clone();
+                v.notes = was.notes.clone();
+            }
+            b.view(format!("{} {name}", tr("Legend of materials")), v)
+        });
+        let mut now = old.clone();
+        if let ElementKind::Viewport(x) = &mut now.kind {
+            x.view = legend;
+        }
+        let one = Transaction::new("one").replace(old.clone(), now.clone());
+        if one.apply(&mut b.m).is_ok() {
+            let tx = std::mem::replace(&mut b.tx, Transaction::new(""));
+            b.tx = tx.replace(old, now);
+            b.fixed = true;
+        }
+    }
 }
 
 /// The title pages still missing: the project's own, with the picture

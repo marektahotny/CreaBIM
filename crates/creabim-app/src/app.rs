@@ -10629,6 +10629,72 @@ crate::props::row(ui, "File names", |ui| {
                                 });
                         });
                     }
+                    // a legend of rooms or materials: the storey it lists, and
+                    // the materials it leaves out
+                    if let ViewKind::Schedule { category, .. } = v.kind {
+                        use creabim_core::ScheduleCategory as C;
+                        if matches!(category, C::RoomLegend | C::MaterialLegend) {
+                            let levels = creabim_core::levels::sorted(self.doc.model());
+                            let shown = v
+                                .of_level
+                                .and_then(|l| levels.iter().find(|x| x.0 == l))
+                                .map_or(crate::i18n::tr("All storeys"), |x| x.1.clone());
+                            crate::props::row(ui, "Storey", |ui| {
+                                egui::ComboBox::from_id_salt(("legend.level", id))
+                                    .selected_text(shown)
+                                    .width(ui.available_width())
+                                    .show_ui(ui, |ui| {
+                                        if ui
+                                            .selectable_label(
+                                                v.of_level.is_none(),
+                                                crate::i18n::tr("All storeys"),
+                                            )
+                                            .clicked()
+                                        {
+                                            v.of_level = None;
+                                            label = "Storey";
+                                        }
+                                        for (l, name, _) in &levels {
+                                            if ui
+                                                .selectable_label(v.of_level == Some(*l), name)
+                                                .clicked()
+                                            {
+                                                v.of_level = Some(*l);
+                                                label = "Storey";
+                                            }
+                                        }
+                                    });
+                            });
+                        }
+                        if category == C::MaterialLegend {
+                            // what the storey's plan cuts, each to keep or
+                            // leave out
+                            let all =
+                                creabim_geom::matlegend::rows_of(self.doc.model(), v.of_level, &[]);
+                            crate::props::section(ui, "Materials in the legend");
+                            let mut seen = vec![];
+                            for r in &all {
+                                if seen.contains(&r.material) {
+                                    continue;
+                                }
+                                seen.push(r.material);
+                                let name = self
+                                    .doc
+                                    .model()
+                                    .get(r.material)
+                                    .map_or(String::new(), |e| e.name.clone());
+                                let mut on = !v.left_out.contains(&r.material);
+                                if ui.checkbox(&mut on, name).changed() {
+                                    if on {
+                                        v.left_out.retain(|m| *m != r.material);
+                                    } else {
+                                        v.left_out.push(r.material);
+                                    }
+                                    label = "Materials in the legend";
+                                }
+                            }
+                        }
+                    }
                     if matches!(v.kind, ViewKind::Axonometric { .. }) {
                         ui.add_space(6.0);
                         self.crop_list(ui, Some(id));

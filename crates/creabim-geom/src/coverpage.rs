@@ -594,7 +594,10 @@ mod look {
     #[ignore]
     fn write_pages() {
         let out = std::env::var("COVER_OUT").unwrap();
-        let mut m = creabim_core::sample::sample_house();
+        let mut m = match std::env::var("COVER_MODEL").as_deref() {
+            Ok("starter") => creabim_core::starter::starter_house(),
+            _ => creabim_core::sample::sample_house(),
+        };
         let p = ProjectInfo {
             client: "Jozef Matúš".into(),
             building_name: "Rodinný dom Matúš".into(),
@@ -630,7 +633,11 @@ mod look {
         };
         for e in m.iter() {
             if let creabim_core::ElementKind::Sheet(s) = &e.kind {
-                if super::cover_of(s).is_some() || s.number.ends_with("N01") {
+                if super::cover_of(s).is_some()
+                    || s.number.ends_with("N01")
+                    || s.number.ends_with("N02")
+                    || s.number.ends_with("REZ")
+                {
                     let svg = crate::sheet::sheet_svg(&m, e.id, &info).unwrap();
                     std::fs::write(format!("{out}/{}.svg", s.number), svg).unwrap();
                 }

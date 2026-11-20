@@ -2245,6 +2245,10 @@ pub struct View {
     /// column's heading; a column not named keeps its own width.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub column_widths: BTreeMap<String, f64>,
+    /// What a legend leaves out though its drawing has it (materials of
+    /// the legend of materials).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub left_out: Vec<ElementId>,
     /// The page of a long list of windows or doors this view draws,
     /// from 1; none draws the whole list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2694,6 +2698,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),
             perimeter: None,
@@ -2736,6 +2741,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),
             perimeter: None,
@@ -2775,6 +2781,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),
             perimeter: None,
@@ -2815,6 +2822,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),
             perimeter: None,
@@ -2860,6 +2868,7 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),
             perimeter: None,
