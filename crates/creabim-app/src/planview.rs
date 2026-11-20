@@ -642,6 +642,11 @@ pub struct PlanState {
     pub footing_placed: bool,
     /// What a Fill room click would fill, under the pointer.
     pub fill_look: Option<crate::fillpreview::Cached>,
+    /// The element Alt+click picked up: new elements its tool draws take
+    /// its parameters (see [`crate::pickup`]).
+    pub picked: Option<crate::pickup::Picked>,
+    /// Alt+click just picked one up: the app shows its tool's tab.
+    pub picked_now: bool,
 }
 
 impl PlanState {
@@ -791,6 +796,8 @@ impl Default for PlanState {
             host_cycle: 0,
             footing_placed: false,
             fill_look: None,
+            picked: None,
+            picked_now: false,
         }
     }
 }
@@ -1569,6 +1576,32 @@ fn show_pane(
         state.hover = hover;
         if said.is_some() {
             state.status = said;
+        }
+    }
+    // Alt+click on an element picks up its parameters: its tool is taken
+    // up, set as it is, and draws the next one the same (George
+    // 2026-11-20, as ArchiCAD's). Not while a tool is part way through,
+    // where Alt places a point free of snaps.
+    let alt_click = response.clicked()
+        && ui.input(|i| i.modifiers.alt && !i.modifiers.command)
+        && !state.has_input()
+        && state.modal.is_none()
+        && state.grip.is_none();
+    if alt_click {
+        if let Some(p) = response.interact_pointer_pos() {
+            let tol = 6.0 / xf.scale as f64;
+            let mut under = under_pointer(state, doc, view, kind, plan, xf.to_world(p), tol, mm);
+            if let Some(h) = state.hover.as_ref().and_then(|h| h.at(pane, p)) {
+                under.retain(|id| *id != h);
+                under.insert(0, h);
+            }
+            let sel = selection.all();
+            if let Some(id) = crate::pickup::choose(&under, &sel) {
+                state.status = Some(match crate::pickup::pick_up(state, doc.model(), id) {
+                    Ok(msg) | Err(msg) => msg,
+                });
+                return None;
+            }
         }
     }
     let hovered = hoverpick::highlighted(&state.hover)
@@ -9829,6 +9862,103 @@ mod tests {
         let e = doc.model().get(sel.active.unwrap()).unwrap();
         assert!(matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Hole));
         assert!(e.of_type.is_none());
+    }
+
+    /// Alt+click picks up an element's parameters (George 2026-11-20):
+    /// its tool is taken up and the next one it draws is the same, all but
+    /// where it is; a setting changed in the bar since lets it go.
+    #[test]
+    fn alt_click_picks_up_an_element_and_its_tool_draws_the_next_the_same() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let wall = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Wall(_)))
+            .unwrap()
+            .id;
+        doc.edit(wall, "set", |e| {
+            if let ElementKind::Wall(w) = &mut e.kind {
+                w.thickness = 0.44;
+                w.height = 2.45;
+                w.base_offset = -0.3;
+                w.bearing = Some(true);
+                w.fire_partial = true;
+            }
+            e.reno = Some(creabim_core::reno::Reno::Existing);
+        })
+        .unwrap();
+        let mut state = PlanState::default();
+        let msg = crate::pickup::pick_up(&mut state, doc.model(), wall).unwrap();
+        assert!(msg.contains("Wall"), "{msg}");
+        assert_eq!(state.tool, Tool::Wall);
+        assert_eq!(state.wall_thickness, 0.44);
+        crate::pickup::sync(&mut doc, &mut state);
+        let mut sel = Selection::default();
+        let (a, b) = (DVec2::new(0.0, -3.0), DVec2::new(6.0, -3.0));
+        plan_click(&mut doc, level, Tool::Wall, a, &mut state, &mut sel).unwrap();
+        plan_click(&mut doc, level, Tool::Wall, b, &mut state, &mut sel).unwrap();
+        let e = doc.model().get(sel.active.unwrap()).unwrap();
+        assert_ne!(e.id, wall);
+        let ElementKind::Wall(w) = &e.kind else {
+            panic!()
+        };
+        assert_eq!((w.thickness, w.height, w.base_offset), (0.44, 2.45, -0.3));
+        assert!(w.bearing == Some(true) && w.fire_partial);
+        assert_eq!(e.reno, Some(creabim_core::reno::Reno::Existing));
+        // drawn where clicked, along its location line
+        let mid = (w.start + w.end) / 2.0;
+        assert!((mid.x - 3.0).abs() < 1e-6, "{mid}");
+
+        // a window: its size and sill, into another wall
+        let win = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Window))
+            .unwrap()
+            .id;
+        doc.edit(win, "set", |e| {
+            if let ElementKind::Opening(o) = &mut e.kind {
+                o.width = 1.37;
+                o.height = 1.11;
+                o.sill = 1.02;
+                o.no_inner_sill = true;
+            }
+        })
+        .unwrap();
+        crate::pickup::pick_up(&mut state, doc.model(), win).unwrap();
+        assert_eq!(state.tool, Tool::Window);
+        assert_eq!(state.members.window, [1.37, 1.11, 1.02]);
+        crate::pickup::sync(&mut doc, &mut state);
+        let mut sel = Selection::default();
+        plan_click(
+            &mut doc,
+            level,
+            Tool::Window,
+            DVec2::new(5.0, 6.0),
+            &mut state,
+            &mut sel,
+        )
+        .unwrap();
+        let e = doc.model().get(sel.active.unwrap()).unwrap();
+        assert_ne!(e.id, win);
+        let ElementKind::Opening(o) = &e.kind else {
+            panic!()
+        };
+        assert_eq!((o.width, o.height, o.sill), (1.37, 1.11, 1.02));
+        assert!(o.no_inner_sill);
+
+        // the bar set otherwise: the template goes, the bar rules
+        state.members.window[0] = 0.6;
+        crate::pickup::sync(&mut doc, &mut state);
+        assert!(state.picked.is_none() && doc.pickup().is_none());
+        // and another tool lets it go too
+        crate::pickup::pick_up(&mut state, doc.model(), wall).unwrap();
+        crate::pickup::sync(&mut doc, &mut state);
+        assert!(doc.pickup().is_some());
+        state.tool = Tool::Slab;
+        crate::pickup::sync(&mut doc, &mut state);
+        assert!(doc.pickup().is_none());
     }
 
     /// A dimension's second point locks onto the first point's
