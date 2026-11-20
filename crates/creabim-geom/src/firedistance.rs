@@ -259,48 +259,101 @@ struct Panel {
     zone: String,
 }
 
+impl Panel {
+    /// Whether the opening `o` is in this stretch: in one of its walls
+    /// and between its ends (a wall behind rooms of two zones gives a
+    /// stretch to each).
+    fn holds(&self, o: &Source) -> bool {
+        let m = ((o.a + o.b) / 2.0 - self.origin).dot(self.t);
+        self.walls.contains(&o.host) && m >= self.lo - 0.05 && m <= self.hi + 0.05
+    }
+}
+
+/// A wall's face split where the fire zone of the rooms behind it
+/// changes: each piece's ends and zone.
+fn zone_runs(
+    rooms: &[(ElementId, Vec<DVec2>, String)],
+    level: ElementId,
+    a: DVec2,
+    b: DVec2,
+    inward: DVec2,
+) -> Vec<(DVec2, DVec2, String)> {
+    let zone = |p: DVec2| {
+        rooms
+            .iter()
+            .find(|(l, outline, _)| *l == level && creabim_core::polygon::contains(outline, p))
+            .map(|r| r.2.clone())
+            .unwrap_or_default()
+    };
+    let n = ((a.distance(b) / 0.1).ceil() as usize).clamp(1, 2000);
+    let mut out: Vec<(DVec2, DVec2, String)> = vec![];
+    for k in 0..n {
+        let (s0, s1) = (k as f64 / n as f64, (k + 1) as f64 / n as f64);
+        let (p, q) = (a.lerp(b, s0), a.lerp(b, s1));
+        let z = zone((p + q) / 2.0 + inward);
+        match out.last_mut() {
+            Some(last) if last.2 == z => last.1 = q,
+            _ => out.push((p, q, z)),
+        }
+    }
+    out
+}
+
 fn panels(model: &Model) -> Vec<Panel> {
     let mut out: Vec<Panel> = vec![];
+    let rooms: Vec<(ElementId, Vec<DVec2>, String)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Room(r) => {
+                let sh = creabim_core::room::shape(model, e.id)?;
+                Some((r.level, sh.outline, r.fire_zone.trim().to_string()))
+            }
+            _ => None,
+        })
+        .collect();
     for w in crate::firezones::outer_walls(model) {
         let wall = w.wall;
         let face = w.outward * (wall.thickness / 2.0);
-        let (a, b) = (wall.start + face, wall.end + face);
-        let zone = zone_at(
-            model,
+        let inward = -w.outward * (wall.thickness + 0.15);
+        for (a, b, zone) in zone_runs(
+            &rooms,
             wall.level,
-            (a + b) / 2.0 - w.outward * (wall.thickness + 0.15),
-        );
-        let found = out.iter_mut().find(|p| {
-            p.level == wall.level
-                && p.zone == zone
-                && p.outward.dot(w.outward) > 0.99
-                && (a - p.origin).dot(p.outward).abs() < 0.05
-                && {
+            wall.start + face,
+            wall.end + face,
+            inward,
+        ) {
+            let found = out.iter_mut().find(|p| {
+                p.level == wall.level
+                    && p.zone == zone
+                    && p.outward.dot(w.outward) > 0.99
+                    && (a - p.origin).dot(p.outward).abs() < 0.05
+                    && {
+                        let (x, y) = ((a - p.origin).dot(p.t), (b - p.origin).dot(p.t));
+                        x.min(y) <= p.hi + 0.05 && x.max(y) >= p.lo - 0.05
+                    }
+            });
+            match found {
+                Some(p) => {
                     let (x, y) = ((a - p.origin).dot(p.t), (b - p.origin).dot(p.t));
-                    x.min(y) <= p.hi + 0.05 && x.max(y) >= p.lo - 0.05
+                    p.lo = p.lo.min(x.min(y));
+                    p.hi = p.hi.max(x.max(y));
+                    p.walls.push(w.id);
                 }
-        });
-        match found {
-            Some(p) => {
-                let (x, y) = ((a - p.origin).dot(p.t), (b - p.origin).dot(p.t));
-                p.lo = p.lo.min(x.min(y));
-                p.hi = p.hi.max(x.max(y));
-                p.walls.push(w.id);
-            }
-            None => {
-                let t = w.outward.perp();
-                let (x, y) = (0.0f64, (b - a).dot(t));
-                out.push(Panel {
-                    level: wall.level,
-                    walls: vec![w.id],
-                    origin: a,
-                    t,
-                    lo: x.min(y),
-                    hi: x.max(y),
-                    outward: w.outward,
-                    facing: w.facing,
-                    zone,
-                });
+                None => {
+                    let t = w.outward.perp();
+                    let (x, y) = (0.0f64, (b - a).dot(t));
+                    out.push(Panel {
+                        level: wall.level,
+                        walls: vec![w.id],
+                        origin: a,
+                        t,
+                        lo: x.min(y),
+                        hi: x.max(y),
+                        outward: w.outward,
+                        facing: w.facing,
+                        zone,
+                    });
+                }
             }
         }
     }
@@ -345,21 +398,6 @@ fn concentrated(model: &Model, level: ElementId, p: DVec2) -> Option<f64> {
         }
         _ => None,
     })
-}
-
-/// The fire zone of the room at `p`; empty with none.
-fn zone_at(model: &Model, level: ElementId, p: DVec2) -> String {
-    model
-        .iter()
-        .find_map(|e| match &e.kind {
-            ElementKind::Room(r) if r.level == level => {
-                let sh = creabim_core::room::shape(model, e.id)?;
-                creabim_core::polygon::contains(&sh.outline, p)
-                    .then(|| r.fire_zone.trim().to_string())
-            }
-            _ => None,
-        })
-        .unwrap_or_default()
 }
 
 /// The fire-dangerous spaces of the fire zones' planes on `level` (every
@@ -437,7 +475,7 @@ pub fn spaces(model: &Model, level: Option<ElementId>, only: Option<ElementId>) 
         // fully open area of each stretch, and the zone's all told
         let open_of = |j: usize| -> f64 {
             all.iter()
-                .filter(|o| !o.partial && panels[j].walls.contains(&o.host))
+                .filter(|o| !o.partial && panels[j].holds(o))
                 .map(|o| o.a.distance(o.b) * (o.z1 - o.z0))
                 .sum()
         };
@@ -565,14 +603,10 @@ impl Ctx<'_> {
         let model = self.model;
         let reader = self.reader;
         let along = |v: DVec2| (v - p0.origin).dot(p0.t);
-        let walls: Vec<ElementId> = members
-            .iter()
-            .flat_map(|&j| self.panels[j].walls.iter().copied())
-            .collect();
         let sources: Vec<&Source> = self
             .all
             .iter()
-            .filter(|o| walls.contains(&o.host))
+            .filter(|o| members.iter().any(|&j| self.panels[j].holds(o)))
             .collect();
         let mut parts: Vec<Part> = sources
             .iter()
@@ -596,7 +630,16 @@ impl Ctx<'_> {
             .collect();
         // 4.1.3 (Z3): an outer wall the designer marks as having a
         // combustible face: its face less its openings, partly open
-        for &w in &walls {
+        // (the wall's piece in each stretch)
+        let pieces: Vec<(ElementId, f64, f64)> = members
+            .iter()
+            .flat_map(|&j| {
+                let q = &self.panels[j];
+                let (a, b) = (along(q.origin + q.t * q.lo), along(q.origin + q.t * q.hi));
+                q.walls.iter().map(move |&w| (w, a.min(b), a.max(b)))
+            })
+            .collect();
+        for (w, lo, hi) in pieces {
             let Some(ElementKind::Wall(wall)) = model.get(w).map(|e| &e.kind) else {
                 continue;
             };
@@ -604,11 +647,18 @@ impl Ctx<'_> {
                 continue;
             }
             let (x, y) = (along(wall.start), along(wall.end));
+            let (x, y) = (x.min(y).max(lo), x.max(y).min(hi));
+            if y - x < 1e-6 {
+                continue;
+            }
             let z0 = model.level(wall.level).map_or(0.0, |l| l.elevation) + wall.base_offset;
             let h = creabim_core::walls::constrained_height(model, wall).unwrap_or(wall.height);
             let holes: f64 = parts
                 .iter()
-                .filter(|o| sources.iter().any(|s| s.id == o.id && s.host == w))
+                .filter(|o| {
+                    let m = (o.rect[0] + o.rect[1]) / 2.0;
+                    sources.iter().any(|s| s.id == o.id && s.host == w) && m >= x && m <= y
+                })
                 .map(|o| o.area)
                 .sum();
             let area = ((x - y).abs() * h - holes).max(0.0);
@@ -1602,5 +1652,55 @@ mod tests {
         tx.apply(&mut m).unwrap();
         let all = spaces(&m, None, None);
         assert!(!all.is_empty() && all.iter().all(|p| p.d == 3.5));
+    }
+
+    /// A wall behind rooms of two zones gives each its own stretch: a
+    /// window of one room keeps its space though the room at the wall's
+    /// middle has none or is missing.
+    #[test]
+    fn a_wall_behind_two_zones_gives_each_its_stretch() {
+        let base = creabim_core::starter::starter_house();
+        let rooms: Vec<ElementId> = base
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Room(_)))
+            .map(|e| e.id)
+            .collect();
+        assert!(rooms.len() > 1);
+        for gone in &rooms {
+            let mut m = base.clone();
+            with_tables(&mut m, TABLES);
+            // a zone of each room
+            let mut tx = creabim_core::Transaction::new("zones");
+            for (i, id) in rooms.iter().enumerate() {
+                let before = m.get(*id).unwrap().clone();
+                let mut after = before.clone();
+                if let ElementKind::Room(r) = &mut after.kind {
+                    r.fire_zone = format!("Z{i}");
+                }
+                tx = tx.replace(before, after);
+            }
+            tx.apply(&mut m).unwrap();
+            let tx = creabim_core::Transaction::new("gone").remove_cascade(&m, *gone);
+            tx.apply(&mut m).unwrap();
+            let all = spaces(&m, None, None);
+            let reader = Reader::new(&m, crate::firerisk::table(&m, FIRE_DISTANCE));
+            for o in sources(&m, &reader.partial) {
+                let behind = m.iter().any(|e| match &e.kind {
+                    ElementKind::Room(r) if r.level == o.level => {
+                        creabim_core::room::shape(&m, e.id).is_some_and(|sh| {
+                            creabim_core::polygon::contains(&sh.outline, o.inside)
+                        })
+                    }
+                    _ => false,
+                });
+                if behind {
+                    assert!(
+                        all.iter().any(|p| p.members.contains(&o.id)),
+                        "opening {:?} lost its space with room {gone:?} gone",
+                        o.id
+                    );
+                }
+            }
+        }
     }
 }
