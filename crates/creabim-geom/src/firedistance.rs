@@ -1780,6 +1780,58 @@ mod tests {
         assert!(short > meets + 0.1, "{short} {meets}");
     }
 
+    /// The makers' fire data of the Slovak base (sk-fire.json): outer
+    /// walls of PORFIX P2-440 (REI-M 240 by the PORFIX handbook) meet the
+    /// grade and stay partly open; PORFIX Premium P2-400, for which the
+    /// handbook states none, counts as wholly open.
+    #[test]
+    fn a_porfix_wall_with_its_handbook_rating_is_not_wholly_open() {
+        let tables = format!(
+            "{TABLES}#table fire_distance\n#columns key\tvalue\tnote\n\
+             table\t3\t\nside_angle\t160\t\npv_default\t50\t\npv_eq3\t30\t\n\
+             wall_unstated\t1\t\n\
+             #table fire_distance_k\n#columns t\tk10\tk11\tq\n15\t1\t1,5\t59\n100\t0,5\t0,7\t160\n\
+             #table fire_grade\n#columns key\tvalue\tnote\nrule\t1\t\n\
+             #table fire_outer_wall\n#columns grade\tabove\tlast\tnonbearing\tsingle\n\
+             1\t30\t15\t15\t15\n"
+        );
+        let south = |m: &Model| {
+            spaces(m, None, None)
+                .into_iter()
+                .filter(|p| p.outward.y < -0.9)
+                .map(|p| p.d)
+                .fold(0.0, f64::max)
+        };
+        let with = |name: &str| {
+            let mut m = creabim_core::starter::starter_house();
+            creabim_core::skbase::add_base(&m).apply(&mut m).unwrap();
+            let asm = creabim_core::assembly::assemblies(&m)
+                .into_iter()
+                .find(|(_, n, _)| *n == name)
+                .map(|(id, _, _)| id)
+                .unwrap();
+            let walls: Vec<_> = m
+                .iter()
+                .filter(|e| matches!(e.kind, ElementKind::Wall(_)))
+                .cloned()
+                .collect();
+            let mut tx = creabim_core::Transaction::new("t");
+            for e in walls {
+                let mut after = e.clone();
+                if let ElementKind::Wall(w) = &mut after.kind {
+                    w.assembly = Some(asm);
+                }
+                tx = tx.replace(e, after);
+            }
+            tx.apply(&mut m).unwrap();
+            with_tables(&mut m, &tables);
+            south(&m)
+        };
+        let rated = with("Obvodová – PORFIX P2-440 300 + EPS šedý 150");
+        let unrated = with("Obvodová – PORFIX Premium P2-400 500 bez zateplenia");
+        assert!(unrated > rated + 0.1, "{unrated} {rated}");
+    }
+
     #[test]
     fn a_given_distance_is_drawn_without_tables() {
         let mut m = creabim_core::starter::starter_house();

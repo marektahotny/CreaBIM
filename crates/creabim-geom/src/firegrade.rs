@@ -232,7 +232,8 @@ pub fn declared(text: &str) -> Option<f64> {
     words.windows(2).find_map(|w| {
         let class = w[0].trim_matches(|c: char| !c.is_alphanumeric());
         let is_class = !class.is_empty()
-            && class.chars().all(|c| "REIWM".contains(c))
+            // "REI-M 240" (a wall between buildings) too
+            && class.chars().all(|c| "REIWM-".contains(c))
             && class.contains(['R', 'E', 'I']);
         let digits: String = w[1].chars().take_while(|c| c.is_ascii_digit()).collect();
         is_class.then(|| digits.parse::<f64>().ok()).flatten()
@@ -247,6 +248,12 @@ mod tests {
     const TABLE: &str = "#table t\n#columns system\tpv\tI\tII\tIII\tIV\tV\n\
         N\t15\t20\tbez\tbez\tbez\tbez\nN\t999\tN1\t0a\t0\t10\t30\n\
         Z\t10\t10\t10\t15(10)\t20(10)\tN2\n";
+
+    #[test]
+    fn a_rating_with_m_is_read() {
+        assert_eq!(declared("REI-M 240"), Some(240.0));
+        assert_eq!(declared("požiarna odolnosť EI 180 (príručka)"), Some(180.0));
+    }
 
     #[test]
     fn table_2_gives_the_lowest_grade_that_takes_the_height() {

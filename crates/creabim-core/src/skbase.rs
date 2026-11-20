@@ -51,7 +51,10 @@ struct BuildUp {
     name: String,
     #[serde(default)]
     boundary: String,
+    /// PilonDesigner's fire resistance: not used, the makers' documents
+    /// in `data/sk-fire.json` stand in for it.
     #[serde(default)]
+    #[allow(dead_code)]
     fire: String,
     #[serde(default)]
     rw: Option<f64>,
@@ -70,6 +73,63 @@ struct BaseLayer {
     /// Above a ventilated gap (roofing, battens).
     #[serde(default)]
     vent: bool,
+}
+
+/// Fire data checked against the makers' documents (`data/sk-fire.json`,
+/// George 2026-11-20): the fire resistance of a build-up and of a block,
+/// the reaction to fire of an insulation, each with where it is printed.
+/// A build-up not listed there gets no fire resistance, so a fire check
+/// counts it as stated by nobody (fire-open) until the designer fills it
+/// in; the values PilonDesigner's export carries are not used.
+#[derive(Deserialize)]
+struct FireData {
+    assemblies: std::collections::HashMap<String, FireAssembly>,
+    materials: std::collections::HashMap<String, FireMaterial>,
+}
+
+#[derive(Deserialize)]
+struct FireAssembly {
+    fire: String,
+    source: String,
+    #[serde(default, rename = "maxHeight")]
+    max_height: Option<u32>,
+}
+
+#[derive(Deserialize)]
+struct FireMaterial {
+    /// The block's fire resistance; absent keeps what the base gives
+    /// (a sheet already quoted there).
+    #[serde(default, rename = "fireRes")]
+    fire_res: Option<String>,
+    /// Reaction to fire (STN EN 13501-1).
+    #[serde(default)]
+    reaction: Option<String>,
+    source: String,
+}
+
+fn fire_data() -> FireData {
+    serde_json::from_str(include_str!("../data/sk-fire.json")).expect("sk-fire.json")
+}
+
+/// A build-up's fire resistance by the makers' documents, with its
+/// source for the description; none when no document gives it.
+fn fire_of(fire: &FireData, name: &str) -> Option<(String, String)> {
+    let f = fire.assemblies.get(name)?;
+    let mut d = format!("požiarna odolnosť {} ({}", f.fire, f.source);
+    if let Some(h) = f.max_height {
+        d.push_str(&format!("; najväčšia výška steny {} mm", group(h)));
+    }
+    d.push(')');
+    Some((f.fire.clone(), d))
+}
+
+/// 3000 as "3 000".
+fn group(n: u32) -> String {
+    if n >= 1000 {
+        format!("{} {:03}", n / 1000, n % 1000)
+    } else {
+        n.to_string()
+    }
 }
 
 /// PilonDesigner's base, with CreaBIM's own additions over it
@@ -97,6 +157,35 @@ fn base() -> Base {
     b.walls.extend(more.walls);
     b.floors.extend(more.floors);
     b.roofs.extend(more.roofs);
+    // a block's fire resistance and an insulation's reaction to fire only
+    // as a maker's document gives them
+    let fire = fire_data();
+    for m in &mut b.materials {
+        match fire.materials.get(&m.id) {
+            Some(f) => {
+                if let Some(r) = &f.fire_res {
+                    m.fire_res = r.clone();
+                }
+                if let Some(r) = &f.reaction {
+                    m.fire = r.clone();
+                }
+                if !m.note.contains(&f.source) {
+                    let what = if f.reaction.is_some() {
+                        "reakcia na oheň"
+                    } else {
+                        "požiarna odolnosť"
+                    };
+                    m.note = [m.note.as_str(), &format!("{what} podľa: {}", f.source)]
+                        .iter()
+                        .filter(|x| !x.is_empty())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                }
+            }
+            None => m.fire_res.clear(),
+        }
+    }
     b
 }
 
@@ -380,6 +469,7 @@ pub fn add_base(model: &Model) -> Transaction {
         by_id.insert(m.id.as_str(), (id, category, screed));
     }
     let assemblies = assembly::assemblies(model);
+    let fire = fire_data();
     let kinds = types::types(model);
     for (usage, list) in [
         (AssemblyUse::Wall, &b.walls),
@@ -389,7 +479,22 @@ pub fn add_base(model: &Model) -> Transaction {
         for t in list.iter().filter(|t| t.curtain.is_none()) {
             let found = assemblies.iter().find(|(_, n, _)| *n == t.name);
             let (id, total) = match found {
-                Some((id, _, a)) => (*id, a.total()),
+                Some((id, _, a)) => {
+                    // one made before the makers' fire data takes it in,
+                    // unless the designer has stated their own
+                    if a.fire_resistance.is_empty() {
+                        if let (Some((f, _)), Some(before)) =
+                            (fire_of(&fire, &t.name), model.get(*id))
+                        {
+                            let mut after = before.clone();
+                            if let ElementKind::Assembly(x) = &mut after.kind {
+                                x.fire_resistance = f;
+                            }
+                            tx = tx.replace(before.clone(), after);
+                        }
+                    }
+                    (*id, a.total())
+                }
                 None => {
                     let layers: Vec<Layer> = t
                         .layers
@@ -416,8 +521,9 @@ pub fn add_base(model: &Model) -> Transaction {
                         "teren" => d.push("konštrukcia pri teréne".into()),
                         _ => {}
                     }
-                    if !t.fire.is_empty() {
-                        d.push(format!("požiarna odolnosť {}", t.fire));
+                    if let Some((f, text)) = fire_of(&fire, &t.name) {
+                        a.fire_resistance = f;
+                        d.push(text);
                     }
                     if let Some(rw) = t.rw {
                         d.push(format!("Rw {rw} dB"));
@@ -604,5 +710,102 @@ mod tests {
             panic!()
         };
         assert_eq!((mat.lambda, mat.hatch), (Some(0.12), Hatch::Diagonal));
+    }
+}
+
+#[cfg(test)]
+mod fire_tests {
+    use super::*;
+    use crate::Document;
+
+    fn fire_of_named(m: &Model, name: &str) -> String {
+        let all = assembly::assemblies(m);
+        let (_, _, a) = all.iter().find(|(_, n, _)| *n == name).unwrap();
+        a.fire_resistance.clone()
+    }
+
+    #[test]
+    fn build_ups_take_fire_resistance_only_from_makers_documents() {
+        let mut doc = Document::new();
+        doc.commit(add_base(doc.model())).unwrap();
+        let m = doc.model();
+        // PORFIX handbook, PDF p. 15 and 16
+        assert_eq!(
+            fire_of_named(m, "Obvodová – PORFIX P2-440 300 + EPS šedý 150"),
+            "REI-M 240"
+        );
+        assert_eq!(
+            fire_of_named(m, "Priečka – PORFIX priečkovka P2-500 125"),
+            "EI 180"
+        );
+        // the handbook gives "-" for P2-400 and P6-650: left empty
+        assert_eq!(
+            fire_of_named(m, "Obvodová – PORFIX Premium P2-400 500 bez zateplenia"),
+            ""
+        );
+        assert_eq!(fire_of_named(m, "Priečka – PORFIX P6-650 200"), "");
+        // a generic brick has no maker's document
+        assert_eq!(fire_of_named(m, "Obvodová – tehla 300 + EPS 150"), "");
+        let all = assembly::assemblies(m);
+        let (_, _, a) = all
+            .iter()
+            .find(|(_, n, _)| *n == "Obvodová – tehla 300 + EPS 150")
+            .unwrap();
+        assert!(!a.description.contains("požiarna"));
+    }
+
+    #[test]
+    fn every_build_up_is_either_sourced_or_listed_as_missing() {
+        let fire: serde_json::Value =
+            serde_json::from_str(include_str!("../data/sk-fire.json")).unwrap();
+        let b = base();
+        for t in b.walls.iter().chain(&b.floors).chain(&b.roofs) {
+            if t.curtain.is_some() {
+                continue;
+            }
+            assert!(
+                fire["assemblies"].get(&t.name).is_some() || fire["missing"].get(&t.name).is_some(),
+                "{} neither sourced nor listed",
+                t.name
+            );
+        }
+    }
+
+    #[test]
+    fn a_project_made_before_gets_the_fire_resistance_once() {
+        let mut doc = Document::new();
+        doc.commit(add_base(doc.model())).unwrap();
+        // as it was before: no fire resistance in the field
+        let name = "Nosná vnútorná – PORFIX P4-600 250";
+        let all = assembly::assemblies(doc.model());
+        let (id, _, _) = all.iter().find(|(_, n, _)| *n == name).unwrap();
+        let before = doc.model().get(*id).unwrap().clone();
+        let mut after = before.clone();
+        if let ElementKind::Assembly(x) = &mut after.kind {
+            x.fire_resistance.clear();
+        }
+        doc.commit(Transaction::new("old").replace(before, after))
+            .unwrap();
+        assert_eq!(fire_of_named(doc.model(), name), "");
+        doc.commit(add_base(doc.model())).unwrap();
+        assert_eq!(fire_of_named(doc.model(), name), "REI-M 240");
+        assert!(add_base(doc.model()).ops.is_empty());
+    }
+
+    #[test]
+    fn insulation_reaction_to_fire_comes_with_its_sheet() {
+        let b = base();
+        let eps = b.materials.iter().find(|m| m.id == "eps-70f").unwrap();
+        assert_eq!(eps.fire, "E");
+        assert!(eps.note.contains("Isover EPS 70F"));
+        let mw = b.materials.iter().find(|m| m.id == "mw-fasada").unwrap();
+        assert_eq!(mw.fire, "A1");
+        // PORFIX AKU is not in the handbook: no fire resistance
+        let aku = b
+            .materials
+            .iter()
+            .find(|m| m.id == "porfix-aku-248")
+            .unwrap();
+        assert!(aku.fire_res.is_empty());
     }
 }
