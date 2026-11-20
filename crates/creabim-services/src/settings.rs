@@ -230,6 +230,10 @@ impl Settings {
             AccessoryRole::PressureReducer => c.pressure_reducer.clone(),
             AccessoryRole::Balancing => c.balancing.clone(),
             AccessoryRole::WaterMeter => c.meter.clone(),
+            AccessoryRole::TeeTap => ComponentFamily {
+                zeta: self.zeta.tee_through,
+                fixed_loss_kpa: 0.0,
+            },
             AccessoryRole::ValveBox => ComponentFamily {
                 zeta: c.valve_box.zeta,
                 fixed_loss_kpa: 0.0,

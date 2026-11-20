@@ -667,6 +667,24 @@ pub const VALVE_KINDS: &[ValveKind] = &[
         "",
     ),
     vk(
+        "odvzdusnenie",
+        "Automatický odvzdušňovací ventil (horný bod trasy)",
+        None,
+        None,
+        &[M::Water, M::Heating, M::Cooling, M::Fire],
+        ("IfcValve", "AIRRELEASE"),
+        "STN EN 12828, STN EN 806-2",
+    ),
+    vk(
+        "vypustenie",
+        "Vypúšťací ventil (dolný bod trasy)",
+        None,
+        None,
+        &[M::Water, M::Heating, M::Cooling, M::Fire],
+        ("IfcValve", "DRAWOFFCOCK"),
+        "STN EN 12828, STN EN 806-2",
+    ),
+    vk(
         "vodomer",
         "Vodomer",
         None,
@@ -729,6 +747,24 @@ pub const VALVE_KINDS: &[ValveKind] = &[
         ("IfcValve", "ISOLATING"),
         "STN EN ISO 7396-1",
     ),
+    nocalc(vk(
+        "chranicka",
+        "Chránička / ochranná rúrka prestupu",
+        None,
+        None,
+        &[M::Gas],
+        ("IfcPipeFitting", "USERDEFINED"),
+        "TPH 03 2012 F.4.1, F.7.4, F.7.5",
+    )),
+    nocalc(vk(
+        "ppUtesnenie",
+        "Protipožiarne utesnenie prestupu",
+        None,
+        None,
+        &[M::Gas],
+        ("IfcPipeFitting", "USERDEFINED"),
+        "TPH 03 2012 F.4.3, F.7.6",
+    )),
     terminal(vk(
         "spotrebic",
         "Plynový spotrebič",
@@ -1073,8 +1109,8 @@ mod tests {
     }
 
     #[test]
-    fn valves_are_pilon_designers_and_sit_on_their_pipe() {
-        assert_eq!(VALVE_KINDS.len(), 28);
+    fn valves_are_pilon_designers_and_ours_and_sit_on_their_pipe() {
+        assert_eq!(VALVE_KINDS.len(), 32);
         let mut codes: Vec<_> = VALVE_KINDS.iter().map(|k| k.code).collect();
         codes.sort();
         codes.dedup();
