@@ -535,17 +535,30 @@ pub fn click(
         let mut e = d.styled(place(model, view_id, view, ready, tool, raw));
         if let ElementKind::Dimension(dim) = &mut e.kind {
             if dim.kind == DimensionKind::Spot {
-                // a new spot level reads like the last one made
-                dim.pattern = model
+                // a new spot level reads like the last one of its sort
+                // made: heights like heights, S-JTSK coordinates like
+                // coordinates (a coordinate mark never loses its Y and X)
+                let coords = |p: &Option<String>| {
+                    p.as_deref()
+                        .is_some_and(creabim_core::annotation::writes_coordinates)
+                };
+                let own = coords(&dim.pattern);
+                let last = model
                     .iter()
                     .filter_map(|e| match &e.kind {
-                        ElementKind::Dimension(d) if d.kind == DimensionKind::Spot => {
+                        ElementKind::Dimension(d)
+                            if d.kind == DimensionKind::Spot && coords(&d.pattern) == own =>
+                        {
                             Some(d.pattern.clone())
                         }
                         _ => None,
                     })
-                    .last()
-                    .flatten();
+                    .last();
+                if let Some(p) = last {
+                    if p.is_some() || !own {
+                        dim.pattern = p;
+                    }
+                }
             }
         }
         if let (
@@ -2030,6 +2043,61 @@ mod tests {
         // undo takes it away
         doc.undo();
         assert_eq!(ids(&doc), before);
+    }
+
+    #[test]
+    fn a_coordinate_mark_writes_y_and_x_after_a_spot_level() {
+        // a spot level placed before used to hand its "±0,000" pattern
+        // to the coordinate mark made after it
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (vid, view) = plan_of(&doc);
+        let mut info = doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        info.sjtsk = Some([-547382.28, -1253318.85]);
+        let tx = creabim_core::project::set_project(doc.model(), info);
+        doc.commit(tx).unwrap();
+        let (mut sel, mut placed) = (Selection::default(), vec![]);
+        for coords in [false, true, true] {
+            let mut d = Draft {
+                spot_coords: coords,
+                ..Draft::default()
+            };
+            let before = ids(&doc);
+            for at in [DVec2::new(1.0, 1.0), DVec2::new(3.0, 2.0)] {
+                click(
+                    &mut doc,
+                    vid,
+                    &view,
+                    Tool::SpotLevel,
+                    None,
+                    at,
+                    &[],
+                    0.1,
+                    &mut d,
+                    &mut sel,
+                )
+                .unwrap();
+            }
+            placed.push(added_since(&doc, &before).id);
+        }
+        let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+        let text = |id: ElementId| {
+            drawing
+                .items
+                .iter()
+                .find_map(|i| match i {
+                    PlanItem::Annotation { id: j, item } if *j == id => Some(item.text.clone()),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        assert!(!text(placed[0]).contains("Y ="), "{}", text(placed[0]));
+        for id in &placed[1..] {
+            assert!(text(*id).contains("547"), "{}", text(*id));
+        }
     }
 
     #[test]
