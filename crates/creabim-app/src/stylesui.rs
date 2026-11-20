@@ -28,7 +28,7 @@ pub(super) enum Page {
 #[derive(Default)]
 pub(super) struct StylesUi {
     pub open: bool,
-    page: Page,
+    pub page: Page,
     /// The pattern and template picked in their lists.
     pattern: usize,
     template: usize,

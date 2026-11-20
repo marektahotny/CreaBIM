@@ -9757,6 +9757,7 @@ crate::props::row(ui, "File names", |ui| {
 
         let mut edited = e.clone();
         let mut label = "";
+        let mut flip_view = false;
         let mut extrude_sketch = false;
         let mut draw_hole = false;
         let mut edit_points = false;
@@ -10317,6 +10318,84 @@ crate::props::row(ui, "File names", |ui| {
                         )
                     {
                         label = "Services drawn";
+                    }
+                    // which way the line runs: its angle in the plan, and
+                    // a button to look the other way (also the ⇅ icon by the
+                    // line in the plan, or Space)
+                    if let Some(mut deg) = creabim_core::transform::view_angle(v) {
+                        let was = deg;
+                        crate::props::row(ui, "Angle of the line", |ui| {
+                            crate::props::fill(
+                                ui,
+                                egui::DragValue::new(&mut deg)
+                                    .speed(0.5)
+                                    .range(-360.0..=360.0)
+                                    .max_decimals(2)
+                                    .suffix("°"),
+                            )
+                        })
+                        .on_hover_text(crate::i18n::t(
+                            "The line turns about its middle; the turn grip by the line in the plan does the same",
+                        ));
+                        if (deg - was).abs() > 1e-9 {
+                            creabim_core::transform::turn_view(v, deg - was);
+                            label = "Turn section";
+                        }
+                        if ui
+                            .button(crate::i18n::t("⇅ Look the other way"))
+                            .on_hover_text(crate::i18n::t(
+                                "The section or elevation looks to the other side of its line (Space)",
+                            ))
+                            .clicked()
+                        {
+                            flip_view = true;
+                        }
+                    }
+                    // the look of every section mark in the project
+                    if matches!(v.kind, ViewKind::Section { .. }) {
+                        let (pack_id, pack) = self.edited_pack();
+                        let own = pack
+                            .marker_style
+                            .clone()
+                            .filter(|n| pack.marker_styles.iter().any(|s| &s.name == n));
+                        let mut picked: Option<creabim_core::styles::StylePack> = None;
+                        crate::props::row(ui, "Section mark", |ui| {
+                            egui::ComboBox::from_id_salt("section.marker")
+                                .icon(crate::props::combo_icon)
+                                .selected_text(crate::i18n::tr(&pack.marker_label()))
+                                .width(ui.available_width())
+                                .show_ui(ui, |ui| {
+                                    for f in creabim_core::styles::MarkerFamily::ALL {
+                                        let sel = own.is_none() && pack.markers == f;
+                                        if ui.selectable_label(sel, crate::i18n::tw(f.label())).clicked() && !sel {
+                                            picked = Some(creabim_core::styles::StylePack {
+                                                markers: f,
+                                                marker_style: None,
+                                                ..pack.clone()
+                                            });
+                                        }
+                                    }
+                                    for st in &pack.marker_styles {
+                                        let sel = own.as_deref() == Some(st.name.as_str());
+                                        if ui.selectable_label(sel, &st.name).clicked() && !sel {
+                                            picked = Some(creabim_core::styles::StylePack {
+                                                marker_style: Some(st.name.clone()),
+                                                ..pack.clone()
+                                            });
+                                        }
+                                    }
+                                });
+                        });
+                        if let Some(p) = picked {
+                            self.commit_pack(pack_id, p, "Section mark");
+                        }
+                        if ui
+                            .small_button(crate::i18n::t("Own mark (marker designer)…"))
+                            .clicked()
+                        {
+                            self.gstyles.open = true;
+                            self.gstyles.page = stylesui::Page::Marks;
+                        }
                     }
                     // the section line's own look and course: broken in the
                     // middle, stepped aside (zalomený rez)
@@ -11501,6 +11580,10 @@ crate::props::row(ui, "File names", |ui| {
                 }
                 Err(e) => self.status = format!("Couldn't do that: {e}"),
             }
+        }
+        if flip_view {
+            self.flip_selected(false);
+            return;
         }
         if !label.is_empty() {
             // a layered element is always as thick as its layers

@@ -897,7 +897,24 @@ pub fn flip_view(model: &Model, view: ElementId) -> Option<crate::Transaction> {
         return None;
     };
     let length = start.distance(*end);
-    std::mem::swap(start, end);
+    let look = (*end - *start).normalize_or_zero().perp();
+    // a jogged line keeps its cut where it was: the new line runs where
+    // the old last stretch cut, and its steps are counted from the other end
+    let stretches = v.line.stretches(length);
+    let last = stretches.last().map_or(0.0, |s| s.2);
+    let (s0, e0) = (*start, *end);
+    *start = e0 + look * last;
+    *end = s0 + look * last;
+    if !v.line.jogs.is_empty() {
+        v.line.jogs = stretches
+            .windows(2)
+            .rev()
+            .map(|w| crate::SectionJog {
+                at: length - w[0].1,
+                offset: last - w[0].2,
+            })
+            .collect();
+    }
     let label = if matches!(v.kind, ViewKind::Section { cut: false, .. }) {
         "Flip elevation"
     } else {
@@ -943,10 +960,68 @@ pub fn flip_view(model: &Model, view: ElementId) -> Option<crate::Transaction> {
     Some(tx)
 }
 
+/// A section or elevation line turned `deg` degrees (counter-clockwise)
+/// about its middle; its jogs, depth and notes go round with it. False for
+/// any other view.
+pub fn turn_view(v: &mut crate::View, deg: f64) -> bool {
+    let ViewKind::Section { start, end, .. } = &mut v.kind else {
+        return false;
+    };
+    let mid = (*start + *end) / 2.0;
+    let r = DVec2::from_angle(deg.to_radians());
+    *start = mid + r.rotate(*start - mid);
+    *end = mid + r.rotate(*end - mid);
+    true
+}
+
+/// The bearing of a section or elevation line, start to end, in degrees
+/// from the x axis counter-clockwise (0..360).
+pub fn view_angle(v: &crate::View) -> Option<f64> {
+    let ViewKind::Section { start, end, .. } = v.kind else {
+        return None;
+    };
+    let d = end - start;
+    Some(d.y.atan2(d.x).to_degrees().rem_euclid(360.0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{sample::sample_house, Wall};
+
+    #[test]
+    fn a_flipped_jogged_section_cuts_where_it_did() {
+        let mut v = crate::View::section(DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0), 8.0, true);
+        v.line.jogs = vec![crate::SectionJog { at: 4.0, offset: 2.0 }];
+        let el = Element::new("S", ElementKind::View(v));
+        let id = el.id;
+        let mut doc = crate::Document::from_model(sample_house());
+        doc.commit(crate::Transaction::new("Add").insert(el)).unwrap();
+        doc.commit(flip_view(doc.model(), id).unwrap()).unwrap();
+        let ElementKind::View(v) = &doc.model().get(id).unwrap().kind else {
+            panic!()
+        };
+        let ViewKind::Section { start, end, .. } = v.kind else {
+            panic!()
+        };
+        // the line now runs on the stepped stretch (y = 2), the other way
+        assert_eq!((start, end), (DVec2::new(10.0, 2.0), DVec2::new(0.0, 2.0)));
+        // and steps back to y = 0 at x = 4: 6 m along, 2 m to its new look
+        // side (it looks south now, so +2 is down to y = 0)
+        assert_eq!(v.line.jogs, vec![crate::SectionJog { at: 6.0, offset: 2.0 }]);
+    }
+
+    #[test]
+    fn a_section_turns_about_its_middle() {
+        let mut v = crate::View::section(DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0), 8.0, true);
+        assert!(turn_view(&mut v, 90.0));
+        let ViewKind::Section { start, end, .. } = v.kind else {
+            panic!()
+        };
+        assert!(start.distance(DVec2::new(5.0, -5.0)) < 1e-9);
+        assert!(end.distance(DVec2::new(5.0, 5.0)) < 1e-9);
+        assert!((view_angle(&v).unwrap() - 90.0).abs() < 1e-9);
+    }
 
     #[test]
     fn a_flipped_section_looks_the_other_way_and_keeps_its_notes_in_place() {

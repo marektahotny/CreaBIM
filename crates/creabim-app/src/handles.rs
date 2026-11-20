@@ -129,6 +129,9 @@ pub enum HandleKind {
     /// Jog `i` of a section line: where along the line it steps, and how
     /// far aside.
     ViewJog(usize),
+    /// The icon beside a section or elevation line: a click turns it to
+    /// look the other way (as Space does).
+    ViewFlip,
     /// Face `i` of a crop box (see [`creabim_core::CropBox::face`]).
     CropFace(usize),
     /// A crop box as a whole, across the plan.
@@ -307,6 +310,7 @@ impl HandleKind {
             HandleKind::ViewEnd { .. } => "Line end",
             HandleKind::ViewDepth => "Depth",
             HandleKind::ViewJog(_) => "Jog",
+            HandleKind::ViewFlip => "Look the other way",
             HandleKind::CropFace(_) => "Crop face",
             HandleKind::CropMove => "Crop box: move",
             HandleKind::RefMove => "Reference: move",
@@ -368,6 +372,7 @@ impl HandleKind {
             HandleKind::MeshLift => "Drag: move the mass up or down",
             HandleKind::ViewDepth => "Drag: change how deep it sees",
             HandleKind::ViewJog(_) => "Drag: move where the line steps, and how far aside",
+            HandleKind::ViewFlip => "Click: turn the section to look the other way (Space)",
             HandleKind::CropFace(_) => "Drag: move the crop face",
             HandleKind::RefMove => "Drag: move the reference",
             HandleKind::RefScale(_) => "Drag: scale it about its middle (Calibrate in Properties sets an exact size)",
@@ -999,6 +1004,15 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
                         (start + along * j.at + look * j.offset).extend(0.0),
                     ));
                 }
+                // by the middle of the line: the flip icon behind it, the
+                // turn grip in front of it
+                let mid = (start + end) / 2.0;
+                let aside = (start.distance(end) * 0.08).clamp(0.4, 1.2);
+                out.push(flat(HandleKind::ViewFlip, (mid - look * aside).extend(0.0)));
+                out.push(flat(
+                    HandleKind::Rotate,
+                    (mid + look * aside.min(depth / 2.0)).extend(0.0),
+                ));
                 out
             }
             _ => vec![],
@@ -1309,6 +1323,10 @@ fn pivot_of(model: &Model, e: &Element) -> Option<DVec2> {
         ElementKind::Stair(s) => Some(s.start),
         ElementKind::FreeMesh(m) => Some(m.origin.truncate()),
         ElementKind::Reference(r) => Some(r.at),
+        ElementKind::View(v) => match v.kind {
+            ViewKind::Section { start, end, .. } if v.callout.is_none() => Some((start + end) / 2.0),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -1881,6 +1899,11 @@ pub fn apply(
                 ElementKind::Stair(s) => s.direction = (s.direction + by).rem_euclid(360.0),
                 ElementKind::FreeMesh(m) => m.rotation = (m.rotation + by).rem_euclid(360.0),
                 ElementKind::Reference(r) => r.rotation = (r.rotation + by).rem_euclid(360.0),
+                ElementKind::View(v) => {
+                    if !creabim_core::transform::turn_view(v, by) {
+                        return Err("this doesn't turn".into());
+                    }
+                }
                 _ => return Err("this doesn't turn".into()),
             }
         }
@@ -1896,6 +1919,7 @@ pub fn apply(
             | HandleKind::ShaftBase
             | HandleKind::ShaftTop,
         ) => crate::editmode::reshape(model, first, kind, grab, now, step)?,
+        (_, HandleKind::ViewFlip) => return Err("click it to turn the view round".into()),
         _ => return Err("this handle doesn't fit this element".into()),
     }
     let opening_ok = match &first.kind {
@@ -2590,6 +2614,38 @@ pub fn grip_style() -> GripStyle {
 
 /// An object's turn grip: a round handle with a curved arrow, on a thin
 /// leader from `front` (its front edge on screen).
+/// The flip icon of a section line: a round button with a double arrow
+/// across the line (`across`, on screen).
+fn draw_flip_icon(painter: &Painter, c: Pos2, across: Vec2, state: GripState, look: &GripLook) {
+    let accent = if state == GripState::Faded {
+        look.accent.gamma_multiply(0.4)
+    } else {
+        look.accent
+    };
+    let r = match state {
+        GripState::Hover | GripState::Held => 9.5,
+        _ => 8.0,
+    };
+    let (fill, ink) = if matches!(state, GripState::Held | GripState::Hover) {
+        (accent, Color32::WHITE)
+    } else {
+        (Color32::WHITE, accent)
+    };
+    painter.circle(c, r, fill, Stroke::new(1.5, accent));
+    let a = r * 0.62;
+    let side = across.rot90();
+    painter.line_segment([c - across * a, c + across * a], Stroke::new(1.5, ink));
+    for d in [across, -across] {
+        let tip = c + d * a;
+        let head = 2.8;
+        painter.add(egui::Shape::convex_polygon(
+            vec![tip + d * 1.0, tip - d * head + side * head, tip - d * head - side * head],
+            ink,
+            Stroke::NONE,
+        ));
+    }
+}
+
 fn draw_turn_grip(
     painter: &Painter,
     c: Pos2,
@@ -3745,6 +3801,13 @@ pub fn interact(
             // an object's turn grip: a curved arrow on a short leader from
             // its front edge, so it reads as part of the object (A7-7)
             let front = element.as_ref().and_then(|e| {
+                // a section's: from the middle of its line
+                if let ElementKind::View(v) = &e.kind {
+                    let ViewKind::Section { start, end, .. } = v.kind else {
+                        return None;
+                    };
+                    return (input.project)(((start + end) / 2.0).extend(0.0));
+                }
                 let ElementKind::Object(o) = &e.kind else {
                     return None;
                 };
@@ -3755,6 +3818,27 @@ pub fn interact(
             draw_turn_grip(painter, c, front, state, &look);
             if state == GripState::Hover {
                 ctx.set_cursor_icon(egui::CursorIcon::Grab);
+            }
+            continue;
+        }
+        if h.kind == HandleKind::ViewFlip {
+            // two arrows across the line: the way it looks, and the other
+            let across = element.as_ref().and_then(|e| {
+                let ElementKind::View(v) = &e.kind else {
+                    return None;
+                };
+                let ViewKind::Section { start, end, .. } = v.kind else {
+                    return None;
+                };
+                let mid = (start + end) / 2.0;
+                let look = (end - start).normalize_or_zero().perp();
+                let a = (input.project)(mid.extend(0.0))?;
+                let b = (input.project)((mid + look).extend(0.0))?;
+                Some((b - a).normalized()).filter(|v| v.is_finite())
+            });
+            draw_flip_icon(painter, c, across.unwrap_or(Vec2::Y), state, &look);
+            if state == GripState::Hover {
+                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
             }
             continue;
         }
@@ -4492,6 +4576,14 @@ fn tap_grip(
             "Drag the ◇ to pull out a new corner, or right-click the edge › Add corner here."
                 .into(),
         ),
+        // the section looks the other way, its notes mirrored, one undo step
+        HandleKind::ViewFlip => {
+            let tx = creabim_core::transform::flip_view(doc.model(), id)?;
+            Some(match doc.commit(tx) {
+                Ok(_) => "The section looks the other way.".into(),
+                Err(e) => e.to_string(),
+            })
+        }
         _ => None,
     }
 }
@@ -5160,6 +5252,43 @@ mod tests {
             }) if (canopy - 5.0).abs() < 1e-9
         ));
         assert!(hs.iter().any(|h| h.kind == HandleKind::PlantHeight));
+    }
+
+    /// A section line has a flip icon beside it (a click looks the other
+    /// way) and a turn grip (a drag turns the line about its middle).
+    #[test]
+    fn a_section_line_flips_by_its_icon_and_turns_by_its_grip() {
+        use creabim_core::View;
+        let mut doc = Document::new();
+        let s = Element::new(
+            "Section",
+            ElementKind::View(View::section(DVec2::ZERO, DVec2::new(8.0, 0.0), 3.0, true)),
+        );
+        let sid = s.id;
+        doc.commit(creabim_core::Transaction::new("setup").insert(s))
+            .unwrap();
+        let m = doc.model().clone();
+        let hs = handles(&m, sid, None);
+        let flip = hs.iter().find(|h| h.kind == HandleKind::ViewFlip).expect("a flip icon");
+        // behind the line (it looks to +y), by its middle
+        assert!(flip.at.y < 0.0 && (flip.at.x - 4.0).abs() < 1e-9);
+        let turn = hs.iter().find(|h| h.kind == HandleKind::Rotate).expect("a turn grip");
+        assert!(turn.at.y > 0.0);
+        // a quarter turn about the middle (4, 0)
+        let out = drag_to(&m, sid, HandleKind::Rotate, |h| {
+            let r = h.at.truncate() - DVec2::new(4.0, 0.0);
+            (DVec2::new(4.0, 0.0) + r.perp()).extend(0.0)
+        });
+        let ElementKind::View(v) = &out.kind else { panic!() };
+        let ViewKind::Section { start, end, .. } = v.kind else { panic!() };
+        assert!(start.distance(DVec2::new(4.0, -4.0)) < 1e-6, "{start:?}");
+        assert!(end.distance(DVec2::new(4.0, 4.0)) < 1e-6, "{end:?}");
+        // a click on the icon: it looks the other way, one undo step
+        let mut grips = GripSel::default();
+        tap_grip(&mut doc, sid, HandleKind::ViewFlip, false, false, 0.0, Pos2::ZERO, &mut grips);
+        let ElementKind::View(v) = &doc.model().get(sid).unwrap().kind else { panic!() };
+        assert!(matches!(v.kind, ViewKind::Section { start, .. } if start == DVec2::new(8.0, 0.0)));
+        assert_eq!(doc.undo_label(), Some("Flip section"));
     }
 
     /// A jogged section line has a grip at each step: dragging it moves
