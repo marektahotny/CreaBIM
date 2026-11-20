@@ -132,6 +132,12 @@ impl Document {
         if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
             tx.ops.extend(extra.ops);
         }
+        // doors and windows stay at their height over the floor when
+        // their wall's base is sunk or raised
+        let extra = crate::walls::keep_openings(&self.model, tx);
+        if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
+            tx.ops.extend(extra.ops);
+        }
         // system lintels follow their doors and windows
         let extra = crate::masonry::settle(&self.model, tx);
         if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {

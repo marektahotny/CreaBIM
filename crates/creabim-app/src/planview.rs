@@ -413,6 +413,9 @@ pub struct PlanState {
     /// With a stretch's number when it is that stretch's text of a
     /// dimension that is dragged, not its line.
     anno_drag: Option<(ElementId, DVec2, DVec2, Option<usize>)>,
+    /// The other selected dimensions dragged along with `anno_drag`'s:
+    /// each with its line's offset at the start and the way it moves.
+    anno_group: Vec<(ElementId, f64, DVec2)>,
     /// The area whose drag holds `anno_drag`, `level_drag` or `drag`:
     /// another area, not dragged, must not end it (MU32: a dimension moved
     /// a step per drag).
@@ -696,6 +699,7 @@ impl Default for PlanState {
             dim: vec![],
             tag_host: None,
             anno_drag: None,
+            anno_group: vec![],
             drag_owner: None,
             anno: Default::default(),
             modal: None,
@@ -4614,6 +4618,9 @@ fn section_tool(
             if kind != OpeningKind::Door {
                 op.sill =
                     (p.y - base - op.height / 2.0).clamp(0.0, (w.height - op.height).max(0.0));
+            } else {
+                // a door stands on the storey's floor, not a sunk wall's base
+                op.sill = -w.base_offset;
             }
             selection.only(e.id);
             doc.commit(
@@ -8121,8 +8128,39 @@ fn drag_annotation(
                 Some((id, w, start, None))
             }),
         };
-        if let Some((id, ..)) = state.anno_drag {
-            selection.only(id);
+        state.anno_group.clear();
+        if let Some((id, _, _, stretch)) = state.anno_drag {
+            // several dimensions selected: their lines move together
+            let line = stretch.is_none()
+                && matches!(
+                    doc.model().get(id).map(|e| &e.kind),
+                    Some(ElementKind::Dimension(_))
+                );
+            if line && selection.contains(id) && selection.all().len() > 1 {
+                for other in selection.all() {
+                    if other == id {
+                        continue;
+                    }
+                    let Some(ElementKind::Dimension(d)) = doc.model().get(other).map(|e| &e.kind)
+                    else {
+                        continue;
+                    };
+                    if d.view != view || d.kind != creabim_core::DimensionKind::Linear {
+                        continue;
+                    }
+                    let n = drawing.items.iter().find_map(|it| match it {
+                        PlanItem::Dimension { id: i, a, b, .. } if *i == other => {
+                            Some((*b - *a).normalize_or_zero().perp())
+                        }
+                        _ => None,
+                    });
+                    if let Some(n) = n {
+                        state.anno_group.push((other, d.offset, n));
+                    }
+                }
+            } else {
+                selection.only(id);
+            }
             state.drag_owner = Some(response.id);
         }
     }
@@ -8194,11 +8232,32 @@ fn drag_annotation(
             };
             let n = (b - a).normalize_or_zero().perp();
             let offset = start.x + (p - grab).dot(n);
-            doc.edit_merged(id, "Move dimension line", |e| {
-                if let ElementKind::Dimension(d) = &mut e.kind {
-                    d.offset = offset;
+            // with the others selected, in one step
+            let mut tx = Transaction::new("Move dimension line");
+            let mut changed = 0;
+            let moves = std::iter::once((id, offset)).chain(
+                state
+                    .anno_group
+                    .iter()
+                    .map(|(o, at, on)| (*o, at + (p - grab).dot(*on))),
+            );
+            for (i, to) in moves {
+                let Some(before) = doc.model().get(i).cloned() else {
+                    continue;
+                };
+                let mut after = before.clone();
+                if let ElementKind::Dimension(d) = &mut after.kind {
+                    d.offset = to;
                 }
-            })
+                if after != before {
+                    tx = tx.replace(before, after);
+                    changed += 1;
+                }
+            }
+            if changed == 0 {
+                return Some(None);
+            }
+            doc.commit_merged(tx)
         }
         _ => Ok(()),
     };
@@ -8664,6 +8723,9 @@ fn place_opening(
             return Ok(());
         }
         o.offset = (u - o.width / 2.0).clamp(0.0, len - o.width);
+        // set from the storey's floor, whatever the wall's base
+        let from_floor = o.sill;
+        o.set_sill_from_floor(doc.model(), from_floor);
         // clear of a corner (MU23)
         creabim_core::walls::clamp_opening(doc.model(), o);
     }

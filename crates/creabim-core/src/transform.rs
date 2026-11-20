@@ -684,7 +684,12 @@ fn drawn_at(model: &Model, p: &crate::HostPoint) -> Option<DVec2> {
         ElementKind::Opening(o) => match &model.get(o.host)?.kind {
             ElementKind::Wall(w) => {
                 let d = w.direction();
-                Some(w.start + d * (o.offset + p.local.x) + d.perp() * p.local.y)
+                let from = if p.from_end {
+                    o.offset + o.width
+                } else {
+                    o.offset
+                };
+                Some(w.start + d * (from + p.local.x) + d.perp() * p.local.y)
             }
             _ => None,
         },

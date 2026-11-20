@@ -327,12 +327,20 @@ pub fn show(
                 let text = &r.cells[i];
                 let inner = c.shrink2(egui::vec2(PAD - 3.0, 3.0));
                 match col.field {
-                    Some(f) if f.is_length() && schedule::value(&e, f).is_some() => {
-                        // lengths show and read in the project units
-                        let mut m = schedule::value(&e, f).unwrap_or_default();
+                    Some(f) if f.is_length() && schedule::value(doc.model(), &e, f).is_some() => {
+                        // lengths show and read in the project units; a
+                        // sill from the floor, kept from the wall's base
+                        let mut m = schedule::value(doc.model(), &e, f).unwrap_or_default();
+                        let off = match &e.kind {
+                            ElementKind::Opening(o) if f == Field::Sill => {
+                                o.sill_from_floor(doc.model()) - o.sill
+                            }
+                            _ => 0.0,
+                        };
                         let resp = ui.put(inner, crate::units::drag(&mut m).range(0.0..=50.0));
                         if resp.changed() {
-                            edit = Some((r.id, Box::new(move |e| schedule::set_value(e, f, m))));
+                            edit =
+                                Some((r.id, Box::new(move |e| schedule::set_value(e, f, m - off))));
                         }
                     }
                     Some(Field::Name) => {

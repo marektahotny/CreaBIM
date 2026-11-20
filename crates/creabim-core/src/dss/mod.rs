@@ -892,7 +892,11 @@ fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Know
             put(&mut out, "šírka", Known::Len(o.width));
             put(&mut out, "výška", Known::Len(o.height));
             if o.kind == crate::OpeningKind::Window {
-                put(&mut out, "výška parapetu", Known::Len(o.sill));
+                put(
+                    &mut out,
+                    "výška parapetu",
+                    Known::Len(o.sill_from_floor(model)),
+                );
             }
         }
         ElementKind::Room(r) => {

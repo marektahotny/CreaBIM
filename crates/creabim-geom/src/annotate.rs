@@ -6,7 +6,7 @@ use crate::annotation::{end_marks, measure, runs_past, Annotation, Ends, Shape, 
 use crate::plan::PlanItem;
 use crate::section::{AxoFrame, SectionFrame};
 use creabim_core::{
-    DimensionKind, ElementId, ElementKind, HostPoint, Model, Note, OpeningKind, RoomField,
+    DimensionKind, Element, ElementId, ElementKind, HostPoint, Model, Note, OpeningKind, RoomField,
     TagShape, Terminator, View, ViewKind, Wall,
 };
 use glam::{DAffine3, DMat3, DVec2, DVec3};
@@ -68,10 +68,12 @@ pub fn resolve(model: &Model, view: &View, p: &HostPoint) -> Option<DVec2> {
         }
         (ElementKind::Wall(_) | ElementKind::Opening(_), ViewKind::Plan { .. }) => {
             let (w, base) = host_wall(model, host)?;
-            let u = if p.from_end {
-                w.length() + p.local.x
-            } else {
-                base + p.local.x
+            // a door's or window's far jamb is kept from that jamb, so a
+            // dimension to it follows when it is made wider
+            let u = match (&model.get(host)?.kind, p.from_end) {
+                (ElementKind::Opening(o), true) => base + o.width + p.local.x,
+                (_, true) => w.length() + p.local.x,
+                (_, false) => base + p.local.x,
             };
             Some(on_wall(w, u, p.local.y))
         }
@@ -204,13 +206,19 @@ pub fn attach(model: &Model, view: &View, host: Option<ElementId>, at: DVec2) ->
             let d = w.direction();
             let u = (at - w.start).dot(d);
             let s = (at - w.start).dot(d.perp());
-            let is_wall = matches!(model.get(h)?.kind, ElementKind::Wall(_));
             // points nearer a wall's end are kept relative to the end, so
-            // they follow it when the wall is lengthened
-            let from_end = is_wall && u > w.length() / 2.0;
+            // they follow it when the wall is lengthened; points nearer a
+            // door's or window's far jamb, from that jamb
+            let (from_end, end) = match &model.get(h)?.kind {
+                ElementKind::Opening(o) => {
+                    let far = u - base > o.width / 2.0;
+                    (far, base + o.width)
+                }
+                _ => (u > w.length() / 2.0, w.length()),
+            };
             Some(HostPoint {
                 host: Some(h),
-                local: DVec2::new(if from_end { u - w.length() } else { u - base }, s),
+                local: DVec2::new(if from_end { u - end } else { u - base }, s),
                 from_end,
                 body: None,
             })
@@ -1005,6 +1013,12 @@ pub fn rehosted(
         let Some(q) = resolve(model, view, p) else {
             continue;
         };
+        // a point at a door's or window's jamb is the opening's, as
+        // PilonDesigner binds it: the dimension goes with the opening
+        if let Some(o) = jamb_at(model, level, q, NEAR) {
+            *p = attach(model, view, Some(o), q);
+            continue;
+        }
         // a point on a pipe (its axis or its outline) is the pipe's: the
         // dimension then goes with the pipe and moves it when typed
         let on_pipe = model.iter().find_map(|e| {
@@ -1065,6 +1079,68 @@ pub fn rehosted(
         }
         if let Some((_, wall)) = best {
             *p = attach(model, view, Some(wall), q);
+        }
+    }
+    out
+}
+
+/// The door or window on `level` whose jamb plan point `q` stands at:
+/// within its wall's thickness, at one of its sides to `near`.
+pub fn jamb_at(model: &Model, level: ElementId, q: DVec2, near: f64) -> Option<ElementId> {
+    model.iter().find_map(|e| {
+        let ElementKind::Opening(o) = &e.kind else {
+            return None;
+        };
+        let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+            return None;
+        };
+        if w.level != level || w.is_arc() {
+            return None;
+        }
+        let d = w.direction();
+        let (x, s) = ((q - w.start).dot(d), (q - w.start).dot(d.perp()));
+        let at_jamb = (x - o.offset).abs() < near || (x - o.offset - o.width).abs() < near;
+        (at_jamb && s.abs() <= w.thickness / 2.0 + near).then_some(e.id)
+    })
+}
+
+/// Every linear dimension on a plan with points at a door's or window's
+/// jamb bound to the wall (or to nothing), bound to the opening instead:
+/// older drawings, so their dimensions follow the opening when it moves.
+pub fn bind_jambs(model: &Model) -> Vec<(Element, Element)> {
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Dimension(d) = &e.kind else {
+            continue;
+        };
+        if d.kind != DimensionKind::Linear {
+            continue;
+        }
+        let Some(ElementKind::View(v)) = model.get(d.view).map(|e| &e.kind) else {
+            continue;
+        };
+        let ViewKind::Plan { level, .. } = v.kind else {
+            continue;
+        };
+        let mut now = d.clone();
+        for p in now.points_mut() {
+            let on_wall = p.host.is_none_or(|h| {
+                matches!(model.get(h).map(|e| &e.kind), Some(ElementKind::Wall(_)))
+            });
+            if !on_wall {
+                continue;
+            }
+            let Some(q) = resolve(model, v, p) else {
+                continue;
+            };
+            if let Some(o) = jamb_at(model, level, q, 2e-3) {
+                *p = attach(model, v, Some(o), q);
+            }
+        }
+        if now != *d {
+            let mut after = e.clone();
+            after.kind = ElementKind::Dimension(now);
+            out.push((e.clone(), after));
         }
     }
     out
@@ -1410,7 +1486,10 @@ fn opening_between(
     if (len - o.width).abs() > 1e-3 || o.kind == OpeningKind::Hole {
         return None;
     }
-    Some((o.height, (o.kind == OpeningKind::Window).then_some(o.sill)))
+    Some((
+        o.height,
+        (o.kind == OpeningKind::Window).then_some(o.sill_from_floor(model)),
+    ))
 }
 
 /// The door or window in a plan whose jambs a stretch from `a` to `b`
@@ -1446,8 +1525,10 @@ pub fn opening_of_span(
             return None;
         }
         let (lo, hi) = (sa.min(sb), sa.max(sb));
-        ((lo - o.offset).abs() < 0.015 && (hi - o.offset - o.width).abs() < 0.015)
-            .then_some((o.height, (o.kind == OpeningKind::Window).then_some(o.sill)))
+        ((lo - o.offset).abs() < 0.015 && (hi - o.offset - o.width).abs() < 0.015).then_some((
+            o.height,
+            (o.kind == OpeningKind::Window).then_some(o.sill_from_floor(model)),
+        ))
     })
 }
 
@@ -1469,7 +1550,10 @@ pub fn opening_below(
     if (len - o.width).abs() > 1e-3 || o.kind == OpeningKind::Hole {
         return None;
     }
-    Some((o.height, (o.kind == OpeningKind::Window).then_some(o.sill)))
+    Some((
+        o.height,
+        (o.kind == OpeningKind::Window).then_some(o.sill_from_floor(model)),
+    ))
 }
 
 /// A dimension's value as it is written in `units`.

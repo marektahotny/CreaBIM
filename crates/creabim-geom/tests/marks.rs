@@ -908,3 +908,73 @@ fn a_section_dimension_holds_and_drives_a_footing() {
     let q = resolve(doc.model(), &v, &dim.b).unwrap();
     assert!((q.y - (z0 - 0.8)).abs() < 1e-9, "{q:?}");
 }
+
+/// A dimension drawn to a door's jambs on the wall (older drawings, or a
+/// point snapped on the wall's end at the door) is bound to the door, so
+/// it goes with the door when it is moved or made wider (George
+/// 2026-11-20: the chain came apart, 960 turning into 1 435).
+#[test]
+fn dimensions_at_a_doors_jambs_follow_the_door() {
+    use creabim_geom::annotate::{attach, bind_jambs, resolve, stretches};
+    let mut doc = Document::from_model(sample::sample_house());
+    let door = first(doc.model(), is_door);
+    let (o, w) = match &doc.model().get(door).unwrap().kind {
+        ElementKind::Opening(o) => match &doc.model().get(o.host).unwrap().kind {
+            ElementKind::Wall(w) => (o.clone(), w.clone()),
+            _ => unreachable!(),
+        },
+        _ => unreachable!(),
+    };
+    let plan = doc
+        .model()
+        .iter()
+        .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { level, .. } if level == w.level)))
+        .unwrap()
+        .id;
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let d = w.direction();
+    let face = d.perp() * (w.thickness / 2.0);
+    let (l, r) = (
+        w.start + d * o.offset + face,
+        w.start + d * (o.offset + o.width) + face,
+    );
+    // both jambs on the wall, as the old dimensions were
+    let mut dim = Dimension::linear(
+        plan,
+        attach(doc.model(), &v, Some(o.host), l),
+        attach(doc.model(), &v, Some(o.host), r),
+        0.8,
+    );
+    dim.axis = DimAxis::Aligned;
+    let id = add(
+        &mut doc,
+        Element::new("Dimension", ElementKind::Dimension(dim)),
+    );
+    let rebound = bind_jambs(doc.model());
+    assert_eq!(rebound.len(), 1);
+    let mut tx = Transaction::new("bind");
+    for (b, a) in rebound {
+        tx = tx.replace(b, a);
+    }
+    doc.commit(tx).unwrap();
+    let ElementKind::Dimension(dim) = doc.model().get(id).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    assert_eq!((dim.a.host, dim.b.host), (Some(door), Some(door)));
+    // move the door 0.3 along and make it 0.2 wider
+    doc.edit(door, "move", |e| {
+        if let ElementKind::Opening(o) = &mut e.kind {
+            o.offset -= 0.3;
+            o.width += 0.2;
+        }
+    })
+    .unwrap();
+    let a = resolve(doc.model(), &v, &dim.a).unwrap();
+    let b = resolve(doc.model(), &v, &dim.b).unwrap();
+    assert!(a.distance(l - d * 0.3) < 1e-9, "{a:?}");
+    assert!(b.distance(r - d * 0.1) < 1e-9, "{b:?}");
+    let s = stretches(doc.model(), &v, &dim);
+    assert!((s[0].2.distance(s[0].3) - (o.width + 0.2)).abs() < 1e-9);
+}

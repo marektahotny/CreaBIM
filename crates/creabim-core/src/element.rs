@@ -1855,6 +1855,18 @@ impl LeafOp {
 }
 
 impl Opening {
+    /// How high it sits above its storey's floor (the level), as doors and
+    /// windows are set and dimensioned (George 2026-11-20): `sill` is kept
+    /// from the wall's base, which may be sunk below the floor.
+    pub fn sill_from_floor(&self, model: &crate::Model) -> f64 {
+        self.sill + host_base(model, self.host)
+    }
+
+    /// Set it `v` above its storey's floor.
+    pub fn set_sill_from_floor(&mut self, model: &crate::Model, v: f64) {
+        self.sill = v - host_base(model, self.host);
+    }
+
     /// Does the door open to (the window face out of) the wall's left,
     /// looking from its start to its end? Doors open into the interior and
     /// windows face the exterior unless flipped; the exterior is the
@@ -3048,6 +3060,14 @@ pub const FREE_MESH_CLASSES: &[&str] = &[
     "IfcCovering",
     "IfcFurniture",
 ];
+
+/// A host wall's base above its level (0 for anything else).
+fn host_base(model: &crate::Model, host: ElementId) -> f64 {
+    match model.get(host).map(|e| &e.kind) {
+        Some(ElementKind::Wall(w)) => w.base_offset,
+        _ => 0.0,
+    }
+}
 
 #[cfg(test)]
 mod tests {

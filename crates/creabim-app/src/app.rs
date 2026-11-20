@@ -709,7 +709,18 @@ impl CreaBimApp {
     }
 
     fn load_model(&mut self, model: Model) {
-        self.doc = Document::from_model(with_plan_views(model));
+        let mut model = with_plan_views(model);
+        // dimensions drawn to a door's or window's jamb before they bound
+        // to it: onto the opening, so they follow it
+        let rebound = creabim_geom::annotate::bind_jambs(&model);
+        if !rebound.is_empty() {
+            let mut tx = creabim_core::Transaction::new("Bind dimensions to doors and windows");
+            for (before, after) in rebound {
+                tx = tx.replace(before, after);
+            }
+            let _ = tx.apply(&mut model);
+        }
+        self.doc = Document::from_model(model);
         self.selection.clear();
         self.hidden.clear();
         self.hidden_rev += 1;
@@ -10033,7 +10044,11 @@ crate::props::row(ui, "File names", |ui| {
                             label = "Opening height"
                         }
                     }
-                    if num(ui, "Sill", &mut o.sill, 0.0, 20.0) {
+                    // from the storey's floor, not the wall's (perhaps
+                    // sunk) base: as doors and windows are set
+                    let mut sill = o.sill_from_floor(self.doc.model());
+                    if num(ui, "Sill", &mut sill, -20.0, 20.0) {
+                        o.set_sill_from_floor(self.doc.model(), sill);
                         label = "Opening sill"
                     }
                     if num(ui, "Offset along wall", &mut o.offset, 0.0, 1e4) {
@@ -14495,6 +14510,125 @@ mod box_select_tests {
         );
         frame(&mut app, vec![egui::Event::PointerMoved(b)]);
         assert!(!app.selection.is_empty(), "status: {}", app.status);
+    }
+}
+
+#[cfg(test)]
+mod dimension_drag_tests {
+    use super::*;
+
+    /// George 2026-11-20: several dimensions selected and dragged move
+    /// together.
+    #[test]
+    fn dragging_one_of_several_selected_dimensions_moves_them_all() {
+        let mut app = crate::app::test_app();
+        app.load_model(creabim_core::starter::starter_house());
+        let view = app
+            .doc
+            .model()
+            .iter()
+            .find(|e| e.name == "Ground Floor plan")
+            .unwrap()
+            .id;
+        app.active_view = Some(view);
+        // two dimensions of this plan running across it
+        let drawing = app.drawing(view).unwrap();
+        let mut across: Vec<(ElementId, DVec2, DVec2, f64)> = vec![];
+        for it in &drawing.items {
+            if let PlanItem::Dimension {
+                id, a, b, offset, ..
+            } = it
+            {
+                let linear = matches!(
+                    app.doc.model().get(*id).map(|e| &e.kind),
+                    Some(ElementKind::Dimension(d)) if d.kind == creabim_core::DimensionKind::Linear
+                );
+                if linear
+                    && (b.y - a.y).abs() < 1e-6
+                    && (b.x - a.x).abs() > 2.0
+                    && !across.iter().any(|x| x.0 == *id)
+                {
+                    across.push((*id, *a, *b, *offset));
+                }
+            }
+        }
+        assert!(across.len() >= 2, "{across:?}");
+        let (one, two) = (across[0], across[1]);
+        let offset = |app: &CreaBimApp, id| match &app.doc.model().get(id).unwrap().kind {
+            ElementKind::Dimension(d) => d.offset,
+            _ => unreachable!(),
+        };
+        let (o1, o2) = (offset(&app, one.0), offset(&app, two.0));
+        app.selection.only(one.0);
+        app.selection.toggle(two.0);
+        // the first one's line in the middle of the pane
+        let n = (one.2 - one.1).normalize().perp();
+        let on_line = (one.1 + one.2) / 2.0 + n * one.3;
+        let ctx = egui::Context::default();
+        let rect = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 900.0));
+        app.plan.cameras.insert(view, (on_line, 40.0));
+        let mut t = 0.0;
+        let mut frame = |app: &mut CreaBimApp, events: Vec<egui::Event>| {
+            t += 1.0 / 60.0;
+            let raw = egui::RawInput {
+                screen_rect: Some(rect),
+                events,
+                time: Some(t),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(raw, |ui| app.show_plan(ui, rect, Color32::WHITE));
+            out.textures_delta.clear();
+        };
+        frame(&mut app, vec![]);
+        // where the pane put the line: its own rect's middle
+        let xf_rect = app.rect_2d.unwrap();
+        let _ = xf_rect;
+        let (center, scale) = app.plan.cameras[&view];
+        let mid = |pane: Rect| {
+            let d = (on_line - center).as_vec2() * scale;
+            pane.center() + egui::vec2(d.x, -d.y)
+        };
+        let a = mid(rect);
+        let down = egui::vec2(0.0, 40.0);
+        frame(&mut app, vec![egui::Event::PointerMoved(a)]);
+        frame(&mut app, vec![egui::Event::PointerMoved(a)]);
+        frame(
+            &mut app,
+            vec![egui::Event::PointerButton {
+                pos: a,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            }],
+        );
+        for k in 1..=10 {
+            frame(
+                &mut app,
+                vec![egui::Event::PointerMoved(a + down * (k as f32 / 10.0))],
+            );
+        }
+        frame(
+            &mut app,
+            vec![egui::Event::PointerButton {
+                pos: a + down,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            }],
+        );
+        let (d1, d2) = (offset(&app, one.0) - o1, offset(&app, two.0) - o2);
+        // 40 px down at 40 px a metre: each line 1 m down the drawing
+        let n2 = (two.2 - two.1).normalize().perp();
+        assert!(
+            (d1 * n.y + 1.0).abs() < 0.05,
+            "first moved {d1}: {}",
+            app.status
+        );
+        assert!((d2 * n2.y + 1.0).abs() < 0.05, "second moved {d2}");
+        // one undo step takes both back
+        app.doc.undo();
+        assert!((offset(&app, one.0) - o1).abs() < 1e-9);
+        assert!((offset(&app, two.0) - o2).abs() < 1e-9);
     }
 }
 

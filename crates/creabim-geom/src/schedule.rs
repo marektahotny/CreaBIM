@@ -74,11 +74,12 @@ fn col(title: &'static str, field: Option<Field>, width: f64, numeric: bool) -> 
 }
 
 /// The current value of a numeric field, metres.
-pub fn value(e: &Element, field: Field) -> Option<f64> {
+pub fn value(model: &Model, e: &Element, field: Field) -> Option<f64> {
     Some(match (&e.kind, field) {
         (ElementKind::Opening(o), Field::Width) => o.width,
         (ElementKind::Opening(o), Field::Height) => o.height,
-        (ElementKind::Opening(o), Field::Sill) => o.sill,
+        // from the storey's floor, as doors and windows are set
+        (ElementKind::Opening(o), Field::Sill) => o.sill_from_floor(model),
         (ElementKind::Wall(w), Field::Thickness) => w.thickness,
         (ElementKind::Wall(w), Field::WallHeight) => w.height,
         (ElementKind::Slab(s), Field::Thickness) => s.thickness,
@@ -412,7 +413,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
                     name(o.host),
                     mm(o.width),
                     mm(o.height),
-                    mm(o.sill),
+                    mm(o.sill_from_floor(model)),
                 ];
                 if doors {
                     cells.push(match model.get(o.host).map(|h| &h.kind) {
