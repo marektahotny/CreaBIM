@@ -450,11 +450,13 @@ pub(crate) fn footings_under(
             let kind = f.kind;
             if let Some(t) = t {
                 creabim_core::types::stamp(model, e, t);
+                crate::memberstool::keep_bar_sizes(e, state);
             } else if let ElementKind::Footing(f) = &mut e.kind {
                 let m = &state.members;
                 if kind == creabim_core::FootingKind::Strip {
-                    // as wide as the bar says, but never narrower than the wall
-                    f.width = f.width.max(m.footing_width);
+                    // as wide as the bar says (George 2026-11-20: not
+                    // widened to the wall's thickness and 300 mm)
+                    f.width = m.footing_width;
                     f.align = m.footing_align;
                     f.align_offset = m.footing_offset;
                 }
@@ -624,7 +626,13 @@ mod tests {
         let walls = walls_on(&app, g);
         app.selection.clear();
         app.selection.extend(walls.clone(), false);
+        // narrower than the walls and 300 mm: still the width built
+        app.plan.members.footing_width = 0.45;
         app.run_action(&ctx, "footing.under");
+        assert!(app.doc.model().iter().all(|e| match &e.kind {
+            ElementKind::Footing(f) => (f.width - 0.45).abs() < 1e-9,
+            _ => true,
+        }));
         let footings = app
             .doc
             .model()
