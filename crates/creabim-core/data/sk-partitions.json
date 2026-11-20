@@ -1,0 +1,476 @@
+{
+ "materials": [
+  {
+   "id": "porfix-p2-500-50",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 50",
+   "lambda": 0.12,
+   "density": 500,
+   "fire": "A1",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 50 mm",
+   "rw": 35,
+   "fireRes": "",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ10,dry 0.12 W/(m·K) podľa porfix.sk (λU výrobca neuvádza); Rw a EI podľa Odbornej príručky PORFIX",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-75",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 75",
+   "lambda": 0.12,
+   "density": 500,
+   "fire": "A1",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 75 mm",
+   "rw": 37,
+   "fireRes": "",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ10,dry 0.12 W/(m·K) podľa porfix.sk (λU výrobca neuvádza); Rw a EI podľa Odbornej príručky PORFIX",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-100",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 100",
+   "lambda": 0.12,
+   "density": 500,
+   "fire": "A1",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 100 mm",
+   "rw": 39,
+   "fireRes": "EI 180",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ10,dry 0.12 W/(m·K) podľa porfix.sk (λU výrobca neuvádza); Rw a EI podľa Odbornej príručky PORFIX",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-125",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 125",
+   "lambda": 0.12,
+   "density": 500,
+   "fire": "A1",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 125 mm",
+   "rw": 40,
+   "fireRes": "EI 180",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ10,dry 0.12 W/(m·K) podľa porfix.sk (λU výrobca neuvádza); Rw a EI podľa Odbornej príručky PORFIX",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-150",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 150",
+   "lambda": 0.12,
+   "density": 500,
+   "fire": "A1",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 150 mm",
+   "rw": 42,
+   "fireRes": "EI 180",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ10,dry 0.12 W/(m·K) podľa porfix.sk (λU výrobca neuvádza); Rw a EI podľa Odbornej príručky PORFIX",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porfix-p2-500-200",
+   "category": "PORFIX pórobetón",
+   "name": "PORFIX priečkovka P2-500 200",
+   "lambda": 0.12,
+   "density": 500,
+   "fire": "A1",
+   "maker": "PORFIX",
+   "block": "500 × 250 × 200 mm",
+   "rw": 45,
+   "fireRes": "EI 180",
+   "kind": "nenosné murivo (priečky)",
+   "note": "λ10,dry 0.12 W/(m·K) podľa porfix.sk (λU výrobca neuvádza); Rw a EI podľa Odbornej príručky PORFIX",
+   "color": "#e5e2da"
+  },
+  {
+   "id": "porotherm-8-profi",
+   "category": "Tehly Porotherm",
+   "name": "Porotherm 8 Profi Dryfix",
+   "lambda": 0.21,
+   "density": 900,
+   "fire": "A1",
+   "maker": "Wienerberger",
+   "block": "497 × 80 × 249 mm",
+   "rw": 37,
+   "fireRes": "EI 90",
+   "kind": "nenosné murivo (priečky), brúsené, PUR pena Dryfix",
+   "note": "λ muriva bez omietky (praktická vlhkosť) 0.21 W/(m·K); Rw výpočtom s omietkou 15 mm; Wienerberger CZ technický list Porotherm 8 Profi Dryfix",
+   "color": "#c9774f"
+  },
+  {
+   "id": "porotherm-11-5",
+   "category": "Tehly Porotherm",
+   "name": "Porotherm 11,5 P+D",
+   "lambda": 0.35,
+   "density": 870,
+   "fire": "A1",
+   "maker": "Wienerberger",
+   "block": "497 × 115 × 238 mm",
+   "rw": 44,
+   "fireRes": "REI 180",
+   "kind": "priečky, maltové murivo",
+   "note": "λ muriva bez omietky (praktická vlhkosť) 0.35 W/(m·K); Rw výpočtom s omietkou 15 mm; Wienerberger CZ technický list Porotherm 11,5 P+D",
+   "color": "#c9774f"
+  },
+  {
+   "id": "porotherm-11-5-aku",
+   "category": "Tehly Porotherm",
+   "name": "Porotherm 11,5 AKU",
+   "lambda": 0.34,
+   "density": 1050,
+   "fire": "A1",
+   "maker": "Wienerberger",
+   "block": "497 × 115 × 238 mm",
+   "rw": 47,
+   "fireRes": "REI 120",
+   "kind": "akustické priečky, malta MM 50",
+   "note": "λ muriva bez omietky (praktická vlhkosť) 0.34 W/(m·K); Rw výpočtom s omietkou 15 mm; Wienerberger SK technický list Porotherm 11,5 AKU",
+   "color": "#c9774f"
+  },
+  {
+   "id": "porotherm-11-5-aku-profi",
+   "category": "Tehly Porotherm",
+   "name": "Porotherm 11,5 AKU Profi",
+   "lambda": 0.29,
+   "density": 1050,
+   "fire": "A1",
+   "maker": "Wienerberger",
+   "block": "497 × 115 × 249 mm",
+   "rw": 46,
+   "fireRes": "REI 120",
+   "kind": "akustické priečky, brúsené, malta Porotherm Profi",
+   "note": "λ muriva bez omietky (praktická vlhkosť) 0.29 W/(m·K); Rw výpočtom s omietkou 15 mm; Wienerberger SK technický list Porotherm 11,5 AKU Profi",
+   "color": "#c9774f"
+  },
+  {
+   "id": "porotherm-14",
+   "category": "Tehly Porotherm",
+   "name": "Porotherm 14",
+   "lambda": 0.22,
+   "density": 800,
+   "fire": "A1",
+   "maker": "Wienerberger",
+   "block": "500 × 140 × 238 mm",
+   "rw": 45,
+   "fireRes": "EI 180",
+   "kind": "priečky, malta MM 50",
+   "note": "λ muriva bez omietky (praktická vlhkosť) 0.22 W/(m·K); Rw výpočtom s omietkou 15 mm; Wienerberger SK technický list Porotherm 14",
+   "color": "#c9774f"
+  },
+  {
+   "id": "porotherm-14-profi",
+   "category": "Tehly Porotherm",
+   "name": "Porotherm 14 Profi",
+   "lambda": 0.2,
+   "density": 750,
+   "fire": "A1",
+   "maker": "Wienerberger",
+   "block": "500 × 140 × 249 mm",
+   "rw": 43,
+   "fireRes": "EI 180",
+   "kind": "priečky, brúsené, malta Porotherm Profi / Dryfix",
+   "note": "λ muriva bez omietky (praktická vlhkosť) 0.2 W/(m·K); Rw výpočtom s omietkou 15 mm; Wienerberger SK technický list Porotherm 14 Profi",
+   "color": "#c9774f"
+  },
+  {
+   "id": "porotherm-17-5",
+   "category": "Tehly Porotherm",
+   "name": "Porotherm 17,5",
+   "lambda": 0.24,
+   "density": 800,
+   "fire": "A1",
+   "maker": "Wienerberger",
+   "block": "375 × 175 × 238 mm",
+   "rw": 46,
+   "fireRes": "REI 90",
+   "kind": "nosné a nenosné vnútorné murivo, malta MM 50",
+   "note": "λ muriva bez omietky (praktická vlhkosť) 0.24 W/(m·K); Rw výpočtom s omietkou 15 mm; Wienerberger SK technický list Porotherm 17,5",
+   "color": "#c9774f"
+  }
+ ],
+ "walls": [
+  {
+   "name": "Priečka – PORFIX priečkovka P2-500 50",
+   "boundary": "interier",
+   "fire": "",
+   "rw": 35,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-p2-500-50",
+     "mm": 50,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – PORFIX priečkovka P2-500 75",
+   "boundary": "interier",
+   "fire": "",
+   "rw": 37,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-p2-500-75",
+     "mm": 75,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – PORFIX priečkovka P2-500 125",
+   "boundary": "interier",
+   "fire": "EI 180",
+   "rw": 40,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-p2-500-125",
+     "mm": 125,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – PORFIX priečkovka P2-500 200",
+   "boundary": "interier",
+   "fire": "EI 180",
+   "rw": 45,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-p2-500-200",
+     "mm": 200,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – PORFIX P4-600 200",
+   "boundary": "interier",
+   "fire": "REI-M 240",
+   "rw": 46,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-p4-600-200",
+     "mm": 200,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – PORFIX P6-650 200",
+   "boundary": "interier",
+   "fire": "",
+   "rw": 47,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porfix-p6-650-200",
+     "mm": 200,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – Porotherm 8 Profi Dryfix",
+   "boundary": "interier",
+   "fire": "EI 90",
+   "rw": 37,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porotherm-8-profi",
+     "mm": 80,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – Porotherm 11,5 P+D",
+   "boundary": "interier",
+   "fire": "REI 180",
+   "rw": 44,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porotherm-11-5",
+     "mm": 115,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – Porotherm 11,5 AKU",
+   "boundary": "interier",
+   "fire": "REI 120",
+   "rw": 47,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porotherm-11-5-aku",
+     "mm": 115,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – Porotherm 11,5 AKU Profi",
+   "boundary": "interier",
+   "fire": "REI 120",
+   "rw": 46,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porotherm-11-5-aku-profi",
+     "mm": 115,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – Porotherm 14",
+   "boundary": "interier",
+   "fire": "EI 180",
+   "rw": 45,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porotherm-14",
+     "mm": 140,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – Porotherm 14 Profi",
+   "boundary": "interier",
+   "fire": "EI 180",
+   "rw": 43,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porotherm-14-profi",
+     "mm": 140,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  },
+  {
+   "name": "Priečka – Porotherm 17,5",
+   "boundary": "interier",
+   "fire": "REI 90",
+   "rw": 46,
+   "layers": [
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    },
+    {
+     "material": "porotherm-17-5",
+     "mm": 175,
+     "core": true
+    },
+    {
+     "material": "omietka-sadra",
+     "mm": 10
+    }
+   ]
+  }
+ ],
+ "floors": [],
+ "roofs": []
+}
