@@ -1035,11 +1035,15 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             crate::roofplan::apply(model, &mut d.items);
         }
     }
-    // utility networks: their codes written in, a sewer's arrows, the
-    // crosses of one to go
-    if matches!(kind, creabim_core::ViewKind::Plan { .. }) {
-        let marks = crate::netlines::net_marks(model, &d.items, v.scale / 1000.0);
-        d.items.extend(marks);
+    // utility networks and the site's symbols belong to the site plan
+    // alone (George: a network drawn there showed in the 1st floor plan);
+    // there, each network dashed with its symbols and code, each symbol
+    // in place of its sketch
+    if matches!(kind, creabim_core::ViewKind::Plan { .. }) && v.graphics.range.from_above {
+        crate::netlines::net_lines(model, &mut d.items, v.scale / 1000.0);
+    } else {
+        d.items
+            .retain(|it| !crate::netlines::is_site_only(model, it.id()));
     }
     // pipes, ducts and wiring are the trades' to draw: the architect's
     // plans, sections and elevations leave them out, whatever the view

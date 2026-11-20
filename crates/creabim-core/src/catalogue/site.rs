@@ -303,7 +303,9 @@ pub fn tegra(dia: f64, depth: f64) -> CatalogueObject {
     );
     connection(&mut b, "K", 150, v3(c.x - r - 0.3, c.y, z + 0.08));
     connection(&mut b, "K", 150, v3(c.x + r + 0.3, c.y, z + 0.08));
-    b.outline(squircle(c, r + 0.04, r + 0.04, 2.0, 40));
+    // a sewer manhole in a site plan (6.200): its circle in the foul
+    // sewer's colour
+    b.net(squircle(c, r + 0.04, r + 0.04, 2.0, 40), "Ks", false);
     b.outline(squircle(c, r - wall, r - wall, 2.0, 40));
     b.line(v2(c.x - r - 0.3, c.y), v2(c.x + r + 0.3, c.y));
     b.at(-depth);
@@ -709,6 +711,8 @@ pub fn pumping_shaft() -> CatalogueObject {
 pub fn legend(catalogue: &str) -> Option<&'static str> {
     Some(match catalogue.trim_start_matches("starter/") {
         "site-water-meter-shaft" => "Proposed water meter shaft with the water meter assembly",
+        "site-tegra-425" => "6.200 Proposed sewer manhole Wavin Tegra 425",
+        "site-tegra-600" => "6.200 Proposed sewer manhole Wavin Tegra 600",
         "site-pumping-shaft-laura-l" => {
             "Proposed domestic pumping shaft fitted with LAURA \"L\" with pump NORIA LUCA"
         }

@@ -343,6 +343,20 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
             items.push(it);
         }
     }
+    // utility networks and the site's symbols, whichever level they were
+    // drawn on: the site plan is where they show (unless sketches are hidden)
+    if !v
+        .hidden
+        .hides_category(creabim_core::visibility::Category::Sketches)
+    {
+        for e in model.iter() {
+            if let ElementKind::Sketch(sk) = &e.kind {
+                if sk.net.is_some() || sk.mark.is_some() {
+                    items.extend(crate::plan::sketch_items(e.id, sk, &|p| p));
+                }
+            }
+        }
+    }
     PlanView { items }
 }
 
