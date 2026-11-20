@@ -40,6 +40,12 @@ pub enum DetailKind {
     /// A plain drafted line or polyline (PilonDesigner's Čiara): just the
     /// path, in a pen and a line type of its own. Only in the drawing.
     Line(LineLook),
+    /// A drafted arc through three points: its start, its end and a
+    /// point on it, in that order (PilonDesigner's Oblúk 3 bodmi).
+    Arc(LineLook),
+    /// A drafted smooth curve through its points (PilonDesigner's
+    /// Krivka); closed when its last point is its first.
+    Curve(LineLook),
 }
 
 /// The pen a drafted line is drawn with: its width on paper, as
@@ -163,6 +169,8 @@ impl DetailKind {
             DetailKind::Region { .. } => "Filled region",
             DetailKind::BreakLine => "Break line",
             DetailKind::Line(_) => "Line",
+            DetailKind::Arc(_) => "Arc",
+            DetailKind::Curve(_) => "Curve",
         }
     }
 
@@ -181,7 +189,31 @@ impl DetailKind {
             DetailKind::Repeat { .. } => 0.065,
             DetailKind::Region { .. } => 0.0,
             DetailKind::BreakLine => 0.0,
-            DetailKind::Line(_) => 0.0,
+            DetailKind::Line(_) | DetailKind::Arc(_) | DetailKind::Curve(_) => 0.0,
+        }
+    }
+
+    /// A drafted line's pen and line type, for the kinds that are one.
+    pub fn line_look(&mut self) -> Option<&mut LineLook> {
+        match self {
+            DetailKind::Line(l) | DetailKind::Arc(l) | DetailKind::Curve(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    /// Is it a drafted line, arc or curve?
+    pub fn is_drafted(self) -> bool {
+        matches!(
+            self,
+            DetailKind::Line(_) | DetailKind::Arc(_) | DetailKind::Curve(_)
+        )
+    }
+
+    /// The fewest points it is made of.
+    pub fn min_points(self) -> usize {
+        match self {
+            DetailKind::Region { .. } | DetailKind::Arc(_) => 3,
+            _ => 2,
         }
     }
 
@@ -265,7 +297,7 @@ impl DetailItem {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        let need = if self.kind.is_area() { 3 } else { 2 };
+        let need = self.kind.min_points();
         if self.points.len() < need {
             return Err(format!(
                 "a {} needs at least {need} points",

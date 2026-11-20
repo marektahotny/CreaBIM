@@ -92,10 +92,14 @@ pub enum Tool {
     Polyline,
     /// A slope dimension: an arrow down a sloping line, its slope over it.
     Slope,
+    /// A drafted arc through three points.
+    Arc,
+    /// A drafted smooth curve through the points clicked.
+    Curve,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 45] = [
+    pub const ALL: [Tool; 47] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -134,6 +138,8 @@ impl Tool {
         Tool::Note,
         Tool::Line,
         Tool::Polyline,
+        Tool::Arc,
+        Tool::Curve,
         Tool::Detail,
         Tool::SpotLevel,
         Tool::Sketch,
@@ -166,6 +172,8 @@ impl Tool {
             Tool::Slope => "Slope dimension",
             Tool::Line => "Line",
             Tool::Polyline => "Polyline",
+            Tool::Arc => "Arc by three points",
+            Tool::Curve => "Curve",
             Tool::Radius => "Radius",
             Tool::Diameter => "Diameter",
             Tool::ArcLength => "Arc length",
@@ -215,6 +223,8 @@ impl Tool {
             Tool::Angle => "Click two lines (wall faces, edges) for the angle between them, or click the corner and a point on each arm. Then click where the arc goes.",
             Tool::Slope => "Click a sloping line (a roof, a ramp, terrain, a pipe in a section) or two points on it, then the side the arrow goes. In a plan, where lines are level, click two points the way it falls; its slope is typed in the top bar.",
             Tool::Line => "Click the start and the end of a line; it is drawn in this view only, in the pen and line type picked in the top bar. Snaps to ends, middles and edges; Shift keeps it square; type a length and Enter.",
+            Tool::Arc => "Click the arc's start, its end, then a point it passes through; it is drawn in this view only, in the pen and line type picked in the top bar. Points snap to ends, middles and edges.",
+            Tool::Curve => "Click the points a smooth curve passes through (paths, beds, terrain edges); Enter, a double-click or a right-click finishes it, the first point again closes it. Pen and line type in the top bar; move its points later by their grips.",
             Tool::Polyline => "Click the points of a continuous line of straight segments; Enter, a double-click or a right-click finishes it, the first point again closes it. Shift keeps a segment square; type a length and Enter. Pen and line type in the top bar.",
             Tool::Radius => "Click an arc or circle, or three points on one. Then click where the dimension line goes.",
             Tool::Diameter => "Click an arc or circle, or three points on one. Then click where the dimension line goes.",
@@ -3751,6 +3761,8 @@ fn plan_click(
         | Tool::Detail
         | Tool::Line
         | Tool::Polyline
+        | Tool::Arc
+        | Tool::Curve
         | Tool::Slope => Ok(()),
         // a library profile placed at the click, pulled up (MU36)
         Tool::Extrusion if state.parts.extrusion_library.is_some() => {

@@ -151,6 +151,8 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Slope => "slope-dim",
         Tool::Line => "draft-line",
         Tool::Polyline => "polyline",
+        Tool::Arc => "arc-3pt",
+        Tool::Curve => "curve-line",
         Tool::Radius => "radius",
         Tool::Diameter => "diameter",
         Tool::ArcLength => "arc-length",
@@ -219,6 +221,8 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::Detail
         | Tool::Line
         | Tool::Polyline
+        | Tool::Arc
+        | Tool::Curve
         | Tool::Slope
         | Tool::SpotLevel => 3,
         Tool::Sketch | Tool::Guide | Tool::Grid | Tool::Level => 4,
@@ -2198,6 +2202,8 @@ impl CreaBimApp {
                 | Tool::Detail
                 | Tool::Line
                 | Tool::Polyline
+                | Tool::Arc
+                | Tool::Curve
                 | Tool::Slope
         );
         match front? {
@@ -3178,7 +3184,7 @@ impl CreaBimApp {
                 }));
             }
         }
-        if matches!(tool, Tool::Line | Tool::Polyline) {
+        if matches!(tool, Tool::Line | Tool::Polyline | Tool::Arc | Tool::Curve) {
             let look = self.plan.details.line;
             options.push(seg(creabim_core::LineType::ALL
                 .iter()

@@ -36,10 +36,12 @@ Detailný komponent patrí pohľadu, v ktorom je nakreslený, a v inom pohľade 
 
 ## Čiary {#lines}
 
-**Čiara** a **Súvislá čiara** na karte Anotácie kreslia obyčajné čiary v otvorenom pôdoryse, reze alebo detaile, ako Čiara v PilonDesigneri: len v tomto pohľade, nikdy v 3D, výkazoch ani IFC.
+**Čiara**, **Súvislá čiara**, **Oblúk tromi bodmi** a **Krivka** na karte Anotácie kreslia obyčajné čiary v otvorenom pôdoryse, reze alebo detaile, ako Čiara v PilonDesigneri: len v tomto pohľade, nikdy v 3D, výkazoch ani IFC.
 
 - **Čiara**: kliknite jej začiatok a koniec. Každé dve kliknutia urobia jednu čiaru.
 - **Súvislá čiara**: klikajte body za sebou; Enter, dvojklik alebo pravé tlačidlo ju ukončí, klik na prvý bod ju uzavrie.
+- **Oblúk tromi bodmi**: kliknite začiatok, koniec a potom bod, ktorým oblúk prechádza.
+- **Krivka**: klikajte body, ktorými má prechádzať hladká krivka (chodníky, záhony, hrany terénu); ukončí sa ako súvislá čiara, klik na prvý bod ju uzavrie. Body sa dajú neskôr posunúť úchopmi.
 
 Vo voľbách nástroja vyberte **typ čiary** (plná, čiarkovaná pre zakryté pod rovinou rezu, bodkočiarkovaná pre osi, dvojbodkočiarkovaná pre to, čo je nad rovinou rezu) a **pero** (0,10 / 0,15 / 0,20 / 0,50 mm na papieri). Body sa prichytávajú na konce, stredy a hrany; Shift drží pravý uhol a dĺžka napísaná počas kreslenia umiestni ďalší bod v tej vzdialenosti (Enter). Typ a pero nakreslenej čiary sú vo *Vlastnostiach*.
 
