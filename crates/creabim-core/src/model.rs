@@ -86,11 +86,27 @@ impl Model {
         self.elements.values()
     }
 
+    /// The storeys: every level but the site's ([`Model::site_level`]),
+    /// which no plan, section or elevation marks.
     pub fn levels(&self) -> impl Iterator<Item = (&Element, &Level)> {
+        let site = self.site_level();
+        self.all_levels().filter(move |(e, _)| Some(e.id) != site)
+    }
+
+    /// Every level, the site's too.
+    pub fn all_levels(&self) -> impl Iterator<Item = (&Element, &Level)> {
         self.iter().filter_map(|e| match &e.kind {
             ElementKind::Level(l) => Some((e, l)),
             _ => None,
         })
+    }
+
+    /// The level a terrain from the map is modelled on (its plan "3D
+    /// terén"): drawn in its own plan and the site plan only, marked on no
+    /// other plan, section or elevation.
+    pub fn site_level(&self) -> Option<ElementId> {
+        let id = self.project_info()?.1.site_level?;
+        self.level(id).map(|_| id)
     }
 
     pub fn level(&self, id: ElementId) -> Option<&Level> {
