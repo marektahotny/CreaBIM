@@ -593,6 +593,37 @@ mod shot_project {
                 .count();
             eprintln!("site view: {n} network/symbol items of {}", d.items.len());
         }
+        // a place for the building marked on the map, off and askew, drawn
+        // in the site plan; then the site laid under the building
+        let o = DVec2::new(-25.0, 12.0);
+        let (u, w) = (DVec2::from_angle(0.35), DVec2::from_angle(0.35).perp());
+        let mut rect = Sketch::polyline(
+            Some(ground),
+            Workplane::ground(0.0),
+            vec![o, o + u * 10.3, o + u * 10.3 + w * 8.0, o + w * 8.0],
+            true,
+        );
+        rect.view = Some(views[0]);
+        let rect_e = Element::new("place", ElementKind::Sketch(rect));
+        app.doc
+            .commit(Transaction::new("place").insert(rect_e))
+            .unwrap();
+        creabim_store::save(dir.join("before.creabim"), &app.doc).unwrap();
+        let mut lo = DVec2::splat(1e9);
+        let mut hi = DVec2::splat(-1e9);
+        for e in app.doc.model().iter() {
+            if let ElementKind::Wall(w) = &e.kind {
+                for p in [w.start, w.end] {
+                    lo = lo.min(p - DVec2::splat(w.thickness / 2.0));
+                    hi = hi.max(p + DVec2::splat(w.thickness / 2.0));
+                }
+            }
+        }
+        let r = creabim_core::mapgroup::fit((o, o + u), (lo, DVec2::new(hi.x, lo.y)));
+        let tx = creabim_core::mapgroup::move_ground(app.doc.model(), &r);
+        eprintln!("placed: {} ops, building {lo} {hi}", tx.ops.len());
+        app.doc.commit(tx).unwrap();
+        creabim_store::save(dir.join("placed.creabim"), &app.doc).unwrap();
         let legend =
             creabim_geom::serviceslegend::drawing(views[0], "Legenda situácie", app.doc.model());
         std::fs::write(dir.join("legend.svg"), legend.to_svg(1000.0)).unwrap();

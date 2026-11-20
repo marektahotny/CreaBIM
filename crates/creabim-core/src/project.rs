@@ -383,6 +383,32 @@ mod tests {
     }
 }
 
+/// Every site plan turned `degrees` further anticlockwise on screen and
+/// paper (project north against true north, as Revit has it): the model
+/// stays as it was drawn, so the floor plans keep their way up (George:
+/// turning north turned his building in the 1st floor plan).
+pub fn turn_site_plans(model: &crate::Model, degrees: f64) -> crate::Transaction {
+    let mut tx = crate::Transaction::new("Rotate project north");
+    for e in model.iter() {
+        let crate::ElementKind::View(v) = &e.kind else {
+            continue;
+        };
+        if !v.graphics.range.from_above || !matches!(v.kind, crate::ViewKind::Plan { .. }) {
+            continue;
+        }
+        let t = (v.turn + degrees + 180.0).rem_euclid(360.0) - 180.0;
+        let t = (t * 1e9).round() / 1e9;
+        let mut now = e.clone();
+        if let crate::ElementKind::View(w) = &mut now.kind {
+            w.turn = if t.abs() < 1e-9 { 0.0 } else { t };
+        }
+        if now != *e {
+            tx = tx.replace(e.clone(), now);
+        }
+    }
+    tx
+}
+
 /// The project's north turned by `degrees` anticlockwise (PilonDesigner's
 /// "Otočiť projektový sever"): the whole model, the building and what is
 /// round it (terrain, parcels, map underlays), turns about the origin, so

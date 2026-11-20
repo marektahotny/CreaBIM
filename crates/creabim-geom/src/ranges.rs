@@ -344,14 +344,19 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
         }
     }
     // utility networks and the site's symbols, whichever level they were
-    // drawn on: the site plan is where they show (unless sketches are hidden)
+    // drawn on, and what was sketched in a site plan: the site plan is
+    // where they show (unless sketches are hidden)
     if !v
         .hidden
         .hides_category(creabim_core::visibility::Category::Sketches)
     {
         for e in model.iter() {
             if let ElementKind::Sketch(sk) = &e.kind {
-                if sk.net.is_some() || sk.mark.is_some() {
+                let drawn_here = sk.view.is_some_and(|w| {
+                    matches!(model.get(w).map(|e| &e.kind),
+                        Some(ElementKind::View(x)) if x.graphics.range.from_above)
+                });
+                if sk.net.is_some() || sk.mark.is_some() || drawn_here {
                     items.extend(crate::plan::sketch_items(e.id, sk, &|p| p));
                 }
             }
