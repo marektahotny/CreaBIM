@@ -7761,5 +7761,7 @@
  "✔ No two elements share a mark.": "✔ Žiadne dva prvky nemajú rovnaké označenie.",
  "Set on the level": "Osadiť na podlažie",
  "Its underside set from the floor of its level by an offset, as a wall's base, moving with the level": "Spodná hrana sa zadáva odsadením od podlahy podlažia ako pri stene a posúva sa spolu s podlažím",
- "How far above the floor of the level they are modelled on new footings' undersides sit": "O koľko nad ±0 podlažia, do ktorého sa modelujú, je spodná hrana nových základov"
+ "How far above the floor of the level they are modelled on new footings' undersides sit": "O koľko nad ±0 podlažia, do ktorého sa modelujú, je spodná hrana nových základov",
+ "insulation at least": "izolácia aspoň",
+ "fire barriers": "požiarne zábrany"
 }

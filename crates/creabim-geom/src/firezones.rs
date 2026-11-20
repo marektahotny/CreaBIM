@@ -240,6 +240,35 @@ pub fn schedule(model: &Model) -> Schedule {
             ],
         });
     }
+    // the outer insulation (ETICS) against the fire height (Weber s. 16)
+    for c in crate::etics::checks(model) {
+        let name = model
+            .get(c.assembly)
+            .map(|e| e.name.clone())
+            .unwrap_or_default();
+        let mut need = format!(
+            "{} {} ({})",
+            tr("insulation at least"),
+            c.required,
+            verdict(c.ok)
+        );
+        if !c.barriers.is_empty() {
+            need.push_str(&format!("; {}: {}", tr("fire barriers"), c.barriers));
+        }
+        need.push_str(" (Weber ETICS s. 16, STN 73 0802)");
+        rows.push(Row {
+            id: c.assembly,
+            group: false,
+            cells: vec![
+                "ETICS".into(),
+                format!("h = {:.2} m", c.height),
+                format!("{name}: {} {:.0} mm", c.insulation, c.thickness * 1000.0),
+                String::new(),
+                c.class.clone(),
+                need,
+            ],
+        });
+    }
     // 5.4.9 to 5.4.11: outer walls in another zone's fire-dangerous
     // space, and their openings
     let marks = creabim_core::marks(model);
@@ -654,7 +683,10 @@ mod tests {
         assert!(!doors.is_empty());
         assert!(doors.iter().all(|d| d.zones[0] != d.zones[1]));
         let s = schedule(&m);
-        assert_eq!(s.rows.len(), 2 + doors.len());
+        // the starter's insulated outer walls add their ETICS lines
+        let etics = s.rows.iter().filter(|r| r.cells[0] == "ETICS").count();
+        assert_eq!(etics, crate::etics::checks(&m).len());
+        assert_eq!(s.rows.len() - etics, 2 + doors.len());
         assert!(s.rows.iter().any(|r| r.cells[4] == "NO FIRE DOOR"));
     }
 
