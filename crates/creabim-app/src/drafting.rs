@@ -126,6 +126,7 @@ impl CreaBimApp {
         let style_menu = match tool {
             Tool::Dimension
             | Tool::Angle
+            | Tool::Slope
             | Tool::Radius
             | Tool::Diameter
             | Tool::ArcLength

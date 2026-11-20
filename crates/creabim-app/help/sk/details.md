@@ -34,6 +34,15 @@ Druhy sú:
 
 Detailný komponent patrí pohľadu, v ktorom je nakreslený, a v inom pohľade sa nezobrazuje. Detailné komponenty sú kresba, nie časti stavby: nezobrazujú sa vo výkazoch a export IFC ich vynechá. Na ich pomenovanie pridajte [poznámky](notes) s odkazovými čiarami.
 
+## Čiary {#lines}
+
+**Čiara** a **Súvislá čiara** na karte Anotácie kreslia obyčajné čiary v otvorenom pôdoryse, reze alebo detaile, ako Čiara v PilonDesigneri: len v tomto pohľade, nikdy v 3D, výkazoch ani IFC.
+
+- **Čiara**: kliknite jej začiatok a koniec. Každé dve kliknutia urobia jednu čiaru.
+- **Súvislá čiara**: klikajte body za sebou; Enter, dvojklik alebo pravé tlačidlo ju ukončí, klik na prvý bod ju uzavrie.
+
+Vo voľbách nástroja vyberte **typ čiary** (plná, čiarkovaná pre zakryté pod rovinou rezu, bodkočiarkovaná pre osi, dvojbodkočiarkovaná pre to, čo je nad rovinou rezu) a **pero** (0,10 / 0,15 / 0,20 / 0,50 mm na papieri). Body sa prichytávajú na konce, stredy a hrany; Shift drží pravý uhol a dĺžka napísaná počas kreslenia umiestni ďalší bod v tej vzdialenosti (Enter). Typ a pero nakreslenej čiary sú vo *Vlastnostiach*.
+
 ## Detaily v základnom dome {#the-details-in-the-starter-house}
 
 [Základný dom](starter-house) má list **A501 Detaily**. Zobrazuje rez C-C cez južnú stenu v mierke 1:25 s tromi výrezmi v 1:10: päta steny, nadpražie a parapet okna a odkvap.

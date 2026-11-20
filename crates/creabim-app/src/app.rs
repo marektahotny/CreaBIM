@@ -10367,7 +10367,11 @@ crate::props::row(ui, "File names", |ui| {
                                 .show_ui(ui, |ui| {
                                     for f in creabim_core::styles::MarkerFamily::ALL {
                                         let sel = own.is_none() && pack.markers == f;
-                                        if ui.selectable_label(sel, crate::i18n::tw(f.label())).clicked() && !sel {
+                                        if ui
+                                            .selectable_label(sel, crate::i18n::tw(f.label()))
+                                            .clicked()
+                                            && !sel
+                                        {
                                             picked = Some(creabim_core::styles::StylePack {
                                                 markers: f,
                                                 marker_style: None,
@@ -10934,6 +10938,27 @@ crate::props::row(ui, "File names", |ui| {
                         })
                         .weak(),
                     );
+                    if d.kind == creabim_core::DimensionKind::Slope {
+                        // how it reads: measured from its line (a section),
+                        // or a typed slope (a plan, where lines are level)
+                        let mut pattern = d.pattern.clone().unwrap_or_else(|| "%".into());
+                        crate::props::flow(ui, |ui| {
+                            ui.label(crate::i18n::t("Reads")).on_hover_text(crate::i18n::t(
+                                "% , ° or 1:n measure the line in a section; any other text (2 %) is written as it is, as in a plan",
+                            ));
+                            for f in creabim_core::annotation::SLOPE_FORMATS {
+                                if ui.selectable_label(pattern.trim() == f, f).clicked() {
+                                    pattern = f.to_string();
+                                    d.pattern = (f != "%").then(|| f.to_string());
+                                    label = "Slope text";
+                                }
+                            }
+                            if ui.text_edit_singleline(&mut pattern).changed() {
+                                d.pattern = Some(pattern.clone());
+                                label = "Slope text";
+                            }
+                        });
+                    }
                     if d.kind == creabim_core::DimensionKind::Spot {
                         let mut pattern = d
                             .pattern
@@ -11018,8 +11043,10 @@ crate::props::row(ui, "File names", |ui| {
                         crate::annotate::LookEdit::None => {}
                     }
                     // its own number format over the style pack's (A5-2)
-                    if d.kind != creabim_core::DimensionKind::Spot
-                        && crate::props::subsection(ui, "dim.format", "Number format", false)
+                    if !matches!(
+                        d.kind,
+                        creabim_core::DimensionKind::Spot | creabim_core::DimensionKind::Slope
+                    ) && crate::props::subsection(ui, "dim.format", "Number format", false)
                     {
                         let mut own = d.format.is_some();
                         if crate::props::switch(ui, &mut own, "Own format")

@@ -197,6 +197,14 @@ pub fn pen_stroke_with(pen: Pen, w: &LineWeights) -> Stroke {
             width: w.hatch,
             ..HATCH
         },
+        Pen::Drafted(l) => Stroke {
+            width: l.pen.mm(),
+            gray: 0.0,
+            dash: match l.kind.dashes() {
+                Some([d, g]) => Some([*d, *g]),
+                _ => None,
+            },
+        },
     }
 }
 

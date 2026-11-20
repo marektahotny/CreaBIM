@@ -540,8 +540,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
         ],
         ANNOTATE => vec![
+            T(Tool::Line),
+            T(Tool::Polyline),
+            Sep,
             T(Tool::Dimension),
             T(Tool::Angle),
+            T(Tool::Slope),
             T(Tool::Radius),
             T(Tool::Diameter),
             T(Tool::ArcLength),

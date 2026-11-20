@@ -190,6 +190,11 @@ pub fn detail_items(id: ElementId, d: &DetailItem, mm: f64, look: MembraneLook) 
                 }
             }
         }
+        DetailKind::Line(look) => {
+            for &(a, b) in &segs {
+                line(&mut out, Pen::Drafted(look), a, b);
+            }
+        }
     }
     out
 }
@@ -310,5 +315,28 @@ mod tests {
             .filter(|i| matches!(i, PlanItem::Polygon { .. }))
             .count();
         assert_eq!(units, 4);
+    }
+
+    #[test]
+    fn a_drafted_line_keeps_its_pen_and_line_type() {
+        let look = creabim_core::LineLook {
+            pen: creabim_core::LinePen::Thick,
+            kind: creabim_core::LineType::DashDotDot,
+        };
+        let d = item(
+            DetailKind::Line(look),
+            &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)],
+        );
+        let items = detail_items(ElementId::new(), &d, 0.01, MembraneLook::default());
+        assert_eq!(items.len(), 2);
+        assert!(items
+            .iter()
+            .all(|i| matches!(i, PlanItem::Line { pen: Pen::Drafted(l), .. } if *l == look)));
+        // on paper: 0.20 mm, broken into a dash and two dots
+        let s = crate::paper::pen_stroke(Pen::Drafted(look));
+        assert!((s.width - 0.2).abs() < 1e-9);
+        let (_, _, long) = crate::looks::Looks::plain(creabim_core::LineWeights::for_scale(100.0))
+            .stroke(ElementId::new(), Pen::Drafted(look));
+        assert_eq!(long.unwrap().len(), 6);
     }
 }

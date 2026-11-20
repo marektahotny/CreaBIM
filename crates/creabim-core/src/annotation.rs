@@ -31,16 +31,21 @@ pub enum DimensionKind {
     /// plan's own level: a level marker), written at `b` from the
     /// dimension's pattern, such as "+0.45 FFL".
     Spot,
+    /// The slope of the line from `a` to `b`: an arrow beside it,
+    /// `offset` to its left, pointing down the slope, and the slope over
+    /// it as `pattern` says (see [`slope_text`]).
+    Slope,
 }
 
 impl DimensionKind {
-    pub const ALL: [DimensionKind; 6] = [
+    pub const ALL: [DimensionKind; 7] = [
         DimensionKind::Linear,
         DimensionKind::Angular,
         DimensionKind::Radius,
         DimensionKind::Diameter,
         DimensionKind::ArcLength,
         DimensionKind::Spot,
+        DimensionKind::Slope,
     ];
 
     pub fn label(self) -> &'static str {
@@ -51,12 +56,16 @@ impl DimensionKind {
             DimensionKind::Diameter => "Diameter",
             DimensionKind::ArcLength => "Arc length",
             DimensionKind::Spot => "Spot level",
+            DimensionKind::Slope => "Slope",
         }
     }
 
     /// Does this kind measure about a centre point?
     pub fn has_center(self) -> bool {
-        !matches!(self, DimensionKind::Linear | DimensionKind::Spot)
+        !matches!(
+            self,
+            DimensionKind::Linear | DimensionKind::Spot | DimensionKind::Slope
+        )
     }
 
     pub fn is_linear(&self) -> bool {
@@ -406,6 +415,43 @@ impl TextStyle {
 /// The pattern a spot level is written with when it has none of its own.
 pub const SPOT_PATTERN: &str = "{elevation}";
 
+/// How a slope dimension reads: these patterns measure its line (in a
+/// section or elevation); any other text is written as it is (in a plan,
+/// where every line is level, the slope is typed: `2 %`).
+pub const SLOPE_FORMATS: [&str; 3] = ["%", "°", "1:n"];
+
+/// A number with a decimal comma (STN 01 3420), to `places` decimals,
+/// dropping them when it is whole.
+fn comma(v: f64, places: usize) -> String {
+    let k = 10f64.powi(places as i32);
+    let r = (v * k).round() / k;
+    if (r - r.round()).abs() < 1e-9 {
+        format!("{:.0}", r)
+    } else {
+        format!("{r:.places$}").replace('.', ",")
+    }
+}
+
+/// What a slope dimension over a run `d` (across, up) reads with
+/// `pattern`: `%` (the default) gives `2 %` or `2,5 %`, `°` gives `35°`,
+/// `1:n` gives `1:40`; other text is written as it is. A level run reads
+/// `0 %`, a plumb one `90°` (or `∞` as a percentage).
+pub fn slope_text(d: DVec2, pattern: Option<&str>) -> String {
+    let (run, rise) = (d.x.abs(), d.y.abs());
+    let p = pattern
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .unwrap_or("%");
+    match p {
+        "%" if run < 1e-9 => "∞ %".into(),
+        "%" => format!("{} %", comma(rise / run * 100.0, 1)),
+        "°" => format!("{}°", comma(rise.atan2(run).to_degrees(), 1)),
+        "1:n" if rise < 1e-9 => "0 %".into(),
+        "1:n" => format!("1:{}", comma(run / rise, 1)),
+        other => other.to_string(),
+    }
+}
+
 /// A coordinate mark's pattern, as PilonDesigner's in its cadastre: the
 /// point's S-JTSK Y and X (positive, as the cadastre writes them).
 pub const SJTSK_PATTERN: &str = "Y = {Y}\nX = {X}";
@@ -575,6 +621,17 @@ impl Note {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_slope_reads_in_percent_degrees_or_one_in_n() {
+        let d = DVec2::new(4.0, -0.1);
+        assert_eq!(slope_text(d, None), "2,5 %");
+        assert_eq!(slope_text(DVec2::new(5.0, 0.1), Some("%")), "2 %");
+        assert_eq!(slope_text(DVec2::new(1.0, 1.0), Some("°")), "45°");
+        assert_eq!(slope_text(d, Some("1:n")), "1:40");
+        assert_eq!(slope_text(d, Some("2 %")), "2 %");
+        assert_eq!(slope_text(DVec2::new(0.0, 1.0), Some("°")), "90°");
+    }
 
     #[test]
     fn a_coordinate_mark_writes_the_point_in_sjtsk() {

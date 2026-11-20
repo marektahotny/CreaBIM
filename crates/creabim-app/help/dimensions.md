@@ -43,7 +43,13 @@ With nothing selected, `D` picks the Dimension tool; with a selection, `D` shows
 
 ## Angles
 
-Pick the **Angle** tool. Click two lines (wall faces, edges), then where the arc goes. Or click the corner and one point on each arm. The side you place the arc on picks the inside or outside angle.
+Pick the **Angle dimension** tool. Click two lines (wall faces, edges), then where the arc goes. Or click the corner and one point on each arm. The side you place the arc on picks the inside or outside angle.
+
+## Slopes
+
+Pick **Slope dimension** on the Annotate tab. In a section or elevation, click a sloping line (a roof, a ramp, terrain, a pipe) or two points on it, then the side the arrow goes: an arrow pointing down the slope is drawn beside it, with the slope written over it. In the tool options pick how it reads: **%** (`2,5 %`), **°** (`35°`) or **1:n** (`1:40`). It follows the line when what it is on moves.
+
+In a plan every line is level, so there the slope is typed: set **Slope in a plan** in the tool options, then click two points the way the slope falls and the side the arrow goes. Change what a placed one reads in *Properties*.
 
 ## Radius and diameter
 

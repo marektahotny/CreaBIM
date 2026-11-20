@@ -148,6 +148,9 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Dimension => "dimension",
         Tool::Tag => "tag",
         Tool::Angle => "angle",
+        Tool::Slope => "slope-dim",
+        Tool::Line => "draft-line",
+        Tool::Polyline => "polyline",
         Tool::Radius => "radius",
         Tool::Diameter => "diameter",
         Tool::ArcLength => "arc-length",
@@ -214,6 +217,9 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::ArcLength
         | Tool::Note
         | Tool::Detail
+        | Tool::Line
+        | Tool::Polyline
+        | Tool::Slope
         | Tool::SpotLevel => 3,
         Tool::Sketch | Tool::Guide | Tool::Grid | Tool::Level => 4,
     }
@@ -2125,6 +2131,23 @@ impl CreaBimApp {
                     self.plan.details.path.clear();
                 }
             }
+            "line.type" => {
+                if let Some(k) = index.and_then(|i| creabim_core::LineType::ALL.get(i)) {
+                    self.plan.details.line.kind = *k;
+                }
+            }
+            "line.pen" => {
+                if let Some(p) = index.and_then(|i| creabim_core::LinePen::ALL.get(i)) {
+                    self.plan.details.line.pen = *p;
+                }
+            }
+            "slope.fmt" => {
+                if let Some(i) =
+                    index.filter(|i| *i < creabim_core::annotation::SLOPE_FORMATS.len())
+                {
+                    self.plan.anno.slope_fmt = i;
+                }
+            }
             "callout.scale" => {
                 if let Some(s) = index.and_then(|i| crate::detailtool::CALLOUT_SCALES.get(i)) {
                     self.plan.details.callout_scale = *s;
@@ -2173,6 +2196,9 @@ impl CreaBimApp {
                 | Tool::SpotLevel
                 | Tool::Tag
                 | Tool::Detail
+                | Tool::Line
+                | Tool::Polyline
+                | Tool::Slope
         );
         match front? {
             "sheet" if measures => {
@@ -2956,6 +2982,7 @@ impl CreaBimApp {
             }
             "view.number" => self.set_view_number(v),
             "detail.width" => self.plan.details.width = v.clamp(0.0, 5.0),
+            "slope.value" => self.plan.anno.slope_value = v.clamp(0.0, 1000.0),
             "dim.spacing" => {
                 self.plan.dim_step_size = v.clamp(0.5, 100.0);
                 self.plan.dim_step_mm = self.plan.dim_step_size;
@@ -3150,6 +3177,55 @@ impl CreaBimApp {
                     "hint": "How wide the component is across its path: a batt's thickness, a course's depth",
                 }));
             }
+        }
+        if matches!(tool, Tool::Line | Tool::Polyline) {
+            let look = self.plan.details.line;
+            options.push(seg(creabim_core::LineType::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, k)| {
+                    opt(
+                        format!("line.type:{i}"),
+                        k.label(),
+                        look.kind == *k,
+                        "Line type: solid, dashed for what is hidden below the cut, dash-dot for axes, dash-double-dot for what is above the cut",
+                    )
+                })
+                .collect()));
+            options.push(seg(creabim_core::LinePen::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    opt(
+                        format!("line.pen:{i}"),
+                        &format!("{:.2}", p.mm()).replace('.', ","),
+                        look.pen == *p,
+                        "Pen: the line's width on paper, mm (0,10 hatches, 0,15 the usual line, 0,20 ticks and fittings, 0,50 outlines of what is cut)",
+                    )
+                })
+                .collect()));
+        }
+        if tool == Tool::Slope {
+            let fmt = self.plan.anno.slope_fmt;
+            options.push(seg(creabim_core::annotation::SLOPE_FORMATS
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    opt(
+                        format!("slope.fmt:{i}"),
+                        f,
+                        fmt == i,
+                        "How the slope reads: in percent, in degrees, or as 1:n",
+                    )
+                })
+                .collect()));
+            options.push(json!({
+                "kind": "number", "key": "slope.value", "label": "Slope in a plan",
+                "value": self.plan.anno.slope_value,
+                "unit": match creabim_core::annotation::SLOPE_FORMATS[fmt] { "%" => "%", "°" => "°", _ => "1:n" },
+                "step": 0.5, "min": 0.0, "max": 1000.0,
+                "hint": "In a plan every line is level, so the slope a new slope dimension writes there is typed here (2 % for a terrace, 1:50 for a gutter). In a section it is measured from the line",
+            }));
         }
         if tool == Tool::Callout {
             options.push(seg(crate::detailtool::CALLOUT_SCALES

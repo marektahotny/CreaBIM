@@ -992,11 +992,15 @@ mod tests {
     #[test]
     fn a_flipped_jogged_section_cuts_where_it_did() {
         let mut v = crate::View::section(DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0), 8.0, true);
-        v.line.jogs = vec![crate::SectionJog { at: 4.0, offset: 2.0 }];
+        v.line.jogs = vec![crate::SectionJog {
+            at: 4.0,
+            offset: 2.0,
+        }];
         let el = Element::new("S", ElementKind::View(v));
         let id = el.id;
         let mut doc = crate::Document::from_model(sample_house());
-        doc.commit(crate::Transaction::new("Add").insert(el)).unwrap();
+        doc.commit(crate::Transaction::new("Add").insert(el))
+            .unwrap();
         doc.commit(flip_view(doc.model(), id).unwrap()).unwrap();
         let ElementKind::View(v) = &doc.model().get(id).unwrap().kind else {
             panic!()
@@ -1008,7 +1012,13 @@ mod tests {
         assert_eq!((start, end), (DVec2::new(10.0, 2.0), DVec2::new(0.0, 2.0)));
         // and steps back to y = 0 at x = 4: 6 m along, 2 m to its new look
         // side (it looks south now, so +2 is down to y = 0)
-        assert_eq!(v.line.jogs, vec![crate::SectionJog { at: 6.0, offset: 2.0 }]);
+        assert_eq!(
+            v.line.jogs,
+            vec![crate::SectionJog {
+                at: 6.0,
+                offset: 2.0
+            }]
+        );
     }
 
     #[test]

@@ -43,7 +43,13 @@ Keď nie je nič vybrané, `D` zvolí nástroj Kóta; pri výbere `D` zobrazí a
 
 ## Uhly {#angles}
 
-Zvoľte nástroj **Uhol**. Kliknite na dve čiary (povrchy stien, hrany) a potom, kam má ísť oblúk. Alebo kliknite na vrchol a na jeden bod na každom ramene. Strana, na ktorú oblúk umiestnite, určí vnútorný alebo vonkajší uhol.
+Zvoľte nástroj **Kóta uhla**. Kliknite na dve čiary (povrchy stien, hrany) a potom, kam má ísť oblúk. Alebo kliknite na vrchol a na jeden bod na každom ramene. Strana, na ktorú oblúk umiestnite, určí vnútorný alebo vonkajší uhol.
+
+## Sklony {#slopes}
+
+Zvoľte **Kóta sklonu** na karte Anotácie. V reze alebo pohľade kliknite na šikmú čiaru (strecha, rampa, terén, potrubie) alebo na dva body na nej a potom na stranu, kam pôjde šípka: vedľa čiary sa nakreslí šípka v smere spádu a nad ňou sklon. Vo voľbách nástroja vyberte, ako sa píše: **%** (`2,5 %`), **°** (`35°`) alebo **1:n** (`1:40`). Keď sa prvok pod ňou pohne, kóta ide s ním.
+
+V pôdoryse je každá čiara vodorovná, preto sa tam sklon zadáva: nastavte **Sklon v pôdoryse** vo voľbách nástroja, kliknite dva body v smere spádu a stranu šípky. Čo umiestnená kóta píše, zmeníte vo *Vlastnostiach*.
 
 ## Polomer a priemer {#radius-and-diameter}
 

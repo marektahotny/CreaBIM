@@ -86,10 +86,16 @@ pub enum Tool {
     Detail,
     /// A pipe or duct of building services, in the system picked.
     Pipe,
+    /// A drafted straight line in this view (PilonDesigner's Čiara).
+    Line,
+    /// A drafted line of straight segments, one after another.
+    Polyline,
+    /// A slope dimension: an arrow down a sloping line, its slope over it.
+    Slope,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 42] = [
+    pub const ALL: [Tool; 45] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -121,10 +127,13 @@ impl Tool {
         Tool::Dimension,
         Tool::Tag,
         Tool::Angle,
+        Tool::Slope,
         Tool::Radius,
         Tool::Diameter,
         Tool::ArcLength,
         Tool::Note,
+        Tool::Line,
+        Tool::Polyline,
         Tool::Detail,
         Tool::SpotLevel,
         Tool::Sketch,
@@ -153,7 +162,10 @@ impl Tool {
             Tool::Elevation => "Elevation",
             Tool::Dimension => "Dimension",
             Tool::Tag => "Tag",
-            Tool::Angle => "Angle",
+            Tool::Angle => "Angle dimension",
+            Tool::Slope => "Slope dimension",
+            Tool::Line => "Line",
+            Tool::Polyline => "Polyline",
             Tool::Radius => "Radius",
             Tool::Diameter => "Diameter",
             Tool::ArcLength => "Arc length",
@@ -201,6 +213,9 @@ impl Tool {
             Tool::Dimension => "Click two points to measure, then click where the dimension line goes. Points snap to wall corners, door and window edges and levels, and stay attached to them.",
             Tool::Tag => "Click a door, window, wall, slab, roof, column, beam, stair, railing, room or ceiling, then click where its tag goes.",
             Tool::Angle => "Click two lines (wall faces, edges) for the angle between them, or click the corner and a point on each arm. Then click where the arc goes.",
+            Tool::Slope => "Click a sloping line (a roof, a ramp, terrain, a pipe in a section) or two points on it, then the side the arrow goes. In a plan, where lines are level, click two points the way it falls; its slope is typed in the top bar.",
+            Tool::Line => "Click the start and the end of a line; it is drawn in this view only, in the pen and line type picked in the top bar. Snaps to ends, middles and edges; Shift keeps it square; type a length and Enter.",
+            Tool::Polyline => "Click the points of a continuous line of straight segments; Enter, a double-click or a right-click finishes it, the first point again closes it. Shift keeps a segment square; type a length and Enter. Pen and line type in the top bar.",
             Tool::Radius => "Click an arc or circle, or three points on one. Then click where the dimension line goes.",
             Tool::Diameter => "Click an arc or circle, or three points on one. Then click where the dimension line goes.",
             Tool::ArcLength => "Click an arc, or its start, a point on it and its end. Then click where the dimension line goes.",
@@ -1581,10 +1596,13 @@ fn show_pane(
         .outline
         .as_ref()
         .and_then(|o| o.points.last().copied());
+    // the Line, Polyline and Detail tools' path goes on from its last point
+    let detail_last = crate::detailtool::last_point(state, view);
     let drawing_from = state
         .pending
         .or(sketch_last.map(from_pane))
         .or(last)
+        .or(detail_last)
         .map(|a| a.extend(0.0));
     // temporary guide lines: from the points and edges rested on in the
     // drawing tools, and through where the line being drawn starts
@@ -1721,7 +1739,7 @@ fn show_pane(
             level,
             &xf,
             xf.to_world(p),
-            state.pending,
+            state.pending.or(detail_last),
             shift,
             &[],
             &snap_cfg,
@@ -1729,7 +1747,7 @@ fn show_pane(
         PaneKind::Axonometric | PaneKind::Schedule => xf.to_world(p),
         PaneKind::Section { .. } => {
             let mut p = xf.to_world(p);
-            if let (true, Some(a)) = (shift, state.pending) {
+            if let (true, Some(a)) = (shift, state.pending.or(detail_last)) {
                 let d = p - a;
                 p = if d.x.abs() >= d.y.abs() {
                     DVec2::new(p.x, a.y)
@@ -1759,9 +1777,11 @@ fn show_pane(
             | Tool::Railing
             | Tool::Footing
             | Tool::RoomSeparator
-    ) && matches!(kind, PaneKind::Plan { .. });
+    ) && matches!(kind, PaneKind::Plan { .. })
+        || matches!(tool, Tool::Line | Tool::Polyline)
+            && matches!(kind, PaneKind::Plan { .. } | PaneKind::Section { .. });
     let mut tracker_enter = false;
-    let hover_world = match (state.pending, pointer_world, line_tool) {
+    let hover_world = match (state.pending.or(detail_last), pointer_world, line_tool) {
         (Some(a), Some(b), true) if response.hovered() => {
             if state.tracker.keys(ui.ctx()) == crate::tracker::Keys::Enter {
                 tracker_enter = true;
@@ -2565,7 +2585,7 @@ fn show_pane(
     }
     // a callout's box or a detail component being drawn, and Enter to
     // finish the component
-    if matches!(tool, Tool::Callout | Tool::Detail) {
+    if tool == Tool::Callout || crate::detailtool::drafts(tool) {
         crate::detailtool::preview(
             doc.model(),
             &painter,
@@ -2593,7 +2613,10 @@ fn show_pane(
             state.status = Some("The membrane goes on the other side.".into());
         }
         let double = response.double_clicked() && crate::detailtool::finishable(state);
-        if tool == Tool::Detail && (enter || double) && state.details.view == Some(view) {
+        if crate::detailtool::drafts(tool)
+            && ((enter && !tracker_enter) || double)
+            && state.details.view == Some(view)
+        {
             if let Err(e) = crate::detailtool::finish(doc, state, selection) {
                 return Some(e.to_string());
             }
@@ -2880,7 +2903,7 @@ fn show_pane(
     let right = response.secondary_clicked() && !shift;
     let esc = esc_once(ui.ctx());
     // a detail path that can be made is finished, never dropped
-    if tool == Tool::Detail
+    if crate::detailtool::drafts(tool)
         && (esc || right)
         && state.details.view == Some(view)
         && crate::detailtool::keep(doc, state, selection)
@@ -2977,7 +3000,13 @@ fn show_pane(
     }
 
     let mut error = None;
-    if let (true, Some(p), PaneKind::Plan { level }) = (tracker_enter, hover_world, kind) {
+    // a typed length places the Line or Polyline tool's next point
+    if let (true, Some(p), true) = (tracker_enter, hover_world, detail_last.is_some()) {
+        state.tracker.clear();
+        if let Err(e) = crate::detailtool::detail_click(doc, view, p, p, state, selection) {
+            error = Some(e.to_string());
+        }
+    } else if let (true, Some(p), PaneKind::Plan { level }) = (tracker_enter, hover_world, kind) {
         state.tracker.clear();
         if let Err(e) = plan_tool(doc, level, tool, p, state, selection) {
             error = Some(e.to_string());
@@ -3227,7 +3256,9 @@ fn show_pane(
                 // opens from Properties or with a double-click
                 crate::detailtool::callout_click(doc, view, p, state, selection).map(|_| ())
             }
-            (PaneKind::Plan { .. } | PaneKind::Section { .. }, Tool::Detail) => {
+            (PaneKind::Plan { .. } | PaneKind::Section { .. }, t)
+                if crate::detailtool::drafts(t) =>
+            {
                 crate::detailtool::detail_click(doc, view, p, raw, state, selection)
             }
             (_, t) if crate::annotate::is_tool(t) => match &view_def {
@@ -3698,7 +3729,10 @@ fn plan_click(
         | Tool::SpotLevel
         | Tool::Sketch
         | Tool::Callout
-        | Tool::Detail => Ok(()),
+        | Tool::Detail
+        | Tool::Line
+        | Tool::Polyline
+        | Tool::Slope => Ok(()),
         // a library profile placed at the click, pulled up (MU36)
         Tool::Extrusion if state.parts.extrusion_library.is_some() => {
             let name = state.parts.extrusion_library.clone().unwrap_or_default();
@@ -6220,6 +6254,37 @@ pub fn draw_item_with(
                         }
                     }
                 }
+                Pen::Drafted(look) => {
+                    // its pen's width on paper, in the steps the screen shows
+                    let w = if selected {
+                        2.0
+                    } else {
+                        (look.pen.mm() * 7.0).clamp(0.8, 3.5) as f32
+                    };
+                    let c = if selected { highlight } else { ink };
+                    match look.kind.dashes() {
+                        None => {
+                            painter.line_segment([a, b], Stroke::new(w, c));
+                        }
+                        Some(d) => {
+                            let v = |p: egui::Pos2| DVec2::new(p.x as f64, p.y as f64);
+                            let dashes: Vec<f64> = d.iter().map(|d| d * 2.5).collect();
+                            for piece in
+                                creabim_geom::looks::dash_polyline(&[v(a), v(b)], &dashes, w as f64)
+                            {
+                                if let [p, .., q] = piece[..] {
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(p.x as f32, p.y as f32),
+                                            egui::pos2(q.x as f32, q.y as f32),
+                                        ],
+                                        Stroke::new(w, c),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
                 Pen::HiddenCut => {
                     let c = if selected { highlight } else { ink };
                     painter.extend(egui::Shape::dashed_line(
@@ -8311,6 +8376,9 @@ fn shape_points(
     }
     if level.is_some() && !state.members.path.is_empty() {
         return state.members.path.clone();
+    }
+    if crate::detailtool::drafts(state.tool) && state.details.view == Some(view) {
+        return state.details.path.clone();
     }
     match (&state.chain, state.pending) {
         ((Some(l), pts), Some(_)) if Some(*l) == level => pts.clone(),

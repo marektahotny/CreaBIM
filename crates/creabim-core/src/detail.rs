@@ -37,6 +37,103 @@ pub enum DetailKind {
     Region { hatch: Hatch },
     /// A break line across the path: where a drawing stops short.
     BreakLine,
+    /// A plain drafted line or polyline (PilonDesigner's Čiara): just the
+    /// path, in a pen and a line type of its own. Only in the drawing.
+    Line(LineLook),
+}
+
+/// The pen a drafted line is drawn with: its width on paper, as
+/// PilonDesigner's four pens.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum LinePen {
+    /// 0.10 mm: hatches, the lines between materials.
+    VeryThin,
+    /// 0.15 mm: the usual line, edges seen, dimensions.
+    #[default]
+    Thin,
+    /// 0.20 mm: dimension ticks, fittings.
+    Thick,
+    /// 0.50 mm: outlines of what is cut, pipes.
+    VeryThick,
+}
+
+impl LinePen {
+    pub const ALL: [LinePen; 4] = [
+        LinePen::VeryThin,
+        LinePen::Thin,
+        LinePen::Thick,
+        LinePen::VeryThick,
+    ];
+
+    /// Its width on paper, mm.
+    pub fn mm(self) -> f64 {
+        match self {
+            LinePen::VeryThin => 0.10,
+            LinePen::Thin => 0.15,
+            LinePen::Thick => 0.20,
+            LinePen::VeryThick => 0.50,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LinePen::VeryThin => "Very thin",
+            LinePen::Thin => "Thin",
+            LinePen::Thick => "Thick",
+            LinePen::VeryThick => "Very thick",
+        }
+    }
+}
+
+/// How a drafted line is broken up (STN 01 3130 line types).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum LineType {
+    #[default]
+    Solid,
+    /// Hidden edges: below the cut, behind construction.
+    Dashed,
+    /// Axes, centre lines.
+    DashDot,
+    /// Above the cut plane (lintels), outlines of what was.
+    DashDotDot,
+}
+
+impl LineType {
+    pub const ALL: [LineType; 4] = [
+        LineType::Solid,
+        LineType::Dashed,
+        LineType::DashDot,
+        LineType::DashDotDot,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LineType::Solid => "Solid",
+            LineType::Dashed => "Dashed",
+            LineType::DashDot => "Dash-dot",
+            LineType::DashDotDot => "Dash-double-dot",
+        }
+    }
+
+    /// Its dashes and gaps on paper, mm (a dash of 0 is a dot), as
+    /// PilonDesigner draws them; none when solid.
+    pub fn dashes(self) -> Option<&'static [f64]> {
+        match self {
+            LineType::Solid => None,
+            LineType::Dashed => Some(&[3.0, 1.5]),
+            LineType::DashDot => Some(&[8.0, 1.5, 0.0, 1.5]),
+            LineType::DashDotDot => Some(&[8.0, 1.5, 0.0, 1.5, 0.0, 1.5]),
+        }
+    }
+}
+
+/// A drafted line's pen and line type.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LineLook {
+    #[serde(default)]
+    pub pen: LinePen,
+    #[serde(default)]
+    pub kind: LineType,
 }
 
 impl DetailKind {
@@ -65,6 +162,7 @@ impl DetailKind {
             DetailKind::Repeat { .. } => "Repeating detail",
             DetailKind::Region { .. } => "Filled region",
             DetailKind::BreakLine => "Break line",
+            DetailKind::Line(_) => "Line",
         }
     }
 
@@ -83,6 +181,7 @@ impl DetailKind {
             DetailKind::Repeat { .. } => 0.065,
             DetailKind::Region { .. } => 0.0,
             DetailKind::BreakLine => 0.0,
+            DetailKind::Line(_) => 0.0,
         }
     }
 
