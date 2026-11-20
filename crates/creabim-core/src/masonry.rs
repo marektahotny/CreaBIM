@@ -1459,7 +1459,7 @@ pub fn lintel_issue(model: &Model, b: &Beam) -> Option<String> {
 /// of laid over them again; lintels whose opening went, left standing
 /// on their own. Run by the [`crate::Document`] after every edit.
 pub fn settle(model: &Model, tx: &Transaction) -> Transaction {
-    let out = Transaction::new(tx.label.clone());
+    let out = settle_columns(model, tx, Transaction::new(tx.label.clone()));
     let touches = tx.ops.iter().any(|o| match o {
         Op::Insert(e) | Op::Remove(e) => matches!(
             e.kind,
@@ -1523,6 +1523,17 @@ pub struct MasonryRules {
     /// insulation, Porotherm VT 8 + 50 mm: 0,13), m.
     pub ring_depth: f64,
     pub ring_shutter: f64,
+    /// Walls whose load-bearing core is no thicker than this, m, are
+    /// neither checked nor count as bracing (thin partitions).
+    #[serde(default = "default_unchecked")]
+    pub unchecked_upto: f64,
+}
+
+/// Partitions up to 160 mm of core are left out of the length check.
+pub const UNCHECKED_UPTO: f64 = 0.16;
+
+fn default_unchecked() -> f64 {
+    UNCHECKED_UPTO
 }
 
 /// STN EN 1998-1, 9.5.3 (2): confining elements no more than 5 m apart.
@@ -1537,6 +1548,7 @@ impl Default for MasonryRules {
             column_width: 0.25,
             ring_depth: 0.25,
             ring_shutter: 0.0,
+            unchecked_upto: UNCHECKED_UPTO,
         }
     }
 }
@@ -1691,11 +1703,17 @@ fn masonry(w: &Wall) -> bool {
     w.curtain.is_none() && w.bulge.abs() < 1e-9 && w.length() > 0.1 && w.thickness > 0.04
 }
 
+/// Is `w` thick enough to be checked and to brace others: its core over
+/// [`MasonryRules::unchecked_upto`].
+fn checked(model: &Model, w: &Wall, rules: &MasonryRules) -> bool {
+    core_thickness(model, w) > rules.unchecked_upto + 1e-6
+}
+
 fn runs(model: &Model, rules: &MasonryRules) -> Vec<Run> {
     let walls: Vec<(ElementId, &Wall)> = model
         .iter()
         .filter_map(|e| match &e.kind {
-            ElementKind::Wall(w) if masonry(w) => Some((e.id, w)),
+            ElementKind::Wall(w) if masonry(w) && checked(model, w, rules) => Some((e.id, w)),
             _ => None,
         })
         .collect();
@@ -1771,7 +1789,7 @@ fn runs(model: &Model, rules: &MasonryRules) -> Vec<Run> {
 /// Where along `run` it is braced: by the walls meeting or crossing it
 /// (thick and long enough) and by the columns standing in it, each with
 /// half its width along the run.
-fn braces(model: &Model, run: &Run) -> Vec<(f64, f64)> {
+fn braces(model: &Model, run: &Run, rules: &MasonryRules) -> Vec<(f64, f64)> {
     let mut out = vec![];
     let n = run.dir.perp();
     let line_off = run.origin.dot(n);
@@ -1780,7 +1798,10 @@ fn braces(model: &Model, run: &Run) -> Vec<(f64, f64)> {
     for e in model.iter() {
         match &e.kind {
             ElementKind::Wall(w)
-                if w.level == run.level && masonry(w) && !run.walls.contains(&e.id) =>
+                if w.level == run.level
+                    && masonry(w)
+                    && checked(model, w, rules)
+                    && !run.walls.contains(&e.id) =>
             {
                 let d = w.direction();
                 // across it, not along
@@ -1840,7 +1861,7 @@ pub fn check_walls(model: &Model, level: Option<ElementId>) -> Vec<WallIssue> {
         if level.is_some_and(|l| l != run.level) {
             continue;
         }
-        let braces = braces(model, &run);
+        let braces = braces(model, &run, &rules);
         // the stretches between, clear of the braces' widths
         let mut stops: Vec<(f64, f64)> = vec![(run.t0, 0.0)];
         stops.extend(
@@ -1900,36 +1921,251 @@ pub fn check_walls(model: &Model, level: Option<ElementId>) -> Vec<WallIssue> {
     out
 }
 
-/// An RC column in the wall `wall_id` at `p` (put square onto its
-/// core's centre line): as wide along the wall as the rules say, as deep
-/// as the core, in reinforced concrete when the project has it.
+/// What ties an RC column to the masonry wall it is built into.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InWall {
+    /// The wall: the column sits in its load-bearing core, as deep as the
+    /// core, and slides only along it.
+    pub wall: ElementId,
+    /// XPS (Styrodur) on the exterior side of the column, inside the
+    /// core, against the thermal bridge.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub xps: bool,
+    /// Its thickness, m.
+    #[serde(default = "default_xps")]
+    pub xps_thickness: f64,
+    /// Set on the XPS board itself: the column it insulates (the board
+    /// is kept by [`settle`], never edited on its own).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub of: Option<ElementId>,
+}
+
+/// The office's usual XPS on a wall column, m.
+pub const XPS_THICKNESS: f64 = 0.05;
+
+fn default_xps() -> f64 {
+    XPS_THICKNESS
+}
+
+impl InWall {
+    pub fn new(wall: ElementId) -> Self {
+        Self {
+            wall,
+            xps: false,
+            xps_thickness: XPS_THICKNESS,
+            of: None,
+        }
+    }
+
+    /// The XPS thickness in use (0 without it), leaving the concrete at
+    /// least 50 mm of a core `core` thick.
+    pub fn insulation(&self, core: f64) -> f64 {
+        if self.xps {
+            self.xps_thickness.clamp(0.0, (core - 0.05).max(0.0))
+        } else {
+            0.0
+        }
+    }
+}
+
+/// The material the XPS boards are made of.
+pub const XPS_MATERIAL: &str = "Insulation, XPS";
+
+/// An RC column in the wall `wall_id` at `p` (clamped onto the wall),
+/// filling the wall's load-bearing core across, [`MasonryRules::column_width`]
+/// along it, up to the next level. It stays bound to the wall: see
+/// [`fit_wall_column`].
 pub fn wall_column(model: &Model, wall_id: ElementId, p: DVec2) -> Option<Element> {
     let ElementKind::Wall(w) = &model.get(wall_id)?.kind else {
         return None;
     };
     let rules = rules(model);
+    let mut c = Column::new(
+        w.level,
+        p,
+        Profile::Rectangle {
+            width: rules.column_width,
+            depth: 0.1,
+        },
+    );
+    c.base_offset = w.base_offset;
+    c.material = concrete(model);
+    c.in_wall = Some(InWall::new(wall_id));
+    let c = fit_wall_column(model, &c)?;
+    Some(Element::new("ŽB stĺp v stene", ElementKind::Column(c)))
+}
+
+/// The column's width along its wall.
+fn along(c: &Column, model: &Model) -> f64 {
+    match c.profile {
+        Profile::Rectangle { width, .. } if width > 0.01 => width,
+        _ => rules(model).column_width,
+    }
+}
+
+/// The column `c` put back where its wall allows: on the wall's line
+/// (moved only along it, kept inside its length), turned with it, as deep
+/// as the core less the XPS, which takes the core's exterior side. `None`
+/// when it is not in a wall or the wall is gone.
+pub fn fit_wall_column(model: &Model, c: &Column) -> Option<Column> {
+    let iw = c.in_wall.as_ref()?;
+    if iw.of.is_some() {
+        return None;
+    }
+    let ElementKind::Wall(w) = &model.get(iw.wall)?.kind else {
+        return None;
+    };
+    if w.is_arc() || w.length() < 1e-6 {
+        return None;
+    }
     let d = w.direction();
     let n = d.perp();
     let (ext, int) = crate::walls::core_span(model, w);
-    let u = (p - w.start).dot(d).clamp(0.0, w.length());
-    let half = rules.column_width / 2.0;
-    let u = u.clamp(
-        half.min(w.length() / 2.0),
-        (w.length() - half).max(w.length() / 2.0),
-    );
-    let centre = w.start + d * u + n * ((ext + int) / 2.0);
-    let mut c = Column::new(
-        w.level,
-        centre,
-        Profile::Rectangle {
-            width: rules.column_width,
-            depth: (int - ext).abs().max(0.05),
-        },
-    );
-    c.rotation = d.y.atan2(d.x).to_degrees();
-    c.base_offset = w.base_offset;
-    c.material = concrete(model);
-    Some(Element::new("ŽB stĺp v stene", ElementKind::Column(c)))
+    let core = (int - ext).abs();
+    let s = if int >= ext { 1.0 } else { -1.0 };
+    let ins = iw.insulation(core);
+    let width = along(c, model).min(w.length());
+    let half = width / 2.0;
+    let u = (c.position - w.start)
+        .dot(d)
+        .clamp(half, (w.length() - half).max(half));
+    let inner = ext + s * ins;
+    let mut out = c.clone();
+    out.position = w.start + d * u + n * ((inner + int) / 2.0);
+    out.rotation = d.y.atan2(d.x).to_degrees();
+    out.profile = Profile::Rectangle {
+        width,
+        depth: (core - ins).max(0.05),
+    };
+    out.section = None;
+    out.level = w.level;
+    Some(out)
+}
+
+/// The XPS board on the exterior side of the wall column `col` (fitted),
+/// `id` being the column's: `None` without XPS.
+pub fn wall_column_xps(
+    model: &Model,
+    id: ElementId,
+    col: &Column,
+    material: Option<ElementId>,
+) -> Option<Column> {
+    let iw = col.in_wall.as_ref()?;
+    let ElementKind::Wall(w) = &model.get(iw.wall)?.kind else {
+        return None;
+    };
+    let (ext, int) = crate::walls::core_span(model, w);
+    let s = if int >= ext { 1.0 } else { -1.0 };
+    let ins = iw.insulation((int - ext).abs());
+    if ins < 1e-4 {
+        return None;
+    }
+    let d = w.direction();
+    let n = d.perp();
+    let u = (col.position - w.start).dot(d);
+    let mut x = col.clone();
+    x.position = w.start + d * u + n * (ext + s * ins / 2.0);
+    x.profile = Profile::Rectangle {
+        width: along(col, model),
+        depth: ins,
+    };
+    x.material = material;
+    x.in_wall = Some(InWall {
+        of: Some(id),
+        xps: false,
+        ..iw.clone()
+    });
+    Some(x)
+}
+
+/// The wall columns kept to their walls after `tx`, their XPS boards
+/// added, moved or taken away to match.
+fn settle_columns(model: &Model, tx: &Transaction, mut out: Transaction) -> Transaction {
+    let touches = tx.ops.iter().any(|o| match o {
+        Op::Insert(e) | Op::Remove(e) => {
+            matches!(
+                &e.kind,
+                ElementKind::Wall(_) | ElementKind::Level(_) | ElementKind::Assembly(_)
+            ) || matches!(&e.kind, ElementKind::Column(c) if c.in_wall.is_some())
+        }
+        Op::Replace { after, .. } => {
+            matches!(
+                &after.kind,
+                ElementKind::Wall(_) | ElementKind::Level(_) | ElementKind::Assembly(_)
+            ) || matches!(&after.kind, ElementKind::Column(c) if c.in_wall.is_some())
+        }
+    });
+    if !touches {
+        return out;
+    }
+    let mut boards: std::collections::HashMap<ElementId, Vec<&Element>> = Default::default();
+    for e in model.iter() {
+        if let ElementKind::Column(c) = &e.kind {
+            if let Some(of) = c.in_wall.as_ref().and_then(|w| w.of) {
+                boards.entry(of).or_default().push(e);
+            }
+        }
+    }
+    let mut material: Option<Option<ElementId>> = None;
+    let mut seen = vec![];
+    for e in model.iter() {
+        let ElementKind::Column(c) = &e.kind else {
+            continue;
+        };
+        if c.in_wall.as_ref().is_none_or(|w| w.of.is_some()) {
+            continue;
+        }
+        seen.push(e.id);
+        let Some(next) = fit_wall_column(model, c) else {
+            continue;
+        };
+        if next != *c {
+            let mut after = e.clone();
+            after.kind = ElementKind::Column(next.clone());
+            out = out.replace(e.clone(), after);
+        }
+        let has = boards.get(&e.id).cloned().unwrap_or_default();
+        let mat = *material.get_or_insert_with(|| {
+            let (id, new) = crate::library::find_or_new(model, XPS_MATERIAL)?;
+            if let Some(m) = new {
+                out = std::mem::replace(&mut out, Transaction::new("")).insert(m);
+            }
+            Some(id)
+        });
+        match wall_column_xps(model, e.id, &next, mat) {
+            Some(mut want) => {
+                if let Some(first) = has.first() {
+                    if let ElementKind::Column(b) = &first.kind {
+                        want.material = b.material.or(mat);
+                        if *b != want {
+                            let mut after = (*first).clone();
+                            after.kind = ElementKind::Column(want);
+                            out = out.replace((*first).clone(), after);
+                        }
+                    }
+                    for extra in &has[1..] {
+                        out = out.remove_cascade(model, extra.id);
+                    }
+                } else {
+                    out = out.insert(Element::new("XPS pri ŽB stĺpe", ElementKind::Column(want)));
+                }
+            }
+            None => {
+                for b in has {
+                    out = out.remove_cascade(model, b.id);
+                }
+            }
+        }
+    }
+    // boards whose column is gone or no longer in a wall
+    for (of, list) in &boards {
+        if !seen.contains(of) {
+            for b in list {
+                out = out.remove_cascade(model, b.id);
+            }
+        }
+    }
+    out
 }
 
 /// The name of a ring beam, as the office writes it.
@@ -2279,6 +2515,98 @@ mod tests {
             "column at {x} stands in the window"
         );
         assert!((c.position.y).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_wall_column_keeps_to_the_core_and_moves_only_along_the_wall() {
+        let (mut doc, _, wall) = house();
+        let c = wall_column(doc.model(), wall, DVec2::new(3.0, 0.4)).unwrap();
+        let id = c.id;
+        doc.commit(Transaction::new("c").insert(c)).unwrap();
+        let col = |doc: &Document| match &doc.model().get(id).unwrap().kind {
+            ElementKind::Column(c) => c.clone(),
+            _ => unreachable!(),
+        };
+        let c = col(&doc);
+        assert!((c.position - DVec2::new(3.0, 0.0)).length() < 1e-9);
+        let Profile::Rectangle { width, depth } = c.profile else {
+            panic!()
+        };
+        assert!((width - 0.25).abs() < 1e-9 && (depth - 0.3).abs() < 1e-9);
+        // dragged off the wall and past its end: back on its line, inside it
+        doc.edit(id, "move", |e| {
+            if let ElementKind::Column(c) = &mut e.kind {
+                c.position = DVec2::new(12.0, 1.0);
+                c.rotation = 30.0;
+            }
+        })
+        .unwrap();
+        let c = col(&doc);
+        assert!(
+            (c.position - DVec2::new(8.875, 0.0)).length() < 1e-9,
+            "{:?}",
+            c.position
+        );
+        assert!(c.rotation.abs() < 1e-9);
+        // XPS on: the board on the exterior side, the concrete behind it
+        doc.edit(id, "xps", |e| {
+            if let ElementKind::Column(c) = &mut e.kind {
+                c.in_wall.as_mut().unwrap().xps = true;
+            }
+        })
+        .unwrap();
+        let c = col(&doc);
+        let boards: Vec<Column> = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Column(b) if b.in_wall.as_ref().and_then(|w| w.of) == Some(id) => {
+                    Some(b.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(boards.len(), 1);
+        let b = &boards[0];
+        let Profile::Rectangle { depth, .. } = c.profile else {
+            panic!()
+        };
+        assert!((depth - 0.25).abs() < 1e-9);
+        let Profile::Rectangle { depth: bd, .. } = b.profile else {
+            panic!()
+        };
+        assert!((bd - XPS_THICKNESS).abs() < 1e-9);
+        // the exterior is on the right of start → end: y < 0 here
+        assert!((b.position.y + 0.125).abs() < 1e-9, "{:?}", b.position);
+        assert!((c.position.y - 0.025).abs() < 1e-9, "{:?}", c.position);
+        assert!(b.material.is_some());
+        // off again: the board goes
+        doc.edit(id, "xps", |e| {
+            if let ElementKind::Column(c) = &mut e.kind {
+                c.in_wall.as_mut().unwrap().xps = false;
+            }
+        })
+        .unwrap();
+        assert!(!doc.model().iter().any(|e| matches!(&e.kind,
+            ElementKind::Column(b) if b.in_wall.as_ref().is_some_and(|w| w.of.is_some()))));
+    }
+
+    #[test]
+    fn thin_partitions_are_neither_checked_nor_bracing() {
+        let (mut doc, l, _) = house();
+        // a 150 mm partition across the long wall does not brace it
+        let cross = Wall::new(l, DVec2::new(4.5, 0.15), DVec2::new(4.5, 4.0), 0.15, 2.8);
+        // and a long 115 mm partition is not checked at all
+        let long = Wall::new(l, DVec2::new(0.0, 6.0), DVec2::new(12.0, 6.0), 0.115, 2.8);
+        doc.commit(
+            Transaction::new("x")
+                .insert(Element::new("w", ElementKind::Wall(cross)))
+                .insert(Element::new("p", ElementKind::Wall(long))),
+        )
+        .unwrap();
+        let issues = check_walls(doc.model(), Some(l));
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].bearing);
     }
 
     #[test]

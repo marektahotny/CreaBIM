@@ -110,6 +110,11 @@ pub struct Column {
     /// insertion point on the column's position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section: Option<Section>,
+    /// An RC column built into a masonry wall (stenový stĺp): it sits in
+    /// the wall's load-bearing core, as deep as the core, and slides only
+    /// along the wall (see [`crate::masonry::settle`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_wall: Option<crate::masonry::InWall>,
 }
 
 /// A library profile a member is made with: its name, and its outline as
@@ -133,6 +138,7 @@ impl Column {
             material: None,
             top: crate::WallTop::Unconnected,
             section: None,
+            in_wall: None,
         }
     }
 

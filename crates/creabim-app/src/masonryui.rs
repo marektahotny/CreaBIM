@@ -323,7 +323,7 @@ impl CreaBimApp {
         self.selection.only(id);
         self.report(
             r,
-            tr("RC column put in the wall: as deep as its core, it runs to the next level. Click the next one, Esc leaves."),
+            tr("RC column put in the wall: in its load-bearing core, it moves only along the wall; XPS on the exterior side is in its Properties. Click the next one, Esc leaves."),
         );
         true
     }
@@ -548,6 +548,15 @@ impl CreaBimApp {
                             ui.end_row();
                             ui.label(tr("Seismic area"));
                             ui.checkbox(&mut rules.seismic, tr("RC columns at most 5 m apart (STN EN 1998-1)"));
+                            ui.end_row();
+                            ui.label(tr("Leave out walls with a core up to"))
+                                .on_hover_text(tr("Thin partitions: neither checked nor counted as bracing other walls."));
+                            ui.add(
+                                egui::DragValue::new(&mut rules.unchecked_upto)
+                                    .range(0.0..=0.5)
+                                    .speed(0.005)
+                                    .suffix(" m"),
+                            );
                             ui.end_row();
                             ui.label(tr("RC column width"));
                             ui.add(
