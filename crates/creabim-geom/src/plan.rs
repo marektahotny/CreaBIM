@@ -1011,50 +1011,10 @@ pub fn is_foundation_plan(model: &Model, level: ElementId, cut_height: f64) -> b
     })
 }
 
-/// Is `material` hollow concrete formwork blocks (DT, "debniace
-/// tvárnice"), by its name or description?
-fn is_formwork_block(model: &Model, material: Option<ElementId>) -> bool {
-    let Some(e) = material.and_then(|m| model.get(m)) else {
-        return false;
-    };
-    let ElementKind::Material(m) = &e.kind else {
-        return false;
-    };
-    let text = format!(" {} {} ", e.name, m.description).to_lowercase();
-    [
-        "formwork", "debnia", "debnic", "bednic", "bedněn", "(dt)", " dt ",
-    ]
-    .iter()
-    .any(|k| text.contains(k))
-}
-
-/// Is the wall's load-bearing core of formwork blocks (DT): the masonry
-/// on the footings, above the ground?
-fn formwork_block_wall(model: &Model, w: &creabim_core::Wall) -> bool {
-    let core = w.assembly.and_then(|a| match &model.get(a)?.kind {
-        ElementKind::Assembly(asm) if !asm.layers.is_empty() => Some(asm),
-        _ => None,
-    });
-    match core {
-        Some(asm) => (0..asm.layers.len())
-            .filter(|i| asm.is_core(*i))
-            .any(|i| is_formwork_block(model, asm.layers[i].material)),
-        None => is_formwork_block(model, w.material),
-    }
-}
-
 /// What a foundation plan adds over the footings its plane cuts: a heavy
-/// dashed line where their undersides step, and the load-bearing layer of
-/// each wall of formwork blocks (DT) standing on them, above the cut, as
-/// a thin line of a dash and two dots. Other walls on the footings draw
-/// no such line (George 2026-11-20: it is there only once the masonry on
-/// the footings is drawn in DT blocks).
-fn foundation_lines(
-    model: &Model,
-    level: ElementId,
-    cut_height: f64,
-    joins: &std::collections::HashMap<ElementId, creabim_core::joins::WallEnds>,
-) -> Vec<PlanItem> {
+/// dashed line where their undersides step. The masonry standing on them
+/// is drawn by [`above_cut_walls`], as all above the cut.
+fn foundation_lines(model: &Model, level: ElementId, cut_height: f64) -> Vec<PlanItem> {
     let mut out = vec![];
     let cut: Vec<(ElementId, &creabim_core::Footing)> = model
         .iter()
@@ -1078,45 +1038,69 @@ fn foundation_lines(
             });
         }
     }
-    let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
-    // the walls standing on the cut footings: those they are under, and
-    // walls drawn on their own along a strip, with their base on its top
-    let on_strip = |w: &creabim_core::Wall| {
-        let base = creabim_core::walls::base_z(model, w);
-        cut.iter().any(|(_, f)| {
-            if f.kind != creabim_core::FootingKind::Strip || (base - f.top(model)).abs() > 0.05 {
-                return false;
-            }
-            let (a, b) = f.line(model);
-            let reach = (f.width + w.thickness) / 2.0;
-            [w.start, w.end, (w.start + w.end) / 2.0]
-                .iter()
-                .all(|p| creabim_core::footing::segment_distance(*p, a, b) <= reach)
-        })
-    };
-    let mut hosts: Vec<(ElementId, &creabim_core::Wall)> = cut
+    out
+}
+
+/// The elevation of the first level over `z`; none above is infinitely high.
+pub fn next_level_above(model: &Model, z: f64) -> f64 {
+    model
+        .levels()
+        .map(|(_, l)| l.elevation)
+        .filter(|e| *e > z + 1e-6)
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// Every wall standing above the cut whose base is under the top of the
+/// range (a plan's "Horná hrana rezu"), of whatever level: its outline as
+/// a thin line of a dash and two dots, as all above the cut (George
+/// 2026-11-20). A foundation plan draws only the load-bearing layer of
+/// each (the DT blocks of the masonry on the footings, without its
+/// membrane and insulation); an end meeting no other such wall is closed.
+fn above_cut_walls(
+    model: &Model,
+    cut_z: f64,
+    top_z: f64,
+    core_only: bool,
+    joins: &std::collections::HashMap<ElementId, creabim_core::joins::WallEnds>,
+) -> Vec<PlanItem> {
+    let mut out = vec![];
+    let walls: Vec<(ElementId, &creabim_core::Wall)> = model
         .iter()
-        .filter_map(|(_, f)| Some((f.host?, f.host_wall(model)?)))
-        .collect();
-    for e in model.iter() {
-        if let ElementKind::Wall(w) = &e.kind {
-            if !hosts.iter().any(|(h, _)| *h == e.id) && on_strip(w) {
-                hosts.push((e.id, w));
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) => {
+                let base = creabim_core::walls::base_z(model, w);
+                (base > cut_z + 1e-3 && base < top_z - 1e-3 && w.length() > 1e-6)
+                    .then_some((e.id, w))
             }
-        }
-    }
-    hosts.retain(|(_, w)| {
-        creabim_core::walls::base_z(model, w) >= z && !w.is_arc() && formwork_block_wall(model, w)
-    });
-    for (wid, w) in &hosts {
-        let len = w.length();
-        if len < 1e-6 {
+            _ => None,
+        })
+        .collect();
+    for (wid, w) in &walls {
+        let ends = joins.get(wid).cloned().unwrap_or_default();
+        let (s0, s1) = if core_only {
+            creabim_core::walls::core_span(model, w)
+        } else {
+            (-w.thickness / 2.0, w.thickness / 2.0)
+        };
+        if w.is_arc() {
+            let len = w.length();
+            let at = |u: f64, s: f64| {
+                if u <= 1e-9 || u >= len - 1e-9 {
+                    w.place_end(u > 1e-9, ends.place(w, u, s, false), s)
+                } else {
+                    w.place(u, s)
+                }
+            };
+            out.push(PlanItem::Polygon {
+                id: *wid,
+                pen: Pen::Overhead,
+                points: wall_band(w, &at, 0.0, len, s0.min(s1), s0.max(s1)),
+            });
             continue;
         }
+        let len = w.length();
         let d = (w.end - w.start) / len;
         let n = d.perp();
-        let ends = joins.get(wid).cloned().unwrap_or_default();
-        let (s0, s1) = creabim_core::walls::core_span(model, w);
         let at = |u: f64, s: f64| w.start + d * ends.place(w, u, s, true) + n * s;
         let (p0, p1, q0, q1) = (at(0.0, s0), at(len, s0), at(0.0, s1), at(len, s1));
         let mut line = |a: DVec2, b: DVec2| {
@@ -1129,9 +1113,8 @@ fn foundation_lines(
         };
         line(p0, p1);
         line(q0, q1);
-        // an end meeting no other wall on footings is closed
         for (p, a, b) in [(w.start, p0, q0), (w.end, p1, q1)] {
-            let joined = hosts.iter().any(|(o, ow)| {
+            let joined = walls.iter().any(|(o, ow)| {
                 o != wid
                     && creabim_core::footing::segment_distance(p, ow.start, ow.end)
                         <= (ow.thickness + w.thickness) / 2.0
@@ -1632,7 +1615,18 @@ pub fn plan_view_with(
     layers.retain(|p| !sliced.contains(&p.id));
     clean_up_pieces(model, &mut items, layers);
     items.append(&mut overhead);
-    items.extend(foundation_lines(model, level, cut_height, &joins));
+    items.extend(foundation_lines(model, level, cut_height));
+    {
+        // the walls standing between the cut and the top of the range
+        let own_z = model.level(own).map_or(0.0, |l| l.elevation);
+        let top_z = graphics
+            .range
+            .top
+            .map_or_else(|| next_level_above(model, own_z), |t| t.z(model, own_z));
+        let cut_z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
+        let core_only = is_foundation_plan(model, level, cut_height);
+        items.extend(above_cut_walls(model, cut_z, top_z, core_only, &joins));
+    }
     if !sliced.is_empty() {
         let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
         // only what is sliced, and what cuts it
@@ -2816,32 +2810,27 @@ mod tests {
             .count();
         // none drawn by itself (George 2026-11-20)
         assert_eq!(cores, 0);
-        // the walls on the footings made of formwork blocks (DT): their
-        // cores a dash and two dots
-        let dt = creabim_core::Element::new(
-            "Block, concrete formwork",
-            ElementKind::Material(creabim_core::Material {
-                description: "Hollow concrete formwork blocks (DT)".into(),
-                ..Default::default()
-            }),
-        );
-        let dt_id = dt.id;
-        let hosts: Vec<ElementId> = m
+        // the masonry drawn on the footings with the Wall tool, standing
+        // above the cut under the floor: its cores a dash and two dots
+        let fz = m.level(level).unwrap().elevation;
+        let on: Vec<(f64, DVec2, DVec2)> = m
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Footing(f) => f.host,
+                ElementKind::Footing(f)
+                    if f.host.is_some() && f.kind == creabim_core::FootingKind::Strip =>
+                {
+                    let (a, b) = f.line(&m);
+                    Some((f.top(&m), a, b))
+                }
                 _ => None,
             })
             .collect();
-        let mut tx = creabim_core::Transaction::new("dt").insert(dt);
-        for h in hosts {
-            let before = m.get(h).unwrap().clone();
-            let mut after = before.clone();
-            if let ElementKind::Wall(w) = &mut after.kind {
-                w.assembly = None;
-                w.material = Some(dt_id);
-                tx = tx.replace(before, after);
-            }
+        let mut tx = creabim_core::Transaction::new("dt");
+        for (top, a, b) in on {
+            let mut w = creabim_core::Wall::new(level, a, b, 0.3, 0.3);
+            w.base_offset = top - fz;
+            w.height = -top;
+            tx = tx.insert(creabim_core::Element::new("DT", ElementKind::Wall(w)));
         }
         tx.apply(&mut m).unwrap();
         let items = plan_view(&m, level, 0.25).items;

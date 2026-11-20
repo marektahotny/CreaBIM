@@ -462,9 +462,10 @@ impl CreaBimApp {
         items.extend([
             Item::Separator,
             Item::Header(match targets {
-                0 => "Select walls, slabs or masses to assign".into(),
-                1 => "Assign to the selected element".into(),
-                n => format!("Assign to the {n} selected elements"),
+                0 => crate::i18n::t("Select walls, slabs or masses to assign").into(),
+                1 => crate::i18n::t("Assign to the selected element").into(),
+                n => crate::i18n::t("Assign to the {n} selected elements")
+                    .replace("{n}", &n.to_string()),
             }),
             Item::sub("Assign material", assign)
                 .icon("palette")
@@ -734,8 +735,8 @@ impl CreaBimApp {
                                     let r = ui
                                         .selectable_label(current == Some(*id), crate::i18n::tw(text))
                                         .on_hover_text(match users {
-                                            0 => "Not used".to_string(),
-                                            n => format!("Used by {n} element{}", plural_s(n)),
+                                            0 => crate::i18n::t("Not used").to_string(),
+                                            n => crate::i18n::t("Used by {n} element{}").replace("{n}", &n.to_string()).replace("{}", plural_s(n)),
                                         });
                                     if r.clicked() {
                                         asks.push(Ask::Pick(*id));
@@ -801,8 +802,8 @@ impl CreaBimApp {
                         let users = library::users(model, id);
                         crate::props::flow(ui, |ui| {
                             ui.label(match users.len() {
-                                0 => "Not used yet.".to_string(),
-                                n => format!("Used by {n} element{}.", plural_s(n)),
+                                0 => crate::i18n::t("Not used yet.").to_string(),
+                                n => crate::i18n::t("Used by {n} element{}.").replace("{n}", &n.to_string()).replace("{}", plural_s(n)),
                             });
                             if !users.is_empty() && ui.small_button(crate::i18n::t("Select them")).clicked() {
                                 asks.push(Ask::SelectUsers(id));
@@ -812,9 +813,9 @@ impl CreaBimApp {
                         let r = ui.add_enabled(
                             targets > 0,
                             egui::Button::new(match targets {
-                                0 => "Assign to the selection".to_string(),
-                                1 => "Assign to the selected element".to_string(),
-                                n => format!("Assign to the {n} selected elements"),
+                                0 => crate::i18n::t("Assign to the selection").to_string(),
+                                1 => crate::i18n::t("Assign to the selected element").to_string(),
+                                n => crate::i18n::t("Assign to the {n} selected elements").replace("{n}", &n.to_string()),
                             }),
                         );
                         if r.on_disabled_hover_text(crate::i18n::t("Select walls, slabs or masses first"))

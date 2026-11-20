@@ -557,6 +557,27 @@ mod tests {
     }
 
     #[test]
+    fn the_assembly_editor_core_note_is_slovak() {
+        // George 2026-11-20: it read "Jadro: layer 3 (orange). Layers run…"
+        assert_eq!(
+            translated(Lang::Sk, "Core: layer 3 (orange).").as_deref(),
+            Some("Jadro: vrstva 3 (oranžová).")
+        );
+        assert_eq!(
+            translated(Lang::Sk, "Core: layers 2–3 (orange).").as_deref(),
+            Some("Jadro: vrstvy 2–3 (oranžové).")
+        );
+        assert_eq!(
+            translated(
+                Lang::Sk,
+                "Layers run from the exterior face to the interior."
+            )
+            .as_deref(),
+            Some("Vrstvy idú od vonkajšej plochy po vnútornú.")
+        );
+    }
+
+    #[test]
     fn a_key_with_a_context_reads_plain_in_english() {
         assert_eq!(plain("level\u{4}Elevation"), "Elevation");
         assert_eq!(

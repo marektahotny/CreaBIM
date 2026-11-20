@@ -117,6 +117,12 @@ pub struct Footing {
     /// (negative: set back under the wall).
     #[serde(default)]
     pub align_offset: f64,
+    /// Set on the level it is modelled on (George 2026-11-20): its
+    /// underside this far above the level's floor (0: on it), moving with
+    /// the level; `below` is then not used, under a host too. None is the
+    /// old way: its top `below` under its level or its host's base.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_offset: Option<f64>,
 }
 
 /// Default sizes: a strip 600 wide and 300 thick, a pad 1200 square and
@@ -143,6 +149,7 @@ impl Footing {
             host: None,
             align: FootingAlign::Line,
             align_offset: 0.0,
+            base_offset: None,
         }
     }
 
@@ -162,6 +169,7 @@ impl Footing {
             host: None,
             align: FootingAlign::Line,
             align_offset: 0.0,
+            base_offset: None,
         }
     }
 
@@ -199,6 +207,9 @@ impl Footing {
 
     /// The level whose plan it shows on: its host's, or its own.
     pub fn plan_level(&self, model: &Model) -> ElementId {
+        if self.base_offset.is_some() && model.level(self.level).is_some() {
+            return self.level;
+        }
         if let Some(w) = self.host_wall(model) {
             return w.level;
         }
@@ -249,6 +260,9 @@ impl Footing {
 
     /// The absolute height of the top: below the host's base, or the level.
     pub fn top(&self, model: &Model) -> f64 {
+        if let Some(o) = self.base_offset {
+            return crate::members::elevation(model, self.level) + o + self.thickness;
+        }
         let base = if let Some(w) = self.host_wall(model) {
             crate::walls::base_z(model, w)
         } else if let Some(c) = self.host_column(model) {
@@ -257,6 +271,14 @@ impl Footing {
             crate::members::elevation(model, self.level)
         };
         base - self.below
+    }
+
+    /// Move it up by `dz`, whichever way it is set.
+    pub fn lift(&mut self, dz: f64) {
+        match &mut self.base_offset {
+            Some(o) => *o += dz,
+            None => self.below -= dz,
+        }
     }
 
     /// A pad's outline in plan, counter-clockwise.
@@ -690,7 +712,7 @@ pub fn detached(model: &Model, f: &Footing) -> Footing {
             let (a, b) = f.line(model);
             out.start = a;
             out.end = b;
-            if let Some(w) = f.host_wall(model) {
+            if let Some(w) = f.host_wall(model).filter(|_| f.base_offset.is_none()) {
                 out.level = w.level;
                 out.below = f.below - w.base_offset;
             }
@@ -700,7 +722,7 @@ pub fn detached(model: &Model, f: &Footing) -> Footing {
             out.start = c;
             out.end = c;
             out.rotation = turn;
-            if let Some(col) = f.host_column(model) {
+            if let Some(col) = f.host_column(model).filter(|_| f.base_offset.is_none()) {
                 out.level = col.level;
                 out.below = f.below - col.base_offset;
             }
@@ -758,10 +780,13 @@ mod tests {
     #[test]
     fn a_strip_set_by_the_core_of_a_layered_wall_drawn_on_its_face() {
         let (mut m, _, ids) = model_with(&[(DVec2::ZERO, DVec2::new(10.0, 0.0))]);
-        let (tx, starters) = crate::assembly::add_starters(&m);
-        tx.apply(&mut m).unwrap();
+        crate::skbase::add_base(&m).apply(&mut m).unwrap();
         // insulation 140, membrane 5, formwork blocks 300, outside first
-        let asm = *starters.last().unwrap();
+        let asm = crate::assembly::assemblies(&m)
+            .iter()
+            .find(|(_, n, _)| n.starts_with("Nadzákladová stena"))
+            .unwrap()
+            .0;
         let before = m.get(ids[0]).unwrap().clone();
         let mut after = before.clone();
         if let ElementKind::Wall(w) = &mut after.kind {

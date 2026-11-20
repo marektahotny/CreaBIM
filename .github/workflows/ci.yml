@@ -115,7 +115,8 @@ jobs:
       - run: cargo build --release -p creabim-app -p creabim-cli
       - name: Version
         shell: bash
-        run: echo "VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)" >> "$GITHUB_ENV"
+        # shown as George numbers it: 0.5.1 is 0.5-1
+        run: echo "VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1 | sed -E 's/^([0-9]+\.[0-9]+)\.([1-9][0-9]*)$/\1-\2/')" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
           name: creabim-windows-${{ env.VERSION }}
@@ -153,9 +154,11 @@ jobs:
       - name: Disk image and zip
         run: |
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # shown as George numbers it: 0.5.1 is 0.5-1 (the bundle keeps 0.5.1)
+          SHOWN=$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+)\.([1-9][0-9]*)$/\1-\2/')
+          echo "VERSION=$SHOWN" >> "$GITHUB_ENV"
           DATE=$(git log -1 --format=%cs)
-          name="CreaBIM-${VERSION}-${DATE}-macos-apple-silicon"
+          name="CreaBIM-${SHOWN}-${DATE}-macos-apple-silicon"
           bash packaging/macos/make-dmg.sh "$VERSION" "$DATE" \
             target/aarch64-apple-darwin/release "$name.dmg" "$name.zip"
       - name: The app starts (informational; the runner may have no GPU)

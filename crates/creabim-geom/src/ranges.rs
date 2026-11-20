@@ -40,13 +40,7 @@ fn bands(model: &Model, level: ElementId, cut: f64, r: &PlanRange) -> Vec<(Eleme
     let cut_z = own + cut;
     let bottom = r.bottom.map_or(own, |b| b.z(model, own));
     let top = r.top.map_or_else(
-        || {
-            model
-                .levels()
-                .map(|(_, l)| l.elevation)
-                .filter(|z| *z > own + 1e-6)
-                .fold(f64::INFINITY, f64::min)
-        },
+        || crate::plan::next_level_above(model, own),
         |t| t.z(model, own),
     );
     let beyond = r.beyond.map(|b| b.z(model, own));
@@ -137,8 +131,8 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
                 under.extend(sub.items.into_iter().filter(|it| theirs(it)));
             }
             // a foundation plan draws nothing of the storey above (George
-            // 2026-11-20): only the DT masonry standing on the footings,
-            // its load-bearing outline (see `plan::foundation_lines`)
+            // 2026-11-20): only the masonry standing on the footings, its
+            // load-bearing outline (see `plan::above_cut_walls`)
             Band::Overhead if foundation => {}
             Band::Overhead => {
                 // just above its floor, then every line as overhead

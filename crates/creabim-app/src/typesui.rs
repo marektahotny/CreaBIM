@@ -1222,9 +1222,9 @@ impl CreaBimApp {
                 let r = ui.add_enabled(
                     fits > 0,
                     egui::Button::new(match fits {
-                        0 => "Assign to the selection".to_string(),
-                        1 => "Assign to the selected element".to_string(),
-                        n => format!("Assign to the {n} selected elements"),
+                        0 => crate::i18n::t("Assign to the selection").to_string(),
+                        1 => crate::i18n::t("Assign to the selected element").to_string(),
+                        n => crate::i18n::t("Assign to the {n} selected elements").replace("{n}", &n.to_string()),
                     }),
                 );
                 if r.on_disabled_hover_text(crate::i18n::tr(&format!(

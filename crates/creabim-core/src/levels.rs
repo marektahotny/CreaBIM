@@ -170,7 +170,10 @@ pub fn rehost(e: &Element, to: ElementId, from_elevation: f64, to_elevation: f64
         // one under a wall or a column sits below its host's base, which moves itself
         ElementKind::Footing(f) => {
             f.level = to;
-            if f.host.is_none() {
+            if let Some(o) = &mut f.base_offset {
+                // where it is, on the other level
+                *o -= dz;
+            } else if f.host.is_none() {
                 f.below -= dz;
             }
         }

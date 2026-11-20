@@ -1237,11 +1237,6 @@ pub const STARTERS: &[Starter] = &[
         "30 mm bars on a 150 mm square grid",
         |_| screen(0.04, ScreenPattern::lattice(0.15, 0.03, 0.03)),
     ),
-    (
-        "Foundation wall 445, formwork block",
-        "Concrete formwork blocks 300, waterproofing 5, insulation 140 outside",
-        |a| wall(0.445, a.get(4).copied()),
-    ),
 ];
 
 fn footing(kind: crate::FootingKind, width: f64, length: f64, thickness: f64) -> TypeParams {

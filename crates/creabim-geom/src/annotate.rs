@@ -1341,7 +1341,7 @@ fn section_driven(
     if by.y.abs() >= by.x.abs() {
         let dz = by.y;
         match &mut now.kind {
-            ElementKind::Footing(x) => x.below -= dz,
+            ElementKind::Footing(x) => x.lift(dz),
             ElementKind::Slab(x) => x.top_offset += dz,
             ElementKind::Object(x) => x.offset += dz,
             ElementKind::Column(x) => x.base_offset += dz,

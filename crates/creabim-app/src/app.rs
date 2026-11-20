@@ -10162,6 +10162,24 @@ crate::props::row(ui, "File names", |ui| {
                                 );
                                 label = "View cut bottom"
                             }
+                            // the top of what it draws (George 2026-11-20):
+                            // all between the cut and it, a thin dash and two
+                            // dots; unset it is the next level up
+                            let next = creabim_geom::plan::next_level_above(self.doc.model(), own);
+                            let mut top = r
+                                .top
+                                .map_or(if next.is_finite() { next - own } else { 0.0 }, |t| {
+                                    t.z(self.doc.model(), own) - own
+                                });
+                            if num(ui, "Cut top", &mut top, -50.0, 100.0) {
+                                r.top = ((top - (next - own)).abs() > 1e-6).then_some(
+                                    creabim_core::graphics::RangeLimit {
+                                        level: *level,
+                                        offset: top,
+                                    },
+                                );
+                                label = "View cut top"
+                            }
                             let choices = self.underlay_choices(*level);
                             let current = choices
                                 .iter()
@@ -12856,6 +12874,17 @@ impl CreaBimApp {
                 .find(|e| e.name == name && matches!(e.kind, ElementKind::View(_)))
                 .map(|e| e.id);
             self.active_view = id;
+            // an element picked, its Properties showing
+            if let Ok(pick) = std::env::var("CREABIM_SHOT_SELECT") {
+                if let Some(e) = self.doc.model().iter().find(|e| e.name == pick) {
+                    self.selection.only(e.id);
+                }
+            }
+            // the assembly editor open on an assembly of that name
+            if let Ok(a) = std::env::var("CREABIM_SHOT_ASSEMBLY") {
+                let id = self.doc.model().iter().find(|e| e.name == a).map(|e| e.id);
+                self.open_assemblies(id);
+            }
             // where it looks: "x,y,pixels per metre"
             if let (Some(id), Ok(cam)) = (id, std::env::var("CREABIM_SHOT_CAM")) {
                 let v: Vec<f64> = cam
@@ -14030,6 +14059,8 @@ fn window_title(path: &str, unsaved: bool) -> String {
     // (MU39: 1.0 showed while 1.0.1 was out and the next one in hand)
     let app = match version.split('.').collect::<Vec<_>>().as_slice() {
         _ if version.contains('-') => format!("CreaBIM {version}"),
+        // a fix of a version is named as George numbers it: 0.5-1
+        [_, _, patch] if *patch != "0" => format!("CreaBIM {}", crate::help::shown_version()),
         [major, minor, ..] => format!("CreaBIM {major}.{minor}"),
         _ => "CreaBIM".to_string(),
     };
@@ -14376,9 +14407,8 @@ mod title_tests {
         let saved = window_title("projects/Starter house.creabim", false);
         assert!(saved.starts_with("Starter house — CreaBIM"), "{saved}");
         if !v.contains('-') {
-            let mm: Vec<&str> = v.split('.').take(2).collect();
             assert!(
-                saved.ends_with(&format!("CreaBIM {}", mm.join("."))),
+                saved.ends_with(&format!("CreaBIM {}", crate::help::shown_version())),
                 "{saved}"
             );
         }

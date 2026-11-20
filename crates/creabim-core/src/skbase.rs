@@ -104,7 +104,9 @@ fn base() -> Base {
 /// `tools/sk-base/export.sh`, so these live here). The masonry on the
 /// footings (George 2026-11-20): concrete formwork blocks DT 300 filled
 /// with concrete as its load-bearing part, a 5 mm membrane and 140 mm of
-/// XPS on its outer face; a foundation plan draws the blocks' outline
+/// XPS on its outer face; its layers as George set them by hand (XPS,
+/// PVC membrane, reinforced concrete for the filled blocks), so its U
+/// is worked out; a foundation plan draws the blocks' outline
 /// above as a thin dash and two dots. λ and ρ of the filled blocks are
 /// plain concrete's (its fill) until the maker's sheet says otherwise.
 const EXTRA: &str = r##"{
@@ -118,8 +120,8 @@ const EXTRA: &str = r##"{
    "boundary": "teren",
    "layers": [
     {"material": "xps", "mm": 140},
-    {"material": "hydroizolacia", "mm": 5},
-    {"material": "dt-300", "mm": 300, "core": true}
+    {"material": "hydroizolacia-pvc", "mm": 5},
+    {"material": "zelezobeton", "mm": 300, "core": true}
    ]}
  ],
  "floors": [],
@@ -508,7 +510,7 @@ mod tests {
             ]
         );
         let core = m.get(a.layers[2].material.unwrap()).unwrap();
-        assert!(core.name.starts_with("Debniaca tvárnica DT 300"));
+        assert_eq!(core.name, "Železobetón");
         // and a wall type to draw it with
         assert!(types::types(m)
             .iter()

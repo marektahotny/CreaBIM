@@ -35,6 +35,9 @@ pub struct MemberSettings {
     /// edge stands proud of the core face they are set by.
     pub footing_align: creabim_core::FootingAlign,
     pub footing_offset: f64,
+    /// How far above the floor of the level they are modelled on new
+    /// footings' undersides sit (George 2026-11-20: as a wall's base).
+    pub footing_base: f64,
     /// The material new footings are made of, by name: the project's, or
     /// the library's (added to the project with the first footing).
     pub footing_material: Option<String>,
@@ -81,6 +84,7 @@ impl Default for MemberSettings {
             footing_thickness: creabim_core::footing::STRIP_THICKNESS,
             footing_align: Default::default(),
             footing_offset: 0.05,
+            footing_base: 0.0,
             footing_material: Some("Concrete, cast in place".into()),
             door: [0.8, 1.97, 0.0],
             window: [1.2, 1.3, 0.9],
@@ -348,6 +352,40 @@ fn sized_footing(model: &Model, state: &PlanState, mut f: creabim_core::Footing)
     e
 }
 
+/// Footing `f`, placed with the plan of `level` open, set on the level it
+/// is modelled on (George 2026-11-20): its underside on that level's
+/// floor, `offset` above it, and moving with the level. Under a wall or
+/// column standing on that level or lower, it goes on the nearest level
+/// under the host's base (a foundation level); with none there it stays
+/// where it was put (under the floor slab), as an offset from its level.
+pub fn set_on_level(model: &Model, f: &mut creabim_core::Footing, level: ElementId, offset: f64) {
+    let el = |l: ElementId| model.level(l).map(|x| x.elevation);
+    let host_base = if let Some(w) = f.host_wall(model) {
+        Some(creabim_core::walls::base_z(model, w))
+    } else {
+        f.host_column(model).map(|c| c.span(model).0)
+    };
+    let chosen = match host_base {
+        None => el(level).map(|_| level),
+        Some(b) if el(level).is_some_and(|z| z < b - 1e-6) => Some(level),
+        Some(b) => model
+            .levels()
+            .filter(|(_, l)| l.elevation < b - 1e-6)
+            .max_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+            .map(|(e, _)| e.id),
+    };
+    match chosen {
+        Some(l) => {
+            f.level = l;
+            f.base_offset = Some(offset);
+        }
+        None => {
+            let underside = f.top(model) - f.thickness;
+            f.base_offset = Some(underside - creabim_core::members::elevation(model, f.level));
+        }
+    }
+}
+
 /// A new footing of a type keeps the width and height typed in the bar
 /// before placing it, as the type's own overridden where they differ
 /// (George 2026-11-20: the width typed is the width built).
@@ -422,7 +460,7 @@ pub fn finish_footings(model: &Model, state: &PlanState, tx: Transaction) -> Tra
                 f.material = mat;
                 used |= mat.is_some();
             }
-            if f.host.is_none() {
+            if f.host.is_none() && f.base_offset.is_none() {
                 // its top on the underside of the storey's floor
                 let at = match f.kind {
                     creabim_core::FootingKind::Strip => (f.start + f.end) / 2.0,
@@ -470,6 +508,9 @@ fn place_footing(
         let (tx, ids) = creabim_core::footing::under(model, &[h], &|e| {
             if let ElementKind::Footing(f) = &e.kind {
                 *e = sized_footing(model, state, f.clone());
+                if let ElementKind::Footing(f) = &mut e.kind {
+                    set_on_level(model, f, level, state.members.footing_base);
+                }
             }
         });
         let name = model.get(h).map_or(String::new(), |e| e.name.clone());
@@ -503,7 +544,9 @@ fn place_footing(
     };
     match kind {
         FootingKind::Pad => {
-            let e = sized_footing(model, state, Footing::pad(level, p));
+            let mut f = Footing::pad(level, p);
+            f.base_offset = Some(state.members.footing_base);
+            let e = sized_footing(model, state, f);
             state.status = Some("Pad footing placed. Set its size and depth in Properties.".into());
             add(doc, selection, e, state)
         }
@@ -514,7 +557,9 @@ fn place_footing(
                 Ok(())
             }
             Some(a) if a.distance(p) > 0.05 => {
-                let e = sized_footing(model, state, Footing::strip(level, a, p));
+                let mut f = Footing::strip(level, a, p);
+                f.base_offset = Some(state.members.footing_base);
+                let e = sized_footing(model, state, f);
                 // drawn on in a chain, as walls are: each strip from where
                 // the last ended, until Esc (they join at the corners)
                 state.pending = Some(p);
@@ -1362,16 +1407,57 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
         label = "Footing thickness";
     }
     let host = f.host.and_then(|h| model.get(h));
-    let below = if host.is_some() {
-        match f.kind {
-            FootingKind::Strip => "Top below wall base",
-            FootingKind::Pad => "Top below column base",
+    if let Some(mut o) = f.base_offset {
+        // set on its level (George 2026-11-20): its underside the offset
+        // above the level's floor, moving with it, as a wall's base
+        let levels: Vec<(ElementId, String)> = model
+            .levels()
+            .map(|(e, _)| (e.id, e.name.clone()))
+            .collect();
+        let current = levels
+            .iter()
+            .find(|l| l.0 == f.level)
+            .map_or(String::new(), |l| l.1.clone());
+        crate::app::helpui::combo(ui, "Base level")
+            .selected_text(crate::i18n::tw(current))
+            .show_ui(ui, |ui| {
+                for (lid, n) in &levels {
+                    if ui
+                        .selectable_value(&mut f.level, *lid, crate::i18n::tw(n))
+                        .changed()
+                    {
+                        label = "Footing level";
+                    }
+                }
+            });
+        if num(ui, "Base offset", &mut o, -50.0, 50.0) {
+            f.base_offset = Some(o);
+            label = "Footing depth";
         }
     } else {
-        "Top below level"
-    };
-    if num(ui, below, &mut f.below, -50.0, 50.0) {
-        label = "Footing depth";
+        let below = if host.is_some() {
+            match f.kind {
+                FootingKind::Strip => "Top below wall base",
+                FootingKind::Pad => "Top below column base",
+            }
+        } else {
+            "Top below level"
+        };
+        if num(ui, below, &mut f.below, -50.0, 50.0) {
+            label = "Footing depth";
+        }
+        // an older footing: set it on its level where it is
+        if ui
+            .button(crate::i18n::t("Set on the level"))
+            .on_hover_text(crate::i18n::t("Its underside set from the floor of its level by an offset, as a wall's base, moving with the level"))
+            .clicked()
+        {
+            let underside = f.top(model) - f.thickness;
+            let level = f.plan_level(model);
+            f.level = level;
+            f.base_offset = Some(underside - creabim_core::members::elevation(model, level));
+            label = "Footing level";
+        }
     }
     if f.kind == FootingKind::Strip && host.is_some() {
         crate::app::helpui::combo(ui, "Under the wall")
@@ -1718,6 +1804,16 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                 5.0,
                 "Thickness of new footings",
             ),
+            num(
+                "footing_base",
+                "Base offset",
+                m.footing_base,
+                "m",
+                0.05,
+                -20.0,
+                20.0,
+                "How far above the floor of the level they are modelled on new footings' undersides sit",
+            ),
         ]
         .into_iter()
         .chain((!m.footing_pad).then(|| json!({
@@ -1793,6 +1889,7 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "footing_width" => m.footing_width = v.clamp(0.1, 10.0),
         "footing_thickness" => m.footing_thickness = v.clamp(0.05, 5.0),
         "footing_offset" => m.footing_offset = v.clamp(-1.0, 2.0),
+        "footing_base" => m.footing_base = v.clamp(-20.0, 20.0),
         k if k.starts_with("door_") || k.starts_with("window_") || k.starts_with("hole_") => {
             let (kind, what) = k.split_once('_').unwrap_or((k, ""));
             let s = match kind {

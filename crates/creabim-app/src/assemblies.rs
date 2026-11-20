@@ -679,8 +679,10 @@ impl CreaBimApp {
         let users = assembly::users(model, id).len();
         ui.label(
             egui::RichText::new(match users {
-                0 => "Not used yet.".to_string(),
-                n => format!("Used by {n} element{}.", if n == 1 { "" } else { "s" }),
+                0 => crate::i18n::t("Not used yet.").to_string(),
+                n => crate::i18n::t("Used by {n} element{}.")
+                    .replace("{n}", &n.to_string())
+                    .replace("{}", if n == 1 { "" } else { "s" }),
             })
             .weak(),
         );
@@ -738,11 +740,11 @@ impl CreaBimApp {
                             let rows: Vec<_> = all.iter().filter(|a| a.2.usage == usage).collect();
                             // a bold heading that folds, so a long list stays
                             // easy to scan (MU18)
-                            let head = egui::RichText::new(crate::i18n::tr(&format!(
+                            let head = egui::RichText::new(format!(
                                 "{}  ({})",
-                                usage.label(),
+                                crate::i18n::t(usage.label()),
                                 rows.len()
-                            )))
+                            ))
                             .size(13.0)
                             .strong();
                             let open = rows.iter().any(|(id, _, _)| current == Some(*id))
@@ -883,32 +885,35 @@ impl CreaBimApp {
                 }
                 ui.add_space(6.0);
                 let (c0, c1) = a.core();
+                // each sentence translated on its own (George 2026-11-20:
+                // the dialog showed them half in English)
+                let core = if c0 == c1 {
+                    format!("Core: layer {} (orange).", c0 + 1)
+                } else {
+                    format!("Core: layers {}–{} (orange).", c0 + 1, c1 + 1)
+                };
+                let run = format!(
+                    "Layers run from the {} face to the {}.",
+                    a.usage.first_face().to_lowercase(),
+                    a.usage.last_face().to_lowercase()
+                );
+                let mut text = format!("{} {}", crate::i18n::tr(&core), crate::i18n::tr(&run));
+                if a.usage == AssemblyUse::Wall {
+                    text.push(' ');
+                    text.push_str(crate::i18n::t("Where layered walls meet at a T, the core runs on to the other wall's core. A wall's exterior is on its right as drawn (Flip in Properties swaps it)."));
+                }
                 ui.label(
-                    egui::RichText::new(crate::i18n::tr(&format!(
-                        "Core: layer{} {}{} (orange). Layers run from the {} face to the {}. {}",
-                        if c0 == c1 { "" } else { "s" },
-                        c0 + 1,
-                        if c0 == c1 {
-                            String::new()
-                        } else {
-                            format!("–{}", c1 + 1)
-                        },
-                        a.usage.first_face().to_lowercase(),
-                        a.usage.last_face().to_lowercase(),
-                        if a.usage == AssemblyUse::Wall {
-                            "Where layered walls meet at a T, the core runs on to the other wall's core. A wall's exterior is on its right as drawn (Flip in Properties swaps it)."
-                        } else {
-                            ""
-                        }
-                    )))
+                    egui::RichText::new(text)
                     .weak(),
                 );
                 ui.add_space(6.0);
                 let users = assembly::users(model, id);
                 crate::props::flow(ui, |ui| {
                     ui.label(match users.len() {
-                        0 => "Not used yet.".to_string(),
-                        n => format!("Used by {n} element{}.", if n == 1 { "" } else { "s" }),
+                        0 => crate::i18n::t("Not used yet.").to_string(),
+                        n => crate::i18n::t("Used by {n} element{}.")
+                            .replace("{n}", &n.to_string())
+                            .replace("{}", if n == 1 { "" } else { "s" }),
                     });
                     if !users.is_empty() && ui.small_button(crate::i18n::t("Select them")).clicked() {
                         asks.push(AsmAsk::SelectUsers(id));
@@ -926,9 +931,10 @@ impl CreaBimApp {
                 let r = ui.add_enabled(
                     fits > 0,
                     egui::Button::new(match fits {
-                        0 => "Assign to the selection".to_string(),
-                        1 => "Assign to the selected element".to_string(),
-                        n => format!("Assign to the {n} selected elements"),
+                        0 => crate::i18n::t("Assign to the selection").to_string(),
+                        1 => crate::i18n::t("Assign to the selected element").to_string(),
+                        n => crate::i18n::t("Assign to the {n} selected elements")
+                            .replace("{n}", &n.to_string()),
                     }),
                 );
                 if r.on_disabled_hover_text(crate::i18n::tr(&format!(

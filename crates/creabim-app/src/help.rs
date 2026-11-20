@@ -869,9 +869,21 @@ pub fn shortcuts_page(menus: &[(&str, Vec<Item>)]) -> String {
     md
 }
 
+/// The version as George numbers ours (2026-11-20): 0.5 for 0.5.0, 0.5-1
+/// for its first fix 0.5.1.
+pub fn shown_version() -> String {
+    let v = env!("CARGO_PKG_VERSION");
+    match v.split('.').collect::<Vec<_>>().as_slice() {
+        _ if v.contains('-') => v.to_string(),
+        [major, minor, "0"] => format!("{major}.{minor}"),
+        [major, minor, patch] => format!("{major}.{minor}-{patch}"),
+        _ => v.to_string(),
+    }
+}
+
 /// A page's text as it is shown: the version filled in.
 pub fn shown(md: &str) -> String {
-    md.replace("{version}", env!("CARGO_PKG_VERSION"))
+    md.replace("{version}", &shown_version())
         .replace("{build}", &build())
 }
 
@@ -883,7 +895,7 @@ pub fn build() -> String {
 
 /// The version line of About CreaBIM: `Version 0.1.0 · build 3b056f4 · 4 Nov 2026`.
 pub fn version_line() -> String {
-    format!("Version {} · build {}", env!("CARGO_PKG_VERSION"), build())
+    format!("Version {} · build {}", shown_version(), build())
 }
 
 /// A day counted from 1970-01-01, as `4 Nov 2026` (the civil calendar).

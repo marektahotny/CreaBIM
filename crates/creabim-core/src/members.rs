@@ -1270,7 +1270,7 @@ pub fn transform(model: &Model, kind: &mut ElementKind, t: &Xform) -> Option<()>
             }
         }
         ElementKind::Footing(f) => {
-            f.below -= dz;
+            f.lift(dz);
             // one under a wall or a column goes where its host goes
             if f.host.is_some_and(|h| model.get(h).is_some()) {
                 return Some(());
@@ -1536,12 +1536,20 @@ fn drag_footing(
         }
         FootingGrip::Top => {
             // the underside stays where it is
-            let dz = round(d.z, fine).min(f.thickness - 0.05);
-            f.below -= dz;
-            f.thickness -= dz;
+            // the top up by dz, so the footing as much thicker
+            let dz = round(d.z, fine).max(0.05 - f.thickness);
+            if f.base_offset.is_none() {
+                f.below -= dz;
+            }
+            f.thickness += dz;
         }
         FootingGrip::Underside => {
-            f.thickness = round(f.thickness - d.z, fine).max(0.05);
+            let t = round(f.thickness - d.z, fine).max(0.05);
+            // set on its level, the underside is what moves: the top stays
+            if let Some(o) = &mut f.base_offset {
+                *o -= t - f.thickness;
+            }
+            f.thickness = t;
         }
     }
     if f.kind == crate::FootingKind::Strip && f.host.is_none() && f.start.distance(f.end) < 0.05 {
