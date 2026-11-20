@@ -149,6 +149,7 @@ fn opening(host: ElementId, kind: OpeningKind, offset: f64, width: f64) -> Openi
         division: None,
         door: None,
         texts: None,
+        performance: None,
     }
 }
 
@@ -385,9 +386,10 @@ fn materials_and_types(b: &mut Builder) {
             door: None,
             division: None,
             threshold: false,
+            performance: crate::joinery::default_window_performance(),
         })
     };
-    let door = |w: f64, h: f64, material: Option<ElementId>, across: u32| {
+    let door = |w: f64, h: f64, material: Option<ElementId>, across: u32, maker: &str| {
         TypeParams::Door(OpeningType {
             width: w,
             height: h,
@@ -400,8 +402,13 @@ fn materials_and_types(b: &mut Builder) {
             door: None,
             division: None,
             threshold: false,
+            performance: crate::joinery::preset(maker),
         })
     };
+    // outside doors as their makers' data sheets give them (an inside door
+    // has no heat requirement)
+    const ENTRANCE: &str = "Slovaktual Heroal D 92, vchodové dvere, obojstranne prekrytá výplň";
+    const BALCONY: &str = "REHAU ARTEVO max, balkónové dvere, trojsklo";
     let p = wall_type(b, "Exterior wall 400, rendered");
     b.add_type(
         "Exterior wall 400, rendered",
@@ -469,19 +476,23 @@ fn materials_and_types(b: &mut Builder) {
     b.add_type(
         "Front door 1000 × 2300",
         "Oak, solid",
-        door(1.0, 2.3, oak, 1),
+        door(1.0, 2.3, oak, 1, ENTRANCE),
     );
     b.add_type(
         "Internal door 800 × 2100",
         "Painted",
-        door(0.8, 2.1, white, 1),
+        door(0.8, 2.1, white, 1, ""),
     );
     b.add_type(
         "Glazed door 900 × 2300",
         "To the loggia and terrace",
-        door(0.9, 2.3, frames, 1),
+        door(0.9, 2.3, frames, 1, BALCONY),
     );
-    b.add_type("External door 900 × 2100", "", door(0.9, 2.1, frames, 1));
+    b.add_type(
+        "External door 900 × 2100",
+        "",
+        door(0.9, 2.1, frames, 1, ENTRANCE),
+    );
     b.add_type(
         "Window 1800 × 1500, three panes",
         "",

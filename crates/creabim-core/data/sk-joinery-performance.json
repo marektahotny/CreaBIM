@@ -1,0 +1,100 @@
+{
+  "_about": "Tepelné, svetelné a akustické vlastnosti okien a dverí podľa technických listov výrobcov. Hodnoty sú len predvolené, v type okna alebo dverí sa dajú prepísať. Uw: súčiniteľ prechodu tepla okna, W/(m2K), EN ISO 10077-1; g: solárny faktor zasklenia (EN 410); tv: činiteľ prestupu svetla zasklenia (EN 410); rw: vážená nepriezvučnosť okna, dB (výrobca uvádza 'až do').",
+  "presets": [
+    {
+      "name": "DRUTEX IGLO Energy, štvorsklo s kryptónom",
+      "door": false,
+      "uw": 0.6,
+      "g": null,
+      "tv": null,
+      "rw": null,
+      "source": "Uw: DRUTEX, leták PVC okná Iglo Energy (SK, 19.12.2017): Uw = 0,6 W/(m2K) s izolačným štvorsklom vyplneným kryptónom (Ug 0,3), okno 1230 × 1480 mm podľa skúšok CSI ČR; 7-komorový profil 82 mm. Zvukotesnosť výrobca udáva rozsahom 37–46 dB podľa zasklenia, g a τv štvorskla neuvádza: doplniť podľa zvoleného zasklenia."
+    },
+    {
+      "name": "Slovaktual Heroal D 92, vchodové dvere, obojstranne prekrytá výplň",
+      "door": true,
+      "uw": 0.6,
+      "g": null,
+      "tv": null,
+      "rw": null,
+      "source": "Ud: Slovaktual, list Hliníkové dvere Heroal D 92 (d92_sk.pdf, 2016): pre obojstranne prekrytú výplň UD 0,6 W/(m2K) (pre jednostranne prekrytú 0,63, pre vkladanú 0,9; v liste je znak ≥, zrejme preklep za ≤), profil Uf 1,3, RC3. Rozmer, ku ktorému Ud patrí, výrobca neuvádza; zvukovú izoláciu udáva len triedou 1–3."
+    },
+    {
+      "name": "REHAU ARTEVO max, trojsklo",
+      "door": false,
+      "uw": 0.61,
+      "g": 0.53,
+      "tv": 0.74,
+      "rw": 48.0,
+      "source": "Uw, Rw: REHAU ARTEVO, prospekt 680831-001 SK 01.2024 (ARTEVO max s technológiou LowE a trojsklom: Uw až 0,61 W/(m2K); Rw do 48 dB podľa STN EN ISO 717-1); g, τv: zasklenie Guardian ClimaGuard Premium2, trojsklo 4-16-4-16-4 Ar 90 %, Guardian Coated Glass Digital Selector 2025 (g 53 %, τv 74 %); výrobca okna g ani τv neuvádza"
+    },
+    {
+      "name": "REHAU ARTEVO max, balkónové dvere, trojsklo",
+      "door": true,
+      "uw": 0.61,
+      "g": 0.53,
+      "tv": 0.74,
+      "rw": 48.0,
+      "source": "Systém ARTEVO max ako okná (REHAU ARTEVO, prospekt 01.2024: Uw až 0,61 W/(m2K), Rw do 48 dB; pre balkónové dvere výrobca hodnotu osobitne neuvádza); g, τv: zasklenie Guardian ClimaGuard Premium2, trojsklo 4-16-4-16-4 Ar 90 %, Guardian Coated Glass Digital Selector 2025 (g 53 %, τv 74 %); výrobca okna g ani τv neuvádza"
+    },
+    {
+      "name": "REHAU ARTEVO, vchodové dvere",
+      "door": true,
+      "uw": 0.8,
+      "g": null,
+      "tv": null,
+      "rw": null,
+      "source": "Ud: REHAU, ARTEVO front door, certifikát Passivhaus Institut (tlačová správa 21.05.2026: Ud až 0,8 W/(m2K) vďaka technológii LowE v profile RAU-FIPRO X); g, τv, Rw výrobca neuvádza"
+    },
+    {
+      "name": "Slovaktual PASIV, trojsklo",
+      "door": false,
+      "uw": 0.72,
+      "g": 0.53,
+      "tv": 0.74,
+      "rw": 46.0,
+      "source": "Uw, Rw: Slovaktual PASIV, brožúra 03/2026 a katalóg Okná a posuvné dvere 07/2023 (Uw od 0,72 W/(m2K), Rw až do 46 dB, 6-komorový profil 85 mm); g, tv: Guardian ClimaGuard Premium2, trojsklo 4-16-4-16-4 Ar 90 %, Digital Selector 2025 (g 53 %, τv 74 %)"
+    },
+    {
+      "name": "Slovaktual OPTIM, trojsklo",
+      "door": false,
+      "uw": 0.76,
+      "g": 0.53,
+      "tv": 0.74,
+      "rw": 46.0,
+      "source": "Uw, Rw: Slovaktual OPTIM, brožúra 04/2026 (Uw od 0,76 W/(m2K), Rw až do 46 dB, profil 76 mm); g, tv: Guardian ClimaGuard Premium2, trojsklo 4-16-4-16-4 Ar 90 %, Digital Selector 2025"
+    },
+    {
+      "name": "Slovaktual W 77HI (hliník), trojsklo",
+      "door": false,
+      "uw": 0.72,
+      "g": 0.53,
+      "tv": 0.74,
+      "rw": 47.0,
+      "source": "Uw, Rw: Slovaktual W 77HI, katalóg Okná a posuvné dvere 07/2023 (Uw od 0,72 W/(m2K), Rw až do 47 dB); g, tv: Guardian ClimaGuard Premium2, trojsklo, Digital Selector 2025"
+    },
+    {
+      "name": "Slovaktual PASIV, balkónové dvere, trojsklo",
+      "door": true,
+      "uw": 0.72,
+      "g": 0.53,
+      "tv": 0.74,
+      "rw": 46.0,
+      "source": "Systém PASIV ako okná (Slovaktual, brožúra 03/2026: Uw od 0,72 W/(m2K) pre okno 1230 × 1480 mm; pre dvere výrobca hodnotu osobitne neuvádza); g, tv: Guardian ClimaGuard Premium2, trojsklo"
+    },
+    {
+      "name": "Slovaktual HST 76, zdvižno-posuvné dvere",
+      "door": true,
+      "uw": 0.71,
+      "g": 0.53,
+      "tv": 0.74,
+      "rw": 42.0,
+      "source": "Uw, Rw: Slovaktual HST 76, katalóg Okná a posuvné dvere 07/2023 (Uw od 0,71 W/(m2K) pre schému A 4500 × 2300 mm, Ug 0,5; Rw do 42 dB); g, tv: Guardian ClimaGuard Premium2, trojsklo"
+    }
+  ],
+  "requirement": {
+    "window": 0.6,
+    "door": 0.65,
+    "source": "Požiadavka zadaná projektantom 2026-11-20 podľa STN 73 0540-2+Z1+Z2: okná Uw ≤ 0,60 W/(m2K), vonkajšie dvere Ud ≤ 0,65 W/(m2K)"
+  }
+}

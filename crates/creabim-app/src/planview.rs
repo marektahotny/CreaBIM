@@ -4706,6 +4706,11 @@ fn section_tool(
                         division: None,
                         door: None,
                         texts: None,
+                        performance: if kind == OpeningKind::Window {
+                            creabim_core::joinery::default_window_performance()
+                        } else {
+                            None
+                        },
                     }),
                 ),
             );
@@ -8833,6 +8838,11 @@ fn place_opening(
                 division: None,
                 door: None,
                 texts: None,
+                performance: if kind == OpeningKind::Window {
+                    creabim_core::joinery::default_window_performance()
+                } else {
+                    None
+                },
             }),
         ),
     );

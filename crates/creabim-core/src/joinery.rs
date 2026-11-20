@@ -1141,3 +1141,118 @@ mod tests {
         assert!(sash_symbol(&f[0], 0.0).is_empty());
     }
 }
+
+/// What a window or door does for heat, light and sound, as its maker's
+/// data sheet gives it; each value can be left out or typed over.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Performance {
+    /// The product it is (a maker's system and glazing), or as written.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub product: String,
+    /// Heat transfer coefficient of the whole window or door, Uw, W/(m²K).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uw: Option<f64>,
+    /// Solar factor of the glazing, g, 0 to 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub g: Option<f64>,
+    /// Light transmittance of the glazing, τv, 0 to 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tv: Option<f64>,
+    /// Weighted sound reduction index, Rw, dB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rw: Option<f64>,
+}
+
+impl Performance {
+    pub fn validate(&self) -> Result<(), String> {
+        let check = |v: Option<f64>, lo: f64, hi: f64, what: &str| match v {
+            Some(x) if !(lo..=hi).contains(&x) => Err(format!("{what} {x} is out of {lo}..{hi}")),
+            _ => Ok(()),
+        };
+        check(self.uw, 0.05, 10.0, "Uw")?;
+        check(self.g, 0.0, 1.0, "g")?;
+        check(self.tv, 0.0, 1.0, "τv")?;
+        check(self.rw, 0.0, 80.0, "Rw")
+    }
+}
+
+/// A maker's window or door with its data sheet's values
+/// (`data/sk-joinery-performance.json`).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Preset {
+    pub name: String,
+    /// For doors (balcony, sliding); else for windows.
+    pub door: bool,
+    pub uw: Option<f64>,
+    pub g: Option<f64>,
+    pub tv: Option<f64>,
+    pub rw: Option<f64>,
+    /// Where each value comes from.
+    pub source: String,
+}
+
+impl Preset {
+    pub fn performance(&self) -> Performance {
+        Performance {
+            product: self.name.clone(),
+            uw: self.uw,
+            g: self.g,
+            tv: self.tv,
+            rw: self.rw,
+        }
+    }
+}
+
+/// The highest heat transfer coefficients the project's windows and
+/// outside doors may have, W/(m²K), and where they come from.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Requirement {
+    pub window: f64,
+    pub door: f64,
+    pub source: String,
+}
+
+#[derive(Deserialize)]
+struct PerformanceFile {
+    presets: Vec<Preset>,
+    requirement: Requirement,
+}
+
+fn performance_file() -> &'static PerformanceFile {
+    static P: std::sync::OnceLock<PerformanceFile> = std::sync::OnceLock::new();
+    P.get_or_init(|| {
+        serde_json::from_str(include_str!("../data/sk-joinery-performance.json"))
+            .expect("sk-joinery-performance.json")
+    })
+}
+
+/// The makers' windows and doors the app knows.
+pub fn presets() -> &'static [Preset] {
+    &performance_file().presets
+}
+
+/// What Uw a window (`door` false) or an outside door may have at most.
+pub fn requirement() -> &'static Requirement {
+    &performance_file().requirement
+}
+
+/// Where `p` asks more of the requirement than it meets: the limit its
+/// Uw is over.
+pub fn over_requirement(p: &Performance, door: bool) -> Option<f64> {
+    let r = requirement();
+    let limit = if door { r.door } else { r.window };
+    p.uw.filter(|u| *u > limit + 1e-9).map(|_| limit)
+}
+
+/// The maker's values of the product named `name` in [`presets`].
+pub fn preset(name: &str) -> Option<Performance> {
+    presets()
+        .iter()
+        .find(|p| p.name == name)
+        .map(Preset::performance)
+}
+
+/// What a new window gets: the first window of [`presets`].
+pub fn default_window_performance() -> Option<Performance> {
+    presets().iter().find(|p| !p.door).map(Preset::performance)
+}

@@ -203,6 +203,7 @@ pub fn holes(host: ElementId, w: &Wall, pattern: &ScreenPattern) -> Vec<Opening>
             division: None,
             door: None,
             texts: None,
+            performance: None,
         })
         .collect()
 }

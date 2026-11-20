@@ -479,6 +479,14 @@ pub(super) fn seat_fields(
             label = "Door leaf and frame";
         }
     }
+    if performance_fields(
+        ui,
+        &mut o.performance,
+        o.kind == OpeningKind::Door,
+        "opening",
+    ) {
+        label = "Window or door values";
+    }
     ui.separator();
     ui.label(egui::RichText::new(t("Seating in the wall")).strong());
     if o.is_lining() {
@@ -1089,6 +1097,152 @@ impl CreaBimApp {
             })
             .collect()
     }
+}
+
+/// A window's or door's heat transfer, solar factor, light transmittance
+/// and sound reduction (Uw, g, τv, Rw): picked as a maker's product from
+/// the app's data sheets, each value then typed over if need be. `salt`
+/// keeps two of these apart. Returns whether anything changed.
+pub(super) fn performance_fields(
+    ui: &mut egui::Ui,
+    perf: &mut Option<creabim_core::joinery::Performance>,
+    door: bool,
+    salt: &str,
+) -> bool {
+    use creabim_core::joinery::{self, Performance};
+    let t = crate::i18n::t;
+    let mut changed = false;
+    ui.separator();
+    ui.label(egui::RichText::new(t("Heat, light and sound")).strong())
+        .on_hover_text(t("Uw, g, τv and Rw as the maker's data sheet gives them. They go to the data standard (DSS) and the IFC file."));
+    let shown = perf
+        .as_ref()
+        .map(|p| p.product.clone())
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| t("Not given").to_string());
+    crate::props::row(ui, "Product", |ui| {
+        egui::ComboBox::from_id_salt(("joinery_product", salt))
+            .icon(crate::props::combo_icon)
+            .selected_text(shown)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(perf.is_none(), t("Not given"))
+                    .clicked()
+                {
+                    *perf = None;
+                    changed = true;
+                }
+                // the makers' products for this kind first, then the others
+                let mut list: Vec<&joinery::Preset> = joinery::presets().iter().collect();
+                list.sort_by_key(|p| p.door != door);
+                for p in list {
+                    let on = perf.as_ref().is_some_and(|x| x.product == p.name);
+                    if ui
+                        .selectable_label(on, &p.name)
+                        .on_hover_text(&p.source)
+                        .clicked()
+                    {
+                        *perf = Some(p.performance());
+                        changed = true;
+                    }
+                }
+            });
+    });
+    let mut value = |ui: &mut egui::Ui,
+                     label: &str,
+                     get: fn(&mut Performance) -> &mut Option<f64>,
+                     scale: f64,
+                     range: std::ops::RangeInclusive<f64>,
+                     unit: &str,
+                     decimals: usize| {
+        let mut p = perf.clone().unwrap_or_default();
+        let had = get(&mut p).is_some();
+        let mut v = get(&mut p).unwrap_or(0.0) * scale;
+        let mut on = had;
+        let c = crate::props::row(ui, label, |ui| {
+            ui.horizontal(|ui| {
+                let mut c = ui.checkbox(&mut on, "").changed();
+                if on {
+                    c |= crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut v)
+                            .range(range.clone())
+                            .speed(0.01 * scale.max(1.0))
+                            .max_decimals(decimals)
+                            .suffix(unit),
+                    )
+                    .changed();
+                }
+                c
+            })
+            .inner
+        });
+        if c {
+            if on && !had {
+                // a value switched on starts from the middle of its range
+                v = (range.start() + range.end()) / 2.0;
+            }
+            *get(&mut p) = on.then_some(v / scale);
+            // typed over: no longer the maker's product as it was
+            if let Some(pre) = joinery::presets().iter().find(|x| x.name == p.product) {
+                if pre.performance() != p {
+                    p.product = format!("{} ({})", pre.name, t("edited"));
+                }
+            }
+            *perf = Some(p);
+            changed = true;
+        }
+    };
+    value(ui, "Uw", |p| &mut p.uw, 1.0, 0.3..=6.0, " W/(m²K)", 2);
+    value(
+        ui,
+        "Solar factor g",
+        |p| &mut p.g,
+        100.0,
+        0.0..=100.0,
+        " %",
+        0,
+    );
+    value(
+        ui,
+        "Light transmittance τv",
+        |p| &mut p.tv,
+        100.0,
+        0.0..=100.0,
+        " %",
+        0,
+    );
+    value(
+        ui,
+        "Sound reduction Rw",
+        |p| &mut p.rw,
+        1.0,
+        20.0..=60.0,
+        " dB",
+        0,
+    );
+    if let Some(limit) = perf
+        .as_ref()
+        .and_then(|p| joinery::over_requirement(p, door))
+    {
+        ui.colored_label(
+            ui.visuals().warn_fg_color,
+            format!(
+                "⚠ {} {} W/(m²K)",
+                t("Uw is over the most asked for:"),
+                format!("{limit:.2}").replace('.', ",")
+            ),
+        )
+        .on_hover_text(&joinery::requirement().source);
+    }
+    if let Some(src) = perf
+        .as_ref()
+        .and_then(|p| joinery::presets().iter().find(|x| x.name == p.product))
+    {
+        crate::props::note(ui, &src.source);
+    }
+    changed
 }
 
 #[cfg(test)]

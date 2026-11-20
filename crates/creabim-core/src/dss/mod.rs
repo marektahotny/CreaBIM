@@ -1190,6 +1190,23 @@ fn joinery_values(out: &mut Vec<(&'static str, Known, Source)>, o: &crate::Openi
         put(out, "priechodná šírka", Known::Len(w));
         put(out, "priechodná výška", Known::Len(h));
     }
+    if let Some(p) = &o.performance {
+        if let Some(u) = p.uw {
+            put(out, "súčiniteľ prechodu tepla – navrhnutý", Known::Raw(u));
+        }
+        if let Some(g) = p.g {
+            put(out, "solárny faktor", Known::Raw(g));
+        }
+        if let Some(t) = p.tv {
+            put(out, "činiteľ prestupu svetla", Known::Raw(t));
+        }
+        if let Some(r) = p.rw {
+            put(out, "vážená nepriezvučnosť", Known::Raw(r));
+        }
+        if !p.product.trim().is_empty() {
+            put(out, "typové označenie", Known::Text(p.product.clone()));
+        }
+    }
     if let Some(f) = o.door.as_ref().and_then(|d| d.fire.as_ref()) {
         if !f.rating.trim().is_empty() {
             put(out, "požiarna odolnosť", Known::Text(f.rating.clone()));
@@ -1655,5 +1672,36 @@ mod tests {
         );
         assert_eq!(val(door, "samozatvárač"), Some(Value::Bool(true)));
         assert_eq!(val(door, "dymotesnosť"), Some(Value::Bool(false)));
+        // a window as drawn has its maker's values
+        let mut w = m.get(win).unwrap().clone();
+        if let ElementKind::Opening(o) = &mut w.kind {
+            o.performance = crate::joinery::default_window_performance();
+        }
+        let before = m.get(win).unwrap().clone();
+        crate::Transaction::new("w")
+            .replace(before, w)
+            .apply(&mut m)
+            .unwrap();
+        let cx = Ctx::new(&m);
+        let val = |id, name: &str| {
+            let (_, props) = filled(&m, &cx, m.get(id).unwrap()).unwrap();
+            props
+                .iter()
+                .find(|f| f.prop.name == name)
+                .and_then(|f| f.value.clone())
+                .map(|(v, _)| v)
+        };
+        assert_eq!(
+            val(win, "súčiniteľ prechodu tepla – navrhnutý"),
+            Some(Value::Num(0.6))
+        );
+        // what the maker does not give stays missing
+        assert_eq!(val(win, "solárny faktor"), None);
+        // the default window meets the 0,60 asked for; REHAU's best does not
+        let p = crate::joinery::default_window_performance().unwrap();
+        assert_eq!(crate::joinery::over_requirement(&p, false), None);
+        let rehau = crate::joinery::preset("REHAU ARTEVO max, trojsklo").unwrap();
+        assert_eq!(rehau.g, Some(0.53));
+        assert_eq!(crate::joinery::over_requirement(&rehau, false), Some(0.6));
     }
 }

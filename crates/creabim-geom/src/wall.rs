@@ -271,6 +271,7 @@ mod tests {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }
     }
 

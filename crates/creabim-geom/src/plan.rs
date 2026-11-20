@@ -3271,6 +3271,7 @@ mod tests {
                 division: None,
                 door: None,
                 texts: None,
+                performance: None,
             }),
         );
         let hole = duct.id;

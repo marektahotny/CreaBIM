@@ -1070,6 +1070,7 @@ mod widen_tests {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         };
         (m, host, o)
     }

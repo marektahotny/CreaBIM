@@ -60,6 +60,7 @@ fn door(host: ElementId) -> Element {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     )
 }

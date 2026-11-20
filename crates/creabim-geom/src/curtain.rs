@@ -222,6 +222,7 @@ mod tests {
             division: None,
             door: None,
             texts: None,
+            performance: None,
         };
         let boxes = curtain_boxes(&w, &g, &[&door]);
         let glass = boxes

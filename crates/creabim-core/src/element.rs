@@ -292,7 +292,9 @@ impl Element {
                 if o.sill < 0.0 || o.offset < 0.0 {
                     return Err("opening sill and offset must not be negative".into());
                 }
-                Ok(())
+                o.performance
+                    .as_ref()
+                    .map_or(Ok(()), crate::joinery::Performance::validate)
             }
             ElementKind::FreeMesh(m) => {
                 m.mesh.validate()?;
@@ -1701,6 +1703,10 @@ pub struct Opening {
     /// list writes what it can tell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texts: Option<crate::joinery::JoineryTexts>,
+    /// Its heat transfer, solar factor, light transmittance and sound
+    /// reduction, from its maker's data sheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub performance: Option<crate::joinery::Performance>,
 }
 
 /// How a field of a window or door opens. Left and right are seen from
