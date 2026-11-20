@@ -341,18 +341,80 @@ pub fn load_app_tables() {
     creabim_core::fireparams::set_app_tables(tables);
 }
 
+/// The main window, kept so that every file picker is owned by it.
+#[cfg(windows)]
+static MAIN_WINDOW: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+/// Remembers the main window (called every frame), so the system's file
+/// pickers open as its modal dialogs: on top of it, with the app window
+/// disabled meanwhile. A picker without an owner can fall behind the app
+/// window, and so can its "replace the file?" question, while the app
+/// waits on it: nothing could be typed or clicked anymore.
+pub fn remember_main_window(frame: &eframe::Frame) {
+    #[cfg(windows)]
+    {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        if let Ok(h) = frame.window_handle() {
+            if let RawWindowHandle::Win32(w) = h.as_raw() {
+                MAIN_WINDOW.store(w.hwnd.get(), std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = frame;
+}
+
+#[cfg(windows)]
+struct Owner(std::num::NonZeroIsize);
+
+#[cfg(windows)]
+impl raw_window_handle::HasWindowHandle for Owner {
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        let raw = raw_window_handle::RawWindowHandle::Win32(
+            raw_window_handle::Win32WindowHandle::new(self.0),
+        );
+        // the main window lives as long as the app does
+        Ok(unsafe { raw_window_handle::WindowHandle::borrow_raw(raw) })
+    }
+}
+
+#[cfg(windows)]
+impl raw_window_handle::HasDisplayHandle for Owner {
+    fn display_handle(
+        &self,
+    ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
+        Ok(raw_window_handle::DisplayHandle::windows())
+    }
+}
+
+/// The system's file picker, owned by the main window (see
+/// [`remember_main_window`]); use it instead of `rfd::FileDialog::new()`.
+pub fn file_dialog() -> rfd::FileDialog {
+    let d = rfd::FileDialog::new();
+    #[cfg(windows)]
+    {
+        let hwnd = MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = std::num::NonZeroIsize::new(hwnd) {
+            return d.set_parent(&Owner(h));
+        }
+    }
+    d
+}
+
 /// Ask for a file to open with the system's own file picker.
 pub fn pick_open() -> Option<String> {
-    rfd::FileDialog::new()
-        .set_title("Open or link a file")
+    file_dialog()
+        .set_title(crate::i18n::tr("Open or link a file"))
         .add_filter(
-            "Everything CreaBIM reads",
+            crate::i18n::tr("Everything CreaBIM reads"),
             &[
                 "creabim", "json", "ifc", "ifcx", "blend", "FCStd", "fcstd", "FCMat", "fcmat",
                 "gltf", "glb",
             ],
         )
-        .add_filter("CreaBIM project", &["creabim"])
+        .add_filter(crate::i18n::tr("CreaBIM project"), &["creabim"])
         .add_filter("IFC", &["ifc", "ifcx"])
         .add_filter("Blender and FreeCAD (linked)", &["blend", "FCStd", "fcstd"])
         .add_filter(
@@ -387,8 +449,8 @@ pub fn pick_save(current: &str, title: &str, ext: &str) -> Option<String> {
     // a project not saved yet starts in the folder CreaBIM was started in
     let abs = std::path::absolute(current).unwrap_or_else(|_| current.into());
     let p = abs.as_path();
-    let mut d = rfd::FileDialog::new()
-        .set_title(title)
+    let mut d = file_dialog()
+        .set_title(crate::i18n::tr(title))
         .add_filter(ext.to_uppercase(), &[ext]);
     if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
         d = d.set_file_name(name);

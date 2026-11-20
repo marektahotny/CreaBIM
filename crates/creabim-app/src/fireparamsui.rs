@@ -29,6 +29,29 @@ fn title(t: &ParamTable) -> String {
         FIRE_OPENING_K => crate::i18n::t("Factor k of the openings").to_string(),
         FIRE_OPENING_K_LARGE => crate::i18n::t("Factor k of the openings, large zones").to_string(),
         FIRE_RISK => crate::i18n::t("Fire risk factors").to_string(),
+        "fire_distance" => crate::i18n::t("Separation distances, settings").to_string(),
+        "fire_distance_k" => crate::i18n::t("Factors k10 and k11 of the opening").to_string(),
+        "fire_pipe_d1" => crate::i18n::t("Distance d1 from the pipe outlet").to_string(),
+        "fire_distance_d" => crate::i18n::t("Separation distance d (table 3)").to_string(),
+        "fire_distance_dwelling" => {
+            crate::i18n::t("Separation distance of dwellings (table 6)").to_string()
+        }
+        "fire_distance_lodging" => {
+            crate::i18n::t("Separation distance of lodging (table 7)").to_string()
+        }
+        "fire_distance_single" => {
+            crate::i18n::t("Separation distance of a single opening (table 4)").to_string()
+        }
+        "fire_grade" => crate::i18n::t("Fire safety grade, settings").to_string(),
+        "fire_grade_nonprod" => {
+            crate::i18n::t("Fire safety grade, non-production buildings").to_string()
+        }
+        "fire_grade_dwelling" => crate::i18n::t("Fire safety grade, dwellings").to_string(),
+        "fire_roof" => crate::i18n::t("Fire resistance of the roof").to_string(),
+        fireparams::CLIMATE_SITES => crate::i18n::t("Localities").to_string(),
+        fireparams::SUMMER_MAX => crate::i18n::t("Summer outdoor temperatures").to_string(),
+        fireparams::RAIN_INTENSITY => crate::i18n::t("Rain intensity").to_string(),
+        "n50_ranges" => crate::i18n::t("Air tightness n50").to_string(),
         other => other.to_string(),
     };
     if own(t) && !fireparams::app_tables().is_empty() {
@@ -177,7 +200,9 @@ impl CreaBimApp {
                 let mut reset: Option<(usize, usize)> = None;
                 egui::ScrollArea::both()
                     .auto_shrink([false, false])
-                    .max_height(ui.available_height() - 40.0)
+                    // a fixed height: the window does not grow with each frame,
+                    // and Apply stays in sight
+                    .max_height((area.height() - 360.0).clamp(140.0, 520.0))
                     .show(ui, |ui| {
                         egui::Grid::new("fire.params.grid")
                             .num_columns(columns)
@@ -225,7 +250,7 @@ impl CreaBimApp {
                 apply = ui.button(t("Apply")).clicked();
             });
         if load {
-            if let Some(path) = rfd::FileDialog::new()
+            if let Some(path) = crate::files::file_dialog()
                 .set_title(crate::i18n::tr("Fire calculation parameters"))
                 .add_filter("TSV", &["tsv", "txt"])
                 .pick_file()
@@ -252,7 +277,7 @@ impl CreaBimApp {
             }
         }
         if save {
-            if let Some(path) = rfd::FileDialog::new()
+            if let Some(path) = crate::files::file_dialog()
                 .set_title(crate::i18n::tr("Fire calculation parameters"))
                 .set_file_name("pbs-parametre.tsv")
                 .add_filter("TSV", &["tsv"])

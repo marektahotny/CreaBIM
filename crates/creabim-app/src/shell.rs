@@ -823,7 +823,7 @@ impl CreaBimApp {
             ),
             _ => ("Add a DXF drawing as a reference", "DXF", &["dxf"]),
         };
-        let Some(p) = rfd::FileDialog::new()
+        let Some(p) = crate::files::file_dialog()
             .set_title(crate::i18n::tr(title))
             .add_filter(filter, exts)
             .pick_file()

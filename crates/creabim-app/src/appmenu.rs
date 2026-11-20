@@ -742,7 +742,7 @@ impl CreaBimApp {
                                                     .on_hover_text(crate::i18n::tr("Pick a font file (TTF or OTF) for the text of drawings: dimensions, tags, notes, title blocks. It is used on screen and carried in PDF and SVG. With none picked, Avenir Next Condensed is used where it is found: in a fonts folder beside the program or among the system's fonts."))
                                                     .clicked()
                                                 {
-                                                    if let Some(p) = rfd::FileDialog::new()
+                                                    if let Some(p) = crate::files::file_dialog()
                                                         .set_title(crate::i18n::tr("Font of the drawings"))
                                                         .add_filter("TrueType, OpenType", &["ttf", "otf"])
                                                         .pick_file()
@@ -1164,6 +1164,12 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.set_width(400.0);
+                // the fields scroll; the buttons stay in sight however tall
+                egui::ScrollArea::vertical()
+                    .id_salt("project.info.scroll")
+                    .max_height((area.height() - 120.0).max(200.0))
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
                 let text = |ui: &mut egui::Ui, label: &str, v: &mut String, hint: &str| {
                     crate::props::row(ui, label, |ui| {
                         ui.add(
@@ -1205,7 +1211,7 @@ impl CreaBimApp {
                 crate::props::row(ui, "Logo", |ui| {
                     crate::props::flow(ui, |ui| {
                         if ui.button(crate::i18n::t("Choose…")).clicked() {
-                            if let Some(img) = rfd::FileDialog::new()
+                            if let Some(img) = crate::files::file_dialog()
                                 .add_filter("Picture", &["png", "jpg", "jpeg"])
                                 .pick_file()
                                 .and_then(|p| image::open(p).ok())
@@ -1457,6 +1463,7 @@ impl CreaBimApp {
                     )
                     .weak(),
                 );
+                    });
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     apply = ui
