@@ -69,8 +69,42 @@ struct BaseLayer {
 }
 
 fn base() -> Base {
-    serde_json::from_str(include_str!("../data/sk-base.json")).expect("sk-base.json")
+    let mut b: Base =
+        serde_json::from_str(include_str!("../data/sk-base.json")).expect("sk-base.json");
+    // CreaBIM's own, past what PilonDesigner exports
+    let extra: Base = serde_json::from_str(EXTRA).expect("skbase EXTRA");
+    b.materials.extend(extra.materials);
+    b.walls.extend(extra.walls);
+    b.floors.extend(extra.floors);
+    b.roofs.extend(extra.roofs);
+    b
 }
+
+/// What CreaBIM adds to the exported base (sk-base.json is rewritten by
+/// `tools/sk-base/export.sh`, so these live here). The masonry on the
+/// footings (George 2026-11-20): concrete formwork blocks DT 300 filled
+/// with concrete as its load-bearing part, a 5 mm membrane and 140 mm of
+/// XPS on its outer face; a foundation plan draws the blocks' outline
+/// above as a thin dash and two dots. λ and ρ of the filled blocks are
+/// plain concrete's (its fill) until the maker's sheet says otherwise.
+const EXTRA: &str = r##"{
+ "materials": [
+  {"id": "dt-300", "category": "Betón", "name": "Debniaca tvárnica DT 300, vyplnená betónom",
+   "lambda": 1.3, "density": 2300, "fire": "A1", "color": "#aeb3b8",
+   "block": "DT 300", "note": "debniace tvárnice (DT) vyplnené betónom; λ a ρ ako prostý betón (výplň), upraviť podľa listu výrobcu"}
+ ],
+ "walls": [
+  {"id": "NADZ-DT300-XPS140", "name": "Nadzákladová stena – DT 300 + hydroizolácia 5 + XPS 140",
+   "boundary": "teren",
+   "layers": [
+    {"material": "xps", "mm": 140},
+    {"material": "hydroizolacia", "mm": 5},
+    {"material": "dt-300", "mm": 300, "core": true}
+   ]}
+ ],
+ "floors": [],
+ "roofs": []
+}"##;
 
 /// The IFC category and the cut hatch of a material of PilonDesigner's
 /// group `category`.
@@ -331,12 +365,41 @@ mod tests {
         doc.commit(add_base(doc.model())).unwrap();
         let m = doc.model();
         let (materials, walls, floors, roofs) = counts();
-        assert_eq!((materials, walls, floors, roofs), (71, 20, 4, 3));
+        assert_eq!((materials, walls, floors, roofs), (72, 21, 4, 3));
         assert_eq!(crate::library::materials(m).len(), materials);
         assert_eq!(assembly::assemblies(m).len(), walls + floors + roofs);
         assert_eq!(types::types(m).len(), walls + floors + roofs);
         // again adds nothing
         assert!(add_base(m).ops.is_empty());
+    }
+
+    #[test]
+    fn the_masonry_on_the_footings_is_dt_blocks_with_membrane_and_xps_outside() {
+        let mut doc = Document::new();
+        doc.commit(add_base(doc.model())).unwrap();
+        let m = doc.model();
+        let all = assembly::assemblies(m);
+        let (_, _, a) = all
+            .iter()
+            .find(|(_, n, _)| n.starts_with("Nadzákladová stena – DT 300"))
+            .unwrap();
+        a.validate().unwrap();
+        assert!((a.total() - 0.445).abs() < 1e-9);
+        let f: Vec<LayerFunction> = a.layers.iter().map(|l| l.function).collect();
+        assert_eq!(
+            f,
+            [
+                LayerFunction::Insulation,
+                LayerFunction::Membrane,
+                LayerFunction::Structure
+            ]
+        );
+        let core = m.get(a.layers[2].material.unwrap()).unwrap();
+        assert!(core.name.starts_with("Debniaca tvárnica DT 300"));
+        // and a wall type to draw it with
+        assert!(types::types(m)
+            .iter()
+            .any(|(_, n, _)| n.starts_with("Nadzákladová stena – DT 300")));
     }
 
     #[test]

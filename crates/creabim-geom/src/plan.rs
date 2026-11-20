@@ -3481,7 +3481,26 @@ mod tests {
                 .retain(|c| *c != creabim_core::visibility::Category::Footings);
         }
         let mut doc = creabim_core::Document::from_model(m.clone());
-        doc.commit(creabim_core::Transaction::new("show").replace(plan.clone(), shown))
+        doc.commit(creabim_core::Transaction::new("show").replace(plan.clone(), shown.clone()))
+            .unwrap();
+        // under the bottom of the plan's range (its floor): still left out
+        // (George 2026-11-20)
+        assert_eq!(dashed(doc.model()), 0, "under the range's bottom");
+        // the bottom lowered under them: dashed under the floor
+        let mut deeper = shown.clone();
+        if let ElementKind::View(v) = &mut deeper.kind {
+            let ElementKind::View(p) = &plan.kind else {
+                unreachable!()
+            };
+            let creabim_core::ViewKind::Plan { level, .. } = p.kind else {
+                unreachable!()
+            };
+            v.graphics.range.bottom = Some(creabim_core::graphics::RangeLimit {
+                level,
+                offset: -2.0,
+            });
+        }
+        doc.commit(creabim_core::Transaction::new("deeper").replace(shown, deeper))
             .unwrap();
         assert!(dashed(doc.model()) > 20, "shown, dashed under the floor");
     }
