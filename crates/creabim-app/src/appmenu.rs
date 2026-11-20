@@ -1153,6 +1153,7 @@ impl CreaBimApp {
         let mut north_turn: Option<f64> = None;
         let mut north_line = false;
         let mut fire_params = false;
+        let mut fire_doors = false;
         // the plot's data asked of the cadastre
         let mut cadastre = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
@@ -1427,6 +1428,15 @@ impl CreaBimApp {
                 {
                     fire_params = true;
                 }
+                if ui
+                    .button(crate::i18n::t("Propose fire closures of doors"))
+                    .on_hover_text(crate::i18n::t(
+                        "Sets the fire rating STN 92 0201-2 asks of each door between fire zones (table 5) and in an outer wall inside another zone's fire-dangerous space (5.4.10), where the door has none or a weaker one",
+                    ))
+                    .clicked()
+                {
+                    fire_doors = true;
+                }
                 crate::props::row(ui, "Structural system for fire", |ui| {
                     const SYSTEMS: [(&str, &str); 5] = [
                         ("N", "Non-combustible"),
@@ -1542,6 +1552,9 @@ impl CreaBimApp {
         }
         if fire_params {
             self.open_fire_params();
+        }
+        if fire_doors {
+            self.propose_fire_doors();
         }
         if north_line {
             self.plan.north_pick = true;

@@ -173,6 +173,29 @@ pub fn wall_required(model: &Model, grade: u32, wall: &creabim_core::Wall) -> Op
         .and_then(|r| n(r.get(i)?))
 }
 
+/// Table 5 item 2a (a storey above ground) or 14 (a single-storey
+/// building): what a zone of `grade` asks of its load-bearing outer
+/// walls, minutes; the R of figure 10 (5.4.10).
+pub fn outer_wall_minutes(model: &Model, grade: u32) -> Option<f64> {
+    let fh = crate::firezones::fire_height(model)?;
+    let t = crate::firerisk::table(model, FIRE_OUTER_WALL)?;
+    let column = if fh.above <= 1 && fh.below == 0 {
+        "single"
+    } else {
+        "above"
+    };
+    let i = t.columns.iter().position(|c| c == column)?;
+    let n = |s: &str| fireparams::number(s);
+    t.rows
+        .iter()
+        .find(|r| {
+            r.first()
+                .and_then(|s| n(s))
+                .is_some_and(|g| g.round() as u32 == grade)
+        })
+        .and_then(|r| n(r.get(i)?))
+}
+
 /// The fire resistance a wall's assembly states (its description, as
 /// "REW 60" or "EW 30"), minutes; none where it states none.
 pub fn wall_declared(model: &Model, wall: &creabim_core::Wall) -> Option<f64> {

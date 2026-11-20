@@ -69,7 +69,8 @@ pub fn zones(model: &Model) -> Vec<Zone> {
 
 /// The zone of the room at `p` on `level`; empty with no room there or
 /// none given.
-fn zone_at(model: &Model, level: ElementId, p: DVec2) -> String {
+/// The fire zone of the room at `p` on `level` ("" none).
+pub fn zone_at(model: &Model, level: ElementId, p: DVec2) -> String {
     model
         .iter()
         .find_map(|e| match &e.kind {
@@ -154,6 +155,7 @@ pub fn schedule(model: &Model) -> Schedule {
         col("Rooms", 70.0, false),
         col("Area", 20.0, true),
         col("Fire closure", 40.0, false),
+        col("Required (STN 92 0201-2)", 55.0, false),
     ];
     let units = model.units();
     let name = |id: &ElementId| -> String {
@@ -179,21 +181,100 @@ pub fn schedule(model: &Model) -> Schedule {
                 z.rooms.iter().map(name).collect::<Vec<_>>().join(", "),
                 units.area(z.area),
                 String::new(),
+                String::new(),
             ],
         });
     }
+    let risks = crate::firerisk::zones(model);
+    let level_name = |id: ElementId| model.get(id).map(|l| tr(&l.name)).unwrap_or_default();
+    let verdict = |ok: bool| if ok { tr("meets") } else { tr("DOES NOT MEET") };
     for d in border_doors(model) {
+        let level = match model.get(d.door).map(|e| &e.kind) {
+            Some(ElementKind::Opening(o)) => match model.get(o.host).map(|e| &e.kind) {
+                Some(ElementKind::Wall(w)) => Some(w.level),
+                _ => None,
+            },
+            _ => None,
+        };
+        let need = level.and_then(|l| {
+            use crate::fireexposure::{border_need, zone_grade};
+            border_need(
+                model,
+                l,
+                [
+                    zone_grade(model, &risks, &d.zones[0]),
+                    zone_grade(model, &risks, &d.zones[1]),
+                ],
+            )
+        });
+        let required = need.as_ref().map_or(String::new(), |n| {
+            let ok = d.rating.as_deref().is_some_and(|r| n.met_by(r));
+            format!("{} ({})", n.rating(), verdict(ok))
+        });
         rows.push(Row {
             id: d.door,
             group: false,
             cells: vec![
                 format!("{} / {}", d.zones[0], d.zones[1]),
-                String::new(),
+                level.map(level_name).unwrap_or_default(),
                 format!("{} {}", tr("Door"), d.mark),
                 String::new(),
                 d.rating.unwrap_or_else(|| tr("NO FIRE DOOR")),
+                required,
             ],
         });
+    }
+    // 5.4.9 to 5.4.11: outer walls in another zone's fire-dangerous
+    // space, and their openings
+    let marks = creabim_core::marks(model);
+    for x in crate::fireexposure::exposed(model) {
+        let wall_rating = x
+            .declared
+            .map_or_else(|| tr("not stated"), |m| format!("{m:.0} min"));
+        rows.push(Row {
+            id: x.wall,
+            group: false,
+            cells: vec![
+                format!("{} {} {}", x.zone, tr("in PNP of"), x.from),
+                level_name(x.level),
+                format!(
+                    "{} (d = {:.2} m, d'/d = {:.2}, R = {:.0} min)",
+                    tr("Outer wall"),
+                    x.d,
+                    x.ratio,
+                    x.r
+                ),
+                String::new(),
+                wall_rating,
+                format!(
+                    "Ro {:.0} min {}, {}{}",
+                    x.ro.ceil(),
+                    tr("from outside"),
+                    if x.d1 { "D1" } else { "D1/D2" },
+                    x.met()
+                        .map_or(String::new(), |ok| format!(" ({})", verdict(ok)))
+                ),
+            ],
+        });
+        for o in &x.openings {
+            let ok = o.rating.as_deref().is_some_and(|r| o.need.met_by(r));
+            rows.push(Row {
+                id: o.id,
+                group: false,
+                cells: vec![
+                    format!("{} {} {}", x.zone, tr("in PNP of"), x.from),
+                    level_name(x.level),
+                    format!(
+                        "{} {}",
+                        if o.door { tr("Door") } else { tr("Window") },
+                        marks.get(&o.id).cloned().unwrap_or_default()
+                    ),
+                    String::new(),
+                    o.rating.clone().unwrap_or_else(|| tr("NO FIRE CLOSURE")),
+                    format!("{}-C ({})", o.need.rating(), verdict(ok)),
+                ],
+            });
+        }
     }
     let listed = rows.len();
     Schedule {
@@ -205,6 +286,7 @@ pub fn schedule(model: &Model) -> Schedule {
             String::new(),
             String::new(),
             units.area(total),
+            String::new(),
             String::new(),
         ],
         listed,
