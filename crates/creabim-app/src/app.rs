@@ -7458,6 +7458,17 @@ impl CreaBimApp {
         current: &mut Option<ElementId>,
         usage: creabim_core::library::MaterialUse,
     ) -> bool {
+        self.material_combo_as(ui, "Material", current, usage)
+    }
+
+    /// [`Self::material_combo`] under its own label.
+    fn material_combo_as(
+        &mut self,
+        ui: &mut egui::Ui,
+        label: &str,
+        current: &mut Option<ElementId>,
+        usage: creabim_core::library::MaterialUse,
+    ) -> bool {
         let all_id = egui::Id::new("material_combo.all");
         let mut all = ui.data(|d| d.get_temp::<bool>(all_id).unwrap_or(false));
         let narrow = !usage.categories().is_empty();
@@ -7482,7 +7493,7 @@ impl CreaBimApp {
         let mut changed = false;
         let mut create = false;
         let mut take = None;
-        crate::app::helpui::combo(ui, "Material")
+        crate::app::helpui::combo(ui, label)
             .selected_text(crate::i18n::tw(name))
             .show_ui(ui, |ui| {
                 changed |= ui
@@ -9998,6 +10009,39 @@ crate::props::row(ui, "File names", |ui| {
                     if num(ui, "Top offset", &mut s.top_offset, -100.0, 100.0) {
                         label = "Slab top offset"
                     }
+                    // floor or foundation slab: priced apart, apart in the take-off
+                    let auto = match creabim_core::slab::kind_of(
+                        self.doc.model(),
+                        &creabim_core::Slab {
+                            kind: None,
+                            ..s.clone()
+                        },
+                    ) {
+                        creabim_core::SlabKind::Foundation => {
+                            "Automatic: foundation slab (no slab under it)."
+                        }
+                        creabim_core::SlabKind::Floor => "Automatic: floor slab (a slab under it).",
+                    };
+                    if crate::props::choice(
+                        ui,
+                        "Slab type",
+                        &mut s.kind,
+                        &[
+                            (None, "Auto", auto),
+                            (
+                                Some(creabim_core::SlabKind::Floor),
+                                "Floor slab",
+                                "A floor or ceiling slab (stropná doska).",
+                            ),
+                            (
+                                Some(creabim_core::SlabKind::Foundation),
+                                "Foundation slab",
+                                "A foundation slab (základová doska), listed apart in the take-off and exported as IFC BASESLAB.",
+                            ),
+                        ],
+                    ) {
+                        label = "Slab type"
+                    }
                     let level = self.doc.model().level(s.level).map_or(0.0, |l| l.elevation);
                     crate::props::note(
                         ui,
@@ -10091,6 +10135,18 @@ crate::props::row(ui, "File names", |ui| {
                     let l = wallsui::opening_fields(ui, self.doc.model(), o);
                     if !l.is_empty() {
                         label = l;
+                    }
+                    // what a door's threshold is made of, for the take-off
+                    if o.kind == creabim_core::OpeningKind::Door
+                        && o.threshold
+                        && self.material_combo_as(
+                            ui,
+                            "Threshold material",
+                            &mut o.threshold_material,
+                            creabim_core::library::MaterialUse::Any,
+                        )
+                    {
+                        label = "Threshold material";
                     }
                     // a plastic colour picked for a door: the library's
                     // material, taken into the project once

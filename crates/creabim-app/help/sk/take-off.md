@@ -47,6 +47,9 @@ Materiál bez sadzby sa meria, ale nezapočíta sa do oceneného súčtu.
 - **Ukázať, kde to je:** kliknite na riadok (s Ctrl pridáte ďalšie, klik na skupinu vyberie celú skupinu) a stlačte **Ukázať v 3D** alebo **Ukázať v pôdoryse**. Prvky sa označia a priblížia; ak 3D pohľad nie je otvorený, otvorí sa vedľa tabuľky, pôdorys podlažia pod ňou. Dvojklik na riadok ich ukáže v 3D.
 - **Dvere a okná** majú stĺpec *Obvod* (dvakrát šírka plus výška, sčítané).
 - **Parapety**, vonkajšie (klampiarske) aj vnútorné, sú v skupinách *Vonkajšie parapety* a *Vnútorné parapety*: riadok pre každý rozmer, s jeho šírkou (cez stenu) a dĺžkou, počtom kusov, dĺžkou a plochou. Vonkajší presahuje vonkajší líc steny o 40 mm, vnútorný vnútorný líc o 20 mm a zasahuje 20 mm do každého ostenia. Prepínače okna *Vonkajší parapet* / *Vnútorný parapet* ho vynechajú.
+- **Dverové prahy** sú v skupine *Prahy*: riadok pre každý materiál a rozmer, s materiálom, šírkou (hĺbka zárubne) a dĺžkou (svetlá šírka medzi zárubňami) a počtom kusov. Na dverách zapnite *Prah* a vyberte *Materiál prahu* (drevo, hliník, kameň…); bez neho je prah bez materiálu.
+- **Dvere a okná** sú rozdelené podľa materiálu nastaveného na každom z nich (plast, hliník, drevo…), aby sa dali naceniť zvlášť, napr. v Cenkrose.
+- **Základové dosky** sú oddelene od stropných. Doska, pod ktorou nie je iná doska, sa berie ako základová; kde to nesedí (napr. spevnené plochy), nastavte na doske *Typ dosky* (Stropná / Základová). Do IFC idú ako BASESLAB a FLOOR.
 - *Sadzbu* a *Za* materiálu meníte priamo v riadku.
 - Zoskupenie, zobrazenie po prvkoch a triedenie sa ukladajú s výkazom a rovnako sa vytlačí na liste. Pozri [Listy](sheets).
 

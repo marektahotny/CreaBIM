@@ -195,7 +195,7 @@ pub fn adopt(model: &Model, template: &Element, new: &mut Element) -> bool {
     relevel(model, template, &mut kind);
     new.kind = kind;
     new.of_type = template.of_type.clone();
-    new.reno = template.reno.clone();
+    new.reno = template.reno;
     true
 }
 
@@ -341,6 +341,7 @@ mod tests {
             no_outer_sill: false,
             no_inner_sill: false,
             threshold: false,
+            threshold_material: None,
             setback: None,
             reveal: None,
             division: None,

@@ -962,6 +962,7 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         no_outer_sill: o.no_outer_sill,
         no_inner_sill: o.no_inner_sill,
         threshold: o.threshold,
+        threshold_material: None,
         setback: o.setback.map(|v| c.l(v)),
         reveal: o.reveal.map(|v| c.l(v)),
         division,

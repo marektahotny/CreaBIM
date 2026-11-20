@@ -19,8 +19,16 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Categories whose volume is measured on their trimmed solids.
-const TRIMMED: [&str; 8] = [
-    "Walls", "Slabs", "Roofs", "Ceilings", "Columns", "Beams", "Footings", "Stairs",
+const TRIMMED: [&str; 9] = [
+    "Walls",
+    "Slabs",
+    "Foundation slabs",
+    "Roofs",
+    "Ceilings",
+    "Columns",
+    "Beams",
+    "Footings",
+    "Stairs",
 ];
 
 /// The enclosed volume of a mesh, measured about its first corner so
@@ -110,7 +118,14 @@ pub fn measure(model: &Model, scene: &[crate::scene::SceneItem]) -> Vec<Line> {
 }
 
 /// Categories whose area is their trimmed volume over their thickness.
-const PLANAR: [&str; 5] = ["Walls", "Slabs", "Roofs", "Ceilings", "Footings"];
+const PLANAR: [&str; 6] = [
+    "Walls",
+    "Slabs",
+    "Foundation slabs",
+    "Roofs",
+    "Ceilings",
+    "Footings",
+];
 
 type Cache = Vec<(u64, Arc<Vec<Line>>)>;
 static MEASURED: Mutex<Cache> = Mutex::new(Vec::new());
@@ -448,7 +463,8 @@ fn leaves(model: &Model, lines: &[&Line], detail: bool) -> Vec<Leaf> {
         let label = material_label(model, l);
         let key = (
             l.material,
-            if l.material.is_some() {
+            // pieces (sills, thresholds) by their size too
+            if l.material.is_some() && l.label.is_none() {
                 String::new()
             } else {
                 label
@@ -472,7 +488,11 @@ fn leaves(model: &Model, lines: &[&Line], detail: bool) -> Vec<Leaf> {
         .filter_map(|k| {
             let (mut q, elements, t, perimeter) = sums.remove(&k)?;
             q.count = elements.len();
-            let label = name_of(model, k.0).unwrap_or(k.1);
+            let label = if k.1.is_empty() {
+                name_of(model, k.0).unwrap_or_default()
+            } else {
+                k.1
+            };
             let mut cells = leaf_cells(model, label, t, k.0, &q, elements.len());
             cells.insert("Perimeter", perimeter_cell(perimeter));
             Some(Leaf {
@@ -674,7 +694,7 @@ fn build(
         // sills are pieces of one kind: their lengths add up too
         let pieces = mine
             .iter()
-            .all(|l| matches!(l.category, "Outer sills" | "Inner sills"));
+            .all(|l| matches!(l.category, "Outer sills" | "Inner sills" | "Thresholds"));
         let costs: Vec<f64> = mine
             .iter()
             .filter_map(|l| line_cost(model, l.material, &l.quantity))
@@ -779,7 +799,8 @@ mod tests {
                 .sum::<f64>()
         };
         // a slab gives up what the walls through it take
-        let (r, m) = (sum(&rough, "Slabs"), sum(&measured, "Slabs"));
+        let slabs = |ls: &[Line]| sum(ls, "Slabs") + sum(ls, "Foundation slabs");
+        let (r, m) = (slabs(&rough), slabs(&measured));
         assert!(
             m > 0.0 && m <= r * 1.001,
             "slabs: measured {m:.3}, rough {r:.3}"
@@ -944,5 +965,94 @@ mod tests {
             panic!("a window");
         };
         assert!((inner.length - (o.width + 0.04)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn thresholds_count_by_material_and_size() {
+        let model = starter();
+        let wood = model
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Material(_)))
+            .unwrap()
+            .clone();
+        let mut els: Vec<_> = model.iter().cloned().collect();
+        let mut doors = 0;
+        for e in els.iter_mut() {
+            if let ElementKind::Opening(o) = &mut e.kind {
+                if o.kind == creabim_core::OpeningKind::Door {
+                    o.threshold = true;
+                    o.threshold_material = Some(wood.id);
+                    doors += 1;
+                }
+            }
+        }
+        assert!(doors > 1);
+        let model = Model::from_elements(els).unwrap();
+        let all = takeoff::lines(&model);
+        let sills: Vec<_> = all.iter().filter(|l| l.category == "Thresholds").collect();
+        assert_eq!(sills.len(), doors);
+        for l in &sills {
+            assert_eq!(l.material, Some(wood.id));
+            let label = l.label.as_deref().unwrap();
+            assert!(
+                label.contains(&wood.name) && label.contains(" × "),
+                "{label}"
+            );
+            assert!(l.quantity.length > 0.3 && l.quantity.area > 0.0);
+        }
+        let t = table_measured(&model, &Layout::default(), false);
+        let n = t
+            .schedule
+            .columns
+            .iter()
+            .position(|c| c.title == "Elements")
+            .unwrap();
+        let head = t
+            .schedule
+            .rows
+            .iter()
+            .position(|r| r.group && r.cells[0].trim() == tr("Thresholds"))
+            .expect("a heading for the thresholds");
+        let rows: Vec<_> = t.schedule.rows[head + 1..]
+            .iter()
+            .take_while(|r| !r.group)
+            .collect();
+        // a row for each size, named by it
+        assert!(rows.iter().all(|r| r.cells[0].contains(" × ")));
+        let pieces: usize = rows
+            .iter()
+            .map(|r| r.cells[n].parse::<usize>().unwrap())
+            .sum();
+        assert_eq!(pieces, doors);
+    }
+
+    #[test]
+    fn foundation_slabs_are_listed_apart() {
+        let model = starter();
+        let all = takeoff::lines(&model);
+        let named = |cat: &str| -> Vec<String> {
+            let mut v: Vec<_> = all
+                .iter()
+                .filter(|l| l.category == cat)
+                .filter_map(|l| model.get(l.element).map(|e| e.name.clone()))
+                .collect();
+            v.dedup();
+            v
+        };
+        assert!(named("Foundation slabs").contains(&"GF Slab".to_string()));
+        assert!(named("Slabs").contains(&"FF Slab".to_string()));
+        // set by hand, it wins
+        let mut els: Vec<_> = model.iter().cloned().collect();
+        for e in els.iter_mut() {
+            if let ElementKind::Slab(s) = &mut e.kind {
+                if e.name == "GF Slab" {
+                    s.kind = Some(creabim_core::SlabKind::Floor);
+                }
+            }
+        }
+        let model = Model::from_elements(els).unwrap();
+        let all = takeoff::lines(&model);
+        assert!(!all.iter().any(|l| l.category == "Foundation slabs"
+            && model.get(l.element).is_some_and(|e| e.name == "GF Slab")));
     }
 }

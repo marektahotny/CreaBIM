@@ -1492,6 +1492,18 @@ pub struct Slab {
     /// Layer edges moved by hand (see [`LayerEdge`]); none for most.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layer_edges: Vec<LayerEdge>,
+    /// What the slab is for: a floor/ceiling slab or a foundation slab,
+    /// priced apart. `None` works it out, see [`crate::slab::kind_of`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<SlabKind>,
+}
+
+/// A floor/ceiling slab (stropná doska) or a foundation slab (základová
+/// doska), as IFC tells IfcSlab FLOOR from BASESLAB.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SlabKind {
+    Floor,
+    Foundation,
 }
 
 impl Slab {
@@ -1507,6 +1519,7 @@ impl Slab {
             assembly: None,
             holes: vec![],
             layer_edges: vec![],
+            kind: None,
         }
     }
 
@@ -1678,6 +1691,10 @@ pub struct Opening {
     /// A door with a threshold between its jambs.
     #[serde(default, skip_serializing_if = "is_false")]
     pub threshold: bool,
+    /// What the threshold is made of (wood, metal, stone…), for the
+    /// take-off; left out, it is listed without a material.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_material: Option<ElementId>,
     /// How far the frame's outer face stands in from the outer edge of
     /// the wall's load-bearing core (less than nothing: out into the
     /// insulation). Left out, the frame stands on that edge in a layered
