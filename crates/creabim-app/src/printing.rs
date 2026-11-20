@@ -1,10 +1,11 @@
-//! Printing sheets on the system's printers (Windows GDI), vector, at 1:1
-//! or shrunk to the paper, a page a sheet in one print job. Where a sheet
-//! lands on the paper is `creabim_geom::printing`'s; this draws it there.
+//! Printing sheets on the system's printers, vector, at 1:1 or shrunk to
+//! the paper, a page a sheet in one print job. Where a sheet lands on the
+//! paper is `creabim_geom::printing`'s; this draws it there. On Windows
+//! through GDI; on macOS (and Linux) through CUPS, the system's own print
+//! service: the pages go to it as a PDF, each on the paper it asks for.
 //!
 //! Besides the system's printers there is always [`PDF`]: the same pages,
-//! papers and placement written as a PDF file (and the only printer on
-//! systems other than Windows).
+//! papers and placement written as a PDF file.
 
 use creabim_geom::paper::Canvas;
 use creabim_geom::printing::{PaperAsk, PaperGot};
@@ -19,10 +20,21 @@ pub fn printers() -> (Vec<String>, Option<String>) {
     {
         win::printers()
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    {
+        cups::printers()
+    }
+    #[cfg(not(any(windows, unix)))]
     {
         (vec![], None)
     }
+}
+
+/// The printer has a Properties dialog of its own (Windows); elsewhere
+/// the printer's own settings are the system's (System Settings ›
+/// Printers & Scanners on a Mac).
+pub fn has_properties() -> bool {
+    cfg!(windows)
 }
 
 /// A printer's own settings (paper tray, quality, colour...), as its
@@ -64,9 +76,10 @@ pub struct Page {
 }
 
 /// A print job: its pages, `copies` of each set, on `printer`.
-#[cfg_attr(not(windows), allow(dead_code))]
 pub struct Job {
     pub printer: String,
+    /// The printer's own settings (Windows; CUPS keeps them itself).
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub settings: Settings,
     pub title: String,
     pub pages: Vec<Page>,
@@ -90,6 +103,12 @@ pub fn print(job: &Job, draw: &mut Draw) -> Result<usize, String> {
             return win::print(job, draw);
         }
     }
+    #[cfg(unix)]
+    {
+        if job.printer != PDF {
+            return cups::print(job, draw);
+        }
+    }
     let _ = draw;
     Err("no printer".into())
 }
@@ -105,6 +124,193 @@ pub fn pdf(job: &Job, draw: &mut Draw) -> Vec<u8> {
         }
     }
     w.finish()
+}
+
+#[cfg(unix)]
+mod cups {
+    //! CUPS, the print service of macOS and Linux: printers listed by
+    //! `lpstat`, jobs sent by `lp` as a PDF. A run of pages on the same
+    //! paper is one job (so copies come out collated); the paper is asked
+    //! for by name (A4…A0) or size, at 100 % with no scaling by the system.
+
+    use super::{pdf, Draw, Job, Page};
+    use std::process::Command;
+
+    /// `name` from /usr/bin where it is (an app started from the Finder
+    /// has a short PATH), else from PATH.
+    fn tool(name: &str) -> Command {
+        for dir in ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"] {
+            let p = std::path::Path::new(dir).join(name);
+            if p.exists() {
+                return Command::new(p);
+            }
+        }
+        Command::new(name)
+    }
+
+    fn run(name: &str, args: &[&str]) -> Option<String> {
+        let o = tool(name).args(args).output().ok()?;
+        o.status
+            .success()
+            .then(|| String::from_utf8_lossy(&o.stdout).into_owned())
+    }
+
+    /// The printers' names and the default one's.
+    pub fn printers() -> (Vec<String>, Option<String>) {
+        let mut names: Vec<String> = run("lpstat", &["-e"])
+            .map(|t| t.lines().map(|l| l.trim().to_string()).collect())
+            .unwrap_or_default();
+        if names.is_empty() {
+            // older CUPS: "printer NAME is idle..." / "NAME accepting requests..."
+            names = run("lpstat", &["-a"])
+                .map(|t| {
+                    t.lines()
+                        .filter_map(|l| l.split_whitespace().next().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
+        names.retain(|n| !n.is_empty() && n != super::PDF);
+        names.dedup();
+        let default = run("lpstat", &["-d"]).and_then(|t| default_in(&t));
+        (names, default)
+    }
+
+    /// "system default destination: NAME" (or no default).
+    pub fn default_in(t: &str) -> Option<String> {
+        t.lines()
+            .find_map(|l| l.split_once(": ").map(|(_, n)| n.trim().to_string()))
+            .filter(|n| !n.is_empty())
+    }
+
+    /// The `media` option for a page: the ISO name, else its size in mm;
+    /// empty for the paper set in the printer.
+    pub fn media(p: &Page) -> String {
+        let Some(size) = p.ask.size else {
+            return String::new();
+        };
+        let (w, h) = (size.x.min(size.y), size.x.max(size.y));
+        if !p.ask.name.is_empty() {
+            return p.ask.name.to_string();
+        }
+        format!("Custom.{:.0}x{:.0}mm", w.round(), h.round())
+    }
+
+    /// Runs of pages on the same paper: (first page, how many, media).
+    pub fn runs(pages: &[Page]) -> Vec<(usize, usize, String)> {
+        let mut v: Vec<(usize, usize, String)> = vec![];
+        for (i, p) in pages.iter().enumerate() {
+            let m = media(p);
+            match v.last_mut() {
+                Some((_, n, last)) if *last == m => *n += 1,
+                _ => v.push((i, 1, m)),
+            }
+        }
+        v
+    }
+
+    pub fn print(job: &Job, draw: &mut Draw) -> Result<usize, String> {
+        let runs = runs(&job.pages);
+        let one = runs.len() == 1;
+        let dir = std::env::temp_dir();
+        let mut sent = 0;
+        // with one paper the printer makes the copies (collated); with
+        // several, each set goes out again run by run
+        let sets = if one { 1 } else { job.copies.max(1) };
+        for set in 0..sets {
+            for (k, (first, n, media)) in runs.iter().enumerate() {
+                let part = Job {
+                    printer: job.printer.clone(),
+                    settings: None,
+                    title: job.title.clone(),
+                    pages: job.pages[*first..first + n].to_vec(),
+                    copies: 1,
+                    mono: job.mono,
+                };
+                let bytes = pdf(&part, &mut |i, got, c| draw(first + i, got, c));
+                let file = dir.join(format!(
+                    "creabim-print-{}-{set}-{k}.pdf",
+                    std::process::id()
+                ));
+                std::fs::write(&file, bytes).map_err(|e| e.to_string())?;
+                let copies = if one { job.copies.max(1) } else { 1 };
+                let mut cmd = tool("lp");
+                cmd.arg("-d")
+                    .arg(&job.printer)
+                    .arg("-t")
+                    .arg(&job.title)
+                    .arg("-n")
+                    .arg(copies.to_string())
+                    .args(["-o", "print-scaling=none", "-o", "collate=true"]);
+                if !media.is_empty() {
+                    cmd.args(["-o", &format!("media={media}")]);
+                }
+                if job.mono {
+                    cmd.args(["-o", "print-color-mode=monochrome", "-o", "ColorModel=Gray"]);
+                }
+                let out = cmd.arg(&file).output();
+                let _ = std::fs::remove_file(&file);
+                let out = out.map_err(|e| format!("lp: {e}"))?;
+                if !out.status.success() {
+                    let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                    return Err(if why.is_empty() {
+                        "lp failed".into()
+                    } else {
+                        why
+                    });
+                }
+                sent += n * copies as usize;
+            }
+        }
+        Ok(sent)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use creabim_geom::printing::PaperAsk;
+        use glam::DVec2;
+
+        fn page(w: f64, h: f64, name: &'static str) -> Page {
+            Page {
+                sheet: DVec2::new(w, h),
+                ask: PaperAsk {
+                    size: Some(DVec2::new(w, h)),
+                    landscape: w > h,
+                    turned: false,
+                    name,
+                },
+            }
+        }
+
+        #[test]
+        fn pages_on_one_paper_go_as_one_job() {
+            let p = [
+                page(420.0, 297.0, "A3"),
+                page(420.0, 297.0, "A3"),
+                page(210.0, 297.0, "A4"),
+                page(900.0, 297.0, ""),
+            ];
+            let r = runs(&p);
+            assert_eq!(
+                r,
+                vec![
+                    (0, 2, "A3".to_string()),
+                    (2, 1, "A4".to_string()),
+                    (3, 1, "Custom.297x900mm".to_string()),
+                ]
+            );
+        }
+
+        #[test]
+        fn the_default_printer_is_read() {
+            assert_eq!(
+                default_in("system default destination: HP_LaserJet\n").as_deref(),
+                Some("HP_LaserJet")
+            );
+            assert_eq!(default_in("no system default destination\n"), None);
+        }
+    }
 }
 
 #[cfg(windows)]

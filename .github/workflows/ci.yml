@@ -119,3 +119,54 @@ jobs:
           path: |
             target/release/creabim-app.exe
             target/release/creabim.exe
+
+  # Apple Silicon (M1 and later) only, built for its own cores: drawing
+  # through Metal (wgpu), the calculations compiled for apple-m1 (NEON and
+  # the rest of ARMv8.5). The app is ad-hoc signed, not notarized: the first
+  # time, right-click CreaBIM.app › Open (or System Settings › Privacy &
+  # Security › Open Anyway).
+  macos-build:
+    name: macOS app build (Apple Silicon)
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS: "-C target-cpu=apple-m1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: apple-m1
+      - run: cargo build --release --target aarch64-apple-darwin -p creabim-app -p creabim-cli
+      - name: CLI runs
+        run: |
+          target/aarch64-apple-darwin/release/creabim sample house.creabim.json
+          target/aarch64-apple-darwin/release/creabim pdf house.creabim.json house.pdf
+          file target/aarch64-apple-darwin/release/creabim-app
+      - name: Disk image and zip
+        run: |
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          DATE=$(git log -1 --format=%cs)
+          name="CreaBIM-${VERSION}-${DATE}-macos-apple-silicon"
+          bash packaging/macos/make-dmg.sh "$VERSION" "$DATE" \
+            target/aarch64-apple-darwin/release "$name.dmg" "$name.zip"
+      - name: The app starts (informational; the runner may have no GPU)
+        continue-on-error: true
+        run: |
+          app=$(mktemp -d)
+          ditto -x -k CreaBIM-*.zip "$app"
+          "$app/CreaBIM.app/Contents/MacOS/CreaBIM" & pid=$!
+          sleep 20
+          kill -0 $pid && echo "running after 20 s"
+          kill $pid || true
+          tail -n 40 ~/Library/Logs/CreaBIM/activity.log || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: creabim-macos-apple-silicon
+          path: |
+            CreaBIM-*-macos-apple-silicon.dmg
+            CreaBIM-*-macos-apple-silicon.zip
