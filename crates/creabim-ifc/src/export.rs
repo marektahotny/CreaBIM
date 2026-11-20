@@ -642,7 +642,11 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                     }
                     None => c.shape("SweptSolid", &[solid]),
                 };
-                let r = product(&mut c, "IFCSLAB", e, pl, shape, ",$,.FLOOR.");
+                let tail = match creabim_core::slab::kind_of(model, slab) {
+                    creabim_core::SlabKind::Foundation => ",$,.BASESLAB.",
+                    creabim_core::SlabKind::Floor => ",$,.FLOOR.",
+                };
+                let r = product(&mut c, "IFCSLAB", e, pl, shape, tail);
                 of_type(e, r);
                 contained.entry(Some(slab.level)).or_default().push(r);
                 if cut.is_none() || layers_mode {

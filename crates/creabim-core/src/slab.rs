@@ -845,3 +845,35 @@ mod shaft_tests {
         );
     }
 }
+
+/// Whether `slab` is a floor/ceiling slab or a foundation slab: as set, or
+/// else a slab with no other slab under it (one on the ground, the
+/// lowest floor of a basement) is a foundation slab and any other a floor.
+pub fn kind_of(model: &Model, slab: &Slab) -> crate::SlabKind {
+    if let Some(k) = slab.kind {
+        return k;
+    }
+    let top = |s: &Slab| s.top(model.level(s.level).map_or(0.0, |l| l.elevation));
+    let bbox = |s: &Slab| {
+        s.boundary.iter().fold(
+            (DVec2::splat(f64::INFINITY), DVec2::splat(f64::NEG_INFINITY)),
+            |(lo, hi), p| (lo.min(*p), hi.max(*p)),
+        )
+    };
+    let bottom = top(slab) - slab.thickness;
+    let (lo, hi) = bbox(slab);
+    // plans overlapping by more than a few centimetres
+    let under = model.iter().any(|e| match &e.kind {
+        crate::ElementKind::Slab(o) if !std::ptr::eq(o, slab) && top(o) < bottom + 1e-3 => {
+            let (a, b) = bbox(o);
+            let over = hi.min(b) - lo.max(a);
+            over.x > 0.05 && over.y > 0.05
+        }
+        _ => false,
+    });
+    if under {
+        crate::SlabKind::Floor
+    } else {
+        crate::SlabKind::Foundation
+    }
+}

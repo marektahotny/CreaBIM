@@ -292,7 +292,9 @@ impl Element {
                 if o.sill < 0.0 || o.offset < 0.0 {
                     return Err("opening sill and offset must not be negative".into());
                 }
-                Ok(())
+                o.performance
+                    .as_ref()
+                    .map_or(Ok(()), crate::joinery::Performance::validate)
             }
             ElementKind::FreeMesh(m) => {
                 m.mesh.validate()?;
@@ -1492,6 +1494,18 @@ pub struct Slab {
     /// Layer edges moved by hand (see [`LayerEdge`]); none for most.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layer_edges: Vec<LayerEdge>,
+    /// What the slab is for: a floor/ceiling slab or a foundation slab,
+    /// priced apart. `None` works it out, see [`crate::slab::kind_of`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<SlabKind>,
+}
+
+/// A floor/ceiling slab (stropná doska) or a foundation slab (základová
+/// doska), as IFC tells IfcSlab FLOOR from BASESLAB.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SlabKind {
+    Floor,
+    Foundation,
 }
 
 impl Slab {
@@ -1507,6 +1521,7 @@ impl Slab {
             assembly: None,
             holes: vec![],
             layer_edges: vec![],
+            kind: None,
         }
     }
 
@@ -1678,6 +1693,10 @@ pub struct Opening {
     /// A door with a threshold between its jambs.
     #[serde(default, skip_serializing_if = "is_false")]
     pub threshold: bool,
+    /// What the threshold is made of (wood, metal, stone…), for the
+    /// take-off; left out, it is listed without a material.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_material: Option<ElementId>,
     /// How far the frame's outer face stands in from the outer edge of
     /// the wall's load-bearing core (less than nothing: out into the
     /// insulation). Left out, the frame stands on that edge in a layered
@@ -1701,6 +1720,10 @@ pub struct Opening {
     /// list writes what it can tell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texts: Option<crate::joinery::JoineryTexts>,
+    /// Its heat transfer, solar factor, light transmittance and sound
+    /// reduction, from its maker's data sheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub performance: Option<crate::joinery::Performance>,
 }
 
 /// How a field of a window or door opens. Left and right are seen from

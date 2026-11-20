@@ -215,6 +215,21 @@ pub(crate) fn type_props(t: &ElementType) -> Vec<(&'static str, Prop)> {
             out.push(("FrameDepth", Prop::Length(o.frame.depth)));
             out.push(("PanesAcross", Prop::Count(o.frame.panes_across as i64)));
             out.push(("PanesUp", Prop::Count(o.frame.panes_up as i64)));
+            if let Some(p) = &o.performance {
+                if !p.product.is_empty() {
+                    out.push(("Product", Prop::Label(p.product.clone())));
+                }
+                for (k, v) in [
+                    ("ThermalTransmittance", p.uw),
+                    ("SolarFactor", p.g),
+                    ("LightTransmittance", p.tv),
+                    ("SoundReduction", p.rw),
+                ] {
+                    if let Some(v) = v {
+                        out.push((k, Prop::Real(v)));
+                    }
+                }
+            }
         }
         TypeParams::Slab(s) | TypeParams::Roof(s) => {
             out.push(("Thickness", Prop::Length(s.thickness)));
@@ -318,6 +333,17 @@ pub(crate) fn type_from(category: TypeCategory, curtain: bool, p: &Props) -> Typ
                 door: None,
                 division: None,
                 threshold: false,
+                performance: {
+                    let num = |k: &str| p.get(k).and_then(|v| v.0).filter(|v| v.is_finite());
+                    let perf = creabim_core::joinery::Performance {
+                        product: label(p, "Product").unwrap_or("").to_string(),
+                        uw: num("ThermalTransmittance"),
+                        g: num("SolarFactor"),
+                        tv: num("LightTransmittance"),
+                        rw: num("SoundReduction"),
+                    };
+                    (perf != Default::default()).then_some(perf)
+                },
             };
             if door {
                 TypeParams::Door(o)

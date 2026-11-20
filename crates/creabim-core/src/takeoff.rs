@@ -135,8 +135,9 @@ impl Layout {
 }
 
 /// The order element categories are listed in: as a house is built.
-pub const CATEGORY_ORDER: [&str; 15] = [
+pub const CATEGORY_ORDER: [&str; 17] = [
     "Footings",
+    "Foundation slabs",
     "Walls",
     "Columns",
     "Beams",
@@ -147,6 +148,7 @@ pub const CATEGORY_ORDER: [&str; 15] = [
     "Railings",
     "Doors",
     "Windows",
+    "Thresholds",
     "Outer sills",
     "Inner sills",
     "Objects",
@@ -236,7 +238,10 @@ pub fn lines(model: &Model) -> Vec<Line> {
             ElementKind::Slab(s) => {
                 let area = s.area();
                 (
-                    "Slabs",
+                    match crate::slab::kind_of(model, s) {
+                        crate::SlabKind::Foundation => "Foundation slabs",
+                        crate::SlabKind::Floor => "Slabs",
+                    },
                     s.level,
                     Quantity {
                         area,
@@ -469,6 +474,57 @@ pub fn lines(model: &Model) -> Vec<Line> {
                 label: None,
             });
         }
+    }
+    // door thresholds: pieces of a material and size, as long as the
+    // clear width between the jambs and as deep as the frame
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        if o.kind != crate::OpeningKind::Door || !o.threshold {
+            continue;
+        }
+        let Some(host) = model.get(o.host) else {
+            continue;
+        };
+        let ElementKind::Wall(w) = &host.kind else {
+            continue;
+        };
+        let asm = assembly_of(model, host).map(|x| x.1);
+        let frame = o.frame.fitted(o.width, o.height, w.thickness);
+        let (a0, a1) = o.frame_span(w, asm, frame.depth);
+        let mm = |v: f64| (v * 1000.0).round();
+        let depth = mm(a1 - a0) / 1000.0;
+        let length = mm(o.width - 2.0 * crate::joinery::frame_width(o)) / 1000.0;
+        let kind = o
+            .threshold_material
+            .and_then(|m| model.get(m))
+            .map(|m| crate::words::tr(&m.name));
+        let label = format!(
+            "{}{} {} {} × {} {} mm",
+            crate::words::tr("Threshold"),
+            kind.map_or(String::new(), |k| format!(", {k}")),
+            crate::words::tr("w."),
+            mm(depth),
+            crate::words::tr("l."),
+            mm(length)
+        );
+        out.push(Line {
+            element: e.id,
+            category: "Thresholds",
+            level: Some(w.level),
+            material: o.threshold_material,
+            layer: None,
+            thickness: 0.0,
+            quantity: Quantity {
+                area: length * depth,
+                length,
+                count: 1,
+                ..Default::default()
+            },
+            perimeter: 0.0,
+            label: Some(label),
+        });
     }
     // window sills, outer (sheet metal) and inner (boards): pieces of a
     // size, listed by kind and size

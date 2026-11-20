@@ -55,11 +55,13 @@ fn door(host: ElementId) -> Element {
             no_outer_sill: false,
             no_inner_sill: false,
             threshold: false,
+            threshold_material: None,
             setback: None,
             reveal: None,
             division: None,
             door: None,
             texts: None,
+            performance: None,
         }),
     )
 }

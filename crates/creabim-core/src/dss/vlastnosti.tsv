@@ -243,7 +243,8 @@
 240	stupeň krytia IP	t
 241	svetelný okruh	t
 242	svetelný tok	c	lm
-243	činiteľ prestupu svetla	c	W/(m²·K)
+# 243: DSS gives W/(m²·K), a slip: light transmittance τv has no unit (0 to 1)
+243	činiteľ prestupu svetla	c
 244	svetlá výška	c	mm,cm,km,m
 245	systém generálneho kľúča	t
 246	technický list	t

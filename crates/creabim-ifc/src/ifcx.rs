@@ -1149,6 +1149,7 @@ impl Builder {
                             name,
                             kind: ElementKind::Slab(Slab {
                                 layer_edges: vec![],
+                                kind: None,
                                 level,
                                 boundary: p.footprint,
                                 thickness: p.z1 - p.z0,
@@ -1200,11 +1201,13 @@ impl Builder {
                             no_outer_sill: false,
                             no_inner_sill: false,
                             threshold: false,
+                            threshold_material: None,
                             setback: None,
                             reveal: None,
                             division: None,
                             door: None,
                             texts: None,
+                            performance: None,
                         }),
                         of_type: None,
                     });
