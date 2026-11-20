@@ -186,6 +186,11 @@ pub struct Assembly {
     pub layers: Vec<Layer>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
+    /// Its fire resistance as the designer states it ("REW 90/D1",
+    /// "REI 30"): what the fire checks (STN 92 0201-2 table 5, the
+    /// separation distances) compare; empty is not stated.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fire_resistance: String,
     /// Which of a wall's layers turn into its windows' reveals.
     #[serde(default, skip_serializing_if = "RevealWrap::is_default")]
     pub wrap: RevealWrap,
@@ -366,6 +371,7 @@ impl Assembly {
             usage,
             layers,
             description: String::new(),
+            fire_resistance: String::new(),
             wrap: RevealWrap::default(),
             thermal: None,
         }

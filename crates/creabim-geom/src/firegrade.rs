@@ -202,7 +202,7 @@ pub fn wall_declared(model: &Model, wall: &creabim_core::Wall) -> Option<f64> {
     let ElementKind::Assembly(a) = &model.get(wall.assembly?)?.kind else {
         return None;
     };
-    declared(&a.description)
+    stated(a)
 }
 
 /// The fire resistance a roof's assembly states (its description, as
@@ -214,7 +214,13 @@ pub fn roof_declared(model: &Model, roof: ElementId) -> Option<f64> {
     let ElementKind::Assembly(a) = &model.get(r.assembly?)?.kind else {
         return None;
     };
-    declared(&a.description)
+    stated(a)
+}
+
+/// An assembly's stated fire resistance, minutes: its own field first,
+/// else its description.
+pub fn stated(a: &creabim_core::Assembly) -> Option<f64> {
+    declared(&a.fire_resistance).or_else(|| declared(&a.description))
 }
 
 /// The minutes after a fire resistance class (R, RE, REI, EI, E, EW…).

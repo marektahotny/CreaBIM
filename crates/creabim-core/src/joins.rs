@@ -1763,6 +1763,7 @@ mod tests {
                     crate::Layer::new(LayerFunction::Finish, None, 0.05),
                 ],
                 description: String::new(),
+                fire_resistance: String::new(),
                 wrap: Default::default(),
                 thermal: None,
             }),

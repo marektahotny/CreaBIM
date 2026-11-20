@@ -847,6 +847,28 @@ impl CreaBimApp {
                     new.description = description;
                     asks.push(AsmAsk::Edit(id, "Assembly description", new));
                 }
+                // the fire resistance the fire checks compare (walls, roofs)
+                if matches!(a.usage, AssemblyUse::Wall | AssemblyUse::Roof) {
+                    let mut fire = a.fire_resistance.clone();
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::tr("Fire resistance"));
+                        if ui
+                            .add(
+                                egui::TextEdit::singleline(&mut fire)
+                                    .hint_text("REW 90/D1")
+                                    .desired_width(140.0),
+                            )
+                            .on_hover_text(crate::i18n::t(
+                                "As the assembly's test or the manufacturer states it (REW 90/D1, REI 30): the fire checks compare it with STN 92 0201-2 table 5; left empty, an outer wall counts as a wholly fire-open area",
+                            ))
+                            .changed()
+                        {
+                            let mut new = a.clone();
+                            new.fire_resistance = fire;
+                            asks.push(AsmAsk::Edit(id, "Assembly fire resistance", new));
+                        }
+                    });
+                }
                 // which layers turn into the windows' reveals
                 if a.usage == AssemblyUse::Wall {
                     let mut wrap = a.wrap;

@@ -1599,6 +1599,7 @@ mod core_tests {
                     Layer::new(LayerFunction::Finish, None, 0.02),
                 ],
                 description: String::new(),
+                fire_resistance: String::new(),
                 wrap: Default::default(),
                 thermal: None,
             }),
