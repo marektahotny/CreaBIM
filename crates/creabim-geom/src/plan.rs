@@ -83,7 +83,9 @@ pub fn hatch_lines(hatch: Hatch, polygon: &[DVec2], spacing: f64) -> Vec<(DVec2,
             v
         }
         Hatch::Concrete => {
-            let mut v = scan_lines(polygon, deg(45.0), s * 4.0, 0.0);
+            // about 2.4 mm apart on paper, as concrete reads in the sample
+            // sections (ASR_006): at 4x the lines missed a footing
+            let mut v = scan_lines(polygon, deg(45.0), s * 2.0, 0.0);
             v.extend(stipple(polygon, s * 1.3));
             v
         }
@@ -118,7 +120,7 @@ fn stipple(polygon: &[DVec2], spacing: f64) -> Vec<(DVec2, DVec2)> {
     let (lo, hi) = polygon
         .iter()
         .fold((DVec2::MAX, DVec2::MIN), |(a, b), p| (a.min(*p), b.max(*p)));
-    let dot = DVec2::new(spacing * 0.12, 0.0);
+    let dot = DVec2::new(spacing * 0.2, 0.0);
     let mut out = Vec::new();
     let mut j = (lo.y / spacing).floor() as i64;
     while (j as f64) * spacing <= hi.y {
@@ -1091,7 +1093,7 @@ pub fn sketch_items(
 /// Does the plan of `level`, cut `cut_height` above it, pass through
 /// footing `f`? A foundation level under the ground floor shows the
 /// footings its plane cuts, whatever level their walls stand on.
-fn footing_cut_at(
+pub(crate) fn footing_cut_at(
     model: &Model,
     f: &creabim_core::Footing,
     level: ElementId,
@@ -1103,6 +1105,15 @@ fn footing_cut_at(
     let z = l.elevation + cut_height;
     let top = f.top(model);
     top - f.thickness < z && z < top
+}
+
+/// Is the plan of `level` cut `cut_height` above it a foundation plan:
+/// does its plane pass through a footing?
+pub fn is_foundation_plan(model: &Model, level: ElementId, cut_height: f64) -> bool {
+    model.iter().any(|e| match &e.kind {
+        ElementKind::Footing(f) => footing_cut_at(model, f, level, cut_height),
+        _ => false,
+    })
 }
 
 /// Is `material` hollow concrete formwork blocks (DT, "debniace

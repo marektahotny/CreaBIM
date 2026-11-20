@@ -290,8 +290,9 @@ pub fn footprint(model: &Model, own: ElementId, cut_height: f64) -> Vec<PlanItem
 }
 
 /// Does the site plan leave element `id` out: the building's parts, its
-/// pipes, its openings, the section and elevation marks, and objects
-/// inside its rooms? Site objects, terrain, networks and notes stay.
+/// pipes, its openings, the section and elevation marks, objects inside
+/// its rooms and the terrain's mesh? Site objects, paving, earthworks,
+/// networks and notes stay.
 pub fn hides(model: &Model, id: ElementId) -> bool {
     let Some(e) = model.get(id) else {
         return false;
@@ -315,6 +316,9 @@ pub fn hides(model: &Model, id: ElementId) -> bool {
         | ElementKind::Shaft(_)
         | ElementKind::View(_) => true,
         ElementKind::Object(o) => crate::firezones::room_at(model, o.level, o.position),
+        // the terrain's mesh: it is modelled in its own plan (3D terén),
+        // the site plan has the map's cadastre and contours
+        ElementKind::Site(s) => matches!(s.form, creabim_core::site::SiteForm::Terrain { .. }),
         _ => false,
     }
 }
@@ -341,7 +345,23 @@ mod tests {
         let e = creabim_core::Element::new("Site plan", ElementKind::View(v));
         let id = e.id;
         Transaction::new("site").insert(e).apply(&mut m).unwrap();
+        // a room's tag in it (rooms showed their names and areas there)
+        let room = m
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Room(_)))
+            .unwrap()
+            .id;
+        let tag = creabim_core::Element::new(
+            "Room tag",
+            ElementKind::Tag(creabim_core::Tag::new(id, room, glam::DVec2::ZERO)),
+        );
+        let tag_id = tag.id;
+        Transaction::new("tag").insert(tag).apply(&mut m).unwrap();
         let d = crate::section::view_drawing(&m, id).unwrap();
+        assert!(
+            d.items.iter().all(|it| it.id() != tag_id),
+            "a room's tag shows"
+        );
         let outer: HashSet<ElementId> = outer_walls(&m, ground).into_iter().collect();
         let all = m
             .iter()

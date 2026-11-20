@@ -298,8 +298,7 @@ mod tests {
 mod storeys {
     use super::*;
 
-    /// A terrain from the map, on 1. NP, shows in its plan and the site
-    /// plan only: 2. NP, still empty, was drawn as 1. NP cut higher, with
+    /// A terrain from the map, on 1. NP, shows in its own plan only: 2. NP, still empty, was drawn as 1. NP cut higher, with
     /// the terrain in it.
     #[test]
     fn a_terrain_shows_on_its_own_level_and_the_site_plan_only() {
@@ -352,12 +351,18 @@ mod storeys {
             seen.insert((name, view.graphics.range.from_above), shows);
         }
         assert_eq!(seen.get(&("1. NP".to_string(), false)), Some(&true));
-        assert_eq!(seen.get(&("1. NP".to_string(), true)), Some(&true));
+        // the site plan has the map's contours, not the terrain's mesh
+        assert_eq!(seen.get(&("1. NP".to_string(), true)), Some(&false));
         assert_eq!(seen.get(&("2. NP".to_string(), false)), Some(&false));
-        // the site plan traced under 2. NP: its terrain, faint
+        // another plan traced under 2. NP (the terrain's own): its terrain,
+        // faint
         let site = model
             .iter()
-            .find(|e| matches!(&e.kind, ElementKind::View(v) if v.graphics.range.from_above))
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if !v.graphics.range.from_above
+                        && matches!(v.kind, creabim_core::ViewKind::Plan { level, .. } if level == l1))
+            })
             .unwrap()
             .id;
         let upper = model

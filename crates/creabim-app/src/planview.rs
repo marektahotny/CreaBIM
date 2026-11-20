@@ -2344,45 +2344,8 @@ fn show_pane(
         if response.clicked() {
             let at = xf.to_world(response.interact_pointer_pos()?);
             let tol = 12.0 / xf.scale as f64;
-            // the nearest drawn line: its whole length gives the direction
-            let mut best: Option<(f64, DVec2, DVec2)> = None;
-            let mut consider = |a: DVec2, b: DVec2| {
-                let d = segment_distance(at, a, b);
-                if a.distance(b) > 1e-6 && d < tol && best.is_none_or(|(bd, ..)| d < bd) {
-                    best = Some((d, a, b));
-                }
-            };
-            for it in &plan.items {
-                match it {
-                    PlanItem::Line { a, b, .. } => consider(*a, *b),
-                    PlanItem::Polygon { points, .. } => {
-                        for k in 0..points.len() {
-                            consider(points[k], points[(k + 1) % points.len()]);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            // and the lines of the drawings under it: a map's parcel
-            // boundary (a DXF from the map site), its own or the traced
-            // site plan's
-            let model = doc.model();
-            let shown_in: Vec<ElementId> = std::iter::once(view)
-                .chain(underlay_view(model, view))
-                .collect();
-            for v in shown_in {
-                for (id, r) in creabim_core::reference::in_view(model, v) {
-                    if r.hidden {
-                        continue;
-                    }
-                    if let Some(ix) = state.ref_cache.index(model, id, r) {
-                        for [a, b] in ix.near(at, tol, 500).0 {
-                            consider(a, b);
-                        }
-                    }
-                }
-            }
-            let Some((_, a, b)) = best else {
+            let best = line_at(state, doc.model(), view, plan, at, tol);
+            let Some((a, b)) = best else {
                 state.status = Some(
                     "There is no line here: click nearer a boundary, a map line or a wall.".into(),
                 );
@@ -5174,6 +5137,53 @@ pub fn joined_with(doc: &Document, id: ElementId) -> Vec<ElementId> {
         }
     }
     out
+}
+
+/// The line nearest `at` within `tol` in plan `view`: one drawn, or one
+/// of the drawings shown in it or in the plan traced under it (a map's
+/// parcel boundary, a DXF's line). Its ends give its direction.
+pub fn line_at(
+    state: &mut PlanState,
+    model: &creabim_core::Model,
+    view: ElementId,
+    plan: &Drawing,
+    at: DVec2,
+    tol: f64,
+) -> Option<(DVec2, DVec2)> {
+    let mut best: Option<(f64, DVec2, DVec2)> = None;
+    let mut consider = |a: DVec2, b: DVec2| {
+        let d = segment_distance(at, a, b);
+        if a.distance(b) > 1e-6 && d < tol && best.is_none_or(|(bd, ..)| d < bd) {
+            best = Some((d, a, b));
+        }
+    };
+    for it in &plan.items {
+        match it {
+            PlanItem::Line { a, b, .. } => consider(*a, *b),
+            PlanItem::Polygon { points, .. } => {
+                for k in 0..points.len() {
+                    consider(points[k], points[(k + 1) % points.len()]);
+                }
+            }
+            _ => {}
+        }
+    }
+    let shown_in: Vec<ElementId> = std::iter::once(view)
+        .chain(underlay_view(model, view))
+        .collect();
+    for v in shown_in {
+        for (id, r) in creabim_core::reference::in_view(model, v) {
+            if r.hidden {
+                continue;
+            }
+            if let Some(ix) = state.ref_cache.index(model, id, r) {
+                for [a, b] in ix.near(at, tol, usize::MAX).0 {
+                    consider(a, b);
+                }
+            }
+        }
+    }
+    best.map(|(_, a, b)| (a, b))
 }
 
 /// The plan view drawn under plan `view` (its underlay), if any.
@@ -9219,6 +9229,70 @@ mod tests {
     }
 
     use super::*;
+
+    /// A map's parcel boundary (a DXF in S-JTSK, brought to the origin as
+    /// a map is) picked to turn north by: found among dense contours.
+    #[test]
+    fn a_line_of_a_maps_drawing_is_found_to_turn_north_by() {
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let view = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. })))
+            .unwrap()
+            .id;
+        // the boundary from (-547400, -1253330) to (-547380, -1253290),
+        // and 3000 short contour pieces round it
+        let mut dxf = String::from("0\nSECTION\n2\nENTITIES\n");
+        let mut line = |layer: &str, a: (f64, f64), b: (f64, f64)| {
+            dxf.push_str(&format!(
+                "0\nLINE\n8\n{layer}\n10\n{}\n20\n{}\n11\n{}\n21\n{}\n",
+                a.0, a.1, b.0, b.1
+            ));
+        };
+        line(
+            "KN_HRANICE",
+            (-547400.0, -1253330.0),
+            (-547380.0, -1253290.0),
+        );
+        for k in 0..3000 {
+            let x = -547420.5 + (k % 60) as f64;
+            let y = -1253340.0 + (k / 60) as f64;
+            line("VRSTEVNICE", (x, y), (x + 0.3, y + 0.1));
+        }
+        dxf.push_str("0\nENDSEC\n0\nEOF\n");
+        let path = std::env::temp_dir().join(format!("creabim-north-{}.dxf", std::process::id()));
+        std::fs::write(&path, dxf).unwrap();
+        let source = creabim_core::RefSource::Dxf {
+            path: path.to_string_lossy().into_owned(),
+            unit: Some(1.0),
+        };
+        let shown = crate::trace::read(doc.model(), &source);
+        let b = crate::trace::bounds_of(&source, &shown).unwrap();
+        let mut r = creabim_core::Reference::new(source, vec![view]);
+        r.in_place(b);
+        r.over = true;
+        let shift = DVec2::new(-547382.28, -1253318.85);
+        r.at -= shift;
+        doc.commit(
+            creabim_core::Transaction::new("Map").insert(creabim_core::Element::new(
+                "Site plan",
+                ElementKind::Reference(r),
+            )),
+        )
+        .unwrap();
+        let mut state = PlanState::default();
+        let plan = creabim_geom::PlanView { items: vec![] };
+        // halfway along the boundary, a little off it
+        let mid = DVec2::new(-547390.0, -1253310.0) - shift + DVec2::new(0.05, 0.0);
+        let (a, b) = line_at(&mut state, doc.model(), view, &plan, mid, 0.3).expect("the boundary");
+        let d = (b - a).normalize();
+        assert!(
+            (d.x.abs() - (20.0f64 / 44.72136).abs()).abs() < 1e-3,
+            "{a} {b}"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
 
     /// Drive a plan pane with pointer events, frame by frame.
     fn drive_box(kind_section: bool, decorations: bool, two: bool) -> usize {

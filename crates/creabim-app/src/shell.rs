@@ -1457,27 +1457,56 @@ impl CreaBimApp {
         items
     }
 
-    /// Open the Foundation plan, or make one first: a level 600 mm below the
-    /// lowest, its plan showing the level above as underlay (A3-1).
+    /// Open the Foundation plan, or make one first: a level at the
+    /// footings' underside (600 mm below the lowest without footings), cut
+    /// through the footings. An existing one whose plane misses every
+    /// footing is cut through them again (George 2026-11-20: cut above
+    /// them it drew the ground floor's walls, not the footings). Nothing
+    /// of the storey above is drawn: no underlay, no overhead walls.
     pub(super) fn show_foundation_plan(&mut self) {
         self.plan.footing_placed = false;
-        if let Some(v) = crate::memberstool::foundation_plan(self.doc.model()) {
+        // the footings' heights: lowest underside, lowest top
+        let model = self.doc.model();
+        let span = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Footing(f) => {
+                    let top = f.top(model);
+                    Some((top - f.thickness, top))
+                }
+                _ => None,
+            })
+            .fold(None, |acc: Option<(f64, f64)>, (b, t)| match acc {
+                Some((lb, lt)) => Some((lb.min(b), lt.min(t))),
+                None => Some((b, t)),
+            });
+        if let Some(v) = crate::memberstool::foundation_plan(model) {
             self.active_view = Some(v);
-            self.status = "Foundation plan: the footings, under the floor above.".into();
+            if let Some(tx) = crate::memberstool::fit_foundation_cut(model, v) {
+                let _ = self.doc.commit(tx);
+            }
+            self.status = "Foundation plan: the footings, cut through.".into();
             return;
         }
-        let lowest = creabim_core::levels::sorted(self.doc.model())
+        let lowest = creabim_core::levels::sorted(model)
             .first()
             .map_or(0.0, |(_, _, l)| l.elevation);
+        let (elevation, cut) = match span {
+            Some((bottom, top)) if top > bottom + 1e-3 => (bottom, (top - bottom) / 2.0),
+            _ => (lowest - 0.6, 0.3),
+        };
         let level = Element::new(
             "Foundation",
             ElementKind::Level(creabim_core::Level {
-                elevation: lowest - 0.6,
-                height: 0.6,
+                elevation,
+                height: (lowest - elevation).max(0.1),
             }),
         );
         let mut view = creabim_core::View::plan(level.id);
-        view.underlay = creabim_core::Underlay::Above;
+        view.kind = creabim_core::ViewKind::Plan {
+            level: level.id,
+            cut_height: cut,
+        };
         let view = Element::new("Foundation plan", ElementKind::View(view));
         let plan = view.id;
         let tx = creabim_core::Transaction::new("Make a Foundation plan")
@@ -1487,8 +1516,8 @@ impl CreaBimApp {
             Ok(()) => {
                 self.active_view = Some(plan);
                 self.status = format!(
-                    "Made a Foundation plan at {}, with the floor above as underlay.",
-                    crate::units::elevation(lowest - 0.6)
+                    "Made a Foundation plan at {}, cut through the footings.",
+                    crate::units::elevation(elevation)
                 );
             }
             Err(e) => self.status = format!("Couldn't make a Foundation plan: {e}"),
