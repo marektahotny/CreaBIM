@@ -548,6 +548,11 @@ pub struct PlanState {
     /// of the place drawn on the map (its corner, the way it runs),
     /// `Some(Some(..))` for the building's matching side.
     pub place_pick: Option<Option<(DVec2, DVec2)>>,
+    /// Placing the building exactly: the lines picked so far (the side
+    /// boundary, the building's side along it, the rear boundary).
+    pub place_exact: Option<Vec<(DVec2, DVec2)>>,
+    /// Metres from the side boundary and from the rear one.
+    pub place_dist: [f64; 2],
     /// A dimension's number being typed over.
     pub dim_edit: Option<DimEdit>,
     /// What was selected before the last click: a double-click on a
@@ -760,6 +765,8 @@ impl Default for PlanState {
             north_pick: false,
             turn_pick: None,
             place_pick: None,
+            place_exact: None,
+            place_dist: [2.0, 5.0],
             dim_edit: None,
             dim_edit_prefer: Vec::new(),
             chain_line: None,
@@ -2517,6 +2524,82 @@ fn show_pane(
     if state.north_pick && site_plan {
         state.north_pick = false;
         state.turn_pick = Some(view);
+    }
+    if state.place_exact.is_some() && site_plan {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            state.place_exact = None;
+            state.status = Some(crate::i18n::tr("The site is left as it was."));
+            return None;
+        }
+        if response.clicked() {
+            let at = xf.to_world(response.interact_pointer_pos()?);
+            let tol = 12.0 / xf.scale as f64;
+            let Some(line) = line_at(state, doc.model(), view, plan, at, tol) else {
+                state.status = Some(crate::i18n::tr(
+                    "There is no line here: click nearer a boundary, a map line or a wall.",
+                ));
+                return None;
+            };
+            let picked = state.place_exact.get_or_insert_with(Vec::new);
+            picked.push(line);
+            match picked.len() {
+                1 => {
+                    state.status = Some(crate::i18n::tr(
+                        "Now click the building's side that runs along that boundary.",
+                    ))
+                }
+                2 => {
+                    state.status = Some(crate::i18n::tr(
+                        "Now click the rear boundary (it may run askew).",
+                    ))
+                }
+                _ => {
+                    let lines = state.place_exact.take().unwrap_or_default();
+                    // the building's outline: what the site plan cuts
+                    let mut corners = vec![];
+                    for it in &plan.items {
+                        match it {
+                            PlanItem::Line {
+                                pen: Pen::Cut,
+                                a,
+                                b,
+                                ..
+                            } => corners.extend([*a, *b]),
+                            PlanItem::Polygon {
+                                pen: Pen::Cut,
+                                points,
+                                ..
+                            } => corners.extend(points.iter().copied()),
+                            _ => {}
+                        }
+                    }
+                    let [d1, d2] = state.place_dist;
+                    let r = match creabim_core::mapgroup::fit_exact(
+                        lines[0], lines[1], lines[2], &corners, d1, d2,
+                    ) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            state.status = Some(crate::i18n::tr(&e));
+                            return None;
+                        }
+                    };
+                    let tx = creabim_core::mapgroup::move_ground(doc.model(), &r);
+                    if tx.ops.is_empty() {
+                        state.status = Some(crate::i18n::tr(
+                            "There is no map to move: download or import the site's map first.",
+                        ));
+                        return None;
+                    }
+                    if let Err(e) = doc.commit(tx) {
+                        return Some(e.to_string());
+                    }
+                    state.status = Some(crate::i18n::tr(&format!(
+                        "The site moved under the building: {d1} m from the side boundary, {d2} m from the rear one at its nearest corner. Ctrl+Z to undo."
+                    )));
+                }
+            }
+        }
+        return None;
     }
     if state.place_pick.is_some() && site_plan {
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {

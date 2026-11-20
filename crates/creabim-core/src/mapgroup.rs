@@ -272,6 +272,75 @@ pub fn fit(ground: (DVec2, DVec2), building: (DVec2, DVec2)) -> Rigid {
     }
 }
 
+/// The rigid move of the ground that sets the building exactly on the
+/// plot: the side boundary `side` turned parallel to the building's side
+/// `edge`, `to_side` metres out from it, and the building slid along it
+/// until its nearest corner lies `to_rear` metres square off the rear
+/// boundary `rear`, which may run askew (George: "2 m from the side
+/// boundary, 5 m from the rear one"). `corners` are the building's
+/// outline. The plot's inside is taken as the side of each boundary the
+/// other one's far end lies on.
+pub fn fit_exact(
+    side: (DVec2, DVec2),
+    edge: (DVec2, DVec2),
+    rear: (DVec2, DVec2),
+    corners: &[DVec2],
+    to_side: f64,
+    to_rear: f64,
+) -> Result<Rigid, String> {
+    let unit = |d: DVec2| d.try_normalize().ok_or("A line has no length.".to_string());
+    if corners.is_empty() {
+        return Err("The building has no outline in this plan.".into());
+    }
+    let centre = corners.iter().copied().sum::<DVec2>() / corners.len() as f64;
+    let e = unit(edge.1 - edge.0)?;
+    // out of the building, square off its side
+    let mut n = e.perp();
+    if (centre - edge.0).dot(n) > 0.0 {
+        n = -n;
+    }
+    // the plot's inside off each boundary: toward the other's far end
+    let far = |l: (DVec2, DVec2), from: (DVec2, DVec2)| -> Result<DVec2, String> {
+        let d = unit(from.1 - from.0)?;
+        let off = |p: DVec2| (p - from.0).perp_dot(d).abs();
+        Ok(if off(l.0) > off(l.1) { l.0 } else { l.1 })
+    };
+    let inward = |l: (DVec2, DVec2), towards: DVec2| -> Result<DVec2, String> {
+        let mut m = unit(l.1 - l.0)?.perp();
+        if (towards - l.0).dot(m) < 0.0 {
+            m = -m;
+        }
+        Ok(m)
+    };
+    let side_in = inward(side, far(rear, side)?)?;
+    // turned so the side boundary's inside faces the building
+    let turn = (-n).to_angle() - side_in.to_angle();
+    let r = DVec2::from_angle(turn);
+    let about = side.0;
+    let at = |p: DVec2| about + r.rotate(p - about);
+    // out from the building's side by to_side
+    let s = (at(side.0) - edge.0).dot(n);
+    let mut by = n * (to_side - s);
+    // along it until the nearest corner is to_rear off the rear boundary
+    let (r0, r1) = (at(rear.0) + by, at(rear.1) + by);
+    let m = inward((r0, r1), at(far(side, rear)?) + by)?;
+    let k = e.dot(m);
+    if k.abs() < 1e-6 {
+        return Err(
+            "The two boundaries run side by side: pick one the building backs onto.".into(),
+        );
+    }
+    let nearest = corners
+        .iter()
+        .map(|c| (*c - r0).dot(m))
+        .fold(f64::INFINITY, f64::min);
+    // moving the ground by u·e moves the corners by −u·e against it
+    let u = (nearest - to_rear) / k;
+    by += e * u;
+    let degrees = (turn.to_degrees() + 180.0).rem_euclid(360.0) - 180.0;
+    Ok(Rigid { about, degrees, by })
+}
+
 /// A model point's S-JTSK east and north (both negative in Slovakia):
 /// read off the map drawing where it lies under the point, else from the
 /// project's S-JTSK origin turned by true north. None without either.
@@ -289,6 +358,41 @@ pub fn sjtsk_of(model: &Model, p: DVec2) -> Option<DVec2> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn fit_exact_sets_the_building_off_a_side_and_a_slanted_rear_boundary() {
+        // a 10 × 6 house at the origin
+        let corners = [
+            DVec2::ZERO,
+            DVec2::new(10.0, 0.0),
+            DVec2::new(10.0, 6.0),
+            DVec2::new(0.0, 6.0),
+        ];
+        // a plot far off and askew: its side boundary, its rear one slanted
+        let r = DVec2::from_angle(0.6);
+        let o = DVec2::new(40.0, -30.0);
+        let g = |x: f64, y: f64| o + r.rotate(DVec2::new(x, y));
+        let side = (g(0.0, 0.0), g(30.0, 0.0));
+        let rear = (g(30.0, -2.0), g(26.0, 25.0));
+        // the house's south side along the side boundary, 2 m off it
+        let fit = fit_exact(side, (corners[0], corners[1]), rear, &corners, 2.0, 5.0).unwrap();
+        let (a, b) = (fit.apply(side.0), fit.apply(side.1));
+        let d = (b - a).normalize();
+        assert!(d.perp_dot(DVec2::X).abs() < 1e-9, "parallel {d}");
+        assert!((a.y - -2.0).abs() < 1e-9, "2 m off the side: {a}");
+        let (p, q) = (fit.apply(rear.0), fit.apply(rear.1));
+        let m = (q - p).normalize().perp();
+        let dist = corners
+            .iter()
+            .map(|c| (*c - p).perp_dot(q - p).abs() / (q - p).length())
+            .fold(f64::INFINITY, f64::min);
+        assert!((dist - 5.0).abs() < 1e-9, "5 m off the rear: {dist}");
+        // and on the plot's inside of the rear boundary, as of the side one
+        let sides: Vec<f64> = corners.iter().map(|c| (*c - p).dot(m).signum()).collect();
+        assert!(sides.iter().all(|x| *x == sides[0]));
+        let far = fit.apply(side.0);
+        assert_eq!((far - p).dot(m).signum(), sides[0]);
+    }
 
     #[test]
     fn fit_lays_the_ground_corner_and_side_on_the_building() {

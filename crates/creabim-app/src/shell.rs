@@ -1630,6 +1630,9 @@ impl CreaBimApp {
                     "In the site plan, click a side of the place drawn on the map (a rectangle's edge) near the corner the building's corner goes to. Esc leaves it.",
                 );
             }
+            "site" if arg == "exact" => {
+                self.place_exact_open = true;
+            }
             "site" if arg == "symbols" => {
                 self.site_symbols_open = true;
             }

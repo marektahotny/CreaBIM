@@ -656,6 +656,51 @@ mod shot_project {
         eprintln!("placed: {} ops, building {lo} {hi}", tx.ops.len());
         app.doc.commit(tx).unwrap();
         creabim_store::save(dir.join("placed.creabim"), &app.doc).unwrap();
+        // a plot with a slanted rear boundary, drawn on the map; the house
+        // set exactly 2 m off its side boundary and 5 m off the rear one
+        let q = |x: f64, y: f64| {
+            DVec2::new(-60.0, 30.0) + DVec2::from_angle(-0.5).rotate(DVec2::new(x, y))
+        };
+        let plot_pts = vec![q(0.0, 0.0), q(30.0, 0.0), q(26.0, 22.0), q(0.0, 22.0)];
+        let mut plot =
+            Sketch::polyline(Some(ground), Workplane::ground(0.0), plot_pts.clone(), true);
+        plot.view = Some(views[0]);
+        app.doc
+            .commit(
+                Transaction::new("plot").insert(Element::new("plot", ElementKind::Sketch(plot))),
+            )
+            .unwrap();
+        let corners = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
+        let fit = creabim_core::mapgroup::fit_exact(
+            (plot_pts[0], plot_pts[1]),
+            (corners[0], corners[1]),
+            (plot_pts[1], plot_pts[2]),
+            &corners,
+            2.0,
+            5.0,
+        )
+        .unwrap();
+        let tx = creabim_core::mapgroup::move_ground(app.doc.model(), &fit);
+        app.doc.commit(tx).unwrap();
+        let (a, b, c) = (
+            fit.apply(plot_pts[0]),
+            fit.apply(plot_pts[1]),
+            fit.apply(plot_pts[2]),
+        );
+        let off =
+            |p: DVec2, l0: DVec2, l1: DVec2| (p - l0).perp_dot(l1 - l0).abs() / (l1 - l0).length();
+        eprintln!(
+            "exact: side {:.3} rear {:.3}",
+            corners
+                .iter()
+                .map(|p| off(*p, a, b))
+                .fold(f64::INFINITY, f64::min),
+            corners
+                .iter()
+                .map(|p| off(*p, b, c))
+                .fold(f64::INFINITY, f64::min)
+        );
+        creabim_store::save(dir.join("exact.creabim"), &app.doc).unwrap();
         let legend =
             creabim_geom::serviceslegend::drawing(views[0], "Legenda situácie", app.doc.model());
         std::fs::write(dir.join("legend.svg"), legend.to_svg(1000.0)).unwrap();
