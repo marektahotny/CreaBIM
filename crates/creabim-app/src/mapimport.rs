@@ -575,6 +575,14 @@ mod shot_project {
             sk.mark = Some(m);
             tx = tx.insert(Element::new("mark", ElementKind::Sketch(sk)));
         }
+        // an S-JTSK coordinate mark, to be seen selected
+        let dim = creabim_core::Dimension::spot(
+            views[0],
+            creabim_core::HostPoint::free(DVec2::new(10.3, 0.0)),
+            creabim_core::HostPoint::free(DVec2::new(13.0, 2.0)),
+            Some(creabim_core::annotation::SJTSK_PATTERN.to_string()),
+        );
+        tx = tx.insert(Element::new("spot", ElementKind::Dimension(dim)));
         app.doc.commit(tx).unwrap();
         for v in &views {
             let d = creabim_geom::section::view_drawing(app.doc.model(), *v).unwrap();

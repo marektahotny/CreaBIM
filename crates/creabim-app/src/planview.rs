@@ -7071,6 +7071,14 @@ fn arc_points(xf: &Xf, center: DVec2, radius: f64, start: f64, end: f64) -> Vec<
 /// One mark drawn over itself in `color`, its strokes [`TRACE`] times
 /// their weight: what hovering it or selecting it shows.
 pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, mm: f64) {
+    // a turned site plan: turned as it is drawn, its text upright, so the
+    // trace lies on the mark instead of beside it (George: a selected
+    // coordinate mark showed twice)
+    if xf.turn != 0.0 {
+        let mut it = item.clone();
+        creabim_geom::turn::turn_item_by(&mut it, xf.turn);
+        return trace(painter, &xf.unturned(), &it, color, mm);
+    }
     let stroke = Stroke::new(TRACE, color);
     match item {
         PlanItem::Line { a, b, .. } => {
