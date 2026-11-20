@@ -470,76 +470,130 @@ fn pick_save_in(p: &Path, title: &str, ext: &str) -> Option<String> {
     d.save_file().map(|p| p.display().to_string())
 }
 
-/// Save as on Windows: the system's own picker, owned by the main window,
-/// but without its built-in "replace the file?" question, which opened
-/// behind the app window and held everything. CreaBIM asks itself, with a
-/// message box kept on top of every window.
+/// Save as on Windows: the system's own picker (IFileSaveDialog), owned by
+/// the main window, but with its "replace the file?" question switched off
+/// (FOS_OVERWRITEPROMPT): that question opened behind the app window and
+/// held everything. CreaBIM asks itself, with a message box kept on top of
+/// every window. (GetSaveFileNameW kept the question on, whatever its
+/// flags said.)
 #[cfg(windows)]
 mod win_save {
+    use std::ffi::c_void;
     use std::path::Path;
-    use windows_sys::Win32::UI::Controls::Dialogs::{
-        GetSaveFileNameW, OFN_ENABLESIZING, OFN_EXPLORER, OFN_HIDEREADONLY, OFN_NOCHANGEDIR,
-        OFN_PATHMUSTEXIST, OPENFILENAMEW,
+    use windows_sys::core::{GUID, HRESULT, PCWSTR, PWSTR};
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+    };
+    use windows_sys::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
+    use windows_sys::Win32::UI::Shell::{
+        FileSaveDialog, SHCreateItemFromParsingName, FOS_FORCEFILESYSTEM, FOS_NOCHANGEDIR,
+        FOS_OVERWRITEPROMPT, FOS_PATHMUSTEXIST, SIGDN, SIGDN_FILESYSPATH,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         MessageBoxW, SetForegroundWindow, IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_SETFOREGROUND,
         MB_TOPMOST, MB_YESNO,
     };
 
+    const IID_IFILESAVEDIALOG: GUID = GUID::from_u128(0x84bccd23_5fde_4cdb_aea4_af64b83d78ab);
+    const IID_ISHELLITEM: GUID = GUID::from_u128(0x43826d1e_e718_42ee_bc55_a1e261c37bfe);
+
+    type Release = unsafe extern "system" fn(*mut c_void) -> u32;
+
+    /// IFileSaveDialog's table, as far as it is used (IUnknown, IModalWindow,
+    /// IFileDialog in their order; the slots not called as plain words).
+    #[repr(C)]
+    struct DialogVt {
+        _query_interface: usize,
+        _add_ref: usize,
+        release: Release,
+        show: unsafe extern "system" fn(*mut c_void, HWND) -> HRESULT,
+        set_file_types:
+            unsafe extern "system" fn(*mut c_void, u32, *const COMDLG_FILTERSPEC) -> HRESULT,
+        _set_file_type_index: usize,
+        _get_file_type_index: usize,
+        _advise: usize,
+        _unadvise: usize,
+        set_options: unsafe extern "system" fn(*mut c_void, u32) -> HRESULT,
+        get_options: unsafe extern "system" fn(*mut c_void, *mut u32) -> HRESULT,
+        _set_default_folder: usize,
+        set_folder: unsafe extern "system" fn(*mut c_void, *mut c_void) -> HRESULT,
+        _get_folder: usize,
+        _get_current_selection: usize,
+        set_file_name: unsafe extern "system" fn(*mut c_void, PCWSTR) -> HRESULT,
+        _get_file_name: usize,
+        set_title: unsafe extern "system" fn(*mut c_void, PCWSTR) -> HRESULT,
+        _set_ok_button_label: usize,
+        _set_file_name_label: usize,
+        get_result: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT,
+        _add_place: usize,
+        set_default_extension: unsafe extern "system" fn(*mut c_void, PCWSTR) -> HRESULT,
+    }
+
+    #[repr(C)]
+    struct ItemVt {
+        _query_interface: usize,
+        _add_ref: usize,
+        release: Release,
+        _bind_to_handler: usize,
+        _get_parent: usize,
+        get_display_name: unsafe extern "system" fn(*mut c_void, SIGDN, *mut PWSTR) -> HRESULT,
+    }
+
+    /// A COM object, released when dropped.
+    struct Com<V>(*mut *const V);
+
+    impl<V> Com<V> {
+        fn vt(&self) -> &V {
+            unsafe { &**self.0 }
+        }
+        fn this(&self) -> *mut c_void {
+            self.0.cast()
+        }
+    }
+
+    impl<V> Drop for Com<V> {
+        fn drop(&mut self) {
+            // every table starts with IUnknown's: release is the third slot
+            unsafe {
+                let release: Release = *(*self.0).cast::<Release>().add(2);
+                release(self.this());
+            }
+        }
+    }
+
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
-    fn owner() -> windows_sys::Win32::Foundation::HWND {
+    fn owner() -> HWND {
         super::MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed) as _
     }
 
     pub fn pick(start: &Path, title: &str, ext: &str) -> Option<String> {
         let hwnd = owner();
-        let title_w = wide(title);
-        let filter: Vec<u16> = format!("{} (*.{ext})\0*.{ext}\0\0", ext.to_uppercase())
-            .encode_utf16()
-            .collect();
-        let def_ext = wide(ext);
-        let dir = start
-            .parent()
-            .filter(|d| d.is_dir())
-            .map(|d| wide(&d.display().to_string()));
         let mut name: String = start
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
+        let dir = start
+            .parent()
+            .filter(|d| d.is_dir())
+            .map(|d| d.to_path_buf());
         loop {
-            let mut buf = vec![0u16; 4096];
-            for (i, c) in name.encode_utf16().take(4000).enumerate() {
-                buf[i] = c;
-            }
-            let mut ofn: OPENFILENAMEW = unsafe { std::mem::zeroed() };
-            ofn.lStructSize = std::mem::size_of::<OPENFILENAMEW>() as u32;
-            ofn.hwndOwner = hwnd;
-            ofn.lpstrFilter = filter.as_ptr();
-            ofn.nFilterIndex = 1;
-            ofn.lpstrFile = buf.as_mut_ptr();
-            ofn.nMaxFile = buf.len() as u32;
-            ofn.lpstrInitialDir = dir.as_ref().map_or(std::ptr::null(), |d| d.as_ptr());
-            ofn.lpstrTitle = title_w.as_ptr();
-            ofn.lpstrDefExt = def_ext.as_ptr();
-            ofn.Flags = OFN_EXPLORER
-                | OFN_PATHMUSTEXIST
-                | OFN_HIDEREADONLY
-                | OFN_NOCHANGEDIR
-                | OFN_ENABLESIZING;
-            unsafe {
-                if !hwnd.is_null() {
-                    SetForegroundWindow(hwnd);
+            let picked = unsafe {
+                let init = CoInitializeEx(
+                    std::ptr::null(),
+                    (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+                );
+                let picked = show(hwnd, dir.as_deref(), &name, title, ext);
+                if init >= 0 {
+                    CoUninitialize();
                 }
-                if GetSaveFileNameW(&mut ofn) == 0 {
-                    return None;
-                }
-            }
-            let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-            let picked = String::from_utf16_lossy(&buf[..len]);
+                picked
+            }?;
             if !Path::new(&picked).exists() || replace(hwnd, &picked, title) {
                 return Some(picked);
             }
@@ -552,7 +606,91 @@ mod win_save {
         }
     }
 
-    fn replace(hwnd: windows_sys::Win32::Foundation::HWND, path: &str, title: &str) -> bool {
+    unsafe fn show(
+        hwnd: HWND,
+        dir: Option<&Path>,
+        name: &str,
+        title: &str,
+        ext: &str,
+    ) -> Option<String> {
+        unsafe {
+            let mut raw: *mut c_void = std::ptr::null_mut();
+            if CoCreateInstance(
+                &FileSaveDialog,
+                std::ptr::null_mut(),
+                CLSCTX_INPROC_SERVER,
+                &IID_IFILESAVEDIALOG,
+                &mut raw,
+            ) < 0
+                || raw.is_null()
+            {
+                return None;
+            }
+            let d: Com<DialogVt> = Com(raw.cast());
+            let vt = d.vt();
+            let mut opts = 0u32;
+            (vt.get_options)(d.this(), &mut opts);
+            let opts = (opts & !FOS_OVERWRITEPROMPT)
+                | FOS_FORCEFILESYSTEM
+                | FOS_PATHMUSTEXIST
+                | FOS_NOCHANGEDIR;
+            (vt.set_options)(d.this(), opts);
+            let title_w = wide(title);
+            (vt.set_title)(d.this(), title_w.as_ptr());
+            let label = wide(&format!("{} (*.{ext})", ext.to_uppercase()));
+            let spec = wide(&format!("*.{ext}"));
+            let filter = COMDLG_FILTERSPEC {
+                pszName: label.as_ptr(),
+                pszSpec: spec.as_ptr(),
+            };
+            (vt.set_file_types)(d.this(), 1, &filter);
+            let def_ext = wide(ext);
+            (vt.set_default_extension)(d.this(), def_ext.as_ptr());
+            let name_w = wide(name);
+            (vt.set_file_name)(d.this(), name_w.as_ptr());
+            if let Some(dir) = dir {
+                let dir_w = wide(&dir.display().to_string());
+                let mut item: *mut c_void = std::ptr::null_mut();
+                if SHCreateItemFromParsingName(
+                    dir_w.as_ptr(),
+                    std::ptr::null_mut(),
+                    &IID_ISHELLITEM,
+                    &mut item,
+                ) >= 0
+                    && !item.is_null()
+                {
+                    let item: Com<ItemVt> = Com(item.cast());
+                    (vt.set_folder)(d.this(), item.this());
+                }
+            }
+            if !hwnd.is_null() {
+                SetForegroundWindow(hwnd);
+            }
+            if (vt.show)(d.this(), hwnd) < 0 {
+                return None;
+            }
+            let mut res: *mut c_void = std::ptr::null_mut();
+            if (vt.get_result)(d.this(), &mut res) < 0 || res.is_null() {
+                return None;
+            }
+            let item: Com<ItemVt> = Com(res.cast());
+            let mut text: PWSTR = std::ptr::null_mut();
+            if (item.vt().get_display_name)(item.this(), SIGDN_FILESYSPATH, &mut text) < 0
+                || text.is_null()
+            {
+                return None;
+            }
+            let mut len = 0;
+            while *text.add(len) != 0 {
+                len += 1;
+            }
+            let path = String::from_utf16_lossy(std::slice::from_raw_parts(text, len));
+            CoTaskMemFree(text.cast());
+            Some(path)
+        }
+    }
+
+    fn replace(hwnd: HWND, path: &str, title: &str) -> bool {
         let file = Path::new(path)
             .file_name()
             .and_then(|n| n.to_str())
