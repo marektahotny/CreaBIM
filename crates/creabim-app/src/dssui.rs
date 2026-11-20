@@ -161,9 +161,11 @@ impl CreaBimApp {
         ui.checkbox(&mut self.dss.all, "Ukázať všetky vlastnosti triedy");
         let all = self.dss.all;
         let mut edit: Option<(String, String)> = None;
+        let (label_w, value_w) = columns(ui);
         egui::Grid::new(("dss.props", id))
             .num_columns(2)
             .striped(true)
+            .min_col_width(0.0)
             .show(ui, |ui| {
                 for f in &props {
                     if !all && !f.required && f.value.is_none() {
@@ -174,7 +176,7 @@ impl CreaBimApp {
                         name = name.strong();
                     }
                     let unit = f.prop.unit();
-                    ui.label(name).on_hover_text(format!(
+                    prop_label(ui, name, label_w).on_hover_text(format!(
                         "{}{}{}",
                         f.prop.kind.label(),
                         if unit.is_empty() { "" } else { ", " },
@@ -202,9 +204,14 @@ impl CreaBimApp {
                         .unwrap_or_else(|| start.clone());
                     let r = ui.add(
                         egui::TextEdit::singleline(&mut text)
-                            .hint_text(hint)
-                            .desired_width(150.0),
+                            .hint_text(hint.clone())
+                            .desired_width(value_w),
                     );
+                    let r = if text.is_empty() && !hint.is_empty() {
+                        r.on_hover_text(hint)
+                    } else {
+                        r
+                    };
                     if r.changed() {
                         ui.data_mut(|d| d.insert_temp(key, text.clone()));
                     }
@@ -402,6 +409,28 @@ fn kind_label(k: &ElementKind) -> &'static str {
 /// A grid of properties with their values: typed in, or shown as a hint
 /// when the model knows them. Returns the value typed when a field is
 /// left with a change.
+/// The widths of the names and the values of a property list: they share
+/// the width there is, so the names grow with the panel and wrap only at
+/// word ends when it is narrow.
+fn columns(ui: &egui::Ui) -> (f32, f32) {
+    let w = ui.available_width() - ui.spacing().item_spacing.x - 4.0;
+    let label = (w * 0.45).clamp(100.0, 300.0);
+    (label, (w - label).max(90.0))
+}
+
+/// A property's name in a column `w` wide.
+fn prop_label(ui: &mut egui::Ui, name: egui::RichText, w: f32) -> egui::Response {
+    ui.allocate_ui_with_layout(
+        egui::vec2(w, 0.0),
+        egui::Layout::top_down(egui::Align::Min),
+        |ui| {
+            ui.set_width(w);
+            ui.add(egui::Label::new(name).wrap())
+        },
+    )
+    .inner
+}
+
 fn values_grid(
     ui: &mut egui::Ui,
     salt: impl std::hash::Hash + Copy + std::fmt::Debug,
@@ -409,16 +438,18 @@ fn values_grid(
     entry: &dss::Entry,
 ) -> Option<(String, String)> {
     let mut out = None;
+    let (label_w, value_w) = columns(ui);
     egui::Grid::new(salt)
         .num_columns(2)
         .striped(true)
+        .min_col_width(0.0)
         .show(ui, |ui| {
             for f in props {
                 let mut name = egui::RichText::new(f.prop.name);
                 if f.required {
                     name = name.strong();
                 }
-                ui.label(name);
+                prop_label(ui, name, label_w);
                 let start = entry.value(f.prop.name).unwrap_or("").to_string();
                 let hint = match &f.value {
                     Some((v, Source::Model | Source::Calc)) => {
@@ -433,9 +464,14 @@ fn values_grid(
                     .unwrap_or_else(|| start.clone());
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut text)
-                        .hint_text(hint)
-                        .desired_width(150.0),
+                        .hint_text(hint.clone())
+                        .desired_width(value_w),
                 );
+                let r = if text.is_empty() && !hint.is_empty() {
+                    r.on_hover_text(hint)
+                } else {
+                    r
+                };
                 if r.changed() {
                     ui.data_mut(|d| d.insert_temp(key, text.clone()));
                 }

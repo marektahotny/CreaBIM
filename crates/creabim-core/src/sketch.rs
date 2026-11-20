@@ -138,6 +138,11 @@ pub struct Sketch {
     /// in place of its line (see [`crate::utility::SiteMark`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<crate::utility::SiteMark>,
+    /// Drawn in a site plan: it belongs to the site plans alone, not to
+    /// the plans of its level (George: a rectangle drawn in the site plan
+    /// showed in the 1st floor plan instead).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<ElementId>,
 }
 
 impl Sketch {
@@ -158,6 +163,7 @@ impl Sketch {
             constraints: vec![],
             net: None,
             mark: None,
+            view: None,
         }
     }
 

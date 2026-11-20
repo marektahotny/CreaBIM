@@ -484,6 +484,11 @@ impl SketchDraft {
             return Ok(None);
         }
         let mut sketch = self.placed(doc, closed);
+        // drawn in a site plan, it is the site plan's
+        sketch.view = self.pane.filter(|v| {
+            matches!(doc.model().get(*v).map(|e| &e.kind),
+                Some(ElementKind::View(w)) if w.graphics.range.from_above)
+        });
         // drawn with the Cadastre tab's utility network button
         if let Some(m) = mark() {
             sketch.mark = Some(m);

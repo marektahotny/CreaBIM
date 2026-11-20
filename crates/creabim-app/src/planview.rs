@@ -544,6 +544,10 @@ pub struct PlanState {
     /// The next click on a line in this view turns the view (not the
     /// model) so that the line lies level or upright on screen and paper.
     pub turn_pick: Option<ElementId>,
+    /// Placing the building on the site: `Some(None)` waits for the side
+    /// of the place drawn on the map (its corner, the way it runs),
+    /// `Some(Some(..))` for the building's matching side.
+    pub place_pick: Option<Option<(DVec2, DVec2)>>,
     /// A dimension's number being typed over.
     pub dim_edit: Option<DimEdit>,
     /// What was selected before the last click: a double-click on a
@@ -755,6 +759,7 @@ impl Default for PlanState {
             dim_short: false,
             north_pick: false,
             turn_pick: None,
+            place_pick: None,
             dim_edit: None,
             dim_edit_prefer: Vec::new(),
             chain_line: None,
@@ -2513,6 +2518,56 @@ fn show_pane(
         state.north_pick = false;
         state.turn_pick = Some(view);
     }
+    if state.place_pick.is_some() && site_plan {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            state.place_pick = None;
+            state.status = Some(crate::i18n::tr("The site is left as it was."));
+            return None;
+        }
+        if response.clicked() {
+            let at = xf.to_world(response.interact_pointer_pos()?);
+            let tol = 12.0 / xf.scale as f64;
+            let Some((a, b)) = line_at(state, doc.model(), view, plan, at, tol) else {
+                state.status = Some(crate::i18n::tr(
+                    "There is no line here: click nearer a boundary, a map line or a wall.",
+                ));
+                return None;
+            };
+            // the side's corner nearer the click, and the way it runs
+            let side = if a.distance(at) <= b.distance(at) {
+                (a, b)
+            } else {
+                (b, a)
+            };
+            match state.place_pick {
+                Some(None) => {
+                    state.place_pick = Some(Some(side));
+                    state.status = Some(crate::i18n::tr(
+                        "Now click the building's matching side, near the matching corner.",
+                    ));
+                }
+                Some(Some(ground)) => {
+                    state.place_pick = None;
+                    let r = creabim_core::mapgroup::fit(ground, side);
+                    let tx = creabim_core::mapgroup::move_ground(doc.model(), &r);
+                    if tx.ops.is_empty() {
+                        state.status = Some(crate::i18n::tr(
+                            "There is no map to move: download or import the site's map first.",
+                        ));
+                        return None;
+                    }
+                    if let Err(e) = doc.commit(tx) {
+                        return Some(e.to_string());
+                    }
+                    state.status = Some(crate::i18n::tr(
+                        "The site moved under the building: the corners meet, the sides run together. The S-JTSK coordinates follow the map. Ctrl+Z to undo.",
+                    ));
+                }
+                None => {}
+            }
+        }
+        return None;
+    }
     if state.turn_pick == Some(view) {
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             state.turn_pick = None;
@@ -2561,19 +2616,33 @@ fn show_pane(
                 return None;
             };
             state.north_pick = false;
-            let th = (b - a).to_angle().to_degrees();
-            let by = ((th / 90.0).round() * 90.0 - th) * 1e9;
-            let by = by.round() / 1e9;
-            if by.abs() < 1e-7 {
+            // the site plans turn, each so the line lies level or upright
+            // on it; the model, and so this plan, stays as drawn
+            let mut tx = creabim_core::Transaction::new("Rotate project north");
+            for e in doc.model().iter() {
+                let ElementKind::View(v) = &e.kind else {
+                    continue;
+                };
+                if !v.graphics.range.from_above {
+                    continue;
+                }
+                let mut now = e.clone();
+                if let ElementKind::View(w) = &mut now.kind {
+                    w.turn = turn_to_line(v.turn, a, b);
+                }
+                if now != *e {
+                    tx = tx.replace(e.clone(), now);
+                }
+            }
+            if tx.ops.is_empty() {
                 state.status = Some("The line is level or upright already.".into());
                 return None;
             }
-            let tx = creabim_core::project::rotate_north(doc.model(), by);
             if let Err(e) = doc.commit(tx) {
                 return Some(e.to_string());
             }
-            state.status = Some(format!(
-                "Project north turned by {by:.4}°: the line is now exactly level or upright. Ctrl+Z to undo."
+            state.status = Some(crate::i18n::tr(
+                "Site plans turned: the line lies level or upright in them; the floor plans stay as drawn. Ctrl+Z to undo.",
             ));
         }
         return None;
