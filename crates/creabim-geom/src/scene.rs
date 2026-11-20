@@ -149,12 +149,28 @@ fn layer_items(
                             [p(0), p(1), p(2), p(3), p(4), p(5), p(6), p(7)],
                         );
                     }
-                    let wool = boolean_mesh(&eps, &cutter, BoolOp::Intersection);
-                    if !wool.indices.is_empty() {
-                        parts[k].1 = boolean_mesh(&eps, &cutter, BoolOp::Difference);
-                        let mut b = band;
-                        b.material = barriers.material;
-                        parts.push((b, wool));
+                    // a layer wholly in one box (a storey over 22.5 m) is
+                    // all wool: the boolean gives nothing when no faces meet
+                    let inside = |p: &[f32; 3]| {
+                        let q = DVec2::new(p[0] as f64, p[1] as f64) - w.start;
+                        let (u, z) = (q.dot(d), p[2] as f64);
+                        wb.boxes.iter().any(|b| {
+                            u >= b[0] - 1e-3
+                                && u <= b[1] + 1e-3
+                                && z >= b[2] - 1e-3
+                                && z <= b[3] + 1e-3
+                        })
+                    };
+                    if !eps.positions.is_empty() && eps.positions.iter().all(inside) {
+                        parts[k].0.material = barriers.material;
+                    } else {
+                        let wool = boolean_mesh(&eps, &cutter, BoolOp::Intersection);
+                        if !wool.indices.is_empty() {
+                            parts[k].1 = boolean_mesh(&eps, &cutter, BoolOp::Difference);
+                            let mut b = band;
+                            b.material = barriers.material;
+                            parts.push((b, wool));
+                        }
                     }
                 }
             }

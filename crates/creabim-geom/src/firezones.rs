@@ -255,6 +255,9 @@ pub fn schedule(model: &Model) -> Schedule {
         if !c.barriers.is_empty() {
             need.push_str(&format!("; {}: {}", tr("fire barriers"), c.barriers));
         }
+        if !c.note.is_empty() {
+            need.push_str(&format!("; {}", c.note));
+        }
         need.push_str(" (Weber ETICS s. 16, STN 73 0802)");
         rows.push(Row {
             id: c.assembly,

@@ -80,6 +80,15 @@ pub fn measure(model: &Model, scene: &[crate::scene::SceneItem]) -> Vec<Line> {
     }
     more.sort_by_key(|l| (l.element, l.layer.map(|x| x.0)));
     lines.extend(more);
+    // a layer wholly in another material (an ETICS over 22.5 m all of
+    // mineral wool): its own material's line is gone
+    lines.retain(|l| {
+        let Some((layer, _)) = l.layer else {
+            return true;
+        };
+        let key = (l.element, Some(layer), l.material);
+        solid.contains_key(&key) || !solid.keys().any(|k| k.0 == l.element && k.1 == Some(layer))
+    });
     for l in lines.iter_mut().filter(|l| TRIMMED.contains(&l.category)) {
         let Some((v, room)) = solid
             .get(&(l.element, l.layer.map(|x| x.0), l.material))
