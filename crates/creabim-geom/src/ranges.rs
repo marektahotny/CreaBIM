@@ -105,10 +105,15 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
         return from_above(model, v, level, cut);
     }
     let mut d = crate::plan::plan_view_with(model, level, cut, &v.graphics);
+    let own = model.level(level).map_or(0.0, |l| l.elevation);
+    drop_footings_below(
+        model,
+        &mut d.items,
+        r.bottom.map_or(own, |b| b.z(model, own)),
+    );
     if !r.spans_levels() {
         return d;
     }
-    let own = model.level(level).map_or(0.0, |l| l.elevation);
     // the other levels draw as plans of their own, without their range
     let g = PlanGraphics {
         range: PlanRange {
@@ -164,6 +169,18 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
     under.extend(covered);
     under.append(&mut over);
     PlanView { items: under }
+}
+
+/// Footings wholly under the bottom of a plan's range are left out of it
+/// (George 2026-11-20: a storey's plan with its bottom at its floor shows
+/// no footing under that floor, dashed or not); lowering the bottom under
+/// them shows them again, dashed.
+fn drop_footings_below(model: &Model, items: &mut Vec<PlanItem>, bottom: f64) {
+    let under = |id: ElementId| match model.get(id).map(|e| &e.kind) {
+        Some(creabim_core::ElementKind::Footing(f)) => f.top(model) < bottom - 1e-6,
+        _ => false,
+    };
+    items.retain(|it| !under(it.id()));
 }
 
 /// An item of a level above the cut, as an overhead plan draws it:
