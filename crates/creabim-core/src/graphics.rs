@@ -163,6 +163,13 @@ impl PlanRange {
         *self == Self::default()
     }
 
+    /// A site plan: seen from above with the building as its footprint.
+    /// A roof plan is seen from above too, but shows no map, terrain,
+    /// networks or site sketches (George).
+    pub fn is_site(&self) -> bool {
+        self.from_above && self.footprint
+    }
+
     /// Does it reach past its own level (or look from above)?
     pub fn spans_levels(&self) -> bool {
         self.top.is_some()

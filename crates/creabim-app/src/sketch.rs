@@ -489,7 +489,7 @@ impl SketchDraft {
         // drawn in a site plan, it is the site plan's
         sketch.view = self.pane.filter(|v| {
             matches!(doc.model().get(*v).map(|e| &e.kind),
-                Some(ElementKind::View(w)) if w.graphics.range.from_above)
+                Some(ElementKind::View(w)) if w.graphics.range.is_site())
         });
         // drawn with the Cadastre tab's utility network button
         if let Some(m) = mark() {

@@ -345,10 +345,23 @@ impl Reference {
 /// The references shown in `view`, under or over it, in the model's
 /// order.
 pub fn in_view(model: &crate::Model, view: ElementId) -> Vec<(ElementId, &Reference)> {
+    // a roof plan, seen from above like the site plan, never shows the
+    // map (George): maps imported before were put in every such plan
+    let roof_plan = matches!(model.get(view).map(|e| &e.kind),
+        Some(crate::ElementKind::View(v)) if v.graphics.range.from_above && !v.graphics.range.is_site());
+    let map = if roof_plan {
+        crate::mapgroup::group(model).0
+    } else {
+        vec![]
+    };
     model
         .iter()
         .filter_map(|e| match &e.kind {
-            crate::ElementKind::Reference(r) if r.shown_in.contains(&view) => Some((e.id, r)),
+            crate::ElementKind::Reference(r)
+                if r.shown_in.contains(&view) && !(roof_plan && map.contains(&e.id)) =>
+            {
+                Some((e.id, r))
+            }
             _ => None,
         })
         .collect()

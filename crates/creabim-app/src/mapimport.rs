@@ -148,7 +148,7 @@ impl CreaBimApp {
         let mut shown_in = vec![view];
         for e in self.doc.model().iter() {
             if let ElementKind::View(v) = &e.kind {
-                if matches!(v.kind, ViewKind::Plan { .. }) && v.graphics.range.from_above {
+                if matches!(v.kind, ViewKind::Plan { .. }) && v.graphics.range.is_site() {
                     shown_in.push(e.id);
                 }
             }
@@ -486,6 +486,15 @@ mod shot_project {
         app.doc
             .commit(
                 Transaction::new("site").insert(Element::new("Situácia", ElementKind::View(sv))),
+            )
+            .unwrap();
+        // a roof plan, which the map was put in before too
+        let top = app.doc.model().levels().last().unwrap().0.id;
+        let mut roof = creabim_core::View::plan(top);
+        roof.graphics.range.from_above = true;
+        app.doc
+            .commit(
+                Transaction::new("roof").insert(Element::new("Strecha", ElementKind::View(roof))),
             )
             .unwrap();
         let views: Vec<_> = app

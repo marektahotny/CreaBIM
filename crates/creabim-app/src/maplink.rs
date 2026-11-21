@@ -433,6 +433,19 @@ mod tests {
             "terrain": {"points": pts},
         });
         let dir = std::env::temp_dir().join(format!("creabim-map-test-{}", std::process::id()));
+        // a roof plan: seen from above like the site plan, but no terrain
+        // (George: the roof plan showed the map and the terrain)
+        let top = app.doc.model().levels().last().unwrap().0.id;
+        let mut roof = creabim_core::View::plan(top);
+        roof.graphics.range.from_above = true;
+        app.doc
+            .commit(
+                creabim_core::Transaction::new("roof").insert(creabim_core::Element::new(
+                    "Strecha",
+                    ElementKind::View(roof),
+                )),
+            )
+            .unwrap();
         app.map_put_in(files_of(&v), &dir, None);
         let model = app.doc.model();
         let site = model.site_level().expect("a site level");
@@ -457,7 +470,7 @@ mod tests {
                 own += 1;
                 assert_eq!(e.name, "3D terén");
                 assert!(shows, "its own plan shows it");
-            } else if !v.graphics.range.from_above {
+            } else if !v.graphics.range.is_site() {
                 assert!(!shows, "{} shows the terrain", e.name);
             }
         }

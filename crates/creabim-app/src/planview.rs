@@ -2520,7 +2520,7 @@ fn show_pane(
         || press_on_mark;
     // a site plan turns itself by a line, the model stays put
     let site_plan = matches!(doc.model().get(view).map(|e| &e.kind),
-        Some(ElementKind::View(v)) if v.graphics.range.from_above);
+        Some(ElementKind::View(v)) if v.graphics.range.is_site());
     if state.north_pick && site_plan {
         state.north_pick = false;
         state.turn_pick = Some(view);
@@ -2706,7 +2706,7 @@ fn show_pane(
                 let ElementKind::View(v) = &e.kind else {
                     continue;
                 };
-                if !v.graphics.range.from_above {
+                if !v.graphics.range.is_site() {
                     continue;
                 }
                 let mut now = e.clone();

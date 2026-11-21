@@ -1040,6 +1040,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             d.items
                 .extend(crate::sitefoot::footprint(model, *level, *cut_height));
         } else if v.graphics.range.from_above {
+            // a roof plan: no terrain from the map under the roofs
+            d.items
+                .retain(|it| !crate::sitefoot::is_terrain(model, it.id()));
             crate::roofplan::apply(model, &mut d.items);
         }
     }
@@ -1047,7 +1050,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     // alone (George: a network drawn there showed in the 1st floor plan);
     // there, each network dashed with its symbols and code, each symbol
     // in place of its sketch
-    if matches!(kind, creabim_core::ViewKind::Plan { .. }) && v.graphics.range.from_above {
+    if matches!(kind, creabim_core::ViewKind::Plan { .. }) && v.graphics.range.is_site() {
         crate::netlines::net_lines(model, &mut d.items, v.scale / 1000.0);
     } else {
         d.items
@@ -1058,7 +1061,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     // shows by category (the site plan keeps its connections)
     let services = creabim_core::viewmodes::DisplayMode::of(v)
         == creabim_core::viewmodes::DisplayMode::Services;
-    let site = v.graphics.range.from_above;
+    let site = v.graphics.range.is_site();
     if (!services && !site)
         || v.hidden
             .hides_category(creabim_core::visibility::Category::Pipes)

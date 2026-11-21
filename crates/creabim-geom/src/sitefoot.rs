@@ -318,9 +318,15 @@ pub fn hides(model: &Model, id: ElementId) -> bool {
         ElementKind::Object(o) => crate::firezones::room_at(model, o.level, o.position),
         // the terrain's mesh: it is modelled in its own plan (3D terén),
         // the site plan has the map's cadastre and contours
-        ElementKind::Site(s) => matches!(s.form, creabim_core::site::SiteForm::Terrain { .. }),
+        ElementKind::Site(_) => is_terrain(model, id),
         _ => false,
     }
+}
+
+/// Is `id` the terrain's mesh (a map's 3D terrain)?
+pub fn is_terrain(model: &Model, id: ElementId) -> bool {
+    matches!(model.get(id).map(|e| &e.kind),
+        Some(ElementKind::Site(s)) if matches!(s.form, creabim_core::site::SiteForm::Terrain { .. }))
 }
 
 #[cfg(test)]
