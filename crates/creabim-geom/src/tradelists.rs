@@ -218,6 +218,82 @@ pub fn electrical(model: &Model) -> Schedule {
     }
 }
 
+/// The take-off VZT – recuperation: the units, boxes, ducts and
+/// terminals of the ventilation with heat recovery as the model has
+/// them, priced from the catalogue (without VAT, the VAT under it).
+pub fn recuperation(model: &Model) -> Schedule {
+    let bill = creabim_services::recuperation::bill(model);
+    let money = |v: f64| format!("{v:.2}").replace('.', ",");
+    let qty = |v: f64| {
+        if v.fract() == 0.0 {
+            format!("{v:.0}")
+        } else {
+            format!("{v:.1}").replace('.', ",")
+        }
+    };
+    let rows: Vec<Row> = bill
+        .lines
+        .iter()
+        .map(|l| Row {
+            id: ElementId::NIL,
+            cells: vec![
+                l.group.to_string(),
+                l.code.clone(),
+                l.name.clone(),
+                qty(l.qty),
+                l.unit.clone(),
+                l.price.map_or_else(|| tr("on request"), money),
+                l.total().map_or(String::new(), money),
+            ],
+            group: false,
+        })
+        .collect();
+    let listed = rows.len();
+    let mut rows = rows;
+    let cat = creabim_services::recuperation::catalogue();
+    for (what, v) in [
+        (tr("Without VAT"), bill.net),
+        (format!("{} {:.0} %", tr("VAT"), cat.vat * 100.0), bill.vat),
+    ] {
+        rows.push(Row {
+            id: ElementId::NIL,
+            cells: vec![
+                what,
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                money(v),
+            ],
+            group: true,
+        });
+    }
+    Schedule {
+        category: ScheduleCategory::VentilationHrv,
+        columns: vec![
+            col("Group", 30.0, false),
+            col("Code", 26.0, false),
+            col("Item", 90.0, false),
+            col("Qty", 16.0, true),
+            col("Unit of measure", 10.0, false),
+            col("€/unit", 18.0, true),
+            col("€", 22.0, true),
+        ],
+        rows,
+        totals: vec![
+            tr("with VAT"),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            money(bill.gross),
+        ],
+        listed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

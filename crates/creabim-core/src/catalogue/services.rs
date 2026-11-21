@@ -740,3 +740,105 @@ pub(super) fn starters() -> Vec<CatalogueObject> {
         extract_fan(),
     ]
 }
+
+// ---- heat recovery (the recuperation design places these) ----
+
+/// Its catalogue key moved from `starter/…` to `key`.
+fn keyed(mut c: CatalogueObject, key: &str) -> CatalogueObject {
+    c.key = key.into();
+    c.object.catalogue = Some(key.into());
+    c
+}
+
+/// A central heat-recovery unit, `w × d × h` m: standing on the floor
+/// against a wall, or (`ceiling`) hung under the ceiling. Its plan
+/// symbol is the exchanger's box with its cross, as STN EN 12792 draws
+/// a plate heat exchanger.
+pub fn hrv_unit(key: &str, name: &str, w: f64, d: f64, h: f64, ceiling: bool) -> CatalogueObject {
+    let mut b = Build::new();
+    b.add(
+        "Casing",
+        appliance_white(),
+        soft_box(v3(-w / 2.0, -d, 0.0), v3(w / 2.0, 0.0, h), 0.01, 0.005),
+        true,
+    );
+    b.line(v2(-w / 2.0, -d), v2(w / 2.0, 0.0));
+    b.line(v2(-w / 2.0, 0.0), v2(w / 2.0, -d));
+    b.text(v2(0.0, -d - 0.15), "R");
+    if ceiling {
+        b.at(0.0);
+    }
+    let c = b.finish(
+        "hrv-unit",
+        name,
+        "Central ventilation unit with heat recovery (counterflow exchanger)",
+        ObjectCategory::Hvac,
+        ("IfcUnitaryEquipment", "AIRHANDLER"),
+        if ceiling { Mount::Ceiling } else { Mount::Wall },
+    );
+    keyed(c, key)
+}
+
+/// A distribution box of a radial duct system, laid in the floor or
+/// the ceiling, `w × d × h` m.
+pub fn duct_box(key: &str, name: &str, w: f64, d: f64, h: f64) -> CatalogueObject {
+    let mut b = Build::new();
+    b.add(
+        "Box",
+        look("EPP, grey", "plastic", Hatch::Empty, [120, 124, 128], 0.6),
+        cuboid(v3(-w / 2.0, -d, 0.0), v3(w / 2.0, 0.0, h)),
+        true,
+    );
+    let n = 6;
+    for i in 0..n {
+        let x = -w / 2.0 + w * (i as f64 + 0.5) / n as f64;
+        b.outline(rrect(v2(x, -d + 0.04), 0.05, 0.05, 0.024, 6));
+    }
+    let c = b.finish(
+        "duct-box",
+        name,
+        "Distribution box of a radial duct system",
+        ObjectCategory::Hvac,
+        ("IfcDuctFitting", "JUNCTION"),
+        Mount::Floor,
+    );
+    keyed(c, key)
+}
+
+/// A room heat-recovery unit in an outer wall: its sleeve through the
+/// wall `wall` m thick (back towards +y, the outside), the room cover
+/// on the inner face, at `at` m above the floor.
+pub fn room_hrv(key: &str, name: &str, sleeve: f64, wall: f64, at: f64) -> CatalogueObject {
+    let mut b = Build::new();
+    let r = sleeve / 2.0;
+    b.add(
+        "Cover",
+        accessory_white(),
+        soft_box(
+            v3(-0.13, -0.05, -0.13 + r),
+            v3(0.13, 0.0, 0.13 + r),
+            0.02,
+            0.01,
+        ),
+        true,
+    );
+    b.add(
+        "Sleeve",
+        look("PVC, grey", "plastic", Hatch::Empty, [170, 170, 170], 0.5),
+        cuboid(v3(-r, 0.0, 0.0), v3(r, wall.max(0.1), sleeve)),
+        true,
+    );
+    b.line(v2(-0.13, -0.05), v2(0.13, 0.0));
+    b.line(v2(-0.13, 0.0), v2(0.13, -0.05));
+    b.text(v2(0.0, -0.25), "RD");
+    b.at(at);
+    let c = b.finish(
+        "room-hrv",
+        name,
+        "Decentral (room) ventilation unit with heat recovery, through the outer wall",
+        ObjectCategory::Hvac,
+        ("IfcUnitaryEquipment", "AIRHANDLER"),
+        Mount::Wall,
+    );
+    keyed(c, key)
+}

@@ -984,6 +984,7 @@ spec_enum! {
         Occupancy = "occupancy",
         BoardDiagram = "board_diagram",
         LintelList = "lintel_list",
+        VentilationHrv = "ventilation_hrv",
         FireRisk = "fire_risk",
     }
 }

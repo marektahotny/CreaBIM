@@ -21758,5 +21758,27 @@
   "standards": "STN EN 13180",
   "shape": "round",
   "flex": true
+ },
+ {
+  "id": "GP",
+  "name": "VZT flexibilné PE potrubie ATREA GP (radiálny rozvod)",
+  "material": "PE-HD (flexi, hladký vnútorný povrch)",
+  "manufacturer": "ATREA",
+  "roughnessMm": 0.05,
+  "sizes": [
+   {
+    "outerMm": 95,
+    "innerMm": 75,
+    "nominalMm": 75
+   }
+  ],
+  "media": [
+   "vzt"
+  ],
+  "joint": "tesniaci krúžok, poistná spona",
+  "standards": "STN EN 13180",
+  "note": "Drsnosť 0,05 mm je predpoklad pre hladký vnútorný povrch; výrobca ju neuvádza.",
+  "shape": "round",
+  "flex": true
  }
 ]

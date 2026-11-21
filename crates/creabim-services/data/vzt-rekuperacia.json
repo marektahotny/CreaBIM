@@ -1,0 +1,36 @@
+{
+  "nazov": "VZT – rekuperácia: katalóg a ceny",
+  "mena": "EUR",
+  "dph": 0.23,
+  "kurzCzk": 25.0,
+  "poznamka": "Ceny bez DPH. Atrea jednotky a príslušenstvo: cenník ATREA SK 01/2023 (platnosť od 25.01.2023, DPH v cenníku neuvedené, berie sa ako bez DPH). Rozvody: e-shopy CZ (ceny s DPH 21 % prepočítané na bez DPH kurzom 25 CZK/EUR), 11/2026. Blauberg: e-shopy SK, 11/2026. Položky bez ceny treba doplniť (cena na dopyt). Rozmery jednotiek sú orientačné, overiť v katalógu výrobcu.",
+  "jednotky": [
+    {"kod": "A160513-L", "nazov": "ATREA DUPLEX 280 ECV5.aM", "rada": "ECV5", "qMax": 280, "cena": 2325.1, "rozmer": [0.60, 0.36, 0.95], "zdroj": "cenník ATREA SK 01/2023"},
+    {"kod": "A160514-L", "nazov": "ATREA DUPLEX 380 ECV5.aM", "rada": "ECV5", "qMax": 380, "cena": 2487.2, "rozmer": [0.60, 0.36, 0.95], "zdroj": "cenník ATREA SK 01/2023"},
+    {"kod": "A160515-L", "nazov": "ATREA DUPLEX 580 ECV5.aM", "rada": "ECV5", "qMax": 580, "cena": 2935.2, "rozmer": [0.75, 0.40, 1.10], "zdroj": "cenník ATREA SK 01/2023"},
+    {"kod": "A160510-L", "nazov": "ATREA DUPLEX 170 EC5.aM", "rada": "EC5", "qMax": 170, "cena": 2325.1, "rozmer": [1.00, 0.60, 0.26], "zdroj": "cenník ATREA SK 01/2023"},
+    {"kod": "A160511-L", "nazov": "ATREA DUPLEX 370 EC5.aM", "rada": "EC5", "qMax": 370, "cena": 2487.2, "rozmer": [1.10, 0.70, 0.28], "zdroj": "cenník ATREA SK 01/2023"},
+    {"kod": "A160512-L", "nazov": "ATREA DUPLEX 570 EC5.aM", "rada": "EC5", "qMax": 570, "cena": 2935.2, "rozmer": [1.25, 0.80, 0.30], "zdroj": "cenník ATREA SK 01/2023"}
+  ],
+  "decentralne": [
+    {"kod": "VENTO-A50-1-W-V3", "nazov": "Blauberg VENTO Expert A50-1 W V.3", "qVetranie": 50, "qRekuperacia": 25, "stenaMin": 0.30, "stenaMax": 0.50, "otvor": 0.16, "cena": 451.22, "zdroj": "najvykurovanie.sk 11/2026: 555,00 € s DPH (cenníková)", "pozn": "reverzná jednotka, účinnosť do 95 %, 4–28 dB(A), Wi-Fi, IR ovládač; teleskopické puzdro 300–500 mm"},
+    {"kod": "VENTO-A50-1-S8-W-V3", "nazov": "Blauberg VENTO Expert A50-1 S8 W V.3 Wi-Fi (vyhrievaná mriežka)", "qVetranie": 50, "qRekuperacia": 25, "stenaMin": 0.30, "stenaMax": 0.50, "otvor": 0.16, "cena": 486.99, "zdroj": "eshop.apen.sk 11/2026: 599 € s DPH", "pozn": "vyhrievaná fasádna mriežka, prevádzka do −30 °C"}
+  ],
+  "polozky": [
+    {"kluc": "ovladac", "kod": "A145550", "nazov": "Ovládač aDot (k jednotke DUPLEX .aM)", "mj": "ks", "cena": 146.9, "zdroj": "cenník ATREA SK 01/2023"},
+    {"kluc": "gp75", "kod": "R210010", "nazov": "Flexibilné PE potrubie ATREA GP Ø95/75 (antistatické, antibakteriálne)", "mj": "m", "cena": 5.32, "zdroj": "atreaeshop.cz 11/2026: 133 Kč/m bez DPH; odporúčaný prietok 15–50 m³/h"},
+    {"kluc": "box8", "kod": "KL-8x75/160", "nazov": "Distribučný box plochý 8×Ø75 / Ø160 (MAT)", "mj": "ks", "vystupy": 8, "cena": 84.0, "zdroj": "koupelny-venta.cz 11/2026: 2 541 Kč s DPH"},
+    {"kluc": "box12", "kod": "KL-12x75/160", "nazov": "Distribučný box plochý 12×Ø75 / Ø160 (MAT)", "mj": "ks", "vystupy": 12, "cena": 96.0, "zdroj": "koupelny-venta.cz 11/2026: 2 904 Kč s DPH"},
+    {"kluc": "box14", "kod": "KL-14x75/160", "nazov": "Distribučný box plochý 14×Ø75 / Ø160 (MAT)", "mj": "ks", "vystupy": 14, "cena": 94.6, "zdroj": "koupelny-venta.cz 11/2026: 2 863 Kč s DPH"},
+    {"kluc": "tbox1", "kod": "SPB-1X75/125-OC", "nazov": "Stropný / podlahový box pre tanierový ventil 1×Ø75 / DN125 (MAT)", "mj": "ks", "cena": 24.0, "zdroj": "koupelny-venta.cz 11/2026: 725 Kč s DPH"},
+    {"kluc": "tbox2", "kod": "SPB-2X75/125-OC", "nazov": "Stropný / podlahový box pre tanierový ventil 2×Ø75 / DN125 (MAT)", "mj": "ks", "cena": 28.5, "zdroj": "koupelny-venta.cz 11/2026: 863 Kč s DPH"},
+    {"kluc": "ventilP", "kod": "", "nazov": "Tanierový ventil prívodný DN125, kovový", "mj": "ks", "cena": null, "zdroj": "cena na dopyt"},
+    {"kluc": "ventilO", "kod": "", "nazov": "Tanierový ventil odvodný DN125, kovový", "mj": "ks", "cena": null, "zdroj": "cena na dopyt"},
+    {"kluc": "zaslepka", "kod": "FLX-CS-PVC-75", "nazov": "Záslepka Ø75 (Regulus)", "mj": "ks", "cena": 1.16, "zdroj": "koupelny-venta.cz 11/2026: 35 Kč s DPH"},
+    {"kluc": "spiro160", "kod": "", "nazov": "Potrubie Spiro Ø160 (ATREA)", "mj": "m", "cena": 5.32, "zdroj": "atreaeshop.cz 11/2026: od 161 Kč/m s DPH"},
+    {"kluc": "izolacia", "kod": "R336030", "nazov": "Izolácia ISOVER ML 3 s Al fóliou hr. 30 mm (čerstvý a odpadový vzduch)", "mj": "m²", "cena": 14.64, "zdroj": "atreaeshop.cz 11/2026: 443 Kč/m² s DPH"},
+    {"kluc": "zaluzia", "kod": "", "nazov": "Protidažďová žalúzia AL Ø160 (nasávanie / výfuk)", "mj": "ks", "cena": 86.64, "zdroj": "atreaeshop.cz 11/2026: od 2 621 Kč s DPH"},
+    {"kluc": "tlmic", "kod": "", "nazov": "Tlmič hluku flexibilný Ø160, dĺ. 1 m", "mj": "ks", "cena": null, "zdroj": "cena na dopyt"},
+    {"kluc": "paska", "kod": "R311030", "nazov": "Lepiaca páska Al 50 mm × 50 m", "mj": "ks", "cena": 9.49, "zdroj": "atreaeshop.cz 11/2026: 287 Kč s DPH"}
+  ]
+}
