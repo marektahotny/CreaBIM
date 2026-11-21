@@ -11540,13 +11540,40 @@ crate::props::row(ui, "File names", |ui| {
                             .unwrap_or_else(|| creabim_core::annotation::SPOT_PATTERN.into());
                         crate::props::flow(ui, |ui| {
                             ui.label(crate::i18n::t("Reads")).on_hover_text(
-                                crate::i18n::t("{elevation} in the project's units, {m} in metres (+0.45), {m3} to three places, {mm} in millimetres, {level} the level's name. For example: {m} FFL"),
+                                crate::i18n::t("{elevation} in the project's units, {m} in metres (+0.45), {m3} to three places, {mm} in millimetres, {level} the level's name, {Bpv} above sea level (Bpv). For example: {m} FFL"),
                             );
                             if ui.text_edit_singleline(&mut pattern).changed() {
                                 d.pattern = Some(pattern.clone());
                                 label = "Spot level text";
                             }
                         });
+                        // the height from ±0,000 or above sea level, at a click
+                        if !creabim_core::annotation::writes_coordinates(&pattern) {
+                            let bpv = pattern.contains("{Bpv}");
+                            crate::props::flow(ui, |ui| {
+                                ui.label(crate::i18n::t("Height from"));
+                                if ui
+                                    .selectable_label(!bpv, "±0,000")
+                                    .on_hover_text(crate::i18n::t(
+                                        "The height from the project's ±0,000",
+                                    ))
+                                    .clicked()
+                                    && bpv
+                                {
+                                    d.pattern = None;
+                                    label = "Spot level text";
+                                }
+                                if ui
+                                    .selectable_label(bpv, "Bpv")
+                                    .on_hover_text(crate::i18n::t("The height above sea level (Bpv): the project's ±0,000 in Bpv (Project information) plus the height"))
+                                    .clicked()
+                                    && !bpv
+                                {
+                                    d.pattern = Some(creabim_core::annotation::BPV_PATTERN.into());
+                                    label = "Spot level text";
+                                }
+                            });
+                        }
                     } else {
                         let what = crate::annotate::offset_label(d.kind);
                         if num(ui, what, &mut d.offset, -100.0, 100.0) {

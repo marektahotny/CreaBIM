@@ -978,3 +978,134 @@ fn dimensions_at_a_doors_jambs_follow_the_door() {
     let s = stretches(doc.model(), &v, &dim);
     assert!((s[0].2.distance(s[0].3) - (o.width + 0.2)).abs() < 1e-9);
 }
+
+/// The text of spot level `id` in `view`.
+fn spot_reads(model: &Model, view: ElementId, id: ElementId) -> String {
+    view_drawing(model, view)
+        .unwrap()
+        .items
+        .into_iter()
+        .find_map(|i| match i {
+            PlanItem::Annotation { id: n, item } if n == id => Some(item.text),
+            _ => None,
+        })
+        .unwrap()
+}
+
+#[test]
+fn spot_levels_in_plans_read_the_height_of_what_they_stand_on() {
+    use creabim_geom::annotate::{spot_from, surface_height, surface_under};
+    let mut doc = Document::from_model(sample::layered_house());
+    let model = doc.model().clone();
+    let roof = first(&model, |k| matches!(k, ElementKind::Roof(_)));
+    let ff = named(&model, "First Floor");
+    let ff_z = model.level(ff).unwrap().elevation;
+    // a roof plan: looked down on from above everything
+    let mut v = View::plan(ff);
+    v.graphics.range.from_above = true;
+    let roof_plan = add(&mut doc, Element::new("Roof plan", ElementKind::View(v)));
+    let model = doc.model().clone();
+    let view = |id| match &model.get(id).unwrap().kind {
+        ElementKind::View(v) => v.clone(),
+        _ => unreachable!(),
+    };
+    let (below, above) = spot_from(&model, &view(roof_plan)).unwrap();
+    assert!(above);
+    // the roof under the click, its face's height there: higher towards
+    // the ridge by the pitch, and over the walls' top
+    let (host, low) = surface_under(&model, DVec2::new(5.0, 0.8), below, above).unwrap();
+    assert_eq!(host, roof);
+    let (_, high) = surface_under(&model, DVec2::new(5.0, 1.8), below, above).unwrap();
+    let rise = (high - low).abs();
+    assert!(
+        (rise - 35f64.to_radians().tan()).abs() < 0.02,
+        "{low} {high}"
+    );
+    assert!(low > ff_z + 3.0 - 0.5, "{low}");
+    let on = surface_height(&model, roof, DVec2::new(5.0, 0.8)).unwrap();
+    assert!((on - low).abs() < 1e-4, "{on} {low}");
+    let low = on;
+    // a ground floor plan reads the floor under the cut, not the roof
+    let gf_plan = named(&model, "Ground Floor plan");
+    let (below, above) = spot_from(&model, &view(gf_plan)).unwrap();
+    assert!(!above);
+    let (host, z) = surface_under(&model, DVec2::new(5.0, 3.0), below, above).unwrap();
+    let ElementKind::Slab(s) = &model.get(host).unwrap().kind else {
+        panic!("not a slab: {:?}", model.get(host).unwrap().name);
+    };
+    let level_z = model.level(s.level).unwrap().elevation;
+    assert!(z < below && (z - s.top(level_z)).abs() < 0.05, "{z}");
+    // a spot level kept on the roof writes the roof's height there, in
+    // Bpv too
+    let at = DVec2::new(5.0, 0.8);
+    let on_roof = HostPoint {
+        host: Some(roof),
+        local: at,
+        from_end: false,
+        body: None,
+    };
+    let spot = Dimension::spot(roof_plan, on_roof, HostPoint::free(at + DVec2::ONE), None);
+    let spot = add(&mut doc, Element::new("Spot", ElementKind::Dimension(spot)));
+    let bpv = Dimension::spot(
+        roof_plan,
+        on_roof,
+        HostPoint::free(at - DVec2::ONE),
+        Some(annotation::BPV_PATTERN.into()),
+    );
+    let bpv = add(&mut doc, Element::new("Spot", ElementKind::Dimension(bpv)));
+    let mut info = doc
+        .model()
+        .project_info()
+        .map(|(_, i)| i.clone())
+        .unwrap_or_default();
+    info.elevation = 245.35;
+    doc.commit(set_project(doc.model(), info)).unwrap();
+    let m = doc.model();
+    assert_eq!(
+        spot_reads(m, roof_plan, spot),
+        annotation::spot_text(m, annotation::SPOT_PATTERN, low)
+    );
+    assert_eq!(
+        spot_reads(m, roof_plan, bpv),
+        format!(
+            "{} m n. m. Bpv",
+            format!("{:.3}", 245.35 + low).replace('.', ",")
+        )
+    );
+}
+
+#[test]
+fn spot_levels_read_the_terrain_under_them() {
+    use creabim_geom::annotate::{spot_from, surface_under};
+    let mut doc = Document::from_model(sample::sample_house());
+    let gf = doc
+        .model()
+        .levels()
+        .min_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+        .map(|(e, _)| e.id)
+        .unwrap();
+    let mut t = Site::terrain(
+        gf,
+        polygon::rectangle(DVec2::new(20.0, 0.0), DVec2::new(30.0, 10.0)),
+        -0.3,
+        0.5,
+    );
+    if let SiteForm::Terrain { points, .. } = &mut t.form {
+        points.push(glam::DVec3::new(25.0, 5.0, 1.0));
+    }
+    let ground = add(&mut doc, Element::new("Ground", ElementKind::Site(t)));
+    let mut v = View::plan(gf);
+    v.graphics.range.from_above = true;
+    v.graphics.range.footprint = true;
+    let model = doc.model();
+    let (below, above) = spot_from(model, &v).unwrap();
+    let (host, z) = surface_under(model, DVec2::new(25.0, 5.0), below, above).unwrap();
+    assert_eq!(host, ground);
+    let gf_z = model.level(gf).unwrap().elevation;
+    assert!((z - (gf_z + 1.0)).abs() < 0.05, "{z}");
+    // and in the floor plan too, beside the house
+    let plan = View::plan(gf);
+    let (below, above) = spot_from(model, &plan).unwrap();
+    let (host, _) = surface_under(model, DVec2::new(21.0, 1.0), below, above).unwrap();
+    assert_eq!(host, ground);
+}

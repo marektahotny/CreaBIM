@@ -29,8 +29,19 @@ pub fn pick_where(
     dir: Vec3,
     keep: &dyn Fn(ElementId) -> bool,
 ) -> Option<Hit> {
+    pick_items(scene, origin, dir, &|i| keep(i.id))
+}
+
+/// [`pick`], of the scene items `keep` takes only (leaving out cutters,
+/// say, which are not drawn).
+pub fn pick_items(
+    scene: &[SceneItem],
+    origin: Vec3,
+    dir: Vec3,
+    keep: &dyn Fn(&SceneItem) -> bool,
+) -> Option<Hit> {
     let mut best: Option<Hit> = None;
-    for (at, item) in scene.iter().enumerate().filter(|(_, i)| keep(i.id)) {
+    for (at, item) in scene.iter().enumerate().filter(|(_, i)| keep(i)) {
         let p = &item.mesh.positions;
         for (tri, idx) in item.mesh.indices.chunks(3).enumerate() {
             let (a, b, c) = (
@@ -56,8 +67,18 @@ pub fn pick_where(
 /// Every element a ray passes through, nearest first, each once with its
 /// nearest hit: what is behind or inside the closest one, to cycle to.
 pub fn pick_all(scene: &[SceneItem], origin: Vec3, dir: Vec3) -> Vec<Hit> {
+    pick_all_items(scene, origin, dir, &|_| true)
+}
+
+/// [`pick_all`], of the scene items `keep` takes only.
+pub fn pick_all_items(
+    scene: &[SceneItem],
+    origin: Vec3,
+    dir: Vec3,
+    keep: &dyn Fn(&SceneItem) -> bool,
+) -> Vec<Hit> {
     let mut best: Vec<Hit> = Vec::new();
-    for (at, item) in scene.iter().enumerate() {
+    for (at, item) in scene.iter().enumerate().filter(|(_, i)| keep(i)) {
         let p = &item.mesh.positions;
         for (tri, idx) in item.mesh.indices.chunks(3).enumerate() {
             let (a, b, c) = (

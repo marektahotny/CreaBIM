@@ -257,6 +257,11 @@ enum Ready {
         plan: bool,
         /// S-JTSK coordinates of the point, not its height
         coords: bool,
+        /// its height above sea level (Bpv), not from ±0,000
+        bpv: bool,
+        /// the height it will read, for the preview: from ±0,000, or in
+        /// Bpv
+        z: Option<f64>,
     },
 }
 
@@ -370,6 +375,9 @@ pub struct Draft {
     /// The spot level tool writes the point's S-JTSK coordinates instead,
     /// as PilonDesigner's cadastre mark.
     pub spot_coords: bool,
+    /// The spot level tool writes heights above sea level (Bpv), from the
+    /// project's ±0,000 in Bpv, instead of from ±0,000.
+    pub spot_bpv: bool,
     /// How new slope dimensions read: an index into
     /// [`creabim_core::annotation::SLOPE_FORMATS`].
     pub slope_fmt: usize,
@@ -392,6 +400,7 @@ impl Default for Draft {
             tag_style: None,
             tag_material: false,
             spot_coords: false,
+            spot_bpv: false,
             slope_fmt: 0,
             slope_value: 2.0,
         }
@@ -538,9 +547,10 @@ pub fn click(
                 // a new spot level reads like the last one of its sort
                 // made: heights like heights, S-JTSK coordinates like
                 // coordinates (a coordinate mark never loses its Y and X)
-                let coords = |p: &Option<String>| {
-                    p.as_deref()
-                        .is_some_and(creabim_core::annotation::writes_coordinates)
+                let coords = |p: &Option<String>| match p.as_deref() {
+                    Some(p) if creabim_core::annotation::writes_coordinates(p) => 2,
+                    Some(p) if p.contains("{Bpv}") => 1,
+                    _ => 0,
                 };
                 let own = coords(&dim.pattern);
                 let last = model
@@ -555,7 +565,7 @@ pub fn click(
                     })
                     .last();
                 if let Some(p) = last {
-                    if p.is_some() || !own {
+                    if p.is_some() || own == 0 {
                         dim.pattern = p;
                     }
                 }
@@ -596,9 +606,11 @@ pub fn click(
                 // coordinates: the point snapped to (a plot's corner, a
                 // cadastre line's bend, the building's corner)
                 creabim_core::ViewKind::Plan { .. } if coords => (hp, p),
-                // in a plan, the top of the slab under the click
+                // in a plan, kept on what is under the click (a roof's
+                // face, a slab, the terrain, a stair), whose height there
+                // it reads
                 creabim_core::ViewKind::Plan { level, .. } => {
-                    (attach(model, view, slab_under(model, level, raw), raw), raw)
+                    (spot_point(model, view, level, raw), raw)
                 }
                 _ => (hp, p),
             };
@@ -606,6 +618,20 @@ pub fn click(
                 point,
                 plan,
                 coords,
+                bpv: !coords && d.spot_bpv,
+                z: (!coords)
+                    .then(|| {
+                        let probe = Dimension::spot(view_id, point.0, point.0, None);
+                        creabim_geom::annotate::spot_height(model, view, &probe, point.1)
+                    })
+                    .flatten()
+                    .map(|z| {
+                        if d.spot_bpv {
+                            model.project_info().map_or(0.0, |(_, i)| i.elevation) + z
+                        } else {
+                            z
+                        }
+                    }),
             });
             Ok("Now click where its text goes.".into())
         }
@@ -754,6 +780,32 @@ pub fn click(
     }
 }
 
+/// A plan spot level's point at `p`, kept on the element whose surface is
+/// there: the first one under the plan's cut (seen from above, under the
+/// top of its range), else the topmost slab of `level` there. An element
+/// without its own axes (a roof, the terrain, a stair) keeps the point
+/// where it is, reading its height there as it changes.
+fn spot_point(model: &Model, view: &View, level: ElementId, p: DVec2) -> HostPoint {
+    let host = creabim_geom::annotate::spot_from(model, view)
+        .and_then(|(below, above)| creabim_geom::annotate::surface_under(model, p, below, above))
+        .map(|(id, _)| id)
+        .or_else(|| slab_under(model, level, p));
+    let Some(host) = host else {
+        return HostPoint::free(p);
+    };
+    let hp = attach(model, view, Some(host), p);
+    if hp.host.is_some() {
+        hp
+    } else {
+        HostPoint {
+            host: Some(host),
+            local: p,
+            from_end: false,
+            body: None,
+        }
+    }
+}
+
 /// The topmost slab on `level` whose outline holds `p`.
 fn slab_under(model: &Model, level: ElementId, p: DVec2) -> Option<ElementId> {
     model
@@ -839,7 +891,9 @@ fn place(
                 ElementKind::Dimension(Dimension::about(kind, view_id, center.0, on, on, extra)),
             )
         }
-        Ready::Spot { point, coords, .. } => Element::new(
+        Ready::Spot {
+            point, coords, bpv, ..
+        } => Element::new(
             if coords {
                 "S-JTSK coordinates"
             } else {
@@ -849,7 +903,11 @@ fn place(
                 view_id,
                 point.0,
                 attach(model, view, point.0.host, at),
-                coords.then(|| creabim_core::annotation::SJTSK_PATTERN.to_string()),
+                if coords {
+                    Some(creabim_core::annotation::SJTSK_PATTERN.to_string())
+                } else {
+                    bpv.then(|| creabim_core::annotation::BPV_PATTERN.to_string())
+                },
             )),
         ),
         Ready::Arc { center, a, b } => {
@@ -876,6 +934,22 @@ fn place(
 }
 
 /// How far `at` is to the left of the line from `a` to `b`.
+/// A spot level's preview text: its height as it will read (`+2,700`,
+/// `±0,000`, `245,350 m n. m. Bpv`).
+fn spot_preview(z: Option<f64>, bpv: bool) -> String {
+    let Some(z) = z else {
+        return "Spot level".into();
+    };
+    let t = format!("{:.3}", z.abs()).replace('.', ",");
+    if bpv {
+        format!("{}{t} m n. m. Bpv", if z < 0.0 { "-" } else { "" })
+    } else if t == "0,000" {
+        format!("±{t}")
+    } else {
+        format!("{}{t}", if z < 0.0 { "-" } else { "+" })
+    }
+}
+
 fn slope_offset(a: DVec2, b: DVec2, at: DVec2) -> f64 {
     (at - a).dot((b - a).normalize_or(DVec2::X).perp())
 }
@@ -931,6 +1005,8 @@ fn shape_of(ready: Ready, at: DVec2) -> (Shape, String) {
             point,
             plan,
             coords,
+            bpv,
+            z,
         } => (
             Shape::Spot {
                 at: point.1,
@@ -941,7 +1017,7 @@ fn shape_of(ready: Ready, at: DVec2) -> (Shape, String) {
             if coords {
                 "Y = …\nX = …".into()
             } else {
-                "Spot level".into()
+                spot_preview(z, bpv)
             },
         ),
         Ready::Angle { vertex, a, b } => {
@@ -2142,6 +2218,89 @@ mod tests {
         assert_eq!(note.leader.unwrap().local, DVec2::new(1.0, 1.0));
         assert!(d.focus_text);
         assert_eq!(sel.active, Some(e.id));
+    }
+
+    #[test]
+    fn a_spot_level_reads_the_roof_it_is_clicked_on_in_bpv_too() {
+        // George: on a roof it wrote the floor's level, not the roof's
+        // height where it was clicked
+        let mut doc = Document::from_model(creabim_core::sample::layered_house());
+        let ff = doc
+            .model()
+            .iter()
+            .find(|e| e.name == "First Floor")
+            .unwrap()
+            .id;
+        let roof = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Roof(_)))
+            .unwrap()
+            .id;
+        let mut v = View::plan(ff);
+        v.graphics.range.from_above = true;
+        let e = Element::new("Roof plan", ElementKind::View(v.clone()));
+        let vid = e.id;
+        doc.commit(Transaction::new("plan").insert(e)).unwrap();
+        let mut info = doc
+            .model()
+            .project_info()
+            .map(|(_, i)| i.clone())
+            .unwrap_or_default();
+        info.elevation = 245.35;
+        doc.commit(creabim_core::set_project(doc.model(), info))
+            .unwrap();
+        let (mut d, mut sel) = (Draft::default(), Selection::default());
+        let at = DVec2::new(5.0, 0.8);
+        let mut place = |doc: &mut Document, d: &mut Draft| {
+            let before = ids(doc);
+            for p in [at, at + DVec2::new(1.0, -1.5)] {
+                click(
+                    doc,
+                    vid,
+                    &v,
+                    Tool::SpotLevel,
+                    None,
+                    p,
+                    &[],
+                    0.1,
+                    d,
+                    &mut sel,
+                )
+                .unwrap();
+            }
+            let e = added_since(doc, &before);
+            let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+            let text = drawing.items.iter().find_map(|i| match i {
+                PlanItem::Annotation { id, item } if *id == e.id => Some(item.text.clone()),
+                _ => None,
+            });
+            (e, text.unwrap())
+        };
+        let (e, text) = place(&mut doc, &mut d);
+        let ElementKind::Dimension(dim) = &e.kind else {
+            panic!("not a dimension")
+        };
+        assert_eq!(dim.a.host, Some(roof));
+        let z = creabim_geom::annotate::surface_height(doc.model(), roof, at).unwrap();
+        let level = doc.model().level(ff).unwrap().elevation;
+        assert!(z > level + 3.0, "{z}");
+        let want = creabim_core::annotation::spot_text(
+            doc.model(),
+            creabim_core::annotation::SPOT_PATTERN,
+            z,
+        );
+        assert_eq!(text, want);
+        // read in Bpv: the project's ±0,000 in Bpv plus the height
+        d.spot_bpv = true;
+        let (_, text) = place(&mut doc, &mut d);
+        assert_eq!(
+            text,
+            format!(
+                "{} m n. m. Bpv",
+                format!("{:.3}", 245.35 + z).replace('.', ",")
+            )
+        );
     }
 
     #[test]

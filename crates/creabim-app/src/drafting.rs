@@ -96,8 +96,14 @@ impl CreaBimApp {
                 opt(
                     "spot.reads:0".into(),
                     "Height",
-                    !self.plan.anno.spot_coords,
-                    "The spot level writes the point's height",
+                    !self.plan.anno.spot_coords && !self.plan.anno.spot_bpv,
+                    "The spot level writes the height of what you click (a roof's face, a slab, the terrain, a stair) at that point, from ±0,000",
+                ),
+                opt(
+                    "spot.reads:2".into(),
+                    "Height Bpv",
+                    !self.plan.anno.spot_coords && self.plan.anno.spot_bpv,
+                    "The spot level writes the height of what you click above sea level (Bpv): the project's ±0,000 in Bpv (Project information) plus the height",
                 ),
                 opt(
                     "spot.reads:1".into(),
@@ -241,7 +247,10 @@ impl CreaBimApp {
                 };
             }
             "tag.reads" => self.plan.anno.tag_material = index == Some(1),
-            "spot.reads" => self.plan.anno.spot_coords = index == Some(1),
+            "spot.reads" => {
+                self.plan.anno.spot_coords = index == Some(1);
+                self.plan.anno.spot_bpv = index == Some(2);
+            }
             "dim.chain" => {
                 self.plan.dim_chain = !self.plan.dim_chain;
                 self.plan.chain_line = None;

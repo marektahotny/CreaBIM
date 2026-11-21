@@ -77,6 +77,9 @@ pub fn resolve(model: &Model, view: &View, p: &HostPoint) -> Option<DVec2> {
             };
             Some(on_wall(w, u, p.local.y))
         }
+        // a plan's spot level on an element without its own axes (a roof,
+        // the terrain, a stair) stays where it was put
+        (_, ViewKind::Plan { .. }) if p.body.is_none() => Some(p.local),
         _ => {
             let body = p.body?;
             Some(
@@ -1686,8 +1689,9 @@ pub fn slope_reading(pattern: Option<&str>, d: DVec2, plan: bool) -> String {
 }
 
 /// The height a spot level reads at `at`: in a section or elevation the
-/// point's own height; in a plan the top of the slab it was put on, or
-/// else the plan's level (a level marker).
+/// point's own height; in a plan the height of what it was put on (a
+/// roof's face, a slab's top, the terrain, a stair's tread) at that very
+/// point, or else the plan's level (a level marker).
 pub fn spot_height(
     model: &Model,
     view: &View,
@@ -1698,13 +1702,115 @@ pub fn spot_height(
         ViewKind::Section { .. } => Some(at.y),
         ViewKind::Plan { level, .. } => {
             let elevation = |l: ElementId| model.level(l).map(|l| l.elevation);
-            match d.a.host.and_then(|h| model.get(h)).map(|e| &e.kind) {
+            let host = d.a.host.filter(|h| model.get(*h).is_some());
+            if let Some(z) = host.and_then(|h| surface_height(model, h, at)) {
+                return Some(z);
+            }
+            match host.and_then(|h| model.get(h)).map(|e| &e.kind) {
                 Some(ElementKind::Slab(s)) => Some(s.top(elevation(s.level)?)),
                 _ => elevation(level),
             }
         }
         _ => None,
     }
+}
+
+/// Whether a spot level in a plan reads the surface of an element of this
+/// kind: what is walked or built on, and seen from above also the tops
+/// of walls, columns and the like. A floor plan's cut walls, columns,
+/// doors and furniture are looked past, to the floor.
+pub fn spot_reads(kind: &ElementKind, from_above: bool) -> bool {
+    match kind {
+        ElementKind::Slab(_)
+        | ElementKind::Roof(_)
+        | ElementKind::Stair(_)
+        | ElementKind::Site(_)
+        | ElementKind::Footing(_)
+        | ElementKind::FreeMesh(_)
+        | ElementKind::Beam(_) => true,
+        ElementKind::Wall(_)
+        | ElementKind::Column(_)
+        | ElementKind::Object(_)
+        | ElementKind::Railing(_)
+        | ElementKind::Shaft(_) => from_above,
+        _ => false,
+    }
+}
+
+/// The height of `host`'s upper surface at plan point `p`: where a line
+/// straight down from above it first meets it. None off its outline.
+pub fn surface_height(model: &Model, host: ElementId, p: DVec2) -> Option<f64> {
+    let scene = crate::scene::shared_scene(model);
+    let top = scene
+        .iter()
+        .filter(|i| i.id == host)
+        .filter_map(|i| i.mesh.bounds())
+        .map(|(_, b)| b.z as f64)
+        .reduce(f64::max)?;
+    hit_down(&scene, p, top + 1.0, &|i| i.id == host).map(|(_, z)| z)
+}
+
+/// The element a plan's spot level clicked at `p` stands on, and its
+/// height there: the first surface under `below` that a line down from
+/// above meets, of the elements [`spot_reads`] takes. `below` is a floor
+/// plan's cut, so it reads the floor, not a roof or the floor over it;
+/// or the top of a roof or site plan's range.
+pub fn surface_under(
+    model: &Model,
+    p: DVec2,
+    below: f64,
+    from_above: bool,
+) -> Option<(ElementId, f64)> {
+    let scene = crate::scene::shared_scene(model);
+    let keep = |i: &crate::SceneItem| {
+        !i.ghost
+            && !i.is_lining()
+            && model
+                .get(i.id)
+                .is_some_and(|e| spot_reads(&e.kind, from_above))
+    };
+    let top = scene
+        .iter()
+        .filter(|i| keep(i))
+        .filter_map(|i| i.mesh.bounds())
+        .map(|(_, b)| b.z as f64)
+        .reduce(f64::max)?
+        .max(below)
+        + 1.0;
+    let origin = glam::Vec3::new(p.x as f32, p.y as f32, top as f32);
+    crate::pick::pick_all_items(&scene, origin, -glam::Vec3::Z, &keep)
+        .into_iter()
+        .map(|h| (h.id, top - h.t as f64))
+        .find(|(_, z)| *z < below + 1e-4)
+}
+
+/// Where a line down from height `from` at `p` first meets a drawn item
+/// that `keep` takes (cutters and reveal linings are not drawn).
+fn hit_down(
+    scene: &[crate::SceneItem],
+    p: DVec2,
+    from: f64,
+    keep: &dyn Fn(&crate::SceneItem) -> bool,
+) -> Option<(ElementId, f64)> {
+    let origin = glam::Vec3::new(p.x as f32, p.y as f32, from as f32);
+    let hit = crate::pick::pick_items(scene, origin, -glam::Vec3::Z, &|i| {
+        !i.ghost && !i.is_lining() && keep(i)
+    })?;
+    Some((hit.id, from - hit.t as f64))
+}
+
+/// What a plan's spot levels read under: the top of its range seen from
+/// above (a roof or site plan, and whether it is one), else its cut plane,
+/// so a roof over a floor plan is not what its spot levels read.
+pub fn spot_from(model: &Model, view: &View) -> Option<(f64, bool)> {
+    let ViewKind::Plan { level, cut_height } = view.kind else {
+        return None;
+    };
+    if view.graphics.range.from_above {
+        let (top, _) = crate::ranges::from_above_span(model, view, level, cut_height);
+        return Some((top, true));
+    }
+    Some((model.level(level)?.elevation + cut_height, false))
 }
 
 /// A spot level as a drawing item, if it can be drawn in the view.

@@ -512,8 +512,9 @@ pub fn coordinate_text(model: &Model, pattern: &str, p: glam::DVec2, z: f64) -> 
 
 /// A spot level's text: `pattern` with `{elevation}` (signed, in the
 /// project's units), `{m}` (signed metres to two places, "+0.45"), `{m3}`
-/// (to three), `{mm}` (signed millimetres) and `{level}` (the name of the
-/// level at or below it) filled in for the height `z`.
+/// (to three), `{mm}` (signed millimetres), `{level}` (the name of the
+/// level at or below it) and `{Bpv}` (above sea level, see [`bpv`])
+/// filled in for the height `z` (from ±0,000).
 pub fn spot_text(model: &Model, pattern: &str, z: f64) -> String {
     let signed = |v: f64, places: usize| {
         let t = format!("{:.*}", places, v.abs());
@@ -540,6 +541,18 @@ pub fn spot_text(model: &Model, pattern: &str, z: f64) -> String {
         .replace("{m}", &signed(z, 2))
         .replace("{mm}", &signed(z * 1000.0, 0))
         .replace("{level}", &level)
+        .replace("{Bpv}", &bpv(model, z))
+}
+
+/// A spot level's height above sea level, in the Baltic vertical datum
+/// after levelling (Bpv): the project's ±0,000 in Bpv plus `z`.
+pub const BPV_PATTERN: &str = "{Bpv} m n. m. Bpv";
+
+/// The height `z` (from ±0,000) in Bpv, metres to three places with a
+/// decimal comma, as site plans write it: `245,350`.
+pub fn bpv(model: &Model, z: f64) -> String {
+    let base = model.project_info().map_or(0.0, |(_, i)| i.elevation);
+    format!("{:.3}", base + z).replace('.', ",")
 }
 
 /// The style an annotation refers to, or the default when it refers to

@@ -1599,6 +1599,7 @@ impl CreaBimApp {
                 if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::SpotLevel) {
                     self.run_action(ctx, &format!("tool:{i}"));
                     self.plan.anno.spot_coords = true;
+                    self.plan.anno.spot_bpv = false;
                     // it stays on the Cadastre tab it was picked from (it
                     // jumped to Annotations, which read as another tool)
                     self.shell.tab_tool = Some(Tool::SpotLevel);
