@@ -11,6 +11,7 @@ pub mod blend;
 pub mod catalogue;
 pub mod cloud;
 pub mod dxf;
+pub mod fbx;
 pub mod freecad;
 pub mod gltf;
 pub mod gltf_read;

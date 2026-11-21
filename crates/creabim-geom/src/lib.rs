@@ -30,6 +30,7 @@ pub mod firerisk;
 pub mod firezones;
 pub mod font;
 pub mod fragment;
+pub mod gbxml;
 pub mod heatplan;
 pub mod joinerylist;
 pub mod looks;

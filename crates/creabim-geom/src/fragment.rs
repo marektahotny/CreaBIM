@@ -242,7 +242,7 @@ pub struct Envelope {
 }
 
 /// A room heated in winter: not a garage and not in the open air.
-fn heated(name: &str, r: &creabim_core::Room) -> bool {
+pub(crate) fn heated(name: &str, r: &creabim_core::Room) -> bool {
     let porch = ["porch", "zápraž", "zapraz"]
         .iter()
         .any(|w| name.to_lowercase().contains(w) || r.occupancy.to_lowercase().contains(w));
@@ -746,7 +746,7 @@ fn near_walls(model: &Model, level: ElementId, regions: &[Vec<DVec2>], reach: f6
     }
 }
 
-fn segment_distance(p: DVec2, a: DVec2, b: DVec2) -> f64 {
+pub(crate) fn segment_distance(p: DVec2, a: DVec2, b: DVec2) -> f64 {
     let ab = b - a;
     let t = if ab.length_squared() < 1e-12 {
         0.0

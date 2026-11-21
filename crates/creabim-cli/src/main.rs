@@ -78,6 +78,8 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
                                        turn room labels written as notes
                                        (a name over an area) into rooms
   creabim glb <model> <out.glb>        export glTF for Blender, with element ids
+  creabim fbx <model> <out.fbx>        export the model in 3D as FBX for visualisation
+  creabim gbxml <model> <out.xml>      export the energy model (rooms, envelope) as gbXML
   creabim fcstd <model> <out.FCStd>    export a FreeCAD document
   creabim link <model> <file.blend|file.FCStd> <out-model>
                                        bring in (or reload) a linked file's objects";
@@ -202,6 +204,17 @@ fn main() -> ExitCode {
         }),
         ["glb", input, out] => load(input).and_then(|m| {
             std::fs::write(out, creabim_exchange::gltf::export_glb(&m)).map_err(|e| e.to_string())
+        }),
+        ["fbx", input, out] => load(input).and_then(|m| {
+            let title = project_name(input);
+            std::fs::write(out, creabim_exchange::fbx::export_fbx(&m, &title)).map_err(|e| e.to_string())
+        }),
+        ["gbxml", input, out] => load(input).and_then(|m| {
+            let (text, warnings) = creabim_geom::gbxml::export(&m);
+            for w in &warnings {
+                eprintln!("{w}");
+            }
+            std::fs::write(out, text).map_err(|e| e.to_string())
         }),
         ["fcstd", input, out] => load(input).and_then(|m| {
             let label = std::path::Path::new(out)
