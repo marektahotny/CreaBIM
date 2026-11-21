@@ -183,6 +183,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Sets the building on the plot by typed distances: from the side boundary its side runs along, and from the rear boundary (askew too) at the nearest corner. The map moves under the building; the building and the floor plans stay as drawn",
             ),
             act(
+                "site:reset",
+                "Reset the coordinates",
+                "refresh-cw",
+                "Puts the map back where it came down: every drawing in S-JTSK straight on its own coordinates, the project's S-JTSK origin at ±0,000, the orthophoto, terrain and what was drawn on the map with them. The building stays; Ctrl+Z undoes it",
+            ),
+            act(
                 "site:symbols",
                 "Site symbols and networks",
                 "map-pin",

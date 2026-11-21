@@ -258,6 +258,75 @@ pub fn move_ground(model: &Model, r: &Rigid) -> Transaction {
     out
 }
 
+/// The map put back where it came down (George: "a button to reset the
+/// coordinates"): each drawing in S-JTSK straight again with the project's
+/// S-JTSK origin at ±0,000; the rest of the map (the orthophoto, the
+/// terrain, what was drawn on it in a site plan) moved back as the
+/// drawing S-JTSK is read from; true north turned back with it. Empty
+/// without a map or an S-JTSK origin, or when nothing moved.
+pub fn reset(model: &Model) -> Transaction {
+    let mut out = Transaction::new("Reset the map's position");
+    let Some((pid, info)) = model.project_info() else {
+        return out;
+    };
+    let Some([e0, n0]) = info.sjtsk else {
+        return out;
+    };
+    let shift = DVec2::new(e0, n0);
+    let (mut members, main) = group(model);
+    if members.is_empty() {
+        return out;
+    }
+    // how the drawing S-JTSK is read from has moved since it came down
+    let back = main
+        .and_then(|id| model.get(id))
+        .and_then(|e| match &e.kind {
+            ElementKind::Reference(r) => {
+                let c = r.centre();
+                Some(Rigid {
+                    about: r.at,
+                    degrees: -r.rotation,
+                    by: c - shift - r.at,
+                })
+            }
+            _ => None,
+        });
+    members.extend(ground_sketches(model));
+    for id in &members {
+        let Some(e) = model.get(*id) else {
+            continue;
+        };
+        let now = match &e.kind {
+            // a drawing in S-JTSK: straight, its origin at ±0,000
+            ElementKind::Reference(r) if is_jtsk_drawing(r) => {
+                let mut n = e.clone();
+                if let ElementKind::Reference(q) = &mut n.kind {
+                    q.rotation = 0.0;
+                    q.at = q.centre() - shift;
+                }
+                Some(n)
+            }
+            _ => back.and_then(|b| moved(model, e, &b)),
+        };
+        if let Some(n) = now {
+            if n != *e {
+                out = out.replace(e.clone(), n);
+            }
+        }
+    }
+    if let Some(b) = back.filter(|b| b.degrees.abs() > 1e-12) {
+        let mut p = info.clone();
+        let n = (p.true_north + b.degrees + 180.0).rem_euclid(360.0) - 180.0;
+        p.true_north = (n * 1e9).round() / 1e9;
+        if let Some(e) = model.get(pid) {
+            let mut now = e.clone();
+            now.kind = ElementKind::Project(p);
+            out = out.replace(e.clone(), now);
+        }
+    }
+    out
+}
+
 /// The rigid move that lays the ground's corner `ground.0`, its side
 /// running to `ground.1`, on the building's corner `building.0`, its side
 /// running to `building.1`.
@@ -392,6 +461,35 @@ mod tests {
         assert!(sides.iter().all(|x| *x == sides[0]));
         let far = fit.apply(side.0);
         assert_eq!((far - p).dot(m).signum(), sides[0]);
+    }
+
+    #[test]
+    fn reset_puts_the_map_back_where_it_came_down() {
+        let (mut doc, map, ortho) = mapped();
+        let p = DVec2::new(3.0, 4.0);
+        let before = sjtsk_of(doc.model(), p).unwrap();
+        let place = |doc: &Document, id| match &doc.model().get(id).unwrap().kind {
+            ElementKind::Reference(r) => (r.at, r.rotation),
+            _ => unreachable!(),
+        };
+        let o0 = place(&doc, ortho);
+        let r = Rigid {
+            about: DVec2::new(10.0, -2.0),
+            degrees: 30.0,
+            by: DVec2::new(7.0, 1.0),
+        };
+        doc.commit(move_ground(doc.model(), &r)).unwrap();
+        assert!((sjtsk_of(doc.model(), p).unwrap() - before).length() > 1.0);
+        doc.commit(reset(doc.model())).unwrap();
+        assert!((sjtsk_of(doc.model(), p).unwrap() - before).length() < 1e-6);
+        // a drawing in S-JTSK that had slipped 5 m off the other comes
+        // back to its own coordinates too
+        let a = place(&doc, ortho);
+        assert!(a.0.length() < 1e-6 && a.1.abs() < 1e-9, "{a:?} {o0:?}");
+        assert!(doc.model().project_info().unwrap().1.true_north.abs() < 1e-9);
+        let _ = map;
+        // nothing moved: nothing to do
+        assert!(reset(doc.model()).ops.is_empty());
     }
 
     #[test]
