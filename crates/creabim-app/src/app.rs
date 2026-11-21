@@ -13340,7 +13340,12 @@ impl CreaBimApp {
                 }
             }
         }
-        if frame > 3 && frame < 40 {
+        // the frame the window is saved at (later for a model still loading)
+        let at: u64 = std::env::var("CREABIM_SHOT_FRAME")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30);
+        if frame > 3 && frame < at + 10 {
             ctx.request_repaint();
             if std::env::var("CREABIM_SHOT_SHEET").is_ok() {
                 // where it looks on the sheet: "x,y,pixels a millimetre"
@@ -13372,7 +13377,7 @@ impl CreaBimApp {
                 }
             }
         }
-        if frame == 30 {
+        if frame == at {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
         let shot = ctx.input(|i| {

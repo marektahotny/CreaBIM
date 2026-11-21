@@ -203,6 +203,32 @@ pub fn rows_of(model: &Model, level: Option<ElementId>, left_out: &[ElementId]) 
     all
 }
 
+/// A material's description as a legend writes it: without where its
+/// data come from (a maker's data sheets, a handbook, a declaration of
+/// performance) and without its own λ, which the legend adds itself for
+/// an outer wall.
+pub fn plain_description(description: &str) -> String {
+    const SOURCES: [&str; 8] = [
+        "technické listy",
+        "technický list",
+        "technical data",
+        "podľa:",
+        "príručk",
+        "vyhlásenie o parametroch",
+        "v liste neuveden",
+        "orientačne",
+    ];
+    description
+        .split(';')
+        .map(str::trim)
+        .filter(|part| {
+            let low = part.to_lowercase();
+            !part.is_empty() && !part.starts_with('λ') && !SOURCES.iter().any(|s| low.contains(s))
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
 fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
     // what a plan of the storey cuts: its walls and those rising through
     // it from below, its columns
@@ -235,7 +261,7 @@ fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
         let what = if m.description.trim().is_empty() {
             tr(e.name.trim())
         } else {
-            tr(m.description.trim())
+            tr(&plain_description(&m.description))
         };
         let text = match mm {
             Some(mm) => format!("{what}, {} {mm} mm", tr("thickness")),
@@ -302,8 +328,10 @@ fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
         }
     }
     // what floors and roofs are built of: their structure, insulation and
-    // waterproofing, as the legend of the ASR sections lists them
-    for e in model.iter() {
+    // waterproofing, as the legend of the ASR sections lists them; a
+    // storey's plan cuts no slab (the floor lies under its cut, the
+    // ceiling over it), so its legend leaves them out
+    for e in model.iter().filter(|_| level.is_none()) {
         if !matches!(e.kind, ElementKind::Slab(_) | ElementKind::Roof(_)) {
             continue;
         }
@@ -612,6 +640,34 @@ mod thermal_sound {
 }
 
 #[cfg(test)]
+mod plain {
+    use super::*;
+
+    #[test]
+    fn a_legend_leaves_out_where_the_data_come_from() {
+        assert_eq!(
+            plain_description(
+                "PORFIX; obvodové / nosné murivo; tvárnica 500 × 250 × 300 mm; Rw 47 dB; REI-M 240; \
+                 λ10,dry 0.095 / λU 0.103 W/(m·K); PORFIX Technické listy 2025"
+            ),
+            "PORFIX; obvodové / nosné murivo; tvárnica 500 × 250 × 300 mm; Rw 47 dB; REI-M 240"
+        );
+        assert_eq!(
+            plain_description(
+                "PORFIX; nenosné murivo (priečky); Rw 39 dB; EI 180; λ 0.13 W/(m·K); \
+                 PORFIX Technické listy 2025; λ orientačne (v liste neuvedená); \
+                 požiarna odolnosť podľa: Odborná príručka PORFIX, s. 7; tab. 8 Odborná príručka PORFIX"
+            ),
+            "PORFIX; nenosné murivo (priečky); Rw 39 dB; EI 180"
+        );
+        assert_eq!(
+            plain_description("Minerálna vlna - fasádna doska"),
+            "Minerálna vlna - fasádna doska"
+        );
+    }
+}
+
+#[cfg(test)]
 mod by_storey {
     use super::*;
 
@@ -631,6 +687,32 @@ mod by_storey {
                 assert!(all.iter().any(|a| a.material == r.material), "{name}");
                 union.push((r.material, r.thickness_mm));
             }
+        }
+        // what only slabs are built of (the floor's insulation, its
+        // waterproofing) is in no storey's legend, only the sections'
+        let walls: Vec<(ElementId, Option<i64>)> = m
+            .iter()
+            .flat_map(|e| match (&e.kind, creabim_core::assembly_of(&m, e)) {
+                (ElementKind::Wall(_), Some((_, a))) => a
+                    .layers
+                    .iter()
+                    .map(|l| (l.material, l.thickness))
+                    .collect::<Vec<_>>(),
+                (ElementKind::Wall(w), None) => vec![(w.material, w.thickness)],
+                _ => vec![],
+            })
+            .filter_map(|(mat, t)| Some((mat?, Some((t * 1000.0).round() as i64))))
+            .collect();
+        let slab_only: Vec<&Row> = all
+            .iter()
+            .filter(|r| r.thickness_mm.is_some() && !walls.contains(&(r.material, r.thickness_mm)))
+            .collect();
+        assert!(
+            !slab_only.is_empty(),
+            "the starter's floors add rows to the sections' legend"
+        );
+        for r in slab_only {
+            assert!(!union.contains(&(r.material, r.thickness_mm)), "{}", r.text);
         }
         // some storey lists less than the whole
         assert!(levels
