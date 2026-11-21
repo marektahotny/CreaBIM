@@ -169,6 +169,11 @@ impl Document {
         if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
             tx.ops.extend(extra.ops);
         }
+        // downpipes sized by their gutters follow them
+        let extra = crate::flashing::settle(&self.model, tx);
+        if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
+            tx.ops.extend(extra.ops);
+        }
         // held dimensions move the other end of what moved (the padlock)
         for round in crate::holds::settle(&self.model, tx) {
             if round.apply(&mut self.model).is_ok() {

@@ -382,7 +382,11 @@ pub fn tool_page(t: Tool) -> &'static str {
         Tool::Column | Tool::Beam => "columns-beams",
         Tool::Roof => "roofs",
         Tool::Stair | Tool::Railing => "stairs-railings",
-        Tool::Gutter | Tool::Downpipe => "roofs",
+        Tool::Gutter
+        | Tool::Downpipe
+        | Tool::Capping
+        | Tool::ChimneyFlashing
+        | Tool::RoofOutlet => "roofs",
         Tool::Footing => "footings",
         Tool::Level => "levels",
         Tool::Align => "align",

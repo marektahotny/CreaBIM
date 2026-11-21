@@ -5314,7 +5314,7 @@ impl CreaBimApp {
                     (t, _) if t.draws_outline() || t == Tool::RoomSeparator => {
                         self.plan.status.take().unwrap_or_default()
                     }
-                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
+                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Capping | Tool::ChimneyFlashing | Tool::RoofOutlet | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
                         .plan
                         .status
                         .take()
@@ -13446,6 +13446,20 @@ impl CreaBimApp {
                 }
             }
             // the assembly editor open on an assembly of that name
+            // the plan cut this high over its level, m
+            if let (Some(id), Ok(t)) = (id, std::env::var("CREABIM_SHOT_CUT")) {
+                if let (Ok(t), Some(e)) = (t.parse::<f64>(), self.doc.model().get(id).cloned()) {
+                    let mut after = e.clone();
+                    if let ElementKind::View(v) = &mut after.kind {
+                        if let ViewKind::Plan { cut_height, .. } = &mut v.kind {
+                            *cut_height = t;
+                        }
+                    }
+                    let _ = self
+                        .doc
+                        .commit(creabim_core::Transaction::new("cut").replace(e, after));
+                }
+            }
             // the plan's top of range raised this far over its level, m
             if let (Some(id), Ok(t)) = (id, std::env::var("CREABIM_SHOT_TOP")) {
                 if let (Ok(t), Some(e)) = (t.parse::<f64>(), self.doc.model().get(id).cloned()) {
@@ -14686,6 +14700,9 @@ pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::Flashing(f) => match f.item {
             creabim_core::flashing::FlashingItem::Gutter(_) => "gutter",
             creabim_core::flashing::FlashingItem::Downpipe(_) => "downpipe",
+            creabim_core::flashing::FlashingItem::Capping(_) => "capping",
+            creabim_core::flashing::FlashingItem::Chimney(_) => "chimney-flashing",
+            creabim_core::flashing::FlashingItem::Outlet(_) => "roof-outlet",
         },
         ElementKind::Valve(_) => "valve",
         ElementKind::Circuit(_) => "circuit",

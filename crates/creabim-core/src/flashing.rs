@@ -53,6 +53,12 @@ pub struct Flashing {
 pub enum FlashingItem {
     Gutter(Gutter),
     Downpipe(Downpipe),
+    /// A parapet's capping (oplechovanie atiky).
+    Capping(crate::roofmetal::Capping),
+    /// The flashing round a chimney (lemovanie komína).
+    Chimney(crate::roofmetal::ChimneyFlashing),
+    /// A roof outlet (strešný vpust).
+    Outlet(crate::roofmetal::RoofOutlet),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,6 +139,69 @@ pub struct Downpipe {
     /// The gap between the pipe and the facade, m.
     #[serde(default = "default_facade_gap")]
     pub facade_gap: f64,
+    /// Its size follows its gutter's ([`pipe_for_gutter`]); off once a
+    /// size is typed by hand.
+    #[serde(default = "yes")]
+    pub size_auto: bool,
+}
+
+/// The downpipe that goes with a gutter `gutter_mm` wide, mm (George
+/// 2026-11-21: downpipes are not sized by calculation for now but by the
+/// gutter: 80 takes 75, 110 takes 100; 140 takes 100 as in his table).
+/// Wider ones: the usual pairs, to be confirmed by George.
+pub fn pipe_for_gutter(gutter_mm: f64) -> f64 {
+    const PAIRS: [(f64, f64); 6] = [
+        (80.0, 75.0),
+        (110.0, 100.0),
+        (150.0, 100.0),
+        (200.0, 120.0),
+        (250.0, 150.0),
+        (f64::INFINITY, 200.0),
+    ];
+    PAIRS
+        .iter()
+        .find(|(g, _)| gutter_mm <= g + 1e-6)
+        .map_or(200.0, |p| p.1)
+}
+
+/// Downpipes whose size follows their gutter brought to it, after `tx`
+/// changed gutters or placed downpipes: one more transaction to apply.
+pub fn settle(model: &Model, tx: &crate::Transaction) -> crate::Transaction {
+    let mut out = crate::Transaction::new(tx.label.clone());
+    let touches = tx.ops.iter().any(|o| match o {
+        crate::Op::Insert(e) | crate::Op::Remove(e) => matches!(e.kind, ElementKind::Flashing(_)),
+        crate::Op::Replace { after, .. } => matches!(after.kind, ElementKind::Flashing(_)),
+    });
+    if !touches {
+        return out;
+    }
+    for e in model.iter() {
+        let ElementKind::Flashing(f) = &e.kind else {
+            continue;
+        };
+        let FlashingItem::Downpipe(d) = &f.item else {
+            continue;
+        };
+        if !d.size_auto {
+            continue;
+        }
+        let Some(g) = gutter_of(model, d.gutter) else {
+            continue;
+        };
+        let want = pipe_for_gutter(g.size_mm);
+        if (d.size_mm - want).abs() > 1e-6 {
+            let mut ne = e.clone();
+            if let ElementKind::Flashing(Flashing {
+                item: FlashingItem::Downpipe(nd),
+                ..
+            }) = &mut ne.kind
+            {
+                nd.size_mm = want;
+            }
+            out = out.replace(e.clone(), ne);
+        }
+    }
+    out
 }
 
 fn yes() -> bool {
@@ -188,6 +257,7 @@ impl Flashing {
                 clamp_spacing: 2.0,
                 to_wall: true,
                 facade_gap: default_facade_gap(),
+                size_auto: true,
             }),
             material: GALVANISED.into(),
             thickness_mm: 0.6,
@@ -211,13 +281,16 @@ impl Flashing {
         match &self.item {
             FlashingItem::Gutter(_) => 333.0 - std::f64::consts::PI * 70.0,
             FlashingItem::Downpipe(_) => 333.0 - std::f64::consts::PI * 100.0,
+            FlashingItem::Capping(_) | FlashingItem::Outlet(_) => 0.0,
+            // a 20 mm hem on each edge
+            FlashingItem::Chimney(_) => 40.0,
         }
     }
 
     /// The developed width, mm: typed by hand, or the profile's length
     /// (a half-round's half circle, a square gutter's three sides, a
     /// downpipe's whole round or four sides) and its edges, to whole mm.
-    pub fn developed(&self) -> f64 {
+    pub fn developed(&self, model: &Model) -> f64 {
         if self.developed_set {
             return self.developed_mm;
         }
@@ -231,6 +304,9 @@ impl Flashing {
                 DownpipeProfile::Round => pi * d.size_mm,
                 DownpipeProfile::Square => 4.0 * d.size_mm,
             },
+            FlashingItem::Capping(c) => crate::roofmetal::capping_developed(model, c),
+            FlashingItem::Chimney(c) => (c.upstand + c.apron) * 1000.0,
+            FlashingItem::Outlet(_) => return 0.0,
         };
         (profile + self.edges()).round()
     }
@@ -264,6 +340,27 @@ impl Flashing {
                 }
                 Ok(())
             }
+            FlashingItem::Capping(c) => {
+                pos(c.osb, "OSB thickness")?;
+                if ![c.leg, c.drip, c.xps, c.fall]
+                    .iter()
+                    .all(|v| v.is_finite() && *v >= 0.0)
+                {
+                    return Err("capping sizes must not be negative".into());
+                }
+                Ok(())
+            }
+            FlashingItem::Chimney(c) => {
+                pos(c.upstand, "upstand")?;
+                pos(c.apron, "apron")
+            }
+            FlashingItem::Outlet(o) => {
+                pos(o.dn, "outlet size")?;
+                if !o.at.is_finite() {
+                    return Err("outlet place must be finite".into());
+                }
+                Ok(())
+            }
         }
     }
 
@@ -285,6 +382,14 @@ impl Flashing {
                     DownpipeProfile::Square => "štvorcového",
                 }
             ),
+            FlashingItem::Capping(_) => "Oplechovanie atiky".into(),
+            FlashingItem::Chimney(_) => "Lemovanie komína".into(),
+            // a piece of its own, not of sheet
+            FlashingItem::Outlet(o) => {
+                return format!("Strešný vpust {} DN {}", o.kind, num(o.dn))
+                    .trim()
+                    .replace("  ", " ")
+            }
         };
         if !self.material.is_empty() {
             s += &format!(" {}", self.material);
@@ -302,6 +407,12 @@ impl Flashing {
                 DownpipeProfile::Round => format!(" fi {} mm", num(d.size_mm)),
                 DownpipeProfile::Square => format!(" {0} x {0} mm", num(d.size_mm)),
             },
+            FlashingItem::Capping(c) => format!(
+                " kotvené do OSB dosky hr. {} mm na XPS v spáde {} % smerom do vnútorného priestoru strechy",
+                num(c.osb * 1000.0),
+                num(c.fall)
+            ),
+            FlashingItem::Chimney(_) | FlashingItem::Outlet(_) => String::new(),
         };
         s
     }
@@ -938,6 +1049,10 @@ pub struct RoofFigures {
     pub ridge: f64,
     pub hip: f64,
     pub valley: f64,
+    /// The parapets' insulation under their cappings, m²: the inner
+    /// faces up from the roof and the tops.
+    pub parapet_faces: f64,
+    pub parapet_tops: f64,
 }
 
 /// Every roof's figures added up.
@@ -981,6 +1096,17 @@ pub fn roof_figures(model: &Model) -> RoofFigures {
             }
         }
     }
+    for e in model.iter() {
+        if let ElementKind::Flashing(Flashing {
+            item: FlashingItem::Capping(c),
+            ..
+        }) = &e.kind
+        {
+            let (v, h) = crate::roofmetal::parapet_insulation(model, c);
+            out.parapet_faces += v;
+            out.parapet_tops += h;
+        }
+    }
     out
 }
 
@@ -996,22 +1122,37 @@ pub struct Row {
     pub length: f64,
     /// Accessories: what and how many pieces.
     pub extras: Vec<(String, usize)>,
+    /// Counted in pieces (a roof outlet), not by length.
+    pub pieces: Option<usize>,
     pub note: String,
     pub members: Vec<ElementId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RowKind {
+    Sill,
     DownpipeRound,
     DownpipeSquare,
+    Outlet,
     GutterHalfRound,
     GutterSquare,
+    Capping,
+    CornerStrip,
+    Chimney,
 }
+
+/// An outer sill's sheet past its depth, mm: turned up under the frame
+/// and down over the facade.
+pub const SILL_EDGES: f64 = 60.0;
+/// What outer sills are made of (George's K-1).
+pub const SILL_SHEET: &str = "z hliníkového plechu";
+pub const SILL_THICKNESS: f64 = 1.0;
 
 /// The rows of the table, numbered K-1, K-2… in their order (downpipes,
 /// then gutters, as George's table has them) unless marked by hand.
 pub fn rows(model: &Model) -> Vec<Row> {
     let mut rows: Vec<Row> = vec![];
+    let mut strips: Vec<(ElementId, f64, f64)> = vec![];
     for e in model.iter() {
         let ElementKind::Flashing(f) = &e.kind else {
             continue;
@@ -1053,17 +1194,34 @@ pub fn rows(model: &Model) -> Vec<Row> {
                 };
                 (kind, len, x)
             }
+            FlashingItem::Capping(c) => {
+                let len = crate::roofmetal::capping_place(model, c).map_or(0.0, |p| p.length());
+                let n = (len / 0.5).ceil() as usize + 1;
+                if c.corner_strip {
+                    strips.push((e.id, len, c.strip_mm));
+                }
+                (RowKind::Capping, len, vec![("Príponka".into(), n)])
+            }
+            FlashingItem::Chimney(c) => (
+                RowKind::Chimney,
+                crate::roofmetal::chimney_length(model, c),
+                vec![],
+            ),
+            FlashingItem::Outlet(_) => (RowKind::Outlet, 0.0, vec![]),
         };
         let description = f.description();
         let mark = f.mark.clone().unwrap_or_default();
         match rows.iter_mut().find(|r| {
             r.kind == kind
                 && r.description == description
-                && (r.developed_mm - f.developed()).abs() < 1e-6
+                && (r.developed_mm - f.developed(model)).abs() < 1e-6
                 && r.mark == mark
         }) {
             Some(r) => {
                 r.length += length;
+                if let Some(p) = &mut r.pieces {
+                    *p += 1;
+                }
                 for (what, n) in extras {
                     match r.extras.iter_mut().find(|x| x.0 == what) {
                         Some(x) => x.1 += n,
@@ -1082,11 +1240,69 @@ pub fn rows(model: &Model) -> Vec<Row> {
                 mark,
                 kind,
                 description,
-                developed_mm: f.developed(),
+                developed_mm: f.developed(model),
                 length,
                 extras,
+                pieces: (kind == RowKind::Outlet).then_some(1),
                 note: f.note.clone(),
                 members: vec![e.id],
+            }),
+        }
+    }
+    // the corner strips at the parapets' feet, one row a width
+    for (id, len, mm) in strips {
+        match rows
+            .iter_mut()
+            .find(|r| r.kind == RowKind::CornerStrip && (r.developed_mm - mm).abs() < 1e-6)
+        {
+            Some(r) => {
+                r.length += len;
+                r.members.push(id);
+            }
+            None => rows.push(Row {
+                mark: String::new(),
+                kind: RowKind::CornerStrip,
+                description: "Kútová lišta z poplastovaného plechu (VIPLANYL)".into(),
+                developed_mm: mm,
+                length: len,
+                extras: vec![],
+                pieces: None,
+                note: String::new(),
+                members: vec![id],
+            }),
+        }
+    }
+    // the windows' outer sills, alike ones one row
+    for s in crate::joinery::outer_sills(model) {
+        let developed = (s.depth * 1000.0 + SILL_EDGES).round();
+        let n = s.windows.len();
+        let clips = n * ((s.length / 0.5).ceil() as usize + 1);
+        let description = format!(
+            "Vonkajší parapet {SILL_SHEET} hr. {} mm, hĺbka {} mm",
+            num(SILL_THICKNESS),
+            num(s.depth * 1000.0)
+        );
+        match rows
+            .iter_mut()
+            .find(|r| r.kind == RowKind::Sill && (r.developed_mm - developed).abs() < 1e-6)
+        {
+            Some(r) => {
+                r.length += s.length * n as f64;
+                for x in r.extras.iter_mut() {
+                    x.1 += if x.0 == "Príponka" { clips } else { 2 * n };
+                }
+                r.members.extend(s.windows.iter().copied());
+            }
+            None => rows.push(Row {
+                mark: String::new(),
+                kind: RowKind::Sill,
+                description,
+                developed_mm: developed,
+                length: s.length * n as f64,
+                extras: vec![("Bočná krytka".into(), 2 * n), ("Príponka".into(), clips)],
+                pieces: None,
+                note: String::new(),
+                members: s.windows.clone(),
             }),
         }
     }

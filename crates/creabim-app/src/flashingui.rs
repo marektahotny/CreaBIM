@@ -157,7 +157,9 @@ pub fn downpipe_click(
     let mut f = Flashing::downpipe(level, gutter, at);
     if let FlashingItem::Downpipe(dp) = &mut f.item {
         dp.profile = d.pipe_profile;
-        dp.size_mm = d.pipe_mm;
+        // as wide as its gutter takes (George: not calculated for now)
+        dp.size_mm = flashing::gutter_of(model, gutter)
+            .map_or(d.pipe_mm, |g| flashing::pipe_for_gutter(g.size_mm));
         // the foot at the lowest level's floor
         dp.bottom = lowest_level(model);
     }
@@ -186,6 +188,111 @@ fn lowest_level(model: &Model) -> f64 {
     }
 }
 
+/// A click of the Parapet capping, Chimney flashing or Roof outlet tool.
+pub fn roof_metal_click(
+    doc: &mut Document,
+    level: ElementId,
+    tool: crate::planview::Tool,
+    p: DVec2,
+    state: &mut PlanState,
+    selection: &mut crate::selection::Selection,
+) -> Result<(), creabim_core::ModelError> {
+    use crate::planview::Tool;
+    use creabim_core::roofmetal as rm;
+    let model = doc.model();
+    let level_of = |id: ElementId| {
+        model
+            .get(id)
+            .and_then(|e| creabim_core::members::level_of(&e.kind))
+            .unwrap_or(level)
+    };
+    let taken = |pred: &dyn Fn(&FlashingItem) -> bool| {
+        model
+            .iter()
+            .any(|e| matches!(&e.kind, ElementKind::Flashing(f) if pred(&f.item)))
+    };
+    let (name, mut f, label) = match tool {
+        Tool::Capping => {
+            let Some(wall) = rm::parapet_at(model, p) else {
+                state.status = Some("Click on a parapet wall.".into());
+                return Ok(());
+            };
+            if taken(&|i| matches!(i, FlashingItem::Capping(c) if c.wall == wall)) {
+                state.status = Some("That parapet is capped already.".into());
+                return Ok(());
+            }
+            let mut c = rm::Capping::new(wall);
+            c.inside_left = rm::roof_on_left(model, wall);
+            let mut f = Flashing::gutter(level_of(wall), None, vec![]);
+            f.item = FlashingItem::Capping(c);
+            // George's K-4: titanium-zinc 1 mm
+            f.material = "z titanzinkového plechu".into();
+            f.thickness_mm = 1.0;
+            f.finish = String::new();
+            ("Oplechovanie atiky", f, "Cap parapet")
+        }
+        Tool::ChimneyFlashing => {
+            let Some(part) = rm::chimney_at(model, p) else {
+                state.status = Some("Click on a chimney.".into());
+                return Ok(());
+            };
+            if taken(&|i| matches!(i, FlashingItem::Chimney(c) if c.part == part)) {
+                state.status = Some("That chimney is flashed already.".into());
+                return Ok(());
+            }
+            let mut f = Flashing::gutter(level_of(part), None, vec![]);
+            f.item = FlashingItem::Chimney(rm::ChimneyFlashing::new(part));
+            ("Lemovanie komína", f, "Flash chimney")
+        }
+        _ => {
+            if rm::roof_top_at(model, p).is_none() {
+                state.status = Some("Click on a roof.".into());
+                return Ok(());
+            }
+            let mut f = Flashing::gutter(level, None, vec![]);
+            f.item = FlashingItem::Outlet(rm::RoofOutlet::new(p));
+            f.material = String::new();
+            f.finish = String::new();
+            ("Strešný vpust", f, "Place roof outlet")
+        }
+    };
+    f.developed_set = false;
+    let mut tx = Transaction::new(label);
+    // the capping's XPS and OSB drawn and listed as theirs: the model's
+    // materials of those names, added when it has none
+    if tool == Tool::Capping {
+        for (key, name, hatch, color, category) in [
+            (
+                "XPS",
+                "XPS",
+                creabim_core::Hatch::Insulation,
+                [0.55, 0.78, 0.92],
+                "insulation",
+            ),
+            (
+                "OSB",
+                "OSB doska",
+                creabim_core::Hatch::Timber,
+                [0.82, 0.68, 0.45],
+                "wood",
+            ),
+        ] {
+            let have = model.iter().any(|e| {
+                matches!(e.kind, ElementKind::Material(_)) && e.name.to_uppercase().contains(key)
+            });
+            if !have {
+                let mut m = creabim_core::Material::new(hatch, color);
+                m.category = category.into();
+                tx = tx.insert(Element::new(name, ElementKind::Material(m)));
+            }
+        }
+    }
+    let e = Element::new(name, ElementKind::Flashing(f));
+    selection.only(e.id);
+    state.status = None;
+    doc.commit(tx.insert(e))
+}
+
 fn mm(ui: &mut egui::Ui, label: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
     crate::props::row(ui, label, |ui| {
         crate::props::fill(
@@ -197,6 +304,16 @@ fn mm(ui: &mut egui::Ui, label: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
         )
         .changed()
     })
+}
+
+/// A size held in metres, typed in millimetres.
+fn mm_m(ui: &mut egui::Ui, label: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
+    let mut x = *v * 1000.0;
+    let changed = mm(ui, label, &mut x, lo * 1000.0, hi * 1000.0);
+    if changed {
+        *v = x / 1000.0;
+    }
+    changed
 }
 
 fn metres(ui: &mut egui::Ui, label: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
@@ -351,8 +468,19 @@ pub fn fields(ui: &mut egui::Ui, model: &Model, id: ElementId, f: &mut Flashing)
             ) {
                 label = "Downpipe profile";
             }
+            if crate::props::row(ui, "Size by the gutter", |ui| {
+                ui.checkbox(&mut d.size_auto, "").changed()
+            }) {
+                label = "Downpipe size by the gutter";
+                if d.size_auto {
+                    if let Some(g) = flashing::gutter_of(model, d.gutter) {
+                        d.size_mm = flashing::pipe_for_gutter(g.size_mm);
+                    }
+                }
+            }
             if mm(ui, "Downpipe size", &mut d.size_mm, 40.0, 300.0) {
                 label = "Downpipe size";
+                d.size_auto = false;
             }
             let len = flashing::gutter_of(model, d.gutter).map_or(0.0, |g| g.length());
             if metres(ui, "Along the gutter", &mut d.at, 0.0, len) {
@@ -447,6 +575,83 @@ pub fn fields(ui: &mut egui::Ui, model: &Model, id: ElementId, f: &mut Flashing)
                 }
             }
         }
+        FlashingItem::Capping(c) => {
+            if crate::props::row(ui, "Roof on the wall's left", |ui| {
+                ui.checkbox(&mut c.inside_left, "").changed()
+            }) {
+                label = "Capping side";
+            }
+            if mm_m(ui, "Leg down each face", &mut c.leg, 0.0, 0.5) {
+                label = "Capping leg";
+            }
+            if mm_m(ui, "Drip", &mut c.drip, 0.0, 0.1) {
+                label = "Capping drip";
+            }
+            if mm_m(ui, "OSB board", &mut c.osb, 0.005, 0.05) {
+                label = "Capping OSB";
+            }
+            if mm_m(ui, "XPS at the inner edge", &mut c.xps, 0.0, 0.3) {
+                label = "Capping XPS";
+            }
+            if crate::props::row(ui, "Fall towards the roof", |ui| {
+                crate::props::fill(
+                    ui,
+                    egui::DragValue::new(&mut c.fall)
+                        .range(0.0..=20.0)
+                        .speed(0.1)
+                        .suffix(" %"),
+                )
+                .changed()
+            }) {
+                label = "Capping fall";
+            }
+            if crate::props::row(ui, "Corner strip", |ui| {
+                ui.checkbox(&mut c.corner_strip, "").changed()
+            }) {
+                label = "Corner strip";
+            }
+            if c.corner_strip && mm(ui, "Corner strip width", &mut c.strip_mm, 20.0, 500.0) {
+                label = "Corner strip";
+            }
+            let (v, h) = creabim_core::roofmetal::parapet_insulation(model, c);
+            crate::props::note(
+                ui,
+                format!(
+                    "{} {} m², {} {} m²",
+                    crate::i18n::tr("Parapet insulation: inner face"),
+                    flashing::num(v),
+                    crate::i18n::tr("top"),
+                    flashing::num(h)
+                ),
+            );
+        }
+        FlashingItem::Chimney(c) => {
+            if mm_m(ui, "Up the chimney", &mut c.upstand, 0.05, 0.5) {
+                label = "Chimney flashing";
+            }
+            if mm_m(ui, "Out over the roof", &mut c.apron, 0.05, 0.5) {
+                label = "Chimney flashing";
+            }
+            crate::props::note(
+                ui,
+                format!(
+                    "{} {} m",
+                    crate::i18n::tr("Length:"),
+                    flashing::num(creabim_core::roofmetal::chimney_length(model, c))
+                ),
+            );
+        }
+        FlashingItem::Outlet(o) => {
+            if mm(ui, "Outlet size DN", &mut o.dn, 50.0, 200.0) {
+                label = "Roof outlet";
+            }
+            if crate::props::row(ui, "Outlet type", |ui| {
+                crate::props::fill(ui, egui::TextEdit::singleline(&mut o.kind)).changed()
+            }) {
+                label = "Roof outlet";
+            }
+            return label;
+        }
     }
     // the sheet, as the table of sheet-metal items writes it
     let width = ui.available_width().min(220.0);
@@ -470,7 +675,7 @@ pub fn fields(ui: &mut egui::Ui, model: &Model, id: ElementId, f: &mut Flashing)
         label = "Sheet finish";
     }
     // counted from the profile unless typed
-    let mut dev = f.developed();
+    let mut dev = f.developed(model);
     if mm(ui, "Developed width", &mut dev, 10.0, 2000.0) {
         f.developed_mm = dev;
         f.developed_set = true;
@@ -532,6 +737,14 @@ pub fn tool_options(d: &FlashingDraft, tool: crate::planview::Tool) -> Vec<serde
             "unit": unit, "step": step, "min": lo, "max": hi, "hint": hint,
         })
     };
+    if matches!(
+        tool,
+        crate::planview::Tool::Capping
+            | crate::planview::Tool::ChimneyFlashing
+            | crate::planview::Tool::RoofOutlet
+    ) {
+        return vec![];
+    }
     if tool == crate::planview::Tool::Gutter {
         vec![
             seg(vec![

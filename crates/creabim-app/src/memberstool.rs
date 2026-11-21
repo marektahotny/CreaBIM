@@ -289,6 +289,9 @@ pub fn click(
         Tool::Footing => place_footing(doc, level, p, state, selection),
         Tool::Gutter => crate::flashingui::gutter_click(doc, level, p, state, selection),
         Tool::Downpipe => crate::flashingui::downpipe_click(doc, p, state, selection),
+        Tool::Capping | Tool::ChimneyFlashing | Tool::RoofOutlet => {
+            crate::flashingui::roof_metal_click(doc, level, tool, p, state, selection)
+        }
         Tool::Railing => {
             if state.members.path.is_empty() {
                 if let Some(stair) = stair_at(doc.model(), level, p) {
@@ -1707,7 +1710,11 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             ),
         ],
         Tool::Pipe => crate::pipesui::tool_options(&m.pipe),
-        Tool::Gutter | Tool::Downpipe => crate::flashingui::tool_options(&m.flashing, state.tool),
+        Tool::Gutter
+        | Tool::Downpipe
+        | Tool::Capping
+        | Tool::ChimneyFlashing
+        | Tool::RoofOutlet => crate::flashingui::tool_options(&m.flashing, state.tool),
         Tool::Beam => vec![
             json!({
                 "kind": "menu", "key": "beam.corner", "label": "Corners",

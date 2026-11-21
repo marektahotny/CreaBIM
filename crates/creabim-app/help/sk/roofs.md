@@ -43,3 +43,9 @@ Nástroj **Zvod** osadí zvod na žľab, na ktorý kliknete. Presunutím zvod po
 *Vlastnosti* zvodu ukazujú pôdorysnú plochu strechy, ktorá do neho odteká, a prietok Q = r · A · C, s r a C nastavenými na žľabe (predvolene 0,03 l/s·m² a 1,0). Pôdorys strechy kreslí žľaby, zvody, ich označenia a šípky spádu.
 
 **Tabuľka klampiarskych prvkov** (výkaz) uvádza každý prvok raz s označením (K-1, K-2…), značkou, popisom, rozvinutou šírkou, dĺžkou a príslušenstvom (háky, čelá, kotlíky, kolená, objímky) a pod ňou plochu strešných rovín, krytinu a dĺžky hrebeňa a nárožia. Umiestnite ju na výkres strechy.
+
+Veľkosť zvodu sa riadi šírkou jeho žľabu (žľab 80 → zvod 75, 110 → 100, 150 → 100). Kým je *Veľkosť podľa žľabu* zapnutá, zvod sa prispôsobí každej zmene žľabu; zadaním vlastnej veľkosti sa to vypne.
+
+Nástroj **Oplechovanie atiky**: kliknite na stenu atiky. Oplechovanie sa položí po celej jej korune na OSB dosku a XPS v spáde smerom do strechy, s presahom a odkvapovým nosom na oboch lícach; rozvinutú šírku počíta z hrúbky steny. Strana strechy sa určí sama (*Strecha vľavo od steny* ju otočí). Kútová lišta pri vnútornej päte atiky ide do tabuľky ako samostatný prvok a pod tabuľkou je plocha zateplenia atiky (vnútorné líce a koruna).
+
+Nástroj **Lemovanie komína**: kliknite na komín (prvok vytiahnutý z pôdorysu) a olemuje sa po obvode tam, kde prechádza strechou. Nástroj **Strešný vpust** vloží vpust na strechu, kam kliknete; v tabuľke sa počíta v kusoch. Vonkajšie parapety okien idú do tabuľky samy, z okien v modeli.
