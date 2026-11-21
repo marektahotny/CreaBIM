@@ -13341,6 +13341,32 @@ impl CreaBimApp {
 impl eframe::App for CreaBimApp {
     /// Keys typed while a web pane had the keyboard reach the views.
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // for a shot: the pointer held at "x,y", Tab pressed N times
+        // (`CREABIM_SHOT_POINTER=x,y[,tabs]`)
+        if let Ok(at) = std::env::var("CREABIM_SHOT_POINTER") {
+            let v: Vec<f32> = at
+                .split(',')
+                .filter_map(|t| t.trim().parse().ok())
+                .collect();
+            let frame = ctx.cumulative_frame_nr();
+            if v.len() >= 2 && frame >= 8 {
+                raw_input
+                    .events
+                    .push(egui::Event::PointerMoved(egui::pos2(v[0], v[1])));
+            }
+            let tabs = v.get(2).copied().unwrap_or(0.0) as u64;
+            if (12..12 + 2 * tabs).contains(&frame) && frame % 2 == 0 {
+                for pressed in [true, false] {
+                    raw_input.events.push(egui::Event::Key {
+                        key: egui::Key::Tab,
+                        physical_key: None,
+                        pressed,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    });
+                }
+            }
+        }
         if self.shell.feed_keys(raw_input) {
             ctx.request_repaint();
         }
