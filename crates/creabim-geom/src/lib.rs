@@ -49,6 +49,7 @@ pub mod printing;
 pub mod prio;
 pub mod ranges;
 pub mod raster;
+pub mod refs;
 pub mod roofplan;
 pub mod roomlegend;
 pub mod rooms;

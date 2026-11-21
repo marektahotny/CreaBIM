@@ -506,6 +506,10 @@ mod shot_project {
         rf.at -= shift;
         rf.over = true;
         rf.in_3d = true;
+        rf.layer_styles = ["hranice", "vrstevnice"]
+            .into_iter()
+            .filter_map(creabim_core::LayerStyle::for_map_layer)
+            .collect();
         let e = Element::new("Situácia z mapy", ElementKind::Reference(rf));
         let id = e.id;
         let info = creabim_core::ProjectInfo {
@@ -730,5 +734,31 @@ mod shot_project {
             creabim_geom::serviceslegend::drawing(views[0], "Legenda situácie", app.doc.model());
         std::fs::write(dir.join("legend.svg"), legend.to_svg(1000.0)).unwrap();
         creabim_store::save(dir.join("turned.creabim"), &app.doc).unwrap();
+        // the site plan on a sheet, its map under it
+        let site = app
+            .doc
+            .model()
+            .iter()
+            .find(|e| e.name == "Situácia")
+            .unwrap()
+            .id;
+        let sheet = Element::new(
+            "Výkres situácie",
+            ElementKind::Sheet(creabim_core::Sheet::a("C1", "A3")),
+        );
+        let sid = sheet.id;
+        app.doc
+            .commit(Transaction::new("sheet").insert(sheet))
+            .unwrap();
+        let mut vp =
+            creabim_geom::sheet::new_viewport(app.doc.model(), sid, site, DVec2::new(190.0, 160.0));
+        vp.target = DVec2::new(4.0, 3.0);
+        app.doc
+            .commit(Transaction::new("vp").insert(Element::new("vp", ElementKind::Viewport(vp))))
+            .unwrap();
+        creabim_store::save(dir.join("sheet.creabim"), &app.doc).unwrap();
+        creabim_geom::refs::set_provider(crate::trace::sheet_items);
+        let svg = creabim_geom::sheet::sheet_svg(app.doc.model(), sid, &Default::default());
+        std::fs::write(dir.join("sheet.svg"), svg.unwrap()).unwrap();
     }
 }

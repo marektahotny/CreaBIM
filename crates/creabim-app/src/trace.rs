@@ -1144,6 +1144,129 @@ fn path_key(path: &str) -> u64 {
     h.finish() | 1 << 63
 }
 
+/// What sheets show of a view's references, read once per model change:
+/// the references themselves, and the items each view made of them.
+type Made = HashMap<(ElementId, bool), (u64, Arc<Vec<PlanItem>>)>;
+
+#[derive(Default)]
+struct SheetRefs {
+    cache: RefCache,
+    made: Made,
+}
+
+static SHEET_REFS: std::sync::Mutex<Option<SheetRefs>> = std::sync::Mutex::new(None);
+
+/// The references shown in `view` (under the model, or `over` it) as plan
+/// items in model metres, for sheets, their PDF and print: a map's or a
+/// plot plan's lines in their layers' styles and its texts upright, a
+/// picture where it lies square (registered with
+/// [`creabim_geom::refs::set_provider`]).
+pub fn sheet_items(model: &Model, view: ElementId, over: bool) -> Vec<PlanItem> {
+    let refs = creabim_core::reference::in_view(model, view);
+    if refs.iter().all(|(_, r)| r.hidden || r.over != over) {
+        return vec![];
+    }
+    let mut guard = SHEET_REFS.lock().unwrap_or_else(|e| e.into_inner());
+    let s = guard.get_or_insert_with(SheetRefs::default);
+    let rev = model.revision();
+    if let Some((r, items)) = s.made.get(&(view, over)) {
+        if *r == rev {
+            return items.as_ref().clone();
+        }
+    }
+    let (scale, turn) = match model.get(view).map(|e| &e.kind) {
+        Some(creabim_core::ElementKind::View(v)) => (
+            creabim_core::styles::resolved(model, v).paper_scale(),
+            v.turn,
+        ),
+        _ => (100.0, 0.0),
+    };
+    // drawing metres to a paper millimetre
+    let mm = scale / 1000.0;
+    let mut out = Vec::new();
+    for (id, r) in refs {
+        if r.hidden || r.over != over || r.opacity <= 0.0 {
+            continue;
+        }
+        let a = r.opacity.clamp(0.0, 1.0);
+        // faded towards the paper as the screen fades it
+        let fade = |c: [u8; 3]| c.map(|v| 1.0 - (1.0 - v as f32 / 255.0) * a);
+        let own = r
+            .colour
+            .map(|i| REFERENCE_COLOURS[(i as usize).min(REFERENCE_COLOURS.len() - 1)].1);
+        match s.cache.get(model, id, r) {
+            Shown::Lines(lines) => {
+                let ink = fade(own.unwrap_or([70, 70, 70]));
+                let styles: Vec<Option<&creabim_core::LayerStyle>> = lines
+                    .layers
+                    .iter()
+                    .map(|l| r.layer_styles.iter().find(|s| s.layer == *l))
+                    .collect();
+                for (i, line) in lines.iter().enumerate() {
+                    if line.len() < 2 {
+                        continue;
+                    }
+                    let style = lines
+                        .layer_of
+                        .get(i)
+                        .and_then(|k| styles.get(*k as usize).copied().flatten());
+                    out.push(PlanItem::Curve {
+                        id,
+                        points: line.iter().map(|p| r.place(*p)).collect(),
+                        rgb: style.map_or(ink, |st| fade(st.rgb)),
+                        dashed: style.is_some_and(|st| st.dashed),
+                    });
+                }
+                let x = r.place(DVec2::X) - r.place(DVec2::ZERO);
+                let (metre, turned) = (x.length(), x.y.atan2(x.x));
+                for t in &lines.texts {
+                    let size = t.h * metre / mm;
+                    if !(0.8..=40.0).contains(&size) || t.text.trim().is_empty() {
+                        continue;
+                    }
+                    // 1 2 3 top, 4 5 6 middle, 7 8 9 bottom; left, centre, right
+                    let (col, row) = ((t.align.max(1) - 1) % 3, (t.align.max(1) - 1) / 3);
+                    let up = DVec2::from_angle(t.angle.to_radians() + turned).perp();
+                    out.push(PlanItem::Text {
+                        id,
+                        at: r.place(t.at) + up * (row as f64 - 1.0) * t.h * metre / 2.0,
+                        text: t.text.clone(),
+                        size,
+                        align: match col {
+                            0 => creabim_geom::paper::Anchor::Start,
+                            1 => creabim_geom::paper::Anchor::Middle,
+                            _ => creabim_geom::paper::Anchor::End,
+                        },
+                        mm,
+                        rgb: Some(ink),
+                        bold: false,
+                    });
+                }
+            }
+            // a picture lies square on paper: one turned with its view or
+            // by itself is left to the screen
+            Shown::Picture(raster)
+                if r.rotation.rem_euclid(360.0) < 1e-6 && turn.rem_euclid(360.0) < 1e-6 =>
+            {
+                let shown = Shown::Picture(raster.clone());
+                if let Some([lo, hi]) = r.bounds.or_else(|| bounds_of(&r.source, &shown)) {
+                    let (p, q) = (r.place(lo), r.place(hi));
+                    out.push(PlanItem::Image {
+                        id,
+                        raster,
+                        lo: p.min(q),
+                        hi: p.max(q),
+                        clip: None,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    s.made.insert((view, over), (rev, Arc::new(out.clone())));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
