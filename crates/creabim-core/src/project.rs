@@ -124,6 +124,11 @@ pub struct ProjectInfo {
     /// point's S-JTSK east and north are its point in that drawing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub map_ref: Option<crate::ElementId>,
+    /// The S-JTSK origin and true north as the map came down, kept when the
+    /// ground first moves under the building, so Reset the coordinates can
+    /// put it back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map_origin: Option<([f64; 2], f64)>,
     pub building_name: String,
     /// "Dwelling", "Office", "School".
     pub building_use: String,

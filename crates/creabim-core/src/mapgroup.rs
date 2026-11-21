@@ -22,6 +22,11 @@ impl Rigid {
         self.about + DVec2::from_angle(self.degrees.to_radians()).rotate(p - self.about) + self.by
     }
 
+    /// The point `apply` takes to `q`.
+    pub fn unapply(&self, q: DVec2) -> DVec2 {
+        self.about + DVec2::from_angle(-self.degrees.to_radians()).rotate(q - self.by - self.about)
+    }
+
     fn is_nothing(&self) -> bool {
         self.degrees.abs() < 1e-9 && self.by.length() < 1e-9
     }
@@ -195,10 +200,16 @@ pub fn settle(model: &Model, tx: &Transaction) -> Transaction {
             }
         }
     }
-    if r.degrees.abs() > 1e-12 {
-        let mut p = info.clone();
-        let n = (p.true_north + r.degrees + 180.0).rem_euclid(360.0) - 180.0;
-        p.true_north = (n * 1e9).round() / 1e9;
+    // the S-JTSK origin goes with the ground: read where the drawing it
+    // is read from already lies, if `tx` moved that one
+    let mut p = info_after(model, info, &r);
+    let main = group(model).1;
+    if main.is_some_and(touched) && p.sjtsk.is_some() {
+        if let Some(q) = sjtsk_of(model, DVec2::ZERO) {
+            p.sjtsk = Some([(q.x * 1e6).round() / 1e6, (q.y * 1e6).round() / 1e6]);
+        }
+    }
+    if p != *info {
         if let Some(e) = model.get(pid) {
             let mut now = e.clone();
             now.kind = ElementKind::Project(p);
@@ -206,6 +217,41 @@ pub fn settle(model: &Model, tx: &Transaction) -> Transaction {
         }
     }
     out
+}
+
+/// The project's information once the ground moved by `r` under the
+/// building: true north turned with it, and the S-JTSK origin now the
+/// ground point that came to ±0,000 (George: after placing the building
+/// exactly, the origin still said where the download had put it). What
+/// it was as the map came down is kept for Reset the coordinates.
+fn info_after(model: &Model, info: &crate::ProjectInfo, r: &Rigid) -> crate::ProjectInfo {
+    let mut p = info.clone();
+    if p.map_origin.is_none() {
+        if let Some(o) = p.sjtsk {
+            p.map_origin = Some((o, p.true_north));
+        }
+    }
+    if p.sjtsk.is_some() {
+        if let Some(q) = sjtsk_of(model, r.unapply(DVec2::ZERO)) {
+            p.sjtsk = Some([(q.x * 1e6).round() / 1e6, (q.y * 1e6).round() / 1e6]);
+        }
+    }
+    let n = (p.true_north + r.degrees + 180.0).rem_euclid(360.0) - 180.0;
+    p.true_north = (n * 1e9).round() / 1e9;
+    p
+}
+
+/// The model point whose S-JTSK east and north are `s`: the other way
+/// of [`sjtsk_of`].
+fn model_point_of(model: &Model, s: DVec2) -> Option<DVec2> {
+    let (_, info) = model.project_info()?;
+    if let Some(ElementKind::Reference(r)) =
+        group(model).1.and_then(|id| model.get(id)).map(|e| &e.kind)
+    {
+        return Some(r.place(s));
+    }
+    let [e0, n0] = info.sjtsk?;
+    Some(DVec2::from_angle(info.true_north.to_radians()).rotate(s - DVec2::new(e0, n0)))
 }
 
 /// What was drawn on the ground in a site plan (utility networks, the
@@ -243,11 +289,9 @@ pub fn move_ground(model: &Model, r: &Rigid) -> Transaction {
             }
         }
     }
-    if r.degrees.abs() > 1e-12 {
-        if let Some((pid, info)) = model.project_info() {
-            let mut p = info.clone();
-            let n = (p.true_north + r.degrees + 180.0).rem_euclid(360.0) - 180.0;
-            p.true_north = (n * 1e9).round() / 1e9;
+    if let Some((pid, info)) = model.project_info() {
+        let p = info_after(model, info, r);
+        if p != *info {
             if let Some(e) = model.get(pid) {
                 let mut now = e.clone();
                 now.kind = ElementKind::Project(p);
@@ -269,28 +313,23 @@ pub fn reset(model: &Model) -> Transaction {
     let Some((pid, info)) = model.project_info() else {
         return out;
     };
-    let Some([e0, n0]) = info.sjtsk else {
+    let Some(now_origin) = info.sjtsk else {
         return out;
     };
-    let shift = DVec2::new(e0, n0);
-    let (mut members, main) = group(model);
+    // as it came down
+    let (origin, north) = info.map_origin.unwrap_or((now_origin, info.true_north));
+    let shift = DVec2::new(origin[0], origin[1]);
+    let (mut members, _) = group(model);
     if members.is_empty() {
         return out;
     }
-    // how the drawing S-JTSK is read from has moved since it came down
-    let back = main
-        .and_then(|id| model.get(id))
-        .and_then(|e| match &e.kind {
-            ElementKind::Reference(r) => {
-                let c = r.centre();
-                Some(Rigid {
-                    about: r.at,
-                    degrees: -r.rotation,
-                    by: c - shift - r.at,
-                })
-            }
-            _ => None,
-        });
+    // the ground point that came down at ±0,000 goes back there, turned
+    // back as far as the ground has turned since
+    let back = model_point_of(model, shift).map(|q| Rigid {
+        about: q,
+        degrees: north - info.true_north,
+        by: -q,
+    });
     members.extend(ground_sketches(model));
     for id in &members {
         let Some(e) = model.get(*id) else {
@@ -314,10 +353,11 @@ pub fn reset(model: &Model) -> Transaction {
             }
         }
     }
-    if let Some(b) = back.filter(|b| b.degrees.abs() > 1e-12) {
-        let mut p = info.clone();
-        let n = (p.true_north + b.degrees + 180.0).rem_euclid(360.0) - 180.0;
-        p.true_north = (n * 1e9).round() / 1e9;
+    let mut p = info.clone();
+    p.sjtsk = Some(origin);
+    p.true_north = north;
+    p.map_origin = None;
+    if p != *info {
         if let Some(e) = model.get(pid) {
             let mut now = e.clone();
             now.kind = ElementKind::Project(p);
@@ -461,6 +501,54 @@ mod tests {
         assert!(sides.iter().all(|x| *x == sides[0]));
         let far = fit.apply(side.0);
         assert_eq!((far - p).dot(m).signum(), sides[0]);
+    }
+
+    #[test]
+    fn the_sjtsk_origin_follows_the_ground_under_the_building() {
+        for with_drawing in [true, false] {
+            let (mut doc, _, _) = mapped();
+            if !with_drawing {
+                // a map whose drawing is not the one S-JTSK is read from
+                let (pid, info) = doc.model().project_info().unwrap();
+                let mut i = info.clone();
+                i.map_ref = None;
+                let e = doc.model().get(pid).unwrap().clone();
+                let mut n = e.clone();
+                n.kind = ElementKind::Project(i);
+                doc.commit(Transaction::new("no ref").replace(e, n))
+                    .unwrap();
+            }
+            let o0 = doc.model().project_info().unwrap().1.sjtsk.unwrap();
+            let r = Rigid {
+                about: DVec2::new(-20.0, 7.0),
+                degrees: -35.0,
+                by: DVec2::new(12.0, -4.0),
+            };
+            // the ground point that comes to ±0,000
+            let p = r.unapply(DVec2::ZERO);
+            let s = sjtsk_of(doc.model(), p).unwrap();
+            doc.commit(move_ground(doc.model(), &r)).unwrap();
+            let info = doc.model().project_info().unwrap().1.clone();
+            let o = info.sjtsk.unwrap();
+            assert!(
+                (DVec2::from(o) - s).length() < 1e-5,
+                "{with_drawing}: {o:?} {s}"
+            );
+            // and every point reads its ground's coordinates
+            let at = sjtsk_of(doc.model(), r.apply(DVec2::new(3.0, 4.0))).unwrap();
+            let was = DVec2::new(o0[0] + 3.0, o0[1] + 4.0);
+            assert!((at - was).length() < 1e-5, "{with_drawing}: {at} {was}");
+            assert_eq!(info.map_origin, Some((o0, 0.0)));
+            doc.commit(reset(doc.model())).unwrap();
+            let back = doc.model().project_info().unwrap().1.clone();
+            assert_eq!(back.sjtsk, Some(o0));
+            assert!(back.true_north.abs() < 1e-9);
+            let at = sjtsk_of(doc.model(), DVec2::new(3.0, 4.0)).unwrap();
+            assert!(
+                (at - was).length() < 1e-5,
+                "{with_drawing} reset: {at} {was}"
+            );
+        }
     }
 
     #[test]

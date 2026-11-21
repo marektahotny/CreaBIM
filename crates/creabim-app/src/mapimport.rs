@@ -700,6 +700,24 @@ mod shot_project {
                 .map(|p| off(*p, b, c))
                 .fold(f64::INFINITY, f64::min)
         );
+        let dim0 = creabim_core::Dimension::spot(
+            views[0],
+            creabim_core::HostPoint::free(DVec2::ZERO),
+            creabim_core::HostPoint::free(DVec2::new(-4.0, -3.0)),
+            Some(creabim_core::annotation::SJTSK_PATTERN.to_string()),
+        );
+        app.doc
+            .commit(
+                Transaction::new("spot0")
+                    .insert(Element::new("spot0", ElementKind::Dimension(dim0))),
+            )
+            .unwrap();
+        let info = app.doc.model().project_info().unwrap().1.clone();
+        eprintln!(
+            "exact origin {:?} reads {:?}",
+            info.sjtsk,
+            creabim_core::mapgroup::sjtsk_of(app.doc.model(), DVec2::ZERO)
+        );
         creabim_store::save(dir.join("exact.creabim"), &app.doc).unwrap();
         let tx = creabim_core::mapgroup::reset(app.doc.model());
         app.doc.commit(tx).unwrap();
