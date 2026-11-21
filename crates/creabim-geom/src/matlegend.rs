@@ -231,10 +231,11 @@ fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
         if out.iter().any(|r| r.material == id && r.thickness_mm == mm) {
             return Some((id, mm));
         }
+        // the built-in library's English words in the drawing's language
         let what = if m.description.trim().is_empty() {
-            e.name.clone()
+            tr(e.name.trim())
         } else {
-            m.description.trim().to_string()
+            tr(m.description.trim())
         };
         let text = match mm {
             Some(mm) => format!("{what}, {} {mm} mm", tr("thickness")),

@@ -13276,10 +13276,50 @@ impl CreaBimApp {
             if std::env::var("CREABIM_SHOT_XRAY").is_ok() {
                 self.set_xray(true);
             }
+            // the project's information as JSON fields ({"building_name": "Test1"})
+            if let Ok(j) = std::env::var("CREABIM_SHOT_INFO") {
+                let (id, mut v) = match self.doc.model().project_info() {
+                    Some((id, p)) => (Some(id), serde_json::to_value(p).unwrap_or_default()),
+                    None => (
+                        None,
+                        serde_json::to_value(creabim_core::ProjectInfo::default())
+                            .unwrap_or_default(),
+                    ),
+                };
+                if let (Some(o), Ok(serde_json::Value::Object(add))) = (
+                    v.as_object_mut(),
+                    serde_json::from_str::<serde_json::Value>(&j),
+                ) {
+                    o.extend(add);
+                }
+                if let Ok(p) = serde_json::from_value::<creabim_core::ProjectInfo>(v) {
+                    let tx = match id.and_then(|id| self.doc.model().get(id)) {
+                        Some(e) => {
+                            let mut now = e.clone();
+                            now.kind = ElementKind::Project(p);
+                            creabim_core::Transaction::new("Shot").replace(e.clone(), now)
+                        }
+                        None => creabim_core::Transaction::new("Shot").insert(
+                            creabim_core::Element::new("Project", ElementKind::Project(p)),
+                        ),
+                    };
+                    let _ = self.doc.commit(tx);
+                }
+            }
             // actions run as from the tool tabs ("viewmode:services;calc:recuperation")
             if let Ok(a) = std::env::var("CREABIM_SHOT_ACTION") {
                 for one in a.split(';') {
                     self.run_action(ctx, one);
+                }
+            }
+            // a sheet by its number, once the actions above made it
+            if let Ok(n) = std::env::var("CREABIM_SHOT_SHEET") {
+                let sheet = self.doc.model().iter().find_map(|e| match &e.kind {
+                    ElementKind::Sheet(sh) if sh.number == n => Some(e.id),
+                    _ => None,
+                });
+                if sheet.is_some() {
+                    self.active_view = sheet;
                 }
             }
             // the assembly editor open on an assembly of that name
@@ -13302,6 +13342,21 @@ impl CreaBimApp {
         }
         if frame > 3 && frame < 40 {
             ctx.request_repaint();
+            if std::env::var("CREABIM_SHOT_SHEET").is_ok() {
+                // where it looks on the sheet: "x,y,pixels a millimetre"
+                let cam: Vec<f64> = std::env::var("CREABIM_SHOT_SHEET_CAM")
+                    .unwrap_or_default()
+                    .split(',')
+                    .filter_map(|t| t.trim().parse().ok())
+                    .collect();
+                if let (Some(id), [x, y, z]) = (self.active_view, cam.as_slice()) {
+                    let c = glam::DVec2::new(*x, *y);
+                    self.sheet.set_camera(id, c, *z as f32);
+                    for s in self.sheets.values_mut() {
+                        s.set_camera(id, c, *z as f32);
+                    }
+                }
+            }
             if let (Some(id), Ok(cam)) = (self.active_view, std::env::var("CREABIM_SHOT_CAM")) {
                 let v: Vec<f64> = cam
                     .split(',')

@@ -220,7 +220,7 @@ fn construction(model: &Model, id: ElementId) -> String {
 }
 
 fn name_of(model: &Model, id: Option<ElementId>) -> Option<String> {
-    id.and_then(|i| model.get(i)).map(|e| e.name.clone())
+    id.and_then(|i| model.get(i)).map(|e| tr(&e.name))
 }
 
 /// The group a line falls in by `g`: a key to order groups by and its
