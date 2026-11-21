@@ -58,6 +58,10 @@ pub enum Tool {
     Railing,
     /// A strip footing under a wall or a pad footing under a column.
     Footing,
+    /// An eaves gutter traced along a roof's eave.
+    Gutter,
+    /// A downpipe clicked on a gutter.
+    Downpipe,
     Level,
     Align,
     /// A piece of furniture or a fixture from the catalogue.
@@ -99,7 +103,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 47] = [
+    pub const ALL: [Tool; 49] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -114,6 +118,8 @@ impl Tool {
         Tool::Stair,
         Tool::Railing,
         Tool::Footing,
+        Tool::Gutter,
+        Tool::Downpipe,
         Tool::Pipe,
         Tool::Object,
         Tool::Extrusion,
@@ -189,6 +195,8 @@ impl Tool {
             Tool::Stair => "Stair",
             Tool::Railing => "Railing",
             Tool::Footing => "Footing",
+            Tool::Gutter => "Gutter",
+            Tool::Downpipe => "Downpipe",
             Tool::Level => "Level",
             Tool::Align => "Align",
             Tool::Object => "Object",
@@ -240,6 +248,8 @@ impl Tool {
             Tool::Roof => "Draw the roof's outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). Pick Flat, Mono-pitch, Gable or Hip in the bar first.",
             Tool::Stair => "Click where the stair starts, then click the way it climbs. It rises to the next level in equal risers.",
             Tool::Railing => "Click inside a stair to rail both its sides, or click the points of a path; click the last point again to finish.",
+            Tool::Gutter => "Click along a roof's eave, corner by corner: the gutter hangs at the offsets set in the top bar. Click the last point again or press Enter to finish.",
+            Tool::Downpipe => "Click on a gutter to put a downpipe there; move it to slide it along. The gutter falls to its downpipes, its high points midway between them.",
             Tool::Footing => "Showing footings while the tool is on. Strip: click a wall to put a strip footing under it, or draw strips on their own point by point as walls, Esc ending the chain. Pad: click a column to put a pad under it, or click anywhere for one on its own. Keep clicking for more, or drag a box over walls or columns for all of them at once. Pick Strip or Pad, and the size, in the top bar.",
             Tool::Level => "In a section or elevation, click where the level line starts (its height), then where it ends; its floor plan is made with it. In other views the Levels window opens to add, rename and move levels.",
             Tool::Align => "Click a reference line (a wall face, slab edge, guide or grid line), then the edge of what to align: it turns parallel and moves flush. In Extend mode a wall, beam or grid line end stretches to the reference instead; in Stretch mode the face moves and the rest stays. Centre lines (dashed purple) can be picked too, both ways. In 3D, click a face, edge, corner, centre line or grid line, then a face.",
@@ -841,6 +851,8 @@ impl PlanState {
         self.guide_edge = None;
         self.outline = None;
         self.members.path.clear();
+        self.members.flashing.trace.clear();
+        self.members.flashing.roof = None;
         self.parts.path.clear();
         self.chain.1.clear();
         self.rested.1.clear();
@@ -860,6 +872,7 @@ impl PlanState {
             || self.outline.is_some()
             || self.armed.is_some()
             || !self.members.path.is_empty()
+            || !self.members.flashing.trace.is_empty()
             || self.align.has_input()
             || !self.details.path.is_empty()
     }
@@ -2074,6 +2087,7 @@ fn show_pane(
             | Tool::Pipe
             | Tool::Railing
             | Tool::Footing
+            | Tool::Gutter
             | Tool::RoomSeparator
     ) && matches!(kind, PaneKind::Plan { .. })
         || matches!(tool, Tool::Line | Tool::Polyline)
@@ -3086,6 +3100,17 @@ fn show_pane(
             }
         }
     }
+    // a gutter traced: Enter hangs it
+    if let (Tool::Gutter, PaneKind::Plan { level }) = (tool, kind) {
+        let enter = response.hovered()
+            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+            && !ui.ctx().egui_wants_keyboard_input();
+        if enter && !state.members.flashing.trace.is_empty() {
+            if let Err(e) = crate::flashingui::finish_gutter(doc, level, state, selection) {
+                return Some(e.to_string());
+            }
+        }
+    }
     // a sweep traced: its band (the profile's width either side of the
     // path) as a ghost, and its section at the pointer, so a wrong profile
     // shows at once (MU37)
@@ -3176,6 +3201,7 @@ fn show_pane(
             | Tool::Stair
             | Tool::Railing
             | Tool::Footing
+            | Tool::Gutter
             | Tool::RoomSeparator => {
                 let level = match kind {
                     PaneKind::Plan { level } => Some(level),
@@ -4232,9 +4258,13 @@ fn plan_click(
         Tool::Sweep | Tool::Planting => {
             crate::partstool::click(doc, level, tool, p, state, selection)
         }
-        Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing => {
-            crate::memberstool::click(doc, level, tool, p, state, selection)
-        }
+        Tool::Column
+        | Tool::Beam
+        | Tool::Stair
+        | Tool::Railing
+        | Tool::Footing
+        | Tool::Gutter
+        | Tool::Downpipe => crate::memberstool::click(doc, level, tool, p, state, selection),
         Tool::Pipe => crate::pipesui::click(doc, level, p, state, selection),
         Tool::Object => crate::objecttool::click(doc, level, p, state, selection),
         Tool::RoomSeparator => crate::roomtool::separator_click(doc, level, p, state, selection),
@@ -9068,6 +9098,9 @@ fn shape_points(
     }
     if level.is_some() && !state.members.path.is_empty() {
         return state.members.path.clone();
+    }
+    if level.is_some() && !state.members.flashing.trace.is_empty() {
+        return state.members.flashing.trace.clone();
     }
     if crate::detailtool::drafts(state.tool) && state.details.view == Some(view) {
         return state.details.path.clone();

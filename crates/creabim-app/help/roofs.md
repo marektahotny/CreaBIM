@@ -33,3 +33,13 @@ A plan that looks down on a roof from above it, such as a roof plan, draws an ar
 Select walls and use *Attach top to roof/slab*: their tops follow the roof's underside, cut to its slope. See [Walls](walls#base-and-top).
 
 > **Note:** Gable and hip roofs need a convex outline (no inward corners). On an L-shaped outline the roof stays flat, and *Properties* says so.
+
+## Gutters and downpipes
+
+The **Gutter** tool hangs an eaves gutter along a roof: click along the roof's eave corner by corner, then click the last point again or press Enter. The gutter keeps to the roof at the offsets set in the top bar: *Offset* from the eave line out to the gutter's back edge in plan, and *Below eave* from the roof's top at the eave down to the gutter's top edge. Pick a half-round or square gutter and its size there too.
+
+The **Downpipe** tool puts a downpipe on the gutter clicked. Move a downpipe to slide it along its gutter, or type *Along the gutter* in *Properties*. The gutter falls to its downpipes by its *Fall* (mm per m): each run falls from a high point, midway between two downpipes or at the gutter's end, to the nearest downpipe.
+
+A downpipe's *Properties* show the plan area of roof that drains to it and the flow from it, Q = r · A · C, with r and C set on the gutter (0,03 l/s·m² and 1,0 by default). The roof plan draws each gutter, its downpipes, their marks and the fall's arrows.
+
+The **Table of sheet-metal items** (a schedule) lists each item once with its mark (K-1, K-2…), its sign, its description, its developed width, its length and its accessories (hooks, end caps, outlets, elbows, clamps), and under it the roof planes' area, the covering and the ridge and hip lengths. Place it on the roof plan's sheet.

@@ -1381,7 +1381,8 @@
         "lintel_list",
         "ventilation_hrv",
         "building_figures",
-        "fire_risk"
+        "fire_risk",
+        "flashing_table"
       ]
     },
     "Callout": {

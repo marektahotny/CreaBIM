@@ -80,6 +80,8 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::Slab),
             T(Tool::Shaft),
             T(Tool::Roof),
+            T(Tool::Gutter),
+            T(Tool::Downpipe),
             T(Tool::Stair),
             T(Tool::Railing),
             Sep,

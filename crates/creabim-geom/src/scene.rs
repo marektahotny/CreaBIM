@@ -725,6 +725,7 @@ fn build_scene_unjoined(
             | ElementKind::Stair(_)
             | ElementKind::Railing(_)
             | ElementKind::Footing(_)
+            | ElementKind::Flashing(_)
             | ElementKind::Pipe(_) => match crate::members::member_mesh(model, e) {
                 Some(m) => m,
                 None => continue,

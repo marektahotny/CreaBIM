@@ -23,6 +23,7 @@ mod drawfont;
 mod editmode;
 mod files;
 mod fillpreview;
+mod flashingui;
 mod ghost;
 mod handles;
 mod help;

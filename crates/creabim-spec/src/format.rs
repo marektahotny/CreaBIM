@@ -988,6 +988,7 @@ spec_enum! {
         VentilationHrv = "ventilation_hrv",
         BuildingFigures = "building_figures",
         FireRisk = "fire_risk",
+        FlashingTable = "flashing_table",
     }
 }
 

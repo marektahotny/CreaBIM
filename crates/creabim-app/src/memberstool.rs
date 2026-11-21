@@ -68,6 +68,8 @@ pub struct MemberSettings {
     pub last_beam: Option<ElementId>,
     /// What the Pipe tool draws next.
     pub pipe: crate::pipesui::PipeDraft,
+    /// What the Gutter and Downpipe tools draw next.
+    pub flashing: crate::flashingui::FlashingDraft,
 }
 
 impl Default for MemberSettings {
@@ -104,6 +106,7 @@ impl Default for MemberSettings {
             railing_section: None,
             last_beam: None,
             pipe: Default::default(),
+            flashing: Default::default(),
         }
     }
 }
@@ -284,6 +287,8 @@ pub fn click(
             Some(_) => Ok(()),
         },
         Tool::Footing => place_footing(doc, level, p, state, selection),
+        Tool::Gutter => crate::flashingui::gutter_click(doc, level, p, state, selection),
+        Tool::Downpipe => crate::flashingui::downpipe_click(doc, p, state, selection),
         Tool::Railing => {
             if state.members.path.is_empty() {
                 if let Some(stair) = stair_at(doc.model(), level, p) {
@@ -1702,6 +1707,7 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             ),
         ],
         Tool::Pipe => crate::pipesui::tool_options(&m.pipe),
+        Tool::Gutter | Tool::Downpipe => crate::flashingui::tool_options(&m.flashing, state.tool),
         Tool::Beam => vec![
             json!({
                 "kind": "menu", "key": "beam.corner", "label": "Corners",
@@ -1901,6 +1907,7 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
             }
         }
         "pipe_slope" => m.pipe.slope_pct = v.clamp(0.0, 100.0),
+        k if k.starts_with("flashing.") => crate::flashingui::set_option(&mut m.flashing, k, v),
         "beam_depth" => m.beam_depth = v.clamp(0.05, 3.0),
         "pitch" => m.roof_pitch = v.clamp(1.0, 75.0),
         "stair_width" => m.stair_width = v.clamp(0.5, 5.0),
@@ -1936,6 +1943,7 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
     let m = &mut state.members;
     match what {
         "beam.onface" => m.beam_on_face = !m.beam_on_face,
+        w if w.starts_with("flashing.") => crate::flashingui::toggle_option(&mut m.flashing, w),
         "hole.auto" => m.hole_host = 0,
         "hole.wall" => m.hole_host = 1,
         "hole.floor" => m.hole_host = 2,

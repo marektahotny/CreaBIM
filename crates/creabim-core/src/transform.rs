@@ -365,6 +365,20 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             p.end = origin(p.end, level);
             p.validate().ok()?;
         }
+        // a gutter moves with its trace; a downpipe slides along its
+        // gutter to where it is taken
+        ElementKind::Flashing(f) => match &mut f.item {
+            crate::flashing::FlashingItem::Gutter(g) => {
+                for p in &mut g.trace {
+                    *p = t.point2(*p);
+                }
+            }
+            crate::flashing::FlashingItem::Downpipe(d) => {
+                let (at, _, _) = crate::flashing::downpipe_place(model, d)?;
+                let g = crate::flashing::gutter_of(model, d.gutter)?;
+                d.at = g.station_on_axis(model, t.point2(at));
+            }
+        },
         // a valve rides its pipe
         ElementKind::Valve(_) => {}
         // a circuit is nowhere
@@ -621,6 +635,16 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
         },
         ElementKind::Guide(g) => (g.a + g.b) / 2.0 + DVec3::Z * elevation(g.level),
         ElementKind::Pipe(p) => (p.start + p.end) / 2.0 + DVec3::Z * elevation(Some(p.level)),
+        ElementKind::Flashing(f) => match &f.item {
+            crate::flashing::FlashingItem::Gutter(g) => {
+                let pts = g.axis_plan(model);
+                (pts.iter().copied().sum::<DVec2>() / pts.len().max(1) as f64).extend(g.top(model))
+            }
+            crate::flashing::FlashingItem::Downpipe(d) => {
+                let (at, top, foot) = crate::flashing::downpipe_place(model, d)?;
+                at.extend((top + foot) / 2.0)
+            }
+        },
         ElementKind::Valve(v) => {
             let p = v.host(model)?;
             v.at(p) + DVec3::Z * elevation(Some(p.level))
@@ -713,6 +737,7 @@ pub fn duplicate(model: &Model, id: ElementId) -> Vec<Element> {
             | ElementKind::Grid(_)
             | ElementKind::Guide(_)
             | ElementKind::Pipe(_)
+            | ElementKind::Flashing(_)
             | ElementKind::Shaft(_)
             | ElementKind::Object(_)
             | ElementKind::Room(_)

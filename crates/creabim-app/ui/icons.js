@@ -206,6 +206,8 @@ window.ICONS = {
 "object": "<path d=\"M2 8.875h20v6.25H2z\"></path><path d=\"M4.5 15.125v3.75\"></path><path d=\"M19.5 15.125v3.75\"></path><path d=\"M4.5 8.875V5.125h15v3.75\"></path>",
 "window": "<rect x=\"4\" y=\"3\" width=\"16\" height=\"15\" rx=\"2\"></rect><path d=\"M12 3v15\"></path><path d=\"M4 10.5h16\"></path><path d=\"M2 21h20\"></path>",
 "opening": "<path d=\"M3 4h18v16h-6v-6a3 3 0 0 0-6 0v6H3z\"></path>",
+"gutter": "<path d=\"M2 6h20\"></path><path d=\"M4 10a8 5 0 0 0 16 0\"></path><path d=\"M4 10h16\"></path><path d=\"M17 15v6\"></path><path d=\"M21 15v6\"></path>",
+"downpipe": "<path d=\"M6 3h12\"></path><path d=\"M10 3v5l4 4v9\"></path><path d=\"M14 3v5l4 4v9\"></path><path d=\"M12 21h8\"></path>",
 "railing": "<path d=\"M2 7h20\"></path><path d=\"M5 7v12\"></path><path d=\"M19 7v12\"></path><path d=\"M9 7v12\"></path><path d=\"M12 7v12\"></path><path d=\"M15 7v12\"></path><path d=\"M3 19h18\"></path>",
 "planting": "<path d=\"M7 13a4 4 0 0 1 .5-7.9 5 5 0 0 1 9 0A4 4 0 0 1 17 13z\"></path><path d=\"M12 13v8\"></path><path d=\"M8 21h8\"></path>",
 "elevation": "<path d=\"M2 22V10l7-6 7 6v12z\"></path><path d=\"M6.5 22v-6h5v6\"></path><path d=\"M23 13h-4\"></path><path d=\"M21 11l2 2-2 2\"></path>",

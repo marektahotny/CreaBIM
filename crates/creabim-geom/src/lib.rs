@@ -28,6 +28,8 @@ pub mod fireexposure;
 pub mod firegrade;
 pub mod firerisk;
 pub mod firezones;
+pub mod flashing;
+pub mod flashingtable;
 pub mod font;
 pub mod fragment;
 pub mod gbxml;
