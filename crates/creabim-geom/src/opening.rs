@@ -272,6 +272,61 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
     out
 }
 
+/// A lift-and-slide leaf as a floor plan marks it: along the opening
+/// from `x0` to `x1` (opening coordinates, as [`opening_boxes`]), which
+/// way it slides (towards `x1` when `to_high`), and the frame's face
+/// inside, `y_in`, with `inward` the sign of the way into the room.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LiftSlide {
+    pub x0: f64,
+    pub x1: f64,
+    pub to_high: bool,
+    pub y_in: f64,
+    pub inward: f64,
+}
+
+/// Every lift-and-slide leaf of a window or door, for its plan mark.
+pub fn lift_slides(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<LiftSlide> {
+    let Some(f) = Fitted::of(o, wall) else {
+        return vec![];
+    };
+    let Some(node) = o.division.as_ref().filter(|_| o.kind != OpeningKind::Hole) else {
+        return vec![];
+    };
+    let (w, h) = (f.width(), f.height());
+    let door = o.kind == OpeningKind::Door;
+    let fw = match (&o.door, door) {
+        (Some(d), true) => d.members(w, h).0,
+        _ => f.frame.width,
+    };
+    let hd = f.frame.depth / 2.0;
+    let across = !o.faces_left(wall);
+    let span = o.frame_span(wall, asm, f.frame.depth);
+    let yc = (span.0 + span.1) / 2.0;
+    // built facing +y, inside −y; turned across, inside is +y
+    let inward = if across { 1.0 } else { -1.0 };
+    let x_of = |x: f64| if across { x } else { w - x };
+    let low_x = |left: bool| left == across;
+    let (fields, _) = node.layout_of(door, w, h, fw);
+    fields
+        .iter()
+        .filter(|fl| fl.sash.op.lifts())
+        .filter_map(|fl| {
+            let left = fl.sash.op.slides_left()?;
+            let (xa, xb) = (x_of(fl.x0).min(x_of(fl.x1)), x_of(fl.x0).max(x_of(fl.x1)));
+            Some(LiftSlide {
+                x0: xa,
+                x1: xb,
+                // it closes against the stile its handle is on and
+                // slides away from it
+                to_high: !low_x(left),
+                y_in: yc + inward * (hd + SASH_PROUD),
+                inward,
+            })
+        })
+        .collect()
+}
+
 /// How far an opening leaf's sash stands proud of the frame inside.
 const SASH_PROUD: f64 = 0.012;
 

@@ -2635,6 +2635,42 @@ pub fn guide_span(a: DVec2, b: DVec2) -> Option<(DVec2, DVec2)> {
 /// its leaf drawn open and the swing it sweeps. `at(u, s)` is a point
 /// `u` along the wall and `s` across it.
 #[allow(clippy::too_many_arguments)]
+/// A lift-and-slide leaf's mark in plan: a dashed arrow inside the
+/// frame, along the leaf the way it slides, a foot towards the frame
+/// where it starts (the lift) and a half head where it ends.
+fn lift_slide_marks(
+    out: &mut Vec<PlanItem>,
+    id: ElementId,
+    o: &creabim_core::Opening,
+    w: &creabim_core::Wall,
+    asm: Option<&creabim_core::assembly::Assembly>,
+    c: &Cut,
+    at: &dyn Fn(f64, f64) -> DVec2,
+) {
+    for m in crate::opening::lift_slides(o, w, asm) {
+        let len = m.x1 - m.x0;
+        if len < 0.2 {
+            continue;
+        }
+        let mid = c.u0 + (m.x0 + m.x1) / 2.0;
+        let dir = if m.to_high { 1.0 } else { -1.0 };
+        let (u0, u1) = (mid + dir * len * 0.1, mid + dir * len * 0.42);
+        let s = m.y_in + m.inward * 0.06;
+        let tick = 0.035;
+        let mut seg = |a: DVec2, b: DVec2| {
+            out.push(PlanItem::Line {
+                id,
+                pen: Pen::Hidden,
+                a,
+                b,
+            })
+        };
+        seg(at(u0, s), at(u1, s));
+        seg(at(u0, s), at(u0, s - m.inward * tick));
+        seg(at(u1, s), at(u1 - dir * tick * 0.7, s + m.inward * tick));
+    }
+}
+
 fn opening_symbol(
     id: ElementId,
     o: &creabim_core::Opening,
@@ -2717,7 +2753,13 @@ fn opening_symbol(
                 line(&mut out, at(c.u0, s), at(c.u1, s));
             }
         }
-        OpeningKind::Door => {
+        OpeningKind::Door => {}
+    }
+    if matches!(o.kind, OpeningKind::Window | OpeningKind::Door) {
+        lift_slide_marks(&mut out, id, o, w, asm, c, at);
+    }
+    if o.kind == OpeningKind::Door {
+        {
             // each leaf turned open about its hinge on the face of the
             // frame on the side it opens to, and the quarter circle it
             // sweeps
@@ -3655,6 +3697,94 @@ mod tests {
 
     /// George 2026-11-21: a window whose sill is over the cut plane is
     /// still drawn as cut: a gap in the wall and its frame and glass.
+    #[test]
+    fn a_lift_and_slide_leaf_is_marked_with_a_dashed_arrow() {
+        use creabim_core::joinery::FrameNode;
+        use creabim_core::{Element, LeafOp, Level, Opening, Transaction, Wall};
+        let marks = |op: LeafOp| {
+            let mut m = Model::new();
+            let l = Element::new(
+                "Ground",
+                ElementKind::Level(Level {
+                    elevation: 0.0,
+                    height: 3.0,
+                }),
+            );
+            let level = l.id;
+            let w = Element::new(
+                "W",
+                ElementKind::Wall(Wall::new(
+                    level,
+                    DVec2::ZERO,
+                    DVec2::new(5.0, 0.0),
+                    0.3,
+                    3.0,
+                )),
+            );
+            let win = Element::new(
+                "Win",
+                ElementKind::Opening(Opening {
+                    host: w.id,
+                    kind: OpeningKind::Window,
+                    offset: 1.0,
+                    sill: 0.0,
+                    width: 2.4,
+                    height: 2.2,
+                    material: None,
+                    frame: Default::default(),
+                    flip_hand: false,
+                    flip_facing: false,
+                    no_outer_sill: false,
+                    no_inner_sill: false,
+                    threshold: false,
+                    threshold_material: None,
+                    penetration: None,
+                    setback: None,
+                    reveal: None,
+                    division: Some(FrameNode::Split {
+                        across: true,
+                        sizes: vec![1.0, 1.0],
+                        parts: vec![FrameNode::leaf(op), FrameNode::leaf(LeafOp::Fixed)],
+                    }),
+                    door: None,
+                    texts: None,
+                    performance: None,
+                }),
+            );
+            let wid = win.id;
+            Transaction::new("t")
+                .insert(l)
+                .insert(w)
+                .insert(win)
+                .apply(&mut m)
+                .unwrap();
+            plan_view(&m, level, 1.0)
+                .items
+                .into_iter()
+                .filter_map(|it| match it {
+                    PlanItem::Line {
+                        id,
+                        pen: Pen::Hidden,
+                        a,
+                        b,
+                    } if id == wid => Some((a, b)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(marks(LeafOp::TurnLeft).is_empty());
+        let left = marks(LeafOp::LiftSlideLeft);
+        assert_eq!(left.len(), 3, "{left:?}");
+        // the arrow along the wall, over one half of the window, off
+        // the wall's middle
+        let (a, b) = left[0];
+        assert!((a.y - b.y).abs() < 1e-9 && a.y.abs() > 0.05, "{a} {b}");
+        assert!((b.x - a.x).abs() > 0.3);
+        // the other hand slides the other way
+        let (c, d) = marks(LeafOp::LiftSlideRight)[0];
+        assert!((b.x - a.x).signum() != (d.x - c.x).signum());
+    }
+
     #[test]
     fn a_high_window_is_drawn_as_cut() {
         use creabim_core::{Element, Level, Opening, Transaction, Wall};
