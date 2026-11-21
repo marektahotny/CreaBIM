@@ -56,8 +56,10 @@ impl CreaBimApp {
                     ui.selectable_value(&mut o.route, Route::Ceiling, t("above the ceiling"));
                     ui.separator();
                     ui.label(t("Unit"));
-                    ui.selectable_value(&mut o.series, "ECV5".to_string(), t("at a wall (ECV5)"));
-                    ui.selectable_value(&mut o.series, "EC5".to_string(), t("under the ceiling (EC5)"));
+                    ui.selectable_value(&mut o.series, "Pro-V".to_string(), t("at a wall (Pro-V)"));
+                    ui.selectable_value(&mut o.series, "Pro".to_string(), t("under the ceiling (Pro)"));
+                    ui.selectable_value(&mut o.series, "Easy2".to_string(), t("under the ceiling, compact (Easy2)"));
+                    ui.selectable_value(&mut o.series, "Slim".to_string(), t("at a wall, slim (Slim)"));
                 });
                 ui.horizontal_wrapped(|ui| {
                     ui.label(t("Most air in one duct Ø75"));

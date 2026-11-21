@@ -480,7 +480,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             act(
                 "calc:recuperation",
                 "Heat recovery design",
-                "wind",
+                "thermometer",
                 "Designs ventilation with heat recovery in one step: the ATREA DUPLEX unit, distribution boxes, flexible ducts Ø75 through the doors to a plate valve in every room, room units in the outer wall for the rooms marked so; pressure loss, transfer under the doors and the take-off VZT – recuperation with prices",
             ),
             act(
