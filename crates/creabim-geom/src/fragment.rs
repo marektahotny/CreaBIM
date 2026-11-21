@@ -1303,6 +1303,119 @@ pub fn export(model: &Model) -> (String, Vec<String>) {
     (project_json(model, &env).to_json(), env.warnings)
 }
 
+/// How heat or hot water is made, by the rows of Fragment's own table
+/// "Transformačné koeficienty" (its factor of transformation and
+/// distribution, for electricity fp 2,2 and CO₂ 0,167 kg/kWh).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Generator {
+    HpAirWaterRadiators,
+    HpAirWaterLowTemp,
+    HpAirAir,
+    HpGroundRadiators,
+    HpGroundLowTemp,
+    HpWaterRadiators,
+    HpWaterLowTemp,
+    /// Electric heating or an electric water heater.
+    Electric,
+}
+
+impl Generator {
+    pub const ALL: [Generator; 8] = [
+        Generator::HpAirWaterLowTemp,
+        Generator::HpAirWaterRadiators,
+        Generator::HpAirAir,
+        Generator::HpGroundLowTemp,
+        Generator::HpGroundRadiators,
+        Generator::HpWaterLowTemp,
+        Generator::HpWaterRadiators,
+        Generator::Electric,
+    ];
+
+    /// Its row in Fragment's table.
+    pub fn label(self) -> &'static str {
+        match self {
+            Generator::HpAirWaterRadiators => {
+                "tepelné čerpadlo vzduch-voda / radiátorové vykurovanie"
+            }
+            Generator::HpAirWaterLowTemp => {
+                "tepelné čerpadlo vzduch-voda / nízkoteplotné vykurovanie"
+            }
+            Generator::HpAirAir => "tepelné čerpadlo vzduch-vzduch",
+            Generator::HpGroundRadiators => "tepelné čerpadlo zem-voda / radiátorové vykurovanie",
+            Generator::HpGroundLowTemp => "tepelné čerpadlo zem-voda / nízkoteplotné vykurovanie",
+            Generator::HpWaterRadiators => "tepelné čerpadlo voda-voda / radiátorové vykurovanie",
+            Generator::HpWaterLowTemp => "tepelné čerpadlo voda-voda / nízkoteplotné vykurovanie",
+            Generator::Electric => "elektrické vykurovanie / elektrický ohrev pitnej vody",
+        }
+    }
+
+    /// Fragment's factor of transformation and distribution.
+    pub fn factor(self) -> f64 {
+        match self {
+            Generator::HpAirWaterRadiators => 2.6,
+            Generator::HpAirWaterLowTemp | Generator::HpAirAir | Generator::HpGroundRadiators => {
+                2.9
+            }
+            Generator::HpGroundLowTemp | Generator::HpWaterRadiators => 3.4,
+            Generator::HpWaterLowTemp => 3.9,
+            Generator::Electric => 0.99,
+        }
+    }
+
+    pub fn heat_pump(self) -> bool {
+        self != Generator::Electric
+    }
+}
+
+/// One row of Fragment's table 30 ("Potreba primárnej energie budovy")
+/// for a need of `need` kWh/(m²·a) met by `g` with factor `factor`: the
+/// electricity it takes and, for a heat pump, the ambient energy that
+/// makes up the rest of the need (column "Energetický nosič n (aj
+/// energia prostredia – tepelné čerpadlo)"); every other column 0.
+pub fn table30_row(need: f64, g: Generator, factor: f64) -> (f64, f64) {
+    if need <= 0.0 || factor <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let el = need / factor;
+    let ambient = if g.heat_pump() {
+        (need - el).max(0.0)
+    } else {
+        0.0
+    };
+    (round3(el), round3(ambient))
+}
+
+/// What the model says heats the building and its water: an air-to-water
+/// heat pump's outdoor unit (on low temperature where a room has underfloor
+/// heating), its indoor unit with a cylinder or a cylinder beside it for
+/// the water. None where the model holds no heat pump.
+pub fn generators(model: &Model) -> (Option<Generator>, Option<Generator>) {
+    let names: Vec<&str> = model
+        .iter()
+        .filter(|e| matches!(e.kind, ElementKind::Object(_)))
+        .map(|e| e.name.as_str())
+        .collect();
+    let hp = names
+        .iter()
+        .any(|n| n.contains("Tepelné čerpadlo vzduch–voda"));
+    if !hp {
+        return (None, None);
+    }
+    let ufh = model
+        .iter()
+        .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.ufh.is_some()));
+    let heating = if ufh {
+        Generator::HpAirWaterLowTemp
+    } else {
+        Generator::HpAirWaterRadiators
+    };
+    let water = names
+        .iter()
+        .any(|n| n.contains("so zásobníkom TV") || n.starts_with("Zásobník TV"))
+        .then_some(Generator::HpAirWaterRadiators);
+    (Some(heating), water)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1478,5 +1591,10 @@ mod tests {
         assert_eq!(SurfaceKind::FloorEdge.abbr(), "PV1");
         assert_eq!(SurfaceKind::ground_wall(1.0), SurfaceKind::GroundWall2);
         assert_eq!(ApertureKind::GlazedDoor.code(), 3);
+        // George's sample: 108,92 kWh/(m²a) by an air-to-water heat pump on
+        // underfloor heating, Fragment's factor 2,9
+        let g = Generator::HpAirWaterLowTemp;
+        assert_eq!(table30_row(108.92, g, g.factor()), (37.559, 71.361));
+        assert_eq!(table30_row(10.0, Generator::Electric, 0.99), (10.101, 0.0));
     }
 }

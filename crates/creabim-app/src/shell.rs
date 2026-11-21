@@ -992,6 +992,9 @@ impl CreaBimApp {
             Item::new("export.fragment", "Energy assessment for ISOVER Fragment (.json)")
                 .icon("thermometer")
                 .hint("The heated envelope for Fragment's Projektové hodnotenie: walls by orientation, floors (PV1/PVT), ceilings and roofs with their build-ups' U, windows and doors with Uw, heated areas and volumes. Open it there from a local file and choose the municipality."),
+            Item::new("fragment.table30", "Table 30 for ISOVER Fragment…")
+                .icon("thermometer")
+                .hint("Fragment works out the energy need; type it here and see what goes into which column of table 30 for the heat pump or electric heating, by Fragment's own factors."),
             Item::new("export.xlsx", "Schedules to Excel (.xlsx)")
                 .icon("table-2")
                 .hint("A summary, then a sheet for each schedule, with numbers as numbers so the spreadsheet can sum them."),
@@ -1989,6 +1992,7 @@ impl CreaBimApp {
             | "export.svg" | "export.xlsx" | "export.fragment" => self.export(head),
             "export.dxf" => self.export_dxf(arg),
             "export.folder" => self.open_export_folder(),
+            "fragment.table30" => self.open_table30(),
             "footing.foundation" => self.show_foundation_plan(),
             "placement" => {
                 self.placement = match index {

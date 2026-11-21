@@ -164,3 +164,23 @@ dvere 0. Bez neho Fragment dosadí 10 %.
 - rekuperácia: Fragment má `pomerRekuperacia` a `ucinnostRekuperacia`
   vo výpočtovej časti; účinnosť jednotiek nie je v katalógu CreaBIM,
 - tepelné mosty (Fragment: paušálne ΔU 0,05 alebo presne).
+
+## Tabuľka 30 (Potreba primárnej energie)
+
+Fragment načíta aj hodnoty tabuľky 30 zo súboru a po CALC ich ponechá,
+ale potrebu energie v riadkoch počíta sám (z obce, mesačnou metódou).
+Preto ich CreaBIM do súboru nezapisuje. Pomocník
+**Súbor › Export › Tabuľka 30 pre ISOVER Fragment…** zoberie potrebu
+energie z Fragmentu a rozdelí ju podľa zdroja tepla:
+
+- elektrická energia = potreba / faktor transformácie,
+- pri tepelnom čerpadle energia prostredia (stĺpec „Energetický nosič n“) = potreba − elektrina,
+- ostatné stĺpce 0.
+
+Faktory sú z tabuľky Fragmentu „Transformačné koeficienty“ (TČ vzduch–voda
+radiátory 2,6 / nízkoteplotné 2,9, vzduch–vzduch 2,9, zem–voda 2,9 / 3,4,
+voda–voda 3,4 / 3,9, elektrické vykurovanie a ohrev vody 0,99); dajú sa
+prepísať SCOP výrobcu. Zdroj sa predvolí z modelu: vonkajšia jednotka TČ
+vzduch–voda, pri podlahovom vykurovaní v niektorej miestnosti nízkoteplotné;
+teplú vodu ohrieva TČ, ak je v modeli jej jednotka so zásobníkom alebo
+zásobník TV, inak elektricky.
