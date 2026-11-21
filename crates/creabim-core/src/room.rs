@@ -93,6 +93,10 @@ pub struct Room {
     /// by the house's central unit (the recuperation design).
     #[serde(default, skip_serializing_if = "is_false")]
     pub decentral_hrv: bool,
+    /// Counted in the living area or not, where the designer says; none
+    /// goes by its type and area ([`counts_as_living`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub living: Option<bool>,
 }
 
 /// Tiles on a room's walls: from the floor up to `height`, on every
@@ -798,9 +802,27 @@ pub fn ceiling_over(
     best
 }
 
+/// Whether room `r` named `name`, of `area` m², counts in the living area (obytná
+/// plocha), by its own word, else by its type: a living room, bedroom,
+/// children's room, dining room or study of at least 8 m², a kitchen of
+/// more than 12 m² (the ministry's guide to a flat's floor area, 2021,
+/// after STN 73 4301: an obytná miestnosť has at least 8 m²; a kitchen
+/// up to 12 m² is príslušenstvo).
+pub fn counts_as_living(name: &str, r: &Room, area: f64) -> bool {
+    use crate::roomtype::RoomType as T;
+    if let Some(own) = r.living {
+        return own;
+    }
+    match T::of(&r.occupancy, name) {
+        T::Living | T::Bedroom | T::Children | T::Dining | T::Office => area >= 8.0 - 1e-9,
+        T::Kitchen => area > 12.0 + 1e-9,
+        _ => false,
+    }
+}
+
 /// The number for a new room on `level`: one more than the highest number
-/// there ("0.03" after "0.02"), else the first on that storey ("1.01" on
-/// the first storey above the ground).
+/// there ("1.03" after "1.02"), else the first of its storey by its
+/// designation: "1.01" on 1. NP, "2.01" on 2. NP, "-1.01" on 1. PP.
 pub fn next_number(model: &Model, level: ElementId) -> String {
     let mut best: Option<(String, u32, usize)> = None;
     for e in model.iter() {
@@ -828,13 +850,66 @@ pub fn next_number(model: &Model, level: ElementId) -> String {
     if let Some((head, n, width)) = best {
         return format!("{head}{:0width$}", n + 1);
     }
-    let sorted = crate::levels::sorted(model);
-    let ground = sorted
-        .iter()
-        .position(|l| l.2.elevation >= -1e-6)
-        .unwrap_or(0) as i64;
-    let here = sorted.iter().position(|l| l.0 == level).unwrap_or(0) as i64;
-    format!("{}.01", here - ground)
+    format!("{}.01", storey_number(model, level))
+}
+
+/// The number a storey gives its rooms: that of its designation, 1 for
+/// 1. NP, 2 for 2. NP, -1 for 1. PP. Read from the level's name where it
+/// names one ("2. NP", "1.PP", "Storey 2", "Basement 1"), else counted
+/// from the ground as storeys are named.
+pub fn storey_number(model: &Model, level: ElementId) -> i64 {
+    if let Some(n) = model.get(level).and_then(|e| storey_designation(&e.name)) {
+        return n;
+    }
+    let Some(here) = model.level(level) else {
+        return 1;
+    };
+    // storeys above ground count from the ground floor up; those under
+    // it (a basement) from the ground down, the footings' level between
+    // left out
+    let below = here.elevation < -1e-6;
+    let between = model
+        .levels()
+        .filter(|(e, l)| {
+            e.id != level
+                && if below {
+                    l.elevation < crate::levels::UNDERGROUND && l.elevation > here.elevation + 1e-6
+                } else {
+                    l.elevation >= -1e-6 && l.elevation < here.elevation - 1e-6
+                }
+        })
+        .count() as i64;
+    if below {
+        -(between + 1)
+    } else {
+        between + 1
+    }
+}
+
+/// A storey's designation in its name: "1. NP" 1, "2.NP" 2, "1. PP" -1,
+/// "Storey 2" 2, "Basement 1" -1 (also Czech "1. PP", "2. NP").
+fn storey_designation(name: &str) -> Option<i64> {
+    let t = name.trim().to_lowercase();
+    let digits = |s: &str| -> Option<i64> {
+        let d: String = s
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '.')
+            .collect();
+        (!d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
+            .then(|| d.parse().ok())
+            .flatten()
+    };
+    for (suffix, sign) in [("np", 1), ("pp", -1)] {
+        if let Some(head) = t.strip_suffix(suffix) {
+            return digits(head).filter(|n| *n > 0).map(|n| n * sign);
+        }
+    }
+    for (prefix, sign) in [("storey", 1), ("basement", -1)] {
+        if let Some(tail) = t.strip_prefix(prefix) {
+            return digits(tail).filter(|n| *n > 0).map(|n| n * sign);
+        }
+    }
+    None
 }
 
 /// Whether a note reads like a room label: a name, then its area on the
@@ -1160,10 +1235,49 @@ mod tests {
         assert!((crate::polygon::signed_area2(&o) / 2.0 - 5.8 * 3.8).abs() < 1e-9);
     }
 
+    /// Rooms are numbered by their storey's designation: 1. NP 1.01,
+    /// 2. NP 2.01, 1. PP -1.01.
+    #[test]
+    fn rooms_are_numbered_by_the_storey() {
+        assert_eq!(storey_designation("1. NP"), Some(1));
+        assert_eq!(storey_designation("2.NP"), Some(2));
+        assert_eq!(storey_designation("1. PP"), Some(-1));
+        assert_eq!(storey_designation("Basement 2"), Some(-2));
+        assert_eq!(storey_designation("Prízemie"), None);
+        let mut m = Model::new();
+        let mk = |name: &str, z: f64| {
+            Element::new(
+                name,
+                ElementKind::Level(Level {
+                    elevation: z,
+                    height: 3.0,
+                }),
+            )
+        };
+        // unnamed storeys counted from the ground
+        let pp = mk("Suterén", -3.0);
+        let np1 = mk("Prízemie", 0.0);
+        let np2 = mk("Poschodie", 3.0);
+        let ids = [pp.id, np1.id, np2.id];
+        Transaction::new("t")
+            .insert(pp)
+            .insert(np1)
+            .insert(np2)
+            .apply(&mut m)
+            .unwrap();
+        let n: Vec<String> = ids.iter().map(|l| next_number(&m, *l)).collect();
+        assert_eq!(n, ["-1.01", "1.01", "2.01"]);
+        // a name with a designation wins
+        let named = mk("2. NP", 0.0);
+        let id = named.id;
+        Transaction::new("t").insert(named).apply(&mut m).unwrap();
+        assert_eq!(next_number(&m, id), "2.01");
+    }
+
     #[test]
     fn room_numbers_count_on() {
         let (mut doc, l, _) = house();
-        assert_eq!(next_number(doc.model(), l), "0.01");
+        assert_eq!(next_number(doc.model(), l), "1.01");
         let mut r = Room::new(l, DVec2::new(2.0, 2.0));
         r.number = "0.09".into();
         doc.commit(Transaction::new("room").insert(Element::new("A", ElementKind::Room(r))))
@@ -1215,7 +1329,7 @@ mod tests {
         assert_eq!(made[0].0, "Study");
         assert_eq!(
             (made[0].1.number.as_str(), made[1].1.number.as_str()),
-            ("0.01", "0.02")
+            ("1.01", "1.02")
         );
         assert_eq!(
             skipped,

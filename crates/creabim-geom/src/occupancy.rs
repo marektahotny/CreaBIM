@@ -135,6 +135,7 @@ pub fn schedule(model: &Model) -> Schedule {
         field: None,
         width,
         numeric,
+        align: None,
     };
     let columns = vec![
         col("Room", 45.0, false),
@@ -200,6 +201,7 @@ pub fn schedule(model: &Model) -> Schedule {
         rows,
         totals,
         listed,
+        above_totals: vec![],
     }
 }
 

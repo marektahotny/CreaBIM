@@ -290,6 +290,7 @@ fn col(title: &'static str, field: Option<Field>, width: f64, numeric: bool) -> 
         field,
         width,
         numeric,
+        align: None,
     }
 }
 
@@ -547,6 +548,7 @@ fn table_of(
             rows: vec![],
             totals: vec![],
             listed: 0,
+            above_totals: vec![],
         },
         elements: vec![],
         material: vec![],

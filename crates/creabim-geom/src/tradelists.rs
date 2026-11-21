@@ -14,6 +14,7 @@ fn col(title: &'static str, width: f64, numeric: bool) -> Column {
         field: None,
         width,
         numeric,
+        align: None,
     }
 }
 
@@ -119,6 +120,7 @@ pub fn pipes(model: &Model, trade: Option<creabim_core::viewmodes::Trade>) -> Sc
             "m".into(),
         ],
         listed,
+        above_totals: vec![],
     }
 }
 
@@ -215,6 +217,7 @@ pub fn electrical(model: &Model) -> Schedule {
         rows,
         totals: vec![],
         listed,
+        above_totals: vec![],
     }
 }
 
@@ -291,6 +294,7 @@ pub fn recuperation(model: &Model) -> Schedule {
             money(bill.gross),
         ],
         listed,
+        above_totals: vec![],
     }
 }
 

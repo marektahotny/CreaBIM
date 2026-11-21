@@ -499,6 +499,7 @@ pub fn schedule(model: &Model) -> Schedule {
         field: None,
         width,
         numeric,
+        align: None,
     };
     let columns = vec![
         col("Fire zone", 22.0, false),
@@ -565,6 +566,7 @@ pub fn schedule(model: &Model) -> Schedule {
         rows,
         totals: vec![],
         listed,
+        above_totals: vec![],
     }
 }
 

@@ -171,6 +171,7 @@ pub fn lintel_schedule(model: &Model) -> crate::schedule::Schedule {
         field: None,
         width,
         numeric,
+        align: None,
     };
     let columns = vec![
         col("Storey", 18.0, false),
@@ -279,6 +280,7 @@ pub fn lintel_schedule(model: &Model) -> crate::schedule::Schedule {
             String::new(),
         ],
         listed,
+        above_totals: vec![],
     }
 }
 

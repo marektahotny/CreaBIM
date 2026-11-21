@@ -10307,6 +10307,20 @@ crate::props::row(ui, "File names", |ui| {
                                 label = "Room perimeter column";
                             }
                         }
+                        // the living area's row over the usable area; off
+                        // for a building with no dwellings
+                        if *category == ScheduleCategory::RoomLegend {
+                            let mut on = !v.no_living_area;
+                            if crate::props::switch(ui, &mut on, "Living area")
+                                .on_hover_text(crate::i18n::tr(
+                                    "A row of the living area over the usable area: living rooms, bedrooms, children's rooms, dining rooms and studies of at least 8 m², kitchens over 12 m². Each room can be counted in or left out in its properties.",
+                                ))
+                                .changed()
+                            {
+                                v.no_living_area = !on;
+                                label = "Living area row";
+                            }
+                        }
                         // the take-off groups and sorts in its own bar
                         if *category != ScheduleCategory::Materials
                             && crate::props::switch(ui, by_type, "Group by type")
@@ -10316,6 +10330,99 @@ crate::props::row(ui, "File names", |ui| {
                                 .changed()
                         {
                             label = "Group schedule by type"
+                        }
+                    }
+                    // a legend of rooms or materials: the storey it lists, and
+                    // the materials it leaves out
+                    if let ViewKind::Schedule { category, .. } = v.kind {
+                        use creabim_core::ScheduleCategory as C;
+                        if matches!(category, C::RoomLegend | C::MaterialLegend) {
+                            let levels = creabim_core::levels::sorted(self.doc.model());
+                            let shown = v
+                                .of_level
+                                .and_then(|l| levels.iter().find(|x| x.0 == l))
+                                .map_or(crate::i18n::tr("All storeys"), |x| x.1.clone());
+                            crate::props::row(ui, "Storey", |ui| {
+                                egui::ComboBox::from_id_salt(("legend.level", id))
+                                    .selected_text(shown)
+                                    .width(ui.available_width())
+                                    .show_ui(ui, |ui| {
+                                        if ui
+                                            .selectable_label(
+                                                v.of_level.is_none(),
+                                                crate::i18n::tr("All storeys"),
+                                            )
+                                            .clicked()
+                                        {
+                                            v.of_level = None;
+                                            label = "Storey";
+                                        }
+                                        for (l, name, _) in &levels {
+                                            if ui
+                                                .selectable_label(v.of_level == Some(*l), name)
+                                                .clicked()
+                                            {
+                                                v.of_level = Some(*l);
+                                                label = "Storey";
+                                            }
+                                        }
+                                    });
+                            });
+                        }
+                        // each column of a plain table: how its words sit
+                        // in the cell (left, middle, right)
+                        if let Some(t) = creabim_geom::schedule::view_table(self.doc.model(), id) {
+                            crate::props::section(ui, "Column formatting");
+                            for c in &t.columns {
+                                let now = c.alignment();
+                                crate::props::row(ui, c.title, |ui| {
+                                    egui::ComboBox::from_id_salt(("table.align", id, c.title))
+                                        .selected_text(crate::i18n::tr(now.label()))
+                                        .width(ui.available_width())
+                                        .show_ui(ui, |ui| {
+                                            for a in creabim_core::ColumnAlign::ALL {
+                                                if ui
+                                                    .selectable_label(
+                                                        now == a,
+                                                        crate::i18n::tr(a.label()),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    v.column_align.insert(c.title.to_string(), a);
+                                                    label = "Column formatting";
+                                                }
+                                            }
+                                        });
+                                });
+                            }
+                        }
+                        if category == C::MaterialLegend {
+                            // what the storey's plan cuts, each to keep or
+                            // leave out
+                            let all =
+                                creabim_geom::matlegend::rows_of(self.doc.model(), v.of_level, &[]);
+                            crate::props::section(ui, "Materials in the legend");
+                            let mut seen = vec![];
+                            for r in &all {
+                                if seen.contains(&r.material) {
+                                    continue;
+                                }
+                                seen.push(r.material);
+                                let name = self
+                                    .doc
+                                    .model()
+                                    .get(r.material)
+                                    .map_or(String::new(), |e| e.name.clone());
+                                let mut on = !v.left_out.contains(&r.material);
+                                if ui.checkbox(&mut on, name).changed() {
+                                    if on {
+                                        v.left_out.retain(|m| *m != r.material);
+                                    } else {
+                                        v.left_out.push(r.material);
+                                    }
+                                    label = "Materials in the legend";
+                                }
+                            }
                         }
                     }
                     if self.active_view != Some(id)
@@ -10757,72 +10864,6 @@ crate::props::row(ui, "File names", |ui| {
                                     }
                                 });
                         });
-                    }
-                    // a legend of rooms or materials: the storey it lists, and
-                    // the materials it leaves out
-                    if let ViewKind::Schedule { category, .. } = v.kind {
-                        use creabim_core::ScheduleCategory as C;
-                        if matches!(category, C::RoomLegend | C::MaterialLegend) {
-                            let levels = creabim_core::levels::sorted(self.doc.model());
-                            let shown = v
-                                .of_level
-                                .and_then(|l| levels.iter().find(|x| x.0 == l))
-                                .map_or(crate::i18n::tr("All storeys"), |x| x.1.clone());
-                            crate::props::row(ui, "Storey", |ui| {
-                                egui::ComboBox::from_id_salt(("legend.level", id))
-                                    .selected_text(shown)
-                                    .width(ui.available_width())
-                                    .show_ui(ui, |ui| {
-                                        if ui
-                                            .selectable_label(
-                                                v.of_level.is_none(),
-                                                crate::i18n::tr("All storeys"),
-                                            )
-                                            .clicked()
-                                        {
-                                            v.of_level = None;
-                                            label = "Storey";
-                                        }
-                                        for (l, name, _) in &levels {
-                                            if ui
-                                                .selectable_label(v.of_level == Some(*l), name)
-                                                .clicked()
-                                            {
-                                                v.of_level = Some(*l);
-                                                label = "Storey";
-                                            }
-                                        }
-                                    });
-                            });
-                        }
-                        if category == C::MaterialLegend {
-                            // what the storey's plan cuts, each to keep or
-                            // leave out
-                            let all =
-                                creabim_geom::matlegend::rows_of(self.doc.model(), v.of_level, &[]);
-                            crate::props::section(ui, "Materials in the legend");
-                            let mut seen = vec![];
-                            for r in &all {
-                                if seen.contains(&r.material) {
-                                    continue;
-                                }
-                                seen.push(r.material);
-                                let name = self
-                                    .doc
-                                    .model()
-                                    .get(r.material)
-                                    .map_or(String::new(), |e| e.name.clone());
-                                let mut on = !v.left_out.contains(&r.material);
-                                if ui.checkbox(&mut on, name).changed() {
-                                    if on {
-                                        v.left_out.retain(|m| *m != r.material);
-                                    } else {
-                                        v.left_out.push(r.material);
-                                    }
-                                    label = "Materials in the legend";
-                                }
-                            }
-                        }
                     }
                     if matches!(v.kind, ViewKind::Axonometric { .. }) {
                         ui.add_space(6.0);
@@ -13250,7 +13291,9 @@ impl CreaBimApp {
                 .doc
                 .model()
                 .iter()
-                .find(|e| e.name == name && matches!(e.kind, ElementKind::View(_)))
+                .find(|e| {
+                    e.name == name && matches!(e.kind, ElementKind::View(_) | ElementKind::Sheet(_))
+                })
                 .map(|e| e.id);
             self.active_view = id;
             // an element picked, its Properties showing

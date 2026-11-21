@@ -148,6 +148,7 @@ pub fn schedule(model: &Model) -> Schedule {
         field: None,
         width,
         numeric,
+        align: None,
     };
     let columns = vec![
         col("Fire zone", 30.0, false),
@@ -338,6 +339,7 @@ pub fn schedule(model: &Model) -> Schedule {
             String::new(),
         ],
         listed,
+        above_totals: vec![],
     }
 }
 
@@ -610,6 +612,7 @@ pub fn facade_schedule(model: &Model) -> Schedule {
         field: None,
         width,
         numeric,
+        align: None,
     };
     let columns = vec![
         col("Level", 34.0, false),
@@ -646,6 +649,7 @@ pub fn facade_schedule(model: &Model) -> Schedule {
         rows,
         totals: vec![],
         listed,
+        above_totals: vec![],
     }
 }
 

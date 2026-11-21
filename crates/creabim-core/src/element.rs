@@ -2433,6 +2433,14 @@ pub struct View {
     /// column's heading; a column not named keeps its own width.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub column_widths: BTreeMap<String, f64>,
+    /// A table's columns aligned on the sheet, by the column's heading;
+    /// a column not named keeps the table's own alignment.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub column_align: BTreeMap<String, ColumnAlign>,
+    /// A legend of rooms without its row of the living area (a building
+    /// with no dwellings).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_living_area: bool,
     /// What a legend leaves out though its drawing has it (materials of
     /// the legend of materials).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2639,6 +2647,25 @@ impl ViewStyle {
             ViewStyle::HiddenLine => "Hidden line",
             ViewStyle::Shaded => "Shaded with edges",
             ViewStyle::Wireframe => "Wireframe",
+        }
+    }
+}
+
+/// How a table's column sets its words in the cell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ColumnAlign {
+    Left,
+    Center,
+    Right,
+}
+
+impl ColumnAlign {
+    pub const ALL: [ColumnAlign; 3] = [ColumnAlign::Left, ColumnAlign::Center, ColumnAlign::Right];
+    pub fn label(self) -> &'static str {
+        match self {
+            ColumnAlign::Left => "Left",
+            ColumnAlign::Center => "Center",
+            ColumnAlign::Right => "Right",
         }
     }
 }
@@ -2892,6 +2919,8 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            column_align: BTreeMap::new(),
+            no_living_area: false,
             left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),
@@ -2935,6 +2964,8 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            column_align: BTreeMap::new(),
+            no_living_area: false,
             left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),
@@ -2975,6 +3006,8 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            column_align: BTreeMap::new(),
+            no_living_area: false,
             left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),
@@ -3016,6 +3049,8 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            column_align: BTreeMap::new(),
+            no_living_area: false,
             left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),
@@ -3062,6 +3097,8 @@ impl View {
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
+            column_align: BTreeMap::new(),
+            no_living_area: false,
             left_out: Vec::new(),
             page: None,
             takeoff: Default::default(),

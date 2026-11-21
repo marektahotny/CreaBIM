@@ -111,6 +111,7 @@ pub fn schedule(model: &Model) -> crate::schedule::Schedule {
         field: None,
         width,
         numeric,
+        align: None,
     };
     let columns = vec![
         col("Board", 22.0, false),
@@ -155,6 +156,7 @@ pub fn schedule(model: &Model) -> crate::schedule::Schedule {
         rows,
         totals: vec![],
         listed,
+        above_totals: vec![],
     }
 }
 

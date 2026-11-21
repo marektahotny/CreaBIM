@@ -1560,30 +1560,30 @@ fn rooms_and_ceilings(b: &mut Builder) {
     );
     #[rustfmt::skip]
     let list: Vec<Entry> = vec![
-        (g, "0.01", "Study", v(2.0, 3.5), vec![], "Study", "Oak boards"),
-        (g, "0.02", "Hall", v(5.0, 1.7), vec![], "Circulation", "Slate tiles"),
-        (g, "0.03", "WC", v(7.95, 0.75), vec![], "Sanitary", "Ceramic tiles"),
-        (g, "0.04", "Store", v(10.0, 1.2), vec![], "Storage", "Screed, sealed"),
-        (g, "0.05", "Utility", v(8.6, 4.4), vec![], "Utility", "Ceramic tiles"),
-        (g, "0.06", "Living / Dining", v(9.0, 6.3), vec![], "Living", "Oak boards"),
-        (g, "0.07", "Kitchen", v(13.4, 5.4), vec![], "Kitchen", "Slate tiles"),
-        (g, "0.08", "Loggia", v(1.9, 7.6), loggia.clone(), "Outdoor", "Slate paving"),
+        (g, "1.01", "Study", v(2.0, 3.5), vec![], "Study", "Oak boards"),
+        (g, "1.02", "Hall", v(5.0, 1.7), vec![], "Circulation", "Slate tiles"),
+        (g, "1.03", "WC", v(7.95, 0.75), vec![], "Sanitary", "Ceramic tiles"),
+        (g, "1.04", "Store", v(10.0, 1.2), vec![], "Storage", "Screed, sealed"),
+        (g, "1.05", "Utility", v(8.6, 4.4), vec![], "Utility", "Ceramic tiles"),
+        (g, "1.06", "Living / Dining", v(9.0, 6.3), vec![], "Living", "Oak boards"),
+        (g, "1.07", "Kitchen", v(13.4, 5.4), vec![], "Kitchen", "Slate tiles"),
+        (g, "1.08", "Loggia", v(1.9, 7.6), loggia.clone(), "Outdoor", "Slate paving"),
         (
             g,
-            "0.09",
+            "1.09",
             "Terrace",
             v(12.1, 10.75),
             polygon::rectangle(v(11.0 + H, 9.6 + H), v(15.6 + H + 0.2, 11.4)),
             "Outdoor",
             "Slate paving",
         ),
-        (f, "1.01", "Bedroom 2", v(3.35, 1.9), vec![], "Bedroom", "Carpet"),
-        (f, "1.02", "Bathroom", v(1.6, 3.95), vec![], "Sanitary", "Ceramic tiles"),
-        (f, "1.03", "Landing", v(5.3, 3.2), vec![], "Circulation", "Oak boards"),
-        (f, "1.04", "Bedroom 3", v(9.2, 1.5), vec![], "Bedroom", "Carpet"),
-        (f, "1.05", "Bedroom 1", v(6.5, 8.7), vec![], "Bedroom", "Carpet"),
-        (f, "1.06", "En-suite", v(9.4, 7.5), vec![], "Sanitary", "Ceramic tiles"),
-        (f, "1.07", "Balcony", v(1.9, 7.6), loggia, "Outdoor", "Timber decking"),
+        (f, "2.01", "Bedroom 2", v(3.35, 1.9), vec![], "Bedroom", "Carpet"),
+        (f, "2.02", "Bathroom", v(1.6, 3.95), vec![], "Sanitary", "Ceramic tiles"),
+        (f, "2.03", "Landing", v(5.3, 3.2), vec![], "Circulation", "Oak boards"),
+        (f, "2.04", "Bedroom 3", v(9.2, 1.5), vec![], "Bedroom", "Carpet"),
+        (f, "2.05", "Bedroom 1", v(6.5, 8.7), vec![], "Bedroom", "Carpet"),
+        (f, "2.06", "En-suite", v(9.4, 7.5), vec![], "Sanitary", "Ceramic tiles"),
+        (f, "2.07", "Balcony", v(1.9, 7.6), loggia, "Outdoor", "Timber decking"),
     ];
     let mut tx = Transaction::new("Starter house: rooms");
     for (level, number, name, at, outline, occupancy, floor) in list {
@@ -1613,7 +1613,7 @@ fn rooms_and_ceilings(b: &mut Builder) {
     let board = b.material("Plasterboard");
     let mut tx = Transaction::new("Starter house: ceilings");
     let mut upstairs = vec![];
-    for number in ["1.01", "1.02", "1.03", "1.04", "1.05", "1.06"] {
+    for number in ["2.01", "2.02", "2.03", "2.04", "2.05", "2.06"] {
         let room = b.id(&format!("Room {number}"));
         let mut c = Ceiling::in_room(f, room, 2.5);
         c.material = Some(board);
@@ -1621,7 +1621,7 @@ fn rooms_and_ceilings(b: &mut Builder) {
         upstairs.push(e.id);
         tx = tx.insert(e);
     }
-    for number in ["0.03", "0.04", "0.05"] {
+    for number in ["1.03", "1.04", "1.05"] {
         let room = b.id(&format!("Room {number}"));
         let mut c = Ceiling::in_room(g, room, 2.4);
         c.thickness = 0.02;

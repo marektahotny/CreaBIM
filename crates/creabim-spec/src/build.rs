@@ -1687,6 +1687,7 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         tiling: None,
         ufh: None,
         decentral_hrv: false,
+        living: None,
     };
     c.insert(
         &r.id,

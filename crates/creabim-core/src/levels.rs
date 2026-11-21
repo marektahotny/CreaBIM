@@ -34,7 +34,7 @@ pub fn next_name(model: &Model) -> String {
 
 /// A floor lower than this under the ground is an underground storey
 /// (STN 73 4301: more than 0.8 m).
-const UNDERGROUND: f64 = -0.8;
+pub const UNDERGROUND: f64 = -0.8;
 
 /// The name of a new level at `elevation`, as the interface's language
 /// counts storeys: in Slovak "1. NP", "2. NP" from the ground up and

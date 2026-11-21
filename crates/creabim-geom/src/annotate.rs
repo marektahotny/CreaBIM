@@ -2594,7 +2594,7 @@ mod tests {
         let study = named(&m, "Study");
         let text = |f: &[RoomField]| room_tag_text(&m, study, f);
         let area = RoomField::Area.value(&m, study);
-        assert_eq!(text(&[]), format!("STUDY\n0.01  {area}"));
+        assert_eq!(text(&[]), format!("STUDY\n1.01  {area}"));
         assert_eq!(
             text(&[
                 RoomField::Name,
@@ -2605,7 +2605,7 @@ mod tests {
             format!("STUDY\n{area}\nOak boards\nGround Floor")
         );
         // a field the room has nothing for is left out
-        assert_eq!(text(&[RoomField::Department, RoomField::Number]), "0.01");
+        assert_eq!(text(&[RoomField::Department, RoomField::Number]), "1.01");
         // and the tag's own list is what its drawing writes
         let mut doc = creabim_core::Document::from_model(m.clone());
         let tag = m
@@ -2660,7 +2660,7 @@ mod tests {
         assert_eq!(lines[0].0, "STUDY");
         assert!(lines[0].2);
         assert_eq!(lines[1].0, area);
-        assert_eq!(lines[2].0, "0.01");
+        assert_eq!(lines[2].0, "1.01");
         assert!(lines[2].1 < lines[1].1 && lines[1].1 < lines[0].1);
     }
 

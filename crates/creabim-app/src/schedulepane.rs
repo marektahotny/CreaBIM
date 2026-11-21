@@ -482,10 +482,12 @@ pub fn show(
                 }
             }
         }
-        // totals
-        let t = row(ui, Some(HEADER));
-        for ((c, col), text) in cells(t).into_iter().zip(&table.columns).zip(&table.totals) {
-            text_at(ui, c, text, col.numeric, MUTED, false);
+        // the sums over the totals (living area), then the totals
+        for sum in table.above_totals.iter().chain([&table.totals]) {
+            let t = row(ui, Some(HEADER));
+            for ((c, col), text) in cells(t).into_iter().zip(&table.columns).zip(sum) {
+                text_at(ui, c, text, col.numeric, MUTED, false);
+            }
         }
     });
     if let Some((id, f)) = edit {

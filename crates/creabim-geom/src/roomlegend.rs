@@ -163,6 +163,7 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
         field: None,
         width,
         numeric,
+        align: None,
     };
     let columns = vec![
         col("Mark", 14.0, false),
@@ -172,10 +173,17 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
         col("Walls - finish", 50.0, false),
         col("Ceiling - finish", 40.0, false),
     ];
+    // the finishes sit in the middle of their cells, as the office's
+    // legends set them; the sheet may set each column otherwise
+    let mut columns = columns;
+    for c in columns.iter_mut().skip(3) {
+        c.align = Some(creabim_core::ColumnAlign::Center);
+    }
     let units = model.units();
     let dash = |s: String| if s.is_empty() { "-".to_string() } else { s };
     let mut rows: Vec<(f64, String, Row)> = vec![];
     let mut total = 0.0;
+    let mut living = 0.0;
     for e in model.iter() {
         let ElementKind::Room(r) = &e.kind else {
             continue;
@@ -186,6 +194,9 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
         let area = creabim_core::room::shape(model, e.id)
             .map_or(0.0, |s| creabim_core::room::net_area(model, r, &s));
         total += area;
+        if creabim_core::room::counts_as_living(&e.name, r, area) {
+            living += area;
+        }
         let f = finishes(model, e, r);
         rows.push((
             model.level(r.level).map_or(0.0, |l| l.elevation),
@@ -220,6 +231,15 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
             String::new(),
         ],
         listed,
+        // the living area over the usable area; a view may leave it out
+        above_totals: vec![vec![
+            tr("Living area"),
+            String::new(),
+            units.area(living),
+            String::new(),
+            String::new(),
+            String::new(),
+        ]],
     }
 }
 
@@ -271,6 +291,71 @@ mod tests {
         let slab = slab_at(doc.model(), r.level, r.at);
         let layered = slab.is_some_and(|s| creabim_core::assembly_of(doc.model(), s).is_some());
         assert!(layered || f.floor.is_empty(), "{f:?}");
+    }
+
+    /// The living area sums the living rooms over 8 m² and kitchens
+    /// over 12 m², each room's own word winning; the view may drop it.
+    #[test]
+    fn the_living_area_sits_over_the_usable_area() {
+        let mut m = creabim_core::starter::starter_house();
+        let s = schedule(&m, None);
+        assert_eq!(s.above_totals.len(), 1);
+        assert_eq!(s.above_totals[0][0], "Living area");
+        let area = |m: &Model, e: &Element| {
+            creabim_core::room::shape(m, e.id)
+                .map_or(0.0, |sh| creabim_core::room::net_area(m, room(e), &sh))
+        };
+        fn room(e: &Element) -> &Room {
+            match &e.kind {
+                ElementKind::Room(r) => r,
+                _ => unreachable!(),
+            }
+        }
+        let rooms: Vec<Element> = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Room(_)))
+            .cloned()
+            .collect();
+        let sum: f64 = rooms
+            .iter()
+            .filter(|e| creabim_core::room::counts_as_living(&e.name, room(e), area(&m, e)))
+            .map(|e| area(&m, e))
+            .sum();
+        assert!(sum > 0.0);
+        assert_eq!(s.above_totals[0][2], m.units().area(sum));
+        // the kitchen (over 12 m²) counts, the WC does not
+        let kitchen = rooms.iter().find(|e| e.name == "Kitchen").unwrap();
+        assert!(area(&m, kitchen) > 12.0);
+        assert!(creabim_core::room::counts_as_living(
+            "Kitchen",
+            room(kitchen),
+            area(&m, kitchen)
+        ));
+        let wc = rooms.iter().find(|e| e.name == "WC").unwrap();
+        assert!(!creabim_core::room::counts_as_living("WC", room(wc), 20.0));
+        // a small kitchen does not
+        assert!(!creabim_core::room::counts_as_living(
+            "Kitchen",
+            room(kitchen),
+            10.0
+        ));
+        // the designer's word wins
+        let mut wc2 = wc.clone();
+        if let ElementKind::Room(r) = &mut wc2.kind {
+            r.living = Some(true);
+        }
+        assert!(creabim_core::room::counts_as_living("WC", room(&wc2), 3.0));
+        // a view without it
+        let mut v = creabim_core::View::schedule(ScheduleCategory::RoomLegend);
+        v.no_living_area = true;
+        let e = Element::new("L", ElementKind::View(v));
+        let id = e.id;
+        creabim_core::Transaction::new("t")
+            .insert(e)
+            .apply(&mut m)
+            .unwrap();
+        let t = crate::schedule::view_table(&m, id).unwrap();
+        assert!(t.above_totals.is_empty());
     }
 
     /// Tiling runs along the room's walls less its doors, and the legend

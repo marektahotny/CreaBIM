@@ -463,6 +463,45 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room, name: &str) -
             .weak(),
         );
     }
+    // in the living area or not: by its type and area, or by the
+    // designer's word
+    {
+        let tr = crate::i18n::tr;
+        let area = room::shape_of(model, r).map_or(0.0, |s| room::net_area(model, r, &s));
+        let by_type = room::counts_as_living(
+            name,
+            &Room {
+                living: None,
+                ..r.clone()
+            },
+            area,
+        );
+        let shown = |v: Option<bool>| match v {
+            None => format!(
+                "{} ({})",
+                tr("by its type"),
+                if by_type { tr("yes") } else { tr("no") }
+            ),
+            Some(true) => tr("Counted in"),
+            Some(false) => tr("Left out"),
+        };
+        crate::props::row(ui, "Living area", |ui| {
+            ui.spacing_mut().combo_width = ui.available_width();
+            egui::ComboBox::from_id_salt("room_living")
+                .icon(crate::props::combo_icon)
+                .selected_text(shown(r.living))
+                .show_ui(ui, |ui| {
+                    for v in [None, Some(true), Some(false)] {
+                        if ui.selectable_label(r.living == v, shown(v)).clicked() {
+                            r.living = v;
+                            label = "Room data";
+                        }
+                    }
+                })
+        })
+        .response
+        .on_hover_text(tr("Living rooms, bedrooms, children's rooms, dining rooms and studies of at least 8 m² and kitchens over 12 m² count in the living area; set otherwise for this room here."));
+    }
     // what it counts as for its persons, and the designed count
     let table = creabim_geom::occupancy::table(model);
     // with none given, the item its type gives (Fire calculation
@@ -823,7 +862,7 @@ mod tests {
         doc.commit(tx).unwrap();
         let mut sel = Selection::default();
         let msg = fill(&mut doc, Space::Room, level, DVec2::new(2.0, 3.5), &mut sel).unwrap();
-        assert!(msg.starts_with("Room 0.10 added"), "{msg}");
+        assert!(msg.starts_with("Room 1.10 added"), "{msg}");
         let id = sel.active.unwrap();
         assert!(room::area(doc.model(), id) > 15.0);
         let tags = doc

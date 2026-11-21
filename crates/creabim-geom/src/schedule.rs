@@ -41,6 +41,18 @@ pub struct Column {
     /// Width on paper, mm.
     pub width: f64,
     pub numeric: bool,
+    /// How its words sit in the cell; none: numbers right, words left.
+    pub align: Option<creabim_core::ColumnAlign>,
+}
+
+impl Column {
+    /// How the column sets its words: its own, else numbers right and
+    /// words left.
+    pub fn alignment(&self) -> creabim_core::ColumnAlign {
+        use creabim_core::ColumnAlign as A;
+        self.align
+            .unwrap_or(if self.numeric { A::Right } else { A::Left })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -62,6 +74,9 @@ pub struct Schedule {
     /// How many elements it lists (for furniture and fixtures, how many
     /// objects its counts add up to).
     pub listed: usize,
+    /// Rows of sums drawn over the totals row, set as it is (the living
+    /// area over the usable area in the legend of rooms).
+    pub above_totals: Vec<Vec<String>>,
 }
 
 fn col(title: &'static str, field: Option<Field>, width: f64, numeric: bool) -> Column {
@@ -70,6 +85,7 @@ fn col(title: &'static str, field: Option<Field>, width: f64, numeric: bool) -> 
         field,
         width,
         numeric,
+        align: None,
     }
 }
 
@@ -133,6 +149,9 @@ pub fn apply_widths(model: &Model, view: ElementId, s: &mut Schedule) {
         if let Some(w) = v.column_widths.get(c.title) {
             c.width = w.max(MIN_COLUMN);
         }
+        if let Some(a) = v.column_align.get(c.title) {
+            c.align = Some(*a);
+        }
     }
 }
 
@@ -158,7 +177,13 @@ pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
     }
     let mut s = match category {
         ScheduleCategory::PipeList if v.trade.is_some() => crate::tradelists::pipes(model, v.trade),
-        ScheduleCategory::RoomLegend => crate::roomlegend::schedule(model, v.of_level),
+        ScheduleCategory::RoomLegend => {
+            let mut s = crate::roomlegend::schedule(model, v.of_level);
+            if v.no_living_area {
+                s.above_totals.clear();
+            }
+            s
+        }
         ScheduleCategory::Materials => {
             crate::takeoff::table_measured(model, &v.takeoff, by_type).schedule
         }
@@ -188,8 +213,10 @@ fn room_perimeter(model: &Model, on: Option<bool>, s: &mut Schedule) {
                     r.cells.remove(i);
                 }
             }
-            if i < s.totals.len() {
-                s.totals.remove(i);
+            for sum in s.above_totals.iter_mut().chain([&mut s.totals]) {
+                if i < sum.len() {
+                    sum.remove(i);
+                }
             }
         }
         (ScheduleCategory::RoomLegend, None, true) => {
@@ -205,6 +232,7 @@ fn room_perimeter(model: &Model, on: Option<bool>, s: &mut Schedule) {
                     field: None,
                     width: 18.0,
                     numeric: true,
+                    align: None,
                 },
             );
             let mm = |v: f64| {
@@ -217,8 +245,10 @@ fn room_perimeter(model: &Model, on: Option<bool>, s: &mut Schedule) {
                 let i = i.min(r.cells.len());
                 r.cells.insert(i, if r.group { String::new() } else { p });
             }
-            let i = i.min(s.totals.len());
-            s.totals.insert(i, String::new());
+            for sum in s.above_totals.iter_mut().chain([&mut s.totals]) {
+                let i = i.min(sum.len());
+                sum.insert(i, String::new());
+            }
         }
         _ => {}
     }
@@ -806,6 +836,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         rows,
         totals,
         listed,
+        above_totals: vec![],
     }
 }
 
@@ -1090,14 +1121,14 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
         tops.push(tops[tops.len() - 1] - h);
     }
     let totals_top = tops[s.rows.len()];
-    let bottom = totals_top - ROW;
+    // the rows of sums: those over the totals, then the totals
+    let sums: Vec<&Vec<String>> = s.above_totals.iter().chain([&s.totals]).collect();
+    let bottom = totals_top - ROW * sums.len() as f64;
     let mut x = 0.0;
-    let cell = |c: &Column, x: f64| {
-        if c.numeric {
-            (x + c.width - PAD, Anchor::End)
-        } else {
-            (x + PAD, Anchor::Start)
-        }
+    let cell = |c: &Column, x: f64| match c.alignment() {
+        creabim_core::ColumnAlign::Right => (x + c.width - PAD, Anchor::End),
+        creabim_core::ColumnAlign::Center => (x + c.width / 2.0, Anchor::Middle),
+        creabim_core::ColumnAlign::Left => (x + PAD, Anchor::Start),
     };
     for (i, c) in s.columns.iter().enumerate() {
         let (tx, align) = cell(c, x);
@@ -1118,15 +1149,17 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
                 y -= LEAD;
             }
         }
-        if let Some(t) = s.totals.get(i).filter(|t| !t.is_empty()) {
-            text(
-                &mut items,
-                view,
-                DVec2::new(tx, bottom + ROW / 2.0),
-                t,
-                2.5,
-                align,
-            );
+        for (k, sum) in sums.iter().enumerate() {
+            if let Some(t) = sum.get(i).filter(|t| !t.is_empty()) {
+                text(
+                    &mut items,
+                    view,
+                    DVec2::new(tx, totals_top - ROW * (k as f64 + 0.5)),
+                    t,
+                    2.5,
+                    align,
+                );
+            }
         }
         if i > 0 {
             // a group heading runs on across the empty cells after it, so
@@ -1145,9 +1178,19 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
             // in the totals row a label runs on across the empty cells
             // up to its value (Úžitková plocha ... 72.37 m²), so the line
             // stops over it
-            let t = |k: usize| s.totals.get(k).is_some_and(|t| !t.is_empty());
-            let merged = !t(i) && (0..i).any(t) && (i + 1..s.columns.len()).any(t);
-            let end = if merged { totals_top } else { bottom };
+            let mut end = totals_top;
+            for (k, sum) in sums.iter().enumerate() {
+                let t = |j: usize| sum.get(j).is_some_and(|t| !t.is_empty());
+                let merged = !t(i) && (0..i).any(t) && (i + 1..s.columns.len()).any(t);
+                let below = totals_top - ROW * (k as f64 + 1.0);
+                if merged {
+                    if end < top {
+                        line(&mut items, DVec2::new(x, top), DVec2::new(x, end), false);
+                    }
+                    top = below;
+                }
+                end = below;
+            }
             if end < top {
                 line(&mut items, DVec2::new(x, top), DVec2::new(x, end), false);
             }
@@ -1170,6 +1213,10 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
             DVec2::new(width, *y),
             heavy,
         );
+    }
+    for k in 1..sums.len() {
+        let y = totals_top - ROW * k as f64;
+        line(&mut items, DVec2::new(0.0, y), DVec2::new(width, y), false);
     }
     line(
         &mut items,
@@ -1202,9 +1249,11 @@ pub fn to_csv(s: &Schedule) -> String {
     for r in &s.rows {
         out += &(line(r.cells.iter().map(String::as_str).collect()) + "\n");
     }
-    let mut totals: Vec<&str> = s.totals.iter().map(String::as_str).collect();
-    totals.resize(s.columns.len(), "");
-    out += &(line(totals) + "\n");
+    for sum in s.above_totals.iter().chain([&s.totals]) {
+        let mut cells: Vec<&str> = sum.iter().map(String::as_str).collect();
+        cells.resize(s.columns.len(), "");
+        out += &(line(cells) + "\n");
+    }
     out
 }
 
