@@ -175,6 +175,9 @@ pub struct Aperture {
     pub y: f64,
     /// Uw from its maker's data sheet; none where it has none.
     pub uw: Option<f64>,
+    /// What share of it is glass, %, from its frame, bars and sashes as
+    /// modelled (Fragment's "Sklo %", for the solar gains).
+    pub glass: f64,
 }
 
 impl Aperture {
@@ -594,9 +597,13 @@ fn surface(model: &Model, e: &creabim_core::Element, kind: SurfaceKind, storey: 
 /// The windows and doors in wall `wall`, placed along its face `a` → `b`
 /// (left to right seen from outside).
 fn apertures(model: &Model, wall: ElementId, a: DVec2, b: DVec2) -> Vec<Aperture> {
-    let Some(ElementKind::Wall(w)) = model.get(wall).map(|e| &e.kind) else {
+    let Some(we) = model.get(wall) else {
         return vec![];
     };
+    let ElementKind::Wall(w) = &we.kind else {
+        return vec![];
+    };
+    let asm = assembly_of(model, we).map(|(_, a)| a);
     let length = a.distance(b);
     let d = (w.end - w.start).normalize_or_zero();
     let along = |p: DVec2| (p - a).dot((b - a).normalize_or_zero());
@@ -630,9 +637,28 @@ fn apertures(model: &Model, wall: ElementId, a: DVec2, b: DVec2) -> Vec<Aperture
             x: along(p0).min(along(p1)).clamp(0.0, length),
             y: op.sill.max(0.0),
             uw: perf.and_then(|p| p.uw),
+            glass: glass_share(op, w, asm),
         });
     }
     out
+}
+
+/// The share of opening `o` that is glass, %, as its parts are drawn.
+fn glass_share(
+    o: &creabim_core::Opening,
+    w: &creabim_core::Wall,
+    asm: Option<&creabim_core::assembly::Assembly>,
+) -> f64 {
+    let a = o.width * o.height;
+    if a <= 0.0 {
+        return 0.0;
+    }
+    let glass: f64 = crate::opening::opening_boxes(o, w, asm)
+        .iter()
+        .filter(|b| b.part == crate::opening::Part::Glass)
+        .map(|b| (b.hi.x - b.lo.x) * (b.hi.z - b.lo.z))
+        .sum();
+    (100.0 * glass / a).clamp(0.0, 100.0).round()
 }
 
 /// What share of `outline`, outside the walls of `level`, `rooms` cover.
@@ -915,7 +941,8 @@ fn cross(p: DVec2, d: DVec2, q: DVec2, e: DVec2) -> Option<DVec2> {
 }
 
 fn round3(v: f64) -> f64 {
-    (v * 1000.0).round() / 1000.0
+    // + 0.0: no "-0" in the file
+    (v * 1000.0).round() / 1000.0 + 0.0
 }
 
 /// A number as Fragment's text fields hold it: "292.5", "117".
@@ -1200,6 +1227,7 @@ pub fn project_json(model: &Model, env: &Envelope) -> Ordered {
             st.insert(format!("fix_osirka_{k}_{m}"), tel(0.0));
             st.insert(format!("ovyska_{k}_{m}"), tel(o.height));
             st.insert(format!("fix_ovyska_{k}_{m}"), tel(1.0));
+            st.insert(format!("osklon_{k}_{m}"), tel(o.glass));
             st.insert(format!("oplocha_{k}_{m}"), tel(a));
             st.insert(format!("fix_oplocha_{k}_{m}"), tel(0.0));
             st.insert(format!("oz3D_{k}_{m}"), checkbox(true));
@@ -1282,6 +1310,26 @@ mod tests {
 
     /// The layered sample house with a living room on each storey and a
     /// garage-less ground floor: rooms filling each storey.
+    /// [`house`] with every window and door Uw 0,6.
+    fn house_for_file() -> Model {
+        let mut doc = Document::from_model(house());
+        let mut tx = Transaction::new("Uw");
+        for before in doc.model().iter() {
+            if let ElementKind::Opening(_) = &before.kind {
+                let mut after = before.clone();
+                if let ElementKind::Opening(o) = &mut after.kind {
+                    o.performance = Some(creabim_core::joinery::Performance {
+                        uw: Some(0.6),
+                        ..Default::default()
+                    });
+                }
+                tx = tx.replace(before.clone(), after);
+            }
+        }
+        doc.commit(tx).unwrap();
+        doc.model().clone()
+    }
+
     fn house() -> Model {
         let mut doc = Document::from_model(creabim_core::sample::layered_house());
         let mut tx = Transaction::new("rooms");
@@ -1345,6 +1393,14 @@ mod tests {
         // storey is more than the centrelines'
         assert!(walls.iter().all(|s| s.length > 0.0 && s.width > 2.0));
         assert!(walls.iter().any(|s| !s.openings.is_empty()));
+        // a window is mostly glass inside its frame, a solid door none
+        for o in env.surfaces.iter().flat_map(|s| &s.openings) {
+            match o.kind {
+                ApertureKind::Window => assert!(o.glass > 50.0 && o.glass < 100.0, "{o:?}"),
+                ApertureKind::Door => assert_eq!(o.glass, 0.0, "{o:?}"),
+                ApertureKind::GlazedDoor => {}
+            }
+        }
         // a floor on the ground, split by the 2 m strip, and something on top
         let floor: f64 = env
             .surfaces
@@ -1366,7 +1422,7 @@ mod tests {
 
     #[test]
     fn the_file_is_fragments_form() {
-        let m = house();
+        let m = house_for_file();
         let (text, _) = export(&m);
         let v: Value = serde_json::from_str(&text).unwrap();
         // every section of Fragment's, in its order, or it refuses the file
@@ -1405,6 +1461,8 @@ mod tests {
         assert!(text.starts_with(r#"{"popis_zakazky":{"":{"nazov_stavby":{"type":"text","value":"#));
         let skladba = &text[text.find("\"Skladba\"").unwrap()..];
         assert!(skladba.find("druh_plochy_1").unwrap() < skladba.find("meno_1").unwrap());
+        assert_eq!(st["ou_1_1"]["value"], 0.6);
+        assert!(st["osklon_1_1"]["value"].as_f64().unwrap() > 50.0);
         // numbers of the form are text, of the table numbers
         assert!(v["vyhrievane_plochy"]["podlazia"]["pocet_podlazi"]["value"].is_string());
         assert!(st["dlzka_1"]["value"].is_number());

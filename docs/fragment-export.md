@@ -137,8 +137,9 @@ inak ±0,000.
 | `osolar_N_M` | počítať solárne zisky (okná a presklené dvere) |
 | `okonstrukcia_N_M` | prázdne (Ug, Uf, Ψg CreaBIM zatiaľ nemá; Fragment ich tu môže mať) |
 
-`osklon_N_M` (podiel zasklenia %) CreaBIM nezapisuje – nechá sa
-predvolená hodnota Fragmentu.
+`osklon_N_M` (Sklo %, podiel zasklenia pre solárne zisky) = plocha skla
+okna/dverí podľa ich modelu (rám, priečky, krídla) / plocha otvoru; plné
+dvere 0. Bez neho Fragment dosadí 10 %.
 
 ## Ako CreaBIM počíta obálku
 
