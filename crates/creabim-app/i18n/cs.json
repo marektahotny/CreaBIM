@@ -7992,5 +7992,20 @@
  "Width of new penetrations. Typing a size here places it without a type.": "Šířka nových prostupů.",
  "Height of new penetrations": "Výška nových prostupů (v desce délka)",
  "How high new penetrations start above the wall's base": "Spodní hrana nových prostupů ve stěně nad podlahou",
- "Click on a wall for a penetration through it (outline, cross, label P 300×300 sp. 300), or on a floor or ceiling slab for one through the slab (outline, broken line from corner to corner, label P 300×300). Pick the host and the shape in the top bar, the size in Properties.": "Klikněte na stěnu pro prostup skrz ni (obrys, křížek, popis P 300×300 sp. 300) nebo na desku podlahy či stropu pro prostup deskou (obrys, lomená čára z rohu do rohu, popis P 300×300). Hostitele a tvar zvolíte v horní liště, rozměr ve Vlastnostech."
+ "Click on a wall for a penetration through it (outline, cross, label P 300×300 sp. 300), or on a floor or ceiling slab for one through the slab (outline, broken line from corner to corner, label P 300×300). Pick the host and the shape in the top bar, the size in Properties.": "Klikněte na stěnu pro prostup skrz ni (obrys, křížek, popis P 300×300 sp. 300) nebo na desku podlahy či stropu pro prostup deskou (obrys, lomená čára z rohu do rohu, popis P 300×300). Hostitele a tvar zvolíte v horní liště, rozměr ve Vlastnostech.",
+ "PVC-U window and door profiles, RAL 9016 traffic white": "Okenní a dveřní profily PVC-U, RAL 9016 dopravní bílá",
+ "PVC-U profiles with an anthracite grey foil, RAL 7016": "Profily PVC-U s fólií antracitová šedá, RAL 7016",
+ "PVC-U window and door profiles, RAL 9010 pure white": "Okenní a dveřní profily PVC-U, RAL 9010 čistá bílá",
+ "PVC-U profiles with a black grey foil, RAL 7021": "Profily PVC-U s fólií černošedá, RAL 7021",
+ "PVC-U profiles, anthracite foil RAL 7016 outside, white RAL 9016 inside": "Profily PVC-U, venku fólie antracit RAL 7016, uvnitř bílá RAL 9016",
+ "PVC-U profiles with a golden oak wood-grain foil": "Profily PVC-U s fólií zlatý dub",
+ "PVC-U profiles with a walnut wood-grain foil": "Profily PVC-U s fólií ořech",
+ "Cream PVC-U profiles (RAL 9001)": "Krémové profily PVC-U (RAL 9001)",
+ "Laminated spruce scantlings for windows and doors (IV 68/78/92)": "Lepené smrkové hranoly na okna a dveře (IV 68/78/92)",
+ "Laminated pine scantlings for windows and doors": "Lepené borovicové hranoly na okna a dveře",
+ "Larch for windows, doors and cladding": "Modřín na okna, dveře a obklady",
+ "Meranti hardwood for windows and doors": "Tvrdé dřevo meranti na okna a dveře",
+ "Finger-jointed structural timber KVH, C24": "Konstrukční dřevo KVH s klínovým spojem, C24",
+ "Beech for stairs, doors and furniture": "Buk na schody, dveře a nábytek",
+ "OSB": "OSB"
 }

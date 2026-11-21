@@ -23,28 +23,31 @@ pub const EDGE: f64 = 5.0;
 pub const LIFT: f64 = 2.0;
 pub const W: f64 = 160.6;
 pub const H: f64 = 54.2;
+/// The size of every text in the block, and of the building's name.
+pub const TEXT: f64 = 2.5;
+pub const NAME: f64 = 5.0;
 
 /// The block's lines from its lower right corner, x to the left
 /// negative, y up, and their widths.
 const LINES: [[f64; 5]; 18] = [
     [0.0, 0.0, -160.6, 0.0, 0.5],
     [0.0, 9.2, -160.6, 9.2, 0.13],
-    [-50.1, 29.6, -160.6, 29.6, 0.13],
+    [-58.6, 29.6, -160.6, 29.6, 0.13],
     [0.0, 54.2, -160.6, 54.2, 0.5],
-    [-50.1, 49.1, -160.6, 49.1, 0.13],
-    [-50.1, 44.0, -160.6, 44.0, 0.13],
-    [-50.1, 39.9, -160.6, 39.9, 0.5],
-    [-50.1, 34.8, -160.6, 34.8, 0.13],
+    [-58.6, 49.1, -160.6, 49.1, 0.13],
+    [-58.6, 44.0, -160.6, 44.0, 0.13],
+    [-58.6, 39.9, -160.6, 39.9, 0.5],
+    [-58.6, 34.8, -160.6, 34.8, 0.13],
     [-160.6, 0.0, -160.6, 54.2, 0.5],
     [0.0, 0.0, 0.0, 54.2, 0.5],
-    [-25.6, 0.0, -25.6, 29.6, 0.13],
-    [-50.1, 0.0, -50.1, 54.2, 0.5],
-    [0.0, 14.3, -50.1, 14.3, 0.13],
-    [0.0, 19.4, -50.1, 19.4, 0.13],
-    [0.0, 24.5, -50.1, 24.5, 0.13],
-    [-50.1, 29.6, 0.0, 29.6, 0.5],
-    [-84.9, 39.9, -84.9, 54.2, 0.13],
-    [-119.7, 39.9, -119.7, 54.2, 0.13],
+    [-41.6, 0.0, -41.6, 29.6, 0.13],
+    [-58.6, 0.0, -58.6, 54.2, 0.5],
+    [0.0, 14.3, -58.6, 14.3, 0.13],
+    [0.0, 19.4, -58.6, 19.4, 0.13],
+    [0.0, 24.5, -58.6, 24.5, 0.13],
+    [-58.6, 29.6, 0.0, 29.6, 0.5],
+    [-96.6, 39.9, -96.6, 54.2, 0.13],
+    [-127.6, 39.9, -127.6, 54.2, 0.13],
 ];
 
 /// How a text sits on its point: along (start, middle) and up (0 its
@@ -52,10 +55,6 @@ const LINES: [[f64; 5]; 18] = [
 type Sit = (Anchor, u8);
 const MID: Sit = (Anchor::Middle, 1);
 const LEFT: Sit = (Anchor::Start, 1);
-const FOOT: Sit = (Anchor::Start, 0);
-const FOOT_MID: Sit = (Anchor::Middle, 0);
-const HEAD: Sit = (Anchor::Start, 2);
-const HEAD_MID: Sit = (Anchor::Middle, 2);
 
 /// Where folds to A4 cross a sheet `w` × `h`: upright ones 210 mm from
 /// the right edge and every 190 mm on (the strip left over keeps the
@@ -189,7 +188,7 @@ pub fn draw(
         .as_ref()
         .and_then(|l| crate::raster::stored_image(l.width, l.height, &l.rgba))
     {
-        let (lo, hi) = (o + DVec2::new(-49.6, 30.1), o + DVec2::new(-0.5, 53.7));
+        let (lo, hi) = (o + DVec2::new(-58.1, 30.1), o + DVec2::new(-0.5, 53.7));
         let (box_, mid) = (hi - lo, (lo + hi) / 2.0);
         let l = project.logo.as_ref().map_or((1.0, 1.0), |l| {
             (l.width.max(1) as f64, l.height.max(1) as f64)
@@ -216,94 +215,107 @@ pub fn draw(
     .flatten()
     .collect::<Vec<_>>()
     .join(", ");
-    let height = if project.elevation.abs() > 1e-9 {
-        format!(
-            "±0,000 ≡ {} {}",
+    // over the block: ±0,000 ≡ 185,72 m n. m. Bpv, the sign drawn as
+    // three strokes (drawing faces such as Avenir Next have no ≡)
+    if project.elevation.abs() > 1e-9 {
+        let t = TEXT;
+        let at = o + DVec2::new(-160.6, 55.2 + t * 0.5);
+        let zero = "±0,000";
+        let x = at.x + crate::paper::text_width(zero, t) + t * 0.4;
+        c.text(at, t, zero, Anchor::Start);
+        let thin = Stroke::solid(0.13, 0.0);
+        for dy in [-0.4, 0.0, 0.4] {
+            let y = at.y + dy * t;
+            c.line(&[DVec2::new(x, y), DVec2::new(x + t * 0.7, y)], thin);
+        }
+        let rest = format!(
+            "{} {}",
             format!("{:.2}", project.elevation).replace('.', ","),
             tr("m a.s.l. (Bpv)")
-        )
-    } else {
-        String::new()
-    };
+        );
+        c.text(DVec2::new(x + t * 1.1, at.y), t, &rest, Anchor::Start);
+    }
     let building = or(&project.building_name, &info.project);
     let date = or(&project.issue_date, &month(&info.date));
-    let texts: [(f64, f64, f64, Sit, f64, String); 27] = [
-        (-140.1, 52.2, 2.5, MID, 38.0, tr("CHIEF ARCHITECT")),
-        (-102.3, 52.2, 2.5, MID, 32.0, tr("DRAWN BY")),
-        (-67.5, 52.2, 2.5, MID, 32.0, tr("RESPONSIBLE DESIGNER")),
+    // one size for every text but the building's name, small enough that
+    // the longest stage ("Stavebný zámer/Projekt stavby") fits its cell
+    let (t, big) = (TEXT, NAME);
+    let texts: [(f64, f64, f64, Sit, f64, String); 26] = [
+        (-144.1, 51.65, t, MID, 31.0, tr("CHIEF ARCHITECT")),
+        (-112.1, 51.65, t, MID, 29.0, tr("DRAWN BY")),
+        (-77.6, 51.65, t, MID, 36.0, tr("RESPONSIBLE DESIGNER")),
         (
-            -140.1,
-            46.3,
-            2.5,
+            -144.1,
+            46.55,
+            t,
             MID,
-            38.0,
+            31.0,
             or(&project.architect, &project.designer),
         ),
         (
-            -102.3,
-            46.3,
-            2.5,
+            -112.1,
+            46.55,
+            t,
             MID,
-            32.0,
+            29.0,
             or(&project.drawn_by, &project.designer),
         ),
         (
-            -67.5,
-            46.3,
-            2.5,
+            -77.6,
+            46.55,
+            t,
             MID,
-            32.0,
+            36.0,
             project.designer.trim().to_string(),
         ),
-        (-158.5, 37.2, 2.5, LEFT, 15.0, tr("CLIENT")),
+        (-158.5, 37.35, t, LEFT, 15.0, tr("CLIENT")),
         (
             -142.2,
-            37.2,
-            2.5,
+            37.35,
+            t,
             LEFT,
-            90.0,
+            81.0,
             project.client.trim().to_string(),
         ),
-        (-158.5, 32.1, 2.5, LEFT, 15.0, tr("PROFESSION")),
-        (-142.2, 32.1, 2.5, LEFT, 90.0, profession(sheet)),
-        (-158.6, 21.7, 4.0, FOOT, 107.0, building),
-        (-158.5, 11.5, 2.5, FOOT, 26.0, tr("BUILDING SITE")),
-        (-130.2, 11.5, 2.5, FOOT, 78.0, place),
-        (-158.8, 2.0, 3.0, FOOT, 107.0, title.to_string()),
-        (-48.1, 27.1, 2.5, LEFT, 23.0, tr("FORMAT")),
-        (-48.1, 22.0, 2.5, LEFT, 23.0, tr("DATE")),
-        (-48.1, 16.9, 2.5, LEFT, 23.0, tr("STAGE")),
-        (-48.1, 11.8, 2.5, LEFT, 23.0, tr("JOB NO.")),
-        (-12.8, 27.1, 2.5, MID, 24.0, format_label(w, h)),
-        (-12.8, 22.0, 2.5, MID, 24.0, date),
+        (-158.5, 32.2, t, LEFT, 15.0, tr("PROFESSION")),
+        (-142.2, 32.2, t, LEFT, 81.0, profession(sheet)),
+        (-158.5, 23.0, big, LEFT, 100.0, building),
+        (-158.5, 12.6, t, LEFT, 26.0, tr("BUILDING SITE")),
+        (-130.2, 12.6, t, LEFT, 70.0, place),
+        (-158.5, 4.6, t, LEFT, 100.0, title.to_string()),
+        (-57.1, 27.05, t, LEFT, 14.5, tr("FORMAT")),
+        (-57.1, 21.95, t, LEFT, 14.5, tr("DATE")),
+        (-57.1, 16.85, t, LEFT, 14.5, tr("STAGE")),
+        (-57.1, 11.75, t, LEFT, 14.5, tr("JOB NO.")),
+        (-20.8, 27.05, t, MID, 39.0, format_label(w, h)),
+        (-20.8, 21.95, t, MID, 39.0, date),
         (
-            -12.8,
-            16.9,
-            2.5,
+            -20.8,
+            16.85,
+            t,
             MID,
-            24.0,
+            39.0,
             project.status.trim().to_string(),
         ),
         (
-            -12.8,
-            11.8,
-            2.5,
+            -20.8,
+            11.75,
+            t,
             MID,
-            24.0,
+            39.0,
             project.number.trim().to_string(),
         ),
-        (-48.1, 7.9, 2.5, HEAD, 23.0, tr("SCALE")),
-        (-37.9, 1.4, 3.0, FOOT_MID, 23.0, scales.to_string()),
-        (-12.8, 8.6, 2.5, HEAD_MID, 24.0, tr("DRAWING NO.")),
-        (-12.8, 0.6, 3.0, FOOT_MID, 24.0, sheet.number.clone()),
-        (-160.6, 55.2, 3.0, FOOT, 110.0, height),
+        (-57.1, 6.6, t, LEFT, 14.5, tr("SCALE")),
+        (-50.1, 2.6, t, MID, 15.0, scales.to_string()),
+        (-20.8, 6.6, t, MID, 39.0, tr("DRAWING NO.")),
+        (-20.8, 2.6, t, MID, 39.0, sheet.number.clone()),
     ];
     for (x, y, size, (anchor, up), room, text) in texts {
         if text.is_empty() {
             continue;
         }
         // a text too long for its cell is written smaller
-        let wide = crate::paper::rough_width(&text, size);
+        let wide = crate::paper::text_width(&text, size);
         let size = if wide > room {
             size * room / wide
         } else {

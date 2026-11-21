@@ -13,6 +13,13 @@ use eframe::egui::{self, Color32, Pos2, Rect, Sense, Vec2};
 use glam::DVec2;
 use std::collections::HashMap;
 
+impl SheetState {
+    /// Look at `centre` (mm) on a sheet at `zoom` pixels a millimetre.
+    pub fn set_camera(&mut self, sheet: ElementId, centre: DVec2, zoom: f32) {
+        self.cameras.insert(sheet, (centre, zoom));
+    }
+}
+
 #[derive(Default)]
 pub struct SheetState {
     /// Pan and zoom per sheet: centre in mm, pixels per mm.
