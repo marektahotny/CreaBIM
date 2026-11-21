@@ -43,6 +43,10 @@ pub struct Unit {
     pub q_max: f64,
     #[serde(rename = "cena")]
     pub price: Option<f64>,
+    /// Sound power into the supply duct, dB(A), where the maker's data
+    /// are given.
+    #[serde(rename = "lw", default)]
+    pub lw: Option<f64>,
     /// Width, depth, height, m (as the catalogue gives them).
     #[serde(rename = "rozmer")]
     pub size: [f64; 3],
@@ -71,6 +75,10 @@ pub struct RoomUnit {
     /// The core hole, m.
     #[serde(rename = "otvor")]
     pub hole: f64,
+    /// Its sound pressure level at the most it is run at, dB(A), as
+    /// the maker states it.
+    #[serde(rename = "hluk", default)]
+    pub noise: Option<f64>,
     #[serde(rename = "cena")]
     pub price: Option<f64>,
     #[serde(rename = "zdroj", default)]
@@ -253,6 +261,41 @@ pub struct RoomUnits {
     pub wall_id: ElementId,
 }
 
+/// The noise in a protected room against the decree's limit.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Noise {
+    pub room: usize,
+    /// Category of the indoor space (A, B) and its limits LAmax,p for
+    /// day, evening and night, dB.
+    pub category: char,
+    pub limits: [f64; 3],
+    /// The level the equipment makes there, where it is known.
+    pub level: Option<f64>,
+    pub ok: Option<bool>,
+    pub note: String,
+}
+
+/// Decree 549/2007 Z. z. (as amended by 237/2009 Z. z.), table 3:
+/// LAmax,p from inside sources (the building's equipment), day,
+/// evening, night. A: hospital wards; B: living rooms of dwellings.
+pub const NOISE_A: [f64; 3] = [35.0, 30.0, 25.0];
+pub const NOISE_B: [f64; 3] = [40.0, 40.0, 30.0];
+pub const NOISE_SOURCE: &str = "vyhláška MZ SR 549/2007 Z. z. v znení 237/2009 Z. z., tab. 3";
+
+/// The rooms the decree protects, and their category.
+fn noise_category(k: RoomType) -> Option<char> {
+    match k {
+        RoomType::Ward => Some('A'),
+        RoomType::Living
+        | RoomType::Bedroom
+        | RoomType::Children
+        | RoomType::Dining
+        | RoomType::Office
+        | RoomType::Other => Some('B'),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Design {
     pub level: Option<ElementId>,
@@ -275,6 +318,7 @@ pub struct Design {
     pub transfers: Vec<Transfer>,
     pub room_units: Vec<RoomUnits>,
     pub warnings: Vec<String>,
+    pub noise: Vec<Noise>,
     /// Height of the flexible ducts above the level, m.
     pub z: f64,
 }
@@ -972,6 +1016,41 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             });
         }
     }
+    // noise in the protected rooms: the ventilation runs at night too,
+    // so the night limit governs
+    let ru = cat.room_units.get(o.room_unit);
+    let unit = d.unit.map(|i| &cat.units[i]);
+    for (i, r) in d.rooms.iter().enumerate() {
+        let Some(c) = noise_category(geo[i].kind) else {
+            continue;
+        };
+        let limits = if c == 'A' { NOISE_A } else { NOISE_B };
+        let (level, note) = match r.role {
+            Role::Decentral => match ru.and_then(|u| u.noise) {
+                Some(l) => (
+                    Some(l),
+                    "údaj výrobcu pri najvyššom výkone".to_string(),
+                ),
+                None => (None, "chýba hladina hluku jednotky od výrobcu".to_string()),
+            },
+            Role::Supply | Role::Extract => match unit.and_then(|u| u.lw) {
+                Some(_) => (None, "akustický výpočet rozvodu: doplniť útlm tlmiča a ventilu z katalógu".to_string()),
+                None => (
+                    None,
+                    "chýbajú akustické údaje jednotky (Lw do potrubia), tlmiča a tanierového ventilu".to_string(),
+                ),
+            },
+            _ => continue,
+        };
+        d.noise.push(Noise {
+            room: i,
+            category: c,
+            limits,
+            level,
+            ok: level.map(|l| l <= limits[2] + 1e-9),
+            note,
+        });
+    }
     d.warnings.push(
         "Potreby vzduchu sú z typov miestností (0,5 1/h podľa STN EN 12831-1 tab. B.7; odvod kuchyňa 100, kúpeľňa 90, WC 50 m³/h): zdroj odvodných hodnôt treba potvrdiť normou.".into(),
     );
@@ -1544,7 +1623,7 @@ mod tests {
     #[test]
     fn the_catalogue_reads() {
         let c = catalogue();
-        assert!(c.units.len() >= 3 && c.room_units.len() >= 1);
+        assert!(c.units.len() >= 3 && !c.room_units.is_empty());
         assert!(c.item("gp75").is_some() && c.item("tbox2").is_some());
         assert!(crate::pipe_types::by_id("GP").is_some());
     }
@@ -1646,6 +1725,13 @@ mod tests {
         let o = Opts::default();
         let d = design(&model, &heatloss::Opts::default(), &o);
         assert_eq!(d.room_units.len(), 1);
+        let n = d
+            .noise
+            .iter()
+            .find(|n| d.rooms[n.room].name.contains("Study"))
+            .unwrap();
+        assert_eq!(n.limits, NOISE_B);
+        assert_eq!(n.ok, Some(true));
         assert!(d.unit_wall.is_some());
         for c in &objects(&d, &o) {
             let (tx, _) = creabim_core::objects::add_to_model(doc.model(), c);

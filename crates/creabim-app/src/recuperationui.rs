@@ -226,6 +226,41 @@ impl CreaBimApp {
                                 }
                             });
                     }
+                    if !d.noise.is_empty() {
+                        egui::CollapsingHeader::new(t("Noise in the rooms (night limit governs)"))
+                            .id_salt("vzt.rec.noise")
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                egui::Grid::new("vzt.rec.noiseg").striped(true).show(ui, |ui| {
+                                    for h in ["Room", "Category", "LAmax,p day / evening / night dB", "Level dB(A)", ""] {
+                                        ui.strong(t(h));
+                                    }
+                                    ui.end_row();
+                                    for n in &d.noise {
+                                        let r = &d.rooms[n.room];
+                                        ui.label(format!("{} {}", r.number, r.name));
+                                        ui.label(n.category.to_string());
+                                        ui.label(format!(
+                                            "{} / {} / {}",
+                                            num(n.limits[0], 0),
+                                            num(n.limits[1], 0),
+                                            num(n.limits[2], 0)
+                                        ));
+                                        ui.label(n.level.map_or("–".into(), |l| num(l, 0)));
+                                        match n.ok {
+                                            Some(true) => ui.label(format!("✔ {}", n.note)),
+                                            Some(false) => ui.colored_label(
+                                                ui.visuals().error_fg_color,
+                                                format!("✘ {}", n.note),
+                                            ),
+                                            None => ui.colored_label(ui.visuals().warn_fg_color, &n.note),
+                                        };
+                                        ui.end_row();
+                                    }
+                                });
+                                ui.weak(rec::NOISE_SOURCE);
+                            });
+                    }
                     for w in &d.warnings {
                         ui.colored_label(ui.visuals().warn_fg_color, w);
                     }
