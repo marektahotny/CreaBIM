@@ -436,22 +436,24 @@ mod tests {
             .sum();
         assert!(sum > 0.0);
         assert_eq!(s.above_totals[0][2], m.units().area(sum));
-        // the kitchen (over 12 m²) counts, the WC does not
+        // a kitchen on its own is príslušenstvo (STN 73 4301/Z1 8.4.6),
+        // however big; a living room with a kitchen counts; a WC does not
         let kitchen = rooms.iter().find(|e| e.name == "Kitchen").unwrap();
         assert!(area(&m, kitchen) > 12.0);
-        assert!(creabim_core::room::counts_as_living(
+        assert!(!creabim_core::room::counts_as_living(
             "Kitchen",
             room(kitchen),
             area(&m, kitchen)
         ));
+        let mut both = room(kitchen).clone();
+        both.occupancy.clear();
+        assert!(creabim_core::room::counts_as_living(
+            "Obývacia izba s kuchyňou",
+            &both,
+            30.0
+        ));
         let wc = rooms.iter().find(|e| e.name == "WC").unwrap();
         assert!(!creabim_core::room::counts_as_living("WC", room(wc), 20.0));
-        // a small kitchen does not
-        assert!(!creabim_core::room::counts_as_living(
-            "Kitchen",
-            room(kitchen),
-            10.0
-        ));
         // the designer's word wins
         let mut wc2 = wc.clone();
         if let ElementKind::Room(r) = &mut wc2.kind {

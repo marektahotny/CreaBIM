@@ -10313,7 +10313,7 @@ crate::props::row(ui, "File names", |ui| {
                             let mut on = !v.no_living_area;
                             if crate::props::switch(ui, &mut on, "Living area")
                                 .on_hover_text(crate::i18n::tr(
-                                    "A row of the living area over the usable area: living rooms, bedrooms, children's rooms, dining rooms and studies of at least 8 m², kitchens over 12 m². Each room can be counted in or left out in its properties.",
+                                    "A row of the living area over the usable area: living rooms (also with a kitchen), bedrooms, children's rooms, dining rooms and studies of at least 8 m²; a kitchen on its own is not counted (STN 73 4301/Z1). Each room can be counted in or left out in its properties.",
                                 ))
                                 .changed()
                             {

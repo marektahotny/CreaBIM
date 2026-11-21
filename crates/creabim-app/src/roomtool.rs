@@ -500,7 +500,7 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room, name: &str) -
                 })
         })
         .response
-        .on_hover_text(tr("Living rooms, bedrooms, children's rooms, dining rooms and studies of at least 8 m² and kitchens over 12 m² count in the living area; set otherwise for this room here."));
+        .on_hover_text(tr("Living rooms (also with a kitchen in them), bedrooms, children's rooms, dining rooms and studies of at least 8 m² count in the living area; a kitchen on its own does not (STN 73 4301/Z1). Set otherwise for this room here."));
     }
     // what it counts as for its persons, and the designed count
     let table = creabim_geom::occupancy::table(model);

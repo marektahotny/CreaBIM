@@ -819,10 +819,14 @@ pub fn is_open_air(name: &str, r: &Room) -> bool {
 /// Whether room `r` named `name`, of `area` m², counts in the living area (obytná
 /// plocha), by its own word, else by its type: a living room, bedroom,
 /// children's room, dining room or study of at least 8 m², a kitchen of
-/// more than 12 m². STN 73 4301: obytné miestnosti are the living room,
-/// dining room, bedroom, study, other rooms (guest, children's) and the
-/// obytná kuchyňa (7.2.7), each of at least 8 m² (7.2.1 a); a cooking
-/// space of an obytná miestnosť over 12 m² is an obytná kuchyňa (7.3.7).
+/// a living room with a kitchen in it. STN 73 4301: obytné miestnosti
+/// are the living room, dining room, bedroom, study and other rooms
+/// (guest, children's), each of at least 8 m² (2005 7.2.1 a, 7.2.7).
+/// By its amendment Z1:2026 a kitchen is príslušenstvo bytu (8.4.1 d),
+/// a separate room with or without dining (8.4.6 a, b); a cooking space
+/// in a living room leaves that room's living area as it is (3.12), so
+/// a living room with a kitchen counts whole and a kitchen on its own
+/// does not.
 pub fn counts_as_living(name: &str, r: &Room, area: f64) -> bool {
     use crate::roomtype::RoomType as T;
     if let Some(own) = r.living {
@@ -830,7 +834,14 @@ pub fn counts_as_living(name: &str, r: &Room, area: f64) -> bool {
     }
     match T::of(&r.occupancy, name) {
         T::Living | T::Bedroom | T::Children | T::Dining | T::Office => area >= 8.0 - 1e-9,
-        T::Kitchen => area > 12.0 + 1e-9,
+        T::Kitchen => {
+            // "Obývacia izba s kuchyňou", "Living / kitchen"
+            let t = format!("{} {}", r.occupancy, name).to_lowercase();
+            ["obýv", "obyv", "living", "pobyt"]
+                .iter()
+                .any(|w| t.contains(w))
+                && area >= 8.0 - 1e-9
+        }
         _ => false,
     }
 }
