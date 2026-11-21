@@ -1208,6 +1208,10 @@ pub fn plan_view_with(
     let targets: std::collections::HashSet<ElementId> = cuts.iter().map(|c| c.0).collect();
     // elements whose plan comes from slicing their final 3D shape
     let mut sliced: Vec<ElementId> = Vec::new();
+    // windows and doors drawn as cut off the cut plane: the wall, its
+    // start, direction and the opening's span along it and the wall's
+    // half thickness (a sliced wall's outline is cut back there too)
+    let mut forced: Vec<(ElementId, DVec2, DVec2, f64, f64, f64)> = Vec::new();
     // the layers of layered walls, cut
     let mut layers: Vec<CutPiece> = Vec::new();
     for e in model.iter() {
@@ -1331,6 +1335,16 @@ pub fn plan_view_with(
                         continue;
                     };
                     let Some(c) = Cut::of(o, w) else { continue };
+                    // a window or door is always drawn as cut, its sill
+                    // over the cut plane or its head under it (George
+                    // 2026-11-21): through its middle then
+                    let joinery = matches!(o.kind, OpeningKind::Window | OpeningKind::Door);
+                    let cut_v = if joinery && !(cut_v > c.v0 && cut_v < c.v1) && c.v1 > c.v0 {
+                        forced.push((e.id, w.start, w.direction(), c.u0, c.u1, t));
+                        (c.v0 + c.v1) / 2.0
+                    } else {
+                        cut_v
+                    };
                     if cut_v > c.v0 && cut_v < c.v1 {
                         gaps.push((c.u0, c.u1));
                         if creabim_core::joinery::wraps_reveal(o) {
@@ -1752,7 +1766,17 @@ pub fn plan_view_with(
         needed.extend(cuts.iter().filter(|c| sliced.contains(&c.0)).map(|c| c.1));
         let scene = crate::scene::build_scene_of(model, Some(&needed));
         for item in scene.iter().filter(|i| sliced.contains(&i.id)) {
-            sliced_plan(model, item, z, &mut items);
+            let mine: Vec<_> = forced.iter().filter(|f| f.0 == item.id).collect();
+            if mine.is_empty() {
+                sliced_plan(model, item, z, &mut items);
+            } else {
+                let mut got = Vec::new();
+                sliced_plan(model, item, z, &mut got);
+                for f in mine {
+                    got = gap_out(got, item.id, f.1, f.2, f.3, f.4, f.5);
+                }
+                items.extend(got);
+            }
             // an imported mesh wholly below the cut: its footprint tinted
             if matches!(
                 model.get(item.id).map(|e| &e.kind),
@@ -2749,6 +2773,89 @@ fn opening_symbol(
     out
 }
 
+/// A sliced wall's drawing with a window or door drawn as cut off the
+/// cut plane: its fills and outline cut back from the opening's span
+/// `u0..u1` along the wall (from `start`, along `d`), the jambs closed.
+fn gap_out(
+    got: Vec<PlanItem>,
+    wall: ElementId,
+    start: DVec2,
+    d: DVec2,
+    u0: f64,
+    u1: f64,
+    t: f64,
+) -> Vec<PlanItem> {
+    let n = d.perp();
+    let local = |p: DVec2| DVec2::new((p - start).dot(d), (p - start).dot(n));
+    let world = |q: DVec2| start + d * q.x + n * q.y;
+    let s = t + 0.05;
+    let (lo, hi) = (DVec2::new(u0, -s), DVec2::new(u1, s));
+    let rect = [
+        world(lo),
+        world(DVec2::new(u1, -s)),
+        world(hi),
+        world(DVec2::new(u0, s)),
+    ];
+    let on_jamb = |a: DVec2, b: DVec2| {
+        let (a, b) = (local(a), local(b));
+        [u0, u1]
+            .iter()
+            .any(|u| (a.x - u).abs() < 1e-6 && (b.x - u).abs() < 1e-6)
+    };
+    let mut out = Vec::new();
+    for it in got {
+        match it {
+            PlanItem::Fill {
+                id,
+                points,
+                hatch,
+                rgb,
+            } if id == wall => {
+                for piece in subtract_convex(&points, &rect) {
+                    let k = piece.len();
+                    for i in 0..k {
+                        let (a, b) = (piece[i], piece[(i + 1) % k]);
+                        if on_jamb(a, b) {
+                            out.push(PlanItem::Line {
+                                id,
+                                pen: Pen::Cut,
+                                a,
+                                b,
+                            });
+                        }
+                    }
+                    out.push(PlanItem::Fill {
+                        id,
+                        points: piece,
+                        hatch,
+                        rgb,
+                    });
+                }
+            }
+            PlanItem::Line { id, pen, a, b } if id == wall => {
+                let (la, lb) = (local(a), local(b));
+                match crate::crop::clip_segment(la, lb, lo, hi) {
+                    None => out.push(PlanItem::Line { id, pen, a, b }),
+                    Some((p, q)) => {
+                        for (x, y) in [(la, p), (q, lb)] {
+                            if x.distance(y) > 1e-6 {
+                                out.push(PlanItem::Line {
+                                    id,
+                                    pen,
+                                    a: world(x),
+                                    b: world(y),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 pub(crate) fn sliced_plan(
     model: &Model,
     item: &crate::scene::SceneItem,
@@ -3544,6 +3651,101 @@ mod tests {
         assert!(!items
             .iter()
             .any(|it| matches!(it, PlanItem::Line { id, pen: Pen::Symbol, .. } if *id == hole)));
+    }
+
+    /// George 2026-11-21: a window whose sill is over the cut plane is
+    /// still drawn as cut: a gap in the wall and its frame and glass.
+    #[test]
+    fn a_high_window_is_drawn_as_cut() {
+        use creabim_core::{Element, Level, Opening, Transaction, Wall};
+        let mut m = Model::new();
+        let l = Element::new(
+            "Ground",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let level = l.id;
+        let w = Element::new(
+            "W",
+            ElementKind::Wall(Wall::new(
+                level,
+                DVec2::ZERO,
+                DVec2::new(4.0, 0.0),
+                0.3,
+                3.0,
+            )),
+        );
+        let wall = w.id;
+        let win = Element::new(
+            "Win",
+            ElementKind::Opening(Opening {
+                host: wall,
+                kind: OpeningKind::Window,
+                offset: 1.0,
+                sill: 1.5,
+                width: 1.2,
+                height: 0.9,
+                material: None,
+                frame: Default::default(),
+                flip_hand: false,
+                flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
+                threshold: false,
+                threshold_material: None,
+                penetration: None,
+                setback: None,
+                reveal: None,
+                division: None,
+                door: None,
+                texts: None,
+                performance: None,
+            }),
+        );
+        let wid = win.id;
+        Transaction::new("t")
+            .insert(l)
+            .insert(w)
+            .insert(win)
+            .apply(&mut m)
+            .unwrap();
+        let items = plan_view(&m, level, 1.2).items;
+        // its frame and glass, not a dashed outline
+        assert!(items.iter().any(|it| it.id() == wid
+            && !matches!(
+                it,
+                PlanItem::Line {
+                    pen: Pen::Overhead,
+                    ..
+                }
+            )));
+        assert!(!items
+            .iter()
+            .any(|it| matches!(it, PlanItem::Line { id, pen: Pen::Overhead, .. } if *id == wid)));
+        // the wall's cut fill stops at the window
+        let span = |pts: &[DVec2]| {
+            let xs = pts.iter().map(|p| p.x);
+            (
+                xs.clone().fold(f64::MAX, f64::min),
+                xs.fold(f64::MIN, f64::max),
+            )
+        };
+        let fills: Vec<(f64, f64)> = items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Fill { id, points, .. } if *id == wall => Some(span(points)),
+                _ => None,
+            })
+            .collect();
+        assert!(!fills.is_empty());
+        assert!(
+            fills
+                .iter()
+                .all(|(a, b)| *b <= 1.0 + 1e-6 || *a >= 2.2 - 1e-6),
+            "{fills:?}"
+        );
     }
 
     /// A slab layer's edges moved by hand show in plan (A7-10): the top
