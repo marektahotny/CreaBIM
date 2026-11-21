@@ -748,6 +748,43 @@ fn build_scene_unjoined(
             layer: None,
             finish: None,
         });
+        // a parapet's capping lies on XPS in a fall and an OSB board
+        if let ElementKind::Flashing(creabim_core::flashing::Flashing {
+            item: creabim_core::flashing::FlashingItem::Capping(c),
+            ..
+        }) = &e.kind
+        {
+            for (i, (mesh, color, material)) in crate::flashing::capping_substrate(model, c)
+                .into_iter()
+                .enumerate()
+            {
+                let (color, surface) = material
+                    .and_then(|m| match &model.get(m)?.kind {
+                        ElementKind::Material(m) => Some((m.color, m.surface())),
+                        _ => None,
+                    })
+                    .unwrap_or((color, PLAIN_SURFACE));
+                out.push(SceneItem {
+                    id: e.id,
+                    mesh,
+                    color,
+                    surface,
+                    ghost: false,
+                    layer: Some(LayerPart {
+                        index: i + 1,
+                        material,
+                        function: if i == 0 && c.xps + c.fall > 1e-6 {
+                            creabim_core::LayerFunction::Insulation
+                        } else {
+                            creabim_core::LayerFunction::Substrate
+                        },
+                        core: false,
+                        priority: 5,
+                    }),
+                    finish: None,
+                });
+            }
+        }
     }
     apply_cuts(model, &mut out);
     out

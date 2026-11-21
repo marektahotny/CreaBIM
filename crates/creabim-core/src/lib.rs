@@ -57,6 +57,7 @@ pub mod reference;
 pub mod regions;
 pub mod reno;
 pub mod results;
+pub mod roofmetal;
 pub mod room;
 pub mod roomtype;
 pub mod routecheck;

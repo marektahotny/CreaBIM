@@ -76,7 +76,139 @@ pub fn mesh(model: &Model, id: ElementId, f: &Flashing) -> TriMesh {
             let profile = downpipe_outline(d.profile, d.size_mm / 1000.0, DVec2::ZERO);
             crate::parts::sweep_mesh_on(&profile, &path, false, across.extend(0.0))
         }
+        FlashingItem::Capping(c) => {
+            let Some((path, sheet, _, _)) = capping_sections(model, c, t) else {
+                return TriMesh::default();
+            };
+            crate::parts::sweep_mesh(&sheet, &path, false)
+        }
+        FlashingItem::Chimney(c) => chimney_mesh(model, c, t),
+        FlashingItem::Outlet(o) => {
+            let z = creabim_core::roofmetal::roof_top_at(model, o.at).unwrap_or(0.0);
+            // its bowl's rim, standing a little proud of the roof
+            let r = (o.dn / 1000.0 / 2.0 + 0.05).max(0.05);
+            let ring: Vec<DVec2> = (0..24)
+                .map(|i| DVec2::from_angle(2.0 * PI * i as f64 / 24.0) * r)
+                .collect();
+            let path = [o.at.extend(z + 0.03), o.at.extend(z - 0.02)];
+            crate::parts::sweep_mesh_on(&ring, &path, false, DVec3::X)
+        }
     }
+}
+
+/// A capping's sections, in the sweep's axes along its wall (x to the
+/// left, y up from the wall's top): the path, the sheet, the XPS wedge
+/// and the OSB board.
+#[allow(clippy::type_complexity)]
+pub fn capping_sections(
+    model: &Model,
+    c: &creabim_core::roofmetal::Capping,
+    t: f64,
+) -> Option<([DVec3; 2], Vec<DVec2>, Vec<DVec2>, Vec<DVec2>)> {
+    let p = creabim_core::roofmetal::capping_place(model, c)?;
+    if p.length() < 1e-6 {
+        return None;
+    }
+    let t = t.max(MIN_SHEET);
+    let left = (p.b - p.a).normalize().perp();
+    // the inner edge's x: the roof's side of the wall
+    let xi = p.width / 2.0 * p.inward.dot(left).signum();
+    let xo = -xi;
+    let (ti, to) = (p.xps_in + c.osb, p.xps_out + c.osb);
+    let s = xi.signum();
+    // the sheet: the inner drip, up the inner leg, over the top falling
+    // inwards, down the outer leg to its drip; its thickness outside
+    let line = [
+        DVec2::new(xi + s * (t + c.drip), ti - c.leg - c.drip * 0.5),
+        DVec2::new(xi + s * t, ti - c.leg),
+        DVec2::new(xi + s * t, ti + t),
+        DVec2::new(xo - s * t, to + t),
+        DVec2::new(xo - s * t, to - c.leg),
+        DVec2::new(xo - s * (t + c.drip), to - c.leg - c.drip * 0.5),
+    ];
+    let inner = [
+        DVec2::new(xo - s * c.drip, to - c.leg - c.drip * 0.5 + t),
+        DVec2::new(xo, to - c.leg + t),
+        DVec2::new(xo, to),
+        DVec2::new(xi, ti),
+        DVec2::new(xi, ti - c.leg + t),
+        DVec2::new(xi + s * c.drip, ti - c.leg - c.drip * 0.5 + t),
+    ];
+    let sheet: Vec<DVec2> = line.iter().chain(inner.iter()).copied().collect();
+    let xps = vec![
+        DVec2::new(xi, 0.0),
+        DVec2::new(xo, 0.0),
+        DVec2::new(xo, p.xps_out),
+        DVec2::new(xi, p.xps_in),
+    ];
+    let osb = vec![
+        DVec2::new(xi, p.xps_in),
+        DVec2::new(xo, p.xps_out),
+        DVec2::new(xo, to),
+        DVec2::new(xi, ti),
+    ];
+    Some(([p.a.extend(p.z), p.b.extend(p.z)], sheet, xps, osb))
+}
+
+/// What a capping is laid on, as solids of their own: the XPS in its
+/// fall and the OSB board, each with the model's material of that name
+/// when there is one.
+pub fn capping_substrate(
+    model: &Model,
+    c: &creabim_core::roofmetal::Capping,
+) -> Vec<(TriMesh, [f32; 3], Option<ElementId>)> {
+    let Some((path, _, xps, osb)) = capping_sections(model, c, 0.0) else {
+        return vec![];
+    };
+    let find = |key: &str| {
+        model.iter().find_map(|e| match &e.kind {
+            creabim_core::ElementKind::Material(_) if e.name.to_uppercase().contains(key) => {
+                Some(e.id)
+            }
+            _ => None,
+        })
+    };
+    let mut out = vec![];
+    if c.xps > 1e-6 || c.fall > 1e-6 {
+        out.push((
+            crate::parts::sweep_mesh(&xps, &path, false),
+            [0.55, 0.78, 0.92],
+            find("XPS"),
+        ));
+    }
+    out.push((
+        crate::parts::sweep_mesh(&osb, &path, false),
+        [0.82, 0.68, 0.45],
+        find("OSB"),
+    ));
+    out
+}
+
+/// The flashing round a chimney: up its faces and out over the roof,
+/// following the roof's slope round it.
+fn chimney_mesh(model: &Model, c: &creabim_core::roofmetal::ChimneyFlashing, t: f64) -> TriMesh {
+    let Some(mut o) = creabim_core::roofmetal::chimney_outline(model, c.part) else {
+        return TriMesh::default();
+    };
+    // counter-clockwise: the chimney to the left of the path
+    if crate::parts::signed_area(&o) < 0.0 {
+        o.reverse();
+    }
+    let t = t.max(MIN_SHEET);
+    let path: Vec<DVec3> = o
+        .iter()
+        .map(|p| p.extend(creabim_core::roofmetal::roof_top_at(model, *p).unwrap_or(0.0)))
+        .collect();
+    // x = 0 the chimney's face, out to the right (negative x)
+    let profile = [
+        DVec2::new(0.0, 0.0),
+        DVec2::new(0.0, c.upstand),
+        DVec2::new(-t, c.upstand),
+        DVec2::new(-t, t),
+        DVec2::new(-c.apron, t),
+        DVec2::new(-c.apron, 0.0),
+    ];
+    crate::parts::sweep_mesh(&profile, &path, true)
 }
 
 /// A downpipe's outline in plan, round as a 24-gon.
@@ -181,6 +313,97 @@ pub fn plan_items(model: &Model, e: &Element, f: &Flashing, z: f64) -> Vec<PlanI
                 }
             }
         }
+        FlashingItem::Capping(c) => {
+            let Some(p) = creabim_core::roofmetal::capping_place(model, c) else {
+                return out;
+            };
+            if p.z > z {
+                return out;
+            }
+            // the sheet's outer edges, past the faces by its drips, and
+            // the faces under it
+            let half = p.width / 2.0;
+            for (k, pen) in [
+                (half + c.drip, Pen::Projection),
+                (half, Pen::Projection),
+                (-half, Pen::Projection),
+                (-half - c.drip, Pen::Projection),
+            ] {
+                let n = p.inward * k;
+                out.push(PlanItem::Line {
+                    id: e.id,
+                    pen,
+                    a: p.a + n,
+                    b: p.b + n,
+                });
+            }
+            for end in [p.a, p.b] {
+                out.push(PlanItem::Line {
+                    id: e.id,
+                    pen: Pen::Projection,
+                    a: end + p.inward * (half + c.drip),
+                    b: end - p.inward * (half + c.drip),
+                });
+            }
+        }
+        FlashingItem::Chimney(c) => {
+            let Some(o) = creabim_core::roofmetal::chimney_outline(model, c.part) else {
+                return out;
+            };
+            let m = o.iter().copied().sum::<DVec2>() / o.len() as f64;
+            if creabim_core::roofmetal::roof_top_at(model, m).is_none_or(|t| t > z) {
+                return out;
+            }
+            // the apron round the chimney, out over the roof
+            let mut ccw = o.clone();
+            if crate::parts::signed_area(&ccw) < 0.0 {
+                ccw.reverse();
+            }
+            let n: Vec<DVec2> = (0..ccw.len())
+                .map(|i| {
+                    let a = ccw[i];
+                    let b = ccw[(i + 1) % ccw.len()];
+                    -(b - a).normalize_or_zero().perp()
+                })
+                .collect();
+            let mut closed = ccw.clone();
+            closed.push(ccw[0]);
+            let mut normals = n.clone();
+            normals.push(n[0]);
+            let apron = creabim_core::flashing::offset_line(&closed, &normals, c.apron);
+            for w in apron.windows(2) {
+                out.push(PlanItem::Line {
+                    id: e.id,
+                    pen: Pen::Projection,
+                    a: w[0],
+                    b: w[1],
+                });
+            }
+        }
+        FlashingItem::Outlet(o) => {
+            let top = creabim_core::roofmetal::roof_top_at(model, o.at).unwrap_or(0.0);
+            if top > z {
+                return out;
+            }
+            let r = (o.dn / 1000.0 / 2.0 + 0.05).max(0.05);
+            for k in [r, o.dn / 2000.0] {
+                ring(
+                    &mut out,
+                    e.id,
+                    Pen::Projection,
+                    &downpipe_outline(DownpipeProfile::Round, 2.0 * k, o.at),
+                );
+            }
+            let g = o.dn / 2000.0;
+            for (a, b) in [(DVec2::X, -DVec2::X), (DVec2::Y, -DVec2::Y)] {
+                out.push(PlanItem::Line {
+                    id: e.id,
+                    pen: Pen::Projection,
+                    a: o.at + a * g,
+                    b: o.at + b * g,
+                });
+            }
+        }
     }
     out
 }
@@ -266,6 +489,35 @@ pub fn roof_plan_marks(model: &Model, scale: f64) -> Vec<PlanItem> {
                     .unwrap_or(DVec2::Y);
                 (at, n)
             }
+            FlashingItem::Capping(c) => {
+                let Some(p) = creabim_core::roofmetal::capping_place(model, c) else {
+                    continue;
+                };
+                let mid = (p.a + p.b) / 2.0;
+                // the fall towards the roof, an arrow across the top
+                arrow(
+                    &mut out,
+                    e.id,
+                    mid - p.inward * (p.width * 0.35),
+                    mid + p.inward * (p.width * 0.35),
+                    k,
+                );
+                let at = (p.a * 0.75 + p.b * 0.25) - p.inward * (p.width / 2.0);
+                (at, -p.inward)
+            }
+            FlashingItem::Chimney(c) => {
+                let Some(o) = creabim_core::roofmetal::chimney_outline(model, c.part) else {
+                    continue;
+                };
+                let m = o.iter().copied().sum::<DVec2>() / o.len() as f64;
+                let far = o
+                    .iter()
+                    .copied()
+                    .max_by(|a, b| (a.x + a.y).total_cmp(&(b.x + b.y)))
+                    .unwrap_or(m);
+                (far, (far - m).normalize_or(DVec2::Y))
+            }
+            FlashingItem::Outlet(o) => (o.at, DVec2::new(1.0, 1.0).normalize()),
         };
         out.push(PlanItem::Tag {
             id: e.id,

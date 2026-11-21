@@ -36,6 +36,9 @@ pub fn tool_for(e: &Element) -> Option<Tool> {
         ElementKind::Flashing(f) => match f.item {
             creabim_core::flashing::FlashingItem::Gutter(_) => Tool::Gutter,
             creabim_core::flashing::FlashingItem::Downpipe(_) => Tool::Downpipe,
+            creabim_core::flashing::FlashingItem::Capping(_) => Tool::Capping,
+            creabim_core::flashing::FlashingItem::Chimney(_) => Tool::ChimneyFlashing,
+            creabim_core::flashing::FlashingItem::Outlet(_) => Tool::RoofOutlet,
         },
         ElementKind::Footing(_) => Tool::Footing,
         ElementKind::Shaft(_) => Tool::Shaft,

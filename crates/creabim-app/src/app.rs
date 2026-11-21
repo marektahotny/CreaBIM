@@ -5312,7 +5312,7 @@ impl CreaBimApp {
                     (t, _) if t.draws_outline() || t == Tool::RoomSeparator => {
                         self.plan.status.take().unwrap_or_default()
                     }
-                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
+                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Capping | Tool::ChimneyFlashing | Tool::RoofOutlet | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
                         .plan
                         .status
                         .take()
@@ -14691,6 +14691,9 @@ pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::Flashing(f) => match f.item {
             creabim_core::flashing::FlashingItem::Gutter(_) => "gutter",
             creabim_core::flashing::FlashingItem::Downpipe(_) => "downpipe",
+            creabim_core::flashing::FlashingItem::Capping(_) => "capping",
+            creabim_core::flashing::FlashingItem::Chimney(_) => "chimney-flashing",
+            creabim_core::flashing::FlashingItem::Outlet(_) => "roof-outlet",
         },
         ElementKind::Valve(_) => "valve",
         ElementKind::Circuit(_) => "circuit",

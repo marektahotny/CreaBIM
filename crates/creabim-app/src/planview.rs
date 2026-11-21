@@ -62,6 +62,12 @@ pub enum Tool {
     Gutter,
     /// A downpipe clicked on a gutter.
     Downpipe,
+    /// A parapet's capping, clicked on the parapet wall.
+    Capping,
+    /// The flashing round a chimney, clicked on the chimney.
+    ChimneyFlashing,
+    /// A roof outlet, clicked on a flat roof.
+    RoofOutlet,
     Level,
     Align,
     /// A piece of furniture or a fixture from the catalogue.
@@ -103,7 +109,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 49] = [
+    pub const ALL: [Tool; 52] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -120,6 +126,9 @@ impl Tool {
         Tool::Footing,
         Tool::Gutter,
         Tool::Downpipe,
+        Tool::Capping,
+        Tool::ChimneyFlashing,
+        Tool::RoofOutlet,
         Tool::Pipe,
         Tool::Object,
         Tool::Extrusion,
@@ -197,6 +206,9 @@ impl Tool {
             Tool::Footing => "Footing",
             Tool::Gutter => "Gutter",
             Tool::Downpipe => "Downpipe",
+            Tool::Capping => "Parapet capping",
+            Tool::ChimneyFlashing => "Chimney flashing",
+            Tool::RoofOutlet => "Roof outlet",
             Tool::Level => "Level",
             Tool::Align => "Align",
             Tool::Object => "Object",
@@ -250,6 +262,9 @@ impl Tool {
             Tool::Railing => "Click inside a stair to rail both its sides, or click the points of a path; click the last point again to finish.",
             Tool::Gutter => "Click along a roof's eave, corner by corner: the gutter hangs at the offsets set in the top bar. Click the last point again or press Enter to finish.",
             Tool::Downpipe => "Click on a gutter to put a downpipe there; move it to slide it along. The gutter falls to its downpipes, its high points midway between them.",
+            Tool::Capping => "Click on a parapet wall: its capping is laid along its whole top on an OSB board and XPS in a fall towards the roof, with the corner strip at its inner foot.",
+            Tool::ChimneyFlashing => "Click on a chimney where it comes through the roof: it is flashed all round.",
+            Tool::RoofOutlet => "Click on a flat roof to put a roof outlet there; keep clicking for more.",
             Tool::Footing => "Showing footings while the tool is on. Strip: click a wall to put a strip footing under it, or draw strips on their own point by point as walls, Esc ending the chain. Pad: click a column to put a pad under it, or click anywhere for one on its own. Keep clicking for more, or drag a box over walls or columns for all of them at once. Pick Strip or Pad, and the size, in the top bar.",
             Tool::Level => "In a section or elevation, click where the level line starts (its height), then where it ends; its floor plan is made with it. In other views the Levels window opens to add, rename and move levels.",
             Tool::Align => "Click a reference line (a wall face, slab edge, guide or grid line), then the edge of what to align: it turns parallel and moves flush. In Extend mode a wall, beam or grid line end stretches to the reference instead; in Stretch mode the face moves and the rest stays. Centre lines (dashed purple) can be picked too, both ways. In 3D, click a face, edge, corner, centre line or grid line, then a face.",
@@ -4264,7 +4279,10 @@ fn plan_click(
         | Tool::Railing
         | Tool::Footing
         | Tool::Gutter
-        | Tool::Downpipe => crate::memberstool::click(doc, level, tool, p, state, selection),
+        | Tool::Downpipe
+        | Tool::Capping
+        | Tool::ChimneyFlashing
+        | Tool::RoofOutlet => crate::memberstool::click(doc, level, tool, p, state, selection),
         Tool::Pipe => crate::pipesui::click(doc, level, p, state, selection),
         Tool::Object => crate::objecttool::click(doc, level, p, state, selection),
         Tool::RoomSeparator => crate::roomtool::separator_click(doc, level, p, state, selection),

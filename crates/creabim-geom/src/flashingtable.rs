@@ -152,7 +152,11 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             &mut items,
             id,
             DVec2::new(mid(3), cy - TEXT * 0.35),
-            &num(r.developed_mm),
+            &if r.pieces.is_some() {
+                "-".to_string()
+            } else {
+                num(r.developed_mm)
+            },
             TEXT,
             Anchor::Middle,
         );
@@ -160,7 +164,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             &mut items,
             id,
             DVec2::new(mid(4), cy - TEXT * 0.35),
-            &format!("{:.3}", r.length).replace('.', ","),
+            &length_cell(r),
             TEXT,
             Anchor::Middle,
         );
@@ -252,6 +256,24 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         );
         y -= LINE + 1.5;
     }
+    for (what, a) in [
+        ("Plocha zateplenia atiky – vertikálna", fig.parapet_faces),
+        ("Plocha zateplenia atiky – horizontálna", fig.parapet_tops),
+    ] {
+        if a <= 0.0 {
+            continue;
+        }
+        dot(&mut items, y);
+        text(
+            &mut items,
+            id,
+            DVec2::new(4.0, y),
+            &format!("{what} S = {} m²", m2(a)),
+            TEXT + 0.5,
+            Anchor::Start,
+        );
+        y -= LINE + 1.5;
+    }
     for c in coverings(model) {
         dot(&mut items, y);
         text(
@@ -291,6 +313,14 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         y -= LINE + 1.5;
     }
     PlanView { items }
+}
+
+/// The length column: metres, or pieces for what is counted so.
+fn length_cell(r: &Row) -> String {
+    match r.pieces {
+        Some(n) => format!("{n} ks"),
+        None => format!("{:.3}", r.length).replace('.', ","),
+    }
 }
 
 /// What the roofs are covered with: each roof's top layer's material
@@ -397,6 +427,86 @@ fn sign(items: &mut Vec<PlanItem>, id: ElementId, kind: RowKind, c: DVec2, w: f6
                 DVec2::new(x1 + t / 2.0 + 0.8, bot + h * 0.25),
             );
         }
+        RowKind::Capping => {
+            // the capping across the parapet: legs, drips, top in a fall
+            let hw = (w * 0.3).min(9.0);
+            let lg = (h * 0.3).min(4.0);
+            let (a, b) = (
+                c + DVec2::new(-hw, lg * 0.5 + 0.8),
+                c + DVec2::new(hw, lg * 0.5),
+            );
+            polyline(
+                &mut l,
+                &[
+                    a + DVec2::new(-1.2, -lg - 0.8),
+                    a + DVec2::new(0.0, -lg),
+                    a,
+                    b,
+                    b + DVec2::new(0.0, -lg),
+                    b + DVec2::new(1.2, -lg - 0.8),
+                ],
+            );
+        }
+        RowKind::CornerStrip => {
+            // a strip folded into the corner of parapet and roof
+            let s = (w.min(h) * 0.35).min(6.0);
+            polyline(
+                &mut l,
+                &[
+                    c + DVec2::new(-s / 2.0, s / 2.0),
+                    c + DVec2::new(-s / 2.0, -s / 2.0),
+                    c + DVec2::new(s / 2.0, -s / 2.0),
+                ],
+            );
+        }
+        RowKind::Chimney => {
+            // the chimney's foot and the flashing round it on the roof
+            let s = (w.min(h) * 0.3).min(5.0);
+            let r = |k: f64| {
+                [
+                    c + DVec2::new(-k, -k),
+                    c + DVec2::new(k, -k),
+                    c + DVec2::new(k, k),
+                    c + DVec2::new(-k, k),
+                    c + DVec2::new(-k, -k),
+                ]
+            };
+            polyline(&mut l, &r(s));
+            polyline(&mut l, &r(s * 1.5));
+        }
+        RowKind::Outlet => {
+            // the outlet's bowl in plan: a ring with its grate
+            let r = (w.min(h) * 0.25).min(4.0);
+            for k in [r, r * 0.55] {
+                let n = 20;
+                let pts: Vec<DVec2> = (0..=n)
+                    .map(|i| c + DVec2::from_angle(2.0 * PI * i as f64 / n as f64) * k)
+                    .collect();
+                polyline(&mut l, &pts);
+            }
+            l(c - DVec2::X * r * 0.55, c + DVec2::X * r * 0.55);
+            l(c - DVec2::Y * r * 0.55, c + DVec2::Y * r * 0.55);
+        }
+        RowKind::Sill => {
+            // the sill across: under the frame, its slope, the drip
+            let hw = (w * 0.3).min(9.0);
+            let k = (h * 0.15).min(2.0);
+            polyline(
+                &mut l,
+                &[
+                    c + DVec2::new(-hw, k * 2.0),
+                    c + DVec2::new(-hw, k),
+                    c + DVec2::new(hw, -k),
+                    c + DVec2::new(hw, -k * 3.0),
+                ],
+            );
+        }
+    }
+}
+
+fn polyline(l: &mut impl FnMut(DVec2, DVec2), pts: &[DVec2]) {
+    for s in pts.windows(2) {
+        l(s[0], s[1]);
     }
 }
 
@@ -425,7 +535,7 @@ pub fn schedule(model: &Model) -> crate::schedule::Schedule {
                 r.mark.clone(),
                 r.description.clone(),
                 num(r.developed_mm),
-                format!("{:.3}", r.length).replace('.', ","),
+                length_cell(&r),
                 note_lines(&r).join(", "),
             ],
             group: false,

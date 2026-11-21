@@ -378,6 +378,10 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
                 let g = crate::flashing::gutter_of(model, d.gutter)?;
                 d.at = g.station_on_axis(model, t.point2(at));
             }
+            // on its wall or chimney: it goes with that
+            crate::flashing::FlashingItem::Capping(_)
+            | crate::flashing::FlashingItem::Chimney(_) => {}
+            crate::flashing::FlashingItem::Outlet(o) => o.at = t.point2(o.at),
         },
         // a valve rides its pipe
         ElementKind::Valve(_) => {}
@@ -643,6 +647,18 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
             crate::flashing::FlashingItem::Downpipe(d) => {
                 let (at, top, foot) = crate::flashing::downpipe_place(model, d)?;
                 at.extend((top + foot) / 2.0)
+            }
+            crate::flashing::FlashingItem::Capping(c) => {
+                let p = crate::roofmetal::capping_place(model, c)?;
+                ((p.a + p.b) / 2.0).extend(p.z)
+            }
+            crate::flashing::FlashingItem::Chimney(c) => {
+                let o = crate::roofmetal::chimney_outline(model, c.part)?;
+                let m = o.iter().copied().sum::<DVec2>() / o.len() as f64;
+                m.extend(crate::roofmetal::roof_top_at(model, m).unwrap_or(0.0))
+            }
+            crate::flashing::FlashingItem::Outlet(o) => {
+                o.at.extend(crate::roofmetal::roof_top_at(model, o.at).unwrap_or(0.0))
             }
         },
         ElementKind::Valve(v) => {

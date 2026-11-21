@@ -151,7 +151,10 @@ impl Element {
             ElementKind::Flashing(f) => std::iter::once(f.level)
                 .chain(match &f.item {
                     crate::flashing::FlashingItem::Downpipe(d) => Some(d.gutter),
-                    crate::flashing::FlashingItem::Gutter(_) => None,
+                    crate::flashing::FlashingItem::Capping(c) => Some(c.wall),
+                    crate::flashing::FlashingItem::Chimney(c) => Some(c.part),
+                    crate::flashing::FlashingItem::Gutter(_)
+                    | crate::flashing::FlashingItem::Outlet(_) => None,
                 })
                 .collect(),
             // a lintel goes with its door or window
@@ -222,6 +225,9 @@ impl Element {
             ElementKind::Flashing(f) => match f.item {
                 crate::flashing::FlashingItem::Gutter(_) => "IfcPipeSegment",
                 crate::flashing::FlashingItem::Downpipe(_) => "IfcPipeSegment",
+                crate::flashing::FlashingItem::Capping(_)
+                | crate::flashing::FlashingItem::Chimney(_) => "IfcCovering",
+                crate::flashing::FlashingItem::Outlet(_) => "IfcFlowTerminal",
             },
             ElementKind::Valve(v) => v.kind_def().map_or("IfcValve", |k| k.ifc.0),
             ElementKind::Circuit(_) => "IfcDistributionCircuit",

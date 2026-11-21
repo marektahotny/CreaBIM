@@ -169,6 +169,9 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Footing => "footing",
         Tool::Gutter => "gutter",
         Tool::Downpipe => "downpipe",
+        Tool::Capping => "capping",
+        Tool::ChimneyFlashing => "chimney-flashing",
+        Tool::RoofOutlet => "roof-outlet",
         Tool::Level => "level",
         Tool::Align => "align-start-vertical",
         Tool::Object => "object",
@@ -205,6 +208,9 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::Footing
         | Tool::Gutter
         | Tool::Downpipe
+        | Tool::Capping
+        | Tool::ChimneyFlashing
+        | Tool::RoofOutlet
         | Tool::Object
         | Tool::Extrusion
         | Tool::Sweep
