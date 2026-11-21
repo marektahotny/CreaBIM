@@ -701,6 +701,13 @@ mod shot_project {
                 .fold(f64::INFINITY, f64::min)
         );
         creabim_store::save(dir.join("exact.creabim"), &app.doc).unwrap();
+        let tx = creabim_core::mapgroup::reset(app.doc.model());
+        app.doc.commit(tx).unwrap();
+        eprintln!(
+            "reset: origin reads {:?}",
+            creabim_core::mapgroup::sjtsk_of(app.doc.model(), DVec2::ZERO)
+        );
+        creabim_store::save(dir.join("reset.creabim"), &app.doc).unwrap();
         let legend =
             creabim_geom::serviceslegend::drawing(views[0], "Legenda situácie", app.doc.model());
         std::fs::write(dir.join("legend.svg"), legend.to_svg(1000.0)).unwrap();

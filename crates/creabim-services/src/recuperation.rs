@@ -43,9 +43,19 @@ pub struct Unit {
     pub q_max: f64,
     #[serde(rename = "cena")]
     pub price: Option<f64>,
+    /// Sound power into the supply duct, dB(A), where the maker's data
+    /// are given.
+    #[serde(rename = "lw", default)]
+    pub lw: Option<f64>,
     /// Width, depth, height, m (as the catalogue gives them).
     #[serde(rename = "rozmer")]
     pub size: [f64; 3],
+    /// Its duct spigots, mm.
+    #[serde(rename = "hrdlo", default = "spigot")]
+    pub spigot: f64,
+    /// Sound power radiated by its casing at Qref, dB(A).
+    #[serde(rename = "lwOkolie", default)]
+    pub lw_case: Option<f64>,
     #[serde(rename = "zdroj", default)]
     pub source: String,
 }
@@ -71,6 +81,10 @@ pub struct RoomUnit {
     /// The core hole, m.
     #[serde(rename = "otvor")]
     pub hole: f64,
+    /// Its sound pressure level at the most it is run at, dB(A), as
+    /// the maker states it.
+    #[serde(rename = "hluk", default)]
+    pub noise: Option<f64>,
     #[serde(rename = "cena")]
     pub price: Option<f64>,
     #[serde(rename = "zdroj", default)]
@@ -78,6 +92,15 @@ pub struct RoomUnit {
     #[serde(rename = "pozn", default)]
     pub note: String,
 }
+
+fn spigot() -> f64 {
+    160.0
+}
+
+/// The external pressure the catalogue gives the units' largest flow
+/// at, Pa: a fan that reaches `qMax` there has at least this much at
+/// any smaller flow.
+pub const UNIT_PRESSURE_PA: f64 = 100.0;
 
 /// Any other item of the bill.
 #[derive(Clone, Debug, Deserialize)]
@@ -253,6 +276,41 @@ pub struct RoomUnits {
     pub wall_id: ElementId,
 }
 
+/// The noise in a protected room against the decree's limit.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Noise {
+    pub room: usize,
+    /// Category of the indoor space (A, B) and its limits LAmax,p for
+    /// day, evening and night, dB.
+    pub category: char,
+    pub limits: [f64; 3],
+    /// The level the equipment makes there, where it is known.
+    pub level: Option<f64>,
+    pub ok: Option<bool>,
+    pub note: String,
+}
+
+/// Decree 549/2007 Z. z. (as amended by 237/2009 Z. z.), table 3:
+/// LAmax,p from inside sources (the building's equipment), day,
+/// evening, night. A: hospital wards; B: living rooms of dwellings.
+pub const NOISE_A: [f64; 3] = [35.0, 30.0, 25.0];
+pub const NOISE_B: [f64; 3] = [40.0, 40.0, 30.0];
+pub const NOISE_SOURCE: &str = "vyhláška MZ SR 549/2007 Z. z. v znení 237/2009 Z. z., tab. 3";
+
+/// The rooms the decree protects, and their category.
+fn noise_category(k: RoomType) -> Option<char> {
+    match k {
+        RoomType::Ward => Some('A'),
+        RoomType::Living
+        | RoomType::Bedroom
+        | RoomType::Children
+        | RoomType::Dining
+        | RoomType::Office
+        | RoomType::Other => Some('B'),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Design {
     pub level: Option<ElementId>,
@@ -275,6 +333,7 @@ pub struct Design {
     pub transfers: Vec<Transfer>,
     pub room_units: Vec<RoomUnits>,
     pub warnings: Vec<String>,
+    pub noise: Vec<Noise>,
     /// Height of the flexible ducts above the level, m.
     pub z: f64,
 }
@@ -509,6 +568,41 @@ fn ceil_to(v: f64, step: f64) -> f64 {
     (v / step).ceil() * step
 }
 
+/// Decree 259/2008 Z. z., annex 2, table 4: the least air changes of
+/// short-stay rooms, 1/h (the lower end where it gives a range). Used
+/// for buildings other than dwellings; a dwelling's rooms are not in it.
+pub fn table4(k: RoomType) -> Option<f64> {
+    match k {
+        RoomType::Hall | RoomType::Staircase => Some(2.0),
+        RoomType::Bathroom => Some(10.0),
+        RoomType::Toilet => Some(5.0),
+        RoomType::Pantry => Some(10.0),
+        RoomType::Wardrobe => Some(10.0),
+        _ => None,
+    }
+}
+
+/// Is the building for dwelling (its use in the project information
+/// says so, or says nothing)?
+pub fn is_residential(model: &Model) -> bool {
+    let u = model
+        .project_info()
+        .map(|(_, p)| p.building_use.to_lowercase())
+        .unwrap_or_default();
+    u.trim().is_empty()
+        || [
+            "dwelling",
+            "residential",
+            "family house",
+            "bytov",
+            "byt ",
+            "obyt",
+            "rodinn",
+        ]
+        .iter()
+        .any(|w| format!("{u} ").contains(w))
+}
+
 /// A loggia, a terrace, a balcony: outdoors, not aired.
 fn is_outdoor(text: &str) -> bool {
     let t = text.to_lowercase();
@@ -546,6 +640,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
     };
     d.level = Some(level);
     let losses = heatloss::building(model, ho);
+    let residential = is_residential(model);
     let mut geo: Vec<RoomGeo> = vec![];
     let mut need: Vec<f64> = vec![];
     for hl in &losses.rooms {
@@ -572,7 +667,13 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             height: creabim_core::room::height(model, r),
             bounded_by: shape.bounded_by.clone(),
         });
-        need.push(hl.v_min.round());
+        // a building other than dwellings: the decree's least air
+        // changes for the rooms its table lists
+        let n4 = if residential { None } else { table4(hl.kind) };
+        need.push(match n4 {
+            Some(n) => hl.v_min.max(n * hl.volume).round(),
+            None => hl.v_min.round(),
+        });
     }
     if geo.is_empty() {
         d.warnings.push("Miestnosti podlažia nemajú obrys.".into());
@@ -886,7 +987,8 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             }
             // the main from the unit to its box, and outdoors, Spiro Ø160
             let main_q = d.flow;
-            let (_, rpm) = friction(main_q, 0.16, 1.5e-4);
+            let dm = d.unit.map_or(0.16, |i| cat.units[i].spigot / 1000.0);
+            let (_, rpm) = friction(main_q, dm, 1.5e-4);
             let main = rpm * 3.0;
             if supply {
                 d.dp_supply = worst + main;
@@ -894,8 +996,22 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 d.dp_extract = worst + main;
             }
         }
+        if let Some(u) = d.unit.map(|i| &cat.units[i]) {
+            let worst = d.dp_supply.max(d.dp_extract);
+            if d.flow <= u.q_max && worst <= UNIT_PRESSURE_PA {
+                d.warnings.push(format!(
+                    "Jednotka {} dáva {:.0} m³/h pri {:.0} Pa (katalóg): pri {:.0} m³/h má rezervu aspoň {:.0} Pa na straty ventilov, boxov, tlmičov a žalúzií.",
+                    u.name, u.q_max, UNIT_PRESSURE_PA, d.flow, UNIT_PRESSURE_PA - worst
+                ));
+            } else {
+                d.warnings.push(format!(
+                    "Jednotka {}: {:.0} m³/h a {:.0} Pa sú mimo katalógového bodu {:.0} m³/h pri {:.0} Pa, overiť podľa krivky ventilátora.",
+                    u.name, d.flow, worst, u.q_max, UNIT_PRESSURE_PA
+                ));
+            }
+        }
         d.warnings.push(
-            "Tlakové straty sú len trenie a ohyby potrubia: straty tanierových ventilov, boxov, tlmičov a žalúzií doplniť z katalógu výrobcu; dispozičný tlak jednotky overiť podľa jej krivky.".into(),
+            "Tlakové straty sú trenie a ohyby potrubia: straty tanierových ventilov, boxov, tlmičov a žalúzií doplniť z katalógu výrobcu.".into(),
         );
     }
 
@@ -972,9 +1088,46 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             });
         }
     }
-    d.warnings.push(
-        "Potreby vzduchu sú z typov miestností (0,5 1/h podľa STN EN 12831-1 tab. B.7; odvod kuchyňa 100, kúpeľňa 90, WC 50 m³/h): zdroj odvodných hodnôt treba potvrdiť normou.".into(),
-    );
+    // noise in the protected rooms: the ventilation runs at night too,
+    // so the night limit governs
+    let ru = cat.room_units.get(o.room_unit);
+    let unit = d.unit.map(|i| &cat.units[i]);
+    for (i, r) in d.rooms.iter().enumerate() {
+        let Some(c) = noise_category(geo[i].kind) else {
+            continue;
+        };
+        let limits = if c == 'A' { NOISE_A } else { NOISE_B };
+        let (level, note) = match r.role {
+            Role::Decentral => match ru.and_then(|u| u.noise) {
+                Some(l) => (
+                    Some(l),
+                    "údaj výrobcu pri najvyššom výkone".to_string(),
+                ),
+                None => (None, "chýba hladina hluku jednotky od výrobcu".to_string()),
+            },
+            Role::Supply | Role::Extract => match unit.and_then(|u| u.lw) {
+                Some(_) => (None, "akustický výpočet rozvodu: doplniť útlm tlmiča a ventilu z katalógu".to_string()),
+                None => (
+                    None,
+                    "katalóg ATREA EC5/ECV5 udáva len akustický výkon do okolia; Lw do potrubia, útlm tlmiča a ventilu chýba (návrhový program ATREA)".to_string(),
+                ),
+            },
+            _ => continue,
+        };
+        d.noise.push(Noise {
+            room: i,
+            category: c,
+            limits,
+            level,
+            ok: level.map(|l| l <= limits[2] + 1e-9),
+            note,
+        });
+    }
+    d.warnings.push(if residential {
+        "Bytová budova: 0,5 1/h podľa STN EN 12831-1 tab. B.7, odvod kuchyňa 100, kúpeľňa 90, WC 50 m³/h (zaužívané hodnoty, vyhláška 259/2008 ich pre byty neuvádza).".into()
+    } else {
+        "Nebytová budova: najmenšia výmena vzduchu podľa vyhlášky 259/2008 Z. z., príl. 2, tab. 4 (chodby, schodiská 2, kúpeľne 10, WC 5, sklady a šatne 10 1/h; dolná hranica rozsahu).".into()
+    });
     d
 }
 
@@ -1069,16 +1222,16 @@ fn gp_duct(level: ElementId, system: &str, a: DVec2, b: DVec2, z: f64) -> Pipe {
     }
 }
 
-fn spiro(level: ElementId, system: &str, a: DVec3, b: DVec3, insulation: f64) -> Pipe {
+fn spiro(level: ElementId, system: &str, a: DVec3, b: DVec3, insulation: f64, dn: f64) -> Pipe {
     Pipe {
         level,
         system: system.into(),
         start: a,
         end: b,
         pipe_type: "VZK".into(),
-        nominal_mm: 160.0,
-        outer_mm: 161.0,
-        inner_mm: 160.0,
+        nominal_mm: dn,
+        outer_mm: dn + 1.0,
+        inner_mm: dn,
         height_mm: None,
         insulation_mm: insulation,
         insulation_set: true,
@@ -1220,7 +1373,10 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
                     let s = at + n.perp() * side;
                     // its core hole through the outer wall (Ø160 with
                     // 30 mm of insulation: 250 mm)
-                    if let Some(h) = d.unit_wall.and_then(|w| hole(model, w, s, uh, 0.25)) {
+                    if let Some(h) = d
+                        .unit_wall
+                        .and_then(|w| hole(model, w, s, uh, u.spigot / 1000.0 + 0.09))
+                    {
                         tx = tx.insert(h);
                     }
                     (s.extend(uh), (out + n.perp() * side).extend(uh), 0.03)
@@ -1230,14 +1386,14 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
             let mid = DVec3::new(b.x, b.y, a.z);
             let pe = Element::new(
                 format!("{TAG} – {sys}"),
-                ElementKind::Pipe(spiro(level, sys, a, mid, ins)),
+                ElementKind::Pipe(spiro(level, sys, a, mid, ins, u.spigot)),
             );
             let pid = pe.id;
             tx = tx.insert(pe);
             if (mid.z - b.z).abs() > 0.01 {
                 tx = tx.insert(Element::new(
                     format!("{TAG} – {sys}"),
-                    ElementKind::Pipe(spiro(level, sys, mid, b, ins)),
+                    ElementKind::Pipe(spiro(level, sys, mid, b, ins, u.spigot)),
                 ));
             }
             if sil {
@@ -1545,7 +1701,7 @@ mod tests {
     #[test]
     fn the_catalogue_reads() {
         let c = catalogue();
-        assert!(c.units.len() >= 3 && c.room_units.len() >= 1);
+        assert!(c.units.len() >= 3 && !c.room_units.is_empty());
         assert!(c.item("gp75").is_some() && c.item("tbox2").is_some());
         assert!(crate::pipe_types::by_id("GP").is_some());
     }
@@ -1647,6 +1803,13 @@ mod tests {
         let o = Opts::default();
         let d = design(&model, &heatloss::Opts::default(), &o);
         assert_eq!(d.room_units.len(), 1);
+        let n = d
+            .noise
+            .iter()
+            .find(|n| d.rooms[n.room].name.contains("Study"))
+            .unwrap();
+        assert_eq!(n.limits, NOISE_B);
+        assert_eq!(n.ok, Some(true));
         assert!(d.unit_wall.is_some());
         for c in &objects(&d, &o) {
             let (tx, _) = creabim_core::objects::add_to_model(doc.model(), c);
@@ -1670,5 +1833,41 @@ mod tests {
         assert_eq!(holes, again);
         let b = bill(doc.model());
         assert!(b.lines.iter().any(|l| l.group == "Decentrálna rekuperácia"));
+    }
+
+    #[test]
+    fn other_buildings_take_the_decrees_table_4() {
+        assert_eq!(table4(RoomType::Bathroom), Some(10.0));
+        assert_eq!(table4(RoomType::Living), None);
+        let mut model = creabim_core::starter::starter_house();
+        assert!(is_residential(&model));
+        let o = Opts::default();
+        let ho = heatloss::Opts::default();
+        let home = design(&model, &ho, &o);
+        let (id, mut p) = model
+            .project_info()
+            .map(|(e, p)| (e, p.clone()))
+            .unwrap_or_default();
+        p.building_use = "Office".into();
+        let mut doc = creabim_core::Document::from_model(model.clone());
+        if let Some(before) = doc.model().get(id).cloned() {
+            let mut after = before.clone();
+            if let ElementKind::Project(x) = &mut after.kind {
+                *x = p;
+            }
+            doc.commit(Transaction::new("use").replace(before, after))
+                .unwrap();
+            model = doc.model().clone();
+            assert!(!is_residential(&model));
+            let office = design(&model, &ho, &o);
+            let hall = |d: &Design| {
+                d.rooms
+                    .iter()
+                    .find(|r| r.name.contains("Hall"))
+                    .unwrap()
+                    .need
+            };
+            assert!(hall(&office) > hall(&home));
+        }
     }
 }

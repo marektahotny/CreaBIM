@@ -755,6 +755,10 @@ pub enum Source {
     Calc,
     /// Typed in.
     Typed,
+    /// Not asked of this element (a fixed pane has no active leaf, a
+    /// window or door that is no fire closure no fire rating): the value
+    /// is the reason, and the IFC file leaves it out.
+    NotApplicable,
 }
 
 /// A length in metres in a property's first unit.
@@ -794,6 +798,8 @@ enum Known {
     Raw(f64),
     Text(String),
     Bool(bool),
+    /// Not asked of it, for this reason.
+    NotApplicable(&'static str),
 }
 
 fn put(out: &mut Vec<(&'static str, Known, Source)>, name: &'static str, k: Known) {
@@ -1183,8 +1189,14 @@ fn joinery_values(out: &mut Vec<(&'static str, Known, Source)>, o: &crate::Openi
         (None, Some(d), true) => Some(d.nom_width),
         _ => opens.iter().map(|f| f.x1 - f.x0).reduce(f64::max),
     };
-    if let Some(w) = active.filter(|w| *w > 0.0) {
-        put(out, "šírka aktívneho krídla", Known::Len(w));
+    match active.filter(|w| *w > 0.0) {
+        Some(w) => put(out, "šírka aktívneho krídla", Known::Len(w)),
+        None if opens.is_empty() => put(
+            out,
+            "šírka aktívneho krídla",
+            Known::NotApplicable("nemá, pevné zasklenie"),
+        ),
+        None => {}
     }
     if let Some((w, h)) = joinery::clear_passage(o) {
         put(out, "priechodná šírka", Known::Len(w));
@@ -1207,12 +1219,25 @@ fn joinery_values(out: &mut Vec<(&'static str, Known, Source)>, o: &crate::Openi
             put(out, "typové označenie", Known::Text(p.product.clone()));
         }
     }
-    if let Some(f) = o.door.as_ref().and_then(|d| d.fire.as_ref()) {
-        if !f.rating.trim().is_empty() {
-            put(out, "požiarna odolnosť", Known::Text(f.rating.clone()));
+    match o.door.as_ref().and_then(|d| d.fire.as_ref()) {
+        Some(f) => {
+            if !f.rating.trim().is_empty() {
+                put(out, "požiarna odolnosť", Known::Text(f.rating.clone()));
+            }
+            put(out, "samozatvárač", Known::Bool(f.self_closing));
+            put(out, "dymotesnosť", Known::Bool(f.smoke_tight));
         }
-        put(out, "samozatvárač", Known::Bool(f.self_closing));
-        put(out, "dymotesnosť", Known::Bool(f.smoke_tight));
+        // no fire closure: none of it is asked
+        None => {
+            let why = if door {
+                "nie je požiarny uzáver"
+            } else {
+                "okno nie je požiarny uzáver"
+            };
+            for name in ["požiarna odolnosť", "samozatvárač", "dymotesnosť"] {
+                put(out, name, Known::NotApplicable(why));
+            }
+        }
     }
 }
 
@@ -1328,7 +1353,12 @@ pub fn filled(
                     known
                         .iter()
                         .find(|(n, _, _)| *n == p.name)
-                        .and_then(|(_, k, s)| to_value(p, k).map(|v| (v, *s)))
+                        .and_then(|(_, k, s)| match k {
+                            Known::NotApplicable(why) => {
+                                Some((Value::Text(why.to_string()), Source::NotApplicable))
+                            }
+                            _ => to_value(p, k).map(|v| (v, *s)),
+                        })
                 });
             Filled {
                 prop: p,
@@ -1703,5 +1733,74 @@ mod tests {
         let rehau = crate::joinery::preset("REHAU ARTEVO max, trojsklo").unwrap();
         assert_eq!(rehau.g, Some(0.53));
         assert_eq!(crate::joinery::over_requirement(&rehau, false), Some(0.6));
+    }
+
+    #[test]
+    fn an_older_projects_windows_get_their_makers_values_and_fixed_panes_ask_no_leaf() {
+        let mut m = crate::sample::sample_house();
+        // as an older project: no values on any window or door
+        let mut tx = crate::Transaction::new("old");
+        for e in m.iter() {
+            if let ElementKind::Opening(o) = &e.kind {
+                if o.performance.is_some() {
+                    let mut a = e.clone();
+                    if let ElementKind::Opening(x) = &mut a.kind {
+                        x.performance = None;
+                    }
+                    tx = tx.replace(e.clone(), a);
+                }
+            }
+        }
+        tx.apply(&mut m).unwrap();
+        let door = m
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == crate::OpeningKind::Door))
+            .unwrap()
+            .clone();
+        let ElementKind::Opening(d) = &door.kind else {
+            unreachable!()
+        };
+        let outer = std::collections::HashSet::from([d.host]);
+        let pairs = crate::joinery::fill_missing_performance(&m, &outer);
+        assert!(!pairs.is_empty());
+        let mut tx = crate::Transaction::new("fill");
+        for (b, a) in pairs {
+            tx = tx.replace(b, a);
+        }
+        tx.apply(&mut m).unwrap();
+        // done once: nothing more to fill
+        assert!(crate::joinery::fill_missing_performance(&m, &outer).is_empty());
+        let cx = Ctx::new(&m);
+        let val = |id, name: &str| {
+            let (_, props) = filled(&m, &cx, m.get(id).unwrap()).unwrap();
+            props
+                .iter()
+                .find(|f| f.prop.name == name)
+                .and_then(|f| f.value.clone())
+        };
+        let win = m
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == crate::OpeningKind::Window && o.division.is_none() && o.frame.panes_across * o.frame.panes_up >= 1))
+            .unwrap()
+            .id;
+        assert_eq!(
+            val(win, "súčiniteľ prechodu tepla – navrhnutý"),
+            Some((Value::Num(0.6), Source::Model))
+        );
+        assert!(matches!(
+            val(door.id, "súčiniteľ prechodu tepla – navrhnutý"),
+            Some((Value::Num(_), Source::Model))
+        ));
+        // a fixed window: no active leaf, no fire closure, nothing missing
+        assert!(matches!(
+            val(win, "šírka aktívneho krídla"),
+            Some((_, Source::NotApplicable))
+        ));
+        for name in ["požiarna odolnosť", "samozatvárač", "dymotesnosť"] {
+            assert!(
+                matches!(val(win, name), Some((_, Source::NotApplicable))),
+                "{name}"
+            );
+        }
     }
 }

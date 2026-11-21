@@ -1631,6 +1631,19 @@ impl CreaBimApp {
                     "In the site plan, click a side of the place drawn on the map (a rectangle's edge) near the corner the building's corner goes to. Esc leaves it.",
                 );
             }
+            "site" if arg == "reset" => {
+                let tx = creabim_core::mapgroup::reset(self.doc.model());
+                self.status = if tx.ops.is_empty() {
+                    crate::i18n::tr("The map is where it came down already (or the project has no map in S-JTSK).")
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => crate::i18n::tr(
+                            "The map is back where it came down: the S-JTSK origin at ±0,000, the drawings straight. Ctrl+Z to undo.",
+                        ),
+                        Err(e) => e.to_string(),
+                    }
+                };
+            }
             "site" if arg == "exact" => {
                 self.place_exact_open = true;
             }

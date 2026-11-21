@@ -47,7 +47,12 @@ fn values_on(c: &mut Ctx, object: Ref, class: &dss::Class, props: &[Filled]) {
         ),
     ));
     for f in props {
-        let Some((v, _)) = &f.value else { continue };
+        let Some((v, source)) = &f.value else {
+            continue;
+        };
+        if *source == dss::Source::NotApplicable {
+            continue;
+        }
         let unit = match v {
             Value::Num(_) => f.prop.unit(),
             _ => "",
