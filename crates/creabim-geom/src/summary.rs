@@ -909,7 +909,9 @@ pub fn figures_schedule(model: &Model) -> crate::schedule::Schedule {
             continue;
         };
         let a = room::shape(model, e.id).map_or(0.0, |s| room::net_area(model, r, &s));
-        usable += a;
+        if !room::is_open_air(&e.name, r) {
+            usable += a;
+        }
         if room::counts_as_living(&e.name, r, a) {
             living += a;
         }
@@ -990,7 +992,10 @@ mod cubature_tests {
     fn the_enclosed_volume_is_its_four_parts() {
         let m = creabim_core::starter::starter_house();
         let c = cubature(&m);
-        assert!(c.foundations > 1.0 && c.lower > 1.0 && c.upper > 100.0 && c.roofing > 10.0, "{c:?}");
+        assert!(
+            c.foundations > 1.0 && c.lower > 1.0 && c.upper > 100.0 && c.roofing > 10.0,
+            "{c:?}"
+        );
         assert!((c.total() - (c.foundations + c.lower + c.upper + c.roofing)).abs() < 1e-9);
         let t = figures_schedule(&m);
         assert_eq!(t.rows.len(), 7);

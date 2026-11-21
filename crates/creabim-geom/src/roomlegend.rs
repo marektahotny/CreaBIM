@@ -193,7 +193,11 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
         }
         let area = creabim_core::room::shape(model, e.id)
             .map_or(0.0, |s| creabim_core::room::net_area(model, r, &s));
-        total += area;
+        // the floor (usable) area leaves balconies, loggias and
+        // terraces out (STN 73 4301 2.14)
+        if !creabim_core::room::is_open_air(&e.name, r) {
+            total += area;
+        }
         if creabim_core::room::counts_as_living(&e.name, r, area) {
             living += area;
         }
@@ -345,6 +349,15 @@ mod tests {
             r.living = Some(true);
         }
         assert!(creabim_core::room::counts_as_living("WC", room(&wc2), 3.0));
+        // the usable area leaves the loggia, terrace and balcony out
+        let usable: f64 = rooms
+            .iter()
+            .filter(|e| !creabim_core::room::is_open_air(&e.name, room(e)))
+            .map(|e| area(&m, e))
+            .sum();
+        let all: f64 = rooms.iter().map(|e| area(&m, e)).sum();
+        assert!(usable < all - 10.0);
+        assert_eq!(s.totals[2], m.units().area(usable));
         // a view without it
         let mut v = creabim_core::View::schedule(ScheduleCategory::RoomLegend);
         v.no_living_area = true;
