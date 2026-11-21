@@ -177,6 +177,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Lays the site under the building: click a side of the place drawn on the map near its corner, then the building's matching side near its corner. The map, terrain and what was drawn on them move and turn as one; the building and the floor plans stay as drawn",
             ),
             act(
+                "site:exact",
+                "Place the building exactly",
+                "ruler",
+                "Sets the building on the plot by typed distances: from the side boundary its side runs along, and from the rear boundary (askew too) at the nearest corner. The map moves under the building; the building and the floor plans stay as drawn",
+            ),
+            act(
                 "site:symbols",
                 "Site symbols and networks",
                 "map-pin",

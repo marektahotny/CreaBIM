@@ -357,7 +357,14 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
                         Some(ElementKind::View(x)) if x.graphics.range.from_above)
                 });
                 if sk.net.is_some() || sk.mark.is_some() || drawn_here {
-                    items.extend(crate::plan::sketch_items(e.id, sk, &|p| p));
+                    // lines on the map, not a face over it
+                    items.extend(
+                        crate::plan::sketch_items(e.id, sk, &|p| p)
+                            .into_iter()
+                            .filter(|it| {
+                                !matches!(it, PlanItem::Tint { .. } | PlanItem::Shade { .. })
+                            }),
+                    );
                 }
             }
         }

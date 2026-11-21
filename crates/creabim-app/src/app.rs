@@ -429,6 +429,8 @@ pub struct CreaBimApp {
     soakaway: Option<soakawayui::SoakawayDraft>,
     /// The cadastre's window of site symbols and networks is open.
     site_symbols_open: bool,
+    /// The window placing the building on the plot by distances is open.
+    place_exact_open: bool,
     /// The Masonry window, while open.
     masonry: Option<masonryui::MasonryDraft>,
     /// A click in a plan asked for to put lintels or an RC column.
@@ -671,6 +673,7 @@ impl CreaBimApp {
             valve_box: None,
             soakaway: None,
             site_symbols_open: false,
+            place_exact_open: false,
             masonry: None,
             masonry_pick: None,
             heat_source: None,
@@ -13699,6 +13702,7 @@ impl eframe::App for CreaBimApp {
         self.valve_box_window(&ctx);
         self.soakaway_window(&ctx);
         self.site_symbols_window(&ctx);
+        self.place_exact_window(&ctx);
         self.masonry_window(&ctx);
         self.heat_loss_window(&ctx);
         self.floor_heat_window(&ctx);

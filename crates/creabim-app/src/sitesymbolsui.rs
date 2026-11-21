@@ -160,4 +160,56 @@ impl CreaBimApp {
             self.status = t("Site symbol: click its point, then the way it faces (an entrance: where it leads).");
         }
     }
+
+    /// The window placing the building by distances from two boundaries.
+    pub(super) fn place_exact_window(&mut self, ctx: &egui::Context) {
+        if !self.place_exact_open {
+            return;
+        }
+        let t = crate::i18n::tr;
+        let mut open = true;
+        let mut start = false;
+        let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
+        let [mut d1, mut d2] = self.plan.place_dist;
+        super::shell::window(t("Place the building exactly"))
+            .id(egui::Id::new("site.place.exact"))
+            .open(&mut open)
+            .default_pos(area.center() - Vec2::new(200.0, 120.0))
+            .default_width(400.0)
+            .constrain_to(area)
+            .show(ctx, |ui| {
+                egui::Grid::new("site.place.grid")
+                    .num_columns(2)
+                    .spacing([12.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label(t("From the side boundary"));
+                        ui.add(egui::DragValue::new(&mut d1).range(0.0..=1000.0).speed(0.01).suffix(" m"));
+                        ui.end_row();
+                        ui.label(t("From the rear boundary (nearest corner)"));
+                        ui.add(egui::DragValue::new(&mut d2).range(0.0..=1000.0).speed(0.01).suffix(" m"));
+                        ui.end_row();
+                    });
+                ui.label(
+                    egui::RichText::new(t(
+                        "Then in the site plan click: the side boundary, the building's side along it, the rear boundary. The map moves under the building, which stays as drawn.",
+                    ))
+                    .weak(),
+                );
+                start = ui.button(t("Pick the lines")).clicked();
+            });
+        self.plan.place_dist = [d1, d2];
+        if !open {
+            self.place_exact_open = false;
+        }
+        if start {
+            if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::Select) {
+                self.run_action(ctx, &format!("tool:{i}"));
+            }
+            self.plan.place_pick = None;
+            self.plan.place_exact = Some(vec![]);
+            self.status = t(
+                "In the site plan, click the side boundary the building runs along. Esc leaves it.",
+            );
+        }
+    }
 }
