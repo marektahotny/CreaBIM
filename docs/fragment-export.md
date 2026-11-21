@@ -35,8 +35,10 @@ prvku formulára:
 Riadky tabuliek majú číslo na konci mena poľa: plocha `_N`, otvor
 v ploche `_N_M` (od 1).
 
+Fragment otvorí len súbor so všetkými ôsmimi sekciami (inak hlási „projekt NEPATRÍ do tejto aplikácie“). Sekcie `vonk_okraj_podmienky`, `tepelno_technicke` (`hodnotenie`) a `cenove_hodnotenie` (`vypocet`) sú preto v súbore prázdne. Overené vo Fragmente 21. 11. 2026.
+
 Sekcie `tepelno_technicke` a `cenove_hodnotenie` sú výsledky výpočtu
-Fragmentu; CreaBIM ich nezapisuje. Nezapisuje ani `vonk_okraj_podmienky`
+Fragmentu; CreaBIM ich nevypĺňa. Nevypĺňa ani `vonk_okraj_podmienky`
 (obec má vo Fragmente vlastný interný kód, napr. `"2587/3/560"`).
 
 ### `popis_zakazky / ""`

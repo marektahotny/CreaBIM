@@ -1246,11 +1246,26 @@ pub fn project_json(model: &Model, env: &Envelope) -> Ordered {
         "celkovo_bxua_vsetko".to_string(),
         tel(sum_bua + sum_open_bua),
     );
+    // Fragment opens only a file with all its sections ("the project does
+    // not belong to this application" otherwise): the location and the
+    // results are left empty for it to fill
     Ordered::new()
         .with("popis_zakazky", popis)
+        .with(
+            "vonk_okraj_podmienky",
+            Ordered::new().with("", Ordered::new()),
+        )
         .with("vnut_okraj_podmienky", vnut)
         .with("vyhrievane_plochy", vyhrievane)
         .with("Skladba", Ordered::new().with("stavby", st))
+        .with(
+            "tepelno_technicke",
+            Ordered::new().with("hodnotenie", Ordered::new()),
+        )
+        .with(
+            "cenove_hodnotenie",
+            Ordered::new().with("vypocet", Ordered::new()),
+        )
         .with("__setup", json!({"absoluteKompasAngle": 0}))
 }
 
@@ -1354,11 +1369,17 @@ mod tests {
         let m = house();
         let (text, _) = export(&m);
         let v: Value = serde_json::from_str(&text).unwrap();
+        // every section of Fragment's, in its order, or it refuses the file
+        let keys: Vec<&String> = v.as_object().unwrap().keys().collect();
+        assert_eq!(keys.len(), 8);
         for k in [
             "popis_zakazky",
+            "vonk_okraj_podmienky",
             "vnut_okraj_podmienky",
             "vyhrievane_plochy",
             "Skladba",
+            "tepelno_technicke",
+            "cenove_hodnotenie",
             "__setup",
         ] {
             assert!(v.get(k).is_some(), "{k}");
