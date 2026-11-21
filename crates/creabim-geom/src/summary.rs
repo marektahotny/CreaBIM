@@ -903,12 +903,13 @@ pub fn figures_schedule(model: &Model) -> crate::schedule::Schedule {
     let units = model.units();
     let c = cubature(model);
     let built = figures_built_up(model);
+    let under = crate::roomlegend::Undersides::of(model);
     let (mut living, mut usable) = (0.0, 0.0);
     for e in model.iter() {
         let ElementKind::Room(r) = &e.kind else {
             continue;
         };
-        let a = room::shape(model, e.id).map_or(0.0, |s| room::net_area(model, r, &s));
+        let a = crate::roomlegend::counted_area(model, &under, r);
         if !room::is_open_air(&e.name, r) {
             usable += a;
         }
