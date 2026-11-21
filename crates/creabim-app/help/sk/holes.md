@@ -2,13 +2,15 @@
 
 Tri spôsoby, ako vyrezať otvor v budove, každý sa exportuje do IFC ako otvor.
 
-## Otvory v stenách {#wall-openings}
+## Prestupy v stenách {#wall-openings}
 
-**Otvor v stene** je obdĺžnikový otvor v stene bez dverí či okna, pre potrubie alebo prechod.
+**Prestup** je otvor v stene bez dverí či okna, pre potrubie, vzduchotechniku alebo prechod. Nastavuje sa ako v PilonDesigneri.
 
-1. Zvoľte nástroj **Otvor v stene** (*Vytvoriť › Otvor v stene*).
+1. Zvoľte nástroj **Prestup** (*Architektúra › Prestup*).
 2. Kliknite na stenu.
-3. Vo *Vlastnostiach* nastavte jeho šírku, výšku a parapet.
+3. Vo *Vlastnostiach* nastavte tvar (obdĺžnik alebo kruh, pri kruhu je šírka priemer), šírku, výšku a spodnú hranu nad podlahou.
+
+V pôdoryse sa prestup kreslí obrysom cez hrúbku steny, krížikom a popisom za lícom steny, napr. „P 300×200 sp. 900“ alebo „P Ø150 sp. 1 050“. Prestup, ktorý pretína rovina rezu, má plné tenké čiary; prestup nad rovinou rezu tenkú čiaru s čiarkou a dvoma bodkami, pod rovinou rezu tenkú čiarkovanú. Vo *Vlastnostiach* zvolíte *V pôdoryse: Otvor* (len obrys), označenie (predvolene P) a či popis ukáže označenie a rozmer. Otvor až po podlahu vysoký aspoň 1,8 m sa kreslí ako prechod, len medzerou v stene.
 
 ## Otvory v doskách a strechách {#holes-in-slabs-and-roofs}
 

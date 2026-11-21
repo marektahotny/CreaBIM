@@ -6673,7 +6673,7 @@
  "Wall load-bearing": "Nosnosť steny",
  "Wall location line": "Referenčná čiara steny",
  "Wall material": "Materiál steny",
- "Wall opening": "Otvor v stene",
+ "Wall opening": "Prestup",
  "Wall opening on a face": "Otvor na ploche steny",
  "Wall plate": "Pomúrnica",
  "Wall redrawn. Ctrl+Z to undo.": "Stena prekreslená. Ctrl+Z vráti späť.",
@@ -7941,5 +7941,14 @@
  "Ventilation – outdoor (fresh) air": "VZT – čerstvý (vonkajší) vzduch",
  "Ventilation – exhaust to outdoors": "VZT – odpadový vzduch",
  "VZT – recuperation": "VZT – rekuperácia",
- "Unit of measure": "MJ"
+ "Unit of measure": "MJ",
+ "Penetration": "Prestup",
+ "In plan": "V pôdoryse",
+ "Mark in the label": "Označenie v popise",
+ "Size in the label": "Rozmer v popise",
+ "Width along the wall and height": "Šírka pozdĺž steny a výška",
+ "Its width is the diameter": "Šírka je priemer",
+ "Outline, cross and label": "Obrys, krížik a popis",
+ "Just the outline": "Len obrys",
+ "Click on a wall for a penetration through it: drawn with its outline, a cross and its label (P 300×300 sp. 300). Set its shape, size and bottom edge in Properties.": "Kliknite na stenu pre prestup cez ňu: kreslí sa obrysom, krížikom a popisom (P 300×300 sp. 300). Tvar, rozmer a spodnú hranu nastavíte vo Vlastnostiach."
 }

@@ -1041,6 +1041,7 @@ fn hole(model: &Model, wall: ElementId, p: DVec2, z: f64, size: f64) -> Option<E
             no_inner_sill: false,
             threshold: false,
             threshold_material: None,
+            penetration: None,
             setback: None,
             reveal: None,
             division: None,

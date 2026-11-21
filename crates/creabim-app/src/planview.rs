@@ -160,7 +160,7 @@ impl Tool {
             Tool::Wall => "Wall",
             Tool::Door => "Door",
             Tool::Window => "Window",
-            Tool::Opening => "Wall opening",
+            Tool::Opening => "Penetration",
             Tool::Slab => "Slab",
             Tool::Shaft => "Shaft",
             Tool::Mass => "Mass",
@@ -212,7 +212,7 @@ impl Tool {
             Tool::Wall => "Click to start, click again to place each wall. Esc or right-click ends the chain. Shift keeps it orthogonal.",
             Tool::Door => "Click on a wall to place a door.",
             Tool::Window => "Click on a wall to place a window.",
-            Tool::Opening => "Click on a wall to cut a bare rectangular opening in it: no door or window, just the hole. Set its size and sill in Properties.",
+            Tool::Opening => "Click on a wall for a penetration through it: drawn with its outline, a cross and its label (P 300×300 sp. 300). Set its shape, size and bottom edge in Properties.",
             Tool::Shaft => "Draw the shaft's outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). It runs from this level to the one above, cutting every slab and roof in between.",
             Tool::Slab => "Click the slab's corners, then the first again or Enter. A draws arcs, L lines; Esc or right-click takes back a point, right-click again leaves. 1–4: Polygon, Rectangle, Fill room, From sketch.",
             Tool::Mass => "Click to place a freeform mass you can then edit like a mesh.",
@@ -4759,7 +4759,7 @@ fn section_tool(
             let base = doc.model().level(w.level).map_or(0.0, |l| l.elevation) + w.base_offset;
             let (kind, name) = match tool {
                 Tool::Door => (OpeningKind::Door, "Door"),
-                Tool::Opening => (OpeningKind::Hole, "Wall opening"),
+                Tool::Opening => (OpeningKind::Hole, "Penetration"),
                 _ => (OpeningKind::Window, "Window"),
             };
             let mut e = state.typed(
@@ -4785,6 +4785,7 @@ fn section_tool(
                         no_inner_sill: false,
                         threshold: false,
                         threshold_material: None,
+                        penetration: None,
                         setback: None,
                         reveal: None,
                         division: None,
@@ -8885,7 +8886,7 @@ fn place_opening(
     let m = &state.members;
     let (kind, [mut width, mut height, sill], name) = match tool {
         Tool::Door => (OpeningKind::Door, m.door, "Door"),
-        Tool::Opening => (OpeningKind::Hole, m.hole, "Wall opening"),
+        Tool::Opening => (OpeningKind::Hole, m.hole, "Penetration"),
         _ => (OpeningKind::Window, m.window, "Window"),
     };
     // a door's sizes in the bar are its leaf's: the opening follows
@@ -8919,6 +8920,7 @@ fn place_opening(
                 no_inner_sill: false,
                 threshold: false,
                 threshold_material: None,
+                penetration: None,
                 setback: None,
                 reveal: None,
                 division: None,
@@ -10035,6 +10037,112 @@ mod tests {
         let e = doc.model().get(sel.active.unwrap()).unwrap();
         assert!(matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Hole));
         assert!(e.of_type.is_none());
+    }
+
+    /// A ceiling shows in a floor plan, its outline over the cut, and a
+    /// click just inside it picks it (George 2026-11-21: "podhľad neviem
+    /// zachytiť v pôdoryse 1. NP").
+    #[test]
+    fn a_ceiling_is_drawn_and_picked_in_a_floor_plan() {
+        let m = creabim_core::starter::starter_house();
+        let (cid, outline, level) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Ceiling(c) => Some((e.id, c.outline(&m)?, c.level)),
+                _ => None,
+            })
+            .expect("a ceiling");
+        let view = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level) && !v.ceiling_plan)
+            })
+            .unwrap()
+            .id;
+        let items = creabim_geom::section::view_drawing(&m, view).unwrap().items;
+        assert!(items.iter().any(|i| matches!(i,
+            PlanItem::Line { id, pen: creabim_geom::plan::Pen::Overhead, .. } if *id == cid)));
+        // 2 cm in from the middle of its first edge
+        let c = outline.iter().copied().sum::<DVec2>() / outline.len() as f64;
+        let mid = (outline[0] + outline[1]) / 2.0;
+        let p = mid + (c - mid).normalize() * 0.02;
+        assert!(hit_all(&items, p, 0.05, 0.05).contains(&cid));
+    }
+
+    /// The Penetration tool's hole is drawn in plan as PilonDesigner's
+    /// prestup: outline, cross and a label "P 300×300 sp. 1 000".
+    #[test]
+    fn a_penetration_shows_its_cross_and_label_in_plan() {
+        let m = creabim_core::sample::sample_house();
+        let (wall, level) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.length() > 4.0 && w.curtain.is_none() => {
+                    Some((e.id, w.level))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let mut ids = vec![];
+        let mut tx = creabim_core::Transaction::new("t");
+        for (off, sill) in [(0.5, 1.0), (1.5, 2.2), (2.5, 0.3)] {
+            let e = creabim_core::Element::new(
+                "Penetration",
+                ElementKind::Opening(creabim_core::Opening {
+                    host: wall,
+                    kind: OpeningKind::Hole,
+                    offset: off,
+                    sill,
+                    width: 0.3,
+                    height: 0.3,
+                    material: None,
+                    frame: Default::default(),
+                    flip_hand: false,
+                    flip_facing: false,
+                    no_outer_sill: false,
+                    no_inner_sill: false,
+                    threshold: false,
+                    threshold_material: None,
+                    penetration: None,
+                    setback: None,
+                    reveal: None,
+                    division: None,
+                    door: None,
+                    texts: None,
+                    performance: None,
+                }),
+            );
+            ids.push(e.id);
+            tx = tx.insert(e);
+        }
+        let mut doc = Document::from_model(m);
+        doc.commit(tx).unwrap();
+        let m = doc.model();
+        let view = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level) && !v.ceiling_plan)
+            })
+            .unwrap()
+            .id;
+        let items = creabim_geom::section::view_drawing(m, view).unwrap().items;
+        use creabim_geom::plan::Pen;
+        // cut: solid; above the cut: dash and two dots; below: dashed
+        for (id, pen) in ids.iter().zip([Pen::Symbol, Pen::Overhead, Pen::Hidden]) {
+            let n = items
+                .iter()
+                .filter(
+                    |i| matches!(i, PlanItem::Line { id: x, pen: p, .. } if x == id && *p == pen),
+                )
+                .count();
+            assert!(n >= 2, "{pen:?}: its cross");
+            assert!(items
+                .iter()
+                .any(|i| matches!(i, PlanItem::Text { id: x, text, .. }
+                if x == id && text.starts_with("P 300×300 sp. "))));
+        }
     }
 
     /// Alt+click picks up an element's parameters (George 2026-11-20):

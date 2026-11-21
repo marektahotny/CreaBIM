@@ -145,6 +145,7 @@ fn opening(host: ElementId, kind: OpeningKind, offset: f64, width: f64) -> Openi
         no_inner_sill: false,
         threshold: false,
         threshold_material: None,
+        penetration: None,
         setback: None,
         reveal: None,
         division: None,
