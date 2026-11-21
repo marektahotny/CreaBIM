@@ -108,6 +108,26 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                 a: s.a,
                 b: s.b,
             }),
+            // a floor plan: the ceiling's outline over the cut, a thin line
+            // of a dash and two dots, so it can be seen, picked and snapped
+            ElementKind::Ceiling(c) if c.level == level && !view.ceiling_plan => {
+                let Some(outline) = c.outline(model) else {
+                    continue;
+                };
+                let pen = if c.height < cut_height {
+                    Pen::Projection
+                } else {
+                    Pen::Overhead
+                };
+                for i in 0..outline.len() {
+                    out.push(PlanItem::Line {
+                        id: e.id,
+                        pen,
+                        a: outline[i],
+                        b: outline[(i + 1) % outline.len()],
+                    });
+                }
+            }
             ElementKind::Ceiling(c) if c.level == level && view.ceiling_plan => {
                 if c.height < cut_height {
                     continue;

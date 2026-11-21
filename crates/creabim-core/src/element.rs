@@ -1724,6 +1724,31 @@ pub struct Opening {
     /// reduction, from its maker's data sheet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub performance: Option<crate::joinery::Performance>,
+    /// A bare hole as a penetration (prestup, as PilonDesigner sets it
+    /// up): round or rectangular, its mark and how the plan shows it.
+    /// Left out, a hole is a rectangular penetration marked "P", except
+    /// a passage down to the floor, which stays a bare gap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub penetration: Option<Penetration>,
+}
+
+/// How a penetration (prestup) through a wall is drawn and marked.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Penetration {
+    /// Round: the opening's width is its diameter (and its height).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub round: bool,
+    /// Its plan shows just the hole's outline: no cross, no label.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hole_only: bool,
+    /// Its mark in the label; left out, "P".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// The label leaves out the mark, or the size.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hide_tag: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hide_size: bool,
 }
 
 /// How a field of a window or door opens. Left and right are seen from
@@ -1878,6 +1903,63 @@ impl LeafOp {
 }
 
 impl Opening {
+    /// A bare hole shown as a penetration: outline, cross and label. A
+    /// hole down to the floor at least 1.8 m tall is a passage, a bare gap,
+    /// unless set up as a penetration.
+    pub fn is_penetration(&self) -> bool {
+        self.kind == OpeningKind::Hole
+            && match &self.penetration {
+                Some(p) => !p.hole_only,
+                None => !(self.sill < 1e-6 && self.height >= 1.8),
+            }
+    }
+
+    /// A round penetration.
+    pub fn is_round(&self) -> bool {
+        self.kind == OpeningKind::Hole && self.penetration.as_ref().is_some_and(|p| p.round)
+    }
+
+    /// The penetration's label in plan, as PilonDesigner writes it:
+    /// "P 300×200 sp. 900", "P Ø150 sp. 1 050" (sizes in mm, the
+    /// bottom edge above the floor).
+    pub fn penetration_label(&self, floor_sill: f64) -> String {
+        // thousands spaced, as Slovak drawings write them
+        let mm = |v: f64| {
+            let n = (v * 1000.0).round() as i64;
+            let d = n.abs().to_string();
+            let mut out = String::new();
+            for (i, c) in d.chars().enumerate() {
+                if i > 0 && (d.len() - i) % 3 == 0 {
+                    out.push(' ');
+                }
+                out.push(c);
+            }
+            if n < 0 {
+                out.insert(0, '-');
+            }
+            out
+        };
+        let p = self.penetration.clone().unwrap_or_default();
+        let size = if p.round {
+            format!("Ø{}", mm(self.width))
+        } else {
+            format!("{}×{}", mm(self.width), mm(self.height))
+        };
+        let mut parts = vec![];
+        if !p.hide_tag {
+            parts.push(
+                p.tag
+                    .clone()
+                    .filter(|t| !t.trim().is_empty())
+                    .unwrap_or_else(|| "P".into()),
+            );
+        }
+        if !p.hide_size {
+            parts.push(format!("{size} sp. {}", mm(floor_sill)));
+        }
+        parts.join(" ")
+    }
+
     /// How high it sits above its storey's floor (the level), as doors and
     /// windows are set and dimensioned (George 2026-11-20): `sill` is kept
     /// from the wall's base, which may be sunk below the floor.

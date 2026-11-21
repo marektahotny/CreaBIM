@@ -860,6 +860,14 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             }
             if v.ceiling_plan {
                 crate::rooms::as_ceiling_plan(model, &mut d.items);
+            } else {
+                // the penetrations' labels, at the view's scale
+                d.items.extend(crate::plan::penetration_labels(
+                    model,
+                    *level,
+                    *cut_height,
+                    v.scale / 1000.0,
+                ));
             }
             // rooms under everything, separators and ceilings with them
             let mut rooms = crate::rooms::plan_items(model, v, *level, *cut_height);

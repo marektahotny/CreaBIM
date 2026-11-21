@@ -53,6 +53,7 @@ fn door_splits_wall_into_two_cut_pieces_with_a_swing() {
             no_inner_sill: false,
             threshold: false,
             threshold_material: None,
+            penetration: None,
             setback: None,
             reveal: None,
             division: None,

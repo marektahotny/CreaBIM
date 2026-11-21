@@ -1298,18 +1298,35 @@ pub fn plan_view_with(
                             ));
                         }
                         items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &at));
-                    } else if c.v0 >= cut_v {
+                    } else if c.v0 >= cut_v || o.kind == OpeningKind::Hole {
                         // wholly above the cut (a duct hole, a high
                         // window): its outline in the wall, a thin line of
-                        // a dash and two dots, as all above the cut
+                        // a dash and two dots, as all above the cut; a
+                        // penetration wholly below it, thin dashed, as all
+                        // hidden under the cut; a penetration's cross with it
+                        let pen = if c.v0 >= cut_v {
+                            Pen::Overhead
+                        } else {
+                            Pen::Hidden
+                        };
                         let corners = [at(c.u0, -t), at(c.u1, -t), at(c.u1, t), at(c.u0, t)];
                         for i in 0..4 {
                             overhead.push(PlanItem::Line {
                                 id: oid,
-                                pen: Pen::Overhead,
+                                pen,
                                 a: corners[i],
                                 b: corners[(i + 1) % 4],
                             });
+                        }
+                        if o.is_penetration() {
+                            for (a, b) in [(0, 2), (1, 3)] {
+                                overhead.push(PlanItem::Line {
+                                    id: oid,
+                                    pen,
+                                    a: corners[a],
+                                    b: corners[b],
+                                });
+                            }
                         }
                     }
                 }
@@ -1832,6 +1849,64 @@ pub fn storey_cut(model: &Model, level: ElementId, cut_height: f64) -> (ElementI
         .map_or((level, cut_height), |(e, l)| {
             (e.id, cut_height + z - l.elevation)
         })
+}
+
+/// The labels of the penetrations through the walls a plan of `level`
+/// cuts ("P 300×200 sp. 900"), beside the wall's left face, at the
+/// paper size of a drawing of `mm` metres per paper millimetre.
+pub fn penetration_labels(
+    model: &Model,
+    level: ElementId,
+    cut_height: f64,
+    mm: f64,
+) -> Vec<PlanItem> {
+    use crate::paper::Anchor;
+    const SIZE: f64 = 2.0;
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        if !o.is_penetration() {
+            continue;
+        }
+        let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+            continue;
+        };
+        if w.curtain.is_some() || wall_rise(model, w, level, cut_height).is_none() {
+            continue;
+        }
+        let text = o.penetration_label(o.sill + w.base_offset);
+        if text.is_empty() {
+            continue;
+        }
+        let mid = o.offset + o.width / 2.0;
+        let n = w.tangent_at(mid).normalize_or_zero().perp();
+        let gap = 1.5 * mm;
+        let reach = w.thickness / 2.0 + gap;
+        let (at, align) = if n.x.abs() > 0.7 {
+            // beside a wall running up the sheet: from its face outwards
+            let a = if n.x > 0.0 {
+                Anchor::Start
+            } else {
+                Anchor::End
+            };
+            (w.place(mid, reach), a)
+        } else {
+            (w.place(mid, reach + SIZE * 0.6 * mm), Anchor::Middle)
+        };
+        out.push(PlanItem::Text {
+            id: e.id,
+            at,
+            text,
+            size: SIZE,
+            align,
+            mm,
+            rgb: None,
+            bold: false,
+        });
+    }
+    out
 }
 
 /// Whether a plan of `level` cut at `cut_height` cuts wall `w`, and how
@@ -2437,6 +2512,22 @@ fn opening_symbol(
         // a hole that starts above the floor shows the wall's faces across,
         // over its sill, as a window does; one down to the floor is just
         // the gap (MU18)
+        // a penetration cut by the plane: its outline across the wall and
+        // a cross (PilonDesigner's prestup); one set to show just the
+        // hole, its outline
+        OpeningKind::Hole if o.penetration.is_some() || o.is_penetration() => {
+            let t = w.thickness / 2.0;
+            let corners = [at(c.u0, -t), at(c.u1, -t), at(c.u1, t), at(c.u0, t)];
+            out.push(PlanItem::Polygon {
+                id,
+                pen: Pen::Symbol,
+                points: corners.to_vec(),
+            });
+            if o.is_penetration() {
+                line(&mut out, corners[0], corners[2]);
+                line(&mut out, corners[1], corners[3]);
+            }
+        }
         OpeningKind::Hole => {
             if c.v0 > 1e-9 {
                 let t = w.thickness / 2.0;
@@ -3269,6 +3360,7 @@ mod tests {
                 no_inner_sill: false,
                 threshold: false,
                 threshold_material: None,
+                penetration: None,
                 setback: None,
                 reveal: None,
                 division: None,
@@ -3289,7 +3381,8 @@ mod tests {
             .iter()
             .filter(|it| matches!(it, PlanItem::Line { id, pen: Pen::Overhead, .. } if *id == hole))
             .collect();
-        assert_eq!(dashed.len(), 4);
+        // its outline and, as a penetration, its cross
+        assert_eq!(dashed.len(), 6);
         // drawn over the wall's fill, so it shows
         let fill = items
             .iter()

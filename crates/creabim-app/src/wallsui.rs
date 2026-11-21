@@ -629,9 +629,73 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
             }
         }
         OpeningKind::Hole => {
-            ui.label(crate::i18n::t(
-                "A bare opening: a hole through the wall with no door or window in it",
-            ));
+            // a penetration as PilonDesigner sets it up: its shape, how
+            // the plan shows it, its mark and label
+            let mut p = o.penetration.clone().unwrap_or_default();
+            let mut shown = o.is_penetration();
+            let mut changed = false;
+            if crate::props::choice(
+                ui,
+                "Shape",
+                &mut p.round,
+                &[
+                    (false, "Rectangle", "Width along the wall and height"),
+                    (true, "Circle", "Its width is the diameter"),
+                ],
+            ) {
+                if p.round {
+                    o.height = o.width;
+                }
+                changed = true;
+                label = "Shape";
+            }
+            if crate::props::choice(
+                ui,
+                "In plan",
+                &mut shown,
+                &[
+                    (true, "Penetration", "Outline, cross and label"),
+                    (false, "Hole", "Just the outline"),
+                ],
+            ) {
+                p.hole_only = !shown;
+                changed = true;
+                label = "In plan";
+            }
+            if shown {
+                let mut tag = p.tag.clone().unwrap_or_default();
+                crate::props::row(ui, "Mark", |ui| {
+                    if crate::props::fill(ui, egui::TextEdit::singleline(&mut tag).hint_text("P"))
+                        .changed()
+                    {
+                        p.tag = (!tag.trim().is_empty()).then(|| tag.clone());
+                        changed = true;
+                        label = "Mark";
+                    }
+                });
+                let mut show_tag = !p.hide_tag;
+                if crate::props::switch(ui, &mut show_tag, crate::i18n::t("Mark in the label"))
+                    .changed()
+                {
+                    p.hide_tag = !show_tag;
+                    changed = true;
+                    label = "Mark in the label";
+                }
+                let mut show_size = !p.hide_size;
+                if crate::props::switch(ui, &mut show_size, crate::i18n::t("Size in the label"))
+                    .changed()
+                {
+                    p.hide_size = !show_size;
+                    changed = true;
+                    label = "Size in the label";
+                }
+            }
+            if changed {
+                o.penetration = Some(p);
+            }
+            if o.is_round() && (o.height - o.width).abs() > 1e-9 {
+                o.height = o.width;
+            }
         }
     }
     label

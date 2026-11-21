@@ -465,6 +465,7 @@ impl SketchDraft {
             no_inner_sill: false,
             threshold: false,
             threshold_material: None,
+            penetration: None,
             setback: None,
             reveal: None,
             division: None,

@@ -877,6 +877,7 @@ What a schedule lists.
 - `"occupancy"`
 - `"board_diagram"`
 - `"lintel_list"`
+- `"ventilation_hrv"`
 - `"fire_risk"`
 
 ### Callout

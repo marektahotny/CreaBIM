@@ -199,6 +199,7 @@ pub fn holes(host: ElementId, w: &Wall, pattern: &ScreenPattern) -> Vec<Opening>
             no_inner_sill: false,
             threshold: false,
             threshold_material: None,
+            penetration: None,
             setback: None,
             reveal: None,
             division: None,

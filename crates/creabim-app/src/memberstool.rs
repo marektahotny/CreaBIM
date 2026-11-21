@@ -88,7 +88,7 @@ impl Default for MemberSettings {
             footing_material: Some("Concrete, cast in place".into()),
             door: [0.8, 1.97, 0.0],
             window: [1.2, 1.3, 0.9],
-            hole: [1.0, 1.0, 1.0],
+            hole: [0.3, 0.3, 0.3],
             column_section: None,
             beam_section: None,
             beam_corner: Default::default(),
