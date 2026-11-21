@@ -13404,6 +13404,21 @@ impl CreaBimApp {
                 }
             }
             // the assembly editor open on an assembly of that name
+            // the plan's top of range raised this far over its level, m
+            if let (Some(id), Ok(t)) = (id, std::env::var("CREABIM_SHOT_TOP")) {
+                if let (Ok(t), Some(e)) = (t.parse::<f64>(), self.doc.model().get(id).cloned()) {
+                    let mut after = e.clone();
+                    if let ElementKind::View(v) = &mut after.kind {
+                        if let ViewKind::Plan { level, .. } = v.kind {
+                            v.graphics.range.top =
+                                Some(creabim_core::graphics::RangeLimit { level, offset: t });
+                        }
+                    }
+                    let _ = self
+                        .doc
+                        .commit(creabim_core::Transaction::new("top").replace(e, after));
+                }
+            }
             if let Ok(a) = std::env::var("CREABIM_SHOT_ASSEMBLY") {
                 let id = self.doc.model().iter().find(|e| e.name == a).map(|e| e.id);
                 self.open_assemblies(id);

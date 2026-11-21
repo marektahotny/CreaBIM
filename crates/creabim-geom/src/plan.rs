@@ -1050,6 +1050,44 @@ pub fn next_level_above(model: &Model, z: f64) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
+/// The roofs of other levels whose eaves lie between the cut and the top
+/// of the range (George 2026-11-21: a storey's plan with its top raised
+/// to the roof shows its outline): eaves, ridges and hips as a thin line
+/// of a dash and two dots, as all above the cut. A roof of the plan's own
+/// level is drawn with its other members.
+fn above_cut_roofs(model: &Model, level: ElementId, cut_z: f64, top_z: f64) -> Vec<PlanItem> {
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Roof(r) = &e.kind else {
+            continue;
+        };
+        if r.level == level {
+            continue;
+        }
+        let low = crate::members::roof_low(model, r);
+        if !(low > cut_z + 1e-3 && low < top_z - 1e-3) {
+            continue;
+        }
+        for it in crate::members::member_plan(model, e, -1e4) {
+            match it {
+                PlanItem::Line { id, a, b, .. } => out.push(PlanItem::Line {
+                    id,
+                    pen: Pen::Overhead,
+                    a,
+                    b,
+                }),
+                PlanItem::Polygon { id, points, .. } => out.push(PlanItem::Polygon {
+                    id,
+                    pen: Pen::Overhead,
+                    points,
+                }),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
 /// Every wall standing above the cut whose base is under the top of the
 /// range (a plan's "Horná hrana rezu"), of whatever level: its outline as
 /// a thin line of a dash and two dots, as all above the cut (George
@@ -1157,6 +1195,14 @@ pub fn plan_view_with(
     // dashed over the cut fills: openings above the cut
     let mut overhead: Vec<PlanItem> = Vec::new();
     let joins = creabim_core::wall_joins(model);
+    // the top of the range: what starts above it is not drawn
+    let range_top = {
+        let own_z = model.level(own).map_or(0.0, |l| l.elevation);
+        graphics
+            .range
+            .top
+            .map_or_else(|| next_level_above(model, own_z), |t| t.z(model, own_z))
+    };
     let cuts = crate::scene::all_cuts(model);
     let cutters: std::collections::HashSet<ElementId> = cuts.iter().map(|c| c.1).collect();
     let targets: std::collections::HashSet<ElementId> = cuts.iter().map(|c| c.0).collect();
@@ -1507,6 +1553,10 @@ pub fn plan_view_with(
             ElementKind::Valve(v) if v.host(model).is_some_and(|p| p.level == level) => {
                 items.extend(crate::valves::valve_plan(model, e, v));
             }
+            // a roof over the top of the range is not seen (George
+            // 2026-11-21: the plan's "Horná hrana rezu" decides)
+            ElementKind::Roof(r)
+                if on_level && crate::members::roof_low(model, r) >= range_top - 1e-3 => {}
             k if on_level && creabim_core::members::is_member(k) => {
                 items.extend(crate::members::member_plan(model, e, cut_height));
                 // a mass or sweep below the cut: its top seen tinted, in
@@ -1685,6 +1735,9 @@ pub fn plan_view_with(
         let cut_z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
         let core_only = is_foundation_plan(model, level, cut_height);
         items.extend(above_cut_walls(model, cut_z, top_z, core_only, &joins));
+        if !core_only {
+            items.extend(above_cut_roofs(model, level, cut_z, top_z));
+        }
     }
     if !sliced.is_empty() {
         let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;

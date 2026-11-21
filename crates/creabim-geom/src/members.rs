@@ -361,6 +361,17 @@ fn ring(items: &mut Vec<PlanItem>, e: &Element, pen: Pen, pts: &[DVec2]) {
 
 /// How a member on `level` is drawn in its plan, cut `cut` metres above
 /// the level.
+/// The lowest point of a roof's top faces: its eaves.
+pub fn roof_low(model: &Model, r: &Roof) -> f64 {
+    let base = r.base(model);
+    r.faces()
+        .iter()
+        .flat_map(|f| f.outline.iter().map(|p| f.z(*p)).collect::<Vec<_>>())
+        .fold(f64::INFINITY, f64::min)
+        .min(f64::MAX)
+        + base
+}
+
 pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
     let mut items = Vec::new();
     let Some(level) = members::level_of(&e.kind) else {
@@ -411,34 +422,53 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
             }
         }
         ElementKind::Roof(r) => {
-            // seen from above: eaves, and the ridges and hips between faces
-            let mut seen: Vec<(DVec2, DVec2)> = Vec::new();
+            // seen from above: eaves, and the ridges and hips between faces;
+            // wholly above the cut (a floor plan whose range reaches up to
+            // it) a thin line of a dash and two dots (George 2026-11-21)
+            let edge = if roof_low(model, r) > z + 1e-6 {
+                Pen::Overhead
+            } else {
+                Pen::Projection
+            };
+            // every face's edges, each once, with how many faces share it
+            let mut seen: Vec<(DVec2, DVec2, usize)> = Vec::new();
             for f in r.faces() {
                 let n = f.outline.len();
                 for i in 0..n {
                     let (a, b) = (f.outline[i], f.outline[(i + 1) % n]);
-                    let dup = seen.iter().any(|(p, q)| {
+                    if a.distance(b) <= 1e-6 {
+                        continue;
+                    }
+                    match seen.iter_mut().find(|(p, q, _)| {
                         (p.distance(a) < 1e-6 && q.distance(b) < 1e-6)
                             || (p.distance(b) < 1e-6 && q.distance(a) < 1e-6)
-                    });
-                    if !dup && a.distance(b) > 1e-6 {
-                        seen.push((a, b));
-                        items.push(PlanItem::Line {
-                            id: e.id,
-                            pen: Pen::Projection,
-                            a,
-                            b,
-                        });
+                    }) {
+                        Some(s) => s.2 += 1,
+                        None => seen.push((a, b, 1)),
                     }
                 }
             }
-            // the wall plate, where the roof meets the walls, dashed
-            if r.overhang > 1e-6 {
+            // above the cut only its outline, the edges of one face: no
+            // ridges, hips or valleys (George 2026-11-21)
+            for (a, b, faces) in seen {
+                if edge == Pen::Overhead && faces > 1 {
+                    continue;
+                }
+                items.push(PlanItem::Line {
+                    id: e.id,
+                    pen: edge,
+                    a,
+                    b,
+                });
+            }
+            // the wall plate, where the roof meets the walls, dashed (not
+            // over a floor plan's walls, under it)
+            if r.overhang > 1e-6 && edge == Pen::Projection {
                 ring(&mut items, e, Pen::Hidden, &r.boundary);
             }
             // holes through it, crossed
             for h in creabim_core::slab::holes_of(model, e) {
-                items.extend(crate::plan::hole_marks(e.id, &h, Pen::Projection));
+                items.extend(crate::plan::hole_marks(e.id, &h, edge));
             }
             // seen from above the roof plan shows which way each face falls
             let top = r
@@ -923,6 +953,86 @@ mod tests {
             DVec2::new(w, d),
             DVec2::new(0.0, d),
         ]
+    }
+
+    /// George 2026-11-21: a storey's plan with its top raised over the
+    /// eaves shows the roof above, only its outline, a dash and two dots.
+    #[test]
+    fn a_plan_reaching_up_to_the_roof_shows_its_outline_only() {
+        let (mut m, l) = model();
+        let up = Element::new(
+            "Roof level",
+            ElementKind::Level(Level {
+                elevation: 3.0,
+                height: 3.0,
+            }),
+        );
+        let ul = up.id;
+        // no overhang: its eaves on the level, not under it
+        let mut r = Roof::new(ul, rect(10.0, 6.0), RoofShape::Hip);
+        r.overhang = 0.0;
+        let roof = Element::new("R", ElementKind::Roof(r));
+        let rid = roof.id;
+        let mut v = creabim_core::View::plan(l);
+        v.kind = creabim_core::ViewKind::Plan {
+            level: l,
+            cut_height: 1.2,
+        };
+        let ve = Element::new("Plan", ElementKind::View(v));
+        let vid = ve.id;
+        Transaction::new("r")
+            .insert(up)
+            .insert(roof)
+            .insert(ve)
+            .apply(&mut m)
+            .unwrap();
+        let roof_lines = |m: &Model| -> Vec<Pen> {
+            crate::section::view_drawing(m, vid)
+                .unwrap()
+                .items
+                .iter()
+                .filter_map(|it| match it {
+                    PlanItem::Line { id, pen, .. } if *id == rid => Some(*pen),
+                    _ => None,
+                })
+                .collect()
+        };
+        // up to the next level only: the roof on it is left out
+        assert!(roof_lines(&m).is_empty());
+        let before = m.get(vid).unwrap().clone();
+        let mut after = before.clone();
+        if let ElementKind::View(v) = &mut after.kind {
+            v.graphics.range.top = Some(creabim_core::graphics::RangeLimit {
+                level: l,
+                offset: 6.0,
+            });
+        }
+        Transaction::new("top")
+            .replace(before, after)
+            .apply(&mut m)
+            .unwrap();
+        // the four eaves, no ridge or hips
+        let pens = roof_lines(&m);
+        assert_eq!(pens.len(), 4, "{pens:?}");
+        assert!(pens.iter().all(|p| *p == Pen::Overhead));
+        // and so with the range drawing the storeys above, dashed
+        let before = m.get(vid).unwrap().clone();
+        let mut after = before.clone();
+        if let ElementKind::View(v) = &mut after.kind {
+            v.graphics.range.top = None;
+            v.graphics.range.overhead = true;
+            v.graphics.range.top = Some(creabim_core::graphics::RangeLimit {
+                level: ul,
+                offset: 3.0,
+            });
+        }
+        Transaction::new("over")
+            .replace(before, after)
+            .apply(&mut m)
+            .unwrap();
+        let pens = roof_lines(&m);
+        assert_eq!(pens.len(), 4, "{pens:?}");
+        assert!(pens.iter().all(|p| *p == Pen::Overhead));
     }
 
     #[test]
