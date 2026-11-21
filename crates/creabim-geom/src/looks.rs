@@ -624,7 +624,9 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
         if cells.is_nan() || cells >= MAX_PATTERN_LINES as f64 {
             return out;
         }
-        let (i0, j0) = ((lo.x / w).floor() as i64, (lo.y / h).floor() as i64);
+        // one cell more below and to the left: a stroke may stand out of
+        // its cell (a pebble over the tile's edge)
+        let (i0, j0) = ((lo.x / w).floor() as i64 - 1, (lo.y / h).floor() as i64 - 1);
         let (i1, j1) = ((hi.x / w).ceil() as i64, (hi.y / h).ceil() as i64);
         for i in i0..i1 {
             for j in j0..j1 {

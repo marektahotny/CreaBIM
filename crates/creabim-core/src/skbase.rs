@@ -274,7 +274,9 @@ fn kind_of(m: &BaseMaterial) -> (&'static str, Hatch) {
         Hatch::Brick
     } else if c.starts_with("Tehly") || c.contains("AKU") || c.contains("órobetón") {
         masonry(m)
-    } else if m.id == "zelezobeton" || m.id == "dt-300" {
+    } else if m.id == "dt-300" {
+        Hatch::FormBlock
+    } else if m.id == "zelezobeton" {
         Hatch::Reinforced
     } else if c == "Minerálna vlna" || c == "Polystyrén" {
         Hatch::Insulation
@@ -733,10 +735,8 @@ mod tests {
         let ElementKind::Material(r) = &m.get(rc).unwrap().kind else {
             unreachable!()
         };
-        assert_eq!(
-            (dt.lambda, dt.density, dt.hatch),
-            (r.lambda, r.density, r.hatch)
-        );
+        assert_eq!((dt.lambda, dt.density), (r.lambda, r.density));
+        assert_eq!((dt.hatch, r.hatch), (Hatch::FormBlock, Hatch::Reinforced));
         // once is enough
         assert!(dt_blocks(m).is_none());
     }

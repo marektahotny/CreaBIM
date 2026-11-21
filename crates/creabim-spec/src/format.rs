@@ -170,6 +170,7 @@ spec_enum! {
         Gravel = "gravel",
         Insulation = "insulation",
         Membrane = "membrane",
+        FormBlock = "form-block",
     }
 }
 

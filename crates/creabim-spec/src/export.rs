@@ -602,6 +602,7 @@ fn material(e: &Element, id: &str, m: &core::Material) -> f::Material {
         core::Hatch::Ground => f::Hatch::Ground,
         core::Hatch::EarthFill => f::Hatch::EarthFill,
         core::Hatch::Gravel => f::Hatch::Gravel,
+        core::Hatch::FormBlock => f::Hatch::FormBlock,
         core::Hatch::Insulation => f::Hatch::Insulation,
         core::Hatch::Membrane => f::Hatch::Membrane,
     };
