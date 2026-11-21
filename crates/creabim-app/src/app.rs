@@ -71,6 +71,8 @@ mod fittingsui;
 mod fixturelegend;
 #[path = "floorheatui.rs"]
 mod floorheatui;
+#[path = "fragmentui.rs"]
+mod fragmentui;
 #[path = "gridvis.rs"]
 mod gridvis;
 #[path = "heatlossui.rs"]
@@ -471,6 +473,8 @@ pub struct CreaBimApp {
     joinery: Option<joineryui::JoineryEdit>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
+    /// The window for ISOVER Fragment's table 30, while it is open.
+    table30: Option<fragmentui::Table30>,
     /// The Sun and shadows window is open.
     sun_open: bool,
     /// The graphics card drawing, for the Sun and shadows window.
@@ -679,6 +683,7 @@ impl CreaBimApp {
             masonry: None,
             masonry_pick: None,
             heat_source: None,
+            table30: None,
             floor_heat: None,
             radiators: None,
             cooling: None,
@@ -14023,6 +14028,7 @@ impl eframe::App for CreaBimApp {
         self.circuits_window(&ctx);
         self.joinery_window(&ctx);
         self.heat_source_window(&ctx);
+        self.table30_window(&ctx);
         self.net_calc_window(&ctx);
         self.auto_valves_window(&ctx);
         self.route_check_window(&ctx);
