@@ -146,6 +146,8 @@ pub fn placed_views_with(
         };
         // a turned site plan lies turned on paper
         d = crate::turn::turned(d, view.turn);
+        // the map or plot plan it was drawn over, lies under it
+        d = crate::refs::with_references(model, vp.view, view.turn, d, vp.crop);
         // its scale and pens as its view template gives them
         let view = creabim_core::styles::resolved(model, view);
         let looks = looks(vp.view, &view);

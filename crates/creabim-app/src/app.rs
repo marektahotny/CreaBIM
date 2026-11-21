@@ -519,6 +519,8 @@ impl CreaBimApp {
         crate::files::load_app_tables();
         // drawings write their own words (a window list's headings) in it too
         creabim_core::words::set_translator(crate::i18n::tr);
+        // sheets show the maps and plot plans their views are drawn over
+        creabim_geom::refs::set_provider(crate::trace::sheet_items);
         crate::handles::set_grip_style(settings.grips);
         crate::modal::set_bar_by_pointer(settings.edit_bar == "pointer");
         crate::handles::set_edit_display(settings.edit_edge_width, settings.edit_vertex_size);
