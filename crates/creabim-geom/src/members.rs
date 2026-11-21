@@ -138,6 +138,10 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
         }
         ElementKind::Part(_) | ElementKind::Site(_) => crate::parts::mesh_of(model, e)?,
         ElementKind::Pipe(p) => (crate::mep::pipe_mesh(model, p), crate::mep::color(p)),
+        ElementKind::Flashing(f) => (
+            crate::flashing::mesh(model, e.id, f),
+            crate::flashing::COLOUR,
+        ),
         _ => return None,
     })
 }

@@ -5312,7 +5312,7 @@ impl CreaBimApp {
                     (t, _) if t.draws_outline() || t == Tool::RoomSeparator => {
                         self.plan.status.take().unwrap_or_default()
                     }
-                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
+                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
                         .plan
                         .status
                         .take()
@@ -12146,6 +12146,12 @@ crate::props::row(ui, "File names", |ui| {
                         self.report(r, "Railings added along both sides.");
                     }
                 }
+                ElementKind::Flashing(f) => {
+                    let l = crate::flashingui::fields(ui, self.doc.model(), id, f);
+                    if !l.is_empty() {
+                        label = l;
+                    }
+                }
                 ElementKind::Pipe(p) => {
                     let l = crate::pipesui::pipe_fields(ui, p);
                     if !l.is_empty() {
@@ -14668,6 +14674,10 @@ pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::Detail(_) => "detail component",
         ElementKind::Pipe(p) if p.kind().is_air() => "duct",
         ElementKind::Pipe(_) => "pipe",
+        ElementKind::Flashing(f) => match f.item {
+            creabim_core::flashing::FlashingItem::Gutter(_) => "gutter",
+            creabim_core::flashing::FlashingItem::Downpipe(_) => "downpipe",
+        },
         ElementKind::Valve(_) => "valve",
         ElementKind::Circuit(_) => "circuit",
         ElementKind::Ceiling(_) => "ceiling",

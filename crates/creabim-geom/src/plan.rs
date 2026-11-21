@@ -1553,6 +1553,12 @@ pub fn plan_view_with(
             ElementKind::Valve(v) if v.host(model).is_some_and(|p| p.level == level) => {
                 items.extend(crate::valves::valve_plan(model, e, v));
             }
+            // gutters and downpipes, from whatever level: a downpipe runs
+            // down past the storeys under its roof
+            ElementKind::Flashing(f) => {
+                let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
+                items.extend(crate::flashing::plan_items(model, e, f, z));
+            }
             // a roof over the top of the range is not seen (George
             // 2026-11-21: the plan's "Horná hrana rezu" decides)
             ElementKind::Roof(r)

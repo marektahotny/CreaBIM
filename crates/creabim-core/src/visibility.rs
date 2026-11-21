@@ -146,7 +146,7 @@ impl Category {
             ElementKind::Guide(_) => Category::Guides,
             ElementKind::Column(_) => Category::Columns,
             ElementKind::Beam(_) => Category::Beams,
-            ElementKind::Roof(_) => Category::Roofs,
+            ElementKind::Roof(_) | ElementKind::Flashing(_) => Category::Roofs,
             ElementKind::Stair(_) => Category::Stairs,
             ElementKind::Railing(_) => Category::Railings,
             ElementKind::Object(_) => Category::Objects,

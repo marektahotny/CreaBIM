@@ -167,6 +167,8 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Stair => "stair",
         Tool::Railing => "railing",
         Tool::Footing => "footing",
+        Tool::Gutter => "gutter",
+        Tool::Downpipe => "downpipe",
         Tool::Level => "level",
         Tool::Align => "align-start-vertical",
         Tool::Object => "object",
@@ -201,6 +203,8 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::Stair
         | Tool::Railing
         | Tool::Footing
+        | Tool::Gutter
+        | Tool::Downpipe
         | Tool::Object
         | Tool::Extrusion
         | Tool::Sweep
@@ -315,6 +319,7 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::LintelList => "beam",
         ScheduleCategory::VentilationHrv => "wind",
         ScheduleCategory::BuildingFigures => "table-2",
+        ScheduleCategory::FlashingTable => "table-2",
         ScheduleCategory::Documents => "sheet-template",
         ScheduleCategory::MaterialLegend => "brick-wall",
         ScheduleCategory::PipeList => "table-2",

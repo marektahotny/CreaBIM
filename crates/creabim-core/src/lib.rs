@@ -23,6 +23,7 @@ pub mod electrical;
 pub mod element;
 pub mod fireparams;
 pub mod fixture;
+pub mod flashing;
 pub mod footing;
 pub mod garden;
 pub mod graphics;

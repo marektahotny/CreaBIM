@@ -881,6 +881,7 @@ What a schedule lists.
 - `"ventilation_hrv"`
 - `"building_figures"`
 - `"fire_risk"`
+- `"flashing_table"`
 
 ### Callout
 

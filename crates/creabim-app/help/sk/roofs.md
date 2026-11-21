@@ -33,3 +33,13 @@ Pôdorys, ktorý sa na strechu pozerá zhora, napríklad pôdorys strechy, kresl
 Vyberte steny a použite *Pripojiť vrch k streche/doske*: ich vrchy budú sledovať spodok strechy, zrezané podľa jej sklonu. Pozri [Steny](walls#base-and-top).
 
 > **Poznámka:** Sedlové a valbové strechy potrebujú konvexný obrys (bez vnútorných rohov). Na obryse do L zostane strecha plochá a *Vlastnosti* to oznámia.
+
+## Žľaby a zvody {#gutters-and-downpipes}
+
+Nástroj **Žľab** zavesí odkvapový žľab pozdĺž strechy: klikajte po odkvape strechy roh po rohu a potom znova kliknite na posledný bod alebo stlačte Enter. Žľab drží pri streche s odstupmi z hornej lišty: *Odstup* od línie odkvapu k zadnej hrane žľabu v pôdoryse a *Pod odkvapom* od vrchu strechy pri odkvape dole k hornej hrane žľabu. Tam vyberiete aj polkruhový alebo štvorcový žľab a jeho veľkosť.
+
+Nástroj **Zvod** osadí zvod na žľab, na ktorý kliknete. Presunutím zvod posúvate po jeho žľabe, alebo zadajte *Poloha na žľabe* vo *Vlastnostiach*. Žľab má k zvodom spád podľa *Spád* (mm na m): každý úsek klesá od najvyššieho bodu, v strede medzi dvoma zvodmi alebo na konci žľabu, k najbližšiemu zvodu.
+
+*Vlastnosti* zvodu ukazujú pôdorysnú plochu strechy, ktorá do neho odteká, a prietok Q = r · A · C, s r a C nastavenými na žľabe (predvolene 0,03 l/s·m² a 1,0). Pôdorys strechy kreslí žľaby, zvody, ich označenia a šípky spádu.
+
+**Tabuľka klampiarskych prvkov** (výkaz) uvádza každý prvok raz s označením (K-1, K-2…), značkou, popisom, rozvinutou šírkou, dĺžkou a príslušenstvom (háky, čelá, kotlíky, kolená, objímky) a pod ňou plochu strešných rovín, krytinu a dĺžky hrebeňa a nárožia. Umiestnite ju na výkres strechy.

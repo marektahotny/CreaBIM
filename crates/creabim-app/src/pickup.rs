@@ -33,6 +33,10 @@ pub fn tool_for(e: &Element) -> Option<Tool> {
         ElementKind::Roof(_) => Tool::Roof,
         ElementKind::Stair(_) => Tool::Stair,
         ElementKind::Railing(_) => Tool::Railing,
+        ElementKind::Flashing(f) => match f.item {
+            creabim_core::flashing::FlashingItem::Gutter(_) => Tool::Gutter,
+            creabim_core::flashing::FlashingItem::Downpipe(_) => Tool::Downpipe,
+        },
         ElementKind::Footing(_) => Tool::Footing,
         ElementKind::Shaft(_) => Tool::Shaft,
         ElementKind::Object(_) => Tool::Object,

@@ -147,6 +147,13 @@ impl Element {
             ElementKind::Join(j) => vec![j.a, j.b],
             ElementKind::Detail(d) => vec![d.view],
             ElementKind::Pipe(p) => vec![p.level],
+            // a downpipe goes with its gutter, a gutter with its roof
+            ElementKind::Flashing(f) => std::iter::once(f.level)
+                .chain(match &f.item {
+                    crate::flashing::FlashingItem::Downpipe(d) => Some(d.gutter),
+                    crate::flashing::FlashingItem::Gutter(_) => None,
+                })
+                .collect(),
             // a lintel goes with its door or window
             ElementKind::Beam(b) => std::iter::once(b.level)
                 .chain(b.lintel.as_ref().and_then(|l| l.opening))
@@ -212,6 +219,10 @@ impl Element {
             ElementKind::Detail(_) => "DetailItem",
             ElementKind::Pipe(p) if p.kind().is_air() => "IfcDuctSegment",
             ElementKind::Pipe(_) => "IfcPipeSegment",
+            ElementKind::Flashing(f) => match f.item {
+                crate::flashing::FlashingItem::Gutter(_) => "IfcPipeSegment",
+                crate::flashing::FlashingItem::Downpipe(_) => "IfcPipeSegment",
+            },
             ElementKind::Valve(v) => v.kind_def().map_or("IfcValve", |k| k.ifc.0),
             ElementKind::Circuit(_) => "IfcDistributionCircuit",
             ElementKind::Guide(_) => "Guide",
@@ -423,6 +434,7 @@ impl Element {
             }
             ElementKind::Detail(d) => d.validate(),
             ElementKind::Pipe(p) => p.validate(),
+            ElementKind::Flashing(f) => f.validate(),
             ElementKind::Valve(v) => v.validate(),
             ElementKind::Circuit(c) => c.validate(),
             ElementKind::Cut(c) => {
@@ -526,6 +538,8 @@ pub enum ElementKind {
     Pipe(crate::mep::Pipe),
     /// A valve or accessory on a pipe.
     Valve(crate::mep::Valve),
+    /// Sheet-metal work of the roof: a gutter or a downpipe.
+    Flashing(crate::flashing::Flashing),
     /// A final circuit of the electrical installation.
     Circuit(crate::electrical::Circuit),
     /// What the calculations found about rooms, pipes, valves and
@@ -595,6 +609,7 @@ impl ElementKind {
             ElementKind::Detail(_) => "Detail",
             ElementKind::Pipe(_) => "Pipe",
             ElementKind::Valve(_) => "Valve",
+            ElementKind::Flashing(_) => "Flashing",
             ElementKind::Circuit(_) => "Circuit",
         }
     }
@@ -2746,10 +2761,15 @@ pub enum ScheduleCategory {
     /// The building's areas and enclosed volume: built-up, living and
     /// usable area, Op = Oz + Os + Ov + Ot by STN 73 4055.
     BuildingFigures,
+    /// The table of sheet-metal items (tabuľka klampiarskych prvkov)
+    /// beside the roof plan: each item with its mark, drawn sign,
+    /// description, developed width, length and accessories, and the
+    /// roof's area, covering, ridges and hips under it.
+    FlashingTable,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 25] = [
+    pub const ALL: [ScheduleCategory; 26] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2775,6 +2795,7 @@ impl ScheduleCategory {
         ScheduleCategory::LintelList,
         ScheduleCategory::VentilationHrv,
         ScheduleCategory::BuildingFigures,
+        ScheduleCategory::FlashingTable,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2805,6 +2826,7 @@ impl ScheduleCategory {
             ScheduleCategory::LintelList => return "Lintel list".into(),
             ScheduleCategory::VentilationHrv => return "VZT – recuperation".into(),
             ScheduleCategory::BuildingFigures => return "Building figures".into(),
+            ScheduleCategory::FlashingTable => return "Table of sheet-metal items".into(),
         };
         format!("{one} Schedule")
     }
@@ -2844,6 +2866,7 @@ impl ScheduleCategory {
             ScheduleCategory::LintelList => "Lintel list",
             ScheduleCategory::VentilationHrv => "VZT – recuperation",
             ScheduleCategory::BuildingFigures => "Building figures",
+            ScheduleCategory::FlashingTable => "Table of sheet-metal items",
         }
     }
 
@@ -2856,6 +2879,7 @@ impl ScheduleCategory {
                     | ScheduleCategory::Documents
                     | ScheduleCategory::MaterialLegend
                     | ScheduleCategory::BoardDiagram
+                    | ScheduleCategory::FlashingTable
             )
     }
 

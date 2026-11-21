@@ -972,6 +972,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             if *category == creabim_core::ScheduleCategory::MaterialLegend {
                 return Some(crate::matlegend::drawing(view, &e.name, model));
             }
+            if *category == creabim_core::ScheduleCategory::FlashingTable {
+                return Some(crate::flashingtable::drawing(view, &e.name, model));
+            }
             if *category == creabim_core::ScheduleCategory::BoardDiagram {
                 return Some(crate::boarddiagram::drawing(view, &e.name, model));
             }
@@ -1044,6 +1047,16 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             d.items
                 .retain(|it| !crate::sitefoot::is_terrain(model, it.id()));
             crate::roofplan::apply(model, &mut d.items);
+            // the gutters and downpipes by their own outlines (their
+            // swept surfaces read as a black band at 1:100), their marks,
+            // and which way each gutter run falls
+            d.items.retain(|it| {
+                !matches!(
+                    model.get(it.id()).map(|e| &e.kind),
+                    Some(creabim_core::ElementKind::Flashing(_))
+                )
+            });
+            d.items.extend(crate::flashing::roof_plan(model, v.scale));
         }
     }
     // utility networks and the site's symbols belong to the site plan
