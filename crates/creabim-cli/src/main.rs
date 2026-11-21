@@ -44,6 +44,8 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
   creabim ifc <model> <out.ifc>        export a model to IFC4
   creabim import-ifc <in.ifc> <out>    import an IFC2X3, IFC4 or IFC4X3 file
   creabim ifcx <model> <out.ifcx>      export to IFC5 IFCX JSON (experimental)
+  creabim fragment <model> <out.json>  export the heated envelope as an ISOVER
+                                       Fragment project (docs/fragment-export.md)
   creabim import-ifcx <in.ifcx> <out>  import an IFC5 IFCX file (experimental)
   creabim plan <model> <level-name> <out.svg>
                                        draw a level's plan at 1:100
@@ -76,6 +78,8 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
                                        turn room labels written as notes
                                        (a name over an area) into rooms
   creabim glb <model> <out.glb>        export glTF for Blender, with element ids
+  creabim fbx <model> <out.fbx>        export the model in 3D as FBX for visualisation
+  creabim gbxml <model> <out.xml>      export the energy model (rooms, envelope) as gbXML
   creabim fcstd <model> <out.FCStd>    export a FreeCAD document
   creabim link <model> <file.blend|file.FCStd> <out-model>
                                        bring in (or reload) a linked file's objects";
@@ -200,6 +204,17 @@ fn main() -> ExitCode {
         }),
         ["glb", input, out] => load(input).and_then(|m| {
             std::fs::write(out, creabim_exchange::gltf::export_glb(&m)).map_err(|e| e.to_string())
+        }),
+        ["fbx", input, out] => load(input).and_then(|m| {
+            let title = project_name(input);
+            std::fs::write(out, creabim_exchange::fbx::export_fbx(&m, &title)).map_err(|e| e.to_string())
+        }),
+        ["gbxml", input, out] => load(input).and_then(|m| {
+            let (text, warnings) = creabim_geom::gbxml::export(&m);
+            for w in &warnings {
+                eprintln!("{w}");
+            }
+            std::fs::write(out, text).map_err(|e| e.to_string())
         }),
         ["fcstd", input, out] => load(input).and_then(|m| {
             let label = std::path::Path::new(out)
@@ -360,6 +375,13 @@ fn main() -> ExitCode {
             .and_then(|r| save_import(r, out)),
         ["ifcx", input, out] => load(input)
             .and_then(|m| std::fs::write(out, export_ifcx(&m)).map_err(|e| e.to_string())),
+        ["fragment", input, out] => load(input).and_then(|m| {
+            let (text, warnings) = creabim_geom::fragment::export(&m);
+            for w in &warnings {
+                eprintln!("{w}");
+            }
+            std::fs::write(out, text).map_err(|e| e.to_string())
+        }),
         ["import-ifcx", input, out] => read_text(input)
             .and_then(|text| import_ifcx(&text).map_err(|e| format!("{input}: {e}")))
             .and_then(|r| save_import(r, out)),

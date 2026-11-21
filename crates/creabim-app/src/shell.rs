@@ -971,6 +971,12 @@ impl CreaBimApp {
             Item::new("export.glb", "glTF (.glb) for Blender")
                 .icon("box")
                 .hint("Every element as a mesh with its CreaBIM id, so edits saved in Blender come back to the same elements."),
+            Item::new("export.fbx", "FBX (.fbx) for visualisation")
+                .icon("box")
+                .hint("The whole model in 3D for Twinmotion, Lumion, Enscape, D5, 3ds Max or Blender: every element with its materials and colours, grouped by storey and by what it is (walls, slabs, windows…)."),
+            Item::new("export.gbxml", "Energy model as gbXML (.xml)")
+                .icon("thermometer")
+                .hint("Rooms as spaces with their outer, inner and underground walls, floors and roofs, facing their way, the windows and doors in them, build-ups with U and layers, windows with Uw and g. For OpenStudio, IES VE, DesignBuilder and other energy tools."),
             Item::new("export.fcstd", "FreeCAD (.FCStd)")
                 .icon("freecad")
                 .hint("Every element as a solid with its BIM type and CreaBIM id; open it in FreeCAD, edit, save, and link it back."),
@@ -989,6 +995,12 @@ impl CreaBimApp {
             )
             .icon("file")
             .hint("A view at its true size in millimetres, a sheet in paper millimetres. Lines keep their colours, widths and dashes, on layers by what they are."),
+            Item::new("export.fragment", "Energy assessment for ISOVER Fragment (.json)")
+                .icon("thermometer")
+                .hint("The heated envelope for Fragment's Projektové hodnotenie: walls by orientation, floors (PV1/PVT), ceilings and roofs with their build-ups' U, windows and doors with Uw, heated areas and volumes. Open it there from a local file and choose the municipality."),
+            Item::new("fragment.table30", "Table 30 for ISOVER Fragment…")
+                .icon("thermometer")
+                .hint("Fragment works out the energy need; type it here and see what goes into which column of table 30 for the heat pump or electric heating, by Fragment's own factors."),
             Item::new("export.xlsx", "Schedules to Excel (.xlsx)")
                 .icon("table-2")
                 .hint("A summary, then a sheet for each schedule, with numbers as numbers so the spreadsheet can sum them."),
@@ -1983,9 +1995,12 @@ impl CreaBimApp {
                 }
             }
             "export.glb" | "export.fcstd" | "export.ifcx" | "export.ifc4" | "export.pdf"
-            | "export.svg" | "export.xlsx" => self.export(head),
+            | "export.svg" | "export.xlsx" | "export.fragment" | "export.fbx" | "export.gbxml" => {
+                self.export(head)
+            }
             "export.dxf" => self.export_dxf(arg),
             "export.folder" => self.open_export_folder(),
+            "fragment.table30" => self.open_table30(),
             "footing.foundation" => self.show_foundation_plan(),
             "placement" => {
                 self.placement = match index {
@@ -2531,6 +2546,39 @@ impl CreaBimApp {
                 let r = std::fs::write(&out, creabim_exchange::gltf::export_glb(self.doc.model()));
                 self.report(r, format!("Exported {out}. In Blender: File > Import > glTF, or use the CreaBIM add-on."));
             }
+            "export.fbx" => {
+                let Some(out) = self.export_to(with_extension(&self.path, "fbx")) else {
+                    return;
+                };
+                let bytes = creabim_exchange::fbx::export_fbx(self.doc.model(), &stem(&self.path));
+                let r = std::fs::write(&out, bytes);
+                self.report(r, format!("Exported {out}"));
+            }
+            "export.gbxml" => {
+                let default = with_extension(&self.path, "xml");
+                let default = format!("{}-gbxml.xml", default.trim_end_matches(".xml"));
+                let Some(out) = self.export_to(default) else {
+                    return;
+                };
+                let (text, warnings) = creabim_geom::gbxml::export(self.doc.model());
+                let r = std::fs::write(&out, text);
+                let ok = r.is_ok();
+                self.report(r, format!("Exported {out}"));
+                if ok && !warnings.is_empty() {
+                    let shown: Vec<&str> = warnings.iter().take(3).map(|s| s.as_str()).collect();
+                    let more = warnings.len().saturating_sub(shown.len());
+                    self.status = format!(
+                        "{}: {}{}",
+                        self.status,
+                        shown.join(" · "),
+                        if more > 0 {
+                            format!(" (+{more})")
+                        } else {
+                            String::new()
+                        }
+                    );
+                }
+            }
             "export.fcstd" => {
                 let Some(out) = self.export_to(with_extension(&self.path, "FCStd")) else {
                     return;
@@ -2550,6 +2598,31 @@ impl CreaBimApp {
             }
             // first how walls and slabs go out (MU20), then where
             "export.ifc4" => self.ifc_dialog = true,
+            "export.fragment" => {
+                let default = with_extension(&self.path, "json");
+                let default = format!("{}-fragment.json", default.trim_end_matches(".json"));
+                let Some(out) = self.export_to(default) else {
+                    return;
+                };
+                let (text, warnings) = creabim_geom::fragment::export(self.doc.model());
+                let r = std::fs::write(&out, text);
+                let ok = r.is_ok();
+                self.report(r, format!("Exported {out} for ISOVER Fragment"));
+                if ok && !warnings.is_empty() {
+                    let shown: Vec<&str> = warnings.iter().take(3).map(|s| s.as_str()).collect();
+                    let more = warnings.len().saturating_sub(shown.len());
+                    self.status = format!(
+                        "{}: {}{}",
+                        self.status,
+                        shown.join(" · "),
+                        if more > 0 {
+                            format!(" (+{more})")
+                        } else {
+                            String::new()
+                        }
+                    );
+                }
+            }
             "export.xlsx" => {
                 let Some(out) = self.export_to(with_extension(&self.path, "xlsx")) else {
                     return;
