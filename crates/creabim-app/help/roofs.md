@@ -43,3 +43,9 @@ The **Downpipe** tool puts a downpipe on the gutter clicked. Move a downpipe to 
 A downpipe's *Properties* show the plan area of roof that drains to it and the flow from it, Q = r · A · C, with r and C set on the gutter (0,03 l/s·m² and 1,0 by default). The roof plan draws each gutter, its downpipes, their marks and the fall's arrows.
 
 The **Table of sheet-metal items** (a schedule) lists each item once with its mark (K-1, K-2…), its sign, its description, its developed width, its length and its accessories (hooks, end caps, outlets, elbows, clamps), and under it the roof planes' area, the covering and the ridge and hip lengths. Place it on the roof plan's sheet.
+
+A downpipe's size follows its gutter's width (gutter 80 → downpipe 75, 110 → 100, 150 → 100). While *Size by the gutter* is on, the downpipe follows every change of its gutter; typing a size of its own turns it off.
+
+**Parapet capping**: click on a parapet wall. The capping is laid along its whole top on an OSB board and XPS in a fall towards the roof, with a leg and a drip down each face; its developed width comes from the wall's thickness. The roof's side is found by itself (*Roof on the wall's left* turns it). The corner strip at the parapet's inner foot is an item of the table of its own, and under the table is the parapet's insulation (inner faces and top).
+
+**Chimney flashing**: click on a chimney (a part pulled up from a plan outline) and it is flashed all round where it comes through the roof. **Roof outlet** puts an outlet on the roof where you click; the table counts them in pieces. The windows' outer sills come into the table by themselves, from the windows in the model.

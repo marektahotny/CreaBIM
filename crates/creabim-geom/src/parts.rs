@@ -197,7 +197,7 @@ pub fn sweep_mesh(profile: &[DVec2], path: &[DVec3], closed: bool) -> TriMesh {
 }
 
 /// The shoelace area of `p`, positive counter-clockwise.
-fn signed_area(p: &[DVec2]) -> f64 {
+pub(crate) fn signed_area(p: &[DVec2]) -> f64 {
     let n = p.len();
     (0..n).map(|i| p[i].perp_dot(p[(i + 1) % n])).sum::<f64>() / 2.0
 }
