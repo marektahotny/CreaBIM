@@ -2739,10 +2739,13 @@ pub enum ScheduleCategory {
     /// The take-off of the ventilation with heat recovery: the units,
     /// boxes, ducts and terminals as drawn, priced from the catalogue.
     VentilationHrv,
+    /// The building's areas and enclosed volume: built-up, living and
+    /// usable area, Op = Oz + Os + Ov + Ot by STN 73 4055.
+    BuildingFigures,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 24] = [
+    pub const ALL: [ScheduleCategory; 25] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2767,6 +2770,7 @@ impl ScheduleCategory {
         ScheduleCategory::BoardDiagram,
         ScheduleCategory::LintelList,
         ScheduleCategory::VentilationHrv,
+        ScheduleCategory::BuildingFigures,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2796,6 +2800,7 @@ impl ScheduleCategory {
             ScheduleCategory::BoardDiagram => return "Board diagram".into(),
             ScheduleCategory::LintelList => return "Lintel list".into(),
             ScheduleCategory::VentilationHrv => return "VZT – recuperation".into(),
+            ScheduleCategory::BuildingFigures => return "Building figures".into(),
         };
         format!("{one} Schedule")
     }
@@ -2834,6 +2839,7 @@ impl ScheduleCategory {
             ScheduleCategory::BoardDiagram => "Board diagram",
             ScheduleCategory::LintelList => "Lintel list",
             ScheduleCategory::VentilationHrv => "VZT – recuperation",
+            ScheduleCategory::BuildingFigures => "Building figures",
         }
     }
 
