@@ -989,6 +989,9 @@ impl CreaBimApp {
             )
             .icon("file")
             .hint("A view at its true size in millimetres, a sheet in paper millimetres. Lines keep their colours, widths and dashes, on layers by what they are."),
+            Item::new("export.fragment", "Energy assessment for ISOVER Fragment (.json)")
+                .icon("thermometer")
+                .hint("The heated envelope for Fragment's Projektové hodnotenie: walls by orientation, floors (PV1/PVT), ceilings and roofs with their build-ups' U, windows and doors with Uw, heated areas and volumes. Open it there from a local file and choose the municipality."),
             Item::new("export.xlsx", "Schedules to Excel (.xlsx)")
                 .icon("table-2")
                 .hint("A summary, then a sheet for each schedule, with numbers as numbers so the spreadsheet can sum them."),
@@ -1983,7 +1986,7 @@ impl CreaBimApp {
                 }
             }
             "export.glb" | "export.fcstd" | "export.ifcx" | "export.ifc4" | "export.pdf"
-            | "export.svg" | "export.xlsx" => self.export(head),
+            | "export.svg" | "export.xlsx" | "export.fragment" => self.export(head),
             "export.dxf" => self.export_dxf(arg),
             "export.folder" => self.open_export_folder(),
             "footing.foundation" => self.show_foundation_plan(),
@@ -2550,6 +2553,31 @@ impl CreaBimApp {
             }
             // first how walls and slabs go out (MU20), then where
             "export.ifc4" => self.ifc_dialog = true,
+            "export.fragment" => {
+                let default = with_extension(&self.path, "json");
+                let default = format!("{}-fragment.json", default.trim_end_matches(".json"));
+                let Some(out) = self.export_to(default) else {
+                    return;
+                };
+                let (text, warnings) = creabim_geom::fragment::export(self.doc.model());
+                let r = std::fs::write(&out, text);
+                let ok = r.is_ok();
+                self.report(r, format!("Exported {out} for ISOVER Fragment"));
+                if ok && !warnings.is_empty() {
+                    let shown: Vec<&str> = warnings.iter().take(3).map(|s| s.as_str()).collect();
+                    let more = warnings.len().saturating_sub(shown.len());
+                    self.status = format!(
+                        "{}: {}{}",
+                        self.status,
+                        shown.join(" · "),
+                        if more > 0 {
+                            format!(" (+{more})")
+                        } else {
+                            String::new()
+                        }
+                    );
+                }
+            }
             "export.xlsx" => {
                 let Some(out) = self.export_to(with_extension(&self.path, "xlsx")) else {
                     return;

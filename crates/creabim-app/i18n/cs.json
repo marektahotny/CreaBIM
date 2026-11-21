@@ -1,4 +1,7 @@
 {
+ "Energy assessment for ISOVER Fragment (.json)": "Energetické hodnocení pro ISOVER Fragment (.json)",
+ "The heated envelope for Fragment's Projektové hodnotenie: walls by orientation, floors (PV1/PVT), ceilings and roofs with their build-ups' U, windows and doors with Uw, heated areas and volumes. Open it there from a local file and choose the municipality.": "Vytápěná obálka pro Projektové hodnocení ve Fragmentu: stěny podle orientace, podlahy (PV1/PVT), stropy a střechy s U jejich skladeb, okna a dveře s Uw, vytápěné plochy a objemy. Ve Fragmentu jej otevři z místního souboru a vyber obec.",
+ "Exported {out} for ISOVER Fragment": "Exportováno {out} pro ISOVER Fragment",
  "\nElement by element:\n": "\nPrvek po prvku:\n",
  "\nNotes:\n": "\nPoznámky:\n",
  "    Calibrate…": "    Kalibrovat…",

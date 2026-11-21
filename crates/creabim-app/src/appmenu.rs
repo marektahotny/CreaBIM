@@ -2117,6 +2117,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_energy_assessment_goes_out_for_isover_fragment() {
+        let mut app = test_app();
+        let dir = std::env::temp_dir().join(format!("creabim-fragment-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        app.path = dir.join("house.creabim").display().to_string();
+        app.export("export.fragment");
+        assert!(app.status.starts_with("Exported "), "{}", app.status);
+        let text = std::fs::read_to_string(dir.join("house-fragment.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert!(v["Skladba"]["stavby"].is_object() && v["popis_zakazky"].is_object());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn after_an_export_the_status_bar_offers_its_folder() {
         let mut app = test_app();
         let dir = std::env::temp_dir().join(format!("creabim-export-{}", std::process::id()));
