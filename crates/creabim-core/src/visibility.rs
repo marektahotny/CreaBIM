@@ -287,7 +287,21 @@ pub fn without(model: &Model, hidden: &HashSet<ElementId>) -> Model {
         })
         .map(|e| e.id)
         .collect();
-    m.retain(|e| match &e.kind {
+    // nothing that is in the model left out: the model itself, with its
+    // revision (and the 3D scene already built for it)
+    if removed.is_empty() {
+        return m;
+    }
+    // what was left out, in a fixed order: the same for the same copy
+    let key = {
+        use std::hash::{Hash, Hasher};
+        let mut ids: Vec<&ElementId> = removed.iter().collect();
+        ids.sort();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        ids.hash(&mut h);
+        h.finish()
+    };
+    m.retain_derived(key, |e| match &e.kind {
         ElementKind::Cut(c) => !removed.contains(&c.target) && !removed.contains(&c.cutter),
         _ => !removed.contains(&e.id),
     });

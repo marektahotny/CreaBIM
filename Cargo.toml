@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "1.1.2"
+version = "0.6.4"
 edition = "2021"
 license = "GPL-3.0-or-later"
 authors = ["Regis Benoit Brice Nde Tene"]
@@ -31,12 +31,14 @@ indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
 
 # Shipping builds: small and fast. Measured on 2026-11-05: 38.5 MB -> 26.0 MB.
-# Nothing catches panics (no catch_unwind), so they can abort.
+# Panics unwind: a drawing that fails on a worker is logged and left
+# out instead of closing the app, and a crash on the window's thread
+# still writes the work to the autosave on its way out (app autosave.rs).
 [profile.release]
 lto = "fat"
 codegen-units = 1
 strip = "symbols"
-panic = "abort"
+panic = "unwind"
 
 # Day-to-day testing at near release speed, without the long link:
 # cargo build --profile fast -p creabim-app

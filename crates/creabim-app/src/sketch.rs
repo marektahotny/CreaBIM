@@ -172,6 +172,59 @@ pub fn hint(shape: Shape, draft: Option<&SketchDraft>) -> String {
     .into()
 }
 
+static NETWORK: std::sync::Mutex<Option<creabim_core::utility::NetKind>> =
+    std::sync::Mutex::new(None);
+
+/// The kind of utility network the sketch tool draws now (the Cadastre
+/// tab's "Utility network" button), or none for plain sketches.
+pub fn network() -> Option<creabim_core::utility::NetKind> {
+    NETWORK.lock().map(|n| *n).unwrap_or(None)
+}
+
+/// Make the sketch tool draw utility networks of `kind`, or plain sketches.
+pub fn set_network(kind: Option<creabim_core::utility::NetKind>) {
+    if let Ok(mut n) = NETWORK.lock() {
+        *n = kind;
+    }
+    if kind.is_some() {
+        set_mark(None);
+    }
+}
+
+static NET_STATE: std::sync::Mutex<creabim_core::utility::NetState> =
+    std::sync::Mutex::new(creabim_core::utility::NetState::Proposed);
+
+/// Whether the networks drawn now are proposed, existing or to go.
+pub fn net_state() -> creabim_core::utility::NetState {
+    NET_STATE.lock().map(|n| *n).unwrap_or_default()
+}
+
+pub fn set_net_state(s: creabim_core::utility::NetState) {
+    if let Ok(mut n) = NET_STATE.lock() {
+        *n = s;
+    }
+}
+
+static MARK: std::sync::Mutex<Option<creabim_core::utility::SiteMark>> =
+    std::sync::Mutex::new(None);
+
+/// The site plan symbol the sketch tool places now (two clicks: where,
+/// and the way it faces), or none.
+pub fn mark() -> Option<creabim_core::utility::SiteMark> {
+    MARK.lock().map(|n| *n).unwrap_or(None)
+}
+
+pub fn set_mark(m: Option<creabim_core::utility::SiteMark>) {
+    if let Ok(mut n) = MARK.lock() {
+        *n = m;
+    }
+    if m.is_some() {
+        if let Ok(mut n) = NETWORK.lock() {
+            *n = None;
+        }
+    }
+}
+
 /// A sketch being drawn. The plane is in model coordinates (absolute
 /// heights) until the sketch is finished and given a level.
 #[derive(Clone, Debug)]
@@ -408,6 +461,17 @@ impl SketchDraft {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            threshold_material: None,
+            penetration: None,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
+            performance: None,
         };
         let e = Element::new("Opening", ElementKind::Opening(o));
         let id = e.id;
@@ -421,7 +485,24 @@ impl SketchDraft {
         if self.points.len() < 2 && self.radius.is_none() {
             return Ok(None);
         }
-        let sketch = self.placed(doc, closed);
+        let mut sketch = self.placed(doc, closed);
+        // drawn in a site plan, it is the site plan's
+        sketch.view = self.pane.filter(|v| {
+            matches!(doc.model().get(*v).map(|e| &e.kind),
+                Some(ElementKind::View(w)) if w.graphics.range.is_site())
+        });
+        // drawn with the Cadastre tab's utility network button
+        if let Some(m) = mark() {
+            sketch.mark = Some(m);
+            sketch.points.truncate(2);
+            sketch.closed = false;
+        } else if let Some(kind) = network() {
+            sketch.net = Some(creabim_core::utility::UtilityLine {
+                kind,
+                state: net_state(),
+                ..Default::default()
+            });
+        }
         let e = Element::new("Sketch", ElementKind::Sketch(sketch));
         let id = e.id;
         doc.commit(Transaction::new("Draw sketch").insert(e))?;
@@ -715,7 +796,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
         .count();
     match sk.circle {
         Some(_) => {
-            ui.label("A circle");
+            ui.label(crate::i18n::t("A circle"));
         }
         None => {
             let n = sk.segment_count();
@@ -768,7 +849,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
     // column, a remove icon at its end (MU35)
     ui.add_space(4.0);
     crate::props::row(ui, "Constraints", |ui| {
-        ui.label(format!("{}", sk.constraints.len()))
+        ui.label(crate::i18n::tr(&format!("{}", sk.constraints.len())))
     });
     if sk.constraints.is_empty() {
         crate::props::note(ui, "None yet. Add one below; the sketch moves to meet it.");
@@ -1046,6 +1127,67 @@ pub fn draw_marks_in_pane(
         }
     }
     draw_marks(painter, model, selection, &project, &show);
+}
+
+/// The sketch as a utility network in the site plan (PilonDesigner's
+/// Inžinierska sieť): its kind, whether existing, proposed or to go, and
+/// what is written after its code. The name of the change, if any.
+pub fn network_fields(ui: &mut egui::Ui, sk: &mut Sketch) -> Option<&'static str> {
+    use creabim_core::utility::{NetKind, NetState};
+    let t = crate::i18n::t;
+    let mut label = None;
+    let width = ui.available_width().min(220.0);
+    let now = sk.net.as_ref().map(|n| n.kind);
+    crate::app::helpui::combo(ui, "Utility network")
+        .selected_text(match now {
+            Some(k) => format!("{} – {}", k.code(), t(k.label())),
+            None => t("– a plain line –").to_string(),
+        })
+        .width(width)
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(now.is_none(), t("– a plain line –")).clicked() && now.is_some() {
+                sk.net = None;
+                label = Some("Utility network");
+            }
+            for k in NetKind::ALL {
+                let text = format!("{} – {}", k.code(), t(k.label()));
+                if ui.selectable_label(now == Some(k), text).clicked() && now != Some(k) {
+                    let mut n = sk.net.clone().unwrap_or_default();
+                    n.kind = k;
+                    sk.net = Some(n);
+                    label = Some("Utility network");
+                }
+            }
+        })
+        .response
+        .on_hover_text(t(
+            "Colour, line type, layer and code by the kind of network: proposed heavy, existing thin, cancelled with crosses; a sewer has arrows the way it was drawn",
+        ));
+    let Some(n) = sk.net.as_mut() else {
+        return label;
+    };
+    let state = n.state;
+    crate::app::helpui::combo(ui, "State")
+        .selected_text(t(state.label()))
+        .width(width)
+        .show_ui(ui, |ui| {
+            for st in NetState::ALL {
+                if ui.selectable_label(state == st, t(st.label())).clicked() && state != st {
+                    n.state = st;
+                    label = Some("Utility network");
+                }
+            }
+        });
+    crate::props::row(ui, "Description", |ui| {
+        if ui
+            .add(egui::TextEdit::singleline(&mut n.note).hint_text("DN 150"))
+            .on_hover_text(t("Written after the code in the line: a size, a material"))
+            .changed()
+        {
+            label = Some("Utility network");
+        }
+    });
+    label
 }
 
 #[cfg(test)]

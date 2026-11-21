@@ -152,7 +152,8 @@ pub fn build(model: &Model, code: &str, s: &Settings) -> Option<ModelNetwork> {
         };
         let floor = model.level(o.level).map_or(0.0, |l| l.elevation);
         for c in fixture::connectors(model, e) {
-            if c.kind.code() != code || !matches!(c.kind, ConnKind::SV | ConnKind::TV) {
+            if c.kind.code() != code || !matches!(c.kind, ConnKind::SV | ConnKind::TV | ConnKind::K)
+            {
                 continue;
             }
             let at = c.at + DVec3::Z * floor;
@@ -323,6 +324,7 @@ fn valve_role(k: &creabim_core::mep::ValveKind) -> (AccessoryRole, Option<f64>) 
         "vyvazovaci" => (R::Balancing, None),
         "vodomer" => (R::WaterMeter, None),
         "krabica" => (R::ValveBox, None),
+        "odvzdusnenie" | "vypustenie" => (R::TeeTap, None),
         _ => (R::Other, k.zeta),
     }
 }
@@ -434,6 +436,8 @@ mod tests {
                 inner_mm: s.inner_mm,
                 height_mm: None,
                 insulation_mm: 0.0,
+                insulation_set: false,
+                mark: None,
             }),
         )
     }

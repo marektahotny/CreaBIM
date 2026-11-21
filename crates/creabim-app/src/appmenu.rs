@@ -26,6 +26,37 @@ pub(crate) enum CloseState {
     Failed(String),
 }
 
+/// Save as picked a file that is there already: the app's own question,
+/// Replace or not (Windows' own one could fall behind the app window).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Overwrite {
+    pub path: String,
+    pub then: OverwriteThen,
+}
+
+/// What a Replace goes on with.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum OverwriteThen {
+    /// Save as… from the menu.
+    SaveAs,
+    /// Saving before closing (Save the changes).
+    CloseSave,
+}
+
+/// Replace the file?: its heading, its line and the file's name.
+fn overwrite_texts(path: &str) -> (String, String, String) {
+    let file = std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
+        .to_string();
+    (
+        crate::i18n::tr("The file already exists. Replace it?"),
+        crate::i18n::tr("What is in it now is lost; the project is written there instead."),
+        file,
+    )
+}
+
 /// How long Save spins at least, so it is seen, and how long "Saved."
 /// holds before CreaBIM closes (the page fades out in its last 0.3 s).
 const SAVING_AT_LEAST: std::time::Duration = std::time::Duration::from_millis(450);
@@ -162,6 +193,8 @@ impl CreaBimApp {
 
     /// Let the close through: saved, or the changes let go.
     fn close_now(&mut self, ctx: &egui::Context) {
+        // saved, or the changes let go on purpose: nothing to offer back
+        self.autosave_clear();
         self.close_ask = false;
         self.close_state = CloseState::Ask;
         self.hide_close_dialog();
@@ -186,7 +219,15 @@ impl CreaBimApp {
                 }
                 let r = if self.never_saved() || retry.is_some() {
                     let start = with_extension(&self.path, "creabim");
-                    match crate::files::pick_save(&start, "Save the project as", "creabim") {
+                    match crate::files::pick_save_path(&start, "Save the project as", "creabim") {
+                        // a file there already: the app asks first, the
+                        // question waits meanwhile
+                        Some(path) if crate::files::ask_overwrite(&path) => {
+                            self.close_state = retry.map_or(CloseState::Ask, CloseState::Failed);
+                            self.ask_overwrite(path, OverwriteThen::CloseSave);
+                            ctx.request_repaint();
+                            return;
+                        }
                         Some(path) => {
                             let was = std::mem::replace(&mut self.path, path);
                             let r = self.save_file();
@@ -240,10 +281,115 @@ impl CreaBimApp {
         }
     }
 
+    /// Save as picked `path`, a file there already: Replace or not is
+    /// asked in the app's own window.
+    pub(crate) fn ask_overwrite(&mut self, path: String, then: OverwriteThen) {
+        crate::actlog::line(format!("save as: {path} is there, asking to replace it"));
+        self.overwrite = Some(Overwrite { path, then });
+    }
+
+    /// The answer to Replace the file?: `yes` writes over it, no goes back.
+    pub(crate) fn overwrite_answer(&mut self, ctx: &egui::Context, yes: bool) {
+        let Some(o) = self.overwrite.take() else {
+            return;
+        };
+        self.hide_overwrite_dialog();
+        crate::actlog::line(format!(
+            "save as: {} {}",
+            o.path,
+            if yes {
+                "replaced"
+            } else {
+                "kept, nothing saved"
+            }
+        ));
+        match (o.then, yes) {
+            (OverwriteThen::SaveAs, true) => self.save_as_to(o.path),
+            (OverwriteThen::SaveAs, false) => {
+                self.status = crate::i18n::tr("Save as cancelled: the file there is kept.");
+            }
+            (OverwriteThen::CloseSave, true) => {
+                // the file is there now: Save writes it, then CreaBIM closes
+                self.path = o.path;
+                self.close_state = CloseState::Saving {
+                    since: std::time::Instant::now() - std::time::Duration::from_millis(50),
+                    done: None,
+                    retry: None,
+                };
+            }
+            // back to Save the changes
+            (OverwriteThen::CloseSave, false) => {}
+        }
+        ctx.request_repaint();
+    }
+
+    /// Replace the file?: the web window in the middle of the app (a page
+    /// of the app window, so never behind it), or egui's own without pages.
+    pub(super) fn overwrite_window(&mut self, ctx: &egui::Context) {
+        let Some(o) = self.overwrite.clone() else {
+            return;
+        };
+        if self.shell.web.is_some() {
+            self.show_overwrite_dialog(ctx);
+            // the project behind waits
+            egui::Modal::new(egui::Id::new("overwrite-ask"))
+                .frame(egui::Frame::NONE)
+                .backdrop_color(egui::Color32::TRANSPARENT)
+                .show(ctx, |_| {});
+            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                self.overwrite_answer(ctx, false);
+            }
+            return;
+        }
+        let (title, line, file) = overwrite_texts(&o.path);
+        let (mut yes, mut no) = (false, false);
+        egui::Modal::new(egui::Id::new("overwrite-ask")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.heading(&title);
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new(&file).strong());
+            ui.label(&line);
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                yes = ui.button(crate::i18n::tr("Replace")).clicked();
+                no = ui.button(crate::i18n::tr("Cancel")).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Escape));
+            });
+        });
+        if yes || no {
+            self.overwrite_answer(ctx, yes);
+        }
+    }
+
+    /// The Replace the file? window's state, for its page.
+    pub(super) fn overwrite_state_json(&self) -> serde_json::Value {
+        let Some(o) = &self.overwrite else {
+            return serde_json::Value::Null;
+        };
+        let (title, line, file) = overwrite_texts(&o.path);
+        let dir = std::path::Path::new(&o.path)
+            .parent()
+            .map(|d| d.display().to_string())
+            .unwrap_or_default();
+        serde_json::json!({
+            "title": title,
+            "line": line,
+            "file": file,
+            "dir": dir,
+            "yes": crate::i18n::tr("Replace"),
+            "no": crate::i18n::tr("Cancel"),
+            "hint": crate::i18n::tr("back without saving"),
+        })
+    }
+
     /// Closing with unsaved changes: Save, Don't save or Cancel. The web
     /// window of REV02 where the pages are; the plain one otherwise.
     pub(super) fn close_window(&mut self, ctx: &egui::Context) {
         if !self.close_ask {
+            return;
+        }
+        // Replace the file? is asked over it
+        if self.overwrite.is_some() {
             return;
         }
         if self.shell.web.is_some() {
@@ -280,20 +426,21 @@ impl CreaBimApp {
         let (mut save, mut discard, mut cancel) = (false, false, false);
         egui::Modal::new(egui::Id::new("close-unsaved")).show(ctx, |ui| {
             ui.set_width(400.0);
-            ui.heading(format!("Save the changes to {name}?"));
+            ui.heading(crate::i18n::tr(&format!("Save the changes to {name}?")));
             ui.add_space(6.0);
-            ui.label("They are lost if you close without saving.");
+            ui.label(crate::i18n::t("They are lost if you close without saving."));
             ui.label(
-                egui::RichText::new("Enter saves, Esc goes back to the project.")
+                egui::RichText::new(crate::i18n::t("Enter saves, Esc goes back to the project."))
                     .small()
                     .color(pal.muted),
             );
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                save = ui.button("Save").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter));
-                discard = ui.button("Don't save").clicked();
-                cancel =
-                    ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+                save = ui.button(crate::i18n::t("Save")).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Enter));
+                discard = ui.button(crate::i18n::t("Don't save")).clicked();
+                cancel = ui.button(crate::i18n::t("Cancel")).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Escape));
             });
         });
         if cancel {
@@ -324,7 +471,7 @@ impl CreaBimApp {
 
 /// Where a manual update check looks: the project's releases page. Nothing
 /// is fetched in the background; the page opens in the browser when asked.
-pub(crate) const RELEASES: &str = "https://github.com/chopinregis/CreaBIM/releases";
+pub(crate) const RELEASES: &str = "https://github.com/marektahotny/CreaBIM/releases";
 
 /// One way to start a project in the New project window.
 pub(crate) struct Start {
@@ -336,21 +483,14 @@ pub(crate) struct Start {
     pub icon: &'static str,
 }
 
-/// The two large choices at the top of New project.
-pub(crate) const STARTS: [Start; 2] = [
-    Start {
-        id: "new.empty",
-        title: "Empty project",
-        line: "Two levels and nothing else, in your units. The everyday start.",
-        icon: "file-plus",
-    },
-    Start {
-        id: "new.sample",
-        title: "Starter house",
-        line: "A complete two-storey house with drawings and sheets, ready to change.",
-        icon: "house",
-    },
-];
+/// The large choice at the top of New project; the recent projects
+/// follow it.
+pub(crate) const STARTS: [Start; 1] = [Start {
+    id: "new.empty",
+    title: "Empty project",
+    line: "Two levels and nothing else, in your units. The everyday start.",
+    icon: "file-plus",
+}];
 
 /// The samples to learn from, each showing one thing.
 pub(crate) const SAMPLES: [Start; 6] = [
@@ -574,6 +714,7 @@ impl CreaBimApp {
         let mut grips = self.shell.settings.grips;
         let mut spacing = self.plan.snap.step_um;
         let mut marks = self.plan.snap.marks;
+        let mut autosave = self.shell.settings.autosave_minutes;
         let mut paper = self.shell.settings.drawing_paper.clone();
         let mut navigation = self.shell.settings.navigation.clone();
         let mut draw_font = self.shell.settings.drawing_font.clone();
@@ -601,7 +742,7 @@ impl CreaBimApp {
             ("Keymap", "keyboard"),
         ];
         let height = (area.height() - 80.0).clamp(300.0, 560.0);
-        crate::app::shell::window("Settings")
+        crate::app::shell::window(crate::i18n::tr("Settings"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(310.0, height / 2.0))
             .constrain_to(area)
@@ -640,7 +781,7 @@ impl CreaBimApp {
                         ui.painter().text(
                             egui::pos2(at.right() + 8.0, r.center().y),
                             egui::Align2::LEFT_CENTER,
-                            "Settings",
+                            crate::i18n::tr("Settings"),
                             egui::FontId::proportional(14.0),
                             p.text.gamma_multiply(t),
                         );
@@ -694,7 +835,7 @@ impl CreaBimApp {
                                 let yours = |ui: &mut egui::Ui| {
                                     ui.add_space(6.0);
                                     ui.label(
-                                        egui::RichText::new("Yours alone: it never changes anyone's drawings, and goes with you, not with the project.")
+                                        egui::RichText::new(crate::i18n::t("Yours alone: it never changes anyone's drawings, and goes with you, not with the project."))
                                             .weak()
                                             .small(),
                                     );
@@ -727,7 +868,7 @@ impl CreaBimApp {
                                                     }
                                                 })
                                                 .response
-                                                .on_hover_text("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white.");
+                                                .on_hover_text(crate::i18n::t("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white."));
                                         });
                                         crate::props::section(ui, "Drawing text");
                                         crate::props::row(ui, "Font", |ui| {
@@ -745,7 +886,7 @@ impl CreaBimApp {
                                                     .on_hover_text(crate::i18n::tr("Pick a font file (TTF or OTF) for the text of drawings: dimensions, tags, notes, title blocks. It is used on screen and carried in PDF and SVG. With none picked, Avenir Next Condensed is used where it is found: in a fonts folder beside the program or among the system's fonts."))
                                                     .clicked()
                                                 {
-                                                    if let Some(p) = rfd::FileDialog::new()
+                                                    if let Some(p) = crate::files::file_dialog()
                                                         .set_title(crate::i18n::tr("Font of the drawings"))
                                                         .add_filter("TrueType, OpenType", &["ttf", "otf"])
                                                         .pick_file()
@@ -804,14 +945,14 @@ impl CreaBimApp {
                                         }
                                         crate::props::section(ui, "Edit mode");
                                         crate::props::row(ui, "Edge width", |ui| {
-                                            ui.add(egui::Slider::new(&mut edge_w, 0.5..=3.0).step_by(0.25).suffix(" px"))
+                                            ui.add(egui::Slider::new(&mut edge_w, 0.5..=3.0).step_by(0.25).suffix(crate::i18n::t(" px")))
                                         });
                                         crate::props::row(ui, "Vertex size", |ui| {
-                                            ui.add(egui::Slider::new(&mut vert_s, 2.0..=10.0).step_by(1.0).suffix(" px"))
+                                            ui.add(egui::Slider::new(&mut vert_s, 2.0..=10.0).step_by(1.0).suffix(crate::i18n::t(" px")))
                                         });
                                         crate::props::section(ui, "3D view");
-                                        ui.checkbox(&mut axis_lines, "X and Y axes on the grid")
-                                            .on_hover_text("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it.");
+                                        ui.checkbox(&mut axis_lines, crate::i18n::t("X and Y axes on the grid"))
+                                            .on_hover_text(crate::i18n::t("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it."));
                                         yours(ui);
                                     }
                                     2 => {
@@ -831,7 +972,7 @@ impl CreaBimApp {
                                                 });
                                         });
                                         ui.label(
-                                            egui::RichText::new("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D.")
+                                            egui::RichText::new(crate::i18n::t("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D."))
                                                 .weak()
                                                 .small(),
                                         );
@@ -854,10 +995,10 @@ impl CreaBimApp {
                                                     }
                                                 });
                                         });
-                                        ui.checkbox(&mut marks, "Distance marks while dragging")
-                                            .on_hover_text("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it.");
+                                        ui.checkbox(&mut marks, crate::i18n::t("Distance marks while dragging"))
+                                            .on_hover_text(crate::i18n::t("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it."));
                                         ui.label(
-                                            egui::RichText::new("Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time.")
+                                            egui::RichText::new(crate::i18n::t("Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time."))
                                                 .weak()
                                                 .small(),
                                         );
@@ -876,20 +1017,44 @@ impl CreaBimApp {
                                                 });
                                         });
                                         ui.label(
-                                            egui::RichText::new("Saved with the project: everyone who opens it works in these units.")
+                                            egui::RichText::new(crate::i18n::t("Saved with the project: everyone who opens it works in these units."))
                                                 .weak()
                                                 .small(),
                                         );
                                     }
                                     _ => {
+                                        crate::props::section(ui, "Autosave");
+                                        crate::props::row(ui, "Every", |ui| {
+                                            egui::ComboBox::from_id_salt("settings.autosave").icon(crate::props::combo_icon)
+                                                .selected_text(match autosave {
+                                                    0 => crate::i18n::tr("Off"),
+                                                    m => crate::i18n::tr(&format!("{m} min")),
+                                                })
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for m in [0u32, 2, 5, 10, 15, 30] {
+                                                        let label = match m {
+                                                            0 => crate::i18n::tr("Off"),
+                                                            m => crate::i18n::tr(&format!("{m} min")),
+                                                        };
+                                                        ui.selectable_value(&mut autosave, m, label);
+                                                    }
+                                                });
+                                        });
+                                        ui.label(
+                                            egui::RichText::new(crate::i18n::t("While there are changes the project is written to Name.autosave.creabim beside it, and offered back if CreaBIM closes without saving. Saving keeps the file it replaces as Name.bak.creabim."))
+                                                .weak()
+                                                .small(),
+                                        );
+                                        ui.add_space(8.0);
                                         crate::props::section(ui, "Shortcuts");
                                         ui.label(
-                                            egui::RichText::new("Every key, by what it does. Ctrl+/ opens the list any time.")
+                                            egui::RichText::new(crate::i18n::t("Every key, by what it does. Ctrl+/ opens the list any time."))
                                                 .weak()
                                                 .small(),
                                         );
                                         ui.add_space(4.0);
-                                        keys = ui.button("Keyboard shortcuts…").clicked();
+                                        keys = ui.button(crate::i18n::t("Keyboard shortcuts…")).clicked();
                                     }
                                 }
                             });
@@ -909,6 +1074,10 @@ impl CreaBimApp {
             crate::handles::set_edit_display(edge_w, vert_s);
             self.shell.settings.edit_edge_width = edge_w;
             self.shell.settings.edit_vertex_size = vert_s;
+            self.shell.settings.store();
+        }
+        if autosave != self.shell.settings.autosave_minutes {
+            self.shell.settings.autosave_minutes = autosave;
             self.shell.settings.store();
         }
         if interaction != self.shell.settings.interaction {
@@ -982,7 +1151,7 @@ impl CreaBimApp {
         }
         let mut open = true;
         let mut pick = None;
-        crate::app::shell::window("New project")
+        crate::app::shell::window(crate::i18n::tr("New project"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -991,22 +1160,35 @@ impl CreaBimApp {
                 for s in STARTS.iter() {
                     if ui
                         .button(egui::RichText::new(s.title).strong())
-                        .on_hover_text(s.line)
+                        .on_hover_text(crate::i18n::tr(s.line))
                         .clicked()
                     {
-                        pick = Some(s.id);
+                        pick = Some(s.id.to_string());
+                    }
+                }
+                for (id, title, line) in &self.recent_cards {
+                    if ui
+                        .button(egui::RichText::new(title).strong())
+                        .on_hover_text(line)
+                        .clicked()
+                    {
+                        pick = Some(id.clone());
                     }
                 }
                 crate::props::section(ui, "Samples to learn from");
                 for s in SAMPLES.iter() {
-                    if ui.button(s.title).on_hover_text(s.line).clicked() {
-                        pick = Some(s.id);
+                    if ui
+                        .button(crate::i18n::tr(s.title))
+                        .on_hover_text(crate::i18n::tr(s.line))
+                        .clicked()
+                    {
+                        pick = Some(s.id.to_string());
                     }
                 }
             });
         self.new_project_classic = open && pick.is_none();
         if let Some(id) = pick {
-            self.run_action(ctx, id);
+            self.run_action(ctx, &id);
         }
     }
 }
@@ -1033,7 +1215,7 @@ impl CreaBimApp {
         let mut go = false;
         let mut cancel = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Export IFC")
+        crate::app::shell::window(crate::i18n::tr("Export IFC"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(230.0, 160.0))
             .constrain_to(area)
@@ -1041,7 +1223,7 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.set_width(460.0);
-                ui.label(egui::RichText::new("How walls, slabs and roofs go out").strong());
+                ui.label(egui::RichText::new(crate::i18n::t("How walls, slabs and roofs go out")).strong());
                 let choices = [
                     (
                         IfcBody::Modelled,
@@ -1068,13 +1250,13 @@ impl CreaBimApp {
                 }
                 ui.add_space(6.0);
                 ui.label(
-                    egui::RichText::new("Doors, windows, openings and everything else go out the same way in all three.")
+                    egui::RichText::new(crate::i18n::t("Doors, windows, openings and everything else go out the same way in all three."))
                         .weak(),
                 );
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    go = ui.button("Export…").clicked();
-                    cancel = ui.button("Cancel").clicked();
+                    go = ui.button(crate::i18n::t("Export…")).clicked();
+                    cancel = ui.button(crate::i18n::t("Cancel")).clicked();
                 });
             });
         if key(body) != self.shell.settings.ifc_body {
@@ -1111,33 +1293,47 @@ impl CreaBimApp {
         let mut open = true;
         let mut apply = false;
         let mut close = false;
-        let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Project information")
+        // the project's north turned: by an angle, or by a line picked in a plan
+        let mut north_turn: Option<f64> = None;
+        let mut model_turn: Option<f64> = None;
+        let mut north_line = false;
+        let mut fire_params = false;
+        let mut fire_doors = false;
+        // the plot's data asked of the cadastre
+        let mut cadastre = false;
+        let screen = crate::app::shell::window_room(ctx);
+        // side by side in columns as the room right of the project
+        // browser allows: project and sheets, site and place, fire safety
+        // (440 a column: the fire column's long labels and the S-JTSK fields
+        // fit without cutting or running into the next column)
+        let n = (((screen.width() - 30.0) / 456.0).floor() as usize).clamp(1, 3);
+        crate::app::shell::window(crate::i18n::tr("Project information"))
+            // an id by the columns: a size kept from another layout (the
+            // one-column window) is not reused
+            .id(egui::Id::new(("project.info.columns", n)))
             .open(&mut open)
-            .default_pos(area.center() - Vec2::new(200.0, 220.0))
-            .constrain_to(area)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(screen.center())
+            .constrain_to(screen)
             .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.set_width(400.0);
+                // the fields scroll and the buttons stay in sight
+                ui.set_width(n as f32 * 440.0 + (n - 1) as f32 * 16.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("project.info.scroll")
+                    .max_height((screen.height() - 140.0).max(200.0))
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
                 let text = |ui: &mut egui::Ui, label: &str, v: &mut String, hint: &str| {
-                    crate::props::row(ui, label, |ui| {
+                    crate::props::row_wrapped(ui, label, |ui| {
                         ui.add(
                             egui::TextEdit::singleline(v).vertical_align(egui::Align::Center)
-                                .hint_text(hint)
+                                .hint_text(crate::i18n::tr(hint))
                                 .desired_width(ui.available_width()),
                         );
                     });
                 };
-                crate::props::section(ui, "Project");
-                text(ui, "Name", &mut draft.name, "Maple Lane House");
-                text(ui, "Number", &mut draft.number, "Job number");
-                text(ui, "Client", &mut draft.client, "");
-                text(ui, "Status", &mut draft.status, "Planning application");
-                text(ui, "Issue date", &mut draft.issue_date, "");
-                crate::props::section(ui, "Site");
-                text(ui, "Site name", &mut draft.site_name, "");
-                text(ui, "Address", &mut draft.address, "");
                 let degrees = |ui: &mut egui::Ui, label: &str, v: &mut Option<f64>, range: f64| {
                     crate::props::row(ui, label, |ui| {
                         let mut on = v.is_some();
@@ -1155,37 +1351,174 @@ impl CreaBimApp {
                         }
                     });
                 };
+                // the parts: 0 project and sheets, 1 site and place, 2 fire
+                let parts: &[&[u8]] = match n {
+                    3 => &[&[0], &[1], &[2]],
+                    2 => &[&[0, 2], &[1]],
+                    _ => &[&[0, 1, 2]],
+                };
+                ui.columns(n, |cols| {
+                for (c, ui) in cols.iter_mut().enumerate() {
+                // nothing in a column reaches into the next one
+                let col = ui.max_rect();
+                ui.set_clip_rect(col.intersect(ui.clip_rect()));
+                for &part in parts[c] {
+                match part {
+                0 => {
+                crate::props::section(ui, "Project");
+                text(ui, "Name", &mut draft.name, "Maple Lane House");
+                text(ui, "Number", &mut draft.number, "Job number");
+                text(ui, "Client", &mut draft.client, "");
+                crate::props::row(ui, "Stage", |ui| {
+                    let shown = match creabim_core::project::stage_code(&draft.status) {
+                        Some(code) => format!("{} ({code})", draft.status.trim()),
+                        None => draft.status.clone(),
+                    };
+                    egui::ComboBox::from_id_salt("project.stage")
+                        .selected_text(shown)
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut draft.status, String::new(), "-");
+                            for (name, code) in creabim_core::project::STAGES {
+                                ui.selectable_value(
+                                    &mut draft.status,
+                                    name.to_string(),
+                                    format!("{name} ({code})"),
+                                );
+                            }
+                        });
+                });
+                text(ui, "Issue date", &mut draft.issue_date, "");
+                text(ui, "Revision", &mut draft.revision, "00");
+                crate::props::section(ui, "Title block");
+                text(ui, "Chief architect", &mut draft.architect, "");
+                text(ui, "Drawn by", &mut draft.drawn_by, "");
+                text(ui, "Responsible designer", &mut draft.designer, "");
+                crate::props::row(ui, "Logo", |ui| {
+                    crate::props::flow(ui, |ui| {
+                        if ui.button(crate::i18n::t("Choose…")).clicked() {
+                            if let Some(img) = crate::files::file_dialog()
+                                .add_filter("Picture", &["png", "jpg", "jpeg"])
+                                .pick_file()
+                                .and_then(|p| image::open(p).ok())
+                            {
+                                // a logo needs no more; the project stays light
+                                let img = if img.width().max(img.height()) > 1024 {
+                                    img.resize(1024, 1024, image::imageops::FilterType::Triangle)
+                                } else {
+                                    img
+                                };
+                                let rgba = img.to_rgba8();
+                                draft.logo = Some(creabim_core::project::Logo {
+                                    width: rgba.width(),
+                                    height: rgba.height(),
+                                    rgba: creabim_geom::raster::store_image(rgba.as_raw()),
+                                });
+                            }
+                        }
+                        if draft.logo.is_some() {
+                            if ui.button(crate::i18n::t("Remove")).clicked() {
+                                draft.logo = None;
+                            }
+                            ui.label(egui::RichText::new(crate::i18n::t("In the title block")).weak());
+                        }
+                    })
+                });
+                crate::props::section(ui, "Title pages");
+                text(ui, "Design office", &mut draft.office, "");
+                text(ui, "Office address and contact", &mut draft.office_contact, "");
+                let stage = creabim_geom::coverpage::heading(&creabim_core::project::ProjectInfo {
+                    cover_heading: String::new(),
+                    status: draft.status.clone(),
+                    ..Default::default()
+                });
+                crate::props::row(ui, "Heading", |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut draft.cover_heading)
+                            .vertical_align(egui::Align::Center)
+                            .hint_text(stage)
+                            .desired_width(ui.available_width()),
+                    );
+                });
+                }
+                1 => {
+                crate::props::section(ui, "Site");
+                text(ui, "Site name", &mut draft.site_name, "");
+                text(ui, "Address", &mut draft.address, "");
+                text(ui, "Plots", &mut draft.parcels, "1838/116");
+                text(ui, "Cadastral district", &mut draft.cadastre, "");
+                crate::props::row(ui, "Plot area", |ui| {
+                    let mut on = draft.plot_area.is_some();
+                    if ui.checkbox(&mut on, "").changed() {
+                        draft.plot_area = on.then_some(0.0);
+                    }
+                    if let Some(a) = &mut draft.plot_area {
+                        ui.add(
+                            egui::DragValue::new(a)
+                                .range(0.0..=1e7)
+                                .speed(1.0)
+                                .max_decimals(2)
+                                .suffix(" m²"),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "The summary report works out the built-up index and the green coefficient from it",
+                        ));
+                    }
+                });
+                if ui
+                    .add_enabled(
+                        draft.sjtsk.is_some(),
+                        egui::Button::new(crate::i18n::t("Plot from the cadastre")),
+                    )
+                    .on_hover_text(crate::i18n::t(
+                        "Asks the cadastre's public service for the parcel under the building: its number, district and area. Needs the S-JTSK origin and the internet.",
+                    ))
+                    .clicked()
+                {
+                    cadastre = true;
+                }
                 degrees(ui, "Latitude", &mut draft.latitude, 90.0);
                 degrees(ui, "Longitude", &mut draft.longitude, 180.0);
-                crate::props::row(ui, "Elevation", |ui| {
+                crate::props::row(ui, "site\u{4}Elevation", |ui| {
                     ui.add(
                         egui::DragValue::new(&mut draft.elevation)
                             .speed(0.01)
                             .suffix(" m"),
                     )
-                    .on_hover_text("The project's zero above sea level");
+                    .on_hover_text(crate::i18n::t("The project's zero above sea level"));
                 });
                 crate::props::row(ui, "S-JTSK origin", |ui| {
                     let mut on = draft.sjtsk.is_some();
                     if ui
                         .checkbox(&mut on, "")
-                        .on_hover_text("Where the project's origin (0, 0) lies in S-JTSK (EPSG:5514), east and north")
+                        .on_hover_text(crate::i18n::t("Where the project's origin (0, 0) lies in S-JTSK (EPSG:5514), east and north"))
                         .changed()
                     {
                         draft.sjtsk = on.then_some([0.0, 0.0]);
                     }
-                    if let Some([e, n]) = &mut draft.sjtsk {
-                        for (v, p) in [(e, "E "), (n, "N ")] {
-                            ui.add(
-                                egui::DragValue::new(v)
-                                    .speed(0.01)
-                                    .max_decimals(3)
-                                    .prefix(p)
-                                    .suffix(" m"),
-                            );
-                        }
+                    if let Some([e, _]) = &mut draft.sjtsk {
+                        ui.add(
+                            egui::DragValue::new(e)
+                                .speed(0.01)
+                                .max_decimals(3)
+                                .prefix("E ")
+                                .suffix(" m"),
+                        );
                     }
                 });
+                // north under east: both on one line ran into the next column
+                if let Some([_, n]) = &mut draft.sjtsk {
+                    crate::props::row(ui, "", |ui| {
+                        ui.add_space(22.0);
+                        ui.add(
+                            egui::DragValue::new(n)
+                                .speed(0.01)
+                                .max_decimals(3)
+                                .prefix("N ")
+                                .suffix(" m"),
+                        );
+                    });
+                }
                 crate::props::row(ui, "True north", |ui| {
                     ui.add(
                         egui::DragValue::new(&mut draft.true_north)
@@ -1193,8 +1526,55 @@ impl CreaBimApp {
                             .speed(0.5)
                             .suffix("°"),
                     )
-                    .on_hover_text("How far true north turns from the drawings' up, anticlockwise");
+                    .on_hover_text(crate::i18n::t("How far true north turns from the drawings' up, anticlockwise"));
                 });
+                crate::props::row_wrapped(ui, "Rotate project north", |ui| {
+                    let key = egui::Id::new("project.north.turn");
+                    let mut by: f64 = ui.data(|d| d.get_temp(key)).unwrap_or(0.0);
+                    ui.add(
+                        egui::DragValue::new(&mut by)
+                            .range(-180.0..=180.0)
+                            .speed(0.5)
+                            .max_decimals(4)
+                            .suffix("°"),
+                    )
+                    .on_hover_text(crate::i18n::t("The site plans turn by this angle, anticlockwise, on screen and paper. The model stays as it was drawn, so the floor plans keep their way up; the S-JTSK coordinates and heights stay true"));
+                    ui.data_mut(|d| d.insert_temp(key, by));
+                    if ui
+                        .add_enabled(by != 0.0, egui::Button::new(crate::i18n::t("Rotate")))
+                        .clicked()
+                    {
+                        north_turn = Some(by);
+                        ui.data_mut(|d| d.insert_temp(key, 0.0f64));
+                    }
+                });
+                crate::props::row_wrapped(ui, "Rotate the whole model", |ui| {
+                    let key = egui::Id::new("project.model.turn");
+                    let mut by: f64 = ui.data(|d| d.get_temp(key)).unwrap_or(0.0);
+                    ui.add(
+                        egui::DragValue::new(&mut by)
+                            .range(-180.0..=180.0)
+                            .speed(0.5)
+                            .max_decimals(4)
+                            .suffix("°"),
+                    )
+                    .on_hover_text(crate::i18n::t("The whole project (building, terrain, parcels, maps) turns about its origin by this angle, anticlockwise: the floor plans draw turned too. True north stays where it is on the ground, and the S-JTSK coordinates and heights stay true. A turn made with it is undone by the same angle the other way"));
+                    ui.data_mut(|d| d.insert_temp(key, by));
+                    if ui
+                        .add_enabled(by != 0.0, egui::Button::new(crate::i18n::t("Rotate")))
+                        .clicked()
+                    {
+                        model_turn = Some(by);
+                        ui.data_mut(|d| d.insert_temp(key, 0.0f64));
+                    }
+                });
+                if ui
+                    .button(crate::i18n::t("Align project north by a line in the plan…"))
+                    .on_hover_text(crate::i18n::t("Then click a line in a plan (a parcel boundary, a map line, a wall): the site plans turn so that it lies exactly level or upright, whichever is nearer; the floor plans stay as drawn"))
+                    .clicked()
+                {
+                    north_line = true;
+                }
                 crate::props::section(ui, "Building");
                 text(ui, "Name", &mut draft.building_name, "");
                 text(ui, "Use", &mut draft.building_use, "Dwelling");
@@ -1214,18 +1594,181 @@ impl CreaBimApp {
                             "The standards the building services' calculations follow: Slovak first, Czech where the building is in the Czech Republic",
                         ));
                 });
+                }
+                _ => {
+                crate::props::section(ui, "Fire safety");
+                if ui
+                    .button(crate::i18n::t("Fire calculation parameters…"))
+                    .on_hover_text(crate::i18n::t(
+                        "The norms' tables the fire calculations count with: read from your file, changed when a norm changes, saved with the project",
+                    ))
+                    .clicked()
+                {
+                    fire_params = true;
+                }
+                if ui
+                    .button(crate::i18n::t("Propose fire closures of doors"))
+                    .on_hover_text(crate::i18n::t(
+                        "Sets the fire rating STN 92 0201-2 asks of each door between fire zones (table 5) and in an outer wall inside another zone's fire-dangerous space (5.4.10), where the door has none or a weaker one",
+                    ))
+                    .clicked()
+                {
+                    fire_doors = true;
+                }
+                crate::props::row_wrapped(ui, "Structural system for fire", |ui| {
+                    const SYSTEMS: [(&str, &str); 5] = [
+                        ("N", "Non-combustible"),
+                        ("Za", "Mixed, 2.6.4 a)"),
+                        ("Zb", "Mixed, 2.6.4 b)"),
+                        ("Ha", "Combustible, 2.6.5 a)"),
+                        ("Hb", "Combustible, 2.6.5 b)"),
+                    ];
+                    let now = if draft.fire_system.is_empty() {
+                        "N"
+                    } else {
+                        draft.fire_system.as_str()
+                    };
+                    let shown = SYSTEMS
+                        .iter()
+                        .find(|s| s.0 == now)
+                        .map_or(now.to_string(), |s| crate::i18n::t(s.1).to_string());
+                    let mut picked = None;
+                    egui::ComboBox::from_id_salt("project.fire_system")
+                        .selected_text(shown)
+                        .show_ui(ui, |ui| {
+                            for (code, name) in SYSTEMS {
+                                if ui.selectable_label(now == code, crate::i18n::t(name)).clicked() {
+                                    picked = Some(code);
+                                }
+                            }
+                        });
+                    if let Some(c) = picked {
+                        draft.fire_system = if c == "N" { String::new() } else { c.into() };
+                    }
+                });
+                // the ETICS fire barriers (Weber ETICS manual s. 16-17)
+                crate::props::section(ui, "ETICS fire barriers");
+                {
+                    let eb = &mut draft.etics_barriers;
+                    let mut on = !eb.off;
+                    if crate::props::switch(ui, &mut on, "Made automatically")
+                        .on_hover_text(crate::i18n::t(
+                            "Bands of mineral wool in the burning insulation (EPS) of outer walls: the plinth one and the first about the lowest upper floor, over 12 m one about every floor (Weber ETICS manual p. 16, after STN 73 0802). The walls stay whole; the bands show in elevations, sections and 3D and the material take-off counts them.",
+                        ))
+                        .changed()
+                    {
+                        eb.off = !on;
+                    }
+                    if on {
+                        let mm = |ui: &mut egui::Ui, label: &str, v: f64, lo: f64, hi: f64| -> f64 {
+                            let mut x = (v * 1000.0).round();
+                            crate::props::row_wrapped(ui, label, |ui| {
+                                ui.add(
+                                    egui::DragValue::new(&mut x)
+                                        .range(lo..=hi)
+                                        .speed(10.0)
+                                        .suffix(" mm"),
+                                );
+                            });
+                            x / 1000.0
+                        };
+                        let top = mm(ui, "Plinth barrier top over ground", eb.plinth_top(), 100.0, 600.0);
+                        if (top - eb.plinth_top()).abs() > 1e-9 {
+                            eb.plinth_top = Some(top);
+                        }
+                        let w = mm(ui, "Barrier height", eb.width(), 150.0, 400.0);
+                        if (w - eb.width()).abs() > 1e-9 {
+                            eb.width = Some(w);
+                        }
+                        crate::props::switch(ui, &mut eb.every_floor, "At every floor");
+                        crate::props::switch(ui, &mut eb.over_openings, "Over the openings")
+                            .on_hover_text(crate::i18n::t(
+                                "Bands over each opening, 500 mm past its sides, instead of round the building about the floors; none over openings of at most 500 × 500 mm (Weber p. 17)",
+                            ));
+                        let mut parapet = !eb.no_parapet;
+                        if crate::props::switch(ui, &mut parapet, "Parapet band under a roof that burns")
+                            .changed()
+                        {
+                            eb.no_parapet = !parapet;
+                        }
+                        let model = self.doc.model();
+                        let wools: Vec<(creabim_core::ElementId, String)> =
+                            creabim_core::library::materials(model)
+                                .into_iter()
+                                .filter(|(_, _, m)| m.category == "insulation")
+                                .map(|(id, n, _)| (id, n.to_string()))
+                                .collect();
+                        crate::props::row_wrapped(ui, "Barrier material", |ui| {
+                            let shown = eb
+                                .material
+                                .and_then(|id| wools.iter().find(|w| w.0 == id))
+                                .map_or_else(|| crate::i18n::t("Façade mineral wool").to_string(), |w| w.1.clone());
+                            egui::ComboBox::from_id_salt("project.etics_wool")
+                                .selected_text(shown)
+                                .show_ui(ui, |ui| {
+                                    if ui
+                                        .selectable_label(eb.material.is_none(), crate::i18n::t("Façade mineral wool"))
+                                        .clicked()
+                                    {
+                                        eb.material = None;
+                                    }
+                                    for (id, n) in &wools {
+                                        if ui.selectable_label(eb.material == Some(*id), n).clicked() {
+                                            eb.material = Some(*id);
+                                        }
+                                    }
+                                });
+                        });
+                    }
+                }
+                crate::props::section(ui, "Fire separation distances");
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "The distance of each side of the building, as the norm's tables give it. Plans with the fire zones switched on draw the fire-dangerous space from it.",
+                    ))
+                    .weak(),
+                );
+                draft.fire_distances.resize(8, 0.0);
+                egui::Grid::new("project.fire_distances")
+                    .num_columns(4)
+                    .spacing([8.0, 4.0])
+                    .show(ui, |ui| {
+                        for (i, d) in draft.fire_distances.iter_mut().enumerate() {
+                            let side = creabim_core::words::tr(creabim_geom::firezones::FACING[i]);
+                            ui.label(side);
+                            ui.add(
+                                egui::DragValue::new(d)
+                                    .range(0.0..=200.0)
+                                    .speed(0.05)
+                                    .max_decimals(2)
+                                    .suffix(" m"),
+                            );
+                            if i % 2 == 1 {
+                                ui.end_row();
+                            }
+                        }
+                    });
+                if draft.fire_distances.iter().all(|d| *d <= 0.0) {
+                    draft.fire_distances.clear();
+                }
+                }
+                }
+                }
+                }
+                });
                 ui.label(
                     egui::RichText::new(
-                        "These fill the title blocks of every sheet (a value a sheet sets itself still wins) and name the project, site and building in IFC exports.",
+                        crate::i18n::t("These fill the title blocks of every sheet (a value a sheet sets itself still wins) and name the project, site and building in IFC exports."),
                     )
                     .weak(),
                 );
+                    });
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     apply = ui
-                        .add_enabled(draft != current, egui::Button::new("Apply"))
+                        .add_enabled(draft != current, egui::Button::new(crate::i18n::t("Apply")))
                         .clicked();
-                    close = ui.button("Close").clicked();
+                    close = ui.button(crate::i18n::t("Close")).clicked();
                 });
             });
         if apply {
@@ -1236,9 +1779,132 @@ impl CreaBimApp {
                 "Project information applied: the title blocks show it now.".to_string(),
             );
         }
+        if let Some(by) = north_turn {
+            let tx = creabim_core::project::turn_site_plans(self.doc.model(), by);
+            let r = self.doc.commit(tx);
+            self.report(
+                r,
+                crate::i18n::tr(&format!(
+                    "Site plans turned by {by}°; the floor plans stay as drawn. Ctrl+Z to undo."
+                )),
+            );
+        }
+        if let Some(by) = model_turn {
+            let tx = creabim_core::project::rotate_north(self.doc.model(), by);
+            let r = self.doc.commit(tx);
+            let now = self
+                .doc
+                .model()
+                .project_info()
+                .map_or(0.0, |(_, p)| p.true_north);
+            draft.true_north = now;
+            self.report(
+                r,
+                crate::i18n::tr(&format!(
+                    "Project north turned by {by}°: true north is now at {now}°. Ctrl+Z to undo."
+                )),
+            );
+        }
+        if cadastre {
+            self.status = match plot_from_cadastre(self.doc.model(), &mut draft) {
+                Ok(s) => s,
+                Err(e) => crate::i18n::tr(&format!(
+                    "The cadastre did not answer ({e}): check the connection, or type the plot's data in."
+                )),
+            };
+        }
+        if fire_params {
+            self.open_fire_params();
+        }
+        if fire_doors {
+            self.propose_fire_doors();
+        }
+        if north_line {
+            self.plan.north_pick = true;
+            close = true;
+            self.status = "Click a line in a plan: the site plans turn so that it lies level or upright. Esc leaves it.".into();
+        }
         self.project_open = open && !close;
         self.project_draft = self.project_open.then_some(draft);
     }
+}
+
+/// The parcel under the building asked of the cadastre's public service
+/// and written to `draft`: its number, district and area. The answer for
+/// the status line.
+fn plot_from_cadastre(
+    model: &creabim_core::Model,
+    draft: &mut creabim_core::ProjectInfo,
+) -> Result<String, String> {
+    use creabim_exchange::kataster::{eskn_url, parse_eskn, Register};
+    let [e0, n0] = draft.sjtsk.ok_or("no S-JTSK origin")?;
+    // the middle of the building, else the project's origin
+    let ends: Vec<glam::DVec2> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            creabim_core::ElementKind::Wall(w) => Some([w.start, w.end]),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let mid = if ends.is_empty() {
+        glam::DVec2::ZERO
+    } else {
+        let lo = ends.iter().fold(ends[0], |a, p| a.min(*p));
+        let hi = ends.iter().fold(ends[0], |a, p| a.max(*p));
+        (lo + hi) / 2.0
+    };
+    // read off the map under it (moved with the ground), else the origin
+    // turned by true north (anticlockwise from the drawings' up)
+    let p = match creabim_core::mapgroup::sjtsk_of(model, mid) {
+        Some(q)
+            if model
+                .project_info()
+                .is_some_and(|(_, i)| i.map_ref.is_some()) =>
+        {
+            q - glam::DVec2::new(e0, n0)
+        }
+        _ => glam::DVec2::from_angle(-draft.true_north.to_radians()).rotate(mid),
+    };
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+    let mut last = String::from("no parcel there");
+    for reg in [Register::C, Register::E] {
+        let url = eskn_url(e0 + p.x, n0 + p.y, reg);
+        let text = match agent.get(&url).call() {
+            Ok(r) => r.into_string().map_err(|e| e.to_string())?,
+            Err(e) => {
+                last = e.to_string();
+                continue;
+            }
+        };
+        let Some(k) = parse_eskn(&text, reg) else {
+            continue;
+        };
+        if let Some(n) = &k.number {
+            draft.parcels = n.clone();
+        }
+        if let Some(d) = &k.district {
+            draft.cadastre = d.clone();
+        }
+        if let Some(a) = k.area {
+            draft.plot_area = Some(a);
+        }
+        return Ok(format!(
+            "{}: {} {}, {} {}, {} m², {} {}. {}",
+            crate::i18n::t("From the cadastre"),
+            crate::i18n::t("plot no."),
+            k.number.as_deref().unwrap_or("?"),
+            crate::i18n::t("district"),
+            k.district.as_deref().unwrap_or("?"),
+            k.area.map_or("?".to_string(), |a| format!("{a:.0}")),
+            crate::i18n::t("sheet of ownership"),
+            k.sheet.as_deref().unwrap_or("?"),
+            crate::i18n::t("Apply writes it to the project. A plot of more parcels: add their numbers and areas by hand."),
+        ));
+    }
+    Err(last)
 }
 
 /// The logo's mark as a white texture, to tint with a theme's colour.
@@ -1373,6 +2039,31 @@ mod close_tests {
     }
 
     #[test]
+    fn replace_the_file_is_asked_in_the_app_and_answered_there() {
+        let ctx = egui::Context::default();
+        let (mut app, dir) = saved_app("overwrite");
+        edit(&mut app, "A");
+        let there = dir.join("there.creabim");
+        std::fs::write(&there, "old").unwrap();
+        let there = there.display().to_string();
+        // Cancel: nothing is written, the project keeps its file
+        let was = app.path.clone();
+        app.ask_overwrite(there.clone(), OverwriteThen::SaveAs);
+        assert_eq!(app.overwrite_state_json()["file"], "there.creabim");
+        app.overwrite_answer(&ctx, false);
+        assert!(app.overwrite.is_none() && app.unsaved());
+        assert_eq!(app.path, was);
+        assert_eq!(std::fs::read_to_string(&there).unwrap(), "old");
+        // Replace: the project is written over it
+        app.ask_overwrite(there.clone(), OverwriteThen::SaveAs);
+        app.overwrite_answer(&ctx, true);
+        assert!(app.overwrite.is_none() && !app.unsaved());
+        assert_eq!(app.path, there);
+        assert_ne!(std::fs::read_to_string(&there).unwrap_or_default(), "old");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn a_failed_save_keeps_the_project_open_and_offers_save_as() {
         let ctx = egui::Context::default();
         let (mut app, dir) = saved_app("fail");
@@ -1426,6 +2117,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_energy_assessment_goes_out_for_isover_fragment() {
+        let mut app = test_app();
+        let dir = std::env::temp_dir().join(format!("creabim-fragment-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        app.path = dir.join("house.creabim").display().to_string();
+        app.export("export.fragment");
+        assert!(app.status.starts_with("Exported "), "{}", app.status);
+        let text = std::fs::read_to_string(dir.join("house-fragment.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert!(v["Skladba"]["stavby"].is_object() && v["popis_zakazky"].is_object());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn after_an_export_the_status_bar_offers_its_folder() {
         let mut app = test_app();
         let dir = std::env::temp_dir().join(format!("creabim-export-{}", std::process::id()));
@@ -1470,8 +2175,8 @@ mod tests {
                 .find(|c| c["id"] == "footing.foundation")
                 .map(|c| c["label"].as_str().unwrap().to_string())
         };
-        // without one, it is made: 600 below the lowest level, the floor
-        // above as its underlay, and opened
+        // without one, it is made through the footings, with nothing of
+        // the floor above (George 2026-11-20), and opened
         placed(&mut app);
         assert_eq!(offered(&app).as_deref(), Some("Make a Foundation plan"));
         app.show_foundation_plan();
@@ -1480,7 +2185,7 @@ mod tests {
         let ElementKind::View(v) = &app.doc.model().get(made).unwrap().kind else {
             panic!()
         };
-        assert_eq!(v.underlay, creabim_core::Underlay::Above);
+        assert_eq!(v.underlay, creabim_core::Underlay::None);
         // once there is one, it is shown
         app.active_view = None;
         placed(&mut app);
@@ -1595,6 +2300,15 @@ mod tests {
         std::fs::write(&path, model.to_json()).unwrap();
         let mut app = CreaBimApp::blank(None);
         app.open_path(path.to_str().unwrap());
-        assert_eq!(app.doc.model().len(), model.len());
+        // every element, and the material take-off a project always lists
+        let takeoff = |m: &creabim_core::Model| {
+            m.iter().any(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, ViewKind::Schedule { category: ScheduleCategory::Materials, .. }))
+            })
+        };
+        assert!(takeoff(app.doc.model()));
+        let added = usize::from(!takeoff(&model));
+        assert_eq!(app.doc.model().len(), model.len() + added);
     }
 }

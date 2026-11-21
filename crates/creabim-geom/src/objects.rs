@@ -23,7 +23,7 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
     let floor = model.level(o.level).map_or(0.0, |l| l.elevation);
     let above = objects::base_z_of(model, o, t) - floor + lo.z > cut_height;
     let pen = if above && !t.category.is_services() {
-        Pen::Hidden
+        Pen::Overhead
     } else {
         Pen::Projection
     };
@@ -31,6 +31,27 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
         .plan_symbol()
         .into_iter()
         .map(|s| match s {
+            SymbolItem::Net {
+                points,
+                code,
+                dashed,
+            } => {
+                let rgb = creabim_core::utility::NetKind::of_code(&code)
+                    .map_or([0.3, 0.3, 0.3], |k| k.rgb());
+                let mut points: Vec<_> = points.into_iter().map(|p| o.to_plan(p)).collect();
+                points.extend(points.first().copied());
+                PlanItem::Curve {
+                    id: e.id,
+                    points,
+                    rgb,
+                    dashed,
+                }
+            }
+            SymbolItem::Text { at, text } => PlanItem::Label {
+                id: e.id,
+                at: o.to_plan(at),
+                text,
+            },
             SymbolItem::Loop(pts) => PlanItem::Polygon {
                 id: e.id,
                 pen,
@@ -157,7 +178,7 @@ mod tests {
             (lo.x - 0.15).abs() < 1e-6 && (hi.x - 1.05).abs() < 1e-6,
             "{lo} {hi}"
         );
-        // a wall cupboard is overhead: dashed
+        // a wall cupboard is overhead: a dash and two dots
         let cup = m
             .iter()
             .find(|e| {
@@ -171,7 +192,7 @@ mod tests {
             .all(|i| matches!(
                 i,
                 PlanItem::Polygon {
-                    pen: Pen::Hidden,
+                    pen: Pen::Overhead,
                     ..
                 }
             )));

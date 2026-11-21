@@ -12,6 +12,8 @@ names+="""drafting-compass radius diameter message-square-text arrow-up-right"""
 names+="""rectangle-vertical rectangle-horizontal tent fence corner-down-right""".split()
 # flipping a section or elevation round
 names+="""flip-horizontal-2""".split()
+# printing sheets
+names+="""printer""".split()
 # the Help menu and the Help panel
 names+="""circle-help book-open keyboard rocket x arrow-right info""".split()
 # folding the project browser's groups
@@ -131,6 +133,11 @@ FINAL={
  "angle": '<circle cx="12" cy="5" r="2" /> <path d="M11 7 5 20M13 7l6 13" /> <path d="M7.5 15a6 6 0 0 0 9 0" />',
  "arc-length": '<path d="M5 19C5 11 11 5 19 5" /> <circle cx="5" cy="19" r="2" /> <circle cx="19" cy="5" r="2" />',
  "detail-component": '<path d="M2 12h2l2-4 3 8 3-8 3 8 3-8 2 4h2" />',
+ "draft-line": '<path d="M4 20 20 4" /> <circle cx="4" cy="20" r="1.5" /> <circle cx="20" cy="4" r="1.5" />',
+ "polyline": '<path d="M3 19 8 8l6 7 7-11" /> <circle cx="3" cy="19" r="1.3" /> <circle cx="21" cy="4" r="1.3" />',
+ "slope-dim": '<path d="M2 20 22 10" /> <path d="M17 4.5 6 10" /> <path d="m6 10 3.6-.1M6 10l2-3" /> <path d="M15 20h7" stroke-dasharray="2 1.5" />',
+ "arc-3pt": '<path d="M4 18A9 9 0 0 1 20 18" /> <circle cx="4" cy="18" r="1.5" /> <circle cx="20" cy="18" r="1.5" /> <circle cx="12" cy="9.1" r="1.5" />',
+ "curve-line": '<path d="M3 18c3-9 6-9 9-4s6 5 9-6" /> <circle cx="3" cy="18" r="1.3" /> <circle cx="21" cy="8" r="1.3" />',
  # drafting and datums
  "guide": '<path d="m3 21 18-18" stroke-dasharray="2.5 2.5" /> <circle cx="12" cy="12" r="2.5" />',
  "guide-lines": '<path d="M3 10h9M12 2v9" stroke-dasharray="2 2" /> <path d="m13 13 8 3-3.5 1.5L16 21z" />',

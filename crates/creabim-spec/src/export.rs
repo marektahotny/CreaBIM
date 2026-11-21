@@ -596,6 +596,15 @@ fn material(e: &Element, id: &str, m: &core::Material) -> f::Material {
         core::Hatch::Brick => f::Hatch::Brick,
         core::Hatch::Concrete => f::Hatch::Concrete,
         core::Hatch::Timber => f::Hatch::Timber,
+        core::Hatch::MasonryOuter => f::Hatch::MasonryOuter,
+        core::Hatch::MasonryInner => f::Hatch::MasonryInner,
+        core::Hatch::Reinforced => f::Hatch::Reinforced,
+        core::Hatch::Ground => f::Hatch::Ground,
+        core::Hatch::EarthFill => f::Hatch::EarthFill,
+        core::Hatch::Gravel => f::Hatch::Gravel,
+        core::Hatch::FormBlock => f::Hatch::FormBlock,
+        core::Hatch::Insulation => f::Hatch::Insulation,
+        core::Hatch::Membrane => f::Hatch::Membrane,
     };
     let text = |s: &String| (!s.is_empty()).then(|| s.clone());
     let unit = |v: f32, d: f32| (v != d).then_some(short(v));
@@ -809,6 +818,21 @@ fn opening(e: &Element, id: &str, o: &core::Opening, ids: &Ids) -> f::Opening {
         frame: (own(e, Param::Frame) && (typed || !o.frame.is_default())).then(|| frame(&o.frame)),
         flip_hand: o.flip_hand,
         flip_facing: o.flip_facing,
+        no_outer_sill: o.no_outer_sill,
+        no_inner_sill: o.no_inner_sill,
+        threshold: o.threshold,
+        setback: o.setback,
+        reveal: o.reveal,
+        division: o.division.as_ref().map(|d| d.code()),
+        door: o.door.as_ref().map(|d| f::Door {
+            leaf_width: d.nom_width,
+            leaf_height: d.nom_height,
+            frame: d.frame.code().into(),
+            leaf: Some(d.leaf.code().into()),
+            fire_rating: d.fire.as_ref().map(|x| x.rating.clone()),
+            self_closing: d.fire.as_ref().is_none_or(|x| x.self_closing),
+            smoke_tight: d.fire.as_ref().is_some_and(|x| x.smoke_tight),
+        }),
     }
 }
 
@@ -1069,6 +1093,22 @@ fn view(e: &Element, id: &str, v: &core::View, ids: &Ids) -> f::View {
                 core::ScheduleCategory::Fixtures => f::ScheduleCategory::Fixtures,
                 core::ScheduleCategory::Rooms => f::ScheduleCategory::Rooms,
                 core::ScheduleCategory::Materials => f::ScheduleCategory::Materials,
+                core::ScheduleCategory::WindowList => f::ScheduleCategory::WindowList,
+                core::ScheduleCategory::DoorList => f::ScheduleCategory::DoorList,
+                core::ScheduleCategory::ServicesLegend => f::ScheduleCategory::ServicesLegend,
+                core::ScheduleCategory::Documents => f::ScheduleCategory::Documents,
+                core::ScheduleCategory::MaterialLegend => f::ScheduleCategory::MaterialLegend,
+                core::ScheduleCategory::PipeList => f::ScheduleCategory::PipeList,
+                core::ScheduleCategory::ElectricalList => f::ScheduleCategory::ElectricalList,
+                core::ScheduleCategory::RoomLegend => f::ScheduleCategory::RoomLegend,
+                core::ScheduleCategory::FireZones => f::ScheduleCategory::FireZones,
+                core::ScheduleCategory::FireFacades => f::ScheduleCategory::FireFacades,
+                core::ScheduleCategory::Occupancy => f::ScheduleCategory::Occupancy,
+                core::ScheduleCategory::BoardDiagram => f::ScheduleCategory::BoardDiagram,
+                core::ScheduleCategory::LintelList => f::ScheduleCategory::LintelList,
+                core::ScheduleCategory::VentilationHrv => f::ScheduleCategory::VentilationHrv,
+                core::ScheduleCategory::BuildingFigures => f::ScheduleCategory::BuildingFigures,
+                core::ScheduleCategory::FireRisk => f::ScheduleCategory::FireRisk,
             });
         }
     }

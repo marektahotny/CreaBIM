@@ -16,9 +16,12 @@ pub mod curtain;
 pub mod detail;
 pub mod divide;
 pub mod document;
+pub mod dss;
 pub mod earthworks;
 pub mod editmesh;
+pub mod electrical;
 pub mod element;
+pub mod fireparams;
 pub mod fixture;
 pub mod footing;
 pub mod garden;
@@ -26,10 +29,13 @@ pub mod graphics;
 pub mod grids;
 pub mod holds;
 pub mod id;
+pub mod joinery;
 pub mod joins;
 pub mod levels;
 pub mod library;
+pub mod mapgroup;
 pub mod marks;
+pub mod masonry;
 pub mod members;
 pub mod mep;
 pub mod model;
@@ -41,13 +47,18 @@ pub mod offset;
 pub mod ops;
 pub mod papermark;
 pub mod parts;
+pub mod pickup;
 pub mod polygon;
 pub mod profiles;
 pub mod project;
 pub mod pushpull;
 pub mod reference;
 pub mod regions;
+pub mod reno;
+pub mod results;
 pub mod room;
+pub mod roomtype;
+pub mod routecheck;
 pub mod sample;
 pub mod screen;
 pub mod site;
@@ -58,14 +69,17 @@ pub mod split;
 pub mod starter;
 pub mod styles;
 pub mod takeoff;
+pub mod thermal;
 pub mod titleblock;
 pub mod transform;
 pub mod types;
 pub mod underfloor;
 pub mod units;
+pub mod utility;
 pub mod viewmodes;
 pub mod visibility;
 pub mod walls;
+pub mod words;
 
 pub use annotation::{
     text_style, DimAxis, DimensionKind, Font, Note, StyleUse, TagShape, Terminator, TextAlign,
@@ -76,17 +90,17 @@ pub use constraint::{Constraint, SolveError};
 pub use cropbox::{CropBox, CropScope};
 pub use csg::BoolOp;
 pub use curtain::{CurtainGrid, GridRule, PanelKind};
-pub use detail::{DetailItem, DetailKind, DrawingFrame, MembraneLook};
+pub use detail::{DetailItem, DetailKind, DrawingFrame, LineLook, LinePen, LineType, MembraneLook};
 pub use document::{Document, Step, StepId};
 pub use editmesh::EditMesh;
 pub use element::{layer_edge_offsets, set_layer_edge, LayerEdge, LayerEnd, LocationLine, WallTop};
 pub use element::{
-    Cut, Dimension, Element, ElementKind, FreeMesh, Grid, GridGroup, Guide, Hatch, HostPoint,
-    Level, LevelHead, Material, Opening, OpeningFrame, OpeningKind, ScheduleCategory, Sheet,
-    SheetTitle, Sketch, Slab, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall,
-    Workplane,
+    ColumnAlign, Cut, Dimension, Element, ElementKind, FreeMesh, Grid, GridGroup, Guide, Hatch,
+    HostPoint, Ink, LeafOp, Level, LevelHead, Material, Opening, OpeningFrame, OpeningKind,
+    Penetration, ScheduleCategory, SectionJog, SectionLine, Sheet, SheetTitle, Sketch, Slab,
+    SlabKind, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall, Workplane,
 };
-pub use footing::{Footing, FootingKind};
+pub use footing::{Footing, FootingAlign, FootingKind};
 pub use graphics::{LineWeights, PlanGraphics};
 pub use id::ElementId;
 pub use joins::{
@@ -100,8 +114,8 @@ pub use objects::{CatalogueObject, Object, ObjectCategory, ObjectType};
 pub use ops::{Op, Transaction};
 pub use papermark::{PaperMark, PaperMarkKind};
 pub use parts::Part;
-pub use project::{set_project, ProjectInfo};
-pub use reference::{RefSource, Reference};
+pub use project::{set_project, EticsBarriers, ProjectInfo};
+pub use reference::{LayerStyle, RefSource, Reference};
 pub use room::{Ceiling, Room, RoomField, Separator};
 pub use screen::ScreenPattern;
 pub use site::{PlantForm, Site, SiteForm};

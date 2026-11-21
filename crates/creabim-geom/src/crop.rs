@@ -112,6 +112,39 @@ pub fn crop(d: &PlanView, lo: DVec2, hi: DVec2) -> PlanView {
                     });
                 }
             }
+            PlanItem::Curve {
+                id,
+                points,
+                rgb,
+                dashed,
+            } => {
+                // each run of it inside the crop on its own
+                let mut run: Vec<DVec2> = vec![];
+                let mut flush = |run: &mut Vec<DVec2>| {
+                    if run.len() > 1 {
+                        items.push(PlanItem::Curve {
+                            id: *id,
+                            points: std::mem::take(run),
+                            rgb: *rgb,
+                            dashed: *dashed,
+                        });
+                    }
+                    run.clear();
+                };
+                for w in points.windows(2) {
+                    match clip_segment(w[0], w[1], lo, hi) {
+                        Some((a, b)) => {
+                            if run.last().is_none_or(|l| l.distance(a) > 1e-9) {
+                                flush(&mut run);
+                                run.push(a);
+                            }
+                            run.push(b);
+                        }
+                        None => flush(&mut run),
+                    }
+                }
+                flush(&mut run);
+            }
             PlanItem::Shade { id, points, rgb } => {
                 let points = clip_polygon(points, lo, hi);
                 if !points.is_empty() {

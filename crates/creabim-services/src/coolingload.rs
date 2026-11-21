@@ -72,9 +72,70 @@ pub struct Settings {
     /// on a roof, K.
     pub dt_wall: f64,
     pub dt_roof: f64,
+    /// The outside air's daily range in summer, max − min, K: the hours
+    /// before and after the warmest (15 h) are cooler by its half-cosine.
+    pub swing: f64,
+    /// The hours the building is used, from and to: the load is the
+    /// highest of these hours.
+    pub from_h: u32,
+    pub to_h: u32,
     /// Chilled water, °C.
     pub supply_c: f64,
     pub return_c: f64,
+    /// Summer stability: the highest room air temperature allowed, °C
+    /// (STN 73 0540-2: 27 °C for rooms people stay in).
+    pub summer_tmax: f64,
+    /// Air change by opening windows in summer, 1/h.
+    pub summer_ach: f64,
+    /// The ground under a floor on the ground, °C, and its loss,
+    /// W/(m²K).
+    pub t_ground: f64,
+    pub ground_h: f64,
+    /// How heavy the inner layers are, for the surfaces' admittance.
+    pub mass: Mass,
+}
+
+/// How much heat the room's inner surfaces store: the mass of the
+/// layers from the inside to the insulation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Mass {
+    /// Plasterboard, timber frame: under 60 kg/m².
+    Light,
+    /// 60 to 250 kg/m².
+    Medium,
+    /// Masonry or concrete inside the insulation, 250 kg/m² or more.
+    #[default]
+    Heavy,
+}
+
+impl Mass {
+    pub const ALL: [Mass; 3] = [Mass::Light, Mass::Medium, Mass::Heavy];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Mass::Light => "Light (plasterboard, timber frame)",
+            Mass::Medium => "Medium",
+            Mass::Heavy => "Heavy (masonry, concrete)",
+        }
+    }
+
+    /// The inner surfaces' admittance Y, W/(m²K).
+    pub fn admittance(self) -> f64 {
+        match self {
+            Mass::Light => 1.5,
+            Mass::Medium => 3.0,
+            Mass::Heavy => 4.0,
+        }
+    }
+}
+
+impl Settings {
+    /// The outside temperature at hour `h`: the highest at 15 h, lower
+    /// by the daily range's half-cosine either side.
+    pub fn te_at(&self, h: f64) -> f64 {
+        let a = (h - 15.0) / 24.0 * std::f64::consts::TAU;
+        self.te - self.swing / 2.0 * (1.0 - a.cos())
+    }
 }
 
 impl Default for Settings {
@@ -95,8 +156,16 @@ impl Default for Settings {
             m2_office: 10.0,
             dt_wall: 5.0,
             dt_roof: 15.0,
+            swing: 15.0,
+            from_h: 8,
+            to_h: 16,
             supply_c: 7.0,
             return_c: 12.0,
+            summer_tmax: 27.0,
+            summer_ach: 1.5,
+            t_ground: 15.0,
+            ground_h: 0.3,
+            mass: Mass::Heavy,
         }
     }
 }
@@ -153,33 +222,16 @@ pub fn compass(az: f64) -> &'static str {
     ["S", "SV", "V", "JV", "J", "JZ", "Z", "SZ"][(az.rem_euclid(360.0) / 45.0).round() as usize % 8]
 }
 
-/// What a room is, for its gains inside.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Use {
-    Home,
-    Kitchen,
-    Office,
-    /// A bathroom, a corridor, a store: not cooled.
-    Service,
-}
+/// What a room is, for its gains inside: [`RoomType`]'s table.
+pub use creabim_core::roomtype::Gains as Use;
+use creabim_core::roomtype::RoomType;
 
-/// A room's use from its name and occupancy.
+/// A room's use from a text naming it (its name or occupancy).
 pub fn use_of(text: &str) -> Use {
-    let t = text.to_lowercase();
-    let has = |keys: &[&str]| keys.iter().any(|k| t.contains(k));
-    if has(&[
-        "kúpeľ", "kupel", "wc", "toalet", "sprch", "bath", "shower", "chodb", "hala", "corridor",
-        "hall", "zádver", "zadver", "garáž", "garaz", "garage", "sklad", "store", "komor", "techn",
-        "kotol", "boiler", "plant", "schod", "stair", "pivni", "cellar", "práč", "laundry", "šatn",
-    ]) {
-        Use::Service
-    } else if has(&["kancel", "office", "zasada", "meeting"]) {
-        Use::Office
-    } else if has(&["kuchy", "kitchen"]) {
-        Use::Kitchen
-    } else {
-        Use::Home
-    }
+    RoomType::find(text)
+        .unwrap_or(RoomType::Other)
+        .needs()
+        .gains
 }
 
 /// One part of a room's load.
@@ -208,6 +260,24 @@ pub struct RoomLoad {
     pub hour: Option<u32>,
     /// The fan-coil of the range that covers it, kW.
     pub fancoil_kw: f64,
+    /// The room uncooled on a summer day.
+    pub summer: Summer,
+}
+
+/// Summer stability of a room without cooling, as PilonDesigner's
+/// `roomSummer`: roughly, by the admittance method (CIBSE Guide A, the
+/// principle of STN EN ISO 13792). The day's mean from the balance of
+/// the mean gains and the loss H, the swing from the peaks damped by the
+/// heat the inner surfaces store.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Summer {
+    /// The day's highest and mean room air temperature, °C.
+    pub t_max: f64,
+    pub t_mean: f64,
+    /// `t_max` within [`Settings::summer_tmax`].
+    pub ok: bool,
+    /// What the figures came from.
+    pub note: String,
 }
 
 /// Every room's cooling load.
@@ -234,21 +304,20 @@ pub fn fancoil_pick(kw: f64) -> f64 {
         .unwrap_or(FANCOIL_SIZES[FANCOIL_SIZES.len() - 1])
 }
 
-fn one(hl: &RoomLoss, d_u: f64, s: &Settings) -> RoomLoad {
-    let dt = s.te - s.ti;
+fn one(hl: &RoomLoss, d_u: f64, s: &Settings, perimeter: f64) -> RoomLoad {
     let sc = s.g / G_SINGLE;
     let fc = s.shading.fc();
-    let usage = use_of(&hl.name);
+    let usage = hl.kind.needs().gains;
     let mut hourly = [0.0; 15];
     let (mut glazed, mut faces): (f64, Vec<&'static str>) = (0.0, vec![]);
-    let (mut win, mut win_a, mut wall, mut wall_a, mut roof, mut roof_a) =
+    let (mut win_k, mut win_a, mut wall_k, mut wall_a, mut roof_k, mut roof_a) =
         (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     for i in &hl.items {
         // the heat loss adds the thermal bridges' ΔU; summer does not
         let u = (i.u - d_u).max(0.0);
         match i.kind {
             "Window" | "Outside door" => {
-                win += u * i.area * dt;
+                win_k += u * i.area;
                 win_a += i.area;
                 if let ("Window", Some(az)) = (i.kind, i.azimuth) {
                     let ag = i.area * s.glazed;
@@ -262,19 +331,42 @@ fn one(hl: &RoomLoss, d_u: f64, s: &Settings) -> RoomLoad {
                 }
             }
             "Outside wall" => {
-                wall += u * i.area * (dt + s.dt_wall);
+                wall_k += u * i.area;
                 wall_a += i.area;
             }
             "Roof" => {
-                roof += u * i.area * (dt + s.dt_roof);
+                roof_k += u * i.area;
                 roof_a += i.area;
             }
             _ => {}
         }
     }
-    let k = (0..15)
-        .max_by(|a, b| hourly[*a].total_cmp(&hourly[*b]))
+    // the load is the highest of the hours the building is used: the sun
+    // of that hour and the outside air as warm as it is then
+    let gains = |k: usize| {
+        let d = s.te_at(SOLAR_HOURS[k] as f64) - s.ti;
+        hourly[k] * sc * fc * s.storage
+            + (win_k + 0.34 * hl.v_min) * d
+            + wall_k * (d + s.dt_wall)
+            + roof_k * (d + s.dt_roof)
+    };
+    let used: Vec<usize> = (0..15)
+        .filter(|k| (s.from_h..=s.to_h).contains(&SOLAR_HOURS[*k]))
+        .collect();
+    let used = if used.is_empty() {
+        (0..15).collect()
+    } else {
+        used
+    };
+    let k = used
+        .iter()
+        .copied()
+        .max_by(|a, b| gains(*a).total_cmp(&gains(*b)))
         .unwrap_or(7);
+    let dt = s.te_at(SOLAR_HOURS[k] as f64) - s.ti;
+    let win = win_k * dt;
+    let wall = wall_k * (dt + s.dt_wall);
+    let roof = roof_k * (dt + s.dt_roof);
     let sun = hourly[k] * sc * fc * s.storage;
     let mut items = vec![];
     let mut add = |kind: &'static str, phi: f64, note: String| {
@@ -328,6 +420,7 @@ fn one(hl: &RoomLoss, d_u: f64, s: &Settings) -> RoomLoad {
         format!("{:.0} m³/h · Δθ {dt:.0} K", hl.v_min),
     );
     let phi: f64 = items.iter().map(|x| x.phi).sum();
+    let summer = summer(hl, d_u, s, perimeter, &hourly, persons, eq, office);
     RoomLoad {
         id: hl.id,
         number: hl.number.clone(),
@@ -338,14 +431,143 @@ fn one(hl: &RoomLoss, d_u: f64, s: &Settings) -> RoomLoad {
         phi,
         hour: (glazed > 0.0).then_some(SOLAR_HOURS[k]),
         fancoil_kw: fancoil_pick(phi / 1000.0),
+        summer,
     }
+}
+
+/// The 24 hours' mean of the sun through the windows, W, from the hours
+/// of [`SOLAR_JULY`] (the night has none).
+fn day_mean(hourly: &[f64; 15]) -> f64 {
+    hourly.iter().sum::<f64>() / 24.0
+}
+
+#[allow(clippy::too_many_arguments)]
+fn summer(
+    hl: &RoomLoss,
+    d_u: f64,
+    s: &Settings,
+    perimeter: f64,
+    hourly: &[f64; 15],
+    persons: f64,
+    eq: f64,
+    office: bool,
+) -> Summer {
+    let sc = s.g / G_SINGLE;
+    let fc = s.shading.fc();
+    let (mut win_ua, mut opaque_ua, mut roof_ua, mut ground_a, mut windows) =
+        (0.0, 0.0, 0.0, 0.0, false);
+    for i in &hl.items {
+        let u = (i.u - d_u).max(0.0);
+        match i.kind {
+            "Window" | "Outside door" => {
+                win_ua += u * i.area;
+                windows |= i.kind == "Window";
+            }
+            "Outside wall" => opaque_ua += u * i.area,
+            "Roof" => roof_ua += u * i.area,
+            "Floor on the ground" => ground_a += i.area,
+            _ => {}
+        }
+    }
+    let sun: Vec<f64> = hourly.iter().map(|x| x * sc * fc).collect();
+    let sun_peak = sun.iter().copied().fold(0.0, f64::max);
+    let sun_mean = sun.iter().sum::<f64>() / 24.0;
+    debug_assert!((day_mean(hourly) * sc * fc - sun_mean).abs() < 1e-6);
+    let a = hl.area.max(0.01);
+    let h = if hl.area > 0.0 {
+        hl.volume / hl.area
+    } else {
+        2.6
+    };
+    let v = hl.volume.max(1.0);
+    let n = (if windows { s.summer_ach } else { 0.0 }).max(hl.v_min / v);
+    let hv = 0.34 * n * v;
+    let ground = s.ground_h * ground_a;
+    let hh = (win_ua + opaque_ua + roof_ua + hv + ground).max(0.01);
+    let amp = s.swing / 2.0;
+    let te_mean = s.te - amp;
+    let roof_sol = roof_ua * s.dt_roof;
+    let int_peak = persons * s.w_person + a * eq;
+    let int_mean = if office {
+        (persons * s.w_person + a * (s.light + eq)) * 0.35
+    } else {
+        a * eq
+    };
+    let t_mean =
+        (te_mean * (hh - ground) + s.t_ground * ground + sun_mean + int_mean + roof_sol * 0.5) / hh;
+    let y = s.mass.admittance();
+    let ya = y * (2.0 * a + perimeter.max(0.0) * h);
+    let swing =
+        (sun_peak - sun_mean) + (int_peak - int_mean) + roof_sol * 0.5 + (win_ua + hv) * amp;
+    let t_max = t_mean + swing / (ya + win_ua + hv).max(0.01);
+    Summer {
+        t_max,
+        t_mean,
+        ok: t_max <= s.summer_tmax + 1e-9,
+        note: format!(
+            "θe {:.1} °C (mean {te_mean:.1}) · sun peak {sun_peak:.0} W · inside peak {int_peak:.0} W · H {hh:.0} W/K (air {:.1} 1/h{}) · Y {y:.1} W/(m²K) · YA {ya:.0} W/K",
+            s.te,
+            n,
+            if ground > 0.0 { ", floor on the ground" } else { "" },
+        ),
+    }
+}
+
+/// What would bring a room within the summer limit: outside shading,
+/// then also solar glass g 0.3; else it needs cooling or night
+/// ventilation. In English: the app translates it.
+pub fn summer_remedy(
+    model: &Model,
+    o: &heatloss::Opts,
+    s: &Settings,
+    room: ElementId,
+) -> &'static str {
+    let with = |x: Settings| {
+        building(model, o, &x)
+            .rooms
+            .into_iter()
+            .find(|r| r.id == room)
+            .map(|r| r.summer)
+    };
+    if s.shading != Shading::External {
+        if let Some(a) = with(Settings {
+            shading: Shading::External,
+            ..*s
+        }) {
+            if a.ok {
+                return "Outside shading is enough";
+            }
+        }
+    }
+    if s.shading != Shading::External || s.g > 0.3 {
+        if let Some(b) = with(Settings {
+            shading: Shading::External,
+            g: s.g.min(0.3),
+            ..*s
+        }) {
+            if b.ok {
+                return "Outside shading and solar glass g 0.3";
+            }
+        }
+    }
+    "Needs cooling or night ventilation"
 }
 
 /// The cooling load of every room of the model.
 pub fn building(model: &Model, o: &heatloss::Opts, s: &Settings) -> BuildingLoad {
     let losses = heatloss::building(model, o);
     let mut out = BuildingLoad {
-        rooms: losses.rooms.iter().map(|hl| one(hl, o.d_u, s)).collect(),
+        rooms: losses
+            .rooms
+            .iter()
+            .map(|hl| {
+                let per = creabim_core::room::outline(model, hl.id)
+                    .map_or(4.0 * hl.area.max(0.0).sqrt(), |p| {
+                        creabim_core::room::perimeter(&p)
+                    });
+                one(hl, o.d_u, s, per)
+            })
+            .collect(),
         ..BuildingLoad::default()
     };
     for r in out.rooms.iter().filter(|r| r.cooled) {
@@ -426,6 +648,22 @@ mod tests {
             },
         );
         assert!(shaded.rooms[1].phi < living.phi);
+        // summer stability: a sensible day, shading cools it, a light
+        // building swings more
+        let su = &living.summer;
+        assert!(su.t_mean > 20.0 && su.t_mean < 35.0, "{su:?}");
+        assert!(su.t_max > su.t_mean && su.t_max < 45.0, "{su:?}");
+        assert!(shaded.rooms[1].summer.t_max < su.t_max);
+        let light = building(
+            doc.model(),
+            &o,
+            &Settings {
+                mass: Mass::Light,
+                ..Settings::default()
+            },
+        );
+        assert!(light.rooms[1].summer.t_max > su.t_max);
+        let _ = summer_remedy(doc.model(), &o, &Settings::default(), living.id);
     }
 
     #[test]

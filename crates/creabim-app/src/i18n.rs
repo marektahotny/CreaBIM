@@ -115,7 +115,19 @@ fn parse(src: &'static str) -> Result<Table, serde_json::Error> {
 
 /// `english` in the interface's language.
 pub fn t(english: &str) -> &str {
-    lookup(lang(), english).unwrap_or(english)
+    lookup(lang(), english)
+        .or_else(|| lookup(lang(), plain(english)))
+        .unwrap_or(plain(english))
+}
+
+/// The separator of a key that says where its text is used, as gettext's
+/// msgctxt: `level\u{4}Elevation` is a level's height, shown as
+/// `Elevation` in English, while `Elevation` alone is the kind of view.
+pub const CONTEXT: char = '\u{4}';
+
+/// `english` without the context a key may start with.
+pub fn plain(english: &str) -> &str {
+    english.rsplit(CONTEXT).next().unwrap_or(english)
 }
 
 /// `english` in the interface's language, as an owned string. Text built
@@ -125,9 +137,11 @@ pub fn t(english: &str) -> &str {
 pub fn tr(english: &str) -> String {
     let l = lang();
     if l == Lang::En {
-        return english.to_string();
+        return plain(english).to_string();
     }
-    translated(l, english).unwrap_or_else(|| english.to_string())
+    translated(l, english)
+        .or_else(|| translated(l, plain(english)))
+        .unwrap_or_else(|| plain(english).to_string())
 }
 
 fn translated(l: Lang, english: &str) -> Option<String> {
@@ -142,6 +156,9 @@ fn translated(l: Lang, english: &str) -> Option<String> {
         return Some(parts.join(" › "));
     }
     if let Some(s) = with_numbers(l, english) {
+        return Some(s);
+    }
+    if let Some(s) = with_pattern(l, english) {
         return Some(s);
     }
     if let Some((head, rest)) = english.split_once(": ") {
@@ -194,6 +211,165 @@ fn with_numbers(l: Lang, english: &str) -> Option<String> {
         out.push_str(&rest[..at]);
         out.push_str(nums.next().unwrap_or("{}"));
         rest = &rest[at + 2..];
+    }
+    out.push_str(rest);
+    Some(out)
+}
+
+/// A key with places for text, as written in the code's `format!`:
+/// `Aligned {name} to the reference.` The literal pieces between the
+/// places, the places themselves, and the translation.
+struct Pattern {
+    pieces: Vec<&'static str>,
+    places: Vec<&'static str>,
+    value: &'static str,
+    weight: usize,
+}
+
+/// Splits `text` at each `{…}` place: the pieces around them and the places.
+fn split_places(text: &'static str) -> (Vec<&'static str>, Vec<&'static str>) {
+    let mut pieces = vec![];
+    let mut places = vec![];
+    let mut rest = text;
+    while let Some(open) = rest.find('{') {
+        let Some(len) = rest[open..].find('}') else {
+            break;
+        };
+        pieces.push(&rest[..open]);
+        places.push(&rest[open..open + len + 1]);
+        rest = &rest[open + len + 1..];
+    }
+    pieces.push(rest);
+    (pieces, places)
+}
+
+/// The table's keys with places in them, read once per language. A key
+/// needs some words of its own, so `{}: {}` does not catch everything.
+fn patterns(l: Lang) -> &'static [Pattern] {
+    static PATTERNS: [OnceLock<Vec<Pattern>>; 3] =
+        [OnceLock::new(), OnceLock::new(), OnceLock::new()];
+    PATTERNS[l as usize].get_or_init(|| {
+        let mut out: Vec<Pattern> = table(l)
+            .iter()
+            .filter(|(k, _)| k.contains('{') && !k.contains("{{"))
+            .filter_map(|(k, v)| {
+                let (pieces, places) = split_places(k);
+                let weight: usize = pieces
+                    .iter()
+                    .map(|p| p.chars().filter(|c| c.is_alphabetic()).count())
+                    .sum();
+                (!places.is_empty() && weight >= 4).then_some(Pattern {
+                    pieces,
+                    places,
+                    value: v,
+                    weight,
+                })
+            })
+            .collect();
+        // the most specific first: more words of its own, then longer
+        out.sort_by(|a, b| {
+            b.weight
+                .cmp(&a.weight)
+                .then(b.pieces.len().cmp(&a.pieces.len()))
+        });
+        out
+    })
+}
+
+/// The text put in each place when `english` was made from `p`, if it was.
+fn fill(p: &Pattern, english: &str) -> Option<Vec<String>> {
+    let first = p.pieces[0];
+    let last = p.pieces[p.pieces.len() - 1];
+    let body = english.strip_prefix(first)?;
+    let body = body.strip_suffix(last)?;
+    let mut rest = body;
+    let mut got = Vec::with_capacity(p.places.len());
+    // a place may be empty: `element{}` is `element` or `elements`
+    for piece in &p.pieces[1..p.pieces.len() - 1] {
+        let at = rest.find(piece)?;
+        got.push(rest[..at].to_string());
+        rest = &rest[at + piece.len()..];
+    }
+    got.push(rest.to_string());
+    Some(got)
+}
+
+/// Text made at run time from a `format!` key with named or unnamed
+/// places: the places' text is taken out of `english`, translated where it
+/// can be, and put in the translation's same places.
+fn with_pattern(l: Lang, english: &str) -> Option<String> {
+    use std::sync::Mutex;
+    type Cache = Option<(Lang, HashMap<String, Option<String>>)>;
+    static CACHE: Mutex<Cache> = Mutex::new(None);
+    if let Ok(c) = CACHE.lock() {
+        if let Some((cl, map)) = c.as_ref() {
+            if *cl == l {
+                if let Some(hit) = map.get(english) {
+                    return hit.clone();
+                }
+            }
+        }
+    }
+    // looked up with the cache let go: the places' text is translated by
+    // the same way in
+    let found = pattern_lookup(l, english);
+    if let Ok(mut c) = CACHE.lock() {
+        let entry = c.get_or_insert_with(|| (l, HashMap::new()));
+        if entry.0 != l || entry.1.len() > 20_000 {
+            *entry = (l, HashMap::new());
+        }
+        entry.1.insert(english.to_string(), found.clone());
+    }
+    found
+}
+
+fn pattern_lookup(l: Lang, english: &str) -> Option<String> {
+    // a key's own words must be at least a third of the text's, or a short key
+    // such as `{} {} with {}` catches whole sentences and leaves them half
+    // translated ("Shaded, s edges")
+    let letters = english.chars().filter(|c| c.is_alphabetic()).count();
+    let p = patterns(l)
+        .iter()
+        .filter(|p| p.weight * 3 >= letters)
+        .find_map(|p| fill(p, english).map(|g| (p, g)))?;
+    let (p, got) = p;
+    let got: Vec<String> = got
+        .into_iter()
+        .map(|g| translated(l, &g).unwrap_or(g))
+        .collect();
+    let mut out = String::with_capacity(p.value.len() + 16);
+    let mut rest = p.value;
+    let mut next = 0;
+    while let Some(open) = rest.find('{') {
+        let Some(len) = rest[open..].find('}') else {
+            break;
+        };
+        let place = &rest[open..open + len + 1];
+        out.push_str(&rest[..open]);
+        // a named place by its name, `{}` in order, `{2}` as the key's
+        // third `{}` (for a translation that drops or reorders them)
+        let unnamed = |n: usize| {
+            p.places
+                .iter()
+                .enumerate()
+                .filter(|(_, x)| **x == "{}")
+                .nth(n)
+                .map(|(i, _)| i)
+        };
+        let numbered = place[1..place.len() - 1].parse::<usize>().ok();
+        let i = if let (Some(n), false) = (numbered, p.places.contains(&place)) {
+            unnamed(n)
+        } else if place == "{}" {
+            next += 1;
+            unnamed(next - 1)
+        } else {
+            p.places.iter().position(|x| *x == place)
+        };
+        match i.and_then(|i| got.get(i)) {
+            Some(g) => out.push_str(g),
+            None => out.push_str(place),
+        }
+        rest = &rest[open + len + 1..];
     }
     out.push_str(rest);
     Some(out)
@@ -331,6 +507,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_room_type_picked_in_slovak_or_czech_is_found_again() {
+        use creabim_core::roomtype::RoomType;
+        for l in [Lang::Sk, Lang::Cs] {
+            for t in RoomType::ALL {
+                if t == RoomType::Other {
+                    continue;
+                }
+                let text = lookup(l, t.label()).unwrap_or(t.label());
+                assert_eq!(RoomType::find(text), Some(t), "{l:?}: {text}");
+            }
+        }
+    }
+
+    #[test]
     fn every_language_file_parses() {
         for l in Lang::ALL {
             parse(l.source()).unwrap_or_else(|e| panic!("i18n/{}.json: {e}", l.id()));
@@ -356,6 +546,45 @@ mod tests {
             Some("Pohľad: Stena")
         );
         assert_eq!(translated(Lang::Sk, "No such text 12"), None);
+    }
+
+    #[test]
+    fn text_made_from_a_format_key_is_found() {
+        assert_eq!(
+            translated(Lang::Sk, "Thickness 200 mm, from its layers").as_deref(),
+            Some("Hrúbka 200 mm, zo súvrstvia")
+        );
+    }
+
+    #[test]
+    fn the_assembly_editor_core_note_is_slovak() {
+        // George 2026-11-20: it read "Jadro: layer 3 (orange). Layers run…"
+        assert_eq!(
+            translated(Lang::Sk, "Core: layer 3 (orange).").as_deref(),
+            Some("Jadro: vrstva 3 (oranžová).")
+        );
+        assert_eq!(
+            translated(Lang::Sk, "Core: layers 2–3 (orange).").as_deref(),
+            Some("Jadro: vrstvy 2–3 (oranžové).")
+        );
+        assert_eq!(
+            translated(
+                Lang::Sk,
+                "Layers run from the exterior face to the interior."
+            )
+            .as_deref(),
+            Some("Vrstvy idú od vonkajšej plochy po vnútornú.")
+        );
+    }
+
+    #[test]
+    fn a_key_with_a_context_reads_plain_in_english() {
+        assert_eq!(plain("level\u{4}Elevation"), "Elevation");
+        assert_eq!(
+            translated(Lang::Sk, "level\u{4}Elevation").as_deref(),
+            Some("Výška")
+        );
+        assert_eq!(translated(Lang::Sk, "Elevation").as_deref(), Some("Pohľad"));
     }
 
     #[test]

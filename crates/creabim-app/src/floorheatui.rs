@@ -19,6 +19,7 @@ impl CreaBimApp {
         if self.floor_heat.is_none() {
             self.floor_heat = Some(Settings::default());
         }
+        self.results_due = Some("floorheat");
         true
     }
 
@@ -34,6 +35,7 @@ impl CreaBimApp {
             .as_ref()
             .map_or_else(heatloss::Opts::default, |x| x.0);
         let d = floorheat::design(self.doc.model(), &o, &s);
+        let mut write_now = self.results_due.take_if(|c| *c == "floorheat").is_some();
         let mut open = true;
         let mut select = None;
         // a room's underfloor heating to set (none takes it away)
@@ -46,6 +48,9 @@ impl CreaBimApp {
             .default_size(Vec2::new(720.0, 520.0))
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui) {
+                    write_now = true;
+                }
                 ui.horizontal(|ui| {
                     ui.label(t("Supply temperature"));
                     ui.add(
@@ -211,6 +216,9 @@ impl CreaBimApp {
                 Ok(_) => self.status = t("Underfloor heating"),
                 Err(e) => self.status = format!("Couldn't do that: {e}"),
             }
+        }
+        if write_now {
+            self.write_results_said(creabim_services::calcresults::floor_heat(&d));
         }
         self.floor_heat = if open { Some(s) } else { None };
     }

@@ -45,7 +45,7 @@ pub fn icon_button(ui: &mut Ui, icon: &str, tip: &str) -> Response {
     }
     let ink = ui.visuals().text_color();
     crate::svgicon::paint(ui.painter(), r.shrink(3.0), icon, ink);
-    resp.on_hover_text(tip)
+    resp.on_hover_text(crate::i18n::tr(tip))
 }
 
 /// A sub-section inside a section's box, folding as Blender's
@@ -196,6 +196,17 @@ pub fn head_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> 
 /// filling the rest. A label too long for its column is cut with … and
 /// shows whole when hovered.
 pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    row_with(ui, label, false, add)
+}
+
+/// A row as [`row`], but a label too long for its column wraps onto more
+/// lines (the row growing taller) instead of being cut: for dialogs
+/// whose labels are long sentences (Project information).
+pub fn row_wrapped<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    row_with(ui, label, true, add)
+}
+
+fn row_with<R>(ui: &mut Ui, label: &str, wrap: bool, add: impl FnOnce(&mut Ui) -> R) -> R {
     let label = crate::i18n::tr(label);
     let label = label.as_str();
     // a control's own text never wraps: a value too long is cut with …
@@ -215,7 +226,36 @@ pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     }
     let w = ui.available_width() - inset(ui);
     let lw = label_width(w);
-    let h0 = ui.spacing().interact_size.y;
+    let mut h0 = ui.spacing().interact_size.y;
+    if wrap {
+        let muted = ui.visuals().widgets.noninteractive.fg_stroke.color;
+        let mut job = egui::text::LayoutJob::single_section(
+            label.to_string(),
+            egui::TextFormat::simple(egui::TextStyle::Body.resolve(ui.style()), muted),
+        );
+        job.wrap.max_width = lw - 6.0;
+        job.halign = egui::Align::RIGHT;
+        let g = ui.painter().layout_job(job);
+        if g.size().y > h0 {
+            h0 = g.size().y + 2.0;
+            return ui
+                .allocate_ui_with_layout(
+                    Vec2::new(w, h0),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        let (rect, _) = ui.allocate_exact_size(Vec2::new(lw, h0), Sense::hover());
+                        // right-aligned lines: the galley's origin is its right edge
+                        ui.painter().galley(
+                            egui::pos2(rect.right() - 6.0, rect.center().y - g.size().y / 2.0),
+                            g,
+                            muted,
+                        );
+                        add(ui)
+                    },
+                )
+                .inner;
+        }
+    }
     ui.allocate_ui_with_layout(
         Vec2::new(w, h0),
         egui::Layout::left_to_right(egui::Align::Center),
@@ -242,7 +282,7 @@ pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
                     g,
                     muted,
                 );
-                resp.on_hover_text(label);
+                resp.on_hover_text(crate::i18n::tr(label));
             } else {
                 // against its control, as Blender's
                 ui.painter().galley(
@@ -318,7 +358,11 @@ pub fn choice_icons<T: PartialEq + Copy>(
             };
             let r = egui::Rect::from_center_size(resp.rect.center(), Vec2::splat(15.0));
             crate::svgicon::paint(ui.painter(), r, icon, ink);
-            if resp.on_hover_text(format!("{name}: {tip}")).clicked() && !on {
+            if resp
+                .on_hover_text(crate::i18n::tr(&format!("{name}: {tip}")))
+                .clicked()
+                && !on
+            {
                 *value = *v;
                 changed = true;
             }
@@ -385,7 +429,7 @@ pub fn choice<T: PartialEq + Copy>(
             let resp = if tip.is_empty() {
                 resp.on_hover_text(*text)
             } else {
-                resp.on_hover_text(format!("{text}: {tip}"))
+                resp.on_hover_text(crate::i18n::tr(&format!("{text}: {tip}")))
             };
             if resp.clicked() && !on {
                 *value = *v;
@@ -409,7 +453,7 @@ pub fn action(ui: &mut Ui, label: &str, text: &str, tip: &str, enabled: bool) ->
         if tip.is_empty() {
             r
         } else {
-            r.on_hover_text(tip)
+            r.on_hover_text(crate::i18n::tr(tip))
         }
     })
 }
@@ -434,7 +478,7 @@ pub fn actions2(
             if tip.is_empty() {
                 r.clicked()
             } else {
-                r.on_hover_text(tip).clicked()
+                r.on_hover_text(crate::i18n::tr(tip)).clicked()
             }
         };
         let x = go(ui, a);
@@ -620,7 +664,7 @@ pub fn tick(ui: &mut Ui, on: &mut bool, label: &str, width: f32) -> Response {
             ink,
         );
         if elided {
-            resp = resp.on_hover_text(label.to_string());
+            resp = resp.on_hover_text(crate::i18n::tr(label));
         }
     }
     resp
@@ -732,7 +776,7 @@ pub fn check(
             ink,
         );
         if elided {
-            resp = resp.on_hover_text(text.clone());
+            resp = resp.on_hover_text(crate::i18n::tr(&text.clone()));
         }
     }
     resp

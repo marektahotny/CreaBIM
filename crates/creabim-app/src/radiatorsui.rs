@@ -18,6 +18,7 @@ impl CreaBimApp {
         if self.radiators.is_none() {
             self.radiators = Some(Settings::default());
         }
+        self.results_due = Some("radiators");
         true
     }
 
@@ -34,6 +35,7 @@ impl CreaBimApp {
             .map_or_else(heatloss::Opts::default, |x| x.0);
         let floor = self.floor_heat.unwrap_or_default();
         let d = radiators::design(self.doc.model(), &o, &s, &floor);
+        let mut write_now = self.results_due.take_if(|c| *c == "radiators").is_some();
         let mut open = true;
         let mut select = None;
         let mut place: Option<Panel> = None;
@@ -45,6 +47,9 @@ impl CreaBimApp {
             .default_size(Vec2::new(720.0, 480.0))
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui) {
+                    write_now = true;
+                }
                 ui.horizontal(|ui| {
                     ui.label(t("Supply temperature"));
                     ui.add(
@@ -189,6 +194,9 @@ impl CreaBimApp {
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = Tool::Object;
+        }
+        if write_now {
+            self.write_results_said(creabim_services::calcresults::radiators(&d));
         }
         self.radiators = if open { Some(s) } else { None };
     }

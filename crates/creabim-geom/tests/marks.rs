@@ -30,10 +30,13 @@ fn add(doc: &mut Document, e: Element) -> ElementId {
 fn tags_and_schedules_read_typed_marks_and_the_rules() {
     let mut doc = Document::from_model(sample::sample_house());
     let door = first(doc.model(), is_door);
-    assert_eq!(tag_text(doc.model(), door), ("D01".into(), true));
+    // a door's tag: its hand (STN 01 3420) over its mark
+    let (text, round) = tag_text(doc.model(), door);
+    assert!(round && text.ends_with("\nD01"), "{text}");
+    assert!(text.starts_with("L\n") || text.starts_with("P\n"), "{text}");
     doc.edit(door, "Mark", |e| e.mark = Some("FD-1".into()))
         .unwrap();
-    assert_eq!(tag_text(doc.model(), door).0, "FD-1");
+    assert!(tag_text(doc.model(), door).0.ends_with("\nFD-1"));
     // level-based rules renumber the rest
     let tx = marks::set_rules(doc.model(), MarkRules::level_based());
     doc.commit(tx).unwrap();
@@ -43,12 +46,18 @@ fn tags_and_schedules_read_typed_marks_and_the_rules() {
         .find(|e| is_door(&e.kind) && e.id != door)
         .unwrap()
         .id;
-    assert!(tag_text(doc.model(), other).0.starts_with("D-"));
+    assert!(tag_text(doc.model(), other)
+        .0
+        .lines()
+        .last()
+        .unwrap()
+        .starts_with("D-"));
     // the door schedule shows the same marks
     let table = creabim_geom::schedule::schedule_by(doc.model(), ScheduleCategory::Doors, false);
     let marks: Vec<&str> = table.rows.iter().map(|r| r.cells[0].as_str()).collect();
     assert!(marks.contains(&"FD-1"), "{marks:?}");
-    assert!(marks.contains(&tag_text(doc.model(), other).0.as_str()));
+    let other_tag = tag_text(doc.model(), other).0;
+    assert!(marks.contains(&other_tag.lines().last().unwrap()));
     // a wall with a mark reads it, and the wall schedule grows a column
     let wall = first(doc.model(), |k| matches!(k, ElementKind::Wall(_)));
     let thickness = tag_text(doc.model(), wall).0;
@@ -90,9 +99,10 @@ fn tag_leaders_bend_at_their_elbow_and_end_in_their_mark() {
     // a tag's own leader end and elbow reach its drawing
     let mut doc = Document::from_model(sample::sample_house());
     let plan = named(doc.model(), "Ground Floor plan");
-    let door = first(doc.model(), is_door);
-    let mut tag = Tag::new(plan, door, DVec2::new(2.0, 2.0));
-    tag.elbow = Some(DVec2::new(2.0, 0.0));
+    // (a door's or window's mark has a straight leader, square to its wall)
+    let wall = first(doc.model(), |k| matches!(k, ElementKind::Wall(_)));
+    let mut tag = Tag::new(plan, wall, DVec2::new(3.0, 2.0));
+    tag.elbow = Some(DVec2::new(3.0, 0.0));
     tag.end = Some(DVec2::new(0.1, 0.0));
     tag.leader_end = Some(Terminator::Arrow);
     let id = add(&mut doc, Element::new("Tag", ElementKind::Tag(tag)));
@@ -112,8 +122,13 @@ fn tag_leaders_bend_at_their_elbow_and_end_in_their_mark() {
             _ => None,
         })
         .unwrap();
-    assert!((at - anchor - DVec2::new(1.9, 2.0)).length() < 1e-9);
-    assert!((elbow.unwrap() - anchor - DVec2::new(1.9, 0.0)).length() < 1e-9);
+    assert!(
+        (at - anchor - DVec2::new(2.9, 2.0)).length() < 1e-9,
+        "{:?} {:?}",
+        at - anchor,
+        elbow.map(|e| e - anchor)
+    );
+    assert!((elbow.unwrap() - anchor - DVec2::new(2.9, 0.0)).length() < 1e-9);
     assert_eq!(look.leader_end, Some(Terminator::Arrow));
 }
 
@@ -237,6 +252,8 @@ fn dimension_lines_break_where_tags_sit_across_them() {
         look,
         witness: None,
         breaks: vec![],
+        below: None,
+        place: Default::default(),
     };
     let mut items = vec![tag, dim(look), dim(TextLook::default())];
     break_dimensions(&mut items, 0.1);
@@ -402,7 +419,562 @@ fn the_starter_house_plans_with_level_marks_have_no_overlapping_labels() {
         }
         let mm = v.scale / 1000.0;
         let items = view_drawing(m, e.id).unwrap().items;
-        let clash = creabim_geom::declutter::overlapping_labels(&items, mm);
+        // door and window marks stand where they were put
+        let stays = |k: usize| {
+            matches!(m.get(items[k].id()).map(|e| &e.kind),
+                Some(ElementKind::Tag(t))
+                    if creabim_geom::annotate::tag_normal(m, v, t).is_some())
+        };
+        let clash: Vec<_> = creabim_geom::declutter::overlapping_labels(&items, mm)
+            .into_iter()
+            .filter(|(a, b)| !stays(*a) && !stays(*b))
+            .collect();
         assert!(clash.is_empty(), "{}: {clash:?}", e.name);
     }
+}
+
+#[test]
+fn a_door_mark_is_a_split_circle_with_its_hand_over_its_number() {
+    use creabim_geom::annotate::tag_geometry;
+    let look = creabim_geom::annotation::TextLook::default();
+    let g = tag_geometry(
+        DVec2::new(5.0, 0.0),
+        DVec2::ZERO,
+        None,
+        "L\nD01",
+        true,
+        &look,
+        0.01,
+    );
+    assert_eq!(g.texts.len(), 2);
+    assert!(
+        g.texts[0].0.y > 0.0 && g.texts[1].0.y < 0.0,
+        "hand above, number below"
+    );
+    assert!(g.divider.is_some());
+    let one = tag_geometry(
+        DVec2::new(5.0, 0.0),
+        DVec2::ZERO,
+        None,
+        "W01",
+        true,
+        &look,
+        0.01,
+    );
+    assert_eq!(one.texts.len(), 1);
+    assert!(one.divider.is_none());
+}
+
+#[test]
+fn door_and_window_marks_stand_square_to_their_wall() {
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    // a door's tag pushed askew comes back square, on a straight leader
+    let (id, n) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Tag(t) if t.view == plan && is_door(&doc.model().get(t.host)?.kind) => {
+                Some((
+                    e.id,
+                    creabim_geom::annotate::tag_normal(doc.model(), &v, t)?,
+                ))
+            }
+            _ => None,
+        })
+        .unwrap();
+    doc.edit_merged(id, "Move tag", |e| {
+        if let ElementKind::Tag(t) = &mut e.kind {
+            t.offset = n * 3.0 + n.perp() * 2.0;
+        }
+    })
+    .unwrap();
+    let d = view_drawing(doc.model(), plan).unwrap();
+    let (anchor, at) = d
+        .items
+        .iter()
+        .find_map(|i| match i {
+            PlanItem::Tag {
+                id: t, anchor, at, ..
+            } if *t == id => Some((*anchor, *at)),
+            _ => None,
+        })
+        .unwrap();
+    assert!((at - anchor - n * 3.0).length() < 1e-9);
+    // its clear passage is written along the leader: width and height
+    let along: Vec<String> = d
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            PlanItem::Annotation { id: t, item } if *t == id => Some(item.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(along.len(), 2, "{along:?}");
+    // a window's mark has its outer sill's beside it, K over its number
+    assert!(d
+        .items
+        .iter()
+        .any(|i| matches!(i, PlanItem::Tag { text, round: true, .. } if text.starts_with("K\n"))));
+}
+
+#[test]
+fn a_typed_dimension_moves_what_its_end_is_on() {
+    use creabim_core::{Dimension, HostPoint};
+    use creabim_geom::annotate::{attach, driven, resolve, stretches};
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    // from a free point to a window's jamb, along its wall
+    let (win, at) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Opening(o) if o.kind == OpeningKind::Window => {
+                let p = resolve(
+                    doc.model(),
+                    &v,
+                    &HostPoint {
+                        host: Some(e.id),
+                        local: DVec2::ZERO,
+                        from_end: false,
+                        body: None,
+                    },
+                )?;
+                Some((e.id, p))
+            }
+            _ => None,
+        })
+        .unwrap();
+    let ElementKind::Opening(o) = doc.model().get(win).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let ElementKind::Wall(w) = doc.model().get(o.host).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let from = at - w.direction() * 1.0;
+    let d = Dimension::linear(
+        plan,
+        HostPoint::free(from),
+        attach(doc.model(), &v, Some(win), at),
+        0.5,
+    );
+    assert_eq!(stretches(doc.model(), &v, &d).len(), 1);
+    let tx = driven(doc.model(), &v, &d, 0, 1.25, &[]).unwrap();
+    doc.commit(tx).unwrap();
+    let ElementKind::Opening(now) = &doc.model().get(win).unwrap().kind else {
+        unreachable!()
+    };
+    assert!((now.offset - o.offset - 0.25).abs() < 1e-9);
+    // nothing to move between two free points
+    let free = Dimension::linear(plan, HostPoint::free(from), HostPoint::free(at), 0.5);
+    assert!(driven(doc.model(), &v, &free, 0, 2.0, &[]).is_err());
+}
+
+/// An EQ chain: free point, a window's jamb, free point; the window
+/// slides to the middle and each stretch reads EQ.
+#[test]
+fn an_eq_chain_moves_the_point_between_to_the_middle() {
+    use creabim_core::{Dimension, HostPoint};
+    use creabim_geom::annotate::{attach, equalised, resolve, stretches};
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let (win, at) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Opening(o) if o.kind == OpeningKind::Window => {
+                let p = resolve(
+                    doc.model(),
+                    &v,
+                    &HostPoint {
+                        host: Some(e.id),
+                        local: DVec2::ZERO,
+                        from_end: false,
+                        body: None,
+                    },
+                )?;
+                Some((e.id, p))
+            }
+            _ => None,
+        })
+        .unwrap();
+    let ElementKind::Opening(o) = doc.model().get(win).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let ElementKind::Wall(w) = doc.model().get(o.host).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let u = w.direction();
+    let mut d = Dimension::linear(
+        plan,
+        HostPoint::free(at - u * 1.0),
+        HostPoint::free(at + u * 0.5),
+        0.5,
+    );
+    d.mids.push(attach(doc.model(), &v, Some(win), at));
+    d.eq = true;
+    assert_eq!(stretches(doc.model(), &v, &d).len(), 2);
+    doc.commit(equalised(doc.model(), &v, &d).unwrap()).unwrap();
+    let s = stretches(doc.model(), &v, &d);
+    assert!((s[0].2.distance(s[0].3) - 0.75).abs() < 1e-6);
+    assert!((s[1].2.distance(s[1].3) - 0.75).abs() < 1e-6);
+    let items = creabim_geom::annotate::linear_items(doc.model(), &v, plan, &d);
+    assert!(items
+        .iter()
+        .all(|i| matches!(i, PlanItem::Dimension { text, .. } if text == "EQ")));
+}
+
+#[test]
+fn a_jogged_section_cuts_each_stretch_on_its_own_plane() {
+    use creabim_core::{SectionJog, ViewKind};
+    let mut doc = Document::from_model(sample::sample_house());
+    let (sec, len) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::View(v) => match v.kind {
+                ViewKind::Section {
+                    start,
+                    end,
+                    cut: true,
+                    ..
+                } => Some((e.id, start.distance(end))),
+                _ => None,
+            },
+            _ => None,
+        })
+        .unwrap();
+    let plan = named(doc.model(), "Ground Floor plan");
+    let heavy = |doc: &Document| {
+        view_drawing(doc.model(), plan)
+            .unwrap()
+            .items
+            .iter()
+            .filter(|i| matches!(i, PlanItem::Line { id, pen: creabim_geom::plan::Pen::Cut, .. } if *id == sec))
+            .count()
+    };
+    let before = view_drawing(doc.model(), sec).unwrap().items;
+    let ends = heavy(&doc);
+    doc.edit_merged(sec, "Jog", |e| {
+        if let ElementKind::View(v) = &mut e.kind {
+            v.line.gap = true;
+            v.line.jogs = vec![SectionJog {
+                at: len / 2.0,
+                offset: -3.0,
+            }];
+        }
+    })
+    .unwrap();
+    // three heavy strokes more at the corner, and no thin line between
+    assert_eq!(heavy(&doc), ends + 3);
+    let after = view_drawing(doc.model(), sec).unwrap().items;
+    assert_ne!(before, after, "the second stretch cuts elsewhere");
+    let ElementKind::View(v) = &doc.model().get(sec).unwrap().kind else {
+        unreachable!()
+    };
+    assert_eq!(v.line.stretches(len).len(), 2);
+}
+
+#[test]
+fn a_dimension_to_a_walls_face_follows_the_wall() {
+    use creabim_core::{Dimension, HostPoint, Wall};
+    use creabim_geom::annotate::{rehosted, resolve};
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let ViewKind::Plan { level, .. } = v.kind else {
+        unreachable!()
+    };
+    // a wall of the plan's level, and a free point on its face
+    let (id, w): (ElementId, Wall) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Wall(w) if w.level == level && !w.is_arc() => Some((e.id, w.clone())),
+            _ => None,
+        })
+        .unwrap();
+    let n = w.direction().perp();
+    let face = w.start + w.direction() * (w.length() / 2.0) + n * (w.thickness / 2.0);
+    let d = Dimension::linear(
+        plan,
+        HostPoint::free(face + n * 2.0),
+        HostPoint::free(face),
+        0.5,
+    );
+    let d = rehosted(doc.model(), &v, &d);
+    assert_eq!(d.b.host, Some(id), "the point on the face is the wall's");
+    assert_eq!(d.a.host, None, "the one in the open stays free");
+    // the wall moves a metre: the point goes with it
+    doc.edit_merged(id, "Move", |e| {
+        if let ElementKind::Wall(w) = &mut e.kind {
+            w.start -= n;
+            w.end -= n;
+        }
+    })
+    .unwrap();
+    let q = resolve(doc.model(), &v, &d.b).unwrap();
+    assert!((q - (face - n)).length() < 1e-9);
+}
+
+#[test]
+fn reveal_insulation_is_billed_for_windows_and_framed_doors() {
+    use creabim_core::joinery::{apply_door, reveal_strips, DoorFrame, DoorSpec};
+    let mut doc = Document::from_model(creabim_core::starter::starter_house());
+    let windows = reveal_strips(doc.model(), false);
+    assert!(
+        !windows.is_empty(),
+        "the starter house's walls are insulated"
+    );
+    assert!(windows.iter().all(|s| s.area() > 0.0 && s.thickness > 0.0));
+    // a door with a lining covers its reveal; in a frame the layers turn in
+    let doors: Vec<Element> = doc
+        .model()
+        .iter()
+        .filter(|e| is_door(&e.kind))
+        .cloned()
+        .collect();
+    let mut tx = Transaction::new("Frames");
+    for e in doors {
+        let mut now = e.clone();
+        if let ElementKind::Opening(o) = &mut now.kind {
+            let spec = DoorSpec::fitting(DoorFrame::Steel, o.width, o.height);
+            apply_door(o, spec);
+        }
+        tx = tx.replace(e, now);
+    }
+    doc.commit(tx).unwrap();
+    let framed = reveal_strips(doc.model(), true);
+    assert!(!framed.is_empty());
+}
+
+#[test]
+fn a_level_inside_a_storey_shows_the_storeys_floor_and_what_stands_on_it() {
+    let mut doc = Document::from_model(sample::sample_house());
+    let ground = doc
+        .model()
+        .levels()
+        .min_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+        .map(|(e, l)| (e.id, l.elevation))
+        .unwrap();
+    let (tx, id, plan) = creabim_core::levels::add(doc.model(), "Cut", ground.1 + 1.5, 1.5, true);
+    doc.commit(tx).unwrap();
+    let plan = plan.unwrap();
+    assert_eq!(
+        creabim_geom::plan::storey_cut(doc.model(), id, 0.2),
+        (ground.0, 1.7)
+    );
+    // the ground floor and its walls are in the new level's plan
+    let items = view_drawing(doc.model(), plan).unwrap().items;
+    let shows = |pick: &dyn Fn(&ElementKind) -> bool| {
+        items
+            .iter()
+            .any(|i| doc.model().get(i.id()).is_some_and(|e| pick(&e.kind)))
+    };
+    assert!(shows(&|k| matches!(k, ElementKind::Wall(_))));
+    assert!(shows(&|k| matches!(k, ElementKind::Slab(_))));
+}
+
+/// A pipe dimensioned from a wall: typing a new number moves the pipe
+/// (with the pipes in line with it), never the wall, and a branch joined
+/// to it stretches to stay joined.
+#[test]
+fn a_typed_dimension_to_a_pipe_moves_the_pipe() {
+    use creabim_core::mep::Pipe;
+    use creabim_core::{Dimension, Transaction};
+    use creabim_geom::annotate::{attach, driven, stretches};
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let ViewKind::Plan { level, .. } = v.kind else {
+        unreachable!()
+    };
+    let (wall, w) = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Wall(w) if w.level == level && w.length() > 3.0 => Some((e.id, w.clone())),
+            _ => None,
+        })
+        .unwrap();
+    let d = w.direction();
+    let n = d.perp();
+    let face = w.start + d * 1.0 + n * (w.thickness / 2.0);
+    let pipe = |a: DVec2, b: DVec2| {
+        Element::new(
+            "Pipe",
+            ElementKind::Pipe(Pipe {
+                level,
+                system: "SV".into(),
+                start: a.extend(0.5),
+                end: b.extend(0.5),
+                pipe_type: "HERZ".into(),
+                nominal_mm: 16.0,
+                outer_mm: 16.0,
+                inner_mm: 12.0,
+                height_mm: None,
+                insulation_mm: 0.0,
+                insulation_set: false,
+                mark: None,
+            }),
+        )
+    };
+    // two pipes in line along the wall, 0.3 m off it, and a branch
+    // leaving square from where they meet
+    let at = face + n * 0.3;
+    let p1 = pipe(at, at + d * 1.0);
+    let p2 = pipe(at + d * 1.0, at + d * 2.0);
+    let br = pipe(at + d * 1.0, at + d * 1.0 + n * 1.0);
+    let (i1, i2, ib) = (p1.id, p2.id, br.id);
+    doc.commit(Transaction::new("pipes").insert(p1).insert(p2).insert(br))
+        .unwrap();
+    let dim = Dimension::linear(
+        plan,
+        attach(doc.model(), &v, Some(wall), face),
+        attach(doc.model(), &v, Some(i1), at),
+        0.5,
+    );
+    assert_eq!(stretches(doc.model(), &v, &dim).len(), 1);
+    // a free point drawn on the pipe is bound to it
+    let free = Dimension::linear(plan, dim.a, creabim_core::HostPoint::free(at), 0.5);
+    let bound = creabim_geom::annotate::rehosted(doc.model(), &v, &free);
+    assert_eq!(bound.b.host, Some(i1));
+    let tx = driven(doc.model(), &v, &dim, 0, 0.5, &[]).unwrap();
+    doc.commit(tx).unwrap();
+    let ElementKind::Wall(after) = &doc.model().get(wall).unwrap().kind else {
+        unreachable!()
+    };
+    assert!(after.start.distance(w.start) < 1e-9 && after.end.distance(w.end) < 1e-9);
+    let ends = |id| match &doc.model().get(id).unwrap().kind {
+        ElementKind::Pipe(p) => (p.start.truncate(), p.end.truncate()),
+        _ => unreachable!(),
+    };
+    let to = at + n * 0.2;
+    assert!(ends(i1).0.distance(to) < 1e-6);
+    assert!(ends(i2).1.distance(to + d * 2.0) < 1e-6);
+    // the branch keeps its far end and stays joined
+    let (bs, be) = ends(ib);
+    assert!(bs.distance(to + d * 1.0) < 1e-6, "{bs:?}");
+    assert!(be.distance(at + d * 1.0 + n * 1.0) < 1e-6);
+}
+
+/// A dimension in a section from a level to a footing's top stays on the
+/// footing when it is set deeper, and typing it sets the footing's depth.
+#[test]
+fn a_section_dimension_holds_and_drives_a_footing() {
+    use creabim_core::footing::Footing;
+    use creabim_core::{Dimension, Transaction};
+    use creabim_geom::annotate::{attach, driven, resolve};
+    let mut doc = Document::from_model(sample::sample_house());
+    let level = doc.model().levels().next().map(|(e, _)| e.id).unwrap();
+    let z0 = doc.model().level(level).unwrap().elevation;
+    let mut f = Footing::strip(level, DVec2::new(0.0, 5.0), DVec2::new(4.0, 5.0));
+    f.below = 0.5;
+    let fe = Element::new("Footing", ElementKind::Footing(f));
+    let fid = fe.id;
+    let v = View::section(DVec2::new(2.0, 0.0), DVec2::new(2.0, 10.0), 20.0, true);
+    let ve = Element::new("Section", ElementKind::View(v.clone()));
+    let vid = ve.id;
+    doc.commit(Transaction::new("f").insert(fe).insert(ve))
+        .unwrap();
+    // the footing's top, where the section crosses it, and the level above
+    let top = DVec2::new(5.0, z0 - 0.5);
+    let a = attach(doc.model(), &v, Some(level), DVec2::new(5.0, z0));
+    let b = attach(doc.model(), &v, Some(fid), top);
+    assert_eq!(b.host, Some(fid));
+    assert!(resolve(doc.model(), &v, &b).unwrap().distance(top) < 1e-9);
+    let dim = Dimension::linear(vid, a, b, 0.5);
+    // typed: 800 from the level, so the footing goes 300 deeper
+    let tx = driven(doc.model(), &v, &dim, 0, 0.8, &[]).unwrap();
+    doc.commit(tx).unwrap();
+    let ElementKind::Footing(after) = &doc.model().get(fid).unwrap().kind else {
+        unreachable!()
+    };
+    assert!((after.below - 0.8).abs() < 1e-9, "{}", after.below);
+    // and the dimension's end went down with it
+    let q = resolve(doc.model(), &v, &dim.b).unwrap();
+    assert!((q.y - (z0 - 0.8)).abs() < 1e-9, "{q:?}");
+}
+
+/// A dimension drawn to a door's jambs on the wall (older drawings, or a
+/// point snapped on the wall's end at the door) is bound to the door, so
+/// it goes with the door when it is moved or made wider (George
+/// 2026-11-20: the chain came apart, 960 turning into 1 435).
+#[test]
+fn dimensions_at_a_doors_jambs_follow_the_door() {
+    use creabim_geom::annotate::{attach, bind_jambs, resolve, stretches};
+    let mut doc = Document::from_model(sample::sample_house());
+    let door = first(doc.model(), is_door);
+    let (o, w) = match &doc.model().get(door).unwrap().kind {
+        ElementKind::Opening(o) => match &doc.model().get(o.host).unwrap().kind {
+            ElementKind::Wall(w) => (o.clone(), w.clone()),
+            _ => unreachable!(),
+        },
+        _ => unreachable!(),
+    };
+    let plan = doc
+        .model()
+        .iter()
+        .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { level, .. } if level == w.level)))
+        .unwrap()
+        .id;
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let d = w.direction();
+    let face = d.perp() * (w.thickness / 2.0);
+    let (l, r) = (
+        w.start + d * o.offset + face,
+        w.start + d * (o.offset + o.width) + face,
+    );
+    // both jambs on the wall, as the old dimensions were
+    let mut dim = Dimension::linear(
+        plan,
+        attach(doc.model(), &v, Some(o.host), l),
+        attach(doc.model(), &v, Some(o.host), r),
+        0.8,
+    );
+    dim.axis = DimAxis::Aligned;
+    let id = add(
+        &mut doc,
+        Element::new("Dimension", ElementKind::Dimension(dim)),
+    );
+    let rebound = bind_jambs(doc.model());
+    assert_eq!(rebound.len(), 1);
+    let mut tx = Transaction::new("bind");
+    for (b, a) in rebound {
+        tx = tx.replace(b, a);
+    }
+    doc.commit(tx).unwrap();
+    let ElementKind::Dimension(dim) = doc.model().get(id).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    assert_eq!((dim.a.host, dim.b.host), (Some(door), Some(door)));
+    // move the door 0.3 along and make it 0.2 wider
+    doc.edit(door, "move", |e| {
+        if let ElementKind::Opening(o) = &mut e.kind {
+            o.offset -= 0.3;
+            o.width += 0.2;
+        }
+    })
+    .unwrap();
+    let a = resolve(doc.model(), &v, &dim.a).unwrap();
+    let b = resolve(doc.model(), &v, &dim.b).unwrap();
+    assert!(a.distance(l - d * 0.3) < 1e-9, "{a:?}");
+    assert!(b.distance(r - d * 0.1) < 1e-9, "{b:?}");
+    let s = stretches(doc.model(), &v, &dim);
+    assert!((s[0].2.distance(s[0].3) - (o.width + 0.2)).abs() < 1e-9);
 }

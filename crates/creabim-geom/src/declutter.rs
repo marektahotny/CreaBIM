@@ -153,9 +153,10 @@ pub fn text_box(item: &PlanItem, mm: f64) -> Option<(TextBox, bool)> {
             text,
             look,
             witness,
+            place,
             ..
         } => {
-            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
             let w = look.width(text) * mm;
             let h = look.size * 0.6 * mm;
             let (dir, up) = (
@@ -221,9 +222,11 @@ fn obstacles(items: &[PlanItem], mm: f64) -> Vec<(DVec2, DVec2, f64, usize)> {
                 offset,
                 look,
                 witness,
+                place,
                 ..
             } => {
-                for (p, q) in dimension_geometry(*a, *b, *offset, *witness, look, mm).lines {
+                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
+                for (p, q) in g.lines {
                     out.push((p, q, 1.0, k));
                 }
             }
@@ -263,14 +266,24 @@ const LEADER_PAST: f64 = 9.0;
 /// units per paper mm. Grid and section bubbles and dimension text stay
 /// where they are and are kept clear of.
 pub fn place_labels(items: &mut Vec<PlanItem>, mm: f64) {
+    place_labels_but(items, mm, &|_| false)
+}
+
+/// As [`place_labels`], leaving the marks of the elements `fixed` where
+/// they are (door and window marks, which stand square to their wall).
+pub fn place_labels_but(
+    items: &mut Vec<PlanItem>,
+    mm: f64,
+    fixed: &dyn Fn(creabim_core::ElementId) -> bool,
+) {
     let segs = obstacles(items, mm);
     // what is placed so far: fixed text first
     let mut taken: Vec<(TextBox, usize)> = Vec::new();
     let mut movable: Vec<(usize, TextBox)> = Vec::new();
     for (k, it) in items.iter().enumerate() {
         match text_box(it, mm) {
-            Some((b, false)) => taken.push((b, k)),
-            Some((b, true)) => movable.push((k, b)),
+            Some((b, true)) if !fixed(it.id()) => movable.push((k, b)),
+            Some((b, _)) => taken.push((b, k)),
             None => {}
         }
     }
@@ -529,7 +542,17 @@ mod tests {
             };
             let mm = v.scale / 1000.0;
             let items = crate::section::view_drawing(&m, view).unwrap().items;
-            let clash = overlapping_labels(&items, mm);
+            // door and window marks stand where they were put, square to
+            // their wall: only the drafter moves those
+            let stays = |k: usize| {
+                matches!(m.get(items[k].id()).map(|e| &e.kind),
+                    Some(ElementKind::Tag(t))
+                        if crate::annotate::tag_normal(&m, v, t).is_some())
+            };
+            let clash: Vec<_> = overlapping_labels(&items, mm)
+                .into_iter()
+                .filter(|(a, b)| !stays(*a) && !stays(*b))
+                .collect();
             let name = &m.get(view).unwrap().name;
             assert!(
                 clash.is_empty(),

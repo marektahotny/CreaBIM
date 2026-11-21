@@ -42,6 +42,9 @@ pub enum Param {
     Height,
     Sill,
     Frame,
+    /// A door's leaf and frame, its threshold, and a door's or window's
+    /// division into fields.
+    Joinery,
     Profile,
     Depth,
     /// A pad footing's side along its own y axis.
@@ -60,6 +63,7 @@ impl Param {
             Param::Height => "Height",
             Param::Sill => "Sill",
             Param::Frame => "Frame and panes",
+            Param::Joinery => "Leaf, frame and division",
             Param::Profile => "Profile",
             Param::Depth => "Depth",
             Param::Length => "Length",
@@ -176,6 +180,7 @@ impl TypeCategory {
                 Param::Height,
                 Param::Sill,
                 Param::Frame,
+                Param::Joinery,
                 Param::Material,
             ],
             TypeCategory::Slab | TypeCategory::Roof => {
@@ -229,6 +234,17 @@ pub struct OpeningType {
     pub frame: OpeningFrame,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub material: Option<ElementId>,
+    /// The joinery its doors or windows share: a door's leaf and frame,
+    /// its threshold, the division into fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub door: Option<crate::joinery::DoorSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub division: Option<crate::joinery::FrameNode>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub threshold: bool,
+    /// Uw, g, τv and Rw from the maker's data sheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub performance: Option<crate::joinery::Performance>,
 }
 
 /// What slabs or roofs of a type share.
@@ -518,6 +534,10 @@ pub fn from_instance(e: &Element) -> Option<TypeParams> {
                 sill: o.sill,
                 frame: o.frame,
                 material: o.material,
+                door: o.door.clone(),
+                division: o.division.clone(),
+                threshold: o.threshold,
+                performance: o.performance.clone(),
             };
             match o.kind {
                 OpeningKind::Door => TypeParams::Door(t),
@@ -583,6 +603,13 @@ pub fn differences(params: &TypeParams, kind: &ElementKind) -> Vec<Param> {
             flag(Param::Height, !near(t.height, o.height));
             flag(Param::Sill, !near(t.sill, o.sill));
             flag(Param::Frame, t.frame != o.frame);
+            flag(
+                Param::Joinery,
+                t.door != o.door
+                    || t.division != o.division
+                    || t.threshold != o.threshold
+                    || t.performance != o.performance,
+            );
             flag(Param::Material, t.material != o.material);
         }
         (TypeParams::Slab(t), ElementKind::Slab(s)) => {
@@ -668,6 +695,12 @@ pub fn apply(model: &Model, params: &TypeParams, e: &mut Element, keep: &[Param]
             }
             if set(Param::Frame) {
                 o.frame = t.frame;
+            }
+            if set(Param::Joinery) {
+                o.door = t.door.clone();
+                o.division = t.division.clone();
+                o.threshold = t.threshold;
+                o.performance = t.performance.clone();
             }
             if set(Param::Material) {
                 o.material = t.material;
@@ -1046,6 +1079,16 @@ fn opening(width: f64, height: f64, sill: f64, across: u32, up: u32) -> OpeningT
             ..Default::default()
         },
         material: None,
+        door: None,
+        division: None,
+        threshold: false,
+        // a window as its maker's data sheet gives one; a door's depends on
+        // where it leads, so it is left to be picked
+        performance: if sill > 0.0 {
+            crate::joinery::default_window_performance()
+        } else {
+            None
+        },
     }
 }
 

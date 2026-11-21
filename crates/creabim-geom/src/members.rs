@@ -384,7 +384,8 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
             } else if z1 <= z {
                 ring(&mut items, e, Pen::Projection, &pts);
             } else {
-                ring(&mut items, e, Pen::Hidden, &pts);
+                // above the cut: a thin line of a dash and two dots
+                ring(&mut items, e, Pen::Overhead, &pts);
             }
         }
         ElementKind::Beam(b) => {
@@ -400,11 +401,11 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
                     points: pts,
                 });
             } else {
-                // above the cut, as usual: dashed
+                // above the cut: a thin line of a dash and two dots
                 let pen = if top <= z {
                     Pen::Projection
                 } else {
-                    Pen::Hidden
+                    Pen::Overhead
                 };
                 ring(&mut items, e, pen, &pts);
             }
@@ -587,7 +588,7 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
         // the first riser the cut plane meets
         let cut_at: Option<u32> = (0..f.risers).find(|i| f.z0 + (*i + 1) as f64 * r > cut + 1e-9);
         let pen_for = |i: u32| match cut_at {
-            Some(k) if i > k || broken => Pen::Hidden,
+            Some(k) if i > k || broken => Pen::Overhead,
             _ => Pen::Projection,
         };
         for i in 0..f.risers {
@@ -607,7 +608,7 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
                 line(items, Pen::Projection, at(0.0) + sd, at(split) + sd);
             }
             if run - split > 1e-9 {
-                line(items, Pen::Hidden, at(split) + sd, at(run) + sd);
+                line(items, Pen::Overhead, at(split) + sd, at(run) + sd);
             }
         }
         if let (Some(_), false) = (cut_at, broken) {
@@ -617,7 +618,7 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
     }
     if let Some((outline, z)) = &lay.landing {
         let pen = if broken || *z > cut {
-            Pen::Hidden
+            Pen::Overhead
         } else {
             Pen::Projection
         };
@@ -1052,7 +1053,7 @@ mod tests {
         assert!(items.iter().all(|i| matches!(
             i,
             PlanItem::Line {
-                pen: Pen::Hidden,
+                pen: Pen::Overhead,
                 ..
             }
         )));
@@ -1064,7 +1065,7 @@ mod tests {
                 .filter(|i| matches!(i, PlanItem::Line { pen: p, .. } if *p == pen))
                 .count()
         };
-        assert!(count(Pen::Hidden) > 0 && count(Pen::Projection) > 0);
+        assert!(count(Pen::Overhead) > 0 && count(Pen::Projection) > 0);
         assert!(items
             .iter()
             .any(|i| matches!(i, PlanItem::Label { text, .. } if text == "UP")));

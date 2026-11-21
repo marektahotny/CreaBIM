@@ -166,6 +166,7 @@ window.ICONS = {
 "render-wireframe": "<rect x=\"3\" y=\"9\" width=\"12\" height=\"12\" /> <path d=\"m3 9 6-6h12v12l-6 6M15 9l6-6\" /> <path d=\"M9 3v12h12M9 15l-6 6\" stroke-dasharray=\"2 1.5\" />",
 "edit-outline": "<path d=\"M4 18L3 7l9-3 6 6\"></path><path d=\"M14 20l7-7-3-3-7 7v3z\"></path>",
 "place-view": "<path d=\"M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2\"></path><path d=\"M12 2v8\"></path><path d=\"m9 7 3 3 3-3\"></path><path d=\"M15 13v5M12.5 15.5h5\"></path>",
+"printer": "<path d=\"M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2\"></path><path d=\"M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6\"></path><rect x=\"6\" y=\"14\" width=\"12\" height=\"8\" rx=\"1\"></rect>",
 "print-preview": "<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h7\"></path><path d=\"M14 2v4a2 2 0 0 0 2 2h4v4\"></path><path d=\"M8 13h4M8 17h3\"></path><circle cx=\"17\" cy=\"17\" r=\"3\"></circle><path d=\"m21 21-1.8-1.8\"></path>",
 "crop-box": "<path d=\"M12 3l8 4.5v9L12 21l-8-4.5v-9z\" stroke-dasharray=\"2 2\"></path><path d=\"M4 7.5L12 12l8-4.5M12 12v9\"></path><path d=\"M1 5V1h4M23 5V1h-4M1 19v4h4M23 19v4h-4\"></path>",
 "curtain-wall": "<path d=\"M3 3h18v18H3z\"></path><path d=\"M12 3v18\"></path><path d=\"M3 12h18\"></path><path d=\"M6 9l3-3\"></path><path d=\"M15 18l3-3\"></path>",
@@ -281,6 +282,7 @@ window.ICONS = {
 "flame": "<path d=\"M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z\" />",
 "wind": "<path d=\"M12.8 19.6A2 2 0 1 0 14 16H2\" /><path d=\"M17.5 8a2.5 2.5 0 1 1 2 4H2\" /><path d=\"M9.8 4.4A2 2 0 1 1 11 8H2\" />",
 "zap": "<path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\" />",
+"circuits": "<rect x=\"3\" y=\"4\" width=\"6\" height=\"16\" rx=\"1\" /><path d=\"M9 7h6v-1M9 12h8M9 17h6v1\" /><circle cx=\"17\" cy=\"5\" r=\"2\" /><circle cx=\"19\" cy=\"12\" r=\"2\" /><circle cx=\"17\" cy=\"19\" r=\"2\" />",
 "heater": "<path d=\"M11 8c2-3-2-3 0-6\" /><path d=\"M15.5 8c2-3-2-3 0-6\" /><path d=\"M6 10h.01\" /><path d=\"M6 14h.01\" /><path d=\"M10 16v-4\" /><path d=\"M14 16v-4\" /><path d=\"M18 16v-4\" /><path d=\"M20 6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3\" /><path d=\"M5 20v2\" /><path d=\"M19 20v2\" />",
 "fan": "<path d=\"M10.827 16.379a6.082 6.082 0 0 1-8.618-7.002l5.412 1.45a6.082 6.082 0 0 1 7.002-8.618l-1.45 5.412a6.082 6.082 0 0 1 8.618 7.002l-5.412-1.45a6.082 6.082 0 0 1-7.002 8.618l1.45-5.412Z\" /><path d=\"M12 12v.01\" />",
 "plug": "<path d=\"M12 22v-5\" /><path d=\"M9 8V2\" /><path d=\"M15 8V2\" /><path d=\"M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z\" />",
@@ -294,5 +296,13 @@ window.ICONS = {
 "columns-3": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /><path d=\"M9 3v18\" /><path d=\"M15 3v18\" />",
 "layout-grid": "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\" /><rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\" /><rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\" /><rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\" />",
 "gauge": "<path d=\"m12 14 4-4\" /><path d=\"M3.34 19a10 10 0 1 1 17.32 0\" />",
-"book-check": "<path d=\"M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20\" /><path d=\"m9 9.5 2 2 4-4\" />"
+"book-check": "<path d=\"M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20\" /><path d=\"m9 9.5 2 2 4-4\" />",
+"calc-gas": "<path d=\"M3.34 19a10 10 0 1 1 17.32 0\" /><path d=\"M12 19c-1.7 0-3-1.2-3-2.8 0-1.7 3-4.2 3-4.2s3 2.5 3 4.2c0 1.6-1.3 2.8-3 2.8z\" />",
+"calc-heating": "<path d=\"M3.34 19a10 10 0 1 1 17.32 0\" /><path d=\"M8 20v-7\" /><path d=\"M12 20v-7\" /><path d=\"M16 20v-7\" /><path d=\"M6 16h12\" />",
+"calc-drain": "<path d=\"M2 3l20 4\" /><path d=\"M2 9l20 4\" /><path d=\"M12 22a3 3 0 0 1-3-3c0-1.7 3-5 3-5s3 3.3 3 5a3 3 0 0 1-3 3z\" />",
+"draft-line": "<path d=\"M4 20 20 4\" /> <circle cx=\"4\" cy=\"20\" r=\"1.5\" /> <circle cx=\"20\" cy=\"4\" r=\"1.5\" />",
+"polyline": "<path d=\"M3 19 8 8l6 7 7-11\" /> <circle cx=\"3\" cy=\"19\" r=\"1.3\" /> <circle cx=\"21\" cy=\"4\" r=\"1.3\" />",
+"slope-dim": "<path d=\"M2 20 22 10\" /> <path d=\"M17 4.5 6 10\" /> <path d=\"m6 10 3.6-.1M6 10l2-3\" /> <path d=\"M15 20h7\" stroke-dasharray=\"2 1.5\" />",
+"arc-3pt": "<path d=\"M4 18A9 9 0 0 1 20 18\" /> <circle cx=\"4\" cy=\"18\" r=\"1.5\" /> <circle cx=\"20\" cy=\"18\" r=\"1.5\" /> <circle cx=\"12\" cy=\"9.1\" r=\"1.5\" />",
+"curve-line": "<path d=\"M3 18c3-9 6-9 9-4s6 5 9-6\" /> <circle cx=\"3\" cy=\"18\" r=\"1.3\" /> <circle cx=\"21\" cy=\"8\" r=\"1.3\" />"
 };

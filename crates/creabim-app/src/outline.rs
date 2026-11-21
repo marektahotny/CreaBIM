@@ -488,7 +488,7 @@ impl Outline {
                 painter.text(
                     first + egui::vec2(14.0, -14.0),
                     egui::Align2::LEFT_BOTTOM,
-                    "Close",
+                    crate::i18n::tr("outline\u{4}Close"),
                     egui::FontId::proportional(13.0),
                     accent,
                 );

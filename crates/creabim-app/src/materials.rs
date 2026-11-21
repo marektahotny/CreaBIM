@@ -182,7 +182,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
         .num_columns(2)
         .spacing([10.0, 6.0])
         .show(ui, |ui| {
-            ui.label("Category");
+            ui.label(crate::i18n::t("Category"));
             egui::ComboBox::from_id_salt("mat_category")
                 .icon(crate::props::combo_icon)
                 .selected_text(crate::i18n::tw(library::category_label(&m.category)))
@@ -207,10 +207,10 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                     }
                 })
                 .response
-                .on_hover_text("Written to IFC as IfcMaterial.Category");
+                .on_hover_text(crate::i18n::t("Written to IFC as IfcMaterial.Category"));
             ui.end_row();
 
-            ui.label("Description");
+            ui.label(crate::i18n::t("Description"));
             if ui
                 .add(
                     egui::TextEdit::singleline(&mut m.description)
@@ -223,7 +223,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             }
             ui.end_row();
 
-            ui.label("Colour");
+            ui.label(crate::i18n::t("Colour"));
             // the colour is sRGB, as the picker shows it
             let mut srgb = m.color.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
             if ui.color_edit_button_srgb(&mut srgb).changed() {
@@ -232,7 +232,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             }
             ui.end_row();
 
-            ui.label("Cut hatch");
+            ui.label(crate::i18n::t("Cut hatch"));
             egui::ComboBox::from_id_salt("mat_hatch")
                 .icon(crate::props::combo_icon)
                 .selected_text(crate::i18n::tw(m.hatch.label()))
@@ -250,30 +250,30 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                 });
             ui.end_row();
 
-            ui.label("Roughness");
+            ui.label(crate::i18n::t("Roughness"));
             if ui
                 .add(egui::Slider::new(&mut m.roughness, 0.0..=1.0).fixed_decimals(2))
-                .on_hover_text("0 is mirror-smooth, 1 fully matte")
+                .on_hover_text(crate::i18n::t("0 is mirror-smooth, 1 fully matte"))
                 .changed()
             {
                 label = "Material roughness";
             }
             ui.end_row();
 
-            ui.label("Metallic");
+            ui.label(crate::i18n::t("Metallic"));
             if ui
                 .add(egui::Slider::new(&mut m.metallic, 0.0..=1.0).fixed_decimals(2))
-                .on_hover_text("1 for bare metal, 0 for everything else")
+                .on_hover_text(crate::i18n::t("1 for bare metal, 0 for everything else"))
                 .changed()
             {
                 label = "Material metallic";
             }
             ui.end_row();
 
-            ui.label("Opacity");
+            ui.label(crate::i18n::t("Opacity"));
             if ui
                 .add(egui::Slider::new(&mut m.opacity, 0.05..=1.0).fixed_decimals(2))
-                .on_hover_text("1 is opaque; glass is about 0.3")
+                .on_hover_text(crate::i18n::t("1 is opaque; glass is about 0.3"))
                 .changed()
             {
                 label = "Material opacity";
@@ -329,7 +329,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             }
             ui.end_row();
 
-            ui.label("Rate");
+            ui.label(crate::i18n::t("Rate"));
             crate::props::flow(ui, |ui| {
                 let per = m.rate.map_or(RateUnit::Area, |r| r.per);
                 let mut amount = m.rate.map_or(0.0, |r| r.amount);
@@ -340,9 +340,9 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                             .speed(0.5)
                             .max_decimals(2),
                     )
-                    .on_hover_text(
+                    .on_hover_text(crate::i18n::t(
                         "Its price for take-off, in the currency you price the project in",
-                    )
+                    ))
                     .changed()
                 {
                     m.rate = Some(Rate { amount, per });
@@ -365,8 +365,8 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                     });
                 if m.rate.is_some()
                     && ui
-                        .small_button("Clear")
-                        .on_hover_text("No rate: leave it out of the priced total")
+                        .small_button(crate::i18n::t("Clear"))
+                        .on_hover_text(crate::i18n::t("No rate: leave it out of the priced total"))
                         .clicked()
                 {
                     m.rate = None;
@@ -462,9 +462,10 @@ impl CreaBimApp {
         items.extend([
             Item::Separator,
             Item::Header(match targets {
-                0 => "Select walls, slabs or masses to assign".into(),
-                1 => "Assign to the selected element".into(),
-                n => format!("Assign to the {n} selected elements"),
+                0 => crate::i18n::t("Select walls, slabs or masses to assign").into(),
+                1 => crate::i18n::t("Assign to the selected element").into(),
+                n => crate::i18n::t("Assign to the {n} selected elements")
+                    .replace("{n}", &n.to_string()),
             }),
             Item::sub("Assign material", assign)
                 .icon("palette")
@@ -557,8 +558,8 @@ impl CreaBimApp {
     }
 
     pub(super) fn import_materials_dialog(&mut self) {
-        let picked = rfd::FileDialog::new()
-            .set_title("Import materials")
+        let picked = crate::files::file_dialog()
+            .set_title(crate::i18n::tr("Import materials"))
             .add_filter("Materials (IFC, FreeCAD, glTF, Blender)", MATERIAL_FILES)
             .add_filter("IFC", &["ifc"])
             .add_filter("FreeCAD material card", &["FCMat", "fcmat"])
@@ -622,7 +623,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Materials")
+        crate::app::shell::window(crate::i18n::tr("Materials"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(16.0, 16.0))
             .constrain_to(area)
@@ -645,13 +646,15 @@ impl CreaBimApp {
                     ui.add(
                         egui::TextEdit::singleline(&mut self.mat.filter)
                             .vertical_align(egui::Align::Center)
-                            .hint_text("Find")
+                            .hint_text(crate::i18n::t("Find"))
                             .desired_width(140.0),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
-                            .button("Import…")
-                            .on_hover_text("IFC, FreeCAD .FCMat, glTF/.glb or .blend")
+                            .button(crate::i18n::t("Import…"))
+                            .on_hover_text(crate::i18n::t(
+                                "IFC, FreeCAD .FCMat, glTF/.glb or .blend",
+                            ))
                             .clicked()
                         {
                             asks.push(Ask::Import);
@@ -713,7 +716,7 @@ impl CreaBimApp {
                                 continue;
                             }
                             ui.label(
-                                egui::RichText::new(library::category_label(&cat).to_uppercase())
+                                egui::RichText::new(crate::i18n::tr(&library::category_label(&cat)).to_uppercase())
                                     .size(10.5)
                                     .strong()
                                     .color(ui.visuals().weak_text_color()),
@@ -732,8 +735,8 @@ impl CreaBimApp {
                                     let r = ui
                                         .selectable_label(current == Some(*id), crate::i18n::tw(text))
                                         .on_hover_text(match users {
-                                            0 => "Not used".to_string(),
-                                            n => format!("Used by {n} element{}", plural_s(n)),
+                                            0 => crate::i18n::t("Not used").to_string(),
+                                            n => crate::i18n::t("Used by {n} element{}").replace("{n}", &n.to_string()).replace("{}", plural_s(n)),
                                         });
                                     if r.clicked() {
                                         asks.push(Ask::Pick(*id));
@@ -745,21 +748,21 @@ impl CreaBimApp {
                         if mats.is_empty() {
                             ui.label(
                                 egui::RichText::new(
-                                    "No materials yet. Add some from the Library tab, or import them.",
+                                    crate::i18n::t("No materials yet. Add some from the Library tab, or import them."),
                                 )
                                 .weak(),
                             );
                         }
                     });
                 crate::props::flow(ui, |ui| {
-                    if ui.button("New").clicked() {
+                    if ui.button(crate::i18n::t("New")).clicked() {
                         asks.push(Ask::New);
                     }
                     if let Some(c) = current {
-                        if ui.button("Duplicate").clicked() {
+                        if ui.button(crate::i18n::t("Duplicate")).clicked() {
                             asks.push(Ask::Duplicate(c));
                         }
-                        if ui.button("Delete").clicked() {
+                        if ui.button(crate::i18n::t("Delete")).clicked() {
                             asks.push(Ask::Delete(c));
                         }
                     }
@@ -792,17 +795,17 @@ impl CreaBimApp {
                         ui.label(
                             egui::RichText::new(format!(
                                 "IfcMaterial · {}",
-                                library::category_label(&m.category)
+                                crate::i18n::tr(&library::category_label(&m.category))
                             ))
                             .weak(),
                         );
                         let users = library::users(model, id);
                         crate::props::flow(ui, |ui| {
                             ui.label(match users.len() {
-                                0 => "Not used yet.".to_string(),
-                                n => format!("Used by {n} element{}.", plural_s(n)),
+                                0 => crate::i18n::t("Not used yet.").to_string(),
+                                n => crate::i18n::t("Used by {n} element{}.").replace("{n}", &n.to_string()).replace("{}", plural_s(n)),
                             });
-                            if !users.is_empty() && ui.small_button("Select them").clicked() {
+                            if !users.is_empty() && ui.small_button(crate::i18n::t("Select them")).clicked() {
                                 asks.push(Ask::SelectUsers(id));
                             }
                         });
@@ -810,12 +813,12 @@ impl CreaBimApp {
                         let r = ui.add_enabled(
                             targets > 0,
                             egui::Button::new(match targets {
-                                0 => "Assign to the selection".to_string(),
-                                1 => "Assign to the selected element".to_string(),
-                                n => format!("Assign to the {n} selected elements"),
+                                0 => crate::i18n::t("Assign to the selection").to_string(),
+                                1 => crate::i18n::t("Assign to the selected element").to_string(),
+                                n => crate::i18n::t("Assign to the {n} selected elements").replace("{n}", &n.to_string()),
                             }),
                         );
-                        if r.on_disabled_hover_text("Select walls, slabs or masses first")
+                        if r.on_disabled_hover_text(crate::i18n::t("Select walls, slabs or masses first"))
                             .clicked()
                         {
                             asks.push(Ask::Assign(Some(id)));
@@ -832,11 +835,11 @@ impl CreaBimApp {
                     ui.add_space(10.0);
                     egui::Frame::group(ui.style()).show(ui, |ui| {
                         let n = library::users(model, del).len();
-                        ui.label(format!(
+                        ui.label(crate::i18n::tr(&format!(
                             "{} is used by {n} element{}. What should they be made of instead?",
                             e.name,
                             plural_s(n)
-                        ));
+                        )));
                         let mut choice = replacement;
                         let shown = choice
                             .and_then(|c| model.get(c))
@@ -855,10 +858,10 @@ impl CreaBimApp {
                             asks.push(Ask::Replacement(del, choice));
                         }
                         crate::props::flow(ui, |ui| {
-                            if ui.button("Delete and reassign").clicked() {
+                            if ui.button(crate::i18n::t("Delete and reassign")).clicked() {
                                 asks.push(Ask::ConfirmDelete(del, choice));
                             }
-                            if ui.button("Cancel").clicked() {
+                            if ui.button(crate::i18n::t("Cancel")).clicked() {
                                 asks.push(Ask::Pick(id));
                             }
                         });
@@ -876,10 +879,10 @@ impl CreaBimApp {
             .collect();
         let f = self.mat.filter.trim().to_lowercase();
         ui.label(
-            egui::RichText::new(format!(
+            egui::RichText::new(crate::i18n::tr(&format!(
                 "{} common building materials, with IFC categories. Adding one that the project has already resets it to the library's.",
                 LIBRARY.len()
-            ))
+            )))
             .weak(),
         );
         ui.add_space(4.0);
@@ -912,19 +915,26 @@ impl CreaBimApp {
                                     .strong()
                                     .color(ui.visuals().weak_text_color()),
                             );
-                            ui.label(egui::RichText::new(format!("IFC category: {cat}")).weak());
+                            ui.label(
+                                egui::RichText::new(crate::i18n::tr(&format!(
+                                    "IFC category: {cat}"
+                                )))
+                                .weak(),
+                            );
                             ui.label("");
-                            if rows.len() > 1 && ui.small_button("Add all").clicked() {
+                            if rows.len() > 1
+                                && ui.small_button(crate::i18n::t("Add all")).clicked()
+                            {
                                 asks.push(Ask::AddLibrary(rows.clone()));
                             }
                             ui.end_row();
                             for i in rows {
                                 let e = &LIBRARY[i];
                                 swatch(ui, &e.material(), 16.0);
-                                ui.label(e.name);
+                                ui.label(crate::i18n::tr(e.name));
                                 ui.label(egui::RichText::new(e.description).weak());
                                 ui.label(
-                                    egui::RichText::new(format!(
+                                    egui::RichText::new(crate::i18n::tr(&format!(
                                         "{}{}",
                                         e.hatch.label(),
                                         match (e.metallic > 0.5, e.opacity < 1.0) {
@@ -932,7 +942,7 @@ impl CreaBimApp {
                                             (_, true) => ", see-through",
                                             _ => "",
                                         }
-                                    ))
+                                    )))
                                     .weak(),
                                 );
                                 let inside = have.contains(&e.name);

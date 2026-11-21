@@ -101,6 +101,8 @@ pub struct RoomDesign {
     pub id: ElementId,
     pub number: String,
     pub name: String,
+    /// The room's design temperature, °C.
+    pub ti: f64,
     /// The room's heat loss, W.
     pub phi: f64,
     /// The floor laid with pipes, m².
@@ -185,10 +187,7 @@ fn one(
     };
     let ti = hl.ti;
     let area = hl.area * AREA_FACTOR;
-    let text = format!("{} {}", r.occupancy, e.name).to_lowercase();
-    let bath = ["kúpeľ", "kupel", "wc", "sprch", "bath", "shower"]
-        .iter()
-        .any(|k| text.contains(k));
+    let bath = hl.kind.needs().wet;
     let ret = s.supply_c - s.sigma_k;
     let own = r.ufh.as_ref();
     let rf = own
@@ -221,6 +220,7 @@ fn one(
         id: hl.id,
         number: hl.number.clone(),
         name: hl.name.clone(),
+        ti,
         phi: hl.phi,
         area,
         q_req,

@@ -67,6 +67,94 @@ pub struct Rate {
     pub per: RateUnit,
 }
 
+/// What a take-off's rows are grouped by, outermost first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GroupBy {
+    /// Walls, slabs, roofs...: the line's [`Line::category`].
+    Category,
+    /// The storey the element stands on.
+    Level,
+    /// The element's type, or its assembly, or its name.
+    Construction,
+    /// The material.
+    Material,
+}
+
+impl GroupBy {
+    pub const ALL: [GroupBy; 4] = [
+        GroupBy::Category,
+        GroupBy::Level,
+        GroupBy::Construction,
+        GroupBy::Material,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            GroupBy::Category => "Element type",
+            GroupBy::Level => "Level",
+            GroupBy::Construction => "Construction",
+            GroupBy::Material => "Material",
+        }
+    }
+}
+
+/// How a take-off table is laid out: its groups, whether it lists every
+/// element's layer on a row of its own, and the column its rows sort by.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Layout {
+    /// The groups, outermost first; `None` groups by element type (walls,
+    /// slabs...), an empty list not at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<Vec<GroupBy>>,
+    /// A row for each layer of each element, instead of a row for each
+    /// material (and thickness) in a group.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub detail: bool,
+    /// The heading of the column the rows in a group sort by; none keeps
+    /// the order they come in (layer by layer, element by element).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub descending: bool,
+}
+
+impl Layout {
+    pub fn is_default(&self) -> bool {
+        *self == Layout::default()
+    }
+
+    /// The groups in effect; `by_level` is the older switch that put each
+    /// level's materials under a heading.
+    pub fn groups(&self, by_level: bool) -> Vec<GroupBy> {
+        match &self.group {
+            Some(g) => g.clone(),
+            None if by_level => vec![GroupBy::Level, GroupBy::Category],
+            None => vec![GroupBy::Category],
+        }
+    }
+}
+
+/// The order element categories are listed in: as a house is built.
+pub const CATEGORY_ORDER: [&str; 17] = [
+    "Footings",
+    "Foundation slabs",
+    "Walls",
+    "Columns",
+    "Beams",
+    "Slabs",
+    "Stairs",
+    "Roofs",
+    "Ceilings",
+    "Railings",
+    "Doors",
+    "Windows",
+    "Thresholds",
+    "Outer sills",
+    "Inner sills",
+    "Objects",
+    "Masses",
+];
+
 /// Measured amounts, in metres, square metres and cubic metres.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Quantity {
@@ -90,7 +178,8 @@ impl Quantity {
 pub struct Line {
     pub element: ElementId,
     /// "Walls", "Slabs", "Roofs", "Ceilings", "Columns", "Beams", "Footings",
-    /// "Doors", "Windows", "Objects", "Stairs", "Railings", "Masses".
+    /// "Doors", "Windows", "Outer sills", "Inner sills", "Objects", "Stairs",
+    /// "Railings", "Masses".
     pub category: &'static str,
     pub level: Option<ElementId>,
     pub material: Option<ElementId>,
@@ -101,6 +190,11 @@ pub struct Line {
     /// Thickness of the layer, or of the element, metres.
     pub thickness: f64,
     pub quantity: Quantity,
+    /// A door's or window's perimeter, m (0 for anything else).
+    pub perimeter: f64,
+    /// What the line is listed as when it is not by its material: a
+    /// window sill by its kind and size.
+    pub label: Option<String>,
 }
 
 /// Every take-off line of the model, element by element in model order.
@@ -144,7 +238,10 @@ pub fn lines(model: &Model) -> Vec<Line> {
             ElementKind::Slab(s) => {
                 let area = s.area();
                 (
-                    "Slabs",
+                    match crate::slab::kind_of(model, s) {
+                        crate::SlabKind::Foundation => "Foundation slabs",
+                        crate::SlabKind::Floor => "Slabs",
+                    },
                     s.level,
                     Quantity {
                         area,
@@ -357,6 +454,8 @@ pub fn lines(model: &Model) -> Vec<Line> {
                         volume: whole.area * l.thickness,
                         ..whole
                     },
+                    perimeter: 0.0,
+                    label: None,
                 });
             }
         } else {
@@ -368,7 +467,109 @@ pub fn lines(model: &Model) -> Vec<Line> {
                 layer: None,
                 thickness,
                 quantity: whole,
+                perimeter: match &e.kind {
+                    ElementKind::Opening(o) => 2.0 * (o.width + o.height),
+                    _ => 0.0,
+                },
+                label: None,
             });
+        }
+    }
+    // door thresholds: pieces of a material and size, as long as the
+    // clear width between the jambs and as deep as the frame
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        if o.kind != crate::OpeningKind::Door || !o.threshold {
+            continue;
+        }
+        let Some(host) = model.get(o.host) else {
+            continue;
+        };
+        let ElementKind::Wall(w) = &host.kind else {
+            continue;
+        };
+        let asm = assembly_of(model, host).map(|x| x.1);
+        let frame = o.frame.fitted(o.width, o.height, w.thickness);
+        let (a0, a1) = o.frame_span(w, asm, frame.depth);
+        let mm = |v: f64| (v * 1000.0).round();
+        let depth = mm(a1 - a0) / 1000.0;
+        let length = mm(o.width - 2.0 * crate::joinery::frame_width(o)) / 1000.0;
+        let kind = o
+            .threshold_material
+            .and_then(|m| model.get(m))
+            .map(|m| crate::words::tr(&m.name));
+        let label = format!(
+            "{}{} {} {} × {} {} mm",
+            crate::words::tr("Threshold"),
+            kind.map_or(String::new(), |k| format!(", {k}")),
+            crate::words::tr("w."),
+            mm(depth),
+            crate::words::tr("l."),
+            mm(length)
+        );
+        out.push(Line {
+            element: e.id,
+            category: "Thresholds",
+            level: Some(w.level),
+            material: o.threshold_material,
+            layer: None,
+            thickness: 0.0,
+            quantity: Quantity {
+                area: length * depth,
+                length,
+                count: 1,
+                ..Default::default()
+            },
+            perimeter: 0.0,
+            label: Some(label),
+        });
+    }
+    // window sills, outer (sheet metal) and inner (boards): pieces of a
+    // size, listed by kind and size
+    for (outer, category) in [(true, "Outer sills"), (false, "Inner sills")] {
+        let all = if outer {
+            crate::joinery::outer_sills(model)
+        } else {
+            crate::joinery::inner_sills(model)
+        };
+        for s in all {
+            let mm = |v: f64| (v * 1000.0).round() as i64;
+            // its size: width (across the wall) × length, mm
+            let label = format!(
+                "{} {} {} × {} {} mm",
+                crate::words::tr(if outer { "Outer sill" } else { "Inner sill" }),
+                crate::words::tr("w."),
+                mm(s.depth),
+                crate::words::tr("l."),
+                mm(s.length)
+            );
+            for w in &s.windows {
+                let level = match model.get(*w).map(|e| &e.kind) {
+                    Some(ElementKind::Opening(o)) => match model.get(o.host).map(|h| &h.kind) {
+                        Some(ElementKind::Wall(h)) => Some(h.level),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                out.push(Line {
+                    element: *w,
+                    category,
+                    level,
+                    material: None,
+                    layer: None,
+                    thickness: 0.0,
+                    quantity: Quantity {
+                        area: s.length * s.depth,
+                        length: s.length,
+                        count: 1,
+                        ..Default::default()
+                    },
+                    perimeter: 0.0,
+                    label: Some(label.clone()),
+                });
+            }
         }
     }
     out

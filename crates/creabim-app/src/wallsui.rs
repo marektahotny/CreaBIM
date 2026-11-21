@@ -61,11 +61,11 @@ pub(super) fn wall_fields(
                 let lines = walls::layer_boundaries(model, w);
                 if !lines.is_empty() {
                     ui.separator();
-                    ui.weak("By a layer boundary");
+                    ui.weak(crate::i18n::t("By a layer boundary"));
                     for (l, name) in lines {
                         if ui
                             .selectable_value(&mut w.location, l, crate::i18n::tw(name))
-                            .on_hover_text("Draw and dimension the wall on this line between layers. The wall stays where it is.")
+                            .on_hover_text(crate::i18n::t("Draw and dimension the wall on this line between layers. The wall stays where it is."))
                             .changed()
                         {
                             label = "Wall location line"
@@ -75,7 +75,7 @@ pub(super) fn wall_fields(
             })
             .response
             .on_hover_text(
-                "The line the wall is drawn and dimensioned on. It stays put when the wall gets thicker, changes its layers or is flipped.",
+                crate::i18n::t("The line the wall is drawn and dimensioned on. It stays put when the wall gets thicker, changes its layers or is flipped."),
             );
     });
     // Blender's rows (MU32): the operator in the field column, what it
@@ -144,7 +144,7 @@ pub(super) fn wall_fields(
             })
             .response
             .on_hover_text(
-                "Unconnected: the wall is as tall as its height. Up to a level: its top follows that level when it moves.",
+                crate::i18n::t("Unconnected: the wall is as tall as its height. Up to a level: its top follows that level when it moves."),
             );
     });
     match &mut w.top {
@@ -154,10 +154,10 @@ pub(super) fn wall_fields(
             }
             let h = walls::constrained_height(model, w).unwrap_or(w.height);
             ui.label(
-                egui::RichText::new(format!(
+                egui::RichText::new(crate::i18n::tr(&format!(
                     "Height {}, from its top constraint",
                     crate::units::len(h.max(walls::MIN_HEIGHT))
-                ))
+                )))
                 .weak(),
             );
         }
@@ -166,6 +166,58 @@ pub(super) fn wall_fields(
                 label = "Wall height"
             }
         }
+    }
+
+    // load-bearing or not: what the masonry check measures it by
+    let auto = creabim_core::masonry::is_bearing(
+        model,
+        &Wall {
+            bearing: None,
+            ..w.clone()
+        },
+        &creabim_core::masonry::rules(model),
+    );
+    let says = |b: Option<bool>| match b {
+        None if auto => "Auto: load-bearing (by its core)",
+        None => "Auto: partition (by its core)",
+        Some(true) => "Load-bearing",
+        Some(false) => "Partition",
+    };
+    crate::props::row(ui, "Masonry", |ui| {
+        egui::ComboBox::from_id_salt(("wall.bearing", id))
+            .icon(crate::props::combo_icon)
+            .selected_text(crate::i18n::tr(says(w.bearing)))
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for b in [None, Some(true), Some(false)] {
+                    if ui
+                        .selectable_value(&mut w.bearing, b, crate::i18n::tr(says(b)))
+                        .changed()
+                    {
+                        label = "Wall load-bearing";
+                    }
+                }
+            });
+    });
+
+    // 4.1.3 of STN 92 0201-4 (Z3): an outer wall with a combustible face
+    if crate::props::switch(ui, &mut w.fire_partial, "Combustible outer face")
+        .on_hover_text(crate::i18n::t(
+            "The wall meets its fire resistance, but its outer face can give off more than 100 MJ/m² in a fire: a partly fire-open area in the separation distance (STN 92 0201-4, 4.1.3)",
+        ))
+        .changed()
+    {
+        label = "Wall fire-open face";
+    }
+
+    // no ETICS fire barriers in this wall (a gable without openings)
+    if crate::props::switch(ui, &mut w.no_fire_barriers, "No fire barriers")
+        .on_hover_text(crate::i18n::t(
+            "Leave the automatic ETICS fire barriers out of this wall, as on a gable wall without openings (Project information › ETICS fire barriers)",
+        ))
+        .changed()
+    {
+        label = "Wall fire barriers";
     }
 
     ui.add_space(4.0);
@@ -178,7 +230,7 @@ pub(super) fn wall_fields(
                 let on = !w.disallow_join[i];
                 if ui
                     .add_sized([bw, h], egui::Button::selectable(on, end))
-                    .on_hover_text("Off: this end stays square and free, and is not pulled along when the wall it touches moves. Right-click the end in plan to switch it too.")
+                    .on_hover_text(crate::i18n::t("Off: this end stays square and free, and is not pulled along when the wall it touches moves. Right-click the end in plan to switch it too."))
                     .clicked()
                 {
                     w.disallow_join[i] = on;
@@ -252,7 +304,272 @@ pub(super) fn wall_fields(
     label
 }
 
+/// A door's size: its leaf's, the opening in the wall following from
+/// it and the frame. Returns the edit's name.
+pub(super) fn leaf_fields(ui: &mut egui::Ui, o: &mut Opening) -> &'static str {
+    use creabim_core::joinery::{self, DoorFrame, DoorSpec};
+    let t = crate::i18n::t;
+    let mut d = o
+        .door
+        .clone()
+        .unwrap_or_else(|| DoorSpec::fitting(DoorFrame::Lining, o.width, o.height));
+    let mut changed = false;
+    changed |= crate::props::row(ui, "Leaf width", |ui| {
+        crate::props::fill(ui, crate::units::drag(&mut d.nom_width).range(0.3..=5.0))
+            .on_hover_text(t("The leaf's nominal width, without the frame: 600, 700, 800, 900 mm. The opening in the wall follows from it and the frame."))
+            .changed()
+    });
+    changed |= crate::props::row(ui, "Leaf height", |ui| {
+        crate::props::fill(ui, crate::units::drag(&mut d.nom_height).range(1.0..=5.0)).changed()
+    });
+    let (ow, oh) = d.opening();
+    crate::props::row(ui, "Structural opening", |ui| {
+        ui.label(format!("{:.0} × {:.0} mm", ow * 1000.0, oh * 1000.0))
+    });
+    if changed {
+        joinery::apply_door(o, d);
+        return "Door leaf and frame";
+    }
+    ""
+}
+
+/// A door as joinery (its leaf's nominal size, its frame, its fire
+/// rating), where a door's or window's frame stands across its wall,
+/// how far the reveal laps it, and its division with the button that
+/// opens the editor (`edit` set). Returns the edit's name.
+pub(super) fn seat_fields(
+    ui: &mut egui::Ui,
+    model: &Model,
+    o: &mut Opening,
+    edit: &mut bool,
+) -> &'static str {
+    use creabim_core::joinery::{self, DoorFrame, DoorMaterial, DoorSpec, FireDoor};
+    let mut label = "";
+    if o.kind == OpeningKind::Hole {
+        return label;
+    }
+    let Some(he) = model.get(o.host) else {
+        return label;
+    };
+    let ElementKind::Wall(host) = &he.kind else {
+        return label;
+    };
+    let asm = creabim_core::assembly_of(model, he).map(|x| x.1);
+    let t = crate::i18n::t;
+    if o.kind == OpeningKind::Door {
+        ui.separator();
+        ui.label(egui::RichText::new(t("Door leaf and frame")).strong());
+        // what it is now, or what its opening would hold
+        let mut d = o
+            .door
+            .clone()
+            .unwrap_or_else(|| DoorSpec::fitting(DoorFrame::Lining, o.width, o.height));
+        let mut changed = false;
+        changed |= crate::props::row(ui, "Door frame", |ui| {
+            let mut c = false;
+            egui::ComboBox::from_id_salt("door_frame")
+                .icon(crate::props::combo_icon)
+                .selected_text(crate::i18n::tw(d.frame.label()))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for x in DoorFrame::ALL {
+                        c |= ui
+                            .selectable_value(&mut d.frame, x, crate::i18n::tw(x.label()))
+                            .changed();
+                    }
+                });
+            c
+        });
+        changed |= crate::props::row(ui, "Leaf material", |ui| {
+            let mut c = false;
+            egui::ComboBox::from_id_salt("door_leaf")
+                .icon(crate::props::combo_icon)
+                .selected_text(crate::i18n::tw(d.leaf.label()))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for x in DoorMaterial::ALL {
+                        c |= ui
+                            .selectable_value(&mut d.leaf, x, crate::i18n::tw(x.label()))
+                            .changed();
+                    }
+                });
+            c
+        });
+        // a plastic frame or leaf in its RAL colour: the door's material,
+        // from the library's plastics (George: as the lists and 3D show it)
+        if d.frame == DoorFrame::Plastic || d.leaf == DoorMaterial::Plastic {
+            let current = o
+                .material
+                .and_then(|m| model.get(m))
+                .map(|e| e.name.clone());
+            let plastic = o.material.and_then(|m| model.get(m)).is_some_and(
+                |e| matches!(&e.kind, ElementKind::Material(m) if m.category == "plastic"),
+            );
+            let mut pick = None;
+            crate::props::row(ui, "Colour (RAL)", |ui| {
+                egui::ComboBox::from_id_salt("door_ral")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(if plastic {
+                        crate::i18n::tw(current.as_deref().unwrap_or(""))
+                    } else {
+                        crate::i18n::tw("Pick a colour")
+                    })
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for e in creabim_core::library::LIBRARY
+                            .iter()
+                            .filter(|e| e.category == "plastic")
+                        {
+                            let on = current.as_deref() == Some(e.name);
+                            if ui.selectable_label(on, crate::i18n::tw(e.name)).clicked() {
+                                pick = Some(e.name);
+                            }
+                        }
+                    });
+                false
+            });
+            // a door just made plastic starts white
+            let fresh = !plastic
+                && o.door.as_ref().is_some_and(|x| {
+                    x.frame != DoorFrame::Plastic && x.leaf != DoorMaterial::Plastic
+                });
+            if let Some(name) = pick.or(fresh.then_some(PVC_WHITE)) {
+                ui.data_mut(|m| m.insert_temp(egui::Id::new(PVC_PICK), name));
+            }
+        }
+        let mut fire = d.fire.is_some();
+        if crate::props::row(ui, "Fire door", |ui| ui.checkbox(&mut fire, "").changed()) {
+            d.fire = fire.then(FireDoor::default);
+            changed = true;
+        }
+        if let Some(f) = &mut d.fire {
+            changed |= crate::props::row(ui, "Fire rating", |ui| {
+                let mut c = false;
+                egui::ComboBox::from_id_salt("door_fire")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(f.rating.clone())
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for x in joinery::FIRE_RATINGS {
+                            c |= ui
+                                .selectable_value(&mut f.rating, x.to_string(), x)
+                                .changed();
+                        }
+                    });
+                c
+            });
+            changed |= crate::props::row(ui, "Closer (C)", |ui| {
+                ui.checkbox(&mut f.self_closing, "").changed()
+            });
+            changed |= crate::props::row(ui, "Smoke tight (S)", |ui| {
+                ui.checkbox(&mut f.smoke_tight, "").changed()
+            });
+        }
+        if changed {
+            joinery::apply_door(o, d);
+            label = "Door leaf and frame";
+        } else if o.door.is_some()
+            && crate::props::row(ui, "", |ui| {
+                ui.button(crate::i18n::t("Plain door"))
+                    .on_hover_text(t("Take the leaf's nominal size, frame and fire rating off: the door is its opening again."))
+                    .clicked()
+            })
+        {
+            o.door = None;
+            label = "Door leaf and frame";
+        }
+    }
+    if performance_fields(
+        ui,
+        &mut o.performance,
+        o.kind == OpeningKind::Door,
+        "opening",
+    ) {
+        label = "Window or door values";
+    }
+    ui.separator();
+    ui.label(egui::RichText::new(t("Seating in the wall")).strong());
+    if o.is_lining() {
+        ui.label(t("A lining runs through the whole wall."));
+    } else {
+        let mut sb = o.setback_in(host, asm);
+        let changed = crate::props::row(ui, "Setback from the core", |ui| {
+            crate::props::fill(ui, crate::units::drag(&mut sb).range(-1.0..=2.0))
+                .on_hover_text(t("How far the frame's outer face stands in from the outer edge of the wall's load-bearing layers; less than nothing moves it out into the insulation. In a wall with no layers it is measured from the wall's outside face."))
+                .changed()
+        });
+        if changed {
+            o.setback = Some(sb);
+            label = "Opening setback";
+        }
+    }
+    if o.kind == OpeningKind::Window {
+        let mut lap = o
+            .reveal
+            .unwrap_or(creabim_core::assembly::REVEAL_INSULATION);
+        let changed = crate::props::row(ui, "Reveal overlap", |ui| {
+            crate::props::fill(ui, crate::units::drag(&mut lap).range(0.0..=0.3))
+                .on_hover_text(t("How far the reveal's insulation laps over the frame."))
+                .changed()
+        });
+        if changed {
+            o.reveal = Some(lap);
+            label = "Reveal overlap";
+        }
+    }
+    // what the window or door list says of it in words
+    ui.separator();
+    ui.label(
+        egui::RichText::new(t(if o.kind == OpeningKind::Door {
+            "In the door list"
+        } else {
+            "In the window list"
+        }))
+        .strong(),
+    );
+    let mut texts = o.texts.clone().unwrap_or_default();
+    let mut changed = false;
+    for (text, v, hint) in [
+        ("Execution", &mut texts.execution, "How it is made: profiles, system, leaves. Left empty, the list writes what the model tells."),
+        ("Finish", &mut texts.finish, "Its surface: colour, texture. Left empty, the list writes its material."),
+        ("Note", &mut texts.note, "Glazing, fittings, anything else. Left empty, a door's frame is named."),
+    ] {
+        changed |= crate::props::row(ui, text, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(v)
+                    .desired_rows(2)
+                    .desired_width(f32::INFINITY),
+            )
+            .on_hover_text(t(hint))
+            .changed()
+        });
+    }
+    if changed {
+        o.texts = (!texts.is_empty()).then_some(texts);
+        label = "Joinery list texts";
+    }
+    ui.separator();
+    ui.label(egui::RichText::new(t("Division and opening")).strong());
+    crate::props::row(ui, "Fields", |ui| ui.label(joinery::operation(o)));
+    if crate::props::row(ui, "", |ui| {
+        ui.button(t("Edit the division…"))
+            .on_hover_text(t(
+                "Open the editor: split it by mullions and transoms and set how each field opens.",
+            ))
+            .clicked()
+    }) {
+        *edit = true;
+    }
+    label
+}
+
 /// A door's hand and swing, or a window's facing. Returns the edit's name.
+/// Where the door fields leave the plastic colour picked, for the
+/// properties to take from the library and give the door.
+pub(super) const PVC_PICK: &str = "door.pvc_pick";
+/// The colour a door made plastic starts in.
+const PVC_WHITE: &str = "PVC, RAL 9016 white";
+
 pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) -> &'static str {
     let mut label = "";
     let host = match model.get(o.host).map(|e| &e.kind) {
@@ -263,56 +580,122 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
         OpeningKind::Door => {
             // a label-column row, then two equal buttons, as Blender (MU29)
             crate::props::row(ui, "Hung", |ui| {
-                ui.label(creabim_geom::opening::door_hand(o, &host).to_lowercase())
-                    .on_hover_text("The hinge side seen from the side it opens to, and whether it opens into the building or out of it.")
+                ui.label(crate::i18n::t(creabim_geom::opening::door_hand(o, &host)))
+                    .on_hover_text(crate::i18n::t("The hinge side seen from the side it opens to, and whether it opens into the building or out of it."))
             });
-            crate::props::row(ui, "Flip", |ui| {
-                crate::props::flow(ui, |ui| {
-                    let w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                    if ui
-                        .add_sized([w, 22.0], egui::Button::new("Hand"))
-                        .on_hover_text("Hinge it on the other jamb (Shift+Space).")
-                        .clicked()
-                    {
-                        walls::flip_hand(o);
-                        label = "Flip door hand"
-                    }
-                    if ui
-                        .add_sized([w, 22.0], egui::Button::new("Swing"))
-                        .on_hover_text("Open it to the other side of the wall (Space).")
-                        .clicked()
-                    {
-                        walls::flip_facing(o);
-                        label = "Flip door swing"
-                    }
-                })
-            });
+            // flipped by the arrows beside it in the plan (as Revit),
+            // or Space and Shift+Space
+            if crate::props::switch(ui, &mut o.threshold, "Threshold")
+                .on_hover_text(crate::i18n::t(
+                    "A threshold between the jambs: drawn in plans and 3D",
+                ))
+                .changed()
+            {
+                label = "Threshold"
+            }
         }
         OpeningKind::Window => {
             // the exterior is on the wall's left when it is flipped
             let out = o.faces_left(&host) == host.flip;
             // the same rows as a door's (MU29)
             crate::props::row(ui, "Outside", |ui| {
-                ui.label(if out {
+                ui.label(crate::i18n::t(if out {
                     "faces the exterior"
                 } else {
                     "turned to the interior"
-                })
+                }))
             });
-            crate::props::row(ui, "Flip", |ui| {
-                let w = ui.available_width();
-                if ui
-                    .add_sized([w, 22.0], egui::Button::new("Inside / outside"))
-                    .on_hover_text("Turn it round in its wall: its sill board and frame move to the other face (Space).")
-                    .clicked()
-                {
-                    walls::flip_facing(o);
-                    label = "Flip window"
-                }
-            });
+            // turned round by the arrow beside it in the plan, or Space
+            // its sills: the outer one of sheet metal (with its mark and
+            // its row in the list of sheet-metal work), the inner board
+            let (mut outer, mut inner) = (!o.no_outer_sill, !o.no_inner_sill);
+            if crate::props::switch(ui, &mut outer, "Outer sill")
+                .on_hover_text(crate::i18n::t(
+                    "The sheet-metal sill outside: drawn in plans and 3D, marked K/n beside the window's mark and counted in the list of sheet-metal work",
+                ))
+                .changed()
+            {
+                o.no_outer_sill = !outer;
+                label = "Outer sill"
+            }
+            if crate::props::switch(ui, &mut inner, "Inner sill")
+                .on_hover_text(crate::i18n::t(
+                    "The sill board inside: drawn in plans and 3D",
+                ))
+                .changed()
+            {
+                o.no_inner_sill = !inner;
+                label = "Inner sill"
+            }
         }
         OpeningKind::Hole => {
-            ui.label("A bare opening: a hole through the wall with no door or window in it");
+            // a penetration as PilonDesigner sets it up: its shape, how
+            // the plan shows it, its mark and label
+            let mut p = o.penetration.clone().unwrap_or_default();
+            let mut shown = o.is_penetration();
+            let mut changed = false;
+            if crate::props::choice(
+                ui,
+                "Shape",
+                &mut p.round,
+                &[
+                    (false, "Rectangle", "Width along the wall and height"),
+                    (true, "Circle", "Its width is the diameter"),
+                ],
+            ) {
+                if p.round {
+                    o.height = o.width;
+                }
+                changed = true;
+                label = "Shape";
+            }
+            if crate::props::choice(
+                ui,
+                "In plan",
+                &mut shown,
+                &[
+                    (true, "Penetration", "Outline, cross and label"),
+                    (false, "Hole", "Just the outline"),
+                ],
+            ) {
+                p.hole_only = !shown;
+                changed = true;
+                label = "In plan";
+            }
+            if shown {
+                let mut tag = p.tag.clone().unwrap_or_default();
+                crate::props::row(ui, "Mark", |ui| {
+                    if crate::props::fill(ui, egui::TextEdit::singleline(&mut tag).hint_text("P"))
+                        .changed()
+                    {
+                        p.tag = (!tag.trim().is_empty()).then(|| tag.clone());
+                        changed = true;
+                        label = "Mark";
+                    }
+                });
+                let mut show_tag = !p.hide_tag;
+                if crate::props::switch(ui, &mut show_tag, crate::i18n::t("Mark in the label"))
+                    .changed()
+                {
+                    p.hide_tag = !show_tag;
+                    changed = true;
+                    label = "Mark in the label";
+                }
+                let mut show_size = !p.hide_size;
+                if crate::props::switch(ui, &mut show_size, crate::i18n::t("Size in the label"))
+                    .changed()
+                {
+                    p.hide_size = !show_size;
+                    changed = true;
+                    label = "Size in the label";
+                }
+            }
+            if changed {
+                o.penetration = Some(p);
+            }
+            if o.is_round() && (o.height - o.width).abs() > 1e-9 {
+                o.height = o.width;
+            }
         }
     }
     label
@@ -660,10 +1043,8 @@ impl CreaBimApp {
                     .ok()
                     .and_then(|i| LocationLine::ALL.get(i))
                 {
-                    if self.plan.wall_location != *l {
-                        // a location line of its own: new walls have no type
-                        self.plan.types.remove(&creabim_core::TypeCategory::Wall);
-                    }
+                    // the type picked for new walls stays: the line they
+                    // are drawn on is the tool's own choice
                     self.plan.wall_location = *l;
                     self.status =
                         format!("New walls are drawn on their {}.", l.label().to_lowercase());
@@ -681,6 +1062,55 @@ impl CreaBimApp {
                 }
                 .into();
             }
+            "tempdims.ref" => {
+                if let Some(r) = arg
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|i| creabim_core::walls::WallRef::ALL.get(i))
+                {
+                    self.plan.temp_ref = *r;
+                    self.shell.settings.temp_ref = *r;
+                    self.shell.settings.store();
+                    use creabim_core::walls::WallRef as R;
+                    self.status = match r {
+                        R::Face => "Temporary dimensions measure walls from their faces.",
+                        R::CoreFace => {
+                            "Temporary dimensions measure walls from the faces of their load-bearing core."
+                        }
+                        R::CoreCentre => {
+                            "Temporary dimensions measure walls from the middle of their core."
+                        }
+                        R::Centre => "Temporary dimensions measure walls from their centrelines.",
+                    }
+                    .into();
+                }
+            }
+            "view.reno" => {
+                use creabim_core::reno::RenoView;
+                let Some(id) = self.active_view else {
+                    return true;
+                };
+                let Some(mut v) = self.view(id).cloned() else {
+                    return true;
+                };
+                let i = arg.parse::<usize>().unwrap_or(0);
+                v.reno = i.checked_sub(1).and_then(|i| RenoView::ALL.get(i).copied());
+                let r = self.doc.edit_merged(id, "Renovation stage", |e| {
+                    e.kind = ElementKind::View(v.clone())
+                });
+                let msg = match v.reno {
+                    None => "Renovation off: everything drawn as usual.",
+                    Some(RenoView::Existing) => {
+                        "Existing state: what stands now, the elements to keep and to take down."
+                    }
+                    Some(RenoView::Demolition) => {
+                        "Demolition: what is taken down in yellow, with the holes for new doors and windows."
+                    }
+                    Some(RenoView::New) => "New state: what stays and what is built, the new in red.",
+                    Some(RenoView::All) => "All stages at once: demolished in yellow, new in red.",
+                };
+                self.report(r, crate::i18n::tr(msg));
+            }
             "wall.flipnew" => {
                 self.plan.wall_flip = !self.plan.wall_flip;
                 self.status = format!(
@@ -691,6 +1121,33 @@ impl CreaBimApp {
             _ => return false,
         }
         true
+    }
+
+    /// What temporary dimensions measure walls from, for the view strip.
+    pub(super) fn temp_ref_items(&self) -> Vec<crate::ui_model::Item> {
+        creabim_core::walls::WallRef::ALL
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                crate::ui_model::Item::new(format!("tempdims.ref:{i}"), r.label())
+                    .checked(self.plan.temp_ref == *r)
+            })
+            .collect()
+    }
+
+    /// Which renovation stage the view shows, for the view strip.
+    pub(super) fn reno_items(&self) -> Vec<crate::ui_model::Item> {
+        use creabim_core::reno::RenoView;
+        let now = self
+            .active_view
+            .and_then(|id| self.view(id))
+            .and_then(|v| v.reno);
+        std::iter::once(crate::ui_model::Item::new("view.reno:0", "Off").checked(now.is_none()))
+            .chain(RenoView::ALL.iter().enumerate().map(|(i, r)| {
+                crate::ui_model::Item::new(format!("view.reno:{}", i + 1), r.label())
+                    .checked(now == Some(*r))
+            }))
+            .collect()
     }
 
     /// The Wall tool's location line choices, for its option strip.
@@ -704,6 +1161,157 @@ impl CreaBimApp {
             })
             .collect()
     }
+}
+
+/// A window's or door's heat transfer, solar factor, light transmittance
+/// and sound reduction (Uw, g, τv, Rw): picked as a maker's product from
+/// the app's data sheets, each value then typed over if need be. `salt`
+/// keeps two of these apart. Returns whether anything changed.
+pub(super) fn performance_fields(
+    ui: &mut egui::Ui,
+    perf: &mut Option<creabim_core::joinery::Performance>,
+    door: bool,
+    salt: &str,
+) -> bool {
+    use creabim_core::joinery::{self, Performance};
+    let t = crate::i18n::t;
+    let mut changed = false;
+    ui.separator();
+    ui.label(egui::RichText::new(t("Heat, light and sound")).strong())
+        .on_hover_text(t("Uw, g, τv and Rw as the maker's data sheet gives them. They go to the data standard (DSS) and the IFC file."));
+    let shown = perf
+        .as_ref()
+        .map(|p| p.product.clone())
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| t("Not given").to_string());
+    crate::props::row(ui, "Product", |ui| {
+        egui::ComboBox::from_id_salt(("joinery_product", salt))
+            .icon(crate::props::combo_icon)
+            .selected_text(shown)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(
+                        perf.as_ref().is_none_or(|p| p.product.is_empty()),
+                        t("Not given"),
+                    )
+                    .clicked()
+                {
+                    // given as none on purpose: an older project's fill on
+                    // opening leaves it so
+                    *perf = Some(Default::default());
+                    changed = true;
+                }
+                // the makers' products for this kind first, then the others
+                let mut list: Vec<&joinery::Preset> = joinery::presets().iter().collect();
+                list.sort_by_key(|p| p.door != door);
+                for p in list {
+                    let on = perf.as_ref().is_some_and(|x| x.product == p.name);
+                    if ui
+                        .selectable_label(on, &p.name)
+                        .on_hover_text(&p.source)
+                        .clicked()
+                    {
+                        *perf = Some(p.performance());
+                        changed = true;
+                    }
+                }
+            });
+    });
+    let mut value = |ui: &mut egui::Ui,
+                     label: &str,
+                     get: fn(&mut Performance) -> &mut Option<f64>,
+                     scale: f64,
+                     range: std::ops::RangeInclusive<f64>,
+                     unit: &str,
+                     decimals: usize| {
+        let mut p = perf.clone().unwrap_or_default();
+        let had = get(&mut p).is_some();
+        let mut v = get(&mut p).unwrap_or(0.0) * scale;
+        let mut on = had;
+        let c = crate::props::row(ui, label, |ui| {
+            ui.horizontal(|ui| {
+                let mut c = ui.checkbox(&mut on, "").changed();
+                if on {
+                    c |= crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut v)
+                            .range(range.clone())
+                            .speed(0.01 * scale.max(1.0))
+                            .max_decimals(decimals)
+                            .suffix(unit),
+                    )
+                    .changed();
+                }
+                c
+            })
+            .inner
+        });
+        if c {
+            if on && !had {
+                // a value switched on starts from the middle of its range
+                v = (range.start() + range.end()) / 2.0;
+            }
+            *get(&mut p) = on.then_some(v / scale);
+            // typed over: no longer the maker's product as it was
+            if let Some(pre) = joinery::presets().iter().find(|x| x.name == p.product) {
+                if pre.performance() != p {
+                    p.product = format!("{} ({})", pre.name, t("edited"));
+                }
+            }
+            *perf = Some(p);
+            changed = true;
+        }
+    };
+    value(ui, "Uw", |p| &mut p.uw, 1.0, 0.3..=6.0, " W/(m²K)", 2);
+    value(
+        ui,
+        "Solar factor g",
+        |p| &mut p.g,
+        100.0,
+        0.0..=100.0,
+        " %",
+        0,
+    );
+    value(
+        ui,
+        "Light transmittance τv",
+        |p| &mut p.tv,
+        100.0,
+        0.0..=100.0,
+        " %",
+        0,
+    );
+    value(
+        ui,
+        "Sound reduction Rw",
+        |p| &mut p.rw,
+        1.0,
+        20.0..=60.0,
+        " dB",
+        0,
+    );
+    if let Some(limit) = perf
+        .as_ref()
+        .and_then(|p| joinery::over_requirement(p, door))
+    {
+        ui.colored_label(
+            ui.visuals().warn_fg_color,
+            format!(
+                "⚠ {} {} W/(m²K)",
+                t("Uw is over the most asked for:"),
+                format!("{limit:.2}").replace('.', ",")
+            ),
+        )
+        .on_hover_text(&joinery::requirement().source);
+    }
+    if let Some(src) = perf
+        .as_ref()
+        .and_then(|p| joinery::presets().iter().find(|x| x.name == p.product))
+    {
+        crate::props::note(ui, &src.source);
+    }
+    changed
 }
 
 #[cfg(test)]
@@ -742,5 +1350,52 @@ mod tests {
             .unwrap();
         assert!(walls::attach_candidates(app.doc.model(), covered).is_empty());
         assert!(!attach_enabled(&app));
+    }
+
+    #[test]
+    fn a_location_line_picked_after_a_type_keeps_the_type() {
+        use creabim_core::types::{ElementType, WallType};
+        use creabim_core::types::{Param, TypeParams};
+        use glam::DVec2;
+        let mut doc = creabim_core::Document::from_model(creabim_core::sample::sample_house());
+        let tloc = LocationLine::Centre;
+        let ty = creabim_core::Element::new(
+            "Wall 300",
+            creabim_core::ElementKind::ElementType(ElementType::new(TypeParams::Wall(WallType {
+                thickness: 0.3,
+                assembly: None,
+                material: None,
+                location: tloc,
+                height: None,
+                curtain: None,
+                screen: None,
+            }))),
+        );
+        let tid = ty.id;
+        doc.commit(creabim_core::Transaction::new("type").insert(ty))
+            .unwrap();
+        let model = doc.model().clone();
+        let level = model.levels().next().unwrap().0.id;
+        let other = LocationLine::ALL.into_iter().find(|l| *l != tloc).unwrap();
+        let mut state = crate::planview::PlanState::default();
+        state.types.insert(creabim_core::TypeCategory::Wall, tid);
+        state.wall_location = other;
+        let w = crate::planview::new_wall(&model, level, &state, DVec2::ZERO, DVec2::X * 4.0);
+        assert_eq!(w.location, other);
+        let e = state.typed(
+            &model,
+            creabim_core::Element::new("Wall", creabim_core::ElementKind::Wall(w)),
+        );
+        let r = e.of_type.expect("the wall keeps its type");
+        assert_eq!(r.id, tid);
+        assert_eq!(r.overrides, vec![Param::Location]);
+        // on the type's own line nothing is overridden
+        state.wall_location = tloc;
+        let w = crate::planview::new_wall(&model, level, &state, DVec2::ZERO, DVec2::X * 4.0);
+        let e = state.typed(
+            &model,
+            creabim_core::Element::new("Wall", creabim_core::ElementKind::Wall(w)),
+        );
+        assert!(e.of_type.unwrap().overrides.is_empty());
     }
 }

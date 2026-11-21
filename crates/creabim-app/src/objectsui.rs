@@ -371,12 +371,12 @@ fn part_material(
 pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) -> &'static str {
     let mut label = "";
     let s = o.size();
-    ui.label(format!(
+    ui.label(crate::i18n::tr(&format!(
         "{} wide, {} deep, {} high",
         crate::units::len(s.x),
         crate::units::len(s.y),
         crate::units::len(s.z)
-    ));
+    )));
     // one setting a row, as the rest of Properties (MU23)
     crate::props::row(ui, "Category", |ui| {
         ui.spacing_mut().combo_width = ui.available_width();
@@ -410,10 +410,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
                 }
             })
             .response
-            .on_hover_text(
+            .on_hover_text(crate::i18n::t(
                 "Against a wall: the Object tool backs it onto the nearest wall face. \
                  From the ceiling: it hangs below the ceiling over it, centred where clicked",
-            );
+            ));
     });
     let new_at = if o.mount == Mount::Ceiling {
         "New ones below the ceiling"
@@ -422,10 +422,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
     };
     crate::props::row(ui, new_at, |ui| {
         if crate::props::fill(ui, crate::units::drag(&mut o.offset).range(-10.0..=100.0))
-            .on_hover_text(
+            .on_hover_text(crate::i18n::t(
                 "The height the Object tool places new ones at: to their underside, \
                  or from the ceiling down to their top",
-            )
+            ))
             .changed()
         {
             label = "Object mounting height";
@@ -464,7 +464,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         }
     });
     if let Some(k) = &o.catalogue {
-        ui.label(egui::RichText::new(format!("From the catalogue: {k}")).weak());
+        ui.label(egui::RichText::new(crate::i18n::tr(&format!("From the catalogue: {k}"))).weak());
     }
     if !o.parts.is_empty() {
         crate::props::subsection(ui, "object.parts", "Parts", true).then(|| {
@@ -520,7 +520,9 @@ pub(super) fn object_fields(
         }
         if ui
             .small_button("↺ 90°")
-            .on_hover_text("A quarter turn anticlockwise about its back edge")
+            .on_hover_text(crate::i18n::t(
+                "A quarter turn anticlockwise about its back edge",
+            ))
             .clicked()
         {
             o.rotation = (o.rotation + 90.0).rem_euclid(360.0);
@@ -578,11 +580,13 @@ impl CreaBimApp {
             return;
         };
         ui.separator();
-        ui.label(egui::RichText::new(format!("Its type, {tname}")).strong());
+        ui.label(egui::RichText::new(crate::i18n::tr(&format!("Its type, {tname}"))).strong());
         let label = type_fields(ui, model, o);
         if ui
-            .small_button("Save to catalogue")
-            .on_hover_text("Keep this object in your own catalogue, for every project")
+            .small_button(crate::i18n::t("Save to catalogue"))
+            .on_hover_text(crate::i18n::t(
+                "Keep this object in your own catalogue, for every project",
+            ))
             .clicked()
         {
             self.catalogue.save_name = tname.clone();
@@ -651,7 +655,7 @@ impl CreaBimApp {
                 (w, egui::pos2(area.max.x - w - 16.0, area.min.y + 64.0))
             }
         };
-        crate::app::shell::window("Catalogue")
+        crate::app::shell::window(crate::i18n::tr("Catalogue"))
             .resizable(true)
             .open(&mut open)
             .default_pos(pos)
@@ -668,15 +672,16 @@ impl CreaBimApp {
                 });
                 ui.add(
                     egui::TextEdit::singleline(&mut cat.filter).vertical_align(egui::Align::Center)
-                        .hint_text("Search")
+                        .hint_text(crate::i18n::t("Search"))
                         .desired_width(220.0),
                 );
                 ui.separator();
                 let filter = cat.filter.to_lowercase();
                 let wanted = |c: &CatalogueObject| {
-                    cat.category.is_none_or(|k| k == c.object.category)
+                    cat.category.is_none_or(|k| k.includes(c.object.category))
                         && (filter.is_empty()
                             || c.name.to_lowercase().contains(&filter)
+                            || crate::i18n::tr(&c.name).to_lowercase().contains(&filter)
                             || c.description.to_lowercase().contains(&filter))
                 };
                 let tile = |ui: &mut egui::Ui,
@@ -701,11 +706,11 @@ impl CreaBimApp {
                                 )
                                 .selected(picked),
                             ),
-                            None => ui.add(egui::Button::new(&c.name).selected(picked)),
+                            None => ui.add(egui::Button::new(crate::i18n::tr(&c.name)).selected(picked)),
                         };
-                        let r = r.on_hover_text(format!(
+                        let r = r.on_hover_text(crate::i18n::tr(&format!(
                             "{}\n{} × {} × {}\n{} {}\n{}",
-                            c.name,
+                            crate::i18n::tr(&c.name),
                             crate::units::len(s.x),
                             crate::units::len(s.y),
                             crate::units::len(s.z),
@@ -716,19 +721,19 @@ impl CreaBimApp {
                             } else {
                                 &c.description
                             }
-                        ));
+                        )));
                         if r.clicked() {
                             asks.push(CatAsk::Place(Box::new(c.clone()), own));
                         }
                         if user {
                             r.context_menu(|ui| {
-                                if ui.button("Delete from the catalogue").clicked() {
+                                if ui.button(crate::i18n::t("Delete from the catalogue")).clicked() {
                                     asks.push(CatAsk::Delete(c.key.clone()));
                                     ui.close();
                                 }
                             });
                         }
-                        ui.add(egui::Label::new(egui::RichText::new(&c.name).size(11.5)).wrap());
+                        ui.add(egui::Label::new(egui::RichText::new(crate::i18n::tr(&c.name)).size(11.5)).wrap());
                     });
                 };
                 let bottom = 118.0;
@@ -748,7 +753,7 @@ impl CreaBimApp {
                                 {
                                     ui.label(
                                         egui::RichText::new(
-                                            "YOURS: nothing yet. Import one from Blender, FreeCAD or glTF, or save a selection.",
+                                            crate::i18n::t("YOURS: nothing yet. Import one from Blender, FreeCAD or glTF, or save a selection."),
                                         )
                                         .size(10.5)
                                         .color(ui.visuals().weak_text_color()),
@@ -757,7 +762,7 @@ impl CreaBimApp {
                                 continue;
                             }
                             ui.label(
-                                egui::RichText::new(heading.to_uppercase())
+                                egui::RichText::new(crate::i18n::tr(heading).to_uppercase())
                                     .size(10.5)
                                     .strong()
                                     .color(ui.visuals().weak_text_color()),
@@ -777,15 +782,15 @@ impl CreaBimApp {
                 ui.separator();
                 crate::props::flow(ui, |ui| {
                     if ui
-                        .button("Import from Blender, FreeCAD or glTF…")
-                        .on_hover_text("A .blend, .FCStd, .gltf or .glb file becomes one object of your catalogue, each mesh a part in its material")
+                        .button(crate::i18n::t("Import from Blender, FreeCAD or glTF…"))
+                        .on_hover_text(crate::i18n::t("A .blend, .FCStd, .gltf or .glb file becomes one object of your catalogue, each mesh a part in its material"))
                         .clicked()
                     {
                         asks.push(CatAsk::Import);
                     }
                     if ui
-                        .small_button("Open folder")
-                        .on_hover_text("Where your catalogue is kept: one .json file per object")
+                        .small_button(crate::i18n::t("Open folder"))
+                        .on_hover_text(crate::i18n::t("Where your catalogue is kept: one .json file per object"))
                         .clicked()
                     {
                         asks.push(CatAsk::Reveal);
@@ -794,15 +799,15 @@ impl CreaBimApp {
                 crate::props::flow(ui, |ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut cat.save_name).vertical_align(egui::Align::Center)
-                            .hint_text("Name")
+                            .hint_text(crate::i18n::t("Name"))
                             .desired_width(200.0),
                     );
                     let r = ui.add_enabled(
                         !selected.is_empty(),
-                        egui::Button::new("Save selection to catalogue"),
+                        egui::Button::new(crate::i18n::t("Save selection to catalogue")),
                     );
-                    if r.on_hover_text("An object's type, or masses and other elements as one new object, kept for every project")
-                        .on_disabled_hover_text("Select an object, masses or other elements first")
+                    if r.on_hover_text(crate::i18n::t("An object's type, or masses and other elements as one new object, kept for every project"))
+                        .on_disabled_hover_text(crate::i18n::t("Select an object, masses or other elements first"))
                         .clicked()
                     {
                         asks.push(CatAsk::SaveSelection);
@@ -810,7 +815,7 @@ impl CreaBimApp {
                 });
                 ui.label(
                     egui::RichText::new(
-                        "Click an object, then click in a plan or the 3D view to place it. Space turns it.",
+                        crate::i18n::t("Click an object, then click in a plan or the 3D view to place it. Space turns it."),
                     )
                     .weak(),
                 );
@@ -835,8 +840,8 @@ impl CreaBimApp {
                 self.plan.tool = Tool::Object;
             }
             CatAsk::Import => {
-                let Some(path) = rfd::FileDialog::new()
-                    .set_title("Import an object")
+                let Some(path) = crate::files::file_dialog()
+                    .set_title(crate::i18n::tr("Import an object"))
                     .add_filter(
                         "Objects (Blender, FreeCAD, glTF)",
                         &["blend", "FCStd", "fcstd", "gltf", "glb"],
@@ -955,12 +960,12 @@ pub(super) fn connector_rows(
     for c in conns {
         let what = format!("{} – {}", c.kind.code(), crate::i18n::tr(c.kind.name()));
         crate::props::row(ui, &what, |ui| {
-            ui.label(format!(
+            ui.label(crate::i18n::tr(&format!(
                 "DN {:.0}, {} {}",
                 c.dn,
                 crate::i18n::tr("Height").to_lowercase(),
                 crate::units::len(c.at.z)
-            ));
+            )));
         });
     }
 }

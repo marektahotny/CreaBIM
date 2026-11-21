@@ -110,6 +110,11 @@ pub struct Column {
     /// insertion point on the column's position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section: Option<Section>,
+    /// An RC column built into a masonry wall (stenový stĺp): it sits in
+    /// the wall's load-bearing core, as deep as the core, and slides only
+    /// along the wall (see [`crate::masonry::settle`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_wall: Option<crate::masonry::InWall>,
 }
 
 /// A library profile a member is made with: its name, and its outline as
@@ -133,6 +138,7 @@ impl Column {
             material: None,
             top: crate::WallTop::Unconnected,
             section: None,
+            in_wall: None,
         }
     }
 
@@ -276,6 +282,11 @@ pub struct Beam {
     /// next beam of its chain), by that plane's normal.
     #[serde(default, skip_serializing_if = "no_cuts")]
     pub cuts: [Option<DVec3>; 2],
+    /// A system lintel (a Porfix or Porotherm piece) over a door or
+    /// window, placed by hand: it follows its opening (see
+    /// [`crate::masonry`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lintel: Option<crate::masonry::Lintel>,
 }
 
 fn is_zero2(v: &[f64; 2]) -> bool {
@@ -379,6 +390,7 @@ impl Beam {
             up: None,
             extend: [0.0, 0.0],
             cuts: [None, None],
+            lintel: None,
         }
     }
 
@@ -1258,7 +1270,7 @@ pub fn transform(model: &Model, kind: &mut ElementKind, t: &Xform) -> Option<()>
             }
         }
         ElementKind::Footing(f) => {
-            f.below -= dz;
+            f.lift(dz);
             // one under a wall or a column goes where its host goes
             if f.host.is_some_and(|h| model.get(h).is_some()) {
                 return Some(());
@@ -1409,6 +1421,11 @@ pub fn grips(model: &Model, e: &Element) -> Vec<Grip> {
             .into_iter()
             .map(|(g, _)| g)
             .collect(),
+        // a pipe's or duct's two ends, of every trade
+        ElementKind::Pipe(p) => {
+            let z = DVec3::Z * elevation(model, p.level);
+            vec![flat(p.start + z), flat(p.end + z)]
+        }
         _ => vec![],
     }
 }
@@ -1519,12 +1536,20 @@ fn drag_footing(
         }
         FootingGrip::Top => {
             // the underside stays where it is
-            let dz = round(d.z, fine).min(f.thickness - 0.05);
-            f.below -= dz;
-            f.thickness -= dz;
+            // the top up by dz, so the footing as much thicker
+            let dz = round(d.z, fine).max(0.05 - f.thickness);
+            if f.base_offset.is_none() {
+                f.below -= dz;
+            }
+            f.thickness += dz;
         }
         FootingGrip::Underside => {
-            f.thickness = round(f.thickness - d.z, fine).max(0.05);
+            let t = round(f.thickness - d.z, fine).max(0.05);
+            // set on its level, the underside is what moves: the top stays
+            if let Some(o) = &mut f.base_offset {
+                *o -= t - f.thickness;
+            }
+            f.thickness = t;
         }
     }
     if f.kind == crate::FootingKind::Strip && f.host.is_none() && f.start.distance(f.end) < 0.05 {
@@ -1573,6 +1598,19 @@ pub fn drag_grip(
             1 => b.end = now.truncate(),
             _ => b.depth = round(b.depth - d.z, step / 5.0).max(0.05),
         },
+        ElementKind::Pipe(p) => {
+            let to = now.truncate();
+            if p.start.truncate().distance(p.end.truncate()) < 1e-6 {
+                // a riser stays upright: it moves whole
+                p.start = to.extend(p.start.z);
+                p.end = to.extend(p.end.z);
+            } else if i == 0 {
+                p.start = to.extend(p.start.z);
+            } else {
+                p.end = to.extend(p.end.z);
+            }
+            p.validate()?;
+        }
         ElementKind::Roof(r) => {
             let n = r.boundary.len();
             if i < n {

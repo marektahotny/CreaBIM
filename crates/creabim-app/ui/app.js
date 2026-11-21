@@ -293,7 +293,7 @@
       // a click lists the group's items beside the rail, to pick one
       // without opening the browser (MU29); the wheel scrolls the rail
       let rail = `<div class="rail">`;
-      for (const g of S.groups) rail += `<button class="rail-btn" data-popup="rail:${esc(g.key)}" title="${esc(g.title)} (${g.rows.length})">${icon(g.icon)}</button>`;
+      for (const g of S.groups) if (!g.search) rail += `<button class="rail-btn" data-popup="rail:${esc(g.key)}" title="${esc(g.title)} (${g.rows.length})">${icon(g.icon)}</button>`;
       root.innerHTML = rail + `</div>`;
       return;
     }
@@ -304,7 +304,8 @@
     let any = false;
     for (const g of S.groups) {
       const rows = f ? g.rows.filter((r) => r.name.toLowerCase().includes(f) || (r.mark && r.mark.toLowerCase().includes(f))) : g.rows;
-      if (f && rows.length === 0) continue;
+      // the elements' own groups (walls, doors...) come up only in a search
+      if ((f && rows.length === 0) || (!f && g.search)) continue;
       any = true;
       const open = f ? true : (local.open[g.key] !== undefined ? local.open[g.key] : g.open);
       const acts = (g.acts || []).map((a) => `<button class="gact" data-act="${esc(a.id)}" title="${esc(a.hint)}">${icon(a.icon)}</button>`).join("");
@@ -433,6 +434,7 @@
   // ---- popup menus ----
 
   function drawPopup() {
+    if (S.overwrite) return drawOverwrite(S.overwrite);
     if (S.close) return drawClose(S.close);
     if (S.dialog) return drawDialog(S.dialog);
     if (S.key === "palette" && S.items && S.items.length) return drawPalette();
@@ -535,6 +537,29 @@
       `<g class="wm-bird"><path d="M44.5 8.0 C51.2 2.1 63.8 3.0 67.2 12.2 C69.7 18.9 66.4 24.8 63.0 29.0 C61.3 39.9 52.9 50.0 38.6 50.8 C32.8 51.3 27.7 50.0 23.5 48.3 L8.4 56.7 L16.8 43.3 C14.3 35.7 16.0 27.3 21.8 22.3 C27.7 17.2 37.8 14.7 44.5 8.0 Z"/><path d="M65.5 10.5 L80.6 16.4 L65.5 21.4 Z"/><circle class="wm-eye" cx="61.5" cy="11.4" r="2.8"/></g></g></svg>`;
   }
 
+  // Replace the file?: Save as picked a file that is there already. A page
+  // of the app window, so it is never behind it. The texts come translated.
+  function drawOverwrite(o) {
+    const key = [o.file, o.dir, o.title].join("|");
+    let dlg = root.querySelector(".cs");
+    if (!dlg || dlg.dataset.k !== key) {
+      root.innerHTML = `<div class="cs ow" role="alertdialog" aria-modal="true" aria-labelledby="cs-t">` +
+        `<div class="cs-body"><div class="cs-tile">${icon("file", "ic")}</div>` +
+        `<div><h2 id="cs-t">${esc(o.title)}</h2><div class="cs-sub"><b>${esc(o.file)}</b><br>${esc(o.dir)}</div>` +
+        `<div class="cs-sub">${esc(o.line)}</div></div></div>` +
+        `<div class="cs-foot"><span class="cs-hints"><kbd>Esc</kbd> ${esc(o.hint)}</span><span class="cs-sp"></span>` +
+        `<button class="cs-btn" data-ow="no">${icon("undo-2", "ic")}<span class="tx">${esc(o.no)}</span></button>` +
+        `<button class="cs-btn primary" data-ow="yes">${icon("save", "ic")}<span class="tx">${esc(o.yes)}</span></button></div></div>`;
+      dlg = root.querySelector(".cs");
+      dlg.dataset.k = key;
+      local.closeH = null;
+      // the keyboard is on Cancel: Enter does no harm
+      const no = dlg.querySelector('[data-ow="no"]');
+      if (no) no.focus();
+    }
+    closeSize();
+  }
+
   // Drawn once for a question; Saving… and Saved change it in place, so
   // the nest's motion carries on into its settling.
   function drawClose(c) {
@@ -624,6 +649,11 @@
   }
 
   function dialogKey(e) {
+    if (S && S.overwrite) {
+      if (e.key === "Escape") { e.preventDefault(); post({ t: "overwrite", do: "no" }); return true; }
+      // Enter and Space press the button that has the keyboard
+      return e.key === "Enter" || e.key === " " || e.key === "Tab";
+    }
     if (closeKey(e)) return true;
     const d = S && S.dialog;
     if (!d) return false;
@@ -639,6 +669,8 @@
   }
 
   document.addEventListener("click", (e) => {
+    const ow = S && S.overwrite && e.target.closest && e.target.closest("[data-ow]");
+    if (ow) { post({ t: "overwrite", do: ow.dataset.ow }); return; }
     const cs = S && S.close && e.target.closest && e.target.closest("[data-cs]");
     if (cs) { closeAct(cs.dataset.cs); return; }
     if (!(S && S.dialog)) return;
@@ -881,7 +913,10 @@
       if ((m = l.match(/^(#{1,4})\s+(.*)$/))) {
         flush();
         const n = m[1].length;
-        html += `<h${n} id="h-${slug(m[2])}">${inline(m[2])}</h${n}>`;
+        // `## Uhly {#angles}` keeps the English page's link
+        const own = m[2].match(/^(.*?)\s*\{#([^}]+)\}\s*$/);
+        const words = own ? own[1] : m[2];
+        html += `<h${n} id="h-${own ? own[2] : slug(words)}">${inline(words)}</h${n}>`;
         i++;
         continue;
       }

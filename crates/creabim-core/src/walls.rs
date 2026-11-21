@@ -14,10 +14,11 @@ use crate::{
     assembly, ElementId, ElementKind, LocationLine, Model, Op, Opening, Transaction, Wall, WallTop,
 };
 use glam::DVec2;
+use serde::{Deserialize, Serialize};
 
 /// The span across a wall of its core, `(exterior side, interior side)`,
 /// left of start → end positive. A wall without layers is all core.
-fn core_span(model: &Model, wall: &Wall) -> (f64, f64) {
+pub fn core_span(model: &Model, wall: &Wall) -> (f64, f64) {
     let t = wall.thickness / 2.0;
     let (lo, hi) = wall
         .assembly
@@ -57,6 +58,59 @@ pub fn offset_of(model: &Model, wall: &Wall, line: LocationLine) -> f64 {
         LocationLine::CoreExterior => core_span(model, wall).0,
         LocationLine::CoreInterior => core_span(model, wall).1,
         LocationLine::Boundary(k) => boundary_offset(model, wall, k as usize).unwrap_or(0.0),
+    }
+}
+
+/// What temporary dimensions measure a wall from, as PilonDesigner's
+/// reference planes: its faces, the faces of its load-bearing core (the
+/// default: plaster and insulation never count), the middle of the core,
+/// or its centreline.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WallRef {
+    Face,
+    #[default]
+    CoreFace,
+    CoreCentre,
+    Centre,
+}
+
+impl WallRef {
+    pub const ALL: [WallRef; 4] = [
+        WallRef::Face,
+        WallRef::CoreFace,
+        WallRef::CoreCentre,
+        WallRef::Centre,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            WallRef::Face => "Wall face",
+            WallRef::CoreFace => "Core face",
+            WallRef::CoreCentre => "Core centre",
+            WallRef::Centre => "Wall centre",
+        }
+    }
+}
+
+/// The lines `r` names across `wall`, as offsets from its centreline (left
+/// of start → end positive): two for faces, one for a middle.
+pub fn ref_offsets(model: &Model, wall: &Wall, r: WallRef) -> Vec<f64> {
+    let t = wall.thickness / 2.0;
+    match r {
+        WallRef::Face => vec![t, -t],
+        WallRef::CoreFace => {
+            let (a, b) = core_span(model, wall);
+            if (a - b).abs() < 1e-9 {
+                vec![a]
+            } else {
+                vec![a.max(b), a.min(b)]
+            }
+        }
+        WallRef::CoreCentre => {
+            let (a, b) = core_span(model, wall);
+            vec![(a + b) / 2.0]
+        }
+        WallRef::Centre => vec![0.0],
     }
 }
 
@@ -658,6 +712,47 @@ pub fn split_wall(model: &Model, id: ElementId, at: DVec2) -> Result<Transaction
     Ok(tx.replace(e.clone(), first))
 }
 
+/// Doors and windows are set from their storey's floor, not from their
+/// wall's base (George 2026-11-20): when `tx` sinks or raises a wall's
+/// base, its openings' sills (kept from the base) change the other way,
+/// so they stay where they were.
+pub fn keep_openings(model: &Model, tx: &crate::Transaction) -> crate::Transaction {
+    let mut out = crate::Transaction::new("Keep doors and windows");
+    let mut moved: Vec<(ElementId, f64)> = vec![];
+    let mut touched: Vec<ElementId> = vec![];
+    for op in &tx.ops {
+        if let crate::Op::Replace { before, after } = op {
+            touched.push(after.id);
+            if let (ElementKind::Wall(a), ElementKind::Wall(b)) = (&before.kind, &after.kind) {
+                let d = b.base_offset - a.base_offset;
+                if d.abs() > 1e-9 && a.level == b.level {
+                    moved.push((after.id, d));
+                }
+            }
+        }
+    }
+    if moved.is_empty() {
+        return out;
+    }
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        if touched.contains(&e.id) {
+            continue;
+        }
+        let Some((_, d)) = moved.iter().find(|(w, _)| *w == o.host) else {
+            continue;
+        };
+        let mut now = e.clone();
+        if let ElementKind::Opening(o) = &mut now.kind {
+            o.sill -= d;
+        }
+        out = out.replace(e.clone(), now);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -967,6 +1062,17 @@ mod widen_tests {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            threshold_material: None,
+            penetration: None,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
+            performance: None,
         };
         (m, host, o)
     }
@@ -1036,5 +1142,47 @@ mod widen_tests {
         assert!(opening_crosses_join(&m, ElementId::new(), &o).is_some());
         let (m, _, o) = wall_and_door(1.0);
         assert!(opening_crosses_join(&m, ElementId::new(), &o).is_none());
+    }
+}
+
+#[cfg(test)]
+mod sill_tests {
+    use crate::*;
+
+    /// George 2026-11-20: a window set 900 above the storey's floor stays
+    /// 900 above it when its wall's base is sunk 190 lower.
+    #[test]
+    fn a_window_stays_over_the_floor_when_its_wall_is_sunk() {
+        let mut doc = Document::from_model(sample::sample_house());
+        let win = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Window))
+            .unwrap()
+            .id;
+        let sill = |doc: &Document| match &doc.model().get(win).unwrap().kind {
+            ElementKind::Opening(o) => (o.sill_from_floor(doc.model()), o.host),
+            _ => unreachable!(),
+        };
+        let (_, wall) = sill(&doc);
+        let m = doc.model().clone();
+        doc.edit(win, "sill", |e| {
+            if let ElementKind::Opening(o) = &mut e.kind {
+                o.set_sill_from_floor(&m, 0.9);
+            }
+        })
+        .unwrap();
+        assert!((sill(&doc).0 - 0.9).abs() < 1e-9);
+        doc.edit(wall, "sink", |e| {
+            if let ElementKind::Wall(w) = &mut e.kind {
+                w.base_offset -= 0.19;
+                w.height += 0.19;
+            }
+        })
+        .unwrap();
+        assert!((sill(&doc).0 - 0.9).abs() < 1e-9, "{}", sill(&doc).0);
+        // one undo puts both back
+        doc.undo();
+        assert!((sill(&doc).0 - 0.9).abs() < 1e-9);
     }
 }

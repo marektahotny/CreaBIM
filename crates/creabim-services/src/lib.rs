@@ -11,23 +11,37 @@
 //! needs at its root.
 
 pub mod airbalance;
+pub mod calcresults;
+pub mod circuits;
+pub mod circulation;
 pub mod coolingload;
+pub mod ductsizing;
 pub mod electrical;
+pub mod evacuation;
+pub mod expansion;
 pub mod firewater;
 pub mod fittings;
 pub mod fixtures;
 pub mod fixturespec;
 pub mod floorheat;
 pub mod fluid;
+pub mod gas;
 pub mod groundloss;
+pub mod heating;
 pub mod heatloss;
+pub mod herzdp;
+pub mod herzvalves;
 pub mod hpsizing;
 pub mod hydraulics;
+pub mod makerzeta;
+pub mod medgas;
 pub mod model;
 pub mod network;
 pub mod peak_flow;
 pub mod pipe_types;
 pub mod radiators;
+pub mod recuperation;
+pub mod sanitary;
 pub mod settings;
 mod sizing;
 pub mod storm;

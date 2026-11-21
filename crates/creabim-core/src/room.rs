@@ -18,6 +18,10 @@ use crate::{Element, ElementId, ElementKind, Model};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 fn is_blank(s: &str) -> bool {
     s.is_empty()
 }
@@ -54,9 +58,185 @@ pub struct Room {
     /// over it, or to the level's floor-to-floor height.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<f64>,
+    /// The fire zone it belongs to ("N1.01"); rooms with one code make
+    /// a zone.
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub fire_zone: String,
+    /// What it is counted as for its persons: an item of the project's
+    /// occupancy table ("9.1").
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub fire_use: String,
+    /// The count the item's factor multiplies: the designed persons,
+    /// beds, seats or parking places.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub design_count: Option<f64>,
+    /// What it is for its fire load: an item of the project's fire load
+    /// table ("1.1"); empty takes it as a corridor's remaining area.
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub fire_load: String,
+    /// Its fixed fire load ps, kg/m², where the designer gives it; none
+    /// takes windows, doors and floors from the table by its area.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fire_ps: Option<f64>,
+    /// The design fire load pvm of a concentrated fire load in it,
+    /// kg/m², where the designer gives one: its openings have their own
+    /// heat flux (STN 92 0201-4 4.4.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fire_pvm: Option<f64>,
+    /// The tiling of its walls, where it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tiling: Option<Tiling>,
     /// Its underfloor heating, where it has one: the loops drawn in it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ufh: Option<crate::underfloor::Underfloor>,
+    /// Aired by its own room heat-recovery units in its outer wall, not
+    /// by the house's central unit (the recuperation design).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub decentral_hrv: bool,
+    /// Counted in the living area or not, where the designer says; none
+    /// goes by its type and area ([`counts_as_living`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub living: Option<bool>,
+}
+
+/// Tiles on a room's walls: from the floor up to `height`, on every
+/// wall of the room, the doors left out.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Tiling {
+    /// How high it reaches above the floor, m.
+    pub height: f64,
+    /// What it is ("Ceramic tiles 300x600").
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub name: String,
+    /// The walls of the room left without tiles.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip: Vec<ElementId>,
+}
+
+/// The height new tiling reaches.
+pub const TILING_HEIGHT: f64 = 2.0;
+
+impl Default for Tiling {
+    fn default() -> Self {
+        Self {
+            height: TILING_HEIGHT,
+            name: String::new(),
+            skip: vec![],
+        }
+    }
+}
+
+/// The stretches of the edge `a` to `b` of a room that the openings of
+/// `kind` in `wall` take, each with its opening.
+fn opening_spans<'a>(
+    model: &'a Model,
+    wall: &Element,
+    w: &crate::Wall,
+    kind: crate::OpeningKind,
+    a: DVec2,
+    b: DVec2,
+) -> Vec<(f64, f64, &'a crate::Opening)> {
+    let len = a.distance(b);
+    let along = (w.end - w.start).normalize_or_zero();
+    if len < 1e-6 || along == DVec2::ZERO {
+        return vec![];
+    }
+    let d = (b - a) / len;
+    let mut out: Vec<(f64, f64, &crate::Opening)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Opening(o) if o.host == wall.id && o.kind == kind => {
+                let p = (w.start + along * o.offset - a).dot(d);
+                let q = (w.start + along * (o.offset + o.width) - a).dot(d);
+                Some((p.min(q).max(0.0), p.max(q).min(len), o))
+            }
+            _ => None,
+        })
+        .filter(|g| g.1 - g.0 > 1e-6)
+        .collect();
+    out.sort_by(|x, y| x.0.total_cmp(&y.0));
+    out
+}
+
+/// The walls round a room, each once, in the outline's order.
+pub fn bounding_walls(model: &Model, shape: &RoomShape) -> Vec<ElementId> {
+    let mut out = vec![];
+    for id in shape.bounded_by.iter().flatten() {
+        if !out.contains(id)
+            && matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_)))
+        {
+            out.push(*id);
+        }
+    }
+    out
+}
+
+/// Where a room's tiling runs: the stretches of its outline along
+/// walls, less the doors in them and the walls in `skip`.
+pub fn tiling_runs(model: &Model, shape: &RoomShape, skip: &[ElementId]) -> Vec<(DVec2, DVec2)> {
+    let n = shape.outline.len();
+    let mut out = vec![];
+    for (i, by) in shape.bounded_by.iter().enumerate() {
+        let Some(wall) = by.and_then(|id| model.get(id)) else {
+            continue;
+        };
+        if skip.contains(&wall.id) {
+            continue;
+        }
+        let ElementKind::Wall(w) = &wall.kind else {
+            continue;
+        };
+        let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
+        let len = a.distance(b);
+        let along = (w.end - w.start).normalize_or_zero();
+        if len < 1e-6 || along == DVec2::ZERO {
+            continue;
+        }
+        let d = (b - a) / len;
+        // the doors of the wall, as stretches of the edge
+        let gaps = opening_spans(model, wall, w, crate::OpeningKind::Door, a, b);
+        let mut from = 0.0;
+        for (p, q, _) in gaps {
+            if p - from > 1e-6 {
+                out.push((a + d * from, a + d * p));
+            }
+            from = from.max(q);
+        }
+        if len - from > 1e-6 {
+            out.push((a + d * from, b));
+        }
+    }
+    out
+}
+
+/// The area of a room's tiling, m²: its runs by its height, less what
+/// of the windows in its walls is below that height.
+pub fn tiling_area(model: &Model, r: &Room, shape: &RoomShape) -> f64 {
+    let Some(t) = &r.tiling else { return 0.0 };
+    let full = tiling_runs(model, shape, &t.skip)
+        .iter()
+        .map(|(a, b)| a.distance(*b))
+        .sum::<f64>()
+        * t.height;
+    let n = shape.outline.len();
+    let mut windows = 0.0;
+    for (i, by) in shape.bounded_by.iter().enumerate() {
+        let Some(wall) = by.and_then(|id| model.get(id)) else {
+            continue;
+        };
+        let ElementKind::Wall(w) = &wall.kind else {
+            continue;
+        };
+        if t.skip.contains(&wall.id) {
+            continue;
+        }
+        let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
+        for (p, q, o) in opening_spans(model, wall, w, crate::OpeningKind::Window, a, b) {
+            let top = (o.sill + o.height).min(t.height);
+            windows += (q - p) * (top - o.sill).max(0.0);
+        }
+    }
+    (full - windows).max(0.0)
 }
 
 impl Room {
@@ -109,10 +289,11 @@ pub enum RoomField {
     CeilingFinish,
     Occupancy,
     Department,
+    FireZone,
 }
 
 impl RoomField {
-    pub const ALL: [RoomField; 11] = [
+    pub const ALL: [RoomField; 12] = [
         RoomField::Name,
         RoomField::Number,
         RoomField::Area,
@@ -124,6 +305,7 @@ impl RoomField {
         RoomField::CeilingFinish,
         RoomField::Occupancy,
         RoomField::Department,
+        RoomField::FireZone,
     ];
     /// What a tag shows when it lists no fields.
     pub const DEFAULT: [RoomField; 3] = [RoomField::Name, RoomField::Number, RoomField::Area];
@@ -141,6 +323,7 @@ impl RoomField {
             RoomField::CeilingFinish => "Ceiling finish",
             RoomField::Occupancy => "Occupancy",
             RoomField::Department => "Department",
+            RoomField::FireZone => "Fire zone",
         }
     }
 
@@ -174,6 +357,7 @@ impl RoomField {
             RoomField::CeilingFinish => r.ceiling_finish.clone(),
             RoomField::Occupancy => r.occupancy.clone(),
             RoomField::Department => r.department.clone(),
+            RoomField::FireZone => r.fire_zone.clone(),
         }
     }
 }
@@ -618,9 +802,53 @@ pub fn ceiling_over(
     best
 }
 
+/// Whether room `r` named `name` is a balcony, loggia or terrace (or
+/// marked outdoor): STN 73 4301 2.14 leaves these out of the floor
+/// (usable) area of a dwelling.
+pub fn is_open_air(name: &str, r: &Room) -> bool {
+    const WORDS: [&str; 10] = [
+        "balk", "balc", "lodži", "lodzi", "loggia", "lodžie", "teras", "terrace", "outdoor",
+        "vonkaj",
+    ];
+    [r.occupancy.as_str(), r.department.as_str(), name]
+        .iter()
+        .map(|t| t.to_lowercase())
+        .any(|t| WORDS.iter().any(|w| t.contains(w)))
+}
+
+/// Whether room `r` named `name`, of `area` m², counts in the living area (obytná
+/// plocha), by its own word, else by its type: a living room, bedroom,
+/// children's room, dining room or study of at least 8 m², a kitchen of
+/// a living room with a kitchen in it. STN 73 4301: obytné miestnosti
+/// are the living room, dining room, bedroom, study and other rooms
+/// (guest, children's), each of at least 8 m² (2005 7.2.1 a, 7.2.7).
+/// By its amendment Z1:2026 a kitchen is príslušenstvo bytu (8.4.1 d),
+/// a separate room with or without dining (8.4.6 a, b); a cooking space
+/// in a living room leaves that room's living area as it is (3.12), so
+/// a living room with a kitchen counts whole and a kitchen on its own
+/// does not.
+pub fn counts_as_living(name: &str, r: &Room, area: f64) -> bool {
+    use crate::roomtype::RoomType as T;
+    if let Some(own) = r.living {
+        return own;
+    }
+    match T::of(&r.occupancy, name) {
+        T::Living | T::Bedroom | T::Children | T::Dining | T::Office => area >= 8.0 - 1e-9,
+        T::Kitchen => {
+            // "Obývacia izba s kuchyňou", "Living / kitchen"
+            let t = format!("{} {}", r.occupancy, name).to_lowercase();
+            ["obýv", "obyv", "living", "pobyt"]
+                .iter()
+                .any(|w| t.contains(w))
+                && area >= 8.0 - 1e-9
+        }
+        _ => false,
+    }
+}
+
 /// The number for a new room on `level`: one more than the highest number
-/// there ("0.03" after "0.02"), else the first on that storey ("1.01" on
-/// the first storey above the ground).
+/// there ("1.03" after "1.02"), else the first of its storey by its
+/// designation: "1.01" on 1. NP, "2.01" on 2. NP, "-1.01" on 1. PP.
 pub fn next_number(model: &Model, level: ElementId) -> String {
     let mut best: Option<(String, u32, usize)> = None;
     for e in model.iter() {
@@ -648,13 +876,66 @@ pub fn next_number(model: &Model, level: ElementId) -> String {
     if let Some((head, n, width)) = best {
         return format!("{head}{:0width$}", n + 1);
     }
-    let sorted = crate::levels::sorted(model);
-    let ground = sorted
-        .iter()
-        .position(|l| l.2.elevation >= -1e-6)
-        .unwrap_or(0) as i64;
-    let here = sorted.iter().position(|l| l.0 == level).unwrap_or(0) as i64;
-    format!("{}.01", here - ground)
+    format!("{}.01", storey_number(model, level))
+}
+
+/// The number a storey gives its rooms: that of its designation (1 for
+/// "1. NP", 2 for "2. NP", -1 for "1. PP"). Read from the level's name where it
+/// names one ("2. NP", "1.PP", "Storey 2", "Basement 1"), else counted
+/// from the ground as storeys are named.
+pub fn storey_number(model: &Model, level: ElementId) -> i64 {
+    if let Some(n) = model.get(level).and_then(|e| storey_designation(&e.name)) {
+        return n;
+    }
+    let Some(here) = model.level(level) else {
+        return 1;
+    };
+    // storeys above ground count from the ground floor up; those under
+    // it (a basement) from the ground down, the footings' level between
+    // left out
+    let below = here.elevation < -1e-6;
+    let between = model
+        .levels()
+        .filter(|(e, l)| {
+            e.id != level
+                && if below {
+                    l.elevation < crate::levels::UNDERGROUND && l.elevation > here.elevation + 1e-6
+                } else {
+                    l.elevation >= -1e-6 && l.elevation < here.elevation - 1e-6
+                }
+        })
+        .count() as i64;
+    if below {
+        -(between + 1)
+    } else {
+        between + 1
+    }
+}
+
+/// A storey's designation in its name: "1. NP" 1, "2.NP" 2, "1. PP" -1,
+/// "Storey 2" 2, "Basement 1" -1 (also Czech "1. PP", "2. NP").
+fn storey_designation(name: &str) -> Option<i64> {
+    let t = name.trim().to_lowercase();
+    let digits = |s: &str| -> Option<i64> {
+        let d: String = s
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '.')
+            .collect();
+        (!d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
+            .then(|| d.parse().ok())
+            .flatten()
+    };
+    for (suffix, sign) in [("np", 1), ("pp", -1)] {
+        if let Some(head) = t.strip_suffix(suffix) {
+            return digits(head).filter(|n| *n > 0).map(|n| n * sign);
+        }
+    }
+    for (prefix, sign) in [("storey", 1), ("basement", -1)] {
+        if let Some(tail) = t.strip_prefix(prefix) {
+            return digits(tail).filter(|n| *n > 0).map(|n| n * sign);
+        }
+    }
+    None
 }
 
 /// Whether a note reads like a room label: a name, then its area on the
@@ -980,10 +1261,49 @@ mod tests {
         assert!((crate::polygon::signed_area2(&o) / 2.0 - 5.8 * 3.8).abs() < 1e-9);
     }
 
+    /// Rooms are numbered by their storey's designation: 1. NP 1.01,
+    /// 2. NP 2.01, 1. PP -1.01.
+    #[test]
+    fn rooms_are_numbered_by_the_storey() {
+        assert_eq!(storey_designation("1. NP"), Some(1));
+        assert_eq!(storey_designation("2.NP"), Some(2));
+        assert_eq!(storey_designation("1. PP"), Some(-1));
+        assert_eq!(storey_designation("Basement 2"), Some(-2));
+        assert_eq!(storey_designation("Prízemie"), None);
+        let mut m = Model::new();
+        let mk = |name: &str, z: f64| {
+            Element::new(
+                name,
+                ElementKind::Level(Level {
+                    elevation: z,
+                    height: 3.0,
+                }),
+            )
+        };
+        // unnamed storeys counted from the ground
+        let pp = mk("Suterén", -3.0);
+        let np1 = mk("Prízemie", 0.0);
+        let np2 = mk("Poschodie", 3.0);
+        let ids = [pp.id, np1.id, np2.id];
+        Transaction::new("t")
+            .insert(pp)
+            .insert(np1)
+            .insert(np2)
+            .apply(&mut m)
+            .unwrap();
+        let n: Vec<String> = ids.iter().map(|l| next_number(&m, *l)).collect();
+        assert_eq!(n, ["-1.01", "1.01", "2.01"]);
+        // a name with a designation wins
+        let named = mk("2. NP", 0.0);
+        let id = named.id;
+        Transaction::new("t").insert(named).apply(&mut m).unwrap();
+        assert_eq!(next_number(&m, id), "2.01");
+    }
+
     #[test]
     fn room_numbers_count_on() {
         let (mut doc, l, _) = house();
-        assert_eq!(next_number(doc.model(), l), "0.01");
+        assert_eq!(next_number(doc.model(), l), "1.01");
         let mut r = Room::new(l, DVec2::new(2.0, 2.0));
         r.number = "0.09".into();
         doc.commit(Transaction::new("room").insert(Element::new("A", ElementKind::Room(r))))
@@ -1035,7 +1355,7 @@ mod tests {
         assert_eq!(made[0].0, "Study");
         assert_eq!(
             (made[0].1.number.as_str(), made[1].1.number.as_str()),
-            ("0.01", "0.02")
+            ("1.01", "1.02")
         );
         assert_eq!(
             skipped,

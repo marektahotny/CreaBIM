@@ -474,6 +474,15 @@ fn hatch(h: f::Hatch) -> core::Hatch {
         f::Hatch::Brick => core::Hatch::Brick,
         f::Hatch::Concrete => core::Hatch::Concrete,
         f::Hatch::Timber => core::Hatch::Timber,
+        f::Hatch::MasonryOuter => core::Hatch::MasonryOuter,
+        f::Hatch::MasonryInner => core::Hatch::MasonryInner,
+        f::Hatch::Reinforced => core::Hatch::Reinforced,
+        f::Hatch::Ground => core::Hatch::Ground,
+        f::Hatch::EarthFill => core::Hatch::EarthFill,
+        f::Hatch::Gravel => core::Hatch::Gravel,
+        f::Hatch::FormBlock => core::Hatch::FormBlock,
+        f::Hatch::Insulation => core::Hatch::Insulation,
+        f::Hatch::Membrane => core::Hatch::Membrane,
     }
 }
 
@@ -588,7 +597,9 @@ fn assembly(c: &mut Ctx, a: &f::Assembly, at: &Path) {
         },
         layers,
         description: a.description.clone().unwrap_or_default(),
+        fire_resistance: String::new(),
         wrap: Default::default(),
+        thermal: None,
     };
     c.insert(
         &a.id,
@@ -889,6 +900,51 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         f::OpeningKind::Window => core::OpeningKind::Window,
         f::OpeningKind::Hole => core::OpeningKind::Hole,
     };
+    let division = match o.division.as_deref().map(core::joinery::FrameNode::parse) {
+        Some(Ok(d)) => Some(d),
+        Some(Err(e)) => {
+            c.err(&at.key("division"), e);
+            None
+        }
+        None => None,
+    };
+    let door = o.door.as_ref().and_then(|d| {
+        let dat = at.key("door");
+        let Some(frame) = core::joinery::DoorFrame::of_code(&d.frame) else {
+            c.err(
+                &dat.key("frame"),
+                format!(
+                    "`{}` is not one of steel, aluminium, timber, lining",
+                    d.frame
+                ),
+            );
+            return None;
+        };
+        let leaf = match d.leaf.as_deref() {
+            None => core::joinery::DoorMaterial::Timber,
+            Some(l) => match core::joinery::DoorMaterial::of_code(l) {
+                Some(m) => m,
+                None => {
+                    c.err(
+                        &dat.key("leaf"),
+                        format!("`{l}` is not one of timber, steel, aluminium"),
+                    );
+                    return None;
+                }
+            },
+        };
+        Some(core::joinery::DoorSpec {
+            frame,
+            leaf,
+            nom_width: c.l(d.leaf_width),
+            nom_height: c.l(d.leaf_height),
+            fire: d.fire_rating.as_ref().map(|r| core::joinery::FireDoor {
+                rating: r.clone(),
+                self_closing: d.self_closing,
+                smoke_tight: d.smoke_tight,
+            }),
+        })
+    });
     let opening = core::Opening {
         host,
         kind,
@@ -904,6 +960,17 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
         frame: Default::default(),
         flip_hand: o.flip_hand,
         flip_facing: o.flip_facing,
+        no_outer_sill: o.no_outer_sill,
+        no_inner_sill: o.no_inner_sill,
+        threshold: o.threshold,
+        threshold_material: None,
+        penetration: None,
+        setback: o.setback.map(|v| c.l(v)),
+        reveal: o.reveal.map(|v| c.l(v)),
+        division,
+        door,
+        texts: None,
+        performance: None,
     };
     let mut e = Element::new(name_of(&o.name, &o.id), ElementKind::Opening(opening));
     let typed = match o.kind {
@@ -921,7 +988,16 @@ fn opening(c: &mut Ctx, o: &f::Opening, at: &Path) {
     if !typed {
         return c.fail(&o.id);
     }
-    if o.r#type.is_none() {
+    // a door as joinery says what opening it needs
+    let needs = match &e.kind {
+        ElementKind::Opening(op) => op.door.as_ref().map(|d| d.opening()),
+        _ => None,
+    };
+    if let (Some((dw, dh)), ElementKind::Opening(op)) = (needs, &mut e.kind) {
+        op.width = dw;
+        op.height = dh;
+    }
+    if o.r#type.is_none() && needs.is_none() {
         for (v, key) in [(o.width, "width"), (o.height, "height")] {
             if v.is_none() {
                 c.err(at, format!("an opening needs `{key}` or a `type`"));
@@ -1123,6 +1199,7 @@ fn column(c: &mut Ctx, col: &f::Column, at: &Path) {
         height: col.height.map(|h| c.l(h)),
         material: None,
         section: None,
+        in_wall: None,
         top: match top {
             Some(t) => core::WallTop::UpToLevel {
                 level: t,
@@ -1178,6 +1255,7 @@ fn beam(c: &mut Ctx, b: &f::Beam, at: &Path) {
         up: None,
         extend: [0.0, 0.0],
         cuts: [None, None],
+        lintel: None,
     };
     let mut e = Element::new(name_of(&b.name, &b.id), ElementKind::Beam(beam));
     if !stamp(c, &mut e, &b.r#type, f::TypeCategory::Beam, at) {
@@ -1601,7 +1679,16 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         occupancy: r.occupancy.clone(),
         department: r.department.clone(),
         height: r.height.map(|h| c.l(h)),
+        fire_zone: String::new(),
+        fire_use: String::new(),
+        design_count: None,
+        fire_load: String::new(),
+        fire_ps: None,
+        fire_pvm: None,
+        tiling: None,
         ufh: None,
+        decentral_hrv: false,
+        living: None,
     };
     c.insert(
         &r.id,
@@ -1666,6 +1753,22 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::Fixtures => core::ScheduleCategory::Fixtures,
                 f::ScheduleCategory::Rooms => core::ScheduleCategory::Rooms,
                 f::ScheduleCategory::Materials => core::ScheduleCategory::Materials,
+                f::ScheduleCategory::WindowList => core::ScheduleCategory::WindowList,
+                f::ScheduleCategory::DoorList => core::ScheduleCategory::DoorList,
+                f::ScheduleCategory::ServicesLegend => core::ScheduleCategory::ServicesLegend,
+                f::ScheduleCategory::Documents => core::ScheduleCategory::Documents,
+                f::ScheduleCategory::MaterialLegend => core::ScheduleCategory::MaterialLegend,
+                f::ScheduleCategory::PipeList => core::ScheduleCategory::PipeList,
+                f::ScheduleCategory::ElectricalList => core::ScheduleCategory::ElectricalList,
+                f::ScheduleCategory::RoomLegend => core::ScheduleCategory::RoomLegend,
+                f::ScheduleCategory::FireZones => core::ScheduleCategory::FireZones,
+                f::ScheduleCategory::FireFacades => core::ScheduleCategory::FireFacades,
+                f::ScheduleCategory::Occupancy => core::ScheduleCategory::Occupancy,
+                f::ScheduleCategory::BoardDiagram => core::ScheduleCategory::BoardDiagram,
+                f::ScheduleCategory::LintelList => core::ScheduleCategory::LintelList,
+                f::ScheduleCategory::VentilationHrv => core::ScheduleCategory::VentilationHrv,
+                f::ScheduleCategory::BuildingFigures => core::ScheduleCategory::BuildingFigures,
+                f::ScheduleCategory::FireRisk => core::ScheduleCategory::FireRisk,
             };
             let mut view = core::View::schedule(category);
             view.kind = core::ViewKind::Schedule {
@@ -1759,6 +1862,7 @@ fn sheet(c: &mut Ctx, s: &f::Sheet, at: &Path) {
             center: vp.at,
             target,
             crop: vp.crop.as_ref().map(|r| [c.p(r.min), c.p(r.max)]),
+            ink: Default::default(),
         };
         c.commit(
             &s.id,

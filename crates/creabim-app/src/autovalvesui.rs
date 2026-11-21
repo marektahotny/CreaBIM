@@ -11,7 +11,18 @@ use creabim_core::{Element, ElementKind, Transaction};
 use eframe::egui::{self, Vec2};
 
 /// The systems it proposes for.
-const SYSTEMS: [(&str, &str); 3] = [("SV", "Cold water"), ("TV", "Hot water"), ("K", "Waste")];
+const SYSTEMS: [(&str, &str); 10] = [
+    ("SV", "Cold water"),
+    ("TV", "Hot water"),
+    ("C", "Hot water circulation"),
+    ("PV", "Fire water – hydrants"),
+    ("K", "Waste"),
+    ("UKP", "Heating – supply"),
+    ("UKS", "Heating – return"),
+    ("CHP", "Cooling – supply"),
+    ("CHS", "Cooling – return"),
+    ("ZP", "Gas – natural gas"),
+];
 
 /// What was added, in words.
 fn report(f: &Fill) -> String {
@@ -30,10 +41,15 @@ fn report(f: &Fill) -> String {
             f.heaters,
             "water heater inlets with a shut-off and a check valve",
         ),
-        (f.shut_offs, "shut-offs on risers and branches"),
-        (f.angle_valves, "angle valves"),
+        (f.shut_offs, "shut-offs"),
+        (f.angle_valves, "valves at fixtures and radiators"),
         (f.vents, "vent heads"),
         (f.cleanouts, "cleanouts"),
+        (f.air_vents, "air vents at high points"),
+        (f.drains, "drain cocks at low points"),
+        (f.sleeves, "sleeves where it passes walls and floors"),
+        (f.thermal, "thermal shut-offs at walls between rooms"),
+        (f.seals, "fire stopping into another fire zone"),
     ] {
         if n > 0 {
             parts.push(format!("{} {n}", t(what)));
@@ -85,6 +101,18 @@ impl CreaBimApp {
                     &mut o.cleanouts,
                     t("Cleanouts at the foot of stacks, at turns and every 20 m of a drain"),
                 );
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(t("Water, heating, cooling, fire main")).strong());
+                ui.checkbox(
+                    &mut o.high_low,
+                    t("Air vents at high points and drain cocks at low points of the pipes"),
+                );
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(t("Gas")).strong());
+                ui.checkbox(
+                    &mut o.crossings,
+                    t("Sleeves through walls and floors, thermal shut-offs at walls between rooms, fire stopping into another fire zone (TPH 03 2012)"),
+                );
                 ui.separator();
                 for (code, name) in SYSTEMS {
                     let f = autovalves::fill(self.doc.model(), code, &o);
@@ -108,7 +136,8 @@ impl CreaBimApp {
                     }
                 }
                 ui.add_space(4.0);
-                ui.weak("STN EN 806-2 · STN 73 6660 · STN 06 0830 · STN EN 12056-2 · STN 75 6760");
+                ui.weak(t("Heating: a thermostatic valve and a lockshield at every radiator, shut-offs at the manifold and the source, a strainer on the return. Gas: the main shut-off and a cock before every appliance."));
+                ui.weak("STN EN 806-2 · STN 73 6660 · STN 06 0830 · STN EN 12056-2 · STN 75 6760 · STN EN 12828 · STN EN 1775 · TPH 03 2012");
             });
         if let Some((code, f)) = run {
             let mut tx = Transaction::new("Propose valves");

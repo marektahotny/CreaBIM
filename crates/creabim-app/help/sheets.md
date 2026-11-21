@@ -25,6 +25,7 @@ Each placed view (a **viewport**) shows its view at the view's scale, with what 
 
 - **Scale** a viewport: select it and pick a scale in *Properties* (1:1 to 1:500, or type any other after *1:*), or right-click it and choose **Scale**. The viewport grows or shrinks about its middle. The scale is the view's own, so the view shows at that scale on every sheet it is placed on.
 - **Crop** a viewport: select it and drag its dashed crop frame's edge handles, or set the crop in *Properties*.
+- **Prints in** (*Properties* of a view on the sheet): **Colour**, **Shades of grey** (each colour by its lightness) or **Black and white** (lines and text black, fills grey). The sheet shows it as it prints.
 - **Line views up**: while you drag a view, its centre snaps in line with another view's centre, with a dashed guide.
 - **Work through it**: double-click a viewport to edit the model right there, with every tool; the rest of the sheet greys out. Drag to orbit a 3D view. `Esc` finishes.
 
@@ -39,6 +40,14 @@ Under each viewport is its **title**. In the viewport's *Properties*: show or hi
 - Drag a box on empty paper to select views, marks and notes: left to right catches what is inside, right to left what it touches; `Shift` adds.
 - **Move** (`M`, or `G` to follow the pointer) moves what is selected on the sheet. It snaps to the paper, the marks, notes, views and guides. Dragging one of several selected items moves them all.
 - The zoom column at the area's right zooms, fits and frames the selection.
+
+## Table columns
+
+Select a placed legend of rooms or any other list and its column lines show handles. Drag the line between two columns to make the column on its left wider or narrower, by half a millimetre; the columns after it move along. The legends of services and of materials have two columns, the sample or symbol and its words, which wrap to the width you set. Double-click a line to give its column its own width back. The widths belong to the list's view, so it looks the same on every sheet it is placed on.
+
+## Title pages
+
+**Drawings to print** makes a title page for the project and one for each part of the documentation that has drawings (C, D.1 ASR, D.3 ZTI, D.4 VYK, D.5 ELI, D.6 VZT, D.7 PLY, D.8 MPL), numbered before the part's drawings (`S01_ZTI_000_TIT`). They are filled from *Project information*: the design office and its contact, the stage's heading (or your own *Heading*), the building, the client, the site and plots, the three names, the job number and the date. A part's page shows its mark and name, the project's page the building in 3D in its frame. Four A6 title pages fit an A4, one for each set, numbered volume 1 to 4. Set *Sets* in the sheet's properties: fewer than four leaves places empty, more than four adds pages numbered on (5 to 8 on the second, 9 to 12 on the third). A title page stays upright whatever paper is picked. Title pages are not listed in the list of documentation.
 
 ## Rulers and guides
 
@@ -80,6 +89,7 @@ The frame and title block a sheet sits on is its **master**. Pick it in the shee
 
 ## Printing and exporting
 
-- `Ctrl+P`, or the PDF button in the sheet's header: the sheet in front, as a PDF named by its number and name.
+- `Ctrl+P`, *File › Print sheets…* or **Print…** in the sheet's header: the **Print sheets** window. Pick the **Printer** (any printer or plotter of Windows, or **PDF file**) and **Printer properties…** for its own settings (tray, quality, roll, cutter). **Sheets**: **All**, **Chosen** (ticked in the list, or selected in the project browser) or **This one**; they go out as one job, a page a sheet. **Paper**: **As the sheet** (each sheet on paper of its own size, A4 to A0; 3×A4 and other long sheets as a custom size on a plotter), **As set in the printer**, A4 to A0 (turned the sheet's way) or a **Roll** 297 to 1067 mm wide (cut as long as the sheet). **Scale**: **1:1** keeps the drawings' scales, what does not fit is cut off and the window says how much; **Fit to paper** makes the sheet smaller to fit what the printer can reach. **Colour**: **As on the sheets** (each drawing as its **Prints in** says), or every drawing in **Shades of grey** or **Black and white**; and **Copies**. The **Preview** shows each page on its paper, the blue dashed line where the printer cannot reach. Title pages are A4 sheets with four labels and print on A4 whole.
+- The PDF button in the sheet's header: the sheet in front, as a PDF named by its number and name.
 - `Ctrl+Shift+P`, or *File › Export › Sheets as PDF*: the **Export sheets** window. Choose **All**, **Chosen** (the sheets selected in the project browser, or ticked in the list) or **This one**, and **One PDF** or **A PDF each** (into a folder, each named by number and name). Sheets print on white at their own sizes.
 - *File › This view or sheet as SVG* writes the open sheet. See [PDF, SVG and DXF](dxf-svg).

@@ -21,6 +21,8 @@ fn pipe(level: creabim_core::ElementId, system: &str, height_mm: Option<f64>) ->
         inner_mm: 16.0,
         height_mm,
         insulation_mm: 9.0,
+        insulation_set: false,
+        mark: None,
     }
 }
 
@@ -118,4 +120,30 @@ fn members_round_trip_through_ifcx() {
     {
         assert_eq!(r.model.get(e.id), Some(e), "{} changed", e.name);
     }
+}
+
+/// A valve on a pipe goes out as the class and predefined type of its kind.
+#[test]
+fn a_valve_exports_with_its_class() {
+    let mut m = sample_house();
+    let level = m
+        .levels()
+        .min_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+        .unwrap()
+        .0
+        .id;
+    let p = Element::new("Pipe", ElementKind::Pipe(pipe(level, "SV", None)));
+    let valve = creabim_core::mep::Valve::new(p.id, 0.5, "spatna");
+    Transaction::new("valve")
+        .insert(p)
+        .insert(Element::new("Check valve", ElementKind::Valve(valve)))
+        .apply(&mut m)
+        .unwrap();
+    let text = export_ifc4(&m, &ExportOptions::default());
+    let line = text
+        .lines()
+        .find(|l| l.contains("IFCVALVE("))
+        .expect("the valve is written");
+    assert!(line.contains(".CHECK."), "{line}");
+    assert!(text.contains("CreaBIM_Valve"));
 }

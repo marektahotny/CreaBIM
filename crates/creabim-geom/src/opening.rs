@@ -5,7 +5,9 @@
 
 use crate::wall::Cut;
 use crate::TriMesh;
-use creabim_core::{Opening, OpeningFrame, OpeningKind, Wall};
+use creabim_core::assembly::Assembly;
+use creabim_core::joinery::{Field, FrameNode};
+use creabim_core::{LeafOp, Opening, OpeningFrame, OpeningKind, Wall};
 use glam::{DVec2, DVec3};
 
 /// What a part of a door or window is, which decides how it is drawn.
@@ -17,6 +19,8 @@ pub enum Part {
     Leaf,
     Glass,
     Handle,
+    /// A solid panel filling a field.
+    Panel,
 }
 
 /// One part as a box in opening coordinates: `x` along the wall from the
@@ -63,8 +67,9 @@ impl Fitted {
     }
 }
 
-/// Every part of a door or window, in opening coordinates.
-pub fn opening_boxes(o: &Opening, wall: &Wall) -> Vec<PartBox> {
+/// Every part of a door or window, in opening coordinates, in a wall
+/// built up as `asm`: its frame stands where [`Opening::frame_span`] says.
+pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<PartBox> {
     let Some(f) = Fitted::of(o, wall) else {
         return vec![];
     };
@@ -74,8 +79,18 @@ pub fn opening_boxes(o: &Opening, wall: &Wall) -> Vec<PartBox> {
     }
     let (w, h) = (f.width(), f.height());
     let fw = f.frame.width;
-    let hd = f.frame.depth / 2.0;
-    let face = wall.thickness / 2.0;
+    let hd = (if o.is_lining() {
+        wall.thickness
+    } else {
+        f.frame.depth
+    }) / 2.0;
+    // built about the frame's middle, facing +y, and moved to its place
+    // across the wall at the end
+    let across = !o.faces_left(wall);
+    let span = o.frame_span(wall, asm, f.frame.depth);
+    let yc = (span.0 + span.1) / 2.0;
+    // from the frame's middle to the wall's face it faces out of
+    let face = wall.thickness / 2.0 - if across { -yc } else { yc };
     let mut out = Vec::new();
     let mut add = |part, lo: DVec3, hi: DVec3| {
         if (hi - lo).min_element() > 1e-6 {
@@ -83,19 +98,72 @@ pub fn opening_boxes(o: &Opening, wall: &Wall) -> Vec<PartBox> {
         }
     };
     let b = DVec3::new;
+    // a window's sills: the outer one of sheet metal from the frame out
+    // over the wall's face, the inner board from the frame in over the
+    // inner face; a window down to the floor has no board
+    let inner = wall.thickness - face;
+    let sills = |add: &mut dyn FnMut(Part, DVec3, DVec3)| {
+        if !o.no_outer_sill && face > hd + 0.005 {
+            add(Part::Frame, b(0.0, hd, 0.0), b(w, face + SILL_NOSE, 0.03));
+        }
+        if !o.no_inner_sill && o.sill >= 0.1 && inner > hd + 0.005 {
+            add(
+                Part::Frame,
+                b(0.0, -inner - INNER_SILL_NOSE, 0.0),
+                b(w, -hd, 0.025),
+            );
+        }
+    };
     // jambs and head, round every opening
+    // a door as joinery: its frame is what its leaf leaves of the opening
+    let (jw, hh) = match (&o.door, o.kind, &o.division) {
+        (Some(d), OpeningKind::Door, None) => d.members(w, h),
+        // a divided door in its own frame, as the editor and the list
+        // draw it
+        (Some(d), OpeningKind::Door, Some(_)) => {
+            let j = d.members(w, h).0;
+            (j, j)
+        }
+        _ => (fw, fw),
+    };
+    let fw = jw;
     add(Part::Frame, b(0.0, -hd, 0.0), b(fw, hd, h));
     add(Part::Frame, b(w - fw, -hd, 0.0), b(w, hd, h));
-    add(Part::Frame, b(fw, -hd, h - fw), b(w - fw, hd, h));
+    add(Part::Frame, b(fw, -hd, h - hh), b(w - fw, hd, h));
+    let divided = o.division.as_ref().filter(|_| o.kind != OpeningKind::Hole);
+    if let Some(node) = divided {
+        let door = o.kind == OpeningKind::Door;
+        if !door {
+            add(Part::Frame, b(fw, -hd, 0.0), b(w - fw, hd, fw));
+            sills(&mut add);
+        }
+        // the division is seen from outside (+y here, −y once turned
+        // across): its left is at the far x until then
+        let x_of = |x: f64| if across { x } else { w - x };
+        let (fields, bars) = node.layout_of(door, w, h, fw);
+        for bar in &bars {
+            let (xa, xb) = (
+                x_of(bar.x0).min(x_of(bar.x1)),
+                x_of(bar.x0).max(x_of(bar.x1)),
+            );
+            add(Part::Frame, b(xa, -hd, bar.y0), b(xb, hd, bar.y1));
+        }
+        let lt = o
+            .door
+            .as_ref()
+            .map_or(f.leaf(), |d| d.leaf_thickness().min(f.frame.depth));
+        for fl in &fields {
+            field_boxes(&mut add, fl, &x_of, across, hd, fw, lt);
+        }
+    }
     match o.kind {
+        _ if divided.is_some() => {}
         OpeningKind::Window => {
             // the sill member, then glazing bars splitting the glass
             add(Part::Frame, b(fw, -hd, 0.0), b(w - fw, hd, fw));
             // the outside sill, from the frame out past the wall's face,
             // on the side the window faces out of (built facing +y)
-            if face > hd + 0.005 {
-                add(Part::Frame, b(0.0, hd, 0.0), b(w, face + SILL_NOSE, 0.03));
-            }
+            sills(&mut add);
             let (x0, x1, z0, z1) = (fw, w - fw, fw, h - fw);
             let (na, nu) = (f.frame.panes_across, f.frame.panes_up);
             let bar = fw * 0.6;
@@ -129,9 +197,31 @@ pub fn opening_boxes(o: &Opening, wall: &Wall) -> Vec<PartBox> {
         OpeningKind::Door => {
             // the leaf, flush with the frame's face on the side it opens to
             let gap = 0.004;
-            let lt = f.leaf();
-            let (l0, l1) = (fw + gap, w - fw - gap);
-            add(Part::Leaf, b(l0, hd - lt, 0.01), b(l1, hd, h - fw - gap));
+            let lt = o
+                .door
+                .as_ref()
+                .map_or(f.leaf(), |d| d.leaf_thickness().min(f.frame.depth));
+            let (l0, l1) = (jw + gap, w - jw - gap);
+            // over its threshold where it has one
+            let foot = if o.threshold { THRESHOLD + gap } else { 0.01 };
+            add(Part::Leaf, b(l0, hd - lt, foot), b(l1, hd, h - hh - gap));
+            if o.threshold {
+                add(Part::Frame, b(jw, -hd, 0.0), b(w - jw, hd, THRESHOLD));
+            }
+            // a lining's architraves, on both faces of the wall round
+            // the opening
+            if o.is_lining() {
+                let (aw, at) = (0.06, 0.012);
+                for (y0, y1) in [(hd, hd + at), (-hd - at, -hd)] {
+                    add(Part::Frame, b(-aw + jw, y0, 0.0), b(jw, y1, h - hh + aw));
+                    add(
+                        Part::Frame,
+                        b(w - jw, y0, 0.0),
+                        b(w - jw + aw, y1, h - hh + aw),
+                    );
+                    add(Part::Frame, b(jw, y0, h - hh), b(w - jw, y1, h - hh + aw));
+                }
+            }
             // a lever handle on each face, on the side away from the hinge
             if l1 - l0 > 0.3 && h > 1.2 {
                 let x = l1 - 0.07;
@@ -163,7 +253,6 @@ pub fn opening_boxes(o: &Opening, wall: &Wall) -> Vec<PartBox> {
     }
     // built opening to (facing out of) +y, a door hinged at x = 0: turn it
     // round as the opening is set
-    let across = !o.faces_left(wall);
     let along = o.kind == OpeningKind::Door && o.flip_hand;
     if across || along {
         for pb in &mut out {
@@ -176,11 +265,167 @@ pub fn opening_boxes(o: &Opening, wall: &Wall) -> Vec<PartBox> {
             }
         }
     }
+    for pb in &mut out {
+        pb.lo.y += yc;
+        pb.hi.y += yc;
+    }
     out
+}
+
+/// How far an opening leaf's sash stands proud of the frame inside.
+const SASH_PROUD: f64 = 0.012;
+
+/// One field of a division, in the opening's boxes: fixed glazing or a
+/// panel in the frame; an opening leaf as a sash proud of the frame
+/// inside, its glass in the sash and a handle inside; a door's leaf with
+/// a lever on both faces. Built facing +y: inside is −y.
+fn field_boxes(
+    add: &mut impl FnMut(Part, DVec3, DVec3),
+    fl: &Field,
+    x_of: &dyn Fn(f64) -> f64,
+    across: bool,
+    hd: f64,
+    fw: f64,
+    leaf_t: f64,
+) {
+    let b = DVec3::new;
+    let (xa, xb) = (x_of(fl.x0).min(x_of(fl.x1)), x_of(fl.x0).max(x_of(fl.x1)));
+    let (z0, z1) = (fl.y0, fl.y1);
+    let op = fl.sash.op;
+    let fill = if fl.sash.panel {
+        Part::Panel
+    } else {
+        Part::Glass
+    };
+    // seen from outside its left is at the far x, unless turned across
+    let low_x = |left: bool| left == across;
+    if op.is_door() {
+        let gap = 0.004;
+        add(
+            Part::Leaf,
+            b(xa + gap, hd - leaf_t, z0 + 0.01),
+            b(xb - gap, hd, z1 - gap),
+        );
+        if xb - xa > 0.3 && z1 - z0 > 1.2 {
+            let hinge_low = low_x(op.hinged_left().unwrap_or(true));
+            let x = if hinge_low { xb - 0.07 } else { xa + 0.07 };
+            let dir = if hinge_low { -1.0 } else { 1.0 };
+            let z = z0 + 1.0f64.min((z1 - z0) * 0.45);
+            let (f0, f1) = (hd - leaf_t, hd);
+            for (r0, r1, a0, a1) in [
+                (f1, f1 + 0.012, f1 + 0.045, f1 + 0.062),
+                (f0 - 0.012, f0, f0 - 0.062, f0 - 0.045),
+            ] {
+                add(
+                    Part::Handle,
+                    b(x - 0.025, r0, z - 0.04),
+                    b(x + 0.025, r1, z + 0.04),
+                );
+                add(
+                    Part::Handle,
+                    b(x - 0.008, r0.min(a0), z - 0.008),
+                    b(x + 0.008, r1.max(a1), z + 0.008),
+                );
+                let (h0, h1) = (x - 0.01, x + dir * 0.13);
+                add(
+                    Part::Handle,
+                    b(h0.min(h1), a0, z - 0.01),
+                    b(h0.max(h1), a1, z + 0.01),
+                );
+            }
+        }
+        return;
+    }
+    if op == LeafOp::Fixed {
+        add(fill, b(xa, -GLASS / 2.0, z0), b(xb, GLASS / 2.0, z1));
+        return;
+    }
+    let sw = (fw * 0.75).min((xb - xa) / 4.0).min((z1 - z0) / 4.0);
+    let slides = op.slides_left().is_some();
+    // a sliding leaf runs behind the frame's middle
+    let (s0, s1) = if slides {
+        (-hd, -0.004)
+    } else {
+        (-hd - SASH_PROUD, hd * 0.6)
+    };
+    add(Part::Frame, b(xa, s0, z0), b(xa + sw, s1, z1));
+    add(Part::Frame, b(xb - sw, s0, z0), b(xb, s1, z1));
+    add(Part::Frame, b(xa + sw, s0, z0), b(xb - sw, s1, z0 + sw));
+    add(Part::Frame, b(xa + sw, s0, z1 - sw), b(xb - sw, s1, z1));
+    let gy = if slides { -hd / 2.0 } else { 0.0 };
+    add(
+        fill,
+        b(xa + sw, gy - GLASS / 2.0, z0 + sw),
+        b(xb - sw, gy + GLASS / 2.0, z1 - sw),
+    );
+    // the handle: a rose on the sash and a lever standing off it
+    if xb - xa < 0.2 || z1 - z0 < 0.3 {
+        return;
+    }
+    let y = s0;
+    let (r, a0, a1) = (y - 0.01, y - 0.05, y - 0.032);
+    let (xm, zm) = ((xa + xb) / 2.0, ((z0 + z1) / 2.0).min(z0 + 1.05));
+    // on the rail away from the hinges, the lever along it
+    let rail = |add: &mut dyn FnMut(Part, DVec3, DVec3), z: f64| {
+        add(
+            Part::Handle,
+            b(xm - 0.035, r, z - 0.014),
+            b(xm + 0.035, y, z + 0.014),
+        );
+        add(
+            Part::Handle,
+            b(xm - 0.008, a0, z - 0.008),
+            b(xm + 0.008, y, z + 0.008),
+        );
+        add(
+            Part::Handle,
+            b(xm - 0.01, a0, z - 0.009),
+            b(xm + 0.11, a1, z + 0.009),
+        );
+    };
+    match op {
+        LeafOp::Tilt => return rail(add, z1 - sw / 2.0),
+        LeafOp::TopHung => return rail(add, z0 + sw / 2.0),
+        _ => {}
+    }
+    // on the stile away from the hinges, or the one a sliding leaf
+    // closes against (it slides away from it), the lever down
+    let hinge_left = op.hinged_left().or(op.slides_left()).unwrap_or(true);
+    let x = if low_x(hinge_left) {
+        xb - sw / 2.0
+    } else {
+        xa + sw / 2.0
+    };
+    let long = if op.lifts() { 0.22 } else { 0.11 };
+    add(
+        Part::Handle,
+        b(x - 0.014, r, zm - 0.035),
+        b(x + 0.014, y, zm + 0.035),
+    );
+    add(
+        Part::Handle,
+        b(x - 0.008, a0, zm - 0.008),
+        b(x + 0.008, y, zm + 0.008),
+    );
+    add(
+        Part::Handle,
+        b(x - 0.009, a0, zm - long),
+        b(x + 0.009, a1, zm + 0.01),
+    );
+}
+
+/// The division a window or door has, for drawing it: see
+/// [`creabim_core::joinery::division_of`].
+pub fn division(o: &Opening) -> FrameNode {
+    creabim_core::joinery::division_of(o)
 }
 
 /// How far a window's outside sill runs past the wall's face.
 pub const SILL_NOSE: f64 = 0.04;
+/// How far an inner sill board stands over the wall's inner face, m.
+pub const INNER_SILL_NOSE: f64 = 0.03;
+/// How high a door's threshold stands, m.
+pub const THRESHOLD: f64 = 0.02;
 
 /// Which way a door is hung, in words: its hinge side seen from the
 /// side it opens to, and which side that is.
@@ -211,12 +456,17 @@ pub fn to_model(o: &Opening, wall: &Wall, level_z: f64) -> Option<impl Fn(DVec3)
 }
 
 /// The opening's parts as meshes in model coordinates, one per kind of part.
-pub fn opening_meshes(o: &Opening, wall: &Wall, level_z: f64) -> Vec<(Part, TriMesh)> {
+pub fn opening_meshes(
+    o: &Opening,
+    wall: &Wall,
+    asm: Option<&Assembly>,
+    level_z: f64,
+) -> Vec<(Part, TriMesh)> {
     let Some(at) = to_model(o, wall, level_z) else {
         return vec![];
     };
     let mut out: Vec<(Part, TriMesh)> = Vec::new();
-    for pb in opening_boxes(o, wall) {
+    for pb in opening_boxes(o, wall, asm) {
         let i = match out.iter().position(|(p, _)| *p == pb.part) {
             Some(i) => i,
             None => {
@@ -310,6 +560,111 @@ pub fn cut_box_mesh(o: &Opening, wall: &Wall, level_z: f64) -> Option<crate::Tri
     Some(crate::scene::slab_mesh(&outline, z0 + c.v1, c.v1 - c.v0))
 }
 
+/// Does a round penetration cut its wall as a cylinder (a straight wall);
+/// in a curved one it stays a rectangular cut.
+pub fn cuts_round(o: &Opening, wall: &Wall) -> bool {
+    o.is_round() && !wall.is_arc()
+}
+
+/// How much wider than its circle a round penetration's square is cut
+/// (its corners filled back), so the fill is never of no thickness.
+pub const ROUND_CLEAR: f64 = 0.005;
+
+/// A shape drawn in a wall's (along, up) plane pushed across it from `s0`
+/// to `s1`, in model coordinates.
+fn across_wall(
+    wall: &Wall,
+    level_z: f64,
+    shape: &[glam::DVec2],
+    s0: f64,
+    s1: f64,
+) -> crate::TriMesh {
+    let mut m = crate::scene::slab_mesh(shape, s1, s1 - s0);
+    let d = wall.direction();
+    let n = glam::DVec2::new(-d.y, d.x);
+    let z0 = level_z + wall.base_offset;
+    let to = |p: [f32; 3], origin: bool| -> [f32; 3] {
+        let (u, v, s) = (p[0] as f64, p[1] as f64, p[2] as f64);
+        let base = if origin {
+            wall.start
+        } else {
+            glam::DVec2::ZERO
+        };
+        let q = base + d * u + n * s;
+        let z = if origin { z0 + v } else { v };
+        [q.x as f32, q.y as f32, z as f32]
+    };
+    for p in m.positions.iter_mut() {
+        *p = to(*p, true);
+    }
+    for p in m.normals.iter_mut() {
+        *p = to(*p, false);
+    }
+    // (along, up, across) is left-handed in the wall: turn the triangles
+    for t in m.indices.chunks_mut(3) {
+        t.swap(1, 2);
+    }
+    m
+}
+
+/// A round penetration is cut as its square, and the four corners
+/// between the square and the circle are filled back: solids across the
+/// wall from `s0` to `s1` (one layer, or the whole wall), so the wall and
+/// its sections show the hole round (PilonDesigner cuts a round prestup
+/// round). Empty for any other opening.
+pub fn round_fillers(o: &Opening, wall: &Wall, level_z: f64, s0: f64, s1: f64) -> crate::TriMesh {
+    let mut out = crate::TriMesh::default();
+    if !cuts_round(o, wall) {
+        return out;
+    }
+    let Some(c) = crate::wall::Cut::of(o, wall) else {
+        return out;
+    };
+    let r = (c.u1 - c.u0) / 2.0;
+    let (uc, vc) = ((c.u0 + c.u1) / 2.0, c.v0 + r);
+    let centre = glam::DVec2::new(uc, vc);
+    const STEPS: usize = 8;
+    for q in 0..4 {
+        // each quarter about the square's sides, split on its diagonals
+        // (a section through the middle never meets a seam): two of the
+        // square's corners and the arc between them
+        let a0 = std::f64::consts::FRAC_PI_4 + q as f64 * std::f64::consts::FRAC_PI_2;
+        let a1 = a0 + std::f64::consts::FRAC_PI_2;
+        let h = r + ROUND_CLEAR;
+        let corner = |a: f64| centre + glam::DVec2::new(a.cos().signum(), a.sin().signum()) * h;
+        let mut shape = vec![corner(a0), corner(a1)];
+        for i in 0..=STEPS {
+            let a = a1 - std::f64::consts::FRAC_PI_2 * i as f64 / STEPS as f64;
+            shape.push(centre + glam::DVec2::new(a.cos(), a.sin()) * r);
+        }
+        // counter-clockwise
+        if creabim_core::polygon::signed_area2(&shape) < 0.0 {
+            shape.reverse();
+        }
+        out.append(&across_wall(wall, level_z, &shape, s0, s1));
+    }
+    out
+}
+
+/// The cylinder of a round penetration, a little past both faces of its
+/// straight wall: how it shows (see-through) and is picked in 3D.
+pub fn round_cutter(o: &Opening, wall: &Wall, level_z: f64) -> Option<crate::TriMesh> {
+    if !cuts_round(o, wall) {
+        return None;
+    }
+    let c = crate::wall::Cut::of(o, wall)?;
+    let r = (c.u1 - c.u0) / 2.0;
+    let (uc, vc) = ((c.u0 + c.u1) / 2.0, c.v0 + r);
+    let circle: Vec<glam::DVec2> = (0..32)
+        .map(|i| {
+            let a = i as f64 / 32.0 * std::f64::consts::TAU;
+            glam::DVec2::new(uc + r * a.cos(), vc + r * a.sin())
+        })
+        .collect();
+    let t = wall.thickness / 2.0;
+    Some(across_wall(wall, level_z, &circle, -t, t))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,6 +688,9 @@ mod tests {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
+            no_fire_barriers: false,
         }
     }
 
@@ -348,6 +706,17 @@ mod tests {
             frame,
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            threshold_material: None,
+            penetration: None,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
+            performance: None,
         }
     }
 
@@ -377,9 +746,13 @@ mod tests {
     #[test]
     fn a_window_has_a_frame_round_set_back_glass() {
         let o = opening(OpeningKind::Window, OpeningFrame::default());
-        let boxes = opening_boxes(&o, &wall());
-        // four frame members and the outside sill
-        assert_eq!(count(&boxes, Part::Frame), 5);
+        let boxes = opening_boxes(&o, &wall(), None);
+        // four frame members, the outside sill and the inner board
+        assert_eq!(count(&boxes, Part::Frame), 6);
+        // without its sills: the frame alone
+        let mut bare = o.clone();
+        (bare.no_outer_sill, bare.no_inner_sill) = (true, true);
+        assert_eq!(count(&opening_boxes(&bare, &wall(), None), Part::Frame), 4);
         assert_eq!(count(&boxes, Part::Glass), 1);
         let glass = boxes.iter().find(|b| b.part == Part::Glass).unwrap();
         // the glass fills the frame's inside, behind its faces
@@ -399,10 +772,10 @@ mod tests {
             panes_up: 2,
             ..OpeningFrame::default()
         };
-        let boxes = opening_boxes(&opening(OpeningKind::Window, frame), &wall());
+        let boxes = opening_boxes(&opening(OpeningKind::Window, frame), &wall(), None);
         assert_eq!(count(&boxes, Part::Glass), 6);
-        // the frame and sill, two upright bars, a cross bar in each column
-        assert_eq!(count(&boxes, Part::Frame), 5 + 2 + 3);
+        // the frame and sills, two upright bars, a cross bar in each column
+        assert_eq!(count(&boxes, Part::Frame), 6 + 2 + 3);
         let glass: f64 = boxes
             .iter()
             .filter(|b| b.part == Part::Glass)
@@ -416,12 +789,12 @@ mod tests {
     #[test]
     fn a_door_has_a_leaf_and_handles_but_no_sill() {
         let o = opening(OpeningKind::Door, OpeningFrame::default());
-        let boxes = opening_boxes(&o, &wall());
+        let boxes = opening_boxes(&o, &wall(), None);
         assert_eq!(count(&boxes, Part::Frame), 3);
         assert_eq!(count(&boxes, Part::Leaf), 1);
         assert_eq!(count(&boxes, Part::Glass), 0);
         assert!(count(&boxes, Part::Handle) >= 2);
-        let meshes = opening_meshes(&o, &wall(), 0.0);
+        let meshes = opening_meshes(&o, &wall(), None, 0.0);
         // every part is a closed box
         for (_, m) in &meshes {
             assert!(m.volume() > 0.0);
@@ -433,13 +806,13 @@ mod tests {
         let mut w = wall();
         w.thickness = 0.05;
         let o = opening(OpeningKind::Window, OpeningFrame::default());
-        for b in opening_boxes(&o, &w) {
+        for b in opening_boxes(&o, &w, None) {
             assert!(b.lo.y >= -0.025 - 1e-9 && b.hi.y <= 0.025 + 1e-9);
         }
     }
 
     fn leaf(o: &Opening) -> PartBox {
-        *opening_boxes(o, &wall())
+        *opening_boxes(o, &wall(), None)
             .iter()
             .find(|b| b.part == Part::Leaf)
             .unwrap()
@@ -453,7 +826,7 @@ mod tests {
         assert!(l.hi.y > 0.0 && l.lo.y > -0.01);
         assert_eq!(door_hand(&o, &wall()), "Right, in");
         let handle = |o: &Opening| {
-            opening_boxes(o, &wall())
+            opening_boxes(o, &wall(), None)
                 .iter()
                 .find(|b| b.part == Part::Handle)
                 .unwrap()
@@ -471,11 +844,165 @@ mod tests {
         assert_eq!(door_hand(&o, &wall()), "Right, out");
     }
 
+    fn layered() -> Assembly {
+        use creabim_core::assembly::{AssemblyUse, Layer, LayerFunction};
+        let l = |function, thickness| Layer::new(function, None, thickness);
+        // from outside: render, insulation, masonry, plaster = 0.3
+        Assembly::new(
+            AssemblyUse::Wall,
+            vec![
+                l(LayerFunction::Finish, 0.01),
+                l(LayerFunction::Insulation, 0.09),
+                l(LayerFunction::Structure, 0.19),
+                l(LayerFunction::Finish, 0.01),
+            ],
+        )
+    }
+
+    fn frame_y(o: &Opening, w: &Wall, a: Option<&Assembly>) -> (f64, f64) {
+        // a jamb: the frame's whole depth
+        let b = opening_boxes(o, w, a)[0];
+        (b.lo.y, b.hi.y)
+    }
+
+    #[test]
+    fn the_frame_stands_on_the_cores_outer_edge() {
+        let a = layered();
+        let mut o = opening(OpeningKind::Window, OpeningFrame::default());
+        let w = wall();
+        // plain wall: in its middle
+        let (lo, hi) = frame_y(&o, &w, None);
+        assert!((lo + 0.05).abs() < 1e-9 && (hi - 0.05).abs() < 1e-9);
+        // layered: the exterior is the wall's right (−0.15), the core
+        // starts 0.1 in
+        let (lo, hi) = frame_y(&o, &w, Some(&a));
+        assert!(
+            (lo + 0.05).abs() < 1e-9 && (hi - 0.05).abs() < 1e-9,
+            "{lo} {hi}"
+        );
+        // out into the insulation by 40 mm
+        o.setback = Some(-0.04);
+        let (lo, hi) = frame_y(&o, &w, Some(&a));
+        assert!(
+            (lo + 0.09).abs() < 1e-9 && (hi - 0.01).abs() < 1e-9,
+            "{lo} {hi}"
+        );
+        // a flipped wall has its exterior on the left
+        let fw = Wall {
+            flip: true,
+            ..wall()
+        };
+        let (lo, hi) = frame_y(&o, &fw, Some(&a));
+        assert!(
+            (hi - 0.09).abs() < 1e-9 && (lo + 0.01).abs() < 1e-9,
+            "{lo} {hi}"
+        );
+        // never out of the wall
+        o.setback = Some(-1.0);
+        let (lo, hi) = frame_y(&o, &w, Some(&a));
+        assert!((lo + 0.15).abs() < 1e-9 && (hi + 0.05).abs() < 1e-9);
+        // the outside sill still ends past the wall's outside face
+        o.setback = None;
+        let sill = opening_boxes(&o, &w, Some(&a))
+            .into_iter()
+            .map(|b| b.lo.y)
+            .fold(f64::MAX, f64::min);
+        assert!((sill + 0.15 + SILL_NOSE).abs() < 1e-9, "{sill}");
+        // set in a plain wall, from its outside face
+        o.setback = Some(0.02);
+        let (lo, _) = frame_y(&o, &w, None);
+        assert!((lo + 0.13).abs() < 1e-9);
+    }
+
+    #[test]
+    fn each_field_opens_its_own_way_with_a_handle_inside() {
+        let mut o = opening(OpeningKind::Window, OpeningFrame::default());
+        // seen from outside: a tilt and turn leaf hinged left, then fixed
+        o.division = Some(FrameNode::parse("v(1:OS-L,1:FIX)").unwrap());
+        let boxes = opening_boxes(&o, &wall(), None);
+        // frame of four, the two sills, a mullion and a sash of four
+        assert_eq!(count(&boxes, Part::Frame), 6 + 1 + 4);
+        assert_eq!(count(&boxes, Part::Glass), 2);
+        assert_eq!(count(&boxes, Part::Handle), 3);
+        // the window faces the wall's right (−y): inside is +y; seen from
+        // outside (looking along +y) the left is at low x
+        let h = boxes.iter().find(|b| b.part == Part::Handle).unwrap();
+        assert!(h.lo.y > 0.05, "inside the frame's inner face: {}", h.lo.y);
+        // hinged on the left: the handle by the mullion in the middle
+        assert!(h.lo.x > 0.4 && h.hi.x < 0.6, "{} {}", h.lo.x, h.hi.x);
+        // a tilting fanlight over a lift and slide leaf, a panel beside
+        o.division = Some(FrameNode::parse("v(1:h(0.3:S,0.7:ZP-P),1:FIX*)").unwrap());
+        let boxes = opening_boxes(&o, &wall(), None);
+        assert_eq!(count(&boxes, Part::Handle), 6);
+        assert_eq!(count(&boxes, Part::Panel), 1);
+        assert!(boxes
+            .iter()
+            .any(|b| b.part == Part::Handle && b.lo.z > 1.3 - 0.12));
+        for b in &boxes {
+            assert!(b.lo.x >= -1e-9 && b.hi.x <= 1.2 + 1e-9);
+        }
+    }
+
+    #[test]
+    fn a_door_as_joinery_has_its_leafs_nominal_size() {
+        use creabim_core::joinery::{apply_door, DoorFrame, DoorSpec};
+        let mut o = opening(OpeningKind::Door, OpeningFrame::default());
+        apply_door(&mut o, DoorSpec::fitting(DoorFrame::Lining, 0.9, 2.02));
+        assert_eq!((o.width, o.height), (0.9, 2.02));
+        let boxes = opening_boxes(&o, &wall(), None);
+        let l = boxes.iter().find(|b| b.part == Part::Leaf).unwrap();
+        // 800 less the gaps, under a 50 mm head
+        assert!((l.hi.x - l.lo.x - 0.792).abs() < 1e-9);
+        assert!((l.hi.z - (1.97 - 0.004)).abs() < 1e-9);
+        // the lining runs through the whole wall, architraves on both faces
+        let jamb = boxes[0];
+        assert!((jamb.lo.y + 0.15).abs() < 1e-9 && (jamb.hi.y - 0.15).abs() < 1e-9);
+        assert_eq!(count(&boxes, Part::Frame), 3 + 6);
+        assert!(boxes.iter().any(|b| b.hi.y > 0.16) && boxes.iter().any(|b| b.lo.y < -0.16));
+        // a steel frame stays its own depth
+        apply_door(&mut o, DoorSpec::fitting(DoorFrame::Steel, 0.95, 2.05));
+        let jamb = opening_boxes(&o, &wall(), None)[0];
+        assert!((jamb.hi.y - jamb.lo.y - 0.1).abs() < 1e-9);
+        assert!((jamb.hi.x - 0.075).abs() < 1e-9);
+        // a door with a side light: the leaf in its field
+        o.division = Some(FrameNode::parse("v(0.7:D-L,0.3:FIX)").unwrap());
+        let boxes = opening_boxes(&o, &wall(), None);
+        assert_eq!(count(&boxes, Part::Leaf), 1);
+        assert_eq!(count(&boxes, Part::Glass), 1);
+        // a turning leaf in a door is a door leaf (it swings in plan),
+        // and the side light is no passage: the mark says the leaf only
+        o.division = Some(FrameNode::parse("v(0.7:O-P,0.3:FIX)").unwrap());
+        let boxes = opening_boxes(&o, &wall(), None);
+        assert_eq!(count(&boxes, Part::Leaf), 1);
+        let (pw, _) = creabim_core::joinery::clear_passage(&o).unwrap();
+        let fw = creabim_core::joinery::frame_width(&o);
+        assert!(
+            (pw - ((o.width - 2.0 * fw) * 0.7 * 1000.0).round() / 1000.0).abs() < 1e-9,
+            "{pw}"
+        );
+        // both opening: two leaves meeting with no mullion between, the
+        // passage the whole width between the jambs
+        o.division = Some(FrameNode::parse("v(0.7:D-L,0.3:O-P)").unwrap());
+        let boxes = opening_boxes(&o, &wall(), None);
+        assert_eq!(count(&boxes, Part::Leaf), 2);
+        let (pw, _) = creabim_core::joinery::clear_passage(&o).unwrap();
+        assert!(
+            (pw - ((o.width - 2.0 * fw) * 1000.0).round() / 1000.0).abs() < 1e-9,
+            "{pw}"
+        );
+        let (_, bars) = o
+            .division
+            .as_ref()
+            .unwrap()
+            .layout_of(true, o.width, o.height, fw);
+        assert!(bars.is_empty());
+    }
+
     #[test]
     fn a_window_faces_out_of_the_exterior_unless_flipped() {
         let mut o = opening(OpeningKind::Window, OpeningFrame::default());
         let sill = |o: &Opening| {
-            opening_boxes(o, &wall())
+            opening_boxes(o, &wall(), None)
                 .into_iter()
                 .filter(|b| b.part == Part::Frame)
                 .min_by(|a, b| a.lo.y.min(-a.hi.y).total_cmp(&b.lo.y.min(-b.hi.y)))

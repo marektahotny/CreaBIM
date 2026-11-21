@@ -607,6 +607,8 @@ pub fn family_of_type(t: &ObjectType) -> Option<&'static str> {
         "floor-drain" => Some("Podlahová vpusť"),
         "outside-tap" => Some("Výtokový ventil"),
         "radiator" => Some("Doskové vykurovacie teleso"),
+        k if k.starts_with("jika-basin") => Some("Umývadlo"),
+        k if k.starts_with("jika-wc") => Some("Závesné WC s podomietkovou nádržkou"),
         _ => None,
     };
     if by_key.is_some() {

@@ -414,6 +414,81 @@ mod tests {
         assert!((size - glam::DVec2::new(40.0, 20.0)).length() < 1e-6);
     }
 
+    /// A map's terrain goes on a level of its own, "3D terén", with its
+    /// own plan: no floor plan shows it, no section marks the level.
+    #[test]
+    fn the_maps_terrain_gets_a_level_of_its_own() {
+        use creabim_core::ElementKind;
+        let mut app = crate::app::test_app();
+        let mut pts = vec![];
+        for i in 0..6 {
+            for j in 0..6 {
+                pts.extend([i as f64 * 4.0, j as f64 * 4.0, i as f64 * 0.3 - 0.5]);
+            }
+        }
+        let v = serde_json::json!({
+            "app": "PilonMapDownloader",
+            "origin": [-450123.456, -1250456.789],
+            "h0": 312.45,
+            "terrain": {"points": pts},
+        });
+        let dir = std::env::temp_dir().join(format!("creabim-map-test-{}", std::process::id()));
+        // a roof plan: seen from above like the site plan, but no terrain
+        // (George: the roof plan showed the map and the terrain)
+        let top = app.doc.model().levels().last().unwrap().0.id;
+        let mut roof = creabim_core::View::plan(top);
+        roof.graphics.range.from_above = true;
+        app.doc
+            .commit(
+                creabim_core::Transaction::new("roof").insert(creabim_core::Element::new(
+                    "Strecha",
+                    ElementKind::View(roof),
+                )),
+            )
+            .unwrap();
+        app.map_put_in(files_of(&v), &dir, None);
+        let model = app.doc.model();
+        let site = model.site_level().expect("a site level");
+        assert_eq!(model.get(site).unwrap().name, "3D terén");
+        assert!(model.levels().all(|(e, _)| e.id != site), "not a storey");
+        let terrain = model
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Site(s) if s.level == site))
+            .expect("the terrain on it")
+            .id;
+        let mut own = 0;
+        for e in model.iter() {
+            let ElementKind::View(v) = &e.kind else {
+                continue;
+            };
+            let creabim_core::ViewKind::Plan { level, .. } = v.kind else {
+                continue;
+            };
+            let d = creabim_geom::section::view_drawing(model, e.id).unwrap();
+            let shows = d.items.iter().any(|it| it.id() == terrain);
+            if level == site {
+                own += 1;
+                assert_eq!(e.name, "3D terén");
+                assert!(shows, "its own plan shows it");
+            } else if !v.graphics.range.is_site() {
+                assert!(!shows, "{} shows the terrain", e.name);
+            }
+        }
+        assert_eq!(own, 1);
+        // a second map reuses it
+        app.map_put_in(files_of(&v), &dir, None);
+        let model = app.doc.model();
+        assert_eq!(model.site_level(), Some(site));
+        assert_eq!(
+            model
+                .all_levels()
+                .filter(|(e, _)| e.name == "3D terén")
+                .count(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_listener_answers_the_map_site_only() {
         let ctx = egui::Context::default();

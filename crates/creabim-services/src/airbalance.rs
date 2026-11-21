@@ -12,14 +12,7 @@ use glam::DVec2;
 /// A room air is taken from (a bathroom, a WC, a kitchen, a store, a
 /// plant room): the others get supply air.
 pub fn is_exhaust(text: &str) -> bool {
-    let t = text.to_lowercase();
-    [
-        "wc", "toalet", "kúpeľ", "kupel", "sprch", "bath", "shower", "kuchy", "kitchen", "špajz",
-        "spajz", "komor", "pantry", "techn", "kotol", "plant", "šatn", "satn", "práč", "prac",
-        "laundry", "garáž", "garaz", "garage", "sklad", "store",
-    ]
-    .iter()
-    .any(|k| t.contains(k))
+    creabim_core::roomtype::RoomType::find(text).is_some_and(|t| t.needs().exhaust)
 }
 
 /// An air terminal standing in the model.
@@ -127,7 +120,9 @@ fn row(model: &Model, hl: &RoomLoss, terms: &[Terminal], used: &mut [bool]) -> O
         return None;
     };
     let outline = creabim_core::room::shape_of(model, r)?.outline;
-    let exhaust_room = is_exhaust(&format!("{} {}", r.occupancy, e.name));
+    let exhaust_room = creabim_core::roomtype::RoomType::of(&r.occupancy, &e.name)
+        .needs()
+        .exhaust;
     let need = hl.v_min.round();
     let mine: Vec<&Terminal> = terms
         .iter()
@@ -258,6 +253,8 @@ mod tests {
             inner_mm: 159.0,
             height_mm: None,
             insulation_mm: 0.0,
+            insulation_set: false,
+            mark: None,
         }
     }
 

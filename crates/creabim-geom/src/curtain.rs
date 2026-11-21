@@ -214,6 +214,17 @@ mod tests {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            threshold_material: None,
+            penetration: None,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
+            performance: None,
         };
         let boxes = curtain_boxes(&w, &g, &[&door]);
         let glass = boxes

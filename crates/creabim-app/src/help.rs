@@ -33,6 +33,95 @@ macro_rules! img {
     };
 }
 
+/// A page in Slovak: (id, its text from `help/sk/<id>.md`). Its headings
+/// keep the English page's links with `{#id}` where the words differ.
+macro_rules! sk {
+    ($id:literal) => {
+        ($id, include_str!(concat!("../help/sk/", $id, ".md")))
+    };
+}
+
+/// The pages translated to Slovak, by id. A page not here is shown in
+/// English.
+pub const PAGES_SK: &[(&str, &str)] = &[
+    sk!("welcome"),
+    sk!("starter-house"),
+    sk!("start"),
+    sk!("start-project"),
+    sk!("start-levels"),
+    sk!("start-walls"),
+    sk!("start-openings"),
+    sk!("start-floors-roofs"),
+    sk!("start-views"),
+    sk!("start-sheets"),
+    sk!("start-export"),
+    sk!("interface"),
+    sk!("navigate"),
+    sk!("select"),
+    sk!("move"),
+    sk!("align"),
+    sk!("handles"),
+    sk!("edit-mode"),
+    sk!("divide"),
+    sk!("edit"),
+    sk!("levels"),
+    sk!("walls"),
+    sk!("doors-windows"),
+    sk!("holes"),
+    sk!("slabs"),
+    sk!("roofs"),
+    sk!("columns-beams"),
+    sk!("stairs-railings"),
+    sk!("footings"),
+    sk!("parts"),
+    sk!("profiles"),
+    sk!("site"),
+    sk!("curtain-walls"),
+    sk!("types"),
+    sk!("assemblies"),
+    sk!("materials"),
+    sk!("masses"),
+    sk!("sketches"),
+    sk!("grids"),
+    sk!("furniture"),
+    sk!("fixtures"),
+    sk!("pipes"),
+    sk!("rooms"),
+    sk!("ceilings"),
+    sk!("joins"),
+    sk!("views"),
+    sk!("sections"),
+    sk!("view-range"),
+    sk!("graphic-styles"),
+    sk!("visibility"),
+    sk!("crop-boxes"),
+    sk!("trace-reference"),
+    sk!("details"),
+    sk!("schedules"),
+    sk!("take-off"),
+    sk!("sheets"),
+    sk!("masters"),
+    sk!("dimensions"),
+    sk!("tags"),
+    sk!("marks"),
+    sk!("spot-levels"),
+    sk!("notes"),
+    sk!("styles"),
+    sk!("snaps"),
+    sk!("guides"),
+    sk!("units"),
+    sk!("project-info"),
+    sk!("files"),
+    sk!("ifc"),
+    sk!("blender"),
+    sk!("freecad"),
+    sk!("gltf"),
+    sk!("dxf-svg"),
+    sk!("shortcuts"),
+    sk!("glossary"),
+    sk!("about"),
+];
+
 /// The pages in their order, by section: (section, id, text).
 pub const PAGES: &[(&str, &str, &str)] = &[
     page!("Getting started", "welcome"),
@@ -157,9 +246,42 @@ pub const IMAGES: &[(&str, &[u8])] = &[
     img!("edit-mode-mass"),
 ];
 
-/// A page's text by id.
+/// A page's text by id, in the interface's language where the guide has
+/// it.
 pub fn text(id: &str) -> Option<&'static str> {
+    if crate::i18n::lang() == crate::i18n::Lang::Sk {
+        if let Some(p) = PAGES_SK.iter().find(|p| p.0 == id) {
+            return Some(p.1);
+        }
+    }
     PAGES.iter().find(|p| p.1 == id).map(|p| p.2)
+}
+
+/// A section's name in the interface's language. Help's sections are
+/// keyed `help\u{4}<section>`, as "Reference" here is not a trace's.
+pub fn section_name(section: &str) -> String {
+    crate::i18n::tr(&format!("help{}{section}", crate::i18n::CONTEXT))
+}
+
+/// The pages in their order, in the interface's language: (section, id,
+/// text). The section is the English one, for [`crate::i18n::t`].
+pub fn pages() -> Vec<(&'static str, &'static str, &'static str)> {
+    PAGES
+        .iter()
+        .map(|(s, id, md)| (*s, *id, text(id).unwrap_or(md)))
+        .collect()
+}
+
+/// A heading's words, without the `{#id}` it may be linked by.
+pub fn heading_text(heading: &str) -> &str {
+    match heading
+        .trim()
+        .strip_suffix('}')
+        .and_then(|h| h.rsplit_once("{#"))
+    {
+        Some((words, _)) => words.trim_end(),
+        None => heading.trim(),
+    }
 }
 
 /// A page's title: its first heading.
@@ -183,6 +305,14 @@ pub fn exists(link: &str) -> bool {
 /// The id a heading is linked by: lower case, words joined by dashes. The
 /// Help panel's script makes the same.
 pub fn slug(heading: &str) -> String {
+    // `## Uhly {#angles}` keeps the English page's link
+    if let Some((_, id)) = heading
+        .trim()
+        .strip_suffix('}')
+        .and_then(|h| h.rsplit_once("{#"))
+    {
+        return id.to_string();
+    }
     let mut out = String::new();
     for c in heading.chars().flat_map(char::to_lowercase) {
         if c.is_alphanumeric() {
@@ -239,6 +369,8 @@ pub fn tool_page(t: Tool) -> &'static str {
         Tool::Section | Tool::Elevation => "sections",
         Tool::Dimension => "dimensions",
         Tool::Angle => "dimensions#angles",
+        Tool::Slope => "dimensions#slopes",
+        Tool::Line | Tool::Polyline | Tool::Arc | Tool::Curve => "details#lines",
         Tool::Radius | Tool::Diameter => "dimensions#radius-and-diameter",
         Tool::ArcLength => "dimensions#arc-length",
         Tool::Tag => "tags",
@@ -295,6 +427,7 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
         ElementKind::Join(_) => "joins",
         ElementKind::Detail(_) => "details#detail-components",
         ElementKind::Pipe(_) | ElementKind::Valve(_) => "pipes",
+        ElementKind::Circuit(_) => "pipes",
         ElementKind::Dimension(_) => "dimensions",
         ElementKind::Tag(_) => "tags",
         ElementKind::Note(_) => "notes",
@@ -313,6 +446,8 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
         ElementKind::Reference(_) => "trace-reference",
         ElementKind::PaperMark(_) => "sheets",
         ElementKind::MarkRules(_) => "marks",
+        ElementKind::Results(_) => "ifc",
+        ElementKind::Dss(_) => "ifc",
         ElementKind::StylePack(_) => "graphic-styles",
     }
 }
@@ -505,7 +640,7 @@ pub const KEYS: &[Binding] = &[
     key(VIEWS, "Shift+G", "Show or hide the guides in every view"),
     key(VIEWS, "Alt+Z", "X-ray: see through walls, slabs and roofs"),
     key(VIEWS, "Alt+F2", "Show or hide the trace reference under the view"),
-    key(VIEWS, "Ctrl+P", "The sheet in front as a PDF"),
+    key(VIEWS, "Ctrl+P", "Print sheets: printer or plotter, paper, scale, preview"),
     key(VIEWS, "D", "Dimension (with nothing selected; with a selection, D shows or hides its live dimensions)"),
     key(VIEWS, "T", "Tag"),
     key(VIEWS, "Ctrl+OpenBracket", "Fold the project browser to a rail, or open it"),
@@ -693,14 +828,26 @@ pub fn shortcuts_page(menus: &[(&str, Vec<Item>)]) -> String {
             }
         }
     }
+    use crate::i18n::{t, tr};
+    // a heading in the interface's language keeps the English link
+    let head = |en: &str| match t(en) {
+        s if s == en => en.to_string(),
+        s => format!("{s} {{#{}}}", slug(en)),
+    };
     let mut md = text("shortcuts").unwrap_or("").trim_end().to_string();
-    md.push_str("\n\n## On the menus\n\n| Keys | What it does | Menu |\n| --- | --- | --- |\n");
+    md.push_str(&format!(
+        "\n\n## {}\n\n| {} | {} | {} |\n| --- | --- | --- |\n",
+        head("On the menus"),
+        t("Keys"),
+        t("What it does"),
+        t("Menu")
+    ));
     let mut rows = vec![];
     for (menu, items) in menus {
         walk(items, menu, &mut rows);
     }
     for (k, label, path) in rows {
-        md.push_str(&format!("| `{k}` | {label} | {path} |\n"));
+        md.push_str(&format!("| `{k}` | {} | {} |\n", tr(&label), tr(&path)));
     }
     let mut groups: Vec<&str> = vec![];
     for b in KEYS {
@@ -710,18 +857,33 @@ pub fn shortcuts_page(menus: &[(&str, Vec<Item>)]) -> String {
     }
     for g in groups {
         md.push_str(&format!(
-            "\n## {g}\n\n| Keys | What it does |\n| --- | --- |\n"
+            "\n## {}\n\n| {} | {} |\n| --- | --- |\n",
+            head(g),
+            t("Keys"),
+            t("What it does")
         ));
         for b in KEYS.iter().filter(|b| b.group == g) {
-            md.push_str(&format!("| `{}` | {} |\n", b.keys, b.what));
+            md.push_str(&format!("| `{}` | {} |\n", b.keys, t(b.what)));
         }
     }
     md
 }
 
+/// The version as George numbers ours (2026-11-20): 0.5 for 0.5.0, 0.5-1
+/// for its first fix 0.5.1.
+pub fn shown_version() -> String {
+    let v = env!("CARGO_PKG_VERSION");
+    match v.split('.').collect::<Vec<_>>().as_slice() {
+        _ if v.contains('-') => v.to_string(),
+        [major, minor, "0"] => format!("{major}.{minor}"),
+        [major, minor, patch] => format!("{major}.{minor}-{patch}"),
+        _ => v.to_string(),
+    }
+}
+
 /// A page's text as it is shown: the version filled in.
 pub fn shown(md: &str) -> String {
-    md.replace("{version}", env!("CARGO_PKG_VERSION"))
+    md.replace("{version}", &shown_version())
         .replace("{build}", &build())
 }
 
@@ -733,7 +895,7 @@ pub fn build() -> String {
 
 /// The version line of About CreaBIM: `Version 0.1.0 · build 3b056f4 · 4 Nov 2026`.
 pub fn version_line() -> String {
-    format!("Version {} · build {}", env!("CARGO_PKG_VERSION"), build())
+    format!("Version {} · build {}", shown_version(), build())
 }
 
 /// A day counted from 1970-01-01, as `4 Nov 2026` (the civil calendar).
@@ -793,10 +955,10 @@ fn base64(bytes: &[u8]) -> String {
 /// id, title and text.
 pub fn pages_json() -> serde_json::Value {
     serde_json::Value::Array(
-        PAGES
-            .iter()
+        pages()
+            .into_iter()
             .map(|(section, id, md)| {
-                serde_json::json!({"section": section, "id": id, "title": title(md), "md": shown(md)})
+                serde_json::json!({"section": section_name(section), "id": id, "title": title(md), "md": shown(md)})
             })
             .collect(),
     )
@@ -871,6 +1033,43 @@ mod tests {
         for (path, bytes) in IMAGES {
             assert!(all.contains(path), "{path} isn't shown on any page");
             assert!(bytes.len() < 160_000, "{path} is big for the guide");
+        }
+    }
+
+    #[test]
+    fn every_page_is_in_slovak_with_the_same_links() {
+        let sk = |id: &str| PAGES_SK.iter().find(|p| p.0 == id).map(|p| p.1);
+        for (_, id, md) in PAGES {
+            let Some(own) = sk(id) else {
+                panic!("{id} has no Slovak page in help/sk")
+            };
+            // a link to a heading of the English page still lands
+            let slugs: Vec<String> = headings(own).iter().map(|h| slug(h)).collect();
+            for h in headings(md) {
+                assert!(
+                    slugs.contains(&slug(h)),
+                    "help/sk/{id}.md has no heading for #{}",
+                    slug(h)
+                );
+            }
+            let (links, images) = targets(own);
+            for l in links {
+                if l.starts_with("https://") || l.starts_with("http://") {
+                    continue;
+                }
+                let (to, anchor) = l.split_once('#').unwrap_or((l, ""));
+                let found = to == CONTENTS
+                    || sk(to).is_some_and(|md| {
+                        anchor.is_empty() || headings(md).iter().any(|h| slug(h) == anchor)
+                    });
+                assert!(found, "help/sk/{id}.md links to {l}, which isn't there");
+            }
+            for i in images {
+                assert!(
+                    data_url_for(i, false).is_some(),
+                    "help/sk/{id}.md shows {i}, which isn't in IMAGES"
+                );
+            }
         }
     }
 

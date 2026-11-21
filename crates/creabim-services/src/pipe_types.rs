@@ -267,11 +267,11 @@ mod tests {
     #[test]
     fn the_catalogue_reads_whole() {
         let all = all();
-        assert_eq!(all.len(), 20);
+        assert_eq!(all.len(), 30);
         let mut ids: Vec<_> = all.iter().map(|t| t.id.as_str()).collect();
         ids.sort();
         ids.dedup();
-        assert_eq!(ids.len(), 20, "ids are unique");
+        assert_eq!(ids.len(), 30, "ids are unique");
         for t in all {
             assert!(!t.sizes.is_empty() && !t.media.is_empty(), "{}", t.id);
             assert!(t.roughness_mm > 0.0, "{}", t.id);
@@ -288,6 +288,26 @@ mod tests {
         }
         // manufacturers' fittings come with them
         assert!(by_id("HERZ").unwrap().fittings.len() > 50);
+        // Wavin's water and heating: PP-R welded, Tigris multilayer pressed
+        for id in ["WPPR", "WPPRCT", "WPPRB", "WTIGK", "WTIGM"] {
+            let t = by_id(id).unwrap();
+            assert!(t.sizes.len() >= 8, "{id}");
+            for k in ["Elbow", "Tee", "Reducer", "Coupling"] {
+                assert!(t.fittings.iter().any(|f| f.kind == k), "{id} {k}");
+            }
+        }
+        // Wavin's drainage: pipes and the fittings it is built from
+        for id in ["WAS", "WSI", "WHDPE"] {
+            let t = by_id(id).unwrap();
+            assert!(t.media.contains(&Medium::Kanal), "{id}");
+            for k in ["Elbow", "Tee", "Reducer", "Coupling"] {
+                assert!(t.fittings.iter().any(|f| f.kind == k), "{id} {k}");
+            }
+            assert!(t
+                .sizes
+                .iter()
+                .all(|s| s.inner_mm < s.outer_mm && s.dn.is_some()));
+        }
         assert!(by_id("CUMED")
             .unwrap()
             .fittings

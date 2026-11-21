@@ -135,6 +135,11 @@ pub struct PlanRange {
     /// and roofs hiding what is under them: a roof or site plan.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub from_above: bool,
+    /// Seen from above, the building as a site plan shows it: only its
+    /// outer walls and the columns outside, cut and filled dark grey,
+    /// without plaster, openings, inner walls, pipes or view marks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub footprint: bool,
 }
 
 /// A height given by a level and an offset from it, so it moves with the
@@ -156,6 +161,13 @@ impl RangeLimit {
 impl PlanRange {
     pub fn is_default(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// A site plan: seen from above with the building as its footprint.
+    /// A roof plan is seen from above too, but shows no map, terrain,
+    /// networks or site sketches (George).
+    pub fn is_site(&self) -> bool {
+        self.from_above && self.footprint
     }
 
     /// Does it reach past its own level (or look from above)?
@@ -198,6 +210,49 @@ pub struct PlanGraphics {
     /// How what is cut is drawn (A4-11).
     #[serde(default, skip_serializing_if = "DrawingStyle::is_default")]
     pub drawing_style: DrawingStyle,
+    /// What lies behind the hatch of what is cut, in a drawing that is not
+    /// a renovation stage (those keep their own colours).
+    #[serde(default, skip_serializing_if = "HatchGround::is_default")]
+    pub hatch_ground: HatchGround,
+}
+
+/// The background under a cut hatch (walls, slabs): very light grey by
+/// default, the paper's colour, or the darker grey drawings had before.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HatchGround {
+    /// A very light grey, the hatch reading clearly over it.
+    #[default]
+    Light,
+    /// The paper's (background's) colour: no fill under the hatch.
+    Paper,
+    /// The grey of the hatch pattern, or the graphic styles' own fill.
+    Grey,
+}
+
+impl HatchGround {
+    pub const ALL: [HatchGround; 3] = [HatchGround::Light, HatchGround::Paper, HatchGround::Grey];
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            HatchGround::Light => "Very light grey",
+            HatchGround::Paper => "Paper colour",
+            HatchGround::Grey => "Grey (pattern's own)",
+        }
+    }
+
+    /// The fill under a hatch in this ground, none leaving the pattern's
+    /// own (or the graphic styles').
+    pub fn rgb(self) -> Option<[f32; 3]> {
+        match self {
+            HatchGround::Light => Some([0.965; 3]),
+            HatchGround::Paper => Some([1.0; 3]),
+            HatchGround::Grey => None,
+        }
+    }
 }
 
 /// How a view draws what it cuts (A4-11): a set of overrides over its
@@ -283,6 +338,7 @@ impl Default for PlanGraphics {
             below_grey: false,
             range: PlanRange::default(),
             drawing_style: DrawingStyle::default(),
+            hatch_ground: HatchGround::default(),
         }
     }
 }

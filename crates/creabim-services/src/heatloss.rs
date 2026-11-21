@@ -14,6 +14,7 @@
 use crate::groundloss::{fg2, u_equiv_floor, FG1};
 use creabim_core::assembly::assembly_of;
 use creabim_core::room::{self, RoomShape};
+use creabim_core::roomtype::RoomType;
 use creabim_core::{polygon, Element, ElementId, ElementKind, Model, OpeningKind};
 use glam::DVec2;
 
@@ -71,6 +72,10 @@ pub struct Opts {
     pub te: f64,
     /// Mean annual outside temperature θm,e, °C; none takes f_g2 = 1.
     pub te_mean: Option<f64>,
+    /// Mean outside temperature of the heating season, °C, and its
+    /// days: the locality's, for the season's degree days.
+    pub te_heating: Option<f64>,
+    pub heating_days: Option<f64>,
     /// The surcharge for thermal bridges ΔU, W/(m²K).
     pub d_u: f64,
     pub u_window: f64,
@@ -85,12 +90,29 @@ impl Default for Opts {
         Self {
             te: -11.0,
             te_mean: None,
+            te_heating: None,
+            heating_days: None,
             d_u: 0.05,
             u_window: 0.6,
             u_door: 0.65,
             n50: 2.0,
             shielding: Shielding::Moderate,
         }
+    }
+}
+
+impl Opts {
+    /// The heating season's degree days for an inside 20 °C, where the
+    /// locality gives them.
+    pub fn degree_days(&self) -> Option<f64> {
+        Some(self.heating_days? * (20.0 - self.te_heating?))
+    }
+
+    /// A rough yearly heat need, kWh, of a design load `phi` W: the load
+    /// scaled by the degree days (no night setback, no gains).
+    pub fn yearly_kwh(&self, phi: f64) -> Option<f64> {
+        let dt = 20.0 - self.te;
+        (dt > 0.0).then_some(phi * 24.0 * self.degree_days()? / dt / 1000.0)
     }
 }
 
@@ -105,33 +127,20 @@ pub struct RoomUse {
     pub flow: Option<f64>,
 }
 
-/// The use of a room by its occupancy and name (Slovak or English).
+/// The use of a room by a text naming it (its occupancy, its name):
+/// the values [`RoomType`]'s table gives its type.
 pub fn room_use(text: &str) -> RoomUse {
-    let t = text.to_lowercase();
-    let has = |keys: &[&str]| keys.iter().any(|k| t.contains(k));
-    let u = |temp: f64, ach: Option<f64>, flow: Option<f64>| RoomUse { temp, ach, flow };
-    if has(&["kúpeľ", "kupel", "bath", "sprch", "shower"]) {
-        u(24.0, None, Some(90.0))
-    } else if has(&["wc", "toalet", "toilet", "záchod"]) {
-        u(20.0, None, Some(50.0))
-    } else if has(&["kuchy", "kitchen"]) {
-        u(20.0, Some(0.5), Some(100.0))
-    } else if has(&["garáž", "garaz", "garage"]) {
-        u(5.0, None, None)
-    } else if has(&["techn", "kotol", "plant", "boiler"]) {
-        u(15.0, Some(1.0), None)
-    } else if has(&[
-        "chodba", "hala", "hall", "corridor", "zádver", "zadver", "lobby", "šatn", "satn",
-        "wardrobe", "špajz", "spajz", "komora", "pantry", "store", "sklad", "schod", "stair",
-        "landing",
-    ]) {
-        u(15.0, None, None)
-    } else if has(&["lôžk", "ordin", "ošetr", "ward", "surgery"]) {
-        u(22.0, Some(1.0), None)
-    } else if has(&["kancel", "office", "učeb", "class"]) {
-        u(20.0, None, Some(25.0))
-    } else {
-        u(20.0, Some(0.5), None)
+    RoomType::find(text).unwrap_or(RoomType::Other).into()
+}
+
+impl From<RoomType> for RoomUse {
+    fn from(t: RoomType) -> Self {
+        let n = t.needs();
+        RoomUse {
+            temp: n.temp,
+            ach: n.ach,
+            flow: n.flow,
+        }
     }
 }
 
@@ -186,6 +195,9 @@ impl Missing {
 #[derive(Clone, Debug, PartialEq)]
 pub struct RoomLoss {
     pub id: ElementId,
+    /// What it is used for, from its occupancy and name: the cooling
+    /// load and underfloor heating take it from here.
+    pub kind: RoomType,
     pub number: String,
     pub name: String,
     pub level: String,
@@ -260,6 +272,7 @@ struct RoomAt<'a> {
     level: ElementId,
     shape: RoomShape,
     ti: f64,
+    kind: RoomType,
     usage: RoomUse,
 }
 
@@ -272,12 +285,14 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                 return None;
             };
             let shape = room::shape_of(model, r).filter(|s| s.outline.len() > 2)?;
-            let usage = room_use(&format!("{} {}", r.occupancy, e.name));
+            let kind = RoomType::of(&r.occupancy, &e.name);
+            let usage = RoomUse::from(kind);
             Some(RoomAt {
                 e,
                 level: r.level,
                 shape,
                 ti: usage.temp,
+                kind,
                 usage,
             })
         })
@@ -529,6 +544,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
         out.area += area;
         out.rooms.push(RoomLoss {
             id: r.e.id,
+            kind: r.kind,
             number: room.number.clone(),
             name: r.e.name.clone(),
             level: model.get(r.level).map_or(String::new(), |l| l.name.clone()),

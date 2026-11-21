@@ -73,6 +73,7 @@ pub fn sample_house() -> Model {
             format!("{lname} Slab"),
             ElementKind::Slab(Slab {
                 layer_edges: vec![],
+                kind: None,
                 level,
                 boundary: corners.to_vec(),
                 thickness: 0.25,
@@ -103,6 +104,9 @@ pub fn sample_house() -> Model {
                     curtain: None,
                     layer_ends: vec![],
                     bulge: 0.0,
+                    bearing: None,
+                    fire_partial: false,
+                    no_fire_barriers: false,
                 }),
             );
             let id = wall.id;
@@ -138,6 +142,17 @@ pub fn sample_house() -> Model {
                         },
                         flip_hand: false,
                         flip_facing: false,
+                        no_outer_sill: false,
+                        no_inner_sill: false,
+                        threshold: false,
+                        threshold_material: None,
+                        penetration: None,
+                        setback: None,
+                        reveal: None,
+                        division: None,
+                        door: None,
+                        texts: None,
+                        performance: None,
                     }),
                 );
                 tagged.push((window.id, level, outside * 0.9));
@@ -158,6 +173,17 @@ pub fn sample_house() -> Model {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            threshold_material: None,
+            penetration: None,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
+            performance: None,
         }),
     );
     let front_door_id = front_door.id;
@@ -183,6 +209,9 @@ pub fn sample_house() -> Model {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
+            no_fire_barriers: false,
         }),
     );
     let pid = part.id;
@@ -199,6 +228,17 @@ pub fn sample_house() -> Model {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            threshold_material: None,
+            penetration: None,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
+            performance: None,
         }),
     );
     tagged.push((inner_door.id, g, DVec2::new(0.8, 0.0)));
@@ -470,6 +510,7 @@ pub fn sample_house() -> Model {
                 // the entrance detail shows only the front of the house
                 crop: (view == entrance_id)
                     .then_some([DVec2::new(-0.8, -2.8), DVec2::new(5.0, 2.0)]),
+                ink: Default::default(),
             }),
         ));
     }
@@ -484,7 +525,7 @@ pub fn layered_house() -> Model {
     let mut doc = Document::from_model(sample_house());
     let (tx, ids) = assembly::add_starters(doc.model());
     doc.commit(tx).expect("starter assemblies are valid");
-    let [outer, inner, floor, roof] = ids[..] else {
+    let [outer, inner, floor, roof, ..] = ids[..] else {
         unreachable!("four starters")
     };
     let model = doc.model().clone();
@@ -562,7 +603,17 @@ pub fn sample_with_buried_beam() -> (Model, ElementId) {
     beam.material = timber;
     let e = Element::new("Lintel beam", ElementKind::Beam(beam));
     let id = e.id;
-    doc.commit(Transaction::new("Add beam").insert(e))
+    // a beam runs through the wall it lies in by default: here the wall
+    // is set to win, so the beam stays hidden inside it
+    let wall = model
+        .iter()
+        .find(|e| e.name == "GF Wall 1")
+        .map(|e| e.id)
+        .expect("the sample has a south wall");
+    let mut rule = crate::JoinRule::new(wall, id);
+    rule.winner = crate::JoinWinner::First;
+    let join = Element::new("Wall over beam", ElementKind::Join(rule));
+    doc.commit(Transaction::new("Add beam").insert(e).insert(join))
         .expect("the beam goes in");
     (doc.model().clone(), id)
 }
@@ -632,6 +683,17 @@ pub fn typed_house() -> Model {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            threshold_material: None,
+            penetration: None,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
+            performance: None,
         }),
     );
     types::stamp(doc.model(), &mut door, starter("Single door 900 × 2100"));
@@ -649,6 +711,17 @@ pub fn typed_house() -> Model {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            threshold_material: None,
+            penetration: None,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
+            performance: None,
         }),
     );
     let (g, f) = (named("Ground Floor"), named("First Floor"));

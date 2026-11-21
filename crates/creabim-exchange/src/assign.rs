@@ -143,6 +143,9 @@ pub fn fit(
                 curtain: None,
                 layer_ends: vec![],
                 bulge: 0.0,
+                bearing: None,
+                fire_partial: false,
+                no_fire_barriers: false,
             }))
         }
         Assign::Slab => {
@@ -167,6 +170,7 @@ pub fn fit(
             }
             Ok(ElementKind::Slab(Slab {
                 layer_edges: vec![],
+                kind: None,
                 level,
                 boundary,
                 thickness: hi.z - lo.z,
@@ -208,6 +212,17 @@ pub fn fit(
                 frame: Default::default(),
                 flip_hand: false,
                 flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
+                threshold: false,
+                threshold_material: None,
+                penetration: None,
+                setback: None,
+                reveal: None,
+                division: None,
+                door: None,
+                texts: None,
+                performance: None,
             }))
         }
         Assign::Class(_) => Err("A class is not a shape.".into()),

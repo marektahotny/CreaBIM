@@ -102,11 +102,11 @@ impl CreaBimApp {
         if head != "terrain" || arg != "points" {
             return false;
         }
-        let Some(path) = rfd::FileDialog::new()
+        let Some(path) = crate::files::file_dialog()
             .set_title(crate::i18n::tr("Terrain from surveyed points"))
             .add_filter(
-                crate::i18n::tr("Points (XYZ, TXT, PTS, CSV)"),
-                &["xyz", "txt", "pts", "csv", "asc"],
+                crate::i18n::tr("Points (XYZ, TXT, PTS, CSV, LAS)"),
+                &["xyz", "txt", "pts", "csv", "asc", "las"],
             )
             .pick_file()
         else {
@@ -123,8 +123,22 @@ impl CreaBimApp {
             self.status = format!("{} {path}", t("Couldn't read"));
             return;
         };
-        let text = creabim_exchange::dxf::decode(&bytes);
-        let read = xyz::read(&text);
+        // a LAS cloud's points, a couple of hundred thousand of them
+        let read = if bytes.starts_with(b"LASF") {
+            match creabim_exchange::cloud::read_las(std::io::Cursor::new(&bytes), 200_000) {
+                Ok(c) => xyz::Points {
+                    points: (0..c.points.len()).map(|n| c.at(n)).collect(),
+                    skipped: 0,
+                    jtsk: c.jtsk,
+                },
+                Err(e) => {
+                    self.status = format!("{path}: {e}");
+                    return;
+                }
+            }
+        } else {
+            xyz::read(&creabim_exchange::dxf::decode(&bytes))
+        };
         let name = std::path::Path::new(path)
             .file_stem()
             .map_or("Terrain".into(), |n| n.to_string_lossy().into_owned());
@@ -159,6 +173,36 @@ impl CreaBimApp {
             &points,
             name,
             "No terrain made: the layers shown hold fewer than three points with heights.",
+        );
+    }
+
+    /// Make a terrain from a point cloud reference: its lowest point in
+    /// each half metre (the ground under trees and cars), where the
+    /// reference puts them.
+    pub(super) fn terrain_from_cloud(&mut self, id: ElementId) {
+        let model = self.doc.model();
+        let Some(e) = model.get(id) else {
+            return;
+        };
+        let ElementKind::Reference(r) = &e.kind else {
+            return;
+        };
+        let (r, name) = (r.clone(), e.name.clone());
+        let creabim_core::RefSource::Points { path, lift, .. } = &r.source else {
+            return;
+        };
+        let Ok(c) = self.plan.ref_cache.cloud(path) else {
+            return;
+        };
+        let points: Vec<DVec3> = c
+            .ground(0.5, r.clip)
+            .into_iter()
+            .map(|q| r.place(q.truncate()).extend(q.z + lift))
+            .collect();
+        self.terrain_from(
+            &points,
+            name,
+            "No terrain made: the cloud holds fewer than three points.",
         );
     }
 
@@ -247,5 +291,111 @@ mod tests {
         assert!((points[4].z + level_z - 3.0).abs() < 1e-9);
         // the surface passes through each point
         assert!((made.site.ground_at(points[4].truncate()) - points[4].z).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod storeys {
+    use super::*;
+
+    /// A terrain from the map, on 1. NP, shows in its own plan only: 2. NP, still empty, was drawn as 1. NP cut higher, with
+    /// the terrain in it.
+    #[test]
+    fn a_terrain_shows_on_its_own_level_and_the_site_plan_only() {
+        let mut m = creabim_core::Document::new();
+        let mut tx = Transaction::new("Levels");
+        for (name, z) in [("1. NP", 0.0), ("2. NP", 3.0)] {
+            tx = tx.insert(Element::new(
+                name,
+                ElementKind::Level(creabim_core::Level {
+                    elevation: z,
+                    height: 3.0,
+                }),
+            ));
+        }
+        m.commit(tx).unwrap();
+        let mut model = crate::app::with_plan_views(m.model().clone());
+        if let Some((tx, _)) = creabim_geom::docset::skeleton(&model) {
+            tx.apply(&mut model).unwrap();
+        }
+        let l1 = model
+            .iter()
+            .find(|e| e.name == "1. NP" && matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let mut pts = vec![];
+        for i in 0..20 {
+            for j in 0..20 {
+                let (x, y) = (i as f64 * 5.0 - 50.0, j as f64 * 5.0 - 50.0);
+                pts.push(DVec3::new(x, y, i as f64 * 0.6 - 2.0));
+            }
+        }
+        let made = terrain_from_points(&model, l1, &pts).unwrap();
+        let e = Element::new("Terrain", ElementKind::Site(made.site));
+        let terrain = e.id;
+        Transaction::new("Terrain")
+            .insert(e)
+            .apply(&mut model)
+            .unwrap();
+        let mut seen = std::collections::BTreeMap::new();
+        for v in model.iter() {
+            let ElementKind::View(view) = &v.kind else {
+                continue;
+            };
+            let creabim_core::ViewKind::Plan { level, .. } = view.kind else {
+                continue;
+            };
+            let d = creabim_geom::section::view_drawing(&model, v.id).unwrap();
+            let shows = d.items.iter().any(|it| it.id() == terrain);
+            let name = model.get(level).unwrap().name.clone();
+            seen.insert((name, view.graphics.range.from_above), shows);
+        }
+        assert_eq!(seen.get(&("1. NP".to_string(), false)), Some(&true));
+        // the site plan has the map's contours, not the terrain's mesh
+        assert_eq!(seen.get(&("1. NP".to_string(), true)), Some(&false));
+        assert_eq!(seen.get(&("2. NP".to_string(), false)), Some(&false));
+        // another plan traced under 2. NP (the terrain's own): its terrain,
+        // faint
+        let site = model
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if !v.graphics.range.from_above
+                        && matches!(v.kind, creabim_core::ViewKind::Plan { level, .. } if level == l1))
+            })
+            .unwrap()
+            .id;
+        let upper = model
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, creabim_core::ViewKind::Plan { level, .. } if level != l1))
+            })
+            .unwrap()
+            .id;
+        let mut e = model.get(upper).unwrap().clone();
+        if let ElementKind::View(v) = &mut e.kind {
+            v.underlay = creabim_core::Underlay::View(site);
+        }
+        let before = model.get(upper).unwrap().clone();
+        Transaction::new("Underlay")
+            .replace(before, e)
+            .apply(&mut model)
+            .unwrap();
+        let d = creabim_geom::section::view_drawing(&model, upper).unwrap();
+        assert!(d.items.iter().any(|it| it.id() == terrain
+            && matches!(
+                it,
+                creabim_geom::PlanItem::Line {
+                    pen: creabim_geom::plan::Pen::Underlay,
+                    ..
+                }
+            )));
+        // and a plan doesn't trace itself
+        let mut e = model.get(site).unwrap().clone();
+        if let ElementKind::View(v) = &mut e.kind {
+            v.underlay = creabim_core::Underlay::View(site);
+        }
+        assert!(matches!(&e.kind, ElementKind::View(v) if v.underlay.view(&model, site).is_none()));
     }
 }

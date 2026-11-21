@@ -24,12 +24,22 @@ serde_json.workspace = true
 base64 = "0.22"
 wry = "0.57"
 raw-window-handle = "0.6"
+# the cadastre's public parcel service (plot area, sheet of ownership)
+ureq = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 x11-dl = "2.21"
 winit = { version = "0.30", default-features = false, features = ["x11"] }
 
+# printing sheets on the system's printers (GDI)
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Storage_Xps", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging"] }
+
 # the .exe's icon (the logo's creabim.ico), embedded when built on Windows
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
+
+[dev-dependencies]
+# the 3D view's shader checked in tests (the version wgpu uses)
+naga = { version = "30", features = ["wgsl-in"] }

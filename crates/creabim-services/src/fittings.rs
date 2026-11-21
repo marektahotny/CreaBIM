@@ -117,6 +117,7 @@ fn nodes(model: &Model) -> BTreeMap<[i64; 3], (DVec3, Vec<End<'_>>)> {
         })
         .collect();
     pipes.sort_by_key(|(id, _)| *id);
+    let pipes_all = pipes.clone();
     for (id, pipe) in pipes {
         let (a, b) = ends(model, pipe);
         let len = a.distance(b);
@@ -133,6 +134,33 @@ fn nodes(model: &Model) -> BTreeMap<[i64; 3], (DVec3, Vec<End<'_>>)> {
                     dir: (far - node) / len,
                     len,
                 });
+        }
+    }
+    // a pipe running on through a node, not split there (a branch joined
+    // to its middle): both its arms meet the branch
+    for (id, pipe) in &pipes_all {
+        let (a, b) = ends(model, pipe);
+        let len = a.distance(b);
+        if len < 0.02 {
+            continue;
+        }
+        let dir = (b - a) / len;
+        for (node, list) in at.values_mut() {
+            if list.iter().any(|x| x.id == *id) {
+                continue;
+            }
+            let s = (*node - a).dot(dir);
+            if s < 0.01 || s > len - 0.01 || (a + dir * s).distance(*node) > 0.003 {
+                continue;
+            }
+            for (d, l) in [(dir, len - s), (-dir, s)] {
+                list.push(End {
+                    id: *id,
+                    pipe,
+                    dir: d,
+                    len: l,
+                });
+            }
         }
     }
     at
@@ -325,8 +353,10 @@ pub fn derive(model: &Model) -> Vec<Fitting> {
                     .map(|r| c(bi, r).clamp(-1.0, 1.0).acos().to_degrees())
                     .fold(f64::MAX, f64::min);
                 let od = if br < 60.0 { 45.0 } else { 87.0 };
-                let it = item(t, "Tee", d[0], Some(d[2]), None)
-                    .or_else(|| item(t, "Tee", d[0], Some(d[0]), None));
+                // a drain's branch by its angle too: 45° or square
+                let at = drain.then_some(od);
+                let it = item(t, "Tee", d[0], Some(d[2]), at)
+                    .or_else(|| item(t, "Tee", d[0], Some(d[0]), at));
                 let kind = if drain {
                     FittingKind::Branch
                 } else {
@@ -399,6 +429,62 @@ pub fn summary(fittings: &[Fitting]) -> Vec<Line> {
             .count += 1;
     }
     m.into_values().collect()
+}
+
+/// A line of the insulation schedule: one thickness on one size of pipe
+/// in one system (PilonDesigner's `pipeSchedule` insul rows).
+#[derive(Clone, Debug, PartialEq)]
+pub struct InsulationLine {
+    pub system: String,
+    /// The pipe's outside diameter (the insulation's inside), mm.
+    pub outer_mm: f64,
+    pub mm: f64,
+    /// Heat insulation, else against condensation.
+    pub heat: bool,
+    /// Metres of pipe it goes on.
+    pub length: f64,
+    /// With `waste_pct` more for offcuts.
+    pub gross: f64,
+    pub pipes: Vec<ElementId>,
+}
+
+/// The insulation the pipes drawn need, by system, size and thickness:
+/// what was typed on each, else what its system wants
+/// ([`Pipe::insulation`]); `waste_pct` is added for offcuts.
+pub fn insulation(model: &Model, waste_pct: f64) -> Vec<InsulationLine> {
+    let mut m: BTreeMap<(String, i64, i64), InsulationLine> = BTreeMap::new();
+    for e in model.iter() {
+        let ElementKind::Pipe(p) = &e.kind else {
+            continue;
+        };
+        let mm = p.insulation();
+        if mm <= 0.0 || p.height_mm.is_some() {
+            continue;
+        }
+        let heat = creabim_core::mep::insulation_purpose(p.kind()) == "heat";
+        let l = m
+            .entry((
+                p.system.clone(),
+                (p.outer_mm * 10.0).round() as i64,
+                (mm * 10.0).round() as i64,
+            ))
+            .or_insert_with(|| InsulationLine {
+                system: p.system.clone(),
+                outer_mm: p.outer_mm,
+                mm,
+                heat,
+                length: 0.0,
+                gross: 0.0,
+                pipes: vec![],
+            });
+        l.length += p.length();
+        l.pipes.push(e.id);
+    }
+    let mut out: Vec<InsulationLine> = m.into_values().collect();
+    for l in &mut out {
+        l.gross = l.length * (1.0 + waste_pct / 100.0);
+    }
+    out
 }
 
 /// A smaller pipe joined to a larger one at a node: it narrows there (a
@@ -520,6 +606,8 @@ mod tests {
                     inner_mm: s.inner_mm,
                     height_mm: None,
                     insulation_mm: 0.0,
+                    insulation_set: false,
+                    mark: None,
                 }),
             ));
         }
@@ -570,6 +658,10 @@ mod tests {
         assert_eq!((f[0].kind, f[0].angle), (FittingKind::Branch, Some(45.0)));
         assert_eq!(f[0].label, "Odbočka 45° PP-HT 110/50", "{}", f[0].label);
         // the branch narrows at the node
+        // insulation: heat insulation on hot water, against condensation
+        // on cold, none on drainage; typed 0 keeps a pipe bare
+        let ins = insulation(&m, 5.0);
+        assert!(ins.iter().all(|l| l.system != "K" && l.mm > 0.0));
         let r = reductions(&m);
         assert_eq!(r.len(), 1);
         assert_eq!((r[0].d_big, r[0].d_small), (110.0, 50.0));
@@ -580,6 +672,46 @@ mod tests {
         // counted for the schedule
         let s = summary(&f);
         assert_eq!((s.len(), s[0].count), (1, 1));
+    }
+
+    #[test]
+    fn a_branch_joined_to_the_middle_of_a_pipe_is_a_branch_too() {
+        let m = model(&[
+            ("K", "PPHT", 100.0, [0.0, 0.0, 0.0], [4.0, 0.0, 0.0]),
+            ("K", "PPHT", 50.0, [2.0, 0.0, 0.0], [3.0, 1.0, 0.0]),
+        ]);
+        let f = derive(&m);
+        assert_eq!(f.len(), 1);
+        assert_eq!((f[0].kind, f[0].angle), (FittingKind::Branch, Some(45.0)));
+        assert_eq!(f[0].pipes.len(), 3, "the main counted on both sides");
+    }
+
+    #[test]
+    fn wavin_drainage_takes_its_makers_elbows_and_branches_with_codes() {
+        let m = model(&[
+            ("K", "WAS", 100.0, [0.0, 0.0, 0.0], [2.0, 0.0, 0.0]),
+            ("K", "WAS", 100.0, [2.0, 0.0, 0.0], [2.0, 2.0, 0.0]),
+        ]);
+        let f = derive(&m);
+        assert_eq!(f[0].code, "HF015350W", "{:?}", f[0]);
+        assert!(
+            f[0].label.contains("Wavin AS+ Koleno 87°"),
+            "{}",
+            f[0].label
+        );
+        let m = model(&[
+            ("K", "WSI", 100.0, [0.0, 0.0, 0.0], [2.0, 0.0, 0.0]),
+            ("K", "WSI", 100.0, [2.0, 0.0, 0.0], [4.0, 0.0, 0.0]),
+            ("K", "WSI", 50.0, [2.0, 0.0, 0.0], [3.0, 1.0, 0.0]),
+        ]);
+        let f = derive(&m);
+        assert_eq!(f[0].kind, FittingKind::Branch);
+        assert!(
+            f[0].label.starts_with("Wavin SiTech+ Odbočka 45°"),
+            "{}",
+            f[0].label
+        );
+        assert!(!f[0].code.is_empty());
     }
 
     #[test]

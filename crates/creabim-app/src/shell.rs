@@ -54,7 +54,7 @@ pub(super) struct Shell {
     pub bar: Option<crate::optionbar::Measure>,
     /// The tool the tools row last showed its tab for: a tool picked by
     /// its key, off the tab shown, brings its own tab.
-    tab_tool: Option<Tool>,
+    pub(super) tab_tool: Option<Tool>,
 }
 
 impl Default for Shell {
@@ -148,6 +148,11 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Dimension => "dimension",
         Tool::Tag => "tag",
         Tool::Angle => "angle",
+        Tool::Slope => "slope-dim",
+        Tool::Line => "draft-line",
+        Tool::Polyline => "polyline",
+        Tool::Arc => "arc-3pt",
+        Tool::Curve => "curve-line",
         Tool::Radius => "radius",
         Tool::Diameter => "diameter",
         Tool::ArcLength => "arc-length",
@@ -214,6 +219,11 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::ArcLength
         | Tool::Note
         | Tool::Detail
+        | Tool::Line
+        | Tool::Polyline
+        | Tool::Arc
+        | Tool::Curve
+        | Tool::Slope
         | Tool::SpotLevel => 3,
         Tool::Sketch | Tool::Guide | Tool::Grid | Tool::Level => 4,
     }
@@ -298,6 +308,22 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::Fixtures => "fixtures",
         ScheduleCategory::Rooms => "room",
         ScheduleCategory::Materials => "table-2",
+        ScheduleCategory::WindowList => "app-window",
+        ScheduleCategory::DoorList => "door-open",
+        ScheduleCategory::ServicesLegend => "fixtures",
+        ScheduleCategory::BoardDiagram => "circuits",
+        ScheduleCategory::LintelList => "beam",
+        ScheduleCategory::VentilationHrv => "wind",
+        ScheduleCategory::BuildingFigures => "table-2",
+        ScheduleCategory::Documents => "sheet-template",
+        ScheduleCategory::MaterialLegend => "brick-wall",
+        ScheduleCategory::PipeList => "table-2",
+        ScheduleCategory::ElectricalList => "table-2",
+        ScheduleCategory::RoomLegend => "room",
+        ScheduleCategory::FireZones => "room",
+        ScheduleCategory::FireFacades => "brick-wall",
+        ScheduleCategory::Occupancy => "room",
+        ScheduleCategory::FireRisk => "flame",
     }
 }
 
@@ -430,6 +456,34 @@ impl CreaBimApp {
                         .checked(*c == self.plan.members.beam_corner)
                 })
                 .collect(),
+            "footing.align" => creabim_core::FootingAlign::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, a)| {
+                    Item::new(format!("footing.align:{i}"), a.label())
+                        .checked(*a == self.plan.members.footing_align)
+                })
+                .collect(),
+            "footing.material" => {
+                let now = self.plan.members.footing_material.clone();
+                let usage = creabim_core::library::MaterialUse::Member;
+                let mut names: Vec<String> = creabim_core::library::materials(self.doc.model())
+                    .into_iter()
+                    .filter(|(_, _, m)| usage.fits(&m.category))
+                    .map(|(_, n, _)| n.to_string())
+                    .collect();
+                for e in creabim_core::library::LIBRARY {
+                    if usage.fits(e.category) && !names.iter().any(|n| n == e.name) {
+                        names.push(e.name.to_string());
+                    }
+                }
+                std::iter::once(Item::new("footing.material:", "By type").checked(now.is_none()))
+                    .chain(names.into_iter().map(|n| {
+                        let on = now.as_deref() == Some(n.as_str());
+                        Item::new(format!("footing.material:{n}"), n).checked(on)
+                    }))
+                    .collect()
+            }
             "railing.library" => self.library_items(
                 "railing.lib",
                 self.plan.members.railing_section.clone(),
@@ -453,6 +507,17 @@ impl CreaBimApp {
             "menu:Help" => self.help_menu(),
             "menu:Create" => self.create_menu(),
             "tab:schedules" => schedule_items(),
+            "tab:masonry" => vec![
+                Item::new("masonry:plan", "Masonry plan of this storey").icon("brick-wall"),
+                Item::new("masonry:window", "Lintels and wall rules…").icon("settings"),
+                Item::Separator,
+                Item::new("masonry:lintel", "Put lintels over openings").icon("beam"),
+                Item::new("masonry:column", "RC column in a wall").icon("column"),
+                Item::Separator,
+                Item::new("masonry:check", "Check wall lengths").icon("problem"),
+                Item::new("masonry:fill", "RC columns into the long walls").icon("columns-3"),
+                Item::new("masonry:ring", "Ring beams on the load-bearing walls").icon("beam"),
+            ],
             "tab:ifc" => vec![
                 Item::new("open", "Open an IFC file…").icon("folder-open"),
                 Item::Separator,
@@ -464,6 +529,8 @@ impl CreaBimApp {
             "render3d" => self.render_items(),
             "viewstyle" => self.view_style_items(),
             "wall.location" => self.wall_location_items(),
+            "tempdims.ref" => self.temp_ref_items(),
+            "view.reno" => self.reno_items(),
             "type.tool" => self.tool_type_items(),
             "palette" => self.palette_items(),
             "look" => crate::camera::Look::ALL
@@ -739,6 +806,50 @@ impl CreaBimApp {
         }
     }
 
+    /// File > Import: pick a point cloud, a PDF, a picture or a DXF and
+    /// show it as an underlay (a reference) of the open plan or section.
+    fn import_underlay(&mut self, head: &str) {
+        use creabim_core::RefSource;
+        let Some(gridvis::VisTarget::View(v)) = self.vis_target(false) else {
+            self.status =
+                crate::i18n::tr("Open a plan or a section first: the underlay shows in it.");
+            return;
+        };
+        let (title, filter, exts): (&str, &str, &[&str]) = match head {
+            "import.points" => (
+                "Add a point cloud as a reference",
+                "Points",
+                creabim_exchange::cloud::FILES,
+            ),
+            "import.pdf" => ("Add a PDF as a reference", "PDF", &["pdf"]),
+            "import.picture" => (
+                "Add a picture as a reference",
+                "Pictures",
+                crate::trace::PICTURES,
+            ),
+            _ => ("Add a DXF drawing as a reference", "DXF", &["dxf"]),
+        };
+        let Some(p) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr(title))
+            .add_filter(filter, exts)
+            .pick_file()
+        else {
+            return;
+        };
+        let path = p.display().to_string();
+        let src = match head {
+            "import.points" => RefSource::points(path),
+            "import.pdf" => RefSource::Pdf {
+                path,
+                page: 1,
+                scale: 100.0,
+            },
+            "import.picture" => crate::trace::picture_source(&path),
+            _ => RefSource::Dxf { path, unit: None },
+        };
+        self.add_reference(v, src);
+    }
+
     fn file_menu(&self) -> Vec<Item> {
         let mut recent: Vec<Item> = self
             .recent
@@ -755,7 +866,7 @@ impl CreaBimApp {
             Item::new("new.project", "New project…")
                 .key("Ctrl+N")
                 .icon("file-plus")
-                .hint("Start empty or from the starter house, or open a sample made for learning"),
+                .hint("Start empty, reopen a recent project, or open a sample made for learning"),
             Item::new("new.sheet", "New sheet").icon("file-text"),
             Item::sub("New schedule", schedule_items()).icon("table-2"),
             Item::Separator,
@@ -789,6 +900,9 @@ impl CreaBimApp {
             Item::new("marks", "Mark numbering…")
                 .icon("tag")
                 .hint("How doors, windows and other elements are numbered: prefixes, digits, level-based marks, order. Renumber, and check for marks used twice."),
+            Item::new("dss", "Dátový štandard (DSS)…")
+                .icon("tag")
+                .hint("Zaradenie prvkov do tried dátového štandardu stavieb pre IFC: čo nemá triedu, ktoré povinné vlastnosti chýbajú, triedy budovy a systémov rozvodov."),
             Item::new("graphicstyles", "Graphic styles…")
                 .icon("align-left")
                 .hint("Style packs: pens by scale, object styles, hatch patterns and view templates. Load an office's pack to restyle every drawing."),
@@ -798,6 +912,23 @@ impl CreaBimApp {
             Item::new("templates", "Sheet templates…")
                 .icon("sheet-template")
                 .hint("Title blocks for sheets: change the built-in one, or import one from DXF, SVG or another project"),
+            Item::Separator,
+            Item::Header("Import".into()),
+            Item::new("import.points", "Point cloud (XYZ, LAS…)…")
+                .icon("layers")
+                .hint("A laser scan or a survey (XYZ, PTS, TXT, CSV, LAS) as an underlay of the open plan or section: a plan shows its slice, 3D all of it, and drawing snaps to its points."),
+            Item::new("terrain:points", "Terrain from surveyed points (XYZ)…")
+                .icon("mountain")
+                .hint("A terrain made from surveyed points on the working level, as PilonDesigner makes one from teren.xyz."),
+            Item::new("import.pdf", "PDF as an underlay…")
+                .icon("file-text")
+                .hint("A PDF drawing under the open plan or section, at its scale 1:N; a scanned page comes as a picture. Calibrate it to size in its properties."),
+            Item::new("import.picture", "Picture as an underlay (PNG, JPG)…")
+                .icon("image")
+                .hint("A scanned plan or a photo of a sketch under the open plan or section. Calibrate it to size in its properties."),
+            Item::new("import.dxf", "DXF as an underlay…")
+                .icon("file")
+                .hint("A CAD drawing's lines under the open plan or section; S-JTSK coordinates come to the project's origin."),
             Item::Separator,
             Item::Header("Linked files".into()),
             Item::new("link", "Import and link…")
@@ -828,6 +959,10 @@ impl CreaBimApp {
         }
         items.extend([
             Item::Separator,
+            Item::new("file.print", "Print sheets…")
+                .icon("printer")
+                .hint("Sheets on a printer or plotter (Ctrl+P): A4 to A0 or a roll, 1:1 or fit to the paper, colour or black and white, with a preview."),
+            Item::Separator,
             Item::Header("Export".into()),
             Item::new("export.ifc4", "IFC4 (.ifc)").icon("upload"),
             Item::new("export.ifcx", "IFC5 (.ifcx, alpha)")
@@ -836,11 +971,36 @@ impl CreaBimApp {
             Item::new("export.glb", "glTF (.glb) for Blender")
                 .icon("box")
                 .hint("Every element as a mesh with its CreaBIM id, so edits saved in Blender come back to the same elements."),
+            Item::new("export.fbx", "FBX (.fbx) for visualisation")
+                .icon("box")
+                .hint("The whole model in 3D for Twinmotion, Lumion, Enscape, D5, 3ds Max or Blender: every element with its materials and colours, grouped by storey and by what it is (walls, slabs, windows…)."),
+            Item::new("export.gbxml", "Energy model as gbXML (.xml)")
+                .icon("thermometer")
+                .hint("Rooms as spaces with their outer, inner and underground walls, floors and roofs, facing their way, the windows and doors in them, build-ups with U and layers, windows with Uw and g. For OpenStudio, IES VE, DesignBuilder and other energy tools."),
             Item::new("export.fcstd", "FreeCAD (.FCStd)")
                 .icon("freecad")
                 .hint("Every element as a solid with its BIM type and CreaBIM id; open it in FreeCAD, edit, save, and link it back."),
             Item::new("export.pdf", "Sheets as PDF").icon("file-text"),
+            Item::new("export.summary", "Summary report (part B) for Word (.docx)")
+                .icon("file-text")
+                .hint("The summary report of the building decree 60/2025, its nine chapters filled with what the project knows: who, where, storeys, areas, heights and build-ups. What is left to write is marked [doplniť]."),
             Item::new("export.svg", "This view or sheet as SVG").icon("file"),
+            Item::sub(
+                "This view or sheet as DXF",
+                creabim_geom::dxfout::DxfVersion::ALL
+                    .into_iter()
+                    .rev()
+                    .map(|v| Item::new(format!("export.dxf:{}", v.id()), v.label()))
+                    .collect(),
+            )
+            .icon("file")
+            .hint("A view at its true size in millimetres, a sheet in paper millimetres. Lines keep their colours, widths and dashes, on layers by what they are."),
+            Item::new("export.fragment", "Energy assessment for ISOVER Fragment (.json)")
+                .icon("thermometer")
+                .hint("The heated envelope for Fragment's Projektové hodnotenie: walls by orientation, floors (PV1/PVT), ceilings and roofs with their build-ups' U, windows and doors with Uw, heated areas and volumes. Open it there from a local file and choose the municipality."),
+            Item::new("fragment.table30", "Table 30 for ISOVER Fragment…")
+                .icon("thermometer")
+                .hint("Fragment works out the energy need; type it here and see what goes into which column of table 30 for the heat pump or electric heating, by Fragment's own factors."),
             Item::new("export.xlsx", "Schedules to Excel (.xlsx)")
                 .icon("table-2")
                 .hint("A summary, then a sheet for each schedule, with numbers as numbers so the spreadsheet can sum them."),
@@ -1061,10 +1221,10 @@ impl CreaBimApp {
             }
         }
         // every page of the guide, found by its title
-        for (section, id, md) in crate::help::PAGES {
+        for (section, id, md) in crate::help::pages() {
             let item = Item::new(format!("help:{id}"), crate::help::title(md))
                 .icon("book-open")
-                .hint(*section);
+                .hint(crate::help::section_name(section));
             flatten(vec![item], "Help › ", &mut out);
         }
         flatten(self.menu_items("views"), "Open › ", &mut out);
@@ -1213,6 +1373,19 @@ impl CreaBimApp {
             Item::sub("Underlay", self.underlay_items())
                 .icon("layers")
                 .enabled(self.active_plan().is_some()),
+            Item::sub(
+                "Turn the view",
+                vec![
+                    Item::new("view.turn:line", "Turn the view by a line…").hint(
+                        "Click a parcel boundary, a map line or a wall: the view turns so that it lies level or upright. The model, the map and the S-JTSK coordinates stay where they are.",
+                    ),
+                    Item::new("view.turn:-90", "A quarter turn clockwise"),
+                    Item::new("view.turn:90", "A quarter turn anticlockwise"),
+                    Item::new("view.turn:0", "Straight again (0°)"),
+                ],
+            )
+            .icon("rotate-cw")
+            .enabled(self.active_plan().is_some()),
             Item::new("levels", "Levels…").icon("level").hint(
                 "Add, rename, move and delete levels, and make their floor plans, from any view",
             ),
@@ -1236,6 +1409,13 @@ impl CreaBimApp {
                 .icon("xray")
                 .hint("Walls, slabs, roofs and masses see-through, so beams, columns and what is inside them show"),
             Item::sub("Render", self.render_items()).icon(self.shell.settings.render_3d.icon()),
+            Item::new("shadows3d", "Shadows")
+                .checked(self.shell.settings.sun.shadows)
+                .icon("sun")
+                .hint("Shadows the sun casts in the 3D view"),
+            Item::new("sun3d", "Sun and shadows…")
+                .icon("sun")
+                .hint("The sun's date and time at the project's place, or its direction by hand, and how the shadows look"),
             Item::sub("Crop boxes", self.crop_menu()).icon("crop-box"),
             Item::sub("Camera", camera).icon("axis-3d"),
             Item::sub("Ground grid", ground).icon("grid-3x3"),
@@ -1304,27 +1484,56 @@ impl CreaBimApp {
         items
     }
 
-    /// Open the Foundation plan, or make one first: a level 600 mm below the
-    /// lowest, its plan showing the level above as underlay (A3-1).
+    /// Open the Foundation plan, or make one first: a level at the
+    /// footings' underside (600 mm below the lowest without footings), cut
+    /// through the footings. An existing one whose plane misses every
+    /// footing is cut through them again (George 2026-11-20: cut above
+    /// them it drew the ground floor's walls, not the footings). Nothing
+    /// of the storey above is drawn: no underlay, no overhead walls.
     pub(super) fn show_foundation_plan(&mut self) {
         self.plan.footing_placed = false;
-        if let Some(v) = crate::memberstool::foundation_plan(self.doc.model()) {
+        // the footings' heights: lowest underside, lowest top
+        let model = self.doc.model();
+        let span = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Footing(f) => {
+                    let top = f.top(model);
+                    Some((top - f.thickness, top))
+                }
+                _ => None,
+            })
+            .fold(None, |acc: Option<(f64, f64)>, (b, t)| match acc {
+                Some((lb, lt)) => Some((lb.min(b), lt.min(t))),
+                None => Some((b, t)),
+            });
+        if let Some(v) = crate::memberstool::foundation_plan(model) {
             self.active_view = Some(v);
-            self.status = "Foundation plan: the footings, under the floor above.".into();
+            if let Some(tx) = crate::memberstool::fit_foundation_cut(model, v) {
+                let _ = self.doc.commit(tx);
+            }
+            self.status = "Foundation plan: the footings, cut through.".into();
             return;
         }
-        let lowest = creabim_core::levels::sorted(self.doc.model())
+        let lowest = creabim_core::levels::sorted(model)
             .first()
             .map_or(0.0, |(_, _, l)| l.elevation);
+        let (elevation, cut) = match span {
+            Some((bottom, top)) if top > bottom + 1e-3 => (bottom, (top - bottom) / 2.0),
+            _ => (lowest - 0.6, 0.3),
+        };
         let level = Element::new(
             "Foundation",
             ElementKind::Level(creabim_core::Level {
-                elevation: lowest - 0.6,
-                height: 0.6,
+                elevation,
+                height: (lowest - elevation).max(0.1),
             }),
         );
         let mut view = creabim_core::View::plan(level.id);
-        view.underlay = creabim_core::Underlay::Above;
+        view.kind = creabim_core::ViewKind::Plan {
+            level: level.id,
+            cut_height: cut,
+        };
         let view = Element::new("Foundation plan", ElementKind::View(view));
         let plan = view.id;
         let tx = creabim_core::Transaction::new("Make a Foundation plan")
@@ -1334,8 +1543,8 @@ impl CreaBimApp {
             Ok(()) => {
                 self.active_view = Some(plan);
                 self.status = format!(
-                    "Made a Foundation plan at {}, with the floor above as underlay.",
-                    crate::units::elevation(lowest - 0.6)
+                    "Made a Foundation plan at {}, cut through the footings.",
+                    crate::units::elevation(elevation)
                 );
             }
             Err(e) => self.status = format!("Couldn't make a Foundation plan: {e}"),
@@ -1384,6 +1593,89 @@ impl CreaBimApp {
                     _ => self.run_command(ctx, c, at),
                 }
             }
+            // the spot level tool writing S-JTSK coordinates (PilonDesigner's
+            // cadastre mark)
+            "site" if arg == "coords" => {
+                if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::SpotLevel) {
+                    self.run_action(ctx, &format!("tool:{i}"));
+                    self.plan.anno.spot_coords = true;
+                    // it stays on the Cadastre tab it was picked from (it
+                    // jumped to Annotations, which read as another tool)
+                    self.shell.tab_tool = Some(Tool::SpotLevel);
+                    self.status = crate::i18n::tr(
+                        "S-JTSK coordinates: click a point (a plot's corner, a cadastre line's bend, the building's corner), then where the text goes.",
+                    );
+                }
+            }
+            // a plan turned on screen and paper; the model stays put
+            "view.turn" => {
+                let Some((view, _)) = self.active_plan() else {
+                    return;
+                };
+                if arg == "line" {
+                    self.plan.turn_pick = Some(view);
+                    self.status = crate::i18n::tr(
+                        "Click a line in the view: it turns so that the line lies level or upright. Esc leaves it.",
+                    );
+                    return;
+                }
+                let now = creabim_geom::turn::view_turn(self.doc.model(), view);
+                let to = match arg.parse::<f64>() {
+                    Ok(0.0) => 0.0,
+                    Ok(by) => now + by,
+                    Err(_) => return,
+                };
+                match crate::planview::set_view_turn(&mut self.doc, view, to) {
+                    Ok(()) => {
+                        let t = creabim_geom::turn::view_turn(self.doc.model(), view);
+                        self.status = crate::i18n::tr(&format!(
+                            "View turned to {t}°: the model has not moved. Ctrl+Z to undo."
+                        ));
+                    }
+                    Err(e) => self.status = e.to_string(),
+                }
+            }
+            "site" if arg == "place" => {
+                if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::Select) {
+                    self.run_action(ctx, &format!("tool:{i}"));
+                }
+                self.plan.place_pick = Some(None);
+                self.status = crate::i18n::tr(
+                    "In the site plan, click a side of the place drawn on the map (a rectangle's edge) near the corner the building's corner goes to. Esc leaves it.",
+                );
+            }
+            "site" if arg == "reset" => {
+                let tx = creabim_core::mapgroup::reset(self.doc.model());
+                self.status = if tx.ops.is_empty() {
+                    crate::i18n::tr("The map is where it came down already (or the project has no map in S-JTSK).")
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => crate::i18n::tr(
+                            "The map is back where it came down: the S-JTSK origin at ±0,000, the drawings straight. Ctrl+Z to undo.",
+                        ),
+                        Err(e) => e.to_string(),
+                    }
+                };
+            }
+            "site" if arg == "exact" => {
+                self.place_exact_open = true;
+            }
+            "site" if arg == "symbols" => {
+                self.site_symbols_open = true;
+            }
+            // the sketch tool drawing utility networks (PilonDesigner's
+            // Inžinierska sieť): kind, state and text in Properties
+            "site" if arg == "network" => {
+                if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::Sketch) {
+                    self.run_action(ctx, &format!("tool:{i}"));
+                    let kind = crate::sketch::network().unwrap_or_default();
+                    crate::sketch::set_network(Some(kind));
+                    self.shell.tab_tool = Some(Tool::Sketch);
+                    self.status = crate::i18n::tr(
+                        "Utility network: click its bends, Enter or right-click ends it. Its kind (water, sewer, gas, power…), state and text are in Properties.",
+                    );
+                }
+            }
             "tab" => {
                 if let Some(i) = index.filter(|i| *i < crate::tooltabs::TABS.len()) {
                     self.shell.settings.tools_tab = i;
@@ -1401,13 +1693,27 @@ impl CreaBimApp {
                 if let Some(t) = index.and_then(|i| Tool::ALL.get(i)) {
                     // a detail path being drawn is kept, not dropped
                     crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
+                    let again = self.plan.tool == *t;
                     self.plan.tool = *t;
                     self.plan.cancel();
+                    // the spot level tool reads heights unless the cadastre's
+                    // coordinates button chose otherwise; picked again (the
+                    // ribbon showing it), it keeps what it reads
+                    if !again || !matches!(*t, Tool::SpotLevel) {
+                        self.plan.anno.spot_coords = false;
+                    }
+                    if !again || *t != Tool::Sketch {
+                        crate::sketch::set_network(None);
+                        crate::sketch::set_mark(None);
+                    }
                     // a chain begun in 3D ends with its tool (MU40)
                     self.pending_3d = None;
                     self.beam_face = None;
                     self.plan.members.last_beam = None;
                     self.status = t.hint().into();
+                    if *t == Tool::Pipe {
+                        self.open_trade_plan();
+                    }
                     if *t == Tool::Guide && self.shell.settings.guides_hidden {
                         // drawing guides you can't see helps no one
                         self.set_guides_hidden(false);
@@ -1553,37 +1859,37 @@ impl CreaBimApp {
             }
             "new.layered" => {
                 self.path = new_path("Layered walls");
-                self.load_model(creabim_core::sample::layered_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::sample::layered_house()));
                 self.status = "Loaded the layered sample house.".into();
             }
             "new.typed" => {
                 self.path = new_path("Wall types");
-                self.load_model(creabim_core::sample::typed_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::sample::typed_house()));
                 self.status =
                     "Loaded the typed sample house: see Materials › Types… for its types.".into();
             }
             "new.furnished" => {
                 self.path = new_path("Furnished house");
-                self.load_model(creabim_core::sample::furnished_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::sample::furnished_house()));
                 self.status =
                     "Loaded the furnished sample house: see Create › Catalogue… to place more."
                         .into();
             }
             "new.garden" => {
                 self.path = new_path("House in its garden");
-                self.load_model(creabim_core::garden::garden_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::garden::garden_house()));
                 self.status =
                     "Loaded the garden sample: see Create › Site and Create › Building elements."
                         .into();
             }
             "new.sample" => {
                 self.path = new_path("Starter house");
-                self.load_model(creabim_core::starter::starter_house());
+                self.load_model(crate::planview::with_opening_tags(creabim_core::starter::starter_house()));
                 self.status = STARTER_LOADED.into();
             }
             "new.simple" => {
                 self.path = new_path("Simple house");
-                self.load_model(sample_house());
+                self.load_model(crate::planview::with_opening_tags(sample_house()));
                 self.status = "Loaded the simple sample house.".into();
             }
             "new.buried" => {
@@ -1591,37 +1897,29 @@ impl CreaBimApp {
                 self.load_model(creabim_core::sample::sample_with_buried_beam().0);
                 self.status = "Loaded the sample house with a beam inside its south wall. Hover it in Section A and press Tab to reach the beam.".into();
             }
-            "new.empty" => {
-                // two levels, in the units in use
-                let units = self.doc.model().units();
-                let mut m = Document::new();
-                let mut tx = Transaction::new("New project");
-                for (name, z) in [("Level 0", 0.0), ("Level 1", 3.0)] {
-                    tx = tx.insert(Element::new(
-                        name,
-                        ElementKind::Level(creabim_core::Level {
-                            elevation: z,
-                            height: 3.0,
-                        }),
-                    ));
-                }
-                let _ = m.commit(tx);
-                let tx = creabim_core::units::set_units(m.model(), units);
-                let _ = m.commit(tx);
-                // the usual materials and build-ups of walls, floors and
-                // roofs, with a type of each to draw with
-                let tx = creabim_core::skbase::add_base(m.model());
-                let _ = m.commit(tx);
-                self.load_model(m.model().clone());
-                self.path = new_path("Untitled");
-                self.status =
-                    "New project with two levels and the usual materials and build-ups. Pick the Wall tool to start drawing.".into();
-            }
+            "new.empty" => self.new_empty_project(),
             "new.project" => self.open_new_project(ctx),
             "new.sheet" => self.new_sheet(),
             "levels" => self.open_levels(),
             "project.info" => self.project_open = true,
             "level.add" => self.add_level_above(),
+            "browser.section" => self.pick_tool(ctx, Tool::Section),
+            "browser.elevation" => self.pick_tool(ctx, Tool::Elevation),
+            "browser.schedule" => {
+                // the New schedule list, beside the project panel
+                let at = ctx
+                    .input(|i| i.pointer.latest_pos())
+                    .unwrap_or(egui::pos2(240.0, 200.0));
+                let n = schedule_items().len() as f32;
+                self.shell.popup = Some(Popup {
+                    key: "tab:schedules".into(),
+                    at,
+                    up: None,
+                    above: None,
+                    size: egui::vec2(260.0, 12.0 + 29.0 * n),
+                });
+            }
+            "sheets.set" => self.make_drawing_set(),
             "browser.sort" => {
                 if let Some(g) = crate::browser::ViewGroup::from_key(arg) {
                     let tx = crate::browser::sort_auto(self.doc.model(), g);
@@ -1639,6 +1937,7 @@ impl CreaBimApp {
             }
             "units" => self.levels.units_open = true,
             "marks" => self.marks.open = true,
+            "dss" => self.dss.open = true,
             "graphicstyles" => self.gstyles.open = true,
             "underlay" => {
                 if let Some((view, level)) = self.active_plan() {
@@ -1647,6 +1946,9 @@ impl CreaBimApp {
                         "above" => Underlay::Above,
                         "none" => Underlay::None,
                         _ => match by_uuid(self) {
+                            Some(v) if matches!(self.doc.model().get(v).map(|e| &e.kind), Some(ElementKind::View(_))) => {
+                                Underlay::View(v)
+                            }
                             Some(l) if l != level => Underlay::Level(l),
                             _ => return,
                         },
@@ -1677,6 +1979,9 @@ impl CreaBimApp {
                     self.link_file(&path);
                 }
             }
+            "import.points" | "import.pdf" | "import.picture" | "import.dxf" => {
+                self.import_underlay(head)
+            }
             "live" => self.live_reload = !self.live_reload,
             "import.report" => {
                 if let Some(r) = &mut self.import_report {
@@ -1690,8 +1995,12 @@ impl CreaBimApp {
                 }
             }
             "export.glb" | "export.fcstd" | "export.ifcx" | "export.ifc4" | "export.pdf"
-            | "export.svg" | "export.xlsx" => self.export(head),
+            | "export.svg" | "export.xlsx" | "export.fragment" | "export.fbx" | "export.gbxml" => {
+                self.export(head)
+            }
+            "export.dxf" => self.export_dxf(arg),
             "export.folder" => self.open_export_folder(),
+            "fragment.table30" => self.open_table30(),
             "footing.foundation" => self.show_foundation_plan(),
             "placement" => {
                 self.placement = match index {
@@ -1713,6 +2022,9 @@ impl CreaBimApp {
                 };
             }
             "xray" => self.set_xray(!self.shell.settings.xray),
+            "sun3d" | "shadows3d" => {
+                self.sun_action(id);
+            }
             "render3d" => {
                 if let Some(m) = index.and_then(|i| RenderMode::ALL.get(i)) {
                     let s = &mut self.shell.settings;
@@ -1816,8 +2128,8 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
-            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
+            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.binddims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "file.print" | "sheet.print" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
             }
@@ -1955,6 +2267,23 @@ impl CreaBimApp {
                     self.plan.details.path.clear();
                 }
             }
+            "line.type" => {
+                if let Some(k) = index.and_then(|i| creabim_core::LineType::ALL.get(i)) {
+                    self.plan.details.line.kind = *k;
+                }
+            }
+            "line.pen" => {
+                if let Some(p) = index.and_then(|i| creabim_core::LinePen::ALL.get(i)) {
+                    self.plan.details.line.pen = *p;
+                }
+            }
+            "slope.fmt" => {
+                if let Some(i) =
+                    index.filter(|i| *i < creabim_core::annotation::SLOPE_FORMATS.len())
+                {
+                    self.plan.anno.slope_fmt = i;
+                }
+            }
             "callout.scale" => {
                 if let Some(s) = index.and_then(|i| crate::detailtool::CALLOUT_SCALES.get(i)) {
                     self.plan.details.callout_scale = *s;
@@ -2003,6 +2332,11 @@ impl CreaBimApp {
                 | Tool::SpotLevel
                 | Tool::Tag
                 | Tool::Detail
+                | Tool::Line
+                | Tool::Polyline
+                | Tool::Arc
+                | Tool::Curve
+                | Tool::Slope
         );
         match front? {
             "sheet" if measures => {
@@ -2112,6 +2446,55 @@ impl CreaBimApp {
         }
     }
 
+    /// The open view or sheet as DXF of version `version` (its id; the
+    /// newest when it names none).
+    pub(super) fn export_dxf(&mut self, version: &str) {
+        use creabim_geom::dxfout::{self, DxfVersion};
+        let version = DxfVersion::from_id(version).unwrap_or(DxfVersion::R2018);
+        let Some(id) = self.active_view else {
+            self.status = "Open the view or sheet to export first.".into();
+            return;
+        };
+        let (name, text, what) = if self.is_sheet(id) {
+            let number = sheets::sheet_of(self.doc.model(), id)
+                .map(|s| s.number.clone())
+                .unwrap_or_default();
+            let text = sheets::sheet_dxf(self.doc.model(), id, &self.sheet_info(), version);
+            (number, text, "in paper millimetres".to_string())
+        } else {
+            let name = self
+                .doc
+                .model()
+                .get(id)
+                .map(|e| e.name.replace(' ', "-"))
+                .unwrap_or_default();
+            let model = self.doc.model();
+            let text = match (
+                self.view(id),
+                creabim_geom::section::view_drawing(model, id),
+            ) {
+                (Some(v), Some(d)) => {
+                    let looks = creabim_geom::looks::Looks::for_view(model, id, v);
+                    Some(dxfout::view_dxf(model, &d, &looks, v.scale, version))
+                }
+                _ => None,
+            };
+            (name, text, "at true size in millimetres".to_string())
+        };
+        let Some(text) = text else {
+            self.status = "This view has no drawing to export.".into();
+            return;
+        };
+        let Some(out) = self.export_to(with_extension(&self.path, &format!("{name}.dxf"))) else {
+            return;
+        };
+        let r = std::fs::write(&out, text);
+        self.report(r, format!("Exported {out} ({}, {what})", version.label()));
+        if self.status.starts_with("Exported ") {
+            self.last_export = Some(self.status.clone());
+        }
+    }
+
     /// Where to write an export: asked with the system's save window, which
     /// starts next to the project with `default`'s name.
     pub(super) fn export_to(&mut self, default: String) -> Option<String> {
@@ -2163,6 +2546,39 @@ impl CreaBimApp {
                 let r = std::fs::write(&out, creabim_exchange::gltf::export_glb(self.doc.model()));
                 self.report(r, format!("Exported {out}. In Blender: File > Import > glTF, or use the CreaBIM add-on."));
             }
+            "export.fbx" => {
+                let Some(out) = self.export_to(with_extension(&self.path, "fbx")) else {
+                    return;
+                };
+                let bytes = creabim_exchange::fbx::export_fbx(self.doc.model(), &stem(&self.path));
+                let r = std::fs::write(&out, bytes);
+                self.report(r, format!("Exported {out}"));
+            }
+            "export.gbxml" => {
+                let default = with_extension(&self.path, "xml");
+                let default = format!("{}-gbxml.xml", default.trim_end_matches(".xml"));
+                let Some(out) = self.export_to(default) else {
+                    return;
+                };
+                let (text, warnings) = creabim_geom::gbxml::export(self.doc.model());
+                let r = std::fs::write(&out, text);
+                let ok = r.is_ok();
+                self.report(r, format!("Exported {out}"));
+                if ok && !warnings.is_empty() {
+                    let shown: Vec<&str> = warnings.iter().take(3).map(|s| s.as_str()).collect();
+                    let more = warnings.len().saturating_sub(shown.len());
+                    self.status = format!(
+                        "{}: {}{}",
+                        self.status,
+                        shown.join(" · "),
+                        if more > 0 {
+                            format!(" (+{more})")
+                        } else {
+                            String::new()
+                        }
+                    );
+                }
+            }
             "export.fcstd" => {
                 let Some(out) = self.export_to(with_extension(&self.path, "FCStd")) else {
                     return;
@@ -2182,6 +2598,31 @@ impl CreaBimApp {
             }
             // first how walls and slabs go out (MU20), then where
             "export.ifc4" => self.ifc_dialog = true,
+            "export.fragment" => {
+                let default = with_extension(&self.path, "json");
+                let default = format!("{}-fragment.json", default.trim_end_matches(".json"));
+                let Some(out) = self.export_to(default) else {
+                    return;
+                };
+                let (text, warnings) = creabim_geom::fragment::export(self.doc.model());
+                let r = std::fs::write(&out, text);
+                let ok = r.is_ok();
+                self.report(r, format!("Exported {out} for ISOVER Fragment"));
+                if ok && !warnings.is_empty() {
+                    let shown: Vec<&str> = warnings.iter().take(3).map(|s| s.as_str()).collect();
+                    let more = warnings.len().saturating_sub(shown.len());
+                    self.status = format!(
+                        "{}: {}{}",
+                        self.status,
+                        shown.join(" · "),
+                        if more > 0 {
+                            format!(" (+{more})")
+                        } else {
+                            String::new()
+                        }
+                    );
+                }
+            }
             "export.xlsx" => {
                 let Some(out) = self.export_to(with_extension(&self.path, "xlsx")) else {
                     return;
@@ -2207,6 +2648,33 @@ impl CreaBimApp {
                     let n = sheets::sheets(self.doc.model()).len();
                     self.report(r, format!("Exported {n} sheets to {out}"));
                 }
+            }
+            "export.summary" => {
+                let number = creabim_geom::doclist::SUMMARY_NUMBER;
+                let rev = self
+                    .doc
+                    .model()
+                    .project_info()
+                    .map(|p| p.1.revision_or_first())
+                    .unwrap_or_else(|| "00".into());
+                let name =
+                    creabim_geom::docset::file_name(&self.sheets_export.prefix, number, &rev)
+                        .unwrap_or_else(|| number.to_string());
+                let dir = std::path::Path::new(&self.path)
+                    .parent()
+                    .map(|d| d.to_path_buf())
+                    .unwrap_or_default();
+                let default = dir.join(format!("{name}.docx"));
+                let Some(out) = self.export_to(default.to_string_lossy().into_owned()) else {
+                    return;
+                };
+                let chapters = creabim_geom::summary::report(self.doc.model());
+                let files = creabim_geom::summary::docx_files(
+                    &creabim_core::words::tr("B Summary report"),
+                    &chapters,
+                );
+                let r = std::fs::write(&out, crate::app::reportui::zip(&files));
+                self.report(r, format!("Exported the summary report to {out}"));
             }
             "export.svg" => {
                 if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
@@ -2506,6 +2974,7 @@ impl CreaBimApp {
                 };
             }
             "export.sheets" => self.sheets_export_open = true,
+            "file.print" | "sheet.print" => self.open_print(),
             "sheet.preview" => {
                 self.print_preview = !self.print_preview;
                 self.status = if self.print_preview {
@@ -2532,6 +3001,16 @@ impl CreaBimApp {
                     "Grid off: plain paper behind drawings.".into()
                 };
             }
+            "view.thin" => {
+                let s = &mut self.shell.settings;
+                s.thin_lines = !s.thin_lines;
+                s.store();
+                self.status = if self.shell.settings.thin_lines {
+                    "Thin lines: every line one pixel wide on screen. Sheets and prints keep their weights.".into()
+                } else {
+                    "Line weights shown: cut thick, the rest thin.".into()
+                };
+            }
             "view.tempdims" => {
                 self.plan.temp_dims_off = !self.plan.temp_dims_off;
                 self.shell.settings.temp_dims_off = self.plan.temp_dims_off;
@@ -2548,6 +3027,111 @@ impl CreaBimApp {
                     Ok(0) => "Every door and window here is tagged already.".into(),
                     Ok(n) => format!("Tagged {n} doors and windows. Drag a tag to move it."),
                     Err(e) => format!("Couldn't do that: {e}"),
+                };
+            }
+            "view.dimopenings" => {
+                let (tx, n) = creabim_geom::autodims::dimension_openings(self.doc.model(), id);
+                self.status = if n == 0 {
+                    "Nothing to add: the doors, windows and walls here are dimensioned already (plans only).".into()
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => format!(
+                            "Added {n} dimension chains: doors and windows, walls and overall, bound to what they measure. Ctrl+Z to undo."
+                        ),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
+                };
+            }
+            "view.dimrooms" => {
+                // the selected rooms, or every room of the plan
+                let picked: Vec<ElementId> = self
+                    .selection
+                    .active
+                    .into_iter()
+                    .chain(self.selection.others.iter().copied())
+                    .filter(|i| {
+                        matches!(
+                            self.doc.model().get(*i).map(|e| &e.kind),
+                            Some(ElementKind::Room(_))
+                        )
+                    })
+                    .collect();
+                let (tx, n) =
+                    creabim_geom::autodims::dimension_rooms(self.doc.model(), id, &picked);
+                self.status = if n == 0 {
+                    crate::i18n::tr(
+                        "Nothing to add: the rooms here have their clear sizes dimensioned already (plans only).",
+                    )
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => crate::i18n::tr(&format!(
+                            "Added {n} dimensions of clear sizes, face to face, bound to the walls. Ctrl+Z to undo."
+                        )),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
+                };
+            }
+            "view.binddims" => {
+                // every linear dimension of the view onto the walls its
+                // points stand on, so that it follows them
+                let model = self.doc.model();
+                let mut tx = Transaction::new("Bind dimensions to walls");
+                let mut n = 0;
+                if let Some(ElementKind::View(v)) = model.get(id).map(|e| &e.kind) {
+                    for e in model.iter() {
+                        let ElementKind::Dimension(d) = &e.kind else {
+                            continue;
+                        };
+                        if d.view != id || d.kind != creabim_core::DimensionKind::Linear {
+                            continue;
+                        }
+                        let bound = creabim_geom::annotate::rehosted(model, v, d);
+                        if bound != *d {
+                            let mut now = e.clone();
+                            now.kind = ElementKind::Dimension(bound);
+                            tx = tx.replace(e.clone(), now);
+                            n += 1;
+                        }
+                    }
+                }
+                self.status = if n == 0 {
+                    crate::i18n::tr("Every dimension here is bound already, or stands on no wall.")
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => crate::i18n::tr(&format!(
+                            "Bound {n} dimensions to the walls they stand on: they follow them now. Ctrl+Z to undo."
+                        )),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
+                };
+            }
+            "view.joindims" => {
+                // the selected dimensions, or every one in the view
+                let picked: Vec<ElementId> = self
+                    .selection
+                    .active
+                    .into_iter()
+                    .chain(self.selection.others.iter().copied())
+                    .filter(|i| {
+                        matches!(
+                            self.doc.model().get(*i).map(|e| &e.kind),
+                            Some(ElementKind::Dimension(_))
+                        )
+                    })
+                    .collect();
+                let only = (picked.len() > 1).then_some(picked.as_slice());
+                let (tx, n) = creabim_geom::autodims::join_chains(self.doc.model(), id, only);
+                self.status = if n == 0 {
+                    crate::i18n::tr(
+                        "Nothing to join: no dimensions here run on one line and share a point.",
+                    )
+                } else {
+                    match self.doc.commit(tx) {
+                        Ok(_) => crate::i18n::tr(&format!(
+                            "Joined {n} dimensions into chains: one dimension line each. Ctrl+Z to undo."
+                        )),
+                        Err(e) => format!("Couldn't do that: {e}"),
+                    }
                 };
             }
             "view.tagfixtures" => {
@@ -2594,6 +3178,7 @@ impl CreaBimApp {
             }
             "view.number" => self.set_view_number(v),
             "detail.width" => self.plan.details.width = v.clamp(0.0, 5.0),
+            "slope.value" => self.plan.anno.slope_value = v.clamp(0.0, 1000.0),
             "dim.spacing" => {
                 self.plan.dim_step_size = v.clamp(0.5, 100.0);
                 self.plan.dim_step_mm = self.plan.dim_step_size;
@@ -2788,6 +3373,55 @@ impl CreaBimApp {
                     "hint": "How wide the component is across its path: a batt's thickness, a course's depth",
                 }));
             }
+        }
+        if matches!(tool, Tool::Line | Tool::Polyline | Tool::Arc | Tool::Curve) {
+            let look = self.plan.details.line;
+            options.push(seg(creabim_core::LineType::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, k)| {
+                    opt(
+                        format!("line.type:{i}"),
+                        k.label(),
+                        look.kind == *k,
+                        "Line type: solid, dashed for what is hidden below the cut, dash-dot for axes, dash-double-dot for what is above the cut",
+                    )
+                })
+                .collect()));
+            options.push(seg(creabim_core::LinePen::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    opt(
+                        format!("line.pen:{i}"),
+                        &format!("{:.2}", p.mm()).replace('.', ","),
+                        look.pen == *p,
+                        "Pen: the line's width on paper, mm (0,10 hatches, 0,15 the usual line, 0,20 ticks and fittings, 0,50 outlines of what is cut)",
+                    )
+                })
+                .collect()));
+        }
+        if tool == Tool::Slope {
+            let fmt = self.plan.anno.slope_fmt;
+            options.push(seg(creabim_core::annotation::SLOPE_FORMATS
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    opt(
+                        format!("slope.fmt:{i}"),
+                        f,
+                        fmt == i,
+                        "How the slope reads: in percent, in degrees, or as 1:n",
+                    )
+                })
+                .collect()));
+            options.push(json!({
+                "kind": "number", "key": "slope.value", "label": "Slope in a plan",
+                "value": self.plan.anno.slope_value,
+                "unit": match creabim_core::annotation::SLOPE_FORMATS[fmt] { "%" => "%", "°" => "°", _ => "1:n" },
+                "step": 0.5, "min": 0.0, "max": 1000.0,
+                "hint": "In a plan every line is level, so the slope a new slope dimension writes there is typed here (2 % for a terrace, 1:50 for a gutter). In a section it is measured from the line",
+            }));
         }
         if tool == Tool::Callout {
             options.push(seg(crate::detailtool::CALLOUT_SCALES
@@ -3292,7 +3926,25 @@ impl CreaBimApp {
                     "icon": "dimension", "on": !self.plan.temp_dims_off,
                     "hint": "The blue dimensions by what you select: on, they show and can be typed into; off, none show (MU21)",
                 }));
+                options.push(json!({
+                    "kind": "menu", "key": "tempdims.ref", "label": "Measure from",
+                    "value": self.plan.temp_ref.label(),
+                    "hint": "What temporary dimensions measure walls from: the faces of their load-bearing core (never plaster or insulation), the wall faces, the core's middle or the centreline",
+                }));
             }
+            if let Some(v) = self.active_view.and_then(|id| self.view(id)) {
+                options.push(json!({
+                    "kind": "menu", "key": "view.reno", "label": "Renovation",
+                    "value": v.reno.map_or("Off", |r| r.label()),
+                    "hint": "Which stage of a renovation this view shows: the existing state, the demolition (yellow), the new state (red) or all to compare. Mark elements existing, demolished or new in Properties",
+                }));
+            }
+            // thin lines (TL), for close work: weights come back with it off
+            options.push(json!({
+                "kind": "toggle", "id": "view.thin", "label": "Thin lines",
+                "icon": "minus", "on": self.shell.settings.thin_lines,
+                "hint": "Every line one pixel wide on screen, for close work (TL). Off: cut lines thick. Sheets and prints keep their weights",
+            }));
             // the grid behind the drawing, on or off for every drawing
             // (MU40: some prefer plain paper)
             options.push(json!({
@@ -3304,6 +3956,28 @@ impl CreaBimApp {
                 "kind": "button", "id": "view.tag", "label": "Tag openings", "icon": "tag",
                 "hint": "Tag every door and window in this view that has no tag yet",
             }));
+            if self.active_plan().is_some() {
+                options.push(json!({
+                    "kind": "button", "id": "view.dimopenings", "label": "Dimension openings",
+                    "icon": "dimension",
+                    "hint": "Dimension chains round the outside, as STN 01 3420: the doors and windows (width over the line, height and sill under it), the walls, the overall size. Bound to what they measure",
+                }));
+                options.push(json!({
+                    "kind": "button", "id": "view.dimrooms", "label": "Dimension rooms",
+                    "icon": "dimension",
+                    "hint": "The clear sizes of the selected rooms, or of every room here: two dimensions from face to face, bound to the walls",
+                }));
+                options.push(json!({
+                    "kind": "button", "id": "view.binddims", "label": "Bind to walls",
+                    "icon": "dimension",
+                    "hint": "Dimensions drawn before they were bound to elements: every one in this view is kept on the walls its points stand on, so it follows them when they move",
+                }));
+                options.push(json!({
+                    "kind": "button", "id": "view.joindims", "label": "Join into chains",
+                    "icon": "dimension",
+                    "hint": "Dimensions on one line that share a point become one dimension line, a chain as in PilonDesigner: the selected ones, or all in this view",
+                }));
+            }
             if self.active_plan().is_some() {
                 options.push(json!({
                     "kind": "button", "id": "view.tagfixtures", "label": "Tag fixtures", "icon": "fixtures",
@@ -3409,8 +4083,12 @@ impl CreaBimApp {
             // output
             options.push(json!({"kind": "sep"}));
             options.push(json!({
+                "kind": "button", "id": "sheet.print", "label": "Print…", "icon": "printer",
+                "hint": "This sheet, chosen sheets or all on a printer or plotter, with a preview (Ctrl+P)",
+            }));
+            options.push(json!({
                 "kind": "button", "id": "sheet.pdf", "label": "Sheet as PDF", "icon": "file-text",
-                "hint": "This sheet as a PDF (Ctrl+P); all or chosen sheets: File › Export › Sheets as PDF (Ctrl+Shift+P)",
+                "hint": "This sheet as a PDF; all or chosen sheets: File › Export › Sheets as PDF (Ctrl+Shift+P)",
             }));
             // the sheet as it prints, on white, while the paper is dark (MU21)
             options.push(json!({
@@ -3508,9 +4186,98 @@ impl CreaBimApp {
                 })
             })
             .collect();
+        // sections and elevations are listed even before there are any,
+        // each with the tool that draws one
+        for (g, icon, act, hint) in [
+            (
+                crate::browser::ViewGroup::Sections,
+                "scissors-line-dashed",
+                "browser.section",
+                "Section: draw its line across a plan with two clicks",
+            ),
+            (
+                crate::browser::ViewGroup::Elevations,
+                "elevation",
+                "browser.elevation",
+                "Elevation: draw its line in front of the building in a plan with two clicks",
+            ),
+            (
+                crate::browser::ViewGroup::Schedules,
+                "table-2",
+                "browser.schedule",
+                "New schedule: pick what it lists (material take-off, doors, windows…)",
+            ),
+        ] {
+            let act = json!({"id": act, "icon": "plus", "hint": hint});
+            match out.iter_mut().find(|x| x["key"] == g.key()) {
+                Some(x) => {
+                    if let Some(a) = x["acts"].as_array_mut() {
+                        a.push(act);
+                    }
+                }
+                None => {
+                    let at = out
+                        .iter()
+                        .position(|x| {
+                            crate::browser::ViewGroup::from_key(x["key"].as_str().unwrap_or(""))
+                                .is_some_and(|o| o as usize > g as usize)
+                        })
+                        .unwrap_or(out.len());
+                    out.insert(
+                        at,
+                        json!({
+                            "key": g.key(), "title": g.title(), "icon": icon, "open": true,
+                            "rows": [], "acts": [act], "sortable": true, "note": "",
+                        }),
+                    );
+                }
+            }
+        }
+        // the drawings to print: the sheets, those of the documentation's
+        // set under its parts (C, D.1 ASR, D.3 ZTI...), by number
+        {
+            let mut sheets: Vec<(&Element, &creabim_core::Sheet)> = model
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ElementKind::Sheet(sh) => Some((e, sh)),
+                    _ => None,
+                })
+                .collect();
+            sheets.sort_by(|a, b| a.1.number.cmp(&b.1.number));
+            let mut parts: Vec<(&str, Vec<Value>)> = vec![("Drawings to print", vec![])];
+            for (e, sh) in sheets {
+                let mut r = row(e, true);
+                r["name"] = json!(format!("{} · {}", sh.number, e.name));
+                let part = creabim_geom::docset::part_of(&sh.number).unwrap_or("Drawings to print");
+                match parts.iter_mut().find(|p| p.0 == part) {
+                    Some(p) => p.1.push(r),
+                    None => parts.push((part, vec![r])),
+                }
+            }
+            parts[1..].sort_by_key(|p| p.0);
+            for (i, (title, rows)) in parts.into_iter().enumerate() {
+                let acts = if i == 0 {
+                    json!([
+                        {"id": "sheets.set", "icon": "sheet-template",
+                         "hint": "Drawing set: make the plans, sections, elevations and lists still missing and a sheet for each, numbered by the building decree (C00_SIT, S01_ASR_001_N01...)"},
+                        {"id": "new.sheet", "icon": "plus", "hint": "New empty sheet"},
+                    ])
+                } else {
+                    json!([])
+                };
+                out.push(json!({
+                    "key": format!("sheets:{title}"), "title": title,
+                    "icon": icon_name(Icon::of_class("Sheet")), "open": true,
+                    "rows": rows, "acts": acts,
+                }));
+            }
+        }
         let mut groups: Vec<(String, Vec<&Element>)> = vec![];
         for e in model.iter() {
-            if matches!(e.kind, ElementKind::Units(_) | ElementKind::View(_)) {
+            if matches!(
+                e.kind,
+                ElementKind::Units(_) | ElementKind::View(_) | ElementKind::Sheet(_)
+            ) {
                 continue;
             }
             let class = class_of(e);
@@ -3592,9 +4359,17 @@ impl CreaBimApp {
                         _ => icon_name(Icon::of_class(&class)),
                     },
                 };
+                // what the project is set up with stays listed; the
+                // elements themselves (walls, doors, tags...) are picked
+                // in the drawings, and listed only for the search
+                let listed = matches!(
+                    class.as_str(),
+                    "IfcBuildingStorey" | "IfcMaterial" | "IfcMaterialLayerSet" | "ElementType"
+                );
                 json!({
                     "key": class, "title": group_title(&class), "icon": icon,
                     "open": rank(&class) < 3, "rows": rows, "acts": act,
+                    "search": !listed,
                 })
             })
             .collect();
@@ -3777,6 +4552,7 @@ impl CreaBimApp {
 
     /// The New project window, in the middle of the window.
     pub(super) fn open_new_project(&mut self, ctx: &egui::Context) {
+        self.read_recent_cards();
         if self.shell.web.is_none() {
             // the classic panels keep the File menu's list
             self.new_project_classic = true;
@@ -3802,7 +4578,13 @@ impl CreaBimApp {
         let card = |s: &crate::app::appmenu::Start| json!({"id": s.id, "title": s.title, "line": s.line, "icon": s.icon});
         json!({
             "title": "New project",
-            "starts": crate::app::appmenu::STARTS.iter().map(card).collect::<Vec<_>>(),
+            "starts": crate::app::appmenu::STARTS
+                .iter()
+                .map(card)
+                .chain(self.recent_cards.iter().map(|(id, title, line)| {
+                    json!({"id": id, "title": title, "line": line, "icon": "folder"})
+                }))
+                .collect::<Vec<_>>(),
             "samples_title": "Samples to learn from · each shows one thing",
             "samples": crate::app::appmenu::SAMPLES.iter().map(card).collect::<Vec<_>>(),
             "note": "A sample opens as a new, unsaved project, so the original is never changed.",
@@ -3810,6 +4592,16 @@ impl CreaBimApp {
     }
 
     fn close_popup(&mut self) {
+        // Replace the file? goes only by its own buttons and Esc
+        if self.overwrite.is_some()
+            && self
+                .shell
+                .popup
+                .as_ref()
+                .is_some_and(|p| p.key == OVERWRITE_KEY)
+        {
+            return;
+        }
         // the Save the changes window goes only by its own buttons and keys
         if self.close_ask
             && self
@@ -3850,6 +4642,43 @@ impl CreaBimApp {
         self.shell.focus_popup = true;
     }
 
+    /// Replace the file?, in the middle of the app window.
+    pub(super) fn show_overwrite_dialog(&mut self, ctx: &egui::Context) {
+        if self
+            .shell
+            .popup
+            .as_ref()
+            .is_some_and(|p| p.key == OVERWRITE_KEY)
+        {
+            return;
+        }
+        let screen = ctx.viewport_rect();
+        // the page says how tall it is once drawn
+        let size = egui::vec2(480.0, 170.0);
+        self.shell.popup = Some(Popup {
+            key: OVERWRITE_KEY.into(),
+            at: screen.center() - size / 2.0,
+            up: None,
+            above: None,
+            size,
+        });
+        self.shell.focus_popup = true;
+    }
+
+    pub(super) fn hide_overwrite_dialog(&mut self) {
+        if self
+            .shell
+            .popup
+            .as_ref()
+            .is_some_and(|p| p.key == OVERWRITE_KEY)
+        {
+            self.shell.popup = None;
+            if let Some(web) = &mut self.shell.web {
+                web.hide_popup();
+            }
+        }
+    }
+
     pub(super) fn hide_close_dialog(&mut self) {
         if self
             .shell
@@ -3887,6 +4716,11 @@ impl CreaBimApp {
             "closeask" => {
                 let what = b["do"].as_str().unwrap_or("").to_string();
                 self.close_do(ctx, &what);
+            }
+            // Replace the file?: replace or back
+            "overwrite" => {
+                let yes = b["do"].as_str() == Some("yes");
+                self.overwrite_answer(ctx, yes);
             }
             "bar" => self.shell.bar = Some(crate::optionbar::Measure::from_json(b)),
             // a double-click in the project browser: a type opens on its
@@ -3967,7 +4801,7 @@ impl CreaBimApp {
                 let above = b["top"].as_f64().map(|u| origin.y + u as f32);
                 let key = b["key"].as_str().unwrap_or("").to_string();
                 // no menus over the Save the changes window
-                if self.close_ask {
+                if self.close_ask || self.overwrite.is_some() {
                     return;
                 }
                 let n = self.menu_items(&key).len() as f32;
@@ -3986,7 +4820,7 @@ impl CreaBimApp {
                     // the palette and Save the changes keep the width they
                     // were opened with
                     let w = match p.key.as_str() {
-                        "palette" | CLOSE_KEY => p.size.x,
+                        "palette" | CLOSE_KEY | OVERWRITE_KEY => p.size.x,
                         _ => b["w"].as_f64().unwrap_or(200.0) as f32,
                     };
                     p.size = egui::vec2(w, h);
@@ -4151,7 +4985,7 @@ impl CreaBimApp {
                 .show(&ctx, |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
                         ui.set_max_width(360.0);
-                        ui.label(text);
+                        ui.label(crate::i18n::tr(&text));
                     });
                 });
         }
@@ -4337,6 +5171,13 @@ impl CreaBimApp {
                 }
                 // Save the changes: in the middle, as tall as its page asks,
                 // never more than the window (it scrolls then)
+                // Replace the file?: like Save the changes
+                OVERWRITE_KEY => {
+                    let room = (screen.size() - egui::vec2(32.0, 32.0)).max(egui::vec2(240.0, 120.0));
+                    let rect = egui::Rect::from_center_size(screen.center(), p.size.min(room));
+                    let state = json!({"theme": self.theme(), "key": p.key, "items": [], "overwrite": self.overwrite_state_json()});
+                    return (rect, state, false);
+                }
                 CLOSE_KEY => {
                     let room = (screen.size() - egui::vec2(32.0, 32.0)).max(egui::vec2(240.0, 120.0));
                     let rect = egui::Rect::from_center_size(screen.center(), p.size.min(room));
@@ -4490,7 +5331,7 @@ impl CreaBimApp {
                 });
             }
             ui.separator();
-            ui.label("File:");
+            ui.label(crate::i18n::t("File:"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.path)
                     .vertical_align(egui::Align::Center)
@@ -4518,6 +5359,8 @@ fn opens_up(p: &Popup, screen: egui::Rect) -> Option<f32> {
 
 /// The popup key of the Save the changes window.
 const CLOSE_KEY: &str = "closeask";
+/// The popup's key while Replace the file? is asked.
+const OVERWRITE_KEY: &str = "overwrite";
 
 fn popup_size(p: &Popup, screen: egui::Rect) -> egui::Vec2 {
     let margin = 6.0;
@@ -4539,7 +5382,8 @@ fn popup_size(p: &Popup, screen: egui::Rect) -> egui::Vec2 {
 /// Where a new project or a sample would be saved: beside the projects
 /// opened before, never over one of them.
 fn new_path(name: &str) -> String {
-    format!("{name}.creabim")
+    // the file's name in the window's language ("Bez názvu.creabim")
+    format!("{}.creabim", crate::i18n::tr(name))
 }
 
 /// egui's spacing and type, roomier than its defaults.
@@ -4656,6 +5500,86 @@ fn align_item() -> Item {
         .hint("Pick a reference line (a wall face, an edge, a guide or a grid line), then an edge to bring flush with it")
 }
 
+impl CreaBimApp {
+    /// A new project: two levels, the usual materials and build-ups and
+    /// the frame of the drawing set. The app starts with one.
+    pub(crate) fn new_empty_project(&mut self) {
+        // two levels, in the units in use
+        let units = self.doc.model().units();
+        let mut m = Document::new();
+        let mut tx = Transaction::new("New project");
+        for (name, z) in [("Level 0", 0.0), ("Level 1", 3.0)] {
+            // named as the language counts storeys (1. NP, 2. NP)
+            let storey = creabim_core::words::tr("Storey {}");
+            let name = if storey == "Storey {}" {
+                name.to_string()
+            } else {
+                storey.replace("{}", if z > 0.0 { "2" } else { "1" })
+            };
+            tx = tx.insert(Element::new(
+                name,
+                ElementKind::Level(creabim_core::Level {
+                    elevation: z,
+                    height: 3.0,
+                }),
+            ));
+        }
+        let _ = m.commit(tx);
+        let tx = creabim_core::units::set_units(m.model(), units);
+        let _ = m.commit(tx);
+        // the usual materials and build-ups of walls, floors and
+        // roofs, with a type of each to draw with
+        let tx = creabim_core::skbase::add_base(m.model());
+        let _ = m.commit(tx);
+        // the frame of the drawing set: plans, sections,
+        // elevations, lists and their sheets, to be filled in
+        let mut model = super::with_plan_views(m.model().clone());
+        if let Some((tx, _)) = creabim_geom::docset::skeleton(&model) {
+            let _ = tx.apply(&mut model);
+        }
+        self.load_model(model);
+        self.path = new_path("Untitled");
+        self.status =
+            "New project with two levels, the usual materials and build-ups and the frame of the drawing set. Pick the Wall tool to start drawing.".into();
+    }
+
+    /// The recent projects New project offers, up to four that still
+    /// exist: each with its file's name and its project information.
+    fn read_recent_cards(&mut self) {
+        let tr = crate::i18n::tr;
+        self.recent_cards = self
+            .recent
+            .files
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| std::path::Path::new(f).is_file())
+            .take(4)
+            .map(|(i, f)| {
+                let info = creabim_store::read_project_info(f)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+                let mut parts = vec![];
+                for (label, v) in [
+                    ("Name", &info.name),
+                    ("Number", &info.number),
+                    ("Client", &info.client),
+                ] {
+                    if !v.trim().is_empty() {
+                        parts.push(format!("{}: {}", tr(label), v.trim()));
+                    }
+                }
+                let line = if parts.is_empty() {
+                    f.clone()
+                } else {
+                    parts.join(" · ")
+                };
+                (format!("recent:{i}"), super::file_label(f), line)
+            })
+            .collect();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4743,6 +5667,15 @@ thread_local! {
 /// A window kept inside the part of the screen the app draws itself: web
 /// panels paint over anything under them (MU28: the note editor slid
 /// behind the browser).
+/// Where the app's own windows may stand: right of the browser pane,
+/// between the bars; the whole screen before the panes are known.
+pub(crate) fn window_room(ctx: &egui::Context) -> egui::Rect {
+    match NATIVE.with(|n| n.get()) {
+        Some(r) if r.width() > 200.0 && r.height() > 150.0 => r,
+        _ => ctx.content_rect(),
+    }
+}
+
 pub(crate) fn window(title: impl Into<egui::WidgetText>) -> egui::Window<'static> {
     let w = egui::Window::new(title);
     match NATIVE.with(|n| n.get()) {

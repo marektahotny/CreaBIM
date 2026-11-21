@@ -34,6 +34,9 @@ pub fn colour_of(name: &str, r: &Room) -> [f32; 3] {
     PALETTE[h as usize % PALETTE.len()]
 }
 
+/// How far off a wall's face the line of its tiling is drawn, m.
+const TILING_OFF: f64 = 0.03;
+
 /// What a plan of `level` draws of its rooms, room separators and (in a
 /// ceiling plan) ceilings. Rooms go first, under everything.
 pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64) -> Vec<PlanItem> {
@@ -60,10 +63,42 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                             }
                         }
                     }
+                    // tiling: a thin line just off the walls' faces
+                    if let (Some(t), false) = (&r.tiling, view.ceiling_plan) {
+                        for (a, b) in room::tiling_runs(model, &s, &t.skip) {
+                            let d = (b - a).normalize_or_zero();
+                            let off = DVec2::new(-d.y, d.x) * TILING_OFF;
+                            loops.push(PlanItem::Line {
+                                id: e.id,
+                                pen: Pen::Symbol,
+                                a: a + off,
+                                b: b + off,
+                            });
+                        }
+                    }
+                    // a fire drawing: the zone's wash and its code
+                    let zone = r.fire_zone.trim();
+                    let fire = view.fire_zones && !zone.is_empty();
+                    if fire {
+                        loops.push(PlanItem::Text {
+                            id: e.id,
+                            at: r.at - DVec2::new(0.0, 0.9),
+                            text: zone.to_string(),
+                            size: 3.0,
+                            align: crate::paper::Anchor::Middle,
+                            mm: view.scale / 1000.0,
+                            rgb: Some([0.8, 0.1, 0.1]),
+                            bold: true,
+                        });
+                    }
                     out.push(PlanItem::Room {
                         id: e.id,
                         points: s.outline,
-                        rgb: view.room_colours.then(|| colour_of(&e.name, r)),
+                        rgb: if fire {
+                            Some(crate::firezones::colour_of(zone))
+                        } else {
+                            view.room_colours.then(|| colour_of(&e.name, r))
+                        },
                     });
                 }
             }
@@ -73,6 +108,26 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                 a: s.a,
                 b: s.b,
             }),
+            // a floor plan: the ceiling's outline over the cut, a thin line
+            // of a dash and two dots, so it can be seen, picked and snapped
+            ElementKind::Ceiling(c) if c.level == level && !view.ceiling_plan => {
+                let Some(outline) = c.outline(model) else {
+                    continue;
+                };
+                let pen = if c.height < cut_height {
+                    Pen::Projection
+                } else {
+                    Pen::Overhead
+                };
+                for i in 0..outline.len() {
+                    out.push(PlanItem::Line {
+                        id: e.id,
+                        pen,
+                        a: outline[i],
+                        b: outline[(i + 1) % outline.len()],
+                    });
+                }
+            }
             ElementKind::Ceiling(c) if c.level == level && view.ceiling_plan => {
                 if c.height < cut_height {
                     continue;

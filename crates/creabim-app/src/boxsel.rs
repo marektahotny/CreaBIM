@@ -167,6 +167,7 @@ pub fn draw_count(painter: &egui::Painter, now: Pos2, n: usize) {
     // reads on any paper (MU39: grey on grey before)
     let p = crate::theme::Palette::of(painter.ctx());
     let ink = crate::theme::interaction();
+    let text = crate::i18n::tr(&text);
     let g = painter.layout_no_wrap(text, egui::FontId::proportional(12.5), p.text);
     let r = Rect::from_min_size(
         now + egui::vec2(16.0, 14.0),

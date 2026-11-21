@@ -888,7 +888,7 @@ impl CreaBimApp {
         let mut done = false;
         let mut error = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Ground grid spacing")
+        crate::app::shell::window(crate::i18n::tr("Ground grid spacing"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(60.0, 80.0))
             .constrain_to(area)
@@ -896,13 +896,13 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.label(
-                    egui::RichText::new(
+                    egui::RichText::new(crate::i18n::t(
                         "Any spacing, in the project's units or another (1250, 1.25 m, 4'-0\").",
-                    )
+                    ))
                     .weak(),
                 );
                 crate::props::flow(ui, |ui| {
-                    ui.label("Every");
+                    ui.label(crate::i18n::t("Every"));
                     let r = ui.add(
                         egui::TextEdit::singleline(&mut text)
                             .vertical_align(egui::Align::Center)
@@ -912,7 +912,7 @@ impl CreaBimApp {
                         r.request_focus();
                     }
                     let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    if ui.button("Apply").clicked() || enter {
+                    if ui.button(crate::i18n::t("Apply")).clicked() || enter {
                         done = true;
                     }
                 });
@@ -1009,14 +1009,14 @@ impl CreaBimApp {
                         }
                         let mut xray = self.shell.settings.xray;
                         if crate::props::switch(ui, &mut xray, "X-ray")
-                            .on_hover_text("Walls, slabs, roofs and masses see-through (Alt+Z)")
+                            .on_hover_text(crate::i18n::t("Walls, slabs, roofs and masses see-through (Alt+Z)"))
                             .changed()
                         {
                             extra = Some("xray");
                         }
                         let mut colour = self.shell.settings.hidden_colour_3d;
                         if crate::props::switch(ui, &mut colour, "Hidden elements in colour")
-                            .on_hover_text("What is inside walls, slabs and roofs shows through them in its own colours")
+                            .on_hover_text(crate::i18n::t("What is inside walls, slabs and roofs shows through them in its own colours"))
                             .changed()
                         {
                             extra = Some("hidden.colour3d");
@@ -1025,21 +1025,21 @@ impl CreaBimApp {
                 } else if let VisTarget::View(id) = t {
                     let mut on = self.shows_hidden_elements(id);
                     if crate::props::check(ui, "Hidden inside", &mut on, "Dashed")
-                        .on_hover_text("A beam in a wall, a stud wall in a cavity: drawn with dashed hidden lines")
+                        .on_hover_text(crate::i18n::t("A beam in a wall, a stud wall in a cavity: drawn with dashed hidden lines"))
                         .changed()
                     {
                         reveal = Some(id);
                     }
                     let mut colour = self.shows_hidden_colour(id);
                     if crate::props::check(ui, "", &mut colour, "In material colours")
-                        .on_hover_text("For detailing: washed in their own colours over what hides them, as well as dashed")
+                        .on_hover_text(crate::i18n::t("For detailing: washed in their own colours over what hides them, as well as dashed"))
                         .changed()
                     {
                         colour_of = Some(id);
                     }
                     let mut xray = self.plan.xray.contains(&id);
                     if crate::props::check(ui, "While working", &mut xray, "X-ray")
-                        .on_hover_text("Walls, slabs and roofs see-through here, what is inside them solid and clicked first (Alt+Z). Sheets don't change")
+                        .on_hover_text(crate::i18n::t("Walls, slabs and roofs see-through here, what is inside them solid and clicked first (Alt+Z). Sheets don't change"))
                         .changed()
                     {
                         xray_of = Some(id);
@@ -1047,7 +1047,7 @@ impl CreaBimApp {
                 }
                 let mut guides = !self.shell.settings.guides_hidden;
                 if crate::props::check(ui, "Guides", &mut guides, "In every view")
-                    .on_hover_text("Hide all guides without deleting them, and bring them back (Shift+G)")
+                    .on_hover_text(crate::i18n::t("Hide all guides without deleting them, and bring them back (Shift+G)"))
                     .changed()
                 {
                     extra = Some("guides.toggle");
@@ -1113,8 +1113,8 @@ impl CreaBimApp {
                     crate::props::subsection(ui, "vis.hidden", "Hidden elements", true);
                     for (id, name) in hidden {
                         crate::props::flow(ui, |ui| {
-                            ui.label(name);
-                            if ui.small_button("Unhide").clicked() {
+                            ui.label(crate::i18n::tr(&name));
+                            if ui.small_button(crate::i18n::t("Unhide")).clicked() {
                                 change = Some((
                                     "Show hidden element".into(),
                                     Box::new(move |h| h.set_element(id, false)),
@@ -1125,8 +1125,8 @@ impl CreaBimApp {
                 }
                 ui.add_space(3.0);
                 if crate::props::row(ui, "", |ui| {
-                    ui.add_enabled(!h.is_empty(), egui::Button::new("Show everything"))
-                        .on_hover_text("Right-click an element in a view to hide it or its category there.")
+                    ui.add_enabled(!h.is_empty(), egui::Button::new(crate::i18n::t("Show everything")))
+                        .on_hover_text(crate::i18n::t("Right-click an element in a view to hide it or its category there."))
                         .clicked()
                 }) {
                     change = Some((
@@ -1167,7 +1167,7 @@ impl CreaBimApp {
     /// Every grid system, with the one new lines go in, and a button for a
     /// new one.
     pub(super) fn grid_systems_panel(&mut self, ui: &mut egui::Ui) {
-        ui.label(egui::RichText::new("Grid systems").strong());
+        ui.label(egui::RichText::new(crate::i18n::t("Grid systems")).strong());
         let model = self.doc.model();
         let active = self.active_grid_group();
         let rows: Vec<(Option<ElementId>, String, [f32; 3], usize)> =
@@ -1185,21 +1185,21 @@ impl CreaBimApp {
             crate::props::flow(ui, |ui| {
                 if ui
                     .radio(active == id, "")
-                    .on_hover_text("New grid lines go here")
+                    .on_hover_text(crate::i18n::t("New grid lines go here"))
                     .clicked()
                 {
                     pick = Some(id);
                 }
                 swatch(ui, color);
-                ui.label(format!("{name} ({n})"));
+                ui.label(crate::i18n::tr(&format!("{name} ({n})")));
                 if let Some(g) = id {
-                    if ui.small_button("Edit").clicked() {
+                    if ui.small_button(crate::i18n::t("Edit")).clicked() {
                         edit = Some(g);
                     }
                 }
             });
         }
-        if ui.button("New grid system").clicked() {
+        if ui.button(crate::i18n::t("New grid system")).clicked() {
             self.new_grid_group();
         }
         if let Some(g) = pick {
@@ -1220,13 +1220,13 @@ impl CreaBimApp {
     ) -> &'static str {
         let mut label = "";
         ui.label(
-            egui::RichText::new(
+            egui::RichText::new(crate::i18n::t(
                 "A grid system: its lines are labelled on their own, with the prefix in front.",
-            )
+            ))
             .weak(),
         );
         crate::props::flow(ui, |ui| {
-            ui.label("Prefix");
+            ui.label(crate::i18n::t("Prefix"));
             if ui
                 .add(
                     egui::TextEdit::singleline(&mut g.prefix)
@@ -1257,7 +1257,7 @@ impl CreaBimApp {
             label = "Grid label style";
         }
         crate::props::flow(ui, |ui| {
-            ui.label("Colour");
+            ui.label(crate::i18n::t("Colour"));
             // the picker works in 8-bit sRGB, as the colour is stored
             let mut c = g.color.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
             if ui.color_edit_button_srgb(&mut c).changed() {
@@ -1266,17 +1266,20 @@ impl CreaBimApp {
             }
         });
         let n = grid_count(self.doc.model(), Some(id));
-        ui.label(format!(
+        ui.label(crate::i18n::tr(&format!(
             "{n} lines, e.g. {}{} and {}{}.",
             g.prefix,
             g.vertical.format(1),
             g.prefix,
             g.horizontal.format(1)
-        ));
+        )));
         crate::props::flow(ui, |ui| {
             let active = self.active_grid_group() == Some(id);
             if ui
-                .add_enabled(!active, egui::Button::new("Draw lines in it"))
+                .add_enabled(
+                    !active,
+                    egui::Button::new(crate::i18n::t("Draw lines in it")),
+                )
                 .clicked()
             {
                 self.plan.grid_group = Some(id);
@@ -1284,12 +1287,12 @@ impl CreaBimApp {
                 self.plan.cancel();
                 self.status = Tool::Grid.hint().into();
             }
-            if ui.button("Select its lines").clicked() {
+            if ui.button(crate::i18n::t("Select its lines")).clicked() {
                 let ids = grid_ids(self.doc.model(), Some(id));
                 self.selection.clear();
                 self.selection.extend(ids, false);
             }
-            if ui.button("Renumber in order").clicked() {
+            if ui.button(crate::i18n::t("Renumber in order")).clicked() {
                 let tx = grids::renumber(self.doc.model(), Some(id));
                 if !tx.ops.is_empty() {
                     let r = self.doc.commit(tx);
@@ -1298,9 +1301,9 @@ impl CreaBimApp {
             }
         });
         ui.label(
-            egui::RichText::new(
+            egui::RichText::new(crate::i18n::t(
                 "Deleting the system keeps its lines, ungrouped and with their labels.",
-            )
+            ))
             .weak(),
         );
         label
@@ -1340,7 +1343,10 @@ impl CreaBimApp {
             g.group = to;
             label = "Move grid line to another system";
         }
-        ui.label(format!("Shows as {}", grids::display_label(model, g)));
+        ui.label(crate::i18n::tr(&format!(
+            "Shows as {}",
+            grids::display_label(model, g)
+        )));
         label
     }
 

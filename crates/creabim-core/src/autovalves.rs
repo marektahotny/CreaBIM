@@ -20,6 +20,20 @@
 //! - on a drain laid flat (DN 100 and more) a cleanout where it turns
 //!   by more than 45° and every 20 m at most.
 //!
+//! Heating, cooling, water and fire mains (STN EN 12828, STN EN 806-2):
+//! - an automatic air vent at every high point of the pipes and a drain
+//!   cock at every low point: a level run (or a lone bend) whose every
+//!   way out falls from it, or rises from it. Runs reaching a fixture, a
+//!   radiator or the plant vent and drain through it and are left; so are
+//!   unfinished free ends.
+//!
+//! Gas (TPH 03 2012):
+//! - a sleeve (chránička, ochranná rúrka) where the pipe passes a wall, a
+//!   floor or a ceiling (F.4.1, F.7.4);
+//! - a thermal shut-off (protipožiarna armatúra, TAP) where it passes a
+//!   wall between two rooms (F.5.6), on the side the gas comes from;
+//! - fire stopping of the passage into another fire zone (F.4.3, F.7.6).
+//!
 //! What is already on the pipes is not added a second time.
 
 use crate::fixture::{self, ConnKind};
@@ -48,6 +62,11 @@ pub struct FillOpts {
     pub vents: bool,
     /// Cleanouts.
     pub cleanouts: bool,
+    /// Air vents at high points and drain cocks at low points.
+    pub high_low: bool,
+    /// Gas: sleeves, thermal shut-offs and fire stopping where the pipe
+    /// passes walls and floors.
+    pub crossings: bool,
 }
 
 impl Default for FillOpts {
@@ -59,6 +78,8 @@ impl Default for FillOpts {
             angle: true,
             vents: true,
             cleanouts: true,
+            high_low: true,
+            crossings: true,
         }
     }
 }
@@ -83,6 +104,13 @@ pub struct Fill {
     pub angle_valves: usize,
     pub vents: usize,
     pub cleanouts: usize,
+    /// Air vents at high points, drain cocks at low points.
+    pub air_vents: usize,
+    pub drains: usize,
+    /// Gas: sleeves, thermal shut-offs and fire stopping at passages.
+    pub sleeves: usize,
+    pub thermal: usize,
+    pub seals: usize,
     /// The system takes no proposal, or has no pipes.
     pub unsupported: bool,
 }
@@ -352,8 +380,94 @@ pub fn fill(model: &Model, code: &str, opts: &FillOpts) -> Fill {
         Some(SystemKind::ColdWater) => fill_water(model, g, code, true, opts),
         Some(SystemKind::HotWater) => fill_water(model, g, code, false, opts),
         Some(SystemKind::Sanitary) => fill_sanitary(model, g, code, opts),
+        Some(k @ (SystemKind::HeatingSupply | SystemKind::HeatingReturn | SystemKind::Gas)) => {
+            fill_ends(model, g, k, opts)
+        }
+        Some(
+            SystemKind::CoolingSupply
+            | SystemKind::CoolingReturn
+            | SystemKind::Circulation
+            | SystemKind::FireWater,
+        ) => {
+            let mut g = g;
+            let mut out = Fill::default();
+            if opts.high_low {
+                high_low(&mut g, &mut out);
+            }
+            out.valves = g.added;
+            out
+        }
         _ => unsupported,
     }
+}
+
+/// Heating and gas: the valves at the ends of the pipes, where they
+/// reach what they feed.
+///
+/// Heating (STN EN 12828): a thermostatic valve on the supply into a
+/// radiator and a lockshield on its return; a shut-off on both pipes at
+/// a manifold and at the heat source, and a strainer on the return into
+/// the source.
+///
+/// Gas (STN EN 1775, TPP 704 01): the main shut-off where the pipe
+/// comes in (its lowest free end) and a gas cock before every appliance.
+fn fill_ends(model: &Model, mut g: Graph, kind: SystemKind, opts: &FillOpts) -> Fill {
+    let mut out = Fill::default();
+    let conn = match kind {
+        SystemKind::HeatingSupply => ConnKind::UKP,
+        SystemKind::HeatingReturn => ConnKind::UKS,
+        _ => ConnKind::P,
+    };
+    let conns = connectors_of(model, conn.code());
+    let mut joined = vec![false; g.points.len()];
+    for (p, family) in &conns {
+        let Some(i) = g.end_at(*p) else { continue };
+        joined[i] = true;
+        let radiator = family.is_some_and(|f| fixture::is_heating(f) && !fixture::is_manifold(f));
+        let want: &[&str] = match (kind, radiator, family.is_none()) {
+            (SystemKind::HeatingSupply, true, _) => &["termostaticky"],
+            (SystemKind::HeatingReturn, true, _) => &["spiatocka"],
+            (SystemKind::HeatingReturn, _, true) => &["uzaver", "filter"],
+            (SystemKind::Gas, ..) => &["kohut"],
+            _ => &["uzaver"],
+        };
+        let s = g.adj[i][0];
+        let l = g.segs[s].len();
+        for (n, k) in want.iter().enumerate() {
+            if g.on_seg(s, k) {
+                continue;
+            }
+            g.put_on(s, i, (0.1 + 0.15 * n as f64).min(l / 2.0), k);
+            if radiator {
+                out.angle_valves += 1;
+            } else {
+                out.shut_offs += 1;
+            }
+        }
+    }
+    if kind == SystemKind::Gas {
+        // where the gas comes in: the lowest free end nothing stands at
+        let root = (0..g.points.len())
+            .filter(|&i| g.deg(i) == 1 && !joined[i])
+            .min_by(|&i, &j| g.points[i].z.total_cmp(&g.points[j].z));
+        if let Some(i) = root {
+            if !g.has("hup") {
+                let s = g.adj[i][0];
+                let l = g.segs[s].len();
+                g.put_on(s, i, 0.1_f64.min(l / 2.0), "hup");
+                out.assembly.push("hup");
+            }
+        }
+    }
+    if kind == SystemKind::Gas {
+        if opts.crossings {
+            gas_crossings(model, &mut g, &mut out);
+        }
+    } else if opts.high_low {
+        high_low(&mut g, &mut out);
+    }
+    out.valves = g.added;
+    out
 }
 
 fn fill_water(model: &Model, mut g: Graph, code: &str, cold: bool, opts: &FillOpts) -> Fill {
@@ -543,6 +657,9 @@ fn fill_water(model: &Model, mut g: Graph, code: &str, cold: bool, opts: &FillOp
             g.put_on(x.seg, x.to, d, "rohovy");
             out.angle_valves += 1;
         }
+    }
+    if opts.high_low {
+        high_low(&mut g, &mut out);
     }
     out.valves = g.added;
     out
@@ -743,6 +860,260 @@ fn fill_sanitary(model: &Model, mut g: Graph, code: &str, opts: &FillOpts) -> Fi
     out
 }
 
+/// How much a stretch may rise or fall and still count as level, m.
+const LEVEL: f64 = 0.02;
+
+/// Air vents at the high points of the pipes and drain cocks at the low
+/// points (STN EN 12828, STN EN 806-2): a level run, or a lone bend,
+/// whose every way out falls from it (or rises from it). Runs with an
+/// end on them (a fixture's, a radiator's or the plant's connection,
+/// which vent and drain through it, or an unfinished end) are left.
+fn high_low(g: &mut Graph, out: &mut Fill) {
+    let n = g.points.len();
+    let mut root: Vec<usize> = (0..n).collect();
+    fn find(r: &mut [usize], mut i: usize) -> usize {
+        while r[i] != i {
+            r[i] = r[r[i]];
+            i = r[i];
+        }
+        i
+    }
+    let level = |s: &Seg| s.rise() <= LEVEL;
+    for s in &g.segs {
+        if level(s) {
+            let (a, b) = (find(&mut root, s.at[0]), find(&mut root, s.at[1]));
+            root[a] = b;
+        }
+    }
+    let mut runs: Vec<Vec<usize>> = vec![];
+    let mut of: Vec<Option<usize>> = vec![None; n];
+    for i in 0..n {
+        let r = find(&mut root, i);
+        match of[r] {
+            Some(k) => runs[k].push(i),
+            None => {
+                of[r] = Some(runs.len());
+                runs.push(vec![i]);
+            }
+        }
+    }
+    for run in runs {
+        if run.iter().any(|&i| g.deg(i) == 1) {
+            continue;
+        }
+        let (mut up, mut down) = (0, 0);
+        let mut touching: Vec<usize> = vec![];
+        for &i in &run {
+            for &s in &g.adj[i] {
+                touching.push(s);
+                if level(&g.segs[s]) {
+                    continue;
+                }
+                let o = g.segs[s].other(i);
+                if g.points[o].z > g.points[i].z {
+                    up += 1;
+                } else {
+                    down += 1;
+                }
+            }
+        }
+        let high = match (up, down) {
+            (0, d) if d > 0 => true,
+            (u, 0) if u > 0 => false,
+            _ => continue,
+        };
+        let kind = if high { "odvzdusnenie" } else { "vypustenie" };
+        if touching.iter().any(|&s| g.on_seg(s, kind)) {
+            continue;
+        }
+        let z = |i: &usize| g.points[*i].z;
+        let at = if high {
+            run.iter().copied().max_by(|a, b| z(a).total_cmp(&z(b)))
+        } else {
+            run.iter().copied().min_by(|a, b| z(a).total_cmp(&z(b)))
+        };
+        let Some(at) = at else { continue };
+        // on a level stretch of it where there is one, else on the bend
+        let s = g.adj[at]
+            .iter()
+            .copied()
+            .find(|&s| level(&g.segs[s]))
+            .unwrap_or(g.adj[at][0]);
+        let d = 0.1_f64.min(g.segs[s].len() / 2.0);
+        g.put_on(s, at, d, kind);
+        if high {
+            out.air_vents += 1;
+        } else {
+            out.drains += 1;
+        }
+    }
+}
+
+/// Where a stretch from `a` to `b` (m, in the model) crosses a wall's
+/// centreline in plan within its height: the share along the stretch,
+/// the wall's unit normal.
+pub(crate) fn wall_crossing(
+    model: &Model,
+    w: &crate::Wall,
+    a: DVec3,
+    b: DVec3,
+) -> Option<(f64, glam::DVec2)> {
+    let floor = model.level(w.level).map_or(0.0, |l| l.elevation) + w.base_offset;
+    let (p, r) = (a.truncate(), (b - a).truncate());
+    let (q, s) = (w.start, w.end - w.start);
+    let den = r.perp_dot(s);
+    if den.abs() < 1e-9 || s.length() < 1e-6 {
+        return None;
+    }
+    let t = (q - p).perp_dot(s) / den;
+    let u = (q - p).perp_dot(r) / den;
+    if !(0.0..=1.0).contains(&t) || !(0.0..=1.0).contains(&u) {
+        return None;
+    }
+    let z = a.z + (b.z - a.z) * t;
+    if z < floor || z > floor + w.height {
+        return None;
+    }
+    Some((t, s.normalize().perp()))
+}
+
+/// The room on `level` that `p` stands in, and its fire zone.
+fn room_at<'m>(
+    rooms: &'m [(ElementId, Vec<glam::DVec2>, String)],
+    level: ElementId,
+    levels: &[ElementId],
+    p: glam::DVec2,
+) -> Option<&'m (ElementId, Vec<glam::DVec2>, String)> {
+    rooms
+        .iter()
+        .zip(levels)
+        .find(|(r, l)| **l == level && crate::polygon::contains(&r.1, p))
+        .map(|(r, _)| r)
+}
+
+/// A passage of a stretch: the share along it, the fire zones of the
+/// rooms either side (where there are rooms), between two rooms.
+type Pass = (f64, Option<(Option<String>, Option<String>)>, bool);
+
+/// Gas pipes where they pass walls, floors and ceilings (TPH 03 2012):
+/// a sleeve at each passage (F.4.1, F.7.4), a thermal shut-off on the
+/// side the gas comes from where a wall parts two rooms (F.5.6), fire
+/// stopping where the rooms on either side are of different fire zones
+/// (F.4.3, F.7.6).
+fn gas_crossings(model: &Model, g: &mut Graph, out: &mut Fill) {
+    // the rooms with their outlines and fire zones
+    let mut rooms = vec![];
+    let mut room_levels = vec![];
+    for e in model.iter() {
+        if let ElementKind::Room(r) = &e.kind {
+            if let Some(o) = crate::room::outline(model, e.id) {
+                rooms.push((e.id, o, r.fire_zone.clone()));
+                room_levels.push(r.level);
+            }
+        }
+    }
+    // how far each point is from where the gas comes in
+    let root = (0..g.points.len())
+        .filter(|&i| g.deg(i) == 1)
+        .min_by(|&i, &j| g.points[i].z.total_cmp(&g.points[j].z));
+    let mut dist = vec![f64::MAX; g.points.len()];
+    if let Some(r) = root {
+        dist[r] = 0.0;
+        let mut stack = vec![r];
+        while let Some(i) = stack.pop() {
+            for &s in &g.adj[i] {
+                let o = g.segs[s].other(i);
+                let d = dist[i] + g.segs[s].len();
+                if d < dist[o] {
+                    dist[o] = d;
+                    stack.push(o);
+                }
+            }
+        }
+    }
+    let walls: Vec<&crate::Wall> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) => Some(w),
+            _ => None,
+        })
+        .collect();
+    let floors: Vec<(ElementId, f64)> = {
+        let mut v: Vec<(ElementId, f64)> =
+            model.levels().map(|(e, l)| (e.id, l.elevation)).collect();
+        v.sort_by(|a, b| a.1.total_cmp(&b.1));
+        v.into_iter().skip(1).collect()
+    };
+    // a kind already near a share of a stretch
+    let near = |g: &Graph, s: usize, f: f64, kind: &str, reach: f64| {
+        let sg = &g.segs[s];
+        let whole = g.pipes[sg.pipe].length().max(1e-9);
+        let t = sg.t[0] + (sg.t[1] - sg.t[0]) * f;
+        g.valves
+            .iter()
+            .any(|v| v.0 == sg.pipe && v.2 == kind && (v.1 - t).abs() * whole <= reach)
+    };
+    for s in 0..g.segs.len() {
+        let (a, b) = (g.segs[s].p[0], g.segs[s].p[1]);
+        let len = g.segs[s].len().max(1e-9);
+        let pipe = g.segs[s].pipe;
+        let mut passes: Vec<Pass> = vec![];
+        for w in &walls {
+            let Some((f, nrm)) = wall_crossing(model, w, a, b) else {
+                continue;
+            };
+            let at = a.truncate().lerp(b.truncate(), f);
+            let off = nrm * (w.thickness / 2.0 + 0.05);
+            let side = |p| room_at(&rooms, w.level, &room_levels, p).map(|r| r.2.clone());
+            let (l, r) = (side(at + off), side(at - off));
+            let between = l.is_some() && r.is_some();
+            passes.push((f, Some((l, r)), between));
+        }
+        for (lv, z) in &floors {
+            let (lo, hi) = (a.z.min(b.z), a.z.max(b.z));
+            if lo < *z - 0.01 && hi > *z + 0.01 {
+                let f = (z - a.z) / (b.z - a.z);
+                let at = a.truncate().lerp(b.truncate(), f);
+                let above = room_at(&rooms, *lv, &room_levels, at).map(|r| r.2.clone());
+                // the storey under it: the highest level below
+                let under = model
+                    .levels()
+                    .filter(|(_, l)| l.elevation < *z - 0.01)
+                    .max_by(|x, y| x.1.elevation.total_cmp(&y.1.elevation))
+                    .and_then(|(e, _)| room_at(&rooms, e.id, &room_levels, at))
+                    .map(|r| r.2.clone());
+                passes.push((f, Some((above, under)), false));
+            }
+        }
+        for (f, sides, between) in passes {
+            let sg = &g.segs[s];
+            let t = sg.t[0] + (sg.t[1] - sg.t[0]) * f;
+            if !near(g, s, f, "chranicka", 0.1) {
+                g.put(pipe, t, "chranicka", None);
+                out.sleeves += 1;
+            }
+            if let Some((Some(x), Some(y))) = &sides {
+                if !x.is_empty() && !y.is_empty() && x != y && !near(g, s, f, "ppUtesnenie", 0.1) {
+                    g.put(pipe, t, "ppUtesnenie", None);
+                    out.seals += 1;
+                }
+            }
+            if between {
+                // on the side the gas comes from, a little off the wall
+                let sg = &g.segs[s];
+                let from_a = dist[sg.at[0]] <= dist[sg.at[1]];
+                let back = (0.2 / len).min(f.min(1.0 - f) * 0.9).max(0.0);
+                let fv = if from_a { f - back } else { f + back };
+                if !near(g, s, fv, "tap", 0.5) {
+                    let t = sg.t[0] + (sg.t[1] - sg.t[0]) * fv;
+                    g.put(pipe, t, "tap", None);
+                    out.thermal += 1;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -764,6 +1135,8 @@ mod tests {
                 inner_mm: outer - 2.0,
                 height_mm: None,
                 insulation_mm: 0.0,
+                insulation_set: false,
+                mark: None,
             }),
         )
     }
@@ -778,6 +1151,51 @@ mod tests {
             .0
             .id;
         (doc, level)
+    }
+
+    #[test]
+    fn heating_and_gas_get_the_valves_at_their_ends() {
+        let (mut doc, level) = doc();
+        // a radiator fed by a supply and a return, a gas pipe coming in
+        let sup = place(
+            &mut doc,
+            level,
+            "Doskové vykurovacie teleso",
+            DVec2::new(3.0, 2.0),
+            ConnKind::UKP,
+        );
+        let ret = fixture::connectors(
+            doc.model(),
+            doc.model()
+                .iter()
+                .find(|e| fixture::family_of(doc.model(), e) == Some("Doskové vykurovacie teleso"))
+                .unwrap(),
+        )
+        .into_iter()
+        .find(|c| c.kind == ConnKind::UKS)
+        .unwrap()
+        .at;
+        let far = |p: DVec3| [p.x - 2.0, p.y, p.z];
+        doc.commit(
+            Transaction::new("pipes")
+                .insert(pipe(level, "UKP", far(sup), sup.into(), 16.0))
+                .insert(pipe(level, "UKS", far(ret), ret.into(), 16.0))
+                .insert(pipe(level, "ZP", [0.0, 0.0, 0.5], [0.0, 3.0, 1.0], 22.0)),
+        )
+        .unwrap();
+        let kinds = |code: &str| -> Vec<String> {
+            fill(doc.model(), code, &FillOpts::default())
+                .valves
+                .into_iter()
+                .map(|p| p.valve.kind)
+                .collect()
+        };
+        assert_eq!(kinds("UKP"), ["termostaticky"]);
+        assert_eq!(kinds("UKS"), ["spiatocka"]);
+        // the main shut-off at the lower end, 0.1 m in
+        let gas = fill(doc.model(), "ZP", &FillOpts::default());
+        assert_eq!(gas.assembly, ["hup"]);
+        assert!(gas.valves[0].valve.t < 0.1);
     }
 
     /// A fixture of `family` from the catalogue at `at`, and where its
@@ -984,5 +1402,114 @@ mod tests {
             (vent_dn(75.0), vent_dn(110.0), vent_dn(160.0)),
             (75, 100, 125)
         );
+    }
+
+    #[test]
+    fn a_heating_run_under_the_ceiling_dipping_under_a_lintel_gets_vents_and_a_drain() {
+        let (mut doc, level) = doc();
+        let rad = place(
+            &mut doc,
+            level,
+            "Doskové vykurovacie teleso",
+            DVec2::new(8.0, 2.0),
+            ConnKind::UKP,
+        );
+        let (y, c, u) = (rad.y, 2.6, 2.0);
+        // up from the floor, along the ceiling, down under the lintel and
+        // back up, along the ceiling and down to the radiator
+        let pts = [
+            [1.0, y, 0.15],
+            [1.0, y, c],
+            [3.0, y, c],
+            [3.0, y, u],
+            [4.0, y, u],
+            [4.0, y, c],
+            [rad.x, y, c],
+            [rad.x, y, rad.z],
+        ];
+        let mut tx = Transaction::new("pipes");
+        for w in pts.windows(2) {
+            tx = tx.insert(pipe(level, "UKP", w[0], w[1], 16.0));
+        }
+        doc.commit(tx).unwrap();
+        let f = fill(doc.model(), "UKP", &FillOpts::default());
+        assert_eq!((f.air_vents, f.drains), (2, 1), "{:?}", f.valves);
+        let kinds: Vec<&str> = f.valves.iter().map(|p| p.valve.kind.as_str()).collect();
+        assert!(kinds.contains(&"termostaticky"));
+        // proposed once: run again with them in, nothing more
+        let mut tx = Transaction::new("valves");
+        for p in &f.valves {
+            tx = tx.insert(Element::new("v", ElementKind::Valve(p.valve.clone())));
+        }
+        doc.commit(tx).unwrap();
+        let again = fill(doc.model(), "UKP", &FillOpts::default());
+        assert!(again.valves.is_empty(), "{:?}", again.valves);
+        // and not at all when switched off
+        let off = FillOpts {
+            high_low: false,
+            ..FillOpts::default()
+        };
+        assert_eq!(fill(doc.model(), "UKP", &off).air_vents, 0);
+    }
+
+    #[test]
+    fn gas_through_a_wall_between_rooms_gets_a_sleeve_a_thermal_shut_off_and_fire_stopping() {
+        let (mut doc, level) = doc();
+        // the longest wall of the ground floor, with a drawn room either
+        // side of its middle
+        let wall = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.level == level => Some(w.clone()),
+                _ => None,
+            })
+            .max_by(|a, b| a.start.distance(a.end).total_cmp(&b.start.distance(b.end)))
+            .unwrap();
+        let mid = wall.start.lerp(wall.end, 0.5);
+        let along = (wall.end - wall.start).normalize();
+        let nrm = along.perp();
+        let room = |side: f64| {
+            let near = mid + nrm * side * (wall.thickness / 2.0);
+            let far = mid + nrm * side * (wall.thickness / 2.0 + 2.0);
+            let mut r = crate::room::Room::new(level, mid + nrm * side);
+            r.boundary = vec![near - along, near + along, far + along, far - along];
+            if crate::polygon::signed_area2(&r.boundary) < 0.0 {
+                r.boundary.reverse();
+            }
+            Element::new("room", ElementKind::Room(r))
+        };
+        let (ra, rb) = (room(1.0), room(-1.0));
+        let pair = (ra.id, rb.id);
+        doc.commit(Transaction::new("rooms").insert(ra).insert(rb))
+            .unwrap();
+        let a = mid + nrm * (wall.thickness / 2.0 + 0.6);
+        let b = mid - nrm * (wall.thickness / 2.0 + 0.6);
+        doc.commit(Transaction::new("gas").insert(pipe(
+            level,
+            "ZP",
+            [a.x, a.y, 1.0],
+            [b.x, b.y, 1.0],
+            22.0,
+        )))
+        .unwrap();
+        let f = fill(doc.model(), "ZP", &FillOpts::default());
+        assert_eq!((f.sleeves, f.thermal, f.seals), (1, 1, 0), "{:?}", f.valves);
+        // the shut-off is on the side the gas comes from: before the sleeve
+        let at = |k: &str| f.valves.iter().find(|p| p.valve.kind == k).unwrap().valve.t;
+        assert!(at("tap") < at("chranicka"));
+        // rooms of two fire zones: the passage is fire-stopped too
+        let mut tx = Transaction::new("zones");
+        for (id, z) in [(pair.0, "N1.01"), (pair.1, "N1.02")] {
+            let before = doc.model().get(id).unwrap().clone();
+            let mut after = before.clone();
+            if let ElementKind::Room(r) = &mut after.kind {
+                r.fire_zone = z.into();
+            }
+            tx = tx.replace(before, after);
+        }
+        doc.commit(tx).unwrap();
+        let f = fill(doc.model(), "ZP", &FillOpts::default());
+        assert_eq!(f.seals, 1, "{:?}", f.valves);
     }
 }

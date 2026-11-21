@@ -184,6 +184,10 @@ pub struct Settings {
     pub ifc_body: String,
     /// Temporary dimensions muted in drawings (MU21).
     pub temp_dims_off: bool,
+    /// What temporary dimensions measure walls from (core faces by default).
+    pub temp_ref: creabim_core::walls::WallRef,
+    /// Thin lines on screen (TL): every pen one pixel wide.
+    pub thin_lines: bool,
     /// The kinds of element the 3D view leaves out (grids, annotation,
     /// guides…), from its Visibility settings.
     pub hidden_3d: Vec<creabim_core::Category>,
@@ -197,6 +201,8 @@ pub struct Settings {
     pub guides_hidden: bool,
     /// How the 3D view draws: shaded, with edges, hidden line or wireframe.
     pub render_3d: crate::render3d::RenderMode,
+    /// The 3D view's sun and its shadows.
+    pub sun: crate::sun::Sun,
     /// Width of the Help panel, in points.
     pub help_width: f32,
     /// Which sections of Properties are open, by key, where it differs
@@ -231,6 +237,8 @@ pub struct Settings {
     pub interaction: String,
     /// Edit mode's wires and corner dots, in points.
     pub edit_edge_width: f32,
+    /// Minutes between autosaves while there are changes; 0 is off.
+    pub autosave_minutes: u32,
     pub edit_vertex_size: f32,
     /// The drawings' typeface: a TrueType or OpenType file in place of
     /// the built-in sans; empty looks for Avenir Next Condensed beside
@@ -246,6 +254,7 @@ impl Default for Settings {
             // the approved look (brief 02); anyone's saved theme stays theirs
             theme: "sage".into(),
             language: "sk".into(),
+            autosave_minutes: 5,
             left_width: 264.0,
             right_width: 290.0,
             left_folded: false,
@@ -258,11 +267,14 @@ impl Default for Settings {
             navigation: "creabim".into(),
             ifc_body: "modelled".into(),
             temp_dims_off: false,
+            temp_ref: Default::default(),
+            thin_lines: false,
             hidden_3d: vec![],
             xray: false,
             hidden_colour_3d: false,
             guides_hidden: false,
             render_3d: Default::default(),
+            sun: Default::default(),
             help_width: 400.0,
             props_open: Default::default(),
             tools_tab: 0,
@@ -314,18 +326,95 @@ pub fn settings_dir() -> Option<std::path::PathBuf> {
     Some(base.join("CreaBIM"))
 }
 
+/// The file of the tables kept in the application (the norms' tables
+/// the designer saved once for every project).
+pub fn app_tables_path() -> Option<std::path::PathBuf> {
+    settings_dir().map(|d| d.join("tabulky-noriem.tsv"))
+}
+
+/// Reads the application's tables, if they were saved.
+pub fn load_app_tables() {
+    let tables = app_tables_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|t| creabim_core::fireparams::parse(&t))
+        .unwrap_or_default();
+    creabim_core::fireparams::set_app_tables(tables);
+}
+
+/// The main window, kept so that every file picker is owned by it.
+#[cfg(windows)]
+static MAIN_WINDOW: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+/// Remembers the main window (called every frame), so the system's file
+/// pickers open as its modal dialogs: on top of it, with the app window
+/// disabled meanwhile. A picker without an owner can fall behind the app
+/// window, and so can its "replace the file?" question, while the app
+/// waits on it: nothing could be typed or clicked anymore.
+pub fn remember_main_window(frame: &eframe::Frame) {
+    #[cfg(windows)]
+    {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        if let Ok(h) = frame.window_handle() {
+            if let RawWindowHandle::Win32(w) = h.as_raw() {
+                MAIN_WINDOW.store(w.hwnd.get(), std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = frame;
+}
+
+#[cfg(windows)]
+struct Owner(std::num::NonZeroIsize);
+
+#[cfg(windows)]
+impl raw_window_handle::HasWindowHandle for Owner {
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        let raw = raw_window_handle::RawWindowHandle::Win32(
+            raw_window_handle::Win32WindowHandle::new(self.0),
+        );
+        // the main window lives as long as the app does
+        Ok(unsafe { raw_window_handle::WindowHandle::borrow_raw(raw) })
+    }
+}
+
+#[cfg(windows)]
+impl raw_window_handle::HasDisplayHandle for Owner {
+    fn display_handle(
+        &self,
+    ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
+        Ok(raw_window_handle::DisplayHandle::windows())
+    }
+}
+
+/// The system's file picker, owned by the main window (see
+/// [`remember_main_window`]); use it instead of `rfd::FileDialog::new()`.
+pub fn file_dialog() -> rfd::FileDialog {
+    let d = rfd::FileDialog::new();
+    #[cfg(windows)]
+    {
+        let hwnd = MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = std::num::NonZeroIsize::new(hwnd) {
+            return d.set_parent(&Owner(h));
+        }
+    }
+    d
+}
+
 /// Ask for a file to open with the system's own file picker.
 pub fn pick_open() -> Option<String> {
-    rfd::FileDialog::new()
-        .set_title("Open or link a file")
+    file_dialog()
+        .set_title(crate::i18n::tr("Open or link a file"))
         .add_filter(
-            "Everything CreaBIM reads",
+            crate::i18n::tr("Everything CreaBIM reads"),
             &[
                 "creabim", "json", "ifc", "ifcx", "blend", "FCStd", "fcstd", "FCMat", "fcmat",
                 "gltf", "glb",
             ],
         )
-        .add_filter("CreaBIM project", &["creabim"])
+        .add_filter(crate::i18n::tr("CreaBIM project"), &["creabim"])
         .add_filter("IFC", &["ifc", "ifcx"])
         .add_filter("Blender and FreeCAD (linked)", &["blend", "FCStd", "fcstd"])
         .add_filter(
@@ -359,8 +448,42 @@ pub fn open_folder(dir: &Path) -> Result<(), String> {
 pub fn pick_save(current: &str, title: &str, ext: &str) -> Option<String> {
     // a project not saved yet starts in the folder CreaBIM was started in
     let abs = std::path::absolute(current).unwrap_or_else(|_| current.into());
-    let p = abs.as_path();
-    let mut d = rfd::FileDialog::new()
+    pick_save_in(&abs, &crate::i18n::tr(title), ext)
+}
+
+#[cfg(windows)]
+fn pick_save_in(p: &Path, title: &str, ext: &str) -> Option<String> {
+    win_save::pick(p, title, ext, true)
+}
+
+/// Save as for the project: like [`pick_save`], but on Windows a file that
+/// is there already is not asked about here. [`ask_overwrite`] says when
+/// the app is to ask Replace it? in its own window (Windows' questions
+/// could fall behind the app window, where nothing reached them).
+pub fn pick_save_path(current: &str, title: &str, ext: &str) -> Option<String> {
+    let abs = std::path::absolute(current).unwrap_or_else(|_| current.into());
+    pick_save_path_in(&abs, &crate::i18n::tr(title), ext)
+}
+
+#[cfg(windows)]
+fn pick_save_path_in(p: &Path, title: &str, ext: &str) -> Option<String> {
+    win_save::pick(p, title, ext, false)
+}
+
+#[cfg(not(windows))]
+fn pick_save_path_in(p: &Path, title: &str, ext: &str) -> Option<String> {
+    pick_save_in(p, title, ext)
+}
+
+/// The app asks Replace it? itself for a file picked by
+/// [`pick_save_path`]: on Windows, where the picker doesn't.
+pub fn ask_overwrite(path: &str) -> bool {
+    cfg!(windows) && Path::new(path).exists()
+}
+
+#[cfg(not(windows))]
+fn pick_save_in(p: &Path, title: &str, ext: &str) -> Option<String> {
+    let mut d = file_dialog()
         .set_title(title)
         .add_filter(ext.to_uppercase(), &[ext]);
     if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
@@ -370,6 +493,248 @@ pub fn pick_save(current: &str, title: &str, ext: &str) -> Option<String> {
         d = d.set_directory(dir);
     }
     d.save_file().map(|p| p.display().to_string())
+}
+
+/// Save as on Windows: the system's own picker (IFileSaveDialog), owned by
+/// the main window, but with its "replace the file?" question switched off
+/// (FOS_OVERWRITEPROMPT): that question opened behind the app window and
+/// held everything. CreaBIM asks itself, with a message box kept on top of
+/// every window. (GetSaveFileNameW kept the question on, whatever its
+/// flags said.)
+#[cfg(windows)]
+mod win_save {
+    use std::ffi::c_void;
+    use std::path::Path;
+    use windows_sys::core::{GUID, HRESULT, PCWSTR, PWSTR};
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+    };
+    use windows_sys::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
+    use windows_sys::Win32::UI::Shell::{
+        FileSaveDialog, SHCreateItemFromParsingName, FOS_FORCEFILESYSTEM, FOS_NOCHANGEDIR,
+        FOS_OVERWRITEPROMPT, FOS_PATHMUSTEXIST, SIGDN, SIGDN_FILESYSPATH,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, SetForegroundWindow, IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_SETFOREGROUND,
+        MB_TOPMOST, MB_YESNO,
+    };
+
+    const IID_IFILESAVEDIALOG: GUID = GUID::from_u128(0x84bccd23_5fde_4cdb_aea4_af64b83d78ab);
+    const IID_ISHELLITEM: GUID = GUID::from_u128(0x43826d1e_e718_42ee_bc55_a1e261c37bfe);
+
+    type Release = unsafe extern "system" fn(*mut c_void) -> u32;
+
+    /// IFileSaveDialog's table, as far as it is used (IUnknown, IModalWindow,
+    /// IFileDialog in their order; the slots not called as plain words).
+    #[repr(C)]
+    struct DialogVt {
+        _query_interface: usize,
+        _add_ref: usize,
+        release: Release,
+        show: unsafe extern "system" fn(*mut c_void, HWND) -> HRESULT,
+        set_file_types:
+            unsafe extern "system" fn(*mut c_void, u32, *const COMDLG_FILTERSPEC) -> HRESULT,
+        _set_file_type_index: usize,
+        _get_file_type_index: usize,
+        _advise: usize,
+        _unadvise: usize,
+        set_options: unsafe extern "system" fn(*mut c_void, u32) -> HRESULT,
+        get_options: unsafe extern "system" fn(*mut c_void, *mut u32) -> HRESULT,
+        _set_default_folder: usize,
+        set_folder: unsafe extern "system" fn(*mut c_void, *mut c_void) -> HRESULT,
+        _get_folder: usize,
+        _get_current_selection: usize,
+        set_file_name: unsafe extern "system" fn(*mut c_void, PCWSTR) -> HRESULT,
+        _get_file_name: usize,
+        set_title: unsafe extern "system" fn(*mut c_void, PCWSTR) -> HRESULT,
+        _set_ok_button_label: usize,
+        _set_file_name_label: usize,
+        get_result: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT,
+        _add_place: usize,
+        set_default_extension: unsafe extern "system" fn(*mut c_void, PCWSTR) -> HRESULT,
+    }
+
+    #[repr(C)]
+    struct ItemVt {
+        _query_interface: usize,
+        _add_ref: usize,
+        release: Release,
+        _bind_to_handler: usize,
+        _get_parent: usize,
+        get_display_name: unsafe extern "system" fn(*mut c_void, SIGDN, *mut PWSTR) -> HRESULT,
+    }
+
+    /// A COM object, released when dropped.
+    struct Com<V>(*mut *const V);
+
+    impl<V> Com<V> {
+        fn vt(&self) -> &V {
+            unsafe { &**self.0 }
+        }
+        fn this(&self) -> *mut c_void {
+            self.0.cast()
+        }
+    }
+
+    impl<V> Drop for Com<V> {
+        fn drop(&mut self) {
+            // every table starts with IUnknown's: release is the third slot
+            unsafe {
+                let release: Release = *(*self.0).cast::<Release>().add(2);
+                release(self.this());
+            }
+        }
+    }
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn owner() -> HWND {
+        super::MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed) as _
+    }
+
+    pub fn pick(start: &Path, title: &str, ext: &str, confirm: bool) -> Option<String> {
+        let hwnd = owner();
+        let mut name: String = start
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        let dir = start
+            .parent()
+            .filter(|d| d.is_dir())
+            .map(|d| d.to_path_buf());
+        loop {
+            let picked = unsafe {
+                let init = CoInitializeEx(
+                    std::ptr::null(),
+                    (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+                );
+                let picked = show(hwnd, dir.as_deref(), &name, title, ext);
+                if init >= 0 {
+                    CoUninitialize();
+                }
+                picked
+            }?;
+            if !confirm || !Path::new(&picked).exists() || replace(hwnd, &picked, title) {
+                return Some(picked);
+            }
+            // not replaced: the picker again, on the name chosen
+            name = Path::new(&picked)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+        }
+    }
+
+    unsafe fn show(
+        hwnd: HWND,
+        dir: Option<&Path>,
+        name: &str,
+        title: &str,
+        ext: &str,
+    ) -> Option<String> {
+        unsafe {
+            let mut raw: *mut c_void = std::ptr::null_mut();
+            if CoCreateInstance(
+                &FileSaveDialog,
+                std::ptr::null_mut(),
+                CLSCTX_INPROC_SERVER,
+                &IID_IFILESAVEDIALOG,
+                &mut raw,
+            ) < 0
+                || raw.is_null()
+            {
+                return None;
+            }
+            let d: Com<DialogVt> = Com(raw.cast());
+            let vt = d.vt();
+            let mut opts = 0u32;
+            (vt.get_options)(d.this(), &mut opts);
+            let opts = (opts & !FOS_OVERWRITEPROMPT)
+                | FOS_FORCEFILESYSTEM
+                | FOS_PATHMUSTEXIST
+                | FOS_NOCHANGEDIR;
+            (vt.set_options)(d.this(), opts);
+            let title_w = wide(title);
+            (vt.set_title)(d.this(), title_w.as_ptr());
+            let label = wide(&format!("{} (*.{ext})", ext.to_uppercase()));
+            let spec = wide(&format!("*.{ext}"));
+            let filter = COMDLG_FILTERSPEC {
+                pszName: label.as_ptr(),
+                pszSpec: spec.as_ptr(),
+            };
+            (vt.set_file_types)(d.this(), 1, &filter);
+            let def_ext = wide(ext);
+            (vt.set_default_extension)(d.this(), def_ext.as_ptr());
+            let name_w = wide(name);
+            (vt.set_file_name)(d.this(), name_w.as_ptr());
+            if let Some(dir) = dir {
+                let dir_w = wide(&dir.display().to_string());
+                let mut item: *mut c_void = std::ptr::null_mut();
+                if SHCreateItemFromParsingName(
+                    dir_w.as_ptr(),
+                    std::ptr::null_mut(),
+                    &IID_ISHELLITEM,
+                    &mut item,
+                ) >= 0
+                    && !item.is_null()
+                {
+                    let item: Com<ItemVt> = Com(item.cast());
+                    (vt.set_folder)(d.this(), item.this());
+                }
+            }
+            if !hwnd.is_null() {
+                SetForegroundWindow(hwnd);
+            }
+            if (vt.show)(d.this(), hwnd) < 0 {
+                return None;
+            }
+            let mut res: *mut c_void = std::ptr::null_mut();
+            if (vt.get_result)(d.this(), &mut res) < 0 || res.is_null() {
+                return None;
+            }
+            let item: Com<ItemVt> = Com(res.cast());
+            let mut text: PWSTR = std::ptr::null_mut();
+            if (item.vt().get_display_name)(item.this(), SIGDN_FILESYSPATH, &mut text) < 0
+                || text.is_null()
+            {
+                return None;
+            }
+            let mut len = 0;
+            while *text.add(len) != 0 {
+                len += 1;
+            }
+            let path = String::from_utf16_lossy(std::slice::from_raw_parts(text, len));
+            CoTaskMemFree(text.cast());
+            Some(path)
+        }
+    }
+
+    fn replace(hwnd: HWND, path: &str, title: &str) -> bool {
+        let file = Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path);
+        let text = format!(
+            "{}\n\n{file}",
+            crate::i18n::tr("The file already exists. Replace it?")
+        );
+        let text = wide(&text);
+        let title = wide(title);
+        unsafe {
+            MessageBoxW(
+                hwnd,
+                text.as_ptr(),
+                title.as_ptr(),
+                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST,
+            ) == IDYES
+        }
+    }
 }
 
 #[cfg(test)]

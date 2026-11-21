@@ -31,6 +31,9 @@ fn door_splits_wall_into_two_cut_pieces_with_a_swing() {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
+            no_fire_barriers: false,
         }),
     );
     let d = Element::new(
@@ -46,6 +49,17 @@ fn door_splits_wall_into_two_cut_pieces_with_a_swing() {
             frame: Default::default(),
             flip_hand: false,
             flip_facing: false,
+            no_outer_sill: false,
+            no_inner_sill: false,
+            threshold: false,
+            threshold_material: None,
+            penetration: None,
+            setback: None,
+            reveal: None,
+            division: None,
+            door: None,
+            texts: None,
+            performance: None,
         }),
     );
     let lid = l.id;
@@ -129,6 +143,9 @@ fn a_box_subtracted_from_a_wall_leaves_a_gap_in_the_plan() {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
+            no_fire_barriers: false,
         }),
     );
     // a 1 m box through the wall, 0.5 to 2.5 m up

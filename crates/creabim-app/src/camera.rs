@@ -82,6 +82,9 @@ impl Default for OrbitCamera {
 }
 
 /// Orbiting stops at straight down and straight up.
+/// The closest the eye comes to its target, m: near enough to read a
+/// fitting.
+const MIN_DISTANCE: f32 = 0.03;
 const PITCH_MAX: f32 = std::f32::consts::FRAC_PI_2;
 
 /// Within this of an axis view (top, bottom, or level and square to an
@@ -142,7 +145,14 @@ impl OrbitCamera {
             // the near plane sits well behind the eye so nothing is clipped
             Mat4::orthographic_rh(-h * aspect, h * aspect, -h, h, -2000.0, 4000.0)
         } else {
-            Mat4::perspective_rh(self.fov_y, aspect, 0.05, 2000.0)
+            // the near plane comes in with the eye, so a close look at a
+            // pipe or a fitting is not cut away
+            Mat4::perspective_rh(
+                self.fov_y,
+                aspect,
+                (self.distance * 0.05).clamp(0.002, 0.05),
+                2000.0,
+            )
         };
         proj * view
     }
@@ -195,7 +205,8 @@ impl OrbitCamera {
     }
 
     pub fn zoom(&mut self, steps: f32) {
-        self.distance = (self.distance * (1.0 - steps * 0.1).clamp(0.5, 1.5)).clamp(0.5, 1500.0);
+        self.distance =
+            (self.distance * (1.0 - steps * 0.1).clamp(0.5, 1.5)).clamp(MIN_DISTANCE, 1500.0);
     }
 
     /// Zoom toward the point under the pointer (`ndc`, in normalised
@@ -215,6 +226,15 @@ impl OrbitCamera {
         self.target = at + (self.target - at) * (self.distance / before);
     }
 
+    /// Zoom about `pivot` (the middle of what is selected): the target
+    /// slides toward it as the eye comes in, so the pivot keeps its place
+    /// on screen and ends up in the middle of the view's turning.
+    pub fn zoom_about(&mut self, steps: f32, pivot: Vec3) {
+        let before = self.distance;
+        self.zoom(steps);
+        self.target = pivot + (self.target - pivot) * (self.distance / before);
+    }
+
     /// Fit a bounding box in view, for a viewport of the given aspect ratio.
     pub fn frame(&mut self, lo: Vec3, hi: Vec3, aspect: f32) {
         self.target = (lo + hi) / 2.0;
@@ -228,6 +248,21 @@ impl OrbitCamera {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zooming_about_a_pivot_keeps_it_on_screen_and_comes_close() {
+        let mut c = OrbitCamera::default();
+        let pivot = Vec3::new(3.0, 2.0, 0.4);
+        let at = |c: &OrbitCamera| c.view_proj(1.5).project_point3(pivot).truncate();
+        let before = at(&c);
+        for _ in 0..200 {
+            c.zoom_about(2.0, pivot);
+        }
+        assert!((at(&c) - before).length() < 1e-3);
+        // as close as a fitting needs, the pivot still in front of the eye
+        assert!(c.distance <= 0.031);
+        assert!((c.eye() - pivot).length() < 1.0);
+    }
 
     #[test]
     fn orbiting_round_a_pivot_keeps_it_on_screen() {

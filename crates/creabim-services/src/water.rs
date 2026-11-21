@@ -153,6 +153,23 @@ fn zeta_for_fitting(s: &Settings, net: &Network, fitting: NodeId, child: NodeId)
     if let Some(z) = f.zeta_override {
         return z;
     }
+    // the maker's own fittings, where its manual gives their ζ
+    {
+        use crate::makerzeta::{zeta, Part};
+        let c = &net.nodes[child];
+        let part = match f.fitting {
+            FittingKind::Elbow if f.elbow_angle_deg >= 60.0 => Some(Part::Elbow),
+            FittingKind::Tee if c.is_branch => Some(Part::TeeBranch),
+            FittingKind::Tee => Some(Part::TeeThrough),
+            FittingKind::Transition => Some(Part::Reducer),
+            FittingKind::Coupling => Some(Part::Coupling),
+            _ => None,
+        };
+        let reduced = c.nominal_mm + 0.5 < f.nominal_mm;
+        if let Some(z) = part.and_then(|p| zeta(&c.material, p, c.nominal_mm, reduced)) {
+            return z;
+        }
+    }
     let z = &s.zeta;
     match f.fitting {
         FittingKind::Elbow => {

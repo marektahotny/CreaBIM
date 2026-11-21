@@ -159,7 +159,21 @@ pub fn describe(model: &Model, id: ElementId) -> String {
     let Some(e) = model.get(id) else {
         return "Gone".into();
     };
-    let kind = match &e.kind {
+    let kind = kind_of(model, id);
+    if e.name.is_empty() || e.name == kind {
+        kind.to_string()
+    } else {
+        format!("{kind} · {}", e.name)
+    }
+}
+
+/// What kind of element it is, as the tool that makes it is called
+/// (English; translated where shown): Slab, Ceiling, Room, Wall...
+pub fn kind_of(model: &Model, id: ElementId) -> &'static str {
+    let Some(e) = model.get(id) else {
+        return "Gone";
+    };
+    match &e.kind {
         ElementKind::Opening(o) => match o.kind {
             creabim_core::OpeningKind::Door => "Door",
             creabim_core::OpeningKind::Window => "Window",
@@ -173,12 +187,9 @@ pub fn describe(model: &Model, id: ElementId) -> String {
         },
         ElementKind::Grid(_) => "Grid line",
         ElementKind::Viewport(_) => "View on sheet",
+        ElementKind::RoomSeparator(_) => "Room separator",
+        ElementKind::Cut(_) => "Void",
         k => k.name(),
-    };
-    if e.name.is_empty() || e.name == kind {
-        kind.to_string()
-    } else {
-        format!("{kind} · {}", e.name)
     }
 }
 
@@ -220,14 +231,19 @@ pub fn badge(
                 .inner_margin(egui::Margin::symmetric(6, 2))
                 .show(ui, |ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    let text = egui::RichText::new(format!("{}/{n} · Tab", h.index + 1))
+                    // the count and what Tab is on now: "1/3 · Slab · Tab"
+                    let kind = h
+                        .current()
+                        .map(|id| crate::i18n::tr(kind_of(model, id)))
+                        .unwrap_or_default();
+                    let text = egui::RichText::new(format!("{}/{n} · {kind} · Tab", h.index + 1))
                         .size(11.0)
                         .color(blue);
                     let r = ui
                         .add(egui::Label::new(text).sense(egui::Sense::click()))
-                        .on_hover_text(format!(
+                        .on_hover_text(crate::i18n::tr(&format!(
                             "{n} elements under the pointer. Tab cycles them; click to list them."
-                        ));
+                        )));
                     if r.clicked() {
                         toggle = true;
                     }

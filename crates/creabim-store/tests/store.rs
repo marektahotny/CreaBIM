@@ -429,3 +429,60 @@ fn materials_saved_before_the_library_open_unchanged() {
     );
     assert_eq!((m.roughness, m.metallic, m.opacity), (0.8, 0.0, 1.0));
 }
+
+#[test]
+fn saving_keeps_the_file_it_replaces_as_one_backup() {
+    let (_dir, path) = tmp();
+    let mut doc = Document::from_model(sample_house());
+    creabim_store::save_with_backup(&path, &doc).unwrap();
+    let bak = creabim_store::backup_path(&path);
+    assert!(bak.ends_with("house.bak.creabim"));
+    // nothing to back up the first time
+    assert!(!bak.exists());
+    let before = doc.model().clone();
+    add_level(&mut doc, "Second");
+    creabim_store::save_with_backup(&path, &doc).unwrap();
+    assert_eq!(load(&bak).unwrap().model(), &before);
+    assert_eq!(load(&path).unwrap().model(), doc.model());
+    // a third save replaces the one backup
+    add_level(&mut doc, "Third");
+    let second = load(&path).unwrap().model().clone();
+    creabim_store::save_with_backup(&path, &doc).unwrap();
+    assert_eq!(load(&bak).unwrap().model(), &second);
+    let files = std::fs::read_dir(path.parent().unwrap()).unwrap().count();
+    assert_eq!(files, 2, "the project and its backup, nothing left over");
+}
+
+#[test]
+fn an_autosave_newer_than_its_project_is_found() {
+    let (_dir, path) = tmp();
+    let doc = Document::from_model(sample_house());
+    save(&path, &doc).unwrap();
+    assert!(creabim_store::newer_autosave(&path).is_none());
+    let auto = creabim_store::autosave_path(&path);
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    save(&auto, &doc).unwrap();
+    assert_eq!(creabim_store::newer_autosave(&path), Some(auto));
+}
+
+#[test]
+fn the_project_information_reads_without_the_model() {
+    let (_dir, path) = tmp();
+    let mut doc = Document::from_model(sample_house());
+    save(&path, &doc).unwrap();
+    assert!(creabim_store::read_project_info(&path).unwrap().is_none());
+    let info = creabim_core::ProjectInfo {
+        name: "Rodinný dom".into(),
+        number: "24-017".into(),
+        client: "Ján Novák".into(),
+        ..Default::default()
+    };
+    let tx = creabim_core::set_project(doc.model(), info.clone());
+    doc.commit(tx).unwrap();
+    save(&path, &doc).unwrap();
+    let read = creabim_store::read_project_info(&path).unwrap().unwrap();
+    assert_eq!(
+        (read.name, read.number, read.client),
+        (info.name, info.number, info.client)
+    );
+}

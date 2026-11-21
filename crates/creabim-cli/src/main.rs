@@ -44,6 +44,8 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
   creabim ifc <model> <out.ifc>        export a model to IFC4
   creabim import-ifc <in.ifc> <out>    import an IFC2X3, IFC4 or IFC4X3 file
   creabim ifcx <model> <out.ifcx>      export to IFC5 IFCX JSON (experimental)
+  creabim fragment <model> <out.json>  export the heated envelope as an ISOVER
+                                       Fragment project (docs/fragment-export.md)
   creabim import-ifcx <in.ifcx> <out>  import an IFC5 IFCX file (experimental)
   creabim plan <model> <level-name> <out.svg>
                                        draw a level's plan at 1:100
@@ -72,9 +74,12 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
                                        by hand into a gap or an overlap at a
                                        join; fails if there are any
   creabim rooms-from-notes <model> <out>
+  creabim dimension-openings <model> <plan view> <out>
                                        turn room labels written as notes
                                        (a name over an area) into rooms
   creabim glb <model> <out.glb>        export glTF for Blender, with element ids
+  creabim fbx <model> <out.fbx>        export the model in 3D as FBX for visualisation
+  creabim gbxml <model> <out.xml>      export the energy model (rooms, envelope) as gbXML
   creabim fcstd <model> <out.FCStd>    export a FreeCAD document
   creabim link <model> <file.blend|file.FCStd> <out-model>
                                        bring in (or reload) a linked file's objects";
@@ -200,6 +205,17 @@ fn main() -> ExitCode {
         ["glb", input, out] => load(input).and_then(|m| {
             std::fs::write(out, creabim_exchange::gltf::export_glb(&m)).map_err(|e| e.to_string())
         }),
+        ["fbx", input, out] => load(input).and_then(|m| {
+            let title = project_name(input);
+            std::fs::write(out, creabim_exchange::fbx::export_fbx(&m, &title)).map_err(|e| e.to_string())
+        }),
+        ["gbxml", input, out] => load(input).and_then(|m| {
+            let (text, warnings) = creabim_geom::gbxml::export(&m);
+            for w in &warnings {
+                eprintln!("{w}");
+            }
+            std::fs::write(out, text).map_err(|e| e.to_string())
+        }),
         ["fcstd", input, out] => load(input).and_then(|m| {
             let label = std::path::Path::new(out)
                 .file_stem()
@@ -256,12 +272,15 @@ fn main() -> ExitCode {
                 .iter()
                 .find(|e| e.name == *name && matches!(e.kind, creabim_core::ElementKind::View(_)))
                 .ok_or_else(|| format!("no view named {name:?}"))?;
-            let scale = match &e.kind {
-                creabim_core::ElementKind::View(v) => v.paper_scale(),
-                _ => 100.0,
+            let creabim_core::ElementKind::View(v) = &e.kind else {
+                unreachable!("found as a view")
             };
+            let scale = v.paper_scale();
             let d = creabim_geom::section::view_drawing(&m, e.id).expect("is a view");
-            std::fs::write(out, d.to_svg(scale)).map_err(|e| e.to_string())
+            // as a sheet prints it: the view's styles and overrides
+            let v = creabim_core::styles::resolved(&m, v);
+            let looks = creabim_geom::looks::Looks::for_view(&m, e.id, &v);
+            std::fs::write(out, d.to_svg_looks(scale, &looks)).map_err(|e| e.to_string())
         }),
         ["views", input] => load(input).map(|m| {
             for e in m.iter() {
@@ -356,6 +375,13 @@ fn main() -> ExitCode {
             .and_then(|r| save_import(r, out)),
         ["ifcx", input, out] => load(input)
             .and_then(|m| std::fs::write(out, export_ifcx(&m)).map_err(|e| e.to_string())),
+        ["fragment", input, out] => load(input).and_then(|m| {
+            let (text, warnings) = creabim_geom::fragment::export(&m);
+            for w in &warnings {
+                eprintln!("{w}");
+            }
+            std::fs::write(out, text).map_err(|e| e.to_string())
+        }),
         ["import-ifcx", input, out] => read_text(input)
             .and_then(|text| import_ifcx(&text).map_err(|e| format!("{input}: {e}")))
             .and_then(|r| save_import(r, out)),
@@ -393,6 +419,22 @@ fn main() -> ExitCode {
         ["rooms-from-notes", input, out] => creabim_store::load(input)
             .map_err(|e| format!("{input}: {e}"))
             .and_then(|mut doc| rooms_from_notes(&mut doc, out)),
+        ["dimension-openings", input, view, out] => creabim_store::load(input)
+            .map_err(|e| format!("{input}: {e}"))
+            .and_then(|mut doc| {
+                let id = doc
+                    .model()
+                    .iter()
+                    .find(|e| {
+                        e.name == *view && matches!(e.kind, creabim_core::ElementKind::View(_))
+                    })
+                    .map(|e| e.id)
+                    .ok_or_else(|| format!("no view named {view:?}"))?;
+                let (tx, n) = creabim_geom::autodims::dimension_openings(doc.model(), id);
+                doc.commit(tx).map_err(|e| e.to_string())?;
+                println!("{n} dimension chains added");
+                creabim_store::save(out, &doc).map_err(|e| format!("{out}: {e}"))
+            }),
         _ => Err(USAGE.to_string()),
     };
     match result {

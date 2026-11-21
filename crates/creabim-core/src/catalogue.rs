@@ -16,9 +16,13 @@ use std::f64::consts::{FRAC_PI_2, TAU};
 mod entourage;
 mod fixtures;
 pub mod heat;
+mod jika;
 pub mod medical;
 pub mod radiators;
-mod services;
+pub mod services;
+pub mod site;
+pub mod soakaway;
+pub mod valvebox;
 
 // ---- outlines and solids ----
 
@@ -280,6 +284,49 @@ impl Build {
         self
     }
 
+    /// A closed outline in a utility network's colour (see
+    /// [`SymbolItem::Net`]).
+    fn net(&mut self, points: Vec<DVec2>, code: &str, dashed: bool) -> &mut Self {
+        self.symbol.push(SymbolItem::Net {
+            points,
+            code: code.into(),
+            dashed,
+        });
+        self
+    }
+
+    /// Every part and the symbol moved by `d`.
+    fn shift(&mut self, d: DVec3) -> &mut Self {
+        for p in &mut self.parts {
+            for v in &mut p.mesh.vertices {
+                *v += d;
+            }
+        }
+        let m = d.truncate();
+        for s in &mut self.symbol {
+            match s {
+                SymbolItem::Loop(p) | SymbolItem::Net { points: p, .. } => {
+                    p.iter_mut().for_each(|q| *q += m)
+                }
+                SymbolItem::Line(a, b) => {
+                    *a += m;
+                    *b += m;
+                }
+                SymbolItem::Text { at, .. } => *at += m,
+            }
+        }
+        self
+    }
+
+    /// A short name by the symbol.
+    fn text(&mut self, at: DVec2, text: &str) -> &mut Self {
+        self.symbol.push(SymbolItem::Text {
+            at,
+            text: text.into(),
+        });
+        self
+    }
+
     fn line(&mut self, a: DVec2, b: DVec2) -> &mut Self {
         self.symbol.push(SymbolItem::Line(a, b));
         self
@@ -412,7 +459,7 @@ fn wc() -> CatalogueObject {
         "wc",
         "WC, close-coupled",
         "Floor-standing pan with its cistern, seat height 420 mm",
-        ObjectCategory::Bathroom,
+        ObjectCategory::Toilet,
         ("IfcSanitaryTerminal", "TOILETPAN"),
         Mount::Wall,
     )
@@ -1248,7 +1295,11 @@ pub fn starters() -> Vec<CatalogueObject> {
     .into_iter()
     .chain(services::starters())
     .chain(fixtures::starters())
+    .chain(jika::starters())
     .chain(medical::starters())
+    .chain(valvebox::starters())
+    .chain(site::starters())
+    .chain(soakaway::starters())
     .chain(heat::starters())
     .chain(entourage::starters())
     .collect()

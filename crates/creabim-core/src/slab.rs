@@ -155,8 +155,10 @@ pub(crate) fn loose_ends(segs: &[(DVec2, DVec2)], stub: f64) -> Vec<(DVec2, usiz
 pub(crate) fn room_in_lines(segs: &[(DVec2, DVec2)], p: DVec2) -> Option<Vec<DVec2>> {
     // split every segment where others cross it
     let (nodes, edges) = split(segs);
-    // loose ends bound nothing
-    let edges = prune(nodes.len(), edges);
+    // loose ends bound nothing; in a fixed order, so the outline starts
+    // at the same corner every time (drawings come out the same)
+    let mut edges: Vec<(usize, usize)> = prune(nodes.len(), edges).into_iter().collect();
+    edges.sort_unstable();
     let mut around: Vec<Vec<usize>> = vec![vec![]; nodes.len()];
     for &(u, v) in &edges {
         around[u].push(v);
@@ -298,6 +300,29 @@ pub fn slab_from_sketch(model: &Model, sk: &Sketch, thickness: f64) -> Result<Sl
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_room_outline_starts_at_the_same_corner_every_time() {
+        let sq = |x: f64| {
+            vec![
+                (DVec2::new(x, 0.0), DVec2::new(x + 4.0, 0.0)),
+                (DVec2::new(x + 4.0, 0.0), DVec2::new(x + 4.0, 3.0)),
+                (DVec2::new(x + 4.0, 3.0), DVec2::new(x, 3.0)),
+                (DVec2::new(x, 3.0), DVec2::new(x, 0.0)),
+            ]
+        };
+        let mut segs = sq(0.0);
+        segs.extend(sq(4.0));
+        let first = super::room_in_lines(&segs, DVec2::new(1.0, 1.0)).unwrap();
+        // each hash set is seeded anew: twenty tries would show a change
+        for _ in 0..20 {
+            assert_eq!(
+                super::room_in_lines(&segs, DVec2::new(1.0, 1.0)).unwrap(),
+                first
+            );
+        }
+    }
+
     use super::*;
     use crate::{sample, Element, Level, Transaction, Wall, Workplane};
     use glam::DVec3;
@@ -322,6 +347,9 @@ mod tests {
                 curtain: None,
                 layer_ends: vec![],
                 bulge: 0.0,
+                bearing: None,
+                fire_partial: false,
+                no_fire_barriers: false,
             }),
         )
     }
@@ -522,9 +550,30 @@ pub struct Shaft {
     pub top_level: Option<ElementId>,
     #[serde(default)]
     pub top_offset: f64,
+    /// A penetration (prestup) through one slab, as PilonDesigner sets it
+    /// up: its outline follows its size, its plan shows its mark and label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub penetration: Option<crate::Penetration>,
 }
 
 impl Shaft {
+    /// A penetration through slab `slab` (on its own level), `p` its
+    /// size, centred on `centre`: from a little under the slab's bottom to
+    /// a little over its top.
+    pub fn through_slab(slab: &crate::Slab, p: crate::Penetration, centre: DVec2) -> Self {
+        let mut s = Self::new(slab.level, p.slab_outline(centre), Some(slab.level));
+        s.base_offset = slab.top_offset - slab.thickness - 0.01;
+        s.top_offset = slab.top_offset + 0.01;
+        s.penetration = Some(p);
+        s
+    }
+
+    /// Its centre: the middle of its outline.
+    pub fn centre(&self) -> DVec2 {
+        let n = self.boundary.len().max(1) as f64;
+        self.boundary.iter().copied().sum::<DVec2>() / n
+    }
+
     pub fn new(level: ElementId, boundary: Vec<DVec2>, top_level: Option<ElementId>) -> Self {
         let mut boundary = boundary;
         if crate::polygon::signed_area2(&boundary) < 0.0 {
@@ -536,6 +585,7 @@ impl Shaft {
             base_offset: 0.0,
             top_level,
             top_offset: 0.0,
+            penetration: None,
         }
     }
 
@@ -815,5 +865,37 @@ mod shaft_tests {
                 .unwrap()
                 .contains("overlap")
         );
+    }
+}
+
+/// Whether `slab` is a floor/ceiling slab or a foundation slab: as set, or
+/// else a slab with no other slab under it (one on the ground, the
+/// lowest floor of a basement) is a foundation slab and any other a floor.
+pub fn kind_of(model: &Model, slab: &Slab) -> crate::SlabKind {
+    if let Some(k) = slab.kind {
+        return k;
+    }
+    let top = |s: &Slab| s.top(model.level(s.level).map_or(0.0, |l| l.elevation));
+    let bbox = |s: &Slab| {
+        s.boundary.iter().fold(
+            (DVec2::splat(f64::INFINITY), DVec2::splat(f64::NEG_INFINITY)),
+            |(lo, hi), p| (lo.min(*p), hi.max(*p)),
+        )
+    };
+    let bottom = top(slab) - slab.thickness;
+    let (lo, hi) = bbox(slab);
+    // plans overlapping by more than a few centimetres
+    let under = model.iter().any(|e| match &e.kind {
+        crate::ElementKind::Slab(o) if !std::ptr::eq(o, slab) && top(o) < bottom + 1e-3 => {
+            let (a, b) = bbox(o);
+            let over = hi.min(b) - lo.max(a);
+            over.x > 0.05 && over.y > 0.05
+        }
+        _ => false,
+    });
+    if under {
+        crate::SlabKind::Floor
+    } else {
+        crate::SlabKind::Foundation
     }
 }

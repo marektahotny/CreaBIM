@@ -32,6 +32,17 @@ pub enum ObjectCategory {
     Dining,
     Bedroom,
     Office,
+    /// WC pans, urinals, their flush valves and small hand basins.
+    Toilet,
+    /// Halls, corridors and entrances: wardrobes, shoe cabinets.
+    Hall,
+    /// Boiler, heat pump and other technical rooms.
+    Utility,
+    Laundry,
+    /// Storerooms and pantries.
+    Storage,
+    Garage,
+    Children,
     /// Sockets, switches, distribution boards and detectors.
     Electrical,
     /// Ceiling, wall and recessed lights.
@@ -46,24 +57,35 @@ pub enum ObjectCategory {
     Medical,
     /// Cars, people and other figures that give a drawing its scale.
     Entourage,
+    /// What stands on the plot where the networks come in: the water
+    /// meter shaft, inspection chambers, the meter pillars, soakaways.
+    Site,
     #[default]
     Other,
 }
 
 impl ObjectCategory {
-    pub const ALL: [ObjectCategory; 13] = [
+    pub const ALL: [ObjectCategory; 21] = [
         ObjectCategory::Bathroom,
         ObjectCategory::Kitchen,
         ObjectCategory::Living,
         ObjectCategory::Dining,
         ObjectCategory::Bedroom,
         ObjectCategory::Office,
+        ObjectCategory::Toilet,
+        ObjectCategory::Hall,
+        ObjectCategory::Utility,
+        ObjectCategory::Laundry,
+        ObjectCategory::Storage,
+        ObjectCategory::Garage,
+        ObjectCategory::Children,
         ObjectCategory::Electrical,
         ObjectCategory::Lighting,
         ObjectCategory::Plumbing,
         ObjectCategory::Hvac,
         ObjectCategory::Medical,
         ObjectCategory::Entourage,
+        ObjectCategory::Site,
         ObjectCategory::Other,
     ];
 
@@ -75,12 +97,20 @@ impl ObjectCategory {
             ObjectCategory::Dining => "Dining",
             ObjectCategory::Bedroom => "Bedroom",
             ObjectCategory::Office => "Office",
+            ObjectCategory::Toilet => "WC",
+            ObjectCategory::Hall => "Hall and corridor",
+            ObjectCategory::Utility => "Technical room",
+            ObjectCategory::Laundry => "Laundry",
+            ObjectCategory::Storage => "Storeroom",
+            ObjectCategory::Garage => "Garage",
+            ObjectCategory::Children => "Children's room",
             ObjectCategory::Electrical => "Electrical",
             ObjectCategory::Lighting => "Lighting",
             ObjectCategory::Plumbing => "Plumbing",
             ObjectCategory::Hvac => "Heating and ventilation",
             ObjectCategory::Medical => "Medical gases",
             ObjectCategory::Entourage => "Entourage",
+            ObjectCategory::Site => "Site and connections",
             ObjectCategory::Other => "Other",
         }
     }
@@ -95,6 +125,7 @@ impl ObjectCategory {
                 | ObjectCategory::Plumbing
                 | ObjectCategory::Hvac
                 | ObjectCategory::Medical
+                | ObjectCategory::Site
         )
     }
 
@@ -102,15 +133,23 @@ impl ObjectCategory {
     /// a light, F01 for a sofa (see [`crate::marks::object_marks`]).
     pub fn mark_prefix(self) -> &'static str {
         match self {
-            ObjectCategory::Bathroom => "S",
+            ObjectCategory::Bathroom | ObjectCategory::Toilet => "S",
             ObjectCategory::Kitchen => "K",
             ObjectCategory::Electrical => "E",
             ObjectCategory::Lighting => "L",
             ObjectCategory::Plumbing => "P",
             ObjectCategory::Hvac => "M",
             ObjectCategory::Medical => "G",
+            ObjectCategory::Site => "X",
             _ => "F",
         }
+    }
+
+    /// Whether the catalogue opened at this category lists `other` too:
+    /// a bathroom has its WC as well, so Bathroom (the sanitary fixtures)
+    /// shows the WC category's pans and urinals.
+    pub fn includes(self, other: ObjectCategory) -> bool {
+        self == other || (self == ObjectCategory::Bathroom && other == ObjectCategory::Toilet)
     }
 
     pub fn from_label(s: &str) -> ObjectCategory {
@@ -231,6 +270,34 @@ pub const IFC_CLASSES: &[(&str, &str, &[&str])] = &[
             "POINTSOURCE",
             "DIRECTIONSOURCE",
             "SECURITYLIGHTING",
+            "USERDEFINED",
+            "NOTDEFINED",
+        ],
+    ),
+    (
+        "IfcDistributionChamberElement",
+        "IfcDistributionChamberElementType",
+        &[
+            "FORMEDDUCT",
+            "INSPECTIONCHAMBER",
+            "INSPECTIONPIT",
+            "MANHOLE",
+            "METERCHAMBER",
+            "SUMP",
+            "TRENCH",
+            "VALVECHAMBER",
+            "USERDEFINED",
+            "NOTDEFINED",
+        ],
+    ),
+    (
+        "IfcFlowMeter",
+        "IfcFlowMeterType",
+        &[
+            "ENERGYMETER",
+            "GASMETER",
+            "OILMETER",
+            "WATERMETER",
             "USERDEFINED",
             "NOTDEFINED",
         ],
@@ -523,6 +590,35 @@ pub enum SymbolItem {
     /// A closed outline.
     Loop(Vec<DVec2>),
     Line(DVec2, DVec2),
+    /// A closed outline thin in the colour of a utility network (its
+    /// code, "V" for water: [`crate::utility::NetKind::code`]), dashed
+    /// or solid: what lies in the ground, as a site plan draws it.
+    Net {
+        points: Vec<DVec2>,
+        code: String,
+        dashed: bool,
+    },
+    /// A short name by the symbol ("PS PRŠ").
+    Text {
+        at: DVec2,
+        text: String,
+    },
+}
+
+impl SymbolItem {
+    /// Its lines as segments, whatever it is (a text has none).
+    pub fn segments(&self) -> Vec<(DVec2, DVec2)> {
+        let closed = |p: &[DVec2]| {
+            (0..p.len())
+                .map(|i| (p[i], p[(i + 1) % p.len()]))
+                .collect::<Vec<_>>()
+        };
+        match self {
+            SymbolItem::Loop(p) | SymbolItem::Net { points: p, .. } => closed(p),
+            SymbolItem::Line(a, b) => vec![(*a, *b)],
+            SymbolItem::Text { .. } => vec![],
+        }
+    }
 }
 
 /// One piece of an object, of one material.
@@ -639,6 +735,10 @@ pub struct Object {
     /// towards +y.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub rotation: f64,
+    /// How far its mark in a trade's plan (WC, U, a device's circuit) was
+    /// dragged from where the drawing puts it, m.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<DVec2>,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -652,6 +752,7 @@ impl Object {
             position,
             offset: 0.0,
             rotation,
+            mark: None,
         }
     }
 
