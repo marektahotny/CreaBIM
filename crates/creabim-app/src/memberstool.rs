@@ -46,6 +46,12 @@ pub struct MemberSettings {
     pub door: [f64; 3],
     pub window: [f64; 3],
     pub hole: [f64; 3],
+    /// New penetrations are round (their width the diameter).
+    pub hole_round: bool,
+    /// Where a click puts a new penetration: 0 the wall or else the slab
+    /// under it (the floor, then the ceiling), 1 walls only, 2 the floor
+    /// slab only, 3 the ceiling (the slab of the storey above) only.
+    pub hole_host: u8,
     /// The library profile new columns and beams take; none, their own
     /// square, round or width × depth (MU40).
     pub column_section: Option<String>,
@@ -89,6 +95,8 @@ impl Default for MemberSettings {
             door: [0.8, 1.97, 0.0],
             window: [1.2, 1.3, 0.9],
             hole: [0.3, 0.3, 0.3],
+            hole_round: false,
+            hole_host: 0,
             column_section: None,
             beam_section: None,
             beam_corner: Default::default(),
@@ -1644,7 +1652,18 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             ));
             v
         }
-        Tool::Opening => opening("hole", m.hole, "opening"),
+        Tool::Opening => {
+            let mut v = vec![
+                toggle("hole.auto", "Auto", m.hole_host == 0, "wall-opening", "Into the wall clicked, else the floor slab, else the ceiling slab"),
+                toggle("hole.wall", "Wall", m.hole_host == 1, "wall", "Into walls only"),
+                toggle("hole.floor", "Floor (slab)", m.hole_host == 2, "slab", "Into this storey's floor slab only"),
+                toggle("hole.ceiling", "Ceiling (slab)", m.hole_host == 3, "ceiling", "Into the slab over this storey only: drawn with a dash and two dots, labelled (strop)"),
+                toggle("hole.rect", "Rectangle", !m.hole_round, "square-dashed", "Rectangular penetrations"),
+                toggle("hole.round", "Circle", m.hole_round, "circle-dot", "Round penetrations: the width is the diameter"),
+            ];
+            v.extend(opening("hole", m.hole, "penetration"));
+            v
+        }
         Tool::Column => vec![
             toggle(
                 "square",
@@ -1917,6 +1936,12 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
     let m = &mut state.members;
     match what {
         "beam.onface" => m.beam_on_face = !m.beam_on_face,
+        "hole.auto" => m.hole_host = 0,
+        "hole.wall" => m.hole_host = 1,
+        "hole.floor" => m.hole_host = 2,
+        "hole.ceiling" => m.hole_host = 3,
+        "hole.rect" => m.hole_round = false,
+        "hole.round" => m.hole_round = true,
         "square" => m.set_round(false),
         "round" => m.set_round(true),
         "lshape" => m.stair_turn = !m.stair_turn,

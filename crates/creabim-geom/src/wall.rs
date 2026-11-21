@@ -83,7 +83,26 @@ pub fn wall_layer_mesh_v(
 ) -> TriMesh {
     let len = wall.length();
     let h = wall.height;
-    let cuts: Vec<Cut> = openings.iter().filter_map(|o| Cut::of(o, wall)).collect();
+    // a round penetration cuts its square a little wider, and the
+    // corners between it and the circle are filled back (never thinner
+    // than that, so a section through its middle stays whole)
+    let cuts: Vec<Cut> = openings
+        .iter()
+        .filter_map(|o| {
+            let c = Cut::of(o, wall)?;
+            Some(if crate::opening::cuts_round(o, wall) {
+                let e = crate::opening::ROUND_CLEAR;
+                Cut {
+                    u0: c.u0 - e,
+                    u1: c.u1 + e,
+                    v0: c.v0 - e,
+                    v1: c.v1 + e,
+                }
+            } else {
+                c
+            })
+        })
+        .collect();
 
     let mut us = vec![0.0, len];
     // a curved wall bends at even steps round its arc (MU40)

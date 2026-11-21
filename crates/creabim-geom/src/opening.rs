@@ -560,6 +560,111 @@ pub fn cut_box_mesh(o: &Opening, wall: &Wall, level_z: f64) -> Option<crate::Tri
     Some(crate::scene::slab_mesh(&outline, z0 + c.v1, c.v1 - c.v0))
 }
 
+/// Does a round penetration cut its wall as a cylinder (a straight wall);
+/// in a curved one it stays a rectangular cut.
+pub fn cuts_round(o: &Opening, wall: &Wall) -> bool {
+    o.is_round() && !wall.is_arc()
+}
+
+/// How much wider than its circle a round penetration's square is cut
+/// (its corners filled back), so the fill is never of no thickness.
+pub const ROUND_CLEAR: f64 = 0.005;
+
+/// A shape drawn in a wall's (along, up) plane pushed across it from `s0`
+/// to `s1`, in model coordinates.
+fn across_wall(
+    wall: &Wall,
+    level_z: f64,
+    shape: &[glam::DVec2],
+    s0: f64,
+    s1: f64,
+) -> crate::TriMesh {
+    let mut m = crate::scene::slab_mesh(shape, s1, s1 - s0);
+    let d = wall.direction();
+    let n = glam::DVec2::new(-d.y, d.x);
+    let z0 = level_z + wall.base_offset;
+    let to = |p: [f32; 3], origin: bool| -> [f32; 3] {
+        let (u, v, s) = (p[0] as f64, p[1] as f64, p[2] as f64);
+        let base = if origin {
+            wall.start
+        } else {
+            glam::DVec2::ZERO
+        };
+        let q = base + d * u + n * s;
+        let z = if origin { z0 + v } else { v };
+        [q.x as f32, q.y as f32, z as f32]
+    };
+    for p in m.positions.iter_mut() {
+        *p = to(*p, true);
+    }
+    for p in m.normals.iter_mut() {
+        *p = to(*p, false);
+    }
+    // (along, up, across) is left-handed in the wall: turn the triangles
+    for t in m.indices.chunks_mut(3) {
+        t.swap(1, 2);
+    }
+    m
+}
+
+/// A round penetration is cut as its square, and the four corners
+/// between the square and the circle are filled back: solids across the
+/// wall from `s0` to `s1` (one layer, or the whole wall), so the wall and
+/// its sections show the hole round (PilonDesigner cuts a round prestup
+/// round). Empty for any other opening.
+pub fn round_fillers(o: &Opening, wall: &Wall, level_z: f64, s0: f64, s1: f64) -> crate::TriMesh {
+    let mut out = crate::TriMesh::default();
+    if !cuts_round(o, wall) {
+        return out;
+    }
+    let Some(c) = crate::wall::Cut::of(o, wall) else {
+        return out;
+    };
+    let r = (c.u1 - c.u0) / 2.0;
+    let (uc, vc) = ((c.u0 + c.u1) / 2.0, c.v0 + r);
+    let centre = glam::DVec2::new(uc, vc);
+    const STEPS: usize = 8;
+    for q in 0..4 {
+        // each quarter about the square's sides, split on its diagonals
+        // (a section through the middle never meets a seam): two of the
+        // square's corners and the arc between them
+        let a0 = std::f64::consts::FRAC_PI_4 + q as f64 * std::f64::consts::FRAC_PI_2;
+        let a1 = a0 + std::f64::consts::FRAC_PI_2;
+        let h = r + ROUND_CLEAR;
+        let corner = |a: f64| centre + glam::DVec2::new(a.cos().signum(), a.sin().signum()) * h;
+        let mut shape = vec![corner(a0), corner(a1)];
+        for i in 0..=STEPS {
+            let a = a1 - std::f64::consts::FRAC_PI_2 * i as f64 / STEPS as f64;
+            shape.push(centre + glam::DVec2::new(a.cos(), a.sin()) * r);
+        }
+        // counter-clockwise
+        if creabim_core::polygon::signed_area2(&shape) < 0.0 {
+            shape.reverse();
+        }
+        out.append(&across_wall(wall, level_z, &shape, s0, s1));
+    }
+    out
+}
+
+/// The cylinder of a round penetration, a little past both faces of its
+/// straight wall: how it shows (see-through) and is picked in 3D.
+pub fn round_cutter(o: &Opening, wall: &Wall, level_z: f64) -> Option<crate::TriMesh> {
+    if !cuts_round(o, wall) {
+        return None;
+    }
+    let c = crate::wall::Cut::of(o, wall)?;
+    let r = (c.u1 - c.u0) / 2.0;
+    let (uc, vc) = ((c.u0 + c.u1) / 2.0, c.v0 + r);
+    let circle: Vec<glam::DVec2> = (0..32)
+        .map(|i| {
+            let a = i as f64 / 32.0 * std::f64::consts::TAU;
+            glam::DVec2::new(uc + r * a.cos(), vc + r * a.sin())
+        })
+        .collect();
+    let t = wall.thickness / 2.0;
+    Some(across_wall(wall, level_z, &circle, -t, t))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

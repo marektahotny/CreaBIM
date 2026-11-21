@@ -550,9 +550,30 @@ pub struct Shaft {
     pub top_level: Option<ElementId>,
     #[serde(default)]
     pub top_offset: f64,
+    /// A penetration (prestup) through one slab, as PilonDesigner sets it
+    /// up: its outline follows its size, its plan shows its mark and label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub penetration: Option<crate::Penetration>,
 }
 
 impl Shaft {
+    /// A penetration through slab `slab` (on its own level), `p` its
+    /// size, centred on `centre`: from a little under the slab's bottom to
+    /// a little over its top.
+    pub fn through_slab(slab: &crate::Slab, p: crate::Penetration, centre: DVec2) -> Self {
+        let mut s = Self::new(slab.level, p.slab_outline(centre), Some(slab.level));
+        s.base_offset = slab.top_offset - slab.thickness - 0.01;
+        s.top_offset = slab.top_offset + 0.01;
+        s.penetration = Some(p);
+        s
+    }
+
+    /// Its centre: the middle of its outline.
+    pub fn centre(&self) -> DVec2 {
+        let n = self.boundary.len().max(1) as f64;
+        self.boundary.iter().copied().sum::<DVec2>() / n
+    }
+
     pub fn new(level: ElementId, boundary: Vec<DVec2>, top_level: Option<ElementId>) -> Self {
         let mut boundary = boundary;
         if crate::polygon::signed_area2(&boundary) < 0.0 {
@@ -564,6 +585,7 @@ impl Shaft {
             base_offset: 0.0,
             top_level,
             top_offset: 0.0,
+            penetration: None,
         }
     }
 

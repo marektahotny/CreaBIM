@@ -11165,6 +11165,131 @@ crate::props::row(ui, "File names", |ui| {
                 ElementKind::ElementType(_) => {
                     self.type_properties(ui, id);
                 }
+                ElementKind::Shaft(s) if s.penetration.is_some() => {
+                    // a penetration through a slab, as PilonDesigner sets it up
+                    let centre = s.centre();
+                    let mut p = s.penetration.clone().unwrap_or_default();
+                    let [mut w, mut l] = p.size.unwrap_or([0.3, 0.3]);
+                    let mut changed = false;
+                    if crate::props::choice(
+                        ui,
+                        "Shape",
+                        &mut p.round,
+                        &[
+                            (false, "Rectangle", "Width and length"),
+                            (true, "Circle", "Its width is the diameter"),
+                        ],
+                    ) {
+                        changed = true;
+                        label = "Shape";
+                    }
+                    if num(
+                        ui,
+                        if p.round { "Diameter" } else { "Width" },
+                        &mut w,
+                        0.01,
+                        20.0,
+                    ) {
+                        changed = true;
+                        label = "Size";
+                    }
+                    if !p.round {
+                        if num(ui, "Length", &mut l, 0.01, 20.0) {
+                            changed = true;
+                            label = "Size";
+                        }
+                        let mut rot = p.rot;
+                        let turned = crate::props::row(ui, "Rotation", |ui| {
+                            crate::props::fill(
+                                ui,
+                                egui::DragValue::new(&mut rot).suffix("°").speed(1.0),
+                            )
+                            .on_hover_text(crate::i18n::t("Turned in plan"))
+                            .changed()
+                        });
+                        if turned {
+                            p.rot = rot;
+                            changed = true;
+                            label = "Rotation";
+                        }
+                    }
+                    let mut shown = !p.hole_only;
+                    if crate::props::choice(
+                        ui,
+                        "In plan",
+                        &mut shown,
+                        &[
+                            (true, "Penetration", "Outline, mark and label"),
+                            (false, "Hole", "Just the outline"),
+                        ],
+                    ) {
+                        p.hole_only = !shown;
+                        changed = true;
+                        label = "In plan";
+                    }
+                    if shown {
+                        let mut primary = !p.secondary;
+                        if crate::props::choice(
+                            ui,
+                            "Mark in the slab",
+                            &mut primary,
+                            &[
+                                (
+                                    true,
+                                    "Primary",
+                                    "The outline with a broken line from corner to corner",
+                                ),
+                                (false, "Secondary", "Just the outline"),
+                            ],
+                        ) {
+                            p.secondary = !primary;
+                            changed = true;
+                            label = "Mark in the slab";
+                        }
+                        let mut tag = p.tag.clone().unwrap_or_default();
+                        crate::props::row(ui, "Mark", |ui| {
+                            if crate::props::fill(
+                                ui,
+                                egui::TextEdit::singleline(&mut tag).hint_text("P"),
+                            )
+                            .changed()
+                            {
+                                p.tag = (!tag.trim().is_empty()).then(|| tag.clone());
+                                changed = true;
+                                label = "Mark";
+                            }
+                        });
+                        let mut show_tag = !p.hide_tag;
+                        if crate::props::switch(
+                            ui,
+                            &mut show_tag,
+                            crate::i18n::t("Mark in the label"),
+                        )
+                        .changed()
+                        {
+                            p.hide_tag = !show_tag;
+                            changed = true;
+                            label = "Mark in the label";
+                        }
+                        let mut show_size = !p.hide_size;
+                        if crate::props::switch(
+                            ui,
+                            &mut show_size,
+                            crate::i18n::t("Size in the label"),
+                        )
+                        .changed()
+                        {
+                            p.hide_size = !show_size;
+                            changed = true;
+                            label = "Size in the label";
+                        }
+                    }
+                    if changed {
+                        p.size = Some(if p.round { [w, w] } else { [w, l] });
+                        s.boundary = p.slab_outline(centre);
+                        s.penetration = Some(p);
+                    }
+                }
                 ElementKind::Shaft(s) => {
                     let levels: Vec<(ElementId, String)> = self
                         .doc

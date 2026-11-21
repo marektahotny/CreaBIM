@@ -7,8 +7,13 @@ Tri spôsoby, ako vyrezať otvor v budove, každý sa exportuje do IFC ako otvor
 **Prestup** je otvor v stene bez dverí či okna, pre potrubie, vzduchotechniku alebo prechod. Nastavuje sa ako v PilonDesigneri.
 
 1. Zvoľte nástroj **Prestup** (*Architektúra › Prestup*).
-2. Kliknite na stenu.
-3. Vo *Vlastnostiach* nastavte tvar (obdĺžnik alebo kruh, pri kruhu je šírka priemer), šírku, výšku a spodnú hranu nad podlahou.
+2. V hornej lište zvoľte hostiteľa: *Auto* (stena pod kurzorom, inak doska podlahy, inak stropná doska), *Stena*, *Podlaha* (doska tohto podlažia) alebo *Strop* (doska podlažia nad ním), a tvar *Obdĺžnik* alebo *Kruh*.
+3. Kliknite na stenu alebo do dosky.
+4. Vo *Vlastnostiach* upravte rozmer (pri kruhu je šírka priemer), v stene spodnú hranu nad podlahou, v doske dĺžku a otočenie.
+
+Kruhový prestup sa v 3D aj v reze vyreže kruhovo.
+
+**Prestup v doske** sa kreslí obrysom a značkou: *primárna* je obrys s lomenou čiarou z ľavého dolného rohu k bodu pri ľavom hornom rohu a do pravého horného rohu (pri kruhu medzi bodmi obvodu pod 225° a 45°), *sekundárna* je len obrys. Popis pod obrysom: „P 300×200“ alebo „P Ø150“. V doske podlahy je plnou tenkou čiarou, v stropnej doske (nad rovinou rezu) tenkou čiarou s čiarkou a dvoma bodkami a popis má doplnok „(strop)“.
 
 V pôdoryse sa prestup kreslí obrysom cez hrúbku steny, krížikom a popisom za lícom steny, napr. „P 300×200 sp. 900“ alebo „P Ø150 sp. 1 050“. Prestup, ktorý pretína rovina rezu, má plné tenké čiary; prestup nad rovinou rezu tenkú čiaru s čiarkou a dvoma bodkami, pod rovinou rezu tenkú čiarkovanú. Vo *Vlastnostiach* zvolíte *V pôdoryse: Otvor* (len obrys), označenie (predvolene P) a či popis ukáže označenie a rozmer. Otvor až po podlahu vysoký aspoň 1,8 m sa kreslí ako prechod, len medzerou v stene.
 

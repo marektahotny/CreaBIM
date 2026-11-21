@@ -212,7 +212,7 @@ impl Tool {
             Tool::Wall => "Click to start, click again to place each wall. Esc or right-click ends the chain. Shift keeps it orthogonal.",
             Tool::Door => "Click on a wall to place a door.",
             Tool::Window => "Click on a wall to place a window.",
-            Tool::Opening => "Click on a wall for a penetration through it: drawn with its outline, a cross and its label (P 300×300 sp. 300). Set its shape, size and bottom edge in Properties.",
+            Tool::Opening => "Click on a wall for a penetration through it (outline, cross, label P 300×300 sp. 300), or on a floor or ceiling slab for one through the slab (outline, broken line from corner to corner, label P 300×300). Pick the host and the shape in the top bar, the size in Properties.",
             Tool::Shaft => "Draw the shaft's outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). It runs from this level to the one above, cutting every slab and roof in between.",
             Tool::Slab => "Click the slab's corners, then the first again or Enter. A draws arcs, L lines; Esc or right-click takes back a point, right-click again leaves. 1–4: Polygon, Rectangle, Fill room, From sketch.",
             Tool::Mass => "Click to place a freeform mass you can then edit like a mesh.",
@@ -3008,7 +3008,9 @@ fn show_pane(
                     crate::ghost::draw(&painter, &|p| Some(xf.to_screen(p.truncate())), &g, accent);
                     state.ghost_now = Some((state.pane_now, g));
                 }
-                None if matches!(tool, Tool::Door | Tool::Window | Tool::Opening) => {
+                None if matches!(tool, Tool::Door | Tool::Window)
+                    || (tool == Tool::Opening && state.members.hole_host == 1) =>
+                {
                     if let Some(at) = response.hover_pos() {
                         let look =
                             crate::handles::PillLook::of(&crate::theme::Palette::of(ui.ctx()));
@@ -8879,6 +8881,12 @@ fn place_opening(
             best = Some((d, e.id, u, w.length()));
         }
     }
+    if tool == Tool::Opening {
+        let host = state.members.hole_host;
+        if host >= 2 || (host == 0 && best.is_none()) {
+            return place_slab_penetration(doc, level, p, state, selection);
+        }
+    }
     let Some((_, host, u, len)) = best else {
         return Ok(());
     };
@@ -8937,6 +8945,13 @@ fn place_opening(
     // centred on the click, as wide as its type makes it
     let typed = e.of_type.is_some();
     if let ElementKind::Opening(o) = &mut e.kind {
+        if kind == OpeningKind::Hole && state.members.hole_round {
+            o.penetration = Some(creabim_core::Penetration {
+                round: true,
+                ..Default::default()
+            });
+            o.height = o.width;
+        }
         if !typed {
             o.door = leaf;
         }
@@ -8962,6 +8977,60 @@ fn place_opening(
         }
     }
     doc.commit(tx)
+}
+
+/// The Penetration tool off a wall: a penetration through the floor slab
+/// of `level` under `p`, else (or, set so, only) through the slab of the
+/// storey over it, the ceiling (PilonDesigner's host Auto, Floor, Ceiling).
+fn place_slab_penetration(
+    doc: &mut Document,
+    level: ElementId,
+    p: DVec2,
+    state: &PlanState,
+    selection: &mut Selection,
+) -> Result<(), creabim_core::ModelError> {
+    let m = doc.model();
+    let host = state.members.hole_host;
+    let here = m.level(level).map_or(0.0, |l| l.elevation);
+    let above = m
+        .levels()
+        .map(|(e, l)| (e.id, l.elevation))
+        .filter(|(_, z)| *z > here + 1e-6)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|x| x.0);
+    let slab_at = |lv: ElementId| {
+        m.iter().find_map(|e| match &e.kind {
+            ElementKind::Slab(s)
+                if s.level == lv && creabim_core::polygon::contains(&s.outline(), p) =>
+            {
+                Some(s.clone())
+            }
+            _ => None,
+        })
+    };
+    let slab = match host {
+        2 => slab_at(level),
+        3 => above.and_then(slab_at),
+        _ => slab_at(level).or_else(|| above.and_then(slab_at)),
+    };
+    let Some(slab) = slab else {
+        return Ok(());
+    };
+    let mm = &state.members;
+    let size = if mm.hole_round {
+        [mm.hole[0], mm.hole[0]]
+    } else {
+        [mm.hole[0], mm.hole[1]]
+    };
+    let pen = creabim_core::Penetration {
+        round: mm.hole_round,
+        size: Some(size),
+        ..Default::default()
+    };
+    let shaft = creabim_core::Shaft::through_slab(&slab, pen, p);
+    let e = Element::new("Penetration", ElementKind::Shaft(shaft));
+    selection.only(e.id);
+    doc.commit(Transaction::new("Place penetration").insert(e))
 }
 
 /// The pane behaviour for a view.
@@ -10143,6 +10212,84 @@ mod tests {
                 .any(|i| matches!(i, PlanItem::Text { id: x, text, .. }
                 if x == id && text.starts_with("P 300×300 sp. "))));
         }
+    }
+
+    /// The Penetration tool off a wall goes into the floor slab, or (set
+    /// so) the ceiling slab over the storey: PilonDesigner's marks, solid
+    /// in the floor, a dash and two dots and "(strop)" in the ceiling.
+    #[test]
+    fn a_penetration_goes_into_the_floor_or_the_ceiling_slab() {
+        let m = creabim_core::starter::starter_house();
+        let mut levels: Vec<(ElementId, f64)> =
+            m.levels().map(|(e, l)| (e.id, l.elevation)).collect();
+        levels.sort_by(|a, b| a.1.total_cmp(&b.1));
+        // the lowest level with a slab and a level over it with one too
+        let slab_on = |lv: ElementId| {
+            m.iter().find_map(|e| match &e.kind {
+                ElementKind::Slab(s) if s.level == lv => Some(s.clone()),
+                _ => None,
+            })
+        };
+        let (level, slab, up) = levels
+            .windows(2)
+            .find_map(|w| Some((w[0].0, slab_on(w[0].0)?, slab_on(w[1].0)?)))
+            .expect("two storeys with slabs");
+        // a point inside both slabs, away from walls
+        let o = slab.outline();
+        let c = o.iter().copied().sum::<DVec2>() / o.len() as f64;
+        assert!(creabim_core::polygon::contains(&up.outline(), c));
+        let mut doc = Document::from_model(m);
+        let mut state = PlanState::default();
+        state.members.hole_host = 2;
+        let mut sel = Selection::default();
+        place_slab_penetration(&mut doc, level, c, &state, &mut sel).unwrap();
+        let floor = sel.active.unwrap();
+        state.members.hole_host = 3;
+        state.members.hole_round = true;
+        place_slab_penetration(&mut doc, level, c + DVec2::new(0.6, 0.0), &state, &mut sel)
+            .unwrap();
+        let ceiling = sel.active.unwrap();
+        assert_ne!(floor, ceiling);
+        let m = doc.model();
+        let view = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level) && !v.ceiling_plan)
+            })
+            .unwrap()
+            .id;
+        let items = creabim_geom::section::view_drawing(m, view).unwrap().items;
+        use creabim_geom::plan::Pen;
+        let lines = |id: ElementId, pen: Pen| {
+            items
+                .iter()
+                .filter(
+                    |i| matches!(i, PlanItem::Line { id: x, pen: p, .. } if *x == id && *p == pen),
+                )
+                .count()
+        };
+        // the floor's: 4 sides and the broken line's 2 pieces
+        assert_eq!(lines(floor, Pen::Symbol), 6);
+        // the ceiling's: a circle of 32 and the 2 pieces, over the cut
+        assert_eq!(lines(ceiling, Pen::Overhead), 34);
+        let text = |id: ElementId| {
+            items.iter().find_map(|i| match i {
+                PlanItem::Text { id: x, text, .. } if *x == id => Some(text.clone()),
+                _ => None,
+            })
+        };
+        assert_eq!(text(floor).as_deref(), Some("P 300×300"));
+        assert_eq!(text(ceiling).as_deref(), Some("P Ø300 (strop)"));
+        // and they cut their slabs
+        let cut = |id: ElementId| {
+            let ElementKind::Shaft(s) = &m.get(id).unwrap().kind else {
+                panic!()
+            };
+            creabim_core::slab::cut_by_shaft(m, s).len()
+        };
+        assert_eq!(cut(floor), 1);
+        assert_eq!(cut(ceiling), 1);
     }
 
     /// Alt+click picks up an element's parameters (George 2026-11-20):

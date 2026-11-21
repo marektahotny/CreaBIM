@@ -118,6 +118,27 @@ fn layer_items(
                     (b, m)
                 })
                 .collect();
+            // a round penetration: its square's corners filled back, each
+            // layer's a solid of its own beside the layer's (sections
+            // slice each solid on its own)
+            let fillers: Vec<(assembly::Band, TriMesh)> = parts
+                .iter()
+                .map(|(b, _)| {
+                    let mut m = TriMesh::default();
+                    for o in &owned {
+                        m.append(&crate::opening::round_fillers(
+                            o,
+                            w,
+                            level.elevation,
+                            b.s0,
+                            b.s1,
+                        ));
+                    }
+                    (*b, m)
+                })
+                .filter(|(_, m)| !m.is_empty())
+                .collect();
+            parts.extend(fillers);
             // each layer's reveals are part of its solid: one solid a layer
             for (b, m) in reveal_wrap_parts(w, a, &openings, level.elevation) {
                 if let Some((_, mesh)) = parts.iter_mut().find(|(p, _)| p.index == b.index) {
@@ -526,10 +547,25 @@ fn build_scene_unjoined(
                 let openings: Vec<&Opening> = owned.iter().collect();
                 let ends = joins.get(&e.id).cloned().unwrap_or_default();
                 let top = creabim_core::walls::top_profile(model, w);
-                (
-                    wall_mesh(w, level.elevation, &openings, &ends, top.as_ref()),
-                    [0.86, 0.84, 0.80],
-                )
+                let mesh = wall_mesh(w, level.elevation, &openings, &ends, top.as_ref());
+                // a round penetration: its square's corners filled back, a
+                // solid of its own (sections slice each solid on its own)
+                let t = w.thickness / 2.0;
+                for o in &owned {
+                    let fill = crate::opening::round_fillers(o, w, level.elevation, -t, t);
+                    if !fill.is_empty() {
+                        out.push(SceneItem {
+                            id: e.id,
+                            mesh: fill,
+                            color: [0.86, 0.84, 0.80],
+                            surface: PLAIN_SURFACE,
+                            ghost: false,
+                            layer: None,
+                            finish: None,
+                        });
+                    }
+                }
+                (mesh, [0.86, 0.84, 0.80])
             }
             ElementKind::Slab(s) => {
                 let Some(level) = model.level(s.level) else {
@@ -604,7 +640,9 @@ fn build_scene_unjoined(
                 // a bare hole has nothing in it: a see-through box shows
                 // it in 3D and lets it be clicked (MU18)
                 if o.kind == creabim_core::OpeningKind::Hole {
-                    if let Some(mesh) = crate::opening::cut_box_mesh(o, w, level.elevation) {
+                    let shown = crate::opening::round_cutter(o, w, level.elevation)
+                        .or_else(|| crate::opening::cut_box_mesh(o, w, level.elevation));
+                    if let Some(mesh) = shown {
                         out.push(SceneItem {
                             id: e.id,
                             mesh,

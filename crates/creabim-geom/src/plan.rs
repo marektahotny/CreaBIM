@@ -1474,7 +1474,20 @@ pub fn plan_view_with(
                         );
                     }
                     let here = model.level(level).map_or(0.0, |l| l.elevation);
+                    // a penetration draws its own mark
+                    let pens: Vec<&Vec<DVec2>> = model
+                        .iter()
+                        .filter_map(|x| match &x.kind {
+                            ElementKind::Shaft(sh) if sh.penetration.is_some() => {
+                                Some(&sh.boundary)
+                            }
+                            _ => None,
+                        })
+                        .collect();
                     for h in &holes {
+                        if pens.contains(&h) {
+                            continue;
+                        }
                         if stair_arrives_in(model, here, h) {
                             items.push(PlanItem::Polygon {
                                 id: e.id,
@@ -1566,6 +1579,35 @@ pub fn plan_view_with(
                         pen: Pen::Cut,
                         points: piece,
                     });
+                }
+            }
+            ElementKind::Shaft(sh) if sh.penetration.is_some() => {
+                // a penetration through a slab (PilonDesigner's prestup):
+                // in its own floor, thin solid; in the slab over this
+                // storey (the ceiling), over the cut: dash and two dots
+                let Some(pen) = slab_penetration_pen(model, sh, level) else {
+                    continue;
+                };
+                let p = sh.penetration.as_ref().unwrap();
+                let n = sh.boundary.len();
+                for i in 0..n {
+                    items.push(PlanItem::Line {
+                        id: e.id,
+                        pen,
+                        a: sh.boundary[i],
+                        b: sh.boundary[(i + 1) % n],
+                    });
+                }
+                if !p.hole_only && !p.secondary {
+                    let m = p.slab_mark(sh.centre());
+                    for w in m.windows(2) {
+                        items.push(PlanItem::Line {
+                            id: e.id,
+                            pen,
+                            a: w[0],
+                            b: w[1],
+                        });
+                    }
                 }
             }
             ElementKind::Shaft(sh) => {
@@ -1851,6 +1893,26 @@ pub fn storey_cut(model: &Model, level: ElementId, cut_height: f64) -> (ElementI
         })
 }
 
+/// How a plan of `level` draws a penetration through a slab: thin solid
+/// in its own level's floor, a dash and two dots in the slab of the level
+/// over it (the ceiling, above the cut); none in the other plans.
+pub fn slab_penetration_pen(
+    model: &Model,
+    sh: &creabim_core::Shaft,
+    level: ElementId,
+) -> Option<Pen> {
+    if sh.level == level {
+        return Some(Pen::Symbol);
+    }
+    let here = model.level(level)?.elevation;
+    let above = model
+        .levels()
+        .map(|(e, l)| (e.id, l.elevation))
+        .filter(|(_, z)| *z > here + 1e-6)
+        .min_by(|a, b| a.1.total_cmp(&b.1))?;
+    (above.0 == sh.level).then_some(Pen::Overhead)
+}
+
 /// The labels of the penetrations through the walls a plan of `level`
 /// cuts ("P 300×200 sp. 900"), beside the wall's left face, at the
 /// paper size of a drawing of `mm` metres per paper millimetre.
@@ -1864,6 +1926,35 @@ pub fn penetration_labels(
     const SIZE: f64 = 2.0;
     let mut out = vec![];
     for e in model.iter() {
+        // through a slab: under its outline, "(strop)" when in the ceiling
+        if let ElementKind::Shaft(sh) = &e.kind {
+            let Some(p) = sh.penetration.as_ref().filter(|p| !p.hole_only) else {
+                continue;
+            };
+            let Some(pen) = slab_penetration_pen(model, sh, level) else {
+                continue;
+            };
+            let mut text = p.slab_label();
+            if pen == Pen::Overhead {
+                text = format!("{text} (strop)").trim().to_string();
+            }
+            if text.is_empty() {
+                continue;
+            }
+            let c = sh.centre();
+            let low = sh.boundary.iter().map(|q| q.y).fold(f64::MAX, f64::min);
+            out.push(PlanItem::Text {
+                id: e.id,
+                at: DVec2::new(c.x, low - 1.5 * mm - SIZE * 0.6 * mm),
+                text,
+                size: SIZE,
+                align: Anchor::Middle,
+                mm,
+                rgb: None,
+                bold: false,
+            });
+            continue;
+        }
         let ElementKind::Opening(o) = &e.kind else {
             continue;
         };

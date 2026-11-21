@@ -1749,6 +1749,104 @@ pub struct Penetration {
     pub hide_tag: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub hide_size: bool,
+    /// In a slab: its secondary mark, just the outline, instead of the
+    /// primary one, the outline with a broken line from corner to corner.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub secondary: bool,
+    /// In a slab: its width and length (a circle's diameter twice), and
+    /// how far a rectangle is turned, in degrees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub rot: f64,
+}
+
+impl Penetration {
+    /// Its label in a slab: "P 300×200", "P Ø150" (sizes in mm).
+    pub fn slab_label(&self) -> String {
+        let [w, l] = self.size.unwrap_or([0.3, 0.3]);
+        let size = if self.round {
+            format!("Ø{}", mm_spaced(w))
+        } else {
+            format!("{}×{}", mm_spaced(w), mm_spaced(l))
+        };
+        let mut parts = vec![];
+        if !self.hide_tag {
+            parts.push(
+                self.tag
+                    .clone()
+                    .filter(|t| !t.trim().is_empty())
+                    .unwrap_or_else(|| "P".into()),
+            );
+        }
+        if !self.hide_size {
+            parts.push(size);
+        }
+        parts.join(" ")
+    }
+
+    /// Its outline in a slab round `centre`: the rectangle turned `rot`,
+    /// or the circle as 32 sides, counter-clockwise.
+    pub fn slab_outline(&self, centre: glam::DVec2) -> Vec<glam::DVec2> {
+        let [w, l] = self.size.unwrap_or([0.3, 0.3]);
+        if self.round {
+            let r = w / 2.0;
+            return (0..32)
+                .map(|i| {
+                    let a = i as f64 / 32.0 * std::f64::consts::TAU;
+                    centre + glam::DVec2::new(a.cos(), a.sin()) * r
+                })
+                .collect();
+        }
+        let t = glam::DVec2::from_angle(self.rot.to_radians());
+        [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+            .iter()
+            .map(|(x, y)| centre + t.rotate(glam::DVec2::new(x * w / 2.0, y * l / 2.0)))
+            .collect()
+    }
+
+    /// Its primary mark in a slab (PilonDesigner's penSlabMark): a
+    /// broken line from the lower left corner to a point by the upper
+    /// left one and on to the upper right corner (on a circle, between
+    /// the points at 225° and 45°).
+    pub fn slab_mark(&self, centre: glam::DVec2) -> Vec<glam::DVec2> {
+        let [w, l] = self.size.unwrap_or([0.3, 0.3]);
+        let hw = w / 2.0;
+        let hh = if self.round { w / 2.0 } else { l / 2.0 };
+        let d = if self.round {
+            std::f64::consts::FRAC_1_SQRT_2
+        } else {
+            1.0
+        };
+        let local = [
+            glam::DVec2::new(-hw * d, -hh * d),
+            glam::DVec2::new(-hw + 0.32 * hw, hh - 0.14 * hh),
+            glam::DVec2::new(hw * d, hh * d),
+        ];
+        let t = glam::DVec2::from_angle(if self.round {
+            0.0
+        } else {
+            self.rot.to_radians()
+        });
+        local.iter().map(|p| centre + t.rotate(*p)).collect()
+    }
+}
+
+/// Millimetres with their thousands spaced, as Slovak drawings write them.
+fn mm_spaced(v: f64) -> String {
+    let n = (v * 1000.0).round() as i64;
+    let d = n.abs().to_string();
+    let mut out = String::new();
+    for (i, c) in d.chars().enumerate() {
+        if i > 0 && (d.len() - i) % 3 == 0 {
+            out.push(' ');
+        }
+        out.push(c);
+    }
+    if n < 0 {
+        out.insert(0, '-');
+    }
+    out
 }
 
 /// How a field of a window or door opens. Left and right are seen from
@@ -1923,22 +2021,7 @@ impl Opening {
     /// "P 300×200 sp. 900", "P Ø150 sp. 1 050" (sizes in mm, the
     /// bottom edge above the floor).
     pub fn penetration_label(&self, floor_sill: f64) -> String {
-        // thousands spaced, as Slovak drawings write them
-        let mm = |v: f64| {
-            let n = (v * 1000.0).round() as i64;
-            let d = n.abs().to_string();
-            let mut out = String::new();
-            for (i, c) in d.chars().enumerate() {
-                if i > 0 && (d.len() - i) % 3 == 0 {
-                    out.push(' ');
-                }
-                out.push(c);
-            }
-            if n < 0 {
-                out.insert(0, '-');
-            }
-            out
-        };
+        let mm = mm_spaced;
         let p = self.penetration.clone().unwrap_or_default();
         let size = if p.round {
             format!("Ø{}", mm(self.width))
