@@ -13370,6 +13370,11 @@ impl CreaBimApp {
                 let id = self.doc.model().iter().find(|e| e.name == a).map(|e| e.id);
                 self.open_assemblies(id);
             }
+            // the materials window open on a material of that name
+            if let Ok(a) = std::env::var("CREABIM_SHOT_MATERIAL") {
+                let id = self.doc.model().iter().find(|e| e.name == a).map(|e| e.id);
+                self.open_materials(id);
+            }
             // where it looks: "x,y,pixels per metre"
             if let (Some(id), Ok(cam)) = (id, std::env::var("CREABIM_SHOT_CAM")) {
                 let v: Vec<f64> = cam

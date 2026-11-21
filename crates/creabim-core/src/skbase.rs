@@ -29,7 +29,11 @@ struct BaseMaterial {
     name: String,
     category: String,
     lambda: f64,
-    density: f64,
+    /// kg/m³; none when the maker's sheet doesn't print it (the system
+    /// boards of underfloor heating).
+    #[serde(default)]
+    density: Option<f64>,
+    #[serde(default)]
     fire: String,
     color: String,
     #[serde(default)]
@@ -157,6 +161,12 @@ fn base() -> Base {
     b.walls.extend(more.walls);
     b.floors.extend(more.floors);
     b.roofs.extend(more.roofs);
+    // the system boards of underfloor heating by HERZ and Wavin, with a
+    // floor on the ground for each (George 2026-11-21)
+    let ufh: Base = serde_json::from_str(include_str!("../data/sk-ufh-boards.json"))
+        .expect("sk-ufh-boards.json");
+    b.materials.extend(ufh.materials);
+    b.floors.extend(ufh.floors);
     // a block's fire resistance and an insulation's reaction to fire only
     // as a maker's document gives them
     let fire = fire_data();
@@ -299,8 +309,10 @@ fn kind_of_before(m: &BaseMaterial) -> (&'static str, Hatch) {
         ("insulation", Hatch::Cross)
     } else if c.starts_with("Omietky") {
         ("plaster", Hatch::Solid)
+    } else if c.starts_with("Systémové dosky") {
+        ("system-board", Hatch::Insulation)
     } else if c.starts_with("Sadrokartón") {
-        if m.id == "sdk" {
+        if m.id == "sdk" || m.id.starts_with("fermacell") {
             ("gypsum", Hatch::Solid)
         } else {
             ("wood", Hatch::Timber)
@@ -470,7 +482,7 @@ fn material(m: &BaseMaterial) -> Material {
         roughness: if category == "glass" { 0.1 } else { 0.8 },
         opacity: if category == "glass" { 0.35 } else { 1.0 },
         lambda: Some(m.lambda),
-        density: Some(m.density),
+        density: m.density,
         fire: m.fire.clone(),
         ..Material::default()
     }
@@ -492,7 +504,7 @@ fn function(l: &BaseLayer, first: bool, category: &str, screed: bool) -> LayerFu
         LayerFunction::Substrate
     } else {
         match category {
-            "insulation" => LayerFunction::Insulation,
+            "insulation" | "system-board" => LayerFunction::Insulation,
             "membrane" => LayerFunction::Membrane,
             _ => LayerFunction::Finish,
         }
@@ -651,7 +663,7 @@ mod tests {
         doc.commit(add_base(doc.model())).unwrap();
         let m = doc.model();
         let (materials, walls, floors, roofs) = counts();
-        assert_eq!((materials, walls, floors, roofs), (79, 34, 4, 3));
+        assert_eq!((materials, walls, floors, roofs), (89, 34, 13, 3));
         assert_eq!(crate::library::materials(m).len(), materials);
         assert_eq!(assembly::assemblies(m).len(), walls + floors + roofs);
         assert_eq!(types::types(m).len(), walls + floors + roofs);
@@ -858,6 +870,39 @@ mod fire_tests {
             .find(|(_, n, _)| *n == "Obvodová – tehla 300 + EPS 150")
             .unwrap();
         assert!(!a.description.contains("požiarna"));
+    }
+
+    #[test]
+    fn each_system_board_has_its_floor_on_the_ground() {
+        let mut doc = Document::new();
+        doc.commit(add_base(doc.model())).unwrap();
+        let m = doc.model();
+        let boards: Vec<_> = crate::library::materials(m)
+            .into_iter()
+            .filter(|(_, _, x)| x.category == "system-board")
+            .collect();
+        assert_eq!(boards.len(), 9);
+        let all = assembly::assemblies(m);
+        for (id, name, x) in &boards {
+            // as the maker's sheet gives it
+            assert!(
+                x.lambda.is_some() && x.description.contains("podľa"),
+                "{name}"
+            );
+            let (_, n, a) = all
+                .iter()
+                .find(|(_, _, a)| a.layers.iter().any(|l| l.material == Some(*id)))
+                .unwrap_or_else(|| panic!("{name} in no floor"));
+            assert!(
+                n.starts_with("Podlaha na teréne – podlahové kúrenie"),
+                "{n}"
+            );
+            a.validate().unwrap();
+            let l = a.layers.iter().find(|l| l.material == Some(*id)).unwrap();
+            assert_eq!(l.function, LayerFunction::Insulation);
+            let u = crate::thermal::of_assembly(m, a, a.thermal).u.unwrap();
+            assert!(u > 0.1 && u < 0.35, "{n}: U {u}");
+        }
     }
 
     #[test]
