@@ -115,6 +115,13 @@ pub struct Column {
     /// along the wall (see [`crate::masonry::settle`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_wall: Option<crate::masonry::InWall>,
+    /// Thermal insulation and exterior render round it, side by side
+    /// (see [`crate::wrap`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wrap: Option<crate::wrap::Wrap>,
+    /// A board of another column's wrap, kept by [`crate::wrap::settle`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub piece: Option<crate::wrap::WrapPiece>,
 }
 
 /// A library profile a member is made with: its name, and its outline as
@@ -139,6 +146,8 @@ impl Column {
             top: crate::WallTop::Unconnected,
             section: None,
             in_wall: None,
+            wrap: None,
+            piece: None,
         }
     }
 
@@ -287,6 +296,13 @@ pub struct Beam {
     /// [`crate::masonry`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lintel: Option<crate::masonry::Lintel>,
+    /// Thermal insulation and exterior render round it: left, right,
+    /// under and over (see [`crate::wrap`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wrap: Option<crate::wrap::Wrap>,
+    /// A board of another beam's wrap, kept by [`crate::wrap::settle`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub piece: Option<crate::wrap::WrapPiece>,
 }
 
 fn is_zero2(v: &[f64; 2]) -> bool {
@@ -391,6 +407,8 @@ impl Beam {
             extend: [0.0, 0.0],
             cuts: [None, None],
             lintel: None,
+            wrap: None,
+            piece: None,
         }
     }
 

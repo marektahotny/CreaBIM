@@ -258,11 +258,23 @@ pub fn of_assembly(model: &Model, a: &Assembly, boundary: Option<Boundary>) -> T
 }
 
 /// The U of a wall, slab or roof: of its assembly, or of its one
-/// material through its thickness. None for other elements and for
-/// those of no material.
+/// material through its thickness; of a column or beam wrapped in
+/// insulation, across it (see [`crate::wrap::layers_across`]). None for
+/// other elements and for those of no material.
 pub fn of_element(model: &Model, e: &Element) -> Option<Thermal> {
     if let Some((_, a)) = crate::assembly::assembly_of(model, e) {
         return Some(of_assembly(model, a, None));
+    }
+    // a column or beam wrapped in insulation: across it, from the outside
+    if let Some(layers) = crate::wrap::layers_across(model, e) {
+        let a = Assembly::new(
+            AssemblyUse::Wall,
+            layers
+                .into_iter()
+                .map(|(m, d)| crate::assembly::Layer::new(LayerFunction::Structure, m, d))
+                .collect(),
+        );
+        return Some(of_assembly(model, &a, None));
     }
     let usage = AssemblyUse::of(&e.kind)?;
     let (material, d) = match &e.kind {

@@ -1200,6 +1200,8 @@ fn column(c: &mut Ctx, col: &f::Column, at: &Path) {
         material: None,
         section: None,
         in_wall: None,
+        wrap: None,
+        piece: None,
         top: match top {
             Some(t) => core::WallTop::UpToLevel {
                 level: t,
@@ -1256,6 +1258,8 @@ fn beam(c: &mut Ctx, b: &f::Beam, at: &Path) {
         extend: [0.0, 0.0],
         cuts: [None, None],
         lintel: None,
+        wrap: None,
+        piece: None,
     };
     let mut e = Element::new(name_of(&b.name, &b.id), ElementKind::Beam(beam));
     if !stamp(c, &mut e, &b.r#type, f::TypeCategory::Beam, at) {

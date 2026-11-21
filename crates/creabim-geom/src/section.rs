@@ -988,11 +988,16 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     };
     // system lintels belong to the masonry plan; sections show them cut
     if let creabim_core::ViewKind::Plan { level, .. } = kind {
-        d.items.retain(|it| {
-            !model
-                .get(it.id())
-                .is_some_and(creabim_core::masonry::is_lintel)
-        });
+        // with the boards round them
+        let lintel = |e: &creabim_core::Element| {
+            creabim_core::masonry::is_lintel(e)
+                || creabim_core::wrap::piece_of(e).is_some_and(|p| {
+                    model
+                        .get(p.host)
+                        .is_some_and(creabim_core::masonry::is_lintel)
+                })
+        };
+        d.items.retain(|it| !model.get(it.id()).is_some_and(lintel));
         if v.masonry {
             d.items
                 .extend(crate::masonry::plan_marks(model, *level, v.scale / 1000.0));

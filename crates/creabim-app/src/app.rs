@@ -147,6 +147,8 @@ mod valveboxui;
 mod wallsui;
 #[path = "watercalc.rs"]
 mod watercalc;
+#[path = "wrapui.rs"]
+mod wrapui;
 
 /// What the 3D geometry was last built from; rebuild when any of it changes.
 /// ((model revision, hidden revision), selection, selected face, drawing
@@ -12127,6 +12129,13 @@ crate::props::row(ui, "File names", |ui| {
                     {
                         if self.material_combo(ui, m, usage) {
                             label = "Material";
+                        }
+                    }
+                    // insulation and render round a column or beam
+                    if matches!(k, ElementKind::Column(_) | ElementKind::Beam(_)) {
+                        let l = self.wrap_fields(ui, &e, k);
+                        if !l.is_empty() {
+                            label = l;
                         }
                     }
                     if matches!(k, ElementKind::Stair(_))

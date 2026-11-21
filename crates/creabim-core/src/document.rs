@@ -164,6 +164,11 @@ impl Document {
         if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
             tx.ops.extend(extra.ops);
         }
+        // insulation and render follow the columns and beams they wrap
+        let extra = crate::wrap::settle(&self.model);
+        if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
+            tx.ops.extend(extra.ops);
+        }
         // held dimensions move the other end of what moved (the padlock)
         for round in crate::holds::settle(&self.model, tx) {
             if round.apply(&mut self.model).is_ok() {

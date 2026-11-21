@@ -157,12 +157,17 @@ impl Element {
             // a lintel goes with its door or window
             ElementKind::Beam(b) => std::iter::once(b.level)
                 .chain(b.lintel.as_ref().and_then(|l| l.opening))
+                .chain(b.piece.map(|p| p.host))
                 .collect(),
-            // a column in a wall goes with the wall, its insulation with it
-            ElementKind::Column(c) if c.in_wall.is_some() => std::iter::once(c.level)
-                .chain(c.in_wall.as_ref().map(|w| w.wall))
-                .chain(c.in_wall.as_ref().and_then(|w| w.of))
-                .collect(),
+            // a column in a wall goes with the wall, its insulation with it;
+            // a board of a wrap with what it wraps
+            ElementKind::Column(c) if c.in_wall.is_some() || c.piece.is_some() => {
+                std::iter::once(c.level)
+                    .chain(c.in_wall.as_ref().map(|w| w.wall))
+                    .chain(c.in_wall.as_ref().and_then(|w| w.of))
+                    .chain(c.piece.map(|p| p.host))
+                    .collect()
+            }
             // a valve goes with its pipe
             ElementKind::Valve(v) => vec![v.pipe],
             // a circuit's board and devices are soft

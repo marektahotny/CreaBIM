@@ -291,11 +291,18 @@ pub fn lines(model: &Model) -> Vec<Line> {
             }
             ElementKind::Column(c) => {
                 let height = c.height_in(model);
+                // a board of insulation or render round a column: its face
+                let area = match (c.piece, c.profile) {
+                    (Some(p), crate::Profile::Rectangle { width, depth }) => {
+                        (if p.side % 2 == 0 { width } else { depth }) * height
+                    }
+                    _ => 0.0,
+                };
                 (
                     "Columns",
                     c.level,
                     Quantity {
-                        area: 0.0,
+                        area,
                         volume: c.profile.area() * height,
                         length: height,
                         count: 1,
@@ -307,7 +314,10 @@ pub fn lines(model: &Model) -> Vec<Line> {
                 "Beams",
                 b.level,
                 Quantity {
-                    area: 0.0,
+                    // a board of insulation or render along a beam: its face
+                    area: b.piece.map_or(0.0, |p| {
+                        b.length() * if p.side < 2 { b.depth } else { b.width }
+                    }),
                     volume: b.width * b.depth * b.length(),
                     length: b.length(),
                     count: 1,
