@@ -63,14 +63,18 @@ pub fn mesh(model: &Model, id: ElementId, f: &Flashing) -> TriMesh {
             crate::parts::sweep_mesh(&gutter_profile(g, t), &path, false)
         }
         FlashingItem::Downpipe(d) => {
-            let Some((at, top, foot)) = downpipe_place(model, d) else {
-                return TriMesh::default();
-            };
-            if top - foot < 1e-3 {
+            let path = creabim_core::flashing::downpipe_path(model, d);
+            if path.len() < 2 || path[0].z - path[path.len() - 1].z < 1e-3 {
                 return TriMesh::default();
             }
-            let outline = downpipe_outline(d.profile, d.size_mm / 1000.0, at);
-            crate::scene::slab_mesh(&outline, top, top - foot)
+            // swept on its side: every leg of it then runs across the
+            // sweep's plan, the upright ones too
+            let across = (path[path.len() - 1] - path[0])
+                .truncate()
+                .normalize_or(DVec2::X)
+                .perp();
+            let profile = downpipe_outline(d.profile, d.size_mm / 1000.0, DVec2::ZERO);
+            crate::parts::sweep_mesh_on(&profile, &path, false, across.extend(0.0))
         }
     }
 }
@@ -98,18 +102,57 @@ pub fn plan_items(model: &Model, e: &Element, f: &Flashing, z: f64) -> Vec<PlanI
     let mut out = vec![];
     match &f.item {
         FlashingItem::Downpipe(d) => {
-            let Some((at, top, foot)) = downpipe_place(model, d) else {
+            let path = creabim_core::flashing::downpipe_path(model, d);
+            let (Some(top), Some(foot)) = (path.first(), path.last()) else {
                 return out;
             };
-            let outline = downpipe_outline(d.profile, d.size_mm / 1000.0, at);
-            let pen = if foot < z && z < top {
-                Pen::Cut
-            } else if top <= z {
-                Pen::Projection
-            } else {
-                return out;
-            };
-            ring(&mut out, e.id, pen, &outline);
+            let size = d.size_mm / 1000.0;
+            if top.z <= z {
+                // seen from above: the outlet, and where it runs down the
+                // facade under the eaves
+                ring(
+                    &mut out,
+                    e.id,
+                    Pen::Projection,
+                    &downpipe_outline(d.profile, size, top.truncate()),
+                );
+                // the offset to the facade and the pipe down it are under
+                // the roof: dashed, its two sides from ring to ring
+                let (a, b) = (top.truncate(), foot.truncate());
+                if b.distance(a) > 1e-3 {
+                    // one outline, so its dashes run on round it
+                    out.push(PlanItem::Polygon {
+                        id: e.id,
+                        pen: Pen::Hidden,
+                        points: downpipe_outline(d.profile, size, b),
+                    });
+                    let n = (b - a).normalize().perp() * size / 2.0;
+                    for side in [n, -n] {
+                        out.push(PlanItem::Line {
+                            id: e.id,
+                            pen: Pen::Hidden,
+                            a: a + side,
+                            b: b + side,
+                        });
+                    }
+                }
+            } else if foot.z < z {
+                // cut where its axis passes the plan's height
+                let at = path
+                    .windows(2)
+                    .find(|w| w[1].z <= z && z <= w[0].z)
+                    .map(|w| {
+                        let f = (w[0].z - z) / (w[0].z - w[1].z).max(1e-9);
+                        w[0].lerp(w[1], f).truncate()
+                    })
+                    .unwrap_or(foot.truncate());
+                ring(
+                    &mut out,
+                    e.id,
+                    Pen::Cut,
+                    &downpipe_outline(d.profile, size, at),
+                );
+            }
         }
         FlashingItem::Gutter(g) => {
             if g.top(model) > z {
