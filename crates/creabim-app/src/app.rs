@@ -13415,7 +13415,7 @@ impl eframe::App for CreaBimApp {
                     .push(egui::Event::PointerMoved(egui::pos2(v[0], v[1])));
             }
             let tabs = v.get(2).copied().unwrap_or(0.0) as u64;
-            if (12..12 + 2 * tabs).contains(&frame) && frame % 2 == 0 {
+            if (12..12 + 2 * tabs).contains(&frame) && frame.is_multiple_of(2) {
                 for pressed in [true, false] {
                     raw_input.events.push(egui::Event::Key {
                         key: egui::Key::Tab,
