@@ -1767,6 +1767,7 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::BoardDiagram => core::ScheduleCategory::BoardDiagram,
                 f::ScheduleCategory::LintelList => core::ScheduleCategory::LintelList,
                 f::ScheduleCategory::VentilationHrv => core::ScheduleCategory::VentilationHrv,
+                f::ScheduleCategory::BuildingFigures => core::ScheduleCategory::BuildingFigures,
                 f::ScheduleCategory::FireRisk => core::ScheduleCategory::FireRisk,
             };
             let mut view = core::View::schedule(category);

@@ -155,6 +155,114 @@ pub fn finishes(model: &Model, e: &Element, r: &Room) -> Finishes {
     f
 }
 
+/// The undersides of the roofs, as triangles: what limits the clear
+/// height of the rooms under them.
+pub struct Undersides(pub(crate) Vec<[glam::DVec3; 3]>);
+
+/// The clear height under which a room's floor is not counted, m (STN
+/// 73 4301 7.2.4, 10.1).
+pub const LEAST_COUNTED_HEIGHT: f64 = 1.3;
+
+impl Undersides {
+    pub fn of(model: &Model) -> Undersides {
+        let roofs: Vec<ElementId> = model
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Roof(_)))
+            .map(|e| e.id)
+            .collect();
+        let mut out = vec![];
+        if roofs.is_empty() {
+            return Undersides(out);
+        }
+        for it in crate::scene::build_scene(model) {
+            if !roofs.contains(&it.id) || it.ghost {
+                continue;
+            }
+            let m = &it.mesh;
+            for t in m.indices.chunks_exact(3) {
+                if m.normals[t[0] as usize][2] > -0.05 {
+                    continue;
+                }
+                let p = |i: u32| {
+                    let q = m.positions[i as usize];
+                    glam::DVec3::new(q[0] as f64, q[1] as f64, q[2] as f64)
+                };
+                out.push([p(t[0]), p(t[1]), p(t[2])]);
+            }
+        }
+        Undersides(out)
+    }
+}
+
+/// A room's floor area as STN 73 4301 counts it (10.1): its net area
+/// less where the roof over it leaves less than 1.3 m of clear height.
+pub fn counted_area(model: &Model, under: &Undersides, r: &Room) -> f64 {
+    let Some(s) = creabim_core::room::shape_of(model, r) else {
+        return 0.0;
+    };
+    let net = creabim_core::room::net_area(model, r, &s);
+    if under.0.is_empty() {
+        return net;
+    }
+    let floor = model.level(r.level).map_or(0.0, |l| l.elevation);
+    let (mut lo, mut hi) = (s.outline[0], s.outline[0]);
+    for p in &s.outline {
+        lo = lo.min(*p);
+        hi = hi.max(*p);
+    }
+    let cell = 0.05;
+    let (nx, ny) = (
+        ((hi.x - lo.x) / cell).ceil().max(1.0) as usize,
+        ((hi.y - lo.y) / cell).ceil().max(1.0) as usize,
+    );
+    // the lowest underside over each cell, above the floor
+    let mut low = vec![f64::INFINITY; nx * ny];
+    for [a, b, c] in &under.0 {
+        let d = (b - a).truncate().perp_dot((c - a).truncate());
+        if d.abs() < 1e-12 || a.z.max(b.z).max(c.z) <= floor {
+            continue;
+        }
+        let tlo = a.truncate().min(b.truncate()).min(c.truncate());
+        let thi = a.truncate().max(b.truncate()).max(c.truncate());
+        if thi.x < lo.x || thi.y < lo.y || tlo.x > hi.x || tlo.y > hi.y {
+            continue;
+        }
+        let i0 = ((tlo.x - lo.x) / cell).floor().max(0.0) as usize;
+        let j0 = ((tlo.y - lo.y) / cell).floor().max(0.0) as usize;
+        let i1 = (((thi.x - lo.x) / cell).ceil().max(0.0) as usize).min(nx);
+        let j1 = (((thi.y - lo.y) / cell).ceil().max(0.0) as usize).min(ny);
+        for j in j0..j1 {
+            for i in i0..i1 {
+                let q = lo + DVec2::new(i as f64 + 0.5, j as f64 + 0.5) * cell;
+                let l2 = (b - a).truncate().perp_dot(q - a.truncate()) / d;
+                let l1 = (q - a.truncate()).perp_dot((c - a).truncate()) / d;
+                let l0 = 1.0 - l1 - l2;
+                if l0 < -1e-9 || l1 < -1e-9 || l2 < -1e-9 {
+                    continue;
+                }
+                let z = a.z * l0 + b.z * l1 + c.z * l2;
+                if z > floor {
+                    let k = j * nx + i;
+                    low[k] = low[k].min(z);
+                }
+            }
+        }
+    }
+    let mut cut = 0.0;
+    for j in 0..ny {
+        for i in 0..nx {
+            let z = low[j * nx + i];
+            if z.is_finite() && z - floor < LEAST_COUNTED_HEIGHT {
+                let q = lo + DVec2::new(i as f64 + 0.5, j as f64 + 0.5) * cell;
+                if creabim_core::polygon::contains(&s.outline, q) {
+                    cut += cell * cell;
+                }
+            }
+        }
+    }
+    (net - cut).max(0.0)
+}
+
 /// The legend as a table: the rooms of `level` (of every storey with
 /// none), by their numbers, with the area of them all under it.
 pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
@@ -181,6 +289,7 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
     }
     let units = model.units();
     let dash = |s: String| if s.is_empty() { "-".to_string() } else { s };
+    let under = Undersides::of(model);
     let mut rows: Vec<(f64, String, Row)> = vec![];
     let mut total = 0.0;
     let mut living = 0.0;
@@ -191,9 +300,13 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
         if level.is_some_and(|l| l != r.level) {
             continue;
         }
-        let area = creabim_core::room::shape(model, e.id)
-            .map_or(0.0, |s| creabim_core::room::net_area(model, r, &s));
-        total += area;
+        // without what is under 1.3 m of clear height in an attic
+        let area = counted_area(model, &under, r);
+        // the floor (usable) area leaves balconies, loggias and
+        // terraces out (STN 73 4301 2.14)
+        if !creabim_core::room::is_open_air(&e.name, r) {
+            total += area;
+        }
         if creabim_core::room::counts_as_living(&e.name, r, area) {
             living += area;
         }
@@ -345,6 +458,15 @@ mod tests {
             r.living = Some(true);
         }
         assert!(creabim_core::room::counts_as_living("WC", room(&wc2), 3.0));
+        // the usable area leaves the loggia, terrace and balcony out
+        let usable: f64 = rooms
+            .iter()
+            .filter(|e| !creabim_core::room::is_open_air(&e.name, room(e)))
+            .map(|e| area(&m, e))
+            .sum();
+        let all: f64 = rooms.iter().map(|e| area(&m, e)).sum();
+        assert!(usable < all - 10.0);
+        assert_eq!(s.totals[2], m.units().area(usable));
         // a view without it
         let mut v = creabim_core::View::schedule(ScheduleCategory::RoomLegend);
         v.no_living_area = true;
@@ -356,6 +478,51 @@ mod tests {
             .unwrap();
         let t = crate::schedule::view_table(&m, id).unwrap();
         assert!(t.above_totals.is_empty());
+    }
+
+    /// Under a sloping roof the floor where the clear height is under
+    /// 1.3 m is not counted (STN 73 4301 7.2.4, 10.1).
+    #[test]
+    fn an_attic_counts_only_what_is_over_1_3_m_high() {
+        use glam::DVec3;
+        let m = creabim_core::starter::starter_house();
+        let (e, r) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Room(r) if e.name == "Study" => Some((e, r)),
+                _ => None,
+            })
+            .unwrap();
+        let s = creabim_core::room::shape_of(&m, r).unwrap();
+        let net = creabim_core::room::net_area(&m, r, &s);
+        let floor = m.level(r.level).unwrap().elevation;
+        let (mut lo, mut hi) = (s.outline[0], s.outline[0]);
+        for p in &s.outline {
+            lo = lo.min(*p);
+            hi = hi.max(*p);
+        }
+        // a slope from 0.5 m over the floor at one side to 3.0 m at the other
+        let z = |x: f64| floor + 0.5 + 2.5 * (x - lo.x) / (hi.x - lo.x);
+        let (a, b, c, d) = (
+            DVec3::new(lo.x, lo.y, z(lo.x)),
+            DVec3::new(hi.x, lo.y, z(hi.x)),
+            DVec3::new(hi.x, hi.y, z(hi.x)),
+            DVec3::new(lo.x, hi.y, z(lo.x)),
+        );
+        let under = Undersides(vec![[a, b, c], [a, c, d]]);
+        let counted = counted_area(&m, &under, r);
+        let rect = (hi.x - lo.x) * (hi.y - lo.y);
+        assert!(counted < net - 1.0, "{counted} {net}");
+        if (rect - net).abs() < 0.05 {
+            // a rectangle: (1.3 - 0.5) / 2.5 of it is too low
+            assert!(
+                (counted - net * (1.0 - 0.8 / 2.5)).abs() < 0.3,
+                "{counted} {net}"
+            );
+        }
+        // no roof over it: all of it
+        assert!((counted_area(&m, &Undersides(vec![]), r) - net).abs() < 1e-9);
+        let _ = e;
     }
 
     /// Tiling runs along the room's walls less its doors, and the legend

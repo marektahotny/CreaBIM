@@ -6,7 +6,7 @@
 //! model cannot know stands as `[doplniť]` for the designer to write.
 //! The decree is Slovak, so is the report.
 
-use creabim_core::{levels, room, ElementKind, Model, OpeningKind};
+use creabim_core::{levels, room, ElementKind, Model, OpeningKind, ScheduleCategory};
 
 /// The mark of what the designer still has to write.
 pub const FILL: &str = "[doplniť]";
@@ -36,10 +36,10 @@ pub struct Figures {
     pub height: f64,
     pub windows: usize,
     pub doors: usize,
-    /// The enclosed volume, m³: each storey's outline by its height and
-    /// the space under the roof over the top storey's walls (foundations
-    /// are not in it).
+    /// The enclosed volume by STN 73 4055, m³: Op = Oz + Os + Ov + Ot.
     pub volume: f64,
+    /// Its parts.
+    pub cubature: Cubature,
     /// Hard landscape of the site, m².
     pub paved: f64,
     /// The plot's area from the project information, m².
@@ -110,9 +110,69 @@ pub fn ground_at_building(model: &Model) -> Option<(f64, f64)> {
     range
 }
 
-/// The space under the roofs over the plane `z`, m³: what their upper
-/// faces stand over it, summed.
-fn under_roofs(model: &Model, z: f64) -> f64 {
+/// The enclosed volume of the building by STN 73 4055: Op = Oz + Os + Ov
+/// + Ot, each measured to the outer faces of the walls (the "šírka" of
+/// the norm's figure), m³. The planes between the parts, as the norm's
+/// figure draws them:
+/// - the plane bounding the foundations: the top of the footings;
+/// - the plane bounding the lower part: the floor of the first storey
+///   above ground (1. NP), so the lower part is the storeys below ground
+///   and what lies between the footings and that floor;
+/// - the plane bounding the upper part: the tops of the top storey's
+///   walls, on which the roof stands.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Cubature {
+    /// Oz: the footings, their own volume (the norm's "zrovnaná hrúbka
+    /// kubatúry základov" over the footprint).
+    pub foundations: f64,
+    /// Os: the lower part.
+    pub lower: f64,
+    /// Ov: the upper part.
+    pub upper: f64,
+    /// Ot: the roofing, under the roof's upper face over the top
+    /// storey's footprint.
+    pub roofing: f64,
+}
+
+impl Cubature {
+    /// Op, the basic enclosed volume.
+    pub fn total(&self) -> f64 {
+        self.foundations + self.lower + self.upper + self.roofing
+    }
+}
+
+/// The closed meshes of the footings, their volume summed, m³.
+fn footings_volume(model: &Model) -> f64 {
+    let footings: Vec<_> = model
+        .iter()
+        .filter(|e| matches!(e.kind, ElementKind::Footing(_)))
+        .map(|e| e.id)
+        .collect();
+    if footings.is_empty() {
+        return 0.0;
+    }
+    let mut v = 0.0;
+    for it in crate::scene::build_scene(model) {
+        if !footings.contains(&it.id) || it.ghost {
+            continue;
+        }
+        let m = &it.mesh;
+        let p = |i: u32| {
+            let q = m.positions[i as usize];
+            glam::DVec3::new(q[0] as f64, q[1] as f64, q[2] as f64)
+        };
+        let mut one = 0.0;
+        for t in m.indices.chunks_exact(3) {
+            one += p(t[0]).dot(p(t[1]).cross(p(t[2]))) / 6.0;
+        }
+        v += one.abs();
+    }
+    v
+}
+
+/// The height of the roofs' upper faces over each cell of `fp`, less
+/// `z`, summed by the cells' area, m³.
+fn roofing_over(model: &Model, fp: &Footprint, z: f64) -> f64 {
     let roofs: Vec<_> = model
         .iter()
         .filter(|e| matches!(e.kind, ElementKind::Roof(_)))
@@ -121,30 +181,139 @@ fn under_roofs(model: &Model, z: f64) -> f64 {
     if roofs.is_empty() {
         return 0.0;
     }
-    let mut v = 0.0;
+    // the highest upper face over each cell
+    let mut top = vec![f64::NEG_INFINITY; fp.inside.len()];
     for it in crate::scene::build_scene(model) {
         if !roofs.contains(&it.id) || it.layer.is_some_and(|l| l.index > 0) {
             continue;
         }
         let m = &it.mesh;
         for t in m.indices.chunks_exact(3) {
+            if m.normals[t[0] as usize][2] < 0.2 {
+                continue;
+            }
             let p = |i: u32| {
                 let q = m.positions[i as usize];
                 glam::DVec3::new(q[0] as f64, q[1] as f64, q[2] as f64)
             };
             let (a, b, c) = (p(t[0]), p(t[1]), p(t[2]));
-            // upper faces only
-            if m.normals[t[0] as usize][2] < 0.2 {
+            let d = (b - a).truncate().perp_dot((c - a).truncate());
+            if d.abs() < 1e-12 {
                 continue;
             }
-            let plan = ((b - a).truncate().perp_dot((c - a).truncate())).abs() / 2.0;
-            let h = (a.z + b.z + c.z) / 3.0 - z;
-            if h > 0.0 {
-                v += plan * h;
+            let lo = a.truncate().min(b.truncate()).min(c.truncate());
+            let hi = a.truncate().max(b.truncate()).max(c.truncate());
+            let i0 = ((lo.x - fp.lo.x) / fp.cell).floor().max(0.0) as usize;
+            let j0 = ((lo.y - fp.lo.y) / fp.cell).floor().max(0.0) as usize;
+            let i1 = (((hi.x - fp.lo.x) / fp.cell).ceil().max(0.0) as usize).min(fp.nx);
+            let j1 = (((hi.y - fp.lo.y) / fp.cell).ceil().max(0.0) as usize).min(fp.ny);
+            for j in j0..j1 {
+                for i in i0..i1 {
+                    let k = j * fp.nx + i;
+                    if !fp.inside[k] {
+                        continue;
+                    }
+                    let q = fp.lo + glam::DVec2::new(i as f64 + 0.5, j as f64 + 0.5) * fp.cell;
+                    // barycentric in plan
+                    let u = (b - a).truncate().perp_dot(q - a.truncate()) / d;
+                    let v = (q - a.truncate()).perp_dot((c - a).truncate()) / d;
+                    let (l1, l2) = (v, u);
+                    let l0 = 1.0 - l1 - l2;
+                    if l0 < -1e-9 || l1 < -1e-9 || l2 < -1e-9 {
+                        continue;
+                    }
+                    let h = a.z * l0 + b.z * l1 + c.z * l2;
+                    top[k] = top[k].max(h);
+                }
             }
         }
     }
-    v
+    top.iter()
+        .filter(|h| h.is_finite())
+        .map(|h| (h - z).max(0.0))
+        .sum::<f64>()
+        * fp.cell_area()
+}
+
+/// The building's enclosed volume by STN 73 4055 (see [`Cubature`]).
+pub fn cubature(model: &Model) -> Cubature {
+    let walls: Vec<&creabim_core::Wall> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) => Some(w),
+            _ => None,
+        })
+        .collect();
+    let storeys: Vec<_> = levels::sorted(model)
+        .into_iter()
+        .filter(|(id, ..)| walls.iter().any(|w| w.level == *id))
+        .collect();
+    let mut c = Cubature::default();
+    let Some(lowest) = storeys.first() else {
+        return c;
+    };
+    let prints: Vec<Option<Footprint>> = storeys
+        .iter()
+        .map(|(id, ..)| {
+            let here: Vec<&creabim_core::Wall> =
+                walls.iter().filter(|w| w.level == *id).copied().collect();
+            Footprint::of(&here)
+        })
+        .collect();
+    let area = |i: usize| prints[i].as_ref().map_or(0.0, Footprint::area);
+    // the plane bounding the lower part: the floor of 1. NP; the
+    // storeys under it are the lower part
+    let first_up = storeys
+        .iter()
+        .position(|(id, ..)| room::storey_number(model, *id) >= 1)
+        .unwrap_or(0);
+    // the plane bounding the foundations: the footings' tops under the
+    // lowest storey
+    let z_found = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Footing(f) => Some(f.top(model)),
+            _ => None,
+        })
+        .filter(|z| *z <= lowest.2.elevation + 1e-6)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let z_found = if z_found.is_finite() {
+        z_found
+    } else {
+        lowest.2.elevation
+    };
+    c.foundations = footings_volume(model);
+    // between the footings and the lowest storey's floor
+    c.lower += area(0) * (lowest.2.elevation - z_found).max(0.0);
+    let top_index = storeys.len() - 1;
+    for (i, (id, _, l)) in storeys.iter().enumerate() {
+        let height = if i < top_index {
+            storeys[i + 1].2.elevation - l.elevation
+        } else {
+            walls
+                .iter()
+                .filter(|w| w.level == *id)
+                .map(|w| w.base_offset + w.height)
+                .fold(0.0, f64::max)
+        };
+        let v = area(i) * height.max(0.0);
+        if i < first_up {
+            c.lower += v;
+        } else {
+            c.upper += v;
+        }
+    }
+    let top = &storeys[top_index];
+    let z_upper = top.2.elevation
+        + walls
+            .iter()
+            .filter(|w| w.level == top.0)
+            .map(|w| w.base_offset + w.height)
+            .fold(0.0, f64::max);
+    if let Some(fp) = &prints[top_index] {
+        c.roofing = roofing_over(model, fp, z_upper);
+    }
+    c
 }
 
 pub fn figures(model: &Model) -> Figures {
@@ -160,10 +329,6 @@ pub fn figures(model: &Model) -> Figures {
         .into_iter()
         .filter(|(id, ..)| walls.iter().any(|w| w.level == *id))
         .collect();
-    let ground = storeys
-        .iter()
-        .find(|(.., l)| l.elevation >= -0.8)
-        .map(|(id, ..)| *id);
     for (id, name, l) in &storeys {
         if l.elevation < -0.8 {
             f.below += 1;
@@ -187,28 +352,13 @@ pub fn figures(model: &Model) -> Figures {
         f.by_storey.push((creabim_core::words::tr(name), area, n));
         let here: Vec<&creabim_core::Wall> =
             walls.iter().filter(|w| w.level == *id).copied().collect();
-        let outline = enclosed(&here);
-        if ground == Some(*id) {
-            f.built_up = outline;
-        }
-        let mut top: f64 = 0.0;
         for w in &here {
             f.height = f.height.max(l.elevation + w.base_offset + w.height);
-            top = top.max(w.base_offset + w.height);
-        }
-        // a storey reaches to the next one's floor; the top one to its
-        // walls' tops, and the roof's space stands on that
-        let next = storeys
-            .iter()
-            .map(|s| s.2.elevation)
-            .filter(|z| *z > l.elevation + 1e-6)
-            .fold(f64::INFINITY, f64::min);
-        if next.is_finite() {
-            f.volume += outline * (next - l.elevation);
-        } else {
-            f.volume += outline * top + under_roofs(model, l.elevation + top);
         }
     }
+    f.built_up = figures_built_up(model);
+    f.cubature = cubature(model);
+    f.volume = f.cubature.total();
     for e in model.iter() {
         if let ElementKind::Site(s) = &e.kind {
             if let creabim_core::site::SiteForm::Area {
@@ -238,72 +388,113 @@ pub fn figures(model: &Model) -> Figures {
 /// grid, the walls' cells marked, and what cannot be reached from
 /// outside counted. Walls that do not close enclose only themselves.
 fn enclosed(walls: &[&creabim_core::Wall]) -> f64 {
-    let Some(first) = walls.first() else {
-        return 0.0;
-    };
-    let (lo, hi) = walls
-        .iter()
-        .flat_map(|w| [w.start, w.end])
-        .fold((first.start, first.start), |(lo, hi), p| {
-            (lo.min(p), hi.max(p))
-        });
-    let thick = walls.iter().map(|w| w.thickness).fold(0.0, f64::max);
-    let (lo, hi) = (lo - thick - 0.2, hi + thick + 0.2);
-    let size = hi - lo;
-    let cell = (size.max_element() / 3000.0).max(0.01);
-    let (nx, ny) = (
-        (size.x / cell).ceil() as usize + 1,
-        (size.y / cell).ceil() as usize + 1,
-    );
-    // 0 open, 1 wall, 2 reached from outside
-    let mut grid = vec![0u8; nx * ny];
-    for w in walls {
-        let half = w.thickness / 2.0;
-        let (a, b) = (w.start, w.end);
-        let d = b - a;
-        let len2 = d.length_squared().max(1e-12);
-        let (wlo, whi) = (a.min(b) - half, a.max(b) + half);
-        let ix = |x: f64| (((x - lo.x) / cell).floor().max(0.0) as usize).min(nx - 1);
-        let iy = |y: f64| (((y - lo.y) / cell).floor().max(0.0) as usize).min(ny - 1);
-        for j in iy(wlo.y)..=iy(whi.y) {
-            for i in ix(wlo.x)..=ix(whi.x) {
-                let p = lo + glam::DVec2::new(i as f64 + 0.5, j as f64 + 0.5) * cell;
-                let t = ((p - a).dot(d) / len2).clamp(0.0, 1.0);
-                // square ends: half a thickness along too
-                let q = p - (a + d * t);
-                let along = q.dot(d) / len2.sqrt();
-                let across = (q - d / len2.sqrt() * along).length();
-                if across <= half && along.abs() <= half {
-                    grid[j * nx + i] = 1;
+    Footprint::of(walls).map_or(0.0, |f| f.area())
+}
+
+/// What a storey's walls enclose, themselves with it, as cells of a
+/// grid on the plan: its outline at the outer faces of its walls.
+pub struct Footprint {
+    lo: glam::DVec2,
+    cell: f64,
+    nx: usize,
+    ny: usize,
+    inside: Vec<bool>,
+}
+
+impl Footprint {
+    pub fn area(&self) -> f64 {
+        self.inside.iter().filter(|c| **c).count() as f64 * self.cell * self.cell
+    }
+
+    /// The middle of every cell inside, with the cell's area.
+    pub fn cells(&self) -> impl Iterator<Item = glam::DVec2> + '_ {
+        self.inside
+            .iter()
+            .enumerate()
+            .filter(|c| *c.1)
+            .map(|(k, _)| {
+                self.lo
+                    + glam::DVec2::new((k % self.nx) as f64 + 0.5, (k / self.nx) as f64 + 0.5)
+                        * self.cell
+            })
+    }
+
+    pub fn cell_area(&self) -> f64 {
+        self.cell * self.cell
+    }
+
+    fn of(walls: &[&creabim_core::Wall]) -> Option<Footprint> {
+        let first = walls.first()?;
+        let (lo, hi) = walls
+            .iter()
+            .flat_map(|w| [w.start, w.end])
+            .fold((first.start, first.start), |(lo, hi), p| {
+                (lo.min(p), hi.max(p))
+            });
+        let thick = walls.iter().map(|w| w.thickness).fold(0.0, f64::max);
+        let (lo, hi) = (lo - thick - 0.2, hi + thick + 0.2);
+        let size = hi - lo;
+        let cell = (size.max_element() / 3000.0).max(0.01);
+        let (nx, ny) = (
+            (size.x / cell).ceil() as usize + 1,
+            (size.y / cell).ceil() as usize + 1,
+        );
+        // 0 open, 1 wall, 2 reached from outside
+        let mut grid = vec![0u8; nx * ny];
+        for w in walls {
+            let half = w.thickness / 2.0;
+            let (a, b) = (w.start, w.end);
+            let d = b - a;
+            let len2 = d.length_squared().max(1e-12);
+            let (wlo, whi) = (a.min(b) - half, a.max(b) + half);
+            let ix = |x: f64| (((x - lo.x) / cell).floor().max(0.0) as usize).min(nx - 1);
+            let iy = |y: f64| (((y - lo.y) / cell).floor().max(0.0) as usize).min(ny - 1);
+            for j in iy(wlo.y)..=iy(whi.y) {
+                for i in ix(wlo.x)..=ix(whi.x) {
+                    let p = lo + glam::DVec2::new(i as f64 + 0.5, j as f64 + 0.5) * cell;
+                    let t = ((p - a).dot(d) / len2).clamp(0.0, 1.0);
+                    // square ends: half a thickness along too
+                    let q = p - (a + d * t);
+                    let along = q.dot(d) / len2.sqrt();
+                    let across = (q - d / len2.sqrt() * along).length();
+                    if across <= half && along.abs() <= half {
+                        grid[j * nx + i] = 1;
+                    }
                 }
             }
         }
-    }
-    let mut stack = vec![0usize];
-    grid[0] = 2;
-    while let Some(k) = stack.pop() {
-        let (i, j) = (k % nx, k / nx);
-        let mut go = |i: usize, j: usize| {
-            let k = j * nx + i;
-            if grid[k] == 0 {
-                grid[k] = 2;
-                stack.push(k);
+        let mut stack = vec![0usize];
+        grid[0] = 2;
+        while let Some(k) = stack.pop() {
+            let (i, j) = (k % nx, k / nx);
+            let mut go = |i: usize, j: usize| {
+                let k = j * nx + i;
+                if grid[k] == 0 {
+                    grid[k] = 2;
+                    stack.push(k);
+                }
+            };
+            if i > 0 {
+                go(i - 1, j);
             }
-        };
-        if i > 0 {
-            go(i - 1, j);
+            if i + 1 < nx {
+                go(i + 1, j);
+            }
+            if j > 0 {
+                go(i, j - 1);
+            }
+            if j + 1 < ny {
+                go(i, j + 1);
+            }
         }
-        if i + 1 < nx {
-            go(i + 1, j);
-        }
-        if j > 0 {
-            go(i, j - 1);
-        }
-        if j + 1 < ny {
-            go(i, j + 1);
-        }
+        Some(Footprint {
+            lo,
+            cell,
+            nx,
+            ny,
+            inside: grid.iter().map(|c| *c != 2).collect(),
+        })
     }
-    grid.iter().filter(|c| **c != 2).count() as f64 * cell * cell
 }
 
 fn m2(v: f64) -> String {
@@ -525,10 +716,18 @@ pub fn report(model: &Model) -> Vec<Chapter> {
                 _ => format!("Obsadenie stavby osobami: {FILL}"),
             }
         },
-        format!(
-            "Obostavaný priestor (podlažia a priestor pod strechou z modelu, bez základov): {} m³",
-            format!("{:.1}", f.volume).replace('.', ",")
-        ),
+        {
+            let m3 = |v: f64| format!("{v:.1} m³").replace('.', ",");
+            let c = &f.cubature;
+            format!(
+                "Obostavaný priestor podľa STN 73 4055: Op = Oz + Os + Ov + Ot = {} + {} + {} + {} = {} (základy, spodná časť, vrchná časť, zastrešenie)",
+                m3(c.foundations),
+                m3(c.lower),
+                m3(c.upper),
+                m3(c.roofing),
+                m3(c.total())
+            )
+        },
         format!(
             "Potreba tepla a energií, pitnej a úžitkovej vody, množstvo odpadových vôd: {FILL}"
         ),
@@ -692,5 +891,120 @@ mod tests {
         let text = String::from_utf8(doc.1.clone()).unwrap();
         assert!(text.contains("Heading1") && text.contains("Identifikačné údaje"));
         assert!(!text.contains("## "));
+    }
+}
+
+/// The building's figures as a table: built-up area, living and usable
+/// area, the parts of the enclosed volume by STN 73 4055 and Op under
+/// them.
+pub fn figures_schedule(model: &Model) -> crate::schedule::Schedule {
+    use crate::schedule::{Column, Row, Schedule};
+    use creabim_core::words::tr;
+    let units = model.units();
+    let c = cubature(model);
+    let built = figures_built_up(model);
+    let under = crate::roomlegend::Undersides::of(model);
+    let (mut living, mut usable) = (0.0, 0.0);
+    for e in model.iter() {
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        let a = crate::roomlegend::counted_area(model, &under, r);
+        if !room::is_open_air(&e.name, r) {
+            usable += a;
+        }
+        if room::counts_as_living(&e.name, r, a) {
+            living += a;
+        }
+    }
+    let m3 = |v: f64| format!("{v:.2} m³");
+    let row = |what: &str, value: String| Row {
+        id: creabim_core::ElementId::NIL,
+        group: false,
+        cells: vec![tr(what), value],
+    };
+    let rows = vec![
+        row("Built-up area", units.area(built)),
+        row("Living area", units.area(living)),
+        row("Usable area", units.area(usable)),
+        row("Enclosed volume of the foundations Oz", m3(c.foundations)),
+        row("Enclosed volume of the lower part Os", m3(c.lower)),
+        row("Enclosed volume of the upper part Ov", m3(c.upper)),
+        row("Enclosed volume of the roofing Ot", m3(c.roofing)),
+    ];
+    Schedule {
+        category: ScheduleCategory::BuildingFigures,
+        columns: vec![
+            Column {
+                title: "Figure",
+                field: None,
+                width: 70.0,
+                numeric: false,
+                align: None,
+            },
+            Column {
+                title: "Value",
+                field: None,
+                width: 30.0,
+                numeric: true,
+                align: None,
+            },
+        ],
+        listed: rows.len(),
+        rows,
+        totals: vec![tr("Enclosed volume Op = Oz + Os + Ov + Ot"), m3(c.total())],
+        above_totals: vec![],
+    }
+}
+
+/// The built-up area: what the walls of the first storey above ground
+/// (1. NP) enclose, the walls with it, m².
+fn figures_built_up(model: &Model) -> f64 {
+    let walls: Vec<&creabim_core::Wall> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) => Some(w),
+            _ => None,
+        })
+        .collect();
+    let Some(first) = levels::sorted(model)
+        .into_iter()
+        .filter(|(id, ..)| walls.iter().any(|w| w.level == *id))
+        .find(|(id, ..)| room::storey_number(model, *id) >= 1)
+    else {
+        return 0.0;
+    };
+    let here: Vec<&creabim_core::Wall> = walls
+        .iter()
+        .filter(|w| w.level == first.0)
+        .copied()
+        .collect();
+    enclosed(&here)
+}
+
+#[cfg(test)]
+mod cubature_tests {
+    use super::*;
+
+    /// Op is the four parts of STN 73 4055 summed; with footings under
+    /// the ground floor the lower part is the band between their tops
+    /// and the floor of 1. NP, and the roof stands on the top walls.
+    #[test]
+    fn the_enclosed_volume_is_its_four_parts() {
+        let m = creabim_core::starter::starter_house();
+        let c = cubature(&m);
+        assert!(
+            c.foundations > 1.0 && c.lower > 1.0 && c.upper > 100.0 && c.roofing > 10.0,
+            "{c:?}"
+        );
+        assert!((c.total() - (c.foundations + c.lower + c.upper + c.roofing)).abs() < 1e-9);
+        let t = figures_schedule(&m);
+        assert_eq!(t.rows.len(), 7);
+        assert!(t.totals[1].starts_with(&format!("{:.2}", c.total())));
+        // a house without footings or roof: only its storeys
+        let s = creabim_core::sample::sample_house();
+        let c = cubature(&s);
+        assert_eq!((c.foundations, c.lower, c.roofing), (0.0, 0.0, 0.0));
+        assert!(c.upper > 0.0);
     }
 }

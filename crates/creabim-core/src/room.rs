@@ -802,12 +802,27 @@ pub fn ceiling_over(
     best
 }
 
+/// Whether room `r` named `name` is a balcony, loggia or terrace (or
+/// marked outdoor): STN 73 4301 2.14 leaves these out of the floor
+/// (usable) area of a dwelling.
+pub fn is_open_air(name: &str, r: &Room) -> bool {
+    const WORDS: [&str; 10] = [
+        "balk", "balc", "lodži", "lodzi", "loggia", "lodžie", "teras", "terrace", "outdoor",
+        "vonkaj",
+    ];
+    [r.occupancy.as_str(), r.department.as_str(), name]
+        .iter()
+        .map(|t| t.to_lowercase())
+        .any(|t| WORDS.iter().any(|w| t.contains(w)))
+}
+
 /// Whether room `r` named `name`, of `area` m², counts in the living area (obytná
 /// plocha), by its own word, else by its type: a living room, bedroom,
 /// children's room, dining room or study of at least 8 m², a kitchen of
-/// more than 12 m² (the ministry's guide to a flat's floor area, 2021,
-/// after STN 73 4301: an obytná miestnosť has at least 8 m²; a kitchen
-/// up to 12 m² is príslušenstvo).
+/// more than 12 m². STN 73 4301: obytné miestnosti are the living room,
+/// dining room, bedroom, study, other rooms (guest, children's) and the
+/// obytná kuchyňa (7.2.7), each of at least 8 m² (7.2.1 a); a cooking
+/// space of an obytná miestnosť over 12 m² is an obytná kuchyňa (7.3.7).
 pub fn counts_as_living(name: &str, r: &Room, area: f64) -> bool {
     use crate::roomtype::RoomType as T;
     if let Some(own) = r.living {
