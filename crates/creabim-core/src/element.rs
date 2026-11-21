@@ -623,23 +623,25 @@ pub enum Hatch {
     MasonryOuter,
     /// Inner load-bearing masonry: crossed pairs of 45° lines.
     MasonryInner,
-    /// Reinforced concrete: dense broken 45° lines.
+    /// Reinforced concrete: broken 45° lines, a tick in every third gap.
     Reinforced,
-    /// Undisturbed ground: sparse short fine 45° lines.
+    /// Undisturbed ground: 45° lines in threes.
     Ground,
-    /// Fill of compacted earth: a herringbone of short lines.
+    /// Fill of compacted earth: 45° strips, every other one rungs across.
     EarthFill,
-    /// Fill of compacted gravel: small rings of many sizes.
+    /// Fill of compacted gravel: packed rings of many sizes.
     Gravel,
     /// Thermal insulation: the batt loops, as wide as the layer.
     Insulation,
     /// Waterproofing against ground moisture and radon: a heavy dashed
     /// line along the layer, as the ASR legend draws an asphalt strip.
     Membrane,
+    /// Concrete-filled formwork blocks (DT): a sparse 45° grid.
+    FormBlock,
 }
 
 impl Hatch {
-    pub const ALL: [Hatch; 15] = [
+    pub const ALL: [Hatch; 16] = [
         Hatch::Empty,
         Hatch::Solid,
         Hatch::Diagonal,
@@ -655,6 +657,7 @@ impl Hatch {
         Hatch::Gravel,
         Hatch::Insulation,
         Hatch::Membrane,
+        Hatch::FormBlock,
     ];
 
     pub fn label(self) -> &'static str {
@@ -674,6 +677,7 @@ impl Hatch {
             Hatch::Gravel => "Gravel fill",
             Hatch::Insulation => "Insulation",
             Hatch::Membrane => "Waterproofing",
+            Hatch::FormBlock => "Formwork blocks",
         }
     }
 }

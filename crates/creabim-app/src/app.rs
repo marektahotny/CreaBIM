@@ -737,6 +737,32 @@ impl CreaBimApp {
             }
             let _ = tx.apply(&mut model);
         }
+        // DT formwork blocks of a project from before they had their own
+        // hatch drew as reinforced concrete
+        let blocks: Vec<(creabim_core::Element, creabim_core::Element)> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Material(m)
+                    if m.hatch == creabim_core::Hatch::Reinforced
+                        && (e.name.contains("DT tvarov")
+                            || m.description.contains("debniace tvarovky")) =>
+                {
+                    let mut now = e.clone();
+                    if let ElementKind::Material(m) = &mut now.kind {
+                        m.hatch = creabim_core::Hatch::FormBlock;
+                    }
+                    Some((e.clone(), now))
+                }
+                _ => None,
+            })
+            .collect();
+        if !blocks.is_empty() {
+            let mut tx = creabim_core::Transaction::new("Formwork block hatch");
+            for (before, after) in blocks {
+                tx = tx.replace(before, after);
+            }
+            let _ = tx.apply(&mut model);
+        }
         // windows and outside doors of a project from before they had their
         // makers' values (Uw, g, τv, Rw) get the default products'
         let outer: std::collections::HashSet<ElementId> = model
@@ -13358,7 +13384,12 @@ impl CreaBimApp {
             // a sheet by its number, once the actions above made it
             if let Ok(n) = std::env::var("CREABIM_SHOT_SHEET") {
                 let sheet = self.doc.model().iter().find_map(|e| match &e.kind {
-                    ElementKind::Sheet(sh) if sh.number == n => Some(e.id),
+                    ElementKind::Sheet(sh)
+                        if sh.number == n
+                            || n.strip_prefix('*').is_some_and(|t| sh.number.ends_with(t)) =>
+                    {
+                        Some(e.id)
+                    }
                     _ => None,
                 });
                 if sheet.is_some() {

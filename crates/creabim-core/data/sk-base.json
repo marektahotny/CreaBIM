@@ -372,7 +372,7 @@
   {
    "id": "nasyp-zemina",
    "category": "Zeminy a kamenivo",
-   "name": "Zhutnený násyp zeminou",
+   "name": "Zhutnený násyp zeminou 0,3 MPa",
    "lambda": 2,
    "density": 1800,
    "fire": "A1",

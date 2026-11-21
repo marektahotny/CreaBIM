@@ -110,10 +110,10 @@ pub fn ground_at_building(model: &Model) -> Option<(f64, f64)> {
     range
 }
 
-/// The enclosed volume of the building by STN 73 4055: Op = Oz + Os + Ov
-/// + Ot, each measured to the outer faces of the walls (the "šírka" of
-/// the norm's figure), m³. The planes between the parts, as the norm's
-/// figure draws them:
+/// The enclosed volume of the building by STN 73 4055: Op = Oz + Os + Ov +
+/// Ot, each measured to the outer faces of the walls (the "šírka" of the
+/// norm's figure), m³. The planes between the parts, as the norm's figure
+/// draws them:
 /// - the plane bounding the foundations: the top of the footings;
 /// - the plane bounding the lower part: the floor of the first storey
 ///   above ground (1. NP), so the lower part is the storeys below ground

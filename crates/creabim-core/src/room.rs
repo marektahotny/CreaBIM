@@ -879,8 +879,8 @@ pub fn next_number(model: &Model, level: ElementId) -> String {
     format!("{}.01", storey_number(model, level))
 }
 
-/// The number a storey gives its rooms: that of its designation, 1 for
-/// 1. NP, 2 for 2. NP, -1 for 1. PP. Read from the level's name where it
+/// The number a storey gives its rooms: that of its designation (1 for
+/// "1. NP", 2 for "2. NP", -1 for "1. PP"). Read from the level's name where it
 /// names one ("2. NP", "1.PP", "Storey 2", "Basement 1"), else counted
 /// from the ground as storeys are named.
 pub fn storey_number(model: &Model, level: ElementId) -> i64 {

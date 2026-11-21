@@ -271,6 +271,7 @@ The pattern on a material's cut faces.
 - `"gravel"`
 - `"insulation"`
 - `"membrane"`
+- `"form-block"`
 
 ### RatePer
 
