@@ -13437,6 +13437,20 @@ impl CreaBimApp {
                 }
             }
             // the assembly editor open on an assembly of that name
+            // the plan cut this high over its level, m
+            if let (Some(id), Ok(t)) = (id, std::env::var("CREABIM_SHOT_CUT")) {
+                if let (Ok(t), Some(e)) = (t.parse::<f64>(), self.doc.model().get(id).cloned()) {
+                    let mut after = e.clone();
+                    if let ElementKind::View(v) = &mut after.kind {
+                        if let ViewKind::Plan { cut_height, .. } = &mut v.kind {
+                            *cut_height = t;
+                        }
+                    }
+                    let _ = self
+                        .doc
+                        .commit(creabim_core::Transaction::new("cut").replace(e, after));
+                }
+            }
             // the plan's top of range raised this far over its level, m
             if let (Some(id), Ok(t)) = (id, std::env::var("CREABIM_SHOT_TOP")) {
                 if let (Ok(t), Some(e)) = (t.parse::<f64>(), self.doc.model().get(id).cloned()) {
