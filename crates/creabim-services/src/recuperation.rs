@@ -1544,7 +1544,7 @@ mod tests {
     #[test]
     fn the_catalogue_reads() {
         let c = catalogue();
-        assert!(c.units.len() >= 3 && c.room_units.len() >= 1);
+        assert!(c.units.len() >= 3 && !c.room_units.is_empty());
         assert!(c.item("gp75").is_some() && c.item("tbox2").is_some());
         assert!(crate::pipe_types::by_id("GP").is_some());
     }
