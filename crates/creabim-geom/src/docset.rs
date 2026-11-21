@@ -661,6 +661,17 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
             let d = schedule(&mut b, ScheduleCategory::BoardDiagram, "Board diagram");
             b.sheet(number(&part, "SCH", &mut n), tr("Board diagram"), &[d]);
         }
+        // the ventilation with heat recovery: its priced take-off
+        if trade == Trade::Ventilation
+            && !creabim_services::recuperation::bill(&b.m).lines.is_empty()
+        {
+            let d = schedule(
+                &mut b,
+                ScheduleCategory::VentilationHrv,
+                "VZT – recuperation",
+            );
+            b.sheet(number(&part, "VYK", &mut n), tr("VZT – recuperation"), &[d]);
+        }
     }
     // the title pages: the project's own and one before each part
     covers(&mut b, frame);

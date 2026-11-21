@@ -19,7 +19,7 @@ pub mod heat;
 mod jika;
 pub mod medical;
 pub mod radiators;
-mod services;
+pub mod services;
 pub mod site;
 pub mod soakaway;
 pub mod valvebox;

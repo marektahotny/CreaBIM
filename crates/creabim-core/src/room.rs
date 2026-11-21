@@ -18,6 +18,10 @@ use crate::{Element, ElementId, ElementKind, Model};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 fn is_blank(s: &str) -> bool {
     s.is_empty()
 }
@@ -85,6 +89,10 @@ pub struct Room {
     /// Its underfloor heating, where it has one: the loops drawn in it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ufh: Option<crate::underfloor::Underfloor>,
+    /// Aired by its own room heat-recovery units in its outer wall, not
+    /// by the house's central unit (the recuperation design).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub decentral_hrv: bool,
 }
 
 /// Tiles on a room's walls: from the floor up to `height`, on every

@@ -478,6 +478,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The air every room needs, supply and exhaust through its diffusers and grilles, and the flow of the air handling unit (STN EN 16798-1)",
             ),
             act(
+                "calc:recuperation",
+                "Heat recovery design",
+                "wind",
+                "Designs ventilation with heat recovery in one step: the ATREA DUPLEX unit, distribution boxes, flexible ducts Ø75 through the doors to a plate valve in every room, room units in the outer wall for the rooms marked so; pressure loss, transfer under the doors and the take-off VZT – recuperation with prices",
+            ),
+            act(
                 "calc:ducts",
                 "Duct sizing",
                 "gauge",

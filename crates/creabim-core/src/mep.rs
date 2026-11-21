@@ -310,6 +310,24 @@ pub const SYSTEMS: &[SystemDef] = &[
         160.0,
         2.7,
     )),
+    sys(
+        "VZC",
+        "Ventilation – outdoor (fresh) air",
+        SystemKind::AirSupply,
+        0x16a34a,
+        "VZK",
+        160.0,
+        2.7,
+    ),
+    dashed(sys(
+        "VZE",
+        "Ventilation – exhaust to outdoors",
+        SystemKind::AirExhaust,
+        0x7c3aed,
+        "VZK",
+        160.0,
+        2.7,
+    )),
 ];
 
 /// The system with this code.
@@ -1077,7 +1095,7 @@ mod tests {
 
     #[test]
     fn systems_are_pilon_designers() {
-        assert_eq!(SYSTEMS.len(), 19);
+        assert_eq!(SYSTEMS.len(), 21);
         let k = system("K").unwrap();
         assert!(k.kind.is_gravity() && k.slope_pct == 2.0 && k.pipe_type == "PPHT");
         assert!(system("UKS").unwrap().dashed);

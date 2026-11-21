@@ -1685,6 +1685,7 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         fire_pvm: None,
         tiling: None,
         ufh: None,
+        decentral_hrv: false,
     };
     c.insert(
         &r.id,
@@ -1762,6 +1763,7 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::Occupancy => core::ScheduleCategory::Occupancy,
                 f::ScheduleCategory::BoardDiagram => core::ScheduleCategory::BoardDiagram,
                 f::ScheduleCategory::LintelList => core::ScheduleCategory::LintelList,
+                f::ScheduleCategory::VentilationHrv => core::ScheduleCategory::VentilationHrv,
                 f::ScheduleCategory::FireRisk => core::ScheduleCategory::FireRisk,
             };
             let mut view = core::View::schedule(category);

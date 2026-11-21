@@ -40,6 +40,7 @@ pub mod network;
 pub mod peak_flow;
 pub mod pipe_types;
 pub mod radiators;
+pub mod recuperation;
 pub mod sanitary;
 pub mod settings;
 mod sizing;

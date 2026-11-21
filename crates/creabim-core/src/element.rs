@@ -2544,10 +2544,13 @@ pub enum ScheduleCategory {
     /// The system lintels by product and storey: pieces, length, size and
     /// mass, and the openings they span.
     LintelList,
+    /// The take-off of the ventilation with heat recovery: the units,
+    /// boxes, ducts and terminals as drawn, priced from the catalogue.
+    VentilationHrv,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 23] = [
+    pub const ALL: [ScheduleCategory; 24] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2571,6 +2574,7 @@ impl ScheduleCategory {
         ScheduleCategory::Occupancy,
         ScheduleCategory::BoardDiagram,
         ScheduleCategory::LintelList,
+        ScheduleCategory::VentilationHrv,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2599,6 +2603,7 @@ impl ScheduleCategory {
             ScheduleCategory::FireRisk => return "Fire risk".into(),
             ScheduleCategory::BoardDiagram => return "Board diagram".into(),
             ScheduleCategory::LintelList => return "Lintel list".into(),
+            ScheduleCategory::VentilationHrv => return "VZT – recuperation".into(),
         };
         format!("{one} Schedule")
     }
@@ -2636,6 +2641,7 @@ impl ScheduleCategory {
             ScheduleCategory::FireRisk => "Fire risk",
             ScheduleCategory::BoardDiagram => "Board diagram",
             ScheduleCategory::LintelList => "Lintel list",
+            ScheduleCategory::VentilationHrv => "VZT – recuperation",
         }
     }
 

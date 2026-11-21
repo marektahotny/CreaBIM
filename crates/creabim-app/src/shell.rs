@@ -313,6 +313,7 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::ServicesLegend => "fixtures",
         ScheduleCategory::BoardDiagram => "circuits",
         ScheduleCategory::LintelList => "beam",
+        ScheduleCategory::VentilationHrv => "wind",
         ScheduleCategory::Documents => "sheet-template",
         ScheduleCategory::MaterialLegend => "brick-wall",
         ScheduleCategory::PipeList => "table-2",

@@ -113,6 +113,8 @@ mod printui;
 mod profilesui;
 #[path = "radiatorsui.rs"]
 mod radiatorsui;
+#[path = "recuperationui.rs"]
+mod recuperationui;
 #[path = "reportui.rs"]
 mod reportui;
 #[path = "routecheckui.rs"]
@@ -456,6 +458,8 @@ pub struct CreaBimApp {
     results_due: Option<&'static str>,
     /// The duct sizing window's velocities, while it is open.
     ducts: Option<creabim_services::ductsizing::Limits>,
+    /// The heat recovery design window's options, while it is open.
+    recuperation: Option<creabim_services::recuperation::Opts>,
     /// The circuit check window, while it is open.
     circuit: Option<creabim_services::electrical::Circuit>,
     herzdp: Option<creabim_services::herzdp::DpInput>,
@@ -679,6 +683,7 @@ impl CreaBimApp {
             air_balance: false,
             results_due: None,
             ducts: None,
+            recuperation: None,
             circuit: None,
             herzdp: None,
             fire_params: None,
@@ -13128,6 +13133,16 @@ impl CreaBimApp {
                 p.sjtsk.get_or_insert([-547382.28, -1253318.85]);
                 self.project_draft = Some(p);
             }
+            // the 3D view in X-ray
+            if std::env::var("CREABIM_SHOT_XRAY").is_ok() {
+                self.set_xray(true);
+            }
+            // actions run as from the tool tabs ("viewmode:services;calc:recuperation")
+            if let Ok(a) = std::env::var("CREABIM_SHOT_ACTION") {
+                for one in a.split(';') {
+                    self.run_action(ctx, one);
+                }
+            }
             // the assembly editor open on an assembly of that name
             if let Ok(a) = std::env::var("CREABIM_SHOT_ASSEMBLY") {
                 let id = self.doc.model().iter().find(|e| e.name == a).map(|e| e.id);
@@ -13695,6 +13710,7 @@ impl eframe::App for CreaBimApp {
         self.cooling_window(&ctx);
         self.air_balance_window(&ctx);
         self.ducts_window(&ctx);
+        self.recuperation_window(&ctx);
         self.circuit_window(&ctx);
         self.herzdp_window(&ctx);
         self.fire_params_window(&ctx);
