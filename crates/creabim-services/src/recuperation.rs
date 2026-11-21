@@ -35,7 +35,7 @@ pub struct Unit {
     pub code: String,
     #[serde(rename = "nazov")]
     pub name: String,
-    /// "ECV5" stands at a wall, "EC5" hangs under the ceiling.
+    /// "Pro-V" and "Slim" stand at a wall; "Pro" and "Easy2" hang under the ceiling.
     #[serde(rename = "rada")]
     pub series: String,
     /// Its largest flow, m³/h.
@@ -58,6 +58,13 @@ pub struct Unit {
     pub lw_case: Option<f64>,
     #[serde(rename = "zdroj", default)]
     pub source: String,
+}
+
+impl Unit {
+    /// Whether the unit hangs under the ceiling (Pro, Easy2) instead of standing at a wall (Pro-V, Slim).
+    pub fn on_ceiling(&self) -> bool {
+        !matches!(self.series.as_str(), "Pro-V" | "Slim")
+    }
 }
 
 /// A room unit in the outer wall.
@@ -175,7 +182,7 @@ pub enum Route {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Opts {
     pub route: Route,
-    /// The unit's series: "ECV5" (at a wall) or "EC5" (under the ceiling).
+    /// The unit's series: "Pro-V" or "Slim" (at a wall), "Pro" or "Easy2" (under the ceiling).
     pub series: String,
     /// The most air one duct Ø75 carries, m³/h (GP: 15–50 recommended
     /// by ATREA; quieter the less).
@@ -195,7 +202,7 @@ impl Default for Opts {
     fn default() -> Self {
         Self {
             route: Route::Floor,
-            series: "ECV5".into(),
+            series: "Pro-V".into(),
             per_duct: 25.0,
             use_of_unit: 0.7,
             transfer_v: 1.0,
@@ -1109,7 +1116,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 Some(_) => (None, "akustický výpočet rozvodu: doplniť útlm tlmiča a ventilu z katalógu".to_string()),
                 None => (
                     None,
-                    "katalóg ATREA EC5/ECV5 udáva len akustický výkon do okolia; Lw do potrubia, útlm tlmiča a ventilu chýba (návrhový program ATREA)".to_string(),
+                    "technický list ATREA udáva len akustický výkon do okolia; Lw do potrubia, útlm tlmiča a ventilu chýba (návrhový program ATREA)".to_string(),
                 ),
             },
             _ => continue,
@@ -1250,7 +1257,7 @@ pub fn objects(d: &Design, o: &Opts) -> Vec<CatalogueObject> {
             w,
             dd,
             h,
-            u.series == "EC5",
+            u.on_ceiling(),
         ));
         let b = box_item(d);
         if let Some(b) = b {
@@ -1352,11 +1359,7 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
             }
         }
         // mains: unit to boxes (with a silencer), outdoor air and exhaust
-        let uh = if u.series == "EC5" {
-            z
-        } else {
-            u.size[2] + 0.15
-        };
+        let uh = if u.on_ceiling() { z } else { u.size[2] + 0.15 };
         let n = DVec2::from_angle((rot + 90.0).to_radians());
         let out = d.outside.first().copied().unwrap_or(at + n * 0.5);
         for (sys, to, sil) in [

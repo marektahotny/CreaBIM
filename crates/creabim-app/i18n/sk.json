@@ -7905,8 +7905,6 @@
  "Heat recovery ventilation": "Vetranie s rekuperáciou",
  "Ducts laid": "Vedenie potrubia",
  "above the ceiling": "nad stropom",
- "at a wall (ECV5)": "nástenná (ECV5)",
- "under the ceiling (EC5)": "podstropná (EC5)",
  "Most air in one duct Ø75": "Max. prietok jedným potrubím Ø75",
  "unit run at most at": "jednotka najviac na",
  "Room unit": "Decentrálna jednotka",
@@ -7948,5 +7946,9 @@
  "Unit of measure": "MJ",
  "Noise in the rooms (night limit governs)": "Hluk v miestnostiach (rozhoduje limit pre noc)",
  "LAmax,p day / evening / night dB": "LAmax,p deň / večer / noc dB",
- "Level dB(A)": "Hladina dB(A)"
+ "Level dB(A)": "Hladina dB(A)",
+ "at a wall (Pro-V)": "nástenná (Pro-V)",
+ "under the ceiling (Pro)": "podstropná (Pro)",
+ "under the ceiling, compact (Easy2)": "podstropná kompaktná (Easy2)",
+ "at a wall, slim (Slim)": "nástenná plochá (Slim)"
 }
