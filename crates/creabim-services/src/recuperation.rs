@@ -568,6 +568,41 @@ fn ceil_to(v: f64, step: f64) -> f64 {
     (v / step).ceil() * step
 }
 
+/// Decree 259/2008 Z. z., annex 2, table 4: the least air changes of
+/// short-stay rooms, 1/h (the lower end where it gives a range). Used
+/// for buildings other than dwellings; a dwelling's rooms are not in it.
+pub fn table4(k: RoomType) -> Option<f64> {
+    match k {
+        RoomType::Hall | RoomType::Staircase => Some(2.0),
+        RoomType::Bathroom => Some(10.0),
+        RoomType::Toilet => Some(5.0),
+        RoomType::Pantry => Some(10.0),
+        RoomType::Wardrobe => Some(10.0),
+        _ => None,
+    }
+}
+
+/// Is the building for dwelling (its use in the project information
+/// says so, or says nothing)?
+pub fn is_residential(model: &Model) -> bool {
+    let u = model
+        .project_info()
+        .map(|(_, p)| p.building_use.to_lowercase())
+        .unwrap_or_default();
+    u.trim().is_empty()
+        || [
+            "dwelling",
+            "residential",
+            "family house",
+            "bytov",
+            "byt ",
+            "obyt",
+            "rodinn",
+        ]
+        .iter()
+        .any(|w| format!("{u} ").contains(w))
+}
+
 /// A loggia, a terrace, a balcony: outdoors, not aired.
 fn is_outdoor(text: &str) -> bool {
     let t = text.to_lowercase();
@@ -605,6 +640,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
     };
     d.level = Some(level);
     let losses = heatloss::building(model, ho);
+    let residential = is_residential(model);
     let mut geo: Vec<RoomGeo> = vec![];
     let mut need: Vec<f64> = vec![];
     for hl in &losses.rooms {
@@ -631,7 +667,13 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             height: creabim_core::room::height(model, r),
             bounded_by: shape.bounded_by.clone(),
         });
-        need.push(hl.v_min.round());
+        // a building other than dwellings: the decree's least air
+        // changes for the rooms its table lists
+        let n4 = if residential { None } else { table4(hl.kind) };
+        need.push(match n4 {
+            Some(n) => hl.v_min.max(n * hl.volume).round(),
+            None => hl.v_min.round(),
+        });
     }
     if geo.is_empty() {
         d.warnings.push("Miestnosti podlažia nemajú obrys.".into());
@@ -1081,9 +1123,11 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             note,
         });
     }
-    d.warnings.push(
-        "Potreby vzduchu sú z typov miestností (0,5 1/h podľa STN EN 12831-1 tab. B.7; odvod kuchyňa 100, kúpeľňa 90, WC 50 m³/h): zdroj odvodných hodnôt treba potvrdiť normou.".into(),
-    );
+    d.warnings.push(if residential {
+        "Bytová budova: 0,5 1/h podľa STN EN 12831-1 tab. B.7, odvod kuchyňa 100, kúpeľňa 90, WC 50 m³/h (zaužívané hodnoty, vyhláška 259/2008 ich pre byty neuvádza).".into()
+    } else {
+        "Nebytová budova: najmenšia výmena vzduchu podľa vyhlášky 259/2008 Z. z., príl. 2, tab. 4 (chodby, schodiská 2, kúpeľne 10, WC 5, sklady a šatne 10 1/h; dolná hranica rozsahu).".into()
+    });
     d
 }
 
@@ -1788,5 +1832,41 @@ mod tests {
         assert_eq!(holes, again);
         let b = bill(doc.model());
         assert!(b.lines.iter().any(|l| l.group == "Decentrálna rekuperácia"));
+    }
+
+    #[test]
+    fn other_buildings_take_the_decrees_table_4() {
+        assert_eq!(table4(RoomType::Bathroom), Some(10.0));
+        assert_eq!(table4(RoomType::Living), None);
+        let mut model = creabim_core::starter::starter_house();
+        assert!(is_residential(&model));
+        let o = Opts::default();
+        let ho = heatloss::Opts::default();
+        let home = design(&model, &ho, &o);
+        let (id, mut p) = model
+            .project_info()
+            .map(|(e, p)| (e, p.clone()))
+            .unwrap_or_default();
+        p.building_use = "Office".into();
+        let mut doc = creabim_core::Document::from_model(model.clone());
+        if let Some(before) = doc.model().get(id).cloned() {
+            let mut after = before.clone();
+            if let ElementKind::Project(x) = &mut after.kind {
+                *x = p;
+            }
+            doc.commit(Transaction::new("use").replace(before, after))
+                .unwrap();
+            model = doc.model().clone();
+            assert!(!is_residential(&model));
+            let office = design(&model, &ho, &o);
+            let hall = |d: &Design| {
+                d.rooms
+                    .iter()
+                    .find(|r| r.name.contains("Hall"))
+                    .unwrap()
+                    .need
+            };
+            assert!(hall(&office) > hall(&home));
+        }
     }
 }
