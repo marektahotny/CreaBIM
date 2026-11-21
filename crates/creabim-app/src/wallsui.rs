@@ -1127,10 +1127,15 @@ pub(super) fn performance_fields(
             .width(ui.available_width())
             .show_ui(ui, |ui| {
                 if ui
-                    .selectable_label(perf.is_none(), t("Not given"))
+                    .selectable_label(
+                        perf.as_ref().is_none_or(|p| p.product.is_empty()),
+                        t("Not given"),
+                    )
                     .clicked()
                 {
-                    *perf = None;
+                    // given as none on purpose: an older project's fill on
+                    // opening leaves it so
+                    *perf = Some(Default::default());
                     changed = true;
                 }
                 // the makers' products for this kind first, then the others

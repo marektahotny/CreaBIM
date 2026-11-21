@@ -1256,3 +1256,72 @@ pub fn preset(name: &str) -> Option<Performance> {
 pub fn default_window_performance() -> Option<Performance> {
     presets().iter().find(|p| !p.door).map(Preset::performance)
 }
+
+/// For a project from before windows and doors had their makers' values:
+/// each window, and each door in an outer wall (`outer`, by wall), that
+/// has none gets the first window's or entrance door's of [`presets`];
+/// so do their types (a door type when a door of it is in an outer wall),
+/// so a typed one keeps matching its type. One given as none on purpose
+/// (an empty [`Performance`]) is left so. Returns (before, after) pairs.
+pub fn fill_missing_performance(
+    model: &crate::Model,
+    outer: &std::collections::HashSet<crate::ElementId>,
+) -> Vec<(crate::Element, crate::Element)> {
+    use crate::{ElementKind, TypeParams};
+    let window = default_window_performance();
+    let entrance = presets()
+        .iter()
+        .find(|p| p.door && p.name.contains("vchodové"))
+        .map(Preset::performance);
+    // what each opening should get, if anything
+    let wanted = |o: &Opening| match o.kind {
+        OpeningKind::Window => window.clone(),
+        OpeningKind::Door if outer.contains(&o.host) => entrance.clone(),
+        _ => None,
+    };
+    let mut out = vec![];
+    let mut types: std::collections::HashMap<crate::ElementId, Option<Performance>> =
+        Default::default();
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        let Some(p) = wanted(o) else { continue };
+        if let Some(t) = &e.of_type {
+            types.entry(t.id).or_insert(Some(p.clone()));
+        }
+        if o.performance.is_none() {
+            let mut after = e.clone();
+            if let ElementKind::Opening(a) = &mut after.kind {
+                // a typed one takes its type's, when that has one
+                let from_type = e.of_type.as_ref().and_then(|t| {
+                    model.get(t.id).and_then(|te| match &te.kind {
+                        ElementKind::ElementType(et) => match &et.params {
+                            TypeParams::Door(x) | TypeParams::Window(x) => x.performance.clone(),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                });
+                a.performance = Some(from_type.unwrap_or(p));
+            }
+            out.push((e.clone(), after));
+        }
+    }
+    for (id, p) in types {
+        let Some(te) = model.get(id) else { continue };
+        let mut after = te.clone();
+        if let ElementKind::ElementType(at) = &mut after.kind {
+            if let TypeParams::Door(x) | TypeParams::Window(x) = &mut at.params {
+                if x.performance.is_some() {
+                    continue;
+                }
+                x.performance = p;
+            }
+        }
+        if after.kind != te.kind {
+            out.push((te.clone(), after));
+        }
+    }
+    out
+}

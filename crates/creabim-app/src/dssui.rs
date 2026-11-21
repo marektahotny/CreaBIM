@@ -186,6 +186,7 @@ impl CreaBimApp {
                     let hint = match &f.value {
                         Some((v, Source::Model)) => format!("{} (z modelu)", v.shown(f.prop)),
                         Some((v, Source::Calc)) => format!("{} (z výpočtu)", v.shown(f.prop)),
+                        Some((dss::Value::Text(why), Source::NotApplicable)) => format!("— {why}"),
                         _ if f.required => "chýba".to_string(),
                         _ => String::new(),
                     };
@@ -452,6 +453,7 @@ fn values_grid(
                 prop_label(ui, name, label_w);
                 let start = entry.value(f.prop.name).unwrap_or("").to_string();
                 let hint = match &f.value {
+                    Some((dss::Value::Text(why), Source::NotApplicable)) => format!("— {why}"),
                     Some((v, Source::Model | Source::Calc)) => {
                         format!("{} (z modelu)", v.shown(f.prop))
                     }

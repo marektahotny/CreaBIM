@@ -737,6 +737,20 @@ impl CreaBimApp {
             }
             let _ = tx.apply(&mut model);
         }
+        // windows and outside doors of a project from before they had their
+        // makers' values (Uw, g, τv, Rw) get the default products'
+        let outer: std::collections::HashSet<ElementId> = model
+            .levels()
+            .flat_map(|(l, _)| creabim_geom::sitefoot::outer_walls(&model, l.id))
+            .collect();
+        let filled = creabim_core::joinery::fill_missing_performance(&model, &outer);
+        if !filled.is_empty() {
+            let mut tx = creabim_core::Transaction::new("Window and door values");
+            for (before, after) in filled {
+                tx = tx.replace(before, after);
+            }
+            let _ = tx.apply(&mut model);
+        }
         self.doc = Document::from_model(model);
         self.selection.clear();
         self.hidden.clear();
