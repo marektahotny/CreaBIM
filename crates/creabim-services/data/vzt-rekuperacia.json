@@ -3,14 +3,14 @@
   "mena": "EUR",
   "dph": 0.23,
   "kurzCzk": 25.0,
-  "poznamka": "Ceny bez DPH. Atrea jednotky a príslušenstvo: cenník ATREA SK 01/2023 (platnosť od 25.01.2023, DPH v cenníku neuvedené, berie sa ako bez DPH). Rozvody: e-shopy CZ (ceny s DPH 21 % prepočítané na bez DPH kurzom 25 CZK/EUR), 11/2026. Blauberg: e-shopy SK, 11/2026. Položky bez ceny treba doplniť (cena na dopyt). Rozmery jednotiek sú orientačné, overiť v katalógu výrobcu.",
+  "poznamka": "Ceny bez DPH. Atrea jednotky a príslušenstvo: cenník ATREA SK 01/2023 (platnosť od 25.01.2023, DPH v cenníku neuvedené, berie sa ako bez DPH). Rozvody: e-shopy CZ (ceny s DPH 21 % prepočítané na bez DPH kurzom 25 CZK/EUR), 11/2026. Blauberg: e-shopy SK, 11/2026. Položky bez ceny treba doplniť (cena na dopyt). Jednotky: max. prietok pri 100 Pa, rozmery a hrdlá podľa katalógu ATREA DUPLEX EC5, ECV5 04/2016.",
   "jednotky": [
-    {"kod": "A160513-L", "nazov": "ATREA DUPLEX 280 ECV5.aM", "rada": "ECV5", "qMax": 280, "cena": 2325.1, "lw": null, "rozmer": [0.60, 0.36, 0.95], "zdroj": "cenník ATREA SK 01/2023"},
-    {"kod": "A160514-L", "nazov": "ATREA DUPLEX 380 ECV5.aM", "rada": "ECV5", "qMax": 380, "cena": 2487.2, "lw": null, "rozmer": [0.60, 0.36, 0.95], "zdroj": "cenník ATREA SK 01/2023"},
-    {"kod": "A160515-L", "nazov": "ATREA DUPLEX 580 ECV5.aM", "rada": "ECV5", "qMax": 580, "cena": 2935.2, "lw": null, "rozmer": [0.75, 0.40, 1.10], "zdroj": "cenník ATREA SK 01/2023"},
-    {"kod": "A160510-L", "nazov": "ATREA DUPLEX 170 EC5.aM", "rada": "EC5", "qMax": 170, "cena": 2325.1, "lw": null, "rozmer": [1.00, 0.60, 0.26], "zdroj": "cenník ATREA SK 01/2023"},
-    {"kod": "A160511-L", "nazov": "ATREA DUPLEX 370 EC5.aM", "rada": "EC5", "qMax": 370, "cena": 2487.2, "lw": null, "rozmer": [1.10, 0.70, 0.28], "zdroj": "cenník ATREA SK 01/2023"},
-    {"kod": "A160512-L", "nazov": "ATREA DUPLEX 570 EC5.aM", "rada": "EC5", "qMax": 570, "cena": 2935.2, "lw": null, "rozmer": [1.25, 0.80, 0.30], "zdroj": "cenník ATREA SK 01/2023"}
+    {"kod": "A160513-L", "nazov": "ATREA DUPLEX 280 ECV5.aM", "rada": "ECV5", "qMax": 285, "cena": 2325.1, "lw": null, "rozmer": [0.617, 0.49, 1.0], "hrdlo": 160, "lwOkolie": 35, "zdroj": "cena: cenník ATREA SK 01/2023; qMax pri 100 Pa, rozmery, hrdlá, akust. výkon do okolia pri Qref: katalóg ATREA DUPLEX EC5, ECV5 (04/2016)"},
+    {"kod": "A160514-L", "nazov": "ATREA DUPLEX 380 ECV5.aM", "rada": "ECV5", "qMax": 365, "cena": 2487.2, "lw": null, "rozmer": [0.617, 0.49, 1.0], "hrdlo": 160, "lwOkolie": 36, "zdroj": "cena: cenník ATREA SK 01/2023; qMax pri 100 Pa, rozmery, hrdlá, akust. výkon do okolia pri Qref: katalóg ATREA DUPLEX EC5, ECV5 (04/2016)"},
+    {"kod": "A160515-L", "nazov": "ATREA DUPLEX 580 ECV5.aM", "rada": "ECV5", "qMax": 565, "cena": 2935.2, "lw": null, "rozmer": [0.928, 0.509, 1.08], "hrdlo": 200, "lwOkolie": 42, "zdroj": "cena: cenník ATREA SK 01/2023; qMax pri 100 Pa, rozmery, hrdlá, akust. výkon do okolia pri Qref: katalóg ATREA DUPLEX EC5, ECV5 (04/2016)"},
+    {"kod": "A160510-L", "nazov": "ATREA DUPLEX 170 EC5.aM", "rada": "EC5", "qMax": 175, "cena": 2325.1, "lw": null, "rozmer": [0.84, 0.655, 0.29], "hrdlo": 160, "lwOkolie": 37, "zdroj": "cena: cenník ATREA SK 01/2023; qMax pri 100 Pa, rozmery, hrdlá, akust. výkon do okolia pri Qref: katalóg ATREA DUPLEX EC5, ECV5 (04/2016)"},
+    {"kod": "A160511-L", "nazov": "ATREA DUPLEX 370 EC5.aM", "rada": "EC5", "qMax": 370, "cena": 2487.2, "lw": null, "rozmer": [1.116, 0.93, 0.29], "hrdlo": 200, "lwOkolie": 38, "zdroj": "cena: cenník ATREA SK 01/2023; qMax pri 100 Pa, rozmery, hrdlá, akust. výkon do okolia pri Qref: katalóg ATREA DUPLEX EC5, ECV5 (04/2016)"},
+    {"kod": "A160512-L", "nazov": "ATREA DUPLEX 570 EC5.aM", "rada": "EC5", "qMax": 570, "cena": 2935.2, "lw": null, "rozmer": [1.29, 0.93, 0.37], "hrdlo": 250, "lwOkolie": 42, "zdroj": "cena: cenník ATREA SK 01/2023; qMax pri 100 Pa, rozmery, hrdlá, akust. výkon do okolia pri Qref: katalóg ATREA DUPLEX EC5, ECV5 (04/2016)"}
   ],
   "decentralne": [
     {"kod": "VENTO-A50-1-W-V3", "nazov": "Blauberg VENTO Expert A50-1 W V.3", "qVetranie": 50, "qRekuperacia": 25, "stenaMin": 0.30, "stenaMax": 0.50, "otvor": 0.16, "hluk": 28, "cena": 451.22, "zdroj": "najvykurovanie.sk 11/2026: 555,00 € s DPH (cenníková); hluk 4–28 dB(A) podľa obchodu", "pozn": "reverzná jednotka, účinnosť do 95 %, 4–28 dB(A), Wi-Fi, IR ovládač; teleskopické puzdro 300–500 mm"},
@@ -27,7 +27,7 @@
     {"kluc": "ventilP", "kod": "", "nazov": "Tanierový ventil prívodný DN125, kovový", "mj": "ks", "cena": null, "zdroj": "cena na dopyt"},
     {"kluc": "ventilO", "kod": "", "nazov": "Tanierový ventil odvodný DN125, kovový", "mj": "ks", "cena": null, "zdroj": "cena na dopyt"},
     {"kluc": "zaslepka", "kod": "FLX-CS-PVC-75", "nazov": "Záslepka Ø75 (Regulus)", "mj": "ks", "cena": 1.16, "zdroj": "koupelny-venta.cz 11/2026: 35 Kč s DPH"},
-    {"kluc": "spiro160", "kod": "", "nazov": "Potrubie Spiro Ø160 (ATREA)", "mj": "m", "cena": 5.32, "zdroj": "atreaeshop.cz 11/2026: od 161 Kč/m s DPH"},
+    {"kluc": "spiro160", "kod": "", "nazov": "Potrubie Spiro (priemer podľa hrdla jednotky, ATREA)", "mj": "m", "cena": 5.32, "zdroj": "atreaeshop.cz 11/2026: od 161 Kč/m s DPH"},
     {"kluc": "izolacia", "kod": "R336030", "nazov": "Izolácia ISOVER ML 3 s Al fóliou hr. 30 mm (čerstvý a odpadový vzduch)", "mj": "m²", "cena": 14.64, "zdroj": "atreaeshop.cz 11/2026: 443 Kč/m² s DPH"},
     {"kluc": "zaluzia", "kod": "", "nazov": "Protidažďová žalúzia AL Ø160 (nasávanie / výfuk)", "mj": "ks", "cena": 86.64, "zdroj": "atreaeshop.cz 11/2026: od 2 621 Kč s DPH"},
     {"kluc": "tlmic", "kod": "", "nazov": "Tlmič hluku flexibilný Ø160, dĺ. 1 m", "mj": "ks", "cena": null, "zdroj": "cena na dopyt"},

@@ -50,6 +50,12 @@ pub struct Unit {
     /// Width, depth, height, m (as the catalogue gives them).
     #[serde(rename = "rozmer")]
     pub size: [f64; 3],
+    /// Its duct spigots, mm.
+    #[serde(rename = "hrdlo", default = "spigot")]
+    pub spigot: f64,
+    /// Sound power radiated by its casing at Qref, dB(A).
+    #[serde(rename = "lwOkolie", default)]
+    pub lw_case: Option<f64>,
     #[serde(rename = "zdroj", default)]
     pub source: String,
 }
@@ -86,6 +92,15 @@ pub struct RoomUnit {
     #[serde(rename = "pozn", default)]
     pub note: String,
 }
+
+fn spigot() -> f64 {
+    160.0
+}
+
+/// The external pressure the catalogue gives the units' largest flow
+/// at, Pa: a fan that reaches `qMax` there has at least this much at
+/// any smaller flow.
+pub const UNIT_PRESSURE_PA: f64 = 100.0;
 
 /// Any other item of the bill.
 #[derive(Clone, Debug, Deserialize)]
@@ -930,7 +945,8 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             }
             // the main from the unit to its box, and outdoors, Spiro Ø160
             let main_q = d.flow;
-            let (_, rpm) = friction(main_q, 0.16, 1.5e-4);
+            let dm = d.unit.map_or(0.16, |i| cat.units[i].spigot / 1000.0);
+            let (_, rpm) = friction(main_q, dm, 1.5e-4);
             let main = rpm * 3.0;
             if supply {
                 d.dp_supply = worst + main;
@@ -938,8 +954,22 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 d.dp_extract = worst + main;
             }
         }
+        if let Some(u) = d.unit.map(|i| &cat.units[i]) {
+            let worst = d.dp_supply.max(d.dp_extract);
+            if d.flow <= u.q_max && worst <= UNIT_PRESSURE_PA {
+                d.warnings.push(format!(
+                    "Jednotka {} dáva {:.0} m³/h pri {:.0} Pa (katalóg): pri {:.0} m³/h má rezervu aspoň {:.0} Pa na straty ventilov, boxov, tlmičov a žalúzií.",
+                    u.name, u.q_max, UNIT_PRESSURE_PA, d.flow, UNIT_PRESSURE_PA - worst
+                ));
+            } else {
+                d.warnings.push(format!(
+                    "Jednotka {}: {:.0} m³/h a {:.0} Pa sú mimo katalógového bodu {:.0} m³/h pri {:.0} Pa, overiť podľa krivky ventilátora.",
+                    u.name, d.flow, worst, u.q_max, UNIT_PRESSURE_PA
+                ));
+            }
+        }
         d.warnings.push(
-            "Tlakové straty sú len trenie a ohyby potrubia: straty tanierových ventilov, boxov, tlmičov a žalúzií doplniť z katalógu výrobcu; dispozičný tlak jednotky overiť podľa jej krivky.".into(),
+            "Tlakové straty sú trenie a ohyby potrubia: straty tanierových ventilov, boxov, tlmičov a žalúzií doplniť z katalógu výrobcu.".into(),
         );
     }
 
@@ -1037,7 +1067,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 Some(_) => (None, "akustický výpočet rozvodu: doplniť útlm tlmiča a ventilu z katalógu".to_string()),
                 None => (
                     None,
-                    "chýbajú akustické údaje jednotky (Lw do potrubia), tlmiča a tanierového ventilu".to_string(),
+                    "katalóg ATREA EC5/ECV5 udáva len akustický výkon do okolia; Lw do potrubia, útlm tlmiča a ventilu chýba (návrhový program ATREA)".to_string(),
                 ),
             },
             _ => continue,
@@ -1147,16 +1177,16 @@ fn gp_duct(level: ElementId, system: &str, a: DVec2, b: DVec2, z: f64) -> Pipe {
     }
 }
 
-fn spiro(level: ElementId, system: &str, a: DVec3, b: DVec3, insulation: f64) -> Pipe {
+fn spiro(level: ElementId, system: &str, a: DVec3, b: DVec3, insulation: f64, dn: f64) -> Pipe {
     Pipe {
         level,
         system: system.into(),
         start: a,
         end: b,
         pipe_type: "VZK".into(),
-        nominal_mm: 160.0,
-        outer_mm: 161.0,
-        inner_mm: 160.0,
+        nominal_mm: dn,
+        outer_mm: dn + 1.0,
+        inner_mm: dn,
         height_mm: None,
         insulation_mm: insulation,
         insulation_set: true,
@@ -1298,7 +1328,10 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
                     let s = at + n.perp() * side;
                     // its core hole through the outer wall (Ø160 with
                     // 30 mm of insulation: 250 mm)
-                    if let Some(h) = d.unit_wall.and_then(|w| hole(model, w, s, uh, 0.25)) {
+                    if let Some(h) = d
+                        .unit_wall
+                        .and_then(|w| hole(model, w, s, uh, u.spigot / 1000.0 + 0.09))
+                    {
                         tx = tx.insert(h);
                     }
                     (s.extend(uh), (out + n.perp() * side).extend(uh), 0.03)
@@ -1308,14 +1341,14 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
             let mid = DVec3::new(b.x, b.y, a.z);
             let pe = Element::new(
                 format!("{TAG} – {sys}"),
-                ElementKind::Pipe(spiro(level, sys, a, mid, ins)),
+                ElementKind::Pipe(spiro(level, sys, a, mid, ins, u.spigot)),
             );
             let pid = pe.id;
             tx = tx.insert(pe);
             if (mid.z - b.z).abs() > 0.01 {
                 tx = tx.insert(Element::new(
                     format!("{TAG} – {sys}"),
-                    ElementKind::Pipe(spiro(level, sys, mid, b, ins)),
+                    ElementKind::Pipe(spiro(level, sys, mid, b, ins, u.spigot)),
                 ));
             }
             if sil {
