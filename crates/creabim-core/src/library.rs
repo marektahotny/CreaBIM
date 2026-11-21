@@ -22,6 +22,7 @@ pub const CATEGORIES: &[(&str, &str)] = &[
     ("metal", "Other metal"),
     ("glass", "Glass"),
     ("insulation", "Insulation"),
+    ("system-board", "Underfloor heating system board"),
     ("gypsum", "Gypsum"),
     ("plaster", "Plaster and render"),
     ("finish", "Finishes"),
@@ -761,6 +762,14 @@ pub const LIBRARY: &[LibraryEntry] = &[
         1.0,
         "Wood fibre boards",
     ),
+    entry(
+        "Underfloor heating system board",
+        "system-board",
+        Hatch::Insulation,
+        rgb(43, 43, 43),
+        0.9,
+        "Studded, tacker or dry-system board the heating pipes are laid in",
+    ),
     // plasters and boards
     entry(
         "Plasterboard",
@@ -1061,7 +1070,7 @@ pub fn hatch_for_category(category: &str) -> Hatch {
         "brick" | "block" => Hatch::Brick,
         "wood" => Hatch::Timber,
         "stone" | "earth" => Hatch::Diagonal,
-        "insulation" => Hatch::Insulation,
+        "insulation" | "system-board" => Hatch::Insulation,
         "gypsum" => Hatch::Cross,
         "glass" | "finish" | "plastic" => Hatch::Empty,
         _ => Hatch::Solid,

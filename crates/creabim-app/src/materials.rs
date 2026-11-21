@@ -716,7 +716,7 @@ impl CreaBimApp {
                                 continue;
                             }
                             ui.label(
-                                egui::RichText::new(library::category_label(&cat).to_uppercase())
+                                egui::RichText::new(crate::i18n::tr(&library::category_label(&cat)).to_uppercase())
                                     .size(10.5)
                                     .strong()
                                     .color(ui.visuals().weak_text_color()),
@@ -793,10 +793,10 @@ impl CreaBimApp {
                             asks.push(Ask::Rename(id, name));
                         }
                         ui.label(
-                            egui::RichText::new(crate::i18n::tr(&format!(
+                            egui::RichText::new(format!(
                                 "IfcMaterial · {}",
-                                library::category_label(&m.category)
-                            )))
+                                crate::i18n::tr(&library::category_label(&m.category))
+                            ))
                             .weak(),
                         );
                         let users = library::users(model, id);
