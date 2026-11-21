@@ -314,6 +314,13 @@ pub fn fields(ui: &mut egui::Ui, model: &Model, id: ElementId, f: &mut Flashing)
             }) {
                 label = "Runoff coefficient";
             }
+            if crate::props::row(ui, "Sieve at the outlets", |ui| {
+                ui.checkbox(&mut g.sieve, "").changed()
+            }) {
+                label = "Sieve at the outlets";
+            }
+            // what drains to each downpipe, and whether each run of
+            // gutter to it carries it (STN EN 12056-3)
             for (pipe, area) in flashing::catchment(model, id) {
                 let name = model.get(pipe).map_or(String::new(), |e| e.name.clone());
                 crate::props::note(
@@ -324,6 +331,12 @@ pub fn fields(ui: &mut egui::Ui, model: &Model, id: ElementId, f: &mut Flashing)
                         format!("{:.2}", g.rain * area * g.runoff).replace('.', ",")
                     ),
                 );
+                for c in flashing::check_gutter(model, id)
+                    .into_iter()
+                    .filter(|c| c.pipe == pipe)
+                {
+                    run_check(ui, &c);
+                }
             }
         }
         FlashingItem::Downpipe(d) => {
@@ -377,6 +390,32 @@ pub fn fields(ui: &mut egui::Ui, model: &Model, id: ElementId, f: &mut Flashing)
             if metres(ui, "Clamp spacing", &mut d.clamp_spacing, 0.3, 5.0) {
                 label = "Clamp spacing";
             }
+            if crate::props::row(ui, "To the facade", |ui| {
+                ui.checkbox(&mut d.to_wall, "").changed()
+            }) {
+                label = "Downpipe to the facade";
+            }
+            if d.to_wall {
+                if metres(ui, "Gap to the facade", &mut d.facade_gap, 0.0, 0.5) {
+                    label = "Gap to the facade";
+                }
+                let path = flashing::downpipe_path(model, d);
+                let at = path.first().map(|p| p.truncate());
+                let wall = path.get(2).map(|p| p.truncate());
+                crate::props::note(
+                    ui,
+                    match (at, wall) {
+                        (Some(a), Some(w)) => format!(
+                            "{} {} mm",
+                            crate::i18n::tr("Offset by its elbows to the facade:"),
+                            flashing::num(a.distance(w) * 1000.0)
+                        ),
+                        _ => crate::i18n::tr(
+                            "No wall found under the gutter: the downpipe runs straight down.",
+                        ),
+                    },
+                );
+            }
             crate::props::note(
                 ui,
                 format!(
@@ -399,6 +438,12 @@ pub fn fields(ui: &mut egui::Ui, model: &Model, id: ElementId, f: &mut Flashing)
                             format!("{:.2}", g.rain * area * g.runoff).replace('.', ",")
                         ),
                     );
+                }
+                for c in flashing::check_gutter(model, d.gutter)
+                    .into_iter()
+                    .filter(|c| c.pipe == id)
+                {
+                    run_check(ui, &c);
                 }
             }
         }
@@ -424,8 +469,33 @@ pub fn fields(ui: &mut egui::Ui, model: &Model, id: ElementId, f: &mut Flashing)
     }) {
         label = "Sheet finish";
     }
-    if mm(ui, "Developed width", &mut f.developed_mm, 10.0, 2000.0) {
+    // counted from the profile unless typed
+    let mut dev = f.developed();
+    if mm(ui, "Developed width", &mut dev, 10.0, 2000.0) {
+        f.developed_mm = dev;
+        f.developed_set = true;
         label = "Developed width";
+    }
+    if f.developed_set {
+        if crate::props::action(
+            ui,
+            "",
+            "Count from the profile",
+            "Count the developed width from the profile again",
+            true,
+        )
+        .clicked()
+        {
+            f.developed_set = false;
+            label = "Developed width";
+        }
+    } else {
+        let mut edges = f.edges();
+        if mm(ui, "Bead, edge and seam", &mut edges, 0.0, 500.0) {
+            f.edges_mm = Some(edges);
+            label = "Developed width";
+        }
+        crate::props::note(ui, "The developed width is the profile's length and this.");
     }
     let mut mark = f.mark.clone().unwrap_or_default();
     let auto = flashing::mark_of(model, id).unwrap_or_default();
@@ -572,4 +642,38 @@ pub fn toggle_option(d: &mut FlashingDraft, what: &str) {
         "flashing.squarepipe" => d.pipe_profile = DownpipeProfile::Square,
         _ => {}
     }
+}
+
+/// One run of gutter checked, in green when it carries what comes down
+/// it, in red when not.
+fn run_check(ui: &mut egui::Ui, c: &flashing::RunCheck) {
+    let n = |v: f64| format!("{v:.2}").replace('.', ",");
+    let (text, ok) = match c.allowed {
+        Some(a) => (
+            format!(
+                "  {} {} m: Q = {} l/s {} Qdov = {} l/s",
+                crate::i18n::tr("run"),
+                flashing::num(c.length),
+                n(c.q),
+                if c.ok() { "≤" } else { ">" },
+                n(a)
+            ),
+            c.ok(),
+        ),
+        None => (
+            format!(
+                "  {} {} m: {}",
+                crate::i18n::tr("run"),
+                flashing::num(c.length),
+                crate::i18n::tr("too long for the gutter (L/W ≥ 500)")
+            ),
+            false,
+        ),
+    };
+    let colour = if ok {
+        egui::Color32::from_rgb(40, 140, 60)
+    } else {
+        egui::Color32::from_rgb(200, 50, 40)
+    };
+    ui.label(egui::RichText::new(text).small().color(colour));
 }

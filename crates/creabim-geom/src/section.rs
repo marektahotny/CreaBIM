@@ -1056,7 +1056,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                     Some(creabim_core::ElementKind::Flashing(_))
                 )
             });
-            d.items.extend(crate::flashing::roof_plan(model, v.scale));
+            // their way to the facade from the whole model: a roof plan
+            // that hides the walls still draws a downpipe's offset to them
+            d.items.extend(crate::flashing::roof_plan(full, v.scale));
         }
     }
     // utility networks and the site's symbols belong to the site plan

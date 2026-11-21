@@ -30,8 +30,17 @@ pub struct Flashing {
     /// Its finish: "opatrený ochranným náterom proti narušeniu zinku".
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub finish: String,
-    /// Developed width (rozvinutá šírka, r. š.), mm.
+    /// Developed width (rozvinutá šírka, r. š.) typed by hand, mm; used
+    /// only when [`Flashing::developed_set`], else it is counted from the
+    /// profile ([`Flashing::developed`]).
     pub developed_mm: f64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub developed_set: bool,
+    /// The sheet past the profile itself, mm: a gutter's front bead and
+    /// back edge, a downpipe's seam. None takes the usual
+    /// ([`Flashing::default_edges`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edges_mm: Option<f64>,
     /// Its mark in the table typed by hand ("K-3"); none numbers it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<String>,
@@ -86,6 +95,9 @@ pub struct Gutter {
     /// Runoff coefficient C.
     #[serde(default = "default_runoff")]
     pub runoff: f64,
+    /// Its outlets have a sieve or a leaf trap (halves what it carries).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sieve: bool,
 }
 
 fn default_rain() -> f64 {
@@ -114,6 +126,21 @@ pub struct Downpipe {
     pub elbow_angle: f64,
     /// Clamps one every so far, m.
     pub clamp_spacing: f64,
+    /// Turned under the outlet by its elbows back to the facade, to run
+    /// down the outer face of the wall (its insulation and render).
+    #[serde(default = "yes")]
+    pub to_wall: bool,
+    /// The gap between the pipe and the facade, m.
+    #[serde(default = "default_facade_gap")]
+    pub facade_gap: f64,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn default_facade_gap() -> f64 {
+    0.03
 }
 
 impl Flashing {
@@ -133,11 +160,14 @@ impl Flashing {
                 hook_spacing: 0.6,
                 rain: default_rain(),
                 runoff: default_runoff(),
+                sieve: false,
             }),
             material: GALVANISED.into(),
             thickness_mm: 0.6,
             finish: PAINTED.into(),
             developed_mm: 333.0,
+            developed_set: false,
+            edges_mm: None,
             mark: None,
             note: String::new(),
         }
@@ -156,14 +186,53 @@ impl Flashing {
                 elbows: 3,
                 elbow_angle: 67.0,
                 clamp_spacing: 2.0,
+                to_wall: true,
+                facade_gap: default_facade_gap(),
             }),
             material: GALVANISED.into(),
             thickness_mm: 0.6,
             finish: PAINTED.into(),
             developed_mm: 333.0,
+            developed_set: false,
+            edges_mm: None,
             mark: None,
             note: String::new(),
         }
+    }
+
+    /// The sheet past the profile, mm, as set or by default: what makes
+    /// George's sample come out (half-round Ø 140 r. š. 333, round
+    /// downpipe Ø 100 r. š. 333).
+    pub fn edges(&self) -> f64 {
+        self.edges_mm.unwrap_or_else(|| self.default_edges())
+    }
+
+    pub fn default_edges(&self) -> f64 {
+        match &self.item {
+            FlashingItem::Gutter(_) => 333.0 - std::f64::consts::PI * 70.0,
+            FlashingItem::Downpipe(_) => 333.0 - std::f64::consts::PI * 100.0,
+        }
+    }
+
+    /// The developed width, mm: typed by hand, or the profile's length
+    /// (a half-round's half circle, a square gutter's three sides, a
+    /// downpipe's whole round or four sides) and its edges, to whole mm.
+    pub fn developed(&self) -> f64 {
+        if self.developed_set {
+            return self.developed_mm;
+        }
+        let pi = std::f64::consts::PI;
+        let profile = match &self.item {
+            FlashingItem::Gutter(g) => match g.profile {
+                GutterProfile::HalfRound => pi * g.size_mm / 2.0,
+                GutterProfile::Square => 3.0 * g.size_mm,
+            },
+            FlashingItem::Downpipe(d) => match d.profile {
+                DownpipeProfile::Round => pi * d.size_mm,
+                DownpipeProfile::Square => 4.0 * d.size_mm,
+            },
+        };
+        (profile + self.edges()).round()
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -549,9 +618,83 @@ pub fn downpipe_place(model: &Model, d: &Downpipe) -> Option<(DVec2, f64, f64)> 
     Some((at, top, d.bottom.min(top)))
 }
 
-/// Its length, m.
+/// Its length, m: along its axis, the offset to the wall included.
 pub fn downpipe_length(model: &Model, d: &Downpipe) -> f64 {
-    downpipe_place(model, d).map_or(0.0, |(_, t, b)| (t - b).max(0.0))
+    let path = downpipe_path(model, d);
+    path.windows(2).map(|w| w[0].distance(w[1])).sum()
+}
+
+/// The facade a downpipe under `at` runs down, looking from `at` along
+/// `dir` (in plan): how far its outer face is, if a wall stands there
+/// below `z`, within 3 m.
+pub fn facade_distance(model: &Model, at: DVec2, dir: DVec2, z: f64) -> Option<f64> {
+    let mut best: Option<f64> = None;
+    for e in model.iter() {
+        let ElementKind::Wall(w) = &e.kind else {
+            continue;
+        };
+        if w.is_arc() || w.curtain.is_some() {
+            continue;
+        }
+        let base = crate::members::elevation(model, w.level) + w.base_offset;
+        if base >= z {
+            continue;
+        }
+        let d = w.direction();
+        let n = d.perp();
+        let t = w.thickness / 2.0;
+        for side in [t, -t] {
+            // the face line, run on by the wall's thickness past its ends
+            let a = w.start - d * w.thickness + n * side;
+            let b = w.end + d * w.thickness + n * side;
+            let e2 = b - a;
+            let den = dir.perp_dot(e2);
+            if den.abs() < 1e-9 {
+                continue;
+            }
+            let s = (a - at).perp_dot(e2) / den;
+            let u = (a - at).perp_dot(dir) / den;
+            if s > 1e-6 && s < 3.0 && (0.0..=1.0).contains(&u) && best.is_none_or(|x| s < x) {
+                best = Some(s);
+            }
+        }
+    }
+    best
+}
+
+/// The downpipe's axis, top down: from the gutter's outlet a short neck
+/// down, then (turned to the wall) the offset by its elbows to the
+/// facade, and down the facade to its foot.
+pub fn downpipe_path(model: &Model, d: &Downpipe) -> Vec<DVec3> {
+    let Some((at, top, foot)) = downpipe_place(model, d) else {
+        return vec![];
+    };
+    let r = d.size_mm / 2000.0;
+    let neck = (top - (d.size_mm / 1000.0)).max(foot);
+    let mut path = vec![at.extend(top), at.extend(neck)];
+    let inward = gutter_of(model, d.gutter).and_then(|g| {
+        let s = d.at.clamp(0.0, g.length());
+        let st = g.stations();
+        let k = (0..st.len().saturating_sub(1))
+            .find(|i| s <= st[i + 1] + 1e-9)
+            .unwrap_or(0);
+        g.outward(model).get(k).map(|n| -*n)
+    });
+    if let (true, Some(dir)) = (d.to_wall, inward) {
+        if let Some(face) = facade_distance(model, at, dir, neck) {
+            let run = face - d.facade_gap - r;
+            let slope = d.elbow_angle.clamp(5.0, 85.0).to_radians();
+            let drop = run / slope.tan();
+            if run > 1e-3 && neck - drop > foot {
+                let wall_top = (at + dir * run).extend(neck - drop);
+                path.push(wall_top);
+                path.push(wall_top.truncate().extend(foot));
+                return path;
+            }
+        }
+    }
+    path.push(at.extend(foot));
+    path
 }
 
 /// The plan area of roof that drains to each downpipe of gutter `id`, m²:
@@ -620,6 +763,171 @@ pub fn catchment(model: &Model, id: ElementId) -> Vec<(ElementId, f64)> {
         }
     }
     pipes.into_iter().map(|(p, _)| p).zip(area).collect()
+}
+
+/// The flow factor F_L for a run `l_w` times as long as the gutter's
+/// design depth, by its fall: linear between the points of the tzb-info
+/// gutter calculator (STN EN 12056-3), read in George's browser
+/// 2026-11-21. None from 500 on, beyond the table.
+pub fn length_factor(l_w: f64, fall_mm_m: f64) -> Option<f64> {
+    if l_w >= 500.0 {
+        return None;
+    }
+    const FLAT: [f64; 19] = [
+        1.00, 0.97, 0.93, 0.90, 0.86, 0.83, 0.80, 0.78, 0.77, 0.75, 0.73, 0.72, 0.70, 0.68, 0.67,
+        0.65, 0.63, 0.62, 0.60,
+    ];
+    // from 50 to 200 by 25, the same past it
+    const FALLS: [(f64, [f64; 7]); 4] = [
+        (4.0, [1.00, 1.02, 1.03, 1.05, 1.07, 1.08, 1.10]),
+        (6.0, [1.00, 1.04, 1.08, 1.12, 1.17, 1.21, 1.25]),
+        (8.0, [1.00, 1.07, 1.13, 1.20, 1.27, 1.33, 1.40]),
+        (10.0, [1.00, 1.09, 1.18, 1.27, 1.37, 1.46, 1.55]),
+    ];
+    let row: &[f64] = match FALLS.iter().rev().find(|(f, _)| fall_mm_m >= f - 1e-9) {
+        Some((_, r)) => r,
+        None => &FLAT,
+    };
+    let x = ((l_w - 50.0) / 25.0).max(0.0);
+    let i = (x.floor() as usize).min(row.len() - 1);
+    let j = (i + 1).min(row.len() - 1);
+    Some(row[i] + (row[j] - row[i]) * (x - i as f64).min(1.0))
+}
+
+/// F_d by W/T of a square or trapezoid gutter, from 0,05 by 0,05 (the
+/// same calculator; F_s is 1 for its bottom as wide as its top).
+const FD: [f64; 40] = [
+    0.9075, 0.9175, 0.9267, 0.9356, 0.9438, 0.9516, 0.9588, 0.9656, 0.9717, 0.9774, 0.9826, 0.9872,
+    0.9913, 0.9949, 0.9980, 1.0005, 1.0025, 1.0041, 1.0050, 1.0055, 1.0054, 1.0049, 1.0038, 1.0021,
+    1.0000, 0.9973, 0.9941, 0.9904, 0.9862, 0.9814, 0.9762, 0.9704, 0.9641, 0.9572, 0.9499, 0.9420,
+    0.9336, 0.9247, 0.9152, 0.9053,
+];
+
+fn by_twentieths(t: &[f64], x: f64) -> f64 {
+    let x = (x / 0.05 - 1.0).clamp(0.0, (t.len() - 1) as f64);
+    let i = x.floor() as usize;
+    let j = (i + 1).min(t.len() - 1);
+    t[i] + (t[j] - t[i]) * (x - i as f64)
+}
+
+impl Gutter {
+    /// Its design depth W, mm: a half-round's radius, a square's side.
+    pub fn design_depth_mm(&self) -> f64 {
+        self.depth() * 1000.0
+    }
+
+    /// Its cross-section A_E, mm².
+    pub fn section_mm2(&self) -> f64 {
+        let w = self.design_depth_mm();
+        match self.profile {
+            GutterProfile::HalfRound => std::f64::consts::PI * w * w / 2.0,
+            // as wide at the bottom as at the top
+            GutterProfile::Square => self.size_mm * w,
+        }
+    }
+
+    /// The flow a run `run` m long from its high end to an outlet can
+    /// carry, l/s (Q_dov = 0,9·Q_N·F_L, less for a corner in the run and
+    /// for a sieve); None when the run is too long for the table.
+    pub fn capacity(&self, run: f64, corner: bool) -> Option<f64> {
+        let w = self.design_depth_mm();
+        if w <= 0.0 {
+            return None;
+        }
+        let fl = length_factor(run * 1000.0 / w, self.fall)?;
+        let ae = self.section_mm2().powf(1.25);
+        let qn = match self.profile {
+            GutterProfile::HalfRound => 2.78e-5 * ae,
+            GutterProfile::Square => {
+                let t = self.size_mm;
+                3.48e-5 * ae * by_twentieths(&FD, w / t)
+            }
+        };
+        let mut q = 0.9 * qn * fl;
+        if corner {
+            q *= 0.85;
+        }
+        if self.sieve {
+            q *= 0.5;
+        }
+        Some(q)
+    }
+
+    /// The stations of its corners (turns over 10°).
+    pub fn corner_stations(&self) -> Vec<f64> {
+        let st = self.stations();
+        self.trace
+            .windows(3)
+            .enumerate()
+            .filter(|(_, w)| {
+                let (a, b) = (
+                    (w[1] - w[0]).normalize_or_zero(),
+                    (w[2] - w[1]).normalize_or_zero(),
+                );
+                a.dot(b) < 10f64.to_radians().cos()
+            })
+            .map(|(i, _)| st[i + 1])
+            .collect()
+    }
+}
+
+/// One run of a gutter checked: from its high end to the outlet of
+/// `pipe`, `length` m, the flow `q` l/s that comes down it and what it
+/// can carry, `allowed` (None: too long for the table).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RunCheck {
+    pub pipe: ElementId,
+    pub length: f64,
+    pub q: f64,
+    pub allowed: Option<f64>,
+}
+
+impl RunCheck {
+    pub fn ok(&self) -> bool {
+        self.allowed.is_some_and(|a| a + 1e-9 >= self.q)
+    }
+}
+
+/// Every run of gutter `id` checked: each downpipe takes a run from each
+/// side, its drained area shared between them by their lengths.
+pub fn check_gutter(model: &Model, id: ElementId) -> Vec<RunCheck> {
+    let Some(g) = gutter_of(model, id) else {
+        return vec![];
+    };
+    let pipes = downpipes_of(model, id);
+    let areas = catchment(model, id);
+    let len = g.length();
+    let corners = g.corner_stations();
+    let mut out = vec![];
+    for (i, (pipe, at)) in pipes.iter().enumerate() {
+        let at = at.clamp(0.0, len);
+        let lo = if i == 0 {
+            0.0
+        } else {
+            (pipes[i - 1].1.clamp(0.0, len) + at) / 2.0
+        };
+        let hi = if i + 1 == pipes.len() {
+            len
+        } else {
+            (pipes[i + 1].1.clamp(0.0, len) + at) / 2.0
+        };
+        let area = areas.iter().find(|a| a.0 == *pipe).map_or(0.0, |a| a.1);
+        let total = (hi - lo).max(1e-9);
+        for (a, b) in [(lo, at), (at, hi)] {
+            let run = b - a;
+            if run < 1e-3 {
+                continue;
+            }
+            let corner = corners.iter().any(|c| *c > a + 1e-6 && *c < b - 1e-6);
+            out.push(RunCheck {
+                pipe: *pipe,
+                length: run,
+                q: g.rain * g.runoff * area * run / total,
+                allowed: g.capacity(run, corner),
+            });
+        }
+    }
+    out
 }
 
 /// The roof's true areas, ridges and hips, for the table's lines.
@@ -751,7 +1059,7 @@ pub fn rows(model: &Model) -> Vec<Row> {
         match rows.iter_mut().find(|r| {
             r.kind == kind
                 && r.description == description
-                && (r.developed_mm - f.developed_mm).abs() < 1e-6
+                && (r.developed_mm - f.developed()).abs() < 1e-6
                 && r.mark == mark
         }) {
             Some(r) => {
@@ -774,7 +1082,7 @@ pub fn rows(model: &Model) -> Vec<Row> {
                 mark,
                 kind,
                 description,
-                developed_mm: f.developed_mm,
+                developed_mm: f.developed(),
                 length,
                 extras,
                 note: f.note.clone(),
@@ -839,6 +1147,44 @@ pub fn snap_eave(model: &Model, p: DVec2, reach: f64) -> Option<(ElementId, DVec
         }
     }
     best.map(|(id, q, _)| (id, q))
+}
+
+#[cfg(test)]
+mod capacity_tests {
+    use super::*;
+
+    fn half_round(size: f64, fall: f64) -> Gutter {
+        let FlashingItem::Gutter(mut g) =
+            Flashing::gutter(ElementId::new(), None, vec![DVec2::ZERO, DVec2::X * 10.0]).item
+        else {
+            unreachable!()
+        };
+        g.size_mm = size;
+        g.fall = fall;
+        g
+    }
+
+    #[test]
+    fn a_gutter_carries_what_the_tzb_info_calculator_gives() {
+        // W 60, A_E 5655 mm²: 1,23 l/s short, 1,03 at 10 m, 0,81 at 25 m
+        let g = half_round(120.0, 0.0);
+        let r = |q: Option<f64>| (q.unwrap() * 100.0).round() / 100.0;
+        assert_eq!(r(g.capacity(2.0, false)), 1.23);
+        assert_eq!(r(g.capacity(10.0, false)), 1.03);
+        assert_eq!(r(g.capacity(25.0, false)), 0.81);
+        assert_eq!(g.capacity(30.0, false), None);
+        // a fall of 4 mm/m carries 1,10 times as much at L/W 200
+        let f = half_round(120.0, 4.0).capacity(12.0, false).unwrap();
+        assert!((f / g.capacity(1.0, false).unwrap() - 1.10).abs() < 1e-9);
+        // a corner 0,85 times, a sieve half
+        let c = g.capacity(2.0, true).unwrap() / g.capacity(2.0, false).unwrap();
+        assert!((c - 0.85).abs() < 1e-9);
+        let mut s = g.clone();
+        s.sieve = true;
+        assert!(
+            (s.capacity(2.0, false).unwrap() * 2.0 - g.capacity(2.0, false).unwrap()).abs() < 1e-9
+        );
+    }
 }
 
 #[cfg(test)]
@@ -941,7 +1287,54 @@ mod tests {
         assert_eq!(rows[0].mark, "K-1");
         assert!((rows[0].length - 22.0).abs() < 1e-9);
         assert!(rows[0].description.contains("fi 140 mm"));
+        // the developed width counted from the profile, as George's
+        // sample has it
+        assert_eq!(rows[0].developed_mm, 333.0);
         let fig = roof_figures(&m);
         assert!((fig.ridge - 11.0).abs() < 1e-6, "{fig:?}");
+    }
+
+    #[test]
+    fn a_downpipe_turns_to_the_facade_under_any_overhang() {
+        for overhang in [0.3, 0.8] {
+            let (mut m, level, roof) = house();
+            let mut tx = Transaction::new("w");
+            if let Some(ElementKind::Roof(r)) = m.get(roof).map(|e| e.kind.clone()) {
+                let mut r = r;
+                r.overhang = overhang;
+                r.base_offset = 3.0;
+                let mut e = m.get(roof).unwrap().clone();
+                e.kind = ElementKind::Roof(r);
+                tx = tx.replace(m.get(roof).unwrap().clone(), e);
+            }
+            // a wall 500 thick (with its insulation) under the eave
+            let wall =
+                crate::Wall::new(level, DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0), 0.5, 3.0);
+            tx = tx.insert(Element::new("W", ElementKind::Wall(wall)));
+            tx.apply(&mut m).unwrap();
+            let y = -overhang;
+            let g = Flashing::gutter(
+                level,
+                Some(roof),
+                vec![DVec2::new(-overhang, y), DVec2::new(10.0 + overhang, y)],
+            );
+            let ge = Element::new("Gutter", ElementKind::Flashing(g));
+            let gid = ge.id;
+            let d = Flashing::downpipe(level, gid, 1.0);
+            let de = Element::new("Downpipe", ElementKind::Flashing(d.clone()));
+            Transaction::new("g")
+                .insert(ge)
+                .insert(de)
+                .apply(&mut m)
+                .unwrap();
+            let FlashingItem::Downpipe(d) = d.item else {
+                unreachable!()
+            };
+            let path = downpipe_path(&m, &d);
+            assert_eq!(path.len(), 4, "{path:?}");
+            // down the facade: its face at -0.25, a 30 mm gap, half of 100
+            assert!((path[3].y + 0.25 + 0.03 + 0.05).abs() < 1e-9, "{path:?}");
+            assert!((path[2].y - path[3].y).abs() < 1e-9);
+        }
     }
 }
