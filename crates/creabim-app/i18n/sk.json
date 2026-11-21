@@ -7945,5 +7945,8 @@
  "Ventilation – outdoor (fresh) air": "VZT – čerstvý (vonkajší) vzduch",
  "Ventilation – exhaust to outdoors": "VZT – odpadový vzduch",
  "VZT – recuperation": "VZT – rekuperácia",
- "Unit of measure": "MJ"
+ "Unit of measure": "MJ",
+ "Noise in the rooms (night limit governs)": "Hluk v miestnostiach (rozhoduje limit pre noc)",
+ "LAmax,p day / evening / night dB": "LAmax,p deň / večer / noc dB",
+ "Level dB(A)": "Hladina dB(A)"
 }
