@@ -513,7 +513,7 @@ mod tests {
             look: None,
             bounds_slabs: false,
         };
-        let e = Element::new("Separator", ElementKind::RoomSeparator(sep.clone()));
+        let e = Element::new("Separator", ElementKind::RoomSeparator(sep));
         let id = e.id;
         tx.insert(e).apply(&mut m).unwrap();
         let whole = room_outline(&m, l, DVec2::new(1.0, 1.0)).unwrap();
