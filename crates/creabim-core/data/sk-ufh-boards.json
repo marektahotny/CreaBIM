@@ -121,7 +121,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -153,7 +157,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -185,7 +193,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -217,7 +229,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -249,7 +265,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -281,7 +301,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -313,7 +337,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -345,7 +373,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -377,7 +409,11 @@
    "layers": [
     {
      "material": "laminat",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "podlozka-parkety",
+     "mm": 2
     },
     {
      "material": "fermacell-2e22",

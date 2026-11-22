@@ -747,7 +747,8 @@ pub const STARTERS: &[(&str, AssemblyUse, &str, &[Starter])] = &[
         AssemblyUse::Floor,
         "Tiles on screed on insulation on a concrete slab",
         &[
-            (LayerFunction::Finish, Some("Ceramic tile"), 10.0),
+            (LayerFunction::Finish, Some("Ceramic tile"), 8.0),
+            (LayerFunction::Substrate, Some("Lepidlo na dlažbu"), 2.0),
             (LayerFunction::Substrate, Some("Screed, cement"), 65.0),
             (LayerFunction::Insulation, Some("Insulation, EPS"), 25.0),
             (
