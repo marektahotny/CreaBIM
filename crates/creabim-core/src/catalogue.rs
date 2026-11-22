@@ -873,88 +873,86 @@ fn dryer() -> CatalogueObject {
     )
 }
 
-/// A tall kitchen cabinet 600 × 600, 2170 mm high (its top in line with
-/// the wall units'), on a plinth; with `microwave` a built-in microwave
-/// at eye level between a lower and an upper door (George 2026-11-22),
-/// else a pantry behind two doors with its shelves.
+/// A tall kitchen cabinet as IKEA's METOD sets 60 × 60 × 200 (George
+/// 2026-11-22, "nič si nevymýšľaj"): its frame 600 wide, 600 deep with
+/// the rail, 2000 high on legs to 2080 overall, the fronts out to 621 mm
+/// (ikea.com, METOD high cabinet with shelves/2 doors and high cab f
+/// micro w 2 doors/shelves). The pantry has its 1200 and 800 doors; the
+/// microwave one its two 800 doors with a Bosch BFL524MS0 between them
+/// (spec sheet: 382 × 594 × 317 mm, niche 362–365 × 560–568 × 300 mm,
+/// 1270 W at 230 V on a 10 A fuse).
 fn tall_cabinet(microwave: bool) -> CatalogueObject {
     let mut b = Build::new();
-    let (w, d, top) = (0.6, 0.56, 2.17);
+    // METOD: 600 × 600 frame, 2000 high on its legs, 2080 overall
+    let (w, d, legs, top) = (0.6, 0.6, 0.08, 2.08);
+    let front_d = 0.621 - d;
     b.add(
         "Plinth",
         plinth(),
-        cuboid(v3(-w / 2.0, -0.5, 0.0), v3(w / 2.0, 0.0, 0.1)),
+        cuboid(v3(-w / 2.0, -0.5, 0.0), v3(w / 2.0, 0.0, legs)),
         false,
     );
     b.add(
         "Carcass",
         laminate(),
-        cuboid(v3(-w / 2.0, -d, 0.1), v3(w / 2.0, 0.0, top)),
+        cuboid(v3(-w / 2.0, -d, legs), v3(w / 2.0, 0.0, top)),
         true,
     );
-    let front = |b: &mut Build, z0: f64, z1: f64| {
+    let door = |b: &mut Build, z0: f64, z1: f64| {
         b.add(
             "Door",
             kitchen_front(),
-            cuboid(v3(-0.298, -d - 0.02, z0 + 0.002), v3(0.298, -d, z1 - 0.002)),
-            false,
-        );
-        b.add(
-            "Handle",
-            stainless(),
             cuboid(
-                v3(0.23, -d - 0.04, z0 + 0.03),
-                v3(0.242, -d - 0.02, z0 + 0.2),
+                v3(-0.298, -d - front_d, z0 + 0.002),
+                v3(0.298, -d, z1 - 0.002),
             ),
             false,
         );
     };
     if microwave {
-        // the niche of a 455 mm built-in microwave, its door at eye level
-        let (m0, m1) = (1.2, 1.655);
-        front(&mut b, 0.1, m0);
+        // two 800 doors, the 400 between them the microwave's
+        let (m0, m1) = (legs + 0.8, legs + 1.2);
+        door(&mut b, legs, m0);
+        // Bosch BFL524MS0: 382 high, 594 wide, 317 deep in a 300 niche
+        let (h, mw, md) = (0.382, 0.594, 0.317);
+        let z = (m0 + m1 - h) / 2.0;
         b.add(
             "Microwave",
             black_glass(),
-            cuboid(v3(-0.297, -d - 0.02, m0 + 0.002), v3(0.297, -d, m1 - 0.002)),
-            false,
-        );
-        b.add(
-            "Microwave handle",
-            stainless(),
+            // its 317 in the 300 niche: 17 mm proud of the frame
             cuboid(
-                v3(-0.22, -d - 0.045, m1 - 0.06),
-                v3(0.22, -d - 0.025, m1 - 0.045),
+                v3(-mw / 2.0, -d - (md - 0.3), z),
+                v3(mw / 2.0, -d + 0.3, z + h),
             ),
             false,
         );
-        front(&mut b, m1, top);
+        door(&mut b, m1, top);
     } else {
-        front(&mut b, 0.1, 1.3);
-        front(&mut b, 1.3, top);
+        door(&mut b, legs, legs + 1.2);
+        door(&mut b, legs + 1.2, top);
     }
-    // a tall unit in plan: its box crossed
+    // a tall unit in plan: its box crossed, its fronts' line
     b.line(v2(-w / 2.0, -d), v2(w / 2.0, 0.0));
     b.line(v2(-w / 2.0, 0.0), v2(w / 2.0, -d));
-    b.line(v2(-w / 2.0, -d - 0.02), v2(w / 2.0, -d - 0.02));
+    b.line(v2(-w / 2.0, -d - front_d), v2(w / 2.0, -d - front_d));
     if microwave {
-        // a cabinet (DSS skriňa) whose microwave takes what one usually
-        // does, on a socket circuit
+        // a cabinet (DSS skriňa) whose microwave takes the Bosch's
+        // 1270 W at 230 V, on a socket circuit
         let mut c = b.finish(
             "tall-cabinet-microwave-600",
             "Tall cabinet 600 with microwave",
-            "Tall kitchen unit 600 × 600 × 2170 with a built-in microwave (455 mm niche) at eye level, on a socket circuit",
+            "IKEA METOD high cabinet 60 × 60 × 200 for a microwave, two 80 cm doors, on legs 208 cm overall, with a built-in Bosch BFL524MS0 (382 × 594 × 317 mm, 1270 W / 230 V, 10 A)",
             ObjectCategory::Kitchen,
             ("IfcFurniture", "USERDEFINED"),
             Mount::Wall,
         );
-        c.object.supply = Some(crate::objects::Supply::single(1_200.0, false));
+        c.object.supply = Some(crate::objects::Supply::single(1_270.0, false));
         c
     } else {
         b.finish(
             "tall-pantry-600",
             "Tall pantry cabinet 600",
-            "Tall kitchen pantry unit 600 × 600 × 2170 behind two doors, its top in line with the wall units",
+            "IKEA METOD high cabinet 60 × 60 × 200 with shelves, a 120 and an 80 cm door, on legs 208 cm overall",
             ObjectCategory::Kitchen,
             ("IfcFurniture", "USERDEFINED"),
             Mount::Wall,
