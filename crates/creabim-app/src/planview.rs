@@ -46,6 +46,8 @@ pub enum Tool {
     Diameter,
     ArcLength,
     Note,
+    /// A free text: a note without a leader, turned and sized as wanted.
+    Text,
     /// A spot level or a level marker: the height of a point.
     SpotLevel,
     Sketch,
@@ -109,7 +111,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 52] = [
+    pub const ALL: [Tool; 53] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -151,6 +153,7 @@ impl Tool {
         Tool::Diameter,
         Tool::ArcLength,
         Tool::Note,
+        Tool::Text,
         Tool::Line,
         Tool::Polyline,
         Tool::Arc,
@@ -193,6 +196,7 @@ impl Tool {
             Tool::Diameter => "Diameter",
             Tool::ArcLength => "Arc length",
             Tool::Note => "Note",
+            Tool::Text => "Text",
             Tool::SpotLevel => "Spot level",
             Tool::Sketch => "Sketch",
             Tool::Guide => "Guide",
@@ -250,6 +254,7 @@ impl Tool {
             Tool::Diameter => "Click an arc or circle, or three points on one. Then click where the dimension line goes.",
             Tool::ArcLength => "Click an arc, or its start, a point on it and its end. Then click where the dimension line goes.",
             Tool::SpotLevel => "Click a point on a floor, slab or roof in a section or elevation, or on a slab in a plan (elsewhere in a plan it marks the plan's level), then click where its text goes. Its text pattern is in Properties.",
+            Tool::Text => "Click where the text starts, then type it in Properties. Its size and angle are there too; drag it to move it, R turns it. Works in plans, sections, elevations and on sheets.",
             Tool::Note => "Click what the note points at, then where its text goes (turn Leader off to just click). Type its text in Properties. Works on sheets too.",
             Tool::Sketch => "Click the corners of a sketch on this level. Click the first corner to close it, Enter or right-click to leave it open, Esc to cancel. L, A and C draw lines, arcs and circles. Then E extrudes it.",
             Tool::Guide => "Click two points for a guide through them. Or click an edge, then click where its parallel guide goes. Everything snaps to guides.",
@@ -4227,6 +4232,7 @@ fn plan_click(
         | Tool::Diameter
         | Tool::ArcLength
         | Tool::Note
+        | Tool::Text
         | Tool::SpotLevel
         | Tool::Sketch
         | Tool::Callout

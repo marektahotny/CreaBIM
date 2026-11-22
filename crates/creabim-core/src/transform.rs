@@ -164,6 +164,22 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
                     *e += by;
                 }
             }
+            // a note turns its lines on paper; written in a plan or on a
+            // sheet it goes round the centre with the rest
+            Xform::Rotate { center, degrees } => {
+                if !matches!(
+                    crate::DrawingFrame::of(model, n.view),
+                    Some(crate::DrawingFrame::Section { .. })
+                ) {
+                    let by = t.point2(n.at) - n.at;
+                    n.at += by;
+                    if let Some(e) = &mut n.elbow {
+                        *e += by;
+                    }
+                }
+                let _ = center;
+                n.angle = (n.angle + degrees).rem_euclid(360.0);
+            }
             _ => return None,
         },
         // a paper mark only moves across its sheet

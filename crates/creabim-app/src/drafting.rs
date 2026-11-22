@@ -137,7 +137,7 @@ impl CreaBimApp {
             | Tool::Diameter
             | Tool::ArcLength
             | Tool::SpotLevel => Some(("dimstyle", self.plan.anno.dim_style)),
-            Tool::Note => Some(("notestyle", self.plan.anno.note_style)),
+            Tool::Note | Tool::Text => Some(("notestyle", self.plan.anno.note_style)),
             Tool::Tag => Some(("tagstyle", self.plan.anno.tag_style)),
             _ => None,
         };

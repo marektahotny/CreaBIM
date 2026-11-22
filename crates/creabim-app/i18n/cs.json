@@ -8221,5 +8221,11 @@
  "Client's seat": "Sídlo investora",
  "Sheet of ownership (LV)": "List vlastnictví (LV)",
  "The highest built-up index the zoning plan allows: written in the area data of the site plan": "Nejvyšší index zastavěnosti podle územního plánu: píše se do údajů o plochách v situaci",
- "Seat of the investor": "Se sídlem"
+ "Seat of the investor": "Se sídlem",
+ "Add text": "Přidat text",
+ "Its own letter height on paper; off, its style's": "Vlastní výška písma na papíře; vypnuto, podle stylu",
+ "How far its lines turn on paper, anticlockwise (R turns it with the mouse)": "O kolik se řádky otočí na papíře, proti směru hodinových ručiček (R otáčí myší)",
+ "The letter height of new texts on paper": "Výška písma nových textů na papíře",
+ "Text added. Type it in Properties, where its size and angle are too; drag it to move it, R turns it.": "Text přidán. Napiš ho ve Vlastnostech, kde je i jeho velikost a úhel; tažením ho přesuneš, R ho otočí.",
+ "Click where the text starts, then type it in Properties. Its size and angle are there too; drag it to move it, R turns it. Works in plans, sections, elevations and on sheets.": "Klikni, kde text začíná, pak ho napiš ve Vlastnostech. Je tam i jeho velikost a úhel; tažením ho přesuneš, R ho otočí. Funguje v půdorysech, řezech, pohledech i na výkresech."
 }

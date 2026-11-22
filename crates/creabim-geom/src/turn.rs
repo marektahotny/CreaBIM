@@ -105,7 +105,9 @@ fn turn_item(item: &mut PlanItem, r: DVec2, a: f64) {
                 t(p);
                 t(q);
             }
-            Shape::Note { at, leader, elbow } => {
+            Shape::Note {
+                at, leader, elbow, ..
+            } => {
                 t(at);
                 if let Some(l) = leader {
                     t(l);

@@ -374,7 +374,7 @@ pub fn tool_page(t: Tool) -> &'static str {
         Tool::Radius | Tool::Diameter => "dimensions#radius-and-diameter",
         Tool::ArcLength => "dimensions#arc-length",
         Tool::Tag => "tags",
-        Tool::Note => "notes",
+        Tool::Note | Tool::Text => "notes",
         Tool::SpotLevel => "spot-levels",
         Tool::Sketch => "sketches",
         Tool::Guide => "guides",
