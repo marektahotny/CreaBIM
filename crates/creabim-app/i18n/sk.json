@@ -8304,5 +8304,21 @@
  "Own pitch": "Vlastný sklon",
  "Gable end": "Štít",
  "Edge {}": "Hrana {}",
- "Roof edge slope": "Sklon hrany strechy"
+ "Roof edge slope": "Sklon hrany strechy",
+ "As the facade": "Ako fasáda",
+ "As thick as the facade insulation: flush with it; thinner: set back (recessed plinth)": "Hrubý ako fasádna izolácia: v rovine s ňou; tenší: zapustený (ustúpený sokel)",
+ "At the wall's base": "Pri päte steny",
+ "Over the slab's side": "Cez bok dosky",
+ "At the wall's base: the masonry under it (DT blocks) carries its own XPS and membrane down to the footing. Over the slab's side: down the foundation slab's edge.": "Pri päte steny: murivo pod ňou (DT tvarovky) má vlastné XPS a hydroizoláciu až k základu. Cez bok dosky: dolu po hrane základovej dosky.",
+ "Below its top the facade insulation gives way to XPS on a waterproofing membrane turned up the masonry; its top lies so far over the highest finished ground along each wall (a wall may set its own heights in steps in Properties).": "Pod jeho hornou hranou fasádnu izoláciu nahradí XPS na hydroizolácii vytiahnutej na murivo; horná hrana je o toľko nad najvyšším upraveným terénom pri každej stene (stena si môže vo Vlastnostiach nastaviť vlastné výšky po úsekoch).",
+ "Below the slab's underside": "Pod spodkom dosky",
+ "Flush with the facade": "V rovine s fasádou",
+ "How far it runs on down past the slab's underside": "O koľko pokračuje pod spodok dosky",
+ "How far the waterproofing runs up past the plinth's top, behind the facade insulation": "O koľko hydroizolácia presahuje nad hornú hranu sokla, za fasádnou izoláciou",
+ "Membrane over the plinth's top": "Presah hydroizolácie nad sokel",
+ "Over the highest finished terrain or paving along the wall; 300 mm as usual": "Nad najvyšším upraveným terénom alebo dlažbou pri stene; obvykle 300 mm",
+ "Plinth (XPS and waterproofing)": "Sokel (XPS a hydroizolácia)",
+ "Plinth render": "Soklová omietka",
+ "Recessed plinth: {n} behind the facade": "Ustúpený sokel: {n} za fasádou",
+ "Top over the finished ground": "Horná hrana nad upraveným terénom"
 }
