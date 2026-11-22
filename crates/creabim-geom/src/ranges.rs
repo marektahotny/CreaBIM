@@ -7,7 +7,7 @@ use crate::plan::{Pen, PlanItem, PlanView};
 use creabim_core::graphics::{PlanGraphics, PlanRange};
 use creabim_core::{ElementId, ElementKind, Model, View};
 use glam::{DVec2, DVec3, Vec3};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// The level an element stands on, for drawing it in a range: a door or
 /// window takes its wall's.
@@ -318,6 +318,45 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
         });
     }
     items.extend(image);
+    // a roof shows only its folds, eaves and holes: what else its solids'
+    // edges give (its lower layers and joins at the very height of a wall
+    // top, near-flush with its surface) is no line of it (George
+    // 2026-11-22: stray lines along a hip and the eaves)
+    let mut lines = lines;
+    let mut folds: HashMap<ElementId, Vec<(DVec2, DVec2)>> = HashMap::new();
+    lines.retain(|it| {
+        let PlanItem::Line { id, a, b, .. } = it else {
+            return true;
+        };
+        let Some(ElementKind::Roof(r)) = model.get(*id).map(|e| &e.kind) else {
+            return true;
+        };
+        let segs = folds.entry(*id).or_insert_with(|| {
+            let mut out = vec![];
+            let mut ring = |o: &[DVec2]| {
+                for i in 0..o.len() {
+                    out.push((o[i], o[(i + 1) % o.len()]));
+                }
+            };
+            for f in r.faces() {
+                ring(&f.outline);
+            }
+            for h in &r.holes {
+                ring(h);
+            }
+            out
+        });
+        let on = |p: DVec2, (s, t): (DVec2, DVec2)| {
+            let d = t - s;
+            let l = d.length_squared();
+            if l < 1e-12 {
+                return p.distance(s) < 0.02;
+            }
+            let u = ((p - s).dot(d) / l).clamp(0.0, 1.0);
+            p.distance(s + d * u) < 0.02
+        };
+        segs.is_empty() || segs.iter().any(|&sg| on(*a, sg) && on(*b, sg))
+    });
     items.extend(lines);
     // which way each roof falls
     for e in model.iter() {
