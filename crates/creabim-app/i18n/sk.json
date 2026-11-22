@@ -8227,5 +8227,12 @@
  "How far its lines turn on paper, anticlockwise (R turns it with the mouse)": "O koľko sa riadky otočia na papieri, proti smeru hodinových ručičiek (R otáča myšou)",
  "The letter height of new texts on paper": "Výška písma nových textov na papieri",
  "Text added. Type it in Properties, where its size and angle are too; drag it to move it, R turns it.": "Text pridaný. Napíš ho vo Vlastnostiach, kde je aj jeho veľkosť a uhol; ťahaním ho presunieš, R ho otočí.",
- "Click where the text starts, then type it in Properties. Its size and angle are there too; drag it to move it, R turns it. Works in plans, sections, elevations and on sheets.": "Klikni, kde text začína, potom ho napíš vo Vlastnostiach. Je tam aj jeho veľkosť a uhol; ťahaním ho presunieš, R ho otočí. Funguje v pôdorysoch, rezoch, pohľadoch aj na výkresoch."
+ "Click where the text starts, then type it in Properties. Its size and angle are there too; drag it to move it, R turns it. Works in plans, sections, elevations and on sheets.": "Klikni, kde text začína, potom ho napíš vo Vlastnostiach. Je tam aj jeho veľkosť a uhol; ťahaním ho presunieš, R ho otočí. Funguje v pôdorysoch, rezoch, pohľadoch aj na výkresoch.",
+ "Bath 1500 × 700": "Vaňa 1500 × 700",
+ "Bath 1600 × 700": "Vaňa 1600 × 700",
+ "Bath 1800 × 800": "Vaňa 1800 × 800",
+ "Double bed 1800": "Manželská posteľ 1800",
+ "Oak bed for a 1800 × 2000 mattress, with its headboard": "Dubová posteľ pre matrac 1800 × 2000, s čelom",
+ "Double bed 2000": "Manželská posteľ 2000",
+ "Oak bed for a 2000 × 2000 mattress, with its headboard": "Dubová posteľ pre matrac 2000 × 2000, s čelom"
 }

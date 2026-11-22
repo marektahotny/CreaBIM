@@ -602,6 +602,7 @@ pub fn family_of_type(t: &ObjectType) -> Option<&'static str> {
         "washbasin" | "pd-basin" => Some("Umývadlo"),
         "wc" | "pd-wc" => Some("WC s nádržkou"),
         "bathtub" | "bath" => Some("Vaňa"),
+        k if k.starts_with("bathtub-") => Some("Vaňa"),
         "shower" => Some("Sprcha"),
         "sink-unit" | "sink-unit-1000" | "sink" => Some("Kuchynský drez"),
         "floor-drain" => Some("Podlahová vpusť"),
