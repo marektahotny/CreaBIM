@@ -47,6 +47,10 @@ pub struct Flashing {
     /// A note of its own, added to the table's note column.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note: String,
+    /// Where its mark's bubble sits in plan, from the point its leader
+    /// starts on it, as it was dragged; none puts it beside it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark_at: Option<glam::DVec2>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -239,6 +243,7 @@ impl Flashing {
             edges_mm: None,
             mark: None,
             note: String::new(),
+            mark_at: None,
         }
     }
 
@@ -267,6 +272,7 @@ impl Flashing {
             edges_mm: None,
             mark: None,
             note: String::new(),
+            mark_at: None,
         }
     }
 
