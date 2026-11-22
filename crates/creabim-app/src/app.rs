@@ -13437,7 +13437,16 @@ impl CreaBimApp {
             self.active_view = id;
             // an element picked, its Properties showing
             if let Ok(pick) = std::env::var("CREABIM_SHOT_SELECT") {
-                if let Some(e) = self.doc.model().iter().find(|e| e.name == pick) {
+                // "@dim": the view's first linear dimension of 2+ points
+                let found = self.doc.model().iter().find(|e| match &e.kind {
+                    ElementKind::Dimension(d) if pick == "@dim" => {
+                        Some(d.view) == id
+                            && d.kind == creabim_core::DimensionKind::Linear
+                            && d.points().count() > 1
+                    }
+                    _ => e.name == pick,
+                });
+                if let Some(e) = found {
                     self.selection.only(e.id);
                 }
             }
@@ -13653,6 +13662,25 @@ impl eframe::App for CreaBimApp {
                         physical_key: None,
                         pressed,
                         repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    });
+                }
+            }
+        }
+        // for a shot: a primary drag from "x0,y0" to "x1,y1", pressed at
+        // frame 14 and let go at frame 34 (`CREABIM_SHOT_DRAG`)
+        if let Ok(d) = std::env::var("CREABIM_SHOT_DRAG") {
+            let v: Vec<f32> = d.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+            let frame = ctx.cumulative_frame_nr();
+            if v.len() == 4 && (12..=36).contains(&frame) {
+                let t = ((frame as f32 - 14.0) / 20.0).clamp(0.0, 1.0);
+                let at = egui::pos2(v[0] + (v[2] - v[0]) * t, v[1] + (v[3] - v[1]) * t);
+                raw_input.events.push(egui::Event::PointerMoved(at));
+                if frame == 14 || frame == 34 {
+                    raw_input.events.push(egui::Event::PointerButton {
+                        pos: at,
+                        button: egui::PointerButton::Primary,
+                        pressed: frame == 14,
                         modifiers: egui::Modifiers::NONE,
                     });
                 }
@@ -14706,7 +14734,13 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // the masonry on the footings made of DT blocks (George 2026-11-20)
     let dt = creabim_core::skbase::dt_blocks(&model);
     if !any && hatches.is_none() && dt.is_none() {
-        return model;
+        // one material under two names becomes one (George 2026-11-22)
+        let Some((tx, _)) = creabim_core::samemat::merge(&model) else {
+            return model;
+        };
+        let mut doc = Document::from_model(model);
+        let _ = doc.commit(tx);
+        return doc.model().clone();
     }
     let mut doc = Document::from_model(model);
     // a failed insert leaves the model as it was, which still opens
@@ -14717,6 +14751,10 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
         let _ = doc.commit(tx);
     }
     if let Some(tx) = dt {
+        let _ = doc.commit(tx);
+    }
+    // one material under two names becomes one (George 2026-11-22)
+    if let Some((tx, _)) = creabim_core::samemat::merge(doc.model()) {
         let _ = doc.commit(tx);
     }
     doc.model().clone()
