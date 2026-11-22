@@ -6,7 +6,7 @@ use crate::scene::slab_mesh;
 use crate::triangulate::triangulate;
 use crate::TriMesh;
 use creabim_core::members::{self, Flight, RAIL_SIZE};
-use creabim_core::{Element, ElementKind, Model, Roof, Stair};
+use creabim_core::{Element, ElementId, ElementKind, Model, Roof, Stair};
 use glam::{DVec2, DVec3};
 
 /// A beam: its section (a library one, or width × depth) swept along its
@@ -481,7 +481,7 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
                 .flat_map(|f| f.outline.iter().map(|p| f.z(*p)).collect::<Vec<_>>())
                 .fold(0.0, f64::max);
             if z > r.base(model) + top + r.vertical_thickness() {
-                slope_arrows(&mut items, e, r);
+                slope_arrows(&mut items, e, r, 0.1);
             }
         }
         ElementKind::Stair(s) => stair_plan(&mut items, e, s, s.rise(model), cut - s.base_offset),
@@ -549,8 +549,10 @@ pub fn pitch_text(degrees: f64) -> String {
 }
 
 /// An arrow down each sloping face of a roof, from near its top toward
-/// its eave, with the pitch written beside it.
-fn slope_arrows(items: &mut Vec<PlanItem>, e: &Element, r: &Roof) {
+/// its eave, with the pitch written beside it 2.5 mm tall, in a drawing of
+/// `mm` metres per paper millimetre. The arrow is at most 8 mm long on
+/// paper (George 2026-11-22: shorter, the text always 2.5 mm).
+fn slope_arrows(items: &mut Vec<PlanItem>, e: &Element, r: &Roof, mm: f64) {
     for f in r.faces() {
         let n = f.outline.len();
         if n < 3 || f.g.length() < 1e-6 {
@@ -569,14 +571,14 @@ fn slope_arrows(items: &mut Vec<PlanItem>, e: &Element, r: &Roof) {
         }
         let c = c / (3.0 * area);
         let down = -f.g.normalize();
-        // as long as the face is deep down its slope, up to 1.6 m
+        // as long as the face is deep down its slope, up to 8 mm on paper
         let depth = {
             let ts = f.outline.iter().map(|p| (*p - c).dot(down));
             let (lo, hi) = ts.fold((f64::MAX, f64::MIN), |(lo, hi), t| (lo.min(t), hi.max(t)));
             hi - lo
         };
-        let len = (depth * 0.5).min(1.6);
-        if len < 0.2 {
+        let len = (depth * 0.4).min(8.0 * mm);
+        if len < 3.0 * mm {
             continue;
         }
         let (tail, head) = (c - down * len / 2.0, c + down * len / 2.0);
@@ -589,16 +591,58 @@ fn slope_arrows(items: &mut Vec<PlanItem>, e: &Element, r: &Roof) {
             })
         };
         line(items, tail, head);
-        let (back, wing) = (-down * 0.25, down.perp() * 0.1);
+        let (back, wing) = (-down * 1.8 * mm, down.perp() * 0.6 * mm);
         line(items, head, head + back + wing);
         line(items, head, head + back - wing);
         // the pitch beside the shaft, on its right going down the slope
         let slope = f.g.length().atan().to_degrees();
-        items.push(PlanItem::Label {
+        items.push(PlanItem::Text {
             id: e.id,
-            at: c - down.perp() * 0.45,
+            at: c - down.perp() * 3.5 * mm,
             text: pitch_text(slope),
+            size: SLOPE_TEXT,
+            align: crate::paper::Anchor::Middle,
+            mm,
+            rgb: None,
+            bold: false,
         });
+    }
+}
+
+/// The paper height of a roof's pitch, in mm.
+const SLOPE_TEXT: f64 = 2.5;
+
+/// Draws the roofs' slope arrows of a drawing again at its own scale, `mm`
+/// metres per paper millimetre (the plans draw them at 1:100).
+pub fn size_slope_arrows(model: &Model, items: &mut Vec<PlanItem>, mm: f64) {
+    let roofs: Vec<ElementId> = items
+        .iter()
+        .filter_map(|it| match it {
+            PlanItem::Text { id, size, .. } if *size == SLOPE_TEXT => Some(*id),
+            _ => None,
+        })
+        .filter(|id| matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Roof(_))))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if roofs.is_empty() {
+        return;
+    }
+    items.retain(|it| match it {
+        PlanItem::Text { id, .. }
+        | PlanItem::Line {
+            id,
+            pen: Pen::Symbol,
+            ..
+        } => !roofs.contains(id),
+        _ => true,
+    });
+    for id in roofs {
+        if let Some(e) = model.get(id) {
+            if let ElementKind::Roof(r) = &e.kind {
+                slope_arrows(items, e, r, mm);
+            }
+        }
     }
 }
 
@@ -1208,7 +1252,7 @@ mod tests {
             items
                 .iter()
                 .filter_map(|it| match it {
-                    PlanItem::Label { text, .. } if text.ends_with('°') => Some(text.clone()),
+                    PlanItem::Text { text, .. } if text.ends_with('°') => Some(text.clone()),
                     _ => None,
                 })
                 .collect()
