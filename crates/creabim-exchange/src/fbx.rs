@@ -142,7 +142,7 @@ pub fn export_fbx(model: &Model, title: &str) -> Vec<u8> {
                 }
             } as i32;
             let mesh = &item.mesh;
-            for t in mesh.indices.chunks_exact(3) {
+            for t in mesh.indices.as_chunks::<3>().0 {
                 let p = [t[0], t[1], t[2]].map(|i| mesh.positions[i as usize].map(f64::from));
                 let n = face_normal(p);
                 let Some(n) = n else {
