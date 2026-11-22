@@ -1364,9 +1364,7 @@ pub(super) fn plinth_fields(ui: &mut egui::Ui, model: &Model, w: &mut Wall) -> &
     }
     let len = w.length();
     let mut gone = None;
-    let n = w.plinth_steps.len();
-    for i in 0..n {
-        let s = &mut w.plinth_steps[i];
+    for (i, s) in w.plinth_steps.iter_mut().enumerate() {
         if i > 0 {
             let lo = 0.01;
             if num(ui, "From (along the wall)", &mut s.from, lo, len.max(lo)) {
