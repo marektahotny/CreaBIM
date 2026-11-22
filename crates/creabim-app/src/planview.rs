@@ -1857,6 +1857,39 @@ fn show_pane(
             }
         }
     }
+    // a selected roof's edges numbered, as its Slopes by edge list them
+    if matches!(kind, PaneKind::Plan { .. }) {
+        if let Some(creabim_core::Element {
+            kind: creabim_core::ElementKind::Roof(r),
+            ..
+        }) = selection.active.and_then(|id| doc.model().get(id))
+        {
+            let n = r.boundary.len();
+            let ccw = creabim_core::polygon::signed_area2(&r.boundary) > 0.0;
+            for i in 0..n {
+                let (a, b) = (r.boundary[i], r.boundary[(i + 1) % n]);
+                let d = (b - a).normalize_or_zero();
+                let out = if ccw { -d.perp() } else { d.perp() };
+                let mid = xf.to_screen((a + b) / 2.0);
+                let away = (xf.to_screen((a + b) / 2.0 + out) - mid).normalized();
+                let at = mid + away * 12.0;
+                let text = format!("{}", i + 1);
+                painter.circle(
+                    at,
+                    8.0,
+                    Color32::WHITE,
+                    Stroke::new(1.0, crate::theme::interaction()),
+                );
+                painter.text(
+                    at,
+                    egui::Align2::CENTER_CENTER,
+                    text,
+                    egui::FontId::proportional(10.0),
+                    crate::theme::interaction(),
+                );
+            }
+        }
+    }
     // a selected door's or window's flip arrows beside it, as Revit's
     if matches!(kind, PaneKind::Plan { .. }) && tool == Tool::Select {
         if let Some(msg) = flip_arrows(ui, &painter, &xf, doc, selection) {

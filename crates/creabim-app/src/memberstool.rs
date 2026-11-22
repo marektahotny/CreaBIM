@@ -4,7 +4,7 @@
 
 use crate::planview::{PlanState, Tool};
 use crate::selection::Selection;
-use creabim_core::members::{self, Landing, Profile, RoofShape};
+use creabim_core::members::{self, Landing, Profile, RoofShape, RoofSlope};
 use creabim_core::{
     Beam, Column, Document, Element, ElementId, ElementKind, Model, ModelError, Railing, Roof,
     Slab, Stair, Transaction,
@@ -1177,11 +1177,73 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     })
                 });
             }
-            if r.effective_shape() != r.shape {
-                weak(
+            // each edge's own slope: a gable end (štít) or its own pitch,
+            // on any outline (the slopes meet as its straight skeleton)
+            if matches!(r.shape, RoofShape::Hip | RoofShape::Gable)
+                && n >= 3
+                && crate::props::subsection(
                     ui,
-                    "Gable and hip roofs need a convex outline; this one is built flat.".into(),
-                );
+                    "roof.edges",
+                    "Slopes by edge",
+                    !r.slopes.is_empty(),
+                )
+            {
+                for i in 0..n {
+                    let now = r.slope(i);
+                    let rises = r.edge_pitch(i);
+                    let text = format!("Edge {}", i + 1);
+                    crate::props::row(ui, &text, |ui| {
+                        ui.horizontal(|ui| {
+                            let w = (ui.available_width() * 0.62).max(60.0);
+                            let shown = match now {
+                                RoofSlope::Auto => format!(
+                                    "{} · {}",
+                                    crate::i18n::t("As the shape"),
+                                    match rises {
+                                        Some(p) => format!("{p:.0}°"),
+                                        None => crate::i18n::t("Gable end").to_string(),
+                                    }
+                                ),
+                                _ => crate::i18n::t(RoofSlope::KINDS[now.kind()]).to_string(),
+                            };
+                            egui::ComboBox::from_id_salt(("roof.slope", i))
+                                .icon(crate::props::combo_icon)
+                                .width(w)
+                                .selected_text(shown)
+                                .show_ui(ui, |ui| {
+                                    for (k, name) in RoofSlope::KINDS.iter().enumerate() {
+                                        if ui
+                                            .selectable_label(now.kind() == k, crate::i18n::t(name))
+                                            .clicked()
+                                            && now.kind() != k
+                                        {
+                                            let s = match k {
+                                                0 => RoofSlope::Auto,
+                                                1 => RoofSlope::Pitch(rises.unwrap_or(r.pitch)),
+                                                _ => RoofSlope::Gable,
+                                            };
+                                            r.set_slope(i, s);
+                                            label = "Roof edge slope";
+                                        }
+                                    }
+                                });
+                            if let RoofSlope::Pitch(mut p) = now {
+                                if ui
+                                    .add(
+                                        egui::DragValue::new(&mut p)
+                                            .speed(0.5)
+                                            .range(1.0..=85.0)
+                                            .suffix("°"),
+                                    )
+                                    .changed()
+                                {
+                                    r.set_slope(i, RoofSlope::Pitch(p));
+                                    label = "Roof edge slope";
+                                }
+                            }
+                        });
+                    });
+                }
             }
             weak(
                 ui,

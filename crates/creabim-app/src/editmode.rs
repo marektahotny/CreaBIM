@@ -454,6 +454,11 @@ fn insert(e: &mut Element, ring: Ring, i: usize, p: DVec2) {
             if r.edge > i {
                 r.edge += 1;
             }
+            // both halves of a split edge keep its slope
+            if i < r.slopes.len() {
+                let s = r.slopes[i];
+                r.slopes.insert(i + 1, s);
+            }
         }
         (ElementKind::Sketch(sk), Ring::Outline) => {
             sk.points.insert(i + 1, p);
@@ -502,6 +507,9 @@ fn remove(e: &mut Element, ring: Ring, i: usize) {
         (ElementKind::Slab(s), Ring::Outline) => s.remove_corner(i),
         (ElementKind::Roof(r), Ring::Outline) => {
             r.boundary.remove(i);
+            if i < r.slopes.len() {
+                r.slopes.remove(i);
+            }
             if r.edge >= i && r.edge > 0 {
                 r.edge -= 1;
             }

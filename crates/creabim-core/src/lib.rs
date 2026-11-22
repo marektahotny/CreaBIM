@@ -66,6 +66,7 @@ pub mod sample;
 pub mod screen;
 pub mod site;
 pub mod skbase;
+pub mod skeleton;
 pub mod sketch;
 pub mod slab;
 pub mod split;
@@ -111,7 +112,9 @@ pub use joins::{
     corner_partner, wall_joins, CornerJoin, CornerPreset, Gap, JoinRule, JoinWinner, WallEnds,
 };
 pub use marks::{marks, material_of, MarkClass, MarkOrder, MarkRule, MarkRules};
-pub use members::{Beam, Column, Landing, Profile, Railing, Roof, RoofShape, Stair, StairSide};
+pub use members::{
+    Beam, Column, Landing, Profile, Railing, Roof, RoofShape, RoofSlope, Stair, StairSide,
+};
 pub use model::Model;
 pub use modifiers::{Axis, Modifier, ModifierKind};
 pub use objects::{CatalogueObject, Object, ObjectCategory, ObjectType};
