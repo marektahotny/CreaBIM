@@ -1314,92 +1314,6 @@ pub(super) fn performance_fields(
     changed
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Whether the right-click menu's attach item can be picked.
-    fn attach_enabled(app: &CreaBimApp) -> bool {
-        app.wall_menu_items().iter().any(|i| {
-            matches!(i, crate::ui_model::Item::Action { id, enabled: true, .. } if id == "wall.attach")
-        })
-    }
-
-    #[test]
-    fn attach_top_is_offered_only_with_a_roof_or_slab_overhead() {
-        let mut app = crate::app::test_app();
-        let model = app.doc.model();
-        let covered = model
-            .iter()
-            .find(|e| {
-                matches!(e.kind, ElementKind::Wall(_))
-                    && !walls::attach_candidates(model, e.id).is_empty()
-            })
-            .map(|e| e.id)
-            .expect("the sample has a wall under its roof");
-        app.selection.only(covered);
-        assert!(attach_enabled(&app));
-        // the same wall far from the house has nothing overhead
-        app.doc
-            .edit(covered, "Move wall", |e| {
-                if let ElementKind::Wall(w) = &mut e.kind {
-                    w.start += DVec2::splat(500.0);
-                    w.end += DVec2::splat(500.0);
-                }
-            })
-            .unwrap();
-        assert!(walls::attach_candidates(app.doc.model(), covered).is_empty());
-        assert!(!attach_enabled(&app));
-    }
-
-    #[test]
-    fn a_location_line_picked_after_a_type_keeps_the_type() {
-        use creabim_core::types::{ElementType, WallType};
-        use creabim_core::types::{Param, TypeParams};
-        use glam::DVec2;
-        let mut doc = creabim_core::Document::from_model(creabim_core::sample::sample_house());
-        let tloc = LocationLine::Centre;
-        let ty = creabim_core::Element::new(
-            "Wall 300",
-            creabim_core::ElementKind::ElementType(ElementType::new(TypeParams::Wall(WallType {
-                thickness: 0.3,
-                assembly: None,
-                material: None,
-                location: tloc,
-                height: None,
-                curtain: None,
-                screen: None,
-            }))),
-        );
-        let tid = ty.id;
-        doc.commit(creabim_core::Transaction::new("type").insert(ty))
-            .unwrap();
-        let model = doc.model().clone();
-        let level = model.levels().next().unwrap().0.id;
-        let other = LocationLine::ALL.into_iter().find(|l| *l != tloc).unwrap();
-        let mut state = crate::planview::PlanState::default();
-        state.types.insert(creabim_core::TypeCategory::Wall, tid);
-        state.wall_location = other;
-        let w = crate::planview::new_wall(&model, level, &state, DVec2::ZERO, DVec2::X * 4.0);
-        assert_eq!(w.location, other);
-        let e = state.typed(
-            &model,
-            creabim_core::Element::new("Wall", creabim_core::ElementKind::Wall(w)),
-        );
-        let r = e.of_type.expect("the wall keeps its type");
-        assert_eq!(r.id, tid);
-        assert_eq!(r.overrides, vec![Param::Location]);
-        // on the type's own line nothing is overridden
-        state.wall_location = tloc;
-        let w = crate::planview::new_wall(&model, level, &state, DVec2::ZERO, DVec2::X * 4.0);
-        let e = state.typed(
-            &model,
-            creabim_core::Element::new("Wall", creabim_core::ElementKind::Wall(w)),
-        );
-        assert!(e.of_type.unwrap().overrides.is_empty());
-    }
-}
-
 /// A height against the project's ±0,000, as a spot level writes it.
 fn signed(z: f64) -> String {
     let t = format!("{:.3}", z.abs()).replace('.', ",");
@@ -1497,4 +1411,90 @@ pub(super) fn plinth_fields(ui: &mut egui::Ui, model: &Model, w: &mut Wall) -> &
         label = "Plinth heights";
     }
     label
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Whether the right-click menu's attach item can be picked.
+    fn attach_enabled(app: &CreaBimApp) -> bool {
+        app.wall_menu_items().iter().any(|i| {
+            matches!(i, crate::ui_model::Item::Action { id, enabled: true, .. } if id == "wall.attach")
+        })
+    }
+
+    #[test]
+    fn attach_top_is_offered_only_with_a_roof_or_slab_overhead() {
+        let mut app = crate::app::test_app();
+        let model = app.doc.model();
+        let covered = model
+            .iter()
+            .find(|e| {
+                matches!(e.kind, ElementKind::Wall(_))
+                    && !walls::attach_candidates(model, e.id).is_empty()
+            })
+            .map(|e| e.id)
+            .expect("the sample has a wall under its roof");
+        app.selection.only(covered);
+        assert!(attach_enabled(&app));
+        // the same wall far from the house has nothing overhead
+        app.doc
+            .edit(covered, "Move wall", |e| {
+                if let ElementKind::Wall(w) = &mut e.kind {
+                    w.start += DVec2::splat(500.0);
+                    w.end += DVec2::splat(500.0);
+                }
+            })
+            .unwrap();
+        assert!(walls::attach_candidates(app.doc.model(), covered).is_empty());
+        assert!(!attach_enabled(&app));
+    }
+
+    #[test]
+    fn a_location_line_picked_after_a_type_keeps_the_type() {
+        use creabim_core::types::{ElementType, WallType};
+        use creabim_core::types::{Param, TypeParams};
+        use glam::DVec2;
+        let mut doc = creabim_core::Document::from_model(creabim_core::sample::sample_house());
+        let tloc = LocationLine::Centre;
+        let ty = creabim_core::Element::new(
+            "Wall 300",
+            creabim_core::ElementKind::ElementType(ElementType::new(TypeParams::Wall(WallType {
+                thickness: 0.3,
+                assembly: None,
+                material: None,
+                location: tloc,
+                height: None,
+                curtain: None,
+                screen: None,
+            }))),
+        );
+        let tid = ty.id;
+        doc.commit(creabim_core::Transaction::new("type").insert(ty))
+            .unwrap();
+        let model = doc.model().clone();
+        let level = model.levels().next().unwrap().0.id;
+        let other = LocationLine::ALL.into_iter().find(|l| *l != tloc).unwrap();
+        let mut state = crate::planview::PlanState::default();
+        state.types.insert(creabim_core::TypeCategory::Wall, tid);
+        state.wall_location = other;
+        let w = crate::planview::new_wall(&model, level, &state, DVec2::ZERO, DVec2::X * 4.0);
+        assert_eq!(w.location, other);
+        let e = state.typed(
+            &model,
+            creabim_core::Element::new("Wall", creabim_core::ElementKind::Wall(w)),
+        );
+        let r = e.of_type.expect("the wall keeps its type");
+        assert_eq!(r.id, tid);
+        assert_eq!(r.overrides, vec![Param::Location]);
+        // on the type's own line nothing is overridden
+        state.wall_location = tloc;
+        let w = crate::planview::new_wall(&model, level, &state, DVec2::ZERO, DVec2::X * 4.0);
+        let e = state.typed(
+            &model,
+            creabim_core::Element::new("Wall", creabim_core::ElementKind::Wall(w)),
+        );
+        assert!(e.of_type.unwrap().overrides.is_empty());
+    }
 }

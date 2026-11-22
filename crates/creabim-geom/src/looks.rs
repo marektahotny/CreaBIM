@@ -587,35 +587,47 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
         PatternUnits::Model => 1.0,
     };
     let dot = 0.15 / k;
+    // a layer bent along its length (a roof's insulation cut across a
+    // ridge or a hip, a wall's round a corner): a pattern that runs
+    // along the layer runs along each straight piece of it
+    let strips = strip_pieces(polygon);
+    let pieces: Vec<(Vec<DVec2>, Option<DVec2>)> = match &strips {
+        Some(s) => s.iter().map(|(q, d)| (q.clone(), Some(*d))).collect(),
+        None => vec![(polygon.to_vec(), None)],
+    };
     for l in &p.lines {
-        let mut angle = l.angle.to_radians();
-        if l.along_longest {
-            let n = polygon.len();
-            angle += (0..n)
-                .map(|i| polygon[(i + 1) % n] - polygon[i])
-                .max_by(|a, b| a.length().total_cmp(&b.length()))
-                .map_or(0.0, |d| d.to_angle());
-        }
         let spacing = l.spacing * unit;
         let dashes: Vec<f64> = l.dashes.iter().map(|d| d * unit).collect();
-        if !family(
-            polygon,
-            angle,
-            spacing,
-            l.offset * unit,
-            l.shift * unit,
-            &dashes,
-            dot,
-            &mut out,
-        ) {
-            return vec![];
+        let whole = [(polygon.to_vec(), None)];
+        let over: &[(Vec<DVec2>, Option<DVec2>)] = if l.along_longest { &pieces } else { &whole };
+        for (piece, dir) in over {
+            let mut angle = l.angle.to_radians();
+            if l.along_longest {
+                angle += dir
+                    .or_else(|| longest_dir(piece))
+                    .map_or(0.0, |d| d.to_angle());
+            }
+            if !family(
+                piece,
+                angle,
+                spacing,
+                l.offset * unit,
+                l.shift * unit,
+                &dashes,
+                dot,
+                &mut out,
+            ) {
+                return vec![];
+            }
         }
     }
-    if p.batt {
-        out.extend(batt_lines(polygon, unit));
-    }
-    if p.membrane {
-        out.extend(membrane_lines(polygon, unit));
+    for (piece, dir) in &pieces {
+        if p.batt {
+            out.extend(batt_lines(piece, *dir, unit));
+        }
+        if p.membrane {
+            out.extend(membrane_lines(piece, *dir, unit));
+        }
     }
     if let Some(t) = &p.tile {
         let (w, h) = (t.size[0] * unit, t.size[1] * unit);
@@ -649,13 +661,9 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
 /// Batt insulation loops along a fill's longest side, as wide as the fill
 /// is thick there; a thick fill takes several rows. `unit` is drawing
 /// units per paper mm.
-fn batt_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
+fn batt_lines(polygon: &[DVec2], dir: Option<DVec2>, unit: f64) -> Vec<(DVec2, DVec2)> {
     let n = polygon.len();
-    let Some(dir) = (0..n)
-        .map(|i| polygon[(i + 1) % n] - polygon[i])
-        .max_by(|a, b| a.length().total_cmp(&b.length()))
-        .map(|d| d.normalize_or_zero())
-    else {
+    let Some(dir) = dir.or_else(|| longest_dir(polygon)) else {
         return vec![];
     };
     if dir == DVec2::ZERO {
@@ -667,9 +675,12 @@ fn batt_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
         .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
         .collect();
     let (lo, hi) = bounds(&local);
+    // along the run: its longest side, or the piece's length when the
+    // run is given (a bent layer's straight piece, its sides cut up)
     let longest = (0..n)
         .map(|i| (polygon[(i + 1) % n] - polygon[i]).length())
-        .fold(0.0, f64::max);
+        .fold(0.0, f64::max)
+        .max(hi.x - lo.x);
     let area = (0..n)
         .map(|i| local[i].perp_dot(local[(i + 1) % n]))
         .sum::<f64>()
@@ -734,14 +745,8 @@ fn batt_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
 /// asphalt strip: a thin line, and on it dashes 4 mm long and 0.45 mm (as thick as the sample's)
 /// thick on paper (close lines, so screen and paper show them alike).
 /// `unit` is drawing units per paper mm.
-fn membrane_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
-    let n = polygon.len();
-    let Some(dir) = (0..n)
-        .map(|i| polygon[(i + 1) % n] - polygon[i])
-        .max_by(|a, b| a.length().total_cmp(&b.length()))
-        .map(|d| d.normalize_or_zero())
-        .filter(|d| *d != DVec2::ZERO)
-    else {
+fn membrane_lines(polygon: &[DVec2], dir: Option<DVec2>, unit: f64) -> Vec<(DVec2, DVec2)> {
+    let Some(dir) = dir.or_else(|| longest_dir(polygon)) else {
         return vec![];
     };
     let nrm = dir.perp();
@@ -782,6 +787,180 @@ fn membrane_lines(polygon: &[DVec2], unit: f64) -> Vec<(DVec2, DVec2)> {
         x += 2.0 * dash;
     }
     out
+}
+
+/// The direction of a polygon's longest side, None for a degenerate one.
+fn longest_dir(polygon: &[DVec2]) -> Option<DVec2> {
+    let n = polygon.len();
+    (0..n)
+        .map(|i| polygon[(i + 1) % n] - polygon[i])
+        .max_by(|a, b| a.length().total_cmp(&b.length()))
+        .map(|d| d.normalize_or_zero())
+        .filter(|d| *d != DVec2::ZERO)
+}
+
+/// `poly` cut to the side of the line through `at` along `along` where
+/// `keep` lies.
+fn clip_half(poly: &[DVec2], at: DVec2, along: DVec2, keep: DVec2) -> Vec<DVec2> {
+    let side = |p: DVec2| (p - at).perp_dot(along);
+    let s = side(keep).signum();
+    let n = poly.len();
+    let mut out = vec![];
+    for i in 0..n {
+        let (p, q) = (poly[i], poly[(i + 1) % n]);
+        let (sp, sq) = (side(p) * s, side(q) * s);
+        if sp >= 0.0 {
+            out.push(p);
+        }
+        if (sp >= 0.0) != (sq >= 0.0) {
+            out.push(p.lerp(q, sp / (sp - sq)));
+        }
+    }
+    out
+}
+
+/// A fill that is a layer bent along its length (a roof's insulation
+/// cut across a ridge or hips, a wall's round a corner), in its straight
+/// pieces, each with its run: the fill cut at each bend along the
+/// bisector, so a pattern that follows the layer follows every piece.
+/// None for a fill with no bend, which keeps its one run.
+pub fn strip_pieces(polygon: &[DVec2]) -> Option<Vec<(Vec<DVec2>, DVec2)>> {
+    let mut ring: Vec<DVec2> = vec![];
+    for p in polygon {
+        if ring.last().is_none_or(|q: &DVec2| q.distance(*p) > 1e-9) {
+            ring.push(*p);
+        }
+    }
+    if ring.len() > 1 && ring[0].distance(ring[ring.len() - 1]) <= 1e-9 {
+        ring.pop();
+    }
+    let n = ring.len();
+    if n < 5 {
+        return None;
+    }
+    let area2: f64 = (0..n).map(|i| ring[i].perp_dot(ring[(i + 1) % n])).sum();
+    let perimeter: f64 = (0..n).map(|i| ring[i].distance(ring[(i + 1) % n])).sum();
+    if area2.abs() < 1e-12 || perimeter <= 0.0 {
+        return None;
+    }
+    // the layer's thickness, were it a long strip
+    let t = area2.abs() / perimeter;
+    // straighten: corners that hardly stand out of their neighbours' line go
+    let tol = 0.15 * t;
+    loop {
+        let m = ring.len();
+        if m <= 4 {
+            break;
+        }
+        let worst = (0..m)
+            .map(|i| {
+                let (a, p, b) = (ring[(i + m - 1) % m], ring[i], ring[(i + 1) % m]);
+                let ab = b - a;
+                let d = if ab.length() < 1e-12 {
+                    p.distance(a)
+                } else {
+                    (p - a).perp_dot(ab).abs() / ab.length()
+                };
+                (i, d)
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))?;
+        if worst.1 >= tol {
+            break;
+        }
+        ring.remove(worst.0);
+    }
+    let m = ring.len();
+    if m <= 4 {
+        return None;
+    }
+    // inward of a side: to its left round a counter-clockwise outline
+    let ccw = area2 > 0.0;
+    let edge = |i: usize| (ring[i % m], ring[(i + 1) % m]);
+    let dir = |i: usize| {
+        let (a, b) = edge(i);
+        (b - a).normalize_or_zero()
+    };
+    let inward = |i: usize| {
+        let d = dir(i);
+        if ccw {
+            d.perp()
+        } else {
+            -d.perp()
+        }
+    };
+    let long: Vec<bool> = (0..m)
+        .map(|i| edge(i).0.distance(edge(i).1) > 2.0 * t)
+        .collect();
+    let bent =
+        (0..m).any(|i| long[i] && (0..m).any(|j| long[j] && dir(i).perp_dot(dir(j)).abs() > 0.09));
+    if !bent {
+        return None;
+    }
+    // a side whose opposite side (the layer's other face) comes first
+    // is drawn with that one
+    let partner = |i: usize, j: usize| {
+        let (a, b) = edge(i);
+        let (c, d) = edge(j);
+        if dir(i).dot(dir(j)) > -0.98 {
+            return false;
+        }
+        let gap = (c - a).dot(inward(i));
+        let (u0, u1) = (0.0, (b - a).dot(dir(i)));
+        let (v0, v1) = ((c - a).dot(dir(i)), (d - a).dot(dir(i)));
+        gap > 0.3 * t && gap < 3.0 * t && v0.max(v1) > u0 + 1e-6 && v0.min(v1) < u1 - 1e-6
+    };
+    // the next long side round from `i`, `step` ±1, over short ones
+    let next_long = |i: usize, back: bool| -> Option<usize> {
+        let mut j = i;
+        let mut run = 0.0;
+        for _ in 0..4 {
+            j = if back { (j + m - 1) % m } else { (j + 1) % m };
+            if long[j] {
+                return Some(j);
+            }
+            run += edge(j).0.distance(edge(j).1);
+            if run > 2.0 * t {
+                return None;
+            }
+        }
+        None
+    };
+    let meet = |i: usize, j: usize| -> Option<DVec2> {
+        let (a, _) = edge(i);
+        let (c, _) = edge(j);
+        let (d, e) = (dir(i), dir(j));
+        let den = d.perp_dot(e);
+        (den.abs() > 1e-9).then(|| a + d * ((c - a).perp_dot(e) / den))
+    };
+    let mut out = vec![];
+    for i in 0..m {
+        if !long[i] || (0..i).any(|j| long[j] && partner(i, j)) {
+            continue;
+        }
+        let (a, b) = edge(i);
+        let mid = (a + b) / 2.0 + inward(i) * (0.5 * t);
+        let mut piece = polygon.to_vec();
+        for back in [true, false] {
+            let Some(j) = next_long(i, back) else {
+                continue;
+            };
+            if dir(i).perp_dot(dir(j)).abs() <= 0.09 {
+                continue;
+            }
+            let Some(x) = meet(i, j) else {
+                continue;
+            };
+            let bis = (inward(i) + inward(j)).normalize_or_zero();
+            if bis == DVec2::ZERO {
+                continue;
+            }
+            piece = clip_half(&piece, x, bis, mid);
+        }
+        if piece.len() >= 3 {
+            out.push((piece, dir(i)));
+        }
+    }
+    (!out.is_empty()).then_some(out)
 }
 
 fn bounds(poly: &[DVec2]) -> (DVec2, DVec2) {
@@ -1028,5 +1207,52 @@ mod tests {
         };
         let lines = pattern_lines(&p, &square(1.0), 10.0);
         assert_eq!(lines.len(), 4);
+    }
+
+    /// George: a roof's mineral wool cut across its hips ran one way over
+    /// the whole bent layer, rows crossing; each straight piece takes its
+    /// own run.
+    #[test]
+    fn a_bent_layer_is_hatched_piece_by_piece_along_each_run() {
+        let s = 0.5_f64; // slope rise per run
+        let t = 0.2;
+        // up a slope, along a flat, down a slope: the outer face, then
+        // the inner one back
+        let poly = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(4.0, 4.0 * s),
+            DVec2::new(8.0, 4.0 * s),
+            DVec2::new(12.0, 0.0),
+            DVec2::new(12.0, -t),
+            DVec2::new(8.0, 4.0 * s - t),
+            DVec2::new(4.0, 4.0 * s - t),
+            DVec2::new(0.0, -t),
+        ];
+        let pieces = strip_pieces(&poly).unwrap();
+        assert_eq!(pieces.len(), 3, "{pieces:?}");
+        let flat = pieces.iter().filter(|(_, d)| d.y.abs() < 1e-9).count();
+        assert_eq!(flat, 1);
+        // the pieces fill the layer, once
+        let area = |q: &[DVec2]| {
+            (0..q.len())
+                .map(|i| q[i].perp_dot(q[(i + 1) % q.len()]))
+                .sum::<f64>()
+                .abs()
+                / 2.0
+        };
+        let sum: f64 = pieces.iter().map(|(q, _)| area(q)).sum();
+        assert!((sum - area(&poly)).abs() < 1e-6, "{sum} {}", area(&poly));
+        // a plain strip keeps its one run
+        assert!(strip_pieces(&square(1.0)).is_none());
+        let p = HatchPattern {
+            name: "wool".into(),
+            units: PatternUnits::Paper,
+            fill: None,
+            lines: vec![],
+            tile: None,
+            batt: true,
+            membrane: false,
+        };
+        assert!(!pattern_lines(&p, &poly, 20.0).is_empty());
     }
 }
