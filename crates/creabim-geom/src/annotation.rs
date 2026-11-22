@@ -383,6 +383,8 @@ pub enum Shape {
         at: DVec2,
         leader: Option<DVec2>,
         elbow: Option<DVec2>,
+        /// How far its lines turn about `at`, radians anticlockwise.
+        angle: f64,
     },
     /// A spot level: a mark on the point `at` (a triangle standing on it
     /// in a section or elevation, a target in a plan, where it is a level
@@ -796,7 +798,15 @@ impl Annotation {
                     });
                 }
             }
-            Shape::Note { at, leader, elbow } => {
+            Shape::Note {
+                at,
+                leader,
+                elbow,
+                angle,
+            } => {
+                // its lines laid out level from `at`, then turned about it
+                let turn = DVec2::from_angle(angle);
+                let place = |p: DVec2| at + turn.rotate(p - at);
                 let lines: Vec<&str> = self.text.split('\n').collect();
                 let step = look.size * 1.5 * mm;
                 let width = lines
@@ -819,16 +829,18 @@ impl Annotation {
                     let text = match l.strip_prefix(UNDERLINE) {
                         Some(t) => {
                             let under = y - DVec2::Y * look.size * 0.75 * mm;
-                            out.lines
-                                .push(vec![under, under + DVec2::X * look.width(t) * mm]);
+                            out.lines.push(vec![
+                                place(under),
+                                place(under + DVec2::X * look.width(t) * mm),
+                            ]);
                             t
                         }
                         None => l,
                     };
                     out.texts.push(MarkText {
-                        at: y,
+                        at: place(y),
                         text: text.to_string(),
-                        angle: 0.0,
+                        angle,
                         anchor,
                     });
                 }
@@ -1070,6 +1082,7 @@ mod tests {
                 elbow: None,
                 at: DVec2::new(10.0, 5.0),
                 leader,
+                angle: 0.0,
             },
             text: text.into(),
             look: TextLook::default(),

@@ -602,6 +602,17 @@ pub struct Note {
     /// Read the text as markdown: headings, bullets, numbers, checkboxes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub markdown: bool,
+    /// How far its lines turn from level on paper, degrees anticlockwise
+    /// about where its first line starts.
+    #[serde(default, skip_serializing_if = "crate::annotation::is_zero")]
+    pub angle: f64,
+    /// Its letters' height on paper, mm, over its style's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<f64>,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
 }
 
 impl Note {
@@ -617,6 +628,8 @@ impl Note {
             leader_end: None,
             width: None,
             markdown: false,
+            angle: 0.0,
+            size: None,
         }
     }
 

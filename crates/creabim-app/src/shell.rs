@@ -157,6 +157,7 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Diameter => "diameter",
         Tool::ArcLength => "arc-length",
         Tool::Note => "message-square-text",
+        Tool::Text => "type",
         Tool::SpotLevel => "spot-level",
         Tool::Sketch => "pen-tool",
         Tool::Guide => "guide",
@@ -228,6 +229,7 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::Diameter
         | Tool::ArcLength
         | Tool::Note
+        | Tool::Text
         | Tool::Detail
         | Tool::Line
         | Tool::Polyline
@@ -2307,6 +2309,11 @@ impl CreaBimApp {
                     self.plan.anno.slope_fmt = i;
                 }
             }
+            "text.size" => {
+                if let Some(s) = index.and_then(|i| crate::annotate::TEXT_SIZES.get(i)) {
+                    self.plan.anno.text_size = *s;
+                }
+            }
             "callout.scale" => {
                 if let Some(s) = index.and_then(|i| crate::detailtool::CALLOUT_SCALES.get(i)) {
                     self.plan.details.callout_scale = *s;
@@ -2365,10 +2372,12 @@ impl CreaBimApp {
             "sheet" if measures => {
                 Some("on a sheet, double-click a view to dimension or tag inside it")
             }
-            "3d" if measures || t == Tool::Note => {
+            "3d" if measures || t == Tool::Note || t == Tool::Text => {
                 Some("annotation goes in plans, sections and sheets, not the 3D view")
             }
-            "schedule" if measures || t == Tool::Note => Some("a schedule takes no annotation"),
+            "schedule" if measures || t == Tool::Note || t == Tool::Text => {
+                Some("a schedule takes no annotation")
+            }
             _ => None,
         }
     }
@@ -2952,7 +2961,7 @@ impl CreaBimApp {
                 }
             }
             "sheet.text" => {
-                self.plan.tool = Tool::Note;
+                self.plan.tool = Tool::Text;
                 self.plan.cancel();
                 self.status = "Text on the sheet: click where it starts, then type.".into();
             }
@@ -3461,6 +3470,25 @@ impl CreaBimApp {
                         &format!("1:{s:.0}"),
                         self.plan.details.callout_scale == *s,
                         "The scale of the detail view the box makes",
+                    )
+                })
+                .collect()));
+        }
+        if tool == Tool::Text {
+            options.push(seg(crate::annotate::TEXT_SIZES
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    let label = if *s > 0.0 {
+                        format!("{s} mm")
+                    } else {
+                        crate::i18n::tr("Style")
+                    };
+                    opt(
+                        format!("text.size:{i}"),
+                        &label,
+                        self.plan.anno.text_size == *s,
+                        "The letter height of new texts on paper",
                     )
                 })
                 .collect()));

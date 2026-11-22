@@ -203,6 +203,9 @@ pub fn paint_ends_weighted(painter: &egui::Painter, xf: &Xf, ends: &Ends, color:
 
 // ---- tools ------------------------------------------------------------------
 
+/// The letter heights the Text tool offers, paper mm; 0 is the style's.
+pub const TEXT_SIZES: [f64; 6] = [0.0, 2.5, 3.5, 5.0, 7.0, 10.0];
+
 /// Is this one of the tools here?
 pub fn is_tool(t: Tool) -> bool {
     matches!(
@@ -213,6 +216,7 @@ pub fn is_tool(t: Tool) -> bool {
             | Tool::Diameter
             | Tool::ArcLength
             | Tool::Note
+            | Tool::Text
             | Tool::SpotLevel
     )
 }
@@ -362,6 +366,9 @@ pub struct Draft {
     pub leader: bool,
     /// A note was just placed: Properties should put the cursor in its text.
     pub focus_text: bool,
+    /// The letter height new free texts get, paper mm; 0 is their
+    /// style's.
+    pub text_size: f64,
     pub grab: Option<Grab>,
     /// The area whose drag took `grab`: another area, not dragged, must
     /// not let it go (MU31: a sheet note moved one frame, then stopped).
@@ -393,6 +400,7 @@ impl Default for Draft {
             ready: None,
             leader: true,
             focus_text: false,
+            text_size: 0.0,
             grab: None,
             grab_by: None,
             dim_style: None,
@@ -430,6 +438,13 @@ impl Draft {
             set_style(&mut e.kind, id);
         }
         e
+    }
+
+    /// A free text at `at` in `view`: no leader, the size picked.
+    pub fn free_text(&self, view: ElementId, at: DVec2) -> Note {
+        let mut n = Note::new(view, at, creabim_core::words::tr("Text"));
+        n.size = (self.text_size > 0.0).then_some(self.text_size);
+        n
     }
 
     pub fn has_input(&self) -> bool {
@@ -590,6 +605,15 @@ pub fn click(
         return Ok(added(tool, d));
     }
     match tool {
+        Tool::Text => {
+            let e = d.styled(Element::new(
+                "Text",
+                ElementKind::Note(d.free_text(view_id, raw)),
+            ));
+            selection.only(e.id);
+            doc.commit(Transaction::new("Add text").insert(e))?;
+            Ok(added(tool, d))
+        }
         Tool::Note if !d.leader => {
             let e = d.styled(Element::new(
                 "Note",
@@ -826,6 +850,9 @@ fn added(tool: Tool, d: &mut Draft) -> String {
     if tool == Tool::Note {
         d.focus_text = true;
         "Note added. Type its text in Properties; drag it to move it.".into()
+    } else if tool == Tool::Text {
+        d.focus_text = true;
+        "Text added. Type it in Properties, where its size and angle are too; drag it to move it, R turns it.".into()
     } else if tool == Tool::SpotLevel {
         "Spot level added. Its text pattern is in Properties; drag its text to move it.".into()
     } else {
@@ -1079,6 +1106,7 @@ fn shape_of(ready: Ready, at: DVec2) -> (Shape, String) {
                 at,
                 leader: Some(target.1),
                 elbow: None,
+                angle: 0.0,
             },
             "Note".into(),
         ),
@@ -1422,13 +1450,23 @@ pub fn sheet_input(
     }
     draw_grips(painter, xf, doc.model(), &items, selection, 1.0);
     let pointer = response.hover_pos().or(response.interact_pointer_pos());
-    if tool == Tool::Note {
+    if tool == Tool::Note || tool == Tool::Text {
         let raw = pointer.map(to_paper);
         preview(painter, xf, tool, d, raw, raw, &[], 0.0, 1.0);
         if response.clicked() {
             if let Some(p) = raw {
                 let mut ghost = Selection::default();
-                let r = sheet_note_click(doc, sheet, p, d, &mut ghost);
+                let r = if tool == Tool::Text {
+                    let e = d.styled(Element::new(
+                        "Text",
+                        ElementKind::Note(d.free_text(sheet, p)),
+                    ));
+                    ghost.only(e.id);
+                    doc.commit(Transaction::new("Add text").insert(e))
+                        .map(|_| added(Tool::Text, d))
+                } else {
+                    sheet_note_click(doc, sheet, p, d, &mut ghost)
+                };
                 match r {
                     Ok(msg) => *status = Some(msg),
                     Err(e) => *error = Some(e.to_string()),
@@ -1980,6 +2018,53 @@ pub fn note_ui(
     if r.changed() {
         label = Some("Note text");
     }
+    // its letters' height on paper (none: its style's) and its turn
+    crate::props::row(ui, "Text size", |ui| {
+        crate::props::flow(ui, |ui| {
+            let mut own = n.size.is_some();
+            if ui
+                .checkbox(&mut own, crate::i18n::t("Own"))
+                .on_hover_text(crate::i18n::t(
+                    "Its own letter height on paper; off, its style's",
+                ))
+                .changed()
+            {
+                n.size = own.then_some(3.5);
+                label = Some("Text size");
+            }
+            if let Some(h) = &mut n.size {
+                if ui
+                    .add(
+                        egui::DragValue::new(h)
+                            .speed(0.1)
+                            .range(0.5..=100.0)
+                            .max_decimals(1)
+                            .suffix(crate::i18n::t(" mm")),
+                    )
+                    .changed()
+                {
+                    label = Some("Text size");
+                }
+            }
+        });
+    });
+    crate::props::row(ui, "Angle", |ui| {
+        if ui
+            .add(
+                egui::DragValue::new(&mut n.angle)
+                    .speed(1.0)
+                    .range(-360.0..=360.0)
+                    .max_decimals(2)
+                    .suffix("°"),
+            )
+            .on_hover_text(crate::i18n::t(
+                "How far its lines turn on paper, anticlockwise (R turns it with the mouse)",
+            ))
+            .changed()
+        {
+            label = Some("Text angle");
+        }
+    });
     // a text box (MU26): wraps to a width, reads markdown
     let mut boxed = n.width.is_some();
     crate::props::row(ui, "Box", |ui| {
@@ -2301,6 +2386,121 @@ mod tests {
                 format!("{:.3}", 245.35 + z).replace('.', ",")
             )
         );
+    }
+
+    /// George: every annotation must work in plans, the site plan,
+    /// sections and elevations; each tool here placed in each and drawn
+    /// there, a turned free text too.
+    #[test]
+    fn every_annotation_tool_works_in_every_kind_of_drawing() {
+        let mut m = creabim_core::sample::sample_house();
+        let (plan, _) = {
+            let doc = Document::from_model(m.clone());
+            plan_of(&doc)
+        };
+        let ElementKind::View(pv) = m.get(plan).unwrap().kind.clone() else {
+            unreachable!()
+        };
+        let mut site = pv.clone();
+        site.graphics.range.from_above = true;
+        site.scale = 200.0;
+        let section = View::section(DVec2::new(-1.0, 3.0), DVec2::new(12.0, 3.0), 8.0, true);
+        let elevation = View::section(DVec2::new(-1.0, -4.0), DVec2::new(12.0, -4.0), 30.0, false);
+        let views: Vec<Element> = [
+            ("Site", site),
+            ("Section", section),
+            ("Elevation", elevation),
+        ]
+        .into_iter()
+        .map(|(n, v)| Element::new(n, ElementKind::View(v)))
+        .collect();
+        Transaction::new("views")
+            .insert(views[0].clone())
+            .insert(views[1].clone())
+            .insert(views[2].clone())
+            .apply(&mut m)
+            .unwrap();
+        let mut doc = Document::from_model(m);
+        let p = |x: f64, y: f64| DVec2::new(x, y);
+        let tools: [(Tool, Vec<DVec2>); 8] = [
+            (Tool::Text, vec![p(2.0, 1.0)]),
+            (Tool::Note, vec![p(1.0, 1.0), p(3.0, 2.0)]),
+            (
+                Tool::Angle,
+                vec![p(1.0, 1.0), p(3.0, 1.0), p(1.0, 3.0), p(2.0, 2.0)],
+            ),
+            (Tool::Slope, vec![p(1.0, 2.0), p(4.0, 1.0), p(2.0, 2.5)]),
+            (
+                Tool::Radius,
+                vec![p(3.0, 1.0), p(1.0, 3.0), p(-1.0, 1.0), p(4.0, 2.0)],
+            ),
+            (
+                Tool::Diameter,
+                vec![p(3.0, 1.0), p(1.0, 3.0), p(-1.0, 1.0), p(4.0, 2.0)],
+            ),
+            (
+                Tool::ArcLength,
+                vec![p(3.0, 1.0), p(1.0, 3.0), p(-1.0, 1.0), p(4.0, 2.0)],
+            ),
+            (Tool::SpotLevel, vec![p(2.0, 0.0), p(3.0, 1.0)]),
+        ];
+        let ids_of_views: Vec<ElementId> = std::iter::once(plan)
+            .chain(views.iter().map(|v| v.id))
+            .collect();
+        for vid in ids_of_views {
+            let Some(ElementKind::View(view)) = doc.model().get(vid).map(|e| e.kind.clone()) else {
+                unreachable!()
+            };
+            for (tool, clicks) in &tools {
+                let (mut d, mut sel) = (Draft::default(), Selection::default());
+                d.text_size = 5.0;
+                let before = ids(&doc);
+                for at in clicks {
+                    click(
+                        &mut doc,
+                        vid,
+                        &view,
+                        *tool,
+                        None,
+                        *at,
+                        &[],
+                        0.1,
+                        &mut d,
+                        &mut sel,
+                    )
+                    .unwrap();
+                }
+                let e = added_since(&doc, &before);
+                if *tool == Tool::Text {
+                    // turned by 30°, as R would
+                    let mut t = e.clone();
+                    let ElementKind::Note(n) = &mut t.kind else {
+                        panic!("a text is a note")
+                    };
+                    assert_eq!(n.size, Some(5.0));
+                    assert!(n.leader.is_none());
+                    n.angle = 30.0;
+                    doc.commit(Transaction::new("turn").replace(e.clone(), t))
+                        .unwrap();
+                }
+                let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+                let item = drawing.items.iter().find_map(|i| match i {
+                    PlanItem::Annotation { id, item } if *id == e.id => Some(item.clone()),
+                    _ => None,
+                });
+                let item = item.unwrap_or_else(|| {
+                    panic!(
+                        "{tool:?} not drawn in {}",
+                        doc.model().get(vid).unwrap().name
+                    )
+                });
+                if *tool == Tool::Text {
+                    let t = &item.marks(item.mm).texts[0];
+                    assert!((t.angle - 30f64.to_radians()).abs() < 1e-9);
+                    assert_eq!(item.look.size, 5.0);
+                }
+            }
+        }
     }
 
     #[test]

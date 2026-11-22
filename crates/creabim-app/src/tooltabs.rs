@@ -632,6 +632,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Tag every door, window, fixture and room in the view that has no tag yet (Shift+T)",
             ),
             T(Tool::Note),
+            T(Tool::Text),
             Sep,
             T(Tool::Detail),
             T(Tool::Callout),

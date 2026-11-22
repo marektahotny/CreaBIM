@@ -511,6 +511,7 @@ pub fn room_tag_item(id: ElementId, text: String, at: DVec2, look: TextLook, mm:
                 at: start,
                 leader: None,
                 elbow: None,
+                angle: 0.0,
             },
             text,
             look,
@@ -1884,6 +1885,9 @@ pub fn note_item(
 ) -> PlanItem {
     let mut look = look_of(model, n.style, n.color);
     look.leader_end = n.leader_end.or(look.leader_end);
+    if let Some(size) = n.size.filter(|s| *s > 0.0) {
+        look.size = size;
+    }
     PlanItem::Annotation {
         id,
         item: Box::new(Annotation {
@@ -1891,6 +1895,7 @@ pub fn note_item(
                 at: n.at,
                 leader,
                 elbow: leader.and(n.elbow),
+                angle: n.angle.to_radians(),
             },
             text: crate::annotation::lay_out_note(&n.text, &look, n.width, n.markdown),
             look,
