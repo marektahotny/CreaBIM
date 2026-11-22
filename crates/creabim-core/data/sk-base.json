@@ -262,6 +262,29 @@
    "color": "#f2f2f2"
   },
   {
+   "id": "sdk-df",
+   "category": "Sadrokartón a drevo",
+   "name": "Sadrokartónová doska protipožiarna typ DF (EN 520)",
+   "lambda": 0.25,
+   "density": 933,
+   "fire": "A2-s1,d0",
+   "kind": "protipožiarna sadrokartónová doska",
+   "note": "hodnoty prevzaté z technického listu NORGIPS S GKFI 15 mm typ DFH2, technický list (vydané február 2026): λ 0,25 W/(m·K), jadro ≥ 800 kg/m³, 14 kg/m², μ 10, A2-s1,d0 – rovnaké jadro bez impregnácie; overiť listom použitého výrobcu",
+   "color": "#f4e4e4"
+  },
+  {
+   "id": "sdk-dfh2",
+   "category": "Sadrokartón a drevo",
+   "name": "Sadrokartónová doska impregnovaná protipožiarna typ DFH2 (EN 520)",
+   "lambda": 0.25,
+   "density": 933,
+   "fire": "A2-s1,d0",
+   "maker": "NORGIPS",
+   "kind": "impregnovaná protipožiarna sadrokartónová doska",
+   "note": "NORGIPS S GKFI 15 mm typ DFH2, technický list (vydané február 2026): λ 0,25 W/(m·K), jadro ≥ 800 kg/m³, 14 kg/m², μ 10, A2-s1,d0",
+   "color": "#e4efe4"
+  },
+  {
    "id": "osb",
    "category": "Sadrokartón a drevo",
    "name": "OSB doska",
@@ -1452,6 +1475,62 @@
     {
      "material": "omietka-sadra",
      "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "PODHLAD-VAZ-DF",
+   "name": "Podhľad pod väzníkovou strechou – SDK DF 15, MW 50 + 100 + 120",
+   "boundary": "exterier",
+   "layers": [
+    {
+     "material": "mw-medzi",
+     "mm": 120
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 100,
+     "core": true
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 50
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "sdk-df",
+     "mm": 15
+    }
+   ]
+  },
+  {
+   "id": "PODHLAD-VAZ-DFH2",
+   "name": "Podhľad pod väzníkovou strechou – SDK DFH2 15, MW 50 + 100 + 120",
+   "boundary": "exterier",
+   "layers": [
+    {
+     "material": "mw-medzi",
+     "mm": 120
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 100,
+     "core": true
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 50
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "sdk-dfh2",
+     "mm": 15
     }
    ]
   }
