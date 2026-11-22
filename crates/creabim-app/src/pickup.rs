@@ -316,6 +316,7 @@ pub fn pick_up(state: &mut PlanState, model: &Model, id: ElementId) -> Result<St
                 }
             }
         }
+        ElementKind::RoomSeparator(sep) => s.details.separator = sep.look,
         ElementKind::Detail(d) => match &d.kind {
             DetailKind::Line(l) | DetailKind::Arc(l) | DetailKind::Curve(l) => s.details.line = *l,
             k => {

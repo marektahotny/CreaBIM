@@ -108,7 +108,7 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
             }
             ElementKind::RoomSeparator(s) if s.level == level => out.push(PlanItem::Line {
                 id: e.id,
-                pen: Pen::Symbol,
+                pen: s.look.map_or(Pen::Symbol, Pen::Drafted),
                 a: s.a,
                 b: s.b,
             }),

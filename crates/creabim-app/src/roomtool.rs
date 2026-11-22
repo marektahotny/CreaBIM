@@ -228,7 +228,12 @@ pub fn separator_click(
     }
     let e = Element::new(
         "Room separator",
-        ElementKind::RoomSeparator(Separator { level, a, b: p }),
+        ElementKind::RoomSeparator(Separator {
+            level,
+            a,
+            b: p,
+            look: state.details.separator,
+        }),
     );
     selection.only(e.id);
     state.status = Some("Room separator added: rooms on either side of it are now apart.".into());

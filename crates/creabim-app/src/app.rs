@@ -12120,6 +12120,13 @@ crate::props::row(ui, "File names", |ui| {
                         "{} long. Rooms on either side of it are measured apart.",
                         crate::units::len(sep.a.distance(sep.b))
                     )));
+                    // its pen and line type (George 2026-11-22)
+                    let mut look = sep.look.unwrap_or_default();
+                    if crate::detailtool::line_look_ui(ui, &mut look) {
+                        sep.look = Some(look);
+                        self.plan.details.separator = Some(look);
+                        label = "Line look";
+                    }
                 }
                 ElementKind::Object(o) => {
                     let hung = creabim_core::objects::hung(self.doc.model(), &e);
