@@ -63,14 +63,18 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                             }
                         }
                     }
-                    // tiling: a thin line just off the walls' faces
+                    // tiling: a line just off the walls' faces
                     if let (Some(t), false) = (&r.tiling, view.ceiling_plan) {
                         for (a, b) in room::tiling_plan_runs(model, &s, &t.skip, t.height) {
                             let d = (b - a).normalize_or_zero();
                             let off = DVec2::new(-d.y, d.x) * TILING_OFF;
+                            // a medium dash-dot line (George 2026-11-22)
                             loops.push(PlanItem::Line {
                                 id: e.id,
-                                pen: Pen::Symbol,
+                                pen: Pen::Drafted(creabim_core::LineLook {
+                                    pen: creabim_core::LinePen::Thick,
+                                    kind: creabim_core::LineType::DashDot,
+                                }),
                                 a: a + off,
                                 b: b + off,
                             });
