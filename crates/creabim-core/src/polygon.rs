@@ -16,8 +16,88 @@ pub fn triangulate(poly: &[DVec2]) -> Vec<[usize; 3]> {
     if n < 3 {
         return vec![];
     }
-    let mut idx: Vec<usize> = (0..n).collect();
-    if signed_area2(poly) < 0.0 {
+    let rings = pinch_split(poly);
+    if rings.len() <= 1 {
+        return ear_clip(poly, (0..n).collect());
+    }
+    // an outline pinched at a corner it passes twice (a section through
+    // a window frame and its sill, run round as one; a hole's bridge):
+    // each loop by itself, a loop lying inside a bigger one being a hole
+    let tris: Vec<Vec<[usize; 3]>> = rings.iter().map(|r| ear_clip(poly, r.clone())).collect();
+    let area = |r: &[usize]| {
+        let pts: Vec<DVec2> = r.iter().map(|&i| poly[i]).collect();
+        signed_area2(&pts).abs()
+    };
+    let hole = rings.iter().enumerate().any(|(k, r)| {
+        let Some(t) = tris[k].first() else {
+            return false;
+        };
+        let inner = (poly[t[0]] + poly[t[1]] + poly[t[2]]) / 3.0;
+        rings.iter().enumerate().any(|(j, o)| {
+            j != k && area(o) > area(r) && {
+                let pts: Vec<DVec2> = o.iter().map(|&i| poly[i]).collect();
+                contains(&pts, inner)
+            }
+        })
+    });
+    if hole {
+        // an outline round its holes, joined by bridges: clipped whole,
+        // the bridges' corners sitting on its ears
+        return ear_clip(poly, (0..n).collect());
+    }
+    tris.concat()
+}
+
+/// A ring of `poly`'s corners split where it passes the same point twice,
+/// into loops that each pass every point once; loops with no area left
+/// out.
+fn pinch_split(poly: &[DVec2]) -> Vec<Vec<usize>> {
+    let mut todo: Vec<Vec<usize>> = vec![(0..poly.len()).collect()];
+    let mut done = vec![];
+    while let Some(r) = todo.pop() {
+        let m = r.len();
+        let mut cut = None;
+        'find: for i in 0..m {
+            for j in i + 2..m {
+                if i == 0 && j == m - 1 {
+                    continue;
+                }
+                if poly[r[i]].distance(poly[r[j]]) < 1e-9 {
+                    cut = Some((i, j));
+                    break 'find;
+                }
+            }
+        }
+        match cut {
+            Some((i, j)) => {
+                todo.push(r[i..j].to_vec());
+                let mut rest = r[j..].to_vec();
+                rest.extend_from_slice(&r[..i]);
+                todo.push(rest);
+            }
+            None => {
+                let pts: Vec<DVec2> = r.iter().map(|&i| poly[i]).collect();
+                if m >= 3 && signed_area2(&pts).abs() > 1e-14 {
+                    done.push(r);
+                }
+            }
+        }
+        if done.len() + todo.len() > poly.len() {
+            // never more loops than corners; give up splitting
+            return vec![(0..poly.len()).collect()];
+        }
+    }
+    done
+}
+
+/// Ear clipping of the loop of `poly`'s corners `idx`.
+fn ear_clip(poly: &[DVec2], mut idx: Vec<usize>) -> Vec<[usize; 3]> {
+    let n = idx.len();
+    if n < 3 {
+        return vec![];
+    }
+    let pts: Vec<DVec2> = idx.iter().map(|&i| poly[i]).collect();
+    if signed_area2(&pts) < 0.0 {
         idx.reverse();
     }
     let mut out = Vec::with_capacity(n - 2);
@@ -246,5 +326,57 @@ mod hole_tests {
             .sum();
         assert!((area - 14.0).abs() < 1e-9, "{area}");
         assert!(contains(&outer, DVec2::new(1.5, 2.0)));
+    }
+
+    /// George: grey wedges by a window's frame in a section. Its cut,
+    /// frame and sill pieces run round as one outline pinched where they
+    /// meet, was filled with triangles reaching out of it; each loop is
+    /// filled by itself now, all of it and nothing more.
+    #[test]
+    fn a_pinched_outline_is_filled_loop_by_loop() {
+        let p: Vec<DVec2> = [
+            (3.262, 1.675),
+            (3.262, 1.650),
+            (3.023, 1.650),
+            (3.023, 2.400),
+            (2.922, 2.400),
+            (2.922, 1.650),
+            (2.727, 1.650),
+            (2.727, 1.680),
+            (2.922, 1.680),
+            (2.922, 1.650),
+            (3.023, 1.650),
+            (3.023, 1.675),
+        ]
+        .iter()
+        .map(|(x, y)| DVec2::new(*x, *y))
+        .collect();
+        let t = triangulate(&p);
+        let area: f64 = t
+            .iter()
+            .map(|t| signed_area2(&[p[t[0]], p[t[1]], p[t[2]]]).abs() / 2.0)
+            .sum();
+        let pieces = 0.239 * 0.025 + 0.101 * 0.75 + 0.195 * 0.03;
+        assert!((area - pieces).abs() < 1e-9, "{area} {pieces}");
+        // a hole joined by a bridge stays empty
+        let outer = [
+            DVec2::new(0.0, 0.0),
+            DVec2::new(4.0, 0.0),
+            DVec2::new(4.0, 4.0),
+            DVec2::new(0.0, 4.0),
+        ];
+        let hole = vec![
+            DVec2::new(1.0, 1.0),
+            DVec2::new(3.0, 1.0),
+            DVec2::new(3.0, 3.0),
+            DVec2::new(1.0, 3.0),
+        ];
+        let b = bridged(&outer, &[hole]);
+        let t = triangulate(&b);
+        let area: f64 = t
+            .iter()
+            .map(|t| signed_area2(&[b[t[0]], b[t[1]], b[t[2]]]).abs() / 2.0)
+            .sum();
+        assert!((area - 12.0).abs() < 1e-9, "{area}");
     }
 }
