@@ -8175,5 +8175,8 @@
  "⇅ Look the other way": "⇅ Otočiť smer pohľadu",
  "⚠ {m} is also the mark of {n} other element{}.": "⚠ {m} je zároveň označenie ďalších prvkov ({n}).",
  "⚠ {} mark{} used more than once:": "⚠ Označenia použité viackrát ({}):",
- "✔ No two elements share a mark.": "✔ Žiadne dva prvky nemajú rovnaké označenie."
+ "✔ No two elements share a mark.": "✔ Žiadne dva prvky nemajú rovnaké označenie.",
+ "Mended while opening": "Opravené pri otváraní",
+ "{} broken elements were left out and the undo history was shortened. Save the project to keep it so.": "Vynechaných {} poškodených prvkov a história krokov späť bola skrátená. Uložte projekt, aby to tak zostalo.",
+ "{} oldest undo steps no longer fitted the model and were dropped; the model is whole. Save the project to keep it so.": "{} najstarších krokov späť už nesedelo s modelom a boli vypustené; model je celý. Uložte projekt, aby to tak zostalo."
 }

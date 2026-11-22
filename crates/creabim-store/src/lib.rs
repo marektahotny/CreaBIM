@@ -115,6 +115,8 @@ pub fn save_with_backup(path: impl AsRef<Path>, doc: &Document) -> Result<()> {
     match save(path, doc) {
         Ok(()) => {
             if had {
+                // the backup before goes among the older ones
+                keep_older_backup(path, &bak);
                 let _ = std::fs::rename(&tmp, &bak);
             }
             Ok(())
@@ -123,6 +125,74 @@ pub fn save_with_backup(path: impl AsRef<Path>, doc: &Document) -> Result<()> {
             let _ = std::fs::remove_file(&tmp);
             Err(e)
         }
+    }
+}
+
+/// How many older saves are kept besides the backup ([`backups_dir`]).
+pub const OLDER_BACKUPS: usize = 10;
+
+/// Where the older saves of a project are kept: a folder beside it
+/// (`CreaBIM zálohy`), each named after the project and when it was saved
+/// (`House.1763775600000.creabim`), the newest [`OLDER_BACKUPS`] only.
+pub fn backups_dir(path: impl AsRef<Path>) -> PathBuf {
+    path.as_ref()
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("CreaBIM zálohy")
+}
+
+/// The older saves of `path` kept in [`backups_dir`], oldest first.
+pub fn older_backups(path: impl AsRef<Path>) -> Vec<PathBuf> {
+    let path = path.as_ref();
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let prefix = format!("{stem}.");
+    let mut found: Vec<(i64, PathBuf)> = std::fs::read_dir(backups_dir(path))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let ms = name
+                .strip_prefix(&prefix)?
+                .strip_suffix(&format!(".{EXTENSION}"))?
+                .parse()
+                .ok()?;
+            Some((ms, e.path()))
+        })
+        .collect();
+    found.sort();
+    found.into_iter().map(|(_, p)| p).collect()
+}
+
+/// Move the backup `bak` of `path` among its older saves, and let the
+/// oldest beyond [`OLDER_BACKUPS`] go. Never fails a save.
+fn keep_older_backup(path: &Path, bak: &Path) {
+    if !bak.exists() {
+        return;
+    }
+    let dir = backups_dir(path);
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let ms = std::fs::metadata(bak)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or_else(now_ms, |d| d.as_millis() as i64);
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "project".into());
+    let to = dir.join(format!("{stem}.{ms}.{EXTENSION}"));
+    if std::fs::rename(bak, &to).is_err() && std::fs::copy(bak, &to).is_err() {
+        return;
+    }
+    let older = older_backups(path);
+    for old in older.iter().take(older.len().saturating_sub(OLDER_BACKUPS)) {
+        let _ = std::fs::remove_file(old);
     }
 }
 
@@ -141,9 +211,39 @@ pub fn newer_autosave(path: impl AsRef<Path>) -> Option<PathBuf> {
 
 /// Read a project: the model plus the undo and redo stacks it was saved with.
 pub fn open(path: impl AsRef<Path>) -> Result<Document> {
+    Ok(open_mended(path)?.0)
+}
+
+/// What opening a project had to mend: undo and redo steps of a saved
+/// history that no longer fitted the model, dropped (the model is whole).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Mended {
+    pub undo_dropped: usize,
+    pub redo_dropped: usize,
+    /// Elements left out: their references were missing (or they were
+    /// broken), so the rest could open.
+    pub elements_dropped: usize,
+}
+
+/// Like [`open`], and says what of the history had to be dropped.
+pub fn open_mended(path: impl AsRef<Path>) -> Result<(Document, Option<Mended>)> {
     let mut conn = schema::open_existing(path.as_ref())?;
     let tx = conn.transaction()?;
-    Ok(read_document(&tx)?.0)
+    let (doc, _, mended) = read_document(&tx)?;
+    Ok((doc, mended))
+}
+
+/// Like [`load`], and says what of the history had to be dropped.
+pub fn load_mended(path: impl AsRef<Path>) -> Result<(Document, Option<Mended>)> {
+    let path = path.as_ref();
+    if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("json"))
+    {
+        Ok((import_json(path)?, None))
+    } else {
+        open_mended(path)
+    }
 }
 
 /// Read a legacy `.creabim.json` model. It has no history, so the document
@@ -259,7 +359,8 @@ pub(crate) fn save_fresh(path: &Path, doc: &Document) -> Result<Vec<i64>> {
     let tmp = PathBuf::from(tmp);
     let _ = std::fs::remove_file(&tmp);
 
-    let written = (|| {
+    let write = |doc: &Document| -> Result<Vec<i64>> {
+        let _ = std::fs::remove_file(&tmp);
         let mut conn = Connection::open(&tmp)?;
         // a plain rollback journal, so the finished file is self-contained
         conn.pragma_update(None, "journal_mode", "DELETE")?;
@@ -269,7 +370,24 @@ pub(crate) fn save_fresh(path: &Path, doc: &Document) -> Result<Vec<i64>> {
         tx.commit()?;
         conn.close().map_err(|(_, e)| e)?;
         Ok(seqs)
-    })();
+    };
+    // never put a file in place that wouldn't open again as it is: read
+    // back, it must give the same model with its whole history. If the
+    // history is what doesn't fit, the model is saved without it.
+    let written = write(doc).and_then(|seqs| match verify(&tmp, doc) {
+        Ok(()) => Ok(seqs),
+        Err(why) => {
+            eprintln!("save: {why}; saved again without the undo history");
+            let bare = Document::from_model(doc.model().clone());
+            let seqs = write(&bare)?;
+            verify(&tmp, &bare).map_err(|why| {
+                StoreError::Corrupt(format!(
+                    "the file written did not read back ({why}); the saved file was left as it was"
+                ))
+            })?;
+            Ok(seqs)
+        }
+    });
     let seqs = match written {
         Ok(seqs) => seqs,
         Err(e) => {
@@ -282,6 +400,28 @@ pub(crate) fn save_fresh(path: &Path, doc: &Document) -> Result<Vec<i64>> {
         return Err(e);
     }
     Ok(seqs)
+}
+
+/// Does the file at `path` read back as `doc`: the same model (compared
+/// as saved text, so even a value that can't equal itself is caught) and
+/// its history whole?
+fn verify(path: &Path, doc: &Document) -> std::result::Result<(), String> {
+    let mut conn = schema::open_existing(path).map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let (back, _, mended) = read_document(&tx).map_err(|e| e.to_string())?;
+    if mended.is_some() {
+        return Err("its history did not fit the model".into());
+    }
+    let text = |m: &Model| serde_json::to_string(m).unwrap_or_default();
+    if text(back.model()) != text(doc.model()) {
+        return Err("the model read back differs".into());
+    }
+    if back.undo_steps().len() != doc.undo_steps().len()
+        || back.redo_steps().len() != doc.redo_steps().len()
+    {
+        return Err("the history read back differs".into());
+    }
+    Ok(())
 }
 
 /// Before replacing `path`, fold any WAL or hot journal it has back into it.
@@ -345,14 +485,18 @@ fn write_document(conn: &Connection, doc: &Document, name: &str) -> Result<Vec<i
 
 /// Rebuild the document from the `elements` table and the journal. Returns
 /// the journal row of each timeline step alongside, for [`Store`].
-pub(crate) fn read_document(conn: &Connection) -> Result<(Document, Vec<i64>)> {
+pub(crate) fn read_document(conn: &Connection) -> Result<(Document, Vec<i64>, Option<Mended>)> {
     let mut stmt = conn.prepare("SELECT data FROM elements ORDER BY ord")?;
     let elements = stmt
         .query_map([], |r| r.get::<_, String>(0))?
         .map(|data| from_json(&data?))
         .collect::<Result<Vec<_>>>()?;
-    let model = Model::from_elements(elements)
-        .map_err(|e| StoreError::Corrupt(format!("elements: {e}")))?;
+    // never refused for one broken element: it is left out, with what
+    // hangs on it, and the rest opens
+    let (model, left_out) = Model::from_elements_mended(elements);
+    for (id, why) in &left_out {
+        eprintln!("open: left out element {id}: {why}");
+    }
 
     // First replay only the row kinds to learn which commits are still on the
     // stacks; steps dropped by a later commit are never parsed.
@@ -393,9 +537,20 @@ pub(crate) fn read_document(conn: &Connection) -> Result<(Document, Vec<i64>)> {
     };
     let undo_txs = undo.iter().map(&mut load).collect::<Result<Vec<_>>>()?;
     let redo_txs = redo.iter().map(&mut load).collect::<Result<Vec<_>>>()?;
-    let doc = Document::from_parts(model, undo_txs, redo_txs)?;
+    // a history that no longer fits the model is cut, never the project
+    // refused: the model is whole (MU: a merged edit once lost inserts)
+    let (doc, undo_dropped, redo_dropped) = Document::from_parts_mended(model, undo_txs, redo_txs);
+    let mended = (undo_dropped + redo_dropped + left_out.len() > 0).then_some(Mended {
+        undo_dropped,
+        redo_dropped,
+        elements_dropped: left_out.len(),
+    });
+    undo.drain(..undo_dropped);
+    if redo_dropped > 0 {
+        redo.clear();
+    }
     undo.extend(redo.iter().rev());
-    Ok((doc, undo))
+    Ok((doc, undo, mended))
 }
 
 /// Append a commit row for `tx`; returns its sequence number.

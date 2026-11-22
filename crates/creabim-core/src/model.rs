@@ -250,6 +250,40 @@ impl Model {
         Ok(m)
     }
 
+    /// Like [`Model::from_elements`], but never refuses: a second copy of
+    /// an id is left out, and so is an element whose references are
+    /// missing or which is invalid (and then what referenced it, in turn).
+    /// Returns the model and what was left out, with why.
+    pub fn from_elements_mended(
+        elements: impl IntoIterator<Item = Element>,
+    ) -> (Self, Vec<(ElementId, String)>) {
+        let mut dropped = vec![];
+        let mut m = Model::new();
+        for e in elements {
+            if m.elements.contains_key(&e.id) {
+                dropped.push((e.id, "a second copy of the same element".to_string()));
+                continue;
+            }
+            m.elements.insert(e.id, e);
+        }
+        loop {
+            let bad: Vec<(ElementId, String)> = m
+                .elements
+                .values()
+                .filter_map(|e| m.check_refs(e).err().map(|err| (e.id, err.to_string())))
+                .collect();
+            if bad.is_empty() {
+                break;
+            }
+            for (id, why) in bad {
+                m.elements.shift_remove(&id);
+                dropped.push((id, why));
+            }
+        }
+        m.bump(true);
+        (m, dropped)
+    }
+
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("model is always serializable")
     }

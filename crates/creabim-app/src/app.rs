@@ -862,8 +862,8 @@ impl CreaBimApp {
             self.link_file(path);
             return;
         }
-        match creabim_store::load(path) {
-            Ok(doc) => {
+        match creabim_store::load_mended(path) {
+            Ok((doc, mended)) => {
                 let model = doc.model().clone();
                 self.load_model(model.clone());
                 // keep the saved undo history when no views had to be added
@@ -883,6 +883,25 @@ impl CreaBimApp {
                         "Opened {path}. {stacked} element{} sit exactly on a copy of themselves: Manage › Copies on originals removes them.",
                         if stacked == 1 { "" } else { "s" }
                     );
+                }
+                // the file had to be mended to open: say so, and count it
+                // as changed, so the next save writes it whole
+                if let Some(m) = mended {
+                    crate::actlog::line(format!("open: mended {path}: {m:?}"));
+                    self.saved_revision = None;
+                    let what = if m.elements_dropped > 0 {
+                        crate::i18n::tr(&format!(
+                            "{} broken elements were left out and the undo history was shortened. Save the project to keep it so.",
+                            m.elements_dropped
+                        ))
+                    } else {
+                        crate::i18n::tr(&format!(
+                            "{} oldest undo steps no longer fitted the model and were dropped; the model is whole. Save the project to keep it so.",
+                            m.undo_dropped + m.redo_dropped
+                        ))
+                    };
+                    self.status =
+                        format!("{} {path}: {what}", crate::i18n::tr("Mended while opening"));
                 }
             }
             Err(e) => self.status = format!("Couldn't open {path}: {e}"),

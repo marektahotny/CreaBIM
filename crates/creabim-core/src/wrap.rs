@@ -524,6 +524,54 @@ mod tests {
         assert!(boards_of(&doc, id).is_empty());
     }
 
+    /// MU: a thickness dragged in the properties (merged edits) that adds
+    /// boards on a side once lost the boards from the history, and the
+    /// project then wouldn't open ("still referenced by").
+    #[test]
+    fn a_merged_edit_that_adds_boards_keeps_them_in_the_history() {
+        let mut doc = Document::new();
+        let l = level(&mut doc);
+        let mut c = Column::new(
+            l,
+            DVec2::new(1.0, 1.0),
+            Profile::Rectangle {
+                width: 0.3,
+                depth: 0.3,
+            },
+        );
+        let (w, mats) = new_wrap(doc.model(), [0.1, 0.0, 0.0, 0.0]);
+        c.wrap = Some(w);
+        let ce = Element::new("Stĺp", ElementKind::Column(c));
+        let id = ce.id;
+        let mut tx = Transaction::new("c").insert(ce);
+        for m in mats {
+            tx = tx.insert(m);
+        }
+        doc.commit(tx).unwrap();
+        let side = |i: usize, v: f64| {
+            move |e: &mut Element| {
+                if let ElementKind::Column(c) = &mut e.kind {
+                    c.wrap.as_mut().unwrap().sides[i] = v;
+                }
+            }
+        };
+        // dragged in one field: the front thicker (boards only change),
+        // then the right side given some (boards added), merged as one
+        doc.edit_merged(id, "Insulation thickness", side(0, 0.12))
+            .unwrap();
+        doc.edit_merged(id, "Insulation thickness", side(1, 0.05))
+            .unwrap();
+        doc.edit_merged(id, "Insulation thickness", side(1, 0.06))
+            .unwrap();
+        assert_eq!(boards_of(&doc, id).len(), 4);
+        // the history still fits the model, saved and read back
+        let undo: Vec<Transaction> = doc.undo_steps().iter().map(|s| s.tx.clone()).collect();
+        Document::from_parts(doc.model().clone(), undo, vec![]).expect("the history fits");
+        // and undoes to where it began
+        while doc.undo() {}
+        assert!(doc.model().get(id).is_none());
+    }
+
     #[test]
     fn a_beam_is_wrapped_under_and_on_one_side() {
         let mut doc = Document::new();

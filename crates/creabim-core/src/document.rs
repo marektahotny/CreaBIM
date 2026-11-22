@@ -80,6 +80,37 @@ impl Document {
         })
     }
 
+    /// Like [`Document::from_parts`], but a history that doesn't fit the
+    /// model is cut rather than refused: the model is what the project is,
+    /// the history only how it got there. The undo steps kept are the
+    /// newest ones that still unwind cleanly; the redo steps go when they
+    /// don't fit. Returns how many undo and redo steps were dropped.
+    pub fn from_parts_mended(
+        model: Model,
+        undo: Vec<Transaction>,
+        redo: Vec<Transaction>,
+    ) -> (Self, usize, usize) {
+        if let Ok(doc) = Self::from_parts(model.clone(), undo.clone(), redo.clone()) {
+            return (doc, 0, 0);
+        }
+        // how far back the newest steps unwind (a step applies all or
+        // nothing, so the scratch copy stays whole where it stops)
+        let mut scratch = model.clone();
+        let mut keep_from = undo.len();
+        while keep_from > 0 && undo[keep_from - 1].inverse().apply(&mut scratch).is_ok() {
+            keep_from -= 1;
+        }
+        let (n_undo, n_redo) = (undo.len(), redo.len());
+        let kept: Vec<Transaction> = undo.into_iter().skip(keep_from).collect();
+        if let Ok(doc) = Self::from_parts(model.clone(), kept.clone(), redo) {
+            return (doc, keep_from, 0);
+        }
+        if let Ok(doc) = Self::from_parts(model.clone(), kept, vec![]) {
+            return (doc, keep_from, n_redo);
+        }
+        (Self::from_model(model), n_undo, n_redo)
+    }
+
     /// Take the document apart into what [`Document::from_parts`] accepts.
     pub fn into_parts(self) -> (Model, Vec<Transaction>, Vec<Transaction>) {
         let txs = |v: Vec<Step>| v.into_iter().map(|s| s.tx).collect();
@@ -242,6 +273,15 @@ impl Document {
         }
         let mut tx = tx;
         self.apply_settled(&mut tx)?;
+        // what followed the edit added or removed elements (insulation
+        // round a column, a lintel over a door): a step of its own, or
+        // the merge below, which keeps only replaces, would lose them and
+        // the history would no longer fit the model
+        if !replaces(&tx) {
+            self.undo.push(Step::new(tx));
+            self.redo.clear();
+            return Ok(());
+        }
         let step = self.undo.last_mut().expect("a step to merge into");
         // what each element was before the first edit, and is now
         let mut befores: Vec<Element> = vec![];
