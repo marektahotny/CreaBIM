@@ -630,11 +630,12 @@ pub fn click(
                 // coordinates: the point snapped to (a plot's corner, a
                 // cadastre line's bend, the building's corner)
                 creabim_core::ViewKind::Plan { .. } if coords => (hp, p),
-                // in a plan, kept on what is under the click (a roof's
-                // face, a slab, the terrain, a stair), whose height there
-                // it reads
+                // in a plan, kept on what is under the point snapped to
+                // (a roof's face or edge, a slab, the terrain, a stair),
+                // whose height there it reads: the mark sits right where
+                // the pointer stuck, not where the pointer itself is
                 creabim_core::ViewKind::Plan { level, .. } => {
-                    (spot_point(model, view, level, raw), raw)
+                    (spot_point(model, view, level, p), p)
                 }
                 _ => (hp, p),
             };
@@ -2386,6 +2387,95 @@ mod tests {
                 format!("{:.3}", 245.35 + z).replace('.', ",")
             )
         );
+    }
+
+    /// George: with the pointer stuck to a roof's edge, the spot level
+    /// sat off the edge, where the pointer was, and read the height there.
+    /// It sits on the point snapped to and reads the ridge's height.
+    #[test]
+    fn a_spot_level_snapped_to_a_ridge_sits_on_it_and_reads_it() {
+        let mut doc = Document::from_model(creabim_core::sample::layered_house());
+        let ff = doc
+            .model()
+            .iter()
+            .find(|e| e.name == "First Floor")
+            .unwrap()
+            .id;
+        let roof = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Roof(_)))
+            .unwrap()
+            .id;
+        let top = creabim_geom::scene::shared_scene(doc.model())
+            .iter()
+            .filter(|i| i.id == roof)
+            .flat_map(|i| i.mesh.positions.clone())
+            .max_by(|a, b| a[2].total_cmp(&b[2]))
+            .unwrap();
+        let ridge = DVec2::new(top[0] as f64, top[1] as f64);
+        let mut v = View::plan(ff);
+        v.graphics.range.from_above = true;
+        let e = Element::new("Roof plan", ElementKind::View(v.clone()));
+        let vid = e.id;
+        doc.commit(Transaction::new("plan").insert(e)).unwrap();
+        let (mut d, mut sel) = (Draft::default(), Selection::default());
+        let before = ids(&doc);
+        // the pointer a little off the ridge, stuck to it
+        let raw = ridge + DVec2::new(0.2, 0.3);
+        let hit = Some((HostPoint::free(ridge), ridge, Some(SnapKind::Endpoint)));
+        click(
+            &mut doc,
+            vid,
+            &v,
+            Tool::SpotLevel,
+            hit,
+            raw,
+            &[],
+            0.1,
+            &mut d,
+            &mut sel,
+        )
+        .unwrap();
+        let text_at = ridge + DVec2::new(1.0, 1.0);
+        click(
+            &mut doc,
+            vid,
+            &v,
+            Tool::SpotLevel,
+            None,
+            text_at,
+            &[],
+            0.1,
+            &mut d,
+            &mut sel,
+        )
+        .unwrap();
+        let e = added_since(&doc, &before);
+        let ElementKind::Dimension(dim) = &e.kind else {
+            panic!("not a dimension")
+        };
+        assert_eq!(dim.a.host, Some(roof));
+        assert!(
+            dim.a.local.distance(ridge) < 1e-6,
+            "{:?} {ridge:?}",
+            dim.a.local
+        );
+        let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+        let text = drawing
+            .items
+            .iter()
+            .find_map(|i| match i {
+                PlanItem::Annotation { id, item } if *id == e.id => Some(item.text.clone()),
+                _ => None,
+            })
+            .unwrap();
+        let want = creabim_core::annotation::spot_text(
+            doc.model(),
+            creabim_core::annotation::SPOT_PATTERN,
+            top[2] as f64,
+        );
+        assert_eq!(text, want);
     }
 
     /// George: every annotation must work in plans, the site plan,
