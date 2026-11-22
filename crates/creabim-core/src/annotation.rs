@@ -347,6 +347,10 @@ pub struct TextStyle {
     /// How a note's or tag's lines line up (MU31).
     #[serde(default, skip_serializing_if = "TextAlign::is_usual")]
     pub align: TextAlign,
+    /// Texts in this style cover what is drawn under them ("Pozadie"):
+    /// dimension numbers, spot levels, notes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub back: bool,
 }
 
 /// How the lines of a note or tag line up: Usual is each kind's own
@@ -384,6 +388,7 @@ impl Default for TextStyle {
             purpose: StyleUse::Any,
             break_at_tags: false,
             align: TextAlign::Usual,
+            back: false,
         }
     }
 }
@@ -609,6 +614,9 @@ pub struct Note {
     /// Its letters' height on paper, mm, over its style's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<f64>,
+    /// Its text covers what is drawn under it, over its style's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub back: bool,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -630,6 +638,7 @@ impl Note {
             markdown: false,
             angle: 0.0,
             size: None,
+            back: false,
         }
     }
 

@@ -144,7 +144,9 @@ pub fn text_box(item: &PlanItem, mm: f64) -> Option<(TextBox, bool)> {
                 ]
             });
             let b = TextBox::around(pts)?;
-            Some((b, matches!(a.shape, Shape::Note { .. })))
+            // a note with a background covers the lines under it: it
+            // stays where it was put
+            Some((b, matches!(a.shape, Shape::Note { .. }) && !a.look.back))
         }
         PlanItem::Dimension {
             a,

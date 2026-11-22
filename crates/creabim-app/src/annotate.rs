@@ -166,6 +166,14 @@ pub fn paint_weighted(
         painter.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
     }
     paint_ends_weighted(painter, xf, &m.ends, color, w);
+    for patch in item.back_patches(&m, mm) {
+        let pts: Vec<Pos2> = patch.iter().map(|p| xf.to_screen(*p)).collect();
+        painter.add(egui::Shape::convex_polygon(
+            pts,
+            Color32::WHITE,
+            Stroke::NONE,
+        ));
+    }
     let px = text_px(&item.look, mm, xf);
     for t in &m.texts {
         text(
@@ -1873,6 +1881,14 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     {
         label = Some("Dimension breaks");
     }
+    if crate::props::switch(ui, &mut s.back, "Text background")
+        .on_hover_text(crate::i18n::t(
+            "Texts in this style cover what is drawn under them: dimension numbers, spot levels, notes",
+        ))
+        .changed()
+    {
+        label = Some("Text background");
+    }
     crate::app::helpui::combo(ui, "Meant for")
         .selected_text(crate::i18n::tw(s.purpose.label()))
         .show_ui(ui, |ui| {
@@ -2100,6 +2116,12 @@ pub fn note_ui(
         .changed()
     {
         label = Some("Note markdown");
+    }
+    if crate::props::switch(ui, &mut n.back, "Text background")
+        .on_hover_text(crate::i18n::t("The text covers what is drawn under it"))
+        .changed()
+    {
+        label = Some("Text background");
     }
     let mut leader = n.leader.is_some();
     if crate::props::switch(ui, &mut leader, "Leader")
