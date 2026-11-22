@@ -13409,6 +13409,16 @@ impl CreaBimApp {
                 p.sjtsk.get_or_insert([-547382.28, -1253318.85]);
                 self.project_draft = Some(p);
             }
+            // the 3D camera: "x,y,z,yaw,pitch,distance" (degrees, m)
+            if let Ok(o) = std::env::var("CREABIM_SHOT_ORBIT") {
+                let v: Vec<f32> = o.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+                if let [x, y, z, yaw, pitch, d] = v.as_slice() {
+                    self.camera.target = glam::Vec3::new(*x, *y, *z);
+                    self.camera.yaw = yaw.to_radians();
+                    self.camera.pitch = pitch.to_radians();
+                    self.camera.distance = *d;
+                }
+            }
             // the 3D view in X-ray
             if std::env::var("CREABIM_SHOT_XRAY").is_ok() {
                 self.set_xray(true);

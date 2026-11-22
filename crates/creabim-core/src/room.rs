@@ -209,34 +209,197 @@ pub fn tiling_runs(model: &Model, shape: &RoomShape, skip: &[ElementId]) -> Vec<
     out
 }
 
-/// The area of a room's tiling, m²: its runs by its height, less what
-/// of the windows in its walls is below that height.
-pub fn tiling_area(model: &Model, r: &Room, shape: &RoomShape) -> f64 {
-    let Some(t) = &r.tiling else { return 0.0 };
-    let full = tiling_runs(model, shape, &t.skip)
-        .iter()
-        .map(|(a, b)| a.distance(*b))
-        .sum::<f64>()
-        * t.height;
+/// One rectangle of tiles on a wall's face: from `a` to `b` along the
+/// room's outline, from `z0` to `z1` above the room's floor, m.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TilePanel {
+    pub a: DVec2,
+    pub b: DVec2,
+    pub z0: f64,
+    pub z1: f64,
+}
+
+/// Every opening of `wall` (doors, windows and holes) as a stretch of
+/// the edge `a` to `b` with how high it runs above the room's floor.
+fn opening_boxes(
+    model: &Model,
+    wall: &Element,
+    w: &crate::Wall,
+    a: DVec2,
+    b: DVec2,
+) -> Vec<(f64, f64, f64, f64)> {
+    let mut out = vec![];
+    for kind in [
+        crate::OpeningKind::Door,
+        crate::OpeningKind::Window,
+        crate::OpeningKind::Hole,
+    ] {
+        for (p, q, o) in opening_spans(model, wall, w, kind, a, b) {
+            let bottom = w.base_offset + o.sill;
+            out.push((p, q, bottom, bottom + o.height));
+        }
+    }
+    out
+}
+
+/// The tiles of a room's walls as rectangles: on every wall not in
+/// `skip`, from the floor up to `height`, less every door, window and
+/// hole in the wall, so that nothing is tiled over an opening.
+pub fn tiling_panels(
+    model: &Model,
+    shape: &RoomShape,
+    skip: &[ElementId],
+    height: f64,
+) -> Vec<TilePanel> {
+    const EPS: f64 = 1e-6;
     let n = shape.outline.len();
-    let mut windows = 0.0;
+    let mut out = vec![];
+    if height <= EPS {
+        return out;
+    }
     for (i, by) in shape.bounded_by.iter().enumerate() {
         let Some(wall) = by.and_then(|id| model.get(id)) else {
             continue;
         };
+        if skip.contains(&wall.id) {
+            continue;
+        }
         let ElementKind::Wall(w) = &wall.kind else {
             continue;
         };
-        if t.skip.contains(&wall.id) {
+        let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
+        let len = a.distance(b);
+        if len < EPS || (w.end - w.start).length() < EPS {
             continue;
         }
-        let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
-        for (p, q, o) in opening_spans(model, wall, w, crate::OpeningKind::Window, a, b) {
-            let top = (o.sill + o.height).min(t.height);
-            windows += (q - p) * (top - o.sill).max(0.0);
+        let d = (b - a) / len;
+        // the openings that reach into the tiled height
+        let holes: Vec<_> = opening_boxes(model, wall, w, a, b)
+            .into_iter()
+            .filter(|h| h.2 < height - EPS && h.3 > EPS)
+            .collect();
+        let mut cuts = vec![0.0, len];
+        for h in &holes {
+            cuts.push(h.0);
+            cuts.push(h.1);
+        }
+        cuts.sort_by(f64::total_cmp);
+        cuts.dedup_by(|x, y| (*x - *y).abs() < EPS);
+        // each stretch between the openings' edges: the height less the
+        // openings over the whole stretch
+        let mut row: Vec<(f64, f64, f64, f64)> = vec![];
+        for s in cuts.windows(2) {
+            let (x0, x1) = (s[0], s[1]);
+            if x1 - x0 < EPS {
+                continue;
+            }
+            let mut over: Vec<(f64, f64)> = holes
+                .iter()
+                .filter(|h| h.0 <= x0 + EPS && h.1 >= x1 - EPS)
+                .map(|h| (h.2.max(0.0), h.3.min(height)))
+                .collect();
+            over.sort_by(|p, q| p.0.total_cmp(&q.0));
+            let mut z = 0.0;
+            for (lo, hi) in over {
+                if lo - z > EPS {
+                    row.push((x0, x1, z, lo));
+                }
+                z = f64::max(z, hi);
+            }
+            if height - z > EPS {
+                row.push((x0, x1, z, height));
+            }
+        }
+        // neighbours of the same height join into one rectangle
+        let mut joined: Vec<(f64, f64, f64, f64)> = vec![];
+        for r in row {
+            match joined.iter_mut().find(|j| {
+                (j.1 - r.0).abs() < EPS && (j.2 - r.2).abs() < EPS && (j.3 - r.3).abs() < EPS
+            }) {
+                Some(j) => j.1 = r.1,
+                None => joined.push(r),
+            }
+        }
+        out.extend(joined.into_iter().map(|(x0, x1, z0, z1)| TilePanel {
+            a: a + d * x0,
+            b: a + d * x1,
+            z0,
+            z1,
+        }));
+    }
+    out
+}
+
+/// Where a room's tiling is drawn in a plan: its runs less every
+/// window and hole that reaches into the tiled height, as the doors
+/// are left out already, so the line never runs across an opening.
+pub fn tiling_plan_runs(
+    model: &Model,
+    shape: &RoomShape,
+    skip: &[ElementId],
+    height: f64,
+) -> Vec<(DVec2, DVec2)> {
+    const EPS: f64 = 1e-6;
+    let mut out = vec![];
+    for (a, b) in tiling_runs(model, shape, skip) {
+        let len = a.distance(b);
+        if len < EPS {
+            continue;
+        }
+        let d = (b - a) / len;
+        // the openings of the wall it runs along that cut into the tiles
+        let mut gaps: Vec<(f64, f64)> = vec![];
+        for (i, by) in shape.bounded_by.iter().enumerate() {
+            let Some(wall) = by.and_then(|id| model.get(id)) else {
+                continue;
+            };
+            let ElementKind::Wall(w) = &wall.kind else {
+                continue;
+            };
+            let n = shape.outline.len();
+            let (ea, eb) = (shape.outline[i], shape.outline[(i + 1) % n]);
+            // is the run on this edge?
+            let el = ea.distance(eb);
+            if el < EPS {
+                continue;
+            }
+            let ed = (eb - ea) / el;
+            let off = |p: DVec2| (p - ea).perp_dot(ed).abs();
+            if off(a) > 1e-4 || off(b) > 1e-4 || ed.dot(d) < 0.999 {
+                continue;
+            }
+            for (p, q, z0, z1) in opening_boxes(model, wall, w, ea, eb) {
+                if z0 < height - EPS && z1 > EPS {
+                    let s = (ea + ed * p - a).dot(d);
+                    let t = (ea + ed * q - a).dot(d);
+                    gaps.push((s.min(t).max(0.0), s.max(t).min(len)));
+                }
+            }
+        }
+        gaps.retain(|g| g.1 - g.0 > EPS);
+        gaps.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let mut from = 0.0;
+        for (p, q) in gaps {
+            if p - from > EPS {
+                out.push((a + d * from, a + d * p));
+            }
+            from = f64::max(from, q);
+        }
+        if len - from > EPS {
+            out.push((a + d * from, b));
         }
     }
-    (full - windows).max(0.0)
+    out
+}
+
+/// The area of a room's tiling, m²: its rectangles, so every door,
+/// window and hole in the tiled height is left out.
+pub fn tiling_area(model: &Model, r: &Room, shape: &RoomShape) -> f64 {
+    let Some(t) = &r.tiling else { return 0.0 };
+    tiling_panels(model, shape, &t.skip, t.height)
+        .iter()
+        .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
+        .sum()
 }
 
 impl Room {
@@ -1118,6 +1281,83 @@ mod tests {
         let mut doc = Document::new();
         doc.commit(tx).unwrap();
         (doc, l, ids)
+    }
+
+    /// Tiles never run over a window: the panels leave the window out in
+    /// 3D, the plan line breaks at it and the area loses it.
+    #[test]
+    fn tiling_leaves_the_windows_out() {
+        let (mut doc, l, walls) = house();
+        let room = Element::new(
+            "Bath",
+            ElementKind::Room(Room::new(l, DVec2::new(2.0, 2.0))),
+        );
+        let rid = room.id;
+        // a window 1.2 x 1.3 m on a 0.9 m sill in the first wall
+        let window = Element::new(
+            "Window",
+            ElementKind::Opening(crate::Opening {
+                host: walls[0],
+                kind: crate::OpeningKind::Window,
+                offset: 2.0,
+                sill: 0.9,
+                width: 1.2,
+                height: 1.3,
+                material: None,
+                frame: Default::default(),
+                flip_hand: false,
+                flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
+                threshold: false,
+                threshold_material: None,
+                penetration: None,
+                setback: None,
+                reveal: None,
+                division: None,
+                door: None,
+                texts: None,
+                performance: None,
+            }),
+        );
+        doc.commit(Transaction::new("room").insert(room).insert(window))
+            .unwrap();
+        let s = shape(doc.model(), rid).expect("enclosed");
+        let m = doc.model();
+        let panels = tiling_panels(m, &s, &[], 2.0);
+        // no panel overlaps the window's box (x 2.0..3.2 along y = 0.1)
+        for p in &panels {
+            let (x0, x1) = (p.a.x.min(p.b.x), p.a.x.max(p.b.x));
+            let on_wall = p.a.y.abs() < 0.2 && p.b.y.abs() < 0.2;
+            let across = x0 < 3.2 - 1e-6 && x1 > 2.0 + 1e-6;
+            let up = p.z0 < 2.0 - 1e-6 && p.z1 > 0.9 + 1e-6;
+            assert!(!(on_wall && across && up), "{p:?} runs over the window");
+        }
+        // under the window the tiles stay, up to its sill
+        assert!(panels.iter().any(|p| p.a.y.abs() < 0.2
+            && (p.z1 - 0.9).abs() < 1e-9
+            && p.a.x.min(p.b.x) <= 2.0 + 1e-6
+            && p.a.x.max(p.b.x) >= 3.2 - 1e-6));
+        // the area: the perimeter by 2 m less the window's 1.2 x 1.1 m
+        let mut r = match &m.get(rid).unwrap().kind {
+            ElementKind::Room(r) => r.clone(),
+            _ => unreachable!(),
+        };
+        r.tiling = Some(Tiling::default());
+        let full = s.perimeter() * 2.0;
+        assert!((tiling_area(m, &r, &s) - (full - 1.2 * 1.1)).abs() < 1e-6);
+        // the plan line breaks at the window
+        let runs: f64 = tiling_plan_runs(m, &s, &[], 2.0)
+            .iter()
+            .map(|(a, b)| a.distance(*b))
+            .sum();
+        assert!((runs - (s.perimeter() - 1.2)).abs() < 1e-6, "{runs}");
+        // tiles only up to 0.8 m: the window is above them, nothing breaks
+        let low: f64 = tiling_plan_runs(m, &s, &[], 0.8)
+            .iter()
+            .map(|(a, b)| a.distance(*b))
+            .sum();
+        assert!((low - s.perimeter()).abs() < 1e-6);
     }
 
     #[test]

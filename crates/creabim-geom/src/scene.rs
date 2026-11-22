@@ -601,8 +601,10 @@ fn build_scene_unjoined(
                     continue;
                 };
                 let mut mesh = TriMesh::default();
-                let (z0, z1) = (level.elevation, level.elevation + t.height);
-                for (a, b) in creabim_core::room::tiling_runs(model, &s, &t.skip) {
+                // the doors, windows and holes left out (George 2026-11-22)
+                for p in creabim_core::room::tiling_panels(model, &s, &t.skip, t.height) {
+                    let (a, b) = (p.a, p.b);
+                    let (z0, z1) = (level.elevation + p.z0, level.elevation + p.z1);
                     let d = (b - a).normalize_or_zero();
                     let n = glam::DVec2::new(-d.y, d.x) * TILING_THICKNESS;
                     let c = |p: glam::DVec2, z: f64| DVec3::new(p.x, p.y, z);
