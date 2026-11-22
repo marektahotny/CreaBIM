@@ -57,6 +57,7 @@ impl SlabMode {
             (Tool::Room, SlabMode::FillRoom) => "Click inside walls: the room fills the space to their inner faces and follows them when they move.",
             (Tool::Room, SlabMode::FromSketch) => "Click inside a closed sketch lying flat: it becomes a room with its outline, and the sketch is used up.",
             (Tool::Ceiling, SlabMode::FillRoom) => "Click inside a room: the ceiling goes over it and follows it.",
+            (Tool::Slab, SlabMode::FillRoom) => "Click inside a room: the slab fills it to the outer face of the outer walls' load-bearing layer and to the centre lines of the inner walls.",
             (Tool::Ceiling, SlabMode::FromSketch) => "Click inside a closed sketch lying flat: it becomes a ceiling with its outline, and the sketch is used up.",
             _ => self.hint(),
         }
@@ -367,7 +368,14 @@ pub fn click(
                 state.status = Some(crate::roomtool::fill(doc, space, level, p, selection)?);
                 return Ok(());
             }
-            let Some(outline) = creabim_core::room_outline(doc.model(), level, p) else {
+            // a slab with its floor on it reaches the outer walls' cores
+            let slab = state.tool == crate::planview::Tool::Slab;
+            let found = if slab {
+                creabim_core::room_outline_to_core(doc.model(), level, p)
+            } else {
+                creabim_core::room_outline(doc.model(), level, p)
+            };
+            let Some(outline) = found else {
                 state.status = Some(
                     "Not closed: the walls here leave a gap (shown in red), so there's no room to fill. Close it, or draw the outline (1 Polygon, 2 Rectangle, 4 From sketch).".into(),
                 );
@@ -385,10 +393,17 @@ pub fn click(
                 Slab::new(level, outline, NEW_SLAB_THICKNESS),
             );
             selection.only(e.id);
-            state.status = Some(format!(
-                "{} added over the room, to the walls' centre lines.",
-                e.name
-            ));
+            state.status = Some(if slab {
+                format!(
+                    "{} added over the room: to the outer face of the outer walls' load-bearing layer, to the centre lines of the inner walls.",
+                    e.name
+                )
+            } else {
+                format!(
+                    "{} added over the room, to the walls' centre lines.",
+                    e.name
+                )
+            });
             doc.commit(Transaction::new(label).insert(e))
         }
         SlabMode::FromSketch => {
