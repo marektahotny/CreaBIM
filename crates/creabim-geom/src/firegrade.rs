@@ -141,8 +141,15 @@ pub fn roof_required(model: &Model, grade: u32) -> Option<f64> {
 /// note 3), 5.4.4); none where the table or the figures are missing, or
 /// for a wall under ground.
 pub fn wall_required(model: &Model, grade: u32, wall: &creabim_core::Wall) -> Option<f64> {
+    wall_need(model, grade, wall).map(|n| n.minutes)
+}
+
+/// What table 5 asks of the outer wall (see [`WallNeed`]).
+pub fn wall_need(model: &Model, grade: u32, wall: &creabim_core::Wall) -> Option<WallNeed> {
     let fh = crate::firezones::fire_height(model)?;
     let t = crate::firerisk::table(model, FIRE_OUTER_WALL)?;
+    let bearing =
+        creabim_core::masonry::is_bearing(model, wall, &creabim_core::masonry::rules(model));
     let column = if fh.above <= 1 && fh.below == 0 {
         "single"
     } else {
@@ -151,8 +158,6 @@ pub fn wall_required(model: &Model, grade: u32, wall: &creabim_core::Wall) -> Op
         if here < first - 1e-6 {
             return None;
         }
-        let bearing =
-            creabim_core::masonry::is_bearing(model, wall, &creabim_core::masonry::rules(model));
         if !bearing {
             "nonbearing"
         } else if wall.level == fh.last {
@@ -163,14 +168,20 @@ pub fn wall_required(model: &Model, grade: u32, wall: &creabim_core::Wall) -> Op
     };
     let i = t.columns.iter().position(|c| c == column)?;
     let n = |s: &str| fireparams::number(s);
-    t.rows
+    let cell = t
+        .rows
         .iter()
         .find(|r| {
             r.first()
                 .and_then(|s| n(s))
                 .is_some_and(|g| g.round() as u32 == grade)
         })
-        .and_then(|r| n(r.get(i)?))
+        .and_then(|r| r.get(i))?;
+    Some(WallNeed {
+        minutes: n(cell.split('/').next()?)?,
+        bearing,
+        d1: cell.to_uppercase().contains("D1"),
+    })
 }
 
 /// Table 5 item 2a (a storey above ground) or 14 (a single-storey
@@ -193,7 +204,16 @@ pub fn outer_wall_minutes(model: &Model, grade: u32) -> Option<f64> {
                 .and_then(|s| n(s))
                 .is_some_and(|g| g.round() as u32 == grade)
         })
-        .and_then(|r| n(r.get(i)?))
+        .and_then(|r| n(r.get(i)?.split('/').next()?))
+}
+
+/// The rating a wall's assembly states: its own field first, else its
+/// description.
+pub fn wall_rating(model: &Model, wall: &creabim_core::Wall) -> Option<Rating> {
+    let ElementKind::Assembly(a) = &model.get(wall.assembly?)?.kind else {
+        return None;
+    };
+    rating(&a.fire_resistance).or_else(|| rating(&a.description))
 }
 
 /// The fire resistance a wall's assembly states (its description, as
@@ -223,10 +243,30 @@ pub fn stated(a: &creabim_core::Assembly) -> Option<f64> {
     declared(&a.fire_resistance).or_else(|| declared(&a.description))
 }
 
-/// The minutes after a fire resistance class (R, RE, REI, EI, E, EW…),
-/// with or without a space or an "-M" ("REI-M 240", "REI 240", "REI240",
-/// "REI-M240", "REW 90/D1").
-pub fn declared(text: &str) -> Option<f64> {
+/// A fire resistance as written: its class letters, minutes and the
+/// kind of the construction (D1 to D3) where given.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rating {
+    /// The class without "-M" and the like: "REI", "REW", "EI", "EW".
+    pub class: String,
+    pub minutes: f64,
+    pub kind: Option<u8>,
+}
+
+impl Rating {
+    /// Whether the class has the letter `c`; I stands for W too (a
+    /// rating with insulation keeps the radiation down, as 5.7.2 lets EI
+    /// stand in for EW).
+    pub fn has(&self, c: char) -> bool {
+        self.class.contains(c) || (c == 'W' && self.class.contains('I'))
+    }
+}
+
+/// The fire resistance in a text: a class (R, RE, REI, EI, E, EW…) and
+/// its minutes, with or without a space or an "-M" ("REI-M 240", "REI
+/// 240", "REI240", "REI-M240", "REW 90/D1"), and the kind D1 to D3
+/// anywhere in it.
+pub fn rating(text: &str) -> Option<Rating> {
     let is_class = |class: &str| {
         !class.is_empty()
             && class.chars().all(|c| "REIWM-".contains(c))
@@ -242,19 +282,117 @@ pub fn declared(text: &str) -> Option<f64> {
         .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
         .filter(|w| !w.is_empty())
         .collect();
-    words.iter().enumerate().find_map(|(i, w)| {
+    let letters = |c: &str| -> String {
+        c.split('-')
+            .next()
+            .unwrap_or("")
+            .chars()
+            .filter(|c| "REIW".contains(*c))
+            .collect()
+    };
+    let (class, minutes) = words.iter().enumerate().find_map(|(i, w)| {
         // the class and its minutes in one word
         let at = w.find(|c: char| c.is_ascii_digit());
         if let Some(at) = at.filter(|&a| a > 0) {
-            if is_class(w[..at].trim_end_matches('-')) {
-                return minutes(&w[at..]);
+            let c = w[..at].trim_end_matches('-');
+            if is_class(c) {
+                return Some((letters(c), minutes(&w[at..])?));
             }
         }
         // or the minutes the next word
         (is_class(w) && at.is_none())
-            .then(|| words.get(i + 1).and_then(|n| minutes(n)))
+            .then(|| Some((letters(w), minutes(words.get(i + 1)?)?)))
             .flatten()
+    })?;
+    let kind = words.iter().find_map(|w| match *w {
+        "D1" => Some(1),
+        "D2" => Some(2),
+        "D3" => Some(3),
+        _ => None,
+    });
+    Some(Rating {
+        class,
+        minutes,
+        kind,
     })
+}
+
+/// The minutes of the fire resistance in a text (see [`rating`]).
+pub fn declared(text: &str) -> Option<f64> {
+    rating(text).map(|r| r.minutes)
+}
+
+/// What table 5 asks of an outer wall from its inner side (5.4.3): its
+/// minutes, R where it bears (REW, else EW), and the kind D1 where the
+/// table's cell says so ("15/D1").
+#[derive(Clone, Debug, PartialEq)]
+pub struct WallNeed {
+    pub minutes: f64,
+    pub bearing: bool,
+    pub d1: bool,
+}
+
+impl WallNeed {
+    /// As the norm writes it: "REW 30", "EW 15", "REW 15/D1".
+    pub fn text(&self) -> String {
+        format!(
+            "{} {}{}",
+            if self.bearing { "REW" } else { "EW" },
+            self.minutes.round(),
+            if self.d1 { "/D1" } else { "" }
+        )
+    }
+}
+
+/// How a wall's stated rating stands against what is asked.
+#[derive(Clone, Debug, PartialEq)]
+pub enum WallVerdict {
+    Meets,
+    /// None stated.
+    Unstated,
+    /// The minutes or the class fall short.
+    Short(String),
+    /// D1 asked, no kind stated.
+    KindUnstated,
+}
+
+/// An outer wall's need against its assembly's rating; none where
+/// nothing is asked.
+pub fn wall_check(
+    model: &Model,
+    grade: u32,
+    wall: &creabim_core::Wall,
+) -> Option<(WallNeed, WallVerdict)> {
+    let need = wall_need(model, grade, wall)?;
+    let verdict = match wall_rating(model, wall) {
+        None => WallVerdict::Unstated,
+        Some(r) => {
+            let mut short = vec![];
+            if r.minutes + 1e-6 < need.minutes {
+                short.push(format!("{} < {}", r.minutes.round(), need.minutes.round()));
+            }
+            for c in if need.bearing { "REW" } else { "EW" }.chars() {
+                if !r.has(c) {
+                    short.push(format!("{}: {c}", missing_word()));
+                }
+            }
+            if need.d1 && r.kind.is_some_and(|k| k > 1) {
+                short.push(format!("D{} ≠ D1", r.kind.unwrap_or(0)));
+            }
+            if !short.is_empty() {
+                WallVerdict::Short(short.join(", "))
+            } else if need.d1 && r.kind.is_none() {
+                WallVerdict::KindUnstated
+            } else {
+                WallVerdict::Meets
+            }
+        }
+    };
+    Some((need, verdict))
+}
+
+fn missing_word() -> String {
+    creabim_core::words::tr("missing")
 }
 
 #[cfg(test)]
@@ -265,6 +403,19 @@ mod tests {
     const TABLE: &str = "#table t\n#columns system\tpv\tI\tII\tIII\tIV\tV\n\
         N\t15\t20\tbez\tbez\tbez\tbez\nN\t999\tN1\t0a\t0\t10\t30\n\
         Z\t10\t10\t10\t15(10)\t20(10)\tN2\n";
+
+    #[test]
+    fn a_rating_gives_its_class_and_kind() {
+        let r = rating("REI-M 240").unwrap();
+        assert_eq!((r.class.as_str(), r.minutes, r.kind), ("REI", 240.0, None));
+        assert!(r.has('R') && r.has('E') && r.has('W'));
+        let r = rating("REW 90/D1").unwrap();
+        assert_eq!((r.class.as_str(), r.kind), ("REW", Some(1)));
+        let r = rating("EI 30 D3").unwrap();
+        assert!(!r.has('R') && r.has('W'));
+        assert_eq!(r.kind, Some(3));
+        assert!(!rating("EW 60").unwrap().has('I'));
+    }
 
     #[test]
     fn a_rating_with_m_is_read() {

@@ -658,11 +658,15 @@ impl Ctx<'_> {
             let Some(ElementKind::Wall(wall)) = model.get(w).map(|e| &e.kind) else {
                 continue;
             };
+            // 5.4.3/5.4.4: short of table 5 (minutes, REW or EW, D1)
+            // a wholly fire-open area
             let short = grade
-                .and_then(|g| crate::firegrade::wall_required(model, g, wall))
-                .is_some_and(|need| {
-                    crate::firegrade::wall_declared(model, wall)
-                        .map_or(reader.wall_unstated_open, |has| has < need)
+                .and_then(|g| crate::firegrade::wall_check(model, g, wall))
+                .is_some_and(|(_, v)| match v {
+                    crate::firegrade::WallVerdict::Meets => false,
+                    crate::firegrade::WallVerdict::Unstated => reader.wall_unstated_open,
+                    crate::firegrade::WallVerdict::KindUnstated => reader.kind_unstated_open,
+                    crate::firegrade::WallVerdict::Short(_) => true,
                 });
             if !short && !wall.fire_partial {
                 continue;
@@ -1111,6 +1115,9 @@ struct Reader<'a> {
     /// fire-open (not shown) unless the designer takes it as meeting the
     /// requirement (George 2026-11-20: open, and say so).
     wall_unstated_open: bool,
+    /// D1 asked and the wall's rating names no kind: open (1) or taken
+    /// as meeting it (0).
+    kind_unstated_open: bool,
     roof_steep: f64,
     hu_roof: f64,
     roof_reach: f64,
@@ -1162,6 +1169,7 @@ impl<'a> Reader<'a> {
             roof_open: value(t, "roof_open").is_some_and(|v| v > 0.5),
             roof_unstated_open: value(t, "roof_unstated").is_none_or(|v| v > 0.5),
             wall_unstated_open: value(t, "wall_unstated").is_none_or(|v| v > 0.5),
+            kind_unstated_open: value(t, "kind_unstated").is_none_or(|v| v > 0.5),
             roof_steep: value(t, "roof_steep").unwrap_or(15.0),
             hu_roof: value(t, "hu_roof").unwrap_or(2.0),
             roof_reach: value(t, "roof_reach").unwrap_or(1.5),
@@ -1457,10 +1465,23 @@ pub fn items(model: &Model, level: ElementId, only: Option<ElementId>, mm: f64) 
     // outer walls whose assembly states no fire resistance where one is
     // asked: a note on the wall's outer face
     if only.is_none() {
-        for (id, w, outward) in crate::fireexposure::unstated_walls(model) {
+        for f in crate::fireexposure::failing_walls(model) {
+            use crate::firegrade::WallVerdict;
+            let (id, w, outward) = (f.id, f.wall, f.outward);
             if w.level != level {
                 continue;
             }
+            let text = match f.verdict {
+                WallVerdict::Unstated => tr("NO FIRE RESISTANCE STATED: fire-open area"),
+                WallVerdict::Short(_) => format!(
+                    "{} {}: {}",
+                    tr("FIRE RESISTANCE SHORT OF"),
+                    f.need.text(),
+                    tr("fire-open area")
+                ),
+                WallVerdict::KindUnstated => tr("KIND D1 NOT STATED"),
+                WallVerdict::Meets => continue,
+            };
             let mid = (w.start + w.end) / 2.0 + outward * (w.thickness / 2.0 + 2.5 * mm);
             let along = (w.end - w.start).normalize_or_zero();
             let angle = if along.x < -1e-9 || (along.x.abs() < 1e-9 && along.y < 0.0) {
@@ -1472,7 +1493,7 @@ pub fn items(model: &Model, level: ElementId, only: Option<ElementId>, mm: f64) 
                 id,
                 item: Box::new(Annotation {
                     shape: Shape::Along { at: mid, angle },
-                    text: tr("NO FIRE RESISTANCE STATED: fire-open area"),
+                    text,
                     look: TextLook {
                         size: 2.0,
                         rgb: Some(PNP_RED),
@@ -1830,6 +1851,64 @@ mod tests {
         let rated = with("Obvodová – PORFIX P2-440 300 + EPS šedý 150");
         let unrated = with("Obvodová – PORFIX Premium P2-400 500 bez zateplenia");
         assert!(unrated > rated + 0.1, "{unrated} {rated}");
+    }
+
+    /// 5.4.3: a bearing outer wall asks REW (I stands for W), and a cell
+    /// with "/D1" the kind D1; short of either the wall is wholly open.
+    #[test]
+    fn the_class_and_the_kind_count_not_only_the_minutes() {
+        let tables = |kind_unstated: u8| {
+            format!(
+                "{TABLES}#table fire_distance\n#columns key\tvalue\tnote\n\
+                 table\t3\t\nside_angle\t160\t\npv_default\t50\t\npv_eq3\t30\t\n\
+                 wall_unstated\t1\t\nkind_unstated\t{kind_unstated}\t\n\
+                 #table fire_distance_k\n#columns t\tk10\tk11\tq\n15\t1\t1,5\t59\n100\t0,5\t0,7\t160\n\
+                 #table fire_grade\n#columns key\tvalue\tnote\nrule\t1\t\n\
+                 #table fire_outer_wall\n#columns grade\tabove\tlast\tnonbearing\tsingle\n\
+                 1\t30/D1\t15/D1\t15/D1\t15/D1\n"
+            )
+        };
+        let south = |rating: &str, kind_unstated: u8| {
+            let mut m = creabim_core::starter::starter_house();
+            let all: Vec<_> = m
+                .iter()
+                .filter(|e| matches!(e.kind, ElementKind::Assembly(_) | ElementKind::Wall(_)))
+                .cloned()
+                .collect();
+            let mut tx = creabim_core::Transaction::new("t");
+            for e in all {
+                let mut after = e.clone();
+                match &mut after.kind {
+                    ElementKind::Assembly(a) => {
+                        a.fire_resistance = rating.into();
+                        a.description.clear();
+                    }
+                    // every wall bearing: REW asked
+                    ElementKind::Wall(w) => w.bearing = Some(true),
+                    _ => {}
+                }
+                tx = tx.replace(e, after);
+            }
+            tx.apply(&mut m).unwrap();
+            with_tables(&mut m, &tables(kind_unstated));
+            spaces(&m, None, None)
+                .into_iter()
+                .filter(|p| p.outward.y < -0.9)
+                .map(|p| p.d)
+                .fold(0.0, f64::max)
+        };
+        let meets = south("REI 240/D1", 1);
+        assert!(
+            south("EI 240/D1", 1) > meets + 0.1,
+            "no R on a bearing wall"
+        );
+        assert!(south("REI 240/D2", 1) > meets + 0.1, "D2 where D1 is asked");
+        assert!(south("REI 240", 1) > meets + 0.1, "no kind, counted open");
+        assert!(
+            (south("REI 240", 0) - meets).abs() < 1e-9,
+            "no kind, taken as met"
+        );
+        assert!((south("REW 240 D1", 1) - meets).abs() < 1e-9);
     }
 
     #[test]

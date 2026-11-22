@@ -316,19 +316,59 @@ pub fn exposed_in(model: &Model, pnps: &[Pnp]) -> Vec<Exposed> {
 /// The outer walls a fire zone asks a fire resistance of (table 5 items
 /// 2/14) whose assembly states none: each with its way out.
 pub fn unstated_walls(model: &Model) -> Vec<(ElementId, &creabim_core::Wall, glam::DVec2)> {
+    failing_walls(model)
+        .into_iter()
+        .filter(|f| f.verdict == firegrade::WallVerdict::Unstated)
+        .map(|f| (f.id, f.wall, f.outward))
+        .collect()
+}
+
+/// An outer wall whose assembly does not meet what table 5 asks.
+pub struct FailingWall<'a> {
+    pub id: ElementId,
+    pub wall: &'a creabim_core::Wall,
+    pub outward: glam::DVec2,
+    pub need: firegrade::WallNeed,
+    /// What its assembly states, as written.
+    pub stated: String,
+    pub verdict: firegrade::WallVerdict,
+}
+
+/// The outer walls a fire zone asks a fire resistance of (table 5 items
+/// 2/14) whose assembly states none, too little, a class short of REW
+/// or EW (5.4.3) or no kind where D1 is asked.
+pub fn failing_walls(model: &Model) -> Vec<FailingWall<'_>> {
     let zones = crate::firerisk::zones(model);
     crate::firezones::outer_walls(model)
         .into_iter()
-        .filter(|w| {
+        .filter_map(|w| {
             let wall = w.wall;
             let mid = (wall.start + wall.end) / 2.0 - w.outward * (wall.thickness / 2.0 + 0.15);
             let zone = crate::firezones::zone_at(model, wall.level, mid);
-            zone_grade(model, &zones, &zone)
-                .and_then(|g| firegrade::wall_required(model, g, wall))
-                .is_some()
-                && firegrade::wall_declared(model, wall).is_none()
+            let grade = zone_grade(model, &zones, &zone)?;
+            let (need, verdict) = firegrade::wall_check(model, grade, wall)?;
+            if verdict == firegrade::WallVerdict::Meets {
+                return None;
+            }
+            let stated = firegrade::wall_rating(model, wall)
+                .map(|r| {
+                    format!(
+                        "{} {}{}",
+                        r.class,
+                        r.minutes.round(),
+                        r.kind.map_or(String::new(), |k| format!("/D{k}"))
+                    )
+                })
+                .unwrap_or_default();
+            Some(FailingWall {
+                id: w.id,
+                wall,
+                outward: w.outward,
+                need,
+                stated,
+                verdict,
+            })
         })
-        .map(|w| (w.id, w.wall, w.outward))
         .collect()
 }
 

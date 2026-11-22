@@ -225,19 +225,42 @@ pub fn schedule(model: &Model) -> Schedule {
             ],
         });
     }
-    // outer walls with no fire resistance stated: counted as wholly
-    // fire-open (unless the designer's `wall_unstated` says otherwise)
-    for (id, w, _) in crate::fireexposure::unstated_walls(model) {
+    // outer walls short of table 5 (none stated, too few minutes, not
+    // REW/EW (5.4.3), no D1 where asked): counted as wholly fire-open
+    // (unless the designer's `wall_unstated` / `kind_unstated` says
+    // otherwise)
+    for f in crate::fireexposure::failing_walls(model) {
+        use crate::firegrade::WallVerdict;
+        let (stated, why) = match &f.verdict {
+            WallVerdict::Unstated => (
+                tr("NO FIRE RESISTANCE STATED"),
+                tr("counted as a wholly fire-open area (STN 92 0201-2 tab. 5 note 3)"),
+            ),
+            WallVerdict::Short(r) => (
+                f.stated.clone(),
+                format!(
+                    "{} ({r}): {}",
+                    verdict(false),
+                    tr("counted as a wholly fire-open area (STN 92 0201-2 tab. 5 note 3)")
+                ),
+            ),
+            WallVerdict::KindUnstated => (f.stated.clone(), tr("kind D1 asked, none stated")),
+            WallVerdict::Meets => continue,
+        };
         rows.push(Row {
-            id,
+            id: f.id,
             group: false,
             cells: vec![
                 tr("Outer wall"),
-                level_name(w.level),
-                format!("{} {:.2} m", tr("Outer wall"), w.start.distance(w.end)),
+                level_name(f.wall.level),
+                format!(
+                    "{} {:.2} m",
+                    tr("Outer wall"),
+                    f.wall.start.distance(f.wall.end)
+                ),
                 String::new(),
-                tr("NO FIRE RESISTANCE STATED"),
-                tr("counted as a wholly fire-open area (STN 92 0201-2 tab. 5 note 3)"),
+                stated,
+                format!("{} – {why}", f.need.text()),
             ],
         });
     }
