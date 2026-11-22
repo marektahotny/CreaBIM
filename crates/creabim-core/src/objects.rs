@@ -850,6 +850,11 @@ pub struct Object {
     /// dragged from where the drawing puts it, m.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<DVec2>,
+    /// Its own shape, where it was drawn out to a length of its own (a
+    /// built-in wardrobe, a kitchen island: see [`stretch`]); its type's
+    /// otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own: Option<Box<ObjectType>>,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -864,6 +869,7 @@ impl Object {
             offset: 0.0,
             rotation,
             mark: None,
+            own: None,
         }
     }
 
@@ -903,8 +909,17 @@ pub fn type_of_id(model: &Model, id: ElementId) -> Option<&ObjectType> {
     }
 }
 
-/// The object type of a placed object.
-pub fn type_of<'a>(model: &'a Model, e: &Element) -> Option<&'a ObjectType> {
+/// The object type of a placed object: its own shape where it was drawn
+/// out to a length of its own.
+pub fn type_of<'a>(model: &'a Model, e: &'a Element) -> Option<&'a ObjectType> {
+    if let ElementKind::Object(Object { own: Some(t), .. }) = &e.kind {
+        return Some(t);
+    }
+    base_type_of(model, e)
+}
+
+/// The object type a placed object is of, never its own shape.
+pub fn base_type_of<'a>(model: &'a Model, e: &Element) -> Option<&'a ObjectType> {
     match crate::types::type_of(model, e)? {
         (
             _,
@@ -1429,6 +1444,44 @@ pub fn place(
     }
     let id = e.id;
     (tx.insert(e), id)
+}
+
+/// The lengths a placed object can be drawn out to, m, when it is one
+/// that stretches (see [`crate::catalogue::stretch`]).
+pub fn stretch_range(model: &Model, e: &Element) -> Option<(f64, f64)> {
+    let key = base_type_of(model, e)?.catalogue.as_deref()?;
+    let s = crate::catalogue::stretch::stretch_of(key)?;
+    Some((s.min, s.max))
+}
+
+/// The object `e` drawn out to `len` (within its range), its parts in its
+/// type's materials; the end on the left (its −x, `keep_left`) or the
+/// right stays where it is. None for one that doesn't stretch.
+pub fn stretch(model: &Model, e: &Element, len: f64, keep_left: bool) -> Option<Element> {
+    let base = base_type_of(model, e)?;
+    let s = crate::catalogue::stretch::stretch_of(base.catalogue.as_deref()?)?;
+    let len = len.clamp(s.min, s.max);
+    let now = type_of(model, e)?.size().x;
+    let mut t = (s.make)(len).object;
+    for p in &mut t.parts {
+        p.material = base
+            .parts
+            .iter()
+            .find(|b| b.name == p.name)
+            .and_then(|b| b.material);
+    }
+    t.catalogue = base.catalogue.clone();
+    t.supply = base.supply;
+    let mut out = e.clone();
+    let ElementKind::Object(o) = &mut out.kind else {
+        return None;
+    };
+    let along = o.to_plan(DVec2::X) - o.to_plan(DVec2::ZERO);
+    let half = (len - now) / 2.0;
+    o.position += along * if keep_left { half } else { -half };
+    let same = (base.size().x - len).abs() < 1e-6;
+    o.own = (!same).then(|| Box::new(t));
+    Some(out)
 }
 
 /// A new object of type `type_id`, at no height (the caller sets the

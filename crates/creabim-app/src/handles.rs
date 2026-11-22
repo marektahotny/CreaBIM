@@ -173,6 +173,11 @@ pub enum HandleKind {
     ColumnSize {
         depth: bool,
     },
+    /// An end of an object that is drawn out (a built-in wardrobe, a
+    /// kitchen island): its other end stays.
+    ObjectEnd {
+        right: bool,
+    },
     /// Slide a whole wall square to itself; the walls joined to it stretch.
     WallSlide,
     /// The middle of a curved wall: drag it to bend the wall more or less,
@@ -249,7 +254,7 @@ impl HandleKind {
             | HandleKind::AddVertex { .. }
             | HandleKind::Ring { .. } => "Reshape",
             HandleKind::Rotate => "Rotate",
-            HandleKind::ColumnSize { .. } => "Resize",
+            HandleKind::ColumnSize { .. } | HandleKind::ObjectEnd { .. } => "Resize",
             HandleKind::WallSlide | HandleKind::OpeningSlide => "Slide",
             HandleKind::WallBend => "Bend",
             HandleKind::BeamWidth | HandleKind::DetailWidth => "Change width of",
@@ -324,6 +329,7 @@ impl HandleKind {
             HandleKind::Rotate => "Turn",
             HandleKind::ColumnSize { depth: false } => "Width",
             HandleKind::ColumnSize { depth: true } => "Depth",
+            HandleKind::ObjectEnd { .. } => "Length",
             HandleKind::WallSlide => "Wall: slide",
             HandleKind::WallBend => "Wall: bend",
             HandleKind::OpeningSlide => "Slide along the wall",
@@ -379,6 +385,7 @@ impl HandleKind {
             HandleKind::Rotate => "Drag: turn it about its middle (steps of 5°; Alt for any angle)",
             HandleKind::ColumnSize { depth: false } => "Drag: change the width",
             HandleKind::ColumnSize { depth: true } => "Drag: change the depth",
+            HandleKind::ObjectEnd { .. } => "Drag: draw it out or in, its other end staying",
             HandleKind::WallSlide => "Drag: slide the wall square to itself (joined walls follow)",
             HandleKind::WallBend => "Drag: bend the wall through this point; its ends stay (its radius is in Properties)",
             HandleKind::OpeningSlide => "Drag: slide it along the wall · Tab: type how far",
@@ -1122,7 +1129,17 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
                 .map(|t| t.bounds())
                 .unwrap_or((DVec3::new(-0.3, -0.6, 0.0), DVec3::new(0.3, 0.0, 1.0)));
             let front = DVec2::new((lo.x + hi.x) / 2.0, lo.y - 0.25);
-            vec![flat(HandleKind::Rotate, o.to_plan(front).extend(z))]
+            let mut out = vec![flat(HandleKind::Rotate, o.to_plan(front).extend(z))];
+            // one drawn out to its length: its two ends
+            if creabim_core::objects::stretch_range(model, e).is_some() {
+                let axis = (o.to_plan(DVec2::X) - o.to_plan(DVec2::ZERO)).extend(0.0);
+                let mid = (lo.y + hi.y) / 2.0;
+                for (right, x) in [(false, lo.x), (true, hi.x)] {
+                    let at = o.to_plan(DVec2::new(x, mid)).extend(z);
+                    out.push(line(HandleKind::ObjectEnd { right }, at, axis));
+                }
+            }
+            out
         }
         _ => creabim_core::members::grips(model, e)
             .into_iter()
@@ -1888,6 +1905,19 @@ pub fn apply(
                     *diameter = (*diameter + by).max(0.05);
                 }
             }
+        }
+        (ElementKind::Object(o), HandleKind::ObjectEnd { right }) => {
+            let original = originals.first().ok_or("nothing to draw out")?;
+            let axis = o.to_plan(DVec2::X) - o.to_plan(DVec2::ZERO);
+            let along = d.truncate().dot(axis);
+            let now = creabim_core::objects::type_of(model, original)
+                .ok_or("it has no type")?
+                .size()
+                .x;
+            let len = round(now + if right { along } else { -along }, step / 5.0);
+            let out_e = creabim_core::objects::stretch(model, original, len, right)
+                .ok_or("this doesn't draw out")?;
+            *first = out_e;
         }
         (_, HandleKind::Rotate) => {
             let original = originals.first().ok_or("nothing to turn")?;
@@ -6005,6 +6035,42 @@ mod tests {
             .unwrap_or_else(|| panic!("no {kind:?}"));
         let (orig, joined) = originals(m, id, kind);
         apply(m, &orig, &joined, kind, h.at, to(&h), 0.05).unwrap()[0].clone()
+    }
+
+    /// George: a built-in wardrobe drawn out by its end, its other end
+    /// staying and its sliding doors following its length.
+    #[test]
+    fn a_built_in_wardrobe_draws_out_by_its_end() {
+        let mut m = creabim_core::starter::starter_house();
+        let level = m.levels().next().unwrap().0.id;
+        let c = creabim_core::catalogue::starter("starter/built-in-wardrobe").unwrap();
+        let (tx, id) = creabim_core::objects::place(&m, &c, level, DVec2::new(30.0, 0.0), 90.0);
+        tx.apply(&mut m).unwrap();
+        let ends = |m: &Model, e: &Element| {
+            let ElementKind::Object(o) = &e.kind else {
+                unreachable!()
+            };
+            let (lo, hi) = creabim_core::objects::type_of(m, e).unwrap().bounds();
+            (
+                o.to_plan(DVec2::new(lo.x, 0.0)),
+                o.to_plan(DVec2::new(hi.x, 0.0)),
+            )
+        };
+        let (l0, r0) = ends(&m, m.get(id).unwrap());
+        assert!((l0.distance(r0) - 2.4).abs() < 1e-9);
+        // the right end out by 1.2 m along the wardrobe
+        let axis = (r0 - l0).normalize();
+        let out = drag_to(&m, id, HandleKind::ObjectEnd { right: true }, |h| {
+            h.at + (axis * 1.2).extend(0.0)
+        });
+        let (l1, r1) = ends(&m, &out);
+        assert!(l1.distance(l0) < 1e-6, "{l0} {l1}");
+        assert!((l1.distance(r1) - 3.6).abs() < 1e-6);
+        let t = creabim_core::objects::type_of(&m, &out).unwrap();
+        let doors = t.parts.iter().filter(|p| p.name == "Sliding door").count();
+        assert_eq!(doors, 4);
+        // its parts keep the type's materials
+        assert!(t.parts.iter().all(|p| p.material.is_some()));
     }
 
     #[test]
