@@ -329,7 +329,7 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
                 PlanItem::Line {
                     pen: Pen::Symbol, ..
                 }
-                | PlanItem::Label { .. } => items.push(it),
+                | PlanItem::Text { .. } => items.push(it),
                 _ => {}
             }
         }
