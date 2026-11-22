@@ -8381,6 +8381,15 @@ fn on_mark(model: &creabim_core::Model, items: &[PlanItem], w: DVec2, mm: f64) -
             let pad = DVec2::splat(mm * 0.5);
             w.cmpge(lo - pad).all() && w.cmple(hi + pad).all()
         }
+        // a sheet-metal item's mark bubble (K-2)
+        PlanItem::Tag { id, at, .. }
+            if matches!(
+                model.get(*id).map(|e| &e.kind),
+                Some(ElementKind::Flashing(_))
+            ) =>
+        {
+            at.distance(w) < 3.0 * mm
+        }
         _ => false,
     })
 }
@@ -8499,6 +8508,14 @@ fn drag_annotation(
                         })
                         .unwrap_or(t.offset),
                     ElementKind::Dimension(d) if d.view == view => DVec2::new(d.offset, 0.0),
+                    // a sheet-metal item's mark (K-2): the bubble moves,
+                    // its leader stays on the item (George 2026-11-22)
+                    ElementKind::Flashing(_) => drawing.items.iter().find_map(|it| match it {
+                        PlanItem::Tag {
+                            id: i, anchor, at, ..
+                        } if *i == id => Some(*at - *anchor),
+                        _ => None,
+                    })?,
                     // a fixture's mark moves, the fixture stays
                     ElementKind::Object(o) => o.mark.unwrap_or(DVec2::ZERO),
                     // a stack's mark: the circle moves, its riser stays;
@@ -8584,6 +8601,11 @@ fn drag_annotation(
                     t.end = None;
                     t.placed = true;
                 }
+            }
+        }),
+        Some(ElementKind::Flashing(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Flashing(x) = &mut e.kind {
+                x.mark_at = Some(start + p - grab);
             }
         }),
         Some(ElementKind::Object(_)) => doc.edit_merged(id, "Move mark", |e| {

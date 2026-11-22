@@ -522,7 +522,8 @@ pub fn roof_plan_marks(model: &Model, scale: f64) -> Vec<PlanItem> {
         out.push(PlanItem::Tag {
             id: e.id,
             anchor,
-            at: anchor + out_dir * (9.0 * k),
+            // where it was dragged, its leader still starting on it
+            at: anchor + f.mark_at.unwrap_or(out_dir * (9.0 * k)),
             elbow: None,
             text: mark,
             round: true,
@@ -570,4 +571,64 @@ pub fn gutter_line(model: &Model, id: ElementId) -> Vec<DVec3> {
     creabim_core::flashing::gutter_of(model, id)
         .map(|g| g.axis_3d(model, &outlets(model, id)))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use creabim_core::flashing::Flashing;
+    use creabim_core::{Document, Element, ElementKind, Level, Transaction};
+
+    #[test]
+    fn a_dragged_mark_keeps_its_leader_on_the_item() {
+        let mut doc = Document::new();
+        let level = Element::new(
+            "1. NP",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let lid = level.id;
+        let gutter = Element::new(
+            "Žľab",
+            ElementKind::Flashing(Flashing::gutter(
+                lid,
+                None,
+                vec![DVec2::ZERO, DVec2::X * 10.0],
+            )),
+        );
+        let gid = gutter.id;
+        doc.commit(Transaction::new("t").insert(level).insert(gutter))
+            .unwrap();
+        let tag = |doc: &Document| {
+            roof_plan_marks(doc.model(), 100.0)
+                .into_iter()
+                .find_map(|it| match it {
+                    PlanItem::Tag {
+                        id,
+                        anchor,
+                        at,
+                        text,
+                        ..
+                    } if id == gid => Some((anchor, at, text)),
+                    _ => None,
+                })
+                .expect("the gutter's mark")
+        };
+        let (anchor, at, text) = tag(&doc);
+        assert!(text.starts_with("K-"), "{text}");
+        assert!((at - anchor).length() > 0.5, "beside it by itself");
+        let to = DVec2::new(1.5, -2.0);
+        doc.edit(gid, "move", |e| {
+            if let ElementKind::Flashing(f) = &mut e.kind {
+                f.mark_at = Some(to);
+            }
+        })
+        .unwrap();
+        let (a2, at2, _) = tag(&doc);
+        // the leader still starts on the gutter, the bubble where it went
+        assert!(a2.distance(anchor) < 1e-9);
+        assert!(at2.distance(anchor + to) < 1e-9);
+    }
 }
