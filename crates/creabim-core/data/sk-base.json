@@ -312,6 +312,15 @@
    "color": "#d7dde3"
   },
   {
+   "id": "lepidlo-dlazba",
+   "category": "Podlahy",
+   "name": "Lepidlo na dlažbu",
+   "lambda": 1.16,
+   "density": 2000,
+   "fire": "A1",
+   "color": "#aeb4ba"
+  },
+  {
    "id": "laminat",
    "category": "Podlahy",
    "name": "Laminátová / drevená podlaha",
@@ -319,6 +328,15 @@
    "density": 900,
    "fire": "D-s2,d0",
    "color": "#b98a5a"
+  },
+  {
+   "id": "podlozka-parkety",
+   "category": "Podlahy",
+   "name": "Podložka pod parkety",
+   "lambda": 0.35,
+   "density": 950,
+   "fire": "E",
+   "color": "#9aa3ad"
   },
   {
    "id": "hydroizolacia",
@@ -1366,7 +1384,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -1399,7 +1421,11 @@
    "layers": [
     {
      "material": "laminat",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "podlozka-parkety",
+     "mm": 2
     },
     {
      "material": "poter-anhydrit",
@@ -1432,7 +1458,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",

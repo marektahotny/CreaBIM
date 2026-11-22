@@ -14744,12 +14744,19 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // the masonry on the footings made of DT blocks (George 2026-11-20)
     let dt = creabim_core::skbase::dt_blocks(&model);
     if !any && hatches.is_none() && dt.is_none() {
-        // one material under two names becomes one (George 2026-11-22)
-        let Some((tx, _)) = creabim_core::samemat::merge(&model) else {
+        let merge = creabim_core::samemat::merge(&model);
+        if merge.is_none() && creabim_core::floorfinish::mend(&model).is_none() {
             return model;
-        };
+        }
         let mut doc = Document::from_model(model);
-        let _ = doc.commit(tx);
+        // one material under two names becomes one (George 2026-11-22)
+        if let Some((tx, _)) = merge {
+            let _ = doc.commit(tx);
+        }
+        // tile adhesive under tiles, an underlay under laminate
+        if let Some((tx, _)) = creabim_core::floorfinish::mend(doc.model()) {
+            let _ = doc.commit(tx);
+        }
         return doc.model().clone();
     }
     let mut doc = Document::from_model(model);
@@ -14765,6 +14772,11 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     }
     // one material under two names becomes one (George 2026-11-22)
     if let Some((tx, _)) = creabim_core::samemat::merge(doc.model()) {
+        let _ = doc.commit(tx);
+    }
+    // tile adhesive under tiles, an underlay under laminate (George
+    // 2026-11-22)
+    if let Some((tx, _)) = creabim_core::floorfinish::mend(doc.model()) {
         let _ = doc.commit(tx);
     }
     doc.model().clone()
