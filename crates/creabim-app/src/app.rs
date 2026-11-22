@@ -876,6 +876,25 @@ impl CreaBimApp {
                 self.mark_saved();
                 self.autosave_check(path);
                 self.status = format!("Opened {path}");
+                // site plan dimensions and S-JTSK marks put on the corners of
+                // a footprint drawn off its walls (before 0.6-8): onto the
+                // true corners
+                let moved = creabim_geom::sitefoot::mend_marks(self.doc.model());
+                if !moved.is_empty() {
+                    let mut tx = creabim_core::Transaction::new(
+                        "Site plan marks onto the building's corners",
+                    );
+                    for after in moved {
+                        if let Some(before) = self.doc.model().get(after.id).cloned() {
+                            tx = tx.replace(before, after);
+                        }
+                    }
+                    if self.doc.commit(tx).is_ok() {
+                        crate::actlog::line(format!(
+                            "open: site plan marks moved onto the corners in {path}"
+                        ));
+                    }
+                }
                 // copies a Duplicate left on their originals (MU24)
                 let stacked = creabim_core::checks::stacked_copies(self.doc.model()).len();
                 if stacked > 0 {

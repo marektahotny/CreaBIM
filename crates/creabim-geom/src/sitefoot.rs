@@ -122,11 +122,22 @@ pub fn footprint(model: &Model, own: ElementId, cut_height: f64) -> Vec<PlanItem
         return vec![];
     };
     let walls: HashSet<ElementId> = outer_walls(model, level).into_iter().collect();
+    // the columns outside the rooms with their insulation, not its render
+    let outside = |c: &creabim_core::Column| {
+        c.level == level && !crate::firezones::room_at(model, level, c.position)
+    };
     let columns: HashSet<ElementId> = model
         .iter()
-        .filter(|e| {
-            matches!(&e.kind, ElementKind::Column(c)
-                if c.level == level && !crate::firezones::room_at(model, level, c.position))
+        .filter(|e| match &e.kind {
+            ElementKind::Column(c) => match &c.piece {
+                None => outside(c),
+                Some(p) => {
+                    !p.plaster
+                        && matches!(model.get(p.host).map(|h| &h.kind),
+                            Some(ElementKind::Column(h)) if outside(h))
+                }
+            },
+            _ => false,
         })
         .map(|e| e.id)
         .collect();
@@ -174,8 +185,8 @@ pub fn footprint(model: &Model, own: ElementId, cut_height: f64) -> Vec<PlanItem
         let (t, mid) = bare(model, w);
         let dir = (w.end - w.start).normalize_or_zero();
         let n = DVec2::new(-dir.y, dir.x);
-        let centre = creabim_core::walls::location_offset(model, w);
-        let shift = n * (mid - centre);
+        // start and end are the centreline whatever the location line
+        let shift = n * mid;
         let mut e = e.clone();
         if let ElementKind::Wall(x) = &mut e.kind {
             x.start += shift;
@@ -286,6 +297,24 @@ pub fn footprint(model: &Model, own: ElementId, cut_height: f64) -> Vec<PlanItem
         }
     }
     fills.extend(lines);
+    // the roof over it: its outline, a very thin line of a dash and two dots
+    let look = creabim_core::LineLook {
+        pen: creabim_core::LinePen::VeryThin,
+        kind: creabim_core::LineType::DashDotDot,
+    };
+    for e in model.iter() {
+        if let ElementKind::Roof(r) = &e.kind {
+            let pts = r.eave_outline();
+            for i in 0..pts.len() {
+                fills.push(PlanItem::Line {
+                    id: e.id,
+                    pen: Pen::Drafted(look),
+                    a: pts[i],
+                    b: pts[(i + 1) % pts.len()],
+                });
+            }
+        }
+    }
     fills
 }
 
@@ -329,6 +358,153 @@ pub fn is_terrain(model: &Model, id: ElementId) -> bool {
         Some(ElementKind::Site(s)) if matches!(s.form, creabim_core::site::SiteForm::Terrain { .. }))
 }
 
+/// The corners and ends of level `level`'s bare outer walls, where their
+/// faces meet (every pairing of the two walls' faces, in one order), with
+/// each wall's bare middle laid `extra(w)` off where it truly is (zero:
+/// as drawn now).
+fn bare_corners(
+    model: &Model,
+    level: ElementId,
+    extra: impl Fn(&creabim_core::Wall) -> f64,
+) -> Vec<DVec2> {
+    let walls: Vec<&creabim_core::Wall> = outer_walls(model, level)
+        .into_iter()
+        .filter_map(|id| match &model.get(id)?.kind {
+            ElementKind::Wall(w) => Some(w),
+            _ => None,
+        })
+        .collect();
+    // each wall's two bare faces
+    let faces: Vec<[[DVec2; 2]; 2]> = walls
+        .iter()
+        .map(|w| {
+            let (t, mid) = bare(model, w);
+            let n = (w.end - w.start).normalize_or_zero().perp();
+            [1.0, -1.0].map(|side| {
+                let s = n * (mid + extra(w) + side * t / 2.0);
+                [w.start + s, w.end + s]
+            })
+        })
+        .collect();
+    let cross = |a: [DVec2; 2], b: [DVec2; 2]| {
+        let (d1, d2) = (a[1] - a[0], b[1] - b[0]);
+        let den = d1.perp_dot(d2);
+        (den.abs() > 1e-9).then(|| a[0] + d1 * ((b[0] - a[0]).perp_dot(d2) / den))
+    };
+    let mut out = vec![];
+    for i in 0..walls.len() {
+        for end in 0..2 {
+            let p = if end == 0 {
+                walls[i].start
+            } else {
+                walls[i].end
+            };
+            // the wall it meets: the one whose end is nearest, within a
+            // wall's thickness (walls drawn to each other's faces too)
+            let near = |j: usize| walls[j].start.distance(p).min(walls[j].end.distance(p));
+            let joined = (0..walls.len())
+                .filter(|&j| j != i && near(j) < walls[i].thickness.max(walls[j].thickness))
+                .min_by(|&a, &b| near(a).total_cmp(&near(b)));
+            for fi in 0..2 {
+                for fj in 0..2 {
+                    let at = joined
+                        .and_then(|j| cross(faces[i][fi], faces[j][fj]))
+                        .unwrap_or(faces[i][fi][end]);
+                    out.push(at);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The site plans' dimensions and S-JTSK marks put on the building's
+/// corners while its footprint was drawn off by the walls' location line
+/// (before 0.6-8), moved onto the corners where they truly are. The
+/// changed dimensions; none once they sit right.
+pub fn mend_marks(model: &Model) -> Vec<creabim_core::Element> {
+    use creabim_core::ViewKind;
+    let mut moves: Vec<(DVec2, DVec2)> = vec![];
+    let mut site_views = HashSet::new();
+    let mut levels = HashSet::new();
+    for e in model.iter() {
+        if let ElementKind::View(v) = &e.kind {
+            if let ViewKind::Plan { level, .. } = &v.kind {
+                if v.graphics.range.is_site() {
+                    site_views.insert(e.id);
+                    if let Some(l) = footprint_level(model, *level) {
+                        levels.insert(l);
+                    }
+                }
+            }
+        }
+    }
+    for l in levels {
+        let now = bare_corners(model, l, |_| 0.0);
+        let was = bare_corners(model, l, |w| {
+            -creabim_core::walls::location_offset(model, w)
+        });
+        for (a, b) in was.into_iter().zip(now) {
+            if a.distance(b) > 1e-4 {
+                moves.push((a, b));
+            }
+        }
+    }
+    if moves.is_empty() {
+        return vec![];
+    }
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Dimension(d) = &e.kind else {
+            continue;
+        };
+        if !site_views.contains(&d.view) {
+            continue;
+        }
+        let Some(ElementKind::View(view)) = model.get(d.view).map(|v| &v.kind) else {
+            continue;
+        };
+        let mut nd = d.clone();
+        let mut changed = false;
+        let mut fix = |p: &mut creabim_core::HostPoint| {
+            let Some(at) = crate::annotate::resolve(model, view, p) else {
+                return;
+            };
+            let Some((_, to)) = moves.iter().find(|(from, _)| from.distance(at) < 2e-3) else {
+                return;
+            };
+            let delta = *to - at;
+            match p.host.and_then(|h| model.get(h)).map(|h| &h.kind) {
+                None => p.local += delta,
+                Some(ElementKind::Wall(w)) => {
+                    let dir = w.direction();
+                    p.local += DVec2::new(delta.dot(dir), delta.dot(dir.perp()));
+                }
+                Some(ElementKind::Opening(o)) => {
+                    let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+                        return;
+                    };
+                    let dir = w.direction();
+                    p.local += DVec2::new(delta.dot(dir), delta.dot(dir.perp()));
+                }
+                _ => return,
+            }
+            changed = true;
+        };
+        fix(&mut nd.a);
+        fix(&mut nd.b);
+        for m in nd.mids.iter_mut() {
+            fix(m);
+        }
+        if changed {
+            let mut ne = e.clone();
+            ne.kind = ElementKind::Dimension(nd);
+            out.push(ne);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,6 +512,91 @@ mod tests {
 
     /// The starter house's site plan: its outer walls filled grey, no
     /// window or door, no inner wall.
+    fn bbox(items: &[PlanItem]) -> (glam::DVec2, glam::DVec2) {
+        let (mut lo, mut hi) = (glam::DVec2::splat(1e9), glam::DVec2::splat(-1e9));
+        for it in items {
+            if let PlanItem::Shade { points, .. } = it {
+                for p in points {
+                    lo = lo.min(*p);
+                    hi = hi.max(*p);
+                }
+            }
+        }
+        (lo, hi)
+    }
+
+    /// George's site plan drew the house 77,5 mm in on every side: its
+    /// walls kept on the outer face of their masonry, the footprint took
+    /// that line for their middle. Where a wall's location line is must
+    /// not move it; marks put on the old corners go to the true ones.
+    #[test]
+    fn the_footprint_is_where_the_walls_are_whatever_their_location_line() {
+        let mut m = creabim_core::starter::starter_house();
+        let ground = m
+            .levels()
+            .min_by(|a, b| a.1.elevation.abs().total_cmp(&b.1.elevation.abs()))
+            .map(|(e, _)| e.id)
+            .unwrap();
+        let want = bbox(&footprint(&m, ground, 1.2));
+        let outer = outer_walls(&m, ground);
+        let mut tx = Transaction::new("location");
+        for id in &outer {
+            let before = m.get(*id).unwrap().clone();
+            let mut after = before.clone();
+            if let ElementKind::Wall(w) = &mut after.kind {
+                w.location = creabim_core::LocationLine::CoreExterior;
+            }
+            tx = tx.replace(before, after);
+        }
+        tx.apply(&mut m).unwrap();
+        let got = bbox(&footprint(&m, ground, 1.2));
+        assert!(
+            got.0.distance(want.0) < 1e-6 && got.1.distance(want.1) < 1e-6,
+            "{got:?} vs {want:?}"
+        );
+        // a site plan with a dimension between two corners as drawn before
+        let mut v = View::plan(ground);
+        v.graphics.range.from_above = true;
+        v.graphics.range.footprint = true;
+        let ve = creabim_core::Element::new("Site plan", ElementKind::View(v));
+        let vid = ve.id;
+        Transaction::new("site").insert(ve).apply(&mut m).unwrap();
+        let was = bare_corners(&m, ground, |w| -creabim_core::walls::location_offset(&m, w));
+        let now = bare_corners(&m, ground, |_| 0.0);
+        let k = (0..was.len())
+            .find(|&k| was[k].distance(now[k]) > 0.01)
+            .expect("a corner drawn off");
+        let dim = creabim_core::Element::new(
+            "Dimension",
+            ElementKind::Dimension(creabim_core::Dimension::linear(
+                vid,
+                creabim_core::HostPoint::free(was[k]),
+                creabim_core::HostPoint::free(was[k] + glam::DVec2::new(5.0, 0.0)),
+                1.0,
+            )),
+        );
+        let did = dim.id;
+        Transaction::new("dim").insert(dim).apply(&mut m).unwrap();
+        let moved = mend_marks(&m);
+        assert_eq!(moved.len(), 1);
+        let ElementKind::Dimension(d) = &moved[0].kind else {
+            panic!()
+        };
+        assert_eq!(moved[0].id, did);
+        assert!(d.a.local.distance(now[k]) < 1e-9);
+        // the true corner is a corner of the grey footprint
+        let items = footprint(&m, ground, 1.2);
+        assert!(items.iter().any(|it| matches!(it,
+            PlanItem::Shade { points, .. } if points.iter().any(|p| p.distance(now[k]) < 1e-6))));
+        // and once there it stays
+        let before = m.get(did).unwrap().clone();
+        Transaction::new("mend")
+            .replace(before, moved[0].clone())
+            .apply(&mut m)
+            .unwrap();
+        assert!(mend_marks(&m).is_empty());
+    }
+
     #[test]
     fn a_site_plan_shows_the_outer_walls_only() {
         let mut m = creabim_core::starter::starter_house();
@@ -390,7 +651,9 @@ mod tests {
         // nothing of the building is drawn but them
         assert!(d.items.iter().all(|it| {
             let id = it.id();
-            outer.contains(&id) || !hides(&m, id)
+            outer.contains(&id)
+                || !hides(&m, id)
+                || matches!(m.get(id).map(|e| &e.kind), Some(ElementKind::Roof(_)))
         }));
         if let Ok(dir) = std::env::var("CREABIM_SITE_SVG") {
             std::fs::write(dir, d.to_svg(40.0)).unwrap();
