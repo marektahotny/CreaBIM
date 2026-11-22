@@ -12128,6 +12128,11 @@ crate::props::row(ui, "File names", |ui| {
                 ElementKind::Object(o) => {
                     let hung = creabim_core::objects::hung(self.doc.model(), &e);
                     label = objectsui::object_fields(ui, o, hung);
+                    // a built-in wardrobe or a kitchen island: drawn out
+                    // to its length, its left end staying
+                    if let Some(l) = objectsui::length_field(ui, self.doc.model(), &e, o) {
+                        label = l;
+                    }
                     object_type = true;
                     objectsui::connector_rows(ui, self.doc.model(), &e);
                 }

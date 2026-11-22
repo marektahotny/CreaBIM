@@ -614,6 +614,31 @@ fn trade_fields(ui: &mut egui::Ui, o: &mut ObjectType) -> &'static str {
     label
 }
 
+/// The length of an object that is drawn out (a built-in wardrobe, a
+/// kitchen island); a new length stretches it, its left end staying.
+/// Returns the undo label when it changed.
+pub(super) fn length_field(
+    ui: &mut egui::Ui,
+    model: &Model,
+    e: &creabim_core::Element,
+    o: &mut objects::Object,
+) -> Option<&'static str> {
+    let (min, max) = objects::stretch_range(model, e)?;
+    let mut now = objects::type_of(model, e)?.size().x;
+    let mut changed = false;
+    crate::props::row(ui, "Length", |ui| {
+        changed = crate::props::fill(ui, crate::units::drag(&mut now).range(min..=max)).changed();
+    });
+    if !changed {
+        return None;
+    }
+    let ElementKind::Object(s) = objects::stretch(model, e, now, true)?.kind else {
+        return None;
+    };
+    *o = s;
+    Some("Object length")
+}
+
 /// A placed object's own fields; `hung` when its type hangs from the
 /// ceiling. Returns the undo label, or "".
 pub(super) fn object_fields(
