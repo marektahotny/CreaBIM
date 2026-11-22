@@ -839,8 +839,11 @@ impl CreaBimApp {
                 let mut description = a.description.clone();
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut description).vertical_align(egui::Align::Center)
+                        // wrapped over lines: a maker's source with its
+                        // pages reads whole, not cut at the field's end
+                        egui::TextEdit::multiline(&mut description)
                             .hint_text(crate::i18n::t("Description"))
+                            .desired_rows(1)
                             .desired_width(420.0),
                     )
                     .changed()
