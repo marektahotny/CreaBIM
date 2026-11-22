@@ -377,9 +377,8 @@ fn leaf_reach(
         .and_then(|h| creabim_core::assembly_of(model, h))
         .map(|x| x.1);
     let left = o.faces_left(w);
-    crate::opening::opening_boxes(o, w, asm)
+    crate::opening::leaf_boxes(o, w, asm)
         .iter()
-        .filter(|b| b.part == crate::opening::Part::Leaf)
         .map(|b| {
             let r = b.hi.x - b.lo.x;
             let s = if left { b.hi.y } else { -b.lo.y };

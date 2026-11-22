@@ -2776,7 +2776,8 @@ fn opening_symbol(
             }
             let left = o.faces_left(w);
             let side = if left { 1.0 } else { -1.0 };
-            for leaf in boxes.iter().filter(|b| b.part == Part::Leaf) {
+            let leaves = crate::opening::leaf_boxes(o, w, asm);
+            for leaf in &leaves {
                 let s = if left { leaf.hi.y } else { leaf.lo.y };
                 let r = leaf.hi.x - leaf.lo.x;
                 // hinged on the side away from its handle

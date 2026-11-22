@@ -292,6 +292,7 @@ impl CreaBimApp {
             let plain = match &ed.node {
                 FrameNode::Leaf(s) => {
                     !s.panel
+                        && s.glazing.is_none()
                         && if door {
                             s.op == LeafOp::DoorLeft
                         } else {
@@ -438,6 +439,17 @@ fn draw(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject) {
         let inner = rect(f.x0 + sw, f.y0 + sw, f.x1 - sw, f.y1 - sw);
         painter.rect_filled(inner, 0.0, fill);
         painter.rect_stroke(inner, 0.0, line, egui::StrokeKind::Inside);
+        // the pane set into a leaf or a panel
+        if let Some(p) = f
+            .sash
+            .glazing
+            .filter(|_| f.sash.op.is_door() || f.sash.panel)
+            .and_then(|g| g.pane(f.x0 + sw, f.x1 - sw, f.y0 + sw, f.y1 - sw))
+        {
+            let r = rect(p[0], p[2], p[1], p[3]);
+            painter.rect_filled(r, 0.0, glass);
+            painter.rect_stroke(r, 0.0, line, egui::StrokeKind::Inside);
+        }
         // how it opens, dashed (George: as on paper)
         let sym = Stroke::new(1.2, Color32::from_gray(30));
         for l in sash_symbol(f, sw) {
@@ -721,7 +733,11 @@ fn side(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, others: &[(String,
     match (sel, picked) {
         (Some(path), Some(f)) => {
             ui.label(egui::RichText::new(t("The field picked")).strong());
-            let Sash { mut op, mut panel } = f.sash;
+            let Sash {
+                mut op,
+                mut panel,
+                mut glazing,
+            } = f.sash;
             let mut changed = false;
             egui::ComboBox::from_id_salt("joinery.op")
                 .selected_text(t(op.label()))
@@ -736,9 +752,16 @@ fn side(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, others: &[(String,
                     .checkbox(&mut panel, t("A solid panel instead of glass"))
                     .changed();
             }
+            // glass set into a door leaf or a panel: none, whole, or a
+            // pane given from each edge (George 2026-11-22)
+            if op.is_door() || panel {
+                changed |= glazing_ui(ui, &mut glazing);
+            } else {
+                glazing = None;
+            }
             if changed {
                 if let Some(n) = ed.node.at_mut(&path) {
-                    *n = FrameNode::Leaf(Sash { op, panel });
+                    *n = FrameNode::Leaf(Sash { op, panel, glazing });
                 }
             }
             ui.label(format!(
@@ -846,6 +869,79 @@ fn side(ui: &mut egui::Ui, ed: &mut JoineryEdit, s: &Subject, others: &[(String,
         ))
         .weak(),
     );
+}
+
+/// The glazing of a door leaf or a panel: a choice of none, glazed
+/// whole, or a pane set in from each edge by the mm typed.
+fn glazing_ui(ui: &mut egui::Ui, g: &mut Option<creabim_core::joinery::Glazing>) -> bool {
+    use creabim_core::joinery::Glazing;
+    let t = crate::i18n::tr;
+    #[derive(PartialEq, Clone, Copy)]
+    enum Kind {
+        None,
+        Full,
+        Inset,
+    }
+    let kind = match g {
+        None => Kind::None,
+        Some(x) if x.is_full() => Kind::Full,
+        Some(_) => Kind::Inset,
+    };
+    let label = |k: Kind| match k {
+        Kind::None => t("No glazing"),
+        Kind::Full => t("Glazed whole"),
+        Kind::Inset => t("A pane set in from the edges"),
+    };
+    let mut pick = kind;
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(t("Glazing"));
+        egui::ComboBox::from_id_salt("joinery.glazing")
+            .selected_text(label(kind))
+            .width(200.0)
+            .show_ui(ui, |ui| {
+                for k in [Kind::None, Kind::Full, Kind::Inset] {
+                    ui.selectable_value(&mut pick, k, label(k));
+                }
+            });
+    });
+    if pick != kind {
+        *g = match pick {
+            Kind::None => None,
+            Kind::Full => Some(Glazing::FULL),
+            Kind::Inset => Some(Glazing::INSET),
+        };
+        changed = true;
+    }
+    if let Some(x) = g.as_mut().filter(|x| !x.is_full() || pick == Kind::Inset) {
+        egui::Grid::new("joinery.glazing.insets")
+            .num_columns(4)
+            .show(ui, |ui| {
+                for (i, (name, v)) in [
+                    (t("From the left"), &mut x.left),
+                    (t("From the right"), &mut x.right),
+                    (t("From the top"), &mut x.top),
+                    (t("From the bottom"), &mut x.bottom),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    ui.label(name);
+                    changed |= ui
+                        .add(
+                            egui::DragValue::new(v)
+                                .range(0..=3000)
+                                .suffix(" mm")
+                                .update_while_editing(false),
+                        )
+                        .changed();
+                    if i % 2 == 1 {
+                        ui.end_row();
+                    }
+                }
+            });
+    }
+    changed
 }
 
 #[cfg(test)]

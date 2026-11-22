@@ -21,6 +21,15 @@ pub enum Part {
     Handle,
     /// A solid panel filling a field.
     Panel,
+    /// The stiles and rails of a glazed door leaf round its pane, in
+    /// the leaf's material.
+    LeafRail,
+    /// The pane in a door leaf: glass, but never drawn across the
+    /// opening in a plan (the leaf there is its swing).
+    LeafGlass,
+    /// The whole of a glazed leaf, for its swing and reach: only from
+    /// [`leaf_boxes`], never built.
+    LeafOutline,
 }
 
 /// One part as a box in opening coordinates: `x` along the wall from the
@@ -70,6 +79,19 @@ impl Fitted {
 /// Every part of a door or window, in opening coordinates, in a wall
 /// built up as `asm`: its frame stands where [`Opening::frame_span`] says.
 pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<PartBox> {
+    let mut out = all_boxes(o, wall, asm);
+    out.retain(|b| b.part != Part::LeafOutline);
+    out
+}
+
+/// Each door leaf whole, solid or glazed: what swings in a plan.
+pub fn leaf_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<PartBox> {
+    let mut out = all_boxes(o, wall, asm);
+    out.retain(|b| matches!(b.part, Part::Leaf | Part::LeafOutline));
+    out
+}
+
+fn all_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<PartBox> {
     let Some(f) = Fitted::of(o, wall) else {
         return vec![];
     };
@@ -120,6 +142,9 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
         (Some(d), OpeningKind::Door, None) => d.members(w, h),
         // a divided door in its own frame, as the editor and the list
         // draw it
+        // one leaf (glazed, or hung the other way) is still the door
+        // its spec makes
+        (Some(d), OpeningKind::Door, Some(FrameNode::Leaf(_))) => d.members(w, h),
         (Some(d), OpeningKind::Door, Some(_)) => {
             let j = d.members(w, h).0;
             (j, j)
@@ -148,7 +173,13 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
         // the division is seen from outside (+y here, −y once turned
         // across): its left is at the far x until then
         let x_of = |x: f64| if across { x } else { w - x };
-        let (fields, bars) = node.layout_of(door, w, h, fw);
+        let (mut fields, bars) = node.layout_of(door, w, h, fw);
+        // a leaf under a door's head that is deeper than its jambs
+        if door {
+            for f in &mut fields {
+                f.y1 = f.y1.min(h - hh);
+            }
+        }
         for bar in &bars {
             let (xa, xb) = (
                 x_of(bar.x0).min(x_of(bar.x1)),
@@ -366,13 +397,47 @@ fn field_boxes(
     };
     // seen from outside its left is at the far x, unless turned across
     let low_x = |left: bool| left == across;
+    // a pane set in `lo`..`hi` (a leaf or a panel), from `rail` round
+    // it: the pane where the field's glazing puts it, x as drawn
+    let pane_in = |lo: DVec3, hi: DVec3| -> Option<(f64, f64, f64, f64)> {
+        let (fa, fb) = (x_of(lo.x), x_of(hi.x));
+        // the leaf's edges in the field's own (drawn) x, left to right
+        let (d0, d1) = (fa.min(fb), fa.max(fb));
+        let p = fl.sash.glazing?.pane(d0, d1, lo.z, hi.z)?;
+        let (pa, pb) = (x_of(p[0]), x_of(p[1]));
+        Some((pa.min(pb), pa.max(pb), p[2], p[3]))
+    };
+    let glazed = |add: &mut dyn FnMut(Part, DVec3, DVec3),
+                  rail: Part,
+                  glass: Part,
+                  lo: DVec3,
+                  hi: DVec3,
+                  p: (f64, f64, f64, f64)| {
+        let (px0, px1, pz0, pz1) = p;
+        add(rail, lo, b(px0, hi.y, hi.z));
+        add(rail, b(px1, lo.y, lo.z), hi);
+        add(rail, b(px0, lo.y, lo.z), b(px1, hi.y, pz0));
+        add(rail, b(px0, lo.y, pz1), b(px1, hi.y, hi.z));
+        let ym = (lo.y + hi.y) / 2.0;
+        add(
+            glass,
+            b(px0, ym - GLASS / 2.0, pz0),
+            b(px1, ym + GLASS / 2.0, pz1),
+        );
+    };
     if op.is_door() {
         let gap = 0.004;
-        add(
-            Part::Leaf,
+        let (lo, hi) = (
             b(xa + gap, hd - leaf_t, z0 + if on_sill { gap } else { 0.01 }),
             b(xb - gap, hd, z1 - gap),
         );
+        match pane_in(lo, hi) {
+            Some(p) => {
+                add(Part::LeafOutline, lo, hi);
+                glazed(add, Part::LeafRail, Part::LeafGlass, lo, hi, p);
+            }
+            None => add(Part::Leaf, lo, hi),
+        }
         if xb - xa > 0.3 && z1 - z0 > 1.2 {
             let hinge_low = low_x(op.hinged_left().unwrap_or(true));
             let x = if hinge_low { xb - 0.07 } else { xa + 0.07 };
@@ -404,7 +469,12 @@ fn field_boxes(
         return;
     }
     if op == LeafOp::Fixed {
-        add(fill, b(xa, -GLASS / 2.0, z0), b(xb, GLASS / 2.0, z1));
+        let (lo, hi) = (b(xa, -GLASS / 2.0, z0), b(xb, GLASS / 2.0, z1));
+        // a solid panel may hold a pane
+        match pane_in(lo, hi).filter(|_| fill == Part::Panel) {
+            Some(p) => glazed(add, Part::Panel, Part::Glass, lo, hi, p),
+            None => add(fill, lo, hi),
+        }
         return;
     }
     let sw = (fw * 0.75).min((xb - xa) / 4.0).min((z1 - z0) / 4.0);
@@ -920,6 +990,59 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_glazed_leaf_or_panel_holds_its_pane() {
+        use creabim_core::joinery::{DoorFrame, DoorSpec};
+        let mut o = opening(OpeningKind::Door, OpeningFrame::default());
+        o.width = 1.6;
+        o.door = Some(DoorSpec::fitting(DoorFrame::Aluminium, 1.6, 2.1));
+        // a wide leaf with a pane 150 in, 400 up from its foot; the
+        // narrow side leaf glazed whole; a panel beside with a pane
+        o.division = Some(
+            FrameNode::parse("v(0.5:D-L~150.150.150.400,0.3:D-P~0.0.0.0,0.2:FIX*~50.50.50.50)")
+                .unwrap(),
+        );
+        let boxes = opening_boxes(&o, &wall(), None);
+        assert_eq!(count(&boxes, Part::Leaf), 0);
+        assert_eq!(count(&boxes, Part::LeafOutline), 0);
+        assert_eq!(count(&boxes, Part::LeafGlass), 2);
+        // rails round the first leaf's pane, none round a pane glazed whole
+        assert_eq!(count(&boxes, Part::LeafRail), 4);
+        assert_eq!(count(&boxes, Part::Glass), 1);
+        assert_eq!(count(&boxes, Part::Panel), 4);
+        // the swing still sees both leaves whole
+        let leaves = leaf_boxes(&o, &wall(), None);
+        assert_eq!(leaves.len(), 2);
+        let wide = leaves
+            .iter()
+            .max_by(|a, b| (a.hi.x - a.lo.x).total_cmp(&(b.hi.x - b.lo.x)))
+            .unwrap();
+        let pane = boxes
+            .iter()
+            .filter(|b| b.part == Part::LeafGlass)
+            .find(|g| g.lo.x > wide.lo.x - 1e-9 && g.hi.x < wide.hi.x + 1e-9)
+            .unwrap();
+        assert!(
+            (pane.lo.x - wide.lo.x - 0.15).abs() < 1e-6,
+            "{pane:?} {wide:?}"
+        );
+        assert!((wide.hi.x - pane.hi.x - 0.15).abs() < 1e-6);
+        assert!((pane.lo.z - wide.lo.z - 0.4).abs() < 1e-6);
+        assert!((wide.hi.z - pane.hi.z - 0.15).abs() < 1e-6);
+        // a single leaf glazed keeps its door's head
+        o.division = Some(FrameNode::parse("D-L~0.0.0.0").unwrap());
+        o.width = 0.9;
+        o.door = Some(DoorSpec::fitting(DoorFrame::Steel, 0.9, 2.1));
+        let plain = {
+            let mut p = o.clone();
+            p.division = None;
+            opening_boxes(&p, &wall(), None)
+        };
+        let solid = plain.iter().find(|b| b.part == Part::Leaf).unwrap();
+        let glazed = leaf_boxes(&o, &wall(), None)[0];
+        assert!((solid.hi.z - glazed.hi.z).abs() < 1e-9);
     }
 
     #[test]

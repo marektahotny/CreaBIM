@@ -655,7 +655,12 @@ fn glass_share(
     }
     let glass: f64 = crate::opening::opening_boxes(o, w, asm)
         .iter()
-        .filter(|b| b.part == crate::opening::Part::Glass)
+        .filter(|b| {
+            matches!(
+                b.part,
+                crate::opening::Part::Glass | crate::opening::Part::LeafGlass
+            )
+        })
         .map(|b| (b.hi.x - b.lo.x) * (b.hi.z - b.lo.z))
         .sum();
     (100.0 * glass / a).clamp(0.0, 100.0).round()

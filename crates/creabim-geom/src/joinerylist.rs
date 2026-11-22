@@ -143,8 +143,10 @@ fn told(model: &Model, id: ElementId, o: &Opening) -> (String, String, String) {
     let execution = if !own.execution.is_empty() {
         own.execution
     } else if o.kind == OpeningKind::Door {
-        // a door drawn by its division has glass where a field is no panel
-        let glazed = o.division.is_some() && leaves.iter().any(|l| !l.panel);
+        // glass in a leaf or a panel, or a field of glass beside them
+        let glazed = leaves
+            .iter()
+            .any(|l| l.glazing.is_some() || (o.division.is_some() && !l.op.is_door() && !l.panel));
         let plastic = model
             .get(id)
             .and_then(|e| creabim_core::material_of(model, e))
@@ -539,7 +541,15 @@ fn scheme(p: &mut Pencil, model: &Model, o: &Opening, at: DVec2, k: f64) {
                     Pen::Symbol,
                 );
             }
-            if f.sash.panel {
+            // the pane set into a leaf or a panel
+            let pane = f
+                .sash
+                .glazing
+                .filter(|_| op.is_door() || f.sash.panel)
+                .and_then(|g| g.pane(f.x0 + sw, f.x1 - sw, f.y0 + sw, f.y1 - sw));
+            if let Some(q) = pane {
+                p.rect(pt(q[0], q[2]), pt(q[1], q[3]), Pen::Symbol);
+            } else if f.sash.panel {
                 p.line(
                     pt(f.x0 + sw, f.y0 + sw),
                     pt(f.x1 - sw, f.y1 - sw),

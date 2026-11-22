@@ -1163,7 +1163,7 @@ fn opening_items(
         .into_iter()
         .map(|(part, mesh)| {
             let (color, surface) = match (part, o.kind, material) {
-                (Part::Glass, ..) => (GLASS_COLOR, GLASS_SURFACE),
+                (Part::Glass | Part::LeafGlass, ..) => (GLASS_COLOR, GLASS_SURFACE),
                 (Part::Handle, ..) => ([0.72, 0.73, 0.75], [0.3, 1.0, 1.0]),
                 (Part::Panel, _, None) => ([0.80, 0.80, 0.78], PLAIN_SURFACE),
                 // a door as joinery: its frame and leaf in their own colours
@@ -1171,7 +1171,7 @@ fn opening_items(
                     o.door.as_ref().map_or([0.5; 3], |d| d.frame.color()),
                     PLAIN_SURFACE,
                 ),
-                (Part::Leaf, _, None) if o.door.is_some() => (
+                (Part::Leaf | Part::LeafRail | Part::LeafOutline, _, None) if o.door.is_some() => (
                     o.door.as_ref().map_or([0.5; 3], |d| d.leaf.color()),
                     PLAIN_SURFACE,
                 ),
@@ -1180,7 +1180,9 @@ fn opening_items(
                     ([0.93, 0.93, 0.91], PLAIN_SURFACE)
                 }
                 (Part::Frame, OpeningKind::Door, None) => ([0.50, 0.35, 0.22], PLAIN_SURFACE),
-                (Part::Leaf, _, None) => ([0.62, 0.45, 0.30], PLAIN_SURFACE),
+                (Part::Leaf | Part::LeafRail | Part::LeafOutline, _, None) => {
+                    ([0.62, 0.45, 0.30], PLAIN_SURFACE)
+                }
             };
             SceneItem {
                 id: e.id,
@@ -1190,9 +1192,11 @@ fn opening_items(
                 ghost: false,
                 layer: None,
                 finish: match part {
-                    Part::Glass => Some("Glass"),
+                    Part::Glass | Part::LeafGlass => Some("Glass"),
                     Part::Handle => Some("Metal"),
-                    Part::Frame | Part::Leaf | Part::Panel => None,
+                    Part::Frame | Part::Leaf | Part::Panel | Part::LeafRail | Part::LeafOutline => {
+                        None
+                    }
                 },
             }
         })

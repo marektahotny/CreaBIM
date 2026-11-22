@@ -8188,5 +8188,13 @@
  "Lock": "Zamknout",
  "Unlock": "Odemknout",
  "Locked against moving: click to let it move again": "Zamčeno proti posunu: kliknutím lze znovu posouvat",
- "Lock it against moving: no drag, Move or dimension shifts it until unlocked": "Zamknout proti posunu: dokud ho neodemknete, nepohne s ním tažení, Přesun ani kóta"
+ "Lock it against moving: no drag, Move or dimension shifts it until unlocked": "Zamknout proti posunu: dokud ho neodemknete, nepohne s ním tažení, Přesun ani kóta",
+ "No glazing": "Bez zasklení",
+ "Glazed whole": "Plné zasklení",
+ "A pane set in from the edges": "Zasklení s odsazením od okrajů",
+ "Glazing": "Zasklení",
+ "From the left": "Zleva",
+ "From the right": "Zprava",
+ "From the top": "Shora",
+ "From the bottom": "Zdola"
 }
