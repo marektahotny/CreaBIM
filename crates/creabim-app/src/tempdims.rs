@@ -172,6 +172,26 @@ fn ref_lines(
                     out.push((e.id, pts[i], pts[(i + 1) % pts.len()]));
                 }
             }
+            // furniture and fixtures measure to one another too (George
+            // 2026-11-22: "aj od iného zariaďovacieho predmetu")
+            ElementKind::Object(o)
+                if o.level == level
+                    && matches!(model.get(id).map(|s| &s.kind), Some(ElementKind::Object(_))) =>
+            {
+                let Some(t) = creabim_core::objects::type_of(model, e) else {
+                    continue;
+                };
+                let (lo, hi) = t.bounds();
+                let pts = [
+                    o.to_plan(DVec2::new(lo.x, lo.y)),
+                    o.to_plan(DVec2::new(hi.x, lo.y)),
+                    o.to_plan(DVec2::new(hi.x, hi.y)),
+                    o.to_plan(DVec2::new(lo.x, hi.y)),
+                ];
+                for i in 0..4 {
+                    out.push((e.id, pts[i], pts[(i + 1) % 4]));
+                }
+            }
             _ => {}
         }
     }
@@ -267,7 +287,9 @@ fn footprint(model: &Model, id: ElementId, foot: Option<(DVec2, DVec2)>) -> Opti
     match &model.get(id)?.kind {
         ElementKind::Column(c) => bbox(&c.outline()),
         ElementKind::Object(o) => {
-            let t = creabim_core::objects::type_of_id(model, id)?;
+            let Some(t) = creabim_core::objects::type_of(model, model.get(id)?) else {
+                return foot;
+            };
             let (lo, hi) = t.bounds();
             bbox(&[
                 o.to_plan(DVec2::new(lo.x, lo.y)),
@@ -589,10 +611,16 @@ pub fn find(
                 (DVec2::new(c.x, hi.y), DVec2::Y),
                 (DVec2::new(c.x, lo.y), -DVec2::Y),
             ] {
+                // from a hair inside its side, so what it stands against
+                // (flush, 0 mm) is measured too
+                const BACK: f64 = 1e-4;
                 let hit = lines
                     .iter()
-                    .filter_map(|(o, a, b)| Some((ray_hit(from, dir, *a, *b)?, *o, None)))
-                    .filter(|(t, _, _)| *t > 0.001 && *t <= 10.0)
+                    .filter_map(|(o, a, b)| {
+                        let t = ray_hit(from - dir * BACK, dir, *a, *b)? - BACK;
+                        Some((t.max(0.0), *o, None))
+                    })
+                    .filter(|(t, _, _)| *t <= 10.0)
                     .min_by(|x, y| x.0.total_cmp(&y.0));
                 // nothing straight out (an element outside the house): to
                 // the nearest wall face or grid line square to the ray, run
@@ -635,8 +663,13 @@ pub fn find(
 /// `d` made `value` long: the transaction that moves its element, with the
 /// status bar's message; else why it can't.
 pub fn set(model: &Model, d: &TempDim, value: f64) -> Result<(Transaction, String), String> {
-    if value <= 0.0 {
-        return Err("Type a distance more than zero.".into());
+    // 0 sets it flush against what it measures to; a length must be more
+    if value < 0.0 || (value == 0.0 && matches!(d.how, How::Length { .. })) {
+        return Err(if value < 0.0 {
+            "Type a distance of zero or more.".into()
+        } else {
+            "Type a length more than zero.".into()
+        });
     }
     let e = model.get(d.owner).ok_or("It is gone.")?;
     let delta = value - d.value;
@@ -1259,7 +1292,7 @@ pub fn interact(
                 return Some(None);
             }
             if keys == crate::tracker::Keys::Enter {
-                let typed = temp.typed.length();
+                let typed = temp.typed.distance();
                 temp.typed.clear();
                 temp.editing = None;
                 let Some(v) = typed else {
@@ -1794,6 +1827,38 @@ mod core_tests {
         // from the inner face of the left wall (x = 0.15) to the jamb at 1.0
         assert!((start.value - 0.85).abs() < 1e-9, "{}", start.value);
         assert_eq!(start.other, Some(lid_w));
+    }
+
+    /// George 2026-11-22: a fixture measures to the walls' cores or to
+    /// the fixture beside it, and 0 sets it flush.
+    #[test]
+    fn a_fixture_measures_to_the_wall_core_or_its_neighbour_and_goes_flush_at_zero() {
+        let l = level();
+        let lid = l.id;
+        let w = wall(lid, (0.0, -5.0), (0.0, 5.0), 0.3);
+        let wid = w.id;
+        let mut doc = Document::new();
+        doc.commit(Transaction::new("set up").insert(l).insert(w))
+            .unwrap();
+        let mut put = |key: &str, at: DVec2| {
+            let c = creabim_core::catalogue::starter(key).unwrap();
+            let (tx, id) = creabim_core::objects::place(doc.model(), &c, lid, at, 0.0);
+            doc.commit(tx).unwrap();
+            id
+        };
+        let wc = put("starter/wc", DVec2::new(1.0, 0.0));
+        let basin = put("starter/washbasin", DVec2::new(2.2, 0.0));
+        let dims = find(doc.model(), lid, wc, DVec2::ZERO, WallRef::CoreFace, None);
+        assert!(dims.iter().any(|d| d.other == Some(basin)), "{dims:?}");
+        let to_w = dims.iter().find(|d| d.other == Some(wid)).unwrap();
+        assert!(to_w.value > 0.3, "{}", to_w.value);
+        let (tx, _) = set(doc.model(), to_w, 0.0).unwrap();
+        doc.commit(tx).unwrap();
+        let dims = find(doc.model(), lid, wc, DVec2::ZERO, WallRef::CoreFace, None);
+        let to_w = dims.iter().find(|d| d.other == Some(wid)).unwrap();
+        assert!(to_w.value.abs() < 1e-6, "flush: {}", to_w.value);
+        // a negative gap, or a wall 0 long, is refused
+        assert!(set(doc.model(), to_w, -0.1).is_err());
     }
 
     #[test]
