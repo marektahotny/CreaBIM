@@ -671,6 +671,8 @@ impl CreaBimApp {
                    "hint": "See through walls, slabs and roofs to what is inside them"}),
             json!({"kind": "toggle", "id": "shadows3d", "icon": "sun", "label": "Shadows", "on": s.sun.shadows,
                    "hint": "Shadows the sun casts. View › Sun and shadows sets the date, time and how they look"}),
+            json!({"kind": "toggle", "id": "nav.ortho", "icon": "box", "label": "Axonometric", "on": self.camera.ortho,
+                   "hint": "Axonometric: parallel projection, lines stay parallel; off, perspective"}),
             json!({"kind": "menu", "key": "look", "icon": "rotate-3d", "label": "Look from",
                    "hint": "Look from the top, a side or the corner"}),
             json!({"kind": "toggle", "id": "ground.grid", "icon": "grid-3x3", "label": "Ground grid", "on": s.ground_grid,

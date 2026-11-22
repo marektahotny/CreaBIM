@@ -730,7 +730,7 @@ impl CreaBimApp {
             crop_pick: None,
             outside_said: None,
             outside_bounds: None,
-            status: "Loaded the sample house. Orbit with the middle button (or Alt + left drag), pan with right drag, zoom with the wheel; a left drag selects with a box.".into(),
+            status: "Loaded the sample house. Pan with the middle button, orbit with Shift + middle (or Alt + left drag), zoom with the wheel; a left drag selects with a box.".into(),
         }
     }
 
@@ -3417,9 +3417,8 @@ impl CreaBimApp {
         if self.cube.step(&mut self.camera, ui.input(|i| i.time)) {
             ui.ctx().request_repaint();
         }
-        // the mouse (MU19): right drag pans, and so does Shift + middle;
-        // middle drag orbits (Classic: middle pans too)
-        let classic = self.shell.settings.navigation == "classic";
+        // the mouse (George 2026-11-22): a middle drag pans, Shift + middle
+        // orbits; a right drag pans too
         let shift_now = ui.input(|i| i.modifiers.shift);
         // Ctrl + middle drag zooms, up in and down out, as Blender (MU39)
         let ctrl_now = ui.input(|i| i.modifiers.command);
@@ -3427,13 +3426,11 @@ impl CreaBimApp {
         if mid && ctrl_now {
             self.camera.zoom(-response.drag_delta().y / 60.0);
         } else {
-            if response.dragged_by(egui::PointerButton::Secondary)
-                || (mid && (classic || shift_now))
-            {
+            if response.dragged_by(egui::PointerButton::Secondary) || (mid && !shift_now) {
                 let d = response.drag_delta();
                 self.camera.pan(GVec2::new(d.x, d.y), rect.height());
             }
-            if !classic && mid && !shift_now {
+            if mid && shift_now {
                 self.orbit_3d(response.drag_delta());
             }
         }
@@ -15057,7 +15054,7 @@ pub(crate) fn launch_file(args: impl Iterator<Item = String>) -> Option<String> 
 }
 
 /// What the status bar says when the starter house opens.
-pub(crate) const STARTER_LOADED: &str = "Loaded the starter house. Orbit with the middle button (or Alt + left drag), pan with right drag, zoom with the wheel; a left drag selects with a box. The Sheets group has its drawings.";
+pub(crate) const STARTER_LOADED: &str = "Loaded the starter house. Pan with the middle button, orbit with Shift + middle (or Alt + left drag), zoom with the wheel; a left drag selects with a box. The Sheets group has its drawings.";
 
 /// The app round the sample house, for tests.
 #[cfg(test)]

@@ -85,6 +85,12 @@ impl Default for OrbitCamera {
 /// The closest the eye comes to its target, m: near enough to read a
 /// fitting.
 const MIN_DISTANCE: f32 = 0.03;
+
+/// Zooming in closer than this, m, the eye walks on instead (a dolly): the
+/// target goes ahead of it by as much, so zooming and panning keep an even
+/// pace near the model instead of crawling to a stop (George 2026-11-22:
+/// "spomaľuje / zrýchľuje posúvanie po scéne").
+const DOLLY_BELOW: f32 = 2.0;
 const PITCH_MAX: f32 = std::f32::consts::FRAC_PI_2;
 
 /// Within this of an axis view (top, bottom, or level and square to an
@@ -205,8 +211,30 @@ impl OrbitCamera {
     }
 
     pub fn zoom(&mut self, steps: f32) {
-        self.distance =
-            (self.distance * (1.0 - steps * 0.1).clamp(0.5, 1.5)).clamp(MIN_DISTANCE, 1500.0);
+        let fwd = (self.target - self.eye()).normalize_or_zero();
+        self.zoom_along(steps, fwd);
+    }
+
+    /// Zoom by `steps`; in perspective, near the model, the eye walks on
+    /// along `way` (a unit vector) by an even step instead.
+    fn zoom_along(&mut self, steps: f32, way: Vec3) {
+        let want = self.distance * (1.0 - steps * 0.1).clamp(0.5, 1.5);
+        if self.ortho || steps <= 0.0 || want >= DOLLY_BELOW || way == Vec3::ZERO {
+            self.distance = want.clamp(MIN_DISTANCE, 1500.0);
+            return;
+        }
+        // as far as the zoom would come down to the dolly's distance, the
+        // rest walked on at the pace it has there
+        let keep = self.distance.min(DOLLY_BELOW);
+        let walk =
+            (DOLLY_BELOW * (steps * 0.1).min(0.5) - (self.distance - keep).max(0.0)).max(0.0);
+        let eye = self.eye();
+        self.distance = keep;
+        let fwd = (self.target - eye).normalize_or_zero();
+        let eye = eye + way * walk;
+        self.target = eye + fwd * keep;
+        // walking in a direction other than straight ahead takes the
+        // target along with the eye, so the view keeps its turn
     }
 
     /// Zoom toward the point under the pointer (`ndc`, in normalised
@@ -217,7 +245,12 @@ impl OrbitCamera {
         let before = self.distance;
         let (origin, dir) = self.ray(ndc, aspect);
         let fwd = (self.target - self.eye()).normalize_or_zero();
-        self.zoom(steps);
+        let target = self.target;
+        self.zoom_along(steps, dir);
+        if self.target != target {
+            // walked on toward the pointer
+            return;
+        }
         let along = dir.dot(fwd);
         if along.abs() < 1e-4 {
             return;
@@ -231,7 +264,8 @@ impl OrbitCamera {
     /// on screen and ends up in the middle of the view's turning.
     pub fn zoom_about(&mut self, steps: f32, pivot: Vec3) {
         let before = self.distance;
-        self.zoom(steps);
+        // toward the selection it comes right up close, as it always did
+        self.zoom_along(steps, Vec3::ZERO);
         self.target = pivot + (self.target - pivot) * (self.distance / before);
     }
 
@@ -353,5 +387,32 @@ mod tests {
         let (_, a) = c.ray(Vec2::new(-0.8, 0.3), 1.5);
         let (_, b) = c.ray(Vec2::new(0.7, -0.6), 1.5);
         assert!(a.dot(b) > 0.9999);
+    }
+
+    /// Zooming in near the model walks the eye on at an even pace: it does
+    /// not crawl to a stop, and panning there keeps its speed.
+    #[test]
+    fn zooming_in_close_walks_on_at_an_even_pace() {
+        let mut c = OrbitCamera {
+            distance: 3.0,
+            ..Default::default()
+        };
+        let mut steps = vec![];
+        for _ in 0..12 {
+            let before = c.eye();
+            c.zoom_at(1.0, Vec2::ZERO, 1.5);
+            steps.push(c.eye().distance(before));
+        }
+        // once in close every step is the same and none is tiny
+        let last = &steps[4..];
+        assert!(
+            last.iter().all(|s| (s - last[0]).abs() < 1e-4 && *s > 0.1),
+            "{steps:?}"
+        );
+        assert!(c.distance >= DOLLY_BELOW - 1e-6, "{}", c.distance);
+        // zooming out comes back the usual way
+        let d = c.distance;
+        c.zoom(-1.0);
+        assert!(c.distance > d);
     }
 }
