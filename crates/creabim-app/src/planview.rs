@@ -6802,6 +6802,20 @@ pub fn draw_item_with(
                         ));
                     }
                 }
+                // dashed pens edge by edge, as lines are (a wall cupboard
+                // over the cut drew solid, George 2026-11-22)
+                Pen::Overhead | Pen::Hidden | Pen::HiddenCut | Pen::Drafted(_) | Pen::Grid => {
+                    let n = points.len();
+                    for i in 0..n {
+                        let line = PlanItem::Line {
+                            id: item.id(),
+                            pen: *pen,
+                            a: points[i],
+                            b: points[(i + 1) % n],
+                        };
+                        draw_item_with(painter, xf, &line, selected, mm, o);
+                    }
+                }
                 _ => {
                     let (w, c) = if selected {
                         (2.0, highlight)
