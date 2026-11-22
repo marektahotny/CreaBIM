@@ -2652,7 +2652,6 @@
  "GF Wing South": "1.NP krídlo juh",
  "GREEN ROOF\nsedum on EPDM\nfalls 1:60 to the east": "ZELENÁ STRECHA\nrozchodník na EPDM\nspád 1:60 na východ",
  "Gable": "Štít",
- "Gable and hip roofs need a convex outline; this one is built flat.": "Sedlová a valbová strecha potrebujú konvexný obrys; táto je vytvorená ako plochá.",
  "Galvanised steel": "Pozinkovaná oceľ",
  "Gap": "Medzera",
  "Gap to the facade": "Odstup od fasády",
@@ -8299,5 +8298,11 @@
  "Kitchen island": "Kuchynský ostrovček",
  "Built-in wardrobe 2400 × 600, 2400 high, 3 sliding doors (draw it out to any length: the doors follow)": "Vstavaná skriňa 2400 × 600, výška 2400, 3 posuvné dvere (dá sa natiahnuť na ľubovoľnú dĺžku, dvere sa prispôsobia)",
  "Kitchen island 1800 × 900, 910 high, base units with 3 doors and a breakfast bar (draw it out to any length)": "Kuchynský ostrovček 1800 × 900, výška 910, spodné skrinky s 3 dvierkami a barový pult (dá sa natiahnuť na ľubovoľnú dĺžku)",
- "level\u0004Height": "Konštr. výška"
+ "level\u0004Height": "Konštr. výška",
+ "Slopes by edge": "Sklony po hranách",
+ "As the shape": "Podľa tvaru",
+ "Own pitch": "Vlastný sklon",
+ "Gable end": "Štít",
+ "Edge {}": "Hrana {}",
+ "Roof edge slope": "Sklon hrany strechy"
 }

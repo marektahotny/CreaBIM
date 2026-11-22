@@ -482,6 +482,31 @@ impl RoofShape {
     }
 }
 
+/// How one edge of a roof's outline rises.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum RoofSlope {
+    /// As the roof's shape has it: a hip roof slopes from every edge at
+    /// its pitch, a gable roof from the edges along its ridge.
+    #[default]
+    Auto,
+    /// A slope at this pitch, degrees.
+    Pitch(f64),
+    /// An upright gable end (štít): no slope rises from it.
+    Gable,
+}
+
+impl RoofSlope {
+    pub const KINDS: [&'static str; 3] = ["As the shape", "Own pitch", "Gable end"];
+
+    pub fn kind(self) -> usize {
+        match self {
+            RoofSlope::Auto => 0,
+            RoofSlope::Pitch(_) => 1,
+            RoofSlope::Gable => 2,
+        }
+    }
+}
+
 /// A roof over an outline in plan. Its underside meets the outline at
 /// `base_offset` above the level, and runs on past it by the overhang.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -517,6 +542,10 @@ pub struct Roof {
     /// [`crate::LayerEdge`]); edge `i` is the eave past boundary edge `i`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layer_edges: Vec<crate::LayerEdge>,
+    /// Each edge's own slope (edge `i` from corner `i` to `i + 1`): any
+    /// missing are [`RoofSlope::Auto`]. Hip and gable roofs only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slopes: Vec<RoofSlope>,
 }
 
 /// One flat piece of a roof's underside: its outline in plan and the plane
@@ -562,15 +591,58 @@ impl Roof {
             material: None,
             assembly: None,
             holes: vec![],
+            slopes: vec![],
         }
     }
 
-    /// The shape actually built: gables and hips need a convex outline;
-    /// others are built flat.
+    /// The shape actually built: any outline takes any shape (the slopes
+    /// meet as a straight skeleton), so the shape asked for.
     pub fn effective_shape(&self) -> RoofShape {
+        self.shape
+    }
+
+    /// Edge `i`'s own slope setting.
+    pub fn slope(&self, i: usize) -> RoofSlope {
+        self.slopes.get(i).copied().unwrap_or_default()
+    }
+
+    /// Sets edge `i`'s own slope.
+    pub fn set_slope(&mut self, i: usize, s: RoofSlope) {
+        let n = self.boundary.len();
+        if i >= n {
+            return;
+        }
+        if self.slopes.len() < n {
+            self.slopes.resize(n, RoofSlope::Auto);
+        }
+        self.slopes[i] = s;
+        if self.slopes.iter().all(|s| *s == RoofSlope::Auto) {
+            self.slopes.clear();
+        }
+    }
+
+    /// The pitch edge `i` rises at, degrees; `None` where nothing rises
+    /// from it (a gable end, a flat roof, a mono-pitch roof's other edges).
+    pub fn edge_pitch(&self, i: usize) -> Option<f64> {
+        let n = self.boundary.len();
+        if n < 3 || i >= n {
+            return None;
+        }
+        let dir = |i: usize| (self.boundary[(i + 1) % n] - self.boundary[i]).normalize_or_zero();
+        let own = |auto: bool| match self.slope(i) {
+            RoofSlope::Auto => auto.then_some(self.pitch),
+            RoofSlope::Pitch(p) => Some(p.clamp(1.0, 85.0)),
+            RoofSlope::Gable => None,
+        };
         match self.shape {
-            RoofShape::Gable | RoofShape::Hip if !is_convex(&self.boundary) => RoofShape::Flat,
-            s => s,
+            RoofShape::Flat => None,
+            RoofShape::Shed => (i == self.edge % n).then_some(self.pitch),
+            RoofShape::Hip => own(true),
+            RoofShape::Gable => {
+                let r = dir(self.edge % n);
+                let cos = 20f64.to_radians().cos();
+                own(dir(i).dot(r).abs() > cos)
+            }
         }
     }
 
@@ -594,18 +666,9 @@ impl Roof {
 
     /// The edges a slope rises from.
     pub fn sloped_edges(&self) -> Vec<usize> {
-        let n = self.boundary.len();
-        let dir = |i: usize| (self.boundary[(i + 1) % n] - self.boundary[i]).normalize_or_zero();
-        match self.effective_shape() {
-            RoofShape::Flat => vec![],
-            RoofShape::Shed => vec![self.edge % n],
-            RoofShape::Hip => (0..n).collect(),
-            RoofShape::Gable => {
-                let r = dir(self.edge % n);
-                let cos = 20f64.to_radians().cos();
-                (0..n).filter(|&i| dir(i).dot(r).abs() > cos).collect()
-            }
-        }
+        (0..self.boundary.len())
+            .filter(|&i| self.edge_pitch(i).is_some())
+            .collect()
     }
 
     /// The underside as flat pieces, together covering the eave outline.
@@ -633,13 +696,20 @@ impl Roof {
         if n < 3 {
             return vec![];
         }
-        let slope = self.pitch.to_radians().tan();
-        // the plane rising from edge i: height = slope × distance inside it
+        let main = self.pitch.to_radians().tan();
+        let tan = |i: usize| self.edge_pitch(i).unwrap_or(self.pitch).to_radians().tan();
+        // the plane rising from edge i: height = slope × distance inside
+        // it, the eaves all level (a steeper slope meets the wall plate
+        // a little higher)
         let plane = |i: usize| {
+            let slope = tan(i);
             let a = self.boundary[i];
             let d = (self.boundary[(i + 1) % n] - a).normalize_or_zero();
             let inward = d.perp();
-            (inward * slope, -inward.dot(a) * slope)
+            (
+                inward * slope,
+                -inward.dot(a) * slope + (slope - main) * self.overhang,
+            )
         };
         let edges = self.sloped_edges();
         if edges.is_empty() {
@@ -657,7 +727,44 @@ impl Roof {
                 c,
             }];
         }
-        // the underside is the lowest of the planes, each one where it is lowest
+        // any other outline: the slopes meet as the straight skeleton of
+        // the eaves, each edge moving in at its own run per rise
+        if !is_convex(&self.boundary) || !is_convex(&eaves) {
+            if eaves.len() != n {
+                return vec![];
+            }
+            let ccw = crate::polygon::signed_area2(&eaves) > 0.0;
+            let mut poly = eaves.clone();
+            let mut speed: Vec<f64> = (0..n)
+                .map(|i| match self.edge_pitch(i) {
+                    Some(_) => 1.0 / tan(i).max(1e-6),
+                    None => 0.0,
+                })
+                .collect();
+            if !ccw {
+                poly.reverse();
+                speed.reverse();
+                speed.rotate_left(1);
+            }
+            return crate::skeleton::faces(&poly, &speed)
+                .into_iter()
+                .map(|f| {
+                    let i = if ccw {
+                        f.edge
+                    } else {
+                        (2 * n - 2 - f.edge) % n
+                    };
+                    let (g, c) = plane(i);
+                    RoofFace {
+                        outline: f.outline,
+                        g,
+                        c,
+                    }
+                })
+                .collect();
+        }
+        // a convex one: the underside is the lowest of the planes, each
+        // one where it is lowest
         let mut out = Vec::new();
         for (k, &i) in edges.iter().enumerate() {
             let (gi, ci) = plane(i);
@@ -1916,6 +2023,7 @@ mod tests {
             material: None,
             assembly: None,
             holes: vec![],
+            slopes: vec![],
         };
         crate::set_layer_edge(&mut r.layer_edges, 0, 0, 0.1);
         let ys = |faces: &[RoofFace]| {
@@ -2017,7 +2125,7 @@ mod tests {
     }
 
     #[test]
-    fn hips_on_an_l_shape_fall_back_to_flat() {
+    fn hips_on_an_l_shape_meet_in_a_valley() {
         let (_, ground, _) = two_levels();
         let l = vec![
             DVec2::ZERO,
@@ -2027,9 +2135,59 @@ mod tests {
             DVec2::new(2.0, 4.0),
             DVec2::new(0.0, 4.0),
         ];
-        let r = Roof::new(ground, l, RoofShape::Hip);
-        assert_eq!(r.effective_shape(), RoofShape::Flat);
-        assert_eq!(r.faces().len(), 1);
+        let mut r = Roof::new(ground, l, RoofShape::Hip);
+        r.overhang = 0.5;
+        r.pitch = 45.0;
+        assert_eq!(r.effective_shape(), RoofShape::Hip);
+        let faces = r.faces();
+        assert_eq!(faces.len(), 6);
+        let covered: f64 = faces
+            .iter()
+            .map(|f| crate::polygon::signed_area2(&f.outline) / 2.0)
+            .sum();
+        assert!((covered - r.plan_area()).abs() < 1e-6);
+        // level eaves, and the top over the middle of each wing's ridge
+        for f in &faces {
+            for p in &f.outline {
+                assert!(f.z(*p) > -0.5 - 1e-6);
+            }
+        }
+        assert!((r.peak() - r.vertical_thickness() - 1.0).abs() < 1e-6);
+        // and one wing's end stood up as a gable (štít)
+        r.set_slope(4, RoofSlope::Gable);
+        let faces = r.faces();
+        assert_eq!(faces.len(), 5);
+        // a steeper slope on the other wing's end
+        r.set_slope(1, RoofSlope::Pitch(60.0));
+        let faces = r.faces();
+        assert_eq!(faces.len(), 5);
+        let covered: f64 = faces
+            .iter()
+            .map(|f| crate::polygon::signed_area2(&f.outline) / 2.0)
+            .sum();
+        assert!((covered - r.plan_area()).abs() < 1e-6);
+        r.set_slope(4, RoofSlope::Auto);
+        r.set_slope(1, RoofSlope::Auto);
+        assert!(r.slopes.is_empty());
+    }
+
+    /// A rectangle's hip with one end stood up as a gable: the slopes run
+    /// past it to the verge.
+    #[test]
+    fn a_hip_roof_takes_a_gable_end_and_a_steeper_slope() {
+        let (_, ground, _) = two_levels();
+        let mut r = Roof::new(ground, rect(10.0, 6.0), RoofShape::Hip);
+        r.overhang = 0.5;
+        r.set_slope(1, RoofSlope::Gable);
+        assert_eq!(r.faces().len(), 3);
+        let mut r2 = Roof::new(ground, rect(10.0, 6.0), RoofShape::Hip);
+        r2.set_slope(3, RoofSlope::Pitch(60.0));
+        let faces = r2.faces();
+        assert_eq!(faces.len(), 4);
+        // all eaves at one height
+        let eaves = r2.eave_outline();
+        let low: Vec<f64> = eaves.iter().map(|p| r2.underside_at(*p)).collect();
+        assert!(low.iter().all(|z| (z - low[0]).abs() < 1e-6), "{low:?}");
     }
 
     #[test]

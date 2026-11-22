@@ -1154,6 +1154,7 @@ fn roof(c: &mut Ctx, r: &f::Roof, at: &Path) {
         material: None,
         assembly: None,
         holes: r.holes.iter().map(|h| c.pts(h)).collect(),
+        slopes: vec![],
     };
     let mut e = Element::new(name_of(&r.name, &r.id), ElementKind::Roof(roof));
     if !stamp(c, &mut e, &r.r#type, f::TypeCategory::Roof, at) {
