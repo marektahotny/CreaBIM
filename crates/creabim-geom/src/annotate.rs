@@ -763,6 +763,71 @@ pub fn room_tag_items(
 /// stretch between neighbours along it measured. A stretch across a whole
 /// door or window reads its width over the line and its height (and a
 /// window's sill) under it, STN 01 3420.
+/// One witness line of a linear dimension (see [`witness_ends`]).
+#[derive(Clone, Copy, Debug)]
+pub struct WitnessEnd {
+    /// The point's place in [`creabim_core::Dimension::points`].
+    pub index: usize,
+    /// The point measured, in the view's drawing.
+    pub point: DVec2,
+    /// Where its witness line meets the dimension line.
+    pub foot: DVec2,
+    /// Where its witness line starts: dragged, or at the point.
+    pub start: DVec2,
+}
+
+impl WitnessEnd {
+    /// The way from the dimension line out to the point (along the
+    /// witness line); square to the line when the point is on it.
+    pub fn out(&self, normal: DVec2) -> DVec2 {
+        let d = self.point - self.foot;
+        if d.length() > 1e-9 {
+            d.normalize()
+        } else {
+            normal
+        }
+    }
+
+    /// How far it starts from the dimension line.
+    pub fn reach(&self) -> f64 {
+        self.start.distance(self.foot)
+    }
+}
+
+/// The witness lines of a linear dimension, each with where it starts:
+/// its own reach where it was dragged, else the measured point. With the
+/// dimension line's normal (to the left of its run).
+pub fn witness_ends(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+) -> Option<(Vec<WitnessEnd>, DVec2)> {
+    let a = resolve(model, view, &d.a)?;
+    let b = resolve(model, view, &d.b)?;
+    let (b2, _) = squared(d.axis, a, b)?;
+    let u = (b2 - a).normalize_or_zero();
+    let n = u.perp();
+    let ends = d
+        .points()
+        .enumerate()
+        .filter_map(|(index, p)| {
+            let point = resolve(model, view, p)?;
+            let foot = a + u * (point - a).dot(u) + n * d.offset;
+            let mut w = WitnessEnd {
+                index,
+                point,
+                foot,
+                start: point,
+            };
+            if let Some(r) = d.reach.get(index).copied().flatten() {
+                w.start = foot + w.out(-n * d.offset.signum()) * r.max(0.0);
+            }
+            Some(w)
+        })
+        .collect();
+    Some((ends, n))
+}
+
 pub fn linear_items(
     model: &Model,
     view: &View,
@@ -788,6 +853,15 @@ pub fn linear_items(
         None => num(h),
     };
     let look = look_of(model, d.style, d.color);
+    // where each witness line starts, by the point's place
+    let ends = if d.reach.iter().any(|r| r.is_some()) {
+        witness_ends(model, view, d)
+            .map(|e| e.0)
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+    let start = |i: usize, q: DVec2| ends.iter().find(|e| e.index == i).map_or(q, |e| e.start);
     let place = |i: usize| {
         let shift = d.texts.get(i).copied().flatten();
         crate::plan::DimPlace {
@@ -803,6 +877,11 @@ pub fn linear_items(
         let below = opening_below(model, d, len)
             .or_else(|| opening_of_span(model, view, a, b))
             .map(|(h, s)| below_text(h, s));
+        let witness = if ends.is_empty() {
+            witness
+        } else {
+            Some([start(0, a), start(1, b)])
+        };
         return vec![PlanItem::Dimension {
             id,
             a,
@@ -817,11 +896,12 @@ pub fn linear_items(
         }];
     }
     let u = (b2 - a).normalize_or_zero();
-    let mut marks: Vec<(f64, DVec2, &HostPoint)> = d
+    let mut marks: Vec<(f64, DVec2, &HostPoint, usize)> = d
         .points()
-        .filter_map(|p| {
+        .enumerate()
+        .filter_map(|(k, p)| {
             let q = resolve(model, view, p)?;
-            Some(((q - a).dot(u), q, p))
+            Some(((q - a).dot(u), q, p, k))
         })
         .collect();
     marks.sort_by(|x, y| x.0.total_cmp(&y.0));
@@ -830,7 +910,7 @@ pub fn linear_items(
         .windows(2)
         .enumerate()
         .map(|(i, w)| {
-            let ((sa, pa, ha), (sb, pb, hb)) = (w[0], w[1]);
+            let ((sa, pa, ha, ka), (sb, pb, hb, kb)) = (w[0], w[1]);
             let len = sb - sa;
             let below = opening_between(model, ha, hb, len)
                 .or_else(|| opening_of_span(model, view, pa, pb))
@@ -842,7 +922,7 @@ pub fn linear_items(
                 offset: d.offset,
                 text: if d.eq { "EQ".to_string() } else { num(len) },
                 look,
-                witness: Some([pa, pb]),
+                witness: Some([start(ka, pa), start(kb, pb)]),
                 breaks: vec![],
                 below,
                 place: place(i),

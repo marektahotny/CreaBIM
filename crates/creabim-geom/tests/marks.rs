@@ -1185,3 +1185,45 @@ fn spot_levels_read_the_terrain_under_them() {
     let (host, _) = surface_under(model, DVec2::new(21.0, 1.0), below, above).unwrap();
     assert_eq!(host, ground);
 }
+
+/// A witness line's far end dragged nearer the dimension line starts
+/// there; a chain keeps each point's own reach whatever its order.
+#[test]
+fn witness_lines_start_where_their_ends_were_dragged() {
+    use creabim_geom::annotate::{linear_items, witness_ends};
+    let doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    // across the drawing, the points 1 m and 3 m below the line
+    let mut d = Dimension::linear(
+        plan,
+        HostPoint::free(DVec2::new(0.0, -1.0)),
+        HostPoint::free(DVec2::new(4.0, -3.0)),
+        1.0,
+    );
+    d.axis = DimAxis::Horizontal;
+    let witness = |d: &Dimension| match &linear_items(doc.model(), &v, plan, d)[0] {
+        PlanItem::Dimension { witness, .. } => witness.unwrap(),
+        _ => panic!(),
+    };
+    let [wa, wb] = witness(&d);
+    assert!(wa.distance(DVec2::new(0.0, -1.0)) < 1e-9);
+    assert!(wb.distance(DVec2::new(4.0, -3.0)) < 1e-9);
+    // the long one dragged up to the short one's end: they line up
+    d.reach = vec![None, Some(1.0)];
+    let [wa, wb] = witness(&d);
+    assert!(wa.distance(DVec2::new(0.0, -1.0)) < 1e-9, "{wa}");
+    assert!(wb.distance(DVec2::new(4.0, -1.0)) < 1e-9, "{wb}");
+    let (ends, _) = witness_ends(doc.model(), &v, &d).unwrap();
+    assert!((ends[0].reach() - ends[1].reach()).abs() < 1e-9);
+    // in a chain, the further point keeps its own
+    d.mids.push(HostPoint::free(DVec2::new(2.0, -5.0)));
+    d.reach = vec![None, Some(0.5), None];
+    let items = linear_items(doc.model(), &v, plan, &d);
+    let PlanItem::Dimension { witness, .. } = &items[0] else {
+        panic!()
+    };
+    assert!(witness.unwrap()[1].distance(DVec2::new(2.0, -0.5)) < 1e-9);
+}
