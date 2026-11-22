@@ -80,16 +80,26 @@ pub struct WrapPiece {
 /// 0540-3 and the makers' sheets) and the library material they look
 /// like: insulation first, then renders.
 pub const PRESETS: [(&str, &str, f64, bool); 5] = [
-    ("EPS 70 F fasádny", "Insulation, EPS", 0.039, false),
-    ("XPS (styrodur)", "Insulation, XPS", 0.034, false),
+    ("EPS 70F – fasádny", "Insulation, EPS", 0.039, false),
     (
-        "Minerálna vlna fasádna",
-        "Insulation, mineral wool",
-        0.040,
+        "XPS – extrudovaný (sokel, pod základ)",
+        "Insulation, XPS",
+        0.034,
         false,
     ),
-    ("Tenkovrstvová omietka", "Render, lime", 0.70, true),
-    ("Vápennocementová omietka", "Render, cement", 0.88, true),
+    (
+        "Minerálna vlna – fasádna doska",
+        "Insulation, mineral wool",
+        0.036,
+        false,
+    ),
+    (
+        "Omietka silikónová (tenkovrstvová)",
+        "Render, lime",
+        0.70,
+        true,
+    ),
+    ("Omietka vápennocementová", "Render, cement", 0.88, true),
 ];
 
 /// The preset material `name` in `model`, or a new one to insert (with
@@ -102,9 +112,14 @@ pub fn preset(model: &Model, name: &str) -> Option<(ElementId, Option<Element>)>
         return Some((e.id, None));
     }
     let (_, lib, lambda, _) = PRESETS.iter().find(|p| p.0 == name)?;
-    let (_, Some(mut e)) = crate::library::find_or_new(&Model::default(), lib)? else {
-        return None;
-    };
+    // the Slovak base's material of that name, with its maker data
+    if let Some(e) = crate::skbase::base_material(name) {
+        return Some((e.id, Some(e)));
+    }
+    let mut e = crate::library::LIBRARY
+        .iter()
+        .find(|l| l.name == *lib)?
+        .element();
     e.name = name.to_string();
     if let ElementKind::Material(m) = &mut e.kind {
         m.lambda = Some(*lambda);

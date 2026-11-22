@@ -795,8 +795,14 @@ pub fn add_starters(model: &Model) -> (Transaction, Vec<ElementId>) {
         for (function, material, mm) in layers.iter() {
             let mut m = None;
             if let Some(name) = material {
-                if let Some((_, id)) = materials.iter().find(|(n, _)| n == name) {
+                // the Slovak base's material where it has the same one
+                let same = crate::samemat::canonical(name);
+                if let Some((_, id)) = materials.iter().find(|(n, _)| n == same) {
                     m = Some(*id);
+                } else if let Some(e) = crate::skbase::base_material(same) {
+                    m = Some(e.id);
+                    materials.push((same.to_string(), e.id));
+                    tx = tx.insert(e);
                 } else if let Some(entry) = crate::library::LIBRARY.iter().find(|e| e.name == *name)
                 {
                     let e = entry.element();

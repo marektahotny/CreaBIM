@@ -756,8 +756,9 @@ mod tests {
         // the ground 2700 over its foot, on 150 + 200
         assert!((ps.object.offset + 3.05).abs() < 1e-9);
         assert!(legend("starter/site-pumping-shaft-laura-l").is_some());
-        assert!(
-            crate::dss::object_class("IfcDistributionChamberElement", "SUMP", &ps.key).is_none()
+        assert_eq!(
+            crate::dss::object_class("IfcDistributionChamberElement", "SUMP", &ps.key),
+            Some("GPA006")
         );
         let wm =
             crate::dss::object_class("IfcDistributionChamberElement", "METERCHAMBER", &shaft.key);

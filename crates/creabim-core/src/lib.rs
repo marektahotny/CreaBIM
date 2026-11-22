@@ -63,6 +63,7 @@ pub mod roofmetal;
 pub mod room;
 pub mod roomtype;
 pub mod routecheck;
+pub mod samemat;
 pub mod sample;
 pub mod screen;
 pub mod site;

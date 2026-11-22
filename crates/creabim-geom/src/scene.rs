@@ -186,8 +186,23 @@ fn layer_items(
                         parts[k].0.material = barriers.material;
                     } else {
                         let wool = boolean_mesh(&eps, &cutter, BoolOp::Intersection);
-                        if !wool.indices.is_empty() {
-                            parts[k].1 = boolean_mesh(&eps, &cutter, BoolOp::Difference);
+                        let rest = boolean_mesh(&eps, &cutter, BoolOp::Difference);
+                        // a boolean that came out broken (the pieces not
+                        // adding up to the layer, or reaching out of it)
+                        // leaves the layer whole rather than wrong
+                        let within = |m: &TriMesh| match (m.bounds(), eps.bounds()) {
+                            (Some((lo, hi)), Some((a, b))) => {
+                                (lo - a).min_element() > -0.01 && (b - hi).min_element() > -0.01
+                            }
+                            _ => true,
+                        };
+                        let whole = closed_volume(&eps);
+                        let sound = within(&wool)
+                            && within(&rest)
+                            && (closed_volume(&wool) + closed_volume(&rest) - whole).abs()
+                                <= 0.01 * whole.abs().max(1e-6);
+                        if !wool.indices.is_empty() && sound {
+                            parts[k].1 = rest;
                             let mut b = band;
                             b.material = barriers.material;
                             parts.push((b, wool));

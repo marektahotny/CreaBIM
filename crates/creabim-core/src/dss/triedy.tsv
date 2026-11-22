@@ -102,3 +102,18 @@ XSB001	K	IfcStair	rameno schodiska	75,79,107,162,163,164,165,166,167,168,169,170
 XTB001	K	IfcOpeningElementRECESS	šachta	75,79,345
 XZA003	K	IfcBuildingElementProxy	zariadenie na medicinálne plyny	42,63,336,356
 CPA001	K	IfcTank	teplovodný zásobník	36,42,61,62,68,69,79,108,155,160,178,202,270,336,356		79,107,216,436	
+EBF000	K	IfcElectricAppliance	elektrický ohrevný predmet odovzdávajúci teplo prietokom elektrického prúdu (indukčná varná doska)		70		
+EBH000	K	IfcElectricAppliance	elektrický ohrevný predmet odovzdávajúci teplo okolitými povrchmi (elektrická rúra, sporák)		70		
+ECC000	K	IfcEvaporator	elektrický chladiaci predmet využívajúci zmenu skupenstva (chladnička, mraznička)		362	362	
+EPD000	K	IfcSpaceHeater	vykurovací predmet s núteným prúdením vzduchu (teplovzdušná jednotka vodná, fan-coil)		70		
+GPA006	K	IfcPump	prečerpávacia stanica	452,42,52,65,66,107,185,200,202,209,284,336,356		452,42,373,374,474,185,422,423,436,336,356	
+HKA000	K	IfcUnitaryEquipment	predmet povrchovej úpravy na prípravu povrchu (umývačka riadu)				
+HPA001	K	IfcUnitaryEquipmentDEHUMIDIFIER	sušička	36,61,62,65,66,68,134,457,149,160,178,183,185,199,200,202,261,336		183,188	
+NCD002	K	IfcCoveringCEILING	podhľad – celistvý	0,75,76,79,80,110,127,137,162,163,164,165,166,167,169,170,460,226,227,228,249,265,266,466,467,469,470,290,329,330,331,473			
+NED002	K	IfcDiscreteAccessoryFLASHING	strešné oplechovanie	0,42,52,76,79,127,137,216,461,462,463,265,468,356		42,127,265,356	
+PZB000	K	IfcAudioVisualAppliance	viacdruhový oznamovací predmet pre viac informácií (televízor)				
+RQA002	K	IfcCovering	izolácia – tepelná	42,453,55,76,79,80,455,127,137,460,464,229,465,265,310,471,472,336		453,455,127,227,229,265	
+RQB002	K	IfcCoveringMEMBRANE	hydroizolácia	36,453,76,79,454,127,137,265		453,127,265	
+SJA002	K	IfcActuatorHANDOPERATEDACTUATOR	spínač			385,241,436,355	
+WMB001	K	IfcPipeSegmentGUTTER	žľab	0,42,75,79,456,137,208,209,463,265,291,336,356		42,79,436,336,356	
+XZA001	K	IfcDistributionBoard	multikonektor (rozdeľovač a zberač)	36,42,53,61,65,66,68,69,75,79,458,160,178,200,202,216,459,260,284,336,356		72,475,436	

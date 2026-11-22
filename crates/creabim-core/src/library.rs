@@ -987,13 +987,18 @@ pub const LIBRARY: &[LibraryEntry] = &[
 /// The material named `name` in the model, or the library's entry of that
 /// name as a new material to add: (its id, the element to insert, if new).
 pub fn find_or_new(model: &Model, name: &str) -> Option<(ElementId, Option<Element>)> {
+    // the Slovak base's material where it has the same one
+    let name = crate::samemat::canonical(name);
     if let Some(e) = model
         .iter()
         .find(|e| e.name == name && matches!(e.kind, ElementKind::Material(_)))
     {
         return Some((e.id, None));
     }
-    let e = LIBRARY.iter().find(|l| l.name == name)?.element();
+    let e = match crate::skbase::base_material(name) {
+        Some(e) => e,
+        None => LIBRARY.iter().find(|l| l.name == name)?.element(),
+    };
     Some((e.id, Some(e)))
 }
 
