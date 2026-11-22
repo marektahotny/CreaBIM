@@ -157,7 +157,7 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Diameter => "diameter",
         Tool::ArcLength => "arc-length",
         Tool::Note => "message-square-text",
-        Tool::Text => "type",
+        Tool::Text => "text-tool",
         Tool::SpotLevel => "spot-level",
         Tool::Sketch => "pen-tool",
         Tool::Guide => "guide",

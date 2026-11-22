@@ -115,6 +115,7 @@ pub fn object(
             parts,
             symbol: vec![],
             catalogue: Some(key.to_string()),
+            supply: None,
         },
         materials,
     })

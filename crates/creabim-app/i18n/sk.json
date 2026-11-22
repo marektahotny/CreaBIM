@@ -8242,5 +8242,19 @@
  "Loaded the sample house. Pan with the middle button, orbit with Shift + middle (or Alt + left drag), zoom with the wheel; a left drag selects with a box.": "Načítaný vzorový dom. Posun stredným tlačidlom, otáčanie Shift + stredné (alebo Alt + ľavé ťahanie), priblíženie kolieskom; ľavé ťahanie vyberá oknom.",
  "Latitude of the project, degrees north": "Zemepisná šírka stavby, stupne severne",
  "Longitude of the project, degrees east": "Zemepisná dĺžka stavby, stupne východne",
- "Project place": "Miesto stavby"
+ "Project place": "Miesto stavby",
+ "Trades": "Profesie",
+ "Cooker": "Sporák",
+ "Gas hob, electric oven 230 V": "Plynová varná doska, elektrická rúra 230 V",
+ "Electric, 400 V": "Elektrický, 400 V",
+ "Rated power": "Príkon",
+ "Voltage": "Napätie",
+ "Own circuit": "Vlastný obvod",
+ "Gas heat input": "Tepelný príkon plynu",
+ "Object supply": "Napojenie objektu",
+ "Built-in dishwasher 600": "Vstavaná umývačka riadu 600",
+ "Fully integrated dishwasher behind a kitchen front, under the worktop, with its cold water, waste and socket": "Plne integrovaná umývačka riadu za dvierkami kuchynskej linky pod pracovnou doskou, so studenou vodou, odpadom a zásuvkou",
+ "Tumble dryer 600": "Sušička prádla 600",
+ "Heat pump tumble dryer 600 × 620 × 850 on its own socket; its condensate in its tank or by its hose into the washing machine's trap": "Sušička prádla s tepelným čerpadlom 600 × 620 × 850 na samostatnej zásuvke; kondenzát do jej nádoby alebo hadicou do zápachovej uzávierky práčky",
+ "Door ring, grey": "Rám dvierok, sivý"
 }

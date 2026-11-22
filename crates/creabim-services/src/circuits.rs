@@ -326,17 +326,33 @@ pub fn propose(model: &Model, max_sockets: usize, method: Method) -> Result<Vec<
             .iter()
             .find(|b| b.1.level == level)
             .unwrap_or(&boards[0]);
-        let (in_a, s) = sized(0.0, if lighting { 10.0 } else { 16.0 }, false, method);
+        // an appliance's rated power and voltage, from its type
+        let supply = |d: &&(&Element, &creabim_core::Object, DeviceKind)| {
+            creabim_core::objects::type_of(model, d.0)
+                .and_then(creabim_core::objects::Supply::of)
+                .filter(|_| d.2 == DeviceKind::Appliance)
+        };
+        let three_phase = devs
+            .iter()
+            .any(|d| supply(d).is_some_and(|s| s.three_phase));
+        let power: f64 = devs
+            .iter()
+            .filter_map(|d| supply(d).and_then(|s| s.power_w))
+            .sum();
+        // an appliance's load is its heating elements': cos φ 1
+        let ib = el::design_current(power, 1.0, three_phase);
+        let (in_a, s) = sized(ib, if lighting { 10.0 } else { 16.0 }, three_phase, method);
         let mut c = Circuit {
             board: Some(board.0.id),
             lighting,
+            three_phase,
             breaker_a: Some(in_a),
             cable_mm2: Some(s),
             loads: devs
                 .iter()
                 .map(|d| Load {
                     device: d.0.id,
-                    power_w: 0.0,
+                    power_w: supply(d).and_then(|s| s.power_w).unwrap_or(0.0),
                 })
                 .collect(),
             ..Default::default()
@@ -367,7 +383,17 @@ pub fn propose(model: &Model, max_sockets: usize, method: Method) -> Result<Vec<
         if !lights.is_empty() {
             make(&lights, true, &mut out);
         }
-        for d in here.iter().filter(|d| d.2 == DeviceKind::Appliance) {
+        // an appliance on its own circuit (a cooker, a washing machine);
+        // one plugged in (a fridge, a television) goes with the sockets
+        let own = |d: &(&Element, &creabim_core::Object, DeviceKind)| {
+            creabim_core::objects::type_of(model, d.0)
+                .and_then(creabim_core::objects::Supply::of)
+                .is_none_or(|s| s.own_circuit)
+        };
+        for d in here
+            .iter()
+            .filter(|d| d.2 == DeviceKind::Appliance && own(d))
+        {
             make(&[*d], false, &mut out);
         }
         // sockets by rooms: 0 a bathroom, 1 a kitchen, 2 the rest
@@ -382,7 +408,7 @@ pub fn propose(model: &Model, max_sockets: usize, method: Method) -> Result<Vec<
         };
         let mut socks: Vec<_> = here
             .iter()
-            .filter(|d| d.2 == DeviceKind::Socket)
+            .filter(|d| d.2 == DeviceKind::Socket || (d.2 == DeviceKind::Appliance && !own(d)))
             .map(|d| (special(d), *d))
             .collect();
         socks.sort_by(|a, b| {

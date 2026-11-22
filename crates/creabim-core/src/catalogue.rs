@@ -355,6 +355,7 @@ impl Build {
                 parts: std::mem::take(&mut self.parts),
                 symbol: std::mem::take(&mut self.symbol),
                 catalogue: Some(key),
+                supply: None,
             },
             materials: std::mem::take(&mut self.materials),
         }
@@ -761,6 +762,111 @@ fn cooker_unit() -> CatalogueObject {
         "Built-in oven under a four-zone ceramic hob, with a drawer",
         ObjectCategory::Kitchen,
         ("IfcElectricAppliance", "ELECTRICCOOKER"),
+        Mount::Wall,
+    )
+}
+
+/// A dishwasher built into the kitchen row: behind a kitchen front,
+/// under the worktop, with its cold water and waste (family "Umývačka
+/// riadu").
+fn dishwasher_unit() -> CatalogueObject {
+    let mut b = Build::new();
+    let w = 0.6;
+    b.add(
+        "Plinth",
+        plinth(),
+        cuboid(v3(-w / 2.0, -0.5, 0.0), v3(w / 2.0, 0.0, 0.1)),
+        false,
+    );
+    b.add(
+        "Dishwasher",
+        appliance_white(),
+        cuboid(
+            v3(-w / 2.0 + 0.002, -0.56, 0.1),
+            v3(w / 2.0 - 0.002, 0.0, 0.87),
+        ),
+        false,
+    );
+    b.add(
+        "Door",
+        kitchen_front(),
+        cuboid(v3(-0.298, -0.58, 0.102), v3(0.298, -0.56, 0.868)),
+        false,
+    );
+    b.add(
+        "Handle",
+        stainless(),
+        cuboid(v3(-0.2, -0.6, 0.8), v3(0.2, -0.58, 0.812)),
+        false,
+    );
+    worktop(&mut b, w);
+    b.line(v2(-0.3, -0.58), v2(0.3, -0.58));
+    // the appliance under the worktop: its box crossed
+    b.line(v2(-0.3, -0.56), v2(0.3, 0.0));
+    b.line(v2(-0.3, 0.0), v2(0.3, -0.56));
+    b.finish(
+        "dishwasher-600",
+        "Built-in dishwasher 600",
+        "Fully integrated dishwasher behind a kitchen front, under the worktop, with its cold water, waste and socket",
+        ObjectCategory::Kitchen,
+        ("IfcElectricAppliance", "DISHWASHER"),
+        Mount::Wall,
+    )
+}
+
+/// A heat pump tumble dryer: electricity only, its condensate in its own
+/// tank (or by its hose into the washing machine's trap).
+fn dryer() -> CatalogueObject {
+    let mut b = Build::new();
+    let (w, d, h) = (0.6, 0.62, 0.85);
+    b.add(
+        "Body",
+        appliance_white(),
+        soft_box(v3(-w / 2.0, -d, 0.0), v3(w / 2.0, 0.0, h), 0.02, 0.008),
+        true,
+    );
+    // the round door: a disc stood up on the front (turned a quarter
+    // about x, which keeps its faces outwards)
+    let mut door = prism(squircle(v2(0.0, 0.0), 0.2, 0.2, 2.0, 32), 0.0, 0.03);
+    for v in &mut door.vertices {
+        *v = v3(v.x, -d - v.z, 0.42 + v.y);
+    }
+    b.add(
+        "Door",
+        look(
+            "Door ring, grey",
+            "plastic",
+            Hatch::Empty,
+            [150, 154, 160],
+            0.4,
+        ),
+        door,
+        false,
+    );
+    b.add(
+        "Controls",
+        look(
+            "Plastic, charcoal",
+            "plastic",
+            Hatch::Empty,
+            [46, 48, 52],
+            0.5,
+        ),
+        cuboid(
+            v3(-0.28, -d - 0.006, h - 0.1),
+            v3(0.28, -d + 0.01, h - 0.03),
+        ),
+        false,
+    );
+    b.line(v2(-0.2, -d), v2(0.2, -d - 0.03));
+    b.line(v2(0.2, -d - 0.03), v2(0.2, -d));
+    b.line(v2(-0.2, -d), v2(-0.2, -d - 0.03));
+    b.finish(
+        "dryer-600",
+        "Tumble dryer 600",
+        "Heat pump tumble dryer 600 × 620 × 850 on its own socket; its condensate in its tank or by its hose into the washing machine's trap",
+        ObjectCategory::Laundry,
+        ("IfcElectricAppliance", "TUMBLEDRYER"),
         Mount::Wall,
     )
 }
@@ -1321,8 +1427,10 @@ pub fn starters() -> Vec<CatalogueObject> {
         sink_unit(),
         base_cabinet(),
         cooker_unit(),
+        dishwasher_unit(),
         wall_cabinet(),
         fridge(),
+        dryer(),
         sofa(),
         armchair(),
         coffee_table(),

@@ -758,6 +758,18 @@ pub fn connectors(model: &Model, e: &Element) -> Vec<Connector> {
             .collect();
     }
     let Some(family) = family_of_type(t) else {
+        // a gas cooker: its gas tap behind it, at the side, under the
+        // worktop
+        if crate::objects::Supply::of(t).is_some_and(|s| s.gas_kw.is_some()) {
+            let (lo, hi) = t.bounds();
+            let base = crate::objects::base_z_of(model, o, t) - floor;
+            let at = DVec2::new(hi.x - 0.1, hi.y - 0.03);
+            return vec![Connector {
+                kind: ConnKind::P,
+                at: o.to_plan(at).extend(base + (lo.z + 0.5).min(hi.z)),
+                dn: 15.0,
+            }];
+        }
         return vec![];
     };
     let len = length_of(family, t);
