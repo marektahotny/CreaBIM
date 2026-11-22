@@ -213,7 +213,38 @@ pub fn wall_rating(model: &Model, wall: &creabim_core::Wall) -> Option<Rating> {
     let ElementKind::Assembly(a) = &model.get(wall.assembly?)?.kind else {
         return None;
     };
-    rating(&a.fire_resistance).or_else(|| rating(&a.description))
+    let mut r = rating(&a.fire_resistance).or_else(|| rating(&a.description))?;
+    if r.kind.is_none() {
+        r.kind = layers_kind(model, a);
+    }
+    Some(r)
+}
+
+/// The kind an assembly's layers tell where its rating names none
+/// (STN 92 0201-2, 2.5): D1 when every layer but the surface finish
+/// (2.5.2) and air is of a material with reaction to fire A1 or A2
+/// (2.5.4 a)); none otherwise, D2 and D3 asking what the layers alone
+/// do not tell (whether an enclosed combustible ignites, 2.5.5).
+pub fn layers_kind(model: &Model, a: &creabim_core::Assembly) -> Option<u8> {
+    use creabim_core::assembly::LayerFunction;
+    let mut any = false;
+    for l in &a.layers {
+        if matches!(l.function, LayerFunction::Finish | LayerFunction::AirGap) {
+            continue;
+        }
+        let Some(id) = l.material else {
+            continue;
+        };
+        let ElementKind::Material(m) = &model.get(id)?.kind else {
+            return None;
+        };
+        let class = m.fire.trim().to_uppercase();
+        if !(class.starts_with("A1") || class.starts_with("A2")) {
+            return None;
+        }
+        any = true;
+    }
+    any.then_some(1)
 }
 
 /// The fire resistance a wall's assembly states (its description, as
@@ -448,5 +479,22 @@ mod tests {
         );
         assert_eq!(declared("EI 15/D1"), Some(15.0));
         assert_eq!(declared("Rw 52 dB"), None);
+    }
+
+    /// 2.5.4 a): every layer but the finish A1 or A2 is D1; an EPS
+    /// layer leaves the kind to the designer.
+    #[test]
+    fn layers_of_a1_or_a2_make_d1() {
+        let mut m = creabim_core::starter::starter_house();
+        creabim_core::skbase::add_base(&m).apply(&mut m).unwrap();
+        let kind = |name: &str| {
+            let (_, _, a) = creabim_core::assembly::assemblies(&m)
+                .into_iter()
+                .find(|(_, n, _)| *n == name)
+                .unwrap();
+            layers_kind(&m, a)
+        };
+        assert_eq!(kind("Obvodová – PORFIX P2-440 300 + EPS šedý 150"), None);
+        assert_eq!(kind("Obvodová – tehla 250 + minerálna vlna 200"), Some(1));
     }
 }
