@@ -1056,6 +1056,10 @@ pub struct Tag {
     /// its mark.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub material: bool,
+    /// Its leader is as long as it was dragged: a door's or window's mark
+    /// keeps no room clear for the leaf or the numbers on its leader.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub placed: bool,
 }
 
 impl Tag {
@@ -1071,6 +1075,7 @@ impl Tag {
             end: None,
             leader_end: None,
             material: false,
+            placed: false,
         }
     }
 }

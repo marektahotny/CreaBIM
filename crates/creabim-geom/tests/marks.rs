@@ -521,6 +521,82 @@ fn door_and_window_marks_stand_square_to_their_wall() {
         .any(|i| matches!(i, PlanItem::Tag { text, round: true, .. } if text.starts_with("K\n"))));
 }
 
+/// A door's mark dragged close keeps the length it was dragged to, even
+/// onto the door, its leader still starting at the door; its numbers find
+/// room past the bubble.
+#[test]
+fn a_door_mark_dragged_close_keeps_its_short_leader() {
+    let mut doc = Document::from_model(sample::sample_house());
+    let plan = named(doc.model(), "Ground Floor plan");
+    let ElementKind::View(v) = doc.model().get(plan).unwrap().kind.clone() else {
+        unreachable!()
+    };
+    let id = doc
+        .model()
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Tag(t) if t.view == plan && is_door(&doc.model().get(t.host)?.kind) => {
+                creabim_geom::annotate::tag_normal(doc.model(), &v, t).map(|_| e.id)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let drawn = |doc: &Document| {
+        view_drawing(doc.model(), plan)
+            .unwrap()
+            .items
+            .iter()
+            .rev()
+            .find_map(|i| match i {
+                PlanItem::Tag {
+                    id: t, anchor, at, ..
+                } if *t == id => Some((*anchor, *at)),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let (anchor, at) = drawn(&doc);
+    let side = (at - anchor).normalize();
+    // not dragged: kept clear of the leaf and its numbers
+    doc.edit_merged(id, "Move tag", |e| {
+        if let ElementKind::Tag(t) = &mut e.kind {
+            t.offset = side * 0.2;
+        }
+    })
+    .unwrap();
+    assert!((drawn(&doc).1 - anchor).length() > 0.5);
+    for len in [0.2, 0.0] {
+        doc.edit_merged(id, "Move tag", |e| {
+            if let ElementKind::Tag(t) = &mut e.kind {
+                t.offset = side * len;
+                t.placed = true;
+            }
+        })
+        .unwrap();
+        let (a, at) = drawn(&doc);
+        assert!((a - anchor).length() < 1e-9);
+        assert!((at - anchor - side * len).length() < 1e-9, "{len}");
+        let d = view_drawing(doc.model(), plan).unwrap();
+        let along: Vec<DVec2> = d
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                PlanItem::Annotation { id: t, item } if *t == id => match item.shape {
+                    Shape::Along { at, .. } => Some(at),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        assert_eq!(along.len(), 2);
+        // past the bubble, on the side it was dragged to
+        assert!(
+            along.iter().all(|p| (*p - anchor).dot(side) > len),
+            "{along:?}"
+        );
+    }
+}
+
 #[test]
 fn a_typed_dimension_moves_what_its_end_is_on() {
     use creabim_core::{Dimension, HostPoint};
