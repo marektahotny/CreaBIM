@@ -38,6 +38,11 @@ pub struct Element {
     /// (see [`crate::reno`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reno: Option<crate::reno::Reno>,
+    /// Locked against moving (the padlock by its name, PilonDesigner's
+    /// lock): nothing may move or turn it until it is unlocked; its other
+    /// values still change (see [`crate::lock`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
 }
 
 /// An object in another file that an element mirrors.
@@ -63,6 +68,7 @@ impl Element {
             of_type: None,
             mark: None,
             reno: None,
+            locked: false,
         }
     }
 

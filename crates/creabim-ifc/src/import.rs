@@ -562,6 +562,7 @@ impl<'a> Importer<'a> {
             let eid = self.new_id(e);
             let name = Self::name(e, "Type");
             self.type_elems.push(Element {
+                locked: false,
                 mark: None,
                 reno: None,
                 id: eid,
@@ -629,6 +630,7 @@ impl<'a> Importer<'a> {
             top_z: z + height,
         });
         self.wall_elems.push(Element {
+            locked: false,
             mark: None,
             reno: None,
             source: None,
@@ -655,6 +657,7 @@ impl<'a> Importer<'a> {
         let eid = self.new_id(e);
         let name = Self::name(e, f.kind.label());
         self.opening_elems.push(Element {
+            locked: false,
             mark: None,
             reno: None,
             source: None,
@@ -694,6 +697,7 @@ impl<'a> Importer<'a> {
                 let (offset, sill, width, height) = self.snap_to_void(&wall, r);
                 let eid = self.new_id(o);
                 self.opening_elems.push(Element {
+                    locked: false,
                     mark: None,
                     reno: None,
                     source: None,
@@ -889,6 +893,7 @@ impl<'a> Importer<'a> {
                     .unwrap_or_else(|| format!("Level {i}"));
             }
             self.level_elems.push(Element {
+                locked: false,
                 mark: None,
                 reno: None,
                 source: None,
@@ -1468,6 +1473,7 @@ impl<'a> Importer<'a> {
                 .insert(eid, voids.into_iter().map(|v| (v, false)).collect());
         }
         self.wall_elems.push(Element {
+            locked: false,
             mark: None,
             reno: None,
             source: None,
@@ -1679,6 +1685,7 @@ impl<'a> Importer<'a> {
         let eid = self.new_id(e);
         self.slabs.insert(id, self.wall_elems.len());
         self.wall_elems.push(Element {
+            locked: false,
             mark: None,
             reno: None,
             source: None,
@@ -1885,6 +1892,7 @@ impl<'a> Importer<'a> {
             "Window"
         };
         self.opening_elems.push(Element {
+            locked: false,
             mark: None,
             reno: None,
             source: None,
@@ -1965,6 +1973,7 @@ impl<'a> Importer<'a> {
         let material = self.material_for(id);
         let eid = self.new_id(e);
         self.other_elems.push(Element {
+            locked: false,
             mark: None,
             reno: None,
             source: None,

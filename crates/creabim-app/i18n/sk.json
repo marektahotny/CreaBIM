@@ -8178,5 +8178,15 @@
  "✔ No two elements share a mark.": "✔ Žiadne dva prvky nemajú rovnaké označenie.",
  "Mended while opening": "Opravené pri otváraní",
  "{} broken elements were left out and the undo history was shortened. Save the project to keep it so.": "Vynechaných {} poškodených prvkov a história krokov späť bola skrátená. Uložte projekt, aby to tak zostalo.",
- "{} oldest undo steps no longer fitted the model and were dropped; the model is whole. Save the project to keep it so.": "{} najstarších krokov späť už nesedelo s modelom a boli vypustené; model je celý. Uložte projekt, aby to tak zostalo."
+ "{} oldest undo steps no longer fitted the model and were dropped; the model is whole. Save the project to keep it so.": "{} najstarších krokov späť už nesedelo s modelom a boli vypustené; model je celý. Uložte projekt, aby to tak zostalo.",
+ "It is locked against moving: unlock it first (the padlock).": "Prvok je zamknutý proti posunu: najprv ho odomknite (zámok).",
+ "{} is locked against moving: unlock it first (the padlock by it or in Properties).": "{} je zamknutý proti posunu: najprv ho odomknite (zámok pri ňom alebo vo Vlastnostiach).",
+ "Locked: it can't be moved. Click the padlock to unlock it": "Zamknuté: nedá sa posunúť. Kliknutím na zámok ho odomknete",
+ "Click the padlock to lock it against moving": "Kliknutím na zámok ho zamknete proti posunu",
+ "Unlocked: it moves again.": "Odomknuté: dá sa znova posúvať.",
+ "Locked: it can't be moved until you unlock it.": "Zamknuté: nedá sa posunúť, kým ho neodomknete.",
+ "Lock": "Zamknúť",
+ "Unlock": "Odomknúť",
+ "Locked against moving: click to let it move again": "Zamknuté proti posunu: kliknutím sa dá znova posúvať",
+ "Lock it against moving: no drag, Move or dimension shifts it until unlocked": "Zamknúť proti posunu: kým ho neodomknete, nepohne ním ťahanie, Presun ani kóta"
 }

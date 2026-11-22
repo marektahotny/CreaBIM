@@ -309,5 +309,7 @@ window.ICONS = {
 "polyline": "<path d=\"M3 19 8 8l6 7 7-11\" /> <circle cx=\"3\" cy=\"19\" r=\"1.3\" /> <circle cx=\"21\" cy=\"4\" r=\"1.3\" />",
 "slope-dim": "<path d=\"M2 20 22 10\" /> <path d=\"M17 4.5 6 10\" /> <path d=\"m6 10 3.6-.1M6 10l2-3\" /> <path d=\"M15 20h7\" stroke-dasharray=\"2 1.5\" />",
 "arc-3pt": "<path d=\"M4 18A9 9 0 0 1 20 18\" /> <circle cx=\"4\" cy=\"18\" r=\"1.5\" /> <circle cx=\"20\" cy=\"18\" r=\"1.5\" /> <circle cx=\"12\" cy=\"9.1\" r=\"1.5\" />",
-"curve-line": "<path d=\"M3 18c3-9 6-9 9-4s6 5 9-6\" /> <circle cx=\"3\" cy=\"18\" r=\"1.3\" /> <circle cx=\"21\" cy=\"8\" r=\"1.3\" />"
+"curve-line": "<path d=\"M3 18c3-9 6-9 9-4s6 5 9-6\" /> <circle cx=\"3\" cy=\"18\" r=\"1.3\" /> <circle cx=\"21\" cy=\"8\" r=\"1.3\" />",
+"lock": "<rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\" /> <path d=\"M7 11V7a5 5 0 0 1 10 0v4\" />",
+"lock-open": "<rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\" /> <path d=\"M7 11V7a5 5 0 0 1 9.9-1\" />"
 };

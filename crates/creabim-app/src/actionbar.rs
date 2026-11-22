@@ -223,7 +223,27 @@ impl CreaBimApp {
                 .key(c.shortcut())
                 .hint(hint)
         };
-        let mut common = vec![
+        // the padlock (George 2026-11-22): lock against moving, or unlock
+        let lockable: Vec<&Element> = ids
+            .iter()
+            .filter_map(|id| model.get(*id))
+            .filter(|e| creabim_core::lock::lockable(&e.kind))
+            .collect();
+        let mut common = vec![];
+        if !lockable.is_empty() {
+            let locked = lockable.iter().all(|e| e.locked);
+            common.push(Act {
+                on: locked,
+                ..if locked {
+                    Act::new("bar.lock", "Unlock", "lock")
+                        .hint("Locked against moving: click to let it move again")
+                } else {
+                    Act::new("bar.lock", "Lock", "lock-open")
+                        .hint("Lock it against moving: no drag, Move or dimension shifts it until unlocked")
+                }
+            });
+        }
+        common.extend([
             cmd(
                 Command::Duplicate,
                 "duplicate",
@@ -242,7 +262,7 @@ impl CreaBimApp {
                 "eye-off",
                 "Hide it until Alt+H shows everything again",
             ),
-        ];
+        ]);
         if !all_annotation {
             common.push(cmd(
                 Command::Isolate,
@@ -380,6 +400,32 @@ impl CreaBimApp {
         match id {
             "bar.edit" => self.toggle_edit_mode(),
             "bar.cmd:delete" => self.delete_selected(),
+            "bar.lock" => {
+                let all: Vec<Element> = self
+                    .selection
+                    .all()
+                    .iter()
+                    .filter_map(|id| model.get(*id))
+                    .filter(|e| creabim_core::lock::lockable(&e.kind))
+                    .cloned()
+                    .collect();
+                let lock = !all.iter().all(|e| e.locked);
+                let mut tx = Transaction::new(if lock { "Lock" } else { "Unlock" });
+                for before in all.into_iter().filter(|e| e.locked != lock) {
+                    let mut after = before.clone();
+                    after.locked = lock;
+                    tx = tx.replace(before, after);
+                }
+                let r = self.doc.commit(tx);
+                self.report(
+                    r,
+                    if lock {
+                        "Locked: it can't be moved until you unlock it."
+                    } else {
+                        "Unlocked: it moves again."
+                    },
+                );
+            }
             "bar.view.open" => {
                 if let Some(id) = self.selection.active {
                     self.active_view = Some(id);
@@ -527,7 +573,8 @@ mod tests {
         app.selection.only(wall);
         let (own, common) = app.element_actions();
         assert_eq!(ids(&own), ["wall.flip", "wall.attach", "bar.maketype"]);
-        assert_eq!(common[0].label, "Duplicate");
+        assert_eq!(common[0].id, "bar.lock");
+        assert_eq!(common[1].label, "Duplicate");
         assert!(common.iter().any(|a| a.label == "Show only selected"));
         assert_eq!(common.last().unwrap().id, "nav.fitsel");
         // walls and a door: only Flip is theirs in common
@@ -553,6 +600,8 @@ mod tests {
             "eye-off",
             "isolate",
             "frame-selection",
+            "lock",
+            "lock-open",
             "ellipsis",
             "trash-2",
         ] {
