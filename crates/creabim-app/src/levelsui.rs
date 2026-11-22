@@ -298,7 +298,7 @@ impl CreaBimApp {
                 for h in [
                     "Name",
                     "level\u{4}Elevation",
-                    "Height",
+                    "level\u{4}Height",
                     "To next",
                     "On it",
                     "Floor plan",
@@ -328,7 +328,8 @@ impl CreaBimApp {
                     match list.get(i + 1) {
                         Some((_, above, a)) => {
                             let gap = a.elevation - l.elevation;
-                            crate::props::flow(ui, |ui| {
+                            // one line: a wrapped cell clips the row (George)
+                            ui.horizontal(|ui| {
                                 ui.label(crate::units::len(gap))
                                     .on_hover_text(crate::i18n::tr(&format!(
                                         "From here up to {above}"
@@ -376,7 +377,7 @@ impl CreaBimApp {
                             }
                         }
                     }
-                    crate::props::flow(ui, |ui| {
+                    ui.horizontal(|ui| {
                         ui.menu_button(crate::i18n::t("Duplicate"), |ui| {
                             if ui.button(crate::i18n::t("The level only")).clicked() {
                                 asks.push(Ask::Duplicate(*id, false));
