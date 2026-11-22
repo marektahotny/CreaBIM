@@ -137,6 +137,14 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
             add(Part::Frame, b(fw, -hd, 0.0), b(w - fw, hd, fw));
             sills(&mut add);
         }
+        // a divided door's threshold between its jambs, its leaves and
+        // fixed fields standing on it
+        let foot = if door && o.threshold {
+            add(Part::Frame, b(fw, -hd, 0.0), b(w - fw, hd, THRESHOLD));
+            THRESHOLD
+        } else {
+            0.0
+        };
         // the division is seen from outside (+y here, −y once turned
         // across): its left is at the far x until then
         let x_of = |x: f64| if across { x } else { w - x };
@@ -153,7 +161,7 @@ pub fn opening_boxes(o: &Opening, wall: &Wall, asm: Option<&Assembly>) -> Vec<Pa
             .as_ref()
             .map_or(f.leaf(), |d| d.leaf_thickness().min(f.frame.depth));
         for fl in &fields {
-            field_boxes(&mut add, fl, &x_of, across, hd, fw, lt);
+            field_boxes(&mut add, fl, &x_of, across, hd, fw, lt, foot);
         }
     }
     match o.kind {
@@ -334,6 +342,7 @@ const SASH_PROUD: f64 = 0.012;
 /// panel in the frame; an opening leaf as a sash proud of the frame
 /// inside, its glass in the sash and a handle inside; a door's leaf with
 /// a lever on both faces. Built facing +y: inside is −y.
+#[allow(clippy::too_many_arguments)]
 fn field_boxes(
     add: &mut impl FnMut(Part, DVec3, DVec3),
     fl: &Field,
@@ -342,10 +351,13 @@ fn field_boxes(
     hd: f64,
     fw: f64,
     leaf_t: f64,
+    foot: f64,
 ) {
     let b = DVec3::new;
     let (xa, xb) = (x_of(fl.x0).min(x_of(fl.x1)), x_of(fl.x0).max(x_of(fl.x1)));
-    let (z0, z1) = (fl.y0, fl.y1);
+    // a field down at the floor stands on the door's threshold
+    let on_sill = foot > 0.0 && fl.y0 < 1e-6;
+    let (z0, z1) = (if on_sill { foot } else { fl.y0 }, fl.y1);
     let op = fl.sash.op;
     let fill = if fl.sash.panel {
         Part::Panel
@@ -358,7 +370,7 @@ fn field_boxes(
         let gap = 0.004;
         add(
             Part::Leaf,
-            b(xa + gap, hd - leaf_t, z0 + 0.01),
+            b(xa + gap, hd - leaf_t, z0 + if on_sill { gap } else { 0.01 }),
             b(xb - gap, hd, z1 - gap),
         );
         if xb - xa > 0.3 && z1 - z0 > 1.2 {
@@ -853,6 +865,60 @@ mod tests {
         // every part is a closed box
         for (_, m) in &meshes {
             assert!(m.volume() > 0.0);
+        }
+    }
+
+    #[test]
+    fn every_door_with_a_threshold_has_it_between_its_jambs() {
+        use creabim_core::joinery::{DoorFrame, DoorMaterial, DoorSpec};
+        let divisions = [
+            None,
+            Some("v(1:D-L,1:D-P)"),
+            Some("v(0.6:D-L,0.4:FIX)"),
+            Some("v(1:P-L,1:FIX)"),
+            Some("v(1:ZP-P,1:FIX*)"),
+            Some("h(0.8:v(1:D-L,1:D-P),0.2:FIX)"),
+        ];
+        for frame in DoorFrame::ALL {
+            for leaf in DoorMaterial::ALL {
+                for div in divisions {
+                    for spec in [false, true] {
+                        let mut o = opening(OpeningKind::Door, OpeningFrame::default());
+                        o.threshold = true;
+                        o.division = div.map(|d| FrameNode::parse(d).unwrap());
+                        if spec {
+                            let mut d = DoorSpec::fitting(frame, o.width, o.height);
+                            d.leaf = leaf;
+                            o.door = Some(d);
+                        }
+                        let boxes = opening_boxes(&o, &wall(), None);
+                        let sill = boxes.iter().find(|b| {
+                            b.part == Part::Frame
+                                && b.lo.z <= 1e-9
+                                && (b.hi.z - THRESHOLD).abs() < 1e-9
+                                && b.hi.x - b.lo.x > 0.8
+                        });
+                        let what = format!("{frame:?} {leaf:?} {div:?} spec {spec}");
+                        assert!(sill.is_some(), "no threshold: {what}");
+                        // nothing else of the door reaches down into it
+                        for b in &boxes {
+                            if matches!(b.part, Part::Leaf | Part::Glass | Part::Panel) {
+                                assert!(b.lo.z >= THRESHOLD - 1e-9, "{what}: {:?} sinks", b.part);
+                            }
+                        }
+                        // and none without one
+                        o.threshold = false;
+                        let boxes = opening_boxes(&o, &wall(), None);
+                        assert!(
+                            !boxes.iter().any(|b| b.part == Part::Frame
+                                && b.lo.z <= 1e-9
+                                && (b.hi.z - THRESHOLD).abs() < 1e-9
+                                && b.hi.x - b.lo.x > 0.8),
+                            "{what}: a threshold not asked for"
+                        );
+                    }
+                }
+            }
         }
     }
 
