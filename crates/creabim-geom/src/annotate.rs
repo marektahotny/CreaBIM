@@ -1850,7 +1850,20 @@ pub fn surface_height(model: &Model, host: ElementId, p: DVec2) -> Option<f64> {
         .filter_map(|i| i.mesh.bounds())
         .map(|(_, b)| b.z as f64)
         .reduce(f64::max)?;
-    hit_down(&scene, p, top + 1.0, &|i| i.id == host).map(|(_, z)| z)
+    around(p)
+        .filter_map(|q| hit_down(&scene, q, top + 1.0, &|i| i.id == host))
+        .map(|(_, z)| z)
+        .reduce(f64::max)
+}
+
+/// `p` and four points half a millimetre about it: a point snapped right
+/// onto an edge (a ridge, an eave, a slab's rim) reads the top surface
+/// there, though a line straight down its edge may slip past the faces.
+fn around(p: DVec2) -> impl Iterator<Item = DVec2> {
+    const R: f64 = 5e-4;
+    [(0.0, 0.0), (R, 0.0), (-R, 0.0), (0.0, R), (0.0, -R)]
+        .into_iter()
+        .map(move |(x, y)| p + DVec2::new(x, y))
 }
 
 /// The element a plan's spot level clicked at `p` stands on, and its
@@ -1880,11 +1893,15 @@ pub fn surface_under(
         .reduce(f64::max)?
         .max(below)
         + 1.0;
-    let origin = glam::Vec3::new(p.x as f32, p.y as f32, top as f32);
-    crate::pick::pick_all_items(&scene, origin, -glam::Vec3::Z, &keep)
-        .into_iter()
-        .map(|h| (h.id, top - h.t as f64))
-        .find(|(_, z)| *z < below + 1e-4)
+    around(p)
+        .filter_map(|q| {
+            let origin = glam::Vec3::new(q.x as f32, q.y as f32, top as f32);
+            crate::pick::pick_all_items(&scene, origin, -glam::Vec3::Z, &keep)
+                .into_iter()
+                .map(|h| (h.id, top - h.t as f64))
+                .find(|(_, z)| *z < below + 1e-4)
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
 }
 
 /// Where a line down from height `from` at `p` first meets a drawn item
