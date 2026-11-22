@@ -107,6 +107,7 @@ pub fn sample_house() -> Model {
                     bearing: None,
                     fire_partial: false,
                     no_fire_barriers: false,
+                    plinth_steps: Vec::new(),
                 }),
             );
             let id = wall.id;
@@ -212,6 +213,7 @@ pub fn sample_house() -> Model {
             bearing: None,
             fire_partial: false,
             no_fire_barriers: false,
+            plinth_steps: Vec::new(),
         }),
     );
     let pid = part.id;

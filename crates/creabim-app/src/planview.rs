@@ -2599,10 +2599,21 @@ fn show_pane(
         && ui
             .input(|i| i.pointer.press_origin())
             .is_some_and(|p0| on_mark(doc.model(), &plan.items, xf.to_world(p0), mm));
+    // the dot at a selected dimension's witness line end: it lies off
+    // the dimension's line, so it is looked for on its own
+    let press_on_witness = response.drag_started_by(egui::PointerButton::Primary)
+        && ui.input(|i| i.pointer.press_origin()).is_some_and(|p0| {
+            let w = xf.to_world(p0);
+            let tol = 6.0 / scale as f64;
+            selected_witness_ends(doc.model(), view, selection)
+                .iter()
+                .any(|(_, _, ends)| ends.iter().any(|e| e.start.distance(w) < tol))
+        });
     let annotation_drag = state.anno.grab.is_some()
         || !response.drag_started_by(egui::PointerButton::Primary)
         || press_on_selected
-        || press_on_mark;
+        || press_on_mark
+        || press_on_witness;
     // a site plan turns itself by a line, the model stays put
     let site_plan = matches!(doc.model().get(view).map(|e| &e.kind),
         Some(ElementKind::View(v)) if v.graphics.range.is_site());
@@ -4831,6 +4842,7 @@ fn section_tool(
                         bearing: None,
                         fire_partial: false,
                         no_fire_barriers: false,
+                        plinth_steps: Vec::new(),
                     }),
                 );
                 // its type's thickness, but its drawn height

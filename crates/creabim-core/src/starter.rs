@@ -79,6 +79,8 @@ impl Builder {
 
     /// A library material by name, added to the model if it is not there.
     fn material(&mut self, name: &str) -> ElementId {
+        // the Slovak base's material where it has the same one
+        let name = crate::samemat::canonical(name);
         if let Some(e) = self
             .doc
             .model()
@@ -87,11 +89,13 @@ impl Builder {
         {
             return e.id;
         }
-        let entry = crate::library::LIBRARY
-            .iter()
-            .find(|e| e.name == name)
-            .unwrap_or_else(|| panic!("no library material {name}"));
-        let e = entry.element();
+        let e = crate::skbase::base_material(name).unwrap_or_else(|| {
+            crate::library::LIBRARY
+                .iter()
+                .find(|e| e.name == name)
+                .unwrap_or_else(|| panic!("no library material {name}"))
+                .element()
+        });
         let id = e.id;
         self.commit(Transaction::new("Add material").insert(e));
         id

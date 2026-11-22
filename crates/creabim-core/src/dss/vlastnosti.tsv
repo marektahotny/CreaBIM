@@ -453,3 +453,27 @@
 449	spôsob využitia územia	t
 450	zásobník horľavých alebo horenie podporujúcich plynov	b
 451	účinnosť [%]	c
+452	dopravná výška [m]	c	m
+453	faktor difúzneho odporu	c
+454	materiál výstuže	t
+455	objemová hmotnosť	c	kg/m³
+456	polomer	c	mm,cm,km,m
+457	pozícia	t
+458	počet vývodov	n
+459	rozsah teplôt	t	°C
+460	rozostup	c	mm
+461	rozvinutá dĺžka	c	mm,cm,km,m
+462	rozvinutá plocha	c	cm²,mm²,m²,km²
+463	rozvinutá šírka	c	mm,cm,km,m
+464	súčiniteľ tepelnej vodivosti – deklarovaný	c	W/(m·K)
+465	škára	t
+466	hrúbka opláštenia 1	t
+467	hrúbka opláštenia 2	t
+468	hrúbka plechu	c	mm
+469	typ opláštenia 1	t
+470	typ opláštenia 2	t
+471	vonkajšia vrstva	t
+472	výhrevnosť	c
+473	spôsob opláštenia	t
+474	kapacita	t
+475	rozsah tlaku	t

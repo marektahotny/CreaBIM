@@ -1176,6 +1176,10 @@ pub struct Wall {
     /// openings, say), whatever the project's ETICS setting.
     #[serde(default, skip_serializing_if = "is_false")]
     pub no_fire_barriers: bool,
+    /// Its own plinth top, in steps along it, when its build-up has a
+    /// plinth; empty takes it from the finished ground.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plinth_steps: Vec<crate::plinth::PlinthStep>,
 }
 
 /// One layer's ends moved by hand: how far layer `layer` (counted from the
@@ -1336,6 +1340,7 @@ impl Wall {
             bearing: None,
             fire_partial: false,
             no_fire_barriers: false,
+            plinth_steps: Vec::new(),
         }
     }
 

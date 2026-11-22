@@ -786,7 +786,14 @@ mod tests {
         let model = starter();
         let rough = takeoff::lines(&model);
         let measured = lines(&model);
-        assert_eq!(rough.len(), measured.len());
+        // every line stays; a layer part of another material (an ETICS
+        // fire barrier of mineral wool) adds one of its own
+        assert!(measured.len() >= rough.len());
+        for r in &rough {
+            assert!(measured
+                .iter()
+                .any(|l| l.element == r.element && l.layer == r.layer && l.material == r.material));
+        }
         let sum = |ls: &[Line], cat: &str| {
             ls.iter()
                 .filter(|l| l.category == cat)

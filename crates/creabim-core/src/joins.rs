@@ -1772,6 +1772,7 @@ mod tests {
                 fire_resistance: String::new(),
                 wrap: Default::default(),
                 thermal: None,
+                plinth: None,
             }),
         );
         let aid = a.id;

@@ -511,6 +511,19 @@ pub(crate) fn object_class(class: &str, predefined: &str, key: &str) -> Option<&
             return None
         }
         ("IfcFurniture", _) => "CMB001",
+        // household appliances, by the examples the standard gives for
+        // its classes (George 2026-11-22); a washing machine has none
+        ("IfcElectricAppliance", "FRIDGE_FREEZER" | "REFRIGERATOR" | "FREEZER") => "ECC000",
+        ("IfcElectricAppliance", "ELECTRICCOOKER") => "EBH000",
+        ("IfcElectricAppliance", "DISHWASHER") => "HKA000",
+        ("IfcElectricAppliance", "TUMBLEDRYER") => "HPA001",
+        ("IfcElectricAppliance", _) => return None,
+        ("IfcAudioVisualAppliance", _) => "PZB000",
+        ("IfcSwitchingDevice", _) => "SJA002",
+        // a fan-coil heats and cools water-fed with a fan; a manifold
+        // splits and gathers the heating water
+        (_, _) if crate::fixture::is_cooling(&key) => "EPD000",
+        (_, _) if crate::fixture::is_manifold(&key) => "XZA001",
         ("IfcElectricDistributionBoard", _) => "XDC010",
         ("IfcOutlet", _) => "XDB001",
         ("IfcSensor", "SMOKESENSOR") => "BQF002",
@@ -524,8 +537,8 @@ pub(crate) fn object_class(class: &str, predefined: &str, key: &str) -> Option<&
         ("IfcTank", _) if key.contains("zasobnik") => "CPA001",
         ("IfcTank", _) if key.contains("retention") || key.contains("soakaway") => "CMA008",
         ("IfcTank", _) => "CMB003",
-        // a pumping shaft: the standard has no class for it
-        ("IfcDistributionChamberElement", "SUMP") if key.contains("pumping") => return None,
+        // a pumping shaft
+        ("IfcDistributionChamberElement", "SUMP") if key.contains("pumping") => "GPA006",
         ("IfcDistributionChamberElement", "SUMP") => "CMA008",
         ("IfcDistributionChamberElement", _) => "XMC001",
         ("IfcUnitaryEquipment", _) if key.contains("heat-tc") => "EGA002",
@@ -597,6 +610,13 @@ pub fn auto_class(model: &Model, e: &crate::Element) -> Option<&'static Class> {
                 "NAB003"
             })
         }
+        // a suspended ceiling's build-up drawn as a slab is a ceiling
+        ElementKind::Slab(_)
+            if crate::assembly::assembly_of(model, e)
+                .is_some_and(|(a, _)| a.name.starts_with("Podhľad")) =>
+        {
+            Some("NCD002")
+        }
         ElementKind::Slab(_) => Some("ULK001"),
         ElementKind::Opening(o) => match o.kind {
             crate::OpeningKind::Door => Some("QQC001"),
@@ -628,6 +648,13 @@ pub fn auto_class(model: &Model, e: &crate::Element) -> Option<&'static Class> {
             crate::FootingKind::Pad => "ULG004",
         }),
         ElementKind::Ceiling(_) => Some("NCD001"),
+        // roof flashing: gutters, downpipes, outlets and the rest
+        ElementKind::Flashing(f) => Some(match &f.item {
+            crate::flashing::FlashingItem::Gutter(_) => "WMB001",
+            crate::flashing::FlashingItem::Downpipe(_) => "WPA001",
+            crate::flashing::FlashingItem::Outlet(_) => "XKE001",
+            _ => "NED002",
+        }),
         ElementKind::Room(r) => room_class(crate::roomtype::RoomType::of(&r.occupancy, &e.name)),
         ElementKind::Site(s) => match &s.form {
             crate::SiteForm::Plant { form, .. } => Some(match form {
@@ -643,6 +670,15 @@ pub fn auto_class(model: &Model, e: &crate::Element) -> Option<&'static Class> {
         }),
         ElementKind::Valve(v) => valve_class(&v.kind),
         ElementKind::Circuit(_) => Some("JK01"),
+        // a cooker with gas burners is a gas appliance
+        ElementKind::Object(_)
+            if crate::objects::type_of(model, e).is_some_and(|t| {
+                t.ifc.predefined == "ELECTRICCOOKER"
+                    && crate::objects::Supply::of(t).is_some_and(|s| s.gas_kw.is_some())
+            }) =>
+        {
+            Some("EMA004")
+        }
         ElementKind::Object(_) => crate::objects::type_of(model, e).and_then(|t| {
             object_class(
                 &t.ifc.class,
@@ -1551,6 +1587,34 @@ mod tests {
             class("BFA002").unwrap().ifc_entity(),
             ("IfcFlowMeter", Some("WATERMETER"))
         );
+    }
+
+    /// Every catalogue item has a class of the standard, except those it
+    /// has none for: a washing machine, and the cars and people that only
+    /// give scale.
+    #[test]
+    fn every_catalogue_item_is_classified() {
+        let mut none = vec![];
+        for c in crate::catalogue::starters() {
+            let t = &c.object;
+            let code = object_class(&t.ifc.class, &t.ifc.predefined, &c.key);
+            let k = c.key.to_ascii_lowercase();
+            let exempt = k.contains("car")
+                || k.contains("person")
+                || k.contains("child")
+                || k.contains("pracka")
+                || t.ifc.predefined == "WASHINGMACHINE";
+            match code {
+                Some(code) => assert!(
+                    class(code).is_some(),
+                    "{}: {code} is not in the table",
+                    c.key
+                ),
+                None if exempt => {}
+                None => none.push(format!("{} ({} {})", c.key, t.ifc.class, t.ifc.predefined)),
+            }
+        }
+        assert!(none.is_empty(), "no class: {none:#?}");
     }
 
     #[test]

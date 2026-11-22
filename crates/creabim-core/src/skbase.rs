@@ -513,6 +513,21 @@ fn function(l: &BaseLayer, first: bool, category: &str, screed: bool) -> LayerFu
     }
 }
 
+/// The names of the base's materials.
+pub fn base_material_names() -> Vec<String> {
+    base().materials.iter().map(|m| m.name.clone()).collect()
+}
+
+/// The base material named `name` as a new element, not yet in a model.
+pub fn base_material(name: &str) -> Option<Element> {
+    let b = base();
+    let m = b.materials.iter().find(|m| m.name == name)?;
+    Some(Element::new(
+        m.name.as_str(),
+        ElementKind::Material(material(m)),
+    ))
+}
+
 /// What the base holds: (materials, wall, floor, roof build-ups).
 pub fn counts() -> (usize, usize, usize, usize) {
     let b = base();

@@ -600,6 +600,7 @@ fn assembly(c: &mut Ctx, a: &f::Assembly, at: &Path) {
         fire_resistance: String::new(),
         wrap: Default::default(),
         thermal: None,
+        plinth: None,
     };
     c.insert(
         &a.id,
