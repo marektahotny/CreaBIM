@@ -337,7 +337,10 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         return crate::tradelists::recuperation(model);
     }
     if category == ScheduleCategory::BuildingFigures {
-        return crate::summary::figures_schedule(model);
+        return crate::sitetables::area_schedule(model);
+    }
+    if category == ScheduleCategory::Identification {
+        return crate::sitetables::identification_schedule(model);
     }
     if category == ScheduleCategory::LintelList {
         return crate::masonry::lintel_schedule(model);
@@ -758,6 +761,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         | ScheduleCategory::LintelList
         | ScheduleCategory::VentilationHrv
         | ScheduleCategory::BuildingFigures
+        | ScheduleCategory::Identification
         | ScheduleCategory::FlashingTable
         | ScheduleCategory::ElectricalList => {
             unreachable!("the take-offs and the list of documentation are built on their own")

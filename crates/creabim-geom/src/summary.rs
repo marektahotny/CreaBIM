@@ -894,15 +894,8 @@ mod tests {
     }
 }
 
-/// The building's figures as a table: built-up area, living and usable
-/// area, the parts of the enclosed volume by STN 73 4055 and Op under
-/// them.
-pub fn figures_schedule(model: &Model) -> crate::schedule::Schedule {
-    use crate::schedule::{Column, Row, Schedule};
-    use creabim_core::words::tr;
-    let units = model.units();
-    let c = cubature(model);
-    let built = figures_built_up(model);
+/// The rooms' living and usable areas as the room legends count them, m².
+pub fn living_and_usable(model: &Model) -> (f64, f64) {
     let under = crate::roomlegend::Undersides::of(model);
     let (mut living, mut usable) = (0.0, 0.0);
     for e in model.iter() {
@@ -917,6 +910,24 @@ pub fn figures_schedule(model: &Model) -> crate::schedule::Schedule {
             living += a;
         }
     }
+    (living, usable)
+}
+
+/// The usable area of all rooms, m².
+pub fn usable_area(model: &Model) -> f64 {
+    living_and_usable(model).1
+}
+
+/// The building's figures as a table: built-up area, living and usable
+/// area, the parts of the enclosed volume by STN 73 4055 and Op under
+/// them.
+pub fn figures_schedule(model: &Model) -> crate::schedule::Schedule {
+    use crate::schedule::{Column, Row, Schedule};
+    use creabim_core::words::tr;
+    let units = model.units();
+    let c = cubature(model);
+    let built = figures_built_up(model);
+    let (living, usable) = living_and_usable(model);
     let m3 = |v: f64| format!("{v:.2} m³");
     let row = |what: &str, value: String| Row {
         id: creabim_core::ElementId::NIL,

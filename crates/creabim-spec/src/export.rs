@@ -1110,6 +1110,7 @@ fn view(e: &Element, id: &str, v: &core::View, ids: &Ids) -> f::View {
                 core::ScheduleCategory::BuildingFigures => f::ScheduleCategory::BuildingFigures,
                 core::ScheduleCategory::FireRisk => f::ScheduleCategory::FireRisk,
                 core::ScheduleCategory::FlashingTable => f::ScheduleCategory::FlashingTable,
+                core::ScheduleCategory::Identification => f::ScheduleCategory::Identification,
             });
         }
     }

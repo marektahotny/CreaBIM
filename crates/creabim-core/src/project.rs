@@ -132,6 +132,26 @@ pub struct ProjectInfo {
     pub building_name: String,
     /// "Dwelling", "Office", "School".
     pub building_use: String,
+    /// The highest built-up index the zoning plan allows on the plot
+    /// (max. index zastavanosti), as the designer reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_coverage: Option<f64>,
+    /// The identification of the construction on the site plan: the
+    /// town, district (okres) and region (kraj) of the site, the client's
+    /// seat, the plot's owner and its sheet of ownership (list
+    /// vlastníctva).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub town: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub district: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub region: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub client_address: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub land_owner: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub ownership_sheet: String,
     /// The project's notepad (MU26): notes and to-dos, markdown, kept with
     /// the project and never printed. Read into [`ProjectInfo::pad`] once.
     #[serde(skip_serializing_if = "String::is_empty")]

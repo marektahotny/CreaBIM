@@ -1226,10 +1226,38 @@ pub fn sheet_items(model: &Model, view: ElementId, over: bool) -> Vec<PlanItem> 
                     }
                     // 1 2 3 top, 4 5 6 middle, 7 8 9 bottom; left, centre, right
                     let (col, row) = ((t.align.max(1) - 1) % 3, (t.align.max(1) - 1) / 3);
-                    let up = DVec2::from_angle(t.angle.to_radians() + turned).perp();
+                    let along = t.angle.to_radians() + turned;
+                    let up = DVec2::from_angle(along).perp();
+                    let at = r.place(t.at) + up * (row as f64 - 1.0) * t.h * metre / 2.0;
+                    // text turned (by itself, with its drawing or with the
+                    // view) reads along its line on paper as on screen
+                    // (George 2026-11-22: the origin's label lay flat on
+                    // the sheet)
+                    let paper = (along + turn.to_radians()).rem_euclid(std::f64::consts::TAU);
+                    if paper.min(std::f64::consts::TAU - paper) > 1e-4 {
+                        let w = creabim_geom::paper::text_width(&t.text, size) * mm;
+                        let dir = DVec2::from_angle(along);
+                        out.push(PlanItem::Annotation {
+                            id,
+                            item: Box::new(creabim_geom::annotation::Annotation {
+                                shape: creabim_geom::annotation::Shape::Along {
+                                    at: at + dir * w * (0.5 - col as f64 * 0.5),
+                                    angle: along,
+                                },
+                                text: t.text.clone(),
+                                look: creabim_geom::annotation::TextLook {
+                                    size,
+                                    rgb: Some(ink),
+                                    ..Default::default()
+                                },
+                                mm,
+                            }),
+                        });
+                        continue;
+                    }
                     out.push(PlanItem::Text {
                         id,
-                        at: r.place(t.at) + up * (row as f64 - 1.0) * t.h * metre / 2.0,
+                        at,
                         text: t.text.clone(),
                         size,
                         align: match col {
