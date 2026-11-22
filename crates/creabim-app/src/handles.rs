@@ -1548,6 +1548,91 @@ pub fn originals(
     (out, joined)
 }
 
+/// How near a face a drawn-out object's end has to come to stop on it, m.
+const END_MAGNET: f64 = 0.15;
+
+/// The length object `e` drawn out by its right (or left) end to `raw`
+/// would have to stop with that end on the nearest face across its path
+/// within `tol`: a wall's layer faces (plaster and insulation too), a
+/// column's sides, another object's box on the same level.
+pub fn end_magnet(model: &Model, e: &Element, raw: f64, right: bool, tol: f64) -> Option<f64> {
+    let ElementKind::Object(o) = &e.kind else {
+        return None;
+    };
+    let (lo, hi) = creabim_core::objects::type_of(model, e)?.bounds();
+    let (min, max) = creabim_core::objects::stretch_range(model, e)?;
+    let fixed = if right { lo.x } else { hi.x };
+    let sign = if right { 1.0 } else { -1.0 };
+    // the edges of what stands on its level, in plan
+    let mut edges: Vec<(DVec2, DVec2)> = vec![];
+    let ring = |edges: &mut Vec<(DVec2, DVec2)>, pts: &[DVec2]| {
+        for i in 0..pts.len() {
+            edges.push((pts[i], pts[(i + 1) % pts.len()]));
+        }
+    };
+    for x in model.iter().filter(|x| x.id != e.id) {
+        match &x.kind {
+            ElementKind::Wall(w) if w.level == o.level && w.length() > 1e-6 => {
+                let n = w.direction().perp();
+                let mut offs: Vec<f64> = (0..64)
+                    .map_while(|k| walls::boundary_offset(model, w, k))
+                    .collect();
+                if offs.is_empty() {
+                    offs = vec![w.thickness / 2.0, -w.thickness / 2.0];
+                }
+                let t = w.direction() * (w.thickness / 2.0);
+                for k in offs {
+                    edges.push((w.start - t + n * k, w.end + t + n * k));
+                }
+            }
+            ElementKind::Column(c) if c.level == o.level => ring(&mut edges, &c.outline()),
+            ElementKind::Object(other) if other.level == o.level => {
+                let Some(t) = creabim_core::objects::type_of(model, x) else {
+                    continue;
+                };
+                let (a, b) = t.bounds();
+                ring(
+                    &mut edges,
+                    &[
+                        other.to_plan(DVec2::new(a.x, a.y)),
+                        other.to_plan(DVec2::new(b.x, a.y)),
+                        other.to_plan(DVec2::new(b.x, b.y)),
+                        other.to_plan(DVec2::new(a.x, b.y)),
+                    ],
+                );
+            }
+            _ => {}
+        }
+    }
+    // where each edge crosses its back, middle and front lines, as lengths
+    // from the end that stays
+    let from = |y: f64| o.to_plan(DVec2::new(fixed, y));
+    let dir = (o.to_plan(DVec2::X) - o.to_plan(DVec2::ZERO)) * sign;
+    let inset = ((hi.y - lo.y) * 0.05).min(0.02);
+    let mut best: Option<f64> = None;
+    for y in [lo.y + inset, (lo.y + hi.y) / 2.0, hi.y - inset] {
+        let p = from(y);
+        for (a, b) in &edges {
+            let e = *b - *a;
+            let den = dir.perp_dot(e);
+            if den.abs() < 1e-9 {
+                continue;
+            }
+            let w = *a - p;
+            let len = w.perp_dot(e) / den;
+            let s = w.perp_dot(dir) / den;
+            if !(-1e-6..=1.0 + 1e-6).contains(&s) || len < min - 1e-9 || len > max + 1e-9 {
+                continue;
+            }
+            if (len - raw).abs() <= tol && best.is_none_or(|b| (len - raw).abs() < (b - raw).abs())
+            {
+                best = Some(len);
+            }
+        }
+    }
+    best
+}
+
 fn round(v: f64, step: f64) -> f64 {
     if step > 0.0 {
         (v / step).round() * step
@@ -1914,7 +1999,14 @@ pub fn apply(
                 .ok_or("it has no type")?
                 .size()
                 .x;
-            let len = round(now + if right { along } else { -along }, step / 5.0);
+            let raw = now + if right { along } else { -along };
+            // its end catches the nearest wall face (plaster too), column
+            // or other piece of furniture across its path (George
+            // 2026-11-22); an exact length is typed in Properties
+            let len = match end_magnet(model, original, raw, right, END_MAGNET) {
+                Some(l) => l,
+                None => round(raw, step / 5.0),
+            };
             let out_e = creabim_core::objects::stretch(model, original, len, right)
                 .ok_or("this doesn't draw out")?;
             *first = out_e;
@@ -6071,6 +6163,62 @@ mod tests {
         assert_eq!(doors, 4);
         // its parts keep the type's materials
         assert!(t.parts.iter().all(|p| p.material.is_some()));
+    }
+
+    /// George: a wardrobe drawn out stops on the nearest wall face,
+    /// the plaster's too, and is free off it.
+    #[test]
+    fn a_wardrobe_drawn_out_stops_on_the_plaster_face() {
+        let mut m = creabim_core::starter::starter_house();
+        let (wall, w) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.assembly.is_some() && w.length() > 4.0 => {
+                    Some((e.id, w.clone()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let offs: Vec<f64> = (0..64)
+            .map_while(|k| walls::boundary_offset(&m, &w, k))
+            .collect();
+        assert!(offs.len() > 2, "a layered wall");
+        let n = w.direction().perp();
+        let face = offs.iter().cloned().fold(f64::MIN, f64::max);
+        let mid = (w.start + w.end) / 2.0;
+        // the wardrobe's x towards the wall, its right end 8 cm short
+        let turn = (-n).to_angle().to_degrees();
+        let c = creabim_core::catalogue::starter("starter/built-in-wardrobe").unwrap();
+        let at = mid + n * (face + 0.08 + 1.2);
+        let (tx, id) = creabim_core::objects::place(&m, &c, w.level, at, turn);
+        tx.apply(&mut m).unwrap();
+        let right_end = |m: &Model, e: &Element| {
+            let ElementKind::Object(o) = &e.kind else {
+                unreachable!()
+            };
+            let (_, hi) = creabim_core::objects::type_of(m, e).unwrap().bounds();
+            o.to_plan(DVec2::new(hi.x, 0.0))
+        };
+        let gap = |p: DVec2| (p - mid).dot(n) - face;
+        let e0 = m.get(id).unwrap().clone();
+        assert!(
+            (gap(right_end(&m, &e0)) - 0.08).abs() < 0.02,
+            "{}",
+            gap(right_end(&m, &e0))
+        );
+        let axis = -n;
+        // dragged 5 cm: 3 cm short of the face, it lands on it
+        let out = drag_to(&m, id, HandleKind::ObjectEnd { right: true }, |h| {
+            h.at + (axis * 0.05).extend(0.0)
+        });
+        let g = gap(right_end(&m, &out));
+        assert!(g.abs() < 1e-6, "{g}");
+        // far from any face: rounded as before
+        let out = drag_to(&m, id, HandleKind::ObjectEnd { right: true }, |h| {
+            h.at - (axis * 0.5).extend(0.0)
+        });
+        let _ = wall;
+        assert!(gap(right_end(&m, &out)) > 0.4);
     }
 
     #[test]
