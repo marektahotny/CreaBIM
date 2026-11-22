@@ -41,6 +41,16 @@ pub fn room_outline(model: &Model, level: ElementId, p: DVec2) -> Option<Vec<DVe
             segs.push((w.start - d * reach, w.end + d * reach));
         }
     }
+    // room separators set to bound slabs too, run on as far as the walls
+    // are so one drawn to a wall's face still meets its centre line
+    for e in model.iter() {
+        if let ElementKind::RoomSeparator(s) = &e.kind {
+            if s.bounds_slabs && s.level == level && s.a.distance(s.b) > 1e-6 {
+                let d = (s.b - s.a).normalize();
+                segs.push((s.a - d * reach.max(0.1), s.b + d * reach.max(0.1)));
+            }
+        }
+    }
     room_in_lines(&segs, p)
 }
 
@@ -479,6 +489,46 @@ mod tests {
         let left = room_outline(&m, l, DVec2::new(1.0, 1.0)).expect("enclosed");
         assert!((crate::polygon::signed_area2(&left) / 2.0 - 12.0).abs() < 1e-9);
         assert_eq!(left.len(), 4);
+    }
+
+    /// George: a slab filling a room did not stop at a room separator;
+    /// one set to bound slabs splits it, as a wall's centre line does.
+    #[test]
+    fn a_room_separator_set_to_bound_slabs_splits_the_fill() {
+        let (mut m, l) = level_model();
+        let mut tx = Transaction::new("walls");
+        for (a, b) in [
+            ((0.0, 0.0), (6.0, 0.0)),
+            ((6.0, 0.0), (6.0, 4.0)),
+            ((6.0, 4.0), (0.0, 4.0)),
+            ((0.0, 4.0), (0.0, 0.0)),
+        ] {
+            tx = tx.insert(wall(l, a, b));
+        }
+        // drawn between the inner faces
+        let mut sep = crate::room::Separator {
+            level: l,
+            a: DVec2::new(2.0, 0.1),
+            b: DVec2::new(2.0, 3.9),
+            look: None,
+            bounds_slabs: false,
+        };
+        let e = Element::new("Separator", ElementKind::RoomSeparator(sep));
+        let id = e.id;
+        tx.insert(e).apply(&mut m).unwrap();
+        let whole = room_outline(&m, l, DVec2::new(1.0, 1.0)).unwrap();
+        assert!((crate::polygon::signed_area2(&whole) / 2.0 - 24.0).abs() < 1e-9);
+        sep.bounds_slabs = true;
+        let mut e = m.get(id).unwrap().clone();
+        e.kind = ElementKind::RoomSeparator(sep);
+        Transaction::new("on")
+            .replace(m.get(id).unwrap().clone(), e)
+            .apply(&mut m)
+            .unwrap();
+        let left = room_outline(&m, l, DVec2::new(1.0, 1.0)).unwrap();
+        assert!((crate::polygon::signed_area2(&left) / 2.0 - 8.0).abs() < 1e-9);
+        let right = room_outline_to_core(&m, l, DVec2::new(4.0, 1.0)).unwrap();
+        assert!(right.iter().any(|q| (q.x - 2.0).abs() < 1e-9));
     }
 
     #[test]
