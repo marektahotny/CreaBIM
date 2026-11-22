@@ -129,6 +129,10 @@ pub fn device_kind(model: &Model, e: &Element) -> Option<DeviceKind> {
         "ifcswitchingdevice" => DeviceKind::Switch,
         "ifclightfixture" | "ifclamp" => DeviceKind::Light,
         "ifcelectricdistributionboard" => DeviceKind::Board,
+        // a television: a load like any appliance
+        "ifcaudiovisualappliance" if t.ifc.predefined.eq_ignore_ascii_case("DISPLAY") => {
+            DeviceKind::Appliance
+        }
         "ifcsensor" | "ifcalarm" | "ifccommunicationsappliance" | "ifcaudiovisualappliance" => {
             DeviceKind::Weak
         }
