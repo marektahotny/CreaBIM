@@ -314,7 +314,7 @@ fn kind_of_before(m: &BaseMaterial) -> (&'static str, Hatch) {
     } else if c.starts_with("Systémové dosky") {
         ("system-board", Hatch::Insulation)
     } else if c.starts_with("Sadrokartón") {
-        if m.id == "sdk" || m.id.starts_with("fermacell") {
+        if m.id.starts_with("sdk") || m.id.starts_with("fermacell") {
             ("gypsum", Hatch::Solid)
         } else {
             ("wood", Hatch::Timber)
@@ -610,7 +610,9 @@ pub fn add_base(model: &Model) -> Transaction {
                     a.description = d.join("; ");
                     let mut b = crate::thermal::Boundary::of(&a);
                     // a ceiling under a cold attic gives its heat upwards
-                    if usage == AssemblyUse::Floor && t.name.contains("podkrov") {
+                    if usage == AssemblyUse::Floor
+                        && (t.name.contains("podkrov") || t.name.starts_with("Podhľad"))
+                    {
                         b.flow = crate::thermal::HeatFlow::Up;
                     }
                     a.thermal = Some(b);
@@ -665,12 +667,60 @@ mod tests {
         doc.commit(add_base(doc.model())).unwrap();
         let m = doc.model();
         let (materials, walls, floors, roofs) = counts();
-        assert_eq!((materials, walls, floors, roofs), (89, 34, 13, 3));
+        assert_eq!((materials, walls, floors, roofs), (91, 34, 15, 3));
         assert_eq!(crate::library::materials(m).len(), materials);
         assert_eq!(assembly::assemblies(m).len(), walls + floors + roofs);
         assert_eq!(types::types(m).len(), walls + floors + roofs);
         // again adds nothing
         assert!(add_base(m).ops.is_empty());
+    }
+
+    /// George 2026-11-22: the ceiling under a truss roof, from below: a
+    /// fire-rated board on hangers, the vapour barrier on it, 50 mm of
+    /// mineral wool between the hangers, 100 mm between the trusses'
+    /// bottom chords and 120 mm over them; with a plain fire-rated board
+    /// (DF) or an impregnated one (DFH2).
+    #[test]
+    fn the_ceilings_under_trusses_come_with_both_boards() {
+        let mut doc = Document::new();
+        doc.commit(add_base(doc.model())).unwrap();
+        let m = doc.model();
+        let all = assembly::assemblies(m);
+        for (board, name) in [
+            ("DF", "Sadrokartónová doska protipožiarna typ DF (EN 520)"),
+            (
+                "DFH2",
+                "Sadrokartónová doska impregnovaná protipožiarna typ DFH2 (EN 520)",
+            ),
+        ] {
+            let (_, _, a) = all
+                .iter()
+                .find(|(_, n, _)| {
+                    *n == format!(
+                        "Podhľad pod väzníkovou strechou – SDK {board} 15, MW 50 + 100 + 120"
+                    )
+                })
+                .unwrap_or_else(|| panic!("{board}"));
+            a.validate().unwrap();
+            let names: Vec<String> = a
+                .layers
+                .iter()
+                .map(|l| m.get(l.material.unwrap()).unwrap().name.clone())
+                .collect();
+            assert_eq!(names[4], name);
+            assert_eq!(names[3], "PE fólia");
+            let mm: Vec<f64> = a
+                .layers
+                .iter()
+                .map(|l| (l.thickness * 1000.0).round())
+                .collect();
+            assert_eq!(mm, [120.0, 100.0, 50.0, 1.0, 15.0]);
+            // heat up into the cold roof space; U from 270 mm of wool
+            let b = a.thermal.unwrap();
+            assert_eq!(b.flow, crate::thermal::HeatFlow::Up);
+            let u = crate::thermal::of_assembly(m, a, None).u.unwrap();
+            assert!((0.12..0.13).contains(&u), "{u}");
+        }
     }
 
     #[test]
