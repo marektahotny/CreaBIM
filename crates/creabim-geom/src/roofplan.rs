@@ -82,6 +82,14 @@ pub fn apply(model: &Model, items: &mut Vec<PlanItem>) {
             *pen = Pen::Symbol;
         }
     }
+    // columns and beams under it only as their load-bearing core, dashed
+    // (George 2026-11-22: no insulation or render round them)
+    items.retain(|it| {
+        !matches!(
+            model.get(it.id()).map(|e| &e.kind),
+            Some(ElementKind::Column(_) | ElementKind::Beam(_))
+        )
+    });
     // the cores of the outer walls and the outer columns under it
     let joins = creabim_core::wall_joins(model);
     let add = |id: ElementId, a: DVec2, b: DVec2, items: &mut Vec<PlanItem>| {
@@ -117,13 +125,37 @@ pub fn apply(model: &Model, items: &mut Vec<PlanItem>) {
             let ElementKind::Column(c) = &e.kind else {
                 continue;
             };
-            if c.level != level || crate::firezones::room_at(model, level, c.position) {
+            // a board of a wrap or the XPS of a wall column is no core
+            let board = c.piece.is_some() || c.in_wall.as_ref().is_some_and(|w| w.of.is_some());
+            if board || c.level != level || crate::firezones::room_at(model, level, c.position) {
                 continue;
             }
             let o = c.outline();
             for i in 0..o.len() {
                 add(e.id, o[i], o[(i + 1) % o.len()], items);
             }
+        }
+    }
+    // the lintels and beams of the top storey under it, their core
+    let top = model
+        .levels()
+        .filter(|(e, _)| {
+            model
+                .iter()
+                .any(|x| matches!(&x.kind, ElementKind::Wall(w) if w.level == e.id))
+        })
+        .max_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+        .map(|(e, _)| e.id);
+    for e in model.iter() {
+        let ElementKind::Beam(b) = &e.kind else {
+            continue;
+        };
+        if b.piece.is_some() || Some(b.level) != top {
+            continue;
+        }
+        let o = b.outline();
+        for i in 0..o.len() {
+            add(e.id, o[i], o[(i + 1) % o.len()], items);
         }
     }
 }
