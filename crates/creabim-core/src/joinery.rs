@@ -17,6 +17,82 @@ pub struct Sash {
     /// A solid panel instead of glass.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub panel: bool,
+    /// Glass set into a door leaf or a solid panel (George 2026-11-22:
+    /// every door, its narrower leaf too, fully glazed or a pane of a
+    /// size given from each edge).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glazing: Option<Glazing>,
+}
+
+/// A pane set into a door leaf or a panel: how far its edges stand in
+/// from the leaf's, in mm, left and right as the division is drawn
+/// (seen from outside). All naught: glazed whole.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Glazing {
+    pub left: u16,
+    pub right: u16,
+    pub top: u16,
+    pub bottom: u16,
+}
+
+impl Glazing {
+    /// Glass over the whole leaf.
+    pub const FULL: Glazing = Glazing {
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+    };
+
+    /// A pane standing 150 mm in from every edge: where a pane of a size
+    /// of one's own starts.
+    pub const INSET: Glazing = Glazing {
+        left: 150,
+        right: 150,
+        top: 150,
+        bottom: 150,
+    };
+
+    pub fn is_full(&self) -> bool {
+        *self == Glazing::FULL
+    }
+
+    /// The pane in a field `x0`..`x1` × `y0`..`y1` (m, x left to right,
+    /// y up), none when the insets leave no glass.
+    pub fn pane(&self, x0: f64, x1: f64, y0: f64, y1: f64) -> Option<[f64; 4]> {
+        let mm = |v: u16| v as f64 / 1000.0;
+        let p = [
+            x0 + mm(self.left),
+            x1 - mm(self.right),
+            y0 + mm(self.bottom),
+            y1 - mm(self.top),
+        ];
+        (p[1] - p[0] > 0.01 && p[3] - p[2] > 0.01).then_some(p)
+    }
+
+    /// As [`FrameNode::code`] writes it after the leaf: `~l.r.t.b`.
+    pub fn code(&self) -> String {
+        format!("~{}.{}.{}.{}", self.left, self.right, self.top, self.bottom)
+    }
+
+    fn parse(s: &str) -> Result<Glazing, String> {
+        let v: Vec<u16> = s
+            .split('.')
+            .map(|t| t.trim().parse::<u16>())
+            .collect::<Result<_, _>>()
+            .map_err(|_| format!("`~{s}` is not a pane: ~left.right.top.bottom in mm"))?;
+        match v.as_slice() {
+            [left, right, top, bottom] => Ok(Glazing {
+                left: *left,
+                right: *right,
+                top: *top,
+                bottom: *bottom,
+            }),
+            _ => Err(format!(
+                "`~{s}` is not a pane: ~left.right.top.bottom in mm"
+            )),
+        }
+    }
 }
 
 /// A division: a field, or fields side by side (split by mullions,
@@ -65,7 +141,11 @@ const MIN_SHARE: f64 = 0.1;
 
 impl FrameNode {
     pub fn leaf(op: LeafOp) -> FrameNode {
-        FrameNode::Leaf(Sash { op, panel: false })
+        FrameNode::Leaf(Sash {
+            op,
+            panel: false,
+            glazing: None,
+        })
     }
 
     /// The fields and bars of an opening `w` × `h` whose frame is `fw`
@@ -104,6 +184,7 @@ impl FrameNode {
             FrameNode::Leaf(s) => FrameNode::Leaf(Sash {
                 op: s.op.in_door(),
                 panel: s.panel,
+                glazing: s.glazing,
             }),
             FrameNode::Split {
                 across,
@@ -320,7 +401,12 @@ impl FrameNode {
     /// share.
     pub fn code(&self) -> String {
         match self {
-            FrameNode::Leaf(s) => format!("{}{}", s.op.code(), if s.panel { "*" } else { "" }),
+            FrameNode::Leaf(s) => format!(
+                "{}{}{}",
+                s.op.code(),
+                if s.panel { "*" } else { "" },
+                s.glazing.map(|g| g.code()).unwrap_or_default()
+            ),
             FrameNode::Split {
                 across,
                 sizes,
@@ -391,6 +477,10 @@ impl FrameNode {
         if s.starts_with("h(") {
             return split(false);
         }
+        let (s, glazing) = match s.split_once('~') {
+            Some((a, g)) => (a, Some(Glazing::parse(g)?)),
+            None => (s, None),
+        };
         let (code, panel) = match s.strip_suffix('*') {
             Some(c) => (c, true),
             None => (s, false),
@@ -401,7 +491,7 @@ impl FrameNode {
                 LeafOp::ALL.map(|o| o.code()).join(", ")
             )
         })?;
-        Ok(FrameNode::Leaf(Sash { op, panel }))
+        Ok(FrameNode::Leaf(Sash { op, panel, glazing }))
     }
 
     /// Sound: every split has two parts or more, as many shares as
@@ -1100,6 +1190,21 @@ mod tests {
         n.split(&[0], false, 0.3);
         assert_eq!(n.code(), "v(0.5:h(0.3:OS-L,0.7:OS-L),0.5:FIX)");
         assert_eq!(FrameNode::parse(&n.code()).unwrap(), n);
+        // a glazed door leaf beside a narrower panel glazed whole
+        let d = FrameNode::parse("v(0.7:D-L~150.150.200.400,0.3:FIX*~0.0.0.0)").unwrap();
+        assert_eq!(d.code(), "v(0.7:D-L~150.150.200.400,0.3:FIX*~0.0.0.0)");
+        let FrameNode::Split { parts, .. } = &d else {
+            panic!()
+        };
+        let FrameNode::Leaf(s) = parts[0] else {
+            panic!()
+        };
+        assert_eq!(s.glazing.unwrap().bottom, 400);
+        assert_eq!(
+            s.glazing.unwrap().pane(0.0, 1.0, 0.0, 2.0),
+            Some([0.15, 0.85, 0.4, 1.8])
+        );
+        assert!(FrameNode::parse("D-L~1.2.3").is_err());
         let (fields, bars) = n.layout(1.5, 1.5, 0.06, 0.06, true);
         assert_eq!((fields.len(), bars.len()), (3, 2));
         // the fanlight is the top one, 30 % of the height inside
