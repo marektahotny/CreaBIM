@@ -63,6 +63,8 @@ fn scratch_state(state: &PlanState) -> PlanState {
     st.wall_thickness = state.wall_thickness;
     st.wall_location = state.wall_location;
     st.wall_flip = state.wall_flip;
+    // the ghost shows no tags: don't make them (each one drew the plans)
+    st.tag_new = false;
     st
 }
 
