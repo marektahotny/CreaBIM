@@ -960,7 +960,7 @@ impl CreaBimApp {
                                         crate::props::row(ui, "Mouse", |ui| {
                                             let label = |k: &str| match k {
                                                 "classic" => "Classic: left drag orbits",
-                                                _ => "CreaBIM: middle orbits, left boxes",
+                                                _ => "CreaBIM: middle pans, Shift + middle orbits, left boxes",
                                             };
                                             egui::ComboBox::from_id_salt("settings.navigation").icon(crate::props::combo_icon)
                                                 .selected_text(crate::i18n::tw(label(&navigation)))
@@ -972,7 +972,7 @@ impl CreaBimApp {
                                                 });
                                         });
                                         ui.label(
-                                            egui::RichText::new(crate::i18n::t("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D."))
+                                            egui::RichText::new(crate::i18n::t("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag pans, Shift + middle orbits (Alt + left drag without a middle button), a right drag pans too, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D."))
                                                 .weak()
                                                 .small(),
                                         );

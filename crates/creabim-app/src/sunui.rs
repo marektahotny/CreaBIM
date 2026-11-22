@@ -103,6 +103,8 @@ impl CreaBimApp {
         let true_north = self.true_north();
         let gpu = self.gpu.clone();
         let mut s = self.shell.settings.sun;
+        // the place the sun stands over: the project's own, typed here too
+        let mut at = place;
         let mut open = true;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Sun and shadows"))
@@ -207,6 +209,25 @@ impl CreaBimApp {
                     );
                 }
                 if s.mode == SunMode::Time {
+                    ui.horizontal(|ui| {
+                        ui.label(t("Location"));
+                        ui.add(
+                            egui::DragValue::new(&mut at[0])
+                                .range(-90.0..=90.0)
+                                .speed(0.01)
+                                .max_decimals(4)
+                                .suffix("° N"),
+                        )
+                        .on_hover_text(t("Latitude of the project, degrees north"));
+                        ui.add(
+                            egui::DragValue::new(&mut at[1])
+                                .range(-180.0..=180.0)
+                                .speed(0.01)
+                                .max_decimals(4)
+                                .suffix("° E"),
+                        )
+                        .on_hover_text(t("Longitude of the project, degrees east"));
+                    });
                     let where_ = if own_place {
                         t("At the project's place")
                     } else {
@@ -287,6 +308,21 @@ impl CreaBimApp {
                     }
                 }
             });
+        if at != place {
+            // written to the project information, as Manage › Project
+            // information does
+            if let Some((id, _)) = self.doc.model().project_info() {
+                let r = self.doc.edit_merged(id, "Project place", |e| {
+                    if let creabim_core::ElementKind::Project(p) = &mut e.kind {
+                        p.latitude = Some(at[0]);
+                        p.longitude = Some(at[1]);
+                    }
+                });
+                if let Err(e) = r {
+                    self.status = format!("Couldn't do that: {e}");
+                }
+            }
+        }
         if s != self.shell.settings.sun {
             self.shell.settings.sun = s;
             self.shell.settings.store();
