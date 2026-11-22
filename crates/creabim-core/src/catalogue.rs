@@ -17,6 +17,7 @@ mod entourage;
 mod fixtures;
 pub mod heat;
 mod jika;
+pub mod living;
 pub mod medical;
 pub mod radiators;
 pub mod services;
@@ -1446,6 +1447,7 @@ pub fn starters() -> Vec<CatalogueObject> {
     ]
     .into_iter()
     .chain(services::starters())
+    .chain(living::starters())
     .chain(fixtures::starters())
     .chain(jika::starters())
     .chain(medical::starters())

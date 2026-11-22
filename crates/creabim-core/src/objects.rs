@@ -223,6 +223,25 @@ pub const IFC_CLASSES: &[(&str, &str, &[&str])] = &[
         ],
     ),
     (
+        "IfcAudioVisualAppliance",
+        "IfcAudioVisualApplianceType",
+        &[
+            "AMPLIFIER",
+            "CAMERA",
+            "DISPLAY",
+            "MICROPHONE",
+            "PLAYER",
+            "PROJECTOR",
+            "RECEIVER",
+            "SPEAKER",
+            "SWITCHER",
+            "TELEPHONE",
+            "TUNER",
+            "USERDEFINED",
+            "NOTDEFINED",
+        ],
+    ),
+    (
         "IfcSystemFurnitureElement",
         "IfcSystemFurnitureElementType",
         &[
@@ -724,7 +743,7 @@ impl Supply {
             ("ifcelectricappliance", "TUMBLEDRYER") => Supply::single(1_000.0, true),
             ("ifcelectricappliance", "MICROWAVE") => Supply::single(1_200.0, false),
             ("ifcelectricappliance", "KITCHENMACHINE") => Supply::single(300.0, false),
-            ("ifcaudiovisualappliance", "TELEVISION") => Supply::single(150.0, false),
+            ("ifcaudiovisualappliance", "DISPLAY") => Supply::single(150.0, false),
             _ => return None,
         })
     }
