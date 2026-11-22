@@ -223,20 +223,37 @@ pub fn stated(a: &creabim_core::Assembly) -> Option<f64> {
     declared(&a.fire_resistance).or_else(|| declared(&a.description))
 }
 
-/// The minutes after a fire resistance class (R, RE, REI, EI, E, EW…).
+/// The minutes after a fire resistance class (R, RE, REI, EI, E, EW…),
+/// with or without a space or an "-M" ("REI-M 240", "REI 240", "REI240",
+/// "REI-M240", "REW 90/D1").
 pub fn declared(text: &str) -> Option<f64> {
+    let is_class = |class: &str| {
+        !class.is_empty()
+            && class.chars().all(|c| "REIWM-".contains(c))
+            && class.contains(['R', 'E', 'I'])
+    };
+    let minutes = |w: &str| -> Option<f64> {
+        let digits: String = w.chars().take_while(|c| c.is_ascii_digit()).collect();
+        digits.parse::<f64>().ok()
+    };
     let words: Vec<&str> = text
         .split(|c: char| c.is_whitespace() || c == ',' || c == ';' || c == '/')
         .filter(|w| !w.is_empty())
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|w| !w.is_empty())
         .collect();
-    words.windows(2).find_map(|w| {
-        let class = w[0].trim_matches(|c: char| !c.is_alphanumeric());
-        let is_class = !class.is_empty()
-            // "REI-M 240" (a wall between buildings) too
-            && class.chars().all(|c| "REIWM-".contains(c))
-            && class.contains(['R', 'E', 'I']);
-        let digits: String = w[1].chars().take_while(|c| c.is_ascii_digit()).collect();
-        is_class.then(|| digits.parse::<f64>().ok()).flatten()
+    words.iter().enumerate().find_map(|(i, w)| {
+        // the class and its minutes in one word
+        let at = w.find(|c: char| c.is_ascii_digit());
+        if let Some(at) = at.filter(|&a| a > 0) {
+            if is_class(w[..at].trim_end_matches('-')) {
+                return minutes(&w[at..]);
+            }
+        }
+        // or the minutes the next word
+        (is_class(w) && at.is_none())
+            .then(|| words.get(i + 1).and_then(|n| minutes(n)))
+            .flatten()
     })
 }
 
@@ -253,6 +270,12 @@ mod tests {
     fn a_rating_with_m_is_read() {
         assert_eq!(declared("REI-M 240"), Some(240.0));
         assert_eq!(declared("požiarna odolnosť EI 180 (príručka)"), Some(180.0));
+        assert_eq!(declared("REI-M240"), Some(240.0));
+        assert_eq!(declared("REI240"), Some(240.0));
+        assert_eq!(declared("REW 90/D1"), Some(90.0));
+        assert_eq!(declared("EW 30 DP1"), Some(30.0));
+        assert_eq!(declared("trieda reakcie A1"), None);
+        assert_eq!(declared("PORFIX P2-440 300"), None);
     }
 
     #[test]
