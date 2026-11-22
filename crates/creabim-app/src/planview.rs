@@ -8044,10 +8044,44 @@ pub fn opening_tags(
             _ => None,
         })
         .collect();
-    // the drawing's middle, to tell outside from inside
-    let middle = creabim_geom::section::view_drawing(model, view)
-        .and_then(|d| d.bounds())
-        .map_or(DVec2::ZERO, |(lo, hi)| (lo + hi) / 2.0);
+    // nothing of this view to tag: done, before the view is drawn (each
+    // door or window placed ran this for every plan, ~250 ms a click and
+    // on every move of its ghost; George 2026-11-22)
+    let todo = model.iter().any(|e| {
+        let ElementKind::Opening(o) = &e.kind else {
+            return false;
+        };
+        !tagged.contains(&e.id)
+            && !only.is_some_and(|o| !o.contains(&e.id))
+            && matches!(model.get(o.host).map(|h| &h.kind),
+                Some(ElementKind::Wall(w)) if level.is_none_or(|l| l == w.level))
+    });
+    if !todo {
+        return out;
+    }
+    // the drawing's middle, to tell outside from inside: in a plan the
+    // middle of its level's walls, else of the view's drawing
+    let walls_box = level.and_then(|l| {
+        let pts: Vec<DVec2> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.level == l => Some([w.start, w.end]),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let first = *pts.first()?;
+        let (lo, hi) = pts
+            .iter()
+            .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+        let z = model.level(l).map_or(0.0, |l| l.elevation);
+        Some(proj.project(((lo + hi) / 2.0).extend(z)))
+    });
+    let middle = walls_box.unwrap_or_else(|| {
+        creabim_geom::section::view_drawing(model, view)
+            .and_then(|d| d.bounds())
+            .map_or(DVec2::ZERO, |(lo, hi)| (lo + hi) / 2.0)
+    });
     let scale = v.scale / 100.0;
     for e in model.iter() {
         let ElementKind::Opening(o) = &e.kind else {
@@ -9489,6 +9523,38 @@ mod dimension_chain_tests {
         // running it again adds none
         let again = with_opening_tags(tagged.clone());
         assert_eq!(tags(&again), tags(&tagged));
+    }
+
+    #[test]
+    fn window_marks_stand_outside_the_house() {
+        // the middle is now the level's walls' (not the drawn plan's, which
+        // took ~250 ms a door or window): marks still go outside
+        let m = with_opening_tags(creabim_core::sample::sample_house());
+        let mut n = 0;
+        for e in m.iter() {
+            let ElementKind::Tag(t) = &e.kind else {
+                continue;
+            };
+            let Some(ElementKind::Opening(o)) = m.get(t.host).map(|h| &h.kind) else {
+                continue;
+            };
+            if o.kind != OpeningKind::Window
+                || !matches!(m.get(t.view).map(|v| &v.kind), Some(ElementKind::View(v)) if matches!(v.kind, ViewKind::Plan { .. }))
+            {
+                continue;
+            }
+            let c = creabim_geom::annotate::centre(&m, t.host)
+                .unwrap()
+                .truncate();
+            let at = c + t.offset;
+            // the sample house is 10 × 6 m from the origin
+            assert!(
+                at.x < 0.0 || at.x > 10.0 || at.y < 0.0 || at.y > 6.0,
+                "{at:?} inside"
+            );
+            n += 1;
+        }
+        assert!(n > 0);
     }
 }
 
