@@ -12147,6 +12147,12 @@ crate::props::row(ui, "File names", |ui| {
                         self.plan.details.separator = Some(look);
                         label = "Line look";
                     }
+                    if crate::props::switch(ui, &mut sep.bounds_slabs, crate::i18n::t("Bounds slabs too"))
+                        .on_hover_text(crate::i18n::t("A slab filling a room (Fill room) stops at this line as at a wall's centre line, so two floor build-ups can meet on it."))
+                        .changed()
+                    {
+                        label = "Room separator bounds slabs";
+                    }
                 }
                 ElementKind::Object(o) => {
                     let hung = creabim_core::objects::hung(self.doc.model(), &e);

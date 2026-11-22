@@ -233,6 +233,7 @@ pub fn separator_click(
             a,
             b: p,
             look: state.details.separator,
+            bounds_slabs: false,
         }),
     );
     selection.only(e.id);

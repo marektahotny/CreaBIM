@@ -112,6 +112,7 @@ impl Importer<'_> {
                     a,
                     b,
                     look: None,
+                    bounds_slabs: false,
                 }),
             });
         }

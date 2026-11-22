@@ -534,6 +534,10 @@ pub struct Separator {
     /// none, the plain thin line it always had.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub look: Option<crate::LineLook>,
+    /// A slab filling a room stops at it too, as at a wall's centre line,
+    /// so two floor build-ups can meet on it (George 2026-11-22).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bounds_slabs: bool,
 }
 
 impl Separator {
@@ -1488,6 +1492,7 @@ mod tests {
         let sep = Element::new(
             "Separator",
             ElementKind::RoomSeparator(Separator {
+                bounds_slabs: false,
                 level: l,
                 a: DVec2::new(3.0, 0.1),
                 b: DVec2::new(3.0, 3.9),
@@ -1516,6 +1521,7 @@ mod tests {
         let sep = Element::new(
             "Separator",
             ElementKind::RoomSeparator(Separator {
+                bounds_slabs: false,
                 level: l,
                 a: DVec2::new(3.0, 0.15),
                 b: DVec2::new(3.02, 3.85),
