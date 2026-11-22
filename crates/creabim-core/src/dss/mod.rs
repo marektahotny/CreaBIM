@@ -1064,6 +1064,16 @@ fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Know
             if let Some(t) = e.of_type.as_ref().and_then(|t| model.get(t.id)) {
                 put(&mut out, "typové označenie", Known::Text(t.name.clone()));
             }
+            // a KORADO radiator or towel radiator: its output at
+            // 75/65/20 °C from KORADO's tables
+            if let Some(h) = crate::objects::type_of(model, e)
+                .and_then(|t| t.catalogue.as_deref())
+                .and_then(crate::catalogue::radiators::Heater::of_key)
+            {
+                if h.nominal_w() > 0.0 {
+                    put(&mut out, "menovitý výkon", Known::Raw(h.nominal_w()));
+                }
+            }
         }
         ElementKind::Footing(f) => match f.kind {
             crate::FootingKind::Strip => {

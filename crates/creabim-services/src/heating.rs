@@ -13,7 +13,7 @@ use crate::fluid::Fluid;
 use crate::herzvalves::{self, HerzValve};
 use crate::hydraulics;
 use crate::tree::{self, Tree};
-use creabim_core::catalogue::radiators::Panel;
+use creabim_core::catalogue::radiators::Heater;
 use creabim_core::fixture::ConnKind;
 use creabim_core::mep::Valve;
 use creabim_core::{ElementId, ElementKind, Model};
@@ -183,7 +183,7 @@ pub fn run(model: &Model, s: &HeatSettings) -> Option<HeatResult> {
 pub fn radiator_w(model: &Model, id: ElementId, s: &HeatSettings) -> Option<f64> {
     let e = model.get(id)?;
     let t = creabim_core::objects::type_of(model, e)?;
-    let p = Panel::of_key(t.catalogue.as_deref()?)?;
+    let p = Heater::of_key(t.catalogue.as_deref()?)?;
     Some(p.output_w(crate::radiators::delta_t(s.supply_c, s.return_c, s.room_c)))
 }
 
@@ -603,7 +603,7 @@ fn calc(model: &Model, sup: Tree, ret: Option<Tree>, s: &HeatSettings) -> HeatRe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use creabim_core::catalogue::radiators::PanelKind;
+    use creabim_core::catalogue::radiators::{Panel, PanelKind};
     use creabim_core::fixture;
     use creabim_core::mep::Pipe;
     use creabim_core::{Document, Element, Transaction};

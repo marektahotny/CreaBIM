@@ -24,6 +24,7 @@ pub mod services;
 pub mod site;
 pub mod soakaway;
 pub mod stretch;
+pub mod towels;
 pub mod valvebox;
 
 // ---- outlines and solids ----

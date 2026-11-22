@@ -1107,6 +1107,7 @@ fn view(e: &Element, id: &str, v: &core::View, ids: &Ids) -> f::View {
                 core::ScheduleCategory::BoardDiagram => f::ScheduleCategory::BoardDiagram,
                 core::ScheduleCategory::LintelList => f::ScheduleCategory::LintelList,
                 core::ScheduleCategory::VentilationHrv => f::ScheduleCategory::VentilationHrv,
+                core::ScheduleCategory::HeaterList => f::ScheduleCategory::HeaterList,
                 core::ScheduleCategory::BuildingFigures => f::ScheduleCategory::BuildingFigures,
                 core::ScheduleCategory::FireRisk => f::ScheduleCategory::FireRisk,
                 core::ScheduleCategory::FlashingTable => f::ScheduleCategory::FlashingTable,

@@ -39,6 +39,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut select = None;
         let mut place: Option<Panel> = None;
+        let mut resize = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Radiators"))
             .id(egui::Id::new("radiators"))
@@ -47,9 +48,18 @@ impl CreaBimApp {
             .default_size(Vec2::new(720.0, 480.0))
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui) {
-                    write_now = true;
-                }
+                ui.horizontal(|ui| {
+                    if super::calcresultsui::write_button(ui) {
+                        write_now = true;
+                    }
+                    if ui
+                        .button(t("Size the standing radiators"))
+                        .on_hover_text(t("Makes every panel radiator standing in a room the size the room needs: what the floor and the towel radiators leave, shared among them. A locked radiator keeps its size and its output is counted."))
+                        .clicked()
+                    {
+                        resize = true;
+                    }
+                });
                 ui.horizontal(|ui| {
                     ui.label(t("Supply temperature"));
                     ui.add(
@@ -104,10 +114,10 @@ impl CreaBimApp {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     egui::Grid::new("radiators.rooms")
                         .striped(true)
-                        .num_columns(9)
+                        .num_columns(10)
                         .show(ui, |ui| {
                             for h in [
-                                "Room", "θi °C", "Φ W", "Floor W", "Needed W", "Proposal",
+                                "Room", "θi °C", "Φ W", "Floor W", "Towel radiators W", "Needed W", "Proposal",
                                 "Output W", "kg/h", "Standing W", "",
                             ] {
                                 ui.strong(t(h));
@@ -122,6 +132,11 @@ impl CreaBimApp {
                                 ui.label(num(x.phi, 0));
                                 ui.label(if x.floor_w > 0.0 {
                                     num(x.floor_w, 0)
+                                } else {
+                                    String::new()
+                                });
+                                ui.label(if x.towels_w > 0.0 {
+                                    num(x.towels_w, 0)
                                 } else {
                                     String::new()
                                 });
@@ -151,7 +166,7 @@ impl CreaBimApp {
                                     let list = x
                                         .installed
                                         .iter()
-                                        .map(Panel::label)
+                                        .map(creabim_core::catalogue::radiators::Heater::label)
                                         .collect::<Vec<_>>()
                                         .join(", ");
                                     if x.installed_w >= x.need * 0.98 {
@@ -175,10 +190,22 @@ impl CreaBimApp {
                             }
                         });
                     ui.add_space(6.0);
-                    ui.weak(t("Steel panel radiators, one under each window of the room, the slimmest type that covers its share. The outputs are the usual ones of such radiators at 75/65/20 °C: replace them with the maker's once the product is chosen."));
+                    ui.weak(t("KORADO RADIK VK panel radiators, one under each window of the room, the slimmest type that covers its share; outputs and exponents from KORADO's tables. Towel radiators KORADO KORALUX LINEAR CLASSIC-M on the same water are counted first."));
                     ui.weak("STN EN 442-1 · STN EN 442-2 · STN EN 12831-1 · STN EN 12828");
                 });
             });
+        if resize {
+            let tx = radiators::resize(self.doc.model(), &d, &s);
+            if tx.ops.is_empty() {
+                self.status = t("The standing radiators already have the size the rooms need.");
+            } else {
+                let r = self.doc.commit(tx);
+                self.report(
+                    r,
+                    t("Radiators sized to the rooms; locked ones kept their size."),
+                );
+            }
+        }
         if let Some(id) = select {
             self.selection.only(id);
         }

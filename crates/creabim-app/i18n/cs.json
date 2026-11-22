@@ -5855,7 +5855,6 @@
  "Steel column 250 × 250": "Ocelový sloup 250 × 250",
  "Steel door": "Ocelové dveře",
  "Steel frame": "Ocelová zárubeň",
- "Steel panel radiators, one under each window of the room, the slimmest type that covers its share. The outputs are the usual ones of such radiators at 75/65/20 °C: replace them with the maker's once the product is chosen.": "Ocelová desková tělesa, jedno pod každým oknem místnosti, nejtenčí typ, který pokryje svůj podíl. Výkony jsou obvyklé hodnoty takových těles při 75/65/20 °C: po výběru výrobku je nahraďte údaji výrobce.",
  "Steel, RAL 7016": "Ocel RAL 7016",
  "Steel, RAL 9005": "Ocel RAL 9005",
  "Steel, RAL 9016": "Ocel RAL 9016",
@@ -8339,5 +8338,15 @@
  "Tall pantry cabinet 600": "Vysoká potravinová skříň 600",
  "Microwave": "Mikrovlnná trouba",
  "IKEA METOD high cabinet 60 × 60 × 200 for a microwave, two 80 cm doors, on legs 208 cm overall, with a built-in Bosch BFL524MS0 (382 × 594 × 317 mm, 1270 W / 230 V, 10 A)": "Vysoká skříň IKEA METOD 60 × 60 × 200 na mikrovlnku, dvoje dvířka 80 cm, na nožičkách celkem 208 cm, s vestavnou Bosch BFL524MS0 (382 × 594 × 317 mm, 1270 W / 230 V, 10 A)",
- "IKEA METOD high cabinet 60 × 60 × 200 with shelves, a 120 and an 80 cm door, on legs 208 cm overall": "Vysoká skříň IKEA METOD 60 × 60 × 200 s policemi, dvířka 120 a 80 cm, na nožičkách celkem 208 cm"
+ "IKEA METOD high cabinet 60 × 60 × 200 with shelves, a 120 and an 80 cm door, on legs 208 cm overall": "Vysoká skříň IKEA METOD 60 × 60 × 200 s policemi, dvířka 120 a 80 cm, na nožičkách celkem 208 cm",
+ "Size the standing radiators": "Navrhnout velikosti osazených těles",
+ "Makes every panel radiator standing in a room the size the room needs: what the floor and the towel radiators leave, shared among them. A locked radiator keeps its size and its output is counted.": "Každé deskové těleso osazené v místnosti dostane velikost, kterou místnost potřebuje: co nepokryje podlaha a žebříky, se rozdělí mezi tělesa. Zamčené těleso si velikost ponechá a jeho výkon se započítá.",
+ "Towel radiators W": "Žebříky W",
+ "KORADO RADIK VK panel radiators, one under each window of the room, the slimmest type that covers its share; outputs and exponents from KORADO's tables. Towel radiators KORADO KORALUX LINEAR CLASSIC-M on the same water are counted first.": "Desková tělesa KORADO RADIK VK, jedno pod každým oknem místnosti, nejtenčí typ, který pokryje svůj podíl; výkony a exponenty z tabulek KORADO. Žebříky KORADO KORALUX LINEAR CLASSIC-M na téže vodě se započítají nejdříve.",
+ "The standing radiators already have the size the rooms need.": "Osazená tělesa už mají velikost, kterou místnosti potřebují.",
+ "Radiators sized to the rooms; locked ones kept their size.": "Tělesa navržena podle místností; zamčená si ponechala velikost.",
+ "Radiators sized to the rooms": "Návrh velikostí otopných těles",
+ "Heaters and their fittings": "Otopná tělesa a armatury",
+ "Qn 75/65/20 W": "Qn 75/65/20 W",
+ "n": "n"
 }

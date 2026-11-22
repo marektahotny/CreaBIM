@@ -336,6 +336,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     if category == ScheduleCategory::VentilationHrv {
         return crate::tradelists::recuperation(model);
     }
+    if category == ScheduleCategory::HeaterList {
+        return crate::tradelists::heaters(model);
+    }
     if category == ScheduleCategory::BuildingFigures {
         return crate::sitetables::area_schedule(model);
     }
@@ -760,6 +763,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         | ScheduleCategory::BoardDiagram
         | ScheduleCategory::LintelList
         | ScheduleCategory::VentilationHrv
+        | ScheduleCategory::HeaterList
         | ScheduleCategory::BuildingFigures
         | ScheduleCategory::Identification
         | ScheduleCategory::FlashingTable

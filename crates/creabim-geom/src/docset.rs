@@ -671,6 +671,19 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
             let d = schedule(&mut b, ScheduleCategory::BoardDiagram, "Board diagram");
             b.sheet(number(&part, "SCH", &mut n), tr("Board diagram"), &[d]);
         }
+        // the heaters: radiators and towel radiators with their fittings
+        if trade == Trade::Heating && !crate::tradelists::heaters(&b.m).rows.is_empty() {
+            let d = schedule(
+                &mut b,
+                ScheduleCategory::HeaterList,
+                "Heaters and their fittings",
+            );
+            b.sheet(
+                number(&part, "VYK", &mut n),
+                tr("Heaters and their fittings"),
+                &[d],
+            );
+        }
         // the ventilation with heat recovery: its priced take-off
         if trade == Trade::Ventilation
             && !creabim_services::recuperation::bill(&b.m).lines.is_empty()

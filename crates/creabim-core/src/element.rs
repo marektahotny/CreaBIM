@@ -2792,6 +2792,9 @@ pub enum ScheduleCategory {
     /// The take-off of the ventilation with heat recovery: the units,
     /// boxes, ducts and terminals as drawn, priced from the catalogue.
     VentilationHrv,
+    /// The heaters: KORADO radiators and towel radiators by size with
+    /// their output, order codes and the fittings each is connected with.
+    HeaterList,
     /// The building's areas and enclosed volume: built-up, living and
     /// usable area, Op = Oz + Os + Ov + Ot by STN 73 4055.
     BuildingFigures,
@@ -2807,7 +2810,7 @@ pub enum ScheduleCategory {
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 27] = [
+    pub const ALL: [ScheduleCategory; 28] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2832,6 +2835,7 @@ impl ScheduleCategory {
         ScheduleCategory::BoardDiagram,
         ScheduleCategory::LintelList,
         ScheduleCategory::VentilationHrv,
+        ScheduleCategory::HeaterList,
         ScheduleCategory::BuildingFigures,
         ScheduleCategory::FlashingTable,
         ScheduleCategory::Identification,
@@ -2864,6 +2868,7 @@ impl ScheduleCategory {
             ScheduleCategory::BoardDiagram => return "Board diagram".into(),
             ScheduleCategory::LintelList => return "Lintel list".into(),
             ScheduleCategory::VentilationHrv => return "VZT – recuperation".into(),
+            ScheduleCategory::HeaterList => return "Heaters and their fittings".into(),
             ScheduleCategory::BuildingFigures => return "Area data".into(),
             ScheduleCategory::FlashingTable => return "Table of sheet-metal items".into(),
             ScheduleCategory::Identification => return "Identification data".into(),
@@ -2905,6 +2910,7 @@ impl ScheduleCategory {
             ScheduleCategory::BoardDiagram => "Board diagram",
             ScheduleCategory::LintelList => "Lintel list",
             ScheduleCategory::VentilationHrv => "VZT – recuperation",
+            ScheduleCategory::HeaterList => "Heaters and their fittings",
             ScheduleCategory::BuildingFigures => "Area data",
             ScheduleCategory::FlashingTable => "Table of sheet-metal items",
             ScheduleCategory::Identification => "Identification data",
