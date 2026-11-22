@@ -365,6 +365,29 @@ pub fn tag_normal(model: &Model, view: &View, tag: &creabim_core::Tag) -> Option
     (d.length() > 0.5).then(|| d.normalize())
 }
 
+/// A door's widest leaf, and how far from its wall's middle the arcs its
+/// leaves sweep reach, as the plan draws them; none without a leaf.
+fn leaf_reach(
+    model: &Model,
+    o: &creabim_core::Opening,
+    w: &creabim_core::Wall,
+) -> Option<(f64, f64)> {
+    let asm = model
+        .get(o.host)
+        .and_then(|h| creabim_core::assembly_of(model, h))
+        .map(|x| x.1);
+    let left = o.faces_left(w);
+    crate::opening::opening_boxes(o, w, asm)
+        .iter()
+        .filter(|b| b.part == crate::opening::Part::Leaf)
+        .map(|b| {
+            let r = b.hi.x - b.lo.x;
+            let s = if left { b.hi.y } else { -b.lo.y };
+            (r, s + r)
+        })
+        .reduce(|a, b| (a.0.max(b.0), a.1.max(b.1)))
+}
+
 pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
     let Some(e) = model.get(id) else {
         return (String::new(), false);
@@ -2023,7 +2046,11 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                         };
                         // the way its leaf swings, and how far
                         let left = if o.faces_left(wall) { 1.0 } else { -1.0 };
-                        Some((write(w), under, wall.thickness / 2.0, left, w))
+                        // its widest leaf, and how far from the wall's
+                        // middle the arcs reach, as the plan draws them
+                        let (leaf, reach) =
+                            leaf_reach(model, o, wall).unwrap_or((w, wall.thickness / 2.0 + w));
+                        Some((write(w), under, wall.thickness / 2.0, left, leaf, reach))
                     }
                     _ => None,
                 });
@@ -2041,7 +2068,10 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 // the leader is as long as the numbers on it need
                 // and on the side the leaf swings to, the bubble stands
                 // clear of the leaf and the arc it sweeps
-                if let (Some(n), Some((tw, th, face, left, leaf))) = (square, &passage) {
+                // unless it was dragged where it stands
+                if let (Some(n), Some((tw, th, face, left, leaf, reach)), false) =
+                    (square, &passage, t.placed)
+                {
                     let long = th
                         .split('\n')
                         .chain([tw.as_str()])
@@ -2054,9 +2084,9 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                         // the numbers inside the arc where they fit,
                         // else past the leaf
                         need = if fits(long, *leaf) {
-                            need.max(face + leaf + radius(&text))
+                            need.max(reach + 1.5 * mm + radius(&text))
                         } else {
-                            need + leaf
+                            need + reach - face
                         };
                     }
                     if offset.length() < need {
@@ -2099,9 +2129,20 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 }
                 // the width over the line, the height under it, midway
                 // from the bubble to the wall's face
-                if let Some((tw, th, face, left, leaf)) = passage {
+                if let Some((tw, th, face, left, leaf, reach)) = passage {
                     let d = anchor - at;
-                    let dir = d.normalize_or_zero();
+                    // a bubble dragged onto the door still points off
+                    // its wall the side it was dragged to
+                    let dir = match square {
+                        Some(n) if d.length() < 1e-6 => {
+                            if t.offset.dot(n) < 0.0 {
+                                n
+                            } else {
+                                -n
+                            }
+                        }
+                        _ => d.normalize_or_zero(),
+                    };
                     let (angle, up) = crate::annotation::upright(dir.to_angle());
                     // beside the wall's face, as the office writes them
                     let long = th
@@ -2112,12 +2153,22 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                         * mm;
                     // past the leaf where it swings to this side
                     let swung = square.is_some_and(|n| dir.dot(n * left) < 0.0);
-                    let clear = if swung && !fits(long, leaf) {
-                        leaf
+                    let mut clear = if swung && !fits(long, leaf) {
+                        reach - face
                     } else {
                         0.0
                     };
-                    let mid = anchor - dir * (face + clear + 1.5 * mm + long / 2.0);
+                    // a leader dragged short: the numbers between the wall
+                    // and the bubble where they fit, else past the bubble
+                    let gap = d.length() - radius(&text) - face;
+                    if gap < clear + long + 3.0 * mm {
+                        clear = 0.0;
+                    }
+                    let mid = if gap < long + 3.0 * mm {
+                        at - dir * (radius(&text) + 1.5 * mm + long / 2.0)
+                    } else {
+                        anchor - dir * (face + clear + 1.5 * mm + long / 2.0)
+                    };
                     let mut rows = vec![(tw, 1.0)];
                     rows.extend(
                         th.split('\n')

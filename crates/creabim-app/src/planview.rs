@@ -8405,7 +8405,25 @@ fn drag_annotation(
             Some((id, i, shift)) => Some((id, w, shift, Some(i))),
             None => hit.and_then(|id| {
                 let start = match &doc.model().get(id)?.kind {
-                    ElementKind::Tag(t) if t.view == view => t.offset,
+                    // a door's or window's mark from where it is drawn,
+                    // its leader kept clear of the leaf
+                    ElementKind::Tag(t) if t.view == view => drawing
+                        .items
+                        .iter()
+                        .rev()
+                        .find_map(|it| match it {
+                            PlanItem::Tag {
+                                id: i, anchor, at, ..
+                            } if *i == id && !t.material => Some(*at - *anchor),
+                            _ => None,
+                        })
+                        .filter(|_| {
+                            matches!(doc.model().get(view).map(|e| &e.kind),
+                                Some(ElementKind::View(v))
+                                    if creabim_geom::annotate::tag_normal(doc.model(), v, t)
+                                        .is_some())
+                        })
+                        .unwrap_or(t.offset),
                     ElementKind::Dimension(d) if d.view == view => DVec2::new(d.offset, 0.0),
                     // a fixture's mark moves, the fixture stays
                     ElementKind::Object(o) => o.mark.unwrap_or(DVec2::ZERO),
@@ -8485,10 +8503,12 @@ fn drag_annotation(
             if let ElementKind::Tag(t) = &mut e.kind {
                 t.offset = start + p - grab;
                 // a door's or window's mark moves square to its wall only
+                // and its leader is as long as it is dragged
                 if let Some(n) = square {
                     t.offset = n * t.offset.dot(n);
                     t.elbow = None;
                     t.end = None;
+                    t.placed = true;
                 }
             }
         }),
