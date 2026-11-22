@@ -938,6 +938,12 @@ pub struct Dimension {
     /// A chain whose stretches are kept equal: each reads `EQ`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub eq: bool,
+    /// Witness lines whose far ends were dragged, as PilonDesigner's: for
+    /// each point in [`Dimension::points`] order, how far its witness line
+    /// starts from the dimension line (the view's drawing units, metres);
+    /// none runs back to the measured point.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reach: Vec<Option<f64>>,
 }
 
 impl Dimension {
@@ -981,6 +987,7 @@ impl Dimension {
             short: false,
             back: false,
             eq: false,
+            reach: Vec::new(),
         }
     }
 

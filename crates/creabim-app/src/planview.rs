@@ -446,6 +446,9 @@ pub struct PlanState {
     /// The other selected dimensions dragged along with `anno_drag`'s:
     /// each with its line's offset at the start and the way it moves.
     anno_group: Vec<(ElementId, f64, DVec2)>,
+    /// A selected dimension's witness line whose far end is dragged: the
+    /// dimension and the point's place in its points.
+    witness_drag: Option<(ElementId, usize)>,
     /// The area whose drag holds `anno_drag`, `level_drag` or `drag`:
     /// another area, not dragged, must not end it (MU32: a dimension moved
     /// a step per drag).
@@ -743,6 +746,7 @@ impl Default for PlanState {
             dim: vec![],
             tag_host: None,
             anno_drag: None,
+            witness_drag: None,
             anno_group: vec![],
             drag_owner: None,
             anno: Default::default(),
@@ -1839,6 +1843,20 @@ fn show_pane(
         painter.add(egui::Shape::closed_line(pts, Stroke::new(2.0, SLAB_EDGE)));
     }
     crate::annotate::draw_grips(&painter, &xf, doc.model(), &plan.items, selection, mm);
+    if tool == Tool::Select {
+        // the far ends of the selected dimensions' witness lines
+        for (_, _, ends) in selected_witness_ends(doc.model(), view, selection) {
+            for e in ends {
+                painter.rect(
+                    egui::Rect::from_center_size(xf.to_screen(e.start), egui::Vec2::splat(6.0)),
+                    0.0,
+                    Color32::WHITE,
+                    Stroke::new(1.5, crate::theme::interaction()),
+                    egui::StrokeKind::Middle,
+                );
+            }
+        }
+    }
     // a selected door's or window's flip arrows beside it, as Revit's
     if matches!(kind, PaneKind::Plan { .. }) && tool == Tool::Select {
         if let Some(msg) = flip_arrows(ui, &painter, &xf, doc, selection) {
@@ -8333,6 +8351,9 @@ fn drag_annotation(
     selection: &mut Selection,
     mm: f64,
 ) -> Option<Option<String>> {
+    if let Some(r) = drag_witness(doc, view, xf, response, state, selection) {
+        return Some(r);
+    }
     if response.drag_started_by(egui::PointerButton::Primary) {
         let p = response
             .ctx
@@ -8585,6 +8606,106 @@ fn drag_annotation(
         }
         _ => Ok(()),
     };
+    Some(r.err().map(|e| e.to_string()))
+}
+
+/// The far ends of the selected linear dimensions' witness lines in
+/// `view`: the dimension, the line's normal, and each witness line.
+pub(crate) fn selected_witness_ends(
+    model: &creabim_core::Model,
+    view: ElementId,
+    selection: &Selection,
+) -> Vec<(ElementId, DVec2, Vec<creabim_geom::annotate::WitnessEnd>)> {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return vec![];
+    };
+    selection
+        .all()
+        .into_iter()
+        .filter_map(|id| match model.get(id).map(|e| &e.kind) {
+            Some(ElementKind::Dimension(d))
+                if d.view == view && d.kind == creabim_core::DimensionKind::Linear =>
+            {
+                let (ends, n) = creabim_geom::annotate::witness_ends(model, v, d)?;
+                Some((id, n, ends))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Drag the far end of a selected dimension's witness line along it, as
+/// PilonDesigner's: it snaps to the other witness lines' ends of the same
+/// dimension (they line up) and back to its point. Returns `Some` while a
+/// drag is in progress.
+fn drag_witness(
+    doc: &mut Document,
+    view: ElementId,
+    xf: &Xf,
+    response: &egui::Response,
+    state: &mut PlanState,
+    selection: &Selection,
+) -> Option<Option<String>> {
+    let tol = 6.0 / xf.scale as f64;
+    if response.drag_started_by(egui::PointerButton::Primary) {
+        let p = response
+            .ctx
+            .input(|i| i.pointer.press_origin())
+            .or(response.interact_pointer_pos())?;
+        let w = xf.to_world(p);
+        state.witness_drag = selected_witness_ends(doc.model(), view, selection)
+            .into_iter()
+            .flat_map(|(id, _, ends)| ends.into_iter().map(move |e| (id, e)))
+            .filter(|(_, e)| e.start.distance(w) < tol)
+            .min_by(|x, y| x.1.start.distance(w).total_cmp(&y.1.start.distance(w)))
+            .map(|(id, e)| (id, e.index));
+        if state.witness_drag.is_some() {
+            state.drag_owner = Some(response.id);
+        }
+    }
+    let (id, index) = state.witness_drag?;
+    if state.drag_owner != Some(response.id) {
+        return None;
+    }
+    if response.drag_stopped() || !response.dragged() {
+        state.witness_drag = None;
+        return Some(None);
+    }
+    let p = xf.to_world(response.interact_pointer_pos()?);
+    let mut sel = Selection::default();
+    sel.only(id);
+    let (_, n, ends) = selected_witness_ends(doc.model(), view, &sel).pop()?;
+    let me = *ends.iter().find(|e| e.index == index)?;
+    let Some(ElementKind::Dimension(d)) = doc.model().get(id).map(|e| &e.kind) else {
+        return Some(None);
+    };
+    let out = me.out(-n * d.offset.signum());
+    let reach = (p - me.foot).dot(out).max(0.0);
+    // its own point, else lined up with another witness line's end
+    let natural = me.point.distance(me.foot);
+    let mut to = Some(reach);
+    if (reach - natural).abs() < tol {
+        to = None;
+    } else if let Some(r) = ends
+        .iter()
+        .filter(|e| e.index != index)
+        .map(|e| e.reach())
+        .filter(|r| (r - reach).abs() < tol)
+        .min_by(|x, y| (x - reach).abs().total_cmp(&(y - reach).abs()))
+    {
+        to = Some(r);
+    }
+    let r = doc.edit_merged(id, "Move witness line end", |e| {
+        if let ElementKind::Dimension(d) = &mut e.kind {
+            if d.reach.len() <= index {
+                d.reach.resize(index + 1, None);
+            }
+            d.reach[index] = to;
+            if d.reach.iter().all(|r| r.is_none()) {
+                d.reach.clear();
+            }
+        }
+    });
     Some(r.err().map(|e| e.to_string()))
 }
 
