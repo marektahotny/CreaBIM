@@ -8320,5 +8320,14 @@
  "Plinth (XPS and waterproofing)": "Sokel (XPS a hydroizolácia)",
  "Plinth render": "Soklová omietka",
  "Recessed plinth: {n} behind the facade": "Ustúpený sokel: {n} za fasádou",
- "Top over the finished ground": "Horná hrana nad upraveným terénom"
+ "Top over the finished ground": "Horná hrana nad upraveným terénom",
+ "Own plinth heights": "Vlastné výšky sokla",
+ "Off: the plinth's top lies its build-up's height over the highest finished ground along the wall. On: set its top here, in steps along the wall where the ground falls.": "Vypnuté: horná hrana sokla je o výšku zo skladby nad najvyšším upraveným terénom pri stene. Zapnuté: zadáš ju tu, po úsekoch pozdĺž steny, kde terén klesá.",
+ "Plinth top {} (its build-up's {} over the highest finished ground)": "Horná hrana sokla {} ({} zo skladby nad najvyšším upraveným terénom)",
+ "From (along the wall)": "Od začiatku steny",
+ "Plinth top (±0,000)": "Vrch sokla (±0,000)",
+ "Remove step": "Odstrániť úsek",
+ "This step goes; the one before it runs on.": "Úsek zmizne; predchádzajúci pokračuje ďalej.",
+ "Add step": "Pridať úsek",
+ "A new piece of the plinth from halfway along the last one, at the same height to start with.": "Nový úsek sokla od polovice posledného, zatiaľ v rovnakej výške."
 }

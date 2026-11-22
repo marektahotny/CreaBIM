@@ -10113,6 +10113,10 @@ crate::props::row(ui, "File names", |ui| {
                             label = "Wall material"
                         }
                     }
+                    let l = wallsui::plinth_fields(ui, self.doc.model(), w);
+                    if !l.is_empty() {
+                        label = l;
+                    }
                     let l = wallsui::wall_fields(ui, self.doc.model(), id, w);
                     if !l.is_empty() {
                         label = l;
