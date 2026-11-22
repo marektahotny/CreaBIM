@@ -198,6 +198,10 @@ pub struct Assembly {
     /// use's usual: an outside wall, a floor over outside air, a roof.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thermal: Option<crate::thermal::Boundary>,
+    /// A wall's plinth (sokel): XPS on a membrane below a line over the
+    /// finished ground ([`crate::plinth`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plinth: Option<crate::plinth::Plinth>,
 }
 
 /// Which layers of a wall turn round the core's edge into the reveal of
@@ -374,6 +378,7 @@ impl Assembly {
             fire_resistance: String::new(),
             wrap: RevealWrap::default(),
             thermal: None,
+            plinth: None,
         }
     }
 
@@ -958,6 +963,7 @@ mod tests {
             bearing: None,
             fire_partial: false,
             no_fire_barriers: false,
+            plinth_steps: Vec::new(),
         };
         let b = wall_bands(a, &w);
         assert!((b[0].s0 + 0.1825).abs() < 1e-9 && (b[0].s1 + 0.0805).abs() < 1e-9);

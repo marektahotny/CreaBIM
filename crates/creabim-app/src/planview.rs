@@ -4831,6 +4831,7 @@ fn section_tool(
                         bearing: None,
                         fire_partial: false,
                         no_fire_barriers: false,
+                        plinth_steps: Vec::new(),
                     }),
                 );
                 // its type's thickness, but its drawn height

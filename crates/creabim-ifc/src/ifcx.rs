@@ -1137,6 +1137,7 @@ impl Builder {
                             bearing: None,
                             fire_partial: false,
                             no_fire_barriers: false,
+                            plinth_steps: Vec::new(),
                         }),
                         of_type: None,
                     });

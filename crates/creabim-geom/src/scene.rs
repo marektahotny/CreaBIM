@@ -195,6 +195,16 @@ fn layer_items(
                     }
                 }
             }
+            plinth_parts(
+                model,
+                e,
+                w,
+                &openings,
+                &ends,
+                top.as_ref(),
+                level.elevation,
+                &mut parts,
+            );
             parts
         }
         ElementKind::Slab(s) => {
@@ -256,6 +266,147 @@ fn layer_items(
             .chain(linings)
             .collect(),
     )
+}
+
+/// How thick the plinth's membrane is drawn.
+const PLINTH_MEMBRANE: f64 = 0.002;
+
+/// A wall's plinth (sokel, [`creabim_core::plinth`]): below its top the
+/// facade insulation gives way to the plinth's XPS (flush, or set back
+/// when thinner) and the facade render to the plinth's, both run down
+/// past the wall's base when the plinth covers the slab's side; the
+/// membrane turned up the masonry behind them. Each a part of the
+/// facade insulation's layer, in its own material.
+#[allow(clippy::too_many_arguments)]
+fn plinth_parts(
+    model: &Model,
+    e: &Element,
+    w: &creabim_core::Wall,
+    openings: &[&Opening],
+    ends: &creabim_core::WallEnds,
+    top: Option<&creabim_core::walls::TopProfile>,
+    level_z: f64,
+    parts: &mut Vec<(assembly::Band, TriMesh)>,
+) {
+    use creabim_core::LayerFunction as F;
+    let Some(p) = creabim_core::plinth::of_wall(model, w) else {
+        return;
+    };
+    let bands: Vec<assembly::Band> = {
+        let mut seen: Vec<usize> = vec![];
+        parts
+            .iter()
+            .filter(|(b, _)| {
+                let first = !seen.contains(&b.index);
+                seen.push(b.index);
+                first
+            })
+            .map(|(b, _)| *b)
+            .collect()
+    };
+    let (Some(first), Some(last)) = (bands.first(), bands.last()) else {
+        return;
+    };
+    // which way across the wall is out
+    let out = if first.s0 + first.s1 < last.s0 + last.s1 {
+        -1.0
+    } else {
+        1.0
+    };
+    let Some(ins) = bands.iter().find(|b| b.function == F::Insulation).copied() else {
+        return;
+    };
+    let inner = if out < 0.0 { ins.s1 } else { ins.s0 };
+    let thick = p.thickness.clamp(0.005, ins.s1 - ins.s0 + 0.2);
+    let recess = (ins.s1 - ins.s0) - thick;
+    let span = |a: f64, b: f64| (a.min(b), a.max(b));
+    let below = creabim_core::plinth::below_base(model, e, w, p);
+    let base = level_z + w.base_offset;
+    let tops = creabim_core::plinth::tops(model, w, p);
+    let d = w.direction();
+    let n = DVec2::new(-d.y, d.x);
+    let len = w.length();
+    // boxes over the plinth's height, a metre past the wall's ends
+    let cutter = |lift: f64, s: (f64, f64)| {
+        let mut m = TriMesh::default();
+        let k = tops.len();
+        for (i, &(u0, u1, z)) in tops.iter().enumerate() {
+            let u0 = if i == 0 { -1.0 } else { u0 };
+            let u1 = if i + 1 == k { len + 1.0 } else { u1 };
+            let z1 = (z + lift).max(base - below);
+            let pt = |j: usize| {
+                let u = if j & 1 == 0 { u0 } else { u1 };
+                let z = if j & 2 == 0 { base - below - 1.0 } else { z1 };
+                let s = if j & 4 == 0 { s.0 - 0.05 } else { s.1 + 0.05 };
+                (w.start + d * u + n * s).extend(z)
+            };
+            cuboid(
+                &mut m,
+                [pt(0), pt(1), pt(2), pt(3), pt(4), pt(5), pt(6), pt(7)],
+            );
+        }
+        m
+    };
+    let whole = span(
+        bands.iter().map(|b| b.s0).fold(f64::MAX, f64::min),
+        bands.iter().map(|b| b.s1).fold(f64::MIN, f64::max),
+    );
+    let boxes = cutter(0.0, whole);
+    let layer = |b: (f64, f64), vext: [f64; 2], ext: [f64; 2]| {
+        crate::wall::wall_layer_mesh_v(w, level_z, openings, ends, top, b, false, ext, vext)
+    };
+    let mut add: Vec<(assembly::Band, TriMesh)> = vec![];
+    // the facade's insulation and render above it; the plinth's below
+    for (b, mesh) in parts.iter_mut() {
+        let outer = if out < 0.0 {
+            b.s1 <= inner + 1e-9
+        } else {
+            b.s0 >= inner - 1e-9
+        };
+        if !outer || !(b.function == F::Insulation || b.function == F::Finish) {
+            continue;
+        }
+        let first_of_layer = !add.iter().any(|(a, _)| a.index == b.index);
+        *mesh = boolean_mesh(mesh, &boxes, BoolOp::Difference);
+        if !first_of_layer {
+            continue;
+        }
+        let (band, material) = if b.index == ins.index {
+            (
+                span(inner, inner + out * thick),
+                p.insulation.or(b.material),
+            )
+        } else {
+            (
+                span(b.s0 - out * recess, b.s1 - out * recess),
+                p.render.or(b.material),
+            )
+        };
+        let piece = layer(band, [b.vext[0].max(0.0) + below, b.vext[1]], b.ext);
+        let piece = boolean_mesh(&piece, &boxes, BoolOp::Intersection);
+        if !piece.indices.is_empty() {
+            let mut nb = *b;
+            nb.s0 = band.0;
+            nb.s1 = band.1;
+            nb.material = material;
+            add.push((nb, piece));
+        }
+    }
+    // the membrane up the masonry, past the top by its lap
+    if let Some(m) = p.membrane {
+        let band = span(inner, inner + out * PLINTH_MEMBRANE);
+        let piece = layer(band, [ins.vext[0].max(0.0) + below, ins.vext[1]], ins.ext);
+        let piece = boolean_mesh(&piece, &cutter(p.lap.max(0.0), whole), BoolOp::Intersection);
+        if !piece.indices.is_empty() {
+            let mut nb = ins;
+            nb.s0 = band.0;
+            nb.s1 = band.1;
+            nb.material = Some(m);
+            nb.function = F::Membrane;
+            add.push((nb, piece));
+        }
+    }
+    parts.extend(add);
 }
 
 /// The [`SceneItem::finish`] of a reveal lining.
@@ -1708,5 +1859,94 @@ mod tests {
         let without: Vec<SceneItem> = scene.iter().filter(|i| !i.is_lining()).cloned().collect();
         let plain: f64 = element_meshes(&without).values().map(|m| m.volume()).sum();
         assert!((walls - plain).abs() < 1e-9);
+    }
+
+    /// George 2026-11-22: a plinth of XPS, set back from the facade, on a
+    /// membrane up the masonry, 300 mm over the ground (here the walls'
+    /// base, with no terrain); the facade insulation and render above it.
+    #[test]
+    fn a_plinth_swaps_the_facade_insulation_for_xps_below_its_top() {
+        use creabim_core::plinth::Plinth;
+        use creabim_core::{
+            AssemblyUse, Document, Layer, LayerFunction as F, Material, Transaction,
+        };
+        let mut doc = Document::from_model(creabim_core::sample::layered_house());
+        let mat = |n: &str| Element::new(n, ElementKind::Material(Material::default()));
+        let (xps, foil, sokel, eps) =
+            (mat("XPS"), mat("Fólia"), mat("Soklová omietka"), mat("EPS"));
+        let (xid, fid, sid, eid) = (xps.id, foil.id, sokel.id, eps.id);
+        doc.commit(
+            Transaction::new("m")
+                .insert(xps)
+                .insert(foil)
+                .insert(sokel)
+                .insert(eps),
+        )
+        .unwrap();
+        let ids: Vec<ElementId> = doc.model().iter().map(|e| e.id).collect();
+        for id in ids {
+            if let ElementKind::Assembly(a) = doc.model().get(id).unwrap().kind.clone() {
+                if a.usage != AssemblyUse::Wall {
+                    continue;
+                }
+                doc.edit(id, "plinth", |e| {
+                    if let ElementKind::Assembly(a) = &mut e.kind {
+                        a.layers = vec![
+                            Layer::new(F::Finish, None, 0.005),
+                            Layer::new(F::Insulation, Some(eid), 0.15),
+                            Layer::new(F::Structure, None, 0.25),
+                            Layer::new(F::Finish, None, 0.015),
+                        ];
+                        let mut p = Plinth::new(0.12);
+                        p.insulation = Some(xid);
+                        p.membrane = Some(fid);
+                        p.render = Some(sid);
+                        a.plinth = Some(p);
+                    }
+                })
+                .unwrap();
+            }
+        }
+        let m = doc.model();
+        let joins = creabim_core::wall_joins(m);
+        let (e, w) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.assembly.is_some() => Some((e, w)),
+                _ => None,
+            })
+            .unwrap();
+        let base = creabim_core::plinth::base_z(m, w);
+        let parts = layer_parts(m, e, &joins);
+        let zs = |mat: ElementId| -> Option<(f64, f64)> {
+            let ps: Vec<f64> = parts
+                .iter()
+                .filter(|(l, _)| l.material == Some(mat))
+                .flat_map(|(_, mesh)| mesh.positions.iter().map(|p| p[2] as f64))
+                .collect();
+            (!ps.is_empty()).then(|| {
+                (
+                    ps.iter().copied().fold(f64::MAX, f64::min),
+                    ps.iter().copied().fold(f64::MIN, f64::max),
+                )
+            })
+        };
+        let (x0, x1) = zs(xid).expect("XPS");
+        assert!(
+            (x0 - base).abs() < 1e-3 && (x1 - (base + 0.3)).abs() < 1e-3,
+            "{x0} {x1}"
+        );
+        let (e0, _) = zs(eid).expect("EPS above");
+        assert!(e0 > base + 0.3 - 1e-3, "{e0}");
+        let (f0, f1) = zs(fid).expect("membrane");
+        assert!((f0 - base).abs() < 1e-3 && (f1 - (base + 0.3)).abs() < 1e-3);
+        assert!(zs(sid).is_some(), "the plinth's render");
+        // the XPS is 120 thick, set back 30 behind the facade insulation
+        let xps_vol: f64 = parts
+            .iter()
+            .filter(|(l, _)| l.material == Some(xid))
+            .map(|(_, mesh)| closed_volume(mesh))
+            .sum();
+        assert!(xps_vol > 0.0);
     }
 }
