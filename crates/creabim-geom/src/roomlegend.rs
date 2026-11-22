@@ -251,6 +251,8 @@ pub fn counted_area(model: &Model, under: &Undersides, r: &Room) -> f64 {
     let Some(s) = creabim_core::room::shape_of(model, r) else {
         return 0.0;
     };
+    // without plaster (George)
+    let s = creabim_core::room::bare_shape(model, &s);
     let net = creabim_core::room::net_area(model, r, &s);
     if under.0.is_empty() {
         return net;
@@ -496,7 +498,7 @@ mod tests {
         assert_eq!(s.above_totals[0][0], "Living area");
         let area = |m: &Model, e: &Element| {
             creabim_core::room::shape(m, e.id)
-                .map_or(0.0, |sh| creabim_core::room::net_area(m, room(e), &sh))
+                .map_or(0.0, |sh| creabim_core::room::bare_area(m, room(e), &sh))
         };
         fn room(e: &Element) -> &Room {
             match &e.kind {
@@ -576,6 +578,7 @@ mod tests {
             })
             .unwrap();
         let s = creabim_core::room::shape_of(&m, r).unwrap();
+        let s = creabim_core::room::bare_shape(&m, &s);
         let net = creabim_core::room::net_area(&m, r, &s);
         let floor = m.level(r.level).unwrap().elevation;
         let (mut lo, mut hi) = (s.outline[0], s.outline[0]);

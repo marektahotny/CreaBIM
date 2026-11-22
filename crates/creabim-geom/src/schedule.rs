@@ -635,7 +635,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
                 };
                 let shape = creabim_core::room::shape(model, e.id);
                 let (a, p) = shape.as_ref().map_or((0.0, 0.0), |s| {
-                    (creabim_core::room::net_area(model, r, s), s.perimeter())
+                    (creabim_core::room::bare_area(model, r, s), s.perimeter())
                 });
                 total += a;
                 let dash = |s: &str| {
@@ -867,7 +867,7 @@ fn with_level_totals(model: &Model, rows: Vec<Row>) -> Vec<Row> {
             .iter()
             .filter_map(|r| match model.get(r.id).map(|e| &e.kind) {
                 Some(ElementKind::Room(room)) => creabim_core::room::shape(model, r.id)
-                    .map(|s| creabim_core::room::net_area(model, room, &s)),
+                    .map(|s| creabim_core::room::bare_area(model, room, &s)),
                 _ => None,
             })
             .sum();

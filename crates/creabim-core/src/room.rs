@@ -505,7 +505,7 @@ impl RoomField {
             RoomField::Name => e.name.clone(),
             RoomField::Number => r.number.clone(),
             RoomField::Area => shape_of(model, r).map_or("Not enclosed".into(), |s| {
-                units.area(net_area(model, r, &s))
+                units.area(bare_area(model, r, &s))
             }),
             RoomField::Perimeter => {
                 shape_of(model, r).map_or("Not enclosed".into(), |s| units.dimension(s.perimeter()))
@@ -904,6 +904,59 @@ pub fn area(model: &Model, room: ElementId) -> f64 {
         Some(ElementKind::Room(r)) => shape_of(model, r).map_or(0.0, |s| net_area(model, r, &s)),
         _ => 0.0,
     }
+}
+
+/// How thick the finishes (plaster, render) are on the face of `wall`
+/// that edge `a`–`b` of a room runs along: the room's floor area is
+/// counted to the bare wall behind them (George, as STN 73 4301 drawings
+/// state areas without plaster).
+pub fn finish_on_face(model: &Model, wall: ElementId, a: DVec2, b: DVec2) -> f64 {
+    let Some(ElementKind::Wall(w)) = model.get(wall).map(|e| &e.kind) else {
+        return 0.0;
+    };
+    let Some(ElementKind::Assembly(asm)) = w.assembly.and_then(|id| model.get(id)).map(|e| &e.kind)
+    else {
+        return 0.0;
+    };
+    let mut bands = crate::assembly::wall_bands(asm, w);
+    if bands.is_empty() {
+        return 0.0;
+    }
+    let n = w.direction().perp();
+    let side = n.dot((a + b) / 2.0 - w.start);
+    // from the face the room is on, inwards
+    bands.sort_by(|x, y| x.s0.min(x.s1).total_cmp(&y.s0.min(y.s1)));
+    if side > 0.0 {
+        bands.reverse();
+    }
+    bands
+        .iter()
+        .take_while(|b| b.function == crate::assembly::LayerFunction::Finish)
+        .map(|b| (b.s1 - b.s0).abs())
+        .sum()
+}
+
+/// A room's shape with its edges along walls pushed out past their
+/// plaster to the bare wall: what its floor area is counted over.
+pub fn bare_shape(model: &Model, s: &RoomShape) -> RoomShape {
+    let n = s.outline.len();
+    let by: Vec<f64> = (0..n)
+        .map(|i| match s.bounded_by.get(i).copied().flatten() {
+            Some(w) => finish_on_face(model, w, s.outline[i], s.outline[(i + 1) % n]),
+            None => 0.0,
+        })
+        .collect();
+    RoomShape {
+        outline: crate::members::offset_edges(&s.outline, &by),
+        bounded_by: s.bounded_by.clone(),
+    }
+}
+
+/// A room's floor area without plaster (see [`bare_shape`]), less the
+/// shafts through its floor: what the room legend and the building's
+/// figures count.
+pub fn bare_area(model: &Model, r: &Room, s: &RoomShape) -> f64 {
+    net_area(model, r, &bare_shape(model, s))
 }
 
 /// The floor area of `r`, shaped `s`, less the shafts through its floor.
