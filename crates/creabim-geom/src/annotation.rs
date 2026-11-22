@@ -32,6 +32,8 @@ pub struct TextLook {
     /// tags, placed by estimated widths, read ragged; MU31: the style's
     /// Align).
     pub align: creabim_core::TextAlign,
+    /// Its texts cover what is drawn under them.
+    pub back: bool,
 }
 
 /// Size of dimension ticks and arrows, paper mm.
@@ -57,6 +59,7 @@ impl From<TextStyle> for TextLook {
             shape: s.tag_shape,
             breaks: s.break_at_tags,
             align: s.align,
+            back: s.back,
         }
     }
 }
@@ -946,6 +949,44 @@ impl Annotation {
     }
 }
 
+impl Annotation {
+    /// The patches its texts cover what is under them with, when its
+    /// look says so ("Pozadie"); `mm` drawing units per paper mm.
+    pub fn back_patches(&self, marks: &Marks, mm: f64) -> Vec<[DVec2; 4]> {
+        if !self.look.back {
+            return vec![];
+        }
+        marks
+            .texts
+            .iter()
+            .filter(|t| !t.text.trim().is_empty())
+            .map(|t| back_patch(t, &self.look, mm))
+            .collect()
+    }
+}
+
+/// A text's box grown to cover the lines under it: a line's full step
+/// high, so a note's lines join into one block.
+pub fn back_patch(t: &MarkText, look: &TextLook, mm: f64) -> [DVec2; 4] {
+    let w = look.width(&t.text) * mm;
+    let pad = 0.5 * mm;
+    let h = look.size * 0.75 * mm;
+    let dir = DVec2::from_angle(t.angle);
+    let up = dir.perp();
+    let x0 = match t.anchor {
+        Anchor::Start => 0.0,
+        Anchor::Middle => -w / 2.0,
+        Anchor::End => -w,
+    };
+    let o = t.at + dir * x0;
+    [
+        o - dir * pad - up * h,
+        o + dir * (w + pad) - up * h,
+        o + dir * (w + pad) + up * h,
+        o - dir * pad + up * h,
+    ]
+}
+
 /// Corners of a piece of text's box.
 fn text_box(t: &MarkText, look: &TextLook, mm: f64) -> [DVec2; 4] {
     let w = look.width(&t.text) * mm;
@@ -1113,6 +1154,23 @@ mod tests {
         }
         // plain text, no box: as it was
         assert_eq!(lay_out_note("a\n- b", &look, None, false), "a\n- b");
+    }
+
+    #[test]
+    fn a_text_with_background_covers_its_lines_as_one_block() {
+        let mut n = note("First\nSecond", None);
+        let m = n.marks(0.1);
+        assert!(n.back_patches(&m, 0.1).is_empty());
+        n.look.back = true;
+        let p = n.back_patches(&m, 0.1);
+        assert_eq!(p.len(), 2);
+        for (patch, t) in p.iter().zip(&m.texts) {
+            // around the text, a little past both ends
+            assert!(patch[0].x < t.at.x && patch[1].x > t.at.x + n.look.width(&t.text) * 0.1);
+            assert!(patch[0].y < t.at.y && patch[2].y > t.at.y);
+        }
+        // the two lines' patches meet: no line shows between them
+        assert!(close(p[0][0].y, p[1][3].y));
     }
 
     #[test]

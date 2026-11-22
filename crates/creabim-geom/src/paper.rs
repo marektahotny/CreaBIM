@@ -488,7 +488,15 @@ pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, l
                 let _ = text;
             }
             PlanItem::Annotation { item, .. } => {
-                draw_marks(canvas, &item.marks(1.0 / map.k()), &item.look, &to);
+                let mm = 1.0 / map.k();
+                let marks = item.marks(mm);
+                draw_marks(
+                    canvas,
+                    &marks,
+                    &item.look,
+                    &to,
+                    &item.back_patches(&marks, mm),
+                );
             }
             PlanItem::Curve {
                 points,
@@ -529,6 +537,7 @@ pub fn draw_marks(
     marks: &Marks,
     look: &TextLook,
     to: &dyn Fn(DVec2) -> DVec2,
+    patches: &[[DVec2; 4]],
 ) {
     for l in &marks.lines {
         let pts: Vec<DVec2> = l.iter().map(|p| to(*p)).collect();
@@ -539,6 +548,10 @@ pub fn draw_marks(
         canvas.fill_rgb(&pts, look.rgb.unwrap_or([0.0; 3]));
     }
     draw_ends(canvas, &marks.ends, look, to);
+    for p in patches {
+        let pts: Vec<DVec2> = p.iter().map(|q| to(*q)).collect();
+        canvas.fill(&pts, 1.0);
+    }
     for t in &marks.texts {
         canvas.styled_text(to(t.at), &t.text, t.anchor, t.angle, look);
     }

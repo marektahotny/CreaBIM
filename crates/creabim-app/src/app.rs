@@ -11656,6 +11656,12 @@ crate::props::row(ui, "File names", |ui| {
                                 }
                             });
                     }
+                    if crate::props::switch(ui, &mut d.back, "Text background")
+                        .on_hover_text(crate::i18n::t("The numbers cover what is drawn under them"))
+                        .changed()
+                    {
+                        label = "Dimension text background";
+                    }
                     if d.kind == creabim_core::DimensionKind::Linear {
                         if crate::props::switch(ui, &mut d.short, "Short witness lines")
                             .on_hover_text(crate::i18n::t("Witness lines only by the dimension line, not back to what is measured"))
@@ -11670,14 +11676,6 @@ crate::props::row(ui, "File names", |ui| {
                         {
                             label = "Dimension EQ";
                             equalise = d.eq;
-                        }
-                        if crate::props::switch(ui, &mut d.back, "Text background")
-                            .on_hover_text(crate::i18n::t(
-                                "The numbers cover what is drawn under them",
-                            ))
-                            .changed()
-                        {
-                            label = "Dimension text background";
                         }
                         ui.label(
                             egui::RichText::new(crate::i18n::t("Drag a number to move it. The number of a short stretch goes beside the stretch by itself."))

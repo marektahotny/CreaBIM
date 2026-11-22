@@ -869,7 +869,7 @@ pub fn linear_items(
             manual: shift.is_some(),
             leader: shift.is_some(),
             short: d.short,
-            back: d.back,
+            back: d.back || look.back,
         }
     };
     if !d.is_chain() {
@@ -1689,6 +1689,13 @@ pub fn look_of(model: &Model, style: Option<ElementId>, color: Option<[f32; 3]>)
     creabim_core::text_style(model, style, color).into()
 }
 
+/// A dimension's look: its style's, its colour, and its own background.
+fn dim_look(model: &Model, d: &creabim_core::Dimension) -> TextLook {
+    let mut look = look_of(model, d.style, d.color);
+    look.back |= d.back;
+    look
+}
+
 /// A dimension about a centre (angle, radius, diameter, arc length) as a
 /// drawing item, if its points can be drawn in the view.
 fn measured(
@@ -1745,7 +1752,7 @@ fn measured(
                 a,
                 b,
             ),
-            look: look_of(model, d.style, d.color),
+            look: dim_look(model, d),
             mm: view.scale / 1000.0,
         }),
     })
@@ -1775,7 +1782,7 @@ fn slope(
                 plan,
             },
             text: slope_reading(d.pattern.as_deref(), b - a, plan),
-            look: look_of(model, d.style, d.color),
+            look: dim_look(model, d),
             mm: view.scale / 1000.0,
         }),
     })
@@ -1966,7 +1973,7 @@ fn spot(
                 cross,
             },
             text,
-            look: look_of(model, d.style, d.color),
+            look: dim_look(model, d),
             mm: view.scale / 1000.0,
         }),
     })
@@ -1981,6 +1988,7 @@ pub fn note_item(
     mm: f64,
 ) -> PlanItem {
     let mut look = look_of(model, n.style, n.color);
+    look.back |= n.back;
     look.leader_end = n.leader_end.or(look.leader_end);
     if let Some(size) = n.size.filter(|s| *s > 0.0) {
         look.size = size;

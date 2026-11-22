@@ -6123,7 +6123,7 @@
  "Text": "Text",
  "Text alignment": "Zarovnání textu",
  "Text angle": "Úhel textu",
- "Text background": "Pozadí čísla",
+ "Text background": "Pozadí textu",
  "Text centred on its point": "Text vystředěný na bodě",
  "Text colour": "Barva textu",
  "Text ends at its point": "Text končí na bodě",
@@ -8332,5 +8332,7 @@
  "A new piece of the plinth from halfway along the last one, at the same height to start with.": "Nový úsek soklu od poloviny posledního, zatím ve stejné výšce.",
  "Bounds slabs too": "Ohraničuje i desku",
  "A slab filling a room (Fill room) stops at this line as at a wall's centre line, so two floor build-ups can meet on it.": "Deska vložená do místnosti (Vyplnit místnost) se na této čáře zastaví jako na ose stěny, takže se na ní mohou setkat dvě různé skladby podlahy.",
- "Room separator bounds slabs": "Dělicí čára ohraničuje desku"
+ "Room separator bounds slabs": "Dělicí čára ohraničuje desku",
+ "Texts in this style cover what is drawn under them: dimension numbers, spot levels, notes": "Texty v tomto stylu zakryjí to, co je nakresleno pod nimi: čísla kót, výškové kóty, popisky",
+ "The text covers what is drawn under it": "Text zakryje to, co je nakresleno pod ním"
 }
