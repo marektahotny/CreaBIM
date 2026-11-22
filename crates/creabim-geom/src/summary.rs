@@ -344,7 +344,7 @@ pub fn figures(model: &Model) -> Figures {
                 continue;
             }
             if let Some(s) = room::shape(model, e.id) {
-                area += room::net_area(model, r, &s);
+                area += room::bare_area(model, r, &s);
                 n += 1;
             }
         }
