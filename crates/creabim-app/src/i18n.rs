@@ -582,7 +582,7 @@ mod tests {
         assert_eq!(plain("level\u{4}Elevation"), "Elevation");
         assert_eq!(
             translated(Lang::Sk, "level\u{4}Elevation").as_deref(),
-            Some("Výška")
+            Some("Úroveň")
         );
         assert_eq!(translated(Lang::Sk, "Elevation").as_deref(), Some("Pohľad"));
     }
