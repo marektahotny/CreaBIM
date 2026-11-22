@@ -68,6 +68,7 @@ impl Importer<'_> {
             _ => "Railing",
         };
         let element = Element {
+            locked: false,
             mark: None,
             reno: None,
             source: None,

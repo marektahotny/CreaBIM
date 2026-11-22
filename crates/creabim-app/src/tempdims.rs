@@ -50,6 +50,10 @@ pub struct TempDim {
     pub held: Option<ElementId>,
     /// What the neighbour is called in the status bar: "grid A", "W03".
     pub to: String,
+    /// When `b` is on the neighbour's line run on past its end (an element
+    /// outside the house measured to the house's outline), that end: a
+    /// thin witness line joins the two.
+    pub reach: Option<DVec2>,
 }
 
 /// The temporary dimension being typed into: in which view, for which
@@ -103,6 +107,7 @@ fn dim_level_temp(model: &Model, id: ElementId, click: DVec2) -> Option<TempDim>
         held: matches!(&model.get(id)?.kind, ElementKind::Dimension(d) if d.held.is_some())
             .then_some(id),
         to: name_of(model, other.0),
+        reach: None,
     })
 }
 
@@ -154,13 +159,82 @@ fn ref_lines(
                     out.push((e.id, w.start + n * o, w.end + n * o));
                 }
             }
-            ElementKind::Column(c) if c.level == level => {
+            // not the insulation round a column or the XPS on a wall
+            // column: dimensions run to load-bearing construction
+            // (George 2026-11-22)
+            ElementKind::Column(c)
+                if c.level == level
+                    && c.piece.is_none()
+                    && !c.in_wall.as_ref().is_some_and(|w| w.of.is_some()) =>
+            {
                 let pts = c.outline();
                 for i in 0..pts.len() {
                     out.push((e.id, pts[i], pts[(i + 1) % pts.len()]));
                 }
             }
             _ => {}
+        }
+    }
+    out
+}
+
+/// The lines an element outside the house measures to, run on past their
+/// ends: grid lines, and the walls on the house's outline by their outer
+/// core face (the lines `wref` names when not measuring core faces). A wall
+/// is on the outline when nothing stands out from its middle on one side
+/// (its outer side); a free-standing wall gives both its faces; a wall
+/// inside the house none.
+fn outline_lines(
+    model: &Model,
+    level: ElementId,
+    id: ElementId,
+    wref: WallRef,
+) -> Vec<(ElementId, DVec2, DVec2)> {
+    let walls_here: Vec<(ElementId, &creabim_core::Wall)> = model
+        .iter()
+        .filter(|o| o.id != id)
+        .filter_map(|o| match &o.kind {
+            ElementKind::Wall(w) if w.level == level && w.length() > 1e-6 => Some((o.id, w)),
+            _ => None,
+        })
+        .collect();
+    let mut out = vec![];
+    for o in model.iter().filter(|o| o.id != id) {
+        if let ElementKind::Grid(g) = &o.kind {
+            if g.start.distance(g.end) > 1e-6 {
+                out.push((o.id, g.start, g.end));
+            }
+        }
+    }
+    for &(wid, w) in &walls_here {
+        let n = w.direction().perp();
+        let mid = (w.start + w.end) / 2.0;
+        // nothing out from its middle on side `s` (within 50 m)
+        let free = |s: f64| {
+            let d = n * s;
+            let from = mid + d * (w.thickness / 2.0 + 0.01);
+            !walls_here.iter().any(|&(oid, ow)| {
+                oid != wid && {
+                    let e = ow.direction() * (ow.thickness / 2.0);
+                    ray_hit(from, d, ow.start - e, ow.end + e).is_some_and(|t| t <= 50.0)
+                }
+            })
+        };
+        let sides: Vec<f64> = [1.0, -1.0].into_iter().filter(|s| free(*s)).collect();
+        if sides.is_empty() {
+            continue;
+        }
+        let offs: Vec<f64> = if wref == WallRef::CoreFace {
+            let (a, b) = walls::core_span(model, w);
+            sides
+                .iter()
+                .map(|s| if *s > 0.0 { a.max(b) } else { a.min(b) })
+                .collect()
+        } else {
+            walls::ref_offsets(model, w, wref)
+        };
+        for k in offs {
+            out.push((wid, w.start + n * k, w.end + n * k));
         }
     }
     out
@@ -258,6 +332,7 @@ pub fn find(
                 },
                 held: holds::holding(model, id, o),
                 to: name_of(model, o),
+                reach: None,
             })
             .collect();
     }
@@ -357,6 +432,7 @@ pub fn find(
                         },
                         held: held(oid),
                         to: name_of(model, oid),
+                        reach: None,
                     },
                 ));
             }
@@ -380,6 +456,7 @@ pub fn find(
                     how: How::Length { end },
                     held: None,
                     to: "its length".into(),
+                    reach: None,
                 });
             }
             out
@@ -463,6 +540,7 @@ pub fn find(
                     how: How::Along { start_side: true },
                     held: None,
                     to: to(other),
+                    reach: None,
                 });
             }
             let right = cands
@@ -479,6 +557,7 @@ pub fn find(
                     how: How::Along { start_side: false },
                     held: None,
                     to: to(other),
+                    reach: None,
                 });
             }
             out
@@ -499,6 +578,10 @@ pub fn find(
                 .into_iter()
                 .filter(|(_, a, b)| !(inside(*a) && inside(*b)))
                 .collect();
+            // the lines run on past their ends for what lies outside the
+            // house (George 2026-11-22: "od obvodu domu"): grid lines, and
+            // the outer core face of each wall on the house's outline
+            let outline = outline_lines(model, level, id, wref);
             let mut out = vec![];
             for (from, dir) in [
                 (DVec2::new(hi.x, c.y), DVec2::X),
@@ -508,10 +591,30 @@ pub fn find(
             ] {
                 let hit = lines
                     .iter()
-                    .filter_map(|(o, a, b)| Some((ray_hit(from, dir, *a, *b)?, *o)))
-                    .filter(|(t, _)| *t > 0.001 && *t <= 10.0)
+                    .filter_map(|(o, a, b)| Some((ray_hit(from, dir, *a, *b)?, *o, None)))
+                    .filter(|(t, _, _)| *t > 0.001 && *t <= 10.0)
                     .min_by(|x, y| x.0.total_cmp(&y.0));
-                let Some((t, oid)) = hit else { continue };
+                // nothing straight out (an element outside the house): to
+                // the nearest wall face or grid line square to the ray, run
+                // on past its end (George 2026-11-22: to the outline too)
+                let hit = hit.or_else(|| {
+                    outline
+                        .iter()
+                        .filter(|(_, a, b)| (*b - *a).normalize_or_zero().dot(dir).abs() < 2e-3)
+                        .filter_map(|(o, a, b)| {
+                            let t = ray_hit(from, dir, *a - (*b - *a) * 1e4, *b + (*b - *a) * 1e4)?;
+                            let at = from + dir * t;
+                            let end = if at.distance(*a) < at.distance(*b) {
+                                *a
+                            } else {
+                                *b
+                            };
+                            Some((t, *o, Some(end)))
+                        })
+                        .filter(|(t, _, _)| *t > 0.001 && *t <= 10.0)
+                        .min_by(|x, y| x.0.total_cmp(&y.0))
+                });
+                let Some((t, oid, reach)) = hit else { continue };
                 out.push(TempDim {
                     owner: id,
                     other: Some(oid),
@@ -521,6 +624,7 @@ pub fn find(
                     how: How::Spacing { n: -dir },
                     held: held(oid),
                     to: name_of(model, oid),
+                    reach,
                 });
             }
             out
@@ -818,6 +922,128 @@ fn draw_lock(painter: &Painter, r: Rect, closed: bool, color: Color32, ground: C
     }
 }
 
+/// Where the selected element's own padlock goes in plan: by the lower
+/// right of what it covers, a wall's past its end.
+fn lock_anchor(
+    model: &Model,
+    level: ElementId,
+    id: ElementId,
+    foot: Option<(DVec2, DVec2)>,
+) -> Option<DVec2> {
+    let e = model.get(id)?;
+    if !creabim_core::lock::lockable(&e.kind) || level_of(model, id) != Some(level) {
+        return None;
+    }
+    match &e.kind {
+        ElementKind::Wall(w) => {
+            // past the end nearer the top right, beside the wall
+            let n = w.direction().perp();
+            let end = if (w.end.x + w.end.y) >= (w.start.x + w.start.y) {
+                w.end
+            } else {
+                w.start
+            };
+            let side = if n.x + n.y >= 0.0 { n } else { -n };
+            Some(end + side * (w.thickness / 2.0 + 0.15))
+        }
+        ElementKind::Opening(o) => {
+            let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+                return None;
+            };
+            let n = w.direction().perp();
+            let side = if n.x + n.y >= 0.0 { n } else { -n };
+            Some(
+                w.start
+                    + w.direction() * (o.offset + o.width / 2.0)
+                    + side * (w.thickness / 2.0 + 0.15),
+            )
+        }
+        // its lower right corner, clear of the dimensions from its sides
+        _ => footprint(model, id, foot).map(|(lo, hi)| DVec2::new(hi.x, lo.y)),
+    }
+}
+
+/// The selected element's padlock in plan (George 2026-11-22): open while
+/// it can move, closed and blue when it is locked; a click locks or
+/// unlocks it (see [`creabim_core::lock`]).
+#[allow(clippy::too_many_arguments)]
+fn element_lock(
+    ui: &egui::Ui,
+    doc: &mut creabim_core::Document,
+    level: ElementId,
+    id: ElementId,
+    xf: &crate::planview::Xf,
+    painter: &Painter,
+    response: &egui::Response,
+    foot: Option<(DVec2, DVec2)>,
+    status: &mut Option<String>,
+    hint: &mut Option<&'static str>,
+) -> Option<Option<String>> {
+    let at = lock_anchor(doc.model(), level, id, foot)?;
+    let locked = doc.model().get(id)?.locked;
+    let c = xf.to_screen(at) + Vec2::new(16.0, 16.0);
+    let r = Rect::from_center_size(c, Vec2::new(20.0, 20.0));
+    if !painter.clip_rect().contains(c) {
+        return None;
+    }
+    let pal = crate::theme::Palette::of(ui.ctx());
+    let over = ui
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|p| response.rect.contains(p) && r.expand(2.0).contains(p));
+    let (ground, ink) = if locked {
+        (CHIP, Color32::WHITE)
+    } else {
+        (pal.raise, blue(pal.dark))
+    };
+    painter.rect(
+        r,
+        5.0,
+        ground,
+        Stroke::new(
+            if over { 2.0 } else { 1.0 },
+            if locked {
+                Color32::WHITE
+            } else {
+                blue(pal.dark)
+            },
+        ),
+        egui::StrokeKind::Inside,
+    );
+    crate::svgicon::paint(
+        painter,
+        r.shrink(3.0),
+        if locked { "lock" } else { "lock-open" },
+        ink,
+    );
+    if over {
+        *hint = Some(if locked {
+            "Locked: it can't be moved. Click the padlock to unlock it"
+        } else {
+            "Click the padlock to lock it against moving"
+        });
+    }
+    if !(over && response.clicked()) {
+        return None;
+    }
+    ui.ctx().request_repaint();
+    let before = doc.model().get(id)?.clone();
+    let mut after = before.clone();
+    after.locked = !locked;
+    let tx = Transaction::new(if locked { "Unlock" } else { "Lock" }).replace(before, after);
+    if let Err(e) = doc.commit(tx) {
+        return Some(Some(e.to_string()));
+    }
+    *status = Some(
+        if locked {
+            "Unlocked: it moves again."
+        } else {
+            "Locked: it can't be moved until you unlock it."
+        }
+        .into(),
+    );
+    Some(None)
+}
+
 /// Draw `id`'s temporary dimensions in a plan and take clicks and typing on
 /// them. `quiet` while something else is going on (a drag, a modal edit):
 /// they then stay hidden. Some(result) when this frame's input was theirs,
@@ -849,6 +1075,11 @@ pub fn interact(
             return None;
         }
     };
+    if let Some(r) = element_lock(
+        ui, doc, level, id, xf, painter, response, foot, status, hint,
+    ) {
+        return Some(r);
+    }
     let near = xf.to_world(painter.clip_rect().center());
     let mut dims = find(doc.model(), level, id, near, wref, foot);
     if dims.is_empty() {
@@ -902,6 +1133,17 @@ pub fn interact(
             b += out * 20.0;
         }
         let (a, b) = (a, b);
+        if let Some(r) = d.reach {
+            // a thin witness from the neighbour's end out to where the
+            // dimension measures its line run on
+            let r = xf.to_screen(r);
+            painter.add(egui::Shape::dashed_line(
+                &[r, b],
+                Stroke::new(1.0, ink.gamma_multiply(0.8)),
+                5.0,
+                4.0,
+            ));
+        }
         let along = (b - a).normalized();
         let tick = Vec2::new(-along.y, along.x) * 5.0;
         let stroke = Stroke::new(1.2, ink);
@@ -1585,6 +1827,64 @@ mod core_tests {
             unreachable!()
         };
         assert!((c.position.x - 1.35).abs() < 1e-9, "{}", c.position.x);
+    }
+
+    #[test]
+    fn a_wrapped_column_measures_from_its_core_and_outside_the_house_to_the_walls_run_on() {
+        // George 2026-11-22: a column wrapped in insulation, out in front
+        // of the house, measures from its load-bearing core (not the
+        // boards) and across to the side wall's line run on
+        let l = level();
+        let lid = l.id;
+        // the front wall along x, a side wall up from its left end
+        let front = wall(lid, (0.0, 0.0), (8.0, 0.0), 0.3);
+        let side = wall(lid, (0.0, 0.0), (0.0, 6.0), 0.3);
+        let (fid, sid) = (front.id, side.id);
+        let mut c = creabim_core::Column::new(
+            lid,
+            DVec2::new(3.0, -2.0),
+            creabim_core::Profile::Rectangle {
+                width: 0.25,
+                depth: 0.25,
+            },
+        );
+        let mut doc = Document::new();
+        let (w, mats) = creabim_core::wrap::new_wrap(doc.model(), [0.1; 4]);
+        c.wrap = Some(w);
+        let col = Element::new("C01", ElementKind::Column(c));
+        let cid = col.id;
+        let mut tx = Transaction::new("set up")
+            .insert(l)
+            .insert(front)
+            .insert(side)
+            .insert(col);
+        for m in mats {
+            tx = tx.insert(m);
+        }
+        doc.commit(tx).unwrap();
+        assert!(doc
+            .model()
+            .iter()
+            .any(|e| matches!(&e.kind, ElementKind::Column(c) if c.piece.is_some())));
+        let dims = find(doc.model(), lid, cid, DVec2::ZERO, WallRef::CoreFace, None);
+        // up to the front wall's face (-0.15) from the core's top (-1.875)
+        let up = dims.iter().find(|d| d.other == Some(fid)).unwrap();
+        assert!((up.value - 1.725).abs() < 1e-9, "{}", up.value);
+        // left to the side wall's outer face run on (the house's
+        // outline), from the core's left side (2.875)
+        let left = dims.iter().find(|d| d.other == Some(sid)).unwrap();
+        let ElementKind::Wall(sw) = &doc.model().get(sid).unwrap().kind else {
+            unreachable!()
+        };
+        let outer = sw.direction().perp().x * walls::core_span(doc.model(), sw).0;
+        assert!(
+            (left.value - (2.875 - outer)).abs() < 1e-9,
+            "{} {outer}",
+            left.value
+        );
+        assert!(left.reach.is_some());
+        // no dimension stops on its own insulation
+        assert!(dims.iter().all(|d| d.value > 0.2), "{dims:?}");
     }
 
     #[test]

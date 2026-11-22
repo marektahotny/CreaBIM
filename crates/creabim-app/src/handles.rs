@@ -856,6 +856,10 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
     let Some(e) = model.get(id) else {
         return vec![];
     };
+    // a locked element has nothing to drag (see creabim_core::lock)
+    if e.locked {
+        return vec![];
+    }
     let line = |kind, at: DVec3, dir: DVec3| Handle {
         kind,
         at,

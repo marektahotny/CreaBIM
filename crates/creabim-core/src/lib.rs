@@ -34,6 +34,7 @@ pub mod joinery;
 pub mod joins;
 pub mod levels;
 pub mod library;
+pub mod lock;
 pub mod mapgroup;
 pub mod marks;
 pub mod masonry;
@@ -146,4 +147,7 @@ pub enum ModelError {
     StillReferenced { element: ElementId, by: ElementId },
     #[error("invalid element {0}: {1}")]
     Invalid(ElementId, String),
+    /// The edit would move an element locked against moving.
+    #[error("It is locked against moving: unlock it first (the padlock).")]
+    Locked(ElementId),
 }

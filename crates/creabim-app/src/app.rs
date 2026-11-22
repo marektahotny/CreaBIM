@@ -2106,6 +2106,23 @@ impl CreaBimApp {
             self.status = "Select something first.".into();
             return;
         }
+        // what is locked doesn't move, turn, scale or mirror (a copy may)
+        if !m.1 && matches!(m.0, Mode::Move | Mode::Rotate | Mode::Scale | Mode::Mirror) {
+            let model = self.doc.model();
+            if let Some(e) = self
+                .selection
+                .all()
+                .iter()
+                .filter_map(|i| model.get(*i))
+                .find(|e| e.locked)
+            {
+                self.status = format!(
+                    "{} is locked against moving: unlock it first (the padlock by it or in Properties).",
+                    e.name
+                );
+                return;
+            }
+        }
         if let Some(old) = self.plan.modal.as_mut() {
             old.discard(&mut self.doc);
             self.plan.modal = None;

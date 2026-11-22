@@ -163,6 +163,19 @@ impl Document {
     /// lines, heights tied to levels; see [`crate::walls`]), added to `tx`
     /// so it all undoes as one step.
     fn apply_settled(&mut self, tx: &mut Transaction) -> Result<(), ModelError> {
+        let locked = crate::lock::before(&self.model);
+        self.apply_settled_free(tx)?;
+        // nothing moves what is locked (crate::lock): the whole edit goes
+        if let Some(id) = crate::lock::moved(&self.model, &locked) {
+            tx.inverse()
+                .apply(&mut self.model)
+                .expect("an edit just applied undoes");
+            return Err(ModelError::Locked(id));
+        }
+        Ok(())
+    }
+
+    fn apply_settled_free(&mut self, tx: &mut Transaction) -> Result<(), ModelError> {
         let kept = crate::walls::lines_kept(&self.model, tx);
         tx.apply(&mut self.model)?;
         let levels = crate::walls::touches_walls(tx);

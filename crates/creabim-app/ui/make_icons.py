@@ -14,6 +14,8 @@ names+="""rectangle-vertical rectangle-horizontal tent fence corner-down-right""
 names+="""flip-horizontal-2""".split()
 # printing sheets
 names+="""printer""".split()
+# locking elements against moving
+names+="""lock lock-open""".split()
 # the Help menu and the Help panel
 names+="""circle-help book-open keyboard rocket x arrow-right info""".split()
 # folding the project browser's groups
