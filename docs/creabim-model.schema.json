@@ -1382,7 +1382,8 @@
         "ventilation_hrv",
         "building_figures",
         "fire_risk",
-        "flashing_table"
+        "flashing_table",
+        "identification"
       ]
     },
     "Callout": {

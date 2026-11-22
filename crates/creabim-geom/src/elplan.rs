@@ -216,6 +216,16 @@ pub fn is_device(model: &Model, id: ElementId) -> bool {
     })
 }
 
+/// An electrical device that only the electrical drawings show: a
+/// socket, switch, light, board or low-current device. Appliances (a
+/// fridge, a cooker, a washing machine) are furniture to the architect.
+pub fn is_wiring_device(model: &Model, id: ElementId) -> bool {
+    model.get(id).is_some_and(|e| {
+        matches!(e.kind, ElementKind::Object(_))
+            && el::device_kind(model, e).is_some_and(|k| k != el::DeviceKind::Appliance)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,5 +315,43 @@ mod tests {
             .fold(f64::MAX, f64::min);
         assert!(near < 1e-6, "{near}");
         assert!(is_device(&m, e.id));
+    }
+
+    /// The architect's plan draws the kitchen's appliances (a fridge, a
+    /// cooker) but not the sockets, switches and lights.
+    #[test]
+    fn the_architects_plan_keeps_appliances_and_leaves_wiring_out() {
+        let m = creabim_core::starter::starter_house();
+        let named = |n: &str| {
+            m.iter()
+                .find(|e| {
+                    matches!(&e.kind, ElementKind::Object(_))
+                        && creabim_core::objects::type_of(&m, e)
+                            .and_then(|t| t.catalogue.clone())
+                            .is_some_and(|k| k.ends_with(n))
+                })
+                .unwrap()
+                .id
+        };
+        let (fridge, cooker) = (named("fridge-freezer"), named("cooker-600"));
+        let level = m.get(fridge).map(|e| match &e.kind {
+            ElementKind::Object(o) => o.level,
+            _ => unreachable!(),
+        });
+        let plan = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, creabim_core::ViewKind::Plan { level: l, .. } if Some(l) == level)
+                        && v.trade.is_none()
+                        && creabim_core::viewmodes::DisplayMode::of(v)
+                            != creabim_core::viewmodes::DisplayMode::Services)
+            })
+            .unwrap()
+            .id;
+        let d = crate::section::view_drawing(&m, plan).unwrap();
+        assert!(d.items.iter().any(|it| it.id() == fridge));
+        assert!(d.items.iter().any(|it| it.id() == cooker));
+        assert!(!d.items.iter().any(|it| is_wiring_device(&m, it.id())));
     }
 }

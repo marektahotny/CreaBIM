@@ -1096,7 +1096,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             !matches!(
                 model.get(it.id()).map(|e| &e.kind),
                 Some(ElementKind::Pipe(_) | ElementKind::Valve(_))
-            ) && !crate::elplan::is_device(model, it.id())
+            ) && !crate::elplan::is_wiring_device(model, it.id())
         });
     }
     // a services drawing shows its pipes as lines, each in its system's

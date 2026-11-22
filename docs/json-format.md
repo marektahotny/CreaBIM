@@ -882,6 +882,7 @@ What a schedule lists.
 - `"building_figures"`
 - `"fire_risk"`
 - `"flashing_table"`
+- `"identification"`
 
 ### Callout
 

@@ -653,6 +653,98 @@ pub struct ObjectType {
     /// reuses this type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalogue: Option<String>,
+    /// What it takes from the electrical and gas installations, where
+    /// it differs from the usual for its kind ([`Supply::usual`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supply: Option<Supply>,
+}
+
+/// An appliance's connection to the electrical and gas installations:
+/// its rated power and voltage, and the heat input of its gas burners.
+/// The usual figures are the rated inputs of common appliances of the
+/// kind on the market (their makers' data plates), to be set to the
+/// chosen appliance's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Supply {
+    /// Rated electrical power input, W; none takes no electricity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_w: Option<f64>,
+    /// Fed at 400 V three-phase (3N), else 230 V single-phase.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub three_phase: bool,
+    /// Its own circuit from the board, not a socket circuit.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub own_circuit: bool,
+    /// Rated heat input of its gas burners, kW; none burns no gas.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gas_kw: Option<f64>,
+}
+
+impl Supply {
+    /// Electric at 230 V, `w` watts.
+    pub const fn single(w: f64, own_circuit: bool) -> Self {
+        Self {
+            power_w: Some(w),
+            three_phase: false,
+            own_circuit,
+            gas_kw: None,
+        }
+    }
+
+    /// The electric cooker: oven and four-zone ceramic hob at 400 V 3N.
+    pub const ELECTRIC_COOKER: Supply = Supply {
+        power_w: Some(10_000.0),
+        three_phase: true,
+        own_circuit: true,
+        gas_kw: None,
+    };
+
+    /// The gas cooker: a four-burner gas hob (the 8 kW the gas
+    /// installation takes for a cooker) over an electric oven at 230 V.
+    pub const GAS_COOKER: Supply = Supply {
+        power_w: Some(3_500.0),
+        three_phase: false,
+        own_circuit: true,
+        gas_kw: Some(8.0),
+    };
+
+    /// The usual supply of an appliance of `t`'s kind (by its IFC type),
+    /// none for what is not an appliance.
+    pub fn usual(t: &ObjectType) -> Option<Supply> {
+        let class = t.ifc.class.to_ascii_lowercase();
+        let kind = t.ifc.predefined.to_ascii_uppercase();
+        Some(match (class.as_str(), kind.as_str()) {
+            ("ifcelectricappliance", "FRIDGE_FREEZER" | "REFRIGERATOR" | "FREEZER") => {
+                Supply::single(150.0, false)
+            }
+            ("ifcelectricappliance", "ELECTRICCOOKER") => Supply::ELECTRIC_COOKER,
+            ("ifcelectricappliance", "WASHINGMACHINE") => Supply::single(2_200.0, true),
+            ("ifcelectricappliance", "DISHWASHER") => Supply::single(2_000.0, true),
+            ("ifcelectricappliance", "TUMBLEDRYER") => Supply::single(1_000.0, true),
+            ("ifcelectricappliance", "MICROWAVE") => Supply::single(1_200.0, false),
+            ("ifcelectricappliance", "KITCHENMACHINE") => Supply::single(300.0, false),
+            ("ifcaudiovisualappliance", "TELEVISION") => Supply::single(150.0, false),
+            _ => return None,
+        })
+    }
+
+    /// What `t` takes: its own figures, else the usual for its kind.
+    pub fn of(t: &ObjectType) -> Option<Supply> {
+        t.supply.or_else(|| Supply::usual(t))
+    }
+
+    /// Electric power as written: `2,2 kW / 230 V`, `10 kW / 400 V 3N`.
+    pub fn electric_text(&self) -> Option<String> {
+        let w = self.power_w?;
+        let kw = format!("{}", (w / 100.0).round() / 10.0).replace('.', ",");
+        let v = if self.three_phase {
+            "400 V 3N"
+        } else {
+            "230 V"
+        };
+        Some(format!("{kw} kW / {v}"))
+    }
 }
 
 impl ObjectType {
@@ -1125,6 +1217,7 @@ pub fn from_meshes(
             parts,
             symbol: vec![],
             catalogue: Some(key.to_string()),
+            supply: None,
         },
         materials,
     })
@@ -1431,6 +1524,7 @@ mod tests {
             parts,
             symbol: vec![],
             catalogue: None,
+            supply: None,
         };
         let (lo, hi) = t.bounds();
         assert!((lo - DVec3::new(-1.0, -1.0, 0.0)).length() < 1e-9, "{lo}");
@@ -1528,5 +1622,62 @@ mod tests {
             ObjectCategory::from_label("Heating and ventilation"),
             ObjectCategory::Hvac
         );
+    }
+
+    /// The kitchen's and laundry's appliances carry their electricity,
+    /// the cooker its gas when it is a gas one; a type's own figures win.
+    #[test]
+    fn appliances_take_their_power_and_a_gas_cooker_its_gas() {
+        let t = |k: &str| {
+            crate::catalogue::starter(&format!("starter/{k}"))
+                .unwrap()
+                .object
+        };
+        let fridge = Supply::of(&t("fridge-freezer")).unwrap();
+        assert_eq!(fridge.power_w, Some(150.0));
+        assert!(!fridge.three_phase && !fridge.own_circuit);
+        let mut cooker = t("cooker-600");
+        assert_eq!(Supply::of(&cooker), Some(Supply::ELECTRIC_COOKER));
+        assert_eq!(
+            Supply::ELECTRIC_COOKER.electric_text().unwrap(),
+            "10 kW / 400 V 3N"
+        );
+        for k in ["pd-pracka", "dishwasher-600", "dryer-600"] {
+            let s = Supply::of(&t(k)).unwrap();
+            assert!(s.own_circuit && s.power_w.is_some(), "{k}");
+        }
+        assert!(Supply::of(&t("sofa-3")).is_none());
+        // a gas cooker: its gas tap behind it
+        let mut m = crate::starter::starter_house();
+        let level = m.levels().next().unwrap().0.id;
+        cooker.supply = None;
+        let c = crate::catalogue::starter("starter/cooker-600").unwrap();
+        let (tx, id) = place(&m, &c, level, DVec2::new(1.0, 1.0), 0.0);
+        tx.apply(&mut m).unwrap();
+        let (ty, _) = crate::types::type_of(&m, m.get(id).unwrap()).unwrap();
+        let before = ty.clone();
+        let mut after = before.clone();
+        if let ElementKind::ElementType(t) = &mut after.kind {
+            if let crate::TypeParams::Object(o) = &mut t.params {
+                o.supply = Some(Supply::GAS_COOKER);
+            }
+        }
+        crate::Transaction::new("gas")
+            .replace(before, after)
+            .apply(&mut m)
+            .unwrap();
+        let conns = crate::fixture::connectors(&m, m.get(id).unwrap());
+        assert_eq!(conns.len(), 1);
+        assert_eq!(conns[0].kind, crate::fixture::ConnKind::P);
+        // the dishwasher in its cabinet: water and waste
+        let kinds: Vec<_> = crate::fixture::local_connectors(
+            crate::fixture::family_of_type(&t("dishwasher-600")).unwrap(),
+            None,
+        )
+        .into_iter()
+        .map(|c| c.kind)
+        .collect();
+        assert!(kinds.contains(&crate::fixture::ConnKind::SV));
+        assert!(kinds.contains(&crate::fixture::ConnKind::K));
     }
 }

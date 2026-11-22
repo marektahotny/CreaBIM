@@ -322,6 +322,7 @@ pub(super) fn from_selection(
             parts,
             symbol: vec![],
             catalogue: Some(key.to_string()),
+            supply: None,
         },
         materials,
     })
@@ -466,6 +467,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
     if let Some(k) = &o.catalogue {
         ui.label(egui::RichText::new(crate::i18n::tr(&format!("From the catalogue: {k}"))).weak());
     }
+    let trades = trade_fields(ui, o);
+    if !trades.is_empty() {
+        label = trades;
+    }
     if !o.parts.is_empty() {
         crate::props::subsection(ui, "object.parts", "Parts", true).then(|| {
             for (i, p) in o.parts.iter_mut().enumerate() {
@@ -482,6 +487,129 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
                 });
             }
         });
+    }
+    label
+}
+
+/// What an appliance or fixture takes from the trades: its water and
+/// waste (from its family, as the plumbing calculation takes them), its
+/// electricity and gas. Returns the undo label, or "".
+fn trade_fields(ui: &mut egui::Ui, o: &mut ObjectType) -> &'static str {
+    use creabim_core::fixture::{self, ConnKind};
+    use creabim_core::objects::Supply;
+    let mut label = "";
+    let family = fixture::family_of_type(o).filter(|f| fixture::is_sanitary(f));
+    let supply = Supply::of(o);
+    if family.is_none() && supply.is_none() {
+        return label;
+    }
+    if crate::props::subsection(ui, "object.trades", "Trades", true) {
+        if let Some(f) = family {
+            let conns = fixture::local_connectors(f, None);
+            let dn = |k: ConnKind| conns.iter().find(|c| c.kind == k).map(|c| c.dn);
+            let rules = creabim_services::fixtures::default_rules();
+            let unknown = creabim_services::fixtures::unknown_rule();
+            let r = creabim_services::fixtures::match_fixture(&rules, &unknown, f, "");
+            let num = crate::i18n::num;
+            if let Some(d) = dn(ConnKind::SV) {
+                crate::props::row(ui, "Cold water", |ui| {
+                    ui.label(format!("DN {d:.0}, {} l/s", num(r.qa_stn, 2)));
+                });
+            }
+            if let Some(d) = dn(ConnKind::TV) {
+                crate::props::row(ui, "Hot water", |ui| {
+                    ui.label(format!("DN {d:.0}"));
+                });
+            }
+            if dn(ConnKind::K).is_some() {
+                crate::props::row(ui, "Waste", |ui| {
+                    ui.label(format!("DN {:.0}, DU {} l/s", r.drain_dn, num(r.du, 1)));
+                });
+            }
+        }
+        let Some(mut s) = supply else {
+            return label;
+        };
+        let before = s;
+        if o.ifc.predefined.eq_ignore_ascii_case("ELECTRICCOOKER") {
+            crate::props::row(ui, "Cooker", |ui| {
+                ui.spacing_mut().combo_width = ui.available_width();
+                let gas = s.gas_kw.is_some();
+                let name = |g: bool| {
+                    crate::i18n::t(if g {
+                        "Gas hob, electric oven 230 V"
+                    } else {
+                        "Electric, 400 V"
+                    })
+                };
+                egui::ComboBox::from_id_salt("object_cooker")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(name(gas))
+                    .show_ui(ui, |ui| {
+                        for g in [false, true] {
+                            if ui.selectable_label(gas == g, name(g)).clicked() && gas != g {
+                                s = if g {
+                                    Supply::GAS_COOKER
+                                } else {
+                                    Supply::ELECTRIC_COOKER
+                                };
+                            }
+                        }
+                    });
+            });
+        }
+        if let Some(w) = s.power_w {
+            let mut kw = w / 1000.0;
+            crate::props::row(ui, "Rated power", |ui| {
+                if crate::props::fill(
+                    ui,
+                    egui::DragValue::new(&mut kw)
+                        .speed(0.05)
+                        .max_decimals(2)
+                        .suffix(" kW")
+                        .range(0.0..=100.0),
+                )
+                .changed()
+                {
+                    s.power_w = Some(kw * 1000.0);
+                }
+            });
+            crate::props::row(ui, "Voltage", |ui| {
+                ui.spacing_mut().combo_width = ui.available_width();
+                let name = |t: bool| if t { "400 V 3N" } else { "230 V" };
+                egui::ComboBox::from_id_salt("object_voltage")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(name(s.three_phase))
+                    .show_ui(ui, |ui| {
+                        for t in [false, true] {
+                            ui.selectable_value(&mut s.three_phase, t, name(t));
+                        }
+                    });
+            });
+            crate::props::row(ui, "Own circuit", |ui| {
+                ui.checkbox(&mut s.own_circuit, "");
+            });
+        }
+        if let Some(mut kw) = s.gas_kw {
+            crate::props::row(ui, "Gas heat input", |ui| {
+                if crate::props::fill(
+                    ui,
+                    egui::DragValue::new(&mut kw)
+                        .speed(0.1)
+                        .max_decimals(1)
+                        .suffix(" kW")
+                        .range(0.0..=100.0),
+                )
+                .changed()
+                {
+                    s.gas_kw = Some(kw);
+                }
+            });
+        }
+        if s != before {
+            o.supply = (Some(s) != Supply::usual(o)).then_some(s);
+            label = "Object supply";
+        }
     }
     label
 }

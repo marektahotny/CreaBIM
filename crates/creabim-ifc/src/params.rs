@@ -411,6 +411,7 @@ pub(crate) fn type_from(category: TypeCategory, curtain: bool, p: &Props) -> Typ
             parts: vec![],
             symbol: vec![],
             catalogue: label(p, "CatalogueKey").map(str::to_string),
+            supply: None,
         }),
     }
 }
