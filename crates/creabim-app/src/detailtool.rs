@@ -33,6 +33,8 @@ pub struct DetailSettings {
     pub callout_scale: f64,
     /// The pen and line type the Line and Polyline tools draw with.
     pub line: creabim_core::LineLook,
+    /// The look of the next room separator, once one is picked.
+    pub separator: Option<creabim_core::LineLook>,
 }
 
 impl Default for DetailSettings {
@@ -46,6 +48,7 @@ impl Default for DetailSettings {
             view: None,
             callout_scale: 10.0,
             line: Default::default(),
+            separator: None,
         }
     }
 }

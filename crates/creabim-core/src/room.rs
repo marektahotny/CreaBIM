@@ -530,6 +530,10 @@ pub struct Separator {
     pub level: ElementId,
     pub a: DVec2,
     pub b: DVec2,
+    /// How it is drawn: a pen and a line type (George 2026-11-22);
+    /// none, the plain thin line it always had.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<crate::LineLook>,
 }
 
 impl Separator {
@@ -1434,6 +1438,7 @@ mod tests {
                 level: l,
                 a: DVec2::new(3.0, 0.1),
                 b: DVec2::new(3.0, 3.9),
+                look: None,
             }),
         );
         doc.commit(Transaction::new("sep").insert(sep)).unwrap();
@@ -1461,6 +1466,7 @@ mod tests {
                 level: l,
                 a: DVec2::new(3.0, 0.15),
                 b: DVec2::new(3.02, 3.85),
+                look: None,
             }),
         );
         doc.commit(Transaction::new("sep").insert(sep)).unwrap();

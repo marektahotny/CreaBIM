@@ -2284,6 +2284,16 @@ impl CreaBimApp {
                     self.plan.details.line.kind = *k;
                 }
             }
+            "sep.type" => {
+                if let Some(k) = index.and_then(|i| creabim_core::LineType::ALL.get(i)) {
+                    self.plan.details.separator.get_or_insert_with(Default::default).kind = *k;
+                }
+            }
+            "sep.pen" => {
+                if let Some(p) = index.and_then(|i| creabim_core::LinePen::ALL.get(i)) {
+                    self.plan.details.separator.get_or_insert_with(Default::default).pen = *p;
+                }
+            }
             "line.pen" => {
                 if let Some(p) = index.and_then(|i| creabim_core::LinePen::ALL.get(i)) {
                     self.plan.details.line.pen = *p;
@@ -3386,14 +3396,19 @@ impl CreaBimApp {
                 }));
             }
         }
-        if matches!(tool, Tool::Line | Tool::Polyline | Tool::Arc | Tool::Curve) {
-            let look = self.plan.details.line;
+        let sep = tool == Tool::RoomSeparator;
+        if sep || matches!(tool, Tool::Line | Tool::Polyline | Tool::Arc | Tool::Curve) {
+            let (look, key) = if sep {
+                (self.plan.details.separator.unwrap_or_default(), "sep")
+            } else {
+                (self.plan.details.line, "line")
+            };
             options.push(seg(creabim_core::LineType::ALL
                 .iter()
                 .enumerate()
                 .map(|(i, k)| {
                     opt(
-                        format!("line.type:{i}"),
+                        format!("{key}.type:{i}"),
                         k.label(),
                         look.kind == *k,
                         "Line type: solid, dashed for what is hidden below the cut, dash-dot for axes, dash-double-dot for what is above the cut",
@@ -3405,7 +3420,7 @@ impl CreaBimApp {
                 .enumerate()
                 .map(|(i, p)| {
                     opt(
-                        format!("line.pen:{i}"),
+                        format!("{key}.pen:{i}"),
                         &format!("{:.2}", p.mm()).replace('.', ","),
                         look.pen == *p,
                         "Pen: the line's width on paper, mm (0,10 hatches, 0,15 the usual line, 0,20 ticks and fittings, 0,50 outlines of what is cut)",
