@@ -465,34 +465,55 @@ fn wc() -> CatalogueObject {
     )
 }
 
+/// The bath sizes sold here, mm (Mexen, Roca, JIKA: 1500 × 700 to
+/// 1800 × 800); the 1700 × 750 one keeps the plain key.
+pub const BATH_SIZES: [(u32, u32); 4] = [(1500, 700), (1600, 700), (1700, 750), (1800, 800)];
+
 fn bathtub() -> CatalogueObject {
+    bathtub_sized(1700, 750)
+}
+
+/// A rectangular acrylic bath `w` × `d` mm: the same shape at every size,
+/// its rim, basin and floor kept as far in from its edges.
+fn bathtub_sized(w: u32, d: u32) -> CatalogueObject {
     let mut b = Build::new();
-    let (w, d, h, k) = (1.7, 0.75, 0.56, 6);
+    let (w, d) = (w as f64 / 1000.0, d as f64 / 1000.0);
+    let (h, k) = (0.56, 6);
     let c = v2(0.0, -d / 2.0);
     let inner = c + v2(0.05, 0.0);
+    let (iw, id) = (w - 0.18, d - 0.15);
     b.add(
         "Bath",
         acrylic(),
         stack(&[
             (rrect(c, w, d, 0.03, k), 0.0),
             (rrect(c, w, d, 0.03, k), h),
-            (rrect(inner, 1.52, 0.6, 0.26, k), h),
-            (rrect(inner, 1.46, 0.54, 0.24, k), h - 0.2),
-            (rrect(inner + v2(0.03, 0.0), 1.28, 0.42, 0.19, k), 0.12),
+            (rrect(inner, iw, id, 0.26, k), h),
+            (rrect(inner, iw - 0.06, id - 0.06, 0.24, k), h - 0.2),
+            (
+                rrect(inner + v2(0.03, 0.0), iw - 0.24, id - 0.18, 0.19, k),
+                0.12,
+            ),
         ]),
         true,
     );
-    b.outline(rrect(inner, 1.52, 0.6, 0.26, k));
+    b.outline(rrect(inner, iw, id, 0.26, k));
     b.add(
         "Waste",
         chrome(),
-        cylinder(inner + v2(0.58, 0.0), 0.035, 0.12, 0.125),
+        cylinder(inner + v2(iw / 2.0 - 0.18, 0.0), 0.035, 0.12, 0.125),
         false,
     );
-    tap(&mut b, v2(0.79, -0.37), h, 0.12);
+    tap(&mut b, v2(w / 2.0 - 0.06, -d / 2.0 + 0.005), h, 0.12);
+    let (wm, dm) = ((w * 1000.0).round(), (d * 1000.0).round());
+    let key = if (wm, dm) == (1700.0, 750.0) {
+        "bathtub".to_string()
+    } else {
+        format!("bathtub-{wm:.0}x{dm:.0}")
+    };
     b.finish(
-        "bathtub",
-        "Bath 1700 × 750",
+        &key,
+        &format!("Bath {wm:.0} × {dm:.0}"),
         "Acrylic bath with its taps at one end",
         ObjectCategory::Bathroom,
         ("IfcSanitaryTerminal", "BATH"),
@@ -1112,11 +1133,29 @@ fn bed(w: f64, pillows: usize, cover: Look) -> Build {
     b
 }
 
+/// The double beds' mattress widths, mm (all 2000 long); the 1600 one
+/// keeps the plain key.
+pub const DOUBLE_BED_WIDTHS: [u32; 3] = [1600, 1800, 2000];
+
 fn double_bed() -> CatalogueObject {
-    bed(1.6, 2, fabric("Duvet, blue", [134, 160, 194])).finish(
-        "double-bed",
-        "Double bed 1600",
-        "Oak bed for a 1600 × 2000 mattress, with its headboard",
+    double_bed_sized(1600)
+}
+
+fn double_bed_sized(width: u32) -> CatalogueObject {
+    let key = if width == 1600 {
+        "double-bed".to_string()
+    } else {
+        format!("double-bed-{width}")
+    };
+    bed(
+        width as f64 / 1000.0,
+        2,
+        fabric("Duvet, blue", [134, 160, 194]),
+    )
+    .finish(
+        &key,
+        &format!("Double bed {width}"),
+        &format!("Oak bed for a {width} × 2000 mattress, with its headboard"),
         ObjectCategory::Bedroom,
         ("IfcFurniture", "BED"),
         Mount::Wall,
@@ -1274,7 +1313,10 @@ pub fn starters() -> Vec<CatalogueObject> {
     vec![
         washbasin(),
         wc(),
+        bathtub_sized(1500, 700),
+        bathtub_sized(1600, 700),
         bathtub(),
+        bathtub_sized(1800, 800),
         shower(),
         sink_unit(),
         base_cabinet(),
@@ -1287,6 +1329,8 @@ pub fn starters() -> Vec<CatalogueObject> {
         dining_table(),
         chair(),
         double_bed(),
+        double_bed_sized(1800),
+        double_bed_sized(2000),
         single_bed(),
         wardrobe(),
         bedside(),
@@ -1365,5 +1409,55 @@ mod tests {
         let basin = starter("starter/washbasin").unwrap();
         let (lo, hi) = basin.object.bounds();
         assert!(lo.z > 0.6 && (hi.z - 1.01).abs() < 0.01, "{lo} {hi}");
+    }
+
+    /// George: baths at the sizes sold, double beds from 1600 wide; each
+    /// the same shape, its 3D and its plan symbol as big as it says.
+    #[test]
+    fn baths_and_double_beds_come_in_their_sizes() {
+        let span = |pts: &mut dyn Iterator<Item = glam::DVec2>| {
+            let (mut lo, mut hi) = (glam::DVec2::splat(f64::MAX), glam::DVec2::splat(f64::MIN));
+            for p in pts {
+                lo = lo.min(p);
+                hi = hi.max(p);
+            }
+            hi - lo
+        };
+        for (w, d) in BATH_SIZES {
+            let key = if (w, d) == (1700, 750) {
+                "starter/bathtub".to_string()
+            } else {
+                format!("starter/bathtub-{w}x{d}")
+            };
+            let c = starter(&key).unwrap_or_else(|| panic!("{key}"));
+            let (lo, hi) = c.object.bounds();
+            let size = (hi - lo).truncate();
+            assert!((size.x - w as f64 / 1000.0).abs() < 0.03, "{key}: {size}");
+            assert!((size.y - d as f64 / 1000.0).abs() < 0.03, "{key}: {size}");
+            let plan = span(
+                &mut c.object.plan_symbol().into_iter().flat_map(|l| match l {
+                    crate::objects::SymbolItem::Loop(p) => p,
+                    crate::objects::SymbolItem::Line(a, b) => vec![a, b],
+                    _ => vec![],
+                }),
+            );
+            assert!(
+                plan.x <= w as f64 / 1000.0 + 1e-6 && plan.x > w as f64 / 1000.0 - 0.25,
+                "{key}: {plan}"
+            );
+        }
+        for w in DOUBLE_BED_WIDTHS {
+            let key = if w == 1600 {
+                "starter/double-bed".to_string()
+            } else {
+                format!("starter/double-bed-{w}")
+            };
+            let c = starter(&key).unwrap_or_else(|| panic!("{key}"));
+            let (lo, hi) = c.object.bounds();
+            assert!(
+                ((hi.x - lo.x) - (w as f64 / 1000.0 + 0.06)).abs() < 0.07,
+                "{key}"
+            );
+        }
     }
 }
