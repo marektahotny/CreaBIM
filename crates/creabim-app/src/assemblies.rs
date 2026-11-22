@@ -897,6 +897,12 @@ impl CreaBimApp {
                         asks.push(AsmAsk::Edit(id, "Window reveals", new));
                     }
                 }
+                // the plinth: XPS on a membrane below a line over the ground
+                if a.usage == AssemblyUse::Wall {
+                    if let Some(new) = plinth_panel(ui, model, id, a) {
+                        asks.push(AsmAsk::Edit(id, "Plinth", new));
+                    }
+                }
                 ui.add_space(6.0);
                 strip(ui, model, a, ui.available_width().min(460.0), 44.0);
                 ui.add_space(6.0);
@@ -1090,4 +1096,218 @@ impl CreaBimApp {
             }
         }
     }
+}
+
+/// The material named first of `names` the model has.
+fn material_named(model: &Model, names: &[&str]) -> Option<ElementId> {
+    names.iter().find_map(|n| {
+        creabim_core::library::materials(model)
+            .into_iter()
+            .find(|(_, m, _)| m == n)
+            .map(|(id, _, _)| id)
+    })
+}
+
+/// A material picker over the model's materials of `categories`, with
+/// `none` for no material.
+fn plinth_material(
+    ui: &mut egui::Ui,
+    model: &Model,
+    salt: (&str, ElementId),
+    label: &str,
+    none: &str,
+    categories: &[&str],
+    current: &mut Option<ElementId>,
+) -> bool {
+    let mats: Vec<(ElementId, String)> = creabim_core::library::materials(model)
+        .into_iter()
+        .filter(|(id, _, m)| categories.contains(&m.category.as_str()) || *current == Some(*id))
+        .map(|(id, n, _)| (id, n.to_string()))
+        .collect();
+    let shown = current
+        .and_then(|c| mats.iter().find(|m| m.0 == c))
+        .map_or_else(|| crate::i18n::tr(none), |m| m.1.clone());
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(crate::i18n::tr(label));
+        egui::ComboBox::from_id_salt(salt)
+            .selected_text(shown)
+            .width(260.0)
+            .truncate()
+            .show_ui(ui, |ui| {
+                changed |= ui
+                    .selectable_value(current, None, crate::i18n::tr(none))
+                    .changed();
+                for (id, n) in &mats {
+                    changed |= ui
+                        .selectable_value(current, Some(*id), n.as_str())
+                        .changed();
+                }
+            });
+    });
+    changed
+}
+
+/// A length in millimetres; true when changed.
+fn mm_field(ui: &mut egui::Ui, label: &str, hint: &str, value: &mut f64, max: f64) -> bool {
+    let mut mm = (*value * 1000.0).round();
+    let r = ui
+        .horizontal(|ui| {
+            ui.label(crate::i18n::tr(label));
+            ui.add(
+                egui::DragValue::new(&mut mm)
+                    .range(0.0..=max)
+                    .speed(5.0)
+                    .suffix(" mm"),
+            )
+        })
+        .inner
+        .on_hover_text(crate::i18n::tr(hint));
+    if r.changed() {
+        *value = mm / 1000.0;
+        true
+    } else {
+        false
+    }
+}
+
+/// The build-up's plinth (sokel): on or off, its XPS, membrane, render,
+/// height over the ground and bottom. The changed build-up, if any.
+fn plinth_panel(ui: &mut egui::Ui, model: &Model, id: ElementId, a: &Assembly) -> Option<Assembly> {
+    use creabim_core::plinth::{Plinth, PlinthBottom};
+    let mut new = a.clone();
+    let mut changed = false;
+    let mut on = a.plinth.is_some();
+    ui.add_space(4.0);
+    if ui
+        .checkbox(&mut on, crate::i18n::tr("Plinth (XPS and waterproofing)"))
+        .on_hover_text(crate::i18n::tr(
+            "Below its top the facade insulation gives way to XPS on a waterproofing membrane turned up the masonry; its top lies so far over the highest finished ground along each wall (a wall may set its own heights in steps in Properties).",
+        ))
+        .changed()
+    {
+        changed = true;
+        new.plinth = on.then(|| {
+            // as thick as the facade insulation (flush), XPS on PVC foil
+            let outer = a
+                .layers
+                .iter()
+                .find(|l| l.function == LayerFunction::Insulation)
+                .map_or(0.1, |l| l.thickness);
+            let mut p = Plinth::new(outer);
+            p.insulation = material_named(model, &["XPS – extrudovaný (sokel, pod základ)"]);
+            p.membrane = material_named(
+                model,
+                &["Hydroizolácia – fólia PVC", "Hydroizolácia – asfaltový pás"],
+            );
+            p.lap = 0.15;
+            p
+        });
+    }
+    if let Some(p) = new.plinth.as_mut() {
+        ui.indent(("asm.plinth", id), |ui| {
+            changed |= plinth_material(
+                ui,
+                model,
+                ("asm.plinth.xps", id),
+                "Insulation",
+                "As the facade",
+                &["insulation"],
+                &mut p.insulation,
+            );
+            let facade = a
+                .layers
+                .iter()
+                .find(|l| l.function == LayerFunction::Insulation)
+                .map_or(0.0, |l| l.thickness);
+            changed |= mm_field(
+                ui,
+                "Thickness",
+                "As thick as the facade insulation: flush with it; thinner: set back (recessed plinth)",
+                &mut p.thickness,
+                400.0,
+            );
+            if facade > 0.0 {
+                let back = facade - p.thickness;
+                ui.label(
+                    egui::RichText::new(if back > 1e-4 {
+                        crate::i18n::tr("Recessed plinth: {n} behind the facade")
+                            .replace("{n}", &crate::units::len(back))
+                    } else {
+                        crate::i18n::tr("Flush with the facade")
+                    })
+                    .weak(),
+                );
+            }
+            changed |= plinth_material(
+                ui,
+                model,
+                ("asm.plinth.membrane", id),
+                "Waterproofing",
+                "None",
+                &["membrane"],
+                &mut p.membrane,
+            );
+            if p.membrane.is_some() {
+                changed |= mm_field(
+                    ui,
+                    "Membrane over the plinth's top",
+                    "How far the waterproofing runs up past the plinth's top, behind the facade insulation",
+                    &mut p.lap,
+                    1000.0,
+                );
+            }
+            changed |= plinth_material(
+                ui,
+                model,
+                ("asm.plinth.render", id),
+                "Plinth render",
+                "As the facade",
+                &["plaster", "finish", "stone"],
+                &mut p.render,
+            );
+            changed |= mm_field(
+                ui,
+                "Top over the finished ground",
+                "Over the highest finished terrain or paving along the wall; 300 mm as usual",
+                &mut p.above,
+                2000.0,
+            );
+            let mut kind = p.bottom.kind();
+            ui.horizontal(|ui| {
+                ui.label(crate::i18n::tr("Bottom"));
+                egui::ComboBox::from_id_salt(("asm.plinth.bottom", id))
+                    .selected_text(crate::i18n::tr(PlinthBottom::KINDS[kind]))
+                    .show_ui(ui, |ui| {
+                        for (i, k) in PlinthBottom::KINDS.iter().enumerate() {
+                            ui.selectable_value(&mut kind, i, crate::i18n::tr(k));
+                        }
+                    })
+                    .response
+                    .on_hover_text(crate::i18n::tr(
+                        "At the wall's base: the masonry under it (DT blocks) carries its own XPS and membrane down to the footing. Over the slab's side: down the foundation slab's edge.",
+                    ));
+            });
+            if kind != p.bottom.kind() {
+                p.bottom = match kind {
+                    0 => PlinthBottom::WallBase,
+                    _ => PlinthBottom::SlabSide(0.0),
+                };
+                changed = true;
+            }
+            if let PlinthBottom::SlabSide(mut d) = p.bottom {
+                if mm_field(
+                    ui,
+                    "Below the slab's underside",
+                    "How far it runs on down past the slab's underside",
+                    &mut d,
+                    1500.0,
+                ) {
+                    p.bottom = PlinthBottom::SlabSide(d);
+                    changed = true;
+                }
+            }
+        });
+    }
+    changed.then_some(new)
 }

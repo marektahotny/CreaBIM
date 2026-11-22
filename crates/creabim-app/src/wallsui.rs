@@ -1314,6 +1314,105 @@ pub(super) fn performance_fields(
     changed
 }
 
+/// A height against the project's ±0,000, as a spot level writes it.
+fn signed(z: f64) -> String {
+    let t = format!("{:.3}", z.abs()).replace('.', ",");
+    if z.abs() < 5e-4 {
+        format!("±{t}")
+    } else if z < 0.0 {
+        format!("-{t}")
+    } else {
+        format!("+{t}")
+    }
+}
+
+/// The plinth of a wall whose build-up has one: its top along the wall,
+/// over the highest finished ground by itself, or the wall's own heights
+/// in steps where the ground can't be levelled (George 2026-11-22).
+pub(super) fn plinth_fields(ui: &mut egui::Ui, model: &Model, w: &mut Wall) -> &'static str {
+    let Some(p) = creabim_core::plinth::of_wall(model, w).cloned() else {
+        return "";
+    };
+    let mut label = "";
+    ui.separator();
+    ui.label(crate::i18n::t("Plinth"));
+    let mut own = !w.plinth_steps.is_empty();
+    if crate::props::switch(ui, &mut own, crate::i18n::t("Own plinth heights"))
+        .on_hover_text(crate::i18n::t(
+            "Off: the plinth's top lies its build-up's height over the highest finished ground along the wall. On: set its top here, in steps along the wall where the ground falls.",
+        ))
+        .changed()
+    {
+        w.plinth_steps = if own {
+            let auto = creabim_core::plinth::tops(model, w, &p);
+            let top = auto.first().map_or(0.3, |t| t.2);
+            vec![creabim_core::plinth::PlinthStep { from: 0.0, top }]
+        } else {
+            vec![]
+        };
+        label = "Plinth heights";
+    }
+    if w.plinth_steps.is_empty() {
+        for (_, _, top) in creabim_core::plinth::tops(model, w, &p) {
+            ui.weak(crate::i18n::tr(&format!(
+                "Plinth top {} (its build-up's {} over the highest finished ground)",
+                signed(top),
+                crate::units::len(p.above)
+            )));
+        }
+        return label;
+    }
+    let len = w.length();
+    let mut gone = None;
+    let n = w.plinth_steps.len();
+    for i in 0..n {
+        let s = &mut w.plinth_steps[i];
+        if i > 0 {
+            let lo = 0.01;
+            if num(ui, "From (along the wall)", &mut s.from, lo, len.max(lo)) {
+                label = "Plinth heights";
+            }
+        }
+        if num(ui, "Plinth top (±0,000)", &mut s.top, -10.0, 20.0) {
+            label = "Plinth heights";
+        }
+        if i > 0
+            && crate::props::action(
+                ui,
+                "",
+                "Remove step",
+                "This step goes; the one before it runs on.",
+                true,
+            )
+            .clicked()
+        {
+            gone = Some(i);
+        }
+    }
+    if let Some(i) = gone {
+        w.plinth_steps.remove(i);
+        label = "Plinth heights";
+    }
+    if crate::props::action(
+        ui,
+        "",
+        "Add step",
+        "A new piece of the plinth from halfway along the last one, at the same height to start with.",
+        true,
+    )
+    .clicked()
+    {
+        let last = *w.plinth_steps.last().unwrap();
+        let from = (last.from + len) / 2.0;
+        w.plinth_steps.push(creabim_core::plinth::PlinthStep {
+            from,
+            top: last.top,
+        });
+        label = "Plinth heights";
+    }
+    label
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
