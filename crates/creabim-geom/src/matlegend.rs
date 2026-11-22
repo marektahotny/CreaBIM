@@ -245,6 +245,8 @@ fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
     // materials, Rw for a wall between dwellings
     let mut lambda: Vec<(ElementId, Option<i64>)> = vec![];
     let mut rw: Vec<((ElementId, Option<i64>), u32)> = vec![];
+    let listed_ids = std::cell::RefCell::new(Vec::<ElementId>::new());
+    let listed = |id: ElementId| listed_ids.borrow().contains(&id);
     let mut add = |id: ElementId, t: Option<f64>| -> Option<(ElementId, Option<i64>)> {
         let e = model.get(id)?;
         let ElementKind::Material(m) = &e.kind else {
@@ -258,15 +260,19 @@ fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
             return Some((id, mm));
         }
         // the built-in library's English words in the drawing's language
-        let what = if m.description.trim().is_empty() {
+        // (a description that is all data sources says nothing: the
+        // name then)
+        let plain = plain_description(&m.description);
+        let what = if plain.trim().is_empty() {
             tr(e.name.trim())
         } else {
-            tr(&plain_description(&m.description))
+            tr(&plain)
         };
         let text = match mm {
             Some(mm) => format!("{what}, {} {mm} mm", tr("thickness")),
             None => what,
         };
+        listed_ids.borrow_mut().push(id);
         out.push(Row {
             material: id,
             hatch: m.hatch,
@@ -346,7 +352,28 @@ fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
     for e in model.iter().filter(|e| on(e)) {
         if creabim_core::members::is_member(&e.kind) {
             if let Some(m) = creabim_core::members::material(&e.kind) {
-                add(m, None);
+                // a column's wrap: its render is a plaster (left out as
+                // the walls' are), its insulation one row with the
+                // walls' when they have it, else with its thickness
+                // (George 2026-11-22)
+                match creabim_core::wrap::piece_of(e) {
+                    Some(p) if p.plaster => {}
+                    Some(p) => {
+                        let t = creabim_core::members::level_of(&e.kind)
+                            .and(model.get(p.host))
+                            .and_then(|h| match &h.kind {
+                                ElementKind::Column(c) => c.wrap.as_ref(),
+                                _ => None,
+                            })
+                            .and_then(|w| w.sides.get(p.side as usize).copied());
+                        if !listed(m) {
+                            add(m, t.filter(|t| *t > 0.0));
+                        }
+                    }
+                    None => {
+                        add(m, None);
+                    }
+                }
             }
         }
     }
