@@ -8334,5 +8334,11 @@
  "A slab filling a room (Fill room) stops at this line as at a wall's centre line, so two floor build-ups can meet on it.": "Doska vložená do miestnosti (Vyplniť miestnosť) sa na tejto čiare zastaví ako na osi steny, takže sa na nej môžu stretnúť dve rôzne skladby podlahy.",
  "Room separator bounds slabs": "Deliaca čiara ohraničuje dosku",
  "Texts in this style cover what is drawn under them: dimension numbers, spot levels, notes": "Texty v tomto štýle zakryjú to, čo je nakreslené pod nimi: čísla kót, výškové kóty, popisy",
- "The text covers what is drawn under it": "Text zakryje to, čo je nakreslené pod ním"
+ "The text covers what is drawn under it": "Text zakryje to, čo je nakreslené pod ním",
+ "Tall cabinet 600 with microwave": "Vysoká skriňa 600 s mikrovlnnou rúrou",
+ "Tall kitchen unit 600 × 600 × 2170 with a built-in microwave (455 mm niche) at eye level, on a socket circuit": "Vysoká kuchynská skriňa 600 × 600 × 2170 so vstavanou mikrovlnnou rúrou (nika 455 mm) vo výške očí, na zásuvkovom obvode",
+ "Tall pantry cabinet 600": "Vysoká potravinová skriňa 600",
+ "Tall kitchen pantry unit 600 × 600 × 2170 behind two doors, its top in line with the wall units": "Vysoká kuchynská potravinová skriňa 600 × 600 × 2170 s dvomi dvierkami, horná hrana v línii so skrinkami na stene",
+ "Microwave": "Mikrovlnná rúra",
+ "Microwave handle": "Rúčka mikrovlnnej rúry"
 }

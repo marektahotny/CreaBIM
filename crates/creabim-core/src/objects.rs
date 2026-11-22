@@ -1719,6 +1719,14 @@ mod tests {
             assert!(s.own_circuit && s.power_w.is_some(), "{k}");
         }
         assert!(Supply::of(&t("sofa-3")).is_none());
+        // the tall cabinet's built-in microwave on a socket circuit; the
+        // pantry takes nothing
+        let mw = Supply::of(&t("tall-cabinet-microwave-600")).unwrap();
+        assert_eq!(mw.electric_text().unwrap(), "1,2 kW / 230 V");
+        assert!(!mw.own_circuit && !mw.three_phase);
+        assert!(Supply::of(&t("tall-pantry-600")).is_none());
+        let size = t("tall-pantry-600").size();
+        assert!((size.x - 0.6).abs() < 1e-9 && (size.z - 2.17).abs() < 1e-9);
         // a gas cooker: its gas tap behind it
         let mut m = crate::starter::starter_house();
         let level = m.levels().next().unwrap().0.id;

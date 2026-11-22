@@ -873,6 +873,95 @@ fn dryer() -> CatalogueObject {
     )
 }
 
+/// A tall kitchen cabinet 600 × 600, 2170 mm high (its top in line with
+/// the wall units'), on a plinth; with `microwave` a built-in microwave
+/// at eye level between a lower and an upper door (George 2026-11-22),
+/// else a pantry behind two doors with its shelves.
+fn tall_cabinet(microwave: bool) -> CatalogueObject {
+    let mut b = Build::new();
+    let (w, d, top) = (0.6, 0.56, 2.17);
+    b.add(
+        "Plinth",
+        plinth(),
+        cuboid(v3(-w / 2.0, -0.5, 0.0), v3(w / 2.0, 0.0, 0.1)),
+        false,
+    );
+    b.add(
+        "Carcass",
+        laminate(),
+        cuboid(v3(-w / 2.0, -d, 0.1), v3(w / 2.0, 0.0, top)),
+        true,
+    );
+    let front = |b: &mut Build, z0: f64, z1: f64| {
+        b.add(
+            "Door",
+            kitchen_front(),
+            cuboid(v3(-0.298, -d - 0.02, z0 + 0.002), v3(0.298, -d, z1 - 0.002)),
+            false,
+        );
+        b.add(
+            "Handle",
+            stainless(),
+            cuboid(
+                v3(0.23, -d - 0.04, z0 + 0.03),
+                v3(0.242, -d - 0.02, z0 + 0.2),
+            ),
+            false,
+        );
+    };
+    if microwave {
+        // the niche of a 455 mm built-in microwave, its door at eye level
+        let (m0, m1) = (1.2, 1.655);
+        front(&mut b, 0.1, m0);
+        b.add(
+            "Microwave",
+            black_glass(),
+            cuboid(v3(-0.297, -d - 0.02, m0 + 0.002), v3(0.297, -d, m1 - 0.002)),
+            false,
+        );
+        b.add(
+            "Microwave handle",
+            stainless(),
+            cuboid(
+                v3(-0.22, -d - 0.045, m1 - 0.06),
+                v3(0.22, -d - 0.025, m1 - 0.045),
+            ),
+            false,
+        );
+        front(&mut b, m1, top);
+    } else {
+        front(&mut b, 0.1, 1.3);
+        front(&mut b, 1.3, top);
+    }
+    // a tall unit in plan: its box crossed
+    b.line(v2(-w / 2.0, -d), v2(w / 2.0, 0.0));
+    b.line(v2(-w / 2.0, 0.0), v2(w / 2.0, -d));
+    b.line(v2(-w / 2.0, -d - 0.02), v2(w / 2.0, -d - 0.02));
+    if microwave {
+        // a cabinet (DSS skriňa) whose microwave takes what one usually
+        // does, on a socket circuit
+        let mut c = b.finish(
+            "tall-cabinet-microwave-600",
+            "Tall cabinet 600 with microwave",
+            "Tall kitchen unit 600 × 600 × 2170 with a built-in microwave (455 mm niche) at eye level, on a socket circuit",
+            ObjectCategory::Kitchen,
+            ("IfcFurniture", "USERDEFINED"),
+            Mount::Wall,
+        );
+        c.object.supply = Some(crate::objects::Supply::single(1_200.0, false));
+        c
+    } else {
+        b.finish(
+            "tall-pantry-600",
+            "Tall pantry cabinet 600",
+            "Tall kitchen pantry unit 600 × 600 × 2170 behind two doors, its top in line with the wall units",
+            ObjectCategory::Kitchen,
+            ("IfcFurniture", "USERDEFINED"),
+            Mount::Wall,
+        )
+    }
+}
+
 fn wall_cabinet() -> CatalogueObject {
     let mut b = Build::new();
     let (w, z0, z1) = (0.6, 1.45, 2.17);
@@ -1430,6 +1519,8 @@ pub fn starters() -> Vec<CatalogueObject> {
         base_cabinet(),
         cooker_unit(),
         dishwasher_unit(),
+        tall_cabinet(false),
+        tall_cabinet(true),
         wall_cabinet(),
         fridge(),
         dryer(),
