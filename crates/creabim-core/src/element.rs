@@ -2788,10 +2788,14 @@ pub enum ScheduleCategory {
     /// description, developed width, length and accessories, and the
     /// roof's area, covering, ridges and hips under it.
     FlashingTable,
+    /// The identification of the construction beside the site plan
+    /// (identifikačné údaje): its kind, plot, place, client and owner,
+    /// from the project information.
+    Identification,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 26] = [
+    pub const ALL: [ScheduleCategory; 27] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2818,6 +2822,7 @@ impl ScheduleCategory {
         ScheduleCategory::VentilationHrv,
         ScheduleCategory::BuildingFigures,
         ScheduleCategory::FlashingTable,
+        ScheduleCategory::Identification,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2847,8 +2852,9 @@ impl ScheduleCategory {
             ScheduleCategory::BoardDiagram => return "Board diagram".into(),
             ScheduleCategory::LintelList => return "Lintel list".into(),
             ScheduleCategory::VentilationHrv => return "VZT – recuperation".into(),
-            ScheduleCategory::BuildingFigures => return "Building figures".into(),
+            ScheduleCategory::BuildingFigures => return "Area data".into(),
             ScheduleCategory::FlashingTable => return "Table of sheet-metal items".into(),
+            ScheduleCategory::Identification => return "Identification data".into(),
         };
         format!("{one} Schedule")
     }
@@ -2887,8 +2893,9 @@ impl ScheduleCategory {
             ScheduleCategory::BoardDiagram => "Board diagram",
             ScheduleCategory::LintelList => "Lintel list",
             ScheduleCategory::VentilationHrv => "VZT – recuperation",
-            ScheduleCategory::BuildingFigures => "Building figures",
+            ScheduleCategory::BuildingFigures => "Area data",
             ScheduleCategory::FlashingTable => "Table of sheet-metal items",
+            ScheduleCategory::Identification => "Identification data",
         }
     }
 

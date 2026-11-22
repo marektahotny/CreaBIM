@@ -1465,6 +1465,29 @@ impl CreaBimApp {
                         ));
                     }
                 });
+                crate::props::row(ui, "Max. built-up index", |ui| {
+                    let mut on = draft.max_coverage.is_some();
+                    if ui.checkbox(&mut on, "").changed() {
+                        draft.max_coverage = on.then_some(0.4);
+                    }
+                    if let Some(a) = &mut draft.max_coverage {
+                        ui.add(
+                            egui::DragValue::new(a)
+                                .range(0.0..=1.0)
+                                .speed(0.01)
+                                .max_decimals(2),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "The highest built-up index the zoning plan allows: written in the area data of the site plan",
+                        ));
+                    }
+                });
+                text(ui, "Town", &mut draft.town, "");
+                text(ui, "District", &mut draft.district, "");
+                text(ui, "Region", &mut draft.region, "");
+                text(ui, "Client's seat", &mut draft.client_address, "");
+                text(ui, "Owner of the plot", &mut draft.land_owner, "");
+                text(ui, "Sheet of ownership (LV)", &mut draft.ownership_sheet, "");
                 if ui
                     .add_enabled(
                         draft.sjtsk.is_some(),
@@ -1890,6 +1913,9 @@ fn plot_from_cadastre(
         }
         if let Some(a) = k.area {
             draft.plot_area = Some(a);
+        }
+        if let Some(lv) = &k.sheet {
+            draft.ownership_sheet = lv.clone();
         }
         return Ok(format!(
             "{}: {} {}, {} {}, {} m², {} {}. {}",

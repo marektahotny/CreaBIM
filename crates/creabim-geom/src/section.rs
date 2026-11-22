@@ -972,6 +972,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             if *category == creabim_core::ScheduleCategory::MaterialLegend {
                 return Some(crate::matlegend::drawing(view, &e.name, model));
             }
+            if *category == creabim_core::ScheduleCategory::BuildingFigures {
+                return Some(crate::sitetables::area_drawing(view, model));
+            }
+            if *category == creabim_core::ScheduleCategory::Identification {
+                return Some(crate::sitetables::identification_drawing(view, model));
+            }
             if *category == creabim_core::ScheduleCategory::FlashingTable {
                 return Some(crate::flashingtable::drawing(view, &e.name, model));
             }

@@ -989,6 +989,7 @@ spec_enum! {
         BuildingFigures = "building_figures",
         FireRisk = "fire_risk",
         FlashingTable = "flashing_table",
+        Identification = "identification",
     }
 }
 

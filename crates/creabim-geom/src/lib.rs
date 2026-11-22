@@ -63,6 +63,7 @@ pub mod section;
 pub mod serviceslegend;
 pub mod sheet;
 pub mod sitefoot;
+pub mod sitetables;
 pub mod slice;
 pub mod summary;
 pub mod takeoff;
