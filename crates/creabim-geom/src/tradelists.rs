@@ -358,3 +358,158 @@ mod tests {
         assert_eq!(s.listed, s.rows.len());
     }
 }
+
+/// The heaters standing in the model, KORADO radiators and towel
+/// radiators by size, with their output at 75/65/20 °C, and under them
+/// the fittings each is connected with, by order code, counted.
+pub fn heaters(model: &Model) -> Schedule {
+    use creabim_core::catalogue::radiators::Heater;
+    let mut by_size: Vec<(Heater, Vec<ElementId>)> = vec![];
+    for e in model.iter() {
+        if !matches!(e.kind, ElementKind::Object(_)) {
+            continue;
+        }
+        let Some(h) = creabim_core::objects::type_of(model, e)
+            .and_then(|t| t.catalogue.as_deref())
+            .and_then(Heater::of_key)
+        else {
+            continue;
+        };
+        match by_size.iter_mut().find(|x| x.0 == h) {
+            Some(x) => x.1.push(e.id),
+            None => by_size.push((h, vec![e.id])),
+        }
+    }
+    by_size.sort_by_key(|x| x.0.label());
+    let mut rows = vec![];
+    let mut fittings: Vec<(String, String, usize)> = vec![];
+    for (h, ids) in &by_size {
+        let what = match h {
+            Heater::Panel(p) => format!(
+                "KORADO RADIK VK {} × {} mm, typ {}",
+                p.height,
+                p.length,
+                p.kind.number()
+            ),
+            Heater::Towel(t) => format!(
+                "KORADO KORALUX LINEAR CLASSIC-M {} × {} mm",
+                t.height, t.length
+            ),
+        };
+        let n = h
+            .exponent()
+            .map_or_else(String::new, |n| format!("{n:.4}").replace('.', ","));
+        rows.push(Row {
+            id: ids[0],
+            cells: vec![
+                h.label(),
+                h.code().unwrap_or_default(),
+                what,
+                format!("{:.0}", h.nominal_w()),
+                n,
+                ids.len().to_string(),
+                tr("pcs"),
+            ],
+            group: false,
+        });
+        for (code, name) in h.fittings() {
+            match fittings.iter_mut().find(|f| f.0 == code) {
+                Some(f) => f.2 += ids.len(),
+                None => fittings.push((code, name, ids.len())),
+            }
+        }
+    }
+    let listed = rows.len();
+    if !fittings.is_empty() {
+        rows.push(Row {
+            id: ElementId::NIL,
+            cells: vec![
+                tr("Fittings"),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+            ],
+            group: true,
+        });
+    }
+    for (code, name, n) in fittings {
+        rows.push(Row {
+            id: ElementId::NIL,
+            cells: vec![
+                String::new(),
+                code,
+                name,
+                String::new(),
+                String::new(),
+                n.to_string(),
+                tr("pcs"),
+            ],
+            group: false,
+        });
+    }
+    Schedule {
+        category: ScheduleCategory::HeaterList,
+        columns: vec![
+            col("Mark", 24.0, false),
+            col("Code", 30.0, false),
+            col("Item", 84.0, false),
+            col("Qn 75/65/20 W", 20.0, true),
+            col("n", 14.0, true),
+            col("Qty", 12.0, true),
+            col("Unit of measure", 10.0, false),
+        ],
+        rows,
+        totals: vec![],
+        listed,
+        above_totals: vec![],
+    }
+}
+
+#[cfg(test)]
+mod heater_tests {
+    use super::*;
+
+    #[test]
+    fn heaters_are_listed_with_their_fittings() {
+        use creabim_core::catalogue::radiators::{Panel, PanelKind};
+        use creabim_core::catalogue::towels::TowelRail;
+        let mut doc = creabim_core::Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let p = Panel {
+            kind: PanelKind::K22,
+            height: 600,
+            length: 1000,
+        };
+        let t = TowelRail {
+            height: 1220,
+            length: 600,
+        };
+        for (c, x) in [(p.object(), 1.0), (p.object(), 3.0), (t.object(), 5.0)] {
+            let (tx, _) =
+                creabim_core::objects::place(doc.model(), &c, level, glam::DVec2::new(x, 1.0), 0.0);
+            doc.commit(tx).unwrap();
+        }
+        let s = heaters(doc.model());
+        assert_eq!(s.listed, 2);
+        let cell = |code: &str| {
+            s.rows
+                .iter()
+                .find(|r| r.cells[1] == code)
+                .map(|r| r.cells[5].clone())
+        };
+        assert_eq!(cell("KLC-122060-00M10").as_deref(), Some("1"));
+        assert_eq!(cell("0530-50.000").as_deref(), Some("2"));
+        assert_eq!(cell("6000-09.500").as_deref(), Some("2"));
+        assert_eq!(cell("Z-D040").as_deref(), Some("1"));
+        assert_eq!(cell("Z-KT7R-0500-10").as_deref(), Some("1"));
+        let radik = s
+            .rows
+            .iter()
+            .find(|r| r.cells[0] == "RADIK VK 22-600×1000")
+            .unwrap();
+        assert_eq!(radik.cells[3], "1679");
+    }
+}

@@ -254,47 +254,16 @@ fn urinal() -> CatalogueObject {
     )
 }
 
+/// The towel radiator: a KORADO KORALUX LINEAR CLASSIC-M 1220.500 under
+/// PilonDesigner's family key, so the drawings and connections know it.
 fn towel_radiator() -> CatalogueObject {
-    let f = "Kúpeľňový rebrík";
-    let s = shape(f, None);
-    let mut b = Build::new();
-    let y = -0.07;
-    let x = s.width / 2.0 - 0.02;
-    for (part, cx) in [("Left rail", -x), ("Right rail", x)] {
-        b.add(
-            part,
-            appliance_white(),
-            cylinder(v2(cx, y), 0.015, s.bottom, s.height),
-            false,
-        );
+    let mut c = super::towels::TowelRail {
+        height: 1220,
+        length: 500,
     }
-    let bars = 12;
-    for i in 0..bars {
-        let z = s.bottom + 0.06 + (s.height - s.bottom - 0.12) * i as f64 / (bars - 1) as f64;
-        b.add(
-            "Bar",
-            appliance_white(),
-            cuboid(v3(-x, y - 0.011, z - 0.011), v3(x, y + 0.011, z + 0.011)),
-            false,
-        );
-    }
-    for z in [s.bottom + 0.1, s.height - 0.1] {
-        b.add(
-            "Bracket",
-            appliance_white(),
-            cuboid(v3(-x - 0.01, y, z - 0.01), v3(-x + 0.01, 0.0, z + 0.01)),
-            false,
-        );
-    }
-    finish(
-        b,
-        f,
-        "Towel radiator",
-        "Bathroom ladder radiator 500 × 1200 with its heating supply and return",
-        ObjectCategory::Hvac,
-        ("IfcSpaceHeater", "RADIATOR"),
-        Mount::Wall,
-    )
+    .object();
+    c.key = format!("pd-{}", slug("Kúpeľňový rebrík"));
+    c
 }
 
 fn manifold() -> CatalogueObject {

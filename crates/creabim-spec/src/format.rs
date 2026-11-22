@@ -986,6 +986,7 @@ spec_enum! {
         BoardDiagram = "board_diagram",
         LintelList = "lintel_list",
         VentilationHrv = "ventilation_hrv",
+        HeaterList = "heater_list",
         BuildingFigures = "building_figures",
         FireRisk = "fire_risk",
         FlashingTable = "flashing_table",

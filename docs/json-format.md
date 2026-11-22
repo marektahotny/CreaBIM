@@ -879,6 +879,7 @@ What a schedule lists.
 - `"board_diagram"`
 - `"lintel_list"`
 - `"ventilation_hrv"`
+- `"heater_list"`
 - `"building_figures"`
 - `"fire_risk"`
 - `"flashing_table"`
