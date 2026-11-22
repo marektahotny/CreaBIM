@@ -1798,6 +1798,13 @@ fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, 
         .collect()
 }
 
+/// Mesh corners nearer the section's plane than this lie on it: a face on
+/// the line (a section drawn snapped to a door's jamb) has its corners a
+/// float's rounding either side of it, and sliced as they came it showed
+/// as a wedge (George 2026-11-22). On the plane, a corner counts as before
+/// it, so what stands on the line from beyond is cut whole.
+const ON_PLANE: f64 = 1e-5;
+
 /// Closed outlines where the plane d = 0 slices an element's mesh, in drawing coordinates.
 fn cut_loops(item: &SceneItem, frame: &SectionFrame) -> Vec<Vec<DVec2>> {
     let m = &item.mesh;
@@ -1805,7 +1812,11 @@ fn cut_loops(item: &SceneItem, frame: &SectionFrame) -> Vec<Vec<DVec2>> {
     for t in m.indices.chunks(3) {
         let p: Vec<DVec3> = t
             .iter()
-            .map(|&i| frame.project(Vec3::from(m.positions[i as usize]).as_dvec3()))
+            .map(|&i| {
+                let q = frame.project(Vec3::from(m.positions[i as usize]).as_dvec3());
+                let z = if q.z.abs() < ON_PLANE { 0.0 } else { q.z };
+                DVec3::new(q.x, q.y, z)
+            })
             .collect();
         let mut hits = Vec::new();
         for k in 0..3 {
@@ -3051,5 +3062,74 @@ mod tests {
         let parts = clip_triangle(t, 10.0);
         assert!(!parts.is_empty());
         assert!(parts.iter().flatten().all(|p| p.z >= -1e-12));
+    }
+
+    #[test]
+    fn a_section_on_a_jambs_face_cuts_the_frame_whole() {
+        // a frame jamb 0.1 deep beyond the line, its face on the line,
+        // its corners there a float's rounding either side of it
+        let jitter = |y: f64, z: f64| if (y + z) > 1.0 { 4e-7 } else { -4e-7 };
+        let at = |x: f64, y: f64, z: f64| {
+            let x = if x == 0.0 { jitter(y, z) } else { x };
+            DVec3::new(x, y, z)
+        };
+        let mut mesh = crate::TriMesh::default();
+        let (xs, ys, zs) = ([-0.1, 0.0], [0.0, 0.5], [0.0, 2.0]);
+        for (i, x) in xs.iter().enumerate() {
+            let n = if i == 0 { -DVec3::X } else { DVec3::X };
+            mesh.add_quad(
+                [
+                    at(*x, ys[0], zs[0]),
+                    at(*x, ys[1], zs[0]),
+                    at(*x, ys[1], zs[1]),
+                    at(*x, ys[0], zs[1]),
+                ],
+                n,
+            );
+        }
+        for (i, y) in ys.iter().enumerate() {
+            let n = if i == 0 { -DVec3::Y } else { DVec3::Y };
+            mesh.add_quad(
+                [
+                    at(xs[0], *y, zs[0]),
+                    at(xs[1], *y, zs[0]),
+                    at(xs[1], *y, zs[1]),
+                    at(xs[0], *y, zs[1]),
+                ],
+                n,
+            );
+        }
+        for (i, z) in zs.iter().enumerate() {
+            let n = if i == 0 { -DVec3::Z } else { DVec3::Z };
+            mesh.add_quad(
+                [
+                    at(xs[0], ys[0], *z),
+                    at(xs[1], ys[0], *z),
+                    at(xs[1], ys[1], *z),
+                    at(xs[0], ys[1], *z),
+                ],
+                n,
+            );
+        }
+        let item = SceneItem {
+            id: ElementId::new(),
+            mesh,
+            color: [0.5; 3],
+            surface: [0.5, 0.0, 1.0],
+            ghost: false,
+            layer: None,
+            finish: None,
+        };
+        // along +y, looking to -x: the jamb is beyond the line
+        let frame = SectionFrame::new(DVec2::new(0.0, -1.0), DVec2::new(0.0, 2.0), 1.0);
+        let loops = cut_loops(&item, &frame);
+        assert_eq!(loops.len(), 1, "{loops:?}");
+        let l = &loops[0];
+        let area: f64 = (0..l.len())
+            .map(|i| l[i].perp_dot(l[(i + 1) % l.len()]))
+            .sum::<f64>()
+            / 2.0;
+        // the whole face, 0.5 wide and 2 high: no wedge
+        assert!((area.abs() - 1.0).abs() < 1e-4, "{area} {l:?}");
     }
 }
