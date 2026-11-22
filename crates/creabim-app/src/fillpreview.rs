@@ -54,7 +54,9 @@ pub fn look(model: &Model, level: ElementId, tool: Tool, p: DVec2) -> Look {
         }
         _ => {}
     }
-    let outline = if matches!(tool, Tool::Slab | Tool::Roof) {
+    let outline = if tool == Tool::Slab {
+        creabim_core::room_outline_to_core(model, level, p)
+    } else if tool == Tool::Roof {
         creabim_core::room_outline(model, level, p)
     } else {
         room::enclosed(model, level, p).map(|s| s.outline)

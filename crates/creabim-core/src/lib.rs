@@ -124,7 +124,7 @@ pub use room::{Ceiling, Room, RoomField, Separator};
 pub use screen::ScreenPattern;
 pub use site::{PlantForm, Site, SiteForm};
 pub use sketch::{bulge_through, Circle, Curve, SegmentKind};
-pub use slab::{room_outline, slab_from_sketch, Shaft};
+pub use slab::{room_outline, room_outline_to_core, slab_from_sketch, Shaft};
 pub use titleblock::SheetTemplate;
 pub use transform::Xform;
 pub use types::{ElementType, TypeCategory, TypeParams, TypeRef};

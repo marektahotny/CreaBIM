@@ -48,6 +48,56 @@ fn slab_at(model: &Model, level: ElementId, p: DVec2) -> Option<&Element> {
     })
 }
 
+/// Each floor build-up under a room its own mark, P1, P2… (George
+/// 2026-11-22: tiles in one room and laminate in the next are two
+/// floors, marked apart): build-ups in the order of the rooms over them
+/// (by storey and number), a mark typed on a build-up kept and skipped.
+pub fn floor_marks(model: &Model) -> std::collections::HashMap<ElementId, String> {
+    let mut rooms: Vec<(f64, &str, ElementId, DVec2)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Room(r) => Some((
+                model.level(r.level).map_or(0.0, |l| l.elevation),
+                r.number.as_str(),
+                r.level,
+                r.at,
+            )),
+            _ => None,
+        })
+        .collect();
+    rooms.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(b.1)));
+    let mut order: Vec<ElementId> = vec![];
+    let mut taken: Vec<String> = vec![];
+    for (_, _, level, at) in rooms {
+        let Some(slab) = slab_at(model, level, at) else {
+            continue;
+        };
+        if creabim_core::marks::manual(slab).is_some() {
+            continue;
+        }
+        let Some((a, _)) = creabim_core::assembly_of(model, slab) else {
+            continue;
+        };
+        match creabim_core::marks::manual(a) {
+            Some(m) => taken.push(m.to_string()),
+            None if !order.contains(&a.id) => order.push(a.id),
+            None => {}
+        }
+    }
+    let mut out = std::collections::HashMap::new();
+    let mut n = 1;
+    for id in order {
+        let mut m = format!("P{n}");
+        while taken.contains(&m) {
+            n += 1;
+            m = format!("P{n}");
+        }
+        n += 1;
+        out.insert(id, m);
+    }
+    out
+}
+
 /// The finishes of room `e`: its own words first, else the build-ups'.
 pub fn finishes(model: &Model, e: &Element, r: &Room) -> Finishes {
     let mut f = Finishes {
@@ -66,7 +116,8 @@ pub fn finishes(model: &Model, e: &Element, r: &Room) -> Finishes {
                     let mark = creabim_core::marks::manual(slab)
                         .or_else(|| creabim_core::marks::manual(a))
                         .map(str::to_string)
-                        .or_else(|| creabim_core::marks::mark_of(model, slab.id));
+                        .or_else(|| creabim_core::marks::mark_of(model, slab.id))
+                        .or_else(|| floor_marks(model).remove(&a.id));
                     f.floor = match mark {
                         Some(m) => format!("{top} {m}"),
                         None => top,
@@ -404,6 +455,35 @@ mod tests {
         let slab = slab_at(doc.model(), r.level, r.at);
         let layered = slab.is_some_and(|s| creabim_core::assembly_of(doc.model(), s).is_some());
         assert!(layered || f.floor.is_empty(), "{f:?}");
+    }
+
+    /// Floors of two build-ups are marked apart, P1 and P2; rooms on
+    /// the same build-up share its mark.
+    #[test]
+    fn floors_of_other_build_ups_get_other_marks() {
+        let m = creabim_core::starter::starter_house();
+        let marks = floor_marks(&m);
+        let mut seen: Vec<(ElementId, String)> = vec![];
+        for e in m.iter() {
+            let ElementKind::Room(r) = &e.kind else {
+                continue;
+            };
+            let Some(slab) = slab_at(&m, r.level, r.at) else {
+                continue;
+            };
+            let Some((a, _)) = creabim_core::assembly_of(&m, slab) else {
+                continue;
+            };
+            if let Some(mark) = marks.get(&a.id) {
+                seen.push((a.id, mark.clone()));
+            }
+        }
+        for (a, ma) in &seen {
+            for (b, mb) in &seen {
+                assert_eq!(a == b, ma == mb, "{seen:?}");
+            }
+        }
+        assert!(marks.values().all(|v| v.starts_with('P')));
     }
 
     /// The living area sums the living rooms over 8 m² and kitchens

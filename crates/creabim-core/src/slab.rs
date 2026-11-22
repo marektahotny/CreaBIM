@@ -44,6 +44,89 @@ pub fn room_outline(model: &Model, level: ElementId, p: DVec2) -> Option<Vec<DVe
     room_in_lines(&segs, p)
 }
 
+/// [`room_outline`] for a slab with its floor on it (George
+/// 2026-11-22): where a side runs along an outer wall (nothing closed
+/// beyond it), it goes out to the outer face of that wall's load-bearing
+/// core; inside the house it stays on the centre lines.
+pub fn room_outline_to_core(model: &Model, level: ElementId, p: DVec2) -> Option<Vec<DVec2>> {
+    let outline = room_outline(model, level, p)?;
+    let walls: Vec<&crate::Wall> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) if w.level == level && !w.is_arc() && w.length() > 1e-3 => Some(w),
+            _ => None,
+        })
+        .collect();
+    let n = outline.len();
+    let area: f64 = (0..n)
+        .map(|i| outline[i].perp_dot(outline[(i + 1) % n]))
+        .sum();
+    // outward of an edge a → b: its right when the outline runs
+    // anticlockwise
+    let ccw = area > 0.0;
+    let outward = |a: DVec2, b: DVec2| {
+        let d = (b - a).normalize_or_zero();
+        if ccw {
+            DVec2::new(d.y, -d.x)
+        } else {
+            DVec2::new(-d.y, d.x)
+        }
+    };
+    let shift: Vec<f64> = (0..n)
+        .map(|i| {
+            let (a, b) = (outline[i], outline[(i + 1) % n]);
+            let out = outward(a, b);
+            let mid = (a + b) / 2.0;
+            // the wall the side runs along, on its centre line
+            let Some(w) = walls.iter().find(|w| {
+                let d = (w.end - w.start).normalize();
+                let along = |q: DVec2| (q - w.start).dot(d);
+                (w.end - w.start).perp_dot(b - a).abs() < 1e-6 * (b - a).length().max(1.0)
+                    && (mid - w.start).perp_dot(d).abs() < 1e-4
+                    && along(mid) > -1e-6
+                    && along(mid) < w.length() + 1e-6
+            }) else {
+                return 0.0;
+            };
+            // an inner wall: another room beyond it
+            let beyond = mid + out * (w.thickness / 2.0 + 0.05);
+            if room_outline(model, level, beyond).is_some() {
+                return 0.0;
+            }
+            let (c0, c1) = crate::walls::core_span(model, w);
+            let left = (w.end - w.start).normalize().perp();
+            if out.dot(left) > 0.0 {
+                c0.max(c1)
+            } else {
+                -c0.min(c1)
+            }
+        })
+        .collect();
+    if shift.iter().all(|d| d.abs() < 1e-9) {
+        return Some(outline);
+    }
+    // every corner where its two sides, moved, meet
+    let line = |i: usize| {
+        let (a, b) = (outline[i], outline[(i + 1) % n]);
+        let o = outward(a, b) * shift[i];
+        (a + o, b - a)
+    };
+    let moved: Vec<DVec2> = (0..n)
+        .map(|i| {
+            let (p0, d0) = line((i + n - 1) % n);
+            let (p1, d1) = line(i);
+            let den = d0.perp_dot(d1);
+            if den.abs() < 1e-12 {
+                // straight on: the corner moves with the side after it
+                p1
+            } else {
+                p0 + d0 * ((p1 - p0).perp_dot(d1) / den)
+            }
+        })
+        .collect();
+    Some(moved)
+}
+
 /// The smallest closed face of the line arrangement `segs` around `p`.
 /// The segments split where others cross them or end on them: the nodes,
 /// and the edges between them.
@@ -395,6 +478,82 @@ mod tests {
         let left = room_outline(&m, l, DVec2::new(1.0, 1.0)).expect("enclosed");
         assert!((crate::polygon::signed_area2(&left) / 2.0 - 12.0).abs() < 1e-9);
         assert_eq!(left.len(), 4);
+    }
+
+    #[test]
+    fn a_floor_slab_reaches_the_outer_walls_cores_and_the_inner_walls_centres() {
+        let (mut m, l) = level_model();
+        let mut tx = Transaction::new("walls");
+        for (a, b) in [
+            ((0.0, 0.0), (6.0, 0.0)),
+            ((6.0, 0.0), (6.0, 4.0)),
+            ((6.0, 4.0), (0.0, 4.0)),
+            ((0.0, 4.0), (0.0, 0.0)),
+            ((3.0, 0.1), (3.0, 3.9)),
+        ] {
+            tx = tx.insert(wall(l, a, b));
+        }
+        tx.apply(&mut m).unwrap();
+        // walls of no layers are all core: out to their outer faces,
+        // 0.1 past the centre lines, and to the middle of the inner one
+        let left = room_outline_to_core(&m, l, DVec2::new(1.0, 1.0)).unwrap();
+        assert!(
+            (crate::polygon::signed_area2(&left).abs() / 2.0 - 3.1 * 4.2).abs() < 1e-9,
+            "{left:?}"
+        );
+        for c in [(-0.1, -0.1), (3.0, -0.1), (3.0, 4.1), (-0.1, 4.1)] {
+            assert!(
+                left.iter().any(|q| q.distance(DVec2::new(c.0, c.1)) < 1e-9),
+                "{left:?}"
+            );
+        }
+        // outer walls 450: 150 insulation outside, 300 masonry: out
+        // only to the masonry's outer face, 75 past the centre line
+        let asm = Element::new(
+            "Masonry + ETICS",
+            ElementKind::Assembly(crate::assembly::Assembly::new(
+                crate::AssemblyUse::Wall,
+                vec![
+                    crate::assembly::Layer::new(
+                        crate::assembly::LayerFunction::Insulation,
+                        None,
+                        0.15,
+                    ),
+                    crate::assembly::Layer::new(
+                        crate::assembly::LayerFunction::Structure,
+                        None,
+                        0.3,
+                    ),
+                ],
+            )),
+        );
+        let a = asm.id;
+        let mut tx = Transaction::new("layers").insert(asm);
+        for e in m.iter() {
+            if let ElementKind::Wall(w) = &e.kind {
+                if w.start.x != 3.0 {
+                    let mut e2 = e.clone();
+                    if let ElementKind::Wall(w2) = &mut e2.kind {
+                        w2.assembly = Some(a);
+                        w2.thickness = 0.45;
+                    }
+                    tx = tx.replace(e.clone(), e2);
+                }
+            }
+        }
+        tx.apply(&mut m).unwrap();
+        let left = room_outline_to_core(&m, l, DVec2::new(1.0, 1.0)).unwrap();
+        for c in [
+            (-0.075, -0.075),
+            (3.0, -0.075),
+            (3.0, 4.075),
+            (-0.075, 4.075),
+        ] {
+            assert!(
+                left.iter().any(|q| q.distance(DVec2::new(c.0, c.1)) < 1e-9),
+                "{left:?}"
+            );
+        }
     }
 
     #[test]
