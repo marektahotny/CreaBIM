@@ -135,10 +135,11 @@ impl Layout {
 }
 
 /// The order element categories are listed in: as a house is built.
-pub const CATEGORY_ORDER: [&str; 17] = [
+pub const CATEGORY_ORDER: [&str; 18] = [
     "Footings",
     "Foundation slabs",
     "Walls",
+    "Plinths",
     "Columns",
     "Beams",
     "Slabs",
@@ -179,7 +180,7 @@ pub struct Line {
     pub element: ElementId,
     /// "Walls", "Slabs", "Roofs", "Ceilings", "Columns", "Beams", "Footings",
     /// "Doors", "Windows", "Outer sills", "Inner sills", "Objects", "Stairs",
-    /// "Railings", "Masses".
+    /// "Railings", "Masses", "Plinths" (measured only).
     pub category: &'static str,
     pub level: Option<ElementId>,
     pub material: Option<ElementId>,

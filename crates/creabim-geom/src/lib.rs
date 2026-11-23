@@ -49,6 +49,7 @@ pub mod paper;
 pub mod parts;
 pub mod pick;
 pub mod plan;
+pub mod plinthtakeoff;
 pub mod printing;
 pub mod prio;
 pub mod ranges;
