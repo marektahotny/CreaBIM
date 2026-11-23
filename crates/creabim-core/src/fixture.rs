@@ -125,6 +125,26 @@ impl ConnKind {
         }
     }
 
+    /// How a drawing labels it by trade and medium (George 2026-11-23):
+    /// ZTI-SV, ZTI-TV, ZTI-K, UK-P, UK-S...
+    pub fn label(self) -> &'static str {
+        match self {
+            ConnKind::SV => "ZTI-SV",
+            ConnKind::TV => "ZTI-TV",
+            ConnKind::C => "ZTI-C",
+            ConnKind::K => "ZTI-K",
+            ConnKind::UKP => "UK-P",
+            ConnKind::UKS => "UK-S",
+            ConnKind::CHP => "CH-P",
+            ConnKind::CHS => "CH-S",
+            ConnKind::P => "PLYN",
+            ConnKind::O2 => "MPL-O2",
+            ConnKind::AIR => "MPL-AIR",
+            ConnKind::VAC => "MPL-VAC",
+            ConnKind::N2O => "MPL-N2O",
+        }
+    }
+
     /// Its name, in English: the app translates it.
     pub fn name(self) -> &'static str {
         match self {

@@ -1112,6 +1112,15 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         // one trade's drawing leaves the other trades' pipes out
         if let Some(trade) = v.trade {
             d.items.retain(|it| trade.shows_element(model, it.id()));
+            // and marks only the connectors of its own media: a heat
+            // pump in ZTI its water and waste, in VYK its heating
+            // (George 2026-11-23)
+            if !v.coordination {
+                d.items.retain(|it| {
+                    crate::objects::marked_connector(model, it)
+                        .is_none_or(|k| trade.shows(k.system()))
+                });
+            }
         }
         // nor does it draw where one floor meets another: the floors'
         // edges seen under the cut (George 2026-11-22)
@@ -1191,6 +1200,46 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             ..Default::default()
         };
         let mut marks = vec![];
+        // a heat pump's indoor unit "T.Č." in the plumber's drawing and
+        // the heating one's (its cylinder and condensate are water's,
+        // George 2026-11-23)
+        if plumbing || heating {
+            for e in model.iter() {
+                let ElementKind::Object(o) = &e.kind else {
+                    continue;
+                };
+                if tagged.contains(&e.id)
+                    || !creabim_core::objects::type_of(model, e)
+                        .is_some_and(creabim_core::objects::is_heat_pump_indoor)
+                {
+                    continue;
+                }
+                let pts: Vec<DVec2> = d
+                    .items
+                    .iter()
+                    .filter(|it| it.id() == e.id)
+                    .flat_map(|it| it.extent())
+                    .collect();
+                let Some(first) = pts.first().copied() else {
+                    continue;
+                };
+                let (lo, hi) = pts
+                    .iter()
+                    .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+                let text = "T.Č.".to_string();
+                // in its outline, which is wide enough
+                let at = (lo + hi) / 2.0 + o.mark.unwrap_or(DVec2::ZERO);
+                marks.push(PlanItem::Annotation {
+                    id: e.id,
+                    item: Box::new(crate::annotation::Annotation {
+                        shape: crate::annotation::Shape::Along { at, angle: 0.0 },
+                        text,
+                        look,
+                        mm,
+                    }),
+                });
+            }
+        }
         for row in creabim_services::fixturespec::legend(model, None) {
             for id in row.fixtures {
                 // sanitary fixtures are marked in the plumber's drawing

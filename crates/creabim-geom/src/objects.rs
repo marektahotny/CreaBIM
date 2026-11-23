@@ -111,6 +111,25 @@ pub fn connector_marks(model: &Model, e: &Element) -> Vec<PlanItem> {
     items
 }
 
+/// The connector a drawing item marks, if it is one of an object's
+/// connector marks ([`connector_marks`]): by its place.
+pub fn marked_connector(model: &Model, it: &PlanItem) -> Option<creabim_core::fixture::ConnKind> {
+    let (id, at) = match it {
+        PlanItem::Arc {
+            id, center, radius, ..
+        } if (*radius - CONNECTOR_MARK).abs() < 1e-9 => (*id, *center),
+        PlanItem::Tint { id, points, .. } if points.len() == 12 => {
+            (*id, points.iter().copied().sum::<glam::DVec2>() / 12.0)
+        }
+        _ => return None,
+    };
+    let e = model.get(id)?;
+    creabim_core::fixture::connectors(model, e)
+        .into_iter()
+        .find(|c| c.at.truncate().distance(at) < 1e-6)
+        .map(|c| c.kind)
+}
+
 /// The footprint of an object wholly below the cut (furniture, a bath, a
 /// kitchen run) filled in a light tint of each part's material, under
 /// its symbol. Building services and what the cut passes through or

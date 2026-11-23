@@ -14811,7 +14811,8 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     for e in model.iter() {
         if let ElementKind::View(v) = &e.kind {
             let mut now = v.clone();
-            let thin = creabim_core::viewmodes::DisplayMode::thin_building(&mut now);
+            let thin = creabim_core::viewmodes::DisplayMode::thin_building(&mut now)
+                | creabim_core::viewmodes::DisplayMode::trade_by_name(&mut now, &e.name);
             if creabim_core::viewmodes::DisplayMode::show_own_annotation(&mut now) || thin {
                 let mut after = e.clone();
                 after.kind = ElementKind::View(now);
@@ -14824,6 +14825,11 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // storey does (George 2026-11-23)
     for t in creabim_core::viewmodes::trade_room_tags(&model) {
         tx = tx.insert(t);
+        any = true;
+    }
+    // a heat pump's indoor unit without its cross (George 2026-11-23)
+    if let Some(t) = creabim_core::objects::mend_heat_pump_symbols(&model) {
+        tx.ops.extend(t.ops);
         any = true;
     }
     // the lists of windows and doors on an A4 standing up (George
