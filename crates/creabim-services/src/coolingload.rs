@@ -72,6 +72,40 @@ impl Method {
 /// roof tile (keys of the norm's parameter file).
 pub const EPS_WALL_KEY: &str = "omietka_svetla";
 pub const EPS_ROOF_KEY: &str = "palena_krytina";
+/// The rows of table 6 for people in a home or an office, and cooking.
+pub const PEOPLE_SEATED: &str = "mierne_aktivny";
+pub const PEOPLE_COOKING: &str = "lahka_praca";
+
+/// How clear the air is where the building stands (STN 73 0548, art.
+/// 64): the sun of table 10 is for the average.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Region {
+    #[default]
+    Average,
+    Rural,
+    Urban,
+}
+
+impl Region {
+    pub const ALL: [Region; 3] = [Region::Average, Region::Rural, Region::Urban];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Region::Average => "Average (c_o 1)",
+            Region::Rural => "Countryside",
+            Region::Urban => "Industrial area, large town",
+        }
+    }
+
+    /// Its row of the norm's factors.
+    fn key(self) -> Option<&'static str> {
+        match self {
+            Region::Average => None,
+            Region::Rural => Some("c_o_vidiek"),
+            Region::Urban => Some("c_o_mesto"),
+        }
+    }
+}
 
 /// What the load is calculated with.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -85,6 +119,13 @@ pub struct Settings {
     pub eps_roof: Option<usize>,
     pub shade: Option<usize>,
     pub dt_allow: Option<f64>,
+    /// [`Method::Norm`]: the month (3 to 10) of the sun (tables 5, 10)
+    /// and of the outside air (table 1, formula 1), the clearness of the
+    /// air where the building stands (art. 64), and the windows' reveals
+    /// shading their glass (formulas 24 to 26).
+    pub month: u8,
+    pub region: Region,
+    pub reveal: bool,
     /// Design outside temperature in summer, °C.
     pub te: f64,
     /// Wanted inside, °C.
@@ -185,6 +226,9 @@ impl Default for Settings {
             eps_roof: None,
             shade: None,
             dt_allow: None,
+            month: 7,
+            region: Region::Average,
+            reveal: true,
             te: 32.0,
             ti: 26.0,
             g: 0.5,
@@ -367,6 +411,17 @@ pub(crate) struct Norm {
     pub k_acc: Option<f64>,
     pub dt_allow: Option<f64>,
     pub thick: Vec<(String, f64)>,
+    pub month: u8,
+    /// t_e,max of the month (table 1) and A (formula 1).
+    pub te_max: Option<f64>,
+    pub amplitude: Option<f64>,
+    /// c_o of art. 64 (1 for the average air).
+    pub c_o: f64,
+    pub lat: Option<f64>,
+    pub reveal: bool,
+    /// Table 10 holds the month.
+    pub glass: bool,
+    pub windows: Vec<(ElementId, coolnorm::Win)>,
 }
 
 impl Norm {
@@ -382,8 +437,27 @@ impl Norm {
             k_acc: coolnorm::factor(&tables, "k_acc"),
             dt_allow: s.dt_allow.or_else(|| coolnorm::factor(&tables, "dt_allow")),
             thick: coolnorm::thickness_by_name(model),
+            month: s.month,
+            te_max: coolnorm::te_max(&tables, s.month),
+            amplitude: coolnorm::factor(&tables, "amplitude"),
+            c_o: s
+                .region
+                .key()
+                .and_then(|k| coolnorm::factor(&tables, k))
+                .unwrap_or(1.0),
+            lat: coolnorm::factor(&tables, "latitude"),
+            reveal: s.reveal,
+            glass: coolnorm::sun_of(&tables, coolnorm::SUN_GLASS, s.month, Some(180.0), 12)
+                .is_some(),
+            windows: coolnorm::windows(model),
             tables,
         }
+    }
+
+    /// The outside air at hour `h` by formula 1, if table 1 and A are
+    /// read.
+    fn te(&self, h: f64) -> Option<f64> {
+        Some(coolnorm::te_at(self.te_max?, self.amplitude?, h))
     }
 
     fn delta(&self, name: &str) -> Option<f64> {
@@ -446,13 +520,48 @@ fn one(
     } else {
         used
     };
-    let air = |k: usize| s.te_at(SOLAR_HOURS[k] as f64) - s.ti;
+    let te_at = |h: f64| {
+        norm.and_then(|(n, _)| n.te(h))
+            .unwrap_or_else(|| s.te_at(h))
+    };
+    let air = |k: usize| te_at(SOLAR_HOURS[k] as f64) - s.ti;
+    // STN 73 0548: the sun through each window of the month (table 10),
+    // its sunlit glass in full and the rest by the diffuse (formula 23)
+    let by_norm = norm.filter(|(n, _)| n.glass).map(|(n, _)| {
+        let mut out = [0.0; 15];
+        let mut area = 0.0;
+        for (_, w) in n.windows.iter().filter(|x| x.0 == hl.id) {
+            let so = w.la * w.lb;
+            area += so;
+            for (k, q) in out.iter_mut().enumerate() {
+                let h = SOLAR_HOURS[k] as i32;
+                let i = coolnorm::sun_of(&n.tables, coolnorm::SUN_GLASS, n.month, Some(w.az), h)
+                    .unwrap_or(0.0);
+                let dif = coolnorm::sun_of(&n.tables, coolnorm::SUN_GLASS, n.month, Some(0.0), h)
+                    .unwrap_or(0.0)
+                    .min(i);
+                let sos = match (n.reveal, n.lat) {
+                    (true, Some(lat)) => {
+                        let (sh, sa) = coolnorm::sun_position(n.month, h as f64, lat);
+                        coolnorm::sunlit(w.la, w.lb, w.depth, w.az, sh, sa)
+                    }
+                    _ => so,
+                };
+                *q += sos * i * n.c_o + (so - sos) * dif;
+            }
+        }
+        (out, area)
+    });
+    let (hourly_load, glazed) = match by_norm {
+        Some((h, a)) => (h, a),
+        None => (hourly, glazed),
+    };
     // the sun through the windows of each hour, W
     let fc = match norm {
         Some((n, _)) => n.shade,
         None => s.shading.fc(),
     };
-    let sun_raw: Vec<f64> = (0..15).map(|k| hourly[k] * sc * fc).collect();
+    let sun_raw: Vec<f64> = (0..15).map(|k| hourly_load[k] * sc * fc).collect();
     // what the room stores when it may get warmer (formula 27), not below
     // the mean over the hours of use (28)
     let stored = norm.and_then(|(n, m)| Some(n.k_acc? * m.kg * n.dt_allow?));
@@ -469,8 +578,11 @@ fn one(
             .map(|(ks, az, name)| {
                 let eps = if az.is_some() { n.eps_wall } else { n.eps_roof };
                 let tr = coolnorm::sol_air(
-                    |h| s.te_at(h),
-                    |h| coolnorm::sun_on(&n.tables, *az, h).unwrap_or(0.0),
+                    te_at,
+                    |h| {
+                        coolnorm::sun_of(&n.tables, coolnorm::SUN_WALL, n.month, *az, h)
+                            .unwrap_or(0.0)
+                    },
                     eps.unwrap_or(0.0),
                     n.alpha_e.unwrap_or(f64::INFINITY),
                 );
@@ -537,7 +649,7 @@ fn one(
             "{glazed:.2} m² ({}) · {} h · ΣA·I₀ {:.0} W · SC {sc:.2}{sun_note}",
             faces.join(", "),
             SOLAR_HOURS[k],
-            hourly[k]
+            hourly_load[k]
         ),
     );
     add(
@@ -586,10 +698,19 @@ fn one(
     let office = usage == Use::Office;
     let per = if office { s.m2_office } else { s.m2_home };
     let persons = (hl.area / per.max(1.0)).round().max(1.0);
+    // STN 73 0548: a man's sensible heat of table 6 at the room's air
+    let activity = if usage == Use::Kitchen {
+        PEOPLE_COOKING
+    } else {
+        PEOPLE_SEATED
+    };
+    let w_person = norm
+        .and_then(|(n, _)| coolnorm::person_w(&n.tables, activity, s.ti))
+        .unwrap_or(s.w_person);
     add(
         "People",
-        persons * s.w_person,
-        format!("{persons:.0} × {:.0} W", s.w_person),
+        persons * w_person,
+        format!("{persons:.0} × {w_person:.0} W"),
     );
     add("Lighting", hl.area * s.light, format!("{} W/m²", s.light));
     let eq = match usage {
@@ -797,6 +918,48 @@ fn neighbours(model: &Model, s: &Settings, rooms: &mut [RoomLoad]) {
     }
 }
 
+/// STN 73 0548 formula 20: the heat from a room next door that is not
+/// cooled, Q = k·S·(t_is − t_i), its t_is the highest it reaches in
+/// summer on its own ([`Summer::t_max`]). A cooler one gives nothing.
+fn next_door(model: &Model, s: &Settings, rooms: &mut [RoomLoad]) {
+    let links = heatloss::partitions(model);
+    let warm: Vec<(ElementId, String, f64)> = rooms
+        .iter()
+        .filter(|r| !r.cooled)
+        .map(|r| {
+            (
+                r.id,
+                format!("{} {}", r.number, r.name).trim().to_string(),
+                r.summer.t_max,
+            )
+        })
+        .collect();
+    for r in rooms.iter_mut().filter(|r| r.cooled) {
+        for (a, b, h) in &links {
+            let other = if *a == r.id {
+                b
+            } else if *b == r.id {
+                a
+            } else {
+                continue;
+            };
+            let Some((_, name, t)) = warm.iter().find(|w| w.0 == *other) else {
+                continue;
+            };
+            let q = h * (t - s.ti);
+            if q > 0.5 {
+                r.items.push(Item {
+                    kind: "From the room next door",
+                    note: format!("{name} · θ {t:.1} °C · k·S {h:.1} W/K"),
+                    phi: q,
+                });
+                r.phi += q;
+            }
+        }
+        r.fancoil_kw = fancoil_pick(r.phi / 1000.0);
+    }
+}
+
 /// The cooling load of every room of the model.
 pub fn building(model: &Model, o: &heatloss::Opts, s: &Settings) -> BuildingLoad {
     let losses = heatloss::building(model, o);
@@ -825,6 +988,9 @@ pub fn building(model: &Model, o: &heatloss::Opts, s: &Settings) -> BuildingLoad
         ..BuildingLoad::default()
     };
     neighbours(model, s, &mut out.rooms);
+    if norm.is_some() {
+        next_door(model, s, &mut out.rooms);
+    }
     for r in out.rooms.iter().filter(|r| r.cooled) {
         out.phi += r.phi;
         out.area += r.area;

@@ -64,7 +64,12 @@ impl CreaBimApp {
                 if s.method == Method::Norm {
                     let eps = coolnorm::rows(&norm_tables, coolnorm::EPS, "eps");
                     let shades = coolnorm::rows(&norm_tables, coolnorm::SHADE, "s");
-                    if norm_tables.len() < coolnorm::TABLES.len() {
+                    // an older copy of the file lacks the months, A and the latitude
+                    let stale = coolnorm::factor(&norm_tables, "amplitude").is_none()
+                        || coolnorm::factor(&norm_tables, "latitude").is_none()
+                        || coolnorm::sun_of(&norm_tables, coolnorm::SUN_WALL, s.month, Some(180.0), 12).is_none()
+                        || coolnorm::sun_of(&norm_tables, coolnorm::SUN_GLASS, s.month, Some(180.0), 12).is_none();
+                    if norm_tables.len() < coolnorm::TABLES.len() || stale {
                         ui.horizontal(|ui| {
                             ui.colored_label(
                                 ui.visuals().warn_fg_color,
@@ -132,6 +137,46 @@ impl CreaBimApp {
                         {
                             s.dt_allow = Some(dt);
                         }
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        const MONTHS: [&str; 8] = [
+                            "March", "April", "May", "June", "July", "August", "September", "October",
+                        ];
+                        let name = |m: u8| t(MONTHS[(m.clamp(3, 10) - 3) as usize]);
+                        ui.label(t("Month"));
+                        egui::ComboBox::from_id_salt("cooling.norm_month")
+                            .selected_text(name(s.month))
+                            .show_ui(ui, |ui| {
+                                for m in 3..=10u8 {
+                                    ui.selectable_value(&mut s.month, m, name(m));
+                                }
+                            })
+                            .response
+                            .on_hover_text(t("The sun of the 21st of the month (STN 73 0548, tables 5 and 10) and its outside air (table 1, formula 1)"));
+                        match (
+                            coolnorm::te_max(&norm_tables, s.month),
+                            coolnorm::factor(&norm_tables, "amplitude"),
+                        ) {
+                            (Some(te), Some(a)) => {
+                                ui.label(format!("θe,max {} °C · A {} K", num(te, 1), num(a, 1)))
+                                    .on_hover_text(t("STN 73 0548, table 1 and formula 1: the method takes these, not the outside temperature below"));
+                            }
+                            _ => {
+                                ui.label(t("θe,max as below (table 1 not read)"));
+                            }
+                        }
+                        ui.label(t("Air"));
+                        egui::ComboBox::from_id_salt("cooling.region")
+                            .selected_text(t(s.region.name()))
+                            .show_ui(ui, |ui| {
+                                for x in coolingload::Region::ALL {
+                                    ui.selectable_value(&mut s.region, x, t(x.name()));
+                                }
+                            })
+                            .response
+                            .on_hover_text(t("How clear the air is: the correction c_o of the sun through the windows (STN 73 0548, art. 64)"));
+                        ui.checkbox(&mut s.reveal, t("Reveals shade the glass"))
+                            .on_hover_text(t("The sunlit part of each window by the depth of its reveals and where the sun stands (STN 73 0548, formulas 24 to 26)"));
                     });
                 }
                 ui.horizontal_wrapped(|ui| {
