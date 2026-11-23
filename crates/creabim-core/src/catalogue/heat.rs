@@ -2,9 +2,10 @@
 //! an indirectly heated hot water cylinder, a wall-hung condensing gas
 //! boiler (system or combination) and a split air-to-water heat pump:
 //! its outdoor unit and its indoor one, a wall hydromodule or one with a
-//! hot water cylinder built in. The ranges, sizes and connections are
-//! those usual on the Slovak and Czech market: values to design with,
-//! to be replaced by the maker's own once the product is chosen.
+//! hot water cylinder built in. The heat pump is Panasonic's Aquarea
+//! (bi-bloc J and H, all-in-one J) with its catalogue's sizes and
+//! outputs; the cylinder and the boilers keep the ranges usual on the
+//! Slovak and Czech market, to be replaced by a maker's own.
 //!
 //! Each connection is a small `Connection <code> DN<n>` part where its
 //! pipe joins ([`crate::fixture::part_connectors`]).
@@ -73,7 +74,11 @@ impl HeatKind {
             HeatKind::Cylinder => &[100, 125, 160, 200, 300, 400, 500],
             HeatKind::Boiler => &[12, 16, 20, 25, 30, 35],
             HeatKind::BoilerCombi => &[25, 30, 35],
-            _ => &[4, 6, 8, 10, 12, 14, 16],
+            // Panasonic Aquarea all-in-one J: the 185 l unit with the J
+            // outdoor units only
+            HeatKind::HpIndoorCylinder => &[3, 5, 7, 9],
+            // Panasonic Aquarea bi-bloc J (R32) and H (R410A) kits
+            _ => &[3, 5, 7, 9, 12, 16],
         }
     }
 
@@ -145,13 +150,174 @@ fn cylinder_row(size: u32) -> [f64; 4] {
     }
 }
 
-/// Outdoor unit: width, height, depth, fans, fan diameter.
-fn outdoor_row(size: u32) -> [f64; 5] {
-    match size {
-        4 | 6 => [0.89, 0.67, 0.34, 1.0, 0.46],
-        8 | 10 => [1.01, 0.86, 0.4, 1.0, 0.53],
-        _ => [1.01, 1.36, 0.4, 2.0, 0.53],
-    }
+/// One Panasonic Aquarea bi-bloc kit, as its catalogue prints it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Aquarea {
+    /// Rated kW (A7/W35).
+    pub size: u32,
+    pub kit: &'static str,
+    pub outdoor: &'static str,
+    pub indoor: &'static str,
+    /// Outdoor unit width, height, depth, m.
+    pub out_whd: [f64; 3],
+    pub out_kg: f64,
+    pub in_kg: f64,
+    /// Heating kW and COP at A7, A2, A-7 (W35, then W55); none where
+    /// the catalogue read prints only A7 (the H kits).
+    pub w35: [(f64, f64); 3],
+    pub w55: [(f64, f64); 3],
+    pub full_curve: bool,
+    /// SCOP, average climate, W35 / W55; 0 where not read.
+    pub scop: (f64, f64),
+    /// Outdoor sound power at full load, heating, dB; 0 where not read.
+    pub lw: u32,
+    /// Integrated electric backup heater, kW.
+    pub backup: f64,
+    /// Refrigerant pipes, liquid and gas, inch (mm).
+    pub pipes: (&'static str, &'static str),
+    /// Refrigerant pipe length range, m, and height difference, m.
+    pub length: (&'static str, u32),
+    /// R32 charge, kg; 0 for the R410A kits (not read).
+    pub charge: f64,
+}
+
+/// The Panasonic Aquarea bi-bloc kits (catalogue "Aquarea Bi-bloc J
+/// R32", panasonicproclub.com, and Panasonic Aquarea 2023–2024, p. 17
+/// and 18; read 2026-11-22). The H kits' A7 values and sizes are from
+/// the 2023–2024 catalogue's p. 18 as read; their A2/A-7 points are not
+/// printed in what could be read, so their curve holds A7 only and the
+/// sizing does not take them.
+pub const AQUAREA: [Aquarea; 6] = [
+    Aquarea {
+        size: 3,
+        kit: "KIT-WC03J3E5",
+        outdoor: "WH-UD03JE5",
+        indoor: "WH-SDC0305J3E5",
+        out_whd: [0.824, 0.622, 0.298],
+        out_kg: 37.0,
+        in_kg: 42.0,
+        w35: [(3.20, 5.33), (3.20, 3.64), (3.30, 2.80)],
+        w55: [(3.20, 2.81), (3.20, 2.19), (3.20, 1.79)],
+        full_curve: true,
+        scop: (5.07, 3.47),
+        lw: 60,
+        backup: 3.0,
+        pipes: ("1/4\" (6,35)", "1/2\" (12,70)"),
+        length: ("3–25", 20),
+        charge: 0.9,
+    },
+    Aquarea {
+        size: 5,
+        kit: "KIT-WC05J3E5",
+        outdoor: "WH-UD05JE5",
+        indoor: "WH-SDC0305J3E5",
+        out_whd: [0.824, 0.622, 0.298],
+        out_kg: 37.0,
+        in_kg: 42.0,
+        w35: [(5.00, 5.00), (4.20, 3.18), (4.20, 2.59)],
+        w55: [(5.00, 2.72), (4.10, 1.99), (3.55, 1.71)],
+        full_curve: true,
+        scop: (5.07, 3.47),
+        lw: 64,
+        backup: 3.0,
+        pipes: ("1/4\" (6,35)", "1/2\" (12,70)"),
+        length: ("3–25", 20),
+        charge: 0.9,
+    },
+    Aquarea {
+        size: 7,
+        kit: "KIT-WC07J3E5",
+        outdoor: "WH-UD07JE5",
+        indoor: "WH-SDC0709J3E5",
+        out_whd: [0.875, 0.795, 0.320],
+        out_kg: 61.0,
+        in_kg: 42.0,
+        w35: [(7.00, 4.76), (6.85, 3.41), (5.60, 2.87)],
+        w55: [(7.00, 2.82), (6.20, 2.21), (5.25, 1.94)],
+        full_curve: true,
+        scop: (4.90, 3.32),
+        lw: 68,
+        backup: 3.0,
+        pipes: ("1/4\" (6,35)", "5/8\" (15,88)"),
+        length: ("3–50", 30),
+        charge: 1.27,
+    },
+    Aquarea {
+        size: 9,
+        kit: "KIT-WC09J3E5",
+        outdoor: "WH-UD09JE5-1",
+        indoor: "WH-SDC0709J3E5",
+        out_whd: [0.875, 0.795, 0.320],
+        out_kg: 61.0,
+        in_kg: 42.0,
+        w35: [(9.00, 4.48), (7.00, 3.40), (6.12, 2.78)],
+        w55: [(8.95, 2.78), (6.30, 2.16), (5.90, 1.93)],
+        full_curve: true,
+        scop: (4.90, 3.32),
+        lw: 69,
+        backup: 3.0,
+        pipes: ("1/4\" (6,35)", "5/8\" (15,88)"),
+        length: ("3–50", 30),
+        charge: 1.27,
+    },
+    Aquarea {
+        size: 12,
+        kit: "KIT-WC12H6E5",
+        outdoor: "WH-UD12HE5",
+        indoor: "WH-SDC12H6E5",
+        out_whd: [0.900, 1.340, 0.320],
+        out_kg: 101.0,
+        in_kg: 43.0,
+        w35: [(12.00, 4.74), (0.0, 0.0), (0.0, 0.0)],
+        w55: [(12.00, 0.0), (0.0, 0.0), (0.0, 0.0)],
+        full_curve: false,
+        scop: (0.0, 0.0),
+        lw: 0,
+        backup: 6.0,
+        pipes: ("", ""),
+        length: ("", 0),
+        charge: 0.0,
+    },
+    Aquarea {
+        size: 16,
+        kit: "KIT-WC16H6E5",
+        outdoor: "WH-UD16HE5",
+        indoor: "WH-SDC16H6E5",
+        out_whd: [0.900, 1.340, 0.320],
+        out_kg: 101.0,
+        in_kg: 44.0,
+        w35: [(16.00, 4.28), (0.0, 0.0), (0.0, 0.0)],
+        w55: [(14.50, 0.0), (0.0, 0.0), (0.0, 0.0)],
+        full_curve: false,
+        scop: (0.0, 0.0),
+        lw: 0,
+        backup: 6.0,
+        pipes: ("", ""),
+        length: ("", 0),
+        charge: 0.0,
+    },
+];
+
+/// The kit of `size` kW (the nearest of the range).
+pub fn aquarea(size: u32) -> &'static Aquarea {
+    let size = HeatKind::HpOutdoor.size(size);
+    AQUAREA
+        .iter()
+        .find(|a| a.size == size)
+        .unwrap_or(&AQUAREA[3])
+}
+
+/// The Panasonic Aquarea all-in-one J indoor unit with its 185 l
+/// stainless tank: width, height, depth, m (catalogue 2023–2024, p. 16).
+pub const ALL_IN_ONE_WHD: [f64; 3] = [0.599, 1.642, 0.602];
+
+/// Outdoor unit: width, height, depth and its fans. The catalogue does
+/// not say how many fans a unit has: the 1340 mm tall H units are drawn
+/// with two, the lower ones with one.
+fn outdoor_row(size: u32) -> [f64; 4] {
+    let a = aquarea(size);
+    let [w, h, d] = a.out_whd;
+    [w, h, d, if h > 1.0 { 2.0 } else { 1.0 }]
 }
 
 /// A number as Slovak drawings write it: a decimal comma, no trailing
@@ -176,50 +342,46 @@ fn mm(v: f64) -> String {
     format!("{:.0}", v * 1000.0)
 }
 
-/// The electric backup heater of an indoor unit, kW.
+/// The electric backup heater of the indoor unit, kW (Panasonic: 3 kW
+/// in the J kits, 6 kW in the H kits).
 pub fn backup_kw(size: u32) -> f64 {
-    if size >= 12 {
-        9.0
-    } else {
-        6.0
+    aquarea(size).backup
+}
+
+/// The heat pump's output, kW, by outside temperature (°C) at a flow
+/// temperature of 35 or 55 °C, as the catalogue prints it: A-7, A2 and
+/// A7. The H kits have their A7 point only.
+pub fn hp_points(size: u32, w55: bool) -> Vec<(f64, f64)> {
+    let a = aquarea(size);
+    let row = if w55 { a.w55 } else { a.w35 };
+    if !a.full_curve {
+        return vec![(7.0, row[0].0)];
     }
+    vec![(-7.0, row[2].0), (2.0, row[1].0), (7.0, row[0].0)]
 }
 
-/// The heat pump's greatest output, kW, by outside temperature (°C) at
-/// a flow temperature of 35 or 55 °C: the usual curve of an R32 inverter
-/// unit rated `size` kW at A7/W35.
-pub fn hp_points(size: u32, w55: bool) -> [(f64, f64); 4] {
-    let s = size as f64;
-    let f = if w55 {
-        [0.62, 0.76, 0.85, 0.95]
-    } else {
-        [0.72, 0.85, 0.92, 1.0]
-    };
-    let q = |k: f64| if k == 1.0 { s } else { r1(s * k) };
-    [
-        (-15.0, q(f[0])),
-        (-7.0, q(f[1])),
-        (2.0, q(f[2])),
-        (7.0, q(f[3])),
-    ]
+/// Whether the kit has the catalogue's whole curve (A-7 to A7), so it
+/// can be sized by its bivalence point.
+pub fn has_curve(size: u32) -> bool {
+    aquarea(size).full_curve
 }
 
-/// The curve at flow temperature `t_flow`: the nearer of W35 and W55,
-/// and where it is further than 2 K off, about 0.5 % of output for each
-/// kelvin of flow temperature.
+/// The curve at flow temperature `t_flow`: between the catalogue's W35
+/// and W55 points in a line (held at W35 under 35 °C, at W55 over 55 °C).
+/// Under A-7 the catalogue prints nothing: the output is held at its
+/// A-7 value there, down to the unit's −20 °C limit.
 pub fn hp_curve(size: u32, t_flow: f64) -> Vec<(f64, f64)> {
-    let near: f64 = if (55.0 - t_flow).abs() < (35.0 - t_flow).abs() {
-        55.0
-    } else {
-        35.0
-    };
-    let pts = hp_points(size, near == 55.0);
-    let f = if (near - t_flow).abs() > 2.0 {
-        1.0 - 0.005 * (t_flow - near)
-    } else {
-        1.0
-    };
-    pts.iter().map(|(t, q)| (*t, q * f)).collect()
+    let (a, b) = (hp_points(size, false), hp_points(size, true));
+    let k = ((t_flow - 35.0) / 20.0).clamp(0.0, 1.0);
+    let mut pts: Vec<(f64, f64)> = a
+        .iter()
+        .zip(&b)
+        .map(|((t, qa), (_, qb))| (*t, r2(qa + (qb - qa) * k)))
+        .collect();
+    if pts.len() > 1 {
+        pts.insert(0, (-20.0, pts[0].1));
+    }
+    pts
 }
 
 /// The unit of `kind` in `size` (the nearest of its range).
@@ -359,105 +521,112 @@ pub fn describe(kind: HeatKind, size: u32) -> HeatUnit {
             p("Expanzná nádoba", format!("{} l", if big { 10 } else { 8 }));
         }
         HeatKind::HpOutdoor => {
-            let [w, h, d, _, _] = outdoor_row(size);
+            let a = aquarea(size);
+            let [w, h, d, _] = outdoor_row(size);
             dims = [w, d, h];
-            name = format!("Tepelné čerpadlo vzduch–voda {size} kW – vonkajšia jednotka");
+            name = format!(
+                "Panasonic Aquarea {} – vonkajšia jednotka {}",
+                a.outdoor, a.kit
+            );
             ifc = "IfcUnitaryEquipment";
             let x = w / 2.0 - 0.04;
             port("Chladivo – kvapalina", "CH", [x, 0.05, 0.25], 10);
             port("Chladivo – plyn", "CH", [x, 0.12, 0.25], 16);
             port("Napájanie", "E", [x, -0.05, 0.4], 0);
             port("Odvod kondenzátu", "K", [0.0, 0.0, 0.06], 32);
-            for (w55, label) in [(false, "W35"), (true, "W55")] {
-                let pts = hp_points(size, w55);
-                for (t, q) in pts.iter().rev() {
+            p(
+                "Zostava",
+                format!("{} ({} + {})", a.kit, a.indoor, a.outdoor),
+            );
+            for (label, row) in [("W35", a.w35), ("W55", a.w55)] {
+                for (t, (q, cop)) in [7, 2, -7].iter().zip(row) {
+                    if q <= 0.0 {
+                        continue;
+                    }
+                    let cop = if cop > 0.0 {
+                        format!(", COP {}", n(cop, 2))
+                    } else {
+                        String::new()
+                    };
                     p(
-                        &format!("Tepelný výkon A{t:.0}/{label}"),
-                        format!("{} kW", n(*q, 1)),
+                        &format!("Tepelný výkon A{t}/{label}"),
+                        format!("{} kW{cop}", n(q, 2)),
                     );
                 }
             }
-            let cop = 5.1 - s * 0.02;
-            p("COP A7/W35", n(r2(cop), 2));
-            p("COP A2/W35", n(r2(4.0 - s * 0.015), 2));
-            p("COP A-7/W35", n(r2(2.9 - s * 0.01), 2));
-            p("COP A-7/W55", n(r2(2.1 - s * 0.008), 2));
-            p("Prevádzková teplota (vykurovanie)", "−25 až +35 °C".into());
-            p("SCOP (35 °C, priemerná klíma)", "4,6".into());
+            if a.scop.0 > 0.0 {
+                p(
+                    "SCOP priemerná klíma W35 / W55",
+                    format!("{} / {}", n(a.scop.0, 2), n(a.scop.1, 2)),
+                );
+            }
+            if a.lw > 0 {
+                p(
+                    "Akustický výkon (plný výkon, vykurovanie)",
+                    format!("{} dB", a.lw),
+                );
+            }
+            p("Prevádzková teplota (vykurovanie)", "−20 až +35 °C".into());
             p(
-                "Chladiaci výkon A35/W18",
-                format!("{} kW", n(r1(s * 0.95), 1)),
+                "Chladivo",
+                if a.charge > 0.0 {
+                    format!("R32, {} kg", n(a.charge, 2))
+                } else {
+                    "R410A".into()
+                },
             );
-            p(
-                "Elektrický príkon (A7/W35)",
-                format!("{} kW", n(r2(s / cop), 2)),
-            );
-            p(
-                "Hladina akustického výkonu",
-                format!(
-                    "{} dB(A)",
-                    if size <= 6 {
-                        56
-                    } else if size <= 10 {
-                        59
-                    } else {
-                        63
-                    }
-                ),
-            );
-            p("Chladivo", "R32".into());
-            p(
-                "Rúrky chladiva",
-                format!(
-                    "kvapalina 1/4\" (6,35 mm), plyn {}",
-                    if size >= 12 {
-                        "5/8\" (15,88 mm)"
-                    } else {
-                        "1/2\" (12,7 mm)"
-                    }
-                ),
-            );
+            if !a.pipes.0.is_empty() {
+                p(
+                    "Rúrky chladiva kvapalina / plyn",
+                    format!("{} / {} mm", a.pipes.0, a.pipes.1),
+                );
+                p(
+                    "Dĺžka potrubia chladiva / prevýšenie",
+                    format!("{} m / {} m", a.length.0, a.length.1),
+                );
+            }
             p(
                 "Napájanie",
-                if size >= 12 {
-                    "3 × 400 V / 50 Hz"
-                } else {
-                    "1 × 230 V / 50 Hz"
-                }
-                .into(),
+                "1 × 230 V / 50 Hz (cez vnútornú jednotku)".into(),
             );
-            p("Max. dĺžka potrubia chladiva", "30 m".into());
-            p("Hmotnosť", format!("{:.0} kg", (40.0 + s * 4.5).round()));
+            p("Hmotnosť", format!("{:.0} kg", a.out_kg));
             p(
-                "Rozmer š × v × h",
-                format!("{} × {} × {} mm", mm(w), mm(h), mm(d)),
+                "Rozmer v × š × h",
+                format!("{} × {} × {} mm", mm(h), mm(w), mm(d)),
             );
-            p(
-                "Osadenie",
-                "na konzole / sokli min. 300 mm nad terénom, voľný priestor 300 mm vzadu, 1 m vpredu"
-                    .into(),
-            );
+            if !a.full_curve {
+                p(
+                    "Pozn.",
+                    "výkony pri A2 a A-7 neboli z katalógu načítané".into(),
+                );
+            }
         }
         HeatKind::HpIndoor | HeatKind::HpIndoorCylinder => {
             let tank = kind == HeatKind::HpIndoorCylinder;
+            let a = aquarea(size);
+            // Panasonic: bi-bloc hydromodule 892 × 500 × 340 (v × š × h);
+            // all-in-one 1642 × 599 × 602 with its 185 l tank
             let (w, d, h) = if tank {
-                (0.6, 0.65, 1.75)
+                (ALL_IN_ONE_WHD[0], ALL_IN_ONE_WHD[2], ALL_IN_ONE_WHD[1])
             } else {
-                (0.45, 0.33, 0.8)
+                (0.5, 0.34, 0.892)
             };
             dims = [w, d, h];
-            name = format!(
-                "Tepelné čerpadlo {size} kW – vnútorná jednotka{}",
-                if tank {
-                    " so zásobníkom TV 190 l"
-                } else {
-                    " (hydromodul)"
-                }
-            );
+            name = if tank {
+                format!(
+                    "Panasonic Aquarea All-in-One WH-ADC0309J3E5 so zásobníkom TV 185 l – vnútorná jednotka k {}",
+                    a.outdoor
+                )
+            } else {
+                format!(
+                    "Panasonic Aquarea {} – vnútorná jednotka (hydromodul) {}",
+                    a.indoor, a.kit
+                )
+            };
             ifc = "IfcUnitaryEquipment";
             let (z, y) = (if tank { h } else { 0.0 }, 0.05);
-            port("Vykurovanie – prívod", "UKP", [-0.15, y, z], 25);
-            port("Vykurovanie – spiatočka", "UKS", [-0.07, y, z], 25);
+            port("Vykurovanie – prívod", "UKP", [-0.15, y, z], 32);
+            port("Vykurovanie – spiatočka", "UKS", [-0.07, y, z], 32);
             port("Chladivo – kvapalina", "CH", [0.05, y, z], 10);
             port("Chladivo – plyn", "CH", [0.11, y, z], 16);
             port(
@@ -476,42 +645,37 @@ pub fn describe(kind: HeatKind, size: u32) -> HeatUnit {
                     "Ohrev zásobníka TV – prívod (3-cestný ventil)",
                     "UKP",
                     [-0.15, y + 0.08, z],
-                    25,
+                    32,
                 );
                 port(
                     "Ohrev zásobníka TV – spiatočka",
                     "UKS",
                     [-0.07, y + 0.08, z],
-                    25,
+                    32,
                 );
             }
             p(
-                "Vonkajšia jednotka (zostava)",
-                format!("{size} kW (A7/W35)"),
+                "Vonkajšia jednotka",
+                format!("{} ({size} kW pri A7/W35)", a.outdoor),
             );
             p(
                 "Elektrický dohrev (vykurovacia tyč)",
-                format!("{:.0} kW", backup_kw(size)),
+                format!("{} kW", n(a.backup, 0)),
             );
-            p("Expanzná nádoba", "8 l".into());
-            p(
-                "Obehové čerpadlo",
-                "elektronické, dopravná výška 7,5 m".into(),
-            );
-            p("Najvyššia teplota výstupnej vody", "60 °C".into());
+            p("Výstupná voda (vykurovanie)", "20 až 60 °C".into());
             if tank {
-                p("Objem zásobníka TV", "190 l".into());
-                p("Prípojky SV / TV / C", "G 3/4\"".into());
+                p("Objem zásobníka TV", "185 l (nerez)".into());
             } else {
+                p("Hmotnosť", format!("{:.0} kg", a.in_kg));
                 p(
                     "Prípojka zásobníka TV",
                     "externý zásobník cez 3-cestný ventil".into(),
                 );
             }
-            p("Prípojky ÚK", "G 1\"".into());
+            p("Prípojky vody", "R 1¼\"".into());
             p(
-                "Rozmer š × v × h",
-                format!("{} × {} × {} mm", mm(w), mm(h), mm(d)),
+                "Rozmer v × š × h",
+                format!("{} × {} × {} mm", mm(h), mm(w), mm(d)),
             );
         }
     }
@@ -605,7 +769,10 @@ pub fn unit(kind: HeatKind, size: u32) -> CatalogueObject {
             b.line(v2(-w / 2.0, -d), v2(w / 2.0, 0.0));
         }
         HeatKind::HpOutdoor => {
-            let [_, _, _, fans, fan_d] = outdoor_row(u.size);
+            let [_, _, _, fans] = outdoor_row(u.size);
+            // the grille drawn over most of the unit's height or half of
+            // it (its size is not in the catalogue)
+            let fan_d = ((h - 0.06) / fans - 0.1).min(w * 0.6);
             b.add(
                 "Casing",
                 casing(),
@@ -639,6 +806,8 @@ pub fn unit(kind: HeatKind, size: u32) -> CatalogueObject {
             // the fan's side in plan: the air blows out of the front
             b.line(v2(-w / 2.0, -d + 0.03), v2(0.0, -d - 0.12));
             b.line(v2(0.0, -d - 0.12), v2(w / 2.0, -d + 0.03));
+            // in front of the unit: it is too shallow to hold its name
+            b.text(v2(0.0, -d - 0.3), "T.Č. vonkajšia");
         }
         HeatKind::HpIndoor | HeatKind::HpIndoorCylinder => {
             b.add(
@@ -655,6 +824,13 @@ pub fn unit(kind: HeatKind, size: u32) -> CatalogueObject {
             );
             b.line(v2(-w / 2.0, -d), v2(w / 2.0, 0.0));
             b.line(v2(-w / 2.0, 0.0), v2(w / 2.0, -d));
+            // a wall hydromodule is too shallow to hold its name
+            let at = if kind == HeatKind::HpIndoor {
+                -d - 0.2
+            } else {
+                -d / 2.0
+            };
+            b.text(v2(0.0, at), "T.Č. vnútorná");
         }
     }
     // a stub where each pipe joins: inside the back face and the floor,
@@ -709,9 +885,9 @@ pub fn starters() -> Vec<CatalogueObject> {
         unit(HeatKind::Cylinder, 200),
         unit(HeatKind::Boiler, 20),
         unit(HeatKind::BoilerCombi, 25),
-        unit(HeatKind::HpOutdoor, 8),
-        unit(HeatKind::HpIndoor, 8),
-        unit(HeatKind::HpIndoorCylinder, 8),
+        unit(HeatKind::HpOutdoor, 9),
+        unit(HeatKind::HpIndoor, 9),
+        unit(HeatKind::HpIndoorCylinder, 9),
     ]
 }
 
@@ -725,7 +901,7 @@ mod tests {
         assert_eq!(HeatKind::Cylinder.pick(180.0), 200);
         assert_eq!(HeatKind::Boiler.pick(17.2), 20);
         assert_eq!(HeatKind::Boiler.pick(80.0), 35);
-        assert_eq!(HeatKind::HpOutdoor.size(9), 10);
+        assert_eq!(HeatKind::HpOutdoor.size(8), 9);
         let c = describe(HeatKind::Cylinder, 300);
         assert_eq!(c.dims, [0.66, 0.66, 1.7]);
         assert!(c
@@ -738,23 +914,28 @@ mod tests {
         assert!(k
             .params
             .contains(&("Spotreba zemného plynu G20".into(), "3,13 m³/h".into())));
-        let hp = describe(HeatKind::HpOutdoor, 8);
+        let hp = describe(HeatKind::HpOutdoor, 9);
         assert!(hp
             .params
-            .contains(&("Tepelný výkon A-7/W35".into(), "6,8 kW".into())));
-        assert!(hp.params.contains(&("COP A7/W35".into(), "4,94".into())));
+            .contains(&("Tepelný výkon A-7/W35".into(), "6,12 kW, COP 2,78".into())));
+        assert_eq!(hp.dims, [0.875, 0.32, 0.795]);
+        assert!(hp.name.contains("WH-UD09JE5-1"));
     }
 
     #[test]
-    fn the_curve_follows_the_flow_temperature() {
+    fn the_curve_is_panasonics() {
+        // KIT-WC07J3E5 at W35: A-7 5,60, A2 6,85, A7 7,00 kW
         assert_eq!(
-            hp_curve(10, 35.0),
-            vec![(-15.0, 7.2), (-7.0, 8.5), (2.0, 9.2), (7.0, 10.0)]
+            hp_curve(7, 35.0),
+            vec![(-20.0, 5.6), (-7.0, 5.6), (2.0, 6.85), (7.0, 7.0)]
         );
-        // 45 °C is 10 K over W35: 5 % less
-        let c = hp_curve(10, 45.0);
-        assert!((c[1].1 - 8.5 * 0.95).abs() < 1e-9);
-        assert_eq!(hp_curve(10, 54.0)[1], (-7.0, 7.6));
+        // 45 °C: halfway to W55 (A-7 5,25)
+        assert!((hp_curve(7, 45.0)[1].1 - 5.43).abs() < 1e-9);
+        // the H kits: A7 only, not sized by their curve
+        assert_eq!(hp_curve(12, 35.0), vec![(7.0, 12.0)]);
+        assert!(!has_curve(16) && has_curve(3));
+        assert_eq!(backup_kw(9), 3.0);
+        assert_eq!(backup_kw(16), 6.0);
     }
 
     #[test]

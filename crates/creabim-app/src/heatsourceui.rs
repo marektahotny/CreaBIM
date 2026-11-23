@@ -22,7 +22,7 @@ impl Default for HeatSource {
     fn default() -> Self {
         Self {
             kind: HeatKind::HpOutdoor,
-            size: 8,
+            size: 9,
             input: HpInput::default(),
         }
     }
@@ -49,7 +49,13 @@ fn diagram(ui: &mut egui::Ui, i: &HpInput, sel: u32) {
     );
     let t0 = (-20.0_f64).min((i.te / 5.0).floor() * 5.0 - 5.0);
     let t1 = hpsizing::T_HEAT_LIMIT + 5.0;
-    let sizes = HeatKind::HpOutdoor.sizes();
+    // the kits whose catalogue curve is known (A-7 to A7)
+    let sizes: Vec<u32> = HeatKind::HpOutdoor
+        .sizes()
+        .iter()
+        .copied()
+        .filter(|s| heat::has_curve(*s))
+        .collect();
     let top = sizes
         .iter()
         .map(|s| hpsizing::capacity(&heat::hp_curve(*s, i.t_flow), t1))
@@ -104,7 +110,7 @@ fn diagram(ui: &mut egui::Ui, i: &HpInput, sel: u32) {
         p.add(egui::Shape::line(pts, stroke));
     };
     let blue = Color32::from_rgb(37, 99, 235);
-    for s in sizes {
+    for s in &sizes {
         let pts = heat::hp_curve(*s, i.t_flow);
         if *s != sel {
             line(&|t| hpsizing::capacity(&pts, t), Stroke::new(1.0, weak));
@@ -155,9 +161,59 @@ impl CreaBimApp {
             return false;
         }
         if self.heat_source.is_none() {
-            self.heat_source = Some(HeatSource::default());
+            // its power from the heat loss of the model, not a fixed one
+            let mut c = HeatSource::default();
+            if let Some(i) = self.hp_input_from_model() {
+                c.input = i;
+                c.size = hpsizing::recommend(&i);
+            }
+            self.heat_source = Some(c);
         }
         true
+    }
+
+    /// The heat pump's input from the model's heat loss (STN EN 12831-1,
+    /// with the project's locality): none without rooms.
+    pub(super) fn hp_input_from_model(&self) -> Option<HpInput> {
+        let o = self.heat_loss.as_ref().map_or_else(
+            || self.site_opts(creabim_services::heatloss::Opts::default()),
+            |x| x.0,
+        );
+        let b = creabim_services::heatloss::building(self.doc.model(), &o);
+        if b.rooms.is_empty() || b.phi <= 0.0 {
+            return None;
+        }
+        let mut i = self
+            .heat_source
+            .as_ref()
+            .map_or_else(HpInput::default, |c| c.input);
+        i.heat_load = (b.phi / 1000.0).clamp(0.5, 200.0);
+        i.te = o.te.clamp(-25.0, 0.0);
+        Some(i)
+    }
+
+    /// A heat pump unit from the catalogue, sized by the model's heat
+    /// loss (its bivalence point) when it has rooms: the catalogue's own
+    /// size only stands in until then.
+    pub(super) fn sized_heat_unit(
+        &self,
+        c: creabim_core::objects::CatalogueObject,
+    ) -> creabim_core::objects::CatalogueObject {
+        let kind = [
+            HeatKind::HpOutdoor,
+            HeatKind::HpIndoor,
+            HeatKind::HpIndoorCylinder,
+        ]
+        .into_iter()
+        .find(|k| {
+            c.key
+                .strip_prefix(&format!("heat-{}-", k.id().to_lowercase()))
+                .is_some_and(|n| n.parse::<u32>().is_ok())
+        });
+        match (kind, self.hp_input_from_model()) {
+            (Some(k), Some(i)) => heat::unit(k, hpsizing::recommend(&i)),
+            _ => c,
+        }
     }
 
     /// The window, while it is open.
@@ -344,9 +400,11 @@ impl CreaBimApp {
                                 }
                             });
                     });
-                ui.weak(t(
-                    "Usual values of the market's ranges, to design with: replace them with the maker's once the product is chosen.",
-                ));
+                ui.weak(t(if hp {
+                    "Panasonic Aquarea bi-bloc J and H, all-in-one J: the maker's catalogue values. Under A-7 the catalogue prints no output: it is held at A-7."
+                } else {
+                    "Usual values of the market's ranges, to design with: replace them with the maker's once the product is chosen."
+                }));
                 ui.add_space(4.0);
                 if ui.button(t("Place it")).clicked() {
                     place = true;

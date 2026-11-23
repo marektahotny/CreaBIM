@@ -982,6 +982,8 @@ impl CreaBimApp {
     fn run_catalogue(&mut self, ask: CatAsk) {
         match ask {
             CatAsk::Place(c, own) => {
+                // a heat pump takes the size the heat loss asks for
+                let c = Box::new(self.sized_heat_unit(*c));
                 self.status = format!(
                     "{}: click in a plan or the 3D view to place it. Space turns it; Esc ends.",
                     c.name

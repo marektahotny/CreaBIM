@@ -82,6 +82,8 @@ fn washing_machine() -> CatalogueObject {
         ),
         false,
     );
+    // George 2026-11-22: the plan says what it is
+    b.text(v2(0.0, -s.depth / 2.0), "Práčka");
     finish(
         b,
         f,
