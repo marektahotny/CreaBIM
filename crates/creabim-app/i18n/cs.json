@@ -8418,5 +8418,9 @@
  "How clear the air is: the correction c_o of the sun through the windows (STN 73 0548, art. 64)": "Čistota ovzduší: korekce c_o sluneční radiace okny (ČSN 73 0548, čl. 64)",
  "Reveals shade the glass": "Stín ostění na skle",
  "The sunlit part of each window by the depth of its reveals and where the sun stands (STN 73 0548, formulas 24 to 26)": "Osluněná část každého okna podle hloubky ostění a polohy slunce (ČSN 73 0548, vztahy 24 až 26)",
- "From the room next door": "Ze sousední místnosti"
+ "From the room next door": "Ze sousední místnosti",
+ "D Documentation of the building objects": "D Dokumentace stavebních objektů",
+ "New sheet in this part, numbered after its last": "Nový výkres v této části, číslovaný za jejím posledním",
+ "New A3 sheet": "Nový list A3",
+ "Use Place view… in the toolbar to put views on it.": "Pohledy na něj vložíte přes Umístit pohled… v panelu nástrojů."
 }
