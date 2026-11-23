@@ -2477,6 +2477,13 @@ pub struct View {
     /// other plan leaves the lintels out (sections show them as cut).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub masonry: bool,
+    /// The structural engineer's (Statika): a plan shows only what
+    /// carries (load-bearing walls, columns, beams, slabs, footings), the
+    /// lintels and ring beams marked P1, V1 by their positions; a section
+    /// belongs to the structural drawings, its mark shown only in their
+    /// plans (George 2026-11-23).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub structural: bool,
     /// A legend for the site plan: only the utility networks.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub site_legend: bool,
@@ -2808,10 +2815,16 @@ pub enum ScheduleCategory {
     /// (identifikačné údaje): its kind, plot, place, client and owner,
     /// from the project information.
     Identification,
+    /// The structural drawing's list of lintels by position (P1, P2…):
+    /// what lies over each opening, how many openings, how long.
+    LintelPositions,
+    /// The structural drawing's list of ring beams by position (V1, V2…):
+    /// section and running length.
+    RingBeamList,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 28] = [
+    pub const ALL: [ScheduleCategory; 30] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2840,6 +2853,8 @@ impl ScheduleCategory {
         ScheduleCategory::BuildingFigures,
         ScheduleCategory::FlashingTable,
         ScheduleCategory::Identification,
+        ScheduleCategory::LintelPositions,
+        ScheduleCategory::RingBeamList,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2873,6 +2888,8 @@ impl ScheduleCategory {
             ScheduleCategory::BuildingFigures => return "Area data".into(),
             ScheduleCategory::FlashingTable => return "Table of sheet-metal items".into(),
             ScheduleCategory::Identification => return "Identification data".into(),
+            ScheduleCategory::LintelPositions => return "List of lintels".into(),
+            ScheduleCategory::RingBeamList => return "List of ring beams".into(),
         };
         format!("{one} Schedule")
     }
@@ -2915,6 +2932,8 @@ impl ScheduleCategory {
             ScheduleCategory::BuildingFigures => "Area data",
             ScheduleCategory::FlashingTable => "Table of sheet-metal items",
             ScheduleCategory::Identification => "Identification data",
+            ScheduleCategory::LintelPositions => "List of lintels",
+            ScheduleCategory::RingBeamList => "List of ring beams",
         }
     }
 
@@ -2998,6 +3017,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            structural: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
@@ -3043,6 +3063,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            structural: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
@@ -3085,6 +3106,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            structural: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
@@ -3128,6 +3150,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            structural: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
@@ -3176,6 +3199,7 @@ impl View {
             trade: None,
             coordination: false,
             masonry: false,
+            structural: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),

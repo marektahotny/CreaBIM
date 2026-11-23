@@ -353,6 +353,12 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     if category == ScheduleCategory::LintelList {
         return crate::masonry::lintel_schedule(model);
     }
+    if category == ScheduleCategory::LintelPositions {
+        return crate::structural::lintel_schedule(model);
+    }
+    if category == ScheduleCategory::RingBeamList {
+        return crate::structural::ring_schedule(model);
+    }
     if category == ScheduleCategory::FireZones {
         return crate::firezones::schedule(model);
     }
@@ -772,6 +778,8 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         | ScheduleCategory::FireRisk
         | ScheduleCategory::BoardDiagram
         | ScheduleCategory::LintelList
+        | ScheduleCategory::LintelPositions
+        | ScheduleCategory::RingBeamList
         | ScheduleCategory::VentilationHrv
         | ScheduleCategory::HeaterList
         | ScheduleCategory::BuildingFigures

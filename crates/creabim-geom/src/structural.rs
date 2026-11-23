@@ -1,0 +1,384 @@
+//! What the structural drawing (Statika) writes over its plan and its
+//! lists: each lintel's outline over its opening with its position and
+//! underside (`P1`, `SH=+2,400`), each ring beam's outline with its
+//! position (`V1`), as the office's "výkres tvaru" (George 2026-11-23);
+//! and the lists of lintels and ring beams by position.
+
+use crate::paper::Anchor;
+use crate::plan::{Pen, PlanItem};
+use creabim_core::structural::{self, LintelPosition, RingPosition};
+use creabim_core::{ElementId, ElementKind, Model};
+use glam::DVec2;
+
+fn comma(v: f64, places: usize) -> String {
+    format!("{v:.places$}").replace('.', ",")
+}
+
+/// A height above ±0,000 as a drawing writes it: `+2,400`.
+fn level_text(z: f64) -> String {
+    let s = comma(z.abs(), 3);
+    if z < -5e-4 {
+        format!("-{s}")
+    } else {
+        format!("+{s}")
+    }
+}
+
+fn outline(id: ElementId, pts: &[DVec2], out: &mut Vec<PlanItem>) {
+    for k in 0..pts.len() {
+        out.push(PlanItem::Line {
+            id,
+            pen: Pen::Overhead,
+            a: pts[k],
+            b: pts[(k + 1) % pts.len()],
+        });
+    }
+}
+
+/// The side of a lintel's wall its text goes on: the inside, and how far
+/// from the lintel's middle the wall's face is.
+fn inside_of(model: &Model, b: &creabim_core::Beam, mid: DVec2) -> (DVec2, f64) {
+    let d = (b.end - b.start).normalize_or_zero();
+    b.lintel
+        .as_ref()
+        .and_then(|l| l.opening)
+        .and_then(|o| match model.get(o).map(|e| &e.kind) {
+            Some(ElementKind::Opening(op)) => match model.get(op.host).map(|e| &e.kind) {
+                Some(ElementKind::Wall(w)) => {
+                    let left = w.direction().perp();
+                    let inside = if w.flip { -left } else { left };
+                    let centre =
+                        (w.start + w.direction() * (op.offset + op.width / 2.0)).dot(inside);
+                    Some((inside, centre + w.thickness / 2.0 - mid.dot(inside)))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .unwrap_or((d.perp(), b.width / 2.0))
+}
+
+/// The marks of the structural plan of `level`, `mm` drawing units a
+/// paper millimetre.
+pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
+    let mut out = vec![];
+    let beam = |id: &ElementId| match model.get(*id).map(|e| &e.kind) {
+        Some(ElementKind::Beam(b)) => Some(b),
+        _ => None,
+    };
+    for p in structural::lintel_positions(model) {
+        for ids in &p.groups {
+            let beams: Vec<&creabim_core::Beam> = ids.iter().filter_map(beam).collect();
+            let Some(first) = beams.first() else { continue };
+            if first.level != level {
+                continue;
+            }
+            for (id, b) in ids.iter().zip(&beams) {
+                outline(*id, &b.outline(), &mut out);
+            }
+            let mid = beams
+                .iter()
+                .map(|b| (b.start + b.end) / 2.0)
+                .fold(DVec2::ZERO, |a, x| a + x)
+                / beams.len() as f64;
+            let (side, half_wall) = inside_of(model, first, mid);
+            let at = mid + side * (half_wall + 5.0 * mm);
+            out.push(PlanItem::Text {
+                id: ids[0],
+                at,
+                text: p.mark.clone(),
+                size: 2.5,
+                align: Anchor::Middle,
+                mm,
+                rgb: None,
+                bold: true,
+            });
+            out.push(PlanItem::Text {
+                id: ids[0],
+                at: at + side * 3.5 * mm,
+                text: format!("SH={}", level_text(p.underside)),
+                size: 1.8,
+                align: Anchor::Middle,
+                mm,
+                rgb: None,
+                bold: false,
+            });
+        }
+    }
+    for p in structural::ring_positions(model) {
+        for id in &p.beams {
+            let Some(b) = beam(id) else { continue };
+            if b.level != level {
+                continue;
+            }
+            outline(*id, &b.outline(), &mut out);
+            let d = (b.end - b.start).normalize_or_zero();
+            // by the middle of its run, on its left
+            let at = (b.start + b.end) / 2.0 + d.perp() * (b.width / 2.0 + 3.0 * mm);
+            out.push(PlanItem::Text {
+                id: *id,
+                at,
+                text: p.mark.clone(),
+                size: 2.5,
+                align: Anchor::Middle,
+                mm,
+                rgb: None,
+                bold: true,
+            });
+        }
+    }
+    out
+}
+
+/// Keep in a structural plan only what the structural drawing draws
+/// (see [`structural::draws`]): openings stay as the gaps they leave.
+pub fn keep_structure(model: &Model, items: &mut Vec<PlanItem>) {
+    let rules = creabim_core::masonry::rules(model);
+    let mut keep: std::collections::HashMap<ElementId, bool> = Default::default();
+    items.retain(|it| {
+        let id = it.id();
+        *keep.entry(id).or_insert_with(|| match model.get(id) {
+            // what has no element of its own (view marks, titles) stays
+            None => true,
+            Some(e) => {
+                // a board or column put round a column or lintel goes with it
+                let host = creabim_core::wrap::piece_of(e).and_then(|p| model.get(p.host));
+                structural::draws(model, host.unwrap_or(e), &rules)
+            }
+        })
+    });
+}
+
+/// Is the section mark `id` one a plan of this kind shows: a structural
+/// plan the structural sections' marks, every other plan the others.
+pub fn shows_mark(model: &Model, id: ElementId, structural_plan: bool) -> bool {
+    match model.get(id).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) if matches!(v.kind, creabim_core::ViewKind::Section { .. }) => {
+            v.structural == structural_plan
+        }
+        _ => true,
+    }
+}
+
+fn col(title: &'static str, width: f64, numeric: bool) -> crate::schedule::Column {
+    crate::schedule::Column {
+        title,
+        field: None,
+        width,
+        numeric,
+        align: None,
+    }
+}
+
+/// The list of lintels by position: its mark, what lies over each
+/// opening, how many openings, the pieces' length, the underside's
+/// height and the storey.
+pub fn lintel_schedule(model: &Model) -> crate::schedule::Schedule {
+    use crate::schedule::{Row, Schedule};
+    use creabim_core::words::tr;
+    let columns = vec![
+        col("Mark", 12.0, false),
+        col("Lintel", 46.0, false),
+        // how many openings the position is over
+        col("Count", 12.0, true),
+        col("Length m", 14.0, true),
+        col("Underside", 18.0, false),
+        col("Storey", 18.0, false),
+    ];
+    let positions: Vec<LintelPosition> = structural::lintel_positions(model);
+    let rows: Vec<Row> = positions
+        .iter()
+        .map(|p| Row {
+            id: p.groups[0][0],
+            cells: vec![
+                p.mark.clone(),
+                p.label.clone(),
+                p.groups.len().to_string(),
+                comma(p.length, 3),
+                format!("SH={}", level_text(p.underside)),
+                p.storey.clone(),
+            ],
+            group: false,
+        })
+        .collect();
+    let openings: usize = positions.iter().map(|p| p.groups.len()).sum();
+    Schedule {
+        category: creabim_core::ScheduleCategory::LintelPositions,
+        columns,
+        listed: rows.len(),
+        rows,
+        totals: vec![
+            tr("Total"),
+            String::new(),
+            openings.to_string(),
+            String::new(),
+            String::new(),
+            String::new(),
+        ],
+        above_totals: vec![],
+    }
+}
+
+/// The list of ring beams by position: its mark, its section, running
+/// metres and the concrete in it.
+pub fn ring_schedule(model: &Model) -> crate::schedule::Schedule {
+    use crate::schedule::{Row, Schedule};
+    use creabim_core::words::tr;
+    let columns = vec![
+        col("Mark", 12.0, false),
+        col("Ring beam", 50.0, false),
+        col("Length m", 16.0, true),
+        col("Concrete m³", 16.0, true),
+    ];
+    let positions: Vec<RingPosition> = structural::ring_positions(model);
+    let mut concrete = 0.0;
+    let rows: Vec<Row> = positions
+        .iter()
+        .map(|p| {
+            let v = p.width * p.depth * p.length;
+            concrete += v;
+            Row {
+                id: p.beams[0],
+                cells: vec![
+                    p.mark.clone(),
+                    format!(
+                        "{} {:.0}×{:.0} mm",
+                        creabim_core::masonry::RING_BEAM,
+                        p.width * 1000.0,
+                        p.depth * 1000.0
+                    ),
+                    comma(p.length, 2),
+                    comma(v, 2),
+                ],
+                group: false,
+            }
+        })
+        .collect();
+    let length: f64 = positions.iter().map(|p| p.length).sum();
+    Schedule {
+        category: creabim_core::ScheduleCategory::RingBeamList,
+        columns,
+        listed: rows.len(),
+        rows,
+        totals: vec![
+            tr("Total"),
+            String::new(),
+            comma(length, 2),
+            comma(concrete, 2),
+        ],
+        above_totals: vec![],
+    }
+}
+
+/// A house with system lintels over each opening of its
+/// load-bearing walls and ring beams along them, for tests and shots.
+pub fn sample(model: &mut Model) {
+    use creabim_core::masonry::{self as m, Family};
+    let rules = m::rules(model);
+    let mut tx = creabim_core::Transaction::new("lintels");
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+            continue;
+        };
+        if !m::is_bearing(model, w, &rules) || !m::lintels_over(model, e.id).is_empty() {
+            continue;
+        }
+        let set = m::usual_set(model, w, Family::PorfixNp);
+        if let Ok(ls) = m::lintels_for(model, e.id, set) {
+            for l in ls {
+                tx = tx.insert(l);
+            }
+        }
+    }
+    for r in m::ring_beams(model, None) {
+        tx = tx.insert(r);
+    }
+    tx.apply(model).unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use creabim_core::{Element, Transaction, View, ViewKind};
+
+    #[test]
+    fn the_structural_plan_draws_what_carries_with_its_positions_and_lists() {
+        let mut m = creabim_core::sample::sample_house();
+        sample(&mut m);
+        let lintels = structural::lintel_positions(&m);
+        let rings = structural::ring_positions(&m);
+        assert!(!lintels.is_empty() && !rings.is_empty());
+        assert_eq!(lintels[0].mark, "P1");
+        // a plan of the ground floor, the structural engineer's
+        let (pid, _) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) => match v.kind {
+                    ViewKind::Plan { level, .. } if !v.graphics.range.from_above => {
+                        Some((e.id, level))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        let mut v = match &m.get(pid).unwrap().kind {
+            ElementKind::View(v) => v.clone(),
+            _ => unreachable!(),
+        };
+        creabim_core::viewmodes::Purpose::Structural.apply(&mut v);
+        let sta = Element::new("Statika", ElementKind::View(v));
+        let sid = sta.id;
+        // a structural section and an architect's one
+        let mut sec = View::section(
+            glam::DVec2::new(-1.0, 2.0),
+            glam::DVec2::new(20.0, 2.0),
+            30.0,
+            true,
+        );
+        creabim_core::viewmodes::Purpose::Structural.apply(&mut sec);
+        let s1 = Element::new("Rez S", ElementKind::View(sec));
+        let s1id = s1.id;
+        Transaction::new("v")
+            .insert(sta)
+            .insert(s1)
+            .apply(&mut m)
+            .unwrap();
+        let d = crate::section::view_drawing(&m, sid).unwrap();
+        let rules = creabim_core::masonry::rules(&m);
+        let of = |it: &PlanItem| m.get(it.id());
+        // no partition, door or window, furniture
+        assert!(d
+            .items
+            .iter()
+            .all(|it| of(it).is_none_or(|e| match &e.kind {
+                ElementKind::Wall(w) => creabim_core::masonry::is_bearing(&m, w, &rules),
+                ElementKind::Opening(_) | ElementKind::Object(_) | ElementKind::Room(_) => false,
+                _ => true,
+            })));
+        let texts: Vec<&str> = d
+            .items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.contains(&"P1"), "{texts:?}");
+        assert!(texts.iter().any(|t| t.starts_with("SH=+")), "{texts:?}");
+        assert!(texts.contains(&"V1"), "{texts:?}");
+        // its own section's mark there, not in the architect's plan
+        assert!(d.items.iter().any(|it| it.id() == s1id));
+        let a = crate::section::view_drawing(&m, pid).unwrap();
+        assert!(!a.items.iter().any(|it| it.id() == s1id));
+        // the lists
+        let l = lintel_schedule(&m);
+        assert_eq!(l.rows.len(), lintels.len());
+        assert_eq!(l.rows[0].cells[0], "P1");
+        let r = ring_schedule(&m);
+        assert_eq!(r.rows[0].cells[0], "V1");
+    }
+}

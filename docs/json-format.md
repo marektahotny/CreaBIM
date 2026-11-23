@@ -884,6 +884,8 @@ What a schedule lists.
 - `"fire_risk"`
 - `"flashing_table"`
 - `"identification"`
+- `"lintel_positions"`
+- `"ring_beam_list"`
 
 ### Callout
 

@@ -991,6 +991,8 @@ spec_enum! {
         FireRisk = "fire_risk",
         FlashingTable = "flashing_table",
         Identification = "identification",
+        LintelPositions = "lintel_positions",
+        RingBeamList = "ring_beam_list",
     }
 }
 
