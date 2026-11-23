@@ -111,10 +111,56 @@ pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             if b.level != level {
                 continue;
             }
+            // its position is written on the chain along its wall
             outline(*id, &b.outline(), &mut out);
-            let d = (b.end - b.start).normalize_or_zero();
-            // by the middle of its run, on its left
-            let at = (b.start + b.end) / 2.0 + d.perp() * (b.width / 2.0 + 3.0 * mm);
+        }
+    }
+    out
+}
+
+/// The walls of a structural plan as outlines, without their hatch, as
+/// the office's "výkres tvaru" draws them; columns keep theirs.
+pub fn outline_walls(model: &Model, items: &mut Vec<PlanItem>) {
+    items.retain(|it| match it {
+        PlanItem::Fill { id, .. } => {
+            !matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_)))
+        }
+        _ => true,
+    });
+}
+
+/// Each column's mark by it: its position in a box and its top and
+/// bottom (`S1`, `HH=+2,400`, `SH=-0,650`).
+pub fn column_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
+    let mut out = vec![];
+    for p in structural::column_positions(model) {
+        for id in &p.columns {
+            let Some(ElementKind::Column(c)) = model.get(*id).map(|e| &e.kind) else {
+                continue;
+            };
+            if c.level != level {
+                continue;
+            }
+            let half = c
+                .profile
+                .outline(c.position, c.rotation)
+                .iter()
+                .map(|q| (*q - c.position).abs())
+                .fold(DVec2::ZERO, |a, q| a.max(q));
+            // up and to the left of it, clear of it
+            let at = c.position + DVec2::new(-half.x - 6.0 * mm, half.y + 6.0 * mm);
+            let w = (p.mark.chars().count() as f64 * 0.62 + 1.4) * 2.5 * mm;
+            let h = 4.0 * mm;
+            out.push(PlanItem::Polygon {
+                id: *id,
+                pen: Pen::Symbol,
+                points: vec![
+                    at + DVec2::new(-w / 2.0, -h / 2.0),
+                    at + DVec2::new(w / 2.0, -h / 2.0),
+                    at + DVec2::new(w / 2.0, h / 2.0),
+                    at + DVec2::new(-w / 2.0, h / 2.0),
+                ],
+            });
             out.push(PlanItem::Text {
                 id: *id,
                 at,
@@ -124,6 +170,150 @@ pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
                 mm,
                 rgb: None,
                 bold: true,
+            });
+            for (k, t) in [
+                format!("HH={}", level_text(p.top)),
+                format!("SH={}", level_text(p.bottom)),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                out.push(PlanItem::Text {
+                    id: *id,
+                    at: at + DVec2::new(-w / 2.0 - 1.0 * mm, (0.9 - 2.2 * k as f64) * mm),
+                    text: t,
+                    size: 1.8,
+                    align: Anchor::End,
+                    mm,
+                    rgb: None,
+                    bold: false,
+                });
+            }
+            // a leader to the column's corner
+            out.push(PlanItem::Line {
+                id: *id,
+                pen: Pen::Symbol,
+                a: at + DVec2::new(w / 2.0, -h / 2.0),
+                b: c.position + DVec2::new(-half.x, half.y) * 0.5,
+            });
+        }
+    }
+    out
+}
+
+/// Along each load-bearing wall of `level` with lintels or a ring beam,
+/// on its outer side, a chain of dimensions: each lintel's span written
+/// with its position (`P1 800`), the stretches between with the ring
+/// beam's (`V1 2720`), as the office's "výkres tvaru" does.
+pub fn chains(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
+    let rules = creabim_core::masonry::rules(model);
+    let lintels = structural::lintel_positions(model);
+    let rings = structural::ring_positions(model);
+    let look = crate::annotate::look_of(model, None, None);
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Wall(w) = &e.kind else {
+            continue;
+        };
+        if w.level != level
+            || w.is_arc()
+            || w.curtain.is_some()
+            || !creabim_core::masonry::is_bearing(model, w, &rules)
+        {
+            continue;
+        }
+        let d = w.direction();
+        let len = w.length();
+        let left = d.perp();
+        let outward = if w.flip { left } else { -left };
+        // the ring beam along it
+        let ring = rings.iter().find_map(|p| {
+            p.beams
+                .iter()
+                .find_map(|id| match model.get(*id).map(|x| &x.kind) {
+                    Some(ElementKind::Beam(b)) if b.level == w.level => {
+                        let off = |q: DVec2| (q - w.start).dot(left).abs();
+                        let along = (b.end - b.start).normalize_or_zero().dot(d).abs();
+                        (along > 0.999
+                            && off(b.start) < w.thickness / 2.0 + 1e-6
+                            && off(b.end) < w.thickness / 2.0 + 1e-6)
+                            .then_some(p.mark.clone())
+                    }
+                    _ => None,
+                })
+        });
+        // the lintels over its openings: their span along it
+        let mut spans: Vec<(f64, f64, String)> = vec![];
+        for p in &lintels {
+            for g in &p.groups {
+                let host = g
+                    .iter()
+                    .find_map(|id| match model.get(*id).map(|x| &x.kind) {
+                        Some(ElementKind::Beam(b)) => {
+                            b.lintel.as_ref().and_then(|l| l.opening).and_then(|o| {
+                                match model.get(o).map(|x| &x.kind) {
+                                    Some(ElementKind::Opening(op)) => Some(op.host),
+                                    _ => None,
+                                }
+                            })
+                        }
+                        _ => None,
+                    });
+                if host != Some(e.id) {
+                    continue;
+                }
+                let (lo, hi) = g
+                    .iter()
+                    .filter_map(|id| match model.get(*id).map(|x| &x.kind) {
+                        Some(ElementKind::Beam(b)) => Some(b),
+                        _ => None,
+                    })
+                    .flat_map(|b| [b.start, b.end])
+                    .map(|q| (q - w.start).dot(d))
+                    .fold((f64::MAX, f64::MIN), |(a, b), u| (a.min(u), b.max(u)));
+                spans.push((lo.max(0.0), hi.min(len), p.mark.clone()));
+            }
+        }
+        if spans.is_empty() && ring.is_none() {
+            continue;
+        }
+        spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // the stretches: between the lintels, the ring beam's
+        let mut cuts: Vec<(f64, f64, Option<String>)> = vec![];
+        let mut u = 0.0;
+        for (lo, hi, mark) in spans {
+            if lo > u + 1e-3 {
+                cuts.push((u, lo, ring.clone()));
+            }
+            cuts.push((lo.max(u), hi, Some(mark)));
+            u = hi;
+        }
+        if len > u + 1e-3 {
+            cuts.push((u, len, ring.clone()));
+        }
+        let face = outward * (w.thickness / 2.0);
+        let at = |u: f64| w.start + d * u + face;
+        for (lo, hi, mark) in cuts {
+            let (mut a, mut b) = (at(lo), at(hi));
+            // its line to the left of a → b, on the outer side
+            if (b - a).perp().dot(outward) < 0.0 {
+                std::mem::swap(&mut a, &mut b);
+            }
+            let n = format!("{:.0}", (hi - lo) * 1000.0);
+            out.push(PlanItem::Dimension {
+                id: e.id,
+                a,
+                b,
+                offset: 8.0 * mm,
+                text: match mark {
+                    Some(m) => format!("{m} {n}"),
+                    None => n,
+                },
+                look,
+                witness: Some([a, b]),
+                breaks: vec![],
+                below: None,
+                place: crate::plan::DimPlace::default(),
             });
         }
     }
@@ -296,6 +486,21 @@ pub fn sample(model: &mut Model) {
     for r in m::ring_beams(model, None) {
         tx = tx.insert(r);
     }
+    // an RC column out on the terrace
+    if let Some(level) = model.iter().find_map(|e| match &e.kind {
+        ElementKind::Level(l) if l.elevation.abs() < 1e-9 => Some(e.id),
+        _ => None,
+    }) {
+        let c = creabim_core::Column::new(
+            level,
+            DVec2::new(12.0, -1.5),
+            creabim_core::Profile::Rectangle {
+                width: 0.25,
+                depth: 0.25,
+            },
+        );
+        tx = tx.insert(creabim_core::Element::new("Stĺp", ElementKind::Column(c)));
+    }
     tx.apply(model).unwrap();
 }
 
@@ -369,7 +574,21 @@ mod tests {
             .collect();
         assert!(texts.contains(&"P1"), "{texts:?}");
         assert!(texts.iter().any(|t| t.starts_with("SH=+")), "{texts:?}");
-        assert!(texts.contains(&"V1"), "{texts:?}");
+        assert!(texts.contains(&"S1"), "{texts:?}");
+        assert!(texts.iter().any(|t| t.starts_with("HH=+")), "{texts:?}");
+        // walls as outlines, a chain with the positions along them
+        assert!(!d.items.iter().any(|it| matches!(it,
+            PlanItem::Fill { id, .. } if matches!(m.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_))))));
+        let dims: Vec<&str> = d
+            .items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Dimension { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(dims.iter().any(|t| t.starts_with("P1 ")), "{dims:?}");
+        assert!(dims.iter().any(|t| t.starts_with("V1 ")), "{dims:?}");
         // its own section's mark there, not in the architect's plan
         assert!(d.items.iter().any(|it| it.id() == s1id));
         let a = crate::section::view_drawing(&m, pid).unwrap();

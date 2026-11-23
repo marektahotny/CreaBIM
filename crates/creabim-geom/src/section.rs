@@ -1030,11 +1030,13 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         if v.structural {
             crate::structural::keep_structure(model, &mut d.items);
             d.items.retain(|it| !model.get(it.id()).is_some_and(ring));
-            d.items.extend(crate::structural::plan_marks(
-                model,
-                *level,
-                v.scale / 1000.0,
-            ));
+            crate::structural::outline_walls(model, &mut d.items);
+            let mm = v.scale / 1000.0;
+            d.items
+                .extend(crate::structural::plan_marks(model, *level, mm));
+            d.items
+                .extend(crate::structural::column_marks(model, *level, mm));
+            d.items.extend(crate::structural::chains(model, *level, mm));
         } else if v.masonry {
             d.items
                 .extend(crate::masonry::plan_marks(model, *level, v.scale / 1000.0));

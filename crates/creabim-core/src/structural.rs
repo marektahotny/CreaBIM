@@ -163,6 +163,59 @@ pub fn ring_positions(model: &Model) -> Vec<RingPosition> {
     out
 }
 
+/// One column position: columns of one section and the same heights.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ColumnPosition {
+    /// `S1`.
+    pub mark: String,
+    /// `250 × 250`.
+    pub profile: String,
+    /// Bottom (SH) and top (HH) above ±0,000, m.
+    pub bottom: f64,
+    pub top: f64,
+    pub columns: Vec<ElementId>,
+}
+
+/// The column positions: RC columns (not the boards round a column, nor
+/// the XPS beside one in a wall), lowest first.
+pub fn column_positions(model: &Model) -> Vec<ColumnPosition> {
+    let mut out: Vec<ColumnPosition> = vec![];
+    for e in model.iter() {
+        let ElementKind::Column(c) = &e.kind else {
+            continue;
+        };
+        if crate::wrap::piece_of(e).is_some() || c.in_wall.as_ref().is_some_and(|w| w.of.is_some())
+        {
+            continue;
+        }
+        let profile = c.profile.label();
+        let (bottom, top) = c.span(model);
+        match out
+            .iter_mut()
+            .find(|p| p.profile == profile && mm(p.bottom) == mm(bottom) && mm(p.top) == mm(top))
+        {
+            Some(p) => p.columns.push(e.id),
+            None => out.push(ColumnPosition {
+                mark: String::new(),
+                profile,
+                bottom,
+                top,
+                columns: vec![e.id],
+            }),
+        }
+    }
+    out.sort_by(|a, b| {
+        mm(a.bottom)
+            .cmp(&mm(b.bottom))
+            .then_with(|| mm(a.top).cmp(&mm(b.top)))
+            .then_with(|| a.profile.cmp(&b.profile))
+    });
+    for (i, p) in out.iter_mut().enumerate() {
+        p.mark = format!("S{}", i + 1);
+    }
+    out
+}
+
 /// Does the structural drawing draw `e`: what carries (load-bearing
 /// walls, columns, beams, slabs, footings, stairs) and what is written
 /// on a drawing; partitions, doors and windows, furniture, fixtures,
