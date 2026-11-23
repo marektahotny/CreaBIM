@@ -130,6 +130,28 @@ impl Builder {
             })
     }
 
+    /// A sheet `number` called `name` with the list of windows or doors
+    /// `view` on it, unless there is one with that number: an A4 standing
+    /// up, the list in its top left corner over the title block (ASR_008,
+    /// George 2026-11-23).
+    fn list_sheet(&mut self, number: String, name: String, view: ElementId) {
+        if self
+            .m
+            .iter()
+            .any(|e| matches!(&e.kind, ElementKind::Sheet(s) if s.number == number))
+        {
+            return;
+        }
+        let sheet = self.add(Element::new(
+            name,
+            ElementKind::Sheet(crate::joinerylist::portrait_a4(number)),
+        ));
+        self.made.sheets += 1;
+        let at = crate::sheet::top_left_spot(&self.m, sheet, view);
+        let vp = crate::sheet::new_viewport(&self.m, sheet, view, at);
+        self.add(Element::new("Viewport", ElementKind::Viewport(vp)));
+    }
+
     /// A sheet `number` called `name` with `views` on it, unless there
     /// is one with that number: the smallest A size they fit on beside
     /// one another (two to a row), over the title block.
@@ -495,7 +517,7 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
             let split = crate::joinerylist::pages(model, kind);
             if split.len() < 2 {
                 let v = schedule(&mut b, category, name);
-                b.sheet(number(asr, "VVZ", &mut n), tr(name), &[v]);
+                b.list_sheet(number(asr, "VVZ", &mut n), tr(name), v);
             } else {
                 // the whole list grown too long: its sheet takes the first
                 // page
@@ -543,7 +565,7 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
                         no = format!("{no}_{page}");
                     }
                     if !shown {
-                        b.sheet(no, title, &[v]);
+                        b.list_sheet(no, title, v);
                     }
                 }
             }

@@ -309,20 +309,220 @@ pub fn entries(model: &Model, kind: OpeningKind) -> Vec<Entry> {
 /// drawing, level, the pieces (doors: left and right), make, finish,
 /// note.
 pub fn columns(kind: OpeningKind) -> Vec<(&'static str, f64)> {
+    // as wide together as an A4 standing up takes inside its frame
+    // ([`LIST_WIDTH`]), in the shares of ASR_008
     let mut c = vec![
-        ("Mark", 13.0),
-        ("Structural opening", 25.0),
-        ("Schematic drawing", 50.0),
-        ("Level", 9.0),
+        ("Mark", 10.0),
+        ("Structural opening", 23.0),
+        ("Schematic drawing", 43.0),
+        ("Level", 8.0),
     ];
     if kind == OpeningKind::Door {
-        c.push(("Left hand", 7.0));
-        c.push(("Right hand", 7.0));
+        c.push(("Left hand", 6.0));
+        c.push(("Right hand", 6.0));
+        c.extend([("Execution", 26.0), ("Finish", 25.0), ("Note", 27.0)]);
     } else {
-        c.push(("Number of pieces", 12.0));
+        c.push(("Number of pieces", 10.0));
+        c.extend([("Execution", 27.0), ("Finish", 26.0), ("Note", 27.0)]);
     }
-    c.extend([("Execution", 32.0), ("Finish", 28.0), ("Note", 28.0)]);
     c
+}
+
+/// The sheets of lists of windows and doors not yet on an A4 standing
+/// up, turned to one, the list moved to its top left corner (George
+/// 2026-11-23); none when every list sheet is.
+pub fn portrait_sheets(model: &Model) -> Option<creabim_core::Transaction> {
+    let list = |v: ElementId| match model.get(v).map(|e| &e.kind) {
+        Some(ElementKind::View(x)) => matches!(
+            x.kind,
+            creabim_core::ViewKind::Schedule { category, .. } if category.joinery_list().is_some()
+        ),
+        _ => false,
+    };
+    let mut m = model.clone();
+    let mut tx = creabim_core::Transaction::new("Lists on A4 standing up");
+    let mut any = false;
+    for e in model.iter() {
+        let ElementKind::Sheet(sh) = &e.kind else {
+            continue;
+        };
+        if (sh.width - 210.0).abs() < 0.5 && (sh.height - 297.0).abs() < 0.5 {
+            continue;
+        }
+        let vps: Vec<&creabim_core::Element> = model
+            .iter()
+            .filter(|v| matches!(&v.kind, ElementKind::Viewport(vp) if vp.sheet == e.id))
+            .collect();
+        let [vp] = vps.as_slice() else {
+            continue;
+        };
+        let ElementKind::Viewport(p) = &vp.kind else {
+            continue;
+        };
+        if !list(p.view) {
+            continue;
+        }
+        let mut turned = e.clone();
+        if let ElementKind::Sheet(t) = &mut turned.kind {
+            t.width = 210.0;
+            t.height = 297.0;
+        }
+        let one = creabim_core::Transaction::new("one").replace(e.clone(), turned.clone());
+        if one.apply(&mut m).is_err() {
+            continue;
+        }
+        let mut moved = (*vp).clone();
+        if let ElementKind::Viewport(q) = &mut moved.kind {
+            let fresh = crate::sheet::new_viewport(
+                &m,
+                e.id,
+                p.view,
+                crate::sheet::top_left_spot(&m, e.id, p.view),
+            );
+            q.center = fresh.center;
+            q.target = fresh.target;
+            q.crop = None;
+        }
+        tx = tx.replace(e.clone(), turned).replace((*vp).clone(), moved);
+        any = true;
+    }
+    // a list longer than its A4: page by page, each on a sheet of its own
+    // after the first's (Okná 1, Okná 2)
+    for (kind, category) in [
+        (
+            OpeningKind::Window,
+            creabim_core::ScheduleCategory::WindowList,
+        ),
+        (OpeningKind::Door, creabim_core::ScheduleCategory::DoorList),
+    ] {
+        let n = pages(&m, kind).len() as u32;
+        if n < 2 {
+            continue;
+        }
+        let views: Vec<creabim_core::Element> = m
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::View(v)
+                if matches!(v.kind, creabim_core::ViewKind::Schedule { category: c, .. } if c == category)))
+            .cloned()
+            .collect();
+        let page_of = |e: &creabim_core::Element| match &e.kind {
+            ElementKind::View(v) => v.page,
+            _ => None,
+        };
+        let sheet_of = |m: &Model, view: ElementId| {
+            m.iter().find_map(|e| match &e.kind {
+                ElementKind::Viewport(vp) if vp.view == view => {
+                    m.get(vp.sheet).cloned().map(|s| (s, e.clone()))
+                }
+                _ => None,
+            })
+        };
+        // the first page: the whole list's view, or page 1
+        let Some(first) = views
+            .iter()
+            .find(|e| page_of(e) == Some(1))
+            .or_else(|| views.iter().find(|e| page_of(e).is_none()))
+            .cloned()
+        else {
+            continue;
+        };
+        let Some((sheet1, _)) = sheet_of(&m, first.id) else {
+            continue;
+        };
+        let base = first
+            .name
+            .trim_end_matches(|c: char| c.is_ascii_digit())
+            .trim_end()
+            .to_string();
+        let mut step = creabim_core::Transaction::new("Lists page by page");
+        if page_of(&first).is_none() {
+            let title = format!("{base} 1");
+            let mut v1 = first.clone();
+            v1.name = title.clone();
+            if let ElementKind::View(v) = &mut v1.kind {
+                v.page = Some(1);
+            }
+            let mut s1 = sheet1.clone();
+            s1.name = title;
+            step = step.replace(first.clone(), v1).replace(sheet1.clone(), s1);
+        }
+        let number = match &sheet1.kind {
+            ElementKind::Sheet(s) => s.number.clone(),
+            _ => continue,
+        };
+        let mut added = vec![];
+        for page in 2..=n {
+            if views.iter().any(|e| page_of(e) == Some(page)) {
+                continue;
+            }
+            let title = format!("{base} {page}");
+            let mut v = creabim_core::View::schedule(category);
+            v.page = Some(page);
+            if let ElementKind::View(f) = &first.kind {
+                v.column_widths = f.column_widths.clone();
+            }
+            let view = creabim_core::Element::new(title.clone(), ElementKind::View(v));
+            let mut sh = creabim_core::Element::new(
+                title,
+                ElementKind::Sheet(portrait_a4(format!("{number}_{page}"))),
+            );
+            if let (ElementKind::Sheet(t), ElementKind::Sheet(f)) = (&mut sh.kind, &sheet1.kind) {
+                t.fields = f.fields.clone();
+                t.template = f.template;
+            }
+            added.push((view.id, sh.id));
+            step = step.insert(view).insert(sh);
+        }
+        if step.ops.is_empty() || step.clone().apply(&mut m).is_err() {
+            continue;
+        }
+        let mut places = creabim_core::Transaction::new("Lists page by page");
+        for (view, sheet) in added {
+            let at = crate::sheet::top_left_spot(&m, sheet, view);
+            let vp = crate::sheet::new_viewport(&m, sheet, view, at);
+            places = places.insert(creabim_core::Element::new(
+                "Viewport",
+                ElementKind::Viewport(vp),
+            ));
+        }
+        // the first page set again in its corner, shorter now
+        if let Some((s1, vp1)) = sheet_of(&m, first.id) {
+            let mut moved = vp1.clone();
+            if let ElementKind::Viewport(q) = &mut moved.kind {
+                let fresh = crate::sheet::new_viewport(
+                    &m,
+                    s1.id,
+                    first.id,
+                    crate::sheet::top_left_spot(&m, s1.id, first.id),
+                );
+                q.center = fresh.center;
+                q.target = fresh.target;
+                q.crop = None;
+            }
+            places = places.replace(vp1, moved);
+        }
+        if places.clone().apply(&mut m).is_err() {
+            continue;
+        }
+        tx.ops.extend(step.ops);
+        tx.ops.extend(places.ops);
+        any = true;
+    }
+    any.then_some(tx)
+}
+
+/// How wide a list of windows or doors is at most, mm: an A4 standing
+/// up inside its frame (binding 20 mm, margin 10 mm), the list set in
+/// from it on both sides.
+pub const LIST_WIDTH: f64 = 210.0 - 20.0 - 10.0 - 2.0 * 3.0;
+
+/// The sheet a list of windows or doors goes on: an A4 standing up
+/// (ASR_008, George 2026-11-23).
+pub fn portrait_a4(number: String) -> creabim_core::Sheet {
+    let mut s = creabim_core::Sheet::a(number, "A4");
+    s.width = 210.0;
+    s.height = 297.0;
+    s
 }
 
 /// The widths of `view`'s columns: those dragged on the sheet over the
@@ -332,13 +532,20 @@ pub fn widths(model: &Model, view: ElementId, kind: OpeningKind) -> Vec<f64> {
         Some(ElementKind::View(v)) => Some(&v.column_widths),
         _ => None,
     };
-    columns(kind)
+    let ws: Vec<f64> = columns(kind)
         .iter()
         .map(|(t, w)| {
             set.and_then(|s| s.get(*t))
                 .map_or(*w, |w| w.max(crate::schedule::MIN_COLUMN))
         })
-        .collect()
+        .collect();
+    // no wider than its A4: columns dragged wider all give some back
+    let total: f64 = ws.iter().sum();
+    if total > LIST_WIDTH + 1e-6 {
+        let k = LIST_WIDTH / total;
+        return ws.into_iter().map(|w| w * k).collect();
+    }
+    ws
 }
 
 /// The lines between `view`'s columns a drag on the sheet moves: each
@@ -639,8 +846,27 @@ fn row_height(en: &Entry, cols: &[f64], exe: usize, k: f64) -> f64 {
 }
 
 /// The rows a page of a list holds at most, paper mm: as many as an A4
-/// sheet takes under its heading, above the title block (ASR_008).
-pub const PAGE: f64 = 190.0;
+/// standing up takes under the list's title and heading, above the title
+/// block (ASR_008: 184 mm of rows).
+pub const PAGE: f64 = 184.0;
+
+/// How tall what ends a list is, paper mm: the outer sills (windows), the
+/// reveal strips and the note, as [`drawing`] sets them under the rows.
+fn tail_height(model: &Model, kind: OpeningKind) -> f64 {
+    let row = LINE + 1.0;
+    let mut h = 8.0 + 4.0 * 2.0;
+    if kind == OpeningKind::Window {
+        let n = creabim_core::joinery::outer_sills(model).len();
+        if n > 0 {
+            h += 12.0 + 7.0 + n as f64 * row;
+        }
+    }
+    let n = creabim_core::joinery::reveal_strips(model, kind == OpeningKind::Door).len();
+    if n > 0 {
+        h += 12.0 + 7.0 + (n + 1) as f64 * row;
+    }
+    h
+}
 
 /// The kinds of a long list page by page (Okná 1, Okná 2), each page's
 /// rows no taller than [`PAGE`] in the columns' own widths; one page
@@ -651,15 +877,28 @@ pub fn pages(model: &Model, kind: OpeningKind) -> Vec<std::ops::Range<usize>> {
     let exe = if kind == OpeningKind::Door { 6 } else { 5 };
     let k = scale_of(&es, &cols);
     let mut out = vec![];
+    let rows: Vec<f64> = es.iter().map(|en| row_height(en, &cols, exe, k)).collect();
     let (mut from, mut h) = (0, 0.0);
-    for (i, en) in es.iter().enumerate() {
-        let r = row_height(en, &cols, exe, k);
+    for (i, r) in rows.iter().enumerate() {
         if i > from && h + r > PAGE {
             out.push(from..i);
             from = i;
             h = 0.0;
         }
         h += r;
+    }
+    // the last page ends with the sills, strips and note: rows it has no
+    // room for go on a page of their own before it
+    let tail = tail_height(model, kind);
+    if h + tail > PAGE && es.len() - from > 1 {
+        let mut split = es.len() - 1;
+        let mut last = rows[split];
+        while split > from + 1 && last + rows[split - 1] + tail <= PAGE {
+            split -= 1;
+            last += rows[split];
+        }
+        out.push(from..split);
+        from = split;
     }
     out.push(from..es.len());
     out
@@ -1051,7 +1290,8 @@ pub fn drawing(view: ElementId, title: &str, model: &Model, kind: OpeningKind) -
             false,
         );
         y -= 7.0;
-        let cols = [0.0, 60.0, 90.0, 120.0, 150.0, 180.0];
+        // inside the list's width on its A4
+        let cols = [0.0, 52.0, 76.0, 100.0, 122.0, 144.0];
         let heads = [
             tr("Material"),
             tr("Thickness (mm)"),
