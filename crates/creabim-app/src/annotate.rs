@@ -592,6 +592,16 @@ pub fn click(
                         dim.pattern = p;
                     }
                 }
+                // and its line long or short as the last spot level's
+                // (George 2026-11-23)
+                dim.short = model
+                    .iter()
+                    .filter_map(|e| match &e.kind {
+                        ElementKind::Dimension(d) if d.kind == DimensionKind::Spot => Some(d.short),
+                        _ => None,
+                    })
+                    .last()
+                    .unwrap_or(false);
             }
         }
         if let (
@@ -1078,6 +1088,7 @@ fn shape_of(ready: Ready, at: DVec2) -> (Shape, String) {
                 text_at: at,
                 plan,
                 cross: coords,
+                short: false,
             },
             if coords {
                 "Y = …\nX = …".into()

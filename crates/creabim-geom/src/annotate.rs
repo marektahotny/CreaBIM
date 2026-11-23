@@ -1982,6 +1982,7 @@ fn spot(
                 text_at,
                 plan,
                 cross,
+                short: d.short,
             },
             text,
             look: dim_look(model, d),

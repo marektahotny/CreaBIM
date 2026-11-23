@@ -8475,5 +8475,8 @@
  "Roof space": "Střešní prostor",
  "Roof space over it: read table 9 of STN EN ISO 6946 (Heat loss, Read table…) to pick one.": "Střešní prostor nad ním: načtěte tab. 9 STN EN ISO 6946 (Tepelné ztráty › Načíst tabulku…), potom ho vyberete.",
  "STN EN ISO 6946, table 9: the ventilated roof space over the ceiling counts as a layer of resistance Ru in the heat loss.": "STN EN ISO 6946, tab. 9: větraný střešní prostor nad podhledem se v tepelných ztrátách počítá jako vrstva s odporem Ru.",
- "XPS insulation": "Izolace XPS"
+ "XPS insulation": "Izolace XPS",
+ "Line to the point": "Čára k bodu",
+ "Long": "Dlouhá",
+ "Short": "Krátká"
 }

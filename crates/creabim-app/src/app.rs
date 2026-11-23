@@ -11738,6 +11738,18 @@ crate::props::row(ui, "File names", |ui| {
                     {
                         label = "Dimension text background";
                     }
+                    // a spot level's line back to its point: long, or just
+                    // a stub at the mark (George 2026-11-23)
+                    if d.kind == creabim_core::DimensionKind::Spot {
+                        let before = d.short;
+                        crate::props::row(ui, "Line to the point", |ui| {
+                            ui.selectable_value(&mut d.short, false, crate::i18n::t("Long"));
+                            ui.selectable_value(&mut d.short, true, crate::i18n::t("Short"));
+                        });
+                        if d.short != before {
+                            label = "Spot level line";
+                        }
+                    }
                     if d.kind == creabim_core::DimensionKind::Linear {
                         if crate::props::switch(ui, &mut d.short, "Short witness lines")
                             .on_hover_text(crate::i18n::t("Witness lines only by the dimension line, not back to what is measured"))
