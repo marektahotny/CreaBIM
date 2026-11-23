@@ -12388,7 +12388,12 @@ crate::props::row(ui, "File names", |ui| {
                 let Some(other) = self.doc.model().get(o) else {
                     continue;
                 };
-                if let Some(mut out) = crate::multiedit::apply_to(&e, &edited, other) {
+                // a wall's base or top: as the shown wall has it, even
+                // picked again (George 2026-11-23)
+                let spread = crate::multiedit::apply_to(&e, &edited, other)
+                    .map(|out| crate::multiedit::wall_levels(label, &edited, &out).unwrap_or(out))
+                    .or_else(|| crate::multiedit::wall_levels(label, &edited, other));
+                if let Some(mut out) = spread {
                     if let (ElementKind::Opening(was), ElementKind::Opening(o)) =
                         (&other.kind, &mut out.kind)
                     {
@@ -13535,6 +13540,19 @@ impl CreaBimApp {
                 });
                 if let Some(e) = found {
                     self.selection.only(e.id);
+                }
+                // "a,b,c": several by name, the first shown
+                if pick.contains(',') {
+                    let names: Vec<&str> = pick.split(',').collect();
+                    let ids: Vec<_> = names
+                        .iter()
+                        .filter_map(|n| self.doc.model().iter().find(|e| e.name == *n))
+                        .map(|e| e.id)
+                        .collect();
+                    if let Some(first) = ids.first() {
+                        self.selection.only(*first);
+                    }
+                    self.selection.extend(ids, true);
                 }
             }
             // the Project information window open
