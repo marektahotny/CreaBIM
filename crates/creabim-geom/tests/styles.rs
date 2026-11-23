@@ -105,9 +105,11 @@ fn two_packs_give_two_sets_with_their_own_line_weights_in_pdf() {
     let b = plan_pdf(&with_pack(&house, &packs[1]));
     assert_ne!(a, b);
     let (wa, wb) = (pdf_widths(&a), pdf_widths(&b));
-    // the plans at 1:50 cut with 0.70 mm in one, 0.50 mm in the other
-    assert!(wa.contains_key("0.700"), "{wa:?}");
-    assert!(!wb.contains_key("0.700"), "{wb:?}");
+    // the plans at 1:50 cut with 0.50 mm in the standard pack (the same
+    // pens at every scale), and hatch in its thinnest, 0.09 mm
+    assert!(wa.contains_key("0.500"), "{wa:?}");
+    assert!(!wa.contains_key("0.700"), "{wa:?}");
+    assert!(wa.contains_key("0.090"), "{wa:?}");
     assert!(wb.contains_key("0.500"));
     // the light pack's own fine pens are in its PDF, not the standard's
     assert!(
