@@ -14772,6 +14772,12 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
             }
         }
     }
+    // a trade's plan tags its rooms as the architecture plan of its
+    // storey does (George 2026-11-23)
+    for t in creabim_core::viewmodes::trade_room_tags(&model) {
+        tx = tx.insert(t);
+        any = true;
+    }
     // the base's materials take the hatches of the ASR legend of
     // materials, unless their hatch was picked by hand
     let hatches = creabim_core::skbase::refresh_hatches(&model);

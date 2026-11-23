@@ -409,17 +409,32 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
     }
 }
 
-/// A legend of rooms for a trade's drawings: its mark, use and area,
-/// without the floor build-up and the finishes of walls and ceiling.
+/// A legend of rooms for a trade's drawings: the room's name and its
+/// area only (George 2026-11-23), without the mark, the floor build-up
+/// and the finishes of walls and ceiling; the totals keep their titles.
 pub fn without_finishes(s: &mut Schedule) {
-    let keep = 3;
-    s.columns.truncate(keep);
-    for r in &mut s.rows {
-        r.cells.truncate(keep);
+    const USE: usize = 1;
+    const AREA: usize = 2;
+    fn pick<T>(v: &mut Vec<T>) {
+        if v.len() > AREA {
+            let area = v.swap_remove(AREA);
+            let name = v.swap_remove(USE);
+            *v = vec![name, area];
+        }
     }
-    s.totals.truncate(keep);
+    pick(&mut s.columns);
+    for r in &mut s.rows {
+        pick(&mut r.cells);
+    }
+    // "Usable area" and "Living area" stand where the names do
+    let title_and_area = |v: &mut Vec<String>| {
+        if v.len() > AREA {
+            *v = vec![std::mem::take(&mut v[0]), std::mem::take(&mut v[AREA])];
+        }
+    };
+    title_and_area(&mut s.totals);
     for t in &mut s.above_totals {
-        t.truncate(keep);
+        title_and_area(t);
     }
 }
 
