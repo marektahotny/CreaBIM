@@ -635,6 +635,76 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
     out
 }
 
+/// The conductance between every two rooms that touch, W/K: through
+/// the inner walls between them (each room's own edges, the two sides
+/// averaged) and through the floor between a room and the one right
+/// over it (the shared area by the upper room's floor build-up). Pairs
+/// `(a, b, H)` with `a < b`; for the summer, where rooms of one
+/// temperature still pass heat to each other.
+pub(crate) fn partitions(model: &Model) -> Vec<(ElementId, ElementId, f64)> {
+    let rooms = rooms_of(model);
+    let elev = |id: ElementId| model.level(id).map_or(0.0, |l| l.elevation);
+    let mut out: Vec<(ElementId, ElementId, f64)> = vec![];
+    let mut put = |x: ElementId, y: ElementId, h: f64| {
+        if x == y || h <= 0.0 {
+            return;
+        }
+        let (a, b) = if x < y { (x, y) } else { (y, x) };
+        match out.iter_mut().find(|p| p.0 == a && p.1 == b) {
+            Some(p) => p.2 += h,
+            None => out.push((a, b, h)),
+        }
+    };
+    for r in &rooms {
+        let ElementKind::Room(room) = &r.e.kind else {
+            continue;
+        };
+        let h = room::height(model, room);
+        let n = r.shape.outline.len();
+        for i in 0..n {
+            let (a, b) = (r.shape.outline[i], r.shape.outline[(i + 1) % n]);
+            let Some((we, wall)) = wall_of(model, r.shape.bounded_by.get(i).copied().flatten())
+            else {
+                continue;
+            };
+            let p = beyond(a, b, wall.thickness);
+            let Some(j) = rooms.iter().find(|x| {
+                x.level == r.level && x.e.id != r.e.id && polygon::contains(&x.shape.outline, p)
+            }) else {
+                continue;
+            };
+            if let Some((u, _)) = u_of(model, we, R_INNER) {
+                // each side counts its own edges: half of it from each
+                put(r.e.id, j.e.id, 0.5 * a.distance(b) * h * u);
+            }
+        }
+        // the room right over it, through that room's floor
+        let up = rooms
+            .iter()
+            .filter(|x| elev(x.level) > elev(r.level) + 1e-6)
+            .map(|x| elev(x.level))
+            .fold(f64::MAX, f64::min);
+        for x in rooms.iter().filter(|x| (elev(x.level) - up).abs() < 1e-6) {
+            let shared = overlap_area(&r.shape.outline, &x.shape.outline);
+            if shared < 0.01 {
+                continue;
+            }
+            let ElementKind::Room(xr) = &x.e.kind else {
+                continue;
+            };
+            let c = xr.at;
+            let slab = model.iter().find(|e| {
+                matches!(&e.kind, ElementKind::Slab(s)
+                    if s.level == x.level && s.boundary.len() > 2 && polygon::contains(&s.boundary, c))
+            });
+            if let Some((u, _)) = slab.and_then(|s| u_of(model, s, R_FLOOR_DOWN)) {
+                put(r.e.id, x.e.id, shared * u);
+            }
+        }
+    }
+    out
+}
+
 /// The area two outlines share, m², by their triangles.
 pub fn overlap_area(a: &[DVec2], b: &[DVec2]) -> f64 {
     let tri = |p: &[DVec2]| -> Vec<[DVec2; 3]> {

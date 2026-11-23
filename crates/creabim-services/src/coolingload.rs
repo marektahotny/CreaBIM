@@ -322,6 +322,13 @@ pub struct Summer {
     pub ok: bool,
     /// What the figures came from.
     pub note: String,
+    /// The day's mean gains with the outside and the ground at their
+    /// temperatures, W, over the loss H, W/K: `t_mean` = gain / H before
+    /// the rooms next door join in.
+    pub(crate) gain: f64,
+    pub(crate) h: f64,
+    /// `t_max` − `t_mean`, K.
+    pub(crate) rise: f64,
 }
 
 /// Every room's cooling load.
@@ -670,16 +677,20 @@ fn summer(
     } else {
         a * eq
     };
-    let t_mean =
-        (te_mean * (hh - ground) + s.t_ground * ground + sun_mean + int_mean + roof_sol * 0.5) / hh;
+    let gain = te_mean * (hh - ground) + s.t_ground * ground + sun_mean + int_mean + roof_sol * 0.5;
+    let t_mean = gain / hh;
     let y = s.mass.admittance();
     let ya = y * (2.0 * a + perimeter.max(0.0) * h);
     let swing =
         (sun_peak - sun_mean) + (int_peak - int_mean) + roof_sol * 0.5 + (win_ua + hv) * amp;
-    let t_max = t_mean + swing / (ya + win_ua + hv).max(0.01);
+    let rise = swing / (ya + win_ua + hv).max(0.01);
+    let t_max = t_mean + rise;
     Summer {
         t_max,
         t_mean,
+        gain,
+        h: hh,
+        rise,
         ok: t_max <= s.summer_tmax + 1e-9,
         note: format!(
             "θe {:.1} °C (mean {te_mean:.1}) · sun peak {sun_peak:.0} W · inside peak {int_peak:.0} W · H {hh:.0} W/K (air {:.1} 1/h{}) · Y {y:.1} W/(m²K) · YA {ya:.0} W/K",
@@ -730,6 +741,62 @@ pub fn summer_remedy(
     "Needs cooling or night ventilation"
 }
 
+/// The summer's mean temperatures with the rooms passing heat to each
+/// other through the inner walls and floors between them: each room
+/// balances its gains against the outside and the rooms next door
+/// (solved over and over until it settles). A room with no window
+/// would else keep its inner gains to itself and run hot.
+fn neighbours(model: &Model, s: &Settings, rooms: &mut [RoomLoad]) {
+    let at = |id: ElementId| rooms.iter().position(|r| r.id == id);
+    let links: Vec<(usize, usize, f64)> = heatloss::partitions(model)
+        .into_iter()
+        .filter_map(|(a, b, h)| Some((at(a)?, at(b)?, h)))
+        .collect();
+    if links.is_empty() {
+        return;
+    }
+    let mut t: Vec<f64> = rooms.iter().map(|r| r.summer.t_mean).collect();
+    for _ in 0..500 {
+        let mut most: f64 = 0.0;
+        for i in 0..rooms.len() {
+            let (mut g, mut q) = (rooms[i].summer.h, rooms[i].summer.gain);
+            for &(a, b, h) in &links {
+                let j = if a == i {
+                    b
+                } else if b == i {
+                    a
+                } else {
+                    continue;
+                };
+                g += h;
+                q += h * t[j];
+            }
+            let x = q / g.max(0.01);
+            most = most.max((x - t[i]).abs());
+            t[i] = x;
+        }
+        if most < 1e-4 {
+            break;
+        }
+    }
+    for (i, r) in rooms.iter_mut().enumerate() {
+        let next: f64 = links
+            .iter()
+            .filter(|l| l.0 == i || l.1 == i)
+            .map(|l| l.2)
+            .sum();
+        if next <= 0.0 {
+            continue;
+        }
+        let m = &mut r.summer;
+        m.t_mean = t[i];
+        m.t_max = t[i] + m.rise;
+        m.ok = m.t_max <= s.summer_tmax + 1e-9;
+        m.note
+            .push_str(&format!(" · rooms next door {next:.0} W/K"));
+    }
+}
+
 /// The cooling load of every room of the model.
 pub fn building(model: &Model, o: &heatloss::Opts, s: &Settings) -> BuildingLoad {
     let losses = heatloss::building(model, o);
@@ -757,6 +824,7 @@ pub fn building(model: &Model, o: &heatloss::Opts, s: &Settings) -> BuildingLoad
             .collect(),
         ..BuildingLoad::default()
     };
+    neighbours(model, s, &mut out.rooms);
     for r in out.rooms.iter().filter(|r| r.cooled) {
         out.phi += r.phi;
         out.area += r.area;
@@ -948,5 +1016,35 @@ mod tests {
         assert_eq!(heatloss::azimuth(-DVec2::X, 0.0), 270.0);
         // north turned 90° anticlockwise: the drawing's up looks east
         assert_eq!(heatloss::azimuth(DVec2::Y, 90.0), 90.0);
+    }
+
+    #[test]
+    fn rooms_next_door_share_the_summer_heat() {
+        let m = heatloss::test_house();
+        let links = heatloss::partitions(&m);
+        assert!(!links.is_empty(), "the two rooms share a wall");
+        let s = Settings::default();
+        let b = building(&m, &heatloss::Opts::default(), &s);
+        // each room's mean now balances against the other: they come
+        // closer than on their own, and none runs away
+        for r in &b.rooms {
+            assert!(r.summer.t_mean < 40.0 && r.summer.t_max < 45.0, "{r:?}");
+            assert!(r.summer.note.contains("rooms next door"));
+            let own = r.summer.gain / r.summer.h;
+            let lo = b
+                .rooms
+                .iter()
+                .map(|x| x.summer.gain / x.summer.h)
+                .fold(f64::MAX, f64::min);
+            let hi = b
+                .rooms
+                .iter()
+                .map(|x| x.summer.gain / x.summer.h)
+                .fold(f64::MIN, f64::max);
+            assert!(
+                r.summer.t_mean >= lo - 1e-6 && r.summer.t_mean <= hi + 1e-6,
+                "{own}"
+            );
+        }
     }
 }
