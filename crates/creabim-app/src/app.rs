@@ -876,6 +876,9 @@ impl CreaBimApp {
                 self.mark_saved();
                 self.autosave_check(path);
                 self.status = format!("Opened {path}");
+                // underlays read from the project's folder, wherever it is
+                // now (a USB stick): paths into it kept relative
+                self.underlays_from_folder(None);
                 // site plan dimensions and S-JTSK marks put on the corners of
                 // a footprint drawn off its walls (before 0.6-8): onto the
                 // true corners
@@ -974,12 +977,43 @@ impl CreaBimApp {
         if !self.path.to_ascii_lowercase().ends_with(".creabim") {
             self.path = with_extension(&self.path, "creabim");
         }
+        // underlays in the project's folder saved by paths relative to
+        // it; on Save as elsewhere, read from where they were
+        self.underlays_from_folder(creabim_core::refpath::base());
         creabim_store::save_with_backup(&self.path, &self.doc).map_err(|e| e.to_string())?;
         let path = self.path.clone();
         self.recent.add(&path);
         self.mark_saved();
         self.autosave_clear();
         Ok(())
+    }
+
+    /// Underlay paths (maps, DXF, PDF, pictures, point clouds) made
+    /// relative to the project's folder where their files are in it,
+    /// read from `old` (the folder they were read from; none: the
+    /// project's own), so the project finds them when the folder moves
+    /// (George 2026-11-23). An old project's absolute paths are found by
+    /// their tail under the folder it is opened from.
+    fn underlays_from_folder(&mut self, old: Option<std::path::PathBuf>) {
+        use creabim_core::refpath;
+        let Some(new) = refpath::folder_of(&self.path) else {
+            return;
+        };
+        let old = old.unwrap_or_else(|| new.clone());
+        let changed = refpath::rebase(self.doc.model(), Some(&old), &new);
+        refpath::set_base(Some(new));
+        if changed.is_empty() {
+            return;
+        }
+        let mut tx = creabim_core::Transaction::new("Underlay paths relative to the project");
+        for after in changed {
+            if let Some(before) = self.doc.model().get(after.id).cloned() {
+                tx = tx.replace(before, after);
+            }
+        }
+        if let Err(e) = self.doc.commit(tx) {
+            crate::actlog::line(format!("underlay paths: {e}"));
+        }
     }
 
     fn open_dialog(&mut self) {
@@ -9276,7 +9310,7 @@ crate::props::row(ui, "File names", |ui| {
                 .ctx()
                 .data(|m| m.get_temp::<u32>(id_n))
                 .unwrap_or_else(|| {
-                    let n = std::fs::read(&*path)
+                    let n = std::fs::read(creabim_core::refpath::resolve(path))
                         .ok()
                         .and_then(|b| creabim_exchange::pdf::page_count(&b).ok())
                         .unwrap_or(1);
@@ -13750,6 +13784,8 @@ impl eframe::App for CreaBimApp {
             self.close_ask = true;
         }
         let ctx = ui.ctx().clone();
+        // relative underlay paths start from the open project's folder
+        creabim_core::refpath::set_base(creabim_core::refpath::folder_of(&self.path));
         self.dev_shot(&ctx);
         // on the drawing area a bar's tooltip goes: the bar never hears the
         // pointer leave it. Back from a bar (or after a pause in the moves
@@ -15857,4 +15893,111 @@ pub(crate) fn fold_handle(
             clicked = resp.on_hover_text(tip).clicked();
         });
     clicked
+}
+
+#[cfg(test)]
+mod underlay_path_tests {
+    use super::*;
+    use creabim_core::{Element, ElementKind, RefSource, Reference, Transaction};
+
+    fn picture_path(app: &CreaBimApp) -> String {
+        app.doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Reference(Reference {
+                    source: RefSource::Image { path, .. },
+                    ..
+                }) => Some(path.clone()),
+                _ => None,
+            })
+            .unwrap()
+    }
+
+    fn shows_picture(app: &CreaBimApp) -> bool {
+        let r = app
+            .doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Reference(r) => Some(r.source.clone()),
+                _ => None,
+            })
+            .unwrap();
+        matches!(
+            crate::trace::read(app.doc.model(), &r),
+            crate::trace::Shown::Picture(_)
+        )
+    }
+
+    /// George 2026-11-23: a project opened from a USB stick finds its map
+    /// underlays; their paths are saved relative to the project.
+    #[test]
+    fn underlays_go_with_the_project_folder() {
+        let root = std::env::temp_dir().join(format!("creabim-usb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let disk = root.join("disk").join("RD-Balaz");
+        let maps = disk.join("RD-Balaz_Dlha-mapy-1795290772");
+        std::fs::create_dir_all(&maps).unwrap();
+        image::RgbaImage::new(8, 8)
+            .save(maps.join("ortofoto.png"))
+            .unwrap();
+        // an old project: the map's absolute path on the disk it came from
+        let mut app = test_app();
+        let old = r"D:\Architektura\RD-BalazDLHA\RD-Balaz_Dlha-mapy-1795290772\ortofoto.png";
+        let r = Reference::new(
+            RefSource::Image {
+                path: old.into(),
+                width: 40.0,
+                dpi: None,
+            },
+            vec![],
+        );
+        app.doc
+            .commit(
+                Transaction::new("ortho")
+                    .insert(Element::new("Ortofoto", ElementKind::Reference(r))),
+            )
+            .unwrap();
+        let file = disk.join("RD-Balaz_Dlha.creabim");
+        creabim_store::save(&file, &app.doc).unwrap();
+        // copied to a USB stick and opened there: the map is found, and
+        // its path is made relative
+        let usb = root.join("usb").join("RD-Balaz");
+        std::fs::create_dir_all(usb.parent().unwrap()).unwrap();
+        std::fs::rename(&disk, &usb).unwrap();
+        let mut there = test_app();
+        there.open_path(&usb.join("RD-Balaz_Dlha.creabim").to_string_lossy());
+        assert_eq!(
+            picture_path(&there),
+            "RD-Balaz_Dlha-mapy-1795290772/ortofoto.png"
+        );
+        assert!(shows_picture(&there));
+        // saved so, and found again from wherever the folder goes
+        there.save_file().unwrap();
+        let saved = creabim_store::load(usb.join("RD-Balaz_Dlha.creabim")).unwrap();
+        let mut moved = test_app();
+        moved.doc = saved;
+        assert_eq!(
+            picture_path(&moved),
+            "RD-Balaz_Dlha-mapy-1795290772/ortofoto.png"
+        );
+        let back = root.join("back");
+        std::fs::rename(&usb, &back).unwrap();
+        let mut again = test_app();
+        again.open_path(&back.join("RD-Balaz_Dlha.creabim").to_string_lossy());
+        assert!(shows_picture(&again));
+        // Save as into another folder: the map is kept by its full path
+        let elsewhere = root.join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        again.path = elsewhere.join("kopia.creabim").to_string_lossy().into();
+        again.save_file().unwrap();
+        assert_eq!(
+            std::path::PathBuf::from(picture_path(&again)),
+            back.join("RD-Balaz_Dlha-mapy-1795290772")
+                .join("ortofoto.png")
+        );
+        assert!(shows_picture(&again));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
