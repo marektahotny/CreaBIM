@@ -14728,7 +14728,8 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     for e in model.iter() {
         if let ElementKind::View(v) = &e.kind {
             let mut now = v.clone();
-            if creabim_core::viewmodes::DisplayMode::show_own_annotation(&mut now) {
+            let thin = creabim_core::viewmodes::DisplayMode::thin_building(&mut now);
+            if creabim_core::viewmodes::DisplayMode::show_own_annotation(&mut now) || thin {
                 let mut after = e.clone();
                 after.kind = ElementKind::View(now);
                 tx = tx.replace(e.clone(), after);

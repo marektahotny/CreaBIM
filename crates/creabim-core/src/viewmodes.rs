@@ -51,8 +51,14 @@ pub const BUILDING: [Category; 15] = [
     Category::Planting,
 ];
 
-/// The line a blind drawing draws the building with, mm.
-pub const THIN: f64 = 0.18;
+/// The line a blind drawing draws the building with, mm: the very thin
+/// pen (George 2026-11-22: in a trade's drawing walls, windows and
+/// fixtures very thin, in their architecture line types).
+pub const THIN: f64 = 0.10;
+
+/// The line a trade's drawing draws its own equipment with, mm: the
+/// medium pen (LinePen::Thick).
+pub const OWN_EQUIPMENT: f64 = 0.20;
 
 impl DisplayMode {
     pub const ALL: [DisplayMode; 3] = [
@@ -130,6 +136,32 @@ impl DisplayMode {
         true
     }
 
+    /// A blind or services drawing from before its building was drawn in
+    /// the very thin pen (cut and seen, George 2026-11-22): brought to it.
+    /// True when `view` changed.
+    pub fn thin_building(view: &mut View) -> bool {
+        if DisplayMode::of(view) == DisplayMode::Architecture {
+            return false;
+        }
+        let thin = Some(crate::styles::Weight::Mm(THIN));
+        let mut changed = false;
+        for c in BUILDING {
+            let o = view.look.override_mut(Target::Category(c));
+            if o.cut_weight != thin || o.weight != thin {
+                o.cut_weight = thin;
+                o.weight = thin;
+                changed = true;
+            }
+        }
+        view.look.tidy();
+        // a trade's drawing numbers its rooms
+        if DisplayMode::of(view) == DisplayMode::Services && view.room_tags == Some(false) {
+            view.room_tags = None;
+            changed = true;
+        }
+        changed
+    }
+
     /// Put `view` in this mode.
     pub fn apply(self, view: &mut View) {
         let blind = self != DisplayMode::Architecture;
@@ -154,15 +186,18 @@ impl DisplayMode {
         // pipes, ducts and wiring are the trades' to draw
         view.hidden
             .set_category(Category::Pipes, self != DisplayMode::Services);
-        // rooms stay to be picked; their names go
-        view.room_tags = blind.then_some(false);
+        // rooms stay to be picked; their names go (a trade's drawing
+        // keeps their numbers, George 2026-11-22)
+        view.room_tags = (self == DisplayMode::Blind).then_some(false);
         if blind {
             view.room_colours = false;
         }
-        // the building in one thin line, cut or seen; under services lighter
+        // the building in one very thin line, cut or seen; under services
+        // lighter
         for c in BUILDING {
             let o = view.look.override_mut(Target::Category(c));
             o.cut_weight = blind.then_some(crate::styles::Weight::Mm(THIN));
+            o.weight = blind.then_some(crate::styles::Weight::Mm(THIN));
             o.halftone = self == DisplayMode::Services;
         }
         view.look.tidy();
@@ -383,6 +418,42 @@ impl Trade {
             K::AirSupply | K::AirExhaust => self == Trade::Ventilation,
             K::MedGas => self == Trade::MedGas,
             K::Other => true,
+        }
+    }
+
+    /// Is the object `e` this trade's equipment, drawn in its drawing in
+    /// the medium pen: sanitary ware and drains for plumbing, heaters and
+    /// heat sources for heating, air terminals and units for ventilation,
+    /// devices and lights for electrical, supply units for medical gases.
+    pub fn owns(self, model: &crate::Model, e: &crate::Element) -> bool {
+        use crate::objects::ObjectCategory as C;
+        let Some(t) = crate::objects::type_of(model, e) else {
+            return false;
+        };
+        let class = t.ifc.class.to_ascii_lowercase();
+        let family = crate::fixture::family_of_type(t);
+        let heat = family.is_some_and(|f| {
+            crate::fixture::is_heating(f)
+                || crate::fixture::is_cooling(f)
+                || crate::fixture::is_manifold(f)
+        }) || matches!(
+            class.as_str(),
+            "ifcspaceheater" | "ifcboiler" | "ifcunitaryequipment" | "ifccoil" | "ifcpump"
+        );
+        let air = matches!(
+            class.as_str(),
+            "ifcairterminal" | "ifcfan" | "ifcairtoairheatrecovery" | "ifcductsilencer"
+        );
+        match self {
+            Trade::Plumbing => {
+                (family.is_some() && !heat)
+                    || matches!(t.category, C::Plumbing | C::Toilet)
+                    || matches!(class.as_str(), "ifcsanitaryterminal" | "ifcwasteterminal")
+            }
+            Trade::Heating => heat,
+            Trade::Ventilation => air,
+            Trade::Electrical => matches!(t.category, C::Electrical | C::Lighting),
+            Trade::MedGas => t.category == C::Medical,
         }
     }
 

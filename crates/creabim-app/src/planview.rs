@@ -6673,6 +6673,28 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
                 r.proj = (creabim_geom::looks::PIPE_LINE / w.projection.max(1e-6)) as f32;
             }
         }
+        // a trade's own equipment in the medium pen, other objects very
+        // thin (George 2026-11-22), as on paper
+        if !v.coordination {
+            use creabim_core::viewmodes::{Trade, OWN_EQUIPMENT, THIN};
+            for e in model.iter() {
+                if !matches!(e.kind, ElementKind::Object(_)) {
+                    continue;
+                }
+                let own = match v.trade {
+                    Some(t) => t.owns(model, e),
+                    None => Trade::ALL.iter().any(|t| t.owns(model, e)),
+                };
+                let r = out.entry(e.id).or_default();
+                if r.proj == 1.0 {
+                    let mm = if own { OWN_EQUIPMENT } else { THIN };
+                    r.proj = (mm / w.projection.max(1e-6)) as f32;
+                }
+                if own {
+                    r.fade = 0.0;
+                }
+            }
+        }
     }
     // utility networks: their kind's colour (a little lighter, so a dark
     // sewer reads on the screen; paper gets the exact one), dashed, heavy

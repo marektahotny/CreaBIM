@@ -1113,6 +1113,23 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         if let Some(trade) = v.trade {
             d.items.retain(|it| trade.shows_element(model, it.id()));
         }
+        // nor does it draw where one floor meets another: the floors'
+        // edges seen under the cut (George 2026-11-22)
+        d.items.retain(|it| {
+            !(matches!(
+                it,
+                PlanItem::Line {
+                    pen: crate::plan::Pen::Projection,
+                    ..
+                } | PlanItem::Polygon {
+                    pen: crate::plan::Pen::Projection,
+                    ..
+                }
+            ) && matches!(
+                model.get(it.id()).map(|e| &e.kind),
+                Some(ElementKind::Slab(_))
+            ))
+        });
         let heating = v
             .trade
             .is_none_or(|t| t == creabim_core::viewmodes::Trade::Heating);

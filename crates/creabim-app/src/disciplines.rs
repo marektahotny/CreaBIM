@@ -26,6 +26,46 @@ impl CreaBimApp {
         else {
             return;
         };
+        // a legend of rooms is the architect's (with the finishes) or a
+        // trade's (without them, George 2026-11-22)
+        if matches!(
+            v.kind,
+            creabim_core::ViewKind::Schedule {
+                category: creabim_core::ScheduleCategory::RoomLegend,
+                ..
+            }
+        ) {
+            use creabim_core::viewmodes::Trade;
+            let was = v.trade;
+            let mut now = was;
+            let label = |t: Option<Trade>| {
+                crate::i18n::tr(t.map_or(Purpose::Architecture.label(), |t| t.label()))
+            };
+            crate::props::row(ui, "Drawing for", |ui| {
+                egui::ComboBox::from_id_salt("view.purpose")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(label(now))
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut now, None, label(None));
+                        for t in Trade::ALL {
+                            ui.selectable_value(&mut now, Some(t), label(Some(t)));
+                        }
+                    });
+            });
+            if now != was {
+                let r = self.doc.edit(view, "Drawing for", |e| {
+                    if let creabim_core::ElementKind::View(x) = &mut e.kind {
+                        x.trade = now;
+                    }
+                });
+                self.report(
+                    r,
+                    format!("{}: {}.", crate::i18n::tr("Drawing for"), label(now)),
+                );
+            }
+            return;
+        }
         if matches!(v.kind, creabim_core::ViewKind::Schedule { .. }) {
             return;
         }

@@ -196,6 +196,24 @@ impl Looks {
                 };
                 l.colour = trade.map(Trade::colour);
             }
+            // a trade's drawing: its own equipment in the medium pen, the
+            // other objects (fixtures, furniture) very thin (George
+            // 2026-11-22)
+            if services && !v.coordination {
+                if let ElementKind::Object(_) = &e.kind {
+                    use creabim_core::viewmodes::{Trade, OWN_EQUIPMENT, THIN};
+                    let own = match v.trade {
+                        Some(t) => t.owns(model, e),
+                        None => Trade::ALL.iter().any(|t| t.owns(model, e)),
+                    };
+                    if own {
+                        l.projection = Some(OWN_EQUIPMENT);
+                        l.fade = 0.0;
+                    } else if l.projection.is_none_or(|x| x > THIN) {
+                        l.projection = Some(THIN);
+                    }
+                }
+            }
             // a services drawing's pipes: lines in their system's colour
             // and line type, unless the view says otherwise
             if let (true, ElementKind::Pipe(p)) = (services, &e.kind) {

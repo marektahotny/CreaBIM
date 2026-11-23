@@ -183,6 +183,11 @@ pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
             if v.no_living_area {
                 s.above_totals.clear();
             }
+            // a trade's legend: the rooms without their floors' build-ups
+            // and the finishes of walls and ceilings (George 2026-11-22)
+            if v.trade.is_some() {
+                crate::roomlegend::without_finishes(&mut s);
+            }
             s
         }
         ScheduleCategory::Materials => {
