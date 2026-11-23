@@ -53,7 +53,7 @@ impl CreaBimApp {
             .id(egui::Id::new("fittings.schedule"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(280.0, 220.0))
-            .default_size(Vec2::new(560.0, 440.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(560.0, 440.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {

@@ -33,7 +33,7 @@ impl CreaBimApp {
             .id(egui::Id::new("med.box"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(200.0, 200.0))
-            .default_size(Vec2::new(400.0, 380.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(400.0, 380.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 egui::Grid::new("med.box.grid")

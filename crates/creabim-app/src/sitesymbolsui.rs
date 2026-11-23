@@ -71,7 +71,7 @@ impl CreaBimApp {
             .id(egui::Id::new("site.symbols"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(240.0, 300.0))
-            .default_size(Vec2::new(480.0, 620.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(480.0, 620.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -175,7 +175,6 @@ impl CreaBimApp {
             .id(egui::Id::new("site.place.exact"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(200.0, 120.0))
-            .default_width(400.0)
             .constrain_to(area)
             .show(ctx, |ui| {
                 egui::Grid::new("site.place.grid")

@@ -316,8 +316,6 @@ impl CreaBimApp {
             .id(egui::Id::new("print-window"))
             .open(&mut open)
             .collapsible(false)
-            .resizable(false)
-            .default_width(760.0)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
                 ui.horizontal_top(|ui| {

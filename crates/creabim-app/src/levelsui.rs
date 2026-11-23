@@ -647,7 +647,7 @@ impl CreaBimApp {
         let formats_before = formats;
         let mut kind = self.levels.units_kind;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window(crate::i18n::tr("Number formats"))
+        crate::app::shell::small_window(crate::i18n::tr("Number formats"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
             .constrain_to(area)

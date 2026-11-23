@@ -298,7 +298,6 @@ impl CreaBimApp {
             .open(&mut open)
             .default_pos(area.min + Vec2::new(60.0, 80.0))
             .constrain_to(area)
-            .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.label(

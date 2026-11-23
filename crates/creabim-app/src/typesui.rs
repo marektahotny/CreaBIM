@@ -1053,7 +1053,10 @@ impl CreaBimApp {
             .open(&mut open)
             .default_pos(area.min + Vec2::new(36.0, 36.0))
             .constrain_to(area)
-            .default_size([720.0, (area.height() - 40.0).clamp(360.0, 620.0)])
+            .default_size(crate::app::shell::at_least([
+                720.0,
+                (area.height() - 40.0).clamp(360.0, 620.0),
+            ]))
             .min_width(600.0)
             .collapsible(false)
             .show(ctx, |ui| self.types_body(ui, &mut asks));

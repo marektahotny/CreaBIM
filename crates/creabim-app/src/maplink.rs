@@ -335,7 +335,7 @@ impl CreaBimApp {
             .id(egui::Id::new("maps.window"))
             .open(&mut open)
             .default_pos(area.center() - size / 2.0)
-            .default_size(size)
+            .default_size(crate::app::shell::at_least(size))
             .constrain_to(area)
             .show(ctx, |ui| {
                 ui.label(

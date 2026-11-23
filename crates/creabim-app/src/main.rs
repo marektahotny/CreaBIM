@@ -94,6 +94,10 @@ fn main() -> eframe::Result {
             .with_inner_size([1400.0, 860.0])
             .with_icon(app_icon()),
         renderer: eframe::Renderer::Wgpu,
+        // the windows' sizes and places are kept for the next run (egui's
+        // memory, George 2026-11-23); the main window keeps its own
+        // (files::remember_main_window)
+        persist_window: false,
         #[cfg(target_os = "linux")]
         event_loop_builder: Some(Box::new(|b| {
             use winit::platform::x11::EventLoopBuilderExtX11;

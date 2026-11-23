@@ -746,7 +746,6 @@ impl CreaBimApp {
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(310.0, height / 2.0))
             .constrain_to(area)
-            .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.set_width(620.0);
@@ -1154,7 +1153,6 @@ impl CreaBimApp {
         crate::app::shell::window(crate::i18n::tr("New project"))
             .open(&mut open)
             .collapsible(false)
-            .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ctx, |ui| {
                 for s in STARTS.iter() {
@@ -1219,7 +1217,6 @@ impl CreaBimApp {
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(230.0, 160.0))
             .constrain_to(area)
-            .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.set_width(460.0);
@@ -1306,7 +1303,9 @@ impl CreaBimApp {
         // browser allows: project and sheets, site and place, fire safety
         // (440 a column: the fire column's long labels and the S-JTSK fields
         // fit without cutting or running into the next column)
-        let n = (((screen.width() - 30.0) / 456.0).floor() as usize).clamp(1, 3);
+        // (as many as the window's opening size takes: 60 % of the screen)
+        let fits = crate::app::shell::dialog_size().x.min(screen.width());
+        let n = (((fits - 30.0) / 456.0).floor() as usize).clamp(1, 3);
         crate::app::shell::window(crate::i18n::tr("Project information"))
             // an id by the columns: a size kept from another layout (the
             // one-column window) is not reused
@@ -1315,14 +1314,15 @@ impl CreaBimApp {
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(screen.center())
             .constrain_to(screen)
-            .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
                 // the fields scroll and the buttons stay in sight
-                ui.set_width(n as f32 * 440.0 + (n - 1) as f32 * 16.0);
+                // the columns share the window's width, at least 440 each
+                ui.set_min_width(n as f32 * 440.0 + (n - 1) as f32 * 16.0);
                 egui::ScrollArea::vertical()
                     .id_salt("project.info.scroll")
-                    .max_height((screen.height() - 140.0).max(200.0))
+                    // the window's height less the buttons' row
+                    .max_height((ui.available_height() - 48.0).max(160.0))
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                 let text = |ui: &mut egui::Ui, label: &str, v: &mut String, hint: &str| {

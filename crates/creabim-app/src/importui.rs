@@ -92,7 +92,7 @@ impl CreaBimApp {
         crate::app::shell::window(crate::i18n::tr("Import report"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(80.0, 70.0))
-            .default_size(Vec2::new(640.0, 460.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(640.0, 460.0)))
             .constrain_to(area)
             .collapsible(false)
             .show(ctx, |ui| {
