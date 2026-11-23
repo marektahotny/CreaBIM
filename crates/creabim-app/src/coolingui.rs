@@ -3,18 +3,20 @@
 //! of, and the fan-coil that covers it.
 
 use super::CreaBimApp;
-use creabim_services::coolingload::{self, Mass, Settings, Shading};
+use creabim_services::coolingload::{self, Mass, Method, Settings, Shading};
+use creabim_services::coolnorm;
 use creabim_services::heatloss;
 use eframe::egui::{self, Vec2};
 
 impl CreaBimApp {
     /// `calc:cooling` from the Ventilation tab: open the window.
     pub(super) fn cooling_action(&mut self, head: &str, arg: &str) -> bool {
-        if head != "calc" || arg != "cooling" {
+        if head != "calc" || !matches!(arg, "cooling" | "cooling-norm") {
             return false;
         }
-        if self.cooling.is_none() {
-            self.cooling = Some(Settings::default());
+        let s = self.cooling.get_or_insert_with(Settings::default);
+        if arg == "cooling-norm" {
+            s.method = Method::Norm;
         }
         self.results_due = Some("cooling");
         true
@@ -32,6 +34,7 @@ impl CreaBimApp {
             .as_ref()
             .map_or_else(heatloss::Opts::default, |x| x.0);
         let b = coolingload::building(self.doc.model(), &o, &s);
+        let norm_tables = coolnorm::tables_of(self.doc.model());
         let months = creabim_core::fireparams::summer_max(&self.climate_tables());
         let mut load = false;
         let mut write_now = self.results_due.take_if(|c| *c == "cooling").is_some();
@@ -47,6 +50,134 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 if super::calcresultsui::write_button(ui) {
                     write_now = true;
+                }
+                ui.horizontal(|ui| {
+                    ui.label(t("Method"));
+                    egui::ComboBox::from_id_salt("cooling.method")
+                        .selected_text(t(s.method.name()))
+                        .show_ui(ui, |ui| {
+                            for x in Method::ALL {
+                                ui.selectable_value(&mut s.method, x, t(x.name()));
+                            }
+                        });
+                });
+                if s.method == Method::Norm {
+                    let eps = coolnorm::rows(&norm_tables, coolnorm::EPS, "eps");
+                    let shades = coolnorm::rows(&norm_tables, coolnorm::SHADE, "s");
+                    // an older copy of the file lacks the months, A and the latitude
+                    let stale = coolnorm::factor(&norm_tables, "amplitude").is_none()
+                        || coolnorm::factor(&norm_tables, "latitude").is_none()
+                        || coolnorm::sun_of(&norm_tables, coolnorm::SUN_WALL, s.month, Some(180.0), 12).is_none()
+                        || coolnorm::sun_of(&norm_tables, coolnorm::SUN_GLASS, s.month, Some(180.0), 12).is_none();
+                    if norm_tables.len() < coolnorm::TABLES.len() || stale {
+                        ui.horizontal(|ui| {
+                            ui.colored_label(
+                                ui.visuals().warn_fg_color,
+                                t("The tables of STN 73 0548 are not read: read its parameter file"),
+                            );
+                            if ui.button(t("Read the table…")).clicked() {
+                                load = true;
+                            }
+                        });
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        let pick = |ui: &mut egui::Ui, id: &str, label: &str, v: &mut Option<usize>, default: &str| {
+                            ui.label(t(label));
+                            let now = coolnorm::picked(&eps, *v, default)
+                                .map_or(String::from("–"), |r| format!("{} ({})", r.text, num(r.value, 2)));
+                            egui::ComboBox::from_id_salt(id)
+                                .selected_text(now)
+                                .width(220.0)
+                                .show_ui(ui, |ui| {
+                                    for (i, r) in eps.iter().enumerate() {
+                                        let text = format!("{} ({})", r.text, num(r.value, 2));
+                                        let on = coolnorm::picked(&eps, *v, default).is_some_and(|x| x.key == r.key);
+                                        if ui.selectable_label(on, text).clicked() {
+                                            *v = Some(i);
+                                        }
+                                    }
+                                })
+                                .response
+                                .on_hover_text(t("ε of the outer surface for the sun (STN 73 0548, table 12)"));
+                        };
+                        pick(ui, "cooling.eps_wall", "Walls ε", &mut s.eps_wall, coolingload::EPS_WALL_KEY);
+                        pick(ui, "cooling.eps_roof", "Roof ε", &mut s.eps_roof, coolingload::EPS_ROOF_KEY);
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(t("Sun shading"));
+                        let now = s
+                            .shade
+                            .and_then(|i| shades.get(i))
+                            .map_or(t("No shading"), |r| format!("{} (s {})", r.text, num(r.value, 2)));
+                        egui::ComboBox::from_id_salt("cooling.shade")
+                            .selected_text(now)
+                            .width(260.0)
+                            .show_ui(ui, |ui| {
+                                if ui.selectable_label(s.shade.is_none(), t("No shading")).clicked() {
+                                    s.shade = None;
+                                }
+                                for (i, r) in shades.iter().enumerate() {
+                                    let text = format!("{} (s {})", r.text, num(r.value, 2));
+                                    if ui.selectable_label(s.shade == Some(i), text).clicked() {
+                                        s.shade = Some(i);
+                                    }
+                                }
+                            })
+                            .response
+                            .on_hover_text(t("The shading coefficient s (STN 73 0548, table 11)"));
+                        ui.label(t("Allowed rise"))
+                            .on_hover_text(t("How much warmer the room may get at the peak: the sun's load is cut by what the inner walls, floor and ceiling store (STN 73 0548, art. 68 and 69)"));
+                        let mut dt = s
+                            .dt_allow
+                            .or_else(|| coolnorm::factor(&norm_tables, "dt_allow"))
+                            .unwrap_or(0.0);
+                        if ui
+                            .add(egui::DragValue::new(&mut dt).range(0.0..=5.0).speed(0.1).suffix(" K"))
+                            .changed()
+                        {
+                            s.dt_allow = Some(dt);
+                        }
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        const MONTHS: [&str; 8] = [
+                            "March", "April", "May", "June", "July", "August", "September", "October",
+                        ];
+                        let name = |m: u8| t(MONTHS[(m.clamp(3, 10) - 3) as usize]);
+                        ui.label(t("Month"));
+                        egui::ComboBox::from_id_salt("cooling.norm_month")
+                            .selected_text(name(s.month))
+                            .show_ui(ui, |ui| {
+                                for m in 3..=10u8 {
+                                    ui.selectable_value(&mut s.month, m, name(m));
+                                }
+                            })
+                            .response
+                            .on_hover_text(t("The sun of the 21st of the month (STN 73 0548, tables 5 and 10) and its outside air (table 1, formula 1)"));
+                        match (
+                            coolnorm::te_max(&norm_tables, s.month),
+                            coolnorm::factor(&norm_tables, "amplitude"),
+                        ) {
+                            (Some(te), Some(a)) => {
+                                ui.label(format!("θe,max {} °C · A {} K", num(te, 1), num(a, 1)))
+                                    .on_hover_text(t("STN 73 0548, table 1 and formula 1: the method takes these, not the outside temperature below"));
+                            }
+                            _ => {
+                                ui.label(t("θe,max as below (table 1 not read)"));
+                            }
+                        }
+                        ui.label(t("Air"));
+                        egui::ComboBox::from_id_salt("cooling.region")
+                            .selected_text(t(s.region.name()))
+                            .show_ui(ui, |ui| {
+                                for x in coolingload::Region::ALL {
+                                    ui.selectable_value(&mut s.region, x, t(x.name()));
+                                }
+                            })
+                            .response
+                            .on_hover_text(t("How clear the air is: the correction c_o of the sun through the windows (STN 73 0548, art. 64)"));
+                        ui.checkbox(&mut s.reveal, t("Reveals shade the glass"))
+                            .on_hover_text(t("The sunlit part of each window by the depth of its reveals and where the sun stands (STN 73 0548, formulas 24 to 26)"));
+                    });
                 }
                 ui.horizontal_wrapped(|ui| {
                     ui.label(t("Outside in summer"));
@@ -101,6 +232,9 @@ impl CreaBimApp {
                             .range(0.1..=0.87)
                             .speed(0.01),
                     );
+                    if s.method == Method::Norm {
+                        return;
+                    }
                     ui.label(t("Sun shading"));
                     egui::ComboBox::from_id_salt("cooling.shading")
                         .selected_text(t(s.shading.name()))
@@ -233,7 +367,11 @@ impl CreaBimApp {
                             });
                     }
                     ui.add_space(6.0);
-                    ui.weak(t("A simplified load: the sun through the windows on 21 July at 50° north by where each faces, heat through walls, roof and windows with the U values of the heat loss, people, lighting, appliances and ventilation. Each room at its own worst hour. Fan-coils: sensible output at 7/12 °C, usual values to design with."));
+                    if s.method == Method::Norm {
+                        ui.weak(t("By STN 73 0548: the sun through the windows (table 10) with g and the shading s of table 11, cut by what the inner walls, floor and ceiling store (formula 27, art. 69); walls and roof by the sol-air temperature with ε of table 12 and the sun of table 5 (formula 29), damped and delayed by their thickness (formulas 30 to 32); people, lighting, appliances and ventilation. Each room at its own worst hour."));
+                    } else {
+                        ui.weak(t("A simplified load: the sun through the windows on 21 July at 50° north by where each faces, heat through walls, roof and windows with the U values of the heat loss, people, lighting, appliances and ventilation. Each room at its own worst hour. Fan-coils: sensible output at 7/12 °C, usual values to design with."));
+                    }
                     ui.weak(t("Summer stability roughly by the admittance method: the day's mean from the mean gains and the loss, the swing from the peaks damped by what the inner surfaces store; airing by opening windows."));
                     ui.weak("STN 73 0548 · STN EN ISO 52016-1 · STN 73 0540-2 · STN EN ISO 13792");
                 });
