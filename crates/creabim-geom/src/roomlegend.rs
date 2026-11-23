@@ -409,6 +409,20 @@ pub fn schedule(model: &Model, level: Option<ElementId>) -> Schedule {
     }
 }
 
+/// A legend of rooms for a trade's drawings: its mark, use and area,
+/// without the floor build-up and the finishes of walls and ceiling.
+pub fn without_finishes(s: &mut Schedule) {
+    let keep = 3;
+    s.columns.truncate(keep);
+    for r in &mut s.rows {
+        r.cells.truncate(keep);
+    }
+    s.totals.truncate(keep);
+    for t in &mut s.above_totals {
+        t.truncate(keep);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
