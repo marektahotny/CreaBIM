@@ -122,16 +122,19 @@ pub const SAMPLE_POINTS: usize = 150_000;
 
 /// The cache key of a source: its file, or its view.
 fn key(source: &RefSource) -> String {
+    // by the file found from the project's folder, so a project opened
+    // from elsewhere reads its underlays again (George 2026-11-23)
+    let r = creabim_core::refpath::resolved;
     match source {
         RefSource::View(v) => format!("view:{v:?}"),
-        RefSource::Image { path, .. } => format!("image:{path}"),
-        RefSource::Dxf { path, unit: None } => format!("dxf:{path}"),
+        RefSource::Image { path, .. } => format!("image:{}", r(path)),
+        RefSource::Dxf { path, unit: None } => format!("dxf:{}", r(path)),
         RefSource::Dxf {
             path,
             unit: Some(u),
-        } => format!("dxf:{path}@{u}"),
-        RefSource::Pdf { path, page, scale } => format!("pdf:{path}#{page}@{scale}"),
-        RefSource::Points { path, .. } => format!("points:{path}"),
+        } => format!("dxf:{}@{u}", r(path)),
+        RefSource::Pdf { path, page, scale } => format!("pdf:{}#{page}@{scale}", r(path)),
+        RefSource::Points { path, .. } => format!("points:{}", r(path)),
     }
 }
 
@@ -181,6 +184,7 @@ pub fn pdf_page(
     page: u32,
     scale: f64,
 ) -> Result<creabim_exchange::pdf::PdfPage, String> {
+    let path = &creabim_core::refpath::resolved(path);
     let bytes = std::fs::read(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
     let p = creabim_exchange::pdf::read(&bytes, page, scale).map_err(|e| format!("{path}: {e}"))?;
     if p.scan.is_none()
@@ -302,6 +306,7 @@ impl RefCache {
 
     /// A point cloud's file, read once.
     pub fn cloud(&mut self, path: &str) -> Result<Arc<creabim_exchange::cloud::Cloud>, String> {
+        let path = &creabim_core::refpath::resolved(path);
         let k = format!("points:{path}");
         if let Some(c) = self.clouds.get(&k) {
             return Ok(c.clone());
@@ -313,11 +318,13 @@ impl RefCache {
 
     /// A point cloud's file, if read already.
     pub fn cached_cloud(&self, path: &str) -> Option<Arc<creabim_exchange::cloud::Cloud>> {
+        let path = creabim_core::refpath::resolved(path);
         self.clouds.get(&format!("points:{path}")).cloned()
     }
 
     /// A point cloud read elsewhere (in the background), kept as read.
     pub fn put_cloud(&mut self, path: &str, c: Arc<creabim_exchange::cloud::Cloud>) {
+        let path = &creabim_core::refpath::resolved(path);
         let k = format!("points:{path}");
         self.samples.remove(&k);
         self.clouds.insert(k, c);
@@ -405,6 +412,7 @@ impl RefCache {
 
     /// The points 3D shows of a cloud.
     pub fn sample(&mut self, path: &str) -> Option<Arc<Vec<u32>>> {
+        let path = &creabim_core::refpath::resolved(path);
         let k = format!("points:{path}");
         if let Some(s) = self.samples.get(&k) {
             return Some(s.clone());
@@ -482,6 +490,7 @@ pub fn dxf_import(
     path: &str,
     unit: Option<f64>,
 ) -> Result<creabim_exchange::dxf::DxfImport, String> {
+    let path = &creabim_core::refpath::resolved(path);
     let bytes = std::fs::read(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
     let d = creabim_exchange::dxf::read(&creabim_exchange::dxf::decode(&bytes), unit);
     if d.polys.is_empty() && d.texts.is_empty() && d.points.is_empty() && d.faces.is_empty() {
@@ -668,10 +677,12 @@ pub fn read(model: &Model, source: &RefSource) -> Shown {
             Ok(p) => pdf_shown(source, p).0,
             Err(e) => Shown::Missing(e),
         },
-        RefSource::Points { path, .. } => match creabim_exchange::cloud::read_file(path) {
-            Ok(c) => Shown::Cloud(Arc::new(c)),
-            Err(e) => Shown::Missing(e),
-        },
+        RefSource::Points { path, .. } => {
+            match creabim_exchange::cloud::read_file(&creabim_core::refpath::resolved(path)) {
+                Ok(c) => Shown::Cloud(Arc::new(c)),
+                Err(e) => Shown::Missing(e),
+            }
+        }
     }
 }
 
@@ -1016,7 +1027,7 @@ pub const DEFAULT_DPI: f64 = 150.0;
 
 /// A picture's size in pixels.
 pub fn picture_px(path: &str) -> Option<(u32, u32)> {
-    image::image_dimensions(path).ok()
+    image::image_dimensions(creabim_core::refpath::resolve(path)).ok()
 }
 
 /// A picture as a reference: as wide as its pixels at its resolution
@@ -1127,6 +1138,7 @@ pub fn file_dpi(b: &[u8]) -> Option<f64> {
 }
 
 pub fn picture(path: &str) -> Result<Raster, String> {
+    let path = &creabim_core::refpath::resolved(path);
     let img = image::open(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
     let rgba = img.to_rgba8();
     Ok(Raster {

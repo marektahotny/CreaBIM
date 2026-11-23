@@ -57,6 +57,7 @@ pub mod profiles;
 pub mod project;
 pub mod pushpull;
 pub mod reference;
+pub mod refpath;
 pub mod regions;
 pub mod reno;
 pub mod results;
