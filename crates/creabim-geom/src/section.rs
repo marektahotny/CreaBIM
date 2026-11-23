@@ -1271,10 +1271,13 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     }
     // a plan's names, notes and tags moved off lines and each other
     if matches!(kind, creabim_core::ViewKind::Plan { .. }) {
+        // (and an object's name written in its symbol, "Práčka", "T.Č.
+        // vonkajšia", which stays inside its outline)
         let square = |id| {
             matches!(model.get(id).map(|e| &e.kind),
                 Some(ElementKind::Tag(t)) if !t.material
                     && crate::annotate::tag_normal(model, v, t).is_some())
+                || matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Object(_)))
         };
         crate::declutter::place_labels_but(&mut d.items, v.scale / 1000.0, &square);
     }

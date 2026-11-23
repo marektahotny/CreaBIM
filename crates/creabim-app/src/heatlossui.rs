@@ -4,6 +4,7 @@
 //! and a step on to sizing the heat source by it.
 
 use super::CreaBimApp;
+use creabim_core::catalogue::heat::HeatKind;
 use creabim_core::fireparams::{self, ClimateSite};
 use creabim_services::heatloss::{self, Opts, Shielding};
 
@@ -66,7 +67,7 @@ impl CreaBimApp {
     }
 
     /// `o` with the project's locality's temperatures.
-    fn site_opts(&self, o: Opts) -> Opts {
+    pub(super) fn site_opts(&self, o: Opts) -> Opts {
         let name = self
             .doc
             .model()
@@ -454,6 +455,12 @@ impl CreaBimApp {
             let mut s = self.heat_source.clone().unwrap_or_default();
             s.input.heat_load = (b.phi / 1000.0).clamp(0.5, 200.0);
             s.input.te = o.te.clamp(-25.0, 0.0);
+            if matches!(
+                s.kind,
+                HeatKind::HpOutdoor | HeatKind::HpIndoor | HeatKind::HpIndoorCylinder
+            ) {
+                s.size = creabim_services::hpsizing::recommend(&s.input);
+            }
             self.heat_source = Some(s);
         }
         if write_now {

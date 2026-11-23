@@ -66,6 +66,9 @@ pub fn object_plan(model: &Model, e: &Element, cut_height: f64) -> Vec<PlanItem>
         })
         .collect();
     items.extend(connector_marks(model, e));
+    // its name over its outline's fill, not under it ("Práčka", "T.Č.
+    // vonkajšia")
+    items.sort_by_key(|it| matches!(it, PlanItem::Label { .. }));
     items
 }
 

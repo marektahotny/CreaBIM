@@ -864,6 +864,7 @@ fn dryer() -> CatalogueObject {
     b.line(v2(-0.2, -d), v2(0.2, -d - 0.03));
     b.line(v2(0.2, -d - 0.03), v2(0.2, -d));
     b.line(v2(-0.2, -d), v2(-0.2, -d - 0.03));
+    b.text(v2(0.0, -d / 2.0), "Sušička");
     b.finish(
         "dryer-600",
         "Tumble dryer 600",
@@ -986,6 +987,103 @@ fn wall_cabinet() -> CatalogueObject {
         "wall-cabinet-600",
         "Wall cabinet 600",
         "Kitchen wall unit 720 mm high, hung at 1450 mm",
+        ObjectCategory::Kitchen,
+        ("IfcFurniture", "USERDEFINED"),
+        Mount::Wall,
+    )
+}
+
+/// An L-shaped kitchen corner cabinet as IKEA's METOD makes it (George
+/// 2026-11-22: "parametrické, ale reálne"): `arm` along each wall (the
+/// frame with its rail), `depth` out from the wall (the system depth),
+/// `z0` to `z1` high; the fronts close the inner corner, hinged to each
+/// other, 21 mm proud as on the METOD high cabinet. Its back runs along
+/// y = 0, its other side along x = +arm/2.
+fn corner_cabinet(b: &mut Build, arm: f64, depth: f64, z0: f64, z1: f64) {
+    let (l, r) = (-arm / 2.0, arm / 2.0);
+    let inner = v2(r - depth, -depth);
+    // counter-clockwise, seen from above
+    let l_shape = vec![
+        v2(l, 0.0),
+        v2(l, -depth),
+        inner,
+        v2(r - depth, -arm),
+        v2(r, -arm),
+        v2(r, 0.0),
+    ];
+    b.add("Carcass", laminate(), prism(l_shape.clone(), z0, z1), true);
+    let f = 0.021;
+    // the leaf across the back run, the one across the side run
+    b.add(
+        "Door",
+        kitchen_front(),
+        cuboid(
+            v3(l + 0.002, -depth - f, z0 + 0.002),
+            v3(inner.x - f, -depth, z1 - 0.002),
+        ),
+        false,
+    );
+    b.add(
+        "Door",
+        kitchen_front(),
+        cuboid(
+            v3(inner.x - f, -arm + 0.002, z0 + 0.002),
+            v3(inner.x, -depth - f, z1 - 0.002),
+        ),
+        false,
+    );
+    b.outline(l_shape);
+    // the fronts' line in plan
+    b.line(v2(l, -depth - f), v2(inner.x - f, -depth - f));
+    b.line(v2(inner.x - f, -depth - f), v2(inner.x - f, -arm));
+}
+
+/// IKEA METOD corner base cabinet 88 × 88 × 80 (ikea.com, METOD corner
+/// base cabinet frame: width 87.5, depth with suspension rail 87.5,
+/// system depth 60, height 80 cm; legs 8 cm and doors sold separately).
+fn corner_base_cabinet() -> CatalogueObject {
+    let mut b = Build::new();
+    let (arm, depth, legs) = (0.875, 0.6, 0.08);
+    // the legs' plinth, set back as on the straight units
+    b.add(
+        "Plinth",
+        plinth(),
+        prism(
+            vec![
+                v2(-arm / 2.0, 0.0),
+                v2(-arm / 2.0, -depth + 0.1),
+                v2(arm / 2.0 - depth + 0.1, -depth + 0.1),
+                v2(arm / 2.0 - depth + 0.1, -arm),
+                v2(arm / 2.0, -arm),
+                v2(arm / 2.0, 0.0),
+            ],
+            0.0,
+            legs,
+        ),
+        false,
+    );
+    corner_cabinet(&mut b, arm, depth, legs, legs + 0.8);
+    b.finish(
+        "corner-base-cabinet-880",
+        "Corner base cabinet 880 × 880",
+        "IKEA METOD corner base cabinet 88 × 88 × 80 cm on 8 cm legs (88 cm to the worktop), system depth 60 cm, two hinged fronts in the corner",
+        ObjectCategory::Kitchen,
+        ("IfcFurniture", "USERDEFINED"),
+        Mount::Wall,
+    )
+}
+
+/// IKEA METOD corner wall cabinet 68 × 68 × 80 (ikea.com, METOD corner
+/// wall cabinet: frame width 68, frame depth 68, system depth 37, height
+/// 80 cm). Hung with its top level with the wall units' (2170 mm).
+fn corner_wall_cabinet() -> CatalogueObject {
+    let mut b = Build::new();
+    let top = 2.17;
+    corner_cabinet(&mut b, 0.68, 0.37, top - 0.8, top);
+    b.finish(
+        "corner-wall-cabinet-680",
+        "Corner wall cabinet 680 × 680",
+        "IKEA METOD corner wall cabinet 68 × 68 × 80 cm, system depth 37 cm, its top at 2170 mm",
         ObjectCategory::Kitchen,
         ("IfcFurniture", "USERDEFINED"),
         Mount::Wall,
@@ -1521,6 +1619,8 @@ pub fn starters() -> Vec<CatalogueObject> {
         tall_cabinet(false),
         tall_cabinet(true),
         wall_cabinet(),
+        corner_base_cabinet(),
+        corner_wall_cabinet(),
         fridge(),
         dryer(),
         sofa(),
