@@ -711,12 +711,12 @@ impl CreaBimApp {
             .open(&mut open)
             .default_pos(area.min + Vec2::new(24.0, 24.0))
             .constrain_to(area)
-            .default_size({
+            .default_size(crate::app::shell::at_least({
                 // as tall as the screen gives, so a wall's settings show
                 // whole on 1920×1080 (George 2026-11-23)
                 let (w, h) = crate::app::shell::window_max(area);
                 [w.min(860.0), h]
-            })
+            }))
             .min_width(620.0)
             .collapsible(false)
             .show(ctx, |ui| self.assemblies_body(ui, &mut asks));

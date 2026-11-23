@@ -809,11 +809,10 @@ impl CreaBimApp {
             }
         };
         crate::app::shell::window(crate::i18n::tr("Catalogue"))
-            .resizable(true)
             .open(&mut open)
             .default_pos(pos)
             .constrain_to(area)
-            .default_size([width, (area.height() - 90.0).clamp(360.0, 640.0)])
+            .default_size(crate::app::shell::at_least([width, (area.height() - 90.0).clamp(360.0, 640.0)]))
             .collapsible(false)
             .show(ctx, |ui| {
                 let cat = &mut self.catalogue;

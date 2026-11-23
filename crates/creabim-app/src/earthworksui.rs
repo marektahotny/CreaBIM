@@ -57,7 +57,7 @@ impl CreaBimApp {
             .id(egui::Id::new("earthworks.schedule"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(320.0, 240.0))
-            .default_size(Vec2::new(760.0, 480.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(760.0, 480.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {

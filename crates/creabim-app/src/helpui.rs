@@ -296,7 +296,7 @@ impl CreaBimApp {
         let shortcuts = (id == "shortcuts").then(|| help::shortcuts_page(&self.help_menus()));
         crate::app::shell::window(crate::i18n::tr("Help"))
             .open(&mut open)
-            .default_size([640.0, 520.0])
+            .default_size(crate::app::shell::at_least([640.0, 520.0]))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Search:"));

@@ -81,7 +81,7 @@ impl CreaBimApp {
             .id(egui::Id::new("fragment.table30"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(300.0, 220.0))
-            .default_size(Vec2::new(600.0, 420.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(600.0, 420.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 ui.label(t(

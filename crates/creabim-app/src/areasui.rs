@@ -1277,7 +1277,7 @@ impl CreaBimApp {
             return;
         };
         let (mut open, mut done) = (true, false);
-        crate::app::shell::window(crate::i18n::tr("Save current layout"))
+        crate::app::shell::small_window(crate::i18n::tr("Save current layout"))
             .collapsible(false)
             .resizable(false)
             .open(&mut open)

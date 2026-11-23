@@ -230,7 +230,7 @@ impl CreaBimApp {
             .id(egui::Id::new("heat.source"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(240.0, 300.0))
-            .default_size(Vec2::new(480.0, 600.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(480.0, 600.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 egui::ComboBox::from_id_salt("heat.source.kind")

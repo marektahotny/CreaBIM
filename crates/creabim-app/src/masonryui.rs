@@ -448,7 +448,7 @@ impl CreaBimApp {
             .id(egui::Id::new("masonry.window"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(220.0, 260.0))
-            .default_size(Vec2::new(440.0, 520.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(440.0, 520.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {

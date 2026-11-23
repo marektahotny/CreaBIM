@@ -843,7 +843,7 @@ impl CreaBimApp {
         crate::app::shell::window(crate::i18n::tr("Graphic styles"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
-            .default_size(Vec2::new(940.0, 560.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(940.0, 560.0)))
             .constrain_to(area)
             .collapsible(false)
             .show(ctx, |ui| {

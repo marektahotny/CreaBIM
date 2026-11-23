@@ -45,7 +45,7 @@ impl CreaBimApp {
             .id(egui::Id::new("floor.heat"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(360.0, 260.0))
-            .default_size(Vec2::new(720.0, 520.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(720.0, 520.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 if super::calcresultsui::write_button(ui) {

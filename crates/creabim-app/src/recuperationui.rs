@@ -47,7 +47,7 @@ impl CreaBimApp {
             .id(egui::Id::new("vzt.recuperation"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(380.0, 300.0))
-            .default_size(Vec2::new(760.0, 680.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(760.0, 680.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {

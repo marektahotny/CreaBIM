@@ -110,7 +110,7 @@ impl CreaBimApp {
         let read = load.read.load(Ordering::Relaxed);
         let secs = load.started.elapsed().as_secs();
         let mut cancel = false;
-        crate::app::shell::window(crate::i18n::tr("Point cloud"))
+        crate::app::shell::small_window(crate::i18n::tr("Point cloud"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)

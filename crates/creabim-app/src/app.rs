@@ -6506,8 +6506,7 @@ impl CreaBimApp {
         crate::app::shell::window(crate::i18n::tr("Note text"))
             .id(egui::Id::new(("note-editor", id)))
             .open(&mut open)
-            .default_size([520.0, 420.0])
-            .resizable(true)
+            .default_size(crate::app::shell::at_least([520.0, 420.0]))
             .collapsible(false)
             .show(ctx, |ui| {
                 crate::props::flow(ui, |ui| {
@@ -8432,8 +8431,6 @@ impl CreaBimApp {
         crate::app::shell::window(crate::i18n::tr("Export sheets"))
             .open(&mut open)
             .collapsible(false)
-            .resizable(false)
-            .default_width(380.0)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
                 crate::props::row(ui, "Sheets", |ui| {
@@ -9731,7 +9728,7 @@ crate::props::row(ui, "File names", |ui| {
         let mut go = false;
         let id_d = egui::Id::new("calibrate.distance");
         let mut d: f64 = ctx.data(|m| m.get_temp(id_d)).unwrap_or(a.distance(b));
-        crate::app::shell::window(crate::i18n::tr("Calibrate"))
+        crate::app::shell::small_window(crate::i18n::tr("Calibrate"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -13786,6 +13783,8 @@ impl eframe::App for CreaBimApp {
         let ctx = ui.ctx().clone();
         // relative underlay paths start from the open project's folder
         creabim_core::refpath::set_base(creabim_core::refpath::folder_of(&self.path));
+        // windows open sized by the monitor the app runs on
+        shell::note_monitor(&ctx);
         self.dev_shot(&ctx);
         // on the drawing area a bar's tooltip goes: the bar never hears the
         // pointer leave it. Back from a bar (or after a pause in the moves
@@ -15202,7 +15201,7 @@ impl CreaBimApp {
         };
         let mut open = true;
         let mut done = false;
-        crate::app::shell::window(crate::i18n::tr("Step"))
+        crate::app::shell::small_window(crate::i18n::tr("Step"))
             .collapsible(false)
             .resizable(false)
             .open(&mut open)

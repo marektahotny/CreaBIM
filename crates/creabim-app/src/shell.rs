@@ -5734,11 +5734,15 @@ pub(crate) fn window_room(ctx: &egui::Context) -> egui::Rect {
 }
 
 ///
-/// It is never larger than that room, whatever the screen's resolution:
-/// what doesn't fit scrolls inside it (George 2026-11-23: the Assemblies
-/// window ran off a 1920×1080 screen).
+/// It opens at about 60 % of the monitor the app runs on (read from it,
+/// in points, so its DPI scaling counts), never larger than that room,
+/// and scrolls what doesn't fit (George 2026-11-23: windows opened tiny
+/// on a 4K screen, and ran off a 1920×1080 one).
 pub(crate) fn window(title: impl Into<egui::WidgetText>) -> egui::Window<'static> {
-    let w = egui::Window::new(title).scroll([true, true]);
+    let w = egui::Window::new(title)
+        .scroll([true, true])
+        .resizable(true)
+        .default_size(dialog_size());
     match NATIVE.with(|n| n.get()) {
         Some(r) if r.width() > 200.0 && r.height() > 150.0 => {
             let (w_max, h_max) = window_max(r);
@@ -5746,6 +5750,67 @@ pub(crate) fn window(title: impl Into<egui::WidgetText>) -> egui::Window<'static
         }
         _ => w,
     }
+}
+
+/// A small window that asks one thing (a step, a name, a scale): as big
+/// as what it asks, kept inside the room.
+pub(crate) fn small_window(title: impl Into<egui::WidgetText>) -> egui::Window<'static> {
+    let w = egui::Window::new(title);
+    match NATIVE.with(|n| n.get()) {
+        Some(r) if r.width() > 200.0 && r.height() > 150.0 => {
+            let (w_max, h_max) = window_max(r);
+            w.constrain_to(r).max_width(w_max).max_height(h_max)
+        }
+        _ => w,
+    }
+}
+
+thread_local! {
+    /// The monitor the app's window is on, points; set each frame.
+    static MONITOR: std::cell::Cell<Option<egui::Vec2>> = const { std::cell::Cell::new(None) };
+}
+
+/// Note the monitor the app runs on, for the windows' sizes.
+pub(crate) fn note_monitor(ctx: &egui::Context) {
+    let m = ctx
+        .input(|i| i.viewport().monitor_size)
+        .filter(|m| m.x > 100.0 && m.y > 100.0)
+        .unwrap_or_else(|| ctx.content_rect().size());
+    MONITOR.with(|c| c.set(Some(m)));
+}
+
+/// The share of the monitor a window opens at (George: "60 % rozlíšenia").
+const DIALOG_SHARE: f32 = 0.6;
+
+/// The size a window opens at: 60 % of the monitor, within the room.
+pub(crate) fn dialog_size() -> egui::Vec2 {
+    let room = NATIVE
+        .with(|n| n.get())
+        .filter(|r| r.width() > 200.0 && r.height() > 150.0);
+    let monitor = MONITOR
+        .with(|m| m.get())
+        .or(room.map(|r| r.size()))
+        .unwrap_or(egui::vec2(1400.0, 860.0));
+    let mut size = monitor * DIALOG_SHARE;
+    if let Some(r) = room {
+        let (w, h) = window_max(r);
+        size = size.min(egui::vec2(w, h));
+    }
+    size
+}
+
+/// A window's own size where it needs more than [`dialog_size`], within
+/// the room.
+pub(crate) fn at_least(own: impl Into<egui::Vec2>) -> egui::Vec2 {
+    let mut size = own.into().max(dialog_size());
+    if let Some(r) = NATIVE
+        .with(|n| n.get())
+        .filter(|r| r.width() > 200.0 && r.height() > 150.0)
+    {
+        let (w, h) = window_max(r);
+        size = size.min(egui::vec2(w, h));
+    }
+    size
 }
 
 /// The largest content a window may have in `room`: clear of its edges,

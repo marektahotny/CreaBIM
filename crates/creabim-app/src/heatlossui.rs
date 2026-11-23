@@ -249,7 +249,7 @@ impl CreaBimApp {
             .id(egui::Id::new("heat.loss"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(330.0, 280.0))
-            .default_size(Vec2::new(660.0, 560.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(660.0, 560.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 if super::calcresultsui::write_button(ui) {

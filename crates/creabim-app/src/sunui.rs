@@ -111,8 +111,6 @@ impl CreaBimApp {
             .id(egui::Id::new("sun.shadows"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(180.0, 220.0))
-            .default_width(360.0)
-            .resizable(false)
             .constrain_to(area)
             .show(ctx, |ui| {
                 ui.checkbox(&mut s.shadows, t("Cast shadows in the 3D view"));

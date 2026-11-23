@@ -50,7 +50,7 @@ impl CreaBimApp {
             .id(egui::Id::new("ducts.sizing"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(330.0, 250.0))
-            .default_size(Vec2::new(660.0, 500.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(660.0, 500.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 if super::calcresultsui::write_button(ui) {

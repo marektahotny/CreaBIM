@@ -257,7 +257,6 @@ impl CreaBimApp {
         crate::app::shell::window("Dátový štandard stavieb (DSS)".to_string())
             .open(&mut open)
             .default_pos(area.min + Vec2::new(60.0, 80.0))
-            .default_width(460.0)
             .constrain_to(area)
             .collapsible(false)
             .show(ctx, |ui| {
