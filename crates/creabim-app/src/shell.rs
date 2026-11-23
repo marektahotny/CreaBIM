@@ -522,6 +522,22 @@ impl CreaBimApp {
             "menu:Help" => self.help_menu(),
             "menu:Create" => self.create_menu(),
             "tab:schedules" => schedule_items(),
+            "tab:footing" => {
+                let k = self.plan.members.footing_kind;
+                let on = |x| self.plan.tool == Tool::Footing && k == x;
+                use creabim_core::FootingKind as F;
+                vec![
+                    Item::new("footing.kind:strip", "Strip footing")
+                        .icon("footing")
+                        .checked(on(F::Strip)),
+                    Item::new("footing.kind:pad", "Pad footing")
+                        .icon("square-dashed")
+                        .checked(on(F::Pad)),
+                    Item::new("footing.kind:pile", "Pile")
+                        .icon("cylinder")
+                        .checked(on(F::Pile)),
+                ]
+            }
             "tab:masonry" => vec![
                 Item::new("masonry:plan", "Masonry plan of this storey").icon("brick-wall"),
                 Item::new("masonry:window", "Lintels and wall rules…").icon("settings"),
@@ -1608,6 +1624,14 @@ impl CreaBimApp {
                     _ => self.run_command(ctx, c, at),
                 }
             }
+            // the Footing tool's menu: strip, pad or pile, picked as the
+            // tool is (then its kind set)
+            "footing.kind" => {
+                if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::Footing) {
+                    self.run_action(ctx, &format!("tool:{i}"));
+                    self.types_action(head, arg);
+                }
+            }
             // the spot level tool writing S-JTSK coordinates (PilonDesigner's
             // cadastre mark)
             "site" if arg == "coords" => {
@@ -1916,6 +1940,7 @@ impl CreaBimApp {
             "new.empty" => self.new_empty_project(),
             "new.project" => self.open_new_project(ctx),
             "new.sheet" => self.new_sheet(),
+            a if a.starts_with("sheet.in:") => self.new_sheet_in(&a["sheet.in:".len()..]),
             "levels" => self.open_levels(),
             "project.info" => self.project_open = true,
             "level.add" => self.add_level_above(),
@@ -2237,7 +2262,10 @@ impl CreaBimApp {
                 if arg == "square" || arg == "round" {
                     self.plan.types.remove(&creabim_core::TypeCategory::Column);
                 }
-                crate::memberstool::toggle_option(&mut self.plan, arg)
+                crate::memberstool::toggle_option(&mut self.plan, arg);
+                if arg.starts_with("footing.") {
+                    self.drop_other_footing_type();
+                }
             }
             "slab.mode" => {
                 if let Some(m) = index.and_then(|i| crate::slabtool::SlabMode::ALL.get(i)) {
@@ -4290,8 +4318,10 @@ impl CreaBimApp {
                 }
             }
         }
-        // the drawings to print: the sheets, those of the documentation's
-        // set under its parts (C, D.1 ASR, D.3 ZTI...), by number
+        // the drawings to print: the sheets, all of them under "Drawings
+        // to print", those of the documentation's set under its parts (A,
+        // C, D with D.1 ASR, D.3 ZTI... under it), by number (George
+        // 2026-11-23)
         {
             let mut sheets: Vec<(&Element, &creabim_core::Sheet)> = model
                 .iter()
@@ -4301,31 +4331,102 @@ impl CreaBimApp {
                 })
                 .collect();
             sheets.sort_by(|a, b| a.1.number.cmp(&b.1.number));
-            let mut parts: Vec<(&str, Vec<Value>)> = vec![("Drawings to print", vec![])];
+            const ROOT: &str = "Drawings to print";
+            let mut parts: Vec<(usize, &str, Vec<Value>)> = vec![(0, ROOT, vec![])];
             for (e, sh) in sheets {
                 let mut r = row(e, true);
-                r["name"] = json!(format!("{} · {}", sh.number, e.name));
-                let part = creabim_geom::docset::part_of(&sh.number).unwrap_or("Drawings to print");
-                match parts.iter_mut().find(|p| p.0 == part) {
-                    Some(p) => p.1.push(r),
-                    None => parts.push((part, vec![r])),
+                // a title page is just that, under its part
+                r["name"] = json!(if creabim_geom::coverpage::cover_of(sh).is_some() {
+                    crate::i18n::tr("Title page")
+                } else {
+                    format!("{} · {}", sh.number, e.name)
+                });
+                let (order, part) = creabim_geom::docset::part_order(&sh.number)
+                    .map_or((0, ROOT), |(i, p)| (i + 1, p));
+                match parts.iter_mut().find(|p| p.1 == part) {
+                    Some(p) => p.2.push(r),
+                    None => parts.push((order, part, vec![r])),
+                }
+            }
+            // a trade with drawings of its own has its part, sheets or none
+            // yet, so a sheet can be added to it
+            for e in model.iter() {
+                let ElementKind::View(v) = &e.kind else {
+                    continue;
+                };
+                use creabim_core::viewmodes::Trade;
+                let code = match v.trade {
+                    Some(Trade::Plumbing) => Some("ZTI"),
+                    Some(Trade::Heating) => Some("VYK"),
+                    Some(Trade::Ventilation) => Some("VZT"),
+                    Some(Trade::Electrical) => Some("ELI"),
+                    Some(Trade::MedGas) => Some("MPL"),
+                    None => e
+                        .name
+                        .rsplit(' ')
+                        .next()
+                        .filter(|c| ["ZTI", "VYK", "VZT", "ELI", "MPL"].contains(c)),
+                };
+                let Some((order, part)) =
+                    code.and_then(|c| creabim_geom::docset::part_order(&format!("_{c}_")))
+                else {
+                    continue;
+                };
+                if !parts.iter().any(|p| p.1 == part) {
+                    parts.push((order + 1, part, vec![]));
                 }
             }
             parts[1..].sort_by_key(|p| p.0);
-            for (i, (title, rows)) in parts.into_iter().enumerate() {
-                let acts = if i == 0 {
-                    json!([
-                        {"id": "sheets.set", "icon": "sheet-template",
-                         "hint": "Drawing set: make the plans, sections, elevations and lists still missing and a sheet for each, numbered by the building decree (C00_SIT, S01_ASR_001_N01...)"},
-                        {"id": "new.sheet", "icon": "plus", "hint": "New empty sheet"},
-                    ])
+            let icon = icon_name(Icon::of_class("Sheet"));
+            let root_key = format!("sheets:{ROOT}");
+            let d_key = "sheets:D".to_string();
+            let mut d_made = false;
+            for (i, (_, title, rows)) in parts.into_iter().enumerate() {
+                if i == 0 {
+                    out.push(json!({
+                        "key": root_key, "title": crate::i18n::tr(ROOT),
+                        "icon": icon, "open": true, "rows": rows, "depth": 0,
+                        "acts": [
+                            {"id": "sheets.set", "icon": "sheet-template",
+                             "hint": "Drawing set: make the plans, sections, elevations and lists still missing and a sheet for each, numbered by the building decree (C00_SIT, S01_ASR_001_N01...)"},
+                            {"id": "new.sheet", "icon": "plus", "hint": "New empty sheet"},
+                        ],
+                    }));
+                    continue;
+                }
+                // the building's parts (D.1, D.3...) under D
+                let trade = title.starts_with("D.");
+                if trade && !d_made {
+                    d_made = true;
+                    out.push(json!({
+                        "key": d_key, "title": crate::i18n::tr("D Documentation of the building objects"),
+                        "icon": icon, "open": true, "rows": [], "depth": 1,
+                        "parents": [root_key],
+                    }));
+                }
+                // "D.3 Zdravotechnika (ZTI)": the part's number before its
+                // name
+                let shown = if trade {
+                    let code = title.split(' ').next().unwrap_or("");
+                    let name = crate::i18n::tr(title);
+                    let name = name.strip_prefix("D S01 ").unwrap_or(&name).to_string();
+                    format!("{code} {name}")
                 } else {
-                    json!([])
+                    crate::i18n::tr(title)
+                };
+                let parents = if trade {
+                    json!([root_key, d_key])
+                } else {
+                    json!([root_key])
                 };
                 out.push(json!({
-                    "key": format!("sheets:{title}"), "title": title,
-                    "icon": icon_name(Icon::of_class("Sheet")), "open": true,
-                    "rows": rows, "acts": acts,
+                    "key": format!("sheets:{title}"), "title": shown,
+                    "icon": icon, "open": true, "rows": rows,
+                    "depth": if trade { 2 } else { 1 }, "parents": parents,
+                    "acts": [
+                        {"id": format!("sheet.in:{title}"), "icon": "plus",
+                         "hint": "New sheet in this part, numbered after its last"},
+                    ],
                 }));
             }
         }

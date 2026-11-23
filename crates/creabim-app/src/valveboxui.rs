@@ -47,6 +47,20 @@ impl CreaBimApp {
                             }
                         });
                         ui.end_row();
+                        // each gas's module: its fittings on or off, the
+                        // ball valves always in
+                        for (i, g) in BOX_GASES.iter().enumerate() {
+                            if !c.gases[i] {
+                                continue;
+                            }
+                            ui.label(format!("{} {g}", t("Module")));
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut c.nist[i], "NIST");
+                                ui.checkbox(&mut c.gauge[i], t("Gauge"));
+                                ui.checkbox(&mut c.sensor[i], t("Pressure switch (alarm)"));
+                            });
+                            ui.end_row();
+                        }
                         ui.label(t("Mounting"));
                         ui.horizontal(|ui| {
                             ui.selectable_value(&mut c.wall, false, t("Flush in the wall"));
@@ -88,6 +102,9 @@ impl CreaBimApp {
                 ui.weak(format!(
                     "{w:.0} × {h:.0} × {d:.0} mm · {} · STN EN ISO 7396-1, STN EN 13348",
                     t("in on the right, out on the left seen at the door")
+                ));
+                ui.weak(t(
+                    "Each module has its ball valves (in and out); the NIST inlet, the control gauge and the pressure switch for the alarm go in as the requirements ask.",
                 ));
                 if !(1.0..=1.8).contains(&c.height) {
                     ui.colored_label(

@@ -123,7 +123,7 @@ pub fn settings_key(s: &PlanState) -> String {
             &m.railing_section,
         ),
         (
-            m.footing_pad,
+            m.footing_kind,
             m.footing_width,
             m.footing_thickness,
             m.footing_align,
@@ -243,7 +243,7 @@ pub fn pick_up(state: &mut PlanState, model: &Model, id: ElementId) -> Result<St
         }
         ElementKind::Footing(f) => {
             let m = &mut s.members;
-            m.footing_pad = f.kind == creabim_core::FootingKind::Pad;
+            m.footing_kind = f.kind;
             m.footing_width = f.width;
             m.footing_thickness = f.thickness;
             m.footing_align = f.align;

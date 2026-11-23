@@ -7623,6 +7623,48 @@ impl CreaBimApp {
         );
     }
 
+    /// A new sheet in the part of the documentation called `part` (D.3
+    /// Plumbing (ZTI)...), numbered after its last sheet, its title block
+    /// as theirs (George 2026-11-23).
+    pub(super) fn new_sheet_in(&mut self, part: &str) {
+        let model = self.doc.model();
+        let Some(number) = creabim_geom::docset::next_in_part(model, part) else {
+            return;
+        };
+        // the paper and the title block's fields of the part's last sheet
+        let like = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Sheet(s)
+                    if creabim_geom::docset::part_of(&s.number) == Some(part)
+                        && creabim_geom::coverpage::cover_of(s).is_none() =>
+                {
+                    Some(s)
+                }
+                _ => None,
+            })
+            .max_by(|a, b| a.number.cmp(&b.number))
+            .cloned();
+        let mut sheet = Sheet::a(number.clone(), "A3");
+        if let Some(l) = like {
+            sheet.fields = l.fields.clone();
+            sheet.template = l.template;
+        }
+        let e = Element::new(crate::i18n::tr("New Sheet"), ElementKind::Sheet(sheet));
+        let id = e.id;
+        let r = self.doc.commit(Transaction::new("New sheet").insert(e));
+        self.active_view = Some(id);
+        self.selection.only(id);
+        self.report(
+            r,
+            format!(
+                "{} {number}. {}",
+                crate::i18n::tr("New A3 sheet"),
+                crate::i18n::tr("Use Place view… in the toolbar to put views on it.")
+            ),
+        );
+    }
+
     fn new_schedule(&mut self, category: ScheduleCategory) {
         let label = category.label();
         let e = Element::new(
@@ -11014,9 +11056,12 @@ crate::props::row(ui, "File names", |ui| {
                                         .selectable_label(current == *name, crate::i18n::tw(*name))
                                         .clicked()
                                     {
+                                        let upright = sh.height > sh.width;
                                         (sh.width, sh.height) = (*w, *h);
-                                        // a title page stands upright
-                                        if creabim_geom::coverpage::cover_of(sh).is_some()
+                                        // a title page stands upright, and
+                                        // a sheet standing up stays so
+                                        if (upright
+                                            || creabim_geom::coverpage::cover_of(sh).is_some())
                                             && sh.width > sh.height
                                         {
                                             (sh.width, sh.height) = (sh.height, sh.width);
@@ -13469,8 +13514,11 @@ impl CreaBimApp {
                 .doc
                 .model()
                 .iter()
-                .find(|e| {
-                    e.name == name && matches!(e.kind, ElementKind::View(_) | ElementKind::Sheet(_))
+                .find(|e| match &e.kind {
+                    // a sheet by its number too
+                    ElementKind::Sheet(sh) => e.name == name || sh.number == name,
+                    ElementKind::View(_) => e.name == name,
+                    _ => false,
                 })
                 .map(|e| e.id);
             self.active_view = id;
@@ -14763,7 +14811,8 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     for e in model.iter() {
         if let ElementKind::View(v) = &e.kind {
             let mut now = v.clone();
-            let thin = creabim_core::viewmodes::DisplayMode::thin_building(&mut now);
+            let thin = creabim_core::viewmodes::DisplayMode::thin_building(&mut now)
+                | creabim_core::viewmodes::DisplayMode::trade_by_name(&mut now, &e.name);
             if creabim_core::viewmodes::DisplayMode::show_own_annotation(&mut now) || thin {
                 let mut after = e.clone();
                 after.kind = ElementKind::View(now);
@@ -14776,6 +14825,19 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // storey does (George 2026-11-23)
     for t in creabim_core::viewmodes::trade_room_tags(&model) {
         tx = tx.insert(t);
+        any = true;
+    }
+    // a heat pump's indoor unit without its cross (George 2026-11-23)
+    if let Some(t) = creabim_core::objects::mend_heat_pump_symbols(&model) {
+        tx.ops.extend(t.ops);
+        any = true;
+    }
+    // the lists of windows and doors on an A4 standing up (George
+    // 2026-11-23)
+    if let Some(t) = creabim_geom::joinerylist::portrait_sheets(&model) {
+        for op in t.ops {
+            tx.ops.push(op);
+        }
         any = true;
     }
     // the base's materials take the hatches of the ASR legend of

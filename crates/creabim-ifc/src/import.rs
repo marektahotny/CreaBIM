@@ -397,7 +397,8 @@ impl<'a> Importer<'a> {
         self.import_bare_openings();
         self.import_wall_voids();
         self.import_objects();
-        for &id in self.ids("IFCFOOTING") {
+        let piles: Vec<u64> = self.ids("IFCPILE").to_vec();
+        for &id in self.ids("IFCFOOTING").to_vec().iter().chain(&piles) {
             self.import_footing(id);
         }
         self.import_spaces();

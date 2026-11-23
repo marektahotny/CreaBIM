@@ -31,6 +31,10 @@ pub enum FootingKind {
     Strip,
     /// A rectangular pad under a column (IFC's PAD_FOOTING).
     Pad,
+    /// A bored pile: a round shaft `width` across, `thickness` long from
+    /// its head down to its toe (IfcPile BORED), under a column or on its
+    /// own, as PilonDesigner's `pilota`.
+    Pile,
 }
 
 impl FootingKind {
@@ -38,6 +42,7 @@ impl FootingKind {
         match self {
             FootingKind::Strip => "Strip footing",
             FootingKind::Pad => "Pad footing",
+            FootingKind::Pile => "Pile",
         }
     }
 
@@ -46,7 +51,13 @@ impl FootingKind {
         match self {
             FootingKind::Strip => "STRIP_FOOTING",
             FootingKind::Pad => "PAD_FOOTING",
+            FootingKind::Pile => "BORED",
         }
+    }
+
+    /// Placed about a point (a pad or a pile), not along a line.
+    pub fn at_point(self) -> bool {
+        self != FootingKind::Strip
     }
 }
 
@@ -131,6 +142,13 @@ pub const STRIP_WIDTH: f64 = 0.6;
 pub const STRIP_THICKNESS: f64 = 0.3;
 pub const PAD_SIZE: f64 = 1.2;
 pub const PAD_THICKNESS: f64 = 0.4;
+/// The sides of the polygon a pile's circle is drawn with.
+pub const PILE_SIDES: usize = 32;
+/// A pile's default, as PilonDesigner's: Ø 600, its head 1.2 m under the
+/// level's floor and its toe 9.2 m (8 m long), reinforced concrete.
+pub const PILE_DIAMETER: f64 = 0.6;
+pub const PILE_LENGTH: f64 = 8.0;
+pub const PILE_HEAD_BELOW: f64 = 1.2;
 
 impl Footing {
     /// A strip footing on `level` along `start` → `end`.
@@ -173,6 +191,25 @@ impl Footing {
         }
     }
 
+    /// A bored pile on `level`, its head's centre at `center`.
+    pub fn pile(level: ElementId, center: DVec2) -> Self {
+        Self {
+            kind: FootingKind::Pile,
+            width: PILE_DIAMETER,
+            length: PILE_DIAMETER,
+            thickness: PILE_LENGTH,
+            below: PILE_HEAD_BELOW,
+            ..Self::pad(level, center)
+        }
+    }
+
+    /// A pile under column `id`, on the column's base level.
+    pub fn pile_under_column(id: ElementId, column: &crate::Column) -> Self {
+        let mut f = Self::pile(column.level, column.position);
+        f.host = Some(id);
+        f
+    }
+
     /// A strip footing under wall `id`, on the wall's level.
     pub fn under_wall(id: ElementId, wall: &Wall) -> Self {
         let mut f = Self::strip(wall.level, wall.start, wall.end);
@@ -200,7 +237,7 @@ impl Footing {
     /// The column it is under, when it is a pad under one that exists.
     pub fn host_column<'a>(&self, model: &'a Model) -> Option<&'a crate::Column> {
         match (self.kind, model.get(self.host?).map(|e| &e.kind)) {
-            (FootingKind::Pad, Some(ElementKind::Column(c))) => Some(c),
+            (FootingKind::Pad | FootingKind::Pile, Some(ElementKind::Column(c))) => Some(c),
             _ => None,
         }
     }
@@ -281,9 +318,18 @@ impl Footing {
         }
     }
 
-    /// A pad's outline in plan, counter-clockwise.
+    /// A pad's outline in plan, counter-clockwise; a pile's circle.
     pub fn pad_outline(&self, model: &Model) -> Vec<DVec2> {
         let (c, turn) = self.place(model);
+        if self.kind == FootingKind::Pile {
+            let r = self.width / 2.0;
+            return (0..PILE_SIDES)
+                .map(|i| {
+                    let a = std::f64::consts::TAU * i as f64 / PILE_SIDES as f64;
+                    c + DVec2::new(a.cos(), a.sin()) * r
+                })
+                .collect();
+        }
         let r = DVec2::from_angle(turn.to_radians());
         let (x, y) = (self.width / 2.0, self.length / 2.0);
         [(-x, -y), (x, -y), (x, y), (-x, y)]
@@ -310,7 +356,7 @@ impl Footing {
                 let (a, b) = self.line(model);
                 (a + b) / 2.0
             }
-            FootingKind::Pad => self.place(model).0,
+            FootingKind::Pad | FootingKind::Pile => self.place(model).0,
         };
         p.extend(self.top(model))
     }
@@ -332,7 +378,7 @@ impl Footing {
             return Err("footing position must be finite".into());
         }
         match self.kind {
-            FootingKind::Pad => positive(self.length, "footing length"),
+            FootingKind::Pad | FootingKind::Pile => positive(self.length, "footing length"),
             FootingKind::Strip if self.host.is_none() => {
                 positive(self.start.distance(self.end), "footing length")
             }
@@ -588,7 +634,7 @@ pub fn outlines(
         return vec![];
     };
     match f.kind {
-        FootingKind::Pad => vec![f.pad_outline(model)],
+        FootingKind::Pad | FootingKind::Pile => vec![f.pad_outline(model)],
         FootingKind::Strip => match strips {
             Some(s) => s.get(&e.id).cloned().unwrap_or_default(),
             None => strip_outlines(model).remove(&e.id).unwrap_or_default(),
@@ -717,7 +763,7 @@ pub fn detached(model: &Model, f: &Footing) -> Footing {
                 out.below = f.below - w.base_offset;
             }
         }
-        FootingKind::Pad => {
+        FootingKind::Pad | FootingKind::Pile => {
             let (c, turn) = f.place(model);
             out.start = c;
             out.end = c;
@@ -756,6 +802,34 @@ mod tests {
         }
         tx.apply(&mut m).unwrap();
         (m, lid, ids)
+    }
+
+    #[test]
+    fn a_pile_under_a_column_sits_on_its_axis_as_a_round_shaft() {
+        let (mut m, lid, _) = model_with(&[]);
+        let c = crate::Column::new(
+            lid,
+            DVec2::new(3.0, 2.0),
+            Profile::Rectangle {
+                width: 0.3,
+                depth: 0.3,
+            },
+        );
+        let ce = Element::new("C", ElementKind::Column(c.clone()));
+        let cid = ce.id;
+        Transaction::new("c").insert(ce).apply(&mut m).unwrap();
+        let f = Footing::pile_under_column(cid, &c);
+        assert_eq!(f.kind, FootingKind::Pile);
+        assert!(f.kind.at_point());
+        // George's PilonDesigner defaults: Ø 600, 8 m long, head 1.2 m down
+        assert_eq!((f.width, f.thickness, f.below), (0.6, 8.0, 1.2));
+        let ring = f.pad_outline(&m);
+        assert_eq!(ring.len(), PILE_SIDES);
+        for p in &ring {
+            assert!((p.distance(c.position) - 0.3).abs() < 1e-9);
+        }
+        let back: Footing = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert_eq!(back.kind, FootingKind::Pile);
     }
 
     #[test]

@@ -1691,6 +1691,50 @@ fn show_pane(
             draw_item(&painter, &xf, item, selected, mm);
         }
     }
+    // a fixture's connector under the pointer says what it is: ZTI-SV
+    // studená voda, DN 20, at its height (George 2026-11-23)
+    if let (PaneKind::Plan { .. }, Some(h)) = (kind, response.hover_pos()) {
+        let at = xf.to_world(h);
+        let reach = creabim_geom::objects::CONNECTOR_MARK.max(5.0 / xf.scale as f64);
+        let model = doc.model();
+        let found = plan.items.iter().find_map(|it| match it {
+            PlanItem::Arc {
+                id, center, radius, ..
+            } if (*radius - creabim_geom::objects::CONNECTOR_MARK).abs() < 1e-9
+                && center.distance(at) <= reach =>
+            {
+                let e = model.get(*id)?;
+                creabim_core::fixture::connectors(model, e)
+                    .into_iter()
+                    .find(|c| c.at.truncate().distance(*center) < 1e-6)
+            }
+            _ => None,
+        });
+        if let Some(c) = found {
+            let text = format!(
+                "{} {}, DN {:.0}, {} {} m",
+                c.kind.label(),
+                crate::i18n::tr(c.kind.name()),
+                c.dn,
+                crate::i18n::tr("height"),
+                crate::i18n::num(c.at.z, 3)
+            );
+            let font = egui::FontId::proportional(13.0);
+            let vis = ui.visuals();
+            let (ink, ground) = (vis.text_color(), vis.window_fill);
+            let galley = painter.layout_no_wrap(text, font, ink);
+            let pos = h + egui::vec2(14.0, -24.0);
+            let rect = egui::Rect::from_min_size(pos, galley.size()).expand(5.0);
+            painter.rect_filled(rect, 4.0, ground);
+            painter.rect_stroke(
+                rect,
+                4.0,
+                Stroke::new(1.0, crate::theme::interaction()),
+                egui::StrokeKind::Outside,
+            );
+            painter.galley(pos, galley, ink);
+        }
+    }
     // a selected window or door of a plan shows its fire-dangerous space,
     // unless the plan shows every opening's already
     if let PaneKind::Plan { level } = kind {
@@ -2937,8 +2981,7 @@ fn show_pane(
                     return None;
                 }
                 if footing_box {
-                    let pad = crate::memberstool::footing_kind(doc.model(), state)
-                        == creabim_core::FootingKind::Pad;
+                    let pad = crate::memberstool::footing_kind(doc.model(), state).at_point();
                     let hosts: Vec<ElementId> = ids
                         .filter(|id| match doc.model().get(*id).map(|e| &e.kind) {
                             Some(ElementKind::Wall(w)) => !pad && w.curtain.is_none(),
@@ -3553,7 +3596,12 @@ fn show_pane(
         if hovered != Some(h) {
             draw_hover(&painter, &xf, &plan.items, h, mm);
         }
-        let mut text = crate::memberstool::host_preview(doc.model(), state, tool, h);
+        let mut text = crate::i18n::tr(&crate::memberstool::host_preview(
+            doc.model(),
+            state,
+            tool,
+            h,
+        ));
         if host_hits.len() > 1 {
             let i = state.host_cycle % host_hits.len();
             text += &format!("   {}/{} · Tab", i + 1, host_hits.len());
@@ -5728,6 +5776,7 @@ fn refresh_snaps(
         let _p = crate::app::Perf::new("plan snaps: build");
         let mut s = Snapper::from_drawing(&plan.items, &[]);
         s.add_underlay_centres(model, view);
+        s.add_column_centres(model, view);
         add_reference_snaps(&mut s, state, model, view);
         if let Some(under) = underlay_view(model, view) {
             add_reference_snaps(&mut s, state, model, under);
@@ -6584,6 +6633,9 @@ pub struct Ovr {
     pub proj: f32,
     pub cut: f32,
     pub dashed: bool,
+    /// Every line in one very thin pen, whatever its own: the building
+    /// and the other trades' objects under a trade's drawing.
+    pub thin: bool,
 }
 
 impl Default for Ovr {
@@ -6595,6 +6647,7 @@ impl Default for Ovr {
             proj: 1.0,
             cut: 1.0,
             dashed: false,
+            thin: false,
         }
     }
 }
@@ -6702,6 +6755,22 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
                 }
                 if own {
                     r.fade = 0.0;
+                } else {
+                    // as thin and light as the building (George 2026-11-23)
+                    r.thin = true;
+                    if r.fade < 0.5 {
+                        r.fade = 1.0 - (1.0 - r.fade) * 0.5;
+                    }
+                }
+            }
+            // the building: all its lines alike, door swings and lines
+            // over the cut too
+            let cutters = creabim_core::visibility::cutters(model);
+            for e in model.iter() {
+                if creabim_core::visibility::Category::of(e, &cutters)
+                    .is_some_and(|c| creabim_core::viewmodes::BUILDING.contains(&c))
+                {
+                    out.entry(e.id).or_default().thin = true;
                 }
             }
         }
@@ -6767,6 +6836,80 @@ pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bo
 }
 
 /// [`draw_item`] with a view's overrides for the element.
+/// [`draw_item_with`] for an element drawn all in one thin pen (its
+/// lines, arcs and outlines, each in its own line type); none for items
+/// drawn as usual (fills, text).
+fn draw_thin(painter: &egui::Painter, xf: &Xf, item: &PlanItem, o: &Ovr) -> Option<()> {
+    const W: f32 = 0.6;
+    let ink = o.colour.unwrap_or(Color32::BLACK);
+    let stroke = Stroke::new(W, ink);
+    let dashes_of = |pen: &Pen| -> Option<Vec<f64>> {
+        match pen {
+            Pen::Overhead => Some(
+                creabim_geom::paper::OVERHEAD_DASHES
+                    .iter()
+                    .map(|d| d * 2.5)
+                    .collect(),
+            ),
+            Pen::Hidden | Pen::HiddenCut => Some(vec![6.0, 4.0]),
+            Pen::Drafted(l) => l.kind.dashes().map(|d| d.iter().map(|x| x * 2.5).collect()),
+            Pen::Projection if o.dashed => Some(vec![6.0, 4.0]),
+            _ => None,
+        }
+    };
+    let line = |pts: &[Pos2], pen: &Pen| match dashes_of(pen) {
+        None => {
+            painter.add(egui::Shape::line(pts.to_vec(), stroke));
+        }
+        Some(d) => {
+            let v: Vec<DVec2> = pts
+                .iter()
+                .map(|p| DVec2::new(p.x as f64, p.y as f64))
+                .collect();
+            for piece in creabim_geom::looks::dash_polyline(&v, &d, W as f64) {
+                let q: Vec<Pos2> = piece
+                    .iter()
+                    .map(|p| egui::pos2(p.x as f32, p.y as f32))
+                    .collect();
+                painter.add(egui::Shape::line(q, stroke));
+            }
+        }
+    };
+    match item {
+        PlanItem::Line { pen, a, b, .. }
+            if !matches!(pen, Pen::Guide | Pen::Grid | Pen::Underlay) =>
+        {
+            line(&[xf.to_screen(*a), xf.to_screen(*b)], pen);
+        }
+        PlanItem::Arc {
+            center,
+            radius,
+            start,
+            end,
+            pen,
+            ..
+        } if *pen != Pen::Underlay => {
+            let n = 24;
+            let pts: Vec<Pos2> = (0..=n)
+                .map(|i| {
+                    let t = start + (end - start) * i as f64 / n as f64;
+                    xf.to_screen(*center + DVec2::from_angle(t) * *radius)
+                })
+                .collect();
+            line(&pts, pen);
+        }
+        PlanItem::Polygon { pen, points, .. } if *pen != Pen::Cut => {
+            let mut pts: Vec<Pos2> = points.iter().map(|p| xf.to_screen(*p)).collect();
+            if let Some(f) = pts.first().copied() {
+                pts.push(f);
+            }
+            line(&pts, pen);
+        }
+        _ => return None,
+    }
+    Some(())
+}
+
 pub fn draw_item_with(
     painter: &egui::Painter,
     xf: &Xf,
@@ -6788,6 +6931,13 @@ pub fn draw_item_with(
         ..*o
     };
     let o = if thin_lines() { &thin } else { o };
+    // the building under a trade's drawing: every line in one thin pen,
+    // its line type kept
+    if o.thin && !selected {
+        if let Some(done) = draw_thin(painter, xf, item, o) {
+            return done;
+        }
+    }
     let highlight = crate::theme::interaction();
     let ink = if selected {
         highlight
@@ -7314,7 +7464,9 @@ pub fn draw_footings(
         }
         let outlines = match f.kind {
             creabim_core::FootingKind::Strip => strips.get(&e.id).cloned().unwrap_or_default(),
-            creabim_core::FootingKind::Pad => vec![f.pad_outline(model)],
+            creabim_core::FootingKind::Pad | creabim_core::FootingKind::Pile => {
+                vec![f.pad_outline(model)]
+            }
         };
         let tint = accent.gamma_multiply(if selected { 0.22 } else { 0.12 });
         let stroke = Stroke::new(if selected { 1.8 } else { 1.2 }, accent);

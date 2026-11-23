@@ -680,20 +680,52 @@ use glam::{DVec2, DVec3};
 /// How near a click must be to a fixture's connector to join it, m.
 const CONNECTOR_REACH: f64 = 0.05;
 
-/// The fixture connector on `level` nearest `p`, within reach.
+/// The fixture connector on `level` a click at `p` joins: one of the
+/// `system` the tool draws within reach first, then that system's on the
+/// object clicked anywhere on (a click on a basin with cold water set
+/// takes its cold water, at its height, George 2026-11-23), then any
+/// other within reach.
 pub fn connector_at(
     model: &creabim_core::Model,
     level: ElementId,
     p: DVec2,
+    system: Option<&str>,
 ) -> Option<creabim_core::fixture::Connector> {
-    model
-        .iter()
-        .filter(|e| matches!(&e.kind, ElementKind::Object(o) if o.level == level))
-        .flat_map(|e| creabim_core::fixture::connectors(model, e))
-        .map(|c| (c.at.truncate().distance(p), c))
-        .filter(|(d, _)| *d <= CONNECTOR_REACH)
-        .min_by(|a, b| a.0.total_cmp(&b.0))
-        .map(|(_, c)| c)
+    let mut best: Option<(f64, creabim_core::fixture::Connector)> = None;
+    for e in model.iter() {
+        let ElementKind::Object(o) = &e.kind else {
+            continue;
+        };
+        if o.level != level {
+            continue;
+        }
+        let conns = creabim_core::fixture::connectors(model, e);
+        if conns.is_empty() {
+            continue;
+        }
+        // on the object: inside its outline in plan
+        let on = creabim_core::objects::type_of(model, e).is_some_and(|t| {
+            let (lo, hi) = t.bounds();
+            let d = p - o.position;
+            let (s, c) = (-o.rotation.to_radians()).sin_cos();
+            let q = DVec2::new(d.x * c - d.y * s, d.x * s + d.y * c);
+            q.x >= lo.x && q.x <= hi.x && q.y >= lo.y && q.y <= hi.y
+        });
+        for c in conns {
+            let d = c.at.truncate().distance(p);
+            let fits = system.is_none_or(|s| c.kind.code() == s);
+            let key = match (d <= CONNECTOR_REACH, fits, on) {
+                (true, true, _) => d,
+                (false, true, true) if system.is_some() => 1.0 + d,
+                (true, false, _) => 2.0 + d,
+                _ => continue,
+            };
+            if best.as_ref().is_none_or(|b| key < b.0) {
+                best = Some((key, c));
+            }
+        }
+    }
+    best.map(|b| b.1)
 }
 
 /// How near a click must be to a pipe's end or axis to join it, m.
@@ -846,7 +878,8 @@ pub fn click(
     state: &mut crate::planview::PlanState,
     selection: &mut crate::selection::Selection,
 ) -> Result<(), ModelError> {
-    let conn = connector_at(doc.model(), level, p);
+    let system = state.members.pipe.system.clone();
+    let conn = connector_at(doc.model(), level, p, Some(&system));
     let draft = &mut state.members.pipe;
     match state.pending {
         None => {
@@ -860,6 +893,10 @@ pub fn click(
                     }
                 }
                 draft.last_z = Some(c.at.z);
+                // the pipe as big as the fixture's connection
+                if c.dn > 0.0 {
+                    draft.nominal_mm = c.dn;
+                }
                 p = c.at.truncate();
             } else if let Some(n) = pipe_node_at(doc.model(), level, p, draft.height, None) {
                 // going on from a pipe: as it is, at its height
@@ -1192,13 +1229,18 @@ mod tool_tests {
         place(4.0);
         let model = doc.model();
         let hot = |x: f64| {
-            let c = connector_at(model, level, DVec2::new(x - 0.08, 2.98)).unwrap();
+            let c = connector_at(model, level, DVec2::new(x - 0.08, 2.98), None).unwrap();
             assert_eq!(c.kind, creabim_core::fixture::ConnKind::TV);
             c
         };
         let (a, b) = (hot(1.0), hot(4.0));
+        // the tool on cold water, a click on the basin by its hot tap
+        // takes its cold one (George 2026-11-23)
+        let cold = connector_at(model, level, DVec2::new(1.0 - 0.08, 2.98), Some("SV")).unwrap();
+        assert_eq!(cold.kind, creabim_core::fixture::ConnKind::SV);
         let mut state = crate::planview::PlanState::default();
         let mut sel = crate::selection::Selection::default();
+        assert!(action(&mut state.members.pipe, "pipe", "TV"));
         click(
             &mut doc,
             level,

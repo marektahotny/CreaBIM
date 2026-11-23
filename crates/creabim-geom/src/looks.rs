@@ -32,6 +32,9 @@ struct Look {
     /// material, and the hatch of that material.
     material_pattern: Option<(Hatch, String)>,
     hatch_off: bool,
+    /// Every line of it in this one pen, mm, whatever its pen: the
+    /// building and the other trades' objects under a trade's drawing.
+    thin: Option<f64>,
     surface_fill: Option<[f32; 3]>,
     surface_pattern: Option<String>,
     order: i32,
@@ -209,10 +212,22 @@ impl Looks {
                     if own {
                         l.projection = Some(OWN_EQUIPMENT);
                         l.fade = 0.0;
-                    } else if l.projection.is_none_or(|x| x > THIN) {
+                    } else {
+                        // in the building's very thin pen and its halftone,
+                        // every line of it alike (George 2026-11-23)
                         l.projection = Some(THIN);
+                        l.thin = Some(THIN);
+                        if l.fade < 0.5 {
+                            mix(&mut l.fade, 0.5);
+                        }
                     }
                 }
+            }
+            // the building under a trade's drawing: all its lines very
+            // thin, door swings, lines over the cut and the drafted ones
+            // too (George 2026-11-23)
+            if services && !v.coordination && creabim_core::viewmodes::BUILDING.contains(&cat) {
+                l.thin = Some(creabim_core::viewmodes::THIN);
             }
             // a services drawing's pipes: lines in their system's colour
             // and line type, unless the view says otherwise
@@ -393,7 +408,11 @@ impl Looks {
         let Some(l) = self.look(id) else {
             return (s, None, overhead);
         };
+        if let Some(x) = l.thin {
+            s.width = x;
+        }
         match pen {
+            _ if l.thin.is_some() => {}
             Pen::Cut => {
                 if let Some(x) = l.cut {
                     s.width = x;

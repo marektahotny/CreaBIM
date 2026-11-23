@@ -39,6 +39,106 @@ impl MedUnitKind {
 /// The gases a unit can carry, in the order they stand on it.
 pub const MED_GASES: [&str; 5] = ["O2", "AIR", "VAC", "N2O", "AGSS"];
 
+/// Which of a unit's parts it is made with: Flídr medical builds the
+/// rail and the bridge to the room's needs, so each part can be left out
+/// (its count is kept, to come back when the part is switched on again).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MedParts {
+    /// The outlets of each of [`MED_GASES`].
+    pub gases: [bool; 5],
+    pub sockets: bool,
+    pub sockets_backed: bool,
+    /// Weak current: data RJ45.
+    pub data: bool,
+    pub usb: bool,
+    /// The indirect light (up to the ceiling).
+    pub light_indirect: bool,
+    /// The direct light (down to the bed).
+    pub light_direct: bool,
+    /// The night orientation light.
+    pub light_night: bool,
+    /// The stainless medical rail 25 × 10 (medilišta) for accessories.
+    pub med_rail: bool,
+}
+
+impl MedParts {
+    /// Every part on.
+    pub fn all() -> Self {
+        Self {
+            gases: [true; 5],
+            sockets: true,
+            sockets_backed: true,
+            data: true,
+            usb: true,
+            light_indirect: true,
+            light_direct: true,
+            light_night: true,
+            med_rail: true,
+        }
+    }
+}
+
+impl Default for MedParts {
+    fn default() -> Self {
+        Self::all()
+    }
+}
+
+/// A unit's catalogue set by the Flídr medical catalogue
+/// (flidr-medical-katalog-sortimentu.pdf, "Nástěnná rampa NR-H3" and
+/// "Stropní mosty – pevné SM-P 5.4").
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MedCatalogue {
+    pub length_mm: f64,
+    /// The rail's height or the bridge's depth, mm.
+    pub size_mm: f64,
+    pub gas_outlets: u32,
+    pub agss: u32,
+    pub sockets: u32,
+    pub weak: u32,
+    pub usb: u32,
+    /// Indirect, direct and night light, W (LED); 0 = none.
+    pub light_w: [f64; 3],
+    /// Load on the medical rail, kg.
+    pub rail_load_kg: f64,
+}
+
+impl MedUnitKind {
+    /// Its catalogue set.
+    pub fn catalogue(self) -> MedCatalogue {
+        match self {
+            MedUnitKind::Rail => MedCatalogue {
+                length_mm: 1500.0,
+                size_mm: 233.0,
+                gas_outlets: 6,
+                agss: 0,
+                sockets: 6,
+                weak: 4,
+                usb: 2,
+                light_w: [27.0, 9.0, 2.0],
+                rail_load_kg: 50.0,
+            },
+            MedUnitKind::Bridge => MedCatalogue {
+                length_mm: 2000.0,
+                size_mm: 310.0,
+                gas_outlets: 8,
+                agss: 1,
+                sockets: 24,
+                weak: 2,
+                usb: 2,
+                light_w: [24.0, 10.0, 2.0],
+                rail_load_kg: 300.0,
+            },
+        }
+    }
+
+    /// Whether it can carry the gas `MED_GASES[i]`: the NR-H3 has no
+    /// AGSS outlet in the catalogue.
+    pub fn carries(self, i: usize) -> bool {
+        !(self == MedUnitKind::Rail && i == 4)
+    }
+}
+
 /// What a unit is fitted with.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MedUnitConfig {
@@ -61,6 +161,8 @@ pub struct MedUnitConfig {
     pub height: f64,
     /// The ceiling a bridge hangs from, above the floor, m.
     pub ceiling: f64,
+    /// Which parts it is made with.
+    pub on: MedParts,
 }
 
 impl MedUnitConfig {
@@ -81,6 +183,7 @@ impl MedUnitConfig {
                 two_sided: false,
                 height: 1.85,
                 ceiling: 2.8,
+                on: MedParts::all(),
             },
             MedUnitKind::Rail => Self {
                 kind,
@@ -96,23 +199,63 @@ impl MedUnitConfig {
                 two_sided: false,
                 height: 1.45,
                 ceiling: 2.8,
+                on: MedParts::all(),
             },
         }
     }
 
+    /// The unit as made: the counts of the parts switched off are 0.
+    pub fn fitted(&self) -> Self {
+        let mut c = self.clone();
+        let on = self.on;
+        for i in 0..5 {
+            if !on.gases[i] || !self.kind.carries(i) {
+                c.gases[i] = 0;
+            }
+        }
+        let off = |n: &mut u32, b: bool| {
+            if !b {
+                *n = 0
+            }
+        };
+        off(&mut c.sockets, on.sockets);
+        off(&mut c.sockets_backed, on.sockets_backed);
+        off(&mut c.data, on.data);
+        off(&mut c.usb, on.usb);
+        c
+    }
+
     /// Its gases and how many outlets of each.
     pub fn gas_counts(&self) -> Vec<(&'static str, u32)> {
+        let f = self.fitted();
         MED_GASES
             .iter()
-            .zip(self.gases)
+            .zip(f.gases)
             .filter(|(_, n)| *n > 0)
             .map(|(g, n)| (*g, n))
             .collect()
     }
 
+    /// Its lights and medical rail left out, by their marks in the code:
+    /// SN indirect, SP direct, SO night light, ML medical rail.
+    pub fn left_out(&self) -> Vec<&'static str> {
+        let on = self.on;
+        [
+            (on.light_indirect, "SN"),
+            (on.light_direct, "SP"),
+            (on.light_night, "SO"),
+            (on.med_rail, "ML"),
+        ]
+        .iter()
+        .filter(|(b, _)| !*b)
+        .map(|(_, m)| *m)
+        .collect()
+    }
+
     /// The unit's code as the plugin writes it:
     /// `NR-H3 1500 O2-1 AIR-1 VAC-1 Z4 ZZ2 D2 U2 S`.
     pub fn code(&self) -> String {
+        let f = self.fitted();
         let bridge = self.kind == MedUnitKind::Bridge;
         let gases: Vec<String> = self
             .gas_counts()
@@ -124,12 +267,12 @@ impl MedUnitConfig {
             self.kind.short(),
             layout(self).length,
             gases.join(" "),
-            self.sockets,
-            self.sockets_backed,
-            self.data
+            f.sockets,
+            f.sockets_backed,
+            f.data
         );
-        if self.usb > 0 {
-            s += &format!(" U{}", self.usb);
+        if f.usb > 0 {
+            s += &format!(" U{}", f.usb);
         }
         if self.nurse {
             s += " S";
@@ -142,6 +285,10 @@ impl MedUnitConfig {
         }
         if bridge {
             s += &format!(" H{:.0}", self.ceiling * 1000.0);
+        }
+        let out = self.left_out();
+        if !out.is_empty() {
+            s += &format!(" bez {}", out.join(" "));
         }
         s
     }
@@ -241,6 +388,7 @@ const GROUP_GAP: f64 = 60.0;
 /// Where everything stands on the profile (the plugin's
 /// `MedUnitLayout.Compute`).
 pub fn layout(c: &MedUnitConfig) -> MedLayout {
+    let c = &c.fitted();
     let bridge = c.kind == MedUnitKind::Bridge;
     let (height, depth) = if bridge {
         (230.0, 310.0)
@@ -415,6 +563,76 @@ pub fn unit(c: &MedUnitConfig) -> CatalogueObject {
             );
         }
     }
+    // the lights by the catalogue: the indirect one on top, up to the
+    // ceiling; the direct one on the underside, down to the bed; the
+    // night light low on the front
+    let on = c.on;
+    let diffuser = plastic("Diffuser, opal PMMA", [250, 250, 236]);
+    let e = 0.006;
+    if on.light_indirect {
+        b.add(
+            "Indirect light",
+            diffuser.clone(),
+            cuboid(
+                DVec3::new(-len / 2.0 + 0.06, front + 0.02, h),
+                DVec3::new(len / 2.0 - 0.06, back - 0.02, h + e),
+            ),
+            false,
+        );
+    }
+    if on.light_direct {
+        let (y0, y1) = if bridge {
+            (mid - 0.03, mid + 0.03)
+        } else {
+            (front + 0.015, front + 0.05)
+        };
+        b.add(
+            "Direct light",
+            diffuser.clone(),
+            cuboid(
+                DVec3::new(-len / 6.0, y0, 0.0),
+                DVec3::new(len / 6.0, y1, e),
+            ),
+            false,
+        );
+    }
+    if on.light_night {
+        b.add(
+            "Night light",
+            diffuser,
+            cuboid(
+                DVec3::new(len / 2.0 - 0.13, front - 0.004, 0.012),
+                DVec3::new(len / 2.0 - 0.07, front, 0.032),
+            ),
+            false,
+        );
+    }
+    // the stainless medical rail 25 × 10 along the front's top, on a
+    // two-sided bridge on its back too
+    if on.med_rail {
+        let steel = look(
+            "Stainless steel",
+            "metal",
+            Hatch::Solid,
+            [200, 204, 208],
+            0.3,
+        );
+        let mut faces = vec![(front - 0.010, front)];
+        if bridge && c.two_sided {
+            faces.push((back, back + 0.010));
+        }
+        for (y0, y1) in faces {
+            b.add(
+                "Medical rail 25 × 10",
+                steel.clone(),
+                cuboid(
+                    DVec3::new(-len / 2.0 + 0.02, y0, h - 0.035),
+                    DVec3::new(len / 2.0 - 0.02, y1, h - 0.010),
+                ),
+                false,
+            );
+        }
+    }
     for it in &l.items {
         let (w, ih, _) = it.kind.size();
         let (y0, y1) = if it.back {
@@ -470,13 +688,42 @@ pub fn unit(c: &MedUnitConfig) -> CatalogueObject {
         &key(c),
         &name,
         &format!(
-            "{}: medical gas outlets (STN EN ISO 9170-1), sockets, data and nurse call on one profile (STN EN ISO 11197); each gas joins it on top, Cu 12 × 1",
-            c.code()
+            "{}: medical gas outlets (STN EN ISO 9170-1), sockets, data and nurse call on one profile (STN EN ISO 11197){}; each gas joins it on top, Cu 12 × 1; Flídr medical",
+            c.code(),
+            lights(c)
         ),
         ObjectCategory::Medical,
         ("IfcMedicalDevice", "USERDEFINED"),
         if bridge { Mount::Ceiling } else { Mount::Wall },
     )
+}
+
+/// Its lights and medical rail as the description names them, with the
+/// catalogue's power.
+fn lights(c: &MedUnitConfig) -> String {
+    let w = c.kind.catalogue().light_w;
+    let on = c.on;
+    let mut v = vec![];
+    for (b, name, p) in [
+        (on.light_indirect, "indirect light", w[0]),
+        (on.light_direct, "direct light", w[1]),
+        (on.light_night, "night light", w[2]),
+    ] {
+        if b && p > 0.0 {
+            v.push(format!("{name} {p:.0} W LED"));
+        }
+    }
+    if on.med_rail {
+        v.push(format!(
+            "stainless medical rail 25 × 10 ({:.0} kg)",
+            c.kind.catalogue().rail_load_kg
+        ));
+    }
+    if v.is_empty() {
+        String::new()
+    } else {
+        format!(", {}", v.join(", "))
+    }
 }
 
 /// The usual rail and the usual bridge.
@@ -545,10 +792,51 @@ mod tests {
         assert_eq!(rail.object.mount, Mount::Wall);
         // its back on the wall, 105 mm out
         let (lo, hi) = rail.object.bounds();
-        assert!(hi.y.abs() < 1e-9 && (lo.y + 0.113).abs() < 1e-9);
+        // its back on the wall, the medical rail 10 mm on its 105 mm front
+        assert!(hi.y.abs() < 1e-9 && (lo.y + 0.115).abs() < 1e-9, "{lo}");
         let bridge = unit(&MedUnitConfig::usual(MedUnitKind::Bridge));
         assert_eq!(bridge.object.mount, Mount::Ceiling);
         // hung 0.95 m: from the ceiling at 2.8 m to its underside at 1.85
         assert!((bridge.object.bounds().1.z - 0.95).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parts_switched_off_are_left_out_and_their_counts_kept() {
+        let mut c = MedUnitConfig::usual(MedUnitKind::Bridge);
+        c.on.gases[4] = false;
+        c.on.sockets_backed = false;
+        c.on.light_indirect = false;
+        c.on.med_rail = false;
+        assert_eq!(
+            c.code(),
+            "SM-P 5.4 2000 O2-3 AIR-2 VAC-3 Z12 ZZ0 D2 U2 H2800 bez SN ML"
+        );
+        // the counts come back when switched on again
+        assert_eq!((c.gases[4], c.sockets_backed), (1, 12));
+        let names = |c: &MedUnitConfig| -> Vec<String> {
+            unit(c)
+                .object
+                .parts
+                .iter()
+                .map(|p| p.name.clone())
+                .collect()
+        };
+        let n = names(&c);
+        assert!(!n
+            .iter()
+            .any(|p| p == "Indirect light" || p.starts_with("Medical rail")));
+        assert!(n.iter().any(|p| p == "Direct light") && n.iter().any(|p| p == "Night light"));
+        assert!(!n
+            .iter()
+            .any(|p| p == "Outlet AGSS" || p == "Socket, backed up"));
+        let all = names(&MedUnitConfig::usual(MedUnitKind::Bridge));
+        assert!(
+            all.iter().any(|p| p == "Indirect light") && all.iter().any(|p| p == "Outlet AGSS")
+        );
+        // the NR-H3 has no AGSS in the catalogue
+        let mut r = MedUnitConfig::usual(MedUnitKind::Rail);
+        r.gases[4] = 2;
+        assert!(!r.code().contains("AGSS"));
+        assert_eq!(MedUnitKind::Rail.catalogue().light_w, [27.0, 9.0, 2.0]);
     }
 }

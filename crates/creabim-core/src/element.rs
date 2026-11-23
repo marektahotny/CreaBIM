@@ -248,6 +248,7 @@ impl Element {
             ElementKind::Roof(_) => "IfcRoof",
             ElementKind::Stair(_) => "IfcStair",
             ElementKind::Railing(_) => "IfcRailing",
+            ElementKind::Footing(f) if f.kind == crate::FootingKind::Pile => "IfcPile",
             ElementKind::Footing(_) => "IfcFooting",
             ElementKind::Part(p) if p.void => "IfcOpeningElement",
             ElementKind::Part(p) => &p.ifc_class,
@@ -3271,7 +3272,12 @@ impl Sheet {
     pub fn size_name(&self) -> Option<&'static str> {
         Self::SIZES
             .iter()
-            .find(|(_, w, h)| (w - self.width).abs() < 0.5 && (h - self.height).abs() < 0.5)
+            .find(|(_, w, h)| {
+                let same = |a: f64, b: f64| (a - b).abs() < 0.5;
+                // standing up too (an A4 of a list of windows)
+                (same(*w, self.width) && same(*h, self.height))
+                    || (same(*w, self.height) && same(*h, self.width))
+            })
             .map(|(n, ..)| *n)
     }
 }

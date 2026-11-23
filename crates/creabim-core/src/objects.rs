@@ -909,6 +909,50 @@ pub fn type_of_id(model: &Model, id: ElementId) -> Option<&ObjectType> {
     }
 }
 
+/// Is `t` a heat pump's indoor unit (from the catalogue's heat units).
+pub fn is_heat_pump_indoor(t: &ObjectType) -> bool {
+    t.catalogue
+        .as_deref()
+        .is_some_and(|c| c.contains("heat-tcvnut"))
+}
+
+/// The indoor heat pump units' types from before their symbol lost its
+/// cross and its name (George 2026-11-23), mended: their outline and
+/// connections only. None when there is none to mend.
+pub fn mend_heat_pump_symbols(model: &Model) -> Option<crate::Transaction> {
+    let mut tx = crate::Transaction::new("Heat pump symbol");
+    let mut any = false;
+    let strip = |t: &mut ObjectType| -> bool {
+        if !is_heat_pump_indoor(t) {
+            return false;
+        }
+        let n = t.symbol.len();
+        t.symbol.retain(|s| match s {
+            SymbolItem::Text { text, .. } => text != "T.Č. vnútorná",
+            // the cross: a line corner to corner
+            SymbolItem::Line(a, b) => (a.x - b.x).abs() < 1e-9 || (a.y - b.y).abs() < 1e-9,
+            _ => true,
+        });
+        t.symbol.len() != n
+    };
+    for e in model.iter() {
+        let mut after = e.clone();
+        let changed = match &mut after.kind {
+            ElementKind::ElementType(ElementType {
+                params: TypeParams::Object(t),
+                ..
+            }) => strip(t),
+            ElementKind::Object(Object { own: Some(t), .. }) => strip(t),
+            _ => false,
+        };
+        if changed {
+            tx = tx.replace(e.clone(), after);
+            any = true;
+        }
+    }
+    any.then_some(tx)
+}
+
 /// The object type of a placed object: its own shape where it was drawn
 /// out to a length of its own.
 pub fn type_of<'a>(model: &'a Model, e: &'a Element) -> Option<&'a ObjectType> {
