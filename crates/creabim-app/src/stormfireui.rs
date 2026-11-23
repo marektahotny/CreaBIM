@@ -303,59 +303,77 @@ impl CreaBimApp {
                         if r.unreached > 0 {
                             warn(ui, format!("{}: {}", t("Pipes not joined to the network"), r.unreached));
                         }
-                        egui::Grid::new("storm.drains").striped(true).num_columns(4).show(ui, |ui| {
-                            for h in ["Drain", "Area m²", "C", "Flow l/s"] {
-                                ui.strong(t(h));
-                            }
-                            ui.end_row();
-                            for d in &r.drains {
+                        use crate::sheet::{self, Col};
+                        let cols = [
+                            Col::text("Drain"),
+                            Col::num("Area", "m²"),
+                            Col::num("C", "–"),
+                            Col::num("Flow", "l/s"),
+                        ];
+                        let total = |row: &mut sheet::Row| {
+                            row.text(t("Total"));
+                            row.text(num(r.drains.iter().map(|d| d.area_m2).sum::<f64>(), 1));
+                            row.empty();
+                            row.text(num(r.drains.iter().map(|d| d.flow_ls).sum::<f64>(), 2));
+                        };
+                        sheet::show(ui, "storm.drains", &cols, r.drains.len(), 300.0, |row, i| {
+                            let d = &r.drains[i];
+                            row.cell(|ui| {
                                 if ui.link(&d.name).clicked() {
                                     select = Some(d.id);
                                 }
-                                ui.label(format!(
-                                    "{}{}",
-                                    num(d.area_m2, 1),
-                                    if d.from_roof { " *" } else { "" }
-                                ));
-                                ui.label(num(d.coef, 1));
-                                ui.label(num(d.flow_ls, 2));
-                                ui.end_row();
-                            }
-                        });
+                            });
+                            row.text(format!(
+                                "{}{}",
+                                num(d.area_m2, 1),
+                                if d.from_roof { " *" } else { "" }
+                            ));
+                            row.text(num(d.coef, 1));
+                            row.text(num(d.flow_ls, 2));
+                        }, Some(&total));
                         ui.add_space(6.0);
-                        egui::Grid::new("storm.pipes").striped(true).num_columns(7).show(ui, |ui| {
-                            for h in ["Pipe", "Size", "Proposed", "Flow l/s", "Capacity l/s", "Fall %", "h/d"] {
-                                ui.strong(t(h));
-                            }
-                            ui.end_row();
-                            for p in &r.pipes {
+                        let cols = [
+                            Col::text("Pipe"),
+                            Col::text("Size"),
+                            Col::text("Proposed"),
+                            Col::num("Flow", "l/s"),
+                            Col::num("Capacity", "l/s"),
+                            Col::num("Fall", "%"),
+                            Col::num("h/d", "–"),
+                        ];
+                        sheet::show(ui, "storm.pipes", &cols, r.pipes.len(), 400.0, |row, i| {
+                            let p = &r.pipes[i];
+                            row.cell(|ui| {
                                 if ui.link(name_of(p.id)).clicked() {
                                     select = Some(p.id);
                                 }
-                                ui.label(size_text(model, p.id, None));
-                                ui.label(size_text(model, p.id, Some(p.proposed_mm)));
-                                ui.label(num(p.flow_ls, 2));
-                                let cap = num(p.capacity_ls, 2);
-                                if p.too_small {
+                            });
+                            row.text(size_text(model, p.id, None));
+                            row.text(size_text(model, p.id, Some(p.proposed_mm)));
+                            row.text(num(p.flow_ls, 2));
+                            let cap = num(p.capacity_ls, 2);
+                            if p.too_small {
+                                row.cell(|ui| {
                                     ui.colored_label(ui.visuals().error_fg_color, cap);
-                                } else {
-                                    ui.label(cap);
-                                }
-                                if p.vertical {
-                                    ui.label(t("stack"));
-                                    ui.label("f = 0,33");
-                                } else {
-                                    let s = num(p.slope * 100.0, 1);
-                                    if p.too_flat {
-                                        ui.colored_label(ui.visuals().warn_fg_color, s);
-                                    } else {
-                                        ui.label(s);
-                                    }
-                                    ui.label(num(p.fill, 2));
-                                }
-                                ui.end_row();
+                                });
+                            } else {
+                                row.text(cap);
                             }
-                        });
+                            if p.vertical {
+                                row.text(t("stack"));
+                                row.text("f = 0,33");
+                            } else {
+                                let s = num(p.slope * 100.0, 1);
+                                if p.too_flat {
+                                    row.cell(|ui| {
+                                        ui.colored_label(ui.visuals().warn_fg_color, s);
+                                    });
+                                } else {
+                                    row.text(s);
+                                }
+                                row.text(num(p.fill, 2));
+                            }
+                        }, None);
                         ui.add_space(6.0);
                         ui.weak(t("* the roof over the drain, shared among the drains on it. A stack by Wyly-Eaton at f = 0.33, a drain at h/d = 0.7 and its fall, 0.5 % at least (yellow: drawn flatter); red: even the largest size is too small."));
                         ui.weak("STN EN 12056-3 · STN 75 6760");

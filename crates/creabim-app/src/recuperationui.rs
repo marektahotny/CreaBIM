@@ -121,49 +121,52 @@ impl CreaBimApp {
                     ));
                 }
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    egui::Grid::new("vzt.rec.rooms")
-                        .striped(true)
-                        .num_columns(7)
-                        .show(ui, |ui| {
-                            for h in [
-                                "Room",
-                                "Air",
-                                "Needed m³/h",
-                                "Designed m³/h",
-                                "Ducts Ø75",
-                                "Terminals",
-                                "Decentral",
-                            ] {
-                                ui.strong(t(h));
-                            }
-                            ui.end_row();
-                            for r in &d.rooms {
-                                let name = format!("{} {}", r.number, r.name);
-                                if ui.link(name.trim()).clicked() {
-                                    select = Some(r.id);
-                                }
-                                ui.label(t(match r.role {
-                                    Role::Supply => "supply",
-                                    Role::Extract => "extract",
-                                    Role::Transfer => "transfer",
-                                    Role::Decentral => "room units",
-                                    Role::Out => "left out",
-                                }));
-                                ui.label(num(r.need, 0));
-                                ui.label(num(r.design, 0));
-                                ui.label(r.ducts.to_string());
-                                ui.label(r.terminals.len().to_string());
-                                if r.role != Role::Out {
-                                    let mut on = r.role == Role::Decentral;
-                                    if ui.checkbox(&mut on, "").changed() {
-                                        toggle = Some(r.id);
-                                    }
-                                } else {
-                                    ui.label("");
-                                }
-                                ui.end_row();
+                    use crate::sheet::{self, Col};
+                    let cols = [
+                        Col::text("Room"),
+                        Col::text("Air"),
+                        Col::num("Needed", "m³/h"),
+                        Col::num("Designed", "m³/h"),
+                        Col::num("Ducts Ø75", "pcs"),
+                        Col::num("Terminals", "pcs"),
+                        Col::text("Decentral"),
+                    ];
+                    let total = |row: &mut sheet::Row| {
+                        row.text(t("Total"));
+                        row.empty();
+                        row.text(num(d.rooms.iter().map(|r| r.need).sum::<f64>(), 0));
+                        row.text(num(d.rooms.iter().map(|r| r.design).sum::<f64>(), 0));
+                        row.text(d.rooms.iter().map(|r| r.ducts as usize).sum::<usize>().to_string());
+                        row.text(d.rooms.iter().map(|r| r.terminals.len()).sum::<usize>().to_string());
+                    };
+                    sheet::show(ui, "vzt.rec.rooms", &cols, d.rooms.len(), 400.0, |row, i| {
+                        let r = &d.rooms[i];
+                        let name = format!("{} {}", r.number, r.name);
+                        row.cell(|ui| {
+                            if ui.link(name.trim()).clicked() {
+                                select = Some(r.id);
                             }
                         });
+                        row.text(t(match r.role {
+                            Role::Supply => "supply",
+                            Role::Extract => "extract",
+                            Role::Transfer => "transfer",
+                            Role::Decentral => "room units",
+                            Role::Out => "left out",
+                        }));
+                        row.text(num(r.need, 0));
+                        row.text(num(r.design, 0));
+                        row.text(r.ducts.to_string());
+                        row.text(r.terminals.len().to_string());
+                        row.cell(|ui| {
+                            if r.role != Role::Out {
+                                let mut on = r.role == Role::Decentral;
+                                if ui.checkbox(&mut on, "").changed() {
+                                    toggle = Some(r.id);
+                                }
+                            }
+                        });
+                    }, Some(&total));
                     if !d.room_units.is_empty() {
                         ui.add_space(4.0);
                         if let Some(ru) = cat.room_units.get(o.room_unit) {
@@ -185,23 +188,31 @@ impl CreaBimApp {
                     egui::CollapsingHeader::new(t("Ducts: length, velocity, pressure loss, throttling"))
                         .id_salt("vzt.rec.branches")
                         .show(ui, |ui| {
-                            egui::Grid::new("vzt.rec.br").striped(true).show(ui, |ui| {
-                                for h in ["Room", "Air", "L m", "m³/h", "v m/s", "Δp Pa", "Throttle Pa"] {
-                                    ui.strong(t(h));
-                                }
-                                ui.end_row();
-                                for b in &d.branches {
-                                    let r = &d.rooms[b.room];
-                                    ui.label(format!("{} {}", r.number, r.name));
-                                    ui.label(t(if b.supply { "supply" } else { "extract" }));
-                                    ui.label(num(b.length, 1));
-                                    ui.label(num(b.flow, 1));
-                                    ui.label(num(b.velocity, 2));
-                                    ui.label(num(b.dp, 1));
-                                    ui.label(num(b.throttle, 1));
-                                    ui.end_row();
-                                }
-                            });
+                            let cols = [
+                                Col::text("Room"),
+                                Col::text("Air"),
+                                Col::num("L", "m"),
+                                Col::num("Flow", "m³/h"),
+                                Col::num("v", "m/s"),
+                                Col::num("Δp", "Pa"),
+                                Col::num("Throttle", "Pa"),
+                            ];
+                            let total = |row: &mut sheet::Row| {
+                                row.text(t("Total"));
+                                row.empty();
+                                row.text(num(d.branches.iter().map(|b| b.length).sum::<f64>(), 1));
+                            };
+                            sheet::show(ui, "vzt.rec.br", &cols, d.branches.len(), 400.0, |row, i| {
+                                let b = &d.branches[i];
+                                let r = &d.rooms[b.room];
+                                row.text(format!("{} {}", r.number, r.name));
+                                row.text(t(if b.supply { "supply" } else { "extract" }));
+                                row.text(num(b.length, 1));
+                                row.text(num(b.flow, 1));
+                                row.text(num(b.velocity, 2));
+                                row.text(num(b.dp, 1));
+                                row.text(num(b.throttle, 1));
+                            }, Some(&total));
                         });
                     if !d.transfers.is_empty() {
                         egui::CollapsingHeader::new(t("Transfer air under the doors"))
@@ -233,22 +244,26 @@ impl CreaBimApp {
                             .id_salt("vzt.rec.noise")
                             .default_open(true)
                             .show(ui, |ui| {
-                                egui::Grid::new("vzt.rec.noiseg").striped(true).show(ui, |ui| {
-                                    for h in ["Room", "Category", "LAmax,p day / evening / night dB", "Level dB(A)", ""] {
-                                        ui.strong(t(h));
-                                    }
-                                    ui.end_row();
-                                    for n in &d.noise {
-                                        let r = &d.rooms[n.room];
-                                        ui.label(format!("{} {}", r.number, r.name));
-                                        ui.label(n.category.to_string());
-                                        ui.label(format!(
-                                            "{} / {} / {}",
-                                            num(n.limits[0], 0),
-                                            num(n.limits[1], 0),
-                                            num(n.limits[2], 0)
-                                        ));
-                                        ui.label(n.level.map_or("–".into(), |l| num(l, 0)));
+                                let cols = [
+                                    Col::text("Room"),
+                                    Col::text("Category"),
+                                    Col::num("LAmax,p day / evening / night", "dB"),
+                                    Col::num("Level", "dB(A)"),
+                                    Col::text(""),
+                                ];
+                                sheet::show(ui, "vzt.rec.noiseg", &cols, d.noise.len(), 400.0, |row, i| {
+                                    let n = &d.noise[i];
+                                    let r = &d.rooms[n.room];
+                                    row.text(format!("{} {}", r.number, r.name));
+                                    row.text(n.category.to_string());
+                                    row.text(format!(
+                                        "{} / {} / {}",
+                                        num(n.limits[0], 0),
+                                        num(n.limits[1], 0),
+                                        num(n.limits[2], 0)
+                                    ));
+                                    row.text(n.level.map_or("–".into(), |l| num(l, 0)));
+                                    row.cell(|ui| {
                                         match n.ok {
                                             Some(true) => ui.label(format!("✔ {}", n.note)),
                                             Some(false) => ui.colored_label(
@@ -257,9 +272,8 @@ impl CreaBimApp {
                                             ),
                                             None => ui.colored_label(ui.visuals().warn_fg_color, &n.note),
                                         };
-                                        ui.end_row();
-                                    }
-                                });
+                                    });
+                                }, None);
                                 ui.weak(rec::NOISE_SOURCE);
                             });
                     }

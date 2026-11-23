@@ -234,55 +234,46 @@ impl CreaBimApp {
                         // the stretches: names left, numbers right, a
                         // size to change in the accent
                         let accent = ui.visuals().selection.stroke.color;
-                        egui::Grid::new(("water.calc.pipes", c.code))
-                            .striped(true)
-                            .num_columns(7)
-                            .spacing(Vec2::new(22.0, 7.0))
-                            .min_col_width(64.0)
-                            .show(ui, |ui| {
-                                let right = egui::Layout::right_to_left(egui::Align::Center);
-                                ui.strong("#");
-                                for h in ["Pipe", "Size", "Proposed"] {
-                                    ui.strong(t(h));
-                                }
-                                for h in ["Flow l/s", "v m/s", "R Pa/m"] {
-                                    ui.with_layout(right, |ui| ui.strong(t(h)));
-                                }
-                                ui.end_row();
-                                for (n, (id, p)) in c.pipes.iter().enumerate() {
-                                    ui.weak((n + 1).to_string());
-                                    let name = model.get(*id).map_or(String::new(), |e| e.name.clone());
-                                    let label = if p.on_critical_path {
-                                        egui::RichText::new(name).strong()
-                                    } else {
-                                        egui::RichText::new(name)
-                                    };
-                                    if ui
-                                        .link(label)
-                                        .on_hover_text(t("Select the pipe in the drawing"))
-                                        .clicked()
-                                    {
-                                        select = Some(*id);
-                                    }
-                                    let now = size_text(model, *id, None);
-                                    let proposed =
-                                        size_text(model, *id, p.proposed.map(|s| s.nominal_mm));
-                                    ui.label(&now);
-                                    if proposed != now {
-                                        ui.label(egui::RichText::new(proposed).color(accent).strong());
-                                    } else {
-                                        ui.weak(proposed);
-                                    }
-                                    for v in [
-                                        crate::i18n::num(p.flow_ls, 3),
-                                        crate::i18n::num(p.velocity_ms, 2),
-                                        crate::i18n::num(p.r_pa_per_m, 0),
-                                    ] {
-                                        ui.with_layout(right, |ui| ui.monospace(v));
-                                    }
-                                    ui.end_row();
+                        use crate::sheet::{self, Col};
+                        let cols = [
+                            Col::num("#", ""),
+                            Col::text("Pipe"),
+                            Col::text("Size"),
+                            Col::text("Proposed"),
+                            Col::num("Flow", "l/s"),
+                            Col::num("v", "m/s"),
+                            Col::num("R", "Pa/m"),
+                        ];
+                        sheet::show(ui, ("water.calc.pipes", c.code), &cols, c.pipes.len(), 420.0, |row, n| {
+                            let (id, p) = &c.pipes[n];
+                            row.weak((n + 1).to_string());
+                            let name = model.get(*id).map_or(String::new(), |e| e.name.clone());
+                            let label = if p.on_critical_path {
+                                egui::RichText::new(name).strong()
+                            } else {
+                                egui::RichText::new(name)
+                            };
+                            row.cell(|ui| {
+                                if ui
+                                    .link(label)
+                                    .on_hover_text(t("Select the pipe in the drawing"))
+                                    .clicked()
+                                {
+                                    select = Some(*id);
                                 }
                             });
+                            let now = size_text(model, *id, None);
+                            let proposed = size_text(model, *id, p.proposed.map(|s| s.nominal_mm));
+                            row.text(now.clone());
+                            if proposed != now {
+                                row.text(egui::RichText::new(proposed).color(accent).strong());
+                            } else {
+                                row.weak(proposed);
+                            }
+                            row.text(crate::i18n::num(p.flow_ls, 3));
+                            row.text(crate::i18n::num(p.velocity_ms, 2));
+                            row.text(crate::i18n::num(p.r_pa_per_m, 0));
+                        }, None);
                         ui.add_space(10.0);
                         ui.separator();
                     }
