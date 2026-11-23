@@ -35,25 +35,87 @@ pub fn part_of(number: &str) -> Option<&'static str> {
 
 /// The same with the part's place in the documentation, from 0.
 pub fn part_order(number: &str) -> Option<(usize, &'static str)> {
-    const PARTS: [(&str, &str); 12] = [
-        ("A00_", "A List of documentation"),
-        ("B00_", "B Summary report"),
-        ("C00_", "C Site drawings"),
-        ("_ASR_", "D.1 Architecture (ASR)"),
-        ("_STA_", "D.2 Structure (STA)"),
-        ("_ZTI_", "D.3 Plumbing (ZTI)"),
-        ("_VYK_", "D.4 Heating (VYK)"),
-        ("_ELI_", "D.5 Electrical (ELI)"),
-        ("_VZT_", "D.6 Ventilation (VZT)"),
-        ("_PLY_", "D.7 Gas (PLY)"),
-        ("_MPL_", "D.8 Medical gases (MPL)"),
-        ("E00_", "E Annexes"),
-    ];
     PARTS
         .iter()
         .position(|(k, _)| number.starts_with(k) || number.contains(k))
         .map(|i| (i, PARTS[i].1))
 }
+
+/// A new sheet's number in the part called `part` (its title, as
+/// [`part_of`] gives it): after the last of its sheets (`S01_ZTI_003_N01`
+/// gives `S01_ZTI_004`), or the part's first (`S01_ZTI_001`); none for
+/// a title that is no part's.
+pub fn next_in_part(model: &Model, part: &str) -> Option<String> {
+    let key = PARTS.iter().find(|(_, t)| *t == part)?.0;
+    let mut numbers: Vec<String> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Sheet(s)
+                if part_of(&s.number) == Some(part) && crate::coverpage::cover_of(s).is_none() =>
+            {
+                Some(s.number.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    numbers.sort();
+    let taken = |n: &str| {
+        model
+            .iter()
+            .any(|e| matches!(&e.kind, ElementKind::Sheet(s) if s.number == n))
+    };
+    // the last number's three digits, one on
+    let after = |last: &str| -> Option<String> {
+        let b = last.as_bytes();
+        let at = (0..b.len().saturating_sub(3))
+            .rev()
+            .find(|&i| b[i] == b'_' && b[i + 1..i + 4].iter().all(u8::is_ascii_digit))?;
+        let n: usize = last[at + 1..at + 4].parse().ok()?;
+        let head = &last[..at];
+        (n + 1..n + 1000)
+            .map(|k| format!("{head}_{k:03}"))
+            .find(|x| !taken(x))
+    };
+    if let Some(n) = numbers.last().and_then(|l| after(l)) {
+        return Some(n);
+    }
+    // the part's first: the building's code (S01) before a trade's
+    let first = if key.starts_with('_') {
+        let building = model
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Sheet(s) if s.number.starts_with('S') && s.number.contains('_') => {
+                    s.number.split('_').next().map(str::to_string)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| "S01".into());
+        format!("{building}{key}001")
+    } else {
+        format!("{key}001")
+    };
+    if taken(&first) {
+        after(&first)
+    } else {
+        Some(first)
+    }
+}
+
+/// The parts of the documentation, by what their sheets' numbers hold.
+const PARTS: [(&str, &str); 12] = [
+    ("A00_", "A List of documentation"),
+    ("B00_", "B Summary report"),
+    ("C00_", "C Site drawings"),
+    ("_ASR_", "D.1 Architecture (ASR)"),
+    ("_STA_", "D.2 Structure (STA)"),
+    ("_ZTI_", "D.3 Plumbing (ZTI)"),
+    ("_VYK_", "D.4 Heating (VYK)"),
+    ("_ELI_", "D.5 Electrical (ELI)"),
+    ("_VZT_", "D.6 Ventilation (VZT)"),
+    ("_PLY_", "D.7 Gas (PLY)"),
+    ("_MPL_", "D.8 Medical gases (MPL)"),
+    ("E00_", "E Annexes"),
+];
 
 /// The file a sheet of the set numbered `number` is exported to, as annex
 /// 24 names it: `prefix` (the construction's ID, the stage, the building
@@ -999,6 +1061,18 @@ mod tests {
         assert_eq!(part_of("S01_ASR_001_N01"), Some("D.1 Architecture (ASR)"));
         assert_eq!(part_of("C00_SIT_001"), Some("C Site drawings"));
         assert_eq!(part_of("A101"), None);
+        // a sheet added to a part: after its last, or its first
+        assert_eq!(
+            next_in_part(m, "D.1 Architecture (ASR)")
+                .as_deref()
+                .map(|n| n.starts_with("S01_ASR_0")),
+            Some(true)
+        );
+        assert_eq!(
+            next_in_part(m, "D.8 Medical gases (MPL)").as_deref(),
+            Some("S01_MPL_001")
+        );
+        assert_eq!(next_in_part(m, "no part"), None);
         assert_eq!(
             file_name("24XY456_PSP_01_1111_", "S01_ASR_001_N01", "00").as_deref(),
             Some("24XY456_PSP_01_1111_S01_ASR_001_N01_00")

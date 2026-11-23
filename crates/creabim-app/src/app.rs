@@ -7623,6 +7623,48 @@ impl CreaBimApp {
         );
     }
 
+    /// A new sheet in the part of the documentation called `part` (D.3
+    /// Plumbing (ZTI)...), numbered after its last sheet, its title block
+    /// as theirs (George 2026-11-23).
+    pub(super) fn new_sheet_in(&mut self, part: &str) {
+        let model = self.doc.model();
+        let Some(number) = creabim_geom::docset::next_in_part(model, part) else {
+            return;
+        };
+        // the paper and the title block's fields of the part's last sheet
+        let like = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Sheet(s)
+                    if creabim_geom::docset::part_of(&s.number) == Some(part)
+                        && creabim_geom::coverpage::cover_of(s).is_none() =>
+                {
+                    Some(s)
+                }
+                _ => None,
+            })
+            .max_by(|a, b| a.number.cmp(&b.number))
+            .cloned();
+        let mut sheet = Sheet::a(number.clone(), "A3");
+        if let Some(l) = like {
+            sheet.fields = l.fields.clone();
+            sheet.template = l.template;
+        }
+        let e = Element::new(crate::i18n::tr("New Sheet"), ElementKind::Sheet(sheet));
+        let id = e.id;
+        let r = self.doc.commit(Transaction::new("New sheet").insert(e));
+        self.active_view = Some(id);
+        self.selection.only(id);
+        self.report(
+            r,
+            format!(
+                "{} {number}. {}",
+                crate::i18n::tr("New A3 sheet"),
+                crate::i18n::tr("Use Place view… in the toolbar to put views on it.")
+            ),
+        );
+    }
+
     fn new_schedule(&mut self, category: ScheduleCategory) {
         let label = category.label();
         let e = Element::new(
