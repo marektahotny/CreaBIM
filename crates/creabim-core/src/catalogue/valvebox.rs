@@ -35,6 +35,14 @@ pub struct ValveBoxConfig {
     pub height: f64,
     /// The distance of a module's inlet and outlet, mm.
     pub spacing_mm: f64,
+    /// Each gas's module, by [`BOX_GASES`]: whether it has the NIST
+    /// inlet for maintenance and the reserve supply, the control gauge and
+    /// the pressure switch for the alarm. The catalogue (Flídr medical,
+    /// "Uzávěry plynů") lists them as the box's fittings; each can be left
+    /// out to the requirements, the ball valves always stay.
+    pub nist: [bool; 4],
+    pub gauge: [bool; 4],
+    pub sensor: [bool; 4],
 }
 
 impl Default for ValveBoxConfig {
@@ -47,6 +55,9 @@ impl Default for ValveBoxConfig {
             pipe_mm: 18.0,
             height: 1.0,
             spacing_mm: 70.0,
+            nist: [true; 4],
+            gauge: [true; 4],
+            sensor: [true; 4],
         }
     }
 }
@@ -98,10 +109,33 @@ impl ValveBoxConfig {
         }
     }
 
-    /// Its code as the plugin names its type: `UP 3 – O2-AIR-VAC`.
+    /// Which of the gas's fittings the module has: NIST, gauge, switch.
+    pub fn fittings(&self, gas: &str) -> (bool, bool, bool) {
+        let i = BOX_GASES.iter().position(|g| *g == gas).unwrap_or(0);
+        (self.nist[i], self.gauge[i], self.sensor[i])
+    }
+
+    /// Its code as the plugin names its type, `UP 3 – O2-AIR-VAC`, and
+    /// the fittings left out: `UP 3 – O2-AIR-VAC (VAC bez NIST)`.
     pub fn code(&self) -> String {
         let g = self.gas_list();
-        format!("UP {} – {}", g.len(), g.join("-"))
+        let mut s = format!("UP {} – {}", g.len(), g.join("-"));
+        let out: Vec<String> = g
+            .iter()
+            .filter_map(|gas| {
+                let (n, m, p) = self.fittings(gas);
+                let v: Vec<&str> = [(n, "NIST"), (m, "manometra"), (p, "snímača tlaku")]
+                    .iter()
+                    .filter(|(b, _)| !*b)
+                    .map(|(_, t)| *t)
+                    .collect();
+                (!v.is_empty()).then(|| format!("{gas} bez {}", v.join(", ")))
+            })
+            .collect();
+        if !out.is_empty() {
+            s += &format!(" ({})", out.join("; "));
+        }
+        s
     }
 }
 
@@ -295,19 +329,22 @@ pub fn valve_box(c: &ValveBoxConfig) -> CatalogueObject {
             bx(xc + a - 3.0, xc + a + 3.0, yf + 8.0, yc, v2z - 3.0, 6.0),
             false,
         );
+        let (has_nist, has_gauge, has_sensor) = c.fittings(g);
         // the NIST inlet towards the door
-        b.add(
-            "NIST inlet",
-            cu.clone(),
-            cy(xc + a, yc, n3, -DVec3::Y, dp / 2.0 - 14.0, r * 0.8),
-            false,
-        );
-        b.add(
-            "NIST socket",
-            brass.clone(),
-            cy(xc + a, yf + 22.0, n3, -DVec3::Y, 10.0, r * 1.4),
-            false,
-        );
+        if has_nist {
+            b.add(
+                "NIST inlet",
+                cu.clone(),
+                cy(xc + a, yc, n3, -DVec3::Y, dp / 2.0 - 14.0, r * 0.8),
+                false,
+            );
+            b.add(
+                "NIST socket",
+                brass.clone(),
+                cy(xc + a, yf + 22.0, n3, -DVec3::Y, 10.0, r * 1.4),
+                false,
+            );
+        }
         // the outlet valve, the pressure switch and its gauge
         b.add(
             "Outlet valve",
@@ -321,47 +358,57 @@ pub fn valve_box(c: &ValveBoxConfig) -> CatalogueObject {
             bx(xc - a - 3.0, xc - a + 3.0, yf + 8.0, yc, v4 - 3.0, 6.0),
             false,
         );
-        b.add(
-            "Sensor line",
-            cu.clone(),
-            cy(
-                xc - a,
-                yc,
-                s5,
-                DVec3::X,
-                22f64.min(wm / 2.0 - 10.0),
-                r * 0.7,
-            ),
-            false,
-        );
-        b.add(
-            "Pressure switch",
-            black.clone(),
-            bx(
-                xc - a + r + 2.0,
-                xc - a + r + 14.0,
-                yc - 9.0,
-                yc + 9.0,
-                s5 - 22.0,
-                14.0,
-            ),
-            false,
-        );
-        let gr = if wm / 2.0 - 30.0 > 10.0 { 16.0 } else { 10.0 };
-        b.add(
-            "Gauge",
-            gauge.clone(),
-            cy(
-                (xc - a + 38.0).min(xc + wm / 2.0 - 20.0),
-                yc - 6.0,
-                s5 + 26.0,
-                -DVec3::Y,
-                12.0,
-                gr,
-            ),
-            false,
-        );
-        for x in [xc - wm / 2.0 + 14.0, xc - wm / 2.0 + 26.0] {
+        if has_gauge || has_sensor {
+            b.add(
+                "Sensor line",
+                cu.clone(),
+                cy(
+                    xc - a,
+                    yc,
+                    s5,
+                    DVec3::X,
+                    22f64.min(wm / 2.0 - 10.0),
+                    r * 0.7,
+                ),
+                false,
+            );
+        }
+        if has_sensor {
+            b.add(
+                "Pressure switch",
+                black.clone(),
+                bx(
+                    xc - a + r + 2.0,
+                    xc - a + r + 14.0,
+                    yc - 9.0,
+                    yc + 9.0,
+                    s5 - 22.0,
+                    14.0,
+                ),
+                false,
+            );
+        }
+        if has_gauge {
+            let gr = if wm / 2.0 - 30.0 > 10.0 { 16.0 } else { 10.0 };
+            b.add(
+                "Gauge",
+                gauge.clone(),
+                cy(
+                    (xc - a + 38.0).min(xc + wm / 2.0 - 20.0),
+                    yc - 6.0,
+                    s5 + 26.0,
+                    -DVec3::Y,
+                    12.0,
+                    gr,
+                ),
+                false,
+            );
+        }
+        // the cable glands carry the pressure switch's cable
+        for x in [xc - wm / 2.0 + 14.0, xc - wm / 2.0 + 26.0]
+            .into_iter()
+            .filter(|_| has_sensor)
+        {
             b.add(
                 "Cable gland",
                 black.clone(),
@@ -399,8 +446,26 @@ pub fn valve_box(c: &ValveBoxConfig) -> CatalogueObject {
         "podomietková"
     };
     let through = if c.through { " priebežná" } else { "" };
+    // the fittings left out, as a gas's mark: n NIST, m gauge, s switch
+    let out: String = gases
+        .iter()
+        .map(|g| {
+            let (n, m, s) = c.fittings(g);
+            let mut t = String::new();
+            for (b, ch) in [(n, 'n'), (m, 'm'), (s, 's')] {
+                if !b {
+                    t.push(ch);
+                }
+            }
+            if t.is_empty() {
+                t
+            } else {
+                format!("-{}{t}", g.to_lowercase())
+            }
+        })
+        .collect();
     let key = format!(
-        "med-box-{}-{d:.0}-{}{}",
+        "med-box-{}-{d:.0}-{}{}{out}",
         gases.join("-").to_lowercase(),
         if c.wall { "wall" } else { "flush" },
         if c.through { "-through" } else { "" }
@@ -409,7 +474,7 @@ pub fn valve_box(c: &ValveBoxConfig) -> CatalogueObject {
         &key,
         &format!("Ventilová skrinka {} {mounting}{through}", c.code()),
         &format!(
-            "{}: medical gas zone valve box {:.0} × {:.0} × {:.0} mm, {}; for each gas a shut-off valve PN 20, NIST inlet for maintenance and reserve supply, outlet valve, pressure switch for the alarm with its gauge; in on the right, out on the left {} seen at the door, Cu {d:.0} (STN EN ISO 7396-1, STN EN 13348)",
+            "{}: medical gas zone valve box {:.0} × {:.0} × {:.0} mm, {}; for each gas a shut-off valve PN 20 and an outlet valve, as chosen a NIST inlet for maintenance and reserve supply, a pressure switch for the alarm and a control gauge; in on the right, out on the left {} seen at the door, Cu {d:.0} (STN EN ISO 7396-1, STN EN 13348)",
             c.code(),
             w,
             h,
@@ -469,5 +534,27 @@ mod tests {
         assert_eq!(cs.len(), 8);
         assert!(cs[1].at.z < 0.0 && cs[0].at.z > 0.4);
         assert_eq!(gas_rgb("VAC"), [242, 195, 24]);
+    }
+
+    #[test]
+    fn a_modules_fittings_can_be_left_out() {
+        let mut c = ValveBoxConfig::default();
+        c.nist[2] = false;
+        c.gauge[0] = false;
+        c.sensor[0] = false;
+        assert_eq!(
+            c.code(),
+            "UP 3 – O2-AIR-VAC (O2 bez manometra, snímača tlaku; VAC bez NIST)"
+        );
+        let o = valve_box(&c);
+        o.object.validate().unwrap();
+        let count = |n: &str| o.object.parts.iter().filter(|p| p.name == n).count();
+        assert_eq!(count("NIST socket"), 2);
+        assert_eq!(count("Gauge"), 2);
+        assert_eq!(count("Pressure switch"), 2);
+        assert_eq!(count("Shut-off valve"), 3);
+        assert_ne!(o.key, valve_box(&ValveBoxConfig::default()).key);
+        // the connections stay
+        assert_eq!(part_connectors(&o.object).len(), 6);
     }
 }
