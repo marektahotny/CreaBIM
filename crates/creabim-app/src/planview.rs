@@ -2498,8 +2498,18 @@ fn show_pane(
             // what is under others (picked with Tab, or in X-ray) can be
             // dragged by its body too
             let hover_now = state.hover.clone();
+            // a fixture's mark (WC, U) or a pipe's size label is dragged
+            // on its own, never its fixture or pipe with it, selected or
+            // not (George 2026-11-23)
+            let marks = mark_boxes(doc.model(), &plan.items, mm);
             let grab_body = |pos: Pos2, id: ElementId| {
                 let w = xf.to_world(pos);
+                if marks
+                    .iter()
+                    .any(|(lo, hi)| w.cmpge(*lo).all() && w.cmple(*hi).all())
+                {
+                    return None;
+                }
                 let on = hit_all(&plan.items, w, 6.0 / xf.scale as f64, mm).contains(&id)
                     || hover_now.as_ref().and_then(|h| h.at(pane, pos)) == Some(id);
                 on.then(|| pane_to_model(space, w, level_z))
@@ -8394,6 +8404,31 @@ fn edit_dimension_value(
         Err(e) => state.status = Some(e),
     }
     Some(None)
+}
+
+/// The boxes of the pipes' size labels and the fixtures' and devices'
+/// marks (S 16x2, WC, U), each with a little paper round it.
+fn mark_boxes(model: &creabim_core::Model, items: &[PlanItem], mm: f64) -> Vec<(DVec2, DVec2)> {
+    items
+        .iter()
+        .filter_map(|it| match it {
+            PlanItem::Annotation { id, item }
+                if matches!(
+                    model.get(*id).map(|e| &e.kind),
+                    Some(ElementKind::Pipe(_) | ElementKind::Object(_))
+                ) =>
+            {
+                let pts = item.extent();
+                let first = *pts.first()?;
+                let (lo, hi) = pts
+                    .iter()
+                    .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+                let pad = DVec2::splat(mm * 0.5);
+                Some((lo - pad, hi + pad))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// A pipe's size label or a fixture's or device's mark at `w`.
