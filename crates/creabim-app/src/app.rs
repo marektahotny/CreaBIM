@@ -11014,9 +11014,12 @@ crate::props::row(ui, "File names", |ui| {
                                         .selectable_label(current == *name, crate::i18n::tw(*name))
                                         .clicked()
                                     {
+                                        let upright = sh.height > sh.width;
                                         (sh.width, sh.height) = (*w, *h);
-                                        // a title page stands upright
-                                        if creabim_geom::coverpage::cover_of(sh).is_some()
+                                        // a title page stands upright, and
+                                        // a sheet standing up stays so
+                                        if (upright
+                                            || creabim_geom::coverpage::cover_of(sh).is_some())
                                             && sh.width > sh.height
                                         {
                                             (sh.width, sh.height) = (sh.height, sh.width);
@@ -13469,8 +13472,11 @@ impl CreaBimApp {
                 .doc
                 .model()
                 .iter()
-                .find(|e| {
-                    e.name == name && matches!(e.kind, ElementKind::View(_) | ElementKind::Sheet(_))
+                .find(|e| match &e.kind {
+                    // a sheet by its number too
+                    ElementKind::Sheet(sh) => e.name == name || sh.number == name,
+                    ElementKind::View(_) => e.name == name,
+                    _ => false,
                 })
                 .map(|e| e.id);
             self.active_view = id;
@@ -14776,6 +14782,14 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // storey does (George 2026-11-23)
     for t in creabim_core::viewmodes::trade_room_tags(&model) {
         tx = tx.insert(t);
+        any = true;
+    }
+    // the lists of windows and doors on an A4 standing up (George
+    // 2026-11-23)
+    if let Some(t) = creabim_geom::joinerylist::portrait_sheets(&model) {
+        for op in t.ops {
+            tx.ops.push(op);
+        }
         any = true;
     }
     // the base's materials take the hatches of the ASR legend of

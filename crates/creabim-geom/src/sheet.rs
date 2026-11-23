@@ -206,6 +206,28 @@ pub fn new_viewport(model: &Model, sheet: ElementId, view: ElementId, at: DVec2)
     }
 }
 
+/// The spot that sets `view` in the top left corner of the sheet's frame,
+/// as the lists of windows and doors sit on their A4 (ASR_008).
+pub fn top_left_spot(model: &Model, sheet: ElementId, view: ElementId) -> DVec2 {
+    let Some(s) = sheet_of(model, sheet) else {
+        return DVec2::ZERO;
+    };
+    let (Some(v), Some((lo, hi))) = (
+        view_of(model, view),
+        view_drawing(model, view).and_then(|d| d.bounds()),
+    ) else {
+        return DVec2::new(s.width, s.height) / 2.0;
+    };
+    let half = (hi - lo) * 1000.0 / v.paper_scale() / 2.0;
+    DVec2::new(
+        BINDING + LIST_INSET + half.x,
+        s.height - MARGIN - LIST_INSET - half.y,
+    )
+}
+
+/// How far a list sits in from the frame, mm.
+pub const LIST_INSET: f64 = 3.0;
+
 /// A spot on the sheet where `view` fits without covering the views
 /// already there or the title block; the middle of the sheet if none does.
 pub fn free_spot(model: &Model, sheet: ElementId, view: ElementId) -> DVec2 {
