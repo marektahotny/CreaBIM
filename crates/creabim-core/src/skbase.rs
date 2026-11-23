@@ -682,7 +682,7 @@ mod tests {
         doc.commit(add_base(doc.model())).unwrap();
         let m = doc.model();
         let (materials, walls, floors, roofs) = counts();
-        assert_eq!((materials, walls, floors, roofs), (93, 34, 15, 3));
+        assert_eq!((materials, walls, floors, roofs), (94, 34, 15, 3));
         assert_eq!(crate::library::materials(m).len(), materials);
         assert_eq!(assembly::assemblies(m).len(), walls + floors + roofs);
         assert_eq!(types::types(m).len(), walls + floors + roofs);

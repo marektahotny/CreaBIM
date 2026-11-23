@@ -253,6 +253,18 @@
    "color": "#e9e4da"
   },
   {
+   "id": "omietka-mozaik",
+   "category": "Omietky a povrchy",
+   "name": "Omietka mozaiková (marmolit)",
+   "lambda": 0.7,
+   "density": 1700,
+   "fire": "B-s1,d0",
+   "color": "#a39a8c",
+   "maker": "Baumit",
+   "kind": "MosaikTop – dekoratívna omietka z farebných kamienkov, čistá akrylátová disperzia, na sokel",
+   "note": "technický list Baumit MosaikTop (SK 06/2023): zrno 2 mm, spotreba cca 5,5 kg/m² (Essential Line) / 4,5 kg/m² (Natural Line), hrúbka cca 1,5 × zrno, μ 110–140, W2 (STN EN 1062-1), V2, vedro 25 kg, penetrácia Baumit PremiumPrimer; λ ≈ 0,7 W/(m·K), hustota ≈ 1,7 kg/dm³, reakcia na oheň B-s1,d0 podľa EN 15824 z nemeckého technického listu Baumit (Stand 16-02/20)"
+  },
+  {
    "id": "sdk",
    "category": "Sadrokartón a drevo",
    "name": "Sadrokartón",
