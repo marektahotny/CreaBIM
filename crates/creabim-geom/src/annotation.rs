@@ -353,6 +353,9 @@ pub fn measure(units: &Units, kind: DimensionKind, center: DVec2, a: DVec2, b: D
 
 // ---- shapes -----------------------------------------------------------------
 
+/// How long a short spot level's line is beside its mark, paper mm.
+const SPOT_STUB: f64 = 4.0;
+
 /// The geometry of an annotation, resolved in its view.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
@@ -400,6 +403,9 @@ pub enum Shape {
         /// A coordinate mark (S-JTSK): a cross on the point, the lines of
         /// its text stacked over the shoulder.
         cross: bool,
+        /// In a section: the line back to the point only a stub at the
+        /// mark.
+        short: bool,
     },
     /// A slope: an arrow `offset` to the left of the line from `a` to
     /// `b`, along it and pointing down it (in a plan, where lines are
@@ -688,6 +694,7 @@ impl Annotation {
                 text_at,
                 plan,
                 cross,
+                short,
             } => {
                 let w = self.text.lines().map(|l| look.width(l)).fold(0.0, f64::max) * mm;
                 let dir = if text_at.x >= at.x { 1.0 } else { -1.0 };
@@ -700,7 +707,15 @@ impl Annotation {
                     let (h, half) = (2.0 * mm, 1.15 * mm);
                     let tip = DVec2::new(text_at.x, at.y);
                     if (tip.x - at.x).abs() > 0.5 * mm {
-                        out.lines.push(vec![at, tip]);
+                        // short: only a stub under the mark, not back to
+                        // the point (George 2026-11-23)
+                        let from = if short {
+                            let stub = (SPOT_STUB * mm).min((tip.x - at.x).abs());
+                            tip + DVec2::X * (at.x - tip.x).signum() * stub
+                        } else {
+                            at
+                        };
+                        out.lines.push(vec![from, tip]);
                     }
                     out.arrows
                         .push([tip, tip + DVec2::new(-half, h), tip + DVec2::new(half, h)]);
