@@ -308,6 +308,10 @@ pub struct HatchPattern {
     /// with heavy dashes on it, whatever the fill's thickness.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub membrane: bool,
+    /// Draw a zigzag (triangles) along the fill's longest side, as wide as
+    /// the fill is thick: extruded polystyrene (George 2026-11-23).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub zigzag: bool,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -375,25 +379,20 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
                 line(-45.0, 2.85, 0.45),
             ],
         ),
-        // reinforced concrete as George's sample: 45° dashes whose gaps
-        // line up in level rows (each line's dashes slide one spacing
-        // back), every third line with a short tick in the middle of its
-        // gap (the tick family sits one line below, so its dashes start
-        // one spacing before that line's gap: dash + gap/2 - 0.15 = P - d)
+        // reinforced concrete as George asked (2026-11-23): two solid 45°
+        // lines close together, a slightly wider gap, a dash-dot line,
+        // the same gap again, repeated
         Hatch::Reinforced => {
-            let (d, dash, gap) = (1.1, 3.3, 1.9);
+            let (pair, gap) = (0.45, 0.9);
+            let period = pair + 2.0 * gap;
             (
                 grey(0.88),
                 vec![
+                    line(45.0, period, 0.0),
+                    line(45.0, period, pair),
                     HatchLine {
-                        dashes: vec![dash, gap],
-                        shift: -d,
-                        ..line(45.0, d, 0.0)
-                    },
-                    HatchLine {
-                        dashes: vec![0.3, dash + gap - 0.3],
-                        shift: -3.0 * d,
-                        ..line(45.0, 3.0 * d, -d)
+                        dashes: vec![2.4, 0.5, 0.0, 0.5],
+                        ..line(45.0, period, pair + gap)
                     },
                 ],
             )
@@ -431,7 +430,7 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
             grey(0.88),
             vec![line(45.0, 3.2, 0.0), line(-45.0, 3.2, 0.0)],
         ),
-        Hatch::Gravel | Hatch::Insulation | Hatch::Membrane => (grey(0.88), vec![]),
+        Hatch::Gravel | Hatch::Insulation | Hatch::Membrane | Hatch::Xps => (grey(0.88), vec![]),
     };
     let tile = match h {
         Hatch::MasonryOuter => Some(rings_tile(
@@ -450,6 +449,7 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
         tile,
         batt: h == Hatch::Insulation,
         membrane: h == Hatch::Membrane,
+        zigzag: h == Hatch::Xps,
     }
 }
 
