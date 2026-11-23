@@ -41,7 +41,12 @@ pub fn measure(model: &Model, scene: &[crate::scene::SceneItem]) -> Vec<Line> {
     // (the mineral wool fire barriers in an ETICS of EPS)
     type Key = (ElementId, Option<usize>, Option<ElementId>);
     let mut solid: HashMap<Key, (f64, f64)> = HashMap::new();
+    // the plinths' pieces counted on their own lines
+    let mut plinths = crate::plinthtakeoff::Pieces::new(model);
     for item in scene.iter().filter(|i| !i.ghost && !i.is_lining()) {
+        if plinths.take(item) {
+            continue;
+        }
         let room = item.mesh.bounds().map_or(0.0, |(lo, hi)| {
             let d = (hi - lo).as_dvec3();
             d.x * d.y * d.z
@@ -107,6 +112,7 @@ pub fn measure(model: &Model, scene: &[crate::scene::SceneItem]) -> Vec<Line> {
             l.quantity.area = v / l.thickness;
         }
     }
+    lines.extend(plinths.lines());
     lines
 }
 

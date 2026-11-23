@@ -284,7 +284,7 @@ fn layer_items(
 }
 
 /// How thick the plinth's membrane is drawn.
-const PLINTH_MEMBRANE: f64 = 0.002;
+pub const PLINTH_MEMBRANE: f64 = 0.002;
 
 /// A wall's plinth (sokel, [`creabim_core::plinth`]): below its top the
 /// facade insulation gives way to the plinth's XPS (flush, or set back
