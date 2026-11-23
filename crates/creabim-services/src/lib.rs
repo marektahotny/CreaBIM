@@ -41,6 +41,7 @@ pub mod model;
 pub mod network;
 pub mod peak_flow;
 pub mod pipe_types;
+pub mod psi;
 pub mod radiators;
 pub mod recuperation;
 pub mod sanitary;

@@ -8384,5 +8384,20 @@
  "Allowed rise": "Pripustené prekročenie",
  "How much warmer the room may get at the peak: the sun's load is cut by what the inner walls, floor and ceiling store (STN 73 0548, art. 68 and 69)": "O koľko sa miestnosť smie v špičke ohriať: záťaž od oslnenia okien sa zníži o to, čo naakumulujú vnútorné steny, podlaha a strop (STN 73 0548, čl. 68 a 69)",
  "By STN 73 0548: the sun through the windows (table 10) with g and the shading s of table 11, cut by what the inner walls, floor and ceiling store (formula 27, art. 69); walls and roof by the sol-air temperature with ε of table 12 and the sun of table 5 (formula 29), damped and delayed by their thickness (formulas 30 to 32); people, lighting, appliances and ventilation. Each room at its own worst hour.": "Podľa STN 73 0548: slnko oknami (tab. 10) s g a tieniacim súčiniteľom s z tab. 11, znížené o akumuláciu vnútorných stien, podlahy a stropu (vzťah 27, čl. 69); steny a strecha cez rovnocennú slnečnú teplotu s ε z tab. 12 a radiáciou z tab. 5 (vzťah 29), utlmenou a oneskorenou podľa hrúbky (vzťahy 30 až 32); ľudia, osvetlenie, spotrebiče a vetranie. Každá miestnosť vo svojej najnepriaznivejšej hodine.",
- "tables of the norm read": "tabuliek normy načítaných"
+ "tables of the norm read": "tabuliek normy načítaných",
+ "Thermal bridges": "Tepelné mosty",
+ "Σ l·Ψ (annex C, STN EN ISO 14683)": "Σ l·Ψ (príloha C, STN EN ISO 14683)",
+ "ΔU_TB (tab. B.1)": "ΔU_TB (tab. B.1)",
+ "The table of STN EN ISO 14683 is not read: read its parameter file": "Tabuľka STN EN ISO 14683 nie je načítaná: načítajte jej parametrový súbor",
+ "Details of the junctions (STN EN ISO 14683, table C.2)": "Detaily stykov (STN EN ISO 14683, tab. C.2)",
+ "By the build-up": "Podľa skladby",
+ "By the build-up: the detail for where the outside wall's main insulation lies (outside, in the core, inside, none) and, for windows, where the frame stands and whether the insulation laps it.": "Podľa skladby: detail podľa polohy hlavnej izolácie obvodovej steny (zvonka, v jadre, zvnútra, bez izolácie) a pri oknách podľa polohy rámu a toho, či izolácia prekrýva rám.",
+ "Thermal bridge": "Tepelný most",
+ "Outside corner": "Vonkajší roh",
+ "Inside corner": "Vnútorný roh",
+ "Floor between storeys": "Strop medzi podlažiami",
+ "Roof at the wall": "Strecha pri stene",
+ "Floor on the ground at the wall": "Podlaha na teréne pri stene",
+ "Inner wall at the outside wall": "Vnútorná stena pri obvodovej",
+ "Window and door edges": "Obvod okien a dverí"
 }

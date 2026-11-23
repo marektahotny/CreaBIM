@@ -98,6 +98,13 @@ pub struct Opts {
     pub tb_row: usize,
     /// Ground water within 1 m under the floor slab (f_GW, B.2.3).
     pub gw_near: bool,
+    /// The detailed method's thermal bridges as Σ l·Ψ (STN EN 12831-1
+    /// annex C, Ψ of STN EN ISO 14683 table C.2, [`crate::psi`]) instead of
+    /// ΔU_TB of table B.1; and the detail picked for each kind of junction
+    /// ([`crate::psi::slot`]), an index into the table's rows (none: by
+    /// the build-up).
+    pub psi: bool,
+    pub psi_pick: [Option<u16>; 7],
     /// Design outside temperature θe, °C.
     pub te: f64,
     /// Mean annual outside temperature θm,e, °C; none takes f_g2 = 1.
@@ -121,6 +128,8 @@ impl Default for Opts {
             method: Method::Simplified,
             tb_row: 1,
             gw_near: false,
+            psi: false,
+            psi_pick: [None; 7],
             te: -11.0,
             te_mean: None,
             te_heating: None,

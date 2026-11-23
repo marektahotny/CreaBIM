@@ -25,6 +25,7 @@ use crate::heatloss::{
     Item, Missing, Opts, RoomLoss, Shielding, R_CEILING_UP, R_FLOOR, R_FLOOR_DOWN, R_INNER, R_ROOF,
     R_WALL,
 };
+use crate::psi::{self, Frame, Ins, Joint, Picks};
 use creabim_core::fireparams::{self, ParamTable};
 use creabim_core::{polygon, room, ElementKind, Model, OpeningKind};
 use glam::DVec2;
@@ -56,7 +57,7 @@ pub fn tables_of(model: &Model) -> Vec<ParamTable> {
         .unwrap_or_default();
     fireparams::effective(&own)
         .into_iter()
-        .filter(|t| TABLES.contains(&t.id.as_str()))
+        .filter(|t| TABLES.contains(&t.id.as_str()) || t.id == crate::psi::PSI)
         .collect()
 }
 
@@ -200,6 +201,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
     let rho_cp = factor(&tables, "rho_cp");
     let f_dir = factor(&tables, "f_dir");
     let floor_k = ground_constants(&tables, "floor");
+    let psi_rows = psi::rows(&tables);
     let room_at = |level, p: DVec2, not| {
         rooms.iter().position(|x| {
             x.level == level && x.e.id != not && polygon::contains(&x.shape.outline, p)
@@ -315,10 +317,18 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                     }),
                 }
             };
-        let tb = d_tb.unwrap_or_else(|| {
-            miss(Missing::NormTable);
+        // with Σ l·Ψ (annex C) the areas take no ΔU_TB
+        let tb = if o.psi {
             0.0
-        });
+        } else {
+            d_tb.unwrap_or_else(|| {
+                miss(Missing::NormTable);
+                0.0
+            })
+        };
+        // the junctions for Σ l·Ψ: kind, the detail left to itself, length
+        let mut joints: Vec<(Joint, String, f64)> = vec![];
+        let mut ins_of: Vec<Option<Ins>> = vec![None; r.shape.outline.len()];
         let mut a_env = 0.0;
         let mut facades: Vec<f64> = vec![];
         let mut seen = vec![];
@@ -339,6 +349,8 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             match edges[k][i] {
                 Edge::Outside(_) => {
                     a_env += gross;
+                    let ins = psi::insulation(model, we);
+                    ins_of[i] = Some(ins);
                     let u = (wall.end - wall.start).normalize_or_zero();
                     let (s0, s1) = {
                         let (x, y) = ((a - wall.start).dot(u), (b - wall.start).dot(u));
@@ -375,6 +387,22 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                             ("Outside door", o.u_door)
                         };
                         add(kind, "", oa, uo + tb, 1.0, Some(az));
+                        // the frame's edge: a door's threshold left out
+                        let frame = psi::frame_of(model, we, wall, op);
+                        let lapped = op
+                            .reveal
+                            .unwrap_or(creabim_core::assembly::REVEAL_INSULATION)
+                            > 1e-3;
+                        let edge = if op.kind == OpeningKind::Window {
+                            2.0 * (op.width + op.height)
+                        } else {
+                            op.width + 2.0 * op.height
+                        };
+                        joints.push((
+                            Joint::Window,
+                            psi::auto_key(Joint::Window, ins, frame, lapped),
+                            edge,
+                        ));
                     }
                     match u_of(model, we, R_WALL) {
                         Some((uw, name)) => {
@@ -401,6 +429,45 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                 _ => {}
             }
         }
+        // the corners of the outside walls and the inner walls meeting
+        // them, a storey high (an inner wall's half to each room beside it)
+        for i in 0..n {
+            let p = (i + n - 1) % n;
+            let (ea, eb) = (&edges[k][p], &edges[k][i]);
+            let (a, b, c) = (ring[p], ring[i], ring[(i + 1) % n]);
+            match (ea, eb) {
+                (Edge::Outside(_), Edge::Outside(_)) => {
+                    let cross = (b - a).perp_dot(c - b);
+                    if cross.abs() < 1e-6 * (b - a).length() * (c - b).length() {
+                        continue;
+                    }
+                    let ins = ins_of[i].or(ins_of[p]).unwrap_or(Ins::Even);
+                    // the outline runs anticlockwise: a left turn is an outside corner
+                    let j = if cross > 0.0 {
+                        Joint::CornerOut
+                    } else {
+                        Joint::CornerIn
+                    };
+                    joints.push((j, psi::auto_key(j, ins, Frame::Outer, false), hs));
+                }
+                (Edge::Outside(_), Edge::Room(..)) | (Edge::Room(..), Edge::Outside(_)) => {
+                    let ins = ins_of[i].or(ins_of[p]).unwrap_or(Ins::Even);
+                    let j = Joint::InnerWall;
+                    joints.push((j, psi::auto_key(j, ins, Frame::Outer, false), hs / 2.0));
+                }
+                _ => {}
+            }
+        }
+        // the outside walls' outer lengths, for the floors, roof and ground
+        // along them
+        let along: Vec<(Ins, f64)> = (0..n)
+            .filter_map(|i| Some((ins_of[i]?, ring[i].distance(ring[(i + 1) % n]))))
+            .collect();
+        let mut along_with = |j: Joint, share: f64| {
+            for (ins, l) in &along {
+                joints.push((j, psi::auto_key(j, *ins, Frame::Outer, false), l * share));
+            }
+        };
         let area_out = polygon::signed_area2(ring).abs() / 2.0;
         let c = rm.at;
         let me = elev(r.level);
@@ -467,6 +534,13 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             }
         }
         // the floor on the ground, where no room is under the room's middle
+        // a floor between storeys: half its edge to the room over it, half
+        // to the room under it
+        for side in [0usize, 1] {
+            if covered[side] > 1e-3 {
+                along_with(Joint::Floor, 0.5);
+            }
+        }
         let below = covered[1] > 1e-3
             || rooms
                 .iter()
@@ -493,6 +567,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                             let ue =
                                 u_equiv(&kf, bp.unwrap_or(f64::MAX).clamp(1e-3, 1e6), z, u + tb);
                             let f_ig = (ti - tm) / dt;
+                            along_with(Joint::Ground, 1.0);
                             add(
                                 "Floor on the ground",
                                 &name,
@@ -532,12 +607,50 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                     match u_of(model, e, R_ROOF) {
                         Some((u, name)) => {
                             a_env += area_out * slope;
+                            along_with(Joint::Roof, 1.0);
                             add("Roof", &name, area_out * slope, u + tb, 1.0, None)
                         }
                         None => miss(Missing::RoofBuildUp),
                     }
                 }
                 None => miss(Missing::NoRoofOrCeiling),
+            }
+        }
+        if o.psi {
+            let picks = Picks {
+                rows: &psi_rows,
+                pick: o.psi_pick,
+            };
+            if psi_rows.is_empty() {
+                miss(Missing::NormTable);
+            }
+            for (j, auto, l) in joints {
+                let Some(row) = picks.row(j, &auto) else {
+                    continue;
+                };
+                if l <= 1e-4 || row.psi_e == 0.0 {
+                    continue;
+                }
+                let detail = format!("{} {}", row.key, row.text);
+                let phi = l * row.psi_e * dt;
+                match items
+                    .iter_mut()
+                    .find(|x| x.kind == "Thermal bridge" && x.detail == detail)
+                {
+                    Some(x) => {
+                        x.area += l;
+                        x.phi += phi;
+                    }
+                    None => items.push(Item {
+                        kind: "Thermal bridge",
+                        detail: detail.trim().to_string(),
+                        area: l,
+                        u: row.psi_e,
+                        f: 1.0,
+                        phi,
+                        azimuth: None,
+                    }),
+                }
             }
         }
         parts.push(Part {
@@ -751,5 +864,77 @@ mod tests {
             .find(|i| i.kind == "Floor on the ground")
             .unwrap();
         assert!(gn.f > g.f);
+    }
+
+    #[test]
+    fn thermal_bridges_as_psi_times_length() {
+        let mut doc = creabim_core::Document::from_model(heatloss::test_house());
+        let mut info = doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        // made-up Ψ in the norm's table's shape, not the norm's
+        let mut t = test_tables();
+        let mut text =
+            String::from("#table heat_psi\n#columns key\tgroup\tpsi_e\tpsi_oi\tpsi_i\ttext\n");
+        for (g, n) in [
+            ("C", 8),
+            ("IF", 4),
+            ("R", 4),
+            ("GF", 4),
+            ("IW", 4),
+            ("W", 18),
+        ] {
+            for i in 1..=n {
+                text += &format!("{g}{i}\t{g}\t0,1\t0\t0\t{g}\n");
+            }
+        }
+        t.extend(fireparams::parse(&text));
+        info.fire_params = t;
+        let tx = creabim_core::set_project(doc.model(), info);
+        doc.commit(tx).unwrap();
+        let model = doc.model().clone();
+        let o = Opts {
+            psi: true,
+            ..detailed()
+        };
+        let d = building(&model, &o);
+        let b1 = building(&model, &detailed());
+        for (r, rb) in d.rooms.iter().zip(&b1.rooms) {
+            let bridges: Vec<&Item> = r
+                .items
+                .iter()
+                .filter(|i| i.kind == "Thermal bridge")
+                .collect();
+            assert!(!bridges.is_empty(), "{:?}", r.items);
+            // no ΔU_TB on the areas
+            let w = r.items.iter().find(|i| i.kind == "Window").unwrap();
+            assert!((w.u - o.u_window).abs() < 1e-9);
+            // windows round their whole edge, corners a storey high
+            let win = bridges.iter().find(|i| i.detail.starts_with('W')).unwrap();
+            assert!(win.area > 0.0 && (win.u - 0.1).abs() < 1e-9);
+            assert!(bridges
+                .iter()
+                .all(|b| (b.phi - b.area * b.u * (r.ti - o.te)).abs() < 1e-9));
+            let sum: f64 = r.items.iter().map(|i| i.phi).sum();
+            assert!((sum - r.phi_t).abs() < 1e-6);
+            assert_ne!(r.phi_t, rb.phi_t);
+        }
+        // a detail picked for a kind of junction takes its row
+        let mut pick = [None; 7];
+        pick[crate::psi::slot(Joint::Window)] = Some(0);
+        let other = building(
+            &model,
+            &Opts {
+                psi_pick: pick,
+                ..o
+            },
+        );
+        // row 0 is C1, not a window detail: the windows are left out
+        assert!(other.rooms[1]
+            .items
+            .iter()
+            .all(|i| !(i.kind == "Thermal bridge" && i.detail.starts_with('W'))));
     }
 }

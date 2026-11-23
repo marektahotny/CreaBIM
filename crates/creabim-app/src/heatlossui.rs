@@ -8,6 +8,7 @@ use creabim_core::catalogue::heat::HeatKind;
 use creabim_core::fireparams::{self, ClimateSite};
 use creabim_services::heatdetail;
 use creabim_services::heatloss::{self, Method, Opts, Shielding};
+use creabim_services::psi;
 
 /// `o` with the temperatures of locality `s`.
 fn with_site(o: Opts, s: &ClimateSite) -> Opts {
@@ -132,6 +133,7 @@ impl CreaBimApp {
             .filter(|t| {
                 heatdetail::TABLES.contains(&t.id.as_str())
                     || creabim_services::coolnorm::TABLES.contains(&t.id.as_str())
+                    || t.id == psi::PSI
             })
             .cloned()
             .collect();
@@ -199,15 +201,16 @@ impl CreaBimApp {
 
     /// `calc:heatloss` from the Heating tab: calculate and show the window.
     pub(super) fn heat_loss_action(&mut self, head: &str, arg: &str) -> bool {
-        if head != "calc" || !matches!(arg, "heatloss" | "heatloss-detailed") {
+        if head != "calc" || !matches!(arg, "heatloss" | "heatloss-detailed" | "heatloss-psi") {
             return false;
         }
         let mut o = self
             .heat_loss
             .as_ref()
             .map_or_else(|| self.site_opts(Opts::default()), |x| x.0);
-        if arg == "heatloss-detailed" {
+        if arg != "heatloss" {
             o.method = Method::Detailed;
+            o.psi = arg == "heatloss-psi";
         }
         let b = heatloss::building(self.doc.model(), &o);
         self.status = if b.rooms.is_empty() {
@@ -334,23 +337,83 @@ impl CreaBimApp {
                         });
                     }
                     ui.horizontal(|ui| {
-                        ui.label(t("Thermal bridges ΔU_TB (tab. B.1)"));
-                        let shown = rows
-                            .get(o.tb_row)
-                            .map_or(t("choose"), |r| format!("{} W/(m²K) – {}", num(r.1, 2), r.0));
-                        egui::ComboBox::from_id_salt("heat.loss.tb")
-                            .selected_text(shown)
-                            .width(ui.available_width().min(460.0))
+                        ui.label(t("Thermal bridges"));
+                        egui::ComboBox::from_id_salt("heat.loss.tb.mode")
+                            .selected_text(if o.psi {
+                                t("Σ l·Ψ (annex C, STN EN ISO 14683)")
+                            } else {
+                                t("ΔU_TB (tab. B.1)")
+                            })
                             .show_ui(ui, |ui| {
-                                for (i, r) in rows.iter().enumerate() {
-                                    ui.selectable_value(
-                                        &mut o.tb_row,
-                                        i,
-                                        format!("{} W/(m²K) – {}", num(r.1, 2), r.0),
-                                    );
-                                }
+                                ui.selectable_value(&mut o.psi, false, t("ΔU_TB (tab. B.1)"));
+                                ui.selectable_value(&mut o.psi, true, t("Σ l·Ψ (annex C, STN EN ISO 14683)"));
                             });
                     });
+                    if o.psi {
+                        let rows = psi::rows(&heat_tables);
+                        if rows.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.colored_label(
+                                    ui.visuals().warn_fg_color,
+                                    t("The table of STN EN ISO 14683 is not read: read its parameter file"),
+                                );
+                                if ui.button(t("Read the table…")).clicked() {
+                                    load_sites = true;
+                                }
+                            });
+                        }
+                        egui::CollapsingHeader::new(t("Details of the junctions (STN EN ISO 14683, table C.2)"))
+                            .id_salt("heat.loss.psi")
+                            .show(ui, |ui| {
+                                egui::Grid::new("heat.loss.psi.grid")
+                                    .num_columns(2)
+                                    .spacing([12.0, 4.0])
+                                    .show(ui, |ui| {
+                                        for j in psi::Joint::ALL {
+                                            ui.label(t(j.name()));
+                                            let slot = psi::slot(j);
+                                            let show = |r: &psi::Row| {
+                                                format!("{} – Ψe {} – {}", r.key, num(r.psi_e, 2), r.text)
+                                            };
+                                            let now = o.psi_pick[slot]
+                                                .and_then(|i| rows.get(i as usize))
+                                                .map_or(t("By the build-up"), show);
+                                            egui::ComboBox::from_id_salt(("heat.loss.psi", slot))
+                                                .selected_text(now)
+                                                .width(ui.available_width().min(420.0))
+                                                .show_ui(ui, |ui| {
+                                                    ui.selectable_value(&mut o.psi_pick[slot], None, t("By the build-up"));
+                                                    for (i, r) in rows.iter().enumerate() {
+                                                        if r.group == j.group() {
+                                                            ui.selectable_value(&mut o.psi_pick[slot], Some(i as u16), show(r));
+                                                        }
+                                                    }
+                                                });
+                                            ui.end_row();
+                                        }
+                                    });
+                                ui.weak(t("By the build-up: the detail for where the outside wall's main insulation lies (outside, in the core, inside, none) and, for windows, where the frame stands and whether the insulation laps it."));
+                            });
+                    } else {
+                        ui.horizontal(|ui| {
+                            ui.label(t("Thermal bridges ΔU_TB (tab. B.1)"));
+                            let shown = rows
+                                .get(o.tb_row)
+                                .map_or(t("choose"), |r| format!("{} W/(m²K) – {}", num(r.1, 2), r.0));
+                            egui::ComboBox::from_id_salt("heat.loss.tb")
+                                .selected_text(shown)
+                                .width(ui.available_width().min(460.0))
+                                .show_ui(ui, |ui| {
+                                    for (i, r) in rows.iter().enumerate() {
+                                        ui.selectable_value(
+                                            &mut o.tb_row,
+                                            i,
+                                            format!("{} W/(m²K) – {}", num(r.1, 2), r.0),
+                                        );
+                                    }
+                                });
+                        });
+                    }
                     ui.checkbox(&mut o.gw_near, t("Ground water within 1 m under the floor slab (f_GW)"));
                 }
                 egui::Grid::new("heat.loss.opts")
@@ -508,8 +571,13 @@ impl CreaBimApp {
                                                 format!("{} – {}", t(i.kind), i.detail)
                                             };
                                             ui.label(what);
-                                            ui.label(num(i.area, 2));
-                                            ui.label(num(i.u, 3));
+                                            if i.kind == "Thermal bridge" {
+                                                ui.label(format!("l {} m", num(i.area, 2)));
+                                                ui.label(format!("Ψ {}", num(i.u, 2)));
+                                            } else {
+                                                ui.label(num(i.area, 2));
+                                                ui.label(num(i.u, 3));
+                                            }
                                             ui.label(num(i.f, 3));
                                             ui.label(num(i.phi, 0));
                                             ui.end_row();
