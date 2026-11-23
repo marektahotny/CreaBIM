@@ -2981,8 +2981,7 @@ fn show_pane(
                     return None;
                 }
                 if footing_box {
-                    let pad = crate::memberstool::footing_kind(doc.model(), state)
-                        == creabim_core::FootingKind::Pad;
+                    let pad = crate::memberstool::footing_kind(doc.model(), state).at_point();
                     let hosts: Vec<ElementId> = ids
                         .filter(|id| match doc.model().get(*id).map(|e| &e.kind) {
                             Some(ElementKind::Wall(w)) => !pad && w.curtain.is_none(),
@@ -3597,7 +3596,12 @@ fn show_pane(
         if hovered != Some(h) {
             draw_hover(&painter, &xf, &plan.items, h, mm);
         }
-        let mut text = crate::memberstool::host_preview(doc.model(), state, tool, h);
+        let mut text = crate::i18n::tr(&crate::memberstool::host_preview(
+            doc.model(),
+            state,
+            tool,
+            h,
+        ));
         if host_hits.len() > 1 {
             let i = state.host_cycle % host_hits.len();
             text += &format!("   {}/{} · Tab", i + 1, host_hits.len());
@@ -5772,6 +5776,7 @@ fn refresh_snaps(
         let _p = crate::app::Perf::new("plan snaps: build");
         let mut s = Snapper::from_drawing(&plan.items, &[]);
         s.add_underlay_centres(model, view);
+        s.add_column_centres(model, view);
         add_reference_snaps(&mut s, state, model, view);
         if let Some(under) = underlay_view(model, view) {
             add_reference_snaps(&mut s, state, model, under);
@@ -7459,7 +7464,9 @@ pub fn draw_footings(
         }
         let outlines = match f.kind {
             creabim_core::FootingKind::Strip => strips.get(&e.id).cloned().unwrap_or_default(),
-            creabim_core::FootingKind::Pad => vec![f.pad_outline(model)],
+            creabim_core::FootingKind::Pad | creabim_core::FootingKind::Pile => {
+                vec![f.pad_outline(model)]
+            }
         };
         let tint = accent.gamma_multiply(if selected { 0.22 } else { 0.12 });
         let stroke = Stroke::new(if selected { 1.8 } else { 1.2 }, accent);

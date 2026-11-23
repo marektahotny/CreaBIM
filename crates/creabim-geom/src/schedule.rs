@@ -722,6 +722,11 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
                             format!("{} × {} × {}", mm(f.width), mm(f.length), mm(f.thickness)),
                             f.width.max(f.length),
                         ),
+                        creabim_core::FootingKind::Pile => (
+                            "Pile",
+                            format!("Ø {} × {}", mm(f.width), mm(f.thickness)),
+                            f.thickness,
+                        ),
                     },
                     _ => continue,
                 };

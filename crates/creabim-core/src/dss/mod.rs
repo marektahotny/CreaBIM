@@ -643,10 +643,12 @@ pub fn auto_class(model: &Model, e: &crate::Element) -> Option<&'static Class> {
         }),
         ElementKind::Stair(_) => Some("XSB001"),
         ElementKind::Railing(_) => Some("FQD002"),
-        ElementKind::Footing(f) => Some(match f.kind {
-            crate::FootingKind::Strip => "ULC011",
-            crate::FootingKind::Pad => "ULG004",
-        }),
+        // the data standard's table has no class for a pile
+        ElementKind::Footing(f) => match f.kind {
+            crate::FootingKind::Strip => Some("ULC011"),
+            crate::FootingKind::Pad => Some("ULG004"),
+            crate::FootingKind::Pile => None,
+        },
         ElementKind::Ceiling(_) => Some("NCD001"),
         // roof flashing: gutters, downpipes, outlets and the rest
         ElementKind::Flashing(f) => Some(match &f.item {
@@ -1097,6 +1099,21 @@ fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Know
                     &mut out,
                     "objem",
                     Known::Vol(f.width * f.length * f.thickness),
+                );
+            }
+            crate::FootingKind::Pile => {
+                let r = f.width / 2.0;
+                put(&mut out, "priemer", Known::Len(f.width));
+                put(&mut out, "dĺžka", Known::Len(f.thickness));
+                put(
+                    &mut out,
+                    "plocha prierezu",
+                    Known::Area(std::f64::consts::PI * r * r),
+                );
+                put(
+                    &mut out,
+                    "objem",
+                    Known::Vol(std::f64::consts::PI * r * r * f.thickness),
                 );
             }
         },

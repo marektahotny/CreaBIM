@@ -441,6 +441,9 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
                     tag(f.length),
                     tag(f.thickness)
                 ),
+                creabim_core::FootingKind::Pile => {
+                    format!("Ø {} L {}", tag(f.width), tag(f.thickness))
+                }
             },
             false,
         ),

@@ -90,7 +90,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             Sep,
             T(Tool::Column),
             T(Tool::Beam),
-            T(Tool::Footing),
+            Entry::Menu {
+                key: "tab:footing",
+                label: "Footing",
+                icon: "footing",
+                hint: "Foundations: a strip footing under walls, a pad footing or a bored pile under columns (on their axis) or on its own",
+            },
             Entry::Menu {
                 key: "tab:masonry",
                 label: "Masonry",
@@ -796,7 +801,15 @@ pub fn entries(tab: usize) -> Vec<Entry> {
 
 /// Does tab `tab` show `tool`?
 pub fn holds(tab: usize, tool: Tool) -> bool {
-    ALWAYS.contains(&tool) || entries(tab).contains(&Entry::Tool(tool))
+    // the Footing tool is behind its menu of kinds
+    let menu = |key: &str| {
+        entries(tab)
+            .iter()
+            .any(|e| matches!(e, Entry::Menu { key: k, .. } if *k == key))
+    };
+    ALWAYS.contains(&tool)
+        || entries(tab).contains(&Entry::Tool(tool))
+        || (tool == Tool::Footing && menu("tab:footing"))
 }
 
 /// The first tab that shows `tool`.

@@ -248,6 +248,7 @@ impl Element {
             ElementKind::Roof(_) => "IfcRoof",
             ElementKind::Stair(_) => "IfcStair",
             ElementKind::Railing(_) => "IfcRailing",
+            ElementKind::Footing(f) if f.kind == crate::FootingKind::Pile => "IfcPile",
             ElementKind::Footing(_) => "IfcFooting",
             ElementKind::Part(p) if p.void => "IfcOpeningElement",
             ElementKind::Part(p) => &p.ifc_class,

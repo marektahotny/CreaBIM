@@ -26,9 +26,10 @@ pub struct MemberSettings {
     pub railing_height: f64,
     /// The railing path clicked so far.
     pub path: Vec<DVec2>,
-    /// New footings are pads (else strips), unless the tool's type says.
-    pub footing_pad: bool,
-    /// Width of new strips, and the sides of new pads.
+    /// The kind of new footings (strip, pad or pile), unless the tool's
+    /// type says.
+    pub footing_kind: creabim_core::FootingKind,
+    /// Width of new strips, the sides of new pads, a new pile's diameter.
     pub footing_width: f64,
     pub footing_thickness: f64,
     /// Where new strips under walls lie across them, and how far their
@@ -87,7 +88,7 @@ impl Default for MemberSettings {
             stair_turn: false,
             railing_height: 1.0,
             path: vec![],
-            footing_pad: false,
+            footing_kind: creabim_core::FootingKind::Strip,
             footing_width: creabim_core::footing::STRIP_WIDTH,
             footing_thickness: creabim_core::footing::STRIP_THICKNESS,
             footing_align: Default::default(),
@@ -331,7 +332,7 @@ pub fn click(
 
 /// The kind of footing the Footing tool places: its type's, or the bar's.
 pub fn footing_kind(model: &Model, state: &PlanState) -> creabim_core::FootingKind {
-    use creabim_core::{types::TypeParams, FootingKind, TypeCategory};
+    use creabim_core::{types::TypeParams, TypeCategory};
     let typed = state
         .types
         .get(&TypeCategory::Footing)
@@ -342,11 +343,7 @@ pub fn footing_kind(model: &Model, state: &PlanState) -> creabim_core::FootingKi
             },
             _ => None,
         });
-    typed.unwrap_or(if state.members.footing_pad {
-        FootingKind::Pad
-    } else {
-        FootingKind::Strip
-    })
+    typed.unwrap_or(state.members.footing_kind)
 }
 
 /// A new footing sized from the tool bar, of the tool's type if it fits.
@@ -355,8 +352,15 @@ fn sized_footing(model: &Model, state: &PlanState, mut f: creabim_core::Footing)
     // as wide as the bar says, under a wall too (George 2026-11-20: the
     // width typed before placing is the one built, not widened to the
     // wall's thickness and 300 mm)
+    // under a column `footing::under` makes a pad: a pile when piles
+    // are being placed
+    if f.kind == creabim_core::FootingKind::Pad
+        && footing_kind(model, state) == creabim_core::FootingKind::Pile
+    {
+        f.kind = creabim_core::FootingKind::Pile;
+    }
     f.width = m.footing_width;
-    if f.kind == creabim_core::FootingKind::Pad {
+    if f.kind.at_point() {
         f.length = m.footing_width;
     }
     f.thickness = m.footing_thickness;
@@ -366,6 +370,18 @@ fn sized_footing(model: &Model, state: &PlanState, mut f: creabim_core::Footing)
     let mut e = state.typed(model, Element::new(name, ElementKind::Footing(f)));
     keep_bar_sizes(&mut e, state);
     e
+}
+
+/// The base offset a new footing is set with: the bar's, the underside
+/// of a strip or pad above the level's floor; a pile's head is there
+/// instead, its toe its length below.
+pub fn base_of(f: &creabim_core::Footing, state: &PlanState) -> f64 {
+    let b = state.members.footing_base;
+    if f.kind == creabim_core::FootingKind::Pile {
+        b - f.thickness
+    } else {
+        b
+    }
 }
 
 /// Footing `f`, placed with the plan of `level` open, set on the level it
@@ -411,7 +427,7 @@ pub fn keep_bar_sizes(e: &mut Element, state: &PlanState) {
     let ElementKind::Footing(f) = &mut e.kind else {
         return;
     };
-    if m.footing_pad != (f.kind == creabim_core::FootingKind::Pad) {
+    if m.footing_kind != f.kind {
         return;
     }
     let mut changed = vec![];
@@ -419,7 +435,7 @@ pub fn keep_bar_sizes(e: &mut Element, state: &PlanState) {
         f.width = m.footing_width;
         changed.push(Param::Width);
     }
-    if f.kind == creabim_core::FootingKind::Pad && (f.length - m.footing_width).abs() > 1e-9 {
+    if f.kind.at_point() && (f.length - m.footing_width).abs() > 1e-9 {
         f.length = m.footing_width;
         changed.push(Param::Length);
     }
@@ -480,7 +496,7 @@ pub fn finish_footings(model: &Model, state: &PlanState, tx: Transaction) -> Tra
                 // its top on the underside of the storey's floor
                 let at = match f.kind {
                     creabim_core::FootingKind::Strip => (f.start + f.end) / 2.0,
-                    creabim_core::FootingKind::Pad => f.start,
+                    creabim_core::FootingKind::Pad | creabim_core::FootingKind::Pile => f.start,
                 };
                 let base = creabim_core::members::elevation(model, f.level);
                 if let Some(d) = creabim_core::members::slab_depth_at(model, at, base) {
@@ -513,7 +529,7 @@ fn place_footing(
         .filter(|h| hosts_at(model, level, Tool::Footing, state, p).contains(h));
     let host = match kind {
         FootingKind::Strip if state.pending.is_none() => shown.or_else(|| wall_at(model, level, p)),
-        FootingKind::Pad => shown.or_else(|| column_at(model, level, p)),
+        FootingKind::Pad | FootingKind::Pile => shown.or_else(|| column_at(model, level, p)),
         FootingKind::Strip => None,
     };
     if let Some(h) = host {
@@ -525,7 +541,7 @@ fn place_footing(
             if let ElementKind::Footing(f) = &e.kind {
                 *e = sized_footing(model, state, f.clone());
                 if let ElementKind::Footing(f) = &mut e.kind {
-                    set_on_level(model, f, level, state.members.footing_base);
+                    set_on_level(model, f, level, base_of(f, state));
                 }
             }
         });
@@ -535,6 +551,7 @@ fn place_footing(
             match kind {
                 FootingKind::Strip => "Strip",
                 FootingKind::Pad => "Pad",
+                FootingKind::Pile => "Pile",
             }
         ));
         state.footing_placed = true;
@@ -564,6 +581,14 @@ fn place_footing(
             f.base_offset = Some(state.members.footing_base);
             let e = sized_footing(model, state, f);
             state.status = Some("Pad footing placed. Set its size and depth in Properties.".into());
+            add(doc, selection, e, state)
+        }
+        FootingKind::Pile => {
+            let mut e = sized_footing(model, state, Footing::pile(level, p));
+            if let ElementKind::Footing(f) = &mut e.kind {
+                f.base_offset = Some(base_of(f, state));
+            }
+            state.status = Some("Pile placed. Set its diameter and length in Properties.".into());
             add(doc, selection, e, state)
         }
         FootingKind::Strip => match state.pending.take() {
@@ -695,7 +720,9 @@ pub fn hosts_at(
     match tool {
         Tool::Footing => match footing_kind(model, state) {
             FootingKind::Strip => walls_at(model, level, p),
-            FootingKind::Pad => column_at(model, level, p).into_iter().collect(),
+            FootingKind::Pad | FootingKind::Pile => {
+                column_at(model, level, p).into_iter().collect()
+            }
         },
         Tool::Door | Tool::Window | Tool::Opening => walls_at(model, level, p),
         _ => vec![],
@@ -715,6 +742,9 @@ pub fn host_preview(model: &Model, state: &PlanState, tool: Tool, host: ElementI
                 }
                 creabim_core::FootingKind::Pad => {
                     creabim_core::Footing::pad(ElementId::NIL, DVec2::ZERO)
+                }
+                creabim_core::FootingKind::Pile => {
+                    creabim_core::Footing::pile(ElementId::NIL, DVec2::ZERO)
                 }
             };
             f.host = Some(host);
@@ -739,6 +769,9 @@ pub fn host_preview(model: &Model, state: &PlanState, tool: Tool, host: ElementI
                     mm(f.length),
                     mm(f.thickness)
                 ),
+                creabim_core::FootingKind::Pile => {
+                    format!("Pile Ø {} × {} under {name}", mm(f.width), mm(f.thickness))
+                }
             }
         }
         Tool::Door => format!("Door in {name}"),
@@ -1475,13 +1508,29 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
     };
     // under the fields, in their column, as Blender's notes (MU31)
     let weak = |ui: &mut egui::Ui, t: String| crate::props::note(ui, t);
-    if num(ui, "Width", &mut f.width, 0.1, 10.0) {
+    let pile = f.kind == FootingKind::Pile;
+    if num(
+        ui,
+        if pile { "Diameter" } else { "Width" },
+        &mut f.width,
+        0.1,
+        10.0,
+    ) {
+        if pile {
+            f.length = f.width;
+        }
         label = "Footing width";
     }
     if f.kind == FootingKind::Pad && num(ui, "Length", &mut f.length, 0.1, 10.0) {
         label = "Footing length";
     }
-    if num(ui, "Height", &mut f.thickness, 0.05, 5.0) {
+    if num(
+        ui,
+        if pile { "Length" } else { "Height" },
+        &mut f.thickness,
+        0.05,
+        if pile { 60.0 } else { 5.0 },
+    ) {
         label = "Footing thickness";
     }
     let host = f.host.and_then(|h| model.get(h));
@@ -1516,7 +1565,7 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
         let below = if host.is_some() {
             match f.kind {
                 FootingKind::Strip => "Top below wall base",
-                FootingKind::Pad => "Top below column base",
+                FootingKind::Pad | FootingKind::Pile => "Top below column base",
             }
         } else {
             "Top below level"
@@ -1602,7 +1651,7 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
                         label = "Move footing";
                     }
                 }
-                FootingKind::Pad => {
+                FootingKind::Pad | FootingKind::Pile => {
                     if num(ui, "X", &mut f.start.x, -1e4, 1e4)
                         | num(ui, "Y", &mut f.start.y, -1e4, 1e4)
                     {
@@ -1635,6 +1684,7 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
                 FootingKind::Strip =>
                     format!("Strip {} long", crate::units::len(f.strip_length(model))),
                 FootingKind::Pad => "Pad".to_string(),
+                FootingKind::Pile => "Pile".to_string(),
             },
             crate::units::elevation(top),
             crate::units::elevation(top - f.thickness)
@@ -1867,55 +1917,84 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             toggle(
                 "footing.strip",
                 "Strip",
-                !m.footing_pad,
+                m.footing_kind == creabim_core::FootingKind::Strip,
                 "footing",
                 "Strip footings: click a wall, or draw them point by point as walls (Esc ends the chain)",
             ),
             toggle(
                 "footing.pad",
                 "Pad",
-                m.footing_pad,
+                m.footing_kind == creabim_core::FootingKind::Pad,
                 "square-dashed",
-                "Pad footings: click a column, or anywhere",
+                "Pad footings: click a column (centred on its axis), or anywhere",
+            ),
+            toggle(
+                "footing.pile",
+                "Pile",
+                m.footing_kind == creabim_core::FootingKind::Pile,
+                "cylinder",
+                "Bored piles: click a column (on its axis), or anywhere; the head on the level's floor plus the base offset, the toe its length below",
             ),
             num(
                 "footing_width",
-                if m.footing_pad { "Size" } else { "Width" },
+                match m.footing_kind {
+                    creabim_core::FootingKind::Strip => "Width",
+                    creabim_core::FootingKind::Pad => "Size",
+                    creabim_core::FootingKind::Pile => "Diameter",
+                },
                 m.footing_width,
                 "m",
                 0.05,
                 0.1,
                 10.0,
-                "Width of new strips, or the sides of new pads",
+                "Width of new strips, the sides of new pads, the diameter of new piles",
             ),
             num(
                 "footing_thickness",
-                "Height",
+                if m.footing_kind == creabim_core::FootingKind::Pile {
+                    "Length"
+                } else {
+                    "Height"
+                },
                 m.footing_thickness,
                 "m",
                 0.05,
                 0.05,
-                5.0,
+                30.0,
                 "Thickness of new footings",
             ),
-            num(
-                "footing_base",
-                "Base offset",
-                m.footing_base,
-                "m",
-                0.05,
-                -20.0,
-                20.0,
-                "How far above the floor of the level they are modelled on new footings' undersides sit",
-            ),
+            // a pile is set by its head, its toe its length below
+            if m.footing_kind == creabim_core::FootingKind::Pile {
+                num(
+                    "footing_base",
+                    "Head offset",
+                    m.footing_base,
+                    "m",
+                    0.05,
+                    -20.0,
+                    20.0,
+                    "How far above the floor of the level they are modelled on new piles' heads sit",
+                )
+            } else {
+                num(
+                    "footing_base",
+                    "Base offset",
+                    m.footing_base,
+                    "m",
+                    0.05,
+                    -20.0,
+                    20.0,
+                    "How far above the floor of the level they are modelled on new footings' undersides sit",
+                )
+            },
         ]
         .into_iter()
-        .chain((!m.footing_pad).then(|| json!({
+        .chain((m.footing_kind == creabim_core::FootingKind::Strip).then(|| json!({
             "kind": "menu", "key": "footing.align", "label": "Under the wall",
             "value": m.footing_align.label(), "icon": "footing",
             "hint": "Where new strips lie across their walls: centred, or with an edge set by the face of the wall's load-bearing layer",
         })))
-        .chain((!m.footing_pad && m.footing_align != creabim_core::FootingAlign::Line).then(|| {
+        .chain((m.footing_kind == creabim_core::FootingKind::Strip && m.footing_align != creabim_core::FootingAlign::Line).then(|| {
             num(
                 "footing_offset",
                 "Offset",
@@ -2022,21 +2101,20 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
         "square" => m.set_round(false),
         "round" => m.set_round(true),
         "lshape" => m.stair_turn = !m.stair_turn,
-        "footing.strip" | "footing.pad" => {
-            let pad = what == "footing.pad";
-            if pad != m.footing_pad {
-                m.footing_pad = pad;
+        "footing.strip" | "footing.pad" | "footing.pile" => {
+            use creabim_core::{footing as fo, FootingKind};
+            let kind = match what {
+                "footing.pad" => FootingKind::Pad,
+                "footing.pile" => FootingKind::Pile,
+                _ => FootingKind::Strip,
+            };
+            if kind != m.footing_kind {
+                m.footing_kind = kind;
                 // each kind starts at its usual size
-                (m.footing_width, m.footing_thickness) = if pad {
-                    (
-                        creabim_core::footing::PAD_SIZE,
-                        creabim_core::footing::PAD_THICKNESS,
-                    )
-                } else {
-                    (
-                        creabim_core::footing::STRIP_WIDTH,
-                        creabim_core::footing::STRIP_THICKNESS,
-                    )
+                (m.footing_width, m.footing_thickness) = match kind {
+                    FootingKind::Pad => (fo::PAD_SIZE, fo::PAD_THICKNESS),
+                    FootingKind::Pile => (fo::PILE_DIAMETER, fo::PILE_LENGTH),
+                    FootingKind::Strip => (fo::STRIP_WIDTH, fo::STRIP_THICKNESS),
                 };
             }
         }
@@ -2267,7 +2345,7 @@ mod tests {
         .unwrap();
         let column = sel.active.unwrap();
         toggle_option(&mut st, "footing.pad");
-        assert!(st.members.footing_pad);
+        assert_eq!(st.members.footing_kind, FootingKind::Pad);
         let mut go = |doc: &mut Document, st: &mut PlanState, x: f64, y: f64| {
             click(doc, level, Tool::Footing, DVec2::new(x, y), st, &mut sel).unwrap();
         };

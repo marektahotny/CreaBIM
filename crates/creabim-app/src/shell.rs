@@ -522,6 +522,22 @@ impl CreaBimApp {
             "menu:Help" => self.help_menu(),
             "menu:Create" => self.create_menu(),
             "tab:schedules" => schedule_items(),
+            "tab:footing" => {
+                let k = self.plan.members.footing_kind;
+                let on = |x| self.plan.tool == Tool::Footing && k == x;
+                use creabim_core::FootingKind as F;
+                vec![
+                    Item::new("footing.kind:strip", "Strip footing")
+                        .icon("footing")
+                        .checked(on(F::Strip)),
+                    Item::new("footing.kind:pad", "Pad footing")
+                        .icon("square-dashed")
+                        .checked(on(F::Pad)),
+                    Item::new("footing.kind:pile", "Pile")
+                        .icon("cylinder")
+                        .checked(on(F::Pile)),
+                ]
+            }
             "tab:masonry" => vec![
                 Item::new("masonry:plan", "Masonry plan of this storey").icon("brick-wall"),
                 Item::new("masonry:window", "Lintels and wall rules…").icon("settings"),
@@ -1608,6 +1624,14 @@ impl CreaBimApp {
                     _ => self.run_command(ctx, c, at),
                 }
             }
+            // the Footing tool's menu: strip, pad or pile, picked as the
+            // tool is (then its kind set)
+            "footing.kind" => {
+                if let Some(i) = Tool::ALL.iter().position(|t| *t == Tool::Footing) {
+                    self.run_action(ctx, &format!("tool:{i}"));
+                    self.types_action(head, arg);
+                }
+            }
             // the spot level tool writing S-JTSK coordinates (PilonDesigner's
             // cadastre mark)
             "site" if arg == "coords" => {
@@ -2238,7 +2262,10 @@ impl CreaBimApp {
                 if arg == "square" || arg == "round" {
                     self.plan.types.remove(&creabim_core::TypeCategory::Column);
                 }
-                crate::memberstool::toggle_option(&mut self.plan, arg)
+                crate::memberstool::toggle_option(&mut self.plan, arg);
+                if arg.starts_with("footing.") {
+                    self.drop_other_footing_type();
+                }
             }
             "slab.mode" => {
                 if let Some(m) = index.and_then(|i| crate::slabtool::SlabMode::ALL.get(i)) {

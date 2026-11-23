@@ -1195,6 +1195,7 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
             P::Footing(f) => match f.kind {
                 creabim_core::FootingKind::Strip => ("IFCFOOTINGTYPE", ",.STRIP_FOOTING."),
                 creabim_core::FootingKind::Pad => ("IFCFOOTINGTYPE", ",.PAD_FOOTING."),
+                creabim_core::FootingKind::Pile => ("IFCPILETYPE", ",.BORED."),
             },
             P::Object(_) => unreachable!("object types are written above"),
         };
@@ -1977,6 +1978,8 @@ fn member_entity(k: &ElementKind) -> (&'static str, &'static str) {
         ElementKind::Footing(f) => match f.kind {
             creabim_core::FootingKind::Strip => ("IFCFOOTING", ",$,.STRIP_FOOTING."),
             creabim_core::FootingKind::Pad => ("IFCFOOTING", ",$,.PAD_FOOTING."),
+            // IFC4 IfcPile: Tag, PredefinedType, ConstructionType
+            creabim_core::FootingKind::Pile => ("IFCPILE", ",$,.BORED.,$"),
         },
         ElementKind::Pipe(p) if p.kind().is_air() => ("IFCDUCTSEGMENT", ",$,.RIGIDSEGMENT."),
         ElementKind::Pipe(_) => ("IFCPIPESEGMENT", ",$,.RIGIDSEGMENT."),

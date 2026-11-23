@@ -447,7 +447,16 @@ pub(crate) fn footings_under(
     ids: &[ElementId],
     level: Option<ElementId>,
 ) -> (creabim_core::Transaction, Vec<ElementId>) {
+    let piles = crate::memberstool::footing_kind(model, state) == creabim_core::FootingKind::Pile;
     let (tx, new) = creabim_core::footing::under(model, ids, &|e| {
+        // under columns: piles when piles are being placed
+        if let ElementKind::Footing(f) = &mut e.kind {
+            if piles && f.kind == creabim_core::FootingKind::Pad {
+                let mut p = creabim_core::Footing::pile(f.level, f.start);
+                p.host = f.host;
+                *f = p;
+            }
+        }
         if let ElementKind::Footing(f) = &e.kind {
             // the tool's type for this kind, if there is one
             let t = creabim_core::types::types_for(model, &e.kind)
@@ -468,15 +477,20 @@ pub(crate) fn footings_under(
                     f.align_offset = m.footing_offset;
                 }
                 // the bar's height when it is set for this kind
-                if m.footing_pad == (kind == creabim_core::FootingKind::Pad) {
+                if m.footing_kind == kind {
                     f.thickness = m.footing_thickness;
+                    if kind == creabim_core::FootingKind::Pile {
+                        f.width = m.footing_width;
+                        f.length = m.footing_width;
+                    }
                 }
             }
         }
         // its underside on the level it is modelled on (George 2026-11-20)
         if let ElementKind::Footing(f) = &mut e.kind {
             let on = level.unwrap_or(f.level);
-            crate::memberstool::set_on_level(model, f, on, state.members.footing_base);
+            let base = crate::memberstool::base_of(f, state);
+            crate::memberstool::set_on_level(model, f, on, base);
         }
     });
     let mut tx = crate::memberstool::finish_footings(model, state, tx);

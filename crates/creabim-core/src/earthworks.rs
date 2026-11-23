@@ -504,6 +504,8 @@ pub fn schedule(model: &Model) -> (Vec<Row>, Vec<Taken>) {
                     pad_v += v;
                     pad_ids.push(e.id);
                 }
+                // a pile is bored, not dug out
+                FootingKind::Pile => {}
             }
         }
     }
