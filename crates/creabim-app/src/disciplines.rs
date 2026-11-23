@@ -109,6 +109,8 @@ impl CreaBimApp {
                     now.apply(x);
                 }
             });
+            // a trade's plan tags its rooms as the architecture plan does
+            self.tag_trade_rooms();
             self.report(
                 r,
                 format!(
@@ -118,6 +120,20 @@ impl CreaBimApp {
                 ),
             );
         }
+    }
+
+    /// Tags the rooms of the trades' plans as the architecture plans of
+    /// their storeys tag them (George 2026-11-23).
+    pub(super) fn tag_trade_rooms(&mut self) {
+        let tags = creabim_core::viewmodes::trade_room_tags(self.doc.model());
+        if tags.is_empty() {
+            return;
+        }
+        let mut tx = creabim_core::Transaction::new("Tag rooms");
+        for t in tags {
+            tx = tx.insert(t);
+        }
+        let _ = self.doc.commit(tx);
     }
 
     /// Pipes are not drawn in the architect's plan, which leaves them
@@ -188,6 +204,7 @@ impl CreaBimApp {
                 (id, name)
             }
         };
+        self.tag_trade_rooms();
         self.active_view = Some(id);
         self.status = crate::i18n::tr(
             "Opened the plan {}: the architecture plan leaves pipes out, they are drawn in the trade's plan.",

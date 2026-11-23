@@ -2105,16 +2105,13 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                         }
                         _ => None,
                     };
-                    // a trade's drawing numbers its rooms only: its legend
-                    // of rooms says the rest (George 2026-11-22)
-                    let numbers = [creabim_core::room::RoomField::Number];
-                    let services = creabim_core::viewmodes::DisplayMode::of(view)
-                        == creabim_core::viewmodes::DisplayMode::Services;
+                    // a trade's drawing tags its rooms as the
+                    // architecture does (George 2026-11-23)
                     out.extend(room_tag_items(
                         model,
                         e.id,
                         t.host,
-                        if services { &numbers } else { &t.fields },
+                        &t.fields,
                         centre + t.offset,
                         centre,
                         outline.as_deref(),

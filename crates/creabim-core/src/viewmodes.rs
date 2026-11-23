@@ -260,6 +260,70 @@ impl Purpose {
     }
 }
 
+/// The room tags a trade's floor plans lack: each room tagged in the
+/// architecture plan of its storey is tagged in every trade's plan of
+/// that storey as there, at the same place and with the same fields
+/// (George 2026-11-23: a trade's drawing keeps the rooms and their
+/// tags as the architecture shows them). A room the architecture plan
+/// leaves untagged stays so.
+pub fn trade_room_tags(model: &crate::Model) -> Vec<crate::Element> {
+    use crate::{ElementKind, ViewKind};
+    let plan_of = |v: &View| match v.kind {
+        ViewKind::Plan { level, .. } if v.callout.is_none() && !v.graphics.range.from_above => {
+            Some(level)
+        }
+        _ => None,
+    };
+    let room =
+        |id: crate::ElementId| matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Room(_)));
+    // the tags of rooms by view
+    let mut tags: std::collections::HashMap<crate::ElementId, Vec<&crate::Tag>> =
+        std::collections::HashMap::new();
+    for e in model.iter() {
+        if let ElementKind::Tag(t) = &e.kind {
+            if room(t.host) {
+                tags.entry(t.view).or_default().push(t);
+            }
+        }
+    }
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::View(v) = &e.kind else {
+            continue;
+        };
+        let Some(level) = plan_of(v).filter(|_| DisplayMode::of(v) == DisplayMode::Services) else {
+            continue;
+        };
+        // the storey's architecture plan with the most rooms tagged
+        let source = model
+            .iter()
+            .filter(|a| match &a.kind {
+                ElementKind::View(av) => {
+                    plan_of(av) == Some(level) && DisplayMode::of(av) == DisplayMode::Architecture
+                }
+                _ => false,
+            })
+            .max_by_key(|a| tags.get(&a.id).map_or(0, Vec::len));
+        let Some(source) = source.and_then(|a| tags.get(&a.id)) else {
+            continue;
+        };
+        let have: std::collections::HashSet<crate::ElementId> = tags
+            .get(&e.id)
+            .map(|ts| ts.iter().map(|t| t.host).collect())
+            .unwrap_or_default();
+        let mut done = std::collections::HashSet::new();
+        for t in source {
+            if have.contains(&t.host) || !done.insert(t.host) {
+                continue;
+            }
+            let mut copy = (*t).clone();
+            copy.view = e.id;
+            out.push(crate::Element::new("Room tag", ElementKind::Tag(copy)));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
