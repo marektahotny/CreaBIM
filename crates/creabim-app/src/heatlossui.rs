@@ -129,7 +129,10 @@ impl CreaBimApp {
         let all = fireparams::parse(&text);
         let heat: Vec<_> = all
             .iter()
-            .filter(|t| heatdetail::TABLES.contains(&t.id.as_str()))
+            .filter(|t| {
+                heatdetail::TABLES.contains(&t.id.as_str())
+                    || creabim_services::coolnorm::TABLES.contains(&t.id.as_str())
+            })
             .cloned()
             .collect();
         if !heat.is_empty() {
@@ -190,7 +193,7 @@ impl CreaBimApp {
         let r = self.doc.commit(tx);
         self.report(
             r,
-            format!("{n} {}", crate::i18n::t("tables of STN EN 12831-1 read")),
+            format!("{n} {}", crate::i18n::t("tables of the norm read")),
         );
     }
 

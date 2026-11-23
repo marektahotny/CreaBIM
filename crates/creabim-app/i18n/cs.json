@@ -8374,5 +8374,15 @@
  "To the room below": "Do místnosti pod",
  "a table of STN EN 12831-1 is not read (Read the table…): that part is left out": "není načtena tabulka STN EN 12831-1 (Načíst tabulku…): tato část se nepočítá",
  "no mean annual outside temperature θe,m: the floor on the ground is left out": "chybí průměrná roční venkovní teplota θe,m: podlaha na terénu se nepočítá",
- "a floor or ceiling to a colder room with no build-up: its loss is left out": "strop nebo podlaha k chladnější místnosti bez skladby: její ztráta se nepočítá"
+ "a floor or ceiling to a colder room with no build-up: its loss is left out": "strop nebo podlaha k chladnější místnosti bez skladby: její ztráta se nepočítá",
+ "By STN 73 0548": "Podle ČSN 73 0548",
+ "The tables of STN 73 0548 are not read: read its parameter file": "Tabulky ČSN 73 0548 nejsou načteny: načtěte její parametrový soubor",
+ "Walls ε": "Stěny ε",
+ "Roof ε": "Střecha ε",
+ "ε of the outer surface for the sun (STN 73 0548, table 12)": "ε vnějšího povrchu pro sluneční radiaci (ČSN 73 0548, tab. 12)",
+ "The shading coefficient s (STN 73 0548, table 11)": "Stínicí součinitel s (ČSN 73 0548, tab. 11)",
+ "Allowed rise": "Připuštěné překročení",
+ "How much warmer the room may get at the peak: the sun's load is cut by what the inner walls, floor and ceiling store (STN 73 0548, art. 68 and 69)": "O kolik se místnost smí ve špičce ohřát: zátěž od oslunění oken se sníží o akumulaci vnitřních stěn, podlahy a stropu (ČSN 73 0548, čl. 68 a 69)",
+ "By STN 73 0548: the sun through the windows (table 10) with g and the shading s of table 11, cut by what the inner walls, floor and ceiling store (formula 27, art. 69); walls and roof by the sol-air temperature with ε of table 12 and the sun of table 5 (formula 29), damped and delayed by their thickness (formulas 30 to 32); people, lighting, appliances and ventilation. Each room at its own worst hour.": "Podle ČSN 73 0548: slunce okny (tab. 10) s g a stínicím součinitelem s z tab. 11, snížené o akumulaci vnitřních stěn, podlahy a stropu (vztah 27, čl. 69); stěny a střecha přes rovnocennou sluneční teplotu s ε z tab. 12 a radiací z tab. 5 (vztah 29), utlumenou a zpožděnou podle tloušťky (vztahy 30 až 32); lidé, osvětlení, spotřebiče a větrání. Každá místnost ve své nejnepříznivější hodině.",
+ "tables of the norm read": "tabulek normy načteno"
 }

@@ -8,6 +8,7 @@
 //! ([`crate::heatloss`]). The result sizes fan-coil units and the
 //! source of cold.
 
+use crate::coolnorm;
 use crate::heatloss::{self, RoomLoss};
 use creabim_core::{ElementId, Model};
 
@@ -43,9 +44,47 @@ impl Shading {
     }
 }
 
+/// How the load is calculated.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Method {
+    /// PilonDesigner's: the sun on walls and roofs as an added Δθ, the
+    /// windows' sun cut by a storage factor.
+    #[default]
+    Simplified,
+    /// STN 73 0548 itself ([`crate::coolnorm`]): sol-air temperatures
+    /// with ε, damped and delayed by the wall's thickness, the shading s
+    /// of table 11 and the room's storing mass.
+    Norm,
+}
+
+impl Method {
+    pub const ALL: [Method; 2] = [Method::Simplified, Method::Norm];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Method::Simplified => "Simplified",
+            Method::Norm => "By STN 73 0548",
+        }
+    }
+}
+
+/// The ε of table 12 taken when none is picked: a light render, a fired
+/// roof tile (keys of the norm's parameter file).
+pub const EPS_WALL_KEY: &str = "omietka_svetla";
+pub const EPS_ROOF_KEY: &str = "palena_krytina";
+
 /// What the load is calculated with.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Settings {
+    pub method: Method,
+    /// [`Method::Norm`]: the rows of table 12 (ε) picked for the outside
+    /// walls and the roof (none: [`EPS_WALL_KEY`], [`EPS_ROOF_KEY`]), the
+    /// row of table 11 for the windows' shading (none: no shading), and
+    /// the room's allowed rise Δt of formula 27, K (none: the table's).
+    pub eps_wall: Option<usize>,
+    pub eps_roof: Option<usize>,
+    pub shade: Option<usize>,
+    pub dt_allow: Option<f64>,
     /// Design outside temperature in summer, °C.
     pub te: f64,
     /// Wanted inside, °C.
@@ -141,6 +180,11 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
+            method: Method::Simplified,
+            eps_wall: None,
+            eps_roof: None,
+            shade: None,
+            dt_allow: None,
             te: 32.0,
             ti: 26.0,
             g: 0.5,
@@ -304,14 +348,58 @@ pub fn fancoil_pick(kw: f64) -> f64 {
         .unwrap_or(FANCOIL_SIZES[FANCOIL_SIZES.len() - 1])
 }
 
-fn one(hl: &RoomLoss, d_u: f64, s: &Settings, perimeter: f64) -> RoomLoad {
+/// What [`Method::Norm`] works with: the norm's values picked and the
+/// thickness of the walls and roofs by their build-up's name.
+pub(crate) struct Norm {
+    pub tables: Vec<creabim_core::fireparams::ParamTable>,
+    pub eps_wall: Option<f64>,
+    pub eps_roof: Option<f64>,
+    /// s of table 11, 1 with no shading.
+    pub shade: f64,
+    pub alpha_e: Option<f64>,
+    pub k_acc: Option<f64>,
+    pub dt_allow: Option<f64>,
+    pub thick: Vec<(String, f64)>,
+}
+
+impl Norm {
+    pub(crate) fn of(model: &Model, s: &Settings) -> Norm {
+        let tables = coolnorm::tables_of(model);
+        let eps = coolnorm::rows(&tables, coolnorm::EPS, "eps");
+        let shades = coolnorm::rows(&tables, coolnorm::SHADE, "s");
+        Norm {
+            eps_wall: coolnorm::picked(&eps, s.eps_wall, EPS_WALL_KEY).map(|r| r.value),
+            eps_roof: coolnorm::picked(&eps, s.eps_roof, EPS_ROOF_KEY).map(|r| r.value),
+            shade: s.shade.and_then(|i| shades.get(i)).map_or(1.0, |r| r.value),
+            alpha_e: coolnorm::factor(&tables, "alpha_e"),
+            k_acc: coolnorm::factor(&tables, "k_acc"),
+            dt_allow: s.dt_allow.or_else(|| coolnorm::factor(&tables, "dt_allow")),
+            thick: coolnorm::thickness_by_name(model),
+            tables,
+        }
+    }
+
+    fn delta(&self, name: &str) -> Option<f64> {
+        self.thick.iter().find(|x| x.0 == name).map(|x| x.1)
+    }
+}
+
+fn one(
+    hl: &RoomLoss,
+    d_u: f64,
+    s: &Settings,
+    perimeter: f64,
+    norm: Option<(&Norm, &coolnorm::Storing)>,
+) -> RoomLoad {
     let sc = s.g / G_SINGLE;
-    let fc = s.shading.fc();
     let usage = hl.kind.needs().gains;
     let mut hourly = [0.0; 15];
     let (mut glazed, mut faces): (f64, Vec<&'static str>) = (0.0, vec![]);
     let (mut win_k, mut win_a, mut wall_k, mut wall_a, mut roof_k, mut roof_a) =
         (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    // the outside walls and roofs one by one: k·S, where they face, their
+    // build-up
+    let mut opaque: Vec<(f64, Option<f64>, &str)> = vec![];
     for i in &hl.items {
         // the heat loss adds the thermal bridges' ΔU; summer does not
         let u = (i.u - d_u).max(0.0);
@@ -333,23 +421,16 @@ fn one(hl: &RoomLoss, d_u: f64, s: &Settings, perimeter: f64) -> RoomLoad {
             "Outside wall" => {
                 wall_k += u * i.area;
                 wall_a += i.area;
+                opaque.push((u * i.area, i.azimuth, &i.detail));
             }
             "Roof" => {
                 roof_k += u * i.area;
                 roof_a += i.area;
+                opaque.push((u * i.area, None, &i.detail));
             }
             _ => {}
         }
     }
-    // the load is the highest of the hours the building is used: the sun
-    // of that hour and the outside air as warm as it is then
-    let gains = |k: usize| {
-        let d = s.te_at(SOLAR_HOURS[k] as f64) - s.ti;
-        hourly[k] * sc * fc * s.storage
-            + (win_k + 0.34 * hl.v_min) * d
-            + wall_k * (d + s.dt_wall)
-            + roof_k * (d + s.dt_roof)
-    };
     let used: Vec<usize> = (0..15)
         .filter(|k| (s.from_h..=s.to_h).contains(&SOLAR_HOURS[*k]))
         .collect();
@@ -358,27 +439,95 @@ fn one(hl: &RoomLoss, d_u: f64, s: &Settings, perimeter: f64) -> RoomLoad {
     } else {
         used
     };
+    let air = |k: usize| s.te_at(SOLAR_HOURS[k] as f64) - s.ti;
+    // the sun through the windows of each hour, W
+    let fc = match norm {
+        Some((n, _)) => n.shade,
+        None => s.shading.fc(),
+    };
+    let sun_raw: Vec<f64> = (0..15).map(|k| hourly[k] * sc * fc).collect();
+    // what the room stores when it may get warmer (formula 27), not below
+    // the mean over the hours of use (28)
+    let stored = norm.and_then(|(n, m)| Some(n.k_acc? * m.kg * n.dt_allow?));
+    let sun_mean = used.iter().map(|k| sun_raw[*k]).sum::<f64>() / used.len() as f64;
+    let sun_at = |k: usize| match (norm, stored) {
+        (Some(_), Some(dq)) => (sun_raw[k] - dq).max(sun_mean).min(sun_raw[k]),
+        (Some(_), None) => sun_raw[k],
+        _ => sun_raw[k] * s.storage,
+    };
+    // walls and roofs: the simplified added Δθ, or formula 30 for each
+    let sol = norm.map(|(n, _)| {
+        opaque
+            .iter()
+            .map(|(ks, az, name)| {
+                let eps = if az.is_some() { n.eps_wall } else { n.eps_roof };
+                let tr = coolnorm::sol_air(
+                    |h| s.te_at(h),
+                    |h| coolnorm::sun_on(&n.tables, *az, h).unwrap_or(0.0),
+                    eps.unwrap_or(0.0),
+                    n.alpha_e.unwrap_or(f64::INFINITY),
+                );
+                // a build-up of unknown thickness as a light one (formula 29')
+                (*ks, az.is_none(), tr, n.delta(name).unwrap_or(0.0))
+            })
+            .collect::<Vec<_>>()
+    });
+    let opaque_at = |k: usize| -> (f64, f64) {
+        match &sol {
+            Some(list) => {
+                let h = SOLAR_HOURS[k] as f64;
+                list.iter().fold((0.0, 0.0), |(w, r), (ks, roof, tr, d)| {
+                    let q = ks * coolnorm::wall_dt(tr, s.ti, *d, h);
+                    if *roof {
+                        (w, r + q)
+                    } else {
+                        (w + q, r)
+                    }
+                })
+            }
+            None => (wall_k * (air(k) + s.dt_wall), roof_k * (air(k) + s.dt_roof)),
+        }
+    };
+    // the load is the highest of the hours the building is used: the sun
+    // of that hour and the outside air as warm as it is then
+    let gains = |k: usize| {
+        let (w, r) = opaque_at(k);
+        sun_at(k) + (win_k + 0.34 * hl.v_min) * air(k) + w + r
+    };
     let k = used
         .iter()
         .copied()
         .max_by(|a, b| gains(*a).total_cmp(&gains(*b)))
         .unwrap_or(7);
-    let dt = s.te_at(SOLAR_HOURS[k] as f64) - s.ti;
+    let dt = air(k);
     let win = win_k * dt;
-    let wall = wall_k * (dt + s.dt_wall);
-    let roof = roof_k * (dt + s.dt_roof);
-    let sun = hourly[k] * sc * fc * s.storage;
+    let (wall, roof) = opaque_at(k);
+    let sun = sun_at(k);
     let mut items = vec![];
     let mut add = |kind: &'static str, phi: f64, note: String| {
         if phi > 0.5 {
             items.push(Item { kind, note, phi });
         }
     };
+    let sun_note = match (norm, stored) {
+        (Some((_, m)), Some(dq)) => format!(
+            " · s {fc:.2} · M {:.0} kg → ΔQ {dq:.0} W{} · Q {:.0} W",
+            m.kg,
+            if m.unknown > 0 {
+                format!(" ({} ?)", m.unknown)
+            } else {
+                String::new()
+            },
+            sun_raw[k],
+        ),
+        (Some(_), None) => format!(" · s {fc:.2}"),
+        _ => format!(" · Fc {fc:.2}"),
+    };
     add(
         "Sun through the windows",
         sun,
         format!(
-            "{glazed:.2} m² ({}) · {} h · ΣA·I₀ {:.0} W · SC {sc:.2} · Fc {fc:.2}",
+            "{glazed:.2} m² ({}) · {} h · ΣA·I₀ {:.0} W · SC {sc:.2}{sun_note}",
             faces.join(", "),
             SOLAR_HOURS[k],
             hourly[k]
@@ -389,15 +538,43 @@ fn one(hl: &RoomLoss, d_u: f64, s: &Settings, perimeter: f64) -> RoomLoad {
         win,
         format!("{win_a:.2} m² · Δθ {dt:.0} K"),
     );
+    let opaque_note = |a: f64, roof: bool, extra: f64| match (&sol, norm) {
+        (Some(list), Some((n, _))) => {
+            let ds: Vec<String> = list
+                .iter()
+                .filter(|x| x.1 == roof)
+                .map(|x| {
+                    format!(
+                        "δ {:.2} m ψ {:.1} h m {:.2}",
+                        x.3,
+                        coolnorm::psi(x.3),
+                        coolnorm::damping(x.3)
+                    )
+                })
+                .fold(vec![], |mut v, x| {
+                    if !v.contains(&x) {
+                        v.push(x);
+                    }
+                    v
+                });
+            let eps = if roof { n.eps_roof } else { n.eps_wall };
+            format!(
+                "{a:.2} m² · ε {} · {}",
+                eps.map_or("?".into(), |e| format!("{e:.2}")),
+                ds.join(", ")
+            )
+        }
+        _ => format!("{a:.2} m² · Δθ {dt:.0} + {extra:.0} K"),
+    };
     add(
         "Through outside walls",
         wall,
-        format!("{wall_a:.2} m² · Δθ {dt:.0} + {:.0} K", s.dt_wall),
+        opaque_note(wall_a, false, s.dt_wall),
     );
     add(
         "Through the roof",
         roof,
-        format!("{roof_a:.2} m² · Δθ {dt:.0} + {:.0} K", s.dt_roof),
+        opaque_note(roof_a, true, s.dt_roof),
     );
     let office = usage == Use::Office;
     let per = if office { s.m2_office } else { s.m2_home };
@@ -556,6 +733,7 @@ pub fn summer_remedy(
 /// The cooling load of every room of the model.
 pub fn building(model: &Model, o: &heatloss::Opts, s: &Settings) -> BuildingLoad {
     let losses = heatloss::building(model, o);
+    let norm = (s.method == Method::Norm).then(|| Norm::of(model, s));
     let mut out = BuildingLoad {
         rooms: losses
             .rooms
@@ -565,7 +743,16 @@ pub fn building(model: &Model, o: &heatloss::Opts, s: &Settings) -> BuildingLoad
                     .map_or(4.0 * hl.area.max(0.0).sqrt(), |p| {
                         creabim_core::room::perimeter(&p)
                     });
-                one(hl, o.d_u, s, per)
+                let h = if hl.area > 0.0 {
+                    hl.volume / hl.area
+                } else {
+                    2.6
+                };
+                let m = norm
+                    .as_ref()
+                    .map(|_| coolnorm::storing(model, hl.id, h))
+                    .unwrap_or_default();
+                one(hl, o.d_u, s, per, norm.as_ref().map(|n| (n, &m)))
             })
             .collect(),
         ..BuildingLoad::default()
@@ -664,6 +851,92 @@ mod tests {
         );
         assert!(light.rooms[1].summer.t_max > su.t_max);
         let _ = summer_remedy(doc.model(), &o, &Settings::default(), living.id);
+    }
+
+    #[test]
+    fn the_norm_method_reads_its_tables_and_stores_the_sun() {
+        let mut doc = creabim_core::Document::from_model(heatloss::test_house());
+        // made-up numbers in the norm's tables' shape, not the norm's
+        let mut sun = String::from("#table cool_sun_wall\n#columns key");
+        for h in 5..=19 {
+            sun += &format!("\th{h}");
+        }
+        sun += "\n";
+        for f in ["S", "SV", "V", "JV", "J", "JZ", "Z", "SZ", "HOR"] {
+            sun += f;
+            for h in 5..=19 {
+                sun += &format!("\t{}", if (9..=15).contains(&h) { 400 } else { 100 });
+            }
+            sun += "\n";
+        }
+        let text = format!(
+            "{sun}#table cool_eps\n#columns key\teps\ttext\nomietka_svetla\t0,5\tsvetlá\npalena_krytina\t0,8\tkrytina\n\
+#table cool_shade\n#columns key\ts\ttext\nvonk\t0,2\tvonkajšie\n\
+#table cool_factors\n#columns key\tvalue\ttext\nalpha_e\t15\tα\nk_acc\t0,05\tk\ndt_allow\t2\tΔt\n"
+        );
+        let mut info = doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        info.fire_params = creabim_core::fireparams::parse(&text);
+        let tx = creabim_core::set_project(doc.model(), info);
+        doc.commit(tx).unwrap();
+        let o = heatloss::Opts::default();
+        let norm = Settings {
+            method: Method::Norm,
+            ..Settings::default()
+        };
+        let b = building(doc.model(), &o, &norm);
+        let r = &b.rooms[0];
+        let wall = r
+            .items
+            .iter()
+            .find(|i| i.kind == "Through outside walls")
+            .unwrap_or_else(|| panic!("{r:#?}"));
+        assert!(wall.note.contains("ε 0.50"), "{}", wall.note);
+        // a brighter wall takes less sun
+        let dark = building(
+            doc.model(),
+            &o,
+            &Settings {
+                eps_wall: Some(1),
+                ..norm
+            },
+        );
+        let w2 = dark.rooms[0]
+            .items
+            .iter()
+            .find(|i| i.kind == "Through outside walls")
+            .unwrap();
+        assert!(w2.phi > wall.phi, "{} {}", w2.phi, wall.phi);
+        // shading s of table 11 lowers the sun through the windows
+        let shaded = building(
+            doc.model(),
+            &o,
+            &Settings {
+                shade: Some(0),
+                ..norm
+            },
+        );
+        let sun = |b: &BuildingLoad| {
+            b.rooms[0]
+                .items
+                .iter()
+                .find(|i| i.kind == "Sun through the windows")
+                .map_or(0.0, |i| i.phi)
+        };
+        assert!(sun(&shaded) < sun(&b), "{} {}", sun(&shaded), sun(&b));
+        // no allowed rise: nothing stored, more sun
+        let tight = building(
+            doc.model(),
+            &o,
+            &Settings {
+                dt_allow: Some(0.0),
+                ..norm
+            },
+        );
+        assert!(sun(&tight) >= sun(&b));
     }
 
     #[test]

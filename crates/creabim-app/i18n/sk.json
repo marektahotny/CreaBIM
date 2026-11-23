@@ -8374,5 +8374,15 @@
  "To the room below": "Do miestnosti pod",
  "a table of STN EN 12831-1 is not read (Read the table…): that part is left out": "nie je načítaná tabuľka STN EN 12831-1 (Načítať tabuľku…): táto časť sa neráta",
  "no mean annual outside temperature θe,m: the floor on the ground is left out": "chýba priemerná ročná vonkajšia teplota θe,m: podlaha na teréne sa neráta",
- "a floor or ceiling to a colder room with no build-up: its loss is left out": "strop alebo podlaha k chladnejšej miestnosti bez skladby: jej strata sa neráta"
+ "a floor or ceiling to a colder room with no build-up: its loss is left out": "strop alebo podlaha k chladnejšej miestnosti bez skladby: jej strata sa neráta",
+ "By STN 73 0548": "Podľa STN 73 0548",
+ "The tables of STN 73 0548 are not read: read its parameter file": "Tabuľky STN 73 0548 nie sú načítané: načítajte jej parametrový súbor",
+ "Walls ε": "Steny ε",
+ "Roof ε": "Strecha ε",
+ "ε of the outer surface for the sun (STN 73 0548, table 12)": "ε vonkajšieho povrchu pre slnečnú radiáciu (STN 73 0548, tab. 12)",
+ "The shading coefficient s (STN 73 0548, table 11)": "Tieniaci súčiniteľ s (STN 73 0548, tab. 11)",
+ "Allowed rise": "Pripustené prekročenie",
+ "How much warmer the room may get at the peak: the sun's load is cut by what the inner walls, floor and ceiling store (STN 73 0548, art. 68 and 69)": "O koľko sa miestnosť smie v špičke ohriať: záťaž od oslnenia okien sa zníži o to, čo naakumulujú vnútorné steny, podlaha a strop (STN 73 0548, čl. 68 a 69)",
+ "By STN 73 0548: the sun through the windows (table 10) with g and the shading s of table 11, cut by what the inner walls, floor and ceiling store (formula 27, art. 69); walls and roof by the sol-air temperature with ε of table 12 and the sun of table 5 (formula 29), damped and delayed by their thickness (formulas 30 to 32); people, lighting, appliances and ventilation. Each room at its own worst hour.": "Podľa STN 73 0548: slnko oknami (tab. 10) s g a tieniacim súčiniteľom s z tab. 11, znížené o akumuláciu vnútorných stien, podlahy a stropu (vzťah 27, čl. 69); steny a strecha cez rovnocennú slnečnú teplotu s ε z tab. 12 a radiáciou z tab. 5 (vzťah 29), utlmenou a oneskorenou podľa hrúbky (vzťahy 30 až 32); ľudia, osvetlenie, spotrebiče a vetranie. Každá miestnosť vo svojej najnepriaznivejšej hodine.",
+ "tables of the norm read": "tabuliek normy načítaných"
 }

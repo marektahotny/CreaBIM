@@ -15,6 +15,7 @@ pub mod calcresults;
 pub mod circuits;
 pub mod circulation;
 pub mod coolingload;
+pub mod coolnorm;
 pub mod ductsizing;
 pub mod electrical;
 pub mod evacuation;
