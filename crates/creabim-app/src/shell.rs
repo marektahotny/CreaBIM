@@ -5733,10 +5733,30 @@ pub(crate) fn window_room(ctx: &egui::Context) -> egui::Rect {
     }
 }
 
+///
+/// It is never larger than that room, whatever the screen's resolution:
+/// what doesn't fit scrolls inside it (George 2026-11-23: the Assemblies
+/// window ran off a 1920×1080 screen).
 pub(crate) fn window(title: impl Into<egui::WidgetText>) -> egui::Window<'static> {
-    let w = egui::Window::new(title);
+    let w = egui::Window::new(title).scroll([true, true]);
     match NATIVE.with(|n| n.get()) {
-        Some(r) if r.width() > 200.0 && r.height() > 150.0 => w.constrain_to(r),
+        Some(r) if r.width() > 200.0 && r.height() > 150.0 => {
+            let (w_max, h_max) = window_max(r);
+            w.constrain_to(r).max_width(w_max).max_height(h_max)
+        }
         _ => w,
     }
 }
+
+/// The largest content a window may have in `room`: clear of its edges,
+/// and of the window's title bar and frame.
+pub(crate) fn window_max(room: egui::Rect) -> (f32, f32) {
+    (
+        (room.width() - 2.0 * WINDOW_GAP).max(200.0),
+        (room.height() - 2.0 * WINDOW_GAP - WINDOW_CHROME).max(120.0),
+    )
+}
+
+/// Paper kept round a window, and its title bar and frame, points.
+const WINDOW_GAP: f32 = 8.0;
+const WINDOW_CHROME: f32 = 48.0;
