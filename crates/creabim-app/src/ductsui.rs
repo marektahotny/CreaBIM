@@ -92,49 +92,55 @@ impl CreaBimApp {
                                     .then_some((r.id, d))
                             })
                             .collect();
-                        egui::Grid::new(("ducts.grid", code))
-                            .num_columns(7)
-                            .striped(true)
-                            .spacing([12.0, 4.0])
-                            .show(ui, |ui| {
-                                for h in [
-                                    "Duct", "V [m³/h]", "L [m]", "Drawn", "v [m/s]", "Proposed",
-                                    "R [Pa/m]",
-                                ] {
-                                    ui.label(egui::RichText::new(t(h)).strong());
-                                }
-                                ui.end_row();
-                                for (i, r) in rows.iter().enumerate() {
-                                    if ui
-                                        .link(format!(
-                                            "{} {}",
-                                            i + 1,
-                                            t(if r.branch { "branch" } else { "main run" })
-                                        ))
-                                        .clicked()
-                                    {
-                                        select = Some(r.id);
-                                    }
-                                    ui.label(num(r.flow_m3h, 0));
-                                    ui.label(num(r.length, 1));
-                                    ui.label(match r.rect {
-                                        Some((w, h)) => format!("{w:.0}×{h:.0}"),
-                                        None => format!("Ø{:.0}", r.drawn_mm),
-                                    });
-                                    let v = format!("{} / {}", num(r.v_drawn, 1), num(r.limit, 1));
-                                    if r.ok() {
-                                        ui.label(v);
-                                    } else {
-                                        ui.colored_label(ui.visuals().warn_fg_color, v);
-                                    }
-                                    ui.label(match r.proposed_mm {
-                                        Some(d) => format!("Ø{d:.0} · {} m/s", num(r.v, 1)),
-                                        None => "—".to_string(),
-                                    });
-                                    ui.label(num(r.r_pa_m, 2));
-                                    ui.end_row();
+                        use crate::sheet::{self, Col};
+                        let cols = [
+                            Col::text("Duct"),
+                            Col::num("V", "m³/h"),
+                            Col::num("L", "m"),
+                            Col::text("Drawn"),
+                            Col::num("v / limit", "m/s"),
+                            Col::text("Proposed"),
+                            Col::num("R", "Pa/m"),
+                        ];
+                        let total = |row: &mut sheet::Row| {
+                            row.text(t("Total"));
+                            row.empty();
+                            row.text(num(rows.iter().map(|r| r.length).sum::<f64>(), 1));
+                        };
+                        sheet::show(ui, ("ducts.grid", code), &cols, rows.len(), 400.0, |row, i| {
+                            let r = &rows[i];
+                            row.cell(|ui| {
+                                if ui
+                                    .link(format!(
+                                        "{} {}",
+                                        i + 1,
+                                        t(if r.branch { "branch" } else { "main run" })
+                                    ))
+                                    .clicked()
+                                {
+                                    select = Some(r.id);
                                 }
                             });
+                            row.text(num(r.flow_m3h, 0));
+                            row.text(num(r.length, 1));
+                            row.text(match r.rect {
+                                Some((w, h)) => format!("{w:.0}×{h:.0}"),
+                                None => format!("Ø{:.0}", r.drawn_mm),
+                            });
+                            let v = format!("{} / {}", num(r.v_drawn, 1), num(r.limit, 1));
+                            if r.ok() {
+                                row.text(v);
+                            } else {
+                                row.cell(|ui| {
+                                    ui.colored_label(ui.visuals().warn_fg_color, v);
+                                });
+                            }
+                            row.text(match r.proposed_mm {
+                                Some(d) => format!("Ø{d:.0} · {} m/s", num(r.v, 1)),
+                                None => "—".to_string(),
+                            });
+                            row.text(num(r.r_pa_m, 2));
+                        }, Some(&total));
                         if rows.iter().all(|r| r.flow_m3h <= 0.0) {
                             ui.weak(t("No air on these ducts yet: put diffusers or grilles on their ends and place rooms."));
                         } else if change.is_empty() {

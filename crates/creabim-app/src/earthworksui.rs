@@ -78,46 +78,51 @@ impl CreaBimApp {
                     ));
                 }
                 egui::ScrollArea::both().show(ui, |ui| {
-                    egui::Grid::new("earthworks.rows")
-                        .striped(true)
-                        .num_columns(4)
-                        .show(ui, |ui| {
-                            for h in ["Code", "Item", "Unit", "Quantity"] {
-                                ui.strong(t(h));
-                            }
-                            ui.end_row();
-                            for r in rows.iter() {
-                                ui.label(r.code);
-                                ui.add(egui::Label::new(t(r.text)).extend())
-                                    .on_hover_text(t(r.calc));
-                                ui.label(r.unit);
-                                ui.label(crate::i18n::num(r.qty, 3));
-                                ui.end_row();
-                            }
+                    use crate::sheet::{self, Col};
+                    let cols = [
+                        Col::text("Code"),
+                        Col::text("Item"),
+                        Col::text("Unit"),
+                        Col::num("Quantity", ""),
+                    ];
+                    sheet::show(ui, "earthworks.rows", &cols, rows.len(), 400.0, |row, i| {
+                        let r = &rows[i];
+                        row.text(r.code);
+                        row.cell(|ui| {
+                            ui.label(t(r.text)).on_hover_text(t(r.calc));
                         });
+                        row.text(r.unit);
+                        row.text(crate::i18n::num(r.qty, 3));
+                    }, None);
                     if !taken.is_empty() {
                         crate::props::section(ui, &t("Pits and platforms"));
-                        egui::Grid::new("earthworks.taken")
-                            .striped(true)
-                            .num_columns(5)
-                            .show(ui, |ui| {
-                                for h in ["Name", "Area m²", "Cut m³", "Fill m³", "Back-fill m³"] {
-                                    ui.strong(t(h));
-                                }
-                                ui.end_row();
-                                for w in taken.iter() {
-                                    let Taken { id, area, cut, fill, backfill, .. } = w;
-                                    let name = model.get(*id).map_or(String::new(), |e| e.name.clone());
-                                    if ui.link(name).clicked() {
-                                        select = Some(*id);
-                                    }
-                                    ui.label(crate::i18n::num(*area, 1));
-                                    ui.label(crate::i18n::num(*cut, 1));
-                                    ui.label(crate::i18n::num(*fill, 1));
-                                    ui.label(crate::i18n::num(*backfill, 1));
-                                    ui.end_row();
+                        let cols = [
+                            Col::text("Name"),
+                            Col::num("Area", "m²"),
+                            Col::num("Cut", "m³"),
+                            Col::num("Fill", "m³"),
+                            Col::num("Back-fill", "m³"),
+                        ];
+                        let total = |row: &mut sheet::Row| {
+                            row.text(t("Total"));
+                            row.text(crate::i18n::num(taken.iter().map(|w| w.area).sum::<f64>(), 1));
+                            row.text(crate::i18n::num(taken.iter().map(|w| w.cut).sum::<f64>(), 1));
+                            row.text(crate::i18n::num(taken.iter().map(|w| w.fill).sum::<f64>(), 1));
+                            row.text(crate::i18n::num(taken.iter().map(|w| w.backfill).sum::<f64>(), 1));
+                        };
+                        sheet::show(ui, "earthworks.taken", &cols, taken.len(), 300.0, |row, i| {
+                            let Taken { id, area, cut, fill, backfill, .. } = &taken[i];
+                            let name = model.get(*id).map_or(String::new(), |e| e.name.clone());
+                            row.cell(|ui| {
+                                if ui.link(name).clicked() {
+                                    select = Some(*id);
                                 }
                             });
+                            row.text(crate::i18n::num(*area, 1));
+                            row.text(crate::i18n::num(*cut, 1));
+                            row.text(crate::i18n::num(*fill, 1));
+                            row.text(crate::i18n::num(*backfill, 1));
+                        }, Some(&total));
                     }
                     ui.add_space(6.0);
                     ui.label(

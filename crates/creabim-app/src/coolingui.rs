@@ -295,60 +295,78 @@ impl CreaBimApp {
                     .strong(),
                 );
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    egui::Grid::new("cooling.rooms")
-                        .striped(true)
-                        .num_columns(7)
-                        .show(ui, |ui| {
-                            for h in ["Room", "A m²", "Φ W", "W/m²", "Worst hour", "Fan-coil kW", "Summer θmax"] {
-                                ui.strong(t(h));
-                            }
-                            ui.end_row();
-                            for r in &b.rooms {
-                                let name = format!("{} {}", r.number, r.name);
-                                if ui.link(name.trim()).clicked() {
-                                    select = Some(r.id);
-                                }
-                                ui.label(num(r.area, 1));
-                                if r.cooled {
-                                    ui.label(egui::RichText::new(num(r.phi, 0)).strong());
-                                } else {
-                                    ui.weak(num(r.phi, 0))
-                                        .on_hover_text(t("Not cooled: a bathroom, corridor or store is left out of the total."));
-                                }
-                                ui.label(num(if r.area > 0.0 { r.phi / r.area } else { 0.0 }, 0));
-                                ui.label(r.hour.map_or(String::new(), |h| format!("{h}:00")));
-                                if r.cooled {
-                                    ui.label(num(r.fancoil_kw, 1));
-                                } else {
-                                    ui.label("");
-                                }
-                                let text = format!("{} °C", num(r.summer.t_max, 1));
-                                if r.summer.ok {
-                                    ui.label(text);
-                                } else {
-                                    ui.colored_label(egui::Color32::from_rgb(200, 40, 40), text)
-                                        .on_hover_text(t("Above the summer limit"));
-                                }
-                                ui.end_row();
+                    use crate::sheet::{self, Col};
+                    let cols = [
+                        Col::text("Room"),
+                        Col::num("A", "m²"),
+                        Col::num("Φ", "W"),
+                        Col::num("Φ/A", "W/m²"),
+                        Col::text("Worst hour"),
+                        Col::num("Fan-coil", "kW"),
+                        Col::num("Summer θmax", "°C"),
+                    ];
+                    let total = |row: &mut sheet::Row| {
+                        row.text(t("Total of the cooled rooms"));
+                        row.text(num(b.area, 1));
+                        row.text(num(b.phi, 0));
+                        row.text(num(if b.area > 0.0 { b.phi / b.area } else { 0.0 }, 0));
+                        row.empty();
+                        row.text(num(
+                            b.rooms.iter().filter(|r| r.cooled).map(|r| r.fancoil_kw).sum::<f64>(),
+                            1,
+                        ));
+                    };
+                    sheet::show(ui, "cooling.rooms", &cols, b.rooms.len(), 360.0, |row, i| {
+                        let r = &b.rooms[i];
+                        let name = format!("{} {}", r.number, r.name);
+                        row.cell(|ui| {
+                            if ui.link(name.trim()).clicked() {
+                                select = Some(r.id);
                             }
                         });
+                        row.text(num(r.area, 1));
+                        if r.cooled {
+                            row.strong(num(r.phi, 0));
+                        } else {
+                            row.cell(|ui| {
+                                ui.weak(num(r.phi, 0))
+                                    .on_hover_text(t("Not cooled: a bathroom, corridor or store is left out of the total."));
+                            });
+                        }
+                        row.text(num(if r.area > 0.0 { r.phi / r.area } else { 0.0 }, 0));
+                        row.text(r.hour.map_or(String::new(), |h| format!("{h}:00")));
+                        if r.cooled {
+                            row.text(num(r.fancoil_kw, 1));
+                        } else {
+                            row.empty();
+                        }
+                        let text = num(r.summer.t_max, 1);
+                        if r.summer.ok {
+                            row.text(text);
+                        } else {
+                            row.cell(|ui| {
+                                ui.colored_label(egui::Color32::from_rgb(200, 40, 40), text)
+                                    .on_hover_text(t("Above the summer limit"));
+                            });
+                        }
+                    }, Some(&total));
                     ui.add_space(6.0);
                     for r in &b.rooms {
                         let title = format!("{} {} – {} W", r.number, r.name, num(r.phi, 0));
                         egui::CollapsingHeader::new(title.trim().to_string())
                             .id_salt(("cooling.room", r.id))
                             .show(ui, |ui| {
-                                egui::Grid::new(("cooling.items", r.id))
-                                    .striped(true)
-                                    .num_columns(3)
-                                    .show(ui, |ui| {
-                                        for i in &r.items {
-                                            ui.label(t(i.kind));
-                                            ui.label(num(i.phi, 0));
-                                            ui.weak(&i.note);
-                                            ui.end_row();
-                                        }
-                                    });
+                                let cols = [Col::text("Gain"), Col::num("Φ", "W"), Col::text("From")];
+                                let total = |row: &mut sheet::Row| {
+                                    row.text(t("Total"));
+                                    row.text(num(r.phi, 0));
+                                };
+                                sheet::show(ui, ("cooling.items", r.id), &cols, r.items.len(), 400.0, |row, k| {
+                                    let i = &r.items[k];
+                                    row.text(t(i.kind));
+                                    row.text(num(i.phi, 0));
+                                    row.weak(i.note.clone());
+                                }, Some(&total));
                                 let su = &r.summer;
                                 ui.label(format!(
                                     "{}: {} {} °C, {} {} °C – {}",

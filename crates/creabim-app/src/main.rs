@@ -48,6 +48,7 @@ mod render3d;
 mod roomtool;
 mod schedulepane;
 mod selection;
+mod sheet;
 mod sheetview;
 mod sketch;
 mod slabtool;

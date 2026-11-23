@@ -527,62 +527,81 @@ impl CreaBimApp {
                     ));
                 }
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    egui::Grid::new("heat.loss.rooms")
-                        .striped(true)
-                        .num_columns(8)
-                        .show(ui, |ui| {
-                            for h in ["Room", "θi °C", "A m²", "V m³", "ΦT W", "ΦV W", "Φ W", "W/m²"] {
-                                ui.strong(t(h));
-                            }
-                            ui.end_row();
-                            for r in &b.rooms {
-                                let name = format!("{} {}", r.number, r.name);
-                                if ui.link(name.trim()).clicked() {
-                                    select = Some(r.id);
-                                }
-                                ui.label(num(r.ti, 0));
-                                ui.label(num(r.area, 1));
-                                ui.label(num(r.volume, 1));
-                                ui.label(num(r.phi_t, 0));
-                                ui.label(num(r.phi_v, 0));
-                                ui.label(egui::RichText::new(num(r.phi, 0)).strong());
-                                ui.label(num(if r.area > 0.0 { r.phi / r.area } else { 0.0 }, 0));
-                                ui.end_row();
+                    use crate::sheet::{self, Col};
+                    let cols = [
+                        Col::text("Room"),
+                        Col::num("θi", "°C"),
+                        Col::num("A", "m²"),
+                        Col::num("V", "m³"),
+                        Col::num("ΦT", "W"),
+                        Col::num("ΦV", "W"),
+                        Col::num("Φ", "W"),
+                        Col::num("Φ/A", "W/m²"),
+                    ];
+                    let total = |row: &mut sheet::Row| {
+                        row.text(t("Total"));
+                        row.empty();
+                        row.text(num(b.area, 1));
+                        row.text(num(b.rooms.iter().map(|r| r.volume).sum::<f64>(), 1));
+                        row.text(num(b.rooms.iter().map(|r| r.phi_t).sum::<f64>(), 0));
+                        row.text(num(b.rooms.iter().map(|r| r.phi_v).sum::<f64>(), 0));
+                        row.text(num(b.phi, 0));
+                        row.text(num(if b.area > 0.0 { b.phi / b.area } else { 0.0 }, 0));
+                    };
+                    sheet::show(ui, "heat.loss.rooms", &cols, b.rooms.len(), 360.0, |row, i| {
+                        let r = &b.rooms[i];
+                        let name = format!("{} {}", r.number, r.name);
+                        row.cell(|ui| {
+                            if ui.link(name.trim()).clicked() {
+                                select = Some(r.id);
                             }
                         });
+                        row.text(num(r.ti, 0));
+                        row.text(num(r.area, 1));
+                        row.text(num(r.volume, 1));
+                        row.text(num(r.phi_t, 0));
+                        row.text(num(r.phi_v, 0));
+                        row.strong(num(r.phi, 0));
+                        row.text(num(if r.area > 0.0 { r.phi / r.area } else { 0.0 }, 0));
+                    }, Some(&total));
                     ui.add_space(6.0);
                     for r in &b.rooms {
                         let title = format!("{} {} – {} W", r.number, r.name, num(r.phi, 0));
                         egui::CollapsingHeader::new(title.trim().to_string())
                             .id_salt(("heat.loss.room", r.id))
                             .show(ui, |ui| {
-                                egui::Grid::new(("heat.loss.items", r.id))
-                                    .striped(true)
-                                    .num_columns(5)
-                                    .show(ui, |ui| {
-                                        for h in ["Through", "A m²", "U W/(m²K)", "f", "Φ W"] {
-                                            ui.strong(t(h));
-                                        }
-                                        ui.end_row();
-                                        for i in &r.items {
-                                            let what = if i.detail.is_empty() {
-                                                t(i.kind)
-                                            } else {
-                                                format!("{} – {}", t(i.kind), i.detail)
-                                            };
-                                            ui.label(what);
-                                            if i.kind == "Thermal bridge" {
-                                                ui.label(format!("l {} m", num(i.area, 2)));
-                                                ui.label(format!("Ψ {}", num(i.u, 2)));
-                                            } else {
-                                                ui.label(num(i.area, 2));
-                                                ui.label(num(i.u, 3));
-                                            }
-                                            ui.label(num(i.f, 3));
-                                            ui.label(num(i.phi, 0));
-                                            ui.end_row();
-                                        }
-                                    });
+                                let cols = [
+                                    Col::text("Through"),
+                                    Col::num("A / l", "m² / m"),
+                                    Col::num("U / Ψ", "W/(m²K) / W/(mK)"),
+                                    Col::num("f", "–"),
+                                    Col::num("Φ", "W"),
+                                ];
+                                let total = |row: &mut sheet::Row| {
+                                    row.text(t("Total"));
+                                    row.empty();
+                                    row.empty();
+                                    row.empty();
+                                    row.text(num(r.phi_t, 0));
+                                };
+                                sheet::show(ui, ("heat.loss.items", r.id), &cols, r.items.len(), 400.0, |row, k| {
+                                    let i = &r.items[k];
+                                    let what = if i.detail.is_empty() {
+                                        t(i.kind)
+                                    } else {
+                                        format!("{} – {}", t(i.kind), i.detail)
+                                    };
+                                    row.text(what);
+                                    if i.kind == "Thermal bridge" {
+                                        row.text(format!("l {}", num(i.area, 2)));
+                                        row.text(format!("Ψ {}", num(i.u, 2)));
+                                    } else {
+                                        row.text(num(i.area, 2));
+                                        row.text(num(i.u, 3));
+                                    }
+                                    row.text(num(i.f, 3));
+                                    row.text(num(i.phi, 0));
+                                }, Some(&total));
                                 ui.label(format!(
                                     "{}: {} m³/h ({} {}, {} {}; {} {})",
                                     t("Ventilation"),

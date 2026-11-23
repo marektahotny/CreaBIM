@@ -113,40 +113,64 @@ impl CreaBimApp {
                     );
                 }
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    egui::Grid::new("floor.heat.rooms")
-                        .striped(true)
-                        .num_columns(10)
-                        .show(ui, |ui| {
-                            for h in [
-                                "", "Room", "Φ W", "q / needed W/m²", "Spacing", "RλB", "Loops",
-                                "Loop m", "l/h", "kPa", "Throttle by kPa",
-                            ] {
-                                ui.strong(t(h));
+                    use crate::sheet::{self, Col};
+                    let cols = [
+                        Col::text(""),
+                        Col::text("Room"),
+                        Col::num("Φ", "W"),
+                        Col::num("q / needed", "W/m²"),
+                        Col::text("Spacing"),
+                        Col::num("RλB", "m²K/W"),
+                        Col::num("Loops", "pcs"),
+                        Col::num("Loop", "m"),
+                        Col::num("Flow", "l/h"),
+                        Col::num("Δp", "kPa"),
+                        Col::num("Throttle by", "kPa"),
+                    ];
+                    let on: Vec<_> = d.rooms.iter().filter(|x| x.on).collect();
+                    let total = |row: &mut sheet::Row| {
+                        row.empty();
+                        row.text(t("Total"));
+                        row.text(num(on.iter().map(|x| x.phi).sum::<f64>(), 0));
+                        row.empty();
+                        row.empty();
+                        row.empty();
+                        row.text(d.loops.to_string());
+                        row.empty();
+                        row.text(num(d.flow_ls * 3600.0, 0));
+                        row.text(num(d.critical_kpa, 1));
+                    };
+                    sheet::show(ui, "floor.heat.rooms", &cols, d.rooms.len(), 400.0, |row, i| {
+                        let x = &d.rooms[i];
+                        row.cell(|ui| {
+                            let mut is_on = x.on;
+                            if ui.checkbox(&mut is_on, "").changed() {
+                                set.push((x.id, is_on.then(|| x.underfloor(None))));
                             }
-                            ui.end_row();
-                            for x in &d.rooms {
-                                let mut is_on = x.on;
-                                if ui.checkbox(&mut is_on, "").changed() {
-                                    set.push((x.id, is_on.then(|| x.underfloor(None))));
-                                }
-                                let name = format!("{} {}", x.number, x.name);
-                                if ui.link(name.trim()).clicked() {
-                                    select = Some(x.id);
-                                }
-                                ui.label(num(x.phi, 0));
-                                let q = format!("{} / {}", num(x.q, 0), num(x.q_req, 0));
-                                if x.ok {
-                                    ui.label(q);
-                                } else {
-                                    ui.colored_label(ui.visuals().warn_fg_color, q).on_hover_text(format!(
-                                        "{} {} W {} {} W (qG {} W/m²)",
-                                        t("The floor gives"),
-                                        num(x.covered, 0),
-                                        t("of"),
-                                        num(x.phi, 0),
-                                        num(x.q_limit, 0),
-                                    ));
-                                }
+                        });
+                        let name = format!("{} {}", x.number, x.name);
+                        row.cell(|ui| {
+                            if ui.link(name.trim()).clicked() {
+                                select = Some(x.id);
+                            }
+                        });
+                        row.text(num(x.phi, 0));
+                        let q = format!("{} / {}", num(x.q, 0), num(x.q_req, 0));
+                        if x.ok {
+                            row.text(q);
+                        } else {
+                            row.cell(|ui| {
+                                ui.colored_label(ui.visuals().warn_fg_color, q).on_hover_text(format!(
+                                    "{} {} W {} {} W (qG {} W/m²)",
+                                    t("The floor gives"),
+                                    num(x.covered, 0),
+                                    t("of"),
+                                    num(x.phi, 0),
+                                    num(x.q_limit, 0),
+                                ));
+                            });
+                        }
+                        row.cell(|ui| {
                                 if x.on {
                                     let mut sp = x.spacing;
                                     egui::ComboBox::from_id_salt(("floor.heat.t", x.id))
@@ -179,19 +203,16 @@ impl CreaBimApp {
                                 } else {
                                     ui.weak(format!("{} mm", num(x.spacing * 1000.0, 0)));
                                 }
-                                ui.label(num(x.finish_r, 2));
-                                ui.label(x.loops.to_string());
-                                ui.label(num(x.loop_len, 0));
-                                ui.label(num(x.flow_ls * 3600.0, 0));
-                                ui.label(num(x.dp_kpa, 1));
-                                if x.on {
-                                    ui.label(num(d.critical_kpa - x.dp_kpa, 1));
-                                } else {
-                                    ui.label("");
-                                }
-                                ui.end_row();
-                            }
                         });
+                        row.text(num(x.finish_r, 2));
+                        row.text(x.loops.to_string());
+                        row.text(num(x.loop_len, 0));
+                        row.text(num(x.flow_ls * 3600.0, 0));
+                        row.text(num(x.dp_kpa, 1));
+                        if x.on {
+                            row.text(num(d.critical_kpa - x.dp_kpa, 1));
+                        }
+                    }, Some(&total));
                     ui.add_space(6.0);
                     ui.weak(t("System A, PE-Xa / PE-RT 16 × 2 under 45 mm of screed, loops of 100 m at most. Yellow: the floor alone does not cover the room's loss (the limit flux or the spacing): add a radiator or raise the supply temperature. RλB comes from the room's floor finish."));
                     ui.weak("STN EN 1264-2 · STN EN 1264-4 · STN EN 12831-1");

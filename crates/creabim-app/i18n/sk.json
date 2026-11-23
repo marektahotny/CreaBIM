@@ -8418,5 +8418,22 @@
  "How clear the air is: the correction c_o of the sun through the windows (STN 73 0548, art. 64)": "Čistota ovzdušia: korekcia c_o slnečnej radiácie cez okná (STN 73 0548, čl. 64)",
  "Reveals shade the glass": "Tieň ostenia na skle",
  "The sunlit part of each window by the depth of its reveals and where the sun stands (STN 73 0548, formulas 24 to 26)": "Oslnená časť každého okna podľa hĺbky ostenia a polohy slnka (STN 73 0548, vzťahy 24 až 26)",
- "From the room next door": "Zo susednej miestnosti"
+ "From the room next door": "Zo susednej miestnosti",
+ "Back-fill": "Spätný zásyp",
+ "Capacity": "Kapacita",
+ "Designed": "Navrhnuté",
+ "Exhaust": "Odvod",
+ "Fan-coil": "Fan-coil",
+ "Flow": "Prietok",
+ "Gain": "Zisk",
+ "LAmax,p day / evening / night": "LAmax,p deň / večer / noc",
+ "Needed": "Potrebné",
+ "Output": "Výkon",
+ "Standing": "Osadené",
+ "Throttle": "Škrtenie",
+ "Throttle by": "Doškrtiť o",
+ "Towel radiators": "Rebríkové radiátory",
+ "q / needed": "q / potrebné",
+ "v / limit": "v / limit",
+ "Total of the cooled rooms": "Spolu chladené miestnosti"
 }
