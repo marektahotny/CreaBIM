@@ -65,9 +65,39 @@ pub fn height_eps(z: f64) -> f64 {
     }
 }
 
+/// How the losses are worked out.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Method {
+    /// One surcharge ΔU for every outside wall, floors and ceilings
+    /// between storeys left out.
+    #[default]
+    Simplified,
+    /// STN EN 12831-1:2019 chapter 6: areas by the outside dimensions,
+    /// ΔU_TB of table B.1, heat to colder rooms beside, over and under,
+    /// the ground by annex E and the air by 6.3.3.
+    Detailed,
+}
+
+impl Method {
+    pub const ALL: [Method; 2] = [Method::Simplified, Method::Detailed];
+    pub fn name(self) -> &'static str {
+        match self {
+            Method::Simplified => "Simplified",
+            Method::Detailed => "Detailed",
+        }
+    }
+}
+
 /// What the calculation is given.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Opts {
+    pub method: Method,
+    /// The detailed method's row of table B.1 (ΔU_TB by the kind of
+    /// building), counted from 0; the values are read from the norm's
+    /// parameter file, never built in.
+    pub tb_row: usize,
+    /// Ground water within 1 m under the floor slab (f_GW, B.2.3).
+    pub gw_near: bool,
     /// Design outside temperature θe, °C.
     pub te: f64,
     /// Mean annual outside temperature θm,e, °C; none takes f_g2 = 1.
@@ -88,6 +118,9 @@ pub struct Opts {
 impl Default for Opts {
     fn default() -> Self {
         Self {
+            method: Method::Simplified,
+            tb_row: 1,
+            gw_near: false,
             te: -11.0,
             te_mean: None,
             te_heating: None,
@@ -170,6 +203,14 @@ pub enum Missing {
     FloorBuildUp,
     RoofBuildUp,
     NoRoofOrCeiling,
+    /// The detailed method lacks a table of STN EN 12831-1 (its
+    /// parameter file is not read): that part is left out.
+    NormTable,
+    /// The detailed method needs the mean annual outside temperature
+    /// θe,m for the ground: the floor on the ground is left out.
+    MeanTemperature,
+    /// A floor or ceiling to a colder room with no build-up.
+    InnerSlabBuildUp,
 }
 
 impl Missing {
@@ -187,6 +228,15 @@ impl Missing {
             Missing::RoofBuildUp => "the roof with no build-up: its loss is left out",
             Missing::NoRoofOrCeiling => {
                 "nothing over the room (no room, no roof): the loss upwards is left out"
+            }
+            Missing::NormTable => {
+                "a table of STN EN 12831-1 is not read (Read the table…): that part is left out"
+            }
+            Missing::MeanTemperature => {
+                "no mean annual outside temperature θe,m: the floor on the ground is left out"
+            }
+            Missing::InnerSlabBuildUp => {
+                "a floor or ceiling to a colder room with no build-up: its loss is left out"
             }
         }
     }
@@ -226,14 +276,17 @@ pub struct BuildingLoss {
 }
 
 /// Surface resistances, m²K/W (STN EN ISO 6946).
-const R_WALL: f64 = 0.13 + 0.04;
-const R_ROOF: f64 = 0.10 + 0.04;
-const R_FLOOR: f64 = 0.17;
-const R_INNER: f64 = 0.13 + 0.13;
+pub(crate) const R_WALL: f64 = 0.13 + 0.04;
+pub(crate) const R_ROOF: f64 = 0.10 + 0.04;
+pub(crate) const R_FLOOR: f64 = 0.17;
+pub(crate) const R_INNER: f64 = 0.13 + 0.13;
+/// A floor or ceiling between rooms, heat flowing up and down.
+pub(crate) const R_CEILING_UP: f64 = 0.10 + 0.10;
+pub(crate) const R_FLOOR_DOWN: f64 = 0.17 + 0.17;
 
 /// U of the build-up (or the one material) element `e` is made of,
 /// W/(m²K), and its name: none where it has neither or a layer has no λ.
-fn u_of(model: &Model, e: &Element, r_surfaces: f64) -> Option<(f64, String)> {
+pub(crate) fn u_of(model: &Model, e: &Element, r_surfaces: f64) -> Option<(f64, String)> {
     let Some((ae, asm)) = assembly_of(model, e) else {
         // of one material through and through
         let (material, d) = match &e.kind {
@@ -267,18 +320,18 @@ fn u_of(model: &Model, e: &Element, r_surfaces: f64) -> Option<(f64, String)> {
     Some((1.0 / r, ae.name.clone()))
 }
 
-struct RoomAt<'a> {
-    e: &'a Element,
-    level: ElementId,
-    shape: RoomShape,
-    ti: f64,
-    kind: RoomType,
-    usage: RoomUse,
+pub(crate) struct RoomAt<'a> {
+    pub e: &'a Element,
+    pub level: ElementId,
+    pub shape: RoomShape,
+    pub ti: f64,
+    pub kind: RoomType,
+    pub usage: RoomUse,
 }
 
-/// The heat loss of every room of the model.
-pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
-    let rooms: Vec<RoomAt> = model
+/// The model's rooms with a shape, what they are used for and heated to.
+pub(crate) fn rooms_of(model: &Model) -> Vec<RoomAt<'_>> {
+    model
         .iter()
         .filter_map(|e| {
             let ElementKind::Room(r) = &e.kind else {
@@ -296,7 +349,15 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                 usage,
             })
         })
-        .collect();
+        .collect()
+}
+
+/// The heat loss of every room of the model.
+pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
+    if o.method == Method::Detailed {
+        return crate::heatdetail::building(model, o);
+    }
+    let rooms = rooms_of(model);
     let elev = |id: ElementId| model.level(id).map_or(0.0, |l| l.elevation);
     let ground = model
         .levels()
@@ -565,18 +626,51 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
     out
 }
 
-fn round3(v: f64) -> f64 {
+/// The area two outlines share, m², by their triangles.
+pub fn overlap_area(a: &[DVec2], b: &[DVec2]) -> f64 {
+    let tri = |p: &[DVec2]| -> Vec<[DVec2; 3]> {
+        polygon::triangulate(p)
+            .into_iter()
+            .map(|t| [p[t[0]], p[t[1]], p[t[2]]])
+            .collect()
+    };
+    let (ta, tb) = (tri(a), tri(b));
+    let mut sum = 0.0;
+    for x in &ta {
+        for y in &tb {
+            let mut poly = x.to_vec();
+            for i in 0..3 {
+                let (p, q) = (y[i], y[(i + 1) % 3]);
+                // keep the left of p → q (the triangles run anticlockwise)
+                let n = DVec2::new((q - p).y, -(q - p).x);
+                poly = creabim_core::members::clip_half_plane(&poly, n, n.dot(p));
+                if poly.len() < 3 {
+                    break;
+                }
+            }
+            if poly.len() > 2 {
+                sum += polygon::signed_area2(&poly).abs() / 2.0;
+            }
+        }
+    }
+    sum
+}
+
+pub(crate) fn round3(v: f64) -> f64 {
     (v * 1000.0).round() / 1000.0
 }
 
-fn room_number(e: &Element) -> &str {
+pub(crate) fn room_number(e: &Element) -> &str {
     match &e.kind {
         ElementKind::Room(r) => &r.number,
         _ => "",
     }
 }
 
-fn wall_of(model: &Model, id: Option<ElementId>) -> Option<(&Element, &creabim_core::Wall)> {
+pub(crate) fn wall_of(
+    model: &Model,
+    id: Option<ElementId>,
+) -> Option<(&Element, &creabim_core::Wall)> {
     let e = model.get(id?)?;
     match &e.kind {
         ElementKind::Wall(w) => Some((e, w)),
@@ -596,9 +690,48 @@ pub fn azimuth(n: DVec2, true_north: f64) -> f64 {
     (a + 360.0) % 360.0
 }
 
-fn beyond(a: DVec2, b: DVec2, thickness: f64) -> DVec2 {
+pub(crate) fn beyond(a: DVec2, b: DVec2, thickness: f64) -> DVec2 {
     let d = (b - a).normalize_or_zero();
     (a + b) / 2.0 + DVec2::new(d.y, -d.x) * (thickness + 0.05)
+}
+
+/// The sample house with a bathroom and a living room in it, every
+/// material given λ = 0.5 W/(m·K).
+#[cfg(test)]
+pub(crate) fn test_house() -> Model {
+    use creabim_core::{Document, Room, Transaction};
+    let mut doc = Document::from_model(creabim_core::sample::sample_house());
+    let level = doc
+        .model()
+        .levels()
+        .min_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+        .unwrap()
+        .0
+        .id;
+    let mut tx = Transaction::new("rooms");
+    for (name, number, at) in [
+        ("Kúpeľňa", "1.01", DVec2::new(2.5, 3.0)),
+        ("Obývacia izba", "1.02", DVec2::new(8.0, 3.0)),
+    ] {
+        let mut r = Room::new(level, at);
+        r.number = number.into();
+        tx = tx.insert(Element::new(name, ElementKind::Room(r)));
+    }
+    let mats: Vec<Element> = doc
+        .model()
+        .iter()
+        .filter(|e| matches!(e.kind, ElementKind::Material(_)))
+        .cloned()
+        .collect();
+    for before in mats {
+        let mut after = before.clone();
+        if let ElementKind::Material(m) = &mut after.kind {
+            m.lambda = Some(0.5);
+        }
+        tx = tx.replace(before, after);
+    }
+    doc.commit(tx).unwrap();
+    doc.model().clone()
 }
 
 #[cfg(test)]
@@ -622,42 +755,8 @@ mod tests {
         assert_eq!(room_use("").ach, Some(0.5));
     }
 
-    /// The sample house with a bathroom and a living room in it, every
-    /// material given λ = 0.5 W/(m·K).
     fn house() -> Model {
-        use creabim_core::{Document, Room, Transaction};
-        let mut doc = Document::from_model(creabim_core::sample::sample_house());
-        let level = doc
-            .model()
-            .levels()
-            .min_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
-            .unwrap()
-            .0
-            .id;
-        let mut tx = Transaction::new("rooms");
-        for (name, number, at) in [
-            ("Kúpeľňa", "1.01", DVec2::new(2.5, 3.0)),
-            ("Obývacia izba", "1.02", DVec2::new(8.0, 3.0)),
-        ] {
-            let mut r = Room::new(level, at);
-            r.number = number.into();
-            tx = tx.insert(Element::new(name, ElementKind::Room(r)));
-        }
-        let mats: Vec<Element> = doc
-            .model()
-            .iter()
-            .filter(|e| matches!(e.kind, ElementKind::Material(_)))
-            .cloned()
-            .collect();
-        for before in mats {
-            let mut after = before.clone();
-            if let ElementKind::Material(m) = &mut after.kind {
-                m.lambda = Some(0.5);
-            }
-            tx = tx.replace(before, after);
-        }
-        doc.commit(tx).unwrap();
-        doc.model().clone()
+        test_house()
     }
 
     #[test]
@@ -695,5 +794,22 @@ mod tests {
         // a colder design day loses more
         let colder = building(&model, &Opts { te: -15.0, ..o });
         assert!(colder.phi > b.phi);
+    }
+
+    #[test]
+    fn shared_area_of_two_outlines() {
+        let sq =
+            |x: f64, y: f64, s: f64| polygon::rectangle(DVec2::new(x, y), DVec2::new(x + s, y + s));
+        assert!((overlap_area(&sq(0.0, 0.0, 4.0), &sq(2.0, 2.0, 4.0)) - 4.0).abs() < 1e-9);
+        assert!(overlap_area(&sq(0.0, 0.0, 1.0), &sq(5.0, 5.0, 1.0)) < 1e-12);
+        let l = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(4.0, 0.0),
+            DVec2::new(4.0, 2.0),
+            DVec2::new(2.0, 2.0),
+            DVec2::new(2.0, 4.0),
+            DVec2::new(0.0, 4.0),
+        ];
+        assert!((overlap_area(&l, &sq(0.0, 0.0, 4.0)) - 12.0).abs() < 1e-9);
     }
 }

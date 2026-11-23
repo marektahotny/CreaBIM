@@ -8360,5 +8360,19 @@
  "Plinth: primer": "Sokel: penetračný náter",
  "Plinth: starter profile": "Sokel: soklový (zakladací) profil",
  "Plinth: dimpled protective foil below ground": "Sokel: nopová ochranná fólia pod terénom",
- "Plinth: waterproofing protection to 50 mm over the ground": "Sokel: ochrana hydroizolácie do 50 mm nad terén"
+ "Plinth: waterproofing protection to 50 mm over the ground": "Sokel: ochrana hydroizolácie do 50 mm nad terén",
+ "Method": "Metóda",
+ "Simplified": "Zjednodušene",
+ "Detailed": "Podrobne",
+ "STN EN 12831-1 chapter 6: outside dimensions, rooms over and under, ground by annex E": "STN EN 12831-1 kap. 6: vonkajšie rozmery, miestnosti nad a pod, zemina podľa prílohy E",
+ "The tables of STN EN 12831-1 are not read: read its parameter file": "Tabuľky STN EN 12831-1 nie sú načítané: načítajte súbor parametrov",
+ "Thermal bridges ΔU_TB (tab. B.1)": "Tepelné mosty ΔU_TB (tab. B.1)",
+ "Ground water within 1 m under the floor slab (f_GW)": "Hladina podzemnej vody do 1 m pod podlahovou doskou (f_GW)",
+ "tables of STN EN 12831-1 read": "tabuliek STN EN 12831-1 načítaných",
+ "After STN EN 12831-1 chapter 6: areas by the outside dimensions (walls a storey high, to the outer face of outside walls and the axis of inner ones), U from the build-ups' λ plus ΔU_TB of table B.1, heat to colder rooms beside, over and under (f = (θi − θx)/(θi − θe)), the ground by annex E with f_θann, f_GW and θe,m, the air by 6.3.3 for the building as one zone with no mechanical ventilation.": "Podrobne podľa STN EN 12831-1 kap. 6: plochy z vonkajších rozmerov (steny na výšku podlažia, po vonkajší líc obvodových a os vnútorných stien), U zo súčiniteľov λ skladieb + ΔU_TB z tab. B.1, prestup do chladnejších miestností vedľa, nad a pod (f = (θi − θx)/(θi − θe)), zemina podľa prílohy E s f_θann, f_GW a θe,m, vetranie podľa 6.3.3 pre budovu ako jednu zónu bez núteného vetrania.",
+ "To the room above": "Do miestnosti nad",
+ "To the room below": "Do miestnosti pod",
+ "a table of STN EN 12831-1 is not read (Read the table…): that part is left out": "nie je načítaná tabuľka STN EN 12831-1 (Načítať tabuľku…): táto časť sa neráta",
+ "no mean annual outside temperature θe,m: the floor on the ground is left out": "chýba priemerná ročná vonkajšia teplota θe,m: podlaha na teréne sa neráta",
+ "a floor or ceiling to a colder room with no build-up: its loss is left out": "strop alebo podlaha k chladnejšej miestnosti bez skladby: jej strata sa neráta"
 }

@@ -27,6 +27,7 @@ pub mod floorheat;
 pub mod fluid;
 pub mod gas;
 pub mod groundloss;
+pub mod heatdetail;
 pub mod heating;
 pub mod heatloss;
 pub mod herzdp;
