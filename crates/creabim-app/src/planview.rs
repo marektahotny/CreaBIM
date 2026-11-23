@@ -1691,6 +1691,50 @@ fn show_pane(
             draw_item(&painter, &xf, item, selected, mm);
         }
     }
+    // a fixture's connector under the pointer says what it is: ZTI-SV
+    // studená voda, DN 20, at its height (George 2026-11-23)
+    if let (PaneKind::Plan { .. }, Some(h)) = (kind, response.hover_pos()) {
+        let at = xf.to_world(h);
+        let reach = creabim_geom::objects::CONNECTOR_MARK.max(5.0 / xf.scale as f64);
+        let model = doc.model();
+        let found = plan.items.iter().find_map(|it| match it {
+            PlanItem::Arc {
+                id, center, radius, ..
+            } if (*radius - creabim_geom::objects::CONNECTOR_MARK).abs() < 1e-9
+                && center.distance(at) <= reach =>
+            {
+                let e = model.get(*id)?;
+                creabim_core::fixture::connectors(model, e)
+                    .into_iter()
+                    .find(|c| c.at.truncate().distance(*center) < 1e-6)
+            }
+            _ => None,
+        });
+        if let Some(c) = found {
+            let text = format!(
+                "{} {}, DN {:.0}, {} {} m",
+                c.kind.label(),
+                crate::i18n::tr(c.kind.name()),
+                c.dn,
+                crate::i18n::tr("height"),
+                crate::i18n::num(c.at.z, 3)
+            );
+            let font = egui::FontId::proportional(13.0);
+            let vis = ui.visuals();
+            let (ink, ground) = (vis.text_color(), vis.window_fill);
+            let galley = painter.layout_no_wrap(text, font, ink);
+            let pos = h + egui::vec2(14.0, -24.0);
+            let rect = egui::Rect::from_min_size(pos, galley.size()).expand(5.0);
+            painter.rect_filled(rect, 4.0, ground);
+            painter.rect_stroke(
+                rect,
+                4.0,
+                Stroke::new(1.0, crate::theme::interaction()),
+                egui::StrokeKind::Outside,
+            );
+            painter.galley(pos, galley, ink);
+        }
+    }
     // a selected window or door of a plan shows its fire-dangerous space,
     // unless the plan shows every opening's already
     if let PaneKind::Plan { level } = kind {

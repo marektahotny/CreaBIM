@@ -136,6 +136,27 @@ impl DisplayMode {
         true
     }
 
+    /// A services drawing named for a trade ("Pôdorys 1. NP ZTI") from
+    /// before its trade was set: that trade's. True when `view` changed.
+    pub fn trade_by_name(view: &mut View, name: &str) -> bool {
+        if view.trade.is_some()
+            || view.coordination
+            || DisplayMode::of(view) != DisplayMode::Services
+        {
+            return false;
+        }
+        let t = match name.rsplit(' ').next() {
+            Some("ZTI") => Trade::Plumbing,
+            Some("VYK") => Trade::Heating,
+            Some("VZT") => Trade::Ventilation,
+            Some("ELI") => Trade::Electrical,
+            Some("MPL") => Trade::MedGas,
+            _ => return false,
+        };
+        view.trade = Some(t);
+        true
+    }
+
     /// A blind or services drawing from before its building was drawn in
     /// the very thin pen (cut and seen, George 2026-11-22): brought to it.
     /// True when `view` changed.

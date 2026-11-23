@@ -822,15 +822,8 @@ pub fn unit(kind: HeatKind, size: u32) -> CatalogueObject {
                 cuboid(v3(-0.08, -d - 0.004, h - 0.3), v3(0.08, -d, h - 0.2)),
                 false,
             );
-            b.line(v2(-w / 2.0, -d), v2(w / 2.0, 0.0));
-            b.line(v2(-w / 2.0, 0.0), v2(w / 2.0, -d));
-            // a wall hydromodule is too shallow to hold its name
-            let at = if kind == HeatKind::HpIndoor {
-                -d - 0.2
-            } else {
-                -d / 2.0
-            };
-            b.text(v2(0.0, at), "T.Č. vnútorná");
+            // its outline and its connections only, no cross: the
+            // trades' drawings mark it "T.Č." in green (George 2026-11-23)
         }
     }
     // a stub where each pipe joins: inside the back face and the floor,
