@@ -235,6 +235,15 @@ fn layer_items(
                 })
                 .collect()
         }
+        // a ceiling's build-up (podhľad), layers from the top down
+        ElementKind::Ceiling(c) => {
+            let outline = c.outline(model)?;
+            let (_, top) = c.span(model);
+            assembly::depth_bands(a, c.thickness)
+                .into_iter()
+                .map(|b| (b, slab_mesh(&outline, top - b.s0, b.s1 - b.s0)))
+                .collect()
+        }
         ElementKind::Roof(r) => {
             let base = r.base(model);
             // layers are square to the slope; upright they are thicker

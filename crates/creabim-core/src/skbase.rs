@@ -21,6 +21,9 @@ struct Base {
     floors: Vec<BuildUp>,
     #[serde(default)]
     roofs: Vec<BuildUp>,
+    /// Ceilings (podhľady), hung under a floor or a roof.
+    #[serde(default)]
+    ceilings: Vec<BuildUp>,
 }
 
 #[derive(Deserialize)]
@@ -167,6 +170,13 @@ fn base() -> Base {
         .expect("sk-ufh-boards.json");
     b.materials.extend(ufh.materials);
     b.floors.extend(ufh.floors);
+    // the base lists the ceilings under trusses with the floors; they are
+    // ceilings (George 2026-11-23)
+    let (ceilings, floors): (Vec<BuildUp>, Vec<BuildUp>) = std::mem::take(&mut b.floors)
+        .into_iter()
+        .partition(|t| t.name.starts_with("Podhľad"));
+    b.floors = floors;
+    b.ceilings.extend(ceilings);
     // a block's fire resistance and an insulation's reaction to fire only
     // as a maker's document gives them
     let fire = fire_data();
@@ -569,11 +579,23 @@ pub fn add_base(model: &Model) -> Transaction {
         (AssemblyUse::Wall, &b.walls),
         (AssemblyUse::Floor, &b.floors),
         (AssemblyUse::Roof, &b.roofs),
+        (AssemblyUse::Ceiling, &b.ceilings),
     ] {
         for t in list.iter().filter(|t| t.curtain.is_none()) {
             let found = assemblies.iter().find(|(_, n, _)| *n == t.name);
             let (id, total) = match found {
                 Some((id, _, a)) => {
+                    // a ceiling's build-up made before ceilings had their
+                    // own (a slab's, George 2026-11-23) is a ceiling's
+                    if usage == AssemblyUse::Ceiling && a.usage != usage {
+                        if let Some(before) = model.get(*id) {
+                            let mut after = before.clone();
+                            if let ElementKind::Assembly(x) = &mut after.kind {
+                                x.usage = usage;
+                            }
+                            tx = tx.replace(before.clone(), after);
+                        }
+                    }
                     // one made before the makers' fire data takes it in,
                     // unless the designer has stated their own
                     if a.fire_resistance.is_empty() {
@@ -638,7 +660,8 @@ pub fn add_base(model: &Model) -> Transaction {
                     (id, total)
                 }
             };
-            if kinds.iter().any(|(_, n, _)| *n == t.name) {
+            // a ceiling is given its build-up, it has no type
+            if usage == AssemblyUse::Ceiling || kinds.iter().any(|(_, n, _)| *n == t.name) {
                 continue;
             }
             let params = match usage {
@@ -656,7 +679,7 @@ pub fn add_base(model: &Model) -> Transaction {
                     assembly: Some(id),
                     material: None,
                 }),
-                AssemblyUse::Roof => TypeParams::Roof(SlabType {
+                AssemblyUse::Roof | AssemblyUse::Ceiling => TypeParams::Roof(SlabType {
                     thickness: total,
                     assembly: Some(id),
                     material: None,
@@ -682,9 +705,10 @@ mod tests {
         doc.commit(add_base(doc.model())).unwrap();
         let m = doc.model();
         let (materials, walls, floors, roofs) = counts();
-        assert_eq!((materials, walls, floors, roofs), (94, 34, 15, 3));
+        assert_eq!((materials, walls, floors, roofs), (94, 34, 13, 3));
         assert_eq!(crate::library::materials(m).len(), materials);
-        assert_eq!(assembly::assemblies(m).len(), walls + floors + roofs);
+        // the two ceilings under trusses have no type
+        assert_eq!(assembly::assemblies(m).len(), walls + floors + roofs + 2);
         assert_eq!(types::types(m).len(), walls + floors + roofs);
         // again adds nothing
         assert!(add_base(m).ops.is_empty());

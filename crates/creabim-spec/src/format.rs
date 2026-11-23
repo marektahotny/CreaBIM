@@ -193,6 +193,7 @@ spec_enum! {
         Wall = "wall",
         Floor = "floor",
         Roof = "roof",
+        Ceiling = "ceiling",
     }
 }
 

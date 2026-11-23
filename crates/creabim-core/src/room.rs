@@ -14,7 +14,7 @@
 //! an outline of its own. Fixtures hung from the ceiling hang from it, and
 //! walls can attach their tops to its underside (see [`crate::walls`]).
 
-use crate::{Element, ElementId, ElementKind, Model};
+use crate::{Element, ElementId, ElementKind, Model, Transaction};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
@@ -572,10 +572,159 @@ pub struct Ceiling {
     /// plans; 0 for a plain (plastered) one.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub grid: f64,
+    /// The build-up it is made of (a ceiling's [`crate::AssemblyUse::Ceiling`]
+    /// assembly, layers from the top down): with one its thickness is the
+    /// build-up's, and the heat loss counts it over the room (George
+    /// 2026-11-23).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assembly: Option<ElementId>,
+    /// The roof space over it, a row of STN EN ISO 6946 table 9 (its key in
+    /// the norm's parameter table [`ROOF_SPACE`]): its thermal resistance
+    /// Ru is added to the build-up's. None: no roof space counted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roof_space: Option<String>,
 }
+
+/// STN EN ISO 6946:2019 table 9, thermal resistance of roof spaces: the
+/// parameter table read from the norm (columns `key`, `ru` m²K/W, `text`).
+/// The values come from the user's copy of the norm, never from the code.
+pub const ROOF_SPACE: &str = "roof_space";
 
 fn is_zero(v: &f64) -> bool {
     *v == 0.0
+}
+
+/// The rows of STN EN ISO 6946 table 9 read ([`ROOF_SPACE`]): key, Ru
+/// m²K/W, what roof it is.
+pub fn roof_spaces(tables: &[crate::fireparams::ParamTable]) -> Vec<(String, f64, String)> {
+    let Some(t) = tables.iter().find(|t| t.id == ROOF_SPACE) else {
+        return vec![];
+    };
+    let (Some(k), Some(r), x) = (t.column("key"), t.column("ru"), t.column("text")) else {
+        return vec![];
+    };
+    t.rows
+        .iter()
+        .filter_map(|row| {
+            Some((
+                row.get(k)?.clone(),
+                crate::fireparams::number(row.get(r)?)?,
+                x.and_then(|x| row.get(x)).cloned().unwrap_or_default(),
+            ))
+        })
+        .collect()
+}
+
+/// The norm tables of the project (its own over the application's).
+pub fn project_tables(model: &Model) -> Vec<crate::fireparams::ParamTable> {
+    let own = model
+        .project_info()
+        .map(|(_, p)| p.fire_params.clone())
+        .unwrap_or_default();
+    crate::fireparams::effective(&own)
+}
+
+/// The roof space's Ru over ceiling `c`, m²K/W, by its row of table 9;
+/// none when it has none or the table isn't read.
+pub fn roof_space_ru(tables: &[crate::fireparams::ParamTable], c: &Ceiling) -> Option<f64> {
+    let key = c.roof_space.as_deref()?;
+    roof_spaces(tables)
+        .into_iter()
+        .find(|(k, _, _)| k == key)
+        .map(|(_, ru, _)| ru)
+}
+
+/// The ceiling with a build-up over room `room` (on `level`, its point
+/// `at`): one that follows the room, else one whose outline on the room's
+/// level holds the point.
+pub fn built_ceiling_over(
+    model: &Model,
+    room: ElementId,
+    level: ElementId,
+    at: DVec2,
+) -> Option<&Element> {
+    let built = |c: &Ceiling| {
+        c.assembly
+            .and_then(|a| model.get(a))
+            .is_some_and(|a| matches!(&a.kind, ElementKind::Assembly(x) if !x.layers.is_empty()))
+    };
+    model
+        .iter()
+        .find(|e| matches!(&e.kind, ElementKind::Ceiling(c) if c.room == Some(room) && c.boundary.is_empty() && built(c)))
+        .or_else(|| {
+            model.iter().find(|e| {
+                matches!(&e.kind, ElementKind::Ceiling(c) if c.level == level
+                    && built(c)
+                    && c.boundary.len() > 2
+                    && crate::polygon::contains(&c.boundary, at))
+            })
+        })
+}
+
+/// Ceilings (podhľady) drawn before ceilings had build-ups of their own,
+/// as slabs of a ceiling's build-up (George 2026-11-23): each such slab a
+/// ceiling of that build-up, its underside where the slab's was, and the
+/// build-up a ceiling's. The slab types of those build-ups go, none being
+/// left of them. None when there is nothing to change.
+pub fn mend_ceilings(model: &Model) -> Option<Transaction> {
+    use crate::{AssemblyUse, ElementKind as K};
+    let ceiling_asm = |id: ElementId| {
+        model.get(id).is_some_and(|a| match &a.kind {
+            K::Assembly(x) => {
+                x.usage == AssemblyUse::Ceiling
+                    || (x.usage == AssemblyUse::Floor && a.name.starts_with("Podhľad"))
+            }
+            _ => false,
+        })
+    };
+    let mut tx = Transaction::new("Ceilings of their own");
+    let mut any = false;
+    for e in model.iter() {
+        match &e.kind {
+            K::Slab(s) if s.assembly.is_some_and(ceiling_asm) => {
+                let Some(asm) = s.assembly else { continue };
+                let mut c = Ceiling::drawn(s.level, s.boundary.clone(), s.top_offset - s.thickness);
+                c.thickness = s.thickness;
+                c.material = s.material;
+                c.assembly = Some(asm);
+                let mut after = e.clone();
+                after.kind = K::Ceiling(c);
+                after.of_type = None;
+                if after.name == "Slab" || after.name.is_empty() {
+                    after.name = "Ceiling".into();
+                }
+                tx = tx.replace(e.clone(), after);
+                any = true;
+            }
+            K::Assembly(a) if a.usage == AssemblyUse::Floor && e.name.starts_with("Podhľad") => {
+                let mut after = e.clone();
+                if let K::Assembly(x) = &mut after.kind {
+                    x.usage = AssemblyUse::Ceiling;
+                }
+                tx = tx.replace(e.clone(), after);
+                any = true;
+            }
+            _ => {}
+        }
+    }
+    // the slab types of the build-ups now a ceiling's, with no slab left
+    for e in model.iter() {
+        if let K::ElementType(t) = &e.kind {
+            if let crate::types::TypeParams::Slab(st) = &t.params {
+                if st.assembly.is_some_and(ceiling_asm) {
+                    let used = model.iter().any(|x| {
+                        x.of_type.as_ref().is_some_and(|r| r.id == e.id)
+                            && !matches!(&x.kind, K::Slab(s) if s.assembly.is_some_and(ceiling_asm))
+                    });
+                    if !used {
+                        tx.ops.push(crate::ops::Op::Remove(e.clone()));
+                        any = true;
+                    }
+                }
+            }
+        }
+    }
+    any.then_some(tx)
 }
 
 /// The height new ceilings hang at, and their thickness.
@@ -593,6 +742,8 @@ impl Ceiling {
             thickness: CEILING_THICKNESS,
             material: None,
             grid: 0.0,
+            assembly: None,
+            roof_space: None,
         }
     }
 
@@ -609,6 +760,8 @@ impl Ceiling {
             thickness: CEILING_THICKNESS,
             material: None,
             grid: 0.0,
+            assembly: None,
+            roof_space: None,
         }
     }
 
@@ -1692,6 +1845,54 @@ mod tests {
         .unwrap();
         assert!(t.fields.is_empty());
         assert!(!serde_json::to_string(&t).unwrap().contains("fields"));
+    }
+
+    /// A ceiling drawn as a slab of a podhľad build-up, before ceilings had
+    /// their own (George 2026-11-23), opens as a ceiling of that build-up
+    /// with its underside where the slab's was.
+    #[test]
+    fn ceilings_drawn_as_slabs_open_as_ceilings() {
+        use crate::{Assembly, AssemblyUse, Document, Layer, LayerFunction, Level, Slab};
+        let mut doc = Document::new();
+        let lv = Element::new(
+            "1. NP",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let l = lv.id;
+        let asm = Element::new(
+            "Podhľad pod väzníkovou strechou",
+            ElementKind::Assembly(Assembly::new(
+                AssemblyUse::Floor,
+                vec![Layer::new(LayerFunction::Insulation, None, 0.27)],
+            )),
+        );
+        let a = asm.id;
+        let mut s = Slab::new(
+            l,
+            crate::polygon::rectangle(DVec2::ZERO, DVec2::new(4.0, 3.0)),
+            0.285,
+        );
+        s.assembly = Some(a);
+        s.top_offset = 2.785;
+        let slab = Element::new("Slab", ElementKind::Slab(s));
+        let sid = slab.id;
+        doc.commit(Transaction::new("t").insert(lv).insert(asm).insert(slab))
+            .unwrap();
+        let tx = mend_ceilings(doc.model()).expect("something to mend");
+        doc.commit(tx).unwrap();
+        let m = doc.model();
+        let ElementKind::Ceiling(c) = &m.get(sid).unwrap().kind else {
+            panic!("a ceiling now");
+        };
+        assert_eq!(c.assembly, Some(a));
+        assert!((c.height - 2.5).abs() < 1e-9 && (c.thickness - 0.285).abs() < 1e-9);
+        assert!(
+            matches!(&m.get(a).unwrap().kind, ElementKind::Assembly(x) if x.usage == AssemblyUse::Ceiling)
+        );
+        assert!(mend_ceilings(m).is_none());
     }
 
     #[test]

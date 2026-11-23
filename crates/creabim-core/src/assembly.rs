@@ -138,16 +138,24 @@ pub enum AssemblyUse {
     Wall,
     Floor,
     Roof,
+    /// A ceiling (podhľad) hung under a floor or a roof.
+    Ceiling,
 }
 
 impl AssemblyUse {
-    pub const ALL: [AssemblyUse; 3] = [AssemblyUse::Wall, AssemblyUse::Floor, AssemblyUse::Roof];
+    pub const ALL: [AssemblyUse; 4] = [
+        AssemblyUse::Wall,
+        AssemblyUse::Floor,
+        AssemblyUse::Roof,
+        AssemblyUse::Ceiling,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             AssemblyUse::Wall => "Walls",
             AssemblyUse::Floor => "Floors and slabs",
             AssemblyUse::Roof => "Roofs",
+            AssemblyUse::Ceiling => "Ceilings",
         }
     }
 
@@ -157,6 +165,7 @@ impl AssemblyUse {
             ElementKind::Wall(_) => Some(AssemblyUse::Wall),
             ElementKind::Slab(_) => Some(AssemblyUse::Floor),
             ElementKind::Roof(_) => Some(AssemblyUse::Roof),
+            ElementKind::Ceiling(_) => Some(AssemblyUse::Ceiling),
             _ => None,
         }
     }
@@ -165,14 +174,14 @@ impl AssemblyUse {
     pub fn first_face(self) -> &'static str {
         match self {
             AssemblyUse::Wall => "Exterior",
-            AssemblyUse::Floor | AssemblyUse::Roof => "Top",
+            AssemblyUse::Floor | AssemblyUse::Roof | AssemblyUse::Ceiling => "Top",
         }
     }
 
     pub fn last_face(self) -> &'static str {
         match self {
             AssemblyUse::Wall => "Interior",
-            AssemblyUse::Floor | AssemblyUse::Roof => "Underside",
+            AssemblyUse::Floor | AssemblyUse::Roof | AssemblyUse::Ceiling => "Underside",
         }
     }
 }
@@ -548,6 +557,7 @@ pub fn assembly_slot(e: &Element) -> Option<Option<ElementId>> {
         ElementKind::Wall(w) => Some(w.assembly),
         ElementKind::Slab(s) => Some(s.assembly),
         ElementKind::Roof(r) => Some(r.assembly),
+        ElementKind::Ceiling(c) => Some(c.assembly),
         _ => None,
     }
 }
@@ -572,6 +582,7 @@ fn set_thickness(e: &mut Element, t: f64) {
         ElementKind::Wall(w) => w.thickness = t,
         ElementKind::Slab(s) => s.set_thickness(t, false),
         ElementKind::Roof(r) => r.thickness = t,
+        ElementKind::Ceiling(c) => c.thickness = t,
         _ => {}
     }
 }
@@ -581,6 +592,7 @@ fn thickness(e: &Element) -> Option<f64> {
         ElementKind::Wall(w) => Some(w.thickness),
         ElementKind::Slab(s) => Some(s.thickness),
         ElementKind::Roof(r) => Some(r.thickness),
+        ElementKind::Ceiling(c) => Some(c.thickness),
         _ => None,
     }
 }
@@ -592,6 +604,7 @@ pub fn set_assembly(model: &Model, e: &mut Element, assembly: Option<ElementId>)
         ElementKind::Wall(w) => w.assembly = assembly,
         ElementKind::Slab(s) => s.assembly = assembly,
         ElementKind::Roof(r) => r.assembly = assembly,
+        ElementKind::Ceiling(c) => c.assembly = assembly,
         _ => return false,
     }
     let layers = assembly_of(model, e).map(|(_, a)| {

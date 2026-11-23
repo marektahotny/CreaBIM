@@ -250,6 +250,7 @@ pub(crate) fn heated(name: &str, r: &creabim_core::Room) -> bool {
 }
 
 struct RoomAt {
+    id: ElementId,
     level: ElementId,
     elevation: f64,
     outline: Vec<DVec2>,
@@ -271,6 +272,7 @@ pub fn envelope(model: &Model) -> Envelope {
             };
             let s = room::shape(model, e.id).filter(|s| s.outline.len() > 2)?;
             Some(RoomAt {
+                id: e.id,
                 level: r.level,
                 elevation: model.level(r.level).map_or(0.0, |l| l.elevation),
                 area: room::net_area(model, r, &s),
@@ -438,9 +440,14 @@ pub fn envelope(model: &Model) -> Envelope {
         } else {
             SurfaceKind::UnderUnheated
         };
-        match ceiling {
-            Some(c) => push(c.id, kind, i),
-            None => {
+        // a ceiling with a build-up (podhľad) under the attic first
+        // (George 2026-11-23)
+        let hung = room::built_ceiling_over(model, r.id, r.level, r.at);
+        match (hung, ceiling) {
+            (Some(c), _) if over.is_none() => push(c.id, SurfaceKind::UnderUnheated, i),
+            (_, Some(c)) => push(c.id, kind, i),
+            (Some(c), None) => push(c.id, kind, i),
+            (None, None) => {
                 let roof = model.iter().find(|e| {
                     matches!(&e.kind, ElementKind::Roof(rf)
                         if rf.boundary.len() > 2 && polygon::contains(&rf.boundary, r.at))
@@ -471,6 +478,7 @@ pub fn envelope(model: &Model) -> Envelope {
         let (outline, holes): (Vec<DVec2>, Vec<Vec<DVec2>>) = match &e.kind {
             ElementKind::Slab(s) => (s.outline(), s.holes.clone()),
             ElementKind::Roof(r) => (r.boundary.clone(), vec![]),
+            ElementKind::Ceiling(c) => (c.outline(model).unwrap_or_default(), vec![]),
             _ => continue,
         };
         let own: Vec<Vec<DVec2>> = of.iter().map(|i| all[*i].outline.clone()).collect();

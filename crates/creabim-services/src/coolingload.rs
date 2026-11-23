@@ -461,6 +461,8 @@ impl Norm {
     }
 
     fn delta(&self, name: &str) -> Option<f64> {
+        // a ceiling's name carries the roof space's Ru after its build-up's
+        let name = name.split(" + Ru ").next().unwrap_or(name);
         self.thick.iter().find(|x| x.0 == name).map(|x| x.1)
     }
 }
@@ -504,7 +506,8 @@ fn one(
                 wall_a += i.area;
                 opaque.push((u * i.area, i.azimuth, &i.detail));
             }
-            "Roof" => {
+            // a ceiling under a roof space gains as a roof does
+            "Roof" | "Ceiling" => {
                 roof_k += u * i.area;
                 roof_a += i.area;
                 opaque.push((u * i.area, None, &i.detail));
@@ -769,7 +772,7 @@ fn summer(
                 windows |= i.kind == "Window";
             }
             "Outside wall" => opaque_ua += u * i.area,
-            "Roof" => roof_ua += u * i.area,
+            "Roof" | "Ceiling" => roof_ua += u * i.area,
             "Floor on the ground" => ground_a += i.area,
             _ => {}
         }

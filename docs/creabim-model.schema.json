@@ -246,7 +246,7 @@
     "AssemblyUsage": {
       "type": "string",
       "description": "What an assembly is for.",
-      "enum": ["wall", "floor", "roof"]
+      "enum": ["wall", "floor", "roof", "ceiling"]
     },
     "Layer": {
       "type": "object",

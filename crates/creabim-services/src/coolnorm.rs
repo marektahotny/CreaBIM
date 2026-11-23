@@ -509,6 +509,7 @@ pub fn thickness_by_name(model: &Model) -> Vec<(String, f64)> {
         let t = match &e.kind {
             ElementKind::Wall(w) => w.thickness,
             ElementKind::Roof(r) => r.thickness,
+            ElementKind::Ceiling(c) => c.thickness,
             _ => continue,
         };
         let name = match creabim_core::assembly::assembly_of(model, e) {

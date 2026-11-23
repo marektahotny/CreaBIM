@@ -546,8 +546,12 @@ pub fn duplicates(model: &Model) -> Vec<(String, Vec<ElementId>)> {
                     }
                 }
             }
-        } else if matches!(e.kind, ElementKind::ElementType(_)) {
-            // types are counted through their objects
+        } else if matches!(
+            e.kind,
+            ElementKind::ElementType(_) | ElementKind::Ceiling(_)
+        ) {
+            // types are counted through their objects; ceilings of one
+            // build-up share their mark (PDH1, George 2026-11-23)
             None
         } else if let (ElementKind::Opening(o), true) = (
             &e.kind,

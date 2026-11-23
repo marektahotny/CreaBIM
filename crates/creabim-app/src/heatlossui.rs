@@ -134,6 +134,7 @@ impl CreaBimApp {
                 heatdetail::TABLES.contains(&t.id.as_str())
                     || creabim_services::coolnorm::TABLES.contains(&t.id.as_str())
                     || t.id == psi::PSI
+                    || t.id == creabim_core::room::ROOF_SPACE
             })
             .cloned()
             .collect();

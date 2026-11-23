@@ -8470,5 +8470,9 @@
  "D Documentation of the building objects": "D Dokumentace stavebních objektů",
  "New sheet in this part, numbered after its last": "Nový výkres v této části, číslovaný za jejím posledním",
  "New A3 sheet": "Nový list A3",
- "Use Place view… in the toolbar to put views on it.": "Pohledy na něj vložíte přes Umístit pohled… v panelu nástrojů."
+ "Use Place view… in the toolbar to put views on it.": "Pohledy na něj vložíte přes Umístit pohled… v panelu nástrojů.",
+ "Ceiling assembly": "Skladba podhledu",
+ "Roof space": "Střešní prostor",
+ "Roof space over it: read table 9 of STN EN ISO 6946 (Heat loss, Read table…) to pick one.": "Střešní prostor nad ním: načtěte tab. 9 STN EN ISO 6946 (Tepelné ztráty › Načíst tabulku…), potom ho vyberete.",
+ "STN EN ISO 6946, table 9: the ventilated roof space over the ceiling counts as a layer of resistance Ru in the heat loss.": "STN EN ISO 6946, tab. 9: větraný střešní prostor nad podhledem se v tepelných ztrátách počítá jako vrstva s odporem Ru."
 }

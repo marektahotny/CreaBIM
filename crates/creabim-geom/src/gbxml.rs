@@ -41,6 +41,8 @@ type WallPart = (&'static str, f64, f64, Vec<(String, &'static str)>);
 /// A room as a space.
 struct Space {
     id: String,
+    /// The room it is.
+    room: ElementId,
     name: String,
     occupancy: String,
     level: ElementId,
@@ -114,7 +116,24 @@ impl Library {
             return c.clone();
         }
         let name = assembly_of(model, e).map_or_else(|| e.name.clone(), |(a, _)| a.name.clone());
-        let th = thermal::of_element(model, e);
+        let mut th = thermal::of_element(model, e);
+        // a ceiling's roof space as a layer of its Ru (STN EN ISO 6946
+        // table 9)
+        let ru = match &e.kind {
+            ElementKind::Ceiling(c) => room::roof_space_ru(&room::project_tables(model), c),
+            _ => None,
+        };
+        if let (Some(ru), Some(t)) = (ru, th.as_mut()) {
+            t.u = t.u.map(|u| 1.0 / (1.0 / u + ru));
+            t.layers.push(thermal::LayerR {
+                index: t.layers.len(),
+                name: "Strešný priestor (STN EN ISO 6946, tab. 9)".into(),
+                thickness: 0.0,
+                lambda: None,
+                r: Some(ru),
+                skipped: false,
+            });
+        }
         let key = format!(
             "{name}|{:?}|{}",
             th.as_ref().and_then(|t| t.u).map(|u| (u * 1e4).round()),
@@ -326,6 +345,7 @@ pub fn export(model: &Model) -> (String, Vec<String>) {
         };
         spaces.push(Space {
             id: format!("sp{}", spaces.len() + 1),
+            room: e.id,
             name,
             occupancy: r.occupancy.clone(),
             level: r.level,
@@ -632,9 +652,13 @@ pub fn export(model: &Model) -> (String, Vec<String>) {
                 .filter(|l| l.2.elevation > s.elevation + 1e-6)
                 .min_by(|a, b| a.2.elevation.total_cmp(&b.2.elevation))
                 .and_then(|l| slab_at(l.0, s.inside));
-            let (top, what) = match next {
-                Some(id) => (Some(id), "strop"),
-                None => (roof_at(s.inside), "strecha"),
+            // a ceiling with a build-up (podhľad) under the roof space
+            // first (George 2026-11-23)
+            let hung = room::built_ceiling_over(model, s.room, s.level, s.inside).map(|e| e.id);
+            let (top, what) = match (hung, next) {
+                (Some(id), _) => (Some(id), "podhľad"),
+                (None, Some(id)) => (Some(id), "strop"),
+                (None, None) => (roof_at(s.inside), "strecha"),
             };
             if top.is_none() {
                 warnings.push(format!(

@@ -146,6 +146,14 @@ pub fn host_frame(model: &Model, id: ElementId) -> Option<DAffine3> {
                 )
             }
         },
+        // a ceiling's underside along its outline's first edge, so a note
+        // to it in a section follows it (George 2026-11-23)
+        ElementKind::Ceiling(c) => {
+            let o = c.outline(model)?;
+            let a = *o.first()?;
+            let b = o.get(1).copied().unwrap_or(a + DVec2::X);
+            along(a.extend(c.span(model).0), (b - a).extend(0.0))
+        }
         ElementKind::Grid(g) => along(g.start.extend(0.0), (g.end - g.start).extend(0.0)),
         // a column or an object (furniture, a fixture, equipment): its
         // position and turn, so dimensions to it follow it (PilonDesigner's

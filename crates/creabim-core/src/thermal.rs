@@ -97,7 +97,7 @@ impl Boundary {
         let flow = match usage {
             AssemblyUse::Wall => HeatFlow::Horizontal,
             AssemblyUse::Floor => HeatFlow::Down,
-            AssemblyUse::Roof => HeatFlow::Up,
+            AssemblyUse::Roof | AssemblyUse::Ceiling => HeatFlow::Up,
         };
         Boundary {
             flow,

@@ -57,7 +57,9 @@ pub fn tables_of(model: &Model) -> Vec<ParamTable> {
         .unwrap_or_default();
     fireparams::effective(&own)
         .into_iter()
-        .filter(|t| TABLES.contains(&t.id.as_str()) || t.id == crate::psi::PSI)
+        .filter(|t| {
+            TABLES.contains(&t.id.as_str()) || t.id == crate::psi::PSI || t.id == room::ROOF_SPACE
+        })
         .collect()
 }
 
@@ -584,12 +586,26 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                 None => miss(Missing::FloorBuildUp),
             }
         }
-        // upwards: a roof where no room is over it
-        if covered[0] < 1e-3
+        // upwards: a ceiling with a build-up (podhľad) and the roof space
+        // over it (STN EN ISO 6946 table 9), else a roof, where no room is
+        // over it
+        let open_up = covered[0] < 1e-3
             && !rooms
                 .iter()
-                .any(|x| elev(x.level) > me + 1e-6 && polygon::contains(&x.shape.outline, c))
-        {
+                .any(|x| elev(x.level) > me + 1e-6 && polygon::contains(&x.shape.outline, c));
+        let ceiling = open_up
+            .then(|| room::built_ceiling_over(model, r.e.id, r.level, c))
+            .flatten();
+        if let Some(ce) = ceiling {
+            match crate::heatloss::ceiling_u(model, ce, &tables) {
+                Some((u, name)) => {
+                    a_env += area_out;
+                    along_with(Joint::Roof, 1.0);
+                    add("Ceiling", &name, area_out, u + tb, 1.0, None)
+                }
+                None => miss(Missing::RoofBuildUp),
+            }
+        } else if open_up {
             let roof = model.iter().find(|e| {
                 matches!(&e.kind, ElementKind::Roof(rf)
                     if rf.boundary.len() > 2 && polygon::contains(&rf.boundary, c))
