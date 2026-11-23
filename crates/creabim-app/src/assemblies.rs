@@ -30,6 +30,8 @@ pub(super) enum AsmAsk {
     Edit(ElementId, &'static str, Assembly),
     SelectUsers(ElementId),
     Assign(Option<ElementId>),
+    /// A library material a build-up is about to use.
+    AddMaterial(Box<creabim_core::Element>),
 }
 
 /// The small drawn buttons of a layer row (the UI font has no arrows).
@@ -899,7 +901,10 @@ impl CreaBimApp {
                 }
                 // the plinth: XPS on a membrane below a line over the ground
                 if a.usage == AssemblyUse::Wall {
-                    if let Some(new) = plinth_panel(ui, model, id, a) {
+                    if let Some((new, add)) = plinth_panel(ui, model, id, a) {
+                        if let Some(m) = add {
+                            asks.push(AsmAsk::AddMaterial(Box::new(m)));
+                        }
                         asks.push(AsmAsk::Edit(id, "Plinth", new));
                     }
                 }
@@ -1047,6 +1052,12 @@ impl CreaBimApp {
                     .edit_merged(id, "Rename assembly", |e| e.name = name.clone());
                 self.report(r, "Renamed.");
             }
+            AsmAsk::AddMaterial(m) => {
+                let r = self
+                    .doc
+                    .commit(Transaction::new("Material from the library").insert(*m));
+                self.report(r, "Material from the library");
+            }
             AsmAsk::Edit(id, label, a) => {
                 if let Err(e) = a.validate() {
                     self.status = format!("Can't: {e}.");
@@ -1110,6 +1121,7 @@ fn material_named(model: &Model, names: &[&str]) -> Option<ElementId> {
 
 /// A material picker over the model's materials of `categories`, with
 /// `none` for no material.
+#[allow(clippy::too_many_arguments)]
 fn plinth_material(
     ui: &mut egui::Ui,
     model: &Model,
@@ -1118,12 +1130,30 @@ fn plinth_material(
     none: &str,
     categories: &[&str],
     current: &mut Option<ElementId>,
+    add: Option<&mut Option<creabim_core::Element>>,
 ) -> bool {
     let mats: Vec<(ElementId, String)> = creabim_core::library::materials(model)
         .into_iter()
         .filter(|(id, _, m)| categories.contains(&m.category.as_str()) || *current == Some(*id))
         .map(|(id, n, _)| (id, n.to_string()))
         .collect();
+    // the Slovak base's materials of those kinds the project lacks yet
+    // (the mosaic render for a plinth, George 2026-11-22)
+    let base: Vec<String> = if add.is_some() {
+        creabim_core::skbase::base_material_names()
+            .into_iter()
+            .filter(|n| !mats.iter().any(|m| &m.1 == n))
+            .filter(|n| {
+                creabim_core::skbase::base_material(n).is_some_and(|e| {
+                    matches!(&e.kind, creabim_core::ElementKind::Material(m)
+                        if categories.contains(&m.category.as_str()))
+                })
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+    let mut take: Option<String> = None;
     let shown = current
         .and_then(|c| mats.iter().find(|m| m.0 == c))
         .map_or_else(|| crate::i18n::tr(none), |m| m.1.clone());
@@ -1143,8 +1173,24 @@ fn plinth_material(
                         .selectable_value(current, Some(*id), n.as_str())
                         .changed();
                 }
+                if !base.is_empty() {
+                    ui.separator();
+                    ui.label(egui::RichText::new(crate::i18n::tr("From the library")).weak());
+                    for n in &base {
+                        if ui.selectable_label(false, n.as_str()).clicked() {
+                            take = Some(n.clone());
+                        }
+                    }
+                }
             });
     });
+    if let (Some(n), Some(add)) = (take, add) {
+        if let Some(e) = creabim_core::skbase::base_material(&n) {
+            *current = Some(e.id);
+            *add = Some(e);
+            changed = true;
+        }
+    }
     changed
 }
 
@@ -1173,9 +1219,15 @@ fn mm_field(ui: &mut egui::Ui, label: &str, hint: &str, value: &mut f64, max: f6
 
 /// The build-up's plinth (sokel): on or off, its XPS, membrane, render,
 /// height over the ground and bottom. The changed build-up, if any.
-fn plinth_panel(ui: &mut egui::Ui, model: &Model, id: ElementId, a: &Assembly) -> Option<Assembly> {
+fn plinth_panel(
+    ui: &mut egui::Ui,
+    model: &Model,
+    id: ElementId,
+    a: &Assembly,
+) -> Option<(Assembly, Option<creabim_core::Element>)> {
     use creabim_core::plinth::{Plinth, PlinthBottom};
     let mut new = a.clone();
+    let mut add: Option<creabim_core::Element> = None;
     let mut changed = false;
     let mut on = a.plinth.is_some();
     ui.add_space(4.0);
@@ -1214,6 +1266,7 @@ fn plinth_panel(ui: &mut egui::Ui, model: &Model, id: ElementId, a: &Assembly) -
                 "As the facade",
                 &["insulation"],
                 &mut p.insulation,
+                None,
             );
             let facade = a
                 .layers
@@ -1247,6 +1300,7 @@ fn plinth_panel(ui: &mut egui::Ui, model: &Model, id: ElementId, a: &Assembly) -
                 "None",
                 &["membrane"],
                 &mut p.membrane,
+                None,
             );
             if p.membrane.is_some() {
                 changed |= mm_field(
@@ -1265,6 +1319,7 @@ fn plinth_panel(ui: &mut egui::Ui, model: &Model, id: ElementId, a: &Assembly) -
                 "As the facade",
                 &["plaster", "finish", "stone"],
                 &mut p.render,
+                Some(&mut add),
             );
             changed |= mm_field(
                 ui,
@@ -1309,5 +1364,5 @@ fn plinth_panel(ui: &mut egui::Ui, model: &Model, id: ElementId, a: &Assembly) -
             }
         });
     }
-    changed.then_some(new)
+    changed.then_some((new, add))
 }

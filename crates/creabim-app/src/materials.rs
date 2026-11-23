@@ -282,7 +282,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
 
             // design values for heat loss and fire safety (STN 73 0540-3,
             // STN EN 13501-1); 0 or empty is unknown
-            ui.label("Thermal conductivity λ");
+            ui.label(crate::i18n::tr("Thermal conductivity λ"));
             let mut lambda = m.lambda.unwrap_or(0.0);
             if ui
                 .add(
@@ -302,7 +302,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             }
             ui.end_row();
 
-            ui.label("Density");
+            ui.label(crate::i18n::tr("Density"));
             let mut density = m.density.unwrap_or(0.0);
             if ui
                 .add(
@@ -319,7 +319,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             }
             ui.end_row();
 
-            ui.label("Reaction to fire");
+            ui.label(crate::i18n::tr("Reaction to fire"));
             if ui
                 .add(egui::TextEdit::singleline(&mut m.fire).desired_width(90.0))
                 .on_hover_text("Class by STN EN 13501-1: A1, A2-s1,d0, B-s1,d0 … F")
