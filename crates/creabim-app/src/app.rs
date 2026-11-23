@@ -14743,10 +14743,18 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     let dt = creabim_core::skbase::dt_blocks(&model);
     if !any && hatches.is_none() && dt.is_none() {
         let merge = creabim_core::samemat::merge(&model);
-        if merge.is_none() && creabim_core::floorfinish::mend(&model).is_none() {
+        if merge.is_none()
+            && creabim_core::floorfinish::mend(&model).is_none()
+            && creabim_core::styles::mend_pens(&model).is_none()
+        {
             return model;
         }
         let mut doc = Document::from_model(model);
+        // the pens of now: no heavier ones at 1:50, hatching in the
+        // thinnest (George 2026-11-22)
+        if let Some(tx) = creabim_core::styles::mend_pens(doc.model()) {
+            let _ = doc.commit(tx);
+        }
         // one material under two names becomes one (George 2026-11-22)
         if let Some((tx, _)) = merge {
             let _ = doc.commit(tx);
@@ -14775,6 +14783,9 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // tile adhesive under tiles, an underlay under laminate (George
     // 2026-11-22)
     if let Some((tx, _)) = creabim_core::floorfinish::mend(doc.model()) {
+        let _ = doc.commit(tx);
+    }
+    if let Some(tx) = creabim_core::styles::mend_pens(doc.model()) {
         let _ = doc.commit(tx);
     }
     doc.model().clone()
@@ -15060,7 +15071,7 @@ fn plan_graphics_ui(
     }
     let mut auto = g.weights.is_none();
     if crate::props::check(ui, "Line weights", &mut auto, "From the style pack")
-        .on_hover_text("The style pack's pens for the view's scale: in the Standard pack, heavier at 1:50 and larger, lighter at 1:100 and smaller.")
+        .on_hover_text("The style pack's pens for the view's scale: in the Standard pack the same at every scale, hatching in the thinnest pen.")
         .changed()
     {
         g.weights = if auto {

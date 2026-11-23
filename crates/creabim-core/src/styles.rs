@@ -1053,6 +1053,69 @@ impl KindTemplates {
     }
 }
 
+/// The Standard pack's heavier pens at 1:75 and larger, as packs before
+/// 2026-11-23 had them, and the Light linework pack's hatch there.
+const OLD_STANDARD_LARGE: LineWeights = LineWeights {
+    cut: 0.7,
+    projection: 0.35,
+    symbol: 0.25,
+    fine: 0.18,
+    hatch: 0.13,
+    hidden: 0.18,
+};
+
+/// A project's packs and views brought to the pens of now (George
+/// 2026-11-22: sections on sheets printed heavier than the view, and
+/// hatching takes the thinnest pen): the Standard pack's old heavier pens
+/// at 1:75 and larger, and a view's own pens left at them, become the
+/// 1:100 ones; the hatching of a pack's every table becomes the thinnest
+/// pen of the pack. None when nothing is left to change.
+pub fn mend_pens(model: &Model) -> Option<Transaction> {
+    let now = LineWeights::for_scale(100.0);
+    let mut tx = Transaction::new("Line weights");
+    let mut any = false;
+    for e in model.iter() {
+        let mut after = e.clone();
+        let changed = match &mut after.kind {
+            ElementKind::StylePack(p) => {
+                let mut c = false;
+                for t in &mut p.pens {
+                    if t.weights == OLD_STANDARD_LARGE {
+                        t.weights = now;
+                        c = true;
+                    }
+                }
+                // the thinnest pen of all the pack's tables
+                let thinnest = p
+                    .pens
+                    .iter()
+                    .flat_map(|t| {
+                        let w = &t.weights;
+                        [w.cut, w.projection, w.symbol, w.fine, w.hatch, w.hidden]
+                    })
+                    .fold(f64::MAX, f64::min);
+                for t in &mut p.pens {
+                    if t.weights.hatch > thinnest + 1e-9 {
+                        t.weights.hatch = thinnest;
+                        c = true;
+                    }
+                }
+                c
+            }
+            ElementKind::View(v) if v.graphics.weights == Some(OLD_STANDARD_LARGE) => {
+                v.graphics.weights = Some(now);
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            tx = tx.replace(e.clone(), after);
+            any = true;
+        }
+    }
+    any.then_some(tx)
+}
+
 /// The two packs that ship with CreaBIM, as data.
 pub const STANDARD_PACK: &str = include_str!("../packs/standard.json");
 pub const LIGHT_PACK: &str = include_str!("../packs/light-linework.json");
@@ -1622,5 +1685,31 @@ mod tests {
             serde_json::from_str(r#"{"hatch":"Brick","color":[1,0,0]}"#).unwrap();
         assert_eq!(m.pattern, None);
         assert!(!serde_json::to_string(&m).unwrap().contains("pattern"));
+    }
+
+    #[test]
+    fn old_heavy_pens_and_thick_hatching_are_mended() {
+        let mut doc = Document::new();
+        let mut p = StylePack::standard();
+        p.pens[0].weights = OLD_STANDARD_LARGE;
+        p.pens[1].weights.hatch = 0.13;
+        doc.commit(Transaction::new("p").insert(Element::new(
+            "Standard",
+            ElementKind::StylePack(Box::new(p)),
+        )))
+        .unwrap();
+        let tx = mend_pens(doc.model()).expect("something to mend");
+        doc.commit(tx).unwrap();
+        let p = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::StylePack(p) => Some((**p).clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(p.pens[0].weights, LineWeights::for_scale(50.0));
+        assert_eq!(p.pens[1].weights.hatch, crate::graphics::THINNEST_PEN);
+        assert!(mend_pens(doc.model()).is_none());
     }
 }

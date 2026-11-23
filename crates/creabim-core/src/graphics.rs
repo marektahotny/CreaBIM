@@ -5,6 +5,10 @@
 use crate::visibility::Category;
 use serde::{Deserialize, Serialize};
 
+/// The thinnest pen of the standard pens, mm: hatching and fill
+/// patterns are drawn with it (George 2026-11-22).
+pub const THINNEST_PEN: f64 = 0.09;
+
 /// Pen widths on paper, in millimetres, from heavy to light.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LineWeights {
@@ -23,28 +27,18 @@ pub struct LineWeights {
 }
 
 impl LineWeights {
-    /// The pens of a drawing at 1:`scale`: heavier at 1:50 and larger,
-    /// where there is room for a clear hierarchy, lighter at 1:100 and
-    /// smaller.
-    pub fn for_scale(scale: f64) -> Self {
-        if scale <= 75.0 {
-            Self {
-                cut: 0.70,
-                projection: 0.35,
-                symbol: 0.25,
-                fine: 0.18,
-                hatch: 0.13,
-                hidden: 0.18,
-            }
-        } else {
-            Self {
-                cut: 0.50,
-                projection: 0.25,
-                symbol: 0.18,
-                fine: 0.13,
-                hatch: 0.09,
-                hidden: 0.13,
-            }
+    /// The pens of a drawing at 1:`scale`: the same at every scale, so
+    /// a 1:50 section prints as fine as a 1:100 plan (George 2026-11-22:
+    /// sections on sheets drew heavier than the view), and hatching in
+    /// the thinnest of them.
+    pub fn for_scale(_scale: f64) -> Self {
+        Self {
+            cut: 0.50,
+            projection: 0.25,
+            symbol: 0.18,
+            fine: 0.13,
+            hatch: THINNEST_PEN,
+            hidden: 0.13,
         }
     }
 
@@ -396,7 +390,9 @@ mod tests {
             assert!(w.symbol > w.fine && w.fine > w.hatch);
             assert!(w.hidden <= w.symbol);
         }
-        assert!(LineWeights::for_scale(50.0).cut > LineWeights::for_scale(100.0).cut);
+        // a section at 1:50 prints with the pens of a plan at 1:100
+        assert_eq!(LineWeights::for_scale(50.0), LineWeights::for_scale(100.0));
+        assert_eq!(LineWeights::for_scale(50.0).hatch, THINNEST_PEN);
     }
 
     #[test]
