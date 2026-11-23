@@ -307,15 +307,24 @@
       // the elements' own groups (walls, doors...) come up only in a search
       if ((f && rows.length === 0) || (!f && g.search)) continue;
       any = true;
-      const open = f ? true : (local.open[g.key] !== undefined ? local.open[g.key] : g.open);
+      const isOpen = (k, dflt) => (local.open[k] !== undefined ? local.open[k] : dflt);
+      // a group inside another (the parts under Drawings to print) shows
+      // only while every group it is in is open
+      if (!f && (g.parents || []).some((k) => { const p = S.groups.find((x) => x.key === k); return p && !isOpen(k, p.open); })) continue;
+      any = true;
+      const open = f ? true : isOpen(g.key, g.open);
       const acts = (g.acts || []).map((a) => `<button class="gact" data-act="${esc(a.id)}" title="${esc(a.hint)}">${icon(a.icon)}</button>`).join("");
       const note = g.note ? `<span class="gnote">${esc(g.note)}</span>` : "";
-      html += `<div class="group ${open ? "open" : ""}" data-group="${esc(g.key)}">${icon("chevron-right", "chev")}${icon(g.icon)}<span>${esc(g.title)}</span>${note}${acts}<span class="n">${g.rows.length}</span></div>`;
+      const depth = g.depth || 0;
+      const pad = depth ? ` style="padding-left:${6 + depth * 14}px"` : "";
+      const rowPad = depth ? ` style="padding-left:${28 + depth * 14}px"` : "";
+      const n = (g.rows.length || !S.groups.some((x) => (x.parents || []).includes(g.key))) ? `<span class="n">${g.rows.length}</span>` : "";
+      html += `<div class="group ${open ? "open" : ""}" data-group="${esc(g.key)}"${pad}>${icon("chevron-right", "chev")}${icon(g.icon)}<span>${esc(g.title)}</span>${note}${acts}${n}</div>`;
       if (open) {
         // rows of a sortable group can be dragged to another place in it
         const sort = g.sortable && !f ? ` data-sort="${esc(g.key)}"` : "";
         for (const r of rows) {
-          html += `<div class="row ${r.sel ? "sel" : ""}" data-id="${r.id}"${sort} title="${esc(r.hint || r.name)}${sort ? " · drag to reorder" : ""}">${icon(r.icon)}<span>${esc(r.name)}</span>${r.active ? `<span class="dot"></span>` : ""}</div>`;
+          html += `<div class="row ${r.sel ? "sel" : ""}" data-id="${r.id}"${sort}${rowPad} title="${esc(r.hint || r.name)}${sort ? " · drag to reorder" : ""}">${icon(r.icon)}<span>${esc(r.name)}</span>${r.active ? `<span class="dot"></span>` : ""}</div>`;
         }
       }
     }
