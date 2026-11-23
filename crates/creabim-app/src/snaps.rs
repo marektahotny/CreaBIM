@@ -973,6 +973,31 @@ impl Snapper {
         }
     }
 
+    /// The axis of every column standing on a plan's level or on the
+    /// level just above it, so a pad or a pile sits on the column's axis
+    /// in a foundation plan.
+    pub fn add_column_centres(&mut self, model: &creabim_core::Model, view: ElementId) {
+        let Some(creabim_core::ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+            return;
+        };
+        let creabim_core::ViewKind::Plan { level, .. } = v.kind else {
+            return;
+        };
+        let above = creabim_core::members::level_above(model, level);
+        for e in model.iter() {
+            if let creabim_core::ElementKind::Column(c) = &e.kind {
+                if c.level == level || Some(c.level) == above {
+                    self.point(
+                        c.position.extend(0.0),
+                        SnapKind::Center,
+                        Source::Edge,
+                        Some(e.id),
+                    );
+                }
+            }
+        }
+    }
+
     pub fn add_guides(&mut self, model: &creabim_core::Model, reach: f64) {
         for e in model.iter() {
             if let creabim_core::ElementKind::Guide(g) = &e.kind {

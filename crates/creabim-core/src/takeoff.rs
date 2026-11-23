@@ -340,7 +340,7 @@ pub fn lines(model: &Model) -> Vec<Line> {
                             .unwrap_or(a.distance(b) * f.width);
                         (area, a.distance(b))
                     }
-                    FootingKind::Pad => (
+                    FootingKind::Pad | FootingKind::Pile => (
                         crate::polygon::signed_area2(&f.pad_outline(model)).abs() / 2.0,
                         0.0,
                     ),

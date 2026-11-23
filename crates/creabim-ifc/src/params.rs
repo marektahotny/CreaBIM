@@ -282,7 +282,7 @@ pub(crate) fn category_of(class: &str) -> Option<(TypeCategory, bool)> {
         "IFCROOFTYPE" => (TypeCategory::Roof, false),
         "IFCCOLUMNTYPE" => (TypeCategory::Column, false),
         "IFCBEAMTYPE" => (TypeCategory::Beam, false),
-        "IFCFOOTINGTYPE" => (TypeCategory::Footing, false),
+        "IFCFOOTINGTYPE" | "IFCPILETYPE" => (TypeCategory::Footing, false),
         _ => return None,
     })
 }
@@ -392,6 +392,7 @@ pub(crate) fn type_from(category: TypeCategory, curtain: bool, p: &Props) -> Typ
                 width: l("Width", 0.6),
                 length: match kind {
                     FootingKind::Pad => l("Length", 1.2),
+                    FootingKind::Pile => l("Width", creabim_core::footing::PILE_DIAMETER),
                     FootingKind::Strip => 0.0,
                 },
                 thickness: l("Thickness", 0.3),
@@ -420,12 +421,14 @@ fn kind_label(k: FootingKind) -> &'static str {
     match k {
         FootingKind::Strip => "Strip",
         FootingKind::Pad => "Pad",
+        FootingKind::Pile => "Pile",
     }
 }
 
 fn kind_from(p: &Props) -> FootingKind {
     match label(p, "Kind") {
         Some(s) if s.eq_ignore_ascii_case("pad") => FootingKind::Pad,
+        Some(s) if s.eq_ignore_ascii_case("pile") => FootingKind::Pile,
         _ => FootingKind::Strip,
     }
 }
@@ -451,6 +454,7 @@ pub(crate) fn footing_props(f: &Footing, host: Option<String>) -> Vec<(&'static 
             out.push(("Length", Prop::Length(f.length)));
             out.push(("Rotation", Prop::Real(f.rotation)));
         }
+        FootingKind::Pile => {}
     }
     if let Some(h) = host {
         out.push(("Host", Prop::Label(h)));
@@ -473,6 +477,11 @@ pub(crate) fn footing_from(
             let mut f = Footing::pad(level, start);
             f.length = len(p, "Length")?;
             f.rotation = p.get("Rotation").and_then(|v| v.0).unwrap_or(0.0);
+            f
+        }
+        FootingKind::Pile => {
+            let mut f = Footing::pile(level, start);
+            f.length = width;
             f
         }
     };

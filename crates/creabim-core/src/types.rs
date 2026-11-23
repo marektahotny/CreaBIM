@@ -469,6 +469,9 @@ impl ElementType {
                     d(f.length),
                     d(f.thickness)
                 ),
+                crate::FootingKind::Pile => {
+                    format!("pile Ø {}, {} long", d(f.width), d(f.thickness))
+                }
             },
             TypeParams::Object(o) => o.summary(model),
         }

@@ -666,7 +666,7 @@ impl CreaBimApp {
                     }
                     TypeParams::Footing(f) => {
                         let m = &mut self.plan.members;
-                        m.footing_pad = f.kind == creabim_core::FootingKind::Pad;
+                        m.footing_kind = f.kind;
                         m.footing_width = f.width;
                         m.footing_thickness = f.thickness;
                     }
@@ -684,6 +684,21 @@ impl CreaBimApp {
             Some(n) if t.is_some() => format!("New {}s are {n}.", cat.word()),
             _ => format!("New {}s have no type.", cat.word()),
         };
+    }
+
+    /// The Footing tool's type left out when it is of another kind than
+    /// the one picked in the bar or the tool's menu.
+    pub(super) fn drop_other_footing_type(&mut self) {
+        let cat = TypeCategory::Footing;
+        let kind = self.plan.members.footing_kind;
+        let other = self.plan.types.get(&cat).is_some_and(|t| {
+            !matches!(self.doc.model().get(*t).map(|e| &e.kind),
+                Some(ElementKind::ElementType(t))
+                    if matches!(&t.params, TypeParams::Footing(f) if f.kind == kind))
+        });
+        if other {
+            self.plan.types.remove(&cat);
+        }
     }
 
     /// Run a type menu action. False when the action isn't one.
@@ -706,6 +721,20 @@ impl CreaBimApp {
                     .find(|e| e.id.0.to_string() == id)
                     .map(|e| e.id);
                 self.set_tool_type(cat, id);
+            }
+            "footing.kind" => {
+                // the Footing tool's menu: strip, pad or pile (the tool
+                // itself picked first, see the shell's run_action)
+                crate::memberstool::toggle_option(&mut self.plan, &format!("footing.{arg}"));
+                self.drop_other_footing_type();
+                self.status = crate::i18n::t(match arg {
+                    "pad" => {
+                        "Pad footing: click a column to put it on its axis, or click anywhere."
+                    }
+                    "pile" => "Pile: click a column to put it on its axis, or click anywhere.",
+                    _ => "Strip footing: click a wall, or draw it point by point.",
+                })
+                .to_string();
             }
             "tool.curtain" => {
                 // the Wall tool, drawing the first curtain wall type

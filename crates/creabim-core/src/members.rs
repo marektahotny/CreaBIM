@@ -1608,6 +1608,18 @@ fn footing_grips(model: &Model, f: &crate::Footing) -> Vec<(Grip, FootingGrip)> 
                 FootingGrip::Width,
             ));
         }
+        crate::FootingKind::Pile => {
+            if !hosted {
+                out.push((flat(c.extend(top)), FootingGrip::Center));
+            }
+            out.push((
+                along(
+                    (c + DVec2::X * f.width / 2.0).extend(mid),
+                    DVec3::X.truncate(),
+                ),
+                FootingGrip::Width,
+            ));
+        }
         crate::FootingKind::Pad => {
             let (_, turn) = f.place(model);
             let x = DVec2::from_angle(turn.to_radians());
@@ -1836,6 +1848,9 @@ pub fn readout(model: &Model, e: &Element) -> Option<String> {
                 f.length * 1000.0,
                 f.thickness * 1000.0
             ),
+            crate::FootingKind::Pile => {
+                format!("pile Ø {:.0}, {:.2} m long", f.width * 1000.0, f.thickness)
+            }
         },
         _ => return None,
     })
