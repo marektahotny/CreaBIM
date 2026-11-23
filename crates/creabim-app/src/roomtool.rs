@@ -50,6 +50,21 @@ fn ceiling_height(model: &Model, level: ElementId) -> f64 {
     CEILING_HEIGHT.min(storey - 0.1).max(0.5)
 }
 
+/// A new ceiling built as the last ceiling with a build-up is (its
+/// build-up, thickness and roof space), so a storey's ceilings are placed
+/// alike.
+fn like_last(model: &Model, c: &mut Ceiling) {
+    let last = model.iter().filter_map(|e| match &e.kind {
+        ElementKind::Ceiling(x) if x.assembly.is_some() => Some(x),
+        _ => None,
+    });
+    if let Some(x) = last.last() {
+        c.assembly = x.assembly;
+        c.thickness = x.thickness;
+        c.roof_space = x.roof_space.clone();
+    }
+}
+
 /// A room on `level` whose outline holds `p`.
 pub fn room_at(model: &Model, level: ElementId, p: DVec2) -> Option<ElementId> {
     model
@@ -128,7 +143,8 @@ pub fn drawn(
             ))
         }
         Space::Ceiling => {
-            let c = Ceiling::drawn(level, outline, ceiling_height(doc.model(), level));
+            let mut c = Ceiling::drawn(level, outline, ceiling_height(doc.model(), level));
+            like_last(doc.model(), &mut c);
             let e = Element::new("Ceiling", ElementKind::Ceiling(c));
             let id = e.id;
             doc.commit(Transaction::new("Draw ceiling").insert(e))?;
@@ -196,6 +212,8 @@ pub fn fill(
                 },
             };
             let follows = c.room.is_some();
+            let mut c = c;
+            like_last(model, &mut c);
             let e = Element::new("Ceiling", ElementKind::Ceiling(c));
             let id = e.id;
             doc.commit(Transaction::new("Place ceiling").insert(e))?;
@@ -778,7 +796,12 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room, name: &str) -
 
 /// A ceiling's properties: its height, thickness and grid. Returns the
 /// edit's label, or "".
-pub fn ceiling_fields(ui: &mut egui::Ui, model: &Model, c: &mut Ceiling) -> &'static str {
+pub fn ceiling_fields(
+    ui: &mut egui::Ui,
+    model: &Model,
+    c: &mut Ceiling,
+    layered: bool,
+) -> &'static str {
     let mut label = "";
     match c.room.and_then(|r| model.get(r)) {
         Some(r) if c.boundary.is_empty() => {
@@ -795,7 +818,58 @@ pub fn ceiling_fields(ui: &mut egui::Ui, model: &Model, c: &mut Ceiling) -> &'st
     if length(ui, "Height", &mut c.height, 0.1, 50.0) {
         label = "Ceiling height";
     }
-    if length(ui, "Thickness", &mut c.thickness, 0.001, 1.0) {
+    if layered {
+        ui.label(crate::i18n::tr(&format!(
+            "Thickness {}, from its layers",
+            crate::units::len(c.thickness)
+        )));
+        // the roof space over it: STN EN ISO 6946 table 9 (George
+        // 2026-11-23)
+        let tables = creabim_core::room::project_tables(model);
+        let rows = creabim_core::room::roof_spaces(&tables);
+        if rows.is_empty() {
+            ui.label(
+                egui::RichText::new(crate::i18n::t(
+                    "Roof space over it: read table 9 of STN EN ISO 6946 (Heat loss, Read table…) to pick one.",
+                ))
+                .weak(),
+            );
+        } else {
+            let shown = c
+                .roof_space
+                .as_ref()
+                .and_then(|k| rows.iter().find(|r| &r.0 == k))
+                .map_or(crate::i18n::t("None").to_string(), |r| {
+                    format!("{} · Ru {}", r.0, format!("{}", r.1).replace('.', ","))
+                });
+            crate::props::row(ui, "Roof space", |ui| {
+                egui::ComboBox::from_id_salt("ceiling-roof-space")
+                    .selected_text(shown)
+                    .width(ui.available_width().min(160.0))
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(c.roof_space.is_none(), crate::i18n::t("None"))
+                            .clicked()
+                        {
+                            c.roof_space = None;
+                            label = "Roof space";
+                        }
+                        for (k, ru, text) in &rows {
+                            let on = c.roof_space.as_deref() == Some(k.as_str());
+                            let t = format!("{k} · Ru {} · {text}", format!("{ru}").replace('.', ","));
+                            if ui.selectable_label(on, t).clicked() {
+                                c.roof_space = Some(k.clone());
+                                label = "Roof space";
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text(crate::i18n::t(
+                        "STN EN ISO 6946, table 9: the ventilated roof space over the ceiling counts as a layer of resistance Ru in the heat loss.",
+                    ))
+            });
+        }
+    } else if length(ui, "Thickness", &mut c.thickness, 0.001, 1.0) {
         label = "Ceiling thickness";
     }
     let mut grid = c.grid > 0.0;

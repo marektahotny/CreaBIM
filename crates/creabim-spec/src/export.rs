@@ -271,6 +271,7 @@ pub fn export(model: &Model) -> Exported {
                     core::AssemblyUse::Wall => f::AssemblyUsage::Wall,
                     core::AssemblyUse::Floor => f::AssemblyUsage::Floor,
                     core::AssemblyUse::Roof => f::AssemblyUsage::Roof,
+                    core::AssemblyUse::Ceiling => f::AssemblyUsage::Ceiling,
                 },
                 layers: a
                     .layers

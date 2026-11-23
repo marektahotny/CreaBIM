@@ -705,6 +705,27 @@ pub fn click(
             })
         }
         Tool::Note => {
+            // a click inside a cut (a ceiling's layers in a section) with
+            // nothing snapped points at what is cut there, so the note
+            // can read its mark (George 2026-11-23)
+            let hp = if hp.host.is_none() {
+                items
+                    .iter()
+                    .rev()
+                    .find_map(|it| match it {
+                        PlanItem::Fill { points, .. } | PlanItem::Polygon { points, .. }
+                            if points.len() > 2
+                                && model.get(it.id()).is_some()
+                                && creabim_core::polygon::contains(points, raw) =>
+                        {
+                            Some(it.id())
+                        }
+                        _ => None,
+                    })
+                    .map_or(hp, |id| attach(model, view, Some(id), p))
+            } else {
+                hp
+            };
             d.ready = Some(Ready::Leader { target: (hp, p) });
             Ok("Now click where the note's text goes.".into())
         }
@@ -962,7 +983,15 @@ fn place(
         }
         Ready::Leader { target } => {
             let _ = tool;
-            let mut n = Note::new(view_id, at, "Note");
+            // a leader to what has a mark typed on it (a ceiling's PDH1)
+            // reads its mark (George 2026-11-23)
+            let text = target
+                .0
+                .host
+                .and_then(|h| model.get(h))
+                .and_then(creabim_core::marks::manual)
+                .map_or("Note".to_string(), |m| m.to_string());
+            let mut n = Note::new(view_id, at, text);
             n.leader = Some(target.0);
             Element::new("Note", ElementKind::Note(n))
         }

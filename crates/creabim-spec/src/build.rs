@@ -594,6 +594,7 @@ fn assembly(c: &mut Ctx, a: &f::Assembly, at: &Path) {
             f::AssemblyUsage::Wall => core::AssemblyUse::Wall,
             f::AssemblyUsage::Floor => core::AssemblyUse::Floor,
             f::AssemblyUsage::Roof => core::AssemblyUse::Roof,
+            f::AssemblyUsage::Ceiling => core::AssemblyUse::Ceiling,
         },
         layers,
         description: a.description.clone().unwrap_or_default(),

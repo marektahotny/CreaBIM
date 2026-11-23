@@ -308,6 +308,7 @@ What an assembly is for.
 - `"wall"`
 - `"floor"`
 - `"roof"`
+- `"ceiling"`
 
 ### LayerFunction
 

@@ -293,6 +293,27 @@ pub(crate) const R_INNER: f64 = 0.13 + 0.13;
 pub(crate) const R_CEILING_UP: f64 = 0.10 + 0.10;
 pub(crate) const R_FLOOR_DOWN: f64 = 0.17 + 0.17;
 
+/// U of ceiling `e` with the roof space over it, W/(m²K), and what it is:
+/// its build-up between Rsi and Rse, and the roof space's Ru (STN EN ISO
+/// 6946 6.10.2, table 9) added when one is picked and the table is read.
+pub(crate) fn ceiling_u(
+    model: &Model,
+    e: &Element,
+    tables: &[creabim_core::fireparams::ParamTable],
+) -> Option<(f64, String)> {
+    let ElementKind::Ceiling(c) = &e.kind else {
+        return None;
+    };
+    let (u, name) = u_of(model, e, R_ROOF)?;
+    match creabim_core::room::roof_space_ru(tables, c) {
+        Some(ru) => Some((
+            1.0 / (1.0 / u + ru),
+            format!("{name} + Ru {}", format!("{ru}").replace('.', ",")),
+        )),
+        None => Some((u, name)),
+    }
+}
+
 /// U of the build-up (or the one material) element `e` is made of,
 /// W/(m²K), and its name: none where it has neither or a layer has no λ.
 pub(crate) fn u_of(model: &Model, e: &Element, r_surfaces: f64) -> Option<(f64, String)> {
@@ -367,6 +388,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
         return crate::heatdetail::building(model, o);
     }
     let rooms = rooms_of(model);
+    let tables = creabim_core::room::project_tables(model);
     let elev = |id: ElementId| model.level(id).map_or(0.0, |l| l.elevation);
     let ground = model
         .levels()
@@ -575,7 +597,19 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
         let above = rooms.iter().any(|x| {
             elev(x.level) > elev(r.level) + 1e-6 && polygon::contains(&x.shape.outline, c)
         });
-        if !above {
+        // a ceiling with a build-up over the room (podhľad), the roof space
+        // over it as a layer of STN EN ISO 6946 table 9 (George 2026-11-23)
+        let ceiling = if above {
+            None
+        } else {
+            creabim_core::room::built_ceiling_over(model, r.e.id, r.level, c)
+        };
+        if let Some(ce) = ceiling {
+            match ceiling_u(model, ce, &tables) {
+                Some((u, name)) => add("Ceiling", &name, area, u + o.d_u, 1.0, None),
+                None => miss(Missing::RoofBuildUp),
+            }
+        } else if !above {
             let roof = model.iter().find(|e| {
                 matches!(&e.kind, ElementKind::Roof(rf)
                     if rf.boundary.len() > 2 && polygon::contains(&rf.boundary, c))
@@ -873,6 +907,75 @@ mod tests {
         // a colder design day loses more
         let colder = building(&model, &Opts { te: -15.0, ..o });
         assert!(colder.phi > b.phi);
+    }
+
+    /// A ceiling with a build-up (podhľad) over a room takes the roof's
+    /// place, with the roof space's Ru of STN EN ISO 6946 table 9 added
+    /// when one is picked and the table read (the value here is a test's,
+    /// not the norm's).
+    #[test]
+    fn a_ceiling_with_a_build_up_counts_with_its_roof_space() {
+        use creabim_core::{Assembly, AssemblyUse, Layer, LayerFunction, Transaction};
+        let mut model = house();
+        let mat = model
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Material(_)))
+            .unwrap()
+            .id;
+        let asm = Element::new(
+            "Podhľad",
+            ElementKind::Assembly(Assembly::new(
+                AssemblyUse::Ceiling,
+                vec![Layer::new(LayerFunction::Insulation, Some(mat), 0.2)],
+            )),
+        );
+        let aid = asm.id;
+        let mut tx = Transaction::new("t").insert(asm);
+        let rooms: Vec<(ElementId, ElementId)> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Room(r) => Some((e.id, r.level)),
+                _ => None,
+            })
+            .collect();
+        for (id, level) in rooms {
+            let mut c = creabim_core::room::Ceiling::in_room(level, id, 2.5);
+            c.assembly = Some(aid);
+            c.thickness = 0.2;
+            c.roof_space = Some("2".into());
+            tx = tx.insert(Element::new("Ceiling", ElementKind::Ceiling(c)));
+        }
+        tx.apply(&mut model).unwrap();
+        let o = Opts::default();
+        let u0 = 1.0 / (R_ROOF + 0.2 / 0.5);
+        let ceiling = |m: &Model| {
+            building(m, &o).rooms[1]
+                .items
+                .iter()
+                .find(|i| i.kind == "Ceiling")
+                .cloned()
+                .expect("the ceiling counted")
+        };
+        let c = ceiling(&model);
+        assert!((c.u - o.d_u - u0).abs() < 1e-9, "{c:?}");
+        assert!(building(&model, &o).rooms[1]
+            .items
+            .iter()
+            .all(|i| i.kind != "Roof"));
+        // table 9 read: Ru added
+        let mut info = model
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        info.fire_params = creabim_core::fireparams::parse(
+            "#table roof_space\n#columns key\tru\ttext\n2\t0,5\ttest\n",
+        );
+        creabim_core::project::set_project(&model, info)
+            .apply(&mut model)
+            .unwrap();
+        let c = ceiling(&model);
+        assert!((c.u - o.d_u - 1.0 / (1.0 / u0 + 0.5)).abs() < 1e-9, "{c:?}");
+        assert!(c.detail.ends_with("+ Ru 0,5"), "{c:?}");
     }
 
     #[test]

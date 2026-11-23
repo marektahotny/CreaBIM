@@ -12194,12 +12194,28 @@ crate::props::row(ui, "File names", |ui| {
                     label = crate::roomtool::room_fields(ui, self.doc.model(), r, &edited.name);
                 }
                 ElementKind::Ceiling(c) => {
-                    label = crate::roomtool::ceiling_fields(ui, self.doc.model(), c);
-                    if self.material_combo(
-                        ui,
-                        &mut c.material,
-                        creabim_core::library::MaterialUse::Ceiling,
-                    ) {
+                    // its build-up (podhľad), George 2026-11-23
+                    if self.assembly_combo(ui, creabim_core::AssemblyUse::Ceiling, &mut c.assembly)
+                    {
+                        label = "Ceiling assembly";
+                    }
+                    let layered = c.assembly.is_some_and(|a| {
+                        matches!(
+                            self.doc.model().get(a).map(|e| &e.kind),
+                            Some(ElementKind::Assembly(_))
+                        )
+                    });
+                    let l = crate::roomtool::ceiling_fields(ui, self.doc.model(), c, layered);
+                    if !l.is_empty() {
+                        label = l;
+                    }
+                    if !layered
+                        && self.material_combo(
+                            ui,
+                            &mut c.material,
+                            creabim_core::library::MaterialUse::Ceiling,
+                        )
+                    {
                         label = "Material";
                     }
                 }
@@ -14843,6 +14859,12 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // storey does (George 2026-11-23)
     for t in creabim_core::viewmodes::trade_room_tags(&model) {
         tx = tx.insert(t);
+        any = true;
+    }
+    // ceilings drawn as slabs of a ceiling's build-up are ceilings
+    // (George 2026-11-23)
+    if let Some(t) = creabim_core::room::mend_ceilings(&model) {
+        tx.ops.extend(t.ops);
         any = true;
     }
     // a heat pump's indoor unit without its cross (George 2026-11-23)

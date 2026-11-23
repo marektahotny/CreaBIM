@@ -22,7 +22,10 @@ pub(super) fn markable(kind: &ElementKind) -> bool {
     MarkClass::of(kind).is_some()
         || matches!(
             kind,
-            ElementKind::Object(_) | ElementKind::FreeMesh(_) | ElementKind::Opening(_)
+            ElementKind::Object(_)
+                | ElementKind::FreeMesh(_)
+                | ElementKind::Opening(_)
+                | ElementKind::Ceiling(_)
         )
 }
 
