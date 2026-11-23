@@ -237,13 +237,20 @@ pub enum Purpose {
     Services,
     /// Everything, each trade in one colour of its own.
     Coordination,
+    /// The structural engineer's (Statika): only what carries, its
+    /// lintels and ring beams marked by position.
+    Structural,
 }
 
 impl Purpose {
     pub fn all() -> Vec<Purpose> {
         let mut v = vec![Purpose::Architecture, Purpose::Blind];
         v.extend(Trade::ALL.map(Purpose::Trade));
-        v.extend([Purpose::Services, Purpose::Coordination]);
+        v.extend([
+            Purpose::Services,
+            Purpose::Coordination,
+            Purpose::Structural,
+        ]);
         v
     }
 
@@ -254,10 +261,14 @@ impl Purpose {
             Purpose::Trade(t) => t.label(),
             Purpose::Services => "All trades",
             Purpose::Coordination => "Coordination",
+            Purpose::Structural => "Structural (STA)",
         }
     }
 
     pub fn of(view: &View) -> Purpose {
+        if view.structural {
+            return Purpose::Structural;
+        }
         match (DisplayMode::of(view), view.trade) {
             (DisplayMode::Architecture, _) => Purpose::Architecture,
             (DisplayMode::Blind, _) => Purpose::Blind,
@@ -269,9 +280,20 @@ impl Purpose {
 
     pub fn apply(self, view: &mut View) {
         match self {
-            Purpose::Architecture => DisplayMode::Architecture.apply(view),
+            Purpose::Architecture | Purpose::Structural => DisplayMode::Architecture.apply(view),
             Purpose::Blind => DisplayMode::Blind.apply(view),
             _ => DisplayMode::Services.apply(view),
+        }
+        view.structural = self == Purpose::Structural;
+        // the structural drawing: no rooms, furniture, doors' and
+        // windows' symbols (their openings stay as gaps)
+        if view.structural {
+            view.room_tags = Some(false);
+            view.room_colours = false;
+        } else if view.room_tags == Some(false)
+            && DisplayMode::of(view) == DisplayMode::Architecture
+        {
+            view.room_tags = None;
         }
         view.trade = match self {
             Purpose::Trade(t) => Some(t),

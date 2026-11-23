@@ -922,9 +922,18 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         } => {
             // the shared scene itself, not a copy of it
             let shared = crate::scene::shared_scene(full);
+            // a structural section: only what carries (George 2026-11-23)
+            let rules = creabim_core::masonry::rules(model);
+            let carries = |id: ElementId| {
+                !v.structural
+                    || model.get(id).is_none_or(|e| {
+                        let host = creabim_core::wrap::piece_of(e).and_then(|p| model.get(p.host));
+                        creabim_core::structural::draws(model, host.unwrap_or(e), &rules)
+                    })
+            };
             let items: Vec<&SceneItem> = shared
                 .iter()
-                .filter(|i| !i.ghost && !i.is_lining() && !hidden.contains(&i.id))
+                .filter(|i| !i.ghost && !i.is_lining() && !hidden.contains(&i.id) && carries(i.id))
                 .collect();
             let mut d = section_view_jogged(
                 model,
@@ -1008,10 +1017,30 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 })
         };
         d.items.retain(|it| !model.get(it.id()).is_some_and(lintel));
-        if v.masonry {
+        // the structural drawing: only what carries, lintels and ring
+        // beams by their positions, its own sections' marks
+        let ring = |e: &creabim_core::Element| {
+            creabim_core::structural::is_ring_beam(e)
+                || creabim_core::wrap::piece_of(e).is_some_and(|p| {
+                    model
+                        .get(p.host)
+                        .is_some_and(creabim_core::structural::is_ring_beam)
+                })
+        };
+        if v.structural {
+            crate::structural::keep_structure(model, &mut d.items);
+            d.items.retain(|it| !model.get(it.id()).is_some_and(ring));
+            d.items.extend(crate::structural::plan_marks(
+                model,
+                *level,
+                v.scale / 1000.0,
+            ));
+        } else if v.masonry {
             d.items
                 .extend(crate::masonry::plan_marks(model, *level, v.scale / 1000.0));
         }
+        d.items
+            .retain(|it| crate::structural::shows_mark(model, it.id(), v.structural));
     }
     if reveal && v.hidden_in_colour {
         tint_hidden(model, view, kind, &mut d.items);

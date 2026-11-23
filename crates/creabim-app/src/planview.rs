@@ -372,6 +372,9 @@ enum Handle {
 }
 
 pub struct PlanState {
+    /// The view a pane last handled input in: a section drawn in a
+    /// structural plan is one of the structural drawings.
+    pub in_view: Option<ElementId>,
     /// Pan and zoom per view: centre in drawing units, pixels per metre.
     pub cameras: HashMap<ElementId, (DVec2, f32)>,
     /// While Divide is open: where it will divide (model lines; true: plans
@@ -714,6 +717,7 @@ impl PlanState {
 impl Default for PlanState {
     fn default() -> Self {
         Self {
+            in_view: None,
             cameras: HashMap::new(),
             divide_marks: vec![],
             divide_labels: vec![],
@@ -1296,6 +1300,9 @@ fn show_pane(
     selection: &mut Selection,
     style: PaneStyle,
 ) -> Option<String> {
+    if ui.rect_contains_pointer(rect) {
+        state.in_view = Some(view);
+    }
     // while a point is asked for, a click gives it and selects nothing
     let picking = state.point_pick && matches!(kind, PaneKind::Plan { .. });
     let sense = if picking {
@@ -4236,7 +4243,8 @@ fn plan_click(
                 Ok(())
             }
             Some(a) if a.distance(p) > 0.2 => {
-                add_section_view(doc, a, p, tool == Tool::Section, selection)
+                let sta = structural_view(doc, state.in_view);
+                add_section_view(doc, a, p, tool == Tool::Section, sta, selection)
             }
             Some(_) => Ok(()),
         },
@@ -5105,7 +5113,8 @@ fn section_tool(
                 } else {
                     (base + look * near, base + look * far)
                 };
-                add_section_view(doc, s, e, tool == Tool::Section, selection)
+                let sta = structural_view(doc, state.in_view);
+                add_section_view(doc, s, e, tool == Tool::Section, sta, selection)
             }
             Some(_) => Ok(()),
         },
@@ -5173,12 +5182,21 @@ fn model_depth(doc: &Document, start: DVec2, end: DVec2) -> (f64, f64) {
     }
 }
 
-/// Add a section or elevation view along `a` → `b`, named in sequence.
+/// Is `view` one of the structural drawings?
+fn structural_view(doc: &Document, view: Option<ElementId>) -> bool {
+    matches!(view.and_then(|v| doc.model().get(v)).map(|e| &e.kind),
+        Some(ElementKind::View(v)) if v.structural)
+}
+
+/// Add a section or elevation view along `a` → `b`, named in sequence;
+/// drawn in a structural drawing, one of them (its mark shown only in
+/// their plans, George 2026-11-23).
 fn add_section_view(
     doc: &mut Document,
     a: DVec2,
     b: DVec2,
     cut: bool,
+    structural: bool,
     selection: &mut Selection,
 ) -> Result<(), creabim_core::ModelError> {
     let n = doc
@@ -5191,10 +5209,11 @@ fn add_section_view(
     } else {
         format!("Elevation {}", n + 1)
     };
-    let e = Element::new(
-        name.clone(),
-        ElementKind::View(View::section(a, b, 30.0, cut)),
-    );
+    let mut v = View::section(a, b, 30.0, cut);
+    if structural {
+        creabim_core::viewmodes::Purpose::Structural.apply(&mut v);
+    }
+    let e = Element::new(name.clone(), ElementKind::View(v));
     selection.only(e.id);
     doc.commit(Transaction::new(format!("Add {name}")).insert(e))
 }

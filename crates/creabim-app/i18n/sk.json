@@ -1,4 +1,9 @@
 {
+ "Structural (STA)": "Statika (STA)",
+ "List of lintels": "Výpis prekladov",
+ "List of ring beams": "Výpis vencov",
+ "Ring beam": "Veniec",
+ "Concrete m³": "Betón m³",
  "Head offset": "Odsadenie hlavy",
  "How far above the floor of the level they are modelled on new piles' heads sit": "Ako vysoko nad podlahou podlažia, na ktorom sú modelované, je hlava nových pilót",
  "Bored piles: click a column (on its axis), or anywhere; the head on the level's floor plus the base offset, the toe its length below": "Vŕtané pilóty: kliknite na stĺp (na jeho os) alebo kamkoľvek; hlava na podlahe podlažia plus odsadenie spodku, päta o dĺžku nižšie",
