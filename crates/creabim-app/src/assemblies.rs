@@ -711,7 +711,12 @@ impl CreaBimApp {
             .open(&mut open)
             .default_pos(area.min + Vec2::new(24.0, 24.0))
             .constrain_to(area)
-            .default_size([760.0, (area.height() - 40.0).clamp(360.0, 600.0)])
+            .default_size({
+                // as tall as the screen gives, so a wall's settings show
+                // whole on 1920×1080 (George 2026-11-23)
+                let (w, h) = crate::app::shell::window_max(area);
+                [w.min(860.0), h]
+            })
             .min_width(620.0)
             .collapsible(false)
             .show(ctx, |ui| self.assemblies_body(ui, &mut asks));
@@ -813,6 +818,13 @@ impl CreaBimApp {
                 });
             });
             ui.separator();
+            // the assembly's settings scroll on their own, the list
+            // stays: the window fits any screen (George 2026-11-23)
+            egui::ScrollArea::both()
+                .id_salt("asm_detail")
+                .max_height(height)
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
             ui.vertical(|ui| {
                 let Some(id) = current else { return };
                 let Some(e) = model.get(id) else { return };
@@ -982,6 +994,7 @@ impl CreaBimApp {
                     asks.push(AsmAsk::Assign(Some(id)));
                 }
             });
+                });
         });
     }
 
