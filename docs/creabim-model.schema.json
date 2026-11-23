@@ -219,7 +219,8 @@
         "gravel",
         "insulation",
         "membrane",
-        "form-block"
+        "form-block",
+        "xps"
       ]
     },
     "RatePer": {

@@ -656,7 +656,8 @@ pub enum Hatch {
     MasonryOuter,
     /// Inner load-bearing masonry: crossed pairs of 45° lines.
     MasonryInner,
-    /// Reinforced concrete: broken 45° lines, a tick in every third gap.
+    /// Reinforced concrete: two close 45° lines, a wider gap, a dash-dot
+    /// line, repeated (George 2026-11-23).
     Reinforced,
     /// Undisturbed ground: 45° lines in threes.
     Ground,
@@ -671,10 +672,13 @@ pub enum Hatch {
     Membrane,
     /// Concrete-filled formwork blocks (DT): a sparse 45° grid.
     FormBlock,
+    /// Extruded polystyrene (XPS): triangles, a zigzag as wide as the
+    /// layer (George 2026-11-23).
+    Xps,
 }
 
 impl Hatch {
-    pub const ALL: [Hatch; 16] = [
+    pub const ALL: [Hatch; 17] = [
         Hatch::Empty,
         Hatch::Solid,
         Hatch::Diagonal,
@@ -691,6 +695,7 @@ impl Hatch {
         Hatch::Insulation,
         Hatch::Membrane,
         Hatch::FormBlock,
+        Hatch::Xps,
     ];
 
     pub fn label(self) -> &'static str {
@@ -711,6 +716,7 @@ impl Hatch {
             Hatch::Insulation => "Insulation",
             Hatch::Membrane => "Waterproofing",
             Hatch::FormBlock => "Formwork blocks",
+            Hatch::Xps => "XPS insulation",
         }
     }
 }

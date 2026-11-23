@@ -11,6 +11,12 @@ use creabim_core::words::tr;
 use creabim_core::{ElementId, ElementKind, Hatch, Model};
 use glam::DVec2;
 
+/// A swatch's edge: a thick line, as the cut outlines (George 2026-11-23).
+const SWATCH_EDGE: Pen = Pen::Drafted(creabim_core::LineLook {
+    pen: creabim_core::LinePen::VeryThick,
+    kind: creabim_core::LineType::Solid,
+});
+
 const HEAD: f64 = 3.2;
 const TEXT: f64 = 2.2;
 const LINE: f64 = 3.6;
@@ -443,7 +449,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         for i in 0..4 {
             items.push(PlanItem::Line {
                 id: view,
-                pen: Pen::Symbol,
+                pen: SWATCH_EDGE,
                 a: patch[i],
                 b: patch[(i + 1) % 4],
             });
@@ -529,7 +535,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             for i in 0..4 {
                 items.push(PlanItem::Line {
                     id: view,
-                    pen: Pen::Symbol,
+                    pen: SWATCH_EDGE,
                     a: patch[i],
                     b: patch[(i + 1) % 4],
                 });

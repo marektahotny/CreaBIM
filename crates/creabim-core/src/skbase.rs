@@ -288,6 +288,9 @@ fn kind_of(m: &BaseMaterial) -> (&'static str, Hatch) {
         Hatch::FormBlock
     } else if m.id == "zelezobeton" {
         Hatch::Reinforced
+    } else if m.id == "xps" {
+        // extruded polystyrene in triangles (George 2026-11-23)
+        Hatch::Xps
     } else if c == "Minerálna vlna" || c == "Polystyrén" {
         Hatch::Insulation
     } else if m.id == "zemina" {
@@ -377,7 +380,9 @@ pub fn refresh_hatches(model: &Model) -> Option<Transaction> {
             continue;
         };
         let (old, new) = (kind_of_before(m).1, kind_of(m).1);
-        if mat.hatch == old && old != new && mat.pattern.is_none() {
+        // XPS was in the insulation loops before its triangles
+        let was_loops = new == Hatch::Xps && mat.hatch == Hatch::Insulation;
+        if (mat.hatch == old || was_loops) && mat.hatch != new && mat.pattern.is_none() {
             let mut after = e.clone();
             after.kind = ElementKind::Material(Material {
                 hatch: new,

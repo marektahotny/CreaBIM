@@ -171,6 +171,7 @@ spec_enum! {
         Insulation = "insulation",
         Membrane = "membrane",
         FormBlock = "form-block",
+        Xps = "xps",
     }
 }
 

@@ -272,6 +272,7 @@ The pattern on a material's cut faces.
 - `"insulation"`
 - `"membrane"`
 - `"form-block"`
+- `"xps"`
 
 ### RatePer
 

@@ -665,6 +665,9 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
         if p.membrane {
             out.extend(membrane_lines(piece, *dir, unit));
         }
+        if p.zigzag {
+            out.extend(zigzag_lines(piece, *dir, unit));
+        }
     }
     if let Some(t) = &p.tile {
         let (w, h) = (t.size[0] * unit, t.size[1] * unit);
@@ -691,6 +694,62 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
                 }
             }
         }
+    }
+    out
+}
+
+/// Extruded polystyrene's triangles along a fill's longest side: a
+/// zigzag from one face of the layer to the other, as wide as the fill
+/// is thick there; a thick fill takes several rows (George 2026-11-23).
+/// `unit` is drawing units per paper mm.
+fn zigzag_lines(polygon: &[DVec2], dir: Option<DVec2>, unit: f64) -> Vec<(DVec2, DVec2)> {
+    let n = polygon.len();
+    let Some(dir) = dir.or_else(|| longest_dir(polygon)) else {
+        return vec![];
+    };
+    if dir == DVec2::ZERO {
+        return vec![];
+    }
+    let nrm = dir.perp();
+    let local: Vec<DVec2> = polygon
+        .iter()
+        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
+        .collect();
+    let (lo, hi) = bounds(&local);
+    let longest = (0..n)
+        .map(|i| (polygon[(i + 1) % n] - polygon[i]).length())
+        .fold(0.0, f64::max)
+        .max(hi.x - lo.x);
+    let area = (0..n)
+        .map(|i| local[i].perp_dot(local[(i + 1) % n]))
+        .sum::<f64>()
+        .abs()
+        / 2.0;
+    let band = (hi.y - lo.y).min(area / longest.max(1e-12));
+    let t = band / (band / (25.0 * unit)).ceil().max(1.0);
+    if t < 0.3 * unit || (hi.x - lo.x) / t > 4000.0 {
+        return vec![];
+    }
+    // a triangle's base about as wide as the batt loops' pitch
+    let p = (t * 0.6).clamp(0.6 * unit, 3.0 * unit);
+    let at = |x: f64, y: f64| dir * x + nrm * y;
+    let mut out = vec![];
+    let mut push = |a: DVec2, b: DVec2| {
+        for (u0, u1) in inside(a, b, polygon) {
+            out.push((a.lerp(b, u0), a.lerp(b, u1)));
+        }
+    };
+    let mut y0 = lo.y;
+    while y0 < hi.y - t * 0.5 {
+        let top = y0 + t;
+        let mut k = ((lo.x - p) / p).floor() as i64;
+        while (k as f64) * p < hi.x + p {
+            let x = k as f64 * p;
+            push(at(x, y0), at(x + p / 2.0, top));
+            push(at(x + p / 2.0, top), at(x + p, y0));
+            k += 1;
+        }
+        y0 = top;
     }
     out
 }
@@ -1240,6 +1299,7 @@ mod tests {
                 strokes: vec![vec![[0.0, 0.25], [0.5, 0.25]]],
             }),
             batt: false,
+            zigzag: false,
             membrane: false,
         };
         let lines = pattern_lines(&p, &square(1.0), 10.0);
@@ -1288,6 +1348,7 @@ mod tests {
             lines: vec![],
             tile: None,
             batt: true,
+            zigzag: false,
             membrane: false,
         };
         assert!(!pattern_lines(&p, &poly, 20.0).is_empty());
