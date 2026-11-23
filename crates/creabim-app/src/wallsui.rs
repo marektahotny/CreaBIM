@@ -14,6 +14,16 @@ fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
     })
 }
 
+/// A length field that also counts a value typed again and confirmed
+/// with Enter: with several walls picked, the one shown may already have
+/// it while the others haven't (George 2026-11-23).
+fn num_set(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
+    crate::props::row(ui, text, |ui| {
+        let r = crate::props::fill(ui, crate::units::drag(v).range(lo..=hi));
+        r.changed() || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+    })
+}
+
 /// The model's levels, lowest first.
 fn levels(model: &Model) -> Vec<(ElementId, String, f64)> {
     let mut v: Vec<_> = model
@@ -102,16 +112,17 @@ pub(super) fn wall_fields(
             .width(ui.available_width().min(130.0))
             .show_ui(ui, |ui| {
                 for (l, n, _) in &lv {
+                    // picked again counts too, for the other walls picked
                     if ui
                         .selectable_value(&mut w.level, *l, crate::i18n::tw(n))
-                        .changed()
+                        .clicked()
                     {
                         label = "Wall base level"
                     }
                 }
             });
     });
-    if num(ui, "Base offset", &mut w.base_offset, -10.0, 50.0) {
+    if num_set(ui, "Base offset", &mut w.base_offset, -10.0, 50.0) {
         label = "Wall base offset"
     }
     let shown = match w.top {
@@ -126,18 +137,19 @@ pub(super) fn wall_fields(
                 if ui
                     .selectable_label(w.top.is_unconnected(), crate::i18n::tw("Unconnected"))
                     .clicked()
-                    && !w.top.is_unconnected()
                 {
                     w.top = WallTop::Unconnected;
                     label = "Wall top constraint"
                 }
                 for (l, n, _) in &lv {
                     let on = matches!(w.top, WallTop::UpToLevel { level, .. } if level == *l);
-                    if ui.selectable_label(on, crate::i18n::tw(format!("Up to {n}"))).clicked() && !on {
-                        w.top = WallTop::UpToLevel {
-                            level: *l,
-                            offset: 0.0,
+                    if ui.selectable_label(on, crate::i18n::tw(format!("Up to {n}"))).clicked() {
+                        // picked again, its offset kept
+                        let offset = match w.top {
+                            WallTop::UpToLevel { offset, .. } if on => offset,
+                            _ => 0.0,
                         };
+                        w.top = WallTop::UpToLevel { level: *l, offset };
                         label = "Wall top constraint"
                     }
                 }
@@ -149,7 +161,7 @@ pub(super) fn wall_fields(
     });
     match &mut w.top {
         WallTop::UpToLevel { offset, .. } => {
-            if num(ui, "Top offset", offset, -50.0, 50.0) {
+            if num_set(ui, "Top offset", offset, -50.0, 50.0) {
                 label = "Wall top offset"
             }
             let h = walls::constrained_height(model, w).unwrap_or(w.height);

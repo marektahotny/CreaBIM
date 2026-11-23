@@ -1212,6 +1212,8 @@ pub fn plan_view_with(
     // start, direction and the opening's span along it and the wall's
     // half thickness (a sliced wall's outline is cut back there too)
     let mut forced: Vec<(ElementId, DVec2, DVec2, f64, f64, f64)> = Vec::new();
+    // the door openings cut: where two floors meet under a door
+    let mut doors: Vec<Vec<DVec2>> = Vec::new();
     // the layers of layered walls, cut
     let mut layers: Vec<CutPiece> = Vec::new();
     for e in model.iter() {
@@ -1347,6 +1349,9 @@ pub fn plan_view_with(
                     };
                     if cut_v > c.v0 && cut_v < c.v1 {
                         gaps.push((c.u0, c.u1));
+                        if o.kind == OpeningKind::Door {
+                            doors.push(vec![at(c.u0, -t), at(c.u1, -t), at(c.u1, t), at(c.u0, t)]);
+                        }
                         if creabim_core::joinery::wraps_reveal(o) {
                             let frame = o.frame.fitted(c.u1 - c.u0, c.v1 - c.v0, w.thickness);
                             windows.push((
@@ -1788,8 +1793,96 @@ pub fn plan_view_with(
     }
     items.extend(stairs_beyond(model, level, graphics));
     category_pens(model, &mut items, graphics);
+    floor_change_lines(model, &mut items, &doors);
     shades.append(&mut items);
     PlanView { items: shades }
+}
+
+/// Where two floors meet in a door: a very thin dashed line (George
+/// 2026-11-23), the slabs' edges in projection crossing a door opening
+/// drawn so; elsewhere they stay as they were.
+pub const FLOOR_CHANGE: creabim_core::LineLook = creabim_core::LineLook {
+    pen: creabim_core::LinePen::VeryThin,
+    kind: creabim_core::LineType::Dashed,
+};
+
+fn floor_change_lines(model: &Model, items: &mut Vec<PlanItem>, doors: &[Vec<DVec2>]) {
+    if doors.is_empty() {
+        return;
+    }
+    let mut out = Vec::with_capacity(items.len());
+    // two floors meeting share the edge: one line, laid one way (two
+    // dashed lines run opposite ways read as one solid)
+    let mut drawn: Vec<(DVec2, DVec2)> = Vec::new();
+    for it in items.drain(..) {
+        let PlanItem::Polygon {
+            id,
+            pen: Pen::Projection,
+            points,
+        } = &it
+        else {
+            out.push(it);
+            continue;
+        };
+        if !matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Slab(_))) {
+            out.push(it);
+            continue;
+        }
+        let n = points.len();
+        type Edge = (DVec2, DVec2, Vec<(DVec2, DVec2)>);
+        let edges: Vec<Edge> = (0..n)
+            .map(|i| {
+                let (a, b) = (points[i], points[(i + 1) % n]);
+                (a, b, clip_to_holes(a, b, doors))
+            })
+            .collect();
+        if edges.iter().all(|e| e.2.is_empty()) {
+            out.push(it);
+            continue;
+        }
+        let id = *id;
+        for (a, b, inside) in edges {
+            // the edge's pieces outside the doors as before, inside dashed
+            let mut from = a;
+            for (p, q) in inside {
+                if from.distance(p) > 1e-9 {
+                    out.push(PlanItem::Line {
+                        id,
+                        pen: Pen::Projection,
+                        a: from,
+                        b: p,
+                    });
+                }
+                let (p0, q0) = if (p.x, p.y) <= (q.x, q.y) {
+                    (p, q)
+                } else {
+                    (q, p)
+                };
+                let twin = drawn
+                    .iter()
+                    .any(|(x, y)| x.distance(p0) < 1e-6 && y.distance(q0) < 1e-6);
+                if !twin {
+                    drawn.push((p0, q0));
+                    out.push(PlanItem::Line {
+                        id,
+                        pen: Pen::Drafted(FLOOR_CHANGE),
+                        a: p0,
+                        b: q0,
+                    });
+                }
+                from = q;
+            }
+            if from.distance(b) > 1e-9 {
+                out.push(PlanItem::Line {
+                    id,
+                    pen: Pen::Projection,
+                    a: from,
+                    b,
+                });
+            }
+        }
+    }
+    *items = out;
 }
 
 /// The lines a category draws in projection given the pen its view's
@@ -3060,6 +3153,87 @@ mod tests {
     }
 
     #[test]
+    fn where_two_floors_meet_in_a_door_the_line_is_very_thin_dashed() {
+        use creabim_core::{Element, OpeningKind, Transaction};
+        let mut m = creabim_core::sample::sample_house();
+        // the inner wall with a door in it, running along y
+        let (w, door) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.curtain.is_none() => m
+                    .dependents(e.id)
+                    .into_iter()
+                    .find(|o| {
+                        matches!(m.get(*o).map(|x| &x.kind),
+                            Some(ElementKind::Opening(o)) if o.kind == OpeningKind::Door)
+                    })
+                    .filter(|_| {
+                        (w.start.x - w.end.x).abs() < 1e-9 && w.start.x > 0.5 && w.start.x < 9.5
+                    })
+                    .map(|d| (w.clone(), d)),
+                _ => None,
+            })
+            .expect("the sample's inner wall has a door");
+        let x = w.start.x;
+        let floor = |x0: f64, x1: f64| {
+            let mut s = creabim_core::Slab::new(
+                w.level,
+                vec![
+                    DVec2::new(x0, 0.0),
+                    DVec2::new(x1, 0.0),
+                    DVec2::new(x1, 6.0),
+                    DVec2::new(x0, 6.0),
+                ],
+                0.1,
+            );
+            s.top_offset = 0.0;
+            Element::new("Floor", ElementKind::Slab(s))
+        };
+        Transaction::new("floors")
+            .insert(floor(0.0, x))
+            .insert(floor(x, 10.0))
+            .apply(&mut m)
+            .unwrap();
+        let items = plan_view(&m, w.level, 1.2).items;
+        let dashed: Vec<_> = items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Line {
+                    pen: Pen::Drafted(l),
+                    a,
+                    b,
+                    ..
+                } if *l == FLOOR_CHANGE => Some((*a, *b)),
+                _ => None,
+            })
+            .collect();
+        // (the entrance door's own, on the outer wall's axis, aside)
+        let dashed: Vec<_> = dashed
+            .into_iter()
+            .filter(|(a, b)| (a.x - x).abs() < 1e-6 && (b.x - x).abs() < 1e-6)
+            .collect();
+        assert_eq!(dashed.len(), 1, "one floor change line at {door:?}");
+        // nothing solid left along the axis inside the door
+        let solid = items.iter().any(|it| match it {
+            PlanItem::Line {
+                pen: Pen::Projection,
+                a,
+                b,
+                ..
+            } => {
+                let m = (*a + *b) / 2.0;
+                (a.x - x).abs() < 1e-6
+                    && (b.x - x).abs() < 1e-6
+                    && dashed
+                        .iter()
+                        .any(|(p, q)| m.y > p.y.min(q.y) + 1e-6 && m.y < p.y.max(q.y) - 1e-6)
+            }
+            _ => false,
+        });
+        assert!(!solid);
+    }
+
+    #[test]
     fn a_wall_attached_under_the_cut_is_drawn_in_projection() {
         use creabim_core::{Document, Element, Transaction};
         let m = creabim_core::sample::sample_house();
@@ -3903,6 +4077,8 @@ mod tests {
                     PlanItem::Polygon { points, .. } => {
                         Some(points.iter().map(|p| p.x).fold(f64::MIN, f64::max))
                     }
+                    // edges crossing a door come as lines
+                    PlanItem::Line { a, b, .. } => Some(a.x.max(b.x)),
                     _ => None,
                 })
                 .fold(f64::MIN, f64::max)
