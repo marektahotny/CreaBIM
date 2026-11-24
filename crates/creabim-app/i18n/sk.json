@@ -8572,5 +8572,22 @@
   "Ramp": "Rampa",
   "Steps: risers and treads climbing to the next level": "Schody: stupne stúpajúce do ďalšieho podlažia",
   "Turn ramp": "Otočiť rampu",
-  "rise": "prevýšenie"
+  "rise": "prevýšenie",
+ "As the last ceiling": "Ako posledný podhľad",
+ "How far above the floor of the level new columns start": "Ako vysoko nad podlahou podlažia začínajú nové stĺpy",
+ "How far above the floor of the level new walls start (negative: below it)": "Ako vysoko nad podlahou podlažia začínajú nové steny (záporné: pod ňou)",
+ "How high above the floor of the level new beams' top lies": "Ako vysoko nad podlahou podlažia je vrch nových nosníkov",
+ "How high above the floor of the level new beams' top lies; typing a value fixes it": "Ako vysoko nad podlahou podlažia je vrch nových nosníkov; zadaním hodnoty ho pevne nastavíte",
+ "How high above the floor of the level new ceilings' underside hangs": "Ako vysoko nad podlahou podlažia visí spodok nových podhľadov",
+ "How high above the floor of the level new columns reach. Typing a value fixes it; To the level above lets them follow the next level again.": "Do akej výšky nad podlahou podlažia siahajú nové stĺpy. Zadaním hodnoty ju pevne nastavíte; „Po podlažie nad“ ich opäť napojí na ďalšie podlažie.",
+ "How high above the floor of the level new roofs start (the wall plate)": "Ako vysoko nad podlahou podlažia začínajú nové strechy (pomúrnica)",
+ "How high above the floor of the level new walls reach. Typing a value fixes it; Storey height takes the type's or the storey's again.": "Do akej výšky nad podlahou podlažia siahajú nové steny. Zadaním hodnoty ju pevne nastavíte; „Výška podlažia“ vráti výšku typu alebo podlažia.",
+ "New beams hang with their top under the slab above": "Nové nosníky visia vrchom pod doskou nad nimi",
+ "New columns run up to the next level": "Nové stĺpy siahajú po ďalšie podlažie",
+ "New walls reach the height of their type, else of the storey": "Nové steny majú výšku svojho typu, inak výšku podlažia",
+ "Storey height": "Výška podlažia",
+ "To the level above": "Po podlažie nad",
+ "Under the slab": "Pod dosku",
+ "What new ceilings are built of: a ceiling build-up (its layers and thickness), one material, or as the last ceiling": "Z čoho sú nové podhľady: skladba podhľadu (jej vrstvy a hrúbka), jeden materiál alebo ako posledný podhľad",
+ "Where new slabs' top face lies above the floor of the level (negative: below it); their thickness and layers come from the type": "Kde leží vrch nových dosiek nad podlahou podlažia (záporné: pod ňou); hrúbka a vrstvy sú z typu"
 }

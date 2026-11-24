@@ -76,6 +76,8 @@ pub struct MemberSettings {
     pub pipe: crate::pipesui::PipeDraft,
     /// What the Gutter and Downpipe tools draw next.
     pub flashing: crate::flashingui::FlashingDraft,
+    /// Heights and build-ups of new constructions (George 2026-11-24).
+    pub place: crate::placement::Placement,
 }
 
 impl Default for MemberSettings {
@@ -115,6 +117,7 @@ impl Default for MemberSettings {
             last_beam: None,
             pipe: Default::default(),
             flashing: Default::default(),
+            place: Default::default(),
         }
     }
 }
@@ -156,6 +159,22 @@ pub fn roof_from_slab(slab: &Slab, shape: RoofShape, pitch: f64) -> Element {
     r.pitch = pitch;
     r.base_offset = slab.top_offset;
     Element::new("Roof", ElementKind::Roof(r))
+}
+
+/// [`outline_element`] at the height the bar sets (George 2026-11-24):
+/// for an outline drawn on the level, not on a face at its own height.
+pub fn placed_outline_element(
+    model: &creabim_core::Model,
+    state: &PlanState,
+    mut slab: Slab,
+) -> (Element, &'static str) {
+    if state.tool != Tool::Shaft {
+        state
+            .members
+            .place
+            .outline(state.tool == Tool::Roof, &mut slab);
+    }
+    outline_element(model, state, slab)
 }
 
 /// What the Slab tool's modes make: a slab, or with the Roof tool a roof.
@@ -215,6 +234,7 @@ pub fn click(
                 "Column {} placed. Its height runs to the next level; drag its top handle or set a height in Properties.",
                 lib.map_or_else(|| set.column.label(), |(n, _)| n.to_string())
             ));
+            set.place.column(&mut c);
             let e = state.typed(doc.model(), Element::new("Column", ElementKind::Column(c)));
             add(doc, selection, e, "Place column")
         }
@@ -241,6 +261,8 @@ pub fn click(
                     }
                     // under the slab above, not inside it
                     b.top_offset = creabim_core::members::beam_top_offset(doc.model(), level, a, p);
+                    // or where the bar says (George 2026-11-24)
+                    set.place.beam(doc.model(), &mut b);
                     state.pending = Some(p);
                     state.status = Some(
                         "Beam added. Click on to chain another; Esc or right-click ends.".into(),

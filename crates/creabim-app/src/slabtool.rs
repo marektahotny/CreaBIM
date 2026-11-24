@@ -310,6 +310,7 @@ pub fn click(
             }
             o.shaft = state.tool == crate::planview::Tool::Shaft;
             o.space = crate::roomtool::Space::of(state.tool);
+            o.place = state.members.place;
             let cat = if o.roof.is_some() {
                 creabim_core::TypeCategory::Roof
             } else {
@@ -345,11 +346,17 @@ pub fn click(
                 }
                 let rect = vec![lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
                 if let Some(space) = crate::roomtool::Space::of(state.tool) {
-                    state.status =
-                        Some(crate::roomtool::drawn(doc, space, level, rect, selection)?);
+                    state.status = Some(crate::roomtool::drawn(
+                        doc,
+                        space,
+                        level,
+                        rect,
+                        &{ state.members.place },
+                        selection,
+                    )?);
                     return Ok(());
                 }
-                let (e, label) = crate::memberstool::outline_element(
+                let (e, label) = crate::memberstool::placed_outline_element(
                     doc.model(),
                     state,
                     Slab::new(
@@ -365,7 +372,14 @@ pub fn click(
         },
         SlabMode::FillRoom => {
             if let Some(space) = crate::roomtool::Space::of(state.tool) {
-                state.status = Some(crate::roomtool::fill(doc, space, level, p, selection)?);
+                state.status = Some(crate::roomtool::fill(
+                    doc,
+                    space,
+                    level,
+                    p,
+                    &{ state.members.place },
+                    selection,
+                )?);
                 return Ok(());
             }
             // a slab with its floor on it reaches the outer walls' cores
@@ -387,7 +401,7 @@ pub fn click(
                 state.status = Some(msg);
                 return Ok(());
             }
-            let (e, label) = crate::memberstool::outline_element(
+            let (e, label) = crate::memberstool::placed_outline_element(
                 doc.model(),
                 state,
                 Slab::new(level, outline, NEW_SLAB_THICKNESS),
@@ -447,6 +461,7 @@ pub fn click(
                             space,
                             slab.level,
                             slab.outline(),
+                            &{ state.members.place },
                             selection,
                         )?);
                     }

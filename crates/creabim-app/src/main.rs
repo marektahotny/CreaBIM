@@ -41,6 +41,7 @@ mod paneface;
 mod partstool;
 mod pickup;
 mod pipesui;
+mod placement;
 mod planview;
 mod printing;
 mod props;

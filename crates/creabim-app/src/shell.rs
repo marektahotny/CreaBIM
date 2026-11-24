@@ -481,6 +481,27 @@ impl CreaBimApp {
                         .checked(*a == self.plan.members.footing_align)
                 })
                 .collect(),
+            "place.ceiling" => {
+                use crate::placement::Build;
+                let now = self.plan.members.place.ceiling_build;
+                let model = self.doc.model();
+                [
+                    Item::new("place.ceiling:last", "As the last ceiling")
+                        .checked(now == Build::LikeLast),
+                    Item::new("place.ceiling:single", "None (single material)")
+                        .checked(now == Build::Single),
+                ]
+                .into_iter()
+                .chain(
+                    crate::placement::ceiling_assemblies(model)
+                        .into_iter()
+                        .map(|(id, n)| {
+                            Item::new(format!("place.ceiling:{}", id.0), n)
+                                .checked(now == Build::Assembly(id))
+                        }),
+                )
+                .collect()
+            }
             "footing.material" => {
                 let now = self.plan.members.footing_material.clone();
                 let usage = creabim_core::library::MaterialUse::Member;
@@ -2300,6 +2321,10 @@ impl CreaBimApp {
                 }
             }
             "part" => crate::partstool::toggle_option(&mut self.plan, arg),
+            "reach" => {
+                let level = self.work_level().map(|l| l.0);
+                crate::placement::toggle_option(&mut self.plan, self.doc.model(), level, arg);
+            }
             "member" => {
                 if arg == "square" || arg == "round" {
                     self.plan.types.remove(&creabim_core::TypeCategory::Column);
@@ -3264,6 +3289,7 @@ impl CreaBimApp {
             }
             k if k.starts_with("object.") => crate::objecttool::set_option(&mut self.plan, k, v),
             k if k.starts_with("part.") => crate::partstool::set_option(&mut self.plan, k, v),
+            k if k.starts_with("place.") => crate::placement::set_option(&mut self.plan, k, v),
             k if k.starts_with("member.") => {
                 if k.contains("column") {
                     self.plan.types.remove(&creabim_core::TypeCategory::Column);
@@ -3426,6 +3452,26 @@ impl CreaBimApp {
         }
         options.extend(crate::memberstool::tool_options(&self.plan));
         options.extend(crate::partstool::tool_options(&self.plan));
+        // the height drawn to and what it is built of, before drawing
+        // (George 2026-11-24)
+        if let Some((level, _)) = self.work_level() {
+            let model = self.doc.model();
+            let wall = (tool == Tool::Wall).then(|| {
+                crate::planview::new_wall(
+                    model,
+                    level,
+                    &self.plan,
+                    glam::DVec2::ZERO,
+                    glam::DVec2::X,
+                )
+            });
+            options.extend(crate::placement::tool_options(
+                model,
+                &self.plan,
+                level,
+                wall.as_ref(),
+            ));
+        }
         if tool == Tool::Footing {
             // like Revit's multiple selection: footings under all the walls
             // and columns picked, in one step
