@@ -246,6 +246,7 @@ impl Element {
             ElementKind::Column(_) => "IfcColumn",
             ElementKind::Beam(_) => "IfcBeam",
             ElementKind::Roof(_) => "IfcRoof",
+            ElementKind::Stair(s) if s.ramp.is_some() => "IfcRamp",
             ElementKind::Stair(_) => "IfcStair",
             ElementKind::Railing(_) => "IfcRailing",
             ElementKind::Footing(f) if f.kind == crate::FootingKind::Pile => "IfcPile",

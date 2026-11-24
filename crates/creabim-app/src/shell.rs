@@ -501,6 +501,46 @@ impl CreaBimApp {
                     }))
                     .collect()
             }
+            "railing.type" => {
+                let now = self.plan.members.railing_style.kind;
+                std::iter::once(Item::new("railing.type:", "Rails only").checked(now.is_none()))
+                    .chain(
+                        creabim_core::members::RailingType::ALL
+                            .iter()
+                            .enumerate()
+                            .map(|(i, k)| {
+                                Item::new(format!("railing.type:{i}"), k.label())
+                                    .checked(now == Some(*k))
+                            }),
+                    )
+                    .collect()
+            }
+            "railing.metal" => creabim_core::members::RailMetal::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, k)| {
+                    Item::new(format!("railing.metal:{i}"), k.label())
+                        .checked(self.plan.members.railing_style.metal == *k)
+                })
+                .collect(),
+            "railing.round" => [(false, "Square profile"), (true, "Round profile")]
+                .iter()
+                .map(|(r, l)| {
+                    Item::new(format!("railing.round:{}", u8::from(*r)), *l)
+                        .checked(self.plan.members.railing_style.round == *r)
+                })
+                .collect(),
+            "railing.fixing" => [
+                creabim_core::members::Fixing::Top,
+                creabim_core::members::Fixing::Side,
+            ]
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                Item::new(format!("railing.fixing:{i}"), f.label())
+                    .checked(self.plan.members.railing_style.fixing == *f)
+            })
+            .collect(),
             "railing.library" => self.library_items(
                 "railing.lib",
                 self.plan.members.railing_section.clone(),

@@ -1088,6 +1088,53 @@ fn above_cut_roofs(model: &Model, level: ElementId, cut_z: f64, top_z: f64) -> V
     out
 }
 
+/// The columns of other levels reaching into the plan's range (George
+/// 2026-11-24: a column of the ground storey running down into the
+/// footings): one standing above the cut with its foot under the top of
+/// the range as all above the cut, a thin line of a dash and two dots;
+/// one the plane passes through cut, as the plan's own. A foundation
+/// plan draws them all as above its cut, and only their load-bearing
+/// part (not the insulation boards of a wrap).
+fn other_level_columns(
+    model: &Model,
+    level: ElementId,
+    cut_z: f64,
+    top_z: f64,
+    core_only: bool,
+) -> Vec<PlanItem> {
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Column(c) = &e.kind else {
+            continue;
+        };
+        if c.level == level || (core_only && c.piece.is_some()) {
+            continue;
+        }
+        let (z0, z1) = c.span(model);
+        if z0 >= top_z - 1e-3 || z1 <= cut_z + 1e-3 {
+            continue;
+        }
+        let points = c.outline();
+        if z0 < cut_z && !core_only {
+            out.push(PlanItem::Polygon {
+                id: e.id,
+                pen: Pen::Cut,
+                points,
+            });
+            continue;
+        }
+        for i in 0..points.len() {
+            out.push(PlanItem::Line {
+                id: e.id,
+                pen: Pen::Overhead,
+                a: points[i],
+                b: points[(i + 1) % points.len()],
+            });
+        }
+    }
+    out
+}
+
 /// Every wall standing above the cut whose base is under the top of the
 /// range (a plan's "Horná hrana rezu"), of whatever level: its outline as
 /// a thin line of a dash and two dots, as all above the cut (George
@@ -1831,6 +1878,7 @@ pub fn plan_view_with(
         let cut_z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
         let core_only = is_foundation_plan(model, level, cut_height);
         items.extend(above_cut_walls(model, cut_z, top_z, core_only, &joins));
+        items.extend(other_level_columns(model, level, cut_z, top_z, core_only));
         if !core_only {
             items.extend(above_cut_roofs(model, level, cut_z, top_z));
         }
@@ -3485,6 +3533,49 @@ mod tests {
         assert_eq!(cut_footings(&m, "Foundation", 0.25), 16);
         // a cut above their tops passes none of them
         assert_eq!(cut_footings(&m, "Foundation", 0.6), 0);
+    }
+
+    #[test]
+    fn a_ground_storey_column_reaching_into_the_footings_shows_above_the_cut() {
+        let mut m = creabim_core::starter::starter_house();
+        let found = m
+            .iter()
+            .find(|e| e.name == "Foundation" && matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let fz = m.level(found).unwrap().elevation;
+        let ground = m
+            .levels()
+            .filter(|(_, l)| l.elevation > fz + 1e-6)
+            .min_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+            .unwrap()
+            .0
+            .id;
+        let gz = m.level(ground).unwrap().elevation;
+        // its foot down at the foundation level, through the plan's cut
+        let mut c = creabim_core::Column::new(
+            ground,
+            DVec2::new(-3.0, -3.0),
+            creabim_core::Profile::Rectangle {
+                width: 0.25,
+                depth: 0.25,
+            },
+        );
+        c.base_offset = fz - gz;
+        let ce = creabim_core::Element::new("C", ElementKind::Column(c));
+        let cid = ce.id;
+        creabim_core::Transaction::new("c")
+            .insert(ce)
+            .apply(&mut m)
+            .unwrap();
+        let items = plan_view(&m, found, 0.25).items;
+        let lines = items
+            .iter()
+            .filter(|it| matches!(it, PlanItem::Line { pen: Pen::Overhead, id, .. } if *id == cid))
+            .count();
+        assert_eq!(lines, 4);
+        assert!(!items.iter().any(|it| matches!(it,
+            PlanItem::Polygon { pen: Pen::Cut, id, .. } if *id == cid)));
     }
 
     #[test]

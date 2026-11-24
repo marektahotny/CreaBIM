@@ -900,7 +900,6 @@ fn build_scene_unjoined(
             | ElementKind::Beam(_)
             | ElementKind::Roof(_)
             | ElementKind::Stair(_)
-            | ElementKind::Railing(_)
             | ElementKind::Footing(_)
             | ElementKind::Flashing(_)
             | ElementKind::Pipe(_) => match crate::members::member_mesh(model, e) {
@@ -911,11 +910,32 @@ fn build_scene_unjoined(
                 Some(m) => m,
                 None => continue,
             },
+            // its metal and its glass apart, the glass see-through
+            ElementKind::Railing(r) => {
+                let (mesh, glass) = crate::members::railing_meshes(model, r);
+                if !glass.indices.is_empty() {
+                    out.push(SceneItem {
+                        id: e.id,
+                        mesh: glass,
+                        color: GLASS_COLOR,
+                        surface: GLASS_SURFACE,
+                        ghost: false,
+                        layer: None,
+                        finish: Some("Glass"),
+                    });
+                }
+                (mesh, crate::members::railing_color(r))
+            }
             ElementKind::Circuit(_) => continue,
         };
-        // a material's look wins over the element type's default
+        // a material's look wins over the element type's default; a
+        // railing's stainless or aluminium shines
+        let plain = match &e.kind {
+            ElementKind::Railing(r) if r.metal.is_some() => METAL_SURFACE,
+            _ => PLAIN_SURFACE,
+        };
         let (color, surface) = creabim_core::material_of(model, e)
-            .map_or((color, PLAIN_SURFACE), |(_, m)| (m.color, m.surface()));
+            .map_or((color, plain), |(_, m)| (m.color, m.surface()));
         out.push(SceneItem {
             id: e.id,
             mesh,
@@ -1377,6 +1397,9 @@ fn opening_items(
         })
         .collect()
 }
+
+/// Bare metal: a door handle, a stainless or aluminium railing.
+pub const METAL_SURFACE: [f32; 3] = [0.3, 1.0, 1.0];
 
 /// Glass in doors and windows: pale blue, smooth and mostly see-through.
 pub const GLASS_COLOR: [f32; 3] = [0.62, 0.78, 0.88];

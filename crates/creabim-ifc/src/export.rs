@@ -1973,6 +1973,7 @@ fn member_entity(k: &ElementKind) -> (&'static str, &'static str) {
                 creabim_core::RoofShape::Hip => ",$,.HIP_ROOF.",
             },
         ),
+        ElementKind::Stair(s) if s.ramp.is_some() => ("IFCRAMP", ",$,.STRAIGHT_RUN_RAMP."),
         ElementKind::Stair(s) if s.landing.is_some() => ("IFCSTAIR", ",$,.QUARTER_TURN_STAIR."),
         ElementKind::Stair(_) => ("IFCSTAIR", ",$,.STRAIGHT_RUN_STAIR."),
         ElementKind::Footing(f) => match f.kind {
