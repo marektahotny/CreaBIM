@@ -27,10 +27,24 @@ pub struct Constants {
     pub r_max: f64,
 }
 
+/// A number as a table writes it, also in the forms "2e-10" and
+/// "1,8824·10^-10".
+pub fn sci(text: &str) -> Option<f64> {
+    let t = text.trim().replace(',', ".").replace(' ', "");
+    if let Ok(v) = t.parse::<f64>() {
+        return Some(v);
+    }
+    if let Some((m, e)) = t.split_once("·10^").or_else(|| t.split_once("*10^")) {
+        let e = e.replace(['−', '–'], "-");
+        return Some(m.parse::<f64>().ok()? * 10f64.powi(e.parse().ok()?));
+    }
+    number(text)
+}
+
 impl Constants {
     pub fn of(tables: &[ParamTable]) -> Option<Constants> {
         let t = tables.iter().find(|t| t.id == CONSTANTS)?;
-        let v = |k: &str| number(t.cell(k, "value")).filter(|x| *x > 0.0);
+        let v = |k: &str| sci(t.cell(k, "value")).filter(|x| *x > 0.0);
         Some(Constants {
             delta0: v("delta0")?,
             mu_metal: v("mu_nepriepustne")?,
@@ -253,6 +267,206 @@ pub fn profile(
     })
 }
 
+/// STN 73 0540-3 formula (14) constant: `key`, `value` (`delta_a`, δa
+/// in s).
+pub const SK_CONSTANTS: &str = "difuzia_konstanty";
+/// STN 73 0540-3 table 4: `theta_e`, `phi_e`, `p_e_Pa`, `A_tz`, …,
+/// `B_tz`, … (durations in 10³ s).
+pub const SK_ANNUAL: &str = "rocna_bilancia_vlhkosti";
+/// Every layer is cut into this many slices to find the edges of the
+/// condensation zone on the continuous psat curve.
+const SLICES: usize = 400;
+
+/// One row of the annual balance (STN 73 0540-2 annex B).
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnnualRow {
+    pub theta_e: f64,
+    pub phi_e: f64,
+    /// pde as table 4 prints it, Pa.
+    pub pe: f64,
+    /// Duration under an overcast sky tz, s.
+    pub t: f64,
+    /// Condensation happens in this row (the line touches psat).
+    pub condenses: bool,
+    /// The zone's edges A (inner) and B (outer): depth from the outside
+    /// surface, m; none where nothing condenses all year.
+    pub zone: Option<(f64, f64)>,
+    pub psat_a: f64,
+    pub psat_b: f64,
+    /// RdA (inside to A) and RdB (B to outside), m/s⁻¹ (s'd / δa).
+    pub rd_a: f64,
+    pub rd_b: f64,
+    /// ΔMd (B.1), kg/(m²·s).
+    pub dmd: f64,
+}
+
+impl AnnualRow {
+    /// ΔMd·t, kg/m².
+    pub fn m(&self) -> f64 {
+        self.dmd * self.t
+    }
+}
+
+/// The annual moisture balance of STN 73 0540-2 annex B.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Annual {
+    /// Column A (θe ≤ −15 °C) or B of table 4.
+    pub column: char,
+    pub delta_a: f64,
+    pub pi: f64,
+    pub rows: Vec<AnnualRow>,
+    /// Mc (B.2) and Mev (B.3), kg/(m²·a).
+    pub mc: f64,
+    pub mev: f64,
+}
+
+fn slices(layers: &[Layer], n: usize) -> Vec<Layer> {
+    let mut out = vec![];
+    for l in layers {
+        // a layer without thermal resistance has one temperature: its
+        // psat is flat over its sd, no slices needed
+        let k = if l.r > 0.0 { n } else { 1 };
+        for _ in 0..k {
+            out.push(Layer {
+                name: l.name.clone(),
+                d: l.d / k as f64,
+                r: l.r / k as f64,
+                sd: l.sd / k as f64,
+            });
+        }
+    }
+    out
+}
+
+/// The annual balance of `layers` (from the outside in) for a site of
+/// design temperature `theta_e_site`, inside `theta_i`, `phi_i` (0..1).
+/// The zone of each row with condensation is where the tight line
+/// touches psat; rows without keep the zone of the coldest row that has
+/// one, at their own temperatures.
+pub fn annual_sk(
+    layers: &[Layer],
+    theta_i: f64,
+    phi_i: f64,
+    rsi: f64,
+    rse: f64,
+    theta_e_site: f64,
+    tables: &[ParamTable],
+    psat: &Psat,
+) -> Result<Annual, String> {
+    let delta_a = tables
+        .iter()
+        .find(|t| t.id == SK_CONSTANTS)
+        .and_then(|t| sci(t.cell("delta_a", "value")))
+        .filter(|x| *x > 0.0)
+        .ok_or_else(|| format!("{SK_CONSTANTS}: delta_a"))?;
+    let tab = tables
+        .iter()
+        .find(|t| t.id == SK_ANNUAL)
+        .ok_or_else(|| SK_ANNUAL.to_string())?;
+    // STN 73 0540-3 table 4: column A for θe ≤ −15 °C
+    let column = if theta_e_site <= -15.0 + 1e-9 { 'A' } else { 'B' };
+    let tz = tab
+        .column(&format!("{column}_tz"))
+        .ok_or_else(|| format!("{SK_ANNUAL}: {column}_tz"))?;
+    let (cphi, cpe) = (
+        tab.column("phi_e").ok_or("phi_e")?,
+        tab.column("p_e_Pa").ok_or("p_e_Pa")?,
+    );
+    let fine = slices(layers, SLICES);
+    let k = Constants {
+        delta0: delta_a,
+        mu_metal: f64::INFINITY,
+        r_max: f64::INFINITY,
+    };
+    let mut rows: Vec<(f64, f64, f64, f64, Profile)> = vec![];
+    for r in &tab.rows {
+        let (Some(te), Some(phi), Some(pe)) = (
+            sci(&r[0]),
+            r.get(cphi).and_then(|x| sci(x)),
+            r.get(cpe).and_then(|x| sci(x)),
+        ) else {
+            continue;
+        };
+        let Some(t) = r.get(tz).and_then(|x| sci(x)).filter(|t| *t > 0.0) else {
+            continue;
+        };
+        // pde as printed; φe only for the record
+        let c = Conditions {
+            theta_i,
+            phi_i,
+            theta_e: te,
+            phi_e: pe / psat.p(te),
+            rsi,
+            rse,
+        };
+        rows.push((te, phi, pe, t * 1000.0, profile(&fine, &c, psat, &k)?));
+    }
+    rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let zone_of = |p: &Profile| -> Option<(usize, usize)> {
+        let b = p.condensation.first()?.0;
+        let a = p.condensation.last()?.0;
+        Some((a, b))
+    };
+    let first = rows.iter().find_map(|r| zone_of(&r.4));
+    let pi = phi_i * psat.p(theta_i);
+    let mut out = vec![];
+    for (te, phi, pe, t, p) in rows {
+        let own = zone_of(&p);
+        let Some((a, b)) = own.or(first) else {
+            out.push(AnnualRow {
+                theta_e: te,
+                phi_e: phi,
+                pe,
+                t,
+                condenses: false,
+                zone: None,
+                psat_a: f64::NAN,
+                psat_b: f64::NAN,
+                rd_a: f64::NAN,
+                rd_b: f64::NAN,
+                dmd: 0.0,
+            });
+            continue;
+        };
+        let (fa, fb) = (&p.interfaces[a], &p.interfaces[b]);
+        let rd_a = (p.sd_total - fa.sd) / delta_a;
+        let rd_b = fb.sd / delta_a;
+        let dmd = (pi - fa.psat) / rd_a - (fb.psat - pe) / rd_b;
+        out.push(AnnualRow {
+            theta_e: te,
+            phi_e: phi,
+            pe,
+            t,
+            condenses: own.is_some(),
+            zone: Some((fa.x, fb.x)),
+            psat_a: fa.psat,
+            psat_b: fb.psat,
+            rd_a,
+            rd_b,
+            dmd,
+        });
+    }
+    let mc = out.iter().map(|r| r.m()).filter(|m| *m > 0.0).sum();
+    let mev = -out.iter().map(|r| r.m()).filter(|m| *m < 0.0).sum::<f64>();
+    Ok(Annual {
+        column,
+        delta_a,
+        pi,
+        rows: out,
+        mc,
+        mev,
+    })
+}
+
+/// The limit of STN 73 0540-2 čl. 6.1 for a build-up of kind `key`
+/// (`bez_kondenzacie`, `jednoplastova_strecha`, `ostatne`), kg/(m²·a).
+pub fn mc_limit(tables: &[ParamTable], key: &str) -> Option<f64> {
+    sci(tables
+        .iter()
+        .find(|t| t.id == crate::thermcheck::CONDENSATION_LIMITS)?
+        .cell(key, "mc_max_kg_m2a"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +506,61 @@ mod tests {
             r: d / lambda,
             sd: mu * d,
         }
+    }
+
+    #[test]
+    fn reads_scientific_numbers() {
+        assert_eq!(sci("2e-10"), Some(2e-10));
+        assert!((sci("1,8824·10^-10").unwrap() - 1.8824e-10).abs() < 1e-24);
+        assert_eq!(sci("0,5"), Some(0.5));
+    }
+
+    fn table4() -> Vec<ParamTable> {
+        // the shape of table 4 with made-up durations (the real ones are
+        // read from the user's file)
+        creabim_core::fireparams::parse(
+            "#table rocna_bilancia_vlhkosti\n\
+             #columns theta_e\tphi_e\tp_e_Pa\tA_tz\tA_tj_a\tA_tj_b\tA_spolu\tB_tz\n\
+             -15\t84\t139\t500\t\t\t\t400\n\
+             -5\t82\t329\t2000\t\t\t\t3000\n\
+             15\t73\t1244\t5000\t\t\t\t5000\n\
+             #table difuzia_konstanty\n#columns key\tvalue\n\
+             delta_a\t0,00000000018824\n",
+        )
+    }
+
+    #[test]
+    fn annual_balance_by_annex_b() {
+        let foil = Layer {
+            name: "PE".into(),
+            d: 0.0002,
+            r: 0.0,
+            sd: 20.0,
+        };
+        let layers = [foil, l("wool", 0.16, 0.04, 1.0), l("board", 0.0125, 0.21, 10.0)];
+        let a = annual_sk(&layers, 20.0, 0.5, 0.13, 0.04, -15.0, &table4(), &psat()).unwrap();
+        assert_eq!(a.column, 'A');
+        assert_eq!(a.rows.len(), 3);
+        let r0 = &a.rows[0];
+        assert!(r0.condenses && r0.dmd > 0.0);
+        // B.1 by hand from the row's values
+        let want = (a.pi - r0.psat_a) / r0.rd_a - (r0.psat_b - r0.pe) / r0.rd_b;
+        assert!((r0.dmd - want).abs() < 1e-18);
+        // the zone starts at the foil's inner face and reaches into the
+        // wool where psat stays under the line to pi
+        let (za, zb) = r0.zone.unwrap();
+        eprintln!("zone {zb}..{za}, dmd {}", r0.dmd);
+        assert!((zb - 0.0002).abs() < 1e-12 && za > zb && za < 0.0002 + 0.16);
+        assert!((r0.rd_b - 20.0 / 1.8824e-10).abs() / r0.rd_b < 1e-12);
+        // at 15 °C the zone dries out to the inside
+        let warm = a.rows.last().unwrap();
+        assert!(!warm.condenses && warm.dmd < 0.0);
+        let mc: f64 = a.rows.iter().map(|r| r.m()).filter(|m| *m > 0.0).sum();
+        assert!((a.mc - mc).abs() < 1e-15 && a.mev > 0.0);
+        // the column follows the site's θe
+        let b = annual_sk(&layers, 20.0, 0.5, 0.13, 0.04, -14.0, &table4(), &psat()).unwrap();
+        assert_eq!(b.column, 'B');
+        assert!((b.rows[0].t - 400_000.0).abs() < 1e-9);
     }
 
     #[test]
