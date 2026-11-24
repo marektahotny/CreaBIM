@@ -37,6 +37,80 @@ pub fn colour_of(name: &str, r: &Room) -> [f32; 3] {
 /// How far off a wall's face the line of its tiling is drawn, m.
 const TILING_OFF: f64 = 0.03;
 
+/// A tiling's mark in a plan: "(height)(bottom)" along its line, just
+/// inside the room, where it was dragged to on the line.
+pub fn tiling_mark(
+    model: &Model,
+    view: &View,
+    id: ElementId,
+    shape: &room::RoomShape,
+    t: &room::Tiling,
+) -> Option<PlanItem> {
+    use crate::annotation::{Annotation, Shape, TextLook};
+    let (at, d) = room::tiling_mark_at(model, shape, t)?;
+    let look = TextLook::default();
+    let mm = view.scale / 1000.0;
+    let inward = DVec2::new(-d.y, d.x);
+    let at = at + inward * (TILING_OFF + (1.0 + look.size / 2.0) * mm);
+    Some(PlanItem::Annotation {
+        id,
+        item: Box::new(Annotation {
+            shape: Shape::Along {
+                at,
+                angle: d.y.atan2(d.x),
+            },
+            text: t.mark_text(),
+            look,
+            mm,
+        }),
+    })
+}
+
+/// What a plan of `level` draws of its rooms' tiling: a medium dash-dot
+/// line just off the walls' faces and its mark "(height)(bottom)", over
+/// the fixtures and cabinets in front of it, as in George's drawings
+/// (not in a ceiling plan or a trade's drawing, George 2026-11-22).
+pub fn tiling_items(model: &Model, view: &View, level: ElementId) -> Vec<PlanItem> {
+    let mut out = vec![];
+    let trade = creabim_core::viewmodes::DisplayMode::of(view)
+        == creabim_core::viewmodes::DisplayMode::Services;
+    if view.ceiling_plan || trade {
+        return out;
+    }
+    for e in model.iter() {
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        if r.level != level || r.tilings().next().is_none() {
+            continue;
+        }
+        let Some(s) = room::shape_of(model, r) else {
+            continue;
+        };
+        for t in r.tilings() {
+            for (a, b) in room::tiling_plan_runs_of(model, &s, t) {
+                let d = (b - a).normalize_or_zero();
+                let off = DVec2::new(-d.y, d.x) * TILING_OFF;
+                // a medium dash-dot line (George 2026-11-22)
+                out.push(PlanItem::Line {
+                    id: e.id,
+                    pen: Pen::Drafted(creabim_core::LineLook {
+                        pen: creabim_core::LinePen::Thick,
+                        kind: creabim_core::LineType::DashDot,
+                    }),
+                    a: a + off,
+                    b: b + off,
+                });
+            }
+            // its mark along the line, inside the room (George 2026-11-24)
+            if !t.no_mark {
+                out.extend(tiling_mark(model, view, e.id, &s, t));
+            }
+        }
+    }
+    out
+}
+
 /// What a plan of `level` draws of its rooms, room separators and (in a
 /// ceiling plan) ceilings. Rooms go first, under everything.
 pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64) -> Vec<PlanItem> {
@@ -61,26 +135,6 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                                     });
                                 }
                             }
-                        }
-                    }
-                    // tiling: a line just off the walls' faces (not in a
-                    // trade's drawing, George 2026-11-22)
-                    let trade = creabim_core::viewmodes::DisplayMode::of(view)
-                        == creabim_core::viewmodes::DisplayMode::Services;
-                    if let (Some(t), false, false) = (&r.tiling, view.ceiling_plan, trade) {
-                        for (a, b) in room::tiling_plan_runs(model, &s, &t.skip, t.height) {
-                            let d = (b - a).normalize_or_zero();
-                            let off = DVec2::new(-d.y, d.x) * TILING_OFF;
-                            // a medium dash-dot line (George 2026-11-22)
-                            loops.push(PlanItem::Line {
-                                id: e.id,
-                                pen: Pen::Drafted(creabim_core::LineLook {
-                                    pen: creabim_core::LinePen::Thick,
-                                    kind: creabim_core::LineType::DashDot,
-                                }),
-                                a: a + off,
-                                b: b + off,
-                            });
                         }
                     }
                     // a fire drawing: the zone's wash and its code

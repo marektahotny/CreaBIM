@@ -1695,6 +1695,7 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         fire_ps: None,
         fire_pvm: None,
         tiling: None,
+        tiling_parts: vec![],
         ufh: None,
         decentral_hrv: false,
         living: None,

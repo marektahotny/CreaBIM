@@ -188,6 +188,7 @@ window.ICONS = {
 "car": "<path d=\"M3 16v-4l2-4h10l3 4h3v4z\" /> <circle cx=\"7\" cy=\"17\" r=\"2\" /> <circle cx=\"17\" cy=\"17\" r=\"2\" /> <path d=\"M6 12h11\" />",
 "room": "<path d=\"M3 3h18v18H3z\"></path> <path d=\"M3 13h6M14 3v6\" stroke-dasharray=\"2 1.5\"></path> <path d=\"M10 15.5h7M10 18.5h4\"></path>",
 "room-separator": "<path d=\"M3 4h18v16H3z\"></path><path d=\"M12 4v16\" stroke-dasharray=\"1.5 3\"></path><path d=\"M6 8h3\"></path><path d=\"M15 16h3\"></path>",
+"tiling": "<path d=\"M3 3v18h18\"></path><path d=\"M7 7h13v8H7z\"></path><path d=\"M7 11h13M11.3 7v4M15.6 7v4M9.2 11v4M13.5 11v4M17.8 11v4\"></path>",
 "ceiling": "<path d=\"M3 5h18\"></path><path d=\"M6 5v3\"></path><path d=\"M12 5v3\"></path><path d=\"M18 5v3\"></path><path d=\"M3 19h18\"></path>",
 "callout": "<path d=\"M2 2h12.5v12.5H2z\"></path><path d=\"M14.5 14.5l7.5 7.5\"></path><path d=\"M17 22h5v-5\"></path>",
 "detail-component": "<path d=\"M3 12l3-4 3 8 3-8 3 8 3-8 3 4\"></path>",

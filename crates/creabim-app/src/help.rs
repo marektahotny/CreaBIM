@@ -394,7 +394,7 @@ pub fn tool_page(t: Tool) -> &'static str {
         Tool::Extrusion | Tool::Sweep => "parts",
         Tool::Void => "parts#voids",
         Tool::Terrain | Tool::Paving | Tool::Planting => "site",
-        Tool::Room | Tool::RoomSeparator => "rooms",
+        Tool::Room | Tool::RoomSeparator | Tool::Tiling => "rooms",
         Tool::Ceiling => "ceilings",
         Tool::Callout => "details#callouts",
         Tool::Detail => "details#detail-components",

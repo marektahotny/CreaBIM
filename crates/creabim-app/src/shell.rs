@@ -184,6 +184,7 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Planting => "planting",
         Tool::Room => "room",
         Tool::RoomSeparator => "room-separator",
+        Tool::Tiling => "tiling",
         Tool::Ceiling => "ceiling",
         Tool::Callout => "callout",
         Tool::Detail => "detail-component",
@@ -218,6 +219,7 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::Void
         | Tool::Room
         | Tool::RoomSeparator
+        | Tool::Tiling
         | Tool::Ceiling => 1,
         Tool::Terrain | Tool::Paving | Tool::Planting => 5,
         Tool::Pipe => 6,
@@ -3349,6 +3351,8 @@ impl CreaBimApp {
             }
             "view.number" => self.set_view_number(v),
             "detail.width" => self.plan.details.width = v.clamp(0.0, 5.0),
+            "tiling.height" => self.plan.details.tiling.0 = v.clamp(0.05, 10.0),
+            "tiling.bottom" => self.plan.details.tiling.1 = v.clamp(0.0, 10.0),
             "slope.value" => self.plan.anno.slope_value = v.clamp(0.0, 1000.0),
             "dim.spacing" => {
                 self.plan.dim_step_size = v.clamp(0.5, 100.0);
@@ -3564,6 +3568,19 @@ impl CreaBimApp {
                     "hint": "How wide the component is across its path: a batt's thickness, a course's depth",
                 }));
             }
+        }
+        if tool == Tool::Tiling {
+            let (h, b) = self.plan.details.tiling;
+            options.push(json!({
+                "kind": "number", "key": "tiling.height", "label": "Tiling height",
+                "value": h, "unit": "m", "step": 0.05, "min": 0.05, "max": 10.0,
+                "hint": "How high the tiles are, the first number of its mark (600)(900)",
+            }));
+            options.push(json!({
+                "kind": "number", "key": "tiling.bottom", "label": "Above the floor",
+                "value": b, "unit": "m", "step": 0.05, "min": 0.0, "max": 10.0,
+                "hint": "How far above the storey's floor the tiles start, the second number of its mark (600)(900)",
+            }));
         }
         let sep = tool == Tool::RoomSeparator;
         if sep || matches!(tool, Tool::Line | Tool::Polyline | Tool::Arc | Tool::Curve) {

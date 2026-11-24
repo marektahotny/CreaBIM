@@ -768,16 +768,20 @@ fn build_scene_unjoined(
             }
             ElementKind::Room(r) => {
                 // its tiling: thin slabs on the walls' faces
-                let (Some(t), Some(s), Some(level)) = (
-                    &r.tiling,
-                    creabim_core::room::shape_of(model, r),
-                    model.level(r.level),
-                ) else {
+                if r.tilings().next().is_none() {
+                    continue;
+                }
+                let (Some(s), Some(level)) =
+                    (creabim_core::room::shape_of(model, r), model.level(r.level))
+                else {
                     continue;
                 };
                 let mut mesh = TriMesh::default();
                 // the doors, windows and holes left out (George 2026-11-22)
-                for p in creabim_core::room::tiling_panels(model, &s, &t.skip, t.height) {
+                for p in r
+                    .tilings()
+                    .flat_map(|t| creabim_core::room::tiling_panels_of(model, &s, t))
+                {
                     let (a, b) = (p.a, p.b);
                     let (z0, z1) = (level.elevation + p.z0, level.elevation + p.z1);
                     let d = (b - a).normalize_or_zero();

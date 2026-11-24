@@ -262,6 +262,85 @@ pub fn separator_click(
     doc.commit(Transaction::new("Draw room separator").insert(e))
 }
 
+/// The room on `level` whose walls the points `a` and `p` run along.
+pub fn tiling_room(
+    model: &Model,
+    level: ElementId,
+    a: DVec2,
+    p: DVec2,
+) -> Option<(ElementId, room::RoomShape)> {
+    let near = |s: &room::RoomShape, q: DVec2| {
+        let n = s.outline.len();
+        (0..n)
+            .map(|i| {
+                let (x, y) = (s.outline[i], s.outline[(i + 1) % n]);
+                let l2 = x.distance_squared(y).max(1e-12);
+                let t = ((q - x).dot(y - x) / l2).clamp(0.0, 1.0);
+                q.distance(x + (y - x) * t)
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Room(r) if r.level == level => {
+                let s = room::shape_of(model, r)?;
+                let inside = [(a + p) / 2.0, a, p]
+                    .iter()
+                    .any(|q| crate::planview::point_in_polygon(*q, &s.outline));
+                let d = near(&s, a) + near(&s, p);
+                (inside || d < 0.6).then_some((e.id, s, d))
+            }
+            _ => None,
+        })
+        .min_by(|x, y| x.2.total_cmp(&y.2))
+        .map(|(id, s, _)| (id, s))
+}
+
+/// A click with the Tiling tool: where the tiling starts on a room's
+/// walls, then where it ends; it runs along the walls between, the
+/// shorter way round, `state.details.tiling` high from the floor up.
+pub fn tiling_click(
+    doc: &mut Document,
+    level: ElementId,
+    p: DVec2,
+    state: &mut PlanState,
+    selection: &mut Selection,
+) -> Result<(), ModelError> {
+    let Some(a) = state.pending.take() else {
+        state.pending = Some(p);
+        state.status = Some("Click where the tiling ends, along the room's walls.".into());
+        return Ok(());
+    };
+    if a.distance(p) < 0.05 {
+        state.pending = Some(a);
+        return Ok(());
+    }
+    let Some((id, _)) = tiling_room(doc.model(), level, a, p) else {
+        state.status = Some("No room here: place a room first, then click along its walls.".into());
+        return Ok(());
+    };
+    let (height, bottom) = state.details.tiling;
+    let t = room::Tiling {
+        height,
+        bottom,
+        span: Some([a, p]),
+        ..room::Tiling::default()
+    };
+    let mark = t.mark_text();
+    let r = doc.edit(id, "Draw tiling", |e| {
+        if let ElementKind::Room(r) = &mut e.kind {
+            r.tiling_parts.push(t);
+        }
+    });
+    selection.only(id);
+    state.status = Some(format!(
+        "{} {mark}",
+        crate::i18n::t("Tiling added along the room's walls; its mark can be dragged along it.")
+    ));
+    r
+}
+
 /// Tag every room on plan `view`'s level that has no tag in it yet, at the
 /// room's point. Returns how many were tagged.
 pub fn tag_rooms(doc: &mut Document, view: ElementId) -> Result<usize, ModelError> {
@@ -714,6 +793,17 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room, name: &str) -
         if length(ui, "Tiling height", &mut t.height, 0.1, 10.0) {
             label = "Wall tiling";
         }
+        if length(ui, "Above the floor", &mut t.bottom, 0.0, 10.0) {
+            label = "Wall tiling";
+        }
+        let mut shown = !t.no_mark;
+        if ui
+            .checkbox(&mut shown, crate::i18n::t("Mark (height)(above the floor)"))
+            .changed()
+        {
+            t.no_mark = !shown;
+            label = "Wall tiling";
+        }
         if let Some(s) = &tiled_shape {
             // which of its walls carry tiles
             for (i, wall) in room::bounding_walls(model, s).into_iter().enumerate() {
@@ -746,6 +836,64 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room, name: &str) -
             }
         }
     }
+    // tiling on part of the walls, drawn with the Tiling tool: a
+    // kitchen's splashback (George 2026-11-24)
+    let mut gone = None;
+    for (i, t) in r.tiling_parts.iter_mut().enumerate() {
+        ui.push_id(("tiling part", i), |ui| {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} {} {}",
+                        crate::i18n::t("Partial tiling"),
+                        i + 1,
+                        t.mark_text()
+                    ))
+                    .strong(),
+                );
+                if ui
+                    .small_button("🗑")
+                    .on_hover_text(crate::i18n::t("Remove this tiling"))
+                    .clicked()
+                {
+                    gone = Some(i);
+                }
+            });
+            if text(ui, "Tiling", &mut t.name) {
+                label = "Wall tiling";
+            }
+            if length(ui, "Tiling height", &mut t.height, 0.05, 10.0) {
+                label = "Wall tiling";
+            }
+            if length(ui, "Above the floor", &mut t.bottom, 0.0, 10.0) {
+                label = "Wall tiling";
+            }
+            let mut shown = !t.no_mark;
+            if ui
+                .checkbox(&mut shown, crate::i18n::t("Mark (height)(above the floor)"))
+                .changed()
+            {
+                t.no_mark = !shown;
+                label = "Wall tiling";
+            }
+        });
+    }
+    if let Some(i) = gone {
+        r.tiling_parts.remove(i);
+        label = "Wall tiling";
+    }
+    ui.label(
+        egui::RichText::new(crate::i18n::t(
+            "Tiling on part of the walls (over the kitchen's base cabinets): the Tiling tool, two clicks along the walls.",
+        ))
+        .weak(),
+    );
+    let tiled_shape = tiled_shape.or_else(|| {
+        (!r.tiling_parts.is_empty())
+            .then(|| room::shape_of(model, r))
+            .flatten()
+    });
     if let Some(s) = &tiled_shape {
         ui.label(format!(
             "{} {}",

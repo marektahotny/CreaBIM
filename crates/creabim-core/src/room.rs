@@ -86,6 +86,10 @@ pub struct Room {
     /// The tiling of its walls, where it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiling: Option<Tiling>,
+    /// Tiling on part of its walls only, each its own stretch (a
+    /// kitchen's splashback over the base cabinets).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tiling_parts: Vec<Tiling>,
     /// Its underfloor heating, where it has one: the loops drawn in it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ufh: Option<crate::underfloor::Underfloor>,
@@ -99,18 +103,47 @@ pub struct Room {
     pub living: Option<bool>,
 }
 
-/// Tiles on a room's walls: from the floor up to `height`, on every
-/// wall of the room, the doors left out.
+/// Tiles on a room's walls: `height` high from `bottom` above the floor,
+/// on every wall of the room (or the stretch `span` of them), the
+/// openings left out.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Tiling {
-    /// How high it reaches above the floor, m.
+    /// How high the tiles are, m (from the floor, unless `bottom`).
     pub height: f64,
+    /// How far above the drawn storey's floor the tiles start, m.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub bottom: f64,
     /// What it is ("Ceramic tiles 300x600").
     #[serde(default, skip_serializing_if = "is_blank")]
     pub name: String,
     /// The walls of the room left without tiles.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skip: Vec<ElementId>,
+    /// Only the stretch of the room's walls from the first point round
+    /// to the second, the shorter way: a kitchen's splashback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<[DVec2; 2]>,
+    /// Where its mark "(height)(bottom)" was dragged to: it sits on the
+    /// tiling's line nearest this point; none is the middle of its
+    /// longest stretch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<DVec2>,
+    /// Drawn without its mark.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub no_mark: bool,
+}
+
+impl Tiling {
+    /// Its top above the floor, m.
+    pub fn top(&self) -> f64 {
+        self.bottom + self.height
+    }
+
+    /// Its mark as in the drawings: "(600)(900)", the tiles' height and
+    /// how far above the floor they start, mm (George 2026-11-24).
+    pub fn mark_text(&self) -> String {
+        format!("({:.0})({:.0})", self.height * 1000.0, self.bottom * 1000.0)
+    }
 }
 
 /// The height new tiling reaches.
@@ -120,8 +153,12 @@ impl Default for Tiling {
     fn default() -> Self {
         Self {
             height: TILING_HEIGHT,
+            bottom: 0.0,
             name: String::new(),
             skip: vec![],
+            span: None,
+            mark: None,
+            no_mark: false,
         }
     }
 }
@@ -251,17 +288,93 @@ pub fn tiling_panels(
     skip: &[ElementId],
     height: f64,
 ) -> Vec<TilePanel> {
+    tiling_panels_of(
+        model,
+        shape,
+        &Tiling {
+            height,
+            skip: skip.to_vec(),
+            ..Tiling::default()
+        },
+    )
+}
+
+/// Where along each edge of a room's outline a tiling runs, as stretches
+/// from the edge's start, m: the whole edge, or the part of it in the
+/// tiling's span.
+fn edge_clips(shape: &RoomShape, span: Option<[DVec2; 2]>) -> Vec<Vec<(f64, f64)>> {
+    let n = shape.outline.len();
+    let lens: Vec<f64> = (0..n)
+        .map(|i| shape.outline[i].distance(shape.outline[(i + 1) % n]))
+        .collect();
+    let Some([p, q]) = span else {
+        return lens.iter().map(|l| vec![(0.0, *l)]).collect();
+    };
+    let total: f64 = lens.iter().sum();
+    let mut out = vec![vec![]; n];
+    if total < 1e-9 {
+        return out;
+    }
+    // where a point falls round the outline, m from its first corner
+    let at = |p: DVec2| {
+        let mut best = (f64::INFINITY, 0.0);
+        let mut s0 = 0.0;
+        for i in 0..n {
+            let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
+            let l = lens[i];
+            let t = if l > 1e-9 {
+                ((p - a).dot(b - a) / (l * l)).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let d = p.distance(a + (b - a) * t);
+            if d < best.0 {
+                best = (d, s0 + t * l);
+            }
+            s0 += l;
+        }
+        best.1
+    };
+    let (mut s, mut e) = (at(p), at(q));
+    if s > e {
+        std::mem::swap(&mut s, &mut e);
+    }
+    // the shorter way round
+    let ranges: Vec<(f64, f64)> = if e - s <= total - (e - s) {
+        vec![(s, e)]
+    } else {
+        vec![(e, total), (0.0, s)]
+    };
+    let mut s0 = 0.0;
+    for i in 0..n {
+        for (r0, r1) in &ranges {
+            let (x0, x1) = ((r0 - s0).max(0.0), (r1 - s0).min(lens[i]));
+            if x1 - x0 > 1e-6 {
+                out[i].push((x0, x1));
+            }
+        }
+        s0 += lens[i];
+    }
+    out
+}
+
+/// The tiles of one tiling as rectangles: on its walls (and its stretch
+/// of them), `height` high from `bottom`, less every door, window and
+/// hole in the wall, so that nothing is tiled over an opening.
+pub fn tiling_panels_of(model: &Model, shape: &RoomShape, t: &Tiling) -> Vec<TilePanel> {
     const EPS: f64 = 1e-6;
     let n = shape.outline.len();
     let mut out = vec![];
-    if height <= EPS {
+    let (bottom, top) = (t.bottom, t.top());
+    if t.height <= EPS {
         return out;
     }
+    let clips = edge_clips(shape, t.span);
     for (i, by) in shape.bounded_by.iter().enumerate() {
         let Some(wall) = by.and_then(|id| model.get(id)) else {
             continue;
         };
-        if skip.contains(&wall.id) {
+        if t.skip.contains(&wall.id) || clips[i].is_empty() {
             continue;
         }
         let ElementKind::Wall(w) = &wall.kind else {
@@ -276,12 +389,16 @@ pub fn tiling_panels(
         // the openings that reach into the tiled height
         let holes: Vec<_> = opening_boxes(model, wall, w, a, b)
             .into_iter()
-            .filter(|h| h.2 < height - EPS && h.3 > EPS)
+            .filter(|h| h.2 < top - EPS && h.3 > bottom + EPS)
             .collect();
         let mut cuts = vec![0.0, len];
         for h in &holes {
             cuts.push(h.0);
             cuts.push(h.1);
+        }
+        for c in &clips[i] {
+            cuts.push(c.0);
+            cuts.push(c.1);
         }
         cuts.sort_by(f64::total_cmp);
         cuts.dedup_by(|x, y| (*x - *y).abs() < EPS);
@@ -293,21 +410,25 @@ pub fn tiling_panels(
             if x1 - x0 < EPS {
                 continue;
             }
+            let m = (x0 + x1) / 2.0;
+            if !clips[i].iter().any(|c| c.0 <= m && m <= c.1) {
+                continue;
+            }
             let mut over: Vec<(f64, f64)> = holes
                 .iter()
                 .filter(|h| h.0 <= x0 + EPS && h.1 >= x1 - EPS)
-                .map(|h| (h.2.max(0.0), h.3.min(height)))
+                .map(|h| (h.2.max(bottom), h.3.min(top)))
                 .collect();
             over.sort_by(|p, q| p.0.total_cmp(&q.0));
-            let mut z = 0.0;
+            let mut z = bottom;
             for (lo, hi) in over {
                 if lo - z > EPS {
                     row.push((x0, x1, z, lo));
                 }
                 z = f64::max(z, hi);
             }
-            if height - z > EPS {
-                row.push((x0, x1, z, height));
+            if top - z > EPS {
+                row.push((x0, x1, z, top));
             }
         }
         // neighbours of the same height join into one rectangle
@@ -339,65 +460,96 @@ pub fn tiling_plan_runs(
     skip: &[ElementId],
     height: f64,
 ) -> Vec<(DVec2, DVec2)> {
+    tiling_plan_runs_of(
+        model,
+        shape,
+        &Tiling {
+            height,
+            skip: skip.to_vec(),
+            ..Tiling::default()
+        },
+    )
+}
+
+/// Where one tiling is drawn in a plan: along its walls (and its stretch
+/// of them), less every door, window and hole that reaches into its
+/// height, so the line never runs across an opening.
+pub fn tiling_plan_runs_of(model: &Model, shape: &RoomShape, t: &Tiling) -> Vec<(DVec2, DVec2)> {
     const EPS: f64 = 1e-6;
+    let n = shape.outline.len();
+    let (bottom, top) = (t.bottom, t.top());
+    let clips = edge_clips(shape, t.span);
     let mut out = vec![];
-    for (a, b) in tiling_runs(model, shape, skip) {
+    for (i, by) in shape.bounded_by.iter().enumerate() {
+        let Some(wall) = by.and_then(|id| model.get(id)) else {
+            continue;
+        };
+        if t.skip.contains(&wall.id) {
+            continue;
+        }
+        let ElementKind::Wall(w) = &wall.kind else {
+            continue;
+        };
+        let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
         let len = a.distance(b);
-        if len < EPS {
+        if len < EPS || (w.end - w.start).length() < EPS {
             continue;
         }
         let d = (b - a) / len;
-        // the openings of the wall it runs along that cut into the tiles
-        let mut gaps: Vec<(f64, f64)> = vec![];
-        for (i, by) in shape.bounded_by.iter().enumerate() {
-            let Some(wall) = by.and_then(|id| model.get(id)) else {
-                continue;
-            };
-            let ElementKind::Wall(w) = &wall.kind else {
-                continue;
-            };
-            let n = shape.outline.len();
-            let (ea, eb) = (shape.outline[i], shape.outline[(i + 1) % n]);
-            // is the run on this edge?
-            let el = ea.distance(eb);
-            if el < EPS {
-                continue;
-            }
-            let ed = (eb - ea) / el;
-            let off = |p: DVec2| (p - ea).perp_dot(ed).abs();
-            if off(a) > 1e-4 || off(b) > 1e-4 || ed.dot(d) < 0.999 {
-                continue;
-            }
-            for (p, q, z0, z1) in opening_boxes(model, wall, w, ea, eb) {
-                if z0 < height - EPS && z1 > EPS {
-                    let s = (ea + ed * p - a).dot(d);
-                    let t = (ea + ed * q - a).dot(d);
-                    gaps.push((s.min(t).max(0.0), s.max(t).min(len)));
-                }
-            }
-        }
-        gaps.retain(|g| g.1 - g.0 > EPS);
+        let mut gaps: Vec<(f64, f64)> = opening_boxes(model, wall, w, a, b)
+            .into_iter()
+            .filter(|h| h.2 < top - EPS && h.3 > bottom + EPS)
+            .map(|h| (h.0, h.1))
+            .collect();
         gaps.sort_by(|x, y| x.0.total_cmp(&y.0));
-        let mut from = 0.0;
-        for (p, q) in gaps {
-            if p - from > EPS {
-                out.push((a + d * from, a + d * p));
+        for &(c0, c1) in &clips[i] {
+            let mut from = c0;
+            for &(p, q) in &gaps {
+                let (p, q) = (p.max(c0), q.min(c1));
+                if q - p <= EPS {
+                    continue;
+                }
+                if p - from > EPS {
+                    out.push((a + d * from, a + d * p));
+                }
+                from = f64::max(from, q);
             }
-            from = f64::max(from, q);
-        }
-        if len - from > EPS {
-            out.push((a + d * from, b));
+            if c1 - from > EPS {
+                out.push((a + d * from, a + d * c1));
+            }
         }
     }
     out
 }
 
+/// Where a tiling's mark sits on its line in a plan: the point on its
+/// runs nearest where it was dragged (or the middle of the longest run)
+/// and the run's direction.
+pub fn tiling_mark_at(model: &Model, shape: &RoomShape, t: &Tiling) -> Option<(DVec2, DVec2)> {
+    let runs = tiling_plan_runs_of(model, shape, t);
+    let dir = |a: DVec2, b: DVec2| (b - a).normalize_or_zero();
+    match t.mark {
+        Some(p) => runs
+            .iter()
+            .map(|(a, b)| {
+                let l2 = a.distance_squared(*b).max(1e-12);
+                let s = ((p - *a).dot(*b - *a) / l2).clamp(0.0, 1.0);
+                (*a + (*b - *a) * s, dir(*a, *b))
+            })
+            .min_by(|x, y| x.0.distance(p).total_cmp(&y.0.distance(p))),
+        None => runs
+            .iter()
+            .max_by(|x, y| x.0.distance(x.1).total_cmp(&y.0.distance(y.1)))
+            .map(|(a, b)| ((*a + *b) / 2.0, dir(*a, *b))),
+    }
+}
+
 /// The area of a room's tiling, m²: its rectangles, so every door,
-/// window and hole in the tiled height is left out.
+/// window and hole in the tiled height is left out; the tiling on part
+/// of its walls too.
 pub fn tiling_area(model: &Model, r: &Room, shape: &RoomShape) -> f64 {
-    let Some(t) = &r.tiling else { return 0.0 };
-    tiling_panels(model, shape, &t.skip, t.height)
-        .iter()
+    r.tilings()
+        .flat_map(|t| tiling_panels_of(model, shape, t))
         .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
         .sum()
 }
@@ -425,12 +577,34 @@ impl Room {
         if let Some(u) = &self.ufh {
             u.validate()?;
         }
+        for t in self.tilings() {
+            if !(t.height.is_finite() && t.bottom.is_finite())
+                || t.span
+                    .is_some_and(|s| !(s[0].is_finite() && s[1].is_finite()))
+            {
+                return Err("a room's tiling must be finite".into());
+            }
+        }
         Ok(())
     }
 
     /// Is its outline drawn rather than found from the walls?
     pub fn is_drawn(&self) -> bool {
         !self.boundary.is_empty()
+    }
+
+    /// Its tilings: the one on all its walls, then those on part of them.
+    pub fn tilings(&self) -> impl Iterator<Item = &Tiling> {
+        self.tiling.iter().chain(self.tiling_parts.iter())
+    }
+
+    /// Its `i`th tiling, counted as [`Room::tilings`] does.
+    pub fn tiling_mut(&mut self, i: usize) -> Option<&mut Tiling> {
+        match (&mut self.tiling, i) {
+            (Some(t), 0) => Some(t),
+            (Some(_), i) => self.tiling_parts.get_mut(i - 1),
+            (None, i) => self.tiling_parts.get_mut(i),
+        }
     }
 }
 
@@ -1572,6 +1746,46 @@ mod tests {
             .map(|(a, b)| a.distance(*b))
             .sum();
         assert!((low - s.perimeter()).abs() < 1e-6);
+        // a splashback (600)(900) round one corner: 1 m on either side
+        let c = s.outline[1];
+        let (u, v) = (
+            (s.outline[0] - c).normalize(),
+            (s.outline[2] - c).normalize(),
+        );
+        let part = Tiling {
+            height: 0.6,
+            bottom: 0.9,
+            span: Some([c + u * 1.0, c + v * 1.0]),
+            ..Tiling::default()
+        };
+        assert_eq!(part.mark_text(), "(600)(900)");
+        let runs = tiling_plan_runs_of(m, &s, &part);
+        let len: f64 = runs.iter().map(|(a, b)| a.distance(*b)).sum();
+        let panels = tiling_panels_of(m, &s, &part);
+        assert!(panels
+            .iter()
+            .all(|p| (p.z0 - 0.9).abs() < 1e-9 || p.z0 > 0.9));
+        assert!(panels.iter().all(|p| p.z1 <= 1.5 + 1e-9));
+        assert!(len <= 2.0 + 1e-6 && len > 0.5, "{len}");
+        // its mark on its line, where it was dragged to
+        let (at, _) = tiling_mark_at(m, &s, &part).unwrap();
+        assert!(runs
+            .iter()
+            .any(|(a, b)| { (at - *a).perp_dot(*b - *a).abs() < 1e-6 }));
+        let mut moved = part.clone();
+        moved.mark = Some(c + v * 0.3 + DVec2::new(0.4, 0.4));
+        let (to, _) = tiling_mark_at(m, &s, &moved).unwrap();
+        assert!(runs
+            .iter()
+            .any(|(a, b)| (to - *a).perp_dot(*b - *a).abs() < 1e-6));
+        // the room's area counts both
+        r.tiling_parts.push(part.clone());
+        let more = tiling_area(m, &r, &s) - (full - 1.2 * 1.1);
+        let own: f64 = panels
+            .iter()
+            .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
+            .sum();
+        assert!((more - own).abs() < 1e-9 && own > 0.0);
     }
 
     #[test]

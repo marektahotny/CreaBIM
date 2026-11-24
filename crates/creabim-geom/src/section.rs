@@ -879,6 +879,10 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             crate::plan::category_pens(model, &mut rooms, &v.graphics);
             rooms.append(&mut d.items);
             d.items = rooms;
+            // the rooms' tiling over the fixtures and cabinets
+            let mut tiling = crate::rooms::tiling_items(model, v, *level);
+            crate::plan::category_pens(model, &mut tiling, &v.graphics);
+            d.items.append(&mut tiling);
             // another level traced underneath, under the linework but
             // (over the fills, so a footing's or a slab's doesn't hide it)
             let under = match (

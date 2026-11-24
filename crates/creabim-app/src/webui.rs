@@ -428,6 +428,7 @@ mod approved_icons {
         ("Roof", "roof"),
         ("Railing", "railing"),
         ("Room separator", "room-separator"),
+        ("Tiling", "tiling"),
         ("Curtain wall", "curtain-wall"),
         ("Screen wall", "screen-wall"),
         ("Fixtures", "fixtures"),
