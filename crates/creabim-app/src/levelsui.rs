@@ -657,11 +657,14 @@ impl CreaBimApp {
                 ui.horizontal_top(|ui| {
                     // the kinds, the project's units first
                     ui.vertical(|ui| {
-                        ui.set_width(170.0);
+                        ui.set_width(220.0);
                         let row = |ui: &mut egui::Ui, on: bool, name: &str, said: String| {
                             let r = ui.add_sized(
-                                [170.0, 26.0],
-                                egui::Button::selectable(on, format!("{name}   {said}")),
+                                [220.0, 26.0],
+                                egui::Button::selectable(
+                                    on,
+                                    format!("{}   {said}", crate::i18n::tr(name)),
+                                ),
                             );
                             r.clicked()
                         };
@@ -677,7 +680,7 @@ impl CreaBimApp {
                         for k in creabim_core::NumberKind::ALL {
                             let f = formats.get(k);
                             let said = if f.is_default() {
-                                "project".to_string()
+                                crate::i18n::tr("project")
                             } else {
                                 format_summary(&f, &units, k)
                             };
@@ -914,14 +917,20 @@ pub(super) fn kind_format(
                 let h = ui.spacing().interact_size.y;
                 let w = ((ui.available_width() - 1.0) / 2.0).max(40.0);
                 if ui
-                    .add_sized([w, h], egui::Button::selectable(lead, "Leading 0.450"))
+                    .add_sized(
+                        [w, h],
+                        egui::Button::selectable(lead, crate::i18n::tr("Leading 0.450")),
+                    )
                     .on_hover_text(crate::i18n::t("Off: .450"))
                     .clicked()
                 {
                     lead = !lead;
                 }
                 if ui
-                    .add_sized([w, h], egui::Button::selectable(trail, "Trailing 3.000"))
+                    .add_sized(
+                        [w, h],
+                        egui::Button::selectable(trail, crate::i18n::tr("Trailing 3.000")),
+                    )
                     .on_hover_text(crate::i18n::t("Off: 3"))
                     .clicked()
                 {
