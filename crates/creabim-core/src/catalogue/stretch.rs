@@ -25,7 +25,7 @@ pub struct Stretch {
     pub make: fn(f64) -> CatalogueObject,
 }
 
-pub const STRETCHES: [Stretch; 2] = [
+pub const STRETCHES: [Stretch; 4] = [
     Stretch {
         family: "built-in-wardrobe",
         min: 1.0,
@@ -40,7 +40,120 @@ pub const STRETCHES: [Stretch; 2] = [
         usual: 1.8,
         make: kitchen_island,
     },
+    Stretch {
+        family: "metod-base-cabinet",
+        min: 0.15,
+        max: 1.2,
+        usual: 0.6,
+        make: metod_base_cabinet,
+    },
+    Stretch {
+        family: "metod-wall-cabinet",
+        min: 0.15,
+        max: 1.2,
+        usual: 0.6,
+        make: metod_wall_cabinet,
+    },
 ];
+
+/// Fronts on a cabinet: one up to 60 cm wide, two over it (as IKEA fits
+/// two 40 cm doors on its 80 cm frame); 21 mm proud, 2 mm gaps.
+fn metod_fronts(b: &mut Build, w: f64, y: f64, z0: f64, z1: f64, handle_low: bool) {
+    let n = if w > 0.6 + 1e-6 { 2 } else { 1 };
+    let fw = w / n as f64;
+    let f = 0.021;
+    for i in 0..n {
+        let a = -w / 2.0 + i as f64 * fw;
+        b.add(
+            "Door",
+            kitchen_front(),
+            cuboid(
+                v3(a + 0.002, y - f, z0 + 0.002),
+                v3(a + fw - 0.002, y, z1 - 0.002),
+            ),
+            false,
+        );
+        // the handle on the stile away from the hinges, near the
+        // worktop or the wall unit's bottom
+        let hx = if n == 2 && i == 0 {
+            a + fw - 0.04
+        } else {
+            a + 0.04
+        };
+        let (h0, h1) = if handle_low {
+            (z0 + 0.03, z0 + 0.2)
+        } else {
+            (z1 - 0.2, z1 - 0.03)
+        };
+        b.add(
+            "Handle",
+            stainless(),
+            cuboid(v3(hx - 0.006, y - f - 0.02, h0), v3(hx + 0.006, y - f, h1)),
+            false,
+        );
+    }
+    b.line(v2(-w / 2.0, y - f), v2(w / 2.0, y - f));
+}
+
+/// A made-to-measure base cabinet `len` wide (George 2026-11-23: "na
+/// mieru"), deep and high as IKEA's METOD: frame 60 deep, 80 high on 8 cm legs (88 cm to the worktop,
+/// as the corner base cabinet), the legs' plinth set back 10 cm; the
+/// worktop is left to the kitchen's own.
+pub fn metod_base_cabinet(len: f64) -> CatalogueObject {
+    let w = len;
+    let (d, legs) = (0.6, 0.08);
+    let mut b = Build::new();
+    b.add(
+        "Plinth",
+        plinth(),
+        cuboid(v3(-w / 2.0, -d + 0.1, 0.0), v3(w / 2.0, 0.0, legs)),
+        false,
+    );
+    b.add(
+        "Carcass",
+        laminate(),
+        cuboid(v3(-w / 2.0, -d, legs), v3(w / 2.0, 0.0, legs + 0.8)),
+        true,
+    );
+    metod_fronts(&mut b, w, -d, legs, legs + 0.8, false);
+    let mm = (w * 1000.0).round();
+    b.finish(
+        "metod-base-cabinet",
+        "Kitchen base cabinet",
+        &format!(
+            "Base cabinet made to measure {mm:.0} × 600 × 800 on 80 mm legs (880 to the worktop), depth and height as IKEA METOD"
+        ),
+        ObjectCategory::Kitchen,
+        ("IfcFurniture", "USERDEFINED"),
+        Mount::Wall,
+    )
+}
+
+/// A made-to-measure wall cabinet `len` wide, deep and high as IKEA's
+/// METOD: frame 37 deep, 80 high, its top level with the corner wall cabinet's (2170 mm).
+pub fn metod_wall_cabinet(len: f64) -> CatalogueObject {
+    let w = len;
+    let (d, top) = (0.37, 2.17);
+    let mut b = Build::new();
+    b.add(
+        "Carcass",
+        laminate(),
+        cuboid(v3(-w / 2.0, -d, top - 0.8), v3(w / 2.0, 0.0, top)),
+        true,
+    );
+    metod_fronts(&mut b, w, -d, top - 0.8, top, true);
+    let mm = (w * 1000.0).round();
+    b.finish(
+        "metod-wall-cabinet",
+        "Kitchen wall cabinet",
+        &format!(
+            "Wall cabinet made to measure {mm:.0} × 370 × 800, its top at 2170 mm, depth and height as IKEA METOD"
+        ),
+        ObjectCategory::Kitchen,
+        ("IfcFurniture", "USERDEFINED"),
+        Mount::Wall,
+    )
+}
 
 /// The stretch of the catalogue object `key` (`starter/built-in-wardrobe`
 /// or a stretched one's).
@@ -217,5 +330,30 @@ mod tests {
         assert!((island.size().x - 2.4).abs() < 1e-9);
         assert!(stretch_of("starter/built-in-wardrobe").is_some());
         assert!(stretch_of("starter/wardrobe").is_none());
+    }
+
+    /// George 2026-11-23: kitchen base and wall cabinets made to measure,
+    /// of any width.
+    #[test]
+    fn kitchen_cabinets_are_made_to_measure() {
+        for (len, w, doors) in [
+            (0.15, 0.15, 1),
+            (0.45, 0.45, 1),
+            (0.6, 0.6, 1),
+            (0.75, 0.75, 2),
+        ] {
+            let base = metod_base_cabinet(len).object;
+            assert!((base.size().x - w).abs() < 1e-9, "{len}");
+            assert!((base.size().z - 0.88).abs() < 1e-9);
+            assert_eq!(
+                base.parts.iter().filter(|p| p.name == "Door").count(),
+                doors
+            );
+            let wall = metod_wall_cabinet(len).object;
+            assert!((wall.size().x - w).abs() < 1e-9);
+            let (lo, hi) = wall.bounds();
+            assert!((hi.z - 2.17).abs() < 1e-9 && (lo.z - 1.37).abs() < 1e-9);
+        }
+        assert!(stretch_of("starter/metod-base-cabinet").is_some());
     }
 }

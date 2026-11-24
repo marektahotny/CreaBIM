@@ -514,9 +514,10 @@ impl FrameNode {
     }
 }
 
-/// The lines of a field's opening symbol, seen from outside: a
-/// triangle's point is at the hinges (STN 01 3420), an arrow shows the
-/// way a sliding leaf goes.
+/// The lines of a field's opening symbol, seen from outside: a turning
+/// leaf's triangle has its point at the hinges, a tilting one's points up,
+/// away from the hinges at the bottom (George 2026-11-23); an arrow shows
+/// the way a sliding leaf goes.
 pub fn sash_symbol(f: &Field, inset: f64) -> Vec<[f64; 4]> {
     let (x0, x1, y0, y1) = (f.x0 + inset, f.x1 - inset, f.y0 + inset, f.y1 - inset);
     let (xm, ym) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
@@ -527,13 +528,15 @@ pub fn sash_symbol(f: &Field, inset: f64) -> Vec<[f64; 4]> {
         l.push([ox, y0, hx, ym]);
         l.push([ox, y1, hx, ym]);
     }
+    // tilting, hinged at the bottom: the point up (George 2026-11-23);
+    // swinging out, hinged at the top: the point down
     if op.tilts() {
-        l.push([x0, y1, xm, y0]);
-        l.push([x1, y1, xm, y0]);
-    }
-    if op == LeafOp::TopHung {
         l.push([x0, y0, xm, y1]);
         l.push([x1, y0, xm, y1]);
+    }
+    if op == LeafOp::TopHung {
+        l.push([x0, y1, xm, y0]);
+        l.push([x1, y1, xm, y0]);
     }
     if let Some(left) = op.slides_left() {
         let d = if left { -1.0 } else { 1.0 };
@@ -1234,14 +1237,15 @@ mod tests {
     }
 
     #[test]
-    fn the_symbols_point_is_at_the_hinges() {
+    fn a_turning_symbol_points_to_its_hinges_a_tilting_one_up() {
         let (f, _) = FrameNode::leaf(LeafOp::TiltTurnLeft).layout(1.0, 1.0, 0.0, 0.0, true);
         let s = sash_symbol(&f[0], 0.0);
         assert_eq!(s.len(), 4);
         // hinged on the left: both lines of the side triangle end there
         assert!(s[..2].iter().all(|l| l[2] == 0.0 && l[3] == 0.5));
-        // tilting: the point is at the bottom's middle
-        assert!(s[2..].iter().all(|l| l[2] == 0.5 && l[3] == 0.0));
+        // tilting, hinged at the bottom: the point is at the top's
+        // middle (George 2026-11-23)
+        assert!(s[2..].iter().all(|l| l[2] == 0.5 && l[3] == 1.0));
         let (f, _) = FrameNode::leaf(LeafOp::Fixed).layout(1.0, 1.0, 0.0, 0.0, true);
         assert!(sash_symbol(&f[0], 0.0).is_empty());
     }
