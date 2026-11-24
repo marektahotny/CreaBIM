@@ -543,18 +543,28 @@ fn marks_of_section(
         let t = Tag::new(view, host, DVec2::new(x, hi.y + MARK_ROW) - c);
         out.push(Element::new("Tag", ElementKind::Tag(t)));
     };
-    // each lintel over an opening once, with its underside
+    // each lintel over an opening once, with its underside; one of the
+    // same position seen behind another (the openings of one wall, one
+    // behind the other) not again
+    let mut done: Vec<(String, DVec2)> = vec![];
     for p in structural::lintel_positions(model) {
         for g in &p.groups {
             let Some(id) = g.iter().find(|id| seen.contains_key(id)) else {
                 continue;
             };
-            tag(*id, &mut out);
             let Some(b) = beam(id) else { continue };
             let mid = (b.start + b.end) / 2.0;
-            let p = mid.extend(b.top(model) - b.depth);
-            let at = frame.project(p).truncate();
-            out.push(spot(on(*id, p), at + DVec2::new(0.35, -0.3), true));
+            let under = mid.extend(b.top(model) - b.depth);
+            let at = frame.project(under).truncate();
+            if done
+                .iter()
+                .any(|(m, q)| *m == p.mark && q.distance(at) < 0.6)
+            {
+                continue;
+            }
+            done.push((p.mark.clone(), at));
+            tag(*id, &mut out);
+            out.push(spot(on(*id, under), at + DVec2::new(0.35, -0.3), true));
         }
     }
     // the ring beams: each marked; the outermost cut ones on each side
