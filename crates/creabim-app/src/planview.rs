@@ -1663,13 +1663,17 @@ fn show_pane(
     let hovered = hoverpick::highlighted(&state.hover)
         .filter(|id| !selection.contains(*id) && !response.dragged());
     let hovered_slab = hovered.filter(|id| slabs.iter().any(|(s, _)| s == id));
+    // only the slab under the pointer or selected is filled: a faint fill
+    // on every slab showed only on those whose outline the plan draws
+    // (a kitchen's tiled floor beside a room separator), and read as a
+    // colour of that floor (George 2026-11-24)
     for (id, points) in &slabs {
         let fill = if selection.contains(*id) {
             SLAB_SELECTED
         } else if hovered_slab == Some(*id) {
             SLAB_HOVER
         } else {
-            SLAB_FILL
+            continue;
         };
         fill_polygon(&painter, &xf, points, fill);
     }
@@ -9068,8 +9072,7 @@ fn snap(
 }
 
 /// Fill a possibly concave polygon.
-/// A slab's fill in its level's plan, under the pointer, and selected.
-const SLAB_FILL: Color32 = Color32::from_rgba_unmultiplied_const(70, 110, 170, 30);
+/// A slab's fill in its level's plan, under the pointer and selected.
 const SLAB_HOVER: Color32 = Color32::from_rgba_unmultiplied_const(60, 110, 200, 70);
 const SLAB_SELECTED: Color32 = Color32::from_rgba_unmultiplied_const(240, 140, 50, 60);
 /// The edge of the slab under the pointer.
