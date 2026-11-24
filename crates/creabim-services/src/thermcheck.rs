@@ -1,0 +1,257 @@
+//! The checks of a detail's temperature field by STN 73 0540-2 (čl. 5.3:
+//! the lowest inner surface temperature θsi ≥ θsi,80 + Δθsi, table 4, and
+//! the temperature factor fRsi ≥ fRsi,N, table 5) with the surface
+//! resistances of STN 73 0540-3 (table 15) or of STN EN ISO 13788, and
+//! the saturation pressure of water vapour (STN 73 0540-3, formulas 8 to
+//! 10). Every value comes from the norms' parameter files read into the
+//! project; none is written in the code.
+
+use creabim_core::fireparams::{self, number, ParamTable};
+
+/// STN 73 0540-3 table 15: `key`, `Rsi`, `Rse`, `hi`, `he`, `text`.
+pub const RS: &str = "prestup_tepla";
+/// STN 73 0540-3 formulas: `key`, `vzorec`, `platnost`, `text`.
+pub const FORMULAS: &str = "vzorce";
+/// STN 73 0540-2 table 4: `key`, `heating`, `delta_plocha_K`,
+/// `delta_kut_K`, `text`.
+pub const DELTA: &str = "frsi_delta";
+/// STN 73 0540-2 čl. 5.3 constants: `key`, `value`, `unit`, `text`.
+pub const CONSTANTS: &str = "frsi_konstanty";
+/// STN 73 0540-2 table 5: `theta_e`, `theta_si`, `frsi_n_20`, `frsi_n_22`.
+pub const FRSI_N: &str = "frsi_n";
+/// STN EN ISO 13788 boundary conditions: `key`, `value`, `unit`, `text`.
+pub const ISO_13788: &str = "okrajove_podmienky";
+/// STN EN ISO 10211 simplifications (mesh criteria): `key`, `value`, …
+pub const ISO_10211: &str = "zjednodusenia";
+/// STN EN ISO 10211 input data (soil λ): `key`, `value`, …
+pub const ISO_10211_INPUT: &str = "vstupne_udaje";
+
+/// The tables the checks read.
+pub const TABLES: [&str; 8] = [
+    RS,
+    FORMULAS,
+    DELTA,
+    CONSTANTS,
+    FRSI_N,
+    ISO_13788,
+    ISO_10211,
+    ISO_10211_INPUT,
+];
+
+/// The norm tables of the project, else the application's.
+pub fn tables_of(model: &creabim_core::Model) -> Vec<ParamTable> {
+    let own = model
+        .project_info()
+        .map(|(_, p)| p.fire_params.clone())
+        .unwrap_or_default();
+    fireparams::effective(&own)
+        .into_iter()
+        .filter(|t| TABLES.contains(&t.id.as_str()))
+        .collect()
+}
+
+fn table<'a>(tables: &'a [ParamTable], id: &str) -> Option<&'a ParamTable> {
+    tables.iter().find(|t| t.id == id)
+}
+
+fn value(tables: &[ParamTable], id: &str, key: &str, col: &str) -> Option<f64> {
+    number(table(tables, id)?.cell(key, col))
+}
+
+/// The surface resistances of a detail, m²·K/W.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SurfaceRs {
+    /// Inside, the heat flowing up (a ceiling), level (a wall), down (a
+    /// floor).
+    pub up: f64,
+    pub level: f64,
+    pub down: f64,
+    /// Outside.
+    pub e: f64,
+}
+
+/// Rsi by STN 73 0540-3 table 15 (by the heat flow's direction), or with
+/// `iso` the 0,25 of STN EN ISO 13788 (4.4.1) on every inner surface; Rse
+/// of table 15 (winter). None when a table is missing.
+pub fn surface_rs(tables: &[ParamTable], iso: bool) -> Option<SurfaceRs> {
+    let e = value(tables, RS, "vonkajsi_zima", "Rse")?;
+    if iso {
+        let r = value(tables, ISO_13788, "Rsi_plesne_nepriesvitne", "value")?;
+        return Some(SurfaceRs {
+            up: r,
+            level: r,
+            down: r,
+            e,
+        });
+    }
+    Some(SurfaceRs {
+        up: value(tables, RS, "vnutorny_nahor", "Rsi")?,
+        level: value(tables, RS, "vnutorny_vodorovne", "Rsi")?,
+        down: value(tables, RS, "vnutorny_nadol", "Rsi")?,
+        e,
+    })
+}
+
+/// The numbers of a formula `a·exp(b·θ/(c+θ))`, as written in the norm's
+/// table ("610,5·exp(17,269·θ/(237,3+θ))").
+fn magnus(text: &str) -> Option<(f64, f64, f64)> {
+    let nums: Vec<f64> = text
+        .split(|c: char| !(c.is_ascii_digit() || c == ',' || c == '.'))
+        .filter(|s| s.chars().any(|c| c.is_ascii_digit()))
+        .filter_map(number)
+        .collect();
+    (nums.len() >= 3).then(|| (nums[0], nums[1], nums[2]))
+}
+
+/// Saturation pressure of water vapour over water (θ ≥ 0) or ice, Pa
+/// (STN 73 0540-3 formulas 8, 9).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Psat {
+    plus: (f64, f64, f64),
+    minus: (f64, f64, f64),
+}
+
+impl Psat {
+    pub fn of(tables: &[ParamTable]) -> Option<Psat> {
+        let t = table(tables, FORMULAS)?;
+        Some(Psat {
+            plus: magnus(t.cell("p_sat_plus", "vzorec"))?,
+            minus: magnus(t.cell("p_sat_minus", "vzorec"))?,
+        })
+    }
+
+    pub fn p(&self, theta: f64) -> f64 {
+        let (a, b, c) = if theta >= 0.0 { self.plus } else { self.minus };
+        a * (b * theta / (c + theta)).exp()
+    }
+
+    /// The temperature at which the saturation pressure is `p`, °C.
+    pub fn theta(&self, p: f64) -> f64 {
+        let at = |(a, b, c): (f64, f64, f64)| {
+            let l = (p / a).ln();
+            c * l / (b - l)
+        };
+        if p >= self.plus.0 {
+            at(self.plus)
+        } else {
+            at(self.minus)
+        }
+    }
+
+    /// The critical surface temperature for mould θsi,80 at θai, φi (%)
+    /// (formula 10).
+    pub fn theta_si80(&self, theta_i: f64, phi_i: f64) -> f64 {
+        self.theta(phi_i * self.p(theta_i) / 80.0)
+    }
+
+    /// The dew point at θa, φa (%).
+    pub fn dew_point(&self, theta: f64, phi: f64) -> f64 {
+        self.theta(phi / 100.0 * self.p(theta))
+    }
+}
+
+/// The ways of heating of table 4: key and text.
+pub fn heating_modes(tables: &[ParamTable]) -> Vec<(String, String)> {
+    let Some(t) = table(tables, DELTA) else {
+        return vec![];
+    };
+    let text = t.column("text");
+    t.rows
+        .iter()
+        .map(|r| {
+            (
+                r[0].clone(),
+                text.and_then(|c| r.get(c)).cloned().unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
+/// Δθsi of table 4 for heating `key`, on a plain surface or in a corner.
+pub fn delta_theta_si(tables: &[ParamTable], key: &str, corner: bool) -> Option<f64> {
+    value(
+        tables,
+        DELTA,
+        key,
+        if corner {
+            "delta_kut_K"
+        } else {
+            "delta_plocha_K"
+        },
+    )
+}
+
+/// φi above which the surface temperature is not proven by calculation
+/// (čl. 5.3.1), %.
+pub fn phi_i_max(tables: &[ParamTable]) -> Option<f64> {
+    value(tables, CONSTANTS, "phi_i_max", "value")
+}
+
+/// fRsi,N of table 5 for θe and θi, interpolated linearly; an error
+/// when they lie outside the table (no extrapolation).
+pub fn frsi_n(tables: &[ParamTable], theta_e: f64, theta_i: f64) -> Result<f64, String> {
+    let t = table(tables, FRSI_N).ok_or_else(|| FRSI_N.to_string())?;
+    let mut rows: Vec<(f64, f64, f64)> = t
+        .rows
+        .iter()
+        .filter_map(|r| {
+            Some((
+                number(&r[0])?,
+                number(t.cell(&r[0], "frsi_n_20"))?,
+                number(t.cell(&r[0], "frsi_n_22"))?,
+            ))
+        })
+        .collect();
+    rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let (lo, hi) = (rows.first().ok_or("")?.0, rows.last().ok_or("")?.0);
+    if !(lo - 1e-9..=hi + 1e-9).contains(&theta_e) {
+        return Err(format!("θe {theta_e} °C ∉ ⟨{lo}; {hi}⟩"));
+    }
+    if !(20.0 - 1e-9..=22.0 + 1e-9).contains(&theta_i) {
+        return Err(format!("θi {theta_i} °C ∉ ⟨20; 22⟩"));
+    }
+    let k = rows
+        .iter()
+        .position(|r| r.0 >= theta_e - 1e-9)
+        .unwrap_or(rows.len() - 1);
+    let (a, b) = if k == 0 {
+        (rows[0], rows[0])
+    } else {
+        (rows[k - 1], rows[k])
+    };
+    let s = if (b.0 - a.0).abs() > 1e-12 {
+        (theta_e - a.0) / (b.0 - a.0)
+    } else {
+        0.0
+    };
+    let f20 = a.1 + s * (b.1 - a.1);
+    let f22 = a.2 + s * (b.2 - a.2);
+    Ok(f20 + (theta_i - 20.0) / 2.0 * (f22 - f20))
+}
+
+/// The mesh criteria of STN EN ISO 10211 čl. 7.2.7: the heat flow's
+/// change (fraction) and fRsi's on halving the cells.
+pub fn mesh_limits(tables: &[ParamTable]) -> Option<(f64, f64)> {
+    Some((
+        value(tables, ISO_10211, "konvergencia_tok", "value")? / 100.0,
+        value(tables, ISO_10211, "konvergencia_frsi", "value")?,
+    ))
+}
+
+/// λ of the soil where nothing else is known (STN EN ISO 10211, 8.2).
+pub fn soil_lambda(tables: &[ParamTable]) -> Option<f64> {
+    value(tables, ISO_10211_INPUT, "lambda_zemina_default", "value")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_formula_numbers() {
+        assert_eq!(
+            magnus("610,5·exp(17,269·θ/(237,3+θ))"),
+            Some((610.5, 17.269, 237.3))
+        );
+    }
+}

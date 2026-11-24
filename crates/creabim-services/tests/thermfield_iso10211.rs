@@ -81,6 +81,7 @@ fn case_1_half_column() {
                 rs: 0.0,
             },
         ],
+        ..Default::default()
     };
     let f = d.solve(&Mesh {
         h_max: a / 64.0,
@@ -175,6 +176,7 @@ fn case_2_frame() {
                 rs: lam("Rsi_HI"),
             },
         ],
+        ..Default::default()
     };
     let f = d.solve(&Mesh {
         h_max: 0.002,
@@ -213,4 +215,69 @@ fn case_2_frame() {
         f.flows[0]
     );
     assert!(f.balance.abs() < 1e-4);
+}
+
+/// The vapour formulas and the checks' tables against the control values
+/// the norm prints (STN 73 0540-3 tables 11 to 13).
+#[test]
+fn vapour_and_checks() {
+    use creabim_services::thermcheck::{self, Psat};
+    let Ok(dir) = std::env::var("CREABIM_NORMS") else {
+        return;
+    };
+    let mut all = vec![];
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".tsv"))
+        .collect();
+    files.sort_by_key(|e| e.metadata().and_then(|m| m.modified()).ok());
+    for f in files {
+        fireparams::merge(
+            &mut all,
+            fireparams::parse(&std::fs::read_to_string(f.path()).unwrap()),
+        );
+    }
+    let ps = Psat::of(&all).expect("vzorce");
+    let ctrl = table(&all, "kontrolne_body");
+    for r in &ctrl.rows {
+        let (tab, th, phi, want) = (
+            r[0].as_str(),
+            number(&r[1]).unwrap(),
+            number(&r[2]),
+            number(&r[3]).unwrap(),
+        );
+        let got = match (tab, phi) {
+            ("11", _) => ps.p(th),
+            ("12", Some(phi)) => ps.theta_si80(th, phi),
+            ("13", Some(phi)) => ps.dew_point(th, phi),
+            _ => continue,
+        };
+        // formulas 8, 9 against the norm's printed table 11: they differ
+        // by up to 0,39 Pa (5,9 Pa at 35 °C); θsi,80 and θdp by 0,022 K
+        let tol = if tab == "11" {
+            if th > 30.0 {
+                6.0
+            } else {
+                0.4
+            }
+        } else {
+            0.025
+        };
+        assert!(
+            (got - want).abs() <= tol,
+            "tab. {tab} {th} {phi:?}: {got} vs {want}"
+        );
+    }
+    let rs = thermcheck::surface_rs(&all, false).unwrap();
+    assert!(rs.up < rs.level && rs.level < rs.down);
+    // table 5 rows as printed, and halfway between rows and columns
+    let f = |e, i| thermcheck::frsi_n(&all, e, i).unwrap();
+    assert!((f(-11.0, 20.0) - 0.78).abs() < 1e-9);
+    assert!((f(-11.0, 22.0) - 0.73).abs() < 1e-9);
+    assert!((f(-23.0, 20.0) - 0.84).abs() < 1e-9);
+    assert!((f(-11.5, 21.0) - (0.78 + 0.78 + 0.73 + 0.74) / 4.0).abs() < 1e-9);
+    assert!(thermcheck::frsi_n(&all, -11.0, 23.0).is_err());
+    assert!(thermcheck::frsi_n(&all, -5.0, 20.0).is_err());
+    assert!(thermcheck::mesh_limits(&all).is_some());
 }

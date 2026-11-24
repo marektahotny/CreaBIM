@@ -60,6 +60,10 @@ fn groups() -> Vec<(&'static str, Vec<&'static str>)> {
             "Climate and localities",
             fireparams::CLIMATE_TABLES.to_vec(),
         ),
+        (
+            "Thermal field of details (STN EN ISO 10211, STN 73 0540-2, -3, STN EN ISO 13788)",
+            creabim_services::thermcheck::TABLES.to_vec(),
+        ),
         ("Railings (STN 74 3305)", railcheck::TABLES.to_vec()),
         (
             "Stairs (STN 73 4130, STN 73 4301)",
@@ -92,7 +96,14 @@ pub fn read_folder(dir: &std::path::Path) -> std::io::Result<Vec<(ParamTable, St
                     .is_some_and(|x| x.eq_ignore_ascii_case("tsv") || x.eq_ignore_ascii_case("txt"))
         })
         .collect();
-    files.sort();
+    // the newest file last, so its tables win: a copy saved later under a
+    // new name (with a time stamp) holds the current values
+    files.sort_by_key(|f| {
+        (
+            std::fs::metadata(f).and_then(|m| m.modified()).ok(),
+            f.clone(),
+        )
+    });
     let mut out = vec![];
     for f in files {
         let Ok(text) = std::fs::read_to_string(&f) else {

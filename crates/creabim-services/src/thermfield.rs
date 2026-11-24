@@ -63,13 +63,54 @@ pub struct Edge {
     pub rs: f64,
 }
 
+/// Where the air lies against a surface (the y axis points up): over it
+/// (a floor, the heat flowing down into it from a warm room), beside it
+/// (a wall) or under it (a ceiling).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Side {
+    Over,
+    Beside,
+    Under,
+}
+
+/// Air of one environment touching the detail: the surfaces it meets take
+/// its surface resistance by where it lies against them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Air {
+    pub env: usize,
+    /// Rs where the air lies over, beside and under the surface, m²·K/W.
+    pub rs_over: f64,
+    pub rs_beside: f64,
+    pub rs_under: f64,
+}
+
+impl Air {
+    pub fn rs(&self, side: Side) -> f64 {
+        match side {
+            Side::Over => self.rs_over,
+            Side::Beside => self.rs_beside,
+            Side::Under => self.rs_under,
+        }
+    }
+}
+
 /// The detail to solve.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Detail {
     pub materials: Vec<Material>,
     pub regions: Vec<Region>,
     pub envs: Vec<Env>,
+    /// Surfaces given by hand; they win over the air.
     pub edges: Vec<Edge>,
+    /// Air spaces (a room's): polygons with their air.
+    pub air: Vec<(Vec<[f64; 2]>, Air)>,
+    /// The air everywhere else inside the mesh (outside); none leaves
+    /// those surfaces adiabatic. Past the mesh's border all is adiabatic
+    /// (the cut planes).
+    pub outside: Option<Air>,
+    /// The box the detail is cut to (its cut planes), lower and upper
+    /// corner; none takes the regions' extent.
+    pub bounds: Option<([f64; 2], [f64; 2])>,
 }
 
 /// How finely the detail is divided (C.2 b: the user decides).
@@ -220,6 +261,10 @@ impl Detail {
                 ky.push(p[1]);
             }
         }
+        if let Some((lo, hi)) = self.bounds {
+            kx.extend([lo[0], hi[0]]);
+            ky.extend([lo[1], hi[1]]);
+        }
         for e in &self.edges {
             for p in [e.a, e.b] {
                 kx.push(p[0]);
@@ -247,6 +292,15 @@ impl Detail {
         let (xs, ys) = self.mesh_lines(mesh);
         let fine = self.solve_on(halve(&xs), halve(&ys));
         (self.solve_on(xs, ys), fine)
+    }
+
+    /// The air at point `p` off the detail.
+    fn air_at(&self, p: [f64; 2]) -> Option<&Air> {
+        self.air
+            .iter()
+            .find(|(poly, _)| inside(poly, p))
+            .map(|(_, a)| a)
+            .or(self.outside.as_ref())
     }
 
     /// The edge a boundary face from `a` to `b` lies on: exactly, or for a
@@ -335,47 +389,71 @@ impl Detail {
         let mut film: Vec<(usize, usize, f64)> = vec![];
         let mut fixed: Vec<Option<(f64, usize)>> = vec![None; n];
         let mut fix_sum: Vec<(f64, f64)> = vec![(0.0, 0.0); n];
+        // The air cell beside a face: its centre, and whether the air lies
+        // over the surface, beside it or under it.
+        let air_cell = |i: isize, j: isize, side: Side| -> Option<([f64; 2], Side)> {
+            if i < 0 || j < 0 || i as usize >= cx || j as usize >= cy {
+                return None;
+            }
+            let (i, j) = (i as usize, j as usize);
+            Some(([0.5 * (xs[i] + xs[i + 1]), 0.5 * (ys[j] + ys[j + 1])], side))
+        };
         let mut face = |a: usize,
                         b: usize,
                         pa: [f64; 2],
                         pb: [f64; 2],
+                        air: Option<([f64; 2], Side)>,
                         film: &mut Vec<(usize, usize, f64)>| {
             let len = ((pb[0] - pa[0]).powi(2) + (pb[1] - pa[1]).powi(2)).sqrt();
-            if let Some(k) = self.edge_at(pa, pb) {
-                let e = &self.edges[k];
-                if e.rs <= 0.0 {
-                    let th = self.envs[e.env].theta;
+            let found = match self.edge_at(pa, pb) {
+                Some(k) => Some((self.edges[k].env, self.edges[k].rs)),
+                None => air.and_then(|(c, side)| self.air_at(c).map(|a| (a.env, a.rs(side)))),
+            };
+            if let Some((env, rs)) = found {
+                if rs <= 0.0 {
+                    let th = self.envs[env].theta;
                     for node in [a, b] {
                         fix_sum[node].0 += th;
                         fix_sum[node].1 += 1.0;
-                        fixed[node] = Some((0.0, e.env));
+                        fixed[node] = Some((0.0, env));
                     }
                 } else {
-                    film.push((a, e.env, 0.5 * len / e.rs));
-                    film.push((b, e.env, 0.5 * len / e.rs));
+                    film.push((a, env, 0.5 * len / rs));
+                    film.push((b, env, 0.5 * len / rs));
                 }
             }
         };
         for j in 0..ny {
             for i in 0..nx {
                 // Horizontal face y_j, x_i..x_i+1 between cells (i,j-1) and (i,j).
-                if i + 1 < nx && solid(i as isize, j as isize - 1) != solid(i as isize, j as isize)
-                {
+                let (ii, jj) = (i as isize, j as isize);
+                if i + 1 < nx && solid(ii, jj - 1) != solid(ii, jj) {
+                    let air = if solid(ii, jj - 1) {
+                        air_cell(ii, jj, Side::Over)
+                    } else {
+                        air_cell(ii, jj - 1, Side::Under)
+                    };
                     face(
                         id(i, j),
                         id(i + 1, j),
                         [xs[i], ys[j]],
                         [xs[i + 1], ys[j]],
+                        air,
                         &mut film,
                     );
                 }
-                if j + 1 < ny && solid(i as isize - 1, j as isize) != solid(i as isize, j as isize)
-                {
+                if j + 1 < ny && solid(ii - 1, jj) != solid(ii, jj) {
+                    let air = if solid(ii - 1, jj) {
+                        air_cell(ii, jj, Side::Beside)
+                    } else {
+                        air_cell(ii - 1, jj, Side::Beside)
+                    };
                     face(
                         id(i, j),
                         id(i, j + 1),
                         [xs[i], ys[j]],
                         [xs[i], ys[j + 1]],
+                        air,
                         &mut film,
                     );
                 }
@@ -842,6 +920,7 @@ mod tests {
                     rs: 0.0,
                 },
             ],
+            ..Default::default()
         };
         let f = d.solve(&Mesh {
             h_max: h,
@@ -914,6 +993,7 @@ mod tests {
                     rs: 0.04,
                 },
             ],
+            ..Default::default()
         };
         let f = d.solve(&Mesh::default());
         let u = 1.0 / (0.13 + 0.3 / 0.5 + 0.04);
@@ -922,5 +1002,56 @@ mod tests {
         assert!((f.min_surface(0).unwrap().theta - tsi).abs() < 1e-6);
         assert!(psi(f.l2d(0, 1, &d.envs), &[(u, 1.0)]).abs() < 1e-6);
         assert!(!isotherm(&f, 0.0).is_empty());
+    }
+
+    #[test]
+    fn air_gives_surfaces() {
+        // A 0,3 m wall in a 1,3 m wide box: a room on the left, outside on
+        // the right, the box's top and bottom adiabatic.
+        let d = Detail {
+            materials: vec![Material {
+                name: "m".into(),
+                lambda: 0.5,
+            }],
+            regions: vec![Region::rect(0, 0.5, 0.0, 0.8, 1.0)],
+            envs: vec![
+                Env {
+                    name: "i".into(),
+                    theta: 20.0,
+                },
+                Env {
+                    name: "e".into(),
+                    theta: -10.0,
+                },
+            ],
+            air: vec![(
+                vec![[-1.0, -1.0], [0.5, -1.0], [0.5, 2.0], [-1.0, 2.0]],
+                Air {
+                    env: 0,
+                    rs_over: 0.17,
+                    rs_beside: 0.13,
+                    rs_under: 0.10,
+                },
+            )],
+            outside: Some(Air {
+                env: 1,
+                rs_over: 0.04,
+                rs_beside: 0.04,
+                rs_under: 0.04,
+            }),
+            bounds: Some(([0.0, 0.0], [1.3, 1.0])),
+            ..Default::default()
+        };
+        let mut f = d.solve(&Mesh::default());
+        // the box: air cells on both sides only where the mesh reaches
+        assert!(f.surface.iter().all(|s| s.p[0] < 0.51 || s.p[0] > 0.79));
+        let u = 1.0 / (0.13 + 0.3 / 0.5 + 0.04);
+        assert!(
+            (f.l2d(0, 1, &d.envs) - u).abs() < 1e-6,
+            "{}",
+            f.l2d(0, 1, &d.envs)
+        );
+        assert_eq!(f.flows.len(), 2);
+        f.flows.clear();
     }
 }
