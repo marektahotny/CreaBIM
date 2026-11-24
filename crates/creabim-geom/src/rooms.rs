@@ -66,6 +66,52 @@ pub fn tiling_mark(
     })
 }
 
+/// The tiling's runs moved off the wall faces into the room, each end
+/// that meets another run's (a corner, a window's reveal) carried to
+/// where their moved lines cross, so the line turns without a gap.
+fn joined_runs(runs: &[(DVec2, DVec2)]) -> Vec<(DVec2, DVec2)> {
+    let moved: Vec<(DVec2, DVec2, DVec2)> = runs
+        .iter()
+        .map(|&(a, b)| {
+            let d = (b - a).normalize_or_zero();
+            let off = DVec2::new(-d.y, d.x) * TILING_OFF;
+            (a + off, b + off, d)
+        })
+        .collect();
+    let cross = |p: DVec2, d: DVec2, q: DVec2, e: DVec2| {
+        let den = d.perp_dot(e);
+        (den.abs() > 1e-6).then(|| p + d * ((q - p).perp_dot(e) / den))
+    };
+    let mut out = vec![];
+    for (i, &(a, b)) in runs.iter().enumerate() {
+        let (mut ma, mut mb, d) = moved[i];
+        for (j, &(c, f)) in runs.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            let (mc, _, e) = moved[j];
+            if b.distance(c) < 1e-4 || b.distance(f) < 1e-4 {
+                if let Some(x) = cross(ma, d, mc, e) {
+                    if x.distance(mb) < 4.0 * TILING_OFF {
+                        mb = x;
+                    }
+                }
+            }
+            if a.distance(c) < 1e-4 || a.distance(f) < 1e-4 {
+                if let Some(x) = cross(ma, d, mc, e) {
+                    if x.distance(ma) < 4.0 * TILING_OFF {
+                        ma = x;
+                    }
+                }
+            }
+        }
+        if ma.distance(mb) > 1e-6 {
+            out.push((ma, mb));
+        }
+    }
+    out
+}
+
 /// What a plan of `level` draws of its rooms' tiling: a medium dash-dot
 /// line just off the walls' faces and its mark "(height)(bottom)", over
 /// the fixtures and cabinets in front of it, as in George's drawings
@@ -88,9 +134,7 @@ pub fn tiling_items(model: &Model, view: &View, level: ElementId) -> Vec<PlanIte
             continue;
         };
         for t in r.tilings() {
-            for (a, b) in room::tiling_plan_runs_of(model, &s, t) {
-                let d = (b - a).normalize_or_zero();
-                let off = DVec2::new(-d.y, d.x) * TILING_OFF;
+            for (a, b) in joined_runs(&room::tiling_plan_runs_of(model, &s, t)) {
                 // a medium dash-dot line (George 2026-11-22)
                 out.push(PlanItem::Line {
                     id: e.id,
@@ -98,8 +142,8 @@ pub fn tiling_items(model: &Model, view: &View, level: ElementId) -> Vec<PlanIte
                         pen: creabim_core::LinePen::Thick,
                         kind: creabim_core::LineType::DashDot,
                     }),
-                    a: a + off,
-                    b: b + off,
+                    a,
+                    b,
                 });
             }
             // its mark along the line, inside the room (George 2026-11-24)

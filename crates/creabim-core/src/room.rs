@@ -521,7 +521,13 @@ pub fn tiling_plan_runs_of(model: &Model, shape: &RoomShape, t: &Tiling) -> Vec<
     // and on into the side reveals of the windows it runs across
     for r in tiling_reveals(model, shape, t) {
         if r.normal.z.abs() < 0.5 {
-            out.push((r.corners[0].truncate(), r.corners[1].truncate()));
+            // the tiles on the left of the run, as along the walls
+            let (a, b) = (r.corners[0].truncate(), r.corners[1].truncate());
+            if (b - a).perp().dot(r.normal.truncate()) >= 0.0 {
+                out.push((a, b));
+            } else {
+                out.push((b, a));
+            }
         }
     }
     out
