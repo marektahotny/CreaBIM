@@ -9,9 +9,10 @@
 //! by raising the smaller side. Every duct is routed from its room
 //! through the doors to the unit's room, so no duct is led through a
 //! wall, a lintel or a beam (the routes check still looks). Pressure
-//! loss is the ducts' friction (Darcy–Weisbach, Swamee–Jain) and their
-//! bends; the plate valves', boxes' and the unit's own figures come from
-//! the catalogue where it gives them.
+//! loss of the GP ducts is read from ATREA's graph (element catalogue
+//! A2328 26/06), of the Spiro mains from their friction (Darcy–Weisbach,
+//! Swamee–Jain), plus their bends; the unit's figures come from its
+//! technical sheet.
 //!
 //! The bill of materials ([`bill`]) is read from the model, so whatever
 //! is moved, added or deleted by hand is priced as it is drawn.
@@ -559,6 +560,37 @@ fn path_length(p: &[DVec2]) -> f64 {
     p.windows(2).map(|w| w[0].distance(w[1])).sum()
 }
 
+/// ATREA GP Ø90/75: pressure loss against flow, read from the graph
+/// "Green Pipe" of the ATREA element catalogue A2328 26/06, p. 53
+/// (m³/h, Pa; taken as per metre of duct, the graph gives no length).
+const GP_LOSS: [(f64, f64); 11] = [
+    (0.0, 0.0),
+    (5.0, 0.20),
+    (10.0, 0.42),
+    (15.0, 0.68),
+    (20.0, 0.99),
+    (25.0, 1.42),
+    (30.0, 2.02),
+    (35.0, 2.74),
+    (40.0, 3.57),
+    (45.0, 4.41),
+    (50.0, 5.17),
+];
+
+/// Velocity and pressure loss per metre of an ATREA GP duct at `q` m³/h,
+/// from the maker's graph (linear between its points; beyond 50 m³/h,
+/// which ATREA does not allow, the last step goes on).
+fn gp_friction(q: f64) -> (f64, f64) {
+    let a = std::f64::consts::PI * 0.075 * 0.075 / 4.0;
+    let v = q / 3600.0 / a;
+    let k = GP_LOSS
+        .windows(2)
+        .position(|w| q <= w[1].0)
+        .unwrap_or(GP_LOSS.len() - 2);
+    let (p, n) = (GP_LOSS[k], GP_LOSS[k + 1]);
+    (v, p.1 + (n.1 - p.1) * (q - p.0) / (n.0 - p.0))
+}
+
 /// Pressure lost per metre in a round duct, Pa/m.
 fn friction(q_m3h: f64, d: f64, rough: f64) -> (f64, f64) {
     let a = std::f64::consts::PI * d * d / 4.0;
@@ -920,12 +952,14 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             continue;
         }
         let ducts = (r.design / o.per_duct).ceil().max(1.0) as u32;
-        let terms = ducts.div_ceil(2) as usize;
+        // ATREA: each GP run ends at its own plate valve Ø100 (through
+        // the GP connection set on its DN100 collar)
+        let terms = ducts as usize;
         r.ducts = ducts;
         let places = terminal_places(&geo[i], &door_pts(i), terms);
         let mut left = ducts;
         for p in places {
-            let k = left.min(2);
+            let k = left.min(1);
             left -= k;
             r.terminals.push(Terminal {
                 at: p,
@@ -960,7 +994,6 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 }
             }
         }
-        let rough = crate::pipe_types::by_id("GP").map_or(5e-5, |t| t.roughness_mm / 1000.0);
         for (ri, r) in d.rooms.iter().enumerate() {
             if !matches!(r.role, Role::Supply | Role::Extract) {
                 continue;
@@ -984,7 +1017,8 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             for (ti, t) in r.terminals.iter().enumerate() {
                 for dn in 0..t.ducts {
                     // a duct of its own, a little aside of its neighbours
-                    let off = (dn as f64 - (t.ducts as f64 - 1.0) / 2.0) * 0.1;
+                    let k = r.terminals[..ti].iter().map(|x| x.ducts).sum::<u32>() + dn;
+                    let off = (k as f64 - (r.ducts as f64 - 1.0) / 2.0) * 0.1;
                     let mut pts = vec![t.at];
                     let mut room = ri;
                     for &(_, k) in &chain {
@@ -1017,7 +1051,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                     pts.dedup_by(|a, b| a.distance(*b) < 0.02);
                     let length = path_length(&pts) + 2.0 * 0.3;
                     let flow = t.flow / t.ducts as f64;
-                    let (v, rpm) = friction(flow, 0.075, rough);
+                    let (v, rpm) = gp_friction(flow);
                     let bends = pts.len().saturating_sub(2) as u32 + 2;
                     let dyn_p = 1.2 * v * v / 2.0;
                     let dp = rpm * length + o.zeta_bend * bends as f64 * dyn_p;
@@ -1078,7 +1112,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             let worst = d.dp_supply.max(d.dp_extract);
             if d.flow <= u.q_max && worst <= UNIT_PRESSURE_PA {
                 d.warnings.push(format!(
-                    "Jednotka {} dáva {:.0} m³/h pri {:.0} Pa (katalóg): pri {:.0} m³/h má rezervu aspoň {:.0} Pa na straty ventilov, boxov, tlmičov a žalúzií.",
+                    "Jednotka {} dáva {:.0} m³/h pri {:.0} Pa (katalóg): pri {:.0} m³/h má rezervu aspoň {:.0} Pa na straty tanierových ventilov, odbočiek, tlmičov a žalúzií.",
                     u.name, u.q_max, UNIT_PRESSURE_PA, d.flow, UNIT_PRESSURE_PA - worst
                 ));
             } else {
@@ -1089,7 +1123,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             }
         }
         d.warnings.push(
-            format!("Tlakové straty: trenie (Darcy-Weisbach, λ podľa Swameeho-Jaina, drsnosť GP 0,05 mm je predpoklad) a ohyby (ζ {} na ohyb, predpoklad: ATREA hodnoty neudáva) v GP Ø75 a v hlavných rozvodoch Ø{:.0} (prívodná strana {} m, odvodná {} m, {} m/s). Straty tanierových ventilov, boxov, tlmičov, žalúzie a filtra doplniť z katalógu výrobcu.",
+            format!("Tlakové straty: potrubie GP podľa grafu ATREA, ohyby GP ζ {} na ohyb (predpoklad: ATREA hodnotu neudáva), hlavné rozvody Spiro trením (Darcy-Weisbach, λ podľa Swameeho-Jaina) Ø{:.0} (prívodná strana {} m, odvodná {} m, {} m/s). Straty tanierových ventilov, odbočiek, tlmičov a žalúzie katalóg ATREA neudáva: doplniť od výrobcu.",
                 comma(o.zeta_bend),
                 d.unit.map_or(160.0, |i| cat.units[i].spigot),
                 comma(d.main_length[0]),
@@ -1222,7 +1256,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
     }
     if d.flow > 0.0 {
         d.warnings.push(
-            "Potrubie ATREA GP Ø95/75 (vnútorný Ø75) sa podľa ATREA napája spojovacou sadou na tvarovku DN100; distribučné boxy MAT s hrdlami Ø75 overiť alebo nahradiť boxami pre GP (katalóg prvkov ATREA).".into(),
+            "Rozvod podľa ATREA Katalógu prvkov A2328 26/06: potrubie GP Ø90/75 (najviac 50 m³/h na trasu) sa napája spojovacou sadou R316303 na tvarovky DN100 označené GP: na rozdeľovači odbočky OBJ-T 90° z hrdla jednotky na Ø100, v miestnosti tanierový ventil KI/KO Ø100. Strata potrubia GP podľa grafu výrobcu (str. 53, berie sa na 1 m).".into(),
         );
     }
     d.warnings.push(if residential {
@@ -1315,7 +1349,7 @@ fn gp_duct(level: ElementId, system: &str, a: DVec2, b: DVec2, z: f64) -> Pipe {
         end: b.extend(z),
         pipe_type: "GP".into(),
         nominal_mm: 75.0,
-        outer_mm: 95.0,
+        outer_mm: 90.0,
         inner_mm: 75.0,
         height_mm: None,
         insulation_mm: 0.0,
@@ -1709,9 +1743,9 @@ pub fn bill(model: &Model) -> Bill {
     }
     let _ = outdoor;
     lines.extend(line("Rozvody", cat.item("gp75"), (gp * 1.05).ceil()));
-    // terminals: their box by the ducts ending there
-    let (mut t1, mut t2, mut vp, mut vo, mut sil) = (0.0, 0.0, 0.0, 0.0, 0.0);
-    let mut ducts_at_boxes = 0usize;
+    // terminals: a plate valve Ø100 at the end of every GP run, the run
+    // joined at both ends by the GP connection set
+    let (mut vp, mut vo, mut sil) = (0.0, 0.0, 0.0);
     for e in model.iter() {
         let ElementKind::Valve(v) = &e.kind else {
             continue;
@@ -1720,41 +1754,29 @@ pub fn bill(model: &Model) -> Bill {
             continue;
         };
         match v.kind.as_str() {
-            "vyustP" | "vyustO" if p.pipe_type == "GP" => {
-                let end = if v.t < 0.5 { p.start } else { p.end }.truncate();
-                let n = gp_ends.iter().filter(|x| x.distance(end) < 0.2).count();
-                if n >= 2 {
-                    t2 += 1.0;
-                } else {
-                    t1 += 1.0;
-                }
-                if v.kind == "vyustP" {
-                    vp += 1.0;
-                } else {
-                    vo += 1.0;
-                }
-            }
+            "vyustP" if p.pipe_type == "GP" => vp += 1.0,
+            "vyustO" if p.pipe_type == "GP" => vo += 1.0,
             "tlmic" => sil += 1.0,
             _ => {}
         }
     }
-    for (b, _) in &boxes {
-        ducts_at_boxes += gp_ends.iter().filter(|x| x.distance(*b) < 0.5).count();
-    }
-    lines.extend(line("Koncové prvky", cat.item("tbox1"), t1));
-    lines.extend(line("Koncové prvky", cat.item("tbox2"), t2));
-    lines.extend(line("Koncové prvky", cat.item("ventilP"), vp));
-    lines.extend(line("Koncové prvky", cat.item("ventilO"), vo));
-    let outlets: u32 = boxes
-        .iter()
-        .filter_map(|(_, c)| cat.items.iter().find(|i| i.code == *c))
-        .map(|i| i.outlets)
-        .sum();
-    lines.extend(line(
-        "Rozvody",
-        cat.item("zaslepka"),
-        (outlets as f64 - ducts_at_boxes as f64).max(0.0),
-    ));
+    // the GP runs leaving the manifolds: one branch OBJ-T each, one
+    // run to every plate valve
+    let runs = if boxes.is_empty() { 0.0 } else { vp + vo };
+    let spigot = units
+        .first()
+        .and_then(|(_, c)| cat.units.iter().find(|u| u.code == *c))
+        .map_or(160.0, |u| u.spigot);
+    let branch = match spigot.round() as i64 {
+        125 => "odbocka125",
+        200 => "odbocka200",
+        _ => "odbocka160",
+    };
+    lines.extend(line("Rozvody", cat.item(branch), runs));
+    lines.extend(line("Rozvody", cat.item("kryt"), boxes.len() as f64));
+    lines.extend(line("Rozvody", cat.item("sadaGP"), 2.0 * (vp + vo)));
+    lines.extend(line("Koncové prvky", cat.item("ventilKI"), vp));
+    lines.extend(line("Koncové prvky", cat.item("ventilKO"), vo));
     lines.extend(line("Rozvody", cat.item("spiro160"), (spiro * 1.05).ceil()));
     lines.extend(line(
         "Rozvody",
@@ -1812,7 +1834,7 @@ mod tests {
     fn the_catalogue_reads() {
         let c = catalogue();
         assert!(c.units.len() >= 3 && !c.room_units.is_empty());
-        assert!(c.item("gp75").is_some() && c.item("tbox2").is_some());
+        assert!(c.item("gp75").is_some() && c.item("sadaGP").is_some());
         assert!(crate::pipe_types::by_id("GP").is_some());
     }
 
@@ -1821,6 +1843,15 @@ mod tests {
         let (v, r) = friction(25.0, 0.075, 5e-5);
         assert!((v - 1.57).abs() < 0.01, "{v}");
         assert!(r > 0.3 && r < 1.0, "{r}");
+    }
+
+    #[test]
+    fn gp_loss_follows_the_makers_graph() {
+        // ATREA catalogue A2328 26/06, p. 53: 1.42 Pa at 25, 5.17 at 50 m³/h
+        let (v, r) = gp_friction(25.0);
+        assert!((v - 1.57).abs() < 0.01 && (r - 1.42).abs() < 1e-9);
+        assert!((gp_friction(50.0).1 - 5.17).abs() < 1e-9);
+        assert!((gp_friction(27.5).1 - 1.72).abs() < 1e-9);
     }
 
     #[test]
