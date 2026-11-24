@@ -8701,5 +8701,7 @@
   "clear height": "průchodná výška",
   "Number of risers": "Počet stupňů",
   "Keep to the norm": "Držet normu",
-  "Changing the rise, risers, going, width or length, the stair takes the riser height, going and count of risers the norm wants": "Při změně převýšení, počtu stupňů, šířky stupně, šířky ramene nebo délky schodiště samo nastaví výšku stupně, šířku stupně a počet stupňů podle normy"
+  "Changing the rise, risers, going, width or length, the stair takes the riser height, going and count of risers the norm wants": "Při změně převýšení, počtu stupňů, šířky stupně, šířky ramene nebo délky schodiště samo nastaví výšku stupně, šířku stupně a počet stupňů podle normy",
+ "Extract fans in the bathrooms, WCs and kitchen": "Odsávací ventilátory v koupelnách, WC a kuchyni",
+ "STN EN 12831-1 6.3.3.3: the air the fans take out comes in through the envelope of all rooms (24, 19); a room with a fan gets it as transfer air through its door from the heated rooms next to it (15). Off: natural airing, only the infiltration and the least air change (14).": "STN EN 12831-1 6.3.3.3: vzduch odsávaný ventilátory přichází obvodovými konstrukcemi všech místností (24, 19); místnost s ventilátorem jej dostává jako převáděný vzduch dveřmi ze sousedních vytápěných místností (15). Vypnuto: přirozené větrání, jen infiltrace a minimální výměna vzduchu (14)."
 }
