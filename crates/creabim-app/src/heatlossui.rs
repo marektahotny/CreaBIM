@@ -7,7 +7,7 @@ use super::CreaBimApp;
 use creabim_core::catalogue::heat::HeatKind;
 use creabim_core::fireparams::{self, ClimateSite};
 use creabim_services::heatdetail;
-use creabim_services::heatloss::{self, Method, Opts, Shielding};
+use creabim_services::heatloss::{self, Method, Missing, Opts, Shielding};
 use creabim_services::psi;
 
 /// `o` with the temperatures of locality `s`.
@@ -519,6 +519,12 @@ impl CreaBimApp {
                         to_source = true;
                     }
                 });
+                if b.rooms.iter().any(|r| r.missing.contains(&Missing::NormTable)) {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        t("Some values of the STN EN 12831-1 table are not read, so a part of the loss is left out and the result is too low. Read the norm tables again (Manage › Norm tables › Read the folder again)."),
+                    );
+                }
                 if let (Some(d), Some(e)) = (o.degree_days(), o.yearly_kwh(b.phi)) {
                     ui.weak(format!(
                         "{}: {} K·d · {}: {} kWh/{}",
@@ -623,7 +629,7 @@ impl CreaBimApp {
                     }
                     ui.add_space(6.0);
                     if o.method == Method::Detailed {
-                        ui.weak(t("After STN EN 12831-1 chapter 6: areas by the outside dimensions (walls a storey high, to the outer face of outside walls and the axis of inner ones), U from the build-ups' λ plus ΔU_TB of table B.1, heat to colder rooms beside, over and under (f = (θi − θx)/(θi − θe)), the ground by annex E with f_θann, f_GW and θe,m, the air by 6.3.3 for the building as one zone with no mechanical ventilation."));
+                        ui.weak(t("After STN EN 12831-1 chapter 6: areas by the outside dimensions (walls a storey high, to the outer face of outside walls and the axis of inner ones), U from the build-ups' λ plus ΔU_TB of table B.1, heat to colder rooms beside, over and under (f = (θi − θx)/(θi − θe)), the ground by annex E with f_θann, f_GW and θe,m, the air by 6.3.3 for the building as one zone with no supply air (with extract fans: formulas 15, 18, 19, 24, 28, 29)."));
                         ui.weak("STN EN 12831-1:2019 · STN EN ISO 6946");
                     } else {
                         ui.weak(t("Simplified after STN EN 12831-1: inside dimensions, outside walls where no room lies beyond, U from the build-ups' λ, floors and ceilings between storeys left out. A wall is counted for the room it bounds."));
