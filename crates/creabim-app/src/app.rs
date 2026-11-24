@@ -12330,8 +12330,15 @@ crate::props::row(ui, "File names", |ui| {
                     {
                         let mut sel = self.selection.clone();
                         let h = self.plan.members.railing_height;
-                        let r =
-                            crate::memberstool::add_stair_railings(&mut self.doc, id, h, &mut sel);
+                        let style = self.plan.members.railing_style;
+                        let r = crate::memberstool::add_stair_railings(
+                            &mut self.doc,
+                            id,
+                            h,
+                            style,
+                            &[true, false],
+                            &mut sel,
+                        );
                         self.report(r, "Railings added along both sides.");
                     }
                 }

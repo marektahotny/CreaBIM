@@ -448,6 +448,27 @@ impl CreaBimApp {
                         format!("Beam corners: {}. Chain beams to see them meet.", c.label());
                 }
             }
+            "railing.type" | "railing.metal" | "railing.round" | "railing.fixing" => {
+                use creabim_core::members::{Fixing, RailMetal, RailingType};
+                let i = arg.parse::<usize>().ok();
+                let st = &mut self.plan.members.railing_style;
+                match head {
+                    "railing.type" => st.kind = i.and_then(|i| RailingType::ALL.get(i).copied()),
+                    "railing.metal" => {
+                        if let Some(m) = i.and_then(|i| RailMetal::ALL.get(i)) {
+                            st.metal = *m;
+                        }
+                    }
+                    "railing.round" => st.round = i == Some(1),
+                    _ => {
+                        st.fixing = if i == Some(1) {
+                            Fixing::Side
+                        } else {
+                            Fixing::Top
+                        }
+                    }
+                }
+            }
             "railing.lib" => {
                 let lib = (!arg.is_empty()).then(|| arg.to_string());
                 self.plan.members.railing_section = lib.clone();

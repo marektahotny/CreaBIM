@@ -240,6 +240,7 @@ pub fn pick_up(state: &mut PlanState, model: &Model, id: ElementId) -> Result<St
         ElementKind::Railing(r) => {
             s.members.railing_height = r.height;
             s.members.railing_section = r.rail_profile.clone();
+            s.members.railing_style = crate::memberstool::RailStyle::of(r);
         }
         ElementKind::Footing(f) => {
             let m = &mut s.members;

@@ -150,7 +150,7 @@ pub fn joints(model: &Model, p: &Pipe) -> [Joint; 2] {
 
 /// Rings of a round pipe of radius `r` along `path`, each square to the
 /// way the path runs there, as a tube without ends.
-fn tube(m: &mut TriMesh, path: &[DVec3], r: f64) {
+pub(crate) fn tube(m: &mut TriMesh, path: &[DVec3], r: f64) {
     let path: Vec<(DVec3, f64)> = path.iter().map(|p| (*p, r)).collect();
     taper(m, &path)
 }

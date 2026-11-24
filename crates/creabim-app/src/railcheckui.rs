@@ -99,6 +99,26 @@ impl CreaBimApp {
             Fault::Bottom { have, max } => {
                 format!("{} {} > {} mm", t("gap over the floor"), mm(have), mm(max))
             }
+            Fault::Offset { have, max } => format!(
+                "{} {} > {} mm",
+                t("gap to the floor's edge"),
+                mm(have),
+                mm(max)
+            ),
+            Fault::Clear { have, min } => format!(
+                "{} {} < {} mm (4.5.4)",
+                t("handrail clear of the wall"),
+                mm(have),
+                mm(min)
+            ),
+            Fault::Grip { have, min, max } => format!(
+                "{} Ø{} {} {}–{} mm (4.5.5)",
+                t("handrail"),
+                mm(have),
+                t("not"),
+                mm(min),
+                mm(max)
+            ),
             Fault::LowZone { zone } => format!(
                 "{} {} mm {}",
                 t("up to"),
@@ -134,7 +154,7 @@ impl CreaBimApp {
                         });
                     if ui
                         .button(t("Read tables…"))
-                        .on_hover_text(t("The file of the norm's tables (railing_depth, railing_height, railing_gaps): it is kept with the project"))
+                        .on_hover_text(t("The file of the norm's tables (railing_depth, railing_height, railing_gaps, railing_handrail): it is kept with the project"))
                         .clicked()
                     {
                         load = true;
@@ -163,8 +183,12 @@ impl CreaBimApp {
                             show = Some(f.id);
                         }
                     });
-                    row.text(mm(f.depth));
-                    if f.needed {
+                    if f.wall {
+                        row.weak("–");
+                    } else {
+                        row.text(mm(f.depth));
+                    }
+                    if f.needed && !f.wall {
                         row.text(mm(f.need));
                     } else {
                         row.weak("–");

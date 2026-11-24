@@ -1312,6 +1312,7 @@ fn stair(c: &mut Ctx, s: &f::Stair, at: &Path) {
             left: l.turn == f::Side::Left,
         }),
         material,
+        ramp: None,
     };
     c.insert(
         &s.id,
@@ -1363,8 +1364,7 @@ fn railing(c: &mut Ctx, r: &f::Railing, at: &Path) {
         post_spacing: c.l(r.post_spacing),
         stair,
         material,
-        rail_profile: None,
-        infill: None,
+        ..core::Railing::new(level, vec![])
     };
     c.insert(
         &r.id,

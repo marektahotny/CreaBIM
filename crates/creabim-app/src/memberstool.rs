@@ -23,6 +23,8 @@ pub struct MemberSettings {
     pub stair_width: f64,
     /// New stairs turn on a landing halfway up.
     pub stair_turn: bool,
+    /// The Stair tool draws ramps (George 2026-11-24).
+    pub stair_ramp: bool,
     pub railing_height: f64,
     /// The railing path clicked so far.
     pub path: Vec<DVec2>,
@@ -64,6 +66,9 @@ pub struct MemberSettings {
     pub beam_on_face: bool,
     /// The library profile new railings' top rail takes (MU40).
     pub railing_section: Option<String>,
+    /// What new railings are: their type, metal, section and fixing
+    /// (George 2026-11-24).
+    pub railing_style: RailStyle,
     /// The beam this chain placed last: the next joins only it, and a new
     /// chain starts with none (MU40: a new Beam command joined the old one).
     pub last_beam: Option<ElementId>,
@@ -86,6 +91,7 @@ impl Default for MemberSettings {
             roof_pitch: 30.0,
             stair_width: 1.0,
             stair_turn: false,
+            stair_ramp: false,
             railing_height: 1.0,
             path: vec![],
             footing_kind: creabim_core::FootingKind::Strip,
@@ -105,6 +111,7 @@ impl Default for MemberSettings {
             beam_corner: Default::default(),
             beam_on_face: false,
             railing_section: None,
+            railing_style: RailStyle::default(),
             last_beam: None,
             pipe: Default::default(),
             flashing: Default::default(),
@@ -267,14 +274,33 @@ pub fn click(
         Tool::Stair => match state.pending.take() {
             None => {
                 state.pending = Some(p);
-                state.status = Some("Click the way the stair climbs.".into());
+                state.status = Some(
+                    if set.stair_ramp {
+                        "Click the way the ramp climbs."
+                    } else {
+                        "Click the way the stair climbs."
+                    }
+                    .into(),
+                );
                 Ok(())
             }
             Some(a) if a.distance(p) > 0.05 => {
                 let s = new_stair(doc.model(), level, a, p, &set);
                 let lay = s.layout(s.rise(doc.model()));
+                if s.ramp.is_some() {
+                    state.status = Some(format!(
+                        "Ramp added: {} long. Railing tool: click inside it to add its railings (near a side: only that one).",
+                        crate::units::len(lay.flights[0].run(s.tread))
+                    ));
+                    return add(
+                        doc,
+                        selection,
+                        Element::new("Ramp", ElementKind::Stair(s)),
+                        "Draw ramp",
+                    );
+                }
                 state.status = Some(format!(
-                    "Stair added: {} risers of {}. Railing tool: click inside it to add its railings.",
+                    "Stair added: {} risers of {}. Railing tool: click inside it to add its railings (near a side: only that one).",
                     lay.risers,
                     crate::units::len(lay.riser)
                 ));
@@ -296,8 +322,28 @@ pub fn click(
         Tool::Railing => {
             if state.members.path.is_empty() {
                 if let Some(stair) = stair_at(doc.model(), level, p) {
-                    state.status = Some("Railings added along both sides of the stair.".into());
-                    return add_stair_railings(doc, stair, set.railing_height, selection);
+                    // near a side: that side only; in the middle both
+                    let side = stair_side(doc.model(), stair, p);
+                    state.status = Some(
+                        match side {
+                            Some(true) => "Railing added along the stair's left side.",
+                            Some(false) => "Railing added along the stair's right side.",
+                            None => "Railings added along both sides of the stair.",
+                        }
+                        .into(),
+                    );
+                    let sides = match side {
+                        Some(l) => vec![l],
+                        None => vec![true, false],
+                    };
+                    return add_stair_railings(
+                        doc,
+                        stair,
+                        set.railing_height,
+                        set.railing_style,
+                        &sides,
+                        selection,
+                    );
                 }
             }
             let path = &mut state.members.path;
@@ -310,7 +356,10 @@ pub fn click(
                 }
                 let mut r = Railing::new(level, pts.iter().map(|q| q.extend(0.0)).collect());
                 r.height = set.railing_height;
-                r.rail_profile = set.railing_section.clone();
+                set.railing_style.apply(&mut r);
+                if set.railing_section.is_some() {
+                    r.rail_profile = set.railing_section.clone();
+                }
                 state.status = Some("Railing added.".into());
                 return add(
                     doc,
@@ -799,7 +848,13 @@ pub fn new_stair(
     b: DVec2,
     set: &MemberSettings,
 ) -> Stair {
-    let mut s = Stair::new(level, a, (b - a).to_angle().to_degrees());
+    let dir = (b - a).to_angle().to_degrees();
+    if set.stair_ramp {
+        let mut s = Stair::new_ramp(level, a, dir);
+        s.width = set.stair_width;
+        return s;
+    }
+    let mut s = Stair::new(level, a, dir);
     s.width = set.stair_width;
     if set.stair_turn {
         let n = members::riser_count(s.rise(model), s.max_riser);
@@ -826,6 +881,29 @@ fn stair_at(model: &Model, level: ElementId, p: DVec2) -> Option<ElementId> {
     })
 }
 
+/// Which side of `stair` a click at `p` is near: its outer quarter on
+/// the left (looking up) or the right; none in the middle.
+fn stair_side(model: &Model, stair: ElementId, p: DVec2) -> Option<bool> {
+    let Some(ElementKind::Stair(s)) = model.get(stair).map(|e| &e.kind) else {
+        return None;
+    };
+    let lay = s.layout(s.rise(model));
+    let f = lay.flights.iter().find(|f| {
+        let n = f.dir.perp() * s.width / 2.0;
+        let e = f.end(s.tread);
+        inside(&[f.start - n, e - n, e + n, f.start + n], p)
+    })?;
+    let off = (p - f.start).dot(f.dir.perp());
+    let edge = s.width / 4.0;
+    if off > s.width / 2.0 - edge {
+        Some(true)
+    } else if off < -(s.width / 2.0 - edge) {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 fn inside(poly: &[DVec2], p: DVec2) -> bool {
     let n = poly.len();
     let mut c = false;
@@ -838,18 +916,69 @@ fn inside(poly: &[DVec2], p: DVec2) -> bool {
     c
 }
 
-/// Railings on both sides of `stair`, as one undo step.
+/// What new railings are made as (George 2026-11-24): a type (none:
+/// rails only, as before), the metal, round or square parts, and how
+/// the posts are fixed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RailStyle {
+    pub kind: Option<creabim_core::members::RailingType>,
+    pub metal: creabim_core::members::RailMetal,
+    pub round: bool,
+    pub fixing: creabim_core::members::Fixing,
+}
+
+impl Default for RailStyle {
+    fn default() -> Self {
+        RailStyle {
+            kind: Some(creabim_core::members::RailingType::UprightBars),
+            metal: creabim_core::members::RailMetal::Stainless,
+            round: false,
+            fixing: creabim_core::members::Fixing::Top,
+        }
+    }
+}
+
+impl RailStyle {
+    /// Make `r` so; its height stays.
+    pub fn apply(&self, r: &mut Railing) {
+        if let Some(k) = self.kind {
+            k.apply(r, self.metal, self.round);
+        }
+        r.fixing = self.fixing;
+    }
+
+    /// The style a railing is made in, to draw more like it.
+    pub fn of(r: &Railing) -> Self {
+        RailStyle {
+            kind: creabim_core::members::RailingType::of(r),
+            metal: r
+                .metal
+                .unwrap_or(creabim_core::members::RailMetal::Stainless),
+            round: r.round,
+            fixing: r.fixing,
+        }
+    }
+}
+
+/// Railings along `sides` of `stair` (true: its left), as one undo
+/// step; a wall handrail takes the wall on the stair's outside.
 pub fn add_stair_railings(
     doc: &mut Document,
     stair: ElementId,
     height: f64,
+    style: RailStyle,
+    sides: &[bool],
     selection: &mut Selection,
 ) -> Result<(), ModelError> {
     let mut tx = Transaction::new("Add stair railings");
     let mut first = None;
-    for left in [true, false] {
+    for &left in sides {
         if let Some(mut r) = Railing::along_stair(doc.model(), stair, left) {
             r.height = height;
+            style.apply(&mut r);
+            if let Some(w) = &mut r.wall {
+                w.left = left;
+            }
             let e = Element::new("Railing", ElementKind::Railing(r));
             first.get_or_insert(e.id);
             tx = tx.insert(e);
@@ -923,6 +1052,200 @@ pub fn preview(
         }
         _ => {}
     }
+}
+
+/// A size row: the catalogue's parts of the shape asked as a list, and
+/// "Own size" with a row to type it. True when it changed.
+fn size_row(
+    ui: &mut egui::Ui,
+    text: &str,
+    v: &mut f64,
+    parts: &[creabim_core::members::RailPart],
+    round: bool,
+) -> bool {
+    let mut changed = false;
+    let fits: Vec<_> = parts.iter().filter(|p| p.round == round).collect();
+    let listed = fits.iter().find(|p| (p.size - *v).abs() < 1e-6);
+    crate::props::row(ui, text, |ui| {
+        let w = ui.available_width();
+        egui::ComboBox::from_id_salt(("rail.size", text))
+            .icon(crate::props::combo_icon)
+            .width(w)
+            .truncate()
+            .selected_text(crate::i18n::tw(listed.map_or("Own size", |p| p.name)))
+            .show_ui(ui, |ui| {
+                for p in &fits {
+                    if ui
+                        .selectable_label((p.size - *v).abs() < 1e-6, p.name)
+                        .clicked()
+                    {
+                        *v = p.size;
+                        changed = true;
+                    }
+                }
+                // a size of one's own: a millimetre off the catalogue's,
+                // then typed in the row under it
+                if ui
+                    .selectable_label(listed.is_none(), crate::i18n::tw("Own size"))
+                    .clicked()
+                    && listed.is_some()
+                {
+                    *v += 0.001;
+                    changed = true;
+                }
+            });
+    });
+    if listed.is_none() || fits.is_empty() {
+        changed |= crate::props::row(ui, "Own size", |ui| {
+            crate::props::fill(ui, crate::units::drag(v).range(0.005..=0.2)).changed()
+        });
+    }
+    changed
+}
+
+/// A railing's type, metal, section, sizes and fixing (George
+/// 2026-11-24). True when any changed.
+fn railing_kind_rows(ui: &mut egui::Ui, r: &mut creabim_core::Railing) -> bool {
+    use creabim_core::members::{self as mb, Fixing, RailMetal, RailingType};
+    let mut changed = false;
+    let metal = r.metal.unwrap_or(RailMetal::Stainless);
+    // the type: made over from the catalogue, its metal and section kept
+    let mut kind = RailingType::of(r);
+    crate::props::row(ui, "Type", |ui| {
+        let w = ui.available_width();
+        egui::ComboBox::from_id_salt("rail.type")
+            .icon(crate::props::combo_icon)
+            .width(w)
+            .truncate()
+            .selected_text(crate::i18n::tw(kind.map_or("Rails only", |k| k.label())))
+            .show_ui(ui, |ui| {
+                for k in RailingType::ALL {
+                    if ui
+                        .selectable_label(kind == Some(k), crate::i18n::tw(k.label()))
+                        .clicked()
+                        && kind != Some(k)
+                    {
+                        kind = Some(k);
+                        k.apply(r, metal, r.round);
+                        changed = true;
+                    }
+                }
+            });
+    });
+    let mut m = metal;
+    if crate::props::choice(
+        ui,
+        "Metal",
+        &mut m,
+        &[
+            (RailMetal::Stainless, "Stainless steel", "UMAKOV, AISI 304"),
+            (RailMetal::Aluminium, "Aluminium", "ALZABRADLI, EN AW 6060"),
+        ],
+    ) || r.metal.is_none() && m != metal
+    {
+        match kind {
+            Some(k) => k.apply(r, m, r.round),
+            None => r.metal = Some(m),
+        }
+        changed = true;
+    }
+    let mut round = r.round;
+    if crate::props::choice(
+        ui,
+        "Cross-section",
+        &mut round,
+        &[
+            (false, "Square profile", "JAKL"),
+            (true, "Round profile", "Tubes"),
+        ],
+    ) {
+        match kind {
+            Some(k) => k.apply(r, m, round),
+            None => r.round = round,
+        }
+        changed = true;
+    }
+    if r.wall.is_none() {
+        let mut post = r.post();
+        if size_row(ui, "Post", &mut post, mb::rail_posts(m), r.round) {
+            r.post_size = Some(post);
+            changed = true;
+        }
+    }
+    let mut rail = r.rail();
+    if size_row(ui, "Handrail", &mut rail, mb::rail_handrails(m), r.round) {
+        r.rail_size = Some(rail);
+        changed = true;
+    }
+    if let Some(f) = &mut r.infill {
+        if f.kind != mb::InfillKind::Panel {
+            let mut bar = f.bar;
+            if size_row(ui, "Bars", &mut bar, mb::rail_bars(m), f.round) {
+                f.bar = bar;
+                changed = true;
+            }
+            if crate::props::choice(
+                ui,
+                "Bars' section",
+                &mut f.round,
+                &[(false, "Square profile", ""), (true, "Round profile", "")],
+            ) {
+                changed = true;
+            }
+        } else {
+            crate::props::note(ui, crate::i18n::tr("Glass Connex 4.4.2, 8,76 mm"));
+        }
+    }
+    match &mut r.wall {
+        Some(w) => {
+            changed |= crate::props::choice(
+                ui,
+                "Wall",
+                &mut w.left,
+                &[(true, "On the left", ""), (false, "On the right", "")],
+            );
+            changed |= crate::props::row(ui, "Clear of the wall", |ui| {
+                crate::props::fill(ui, crate::units::drag(&mut w.clear).range(0.0..=0.3)).changed()
+            });
+            changed |= crate::props::row(ui, "Brackets at most", |ui| {
+                crate::props::fill(ui, crate::units::drag(&mut w.spacing).range(0.2..=3.0))
+                    .changed()
+            });
+        }
+        None => {
+            changed |= crate::props::choice(
+                ui,
+                "Fixing",
+                &mut r.fixing,
+                &[
+                    (Fixing::Top, "From the top", "On a flange on the floor"),
+                    (
+                        Fixing::Side,
+                        "From the side",
+                        "Into the edge of the slab, stair or ramp",
+                    ),
+                ],
+            );
+            if r.fixing == Fixing::Side {
+                let mut gap = r.gap_to_edge();
+                if crate::props::row(ui, "Gap to the edge", |ui| {
+                    crate::props::fill(ui, crate::units::drag(&mut gap).range(0.0..=0.3)).changed()
+                }) {
+                    r.side_gap = Some(gap);
+                    changed = true;
+                }
+                let mut drop = r.drop();
+                if crate::props::row(ui, "Below the floor", |ui| {
+                    crate::props::fill(ui, crate::units::drag(&mut drop).range(0.05..=1.0))
+                        .changed()
+                }) {
+                    r.side_drop = Some(drop);
+                    changed = true;
+                }
+            }
+        }
+    }
+    changed
 }
 
 /// The Properties panel rows for a column, beam, roof, stair or railing.
@@ -1289,8 +1612,68 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             );
         }
         ElementKind::Stair(s) => {
+            let mut ramp = s.ramp.is_some();
+            if crate::props::choice(
+                ui,
+                "Kind",
+                &mut ramp,
+                &[(false, "Stair", ""), (true, "Ramp", "")],
+            ) {
+                s.ramp = ramp.then_some(members::RAMP_SLOPE);
+                s.landing = None;
+                label = if ramp { "Make a ramp" } else { "Make a stair" };
+            }
             if num(ui, "Width", &mut s.width, 0.5, 5.0) {
                 label = "Stair width"
+            }
+            if let Some(slope) = &mut s.ramp {
+                // the slope in per cent
+                let mut pct = *slope * 100.0;
+                if crate::props::row(ui, "Slope", |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut pct)
+                            .range(0.5..=50.0)
+                            .speed(0.1)
+                            .max_decimals(2)
+                            .suffix(" %"),
+                    )
+                    .changed()
+                }) {
+                    *slope = pct / 100.0;
+                    label = "Ramp slope";
+                }
+                if num(ui, "Thickness", &mut s.waist, 0.05, 0.6) {
+                    label = "Ramp thickness"
+                }
+                if deg(ui, "Direction", &mut s.direction, -360.0, 360.0) {
+                    label = "Turn ramp"
+                }
+                let mut fixed = s.height.is_some();
+                if crate::props::switch(ui, &mut fixed, "Fixed rise (else up to the next level)")
+                    .changed()
+                {
+                    s.height = fixed.then(|| s.rise(model));
+                    label = "Ramp rise";
+                }
+                if let Some(h) = &mut s.height {
+                    if num(ui, "Rise", h, 0.01, 20.0) {
+                        label = "Ramp rise"
+                    }
+                }
+                let rise = s.rise(model);
+                let len = s.layout(rise).flights[0].run(s.tread);
+                weak(
+                    ui,
+                    format!(
+                        "{} {}, {} {}.",
+                        crate::i18n::tr("Length"),
+                        crate::units::len(len),
+                        crate::i18n::tr("rise"),
+                        crate::units::len(rise)
+                    ),
+                );
+                return label;
             }
             if num(ui, "Max riser", &mut s.max_riser, 0.1, 0.3) {
                 label = "Stair riser"
@@ -1373,11 +1756,14 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             if num(ui, "Height", &mut r.height, 0.2, 3.0) {
                 label = "Railing height"
             }
-            if num(ui, "Post spacing", &mut r.post_spacing, 0.1, 5.0) {
+            if r.wall.is_none() && num(ui, "Post spacing", &mut r.post_spacing, 0.1, 5.0) {
                 label = "Railing posts"
             }
+            if railing_kind_rows(ui, r) {
+                label = "Railing type";
+            }
             // its top rail from the profile library (MU36)
-            crate::props::row(ui, "Top rail", |ui| {
+            crate::props::row(ui, "Handrail profile", |ui| {
                 let w = ui.available_width();
                 let mut names: Vec<String> = creabim_core::profiles::project_profiles(model)
                     .into_iter()
@@ -1391,13 +1777,13 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     .selected_text(crate::i18n::tw(
                         r.rail_profile
                             .clone()
-                            .unwrap_or_else(|| "Square bar".into()),
+                            .unwrap_or_else(|| "As the handrail above".into()),
                     ))
                     .show_ui(ui, |ui| {
                         if ui
                             .selectable_label(
                                 r.rail_profile.is_none(),
-                                crate::i18n::tw("Square bar"),
+                                crate::i18n::tw("As the handrail above"),
                             )
                             .clicked()
                         {
@@ -1452,13 +1838,10 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     });
             });
             if let Some(f) = &mut r.infill {
-                if f.kind != creabim_core::members::InfillKind::Panel {
-                    if num(ui, "Widest gap", &mut f.gap, 0.02, 1.0) {
-                        label = "Railing infill";
-                    }
-                    if num(ui, "Bar size", &mut f.bar, 0.008, 0.1) {
-                        label = "Railing infill";
-                    }
+                if f.kind != creabim_core::members::InfillKind::Panel
+                    && num(ui, "Widest gap", &mut f.gap, 0.02, 1.0)
+                {
+                    label = "Railing infill";
                 }
                 if num(ui, "Clear height under it", &mut f.bottom, 0.0, 0.5) {
                     label = "Railing infill";
@@ -1953,6 +2336,20 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             v
         }
         Tool::Stair => vec![
+            toggle(
+                "stair.steps",
+                "Stair",
+                !m.stair_ramp,
+                "stair",
+                "Steps: risers and treads climbing to the next level",
+            ),
+            toggle(
+                "stair.ramp",
+                "Ramp",
+                m.stair_ramp,
+                "slope-dim",
+                "A ramp: one sloping run, 1 : 12 (8,33 %) unless set otherwise; railings fix to it as to a stair",
+            ),
             num(
                 "stair_width",
                 "Width",
@@ -2072,6 +2469,26 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
         .collect(),
         Tool::Railing => vec![
             json!({
+                "kind": "menu", "key": "railing.type", "label": "Type",
+                "value": m.railing_style.kind.map_or("Rails only", |k| k.label()),
+                "hint": "Upright bars, horizontal bars, safety glass, or a handrail alone on a wall",
+            }),
+            json!({
+                "kind": "menu", "key": "railing.metal", "label": "Metal",
+                "value": m.railing_style.metal.label(),
+                "hint": "Stainless steel (UMAKOV) or aluminium (ALZABRADLI): the sizes of the posts, handrail and bars come from its catalogue",
+            }),
+            json!({
+                "kind": "menu", "key": "railing.round", "label": "Cross-section",
+                "value": if m.railing_style.round { "Round profile" } else { "Square profile" },
+                "hint": "Round tubes or square (JAKL) profiles",
+            }),
+            json!({
+                "kind": "menu", "key": "railing.fixing", "label": "Fixing",
+                "value": m.railing_style.fixing.label(),
+                "hint": "From the top on a flange, or from the side into the edge of the slab, stair or wall",
+            }),
+            json!({
                 "kind": "menu", "key": "railing.library", "label": "Rail",
                 "value": m.railing_section.clone().unwrap_or_else(|| "Its own".into()), "icon": "profile",
                 "on": m.railing_section.is_some(),
@@ -2159,6 +2576,8 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
         "square" => m.set_round(false),
         "round" => m.set_round(true),
         "lshape" => m.stair_turn = !m.stair_turn,
+        "stair.steps" => m.stair_ramp = false,
+        "stair.ramp" => m.stair_ramp = true,
         "footing.strip" | "footing.pad" | "footing.pile" => {
             use creabim_core::{footing as fo, FootingKind};
             let kind = match what {

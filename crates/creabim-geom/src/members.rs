@@ -5,7 +5,7 @@ use crate::plan::{Pen, PlanItem};
 use crate::scene::slab_mesh;
 use crate::triangulate::triangulate;
 use crate::TriMesh;
-use creabim_core::members::{self, Flight, RAIL_SIZE};
+use creabim_core::members::{self, Flight};
 use creabim_core::{Element, ElementId, ElementKind, Model, Roof, Stair};
 use glam::{DVec2, DVec3};
 
@@ -107,31 +107,9 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
             [0.82, 0.80, 0.76],
         ),
         ElementKind::Railing(r) => {
-            let path = r.path_in(model);
-            let rail = r
-                .rail_profile
-                .as_deref()
-                .and_then(|n| creabim_core::profiles::find(model, n));
-            let m = match rail {
-                // the posts and bottom bar as usual, the top rail the
-                // profile swept along the path, its insertion point on top
-                Some(p) => {
-                    let mut m = railing_mesh(
-                        &path,
-                        r.height - RAIL_SIZE,
-                        r.post_spacing,
-                        r.infill.as_ref(),
-                    );
-                    let top: Vec<DVec3> = path
-                        .iter()
-                        .map(|q| *q + DVec3::Z * (r.height - RAIL_SIZE))
-                        .collect();
-                    m.append(&crate::parts::sweep_mesh(&p, &top, false));
-                    m
-                }
-                None => railing_mesh(&path, r.height, r.post_spacing, r.infill.as_ref()),
-            };
-            (m, [0.32, 0.34, 0.38])
+            let (mut m, glass) = railing_meshes(model, r);
+            m.append(&glass);
+            (m, railing_color(r))
         }
         ElementKind::Footing(f) => {
             let top = f.top(model);
@@ -287,12 +265,33 @@ pub fn flight_profile(risers: u32, riser: f64, tread: f64, waist: f64) -> Vec<DV
     p
 }
 
+/// A ramp's side profile, counter-clockwise in (along, up): its sloping
+/// top from its foot to `rise` over `len`, the underside `waist` under
+/// it, cut flat at its base.
+pub fn ramp_profile(len: f64, rise: f64, waist: f64) -> Vec<DVec2> {
+    let slope = rise / len.max(1e-9);
+    let wv = waist * (1.0 + slope * slope).sqrt();
+    let u0 = wv / slope.max(1e-9);
+    if u0 >= len - 1e-9 || rise <= wv {
+        return vec![DVec2::ZERO, DVec2::new(len, 0.0), DVec2::new(len, rise)];
+    }
+    vec![
+        DVec2::ZERO,
+        DVec2::new(u0, 0.0),
+        DVec2::new(len, rise - wv),
+        DVec2::new(len, rise),
+    ]
+}
+
 /// Solid steps for every flight, and the landing between them.
 pub fn stair_mesh(s: &Stair, base: f64, rise: f64) -> TriMesh {
     let lay = s.layout(rise);
     let mut m = TriMesh::default();
     for f in &lay.flights {
-        let prof = flight_profile(f.risers, lay.riser, s.tread, s.waist);
+        let prof = match f.length {
+            Some(len) => ramp_profile(len, lay.riser, s.waist),
+            None => flight_profile(f.risers, lay.riser, s.tread, s.waist),
+        };
         extrude_profile(&mut m, &prof, f.start.extend(base + f.z0), f.dir, s.width);
     }
     if let Some((outline, z)) = &lay.landing {
@@ -327,37 +326,184 @@ fn bar(m: &mut TriMesh, a: DVec3, b: DVec3, size: f64) {
     m.add_quad(ring(b), along);
 }
 
-/// Posts, a top rail and a bottom rail along `path` (model coordinates),
-/// with the infill between them when it has one.
-pub fn railing_mesh(
-    path: &[DVec3],
-    height: f64,
-    spacing: f64,
-    infill: Option<&members::Infill>,
-) -> TriMesh {
-    let mut m = TriMesh::default();
-    let top = height - RAIL_SIZE / 2.0;
-    let post = members::POST_SIZE;
-    // the bottom rail: 100 mm up, or on the infill's clear height
-    let low = infill.map_or(0.1, |f| f.bottom + post / 2.0);
-    for w in path.windows(2) {
-        bar(
-            &mut m,
-            w[0] + DVec3::Z * top,
-            w[1] + DVec3::Z * top,
-            RAIL_SIZE,
-        );
-        bar(&mut m, w[0] + DVec3::Z * low, w[1] + DVec3::Z * low, post);
+/// A rod from `a` to `b`: a round tube `d` across with its ends closed,
+/// or a square bar of side `d`.
+fn rod(m: &mut TriMesh, a: DVec3, b: DVec3, d: f64, round: bool) {
+    if round {
+        rail_along(m, &[a, b], d, true);
+    } else {
+        bar(m, a, b, d);
     }
-    let posts = members::posts_along(path, spacing);
-    for p in &posts {
-        bar(&mut m, *p, *p + DVec3::Z * (height - RAIL_SIZE), post);
+}
+
+/// A rail `d` across along `path`: one round tube bending at the corners
+/// with its ends closed, or square bars a segment each.
+fn rail_along(m: &mut TriMesh, path: &[DVec3], d: f64, round: bool) {
+    if path.len() < 2 {
+        return;
     }
-    let Some(f) = infill else {
-        return m;
+    if !round {
+        for w in path.windows(2) {
+            bar(m, w[0], w[1], d);
+        }
+        return;
+    }
+    crate::mep::tube(m, path, d / 2.0);
+    let n = path.len();
+    disc(m, path[0], path[0] - path[1], d / 2.0, 0.0);
+    disc(m, path[n - 1], path[n - 1] - path[n - 2], d / 2.0, 0.0);
+}
+
+/// A round disc of radius `r` at `c` facing `out`, `t` thick behind it
+/// (0: a flat cap).
+fn disc(m: &mut TriMesh, c: DVec3, out: DVec3, r: f64, t: f64) {
+    let Some(n) = out.try_normalize() else {
+        return;
     };
-    // between the bottom rail's top and the top rail's underside
-    let (z0, z1) = (low + post / 2.0, height - RAIL_SIZE);
+    if t > 0.0 {
+        crate::mep::tube(m, &[c - n * t, c], r);
+        disc(m, c - n * t, -n, r, 0.0);
+    }
+    let u = if n.truncate().length() > 1e-9 {
+        DVec3::Z.cross(n).normalize()
+    } else {
+        DVec3::X
+    };
+    let v = n.cross(u);
+    let k = 16;
+    let ring: Vec<DVec3> = (0..k)
+        .map(|i| {
+            let a = i as f64 / k as f64 * std::f64::consts::TAU;
+            c + (u * a.cos() + v * a.sin()) * r
+        })
+        .collect();
+    let fan: Vec<[usize; 3]> = (1..k - 1).map(|i| [0, i, i + 1]).collect();
+    m.add_polygon(&ring, &fan, n);
+}
+
+/// A box `w` × `w` × `t` lying flat, its underside's centre at `c`.
+fn pad(m: &mut TriMesh, c: DVec3, w: f64, t: f64) {
+    let h = w / 2.0;
+    let pts = [
+        DVec2::new(c.x - h, c.y - h),
+        DVec2::new(c.x + h, c.y - h),
+        DVec2::new(c.x + h, c.y + h),
+        DVec2::new(c.x - h, c.y + h),
+    ];
+    m.append(&slab_mesh(&pts, c.z + t, t));
+}
+
+/// A railing's metal parts and its glass, apart so the glass can be seen
+/// through: posts on base plates or side brackets, the handrail on top,
+/// a bottom rail and the infill between; a wall handrail on its
+/// brackets alone.
+pub fn railing_meshes(model: &Model, r: &members::Railing) -> (TriMesh, TriMesh) {
+    let mut m = TriMesh::default();
+    let mut glass = TriMesh::default();
+    let line = r.axis(model);
+    if line.len() < 2 {
+        return (m, glass);
+    }
+    let (post, rail, round) = (r.post(), r.rail(), r.round);
+    let out = r.outward(model, &line);
+    // the segment a point along the line lies on, for its outward normal
+    let out_at = |p: DVec3| -> DVec2 {
+        let mut best = (f64::INFINITY, out[0]);
+        for (w, o) in line.windows(2).zip(&out) {
+            let (a, b) = (w[0].truncate(), w[1].truncate());
+            let ab = b - a;
+            let t = ((p.truncate() - a).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+            let d = (a + ab * t).distance(p.truncate());
+            if d < best.0 {
+                best = (d, *o);
+            }
+        }
+        best.1
+    };
+    // the handrail: a library profile with its insertion point on top of
+    // the posts, else a tube or bar its size, its top at the height
+    let profile = r
+        .rail_profile
+        .as_deref()
+        .and_then(|n| creabim_core::profiles::find(model, n));
+    let under = r.height - rail;
+    let at = |z: f64| -> Vec<DVec3> { line.iter().map(|q| *q + DVec3::Z * z).collect() };
+    match &profile {
+        Some(p) => m.append(&crate::parts::sweep_mesh(p, &at(under), false)),
+        None => rail_along(&mut m, &at(under + rail / 2.0), rail, round),
+    }
+    if let Some(w) = r.wall {
+        // brackets: from a rosette on the wall to under the handrail
+        let zc = under + rail / 2.0;
+        for p in members::posts_along(&line, w.spacing) {
+            let o = out_at(p);
+            let face = p + (o * (w.clear + rail / 2.0)).extend(0.0);
+            let low = DVec3::Z * (zc - rail / 2.0 - members::WALL_BRACKET_DROP);
+            let rod_d = members::WALL_BRACKET_ROD;
+            bar_or_tube(&mut m, face + low, p + low, rod_d);
+            bar_or_tube(&mut m, p + low, p + DVec3::Z * (zc - rail / 2.0), rod_d);
+            disc(
+                &mut m,
+                face + low,
+                -o.extend(0.0),
+                members::WALL_ROSETTE / 2.0,
+                members::ROSETTE_T,
+            );
+        }
+        return (m, glass);
+    }
+    let posts = members::posts_along(&line, r.post_spacing);
+    let drop = r.drop();
+    for p in &posts {
+        rod(
+            &mut m,
+            *p - DVec3::Z * drop,
+            *p + DVec3::Z * under,
+            post,
+            round,
+        );
+        match r.fixing {
+            members::Fixing::Top => {
+                // a base plate, round under a round post
+                if round {
+                    disc(
+                        &mut m,
+                        *p + DVec3::Z * members::BASE_T,
+                        DVec3::Z,
+                        members::BASE_PLATE / 2.0,
+                        members::BASE_T,
+                    );
+                } else {
+                    pad(&mut m, *p, members::BASE_PLATE, members::BASE_T);
+                }
+            }
+            members::Fixing::Side => {
+                // two brackets into the edge's face: under the floor and
+                // at the post's foot
+                let o = out_at(*p).extend(0.0);
+                let face = *p - o * (r.gap_to_edge() + post / 2.0);
+                for z in [-members::SIDE_UPPER, -drop + members::SIDE_LOWER] {
+                    let a = face + DVec3::Z * z;
+                    bar_or_tube(&mut m, a, *p + DVec3::Z * z, members::SIDE_ROD);
+                    disc(
+                        &mut m,
+                        a + o * members::ROSETTE_T,
+                        o,
+                        members::SIDE_ROSETTE / 2.0,
+                        members::ROSETTE_T,
+                    );
+                }
+            }
+        }
+    }
+    // the bottom rail: 100 mm up, or on the infill's clear height
+    let low = r.infill.map_or(0.1, |f| f.bottom + post / 2.0);
+    rail_along(&mut m, &at(low), post, round);
+    let Some(f) = r.infill else {
+        return (m, glass);
+    };
+    // between the bottom rail's top and the handrail's underside
+    let (z0, z1) = (low + post / 2.0, under);
     match f.kind {
         members::InfillKind::Vertical => {
             for w in posts.windows(2) {
@@ -368,9 +514,9 @@ pub fn railing_mesh(
                 let (n, g) = members::bars_in(len - post, f.gap, f.bar);
                 let dir = (w[1] - w[0]) / len;
                 for i in 0..n {
-                    let at = post / 2.0 + g * (i + 1) as f64 + f.bar * (i as f64 + 0.5);
-                    let p = w[0] + dir * at;
-                    bar(&mut m, p + DVec3::Z * z0, p + DVec3::Z * z1, f.bar);
+                    let s = post / 2.0 + g * (i + 1) as f64 + f.bar * (i as f64 + 0.5);
+                    let p = w[0] + dir * s;
+                    rod(&mut m, p + DVec3::Z * z0, p + DVec3::Z * z1, f.bar, f.round);
                 }
             }
         }
@@ -378,18 +524,45 @@ pub fn railing_mesh(
             let (n, g) = members::bars_in(z1 - z0, f.gap, f.bar);
             for i in 0..n {
                 let z = z0 + g * (i + 1) as f64 + f.bar * (i as f64 + 0.5);
-                for w in path.windows(2) {
-                    bar(&mut m, w[0] + DVec3::Z * z, w[1] + DVec3::Z * z, f.bar);
-                }
+                rail_along(&mut m, &at(z), f.bar, f.round);
             }
         }
         members::InfillKind::Panel => {
-            for w in path.windows(2) {
-                plate(&mut m, w[0], w[1], z0, z1, 0.012);
+            // a pane between each two posts, clear of them
+            for w in posts.windows(2) {
+                let len = w[0].truncate().distance(w[1].truncate());
+                let edge = post / 2.0 + members::GLASS_GAP;
+                if len <= 2.0 * edge {
+                    continue;
+                }
+                let dir = (w[1] - w[0]) / len;
+                plate(
+                    &mut glass,
+                    w[0] + dir * edge,
+                    w[1] - dir * edge,
+                    z0 + members::GLASS_GAP,
+                    z1 - members::GLASS_GAP,
+                    members::GLASS_442,
+                );
             }
         }
     }
-    m
+    (m, glass)
+}
+
+/// A railing's metal colour: brushed stainless, anodised aluminium, or
+/// the painted steel older railings had.
+pub fn railing_color(r: &members::Railing) -> [f32; 3] {
+    match r.metal {
+        Some(members::RailMetal::Stainless) => [0.70, 0.71, 0.72],
+        Some(members::RailMetal::Aluminium) => [0.78, 0.79, 0.80],
+        None => [0.32, 0.34, 0.38],
+    }
+}
+
+/// A bracket's rod: a round tube with closed ends.
+fn bar_or_tube(m: &mut TriMesh, a: DVec3, b: DVec3, d: f64) {
+    rod(m, a, b, d, true);
 }
 
 /// A plate `t` thick standing from `a` to `b` between heights `z0` and
@@ -590,7 +763,8 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
             }
         }
         ElementKind::Railing(r) => {
-            let path = r.path_in(model);
+            // the handrail's line, and each post square or round
+            let path = r.axis(model);
             for w in path.windows(2) {
                 items.push(PlanItem::Line {
                     id: e.id,
@@ -599,20 +773,25 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
                     b: w[1].truncate(),
                 });
             }
-            let h = members::POST_SIZE / 2.0;
+            let h = r.post() / 2.0;
             for p in r.posts(model) {
                 let c = p.truncate();
-                ring(
-                    &mut items,
-                    e,
-                    Pen::Projection,
-                    &[
+                let pts: Vec<DVec2> = if r.round {
+                    (0..16)
+                        .map(|i| {
+                            let a = i as f64 / 16.0 * std::f64::consts::TAU;
+                            c + DVec2::new(a.cos(), a.sin()) * h
+                        })
+                        .collect()
+                } else {
+                    vec![
                         c + DVec2::new(-h, -h),
                         c + DVec2::new(h, -h),
                         c + DVec2::new(h, h),
                         c + DVec2::new(-h, h),
-                    ],
-                );
+                    ]
+                };
+                ring(&mut items, e, Pen::Projection, &pts);
             }
         }
         _ => {}
@@ -741,6 +920,46 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
             b,
         });
     };
+    if let (Some(slope), Some(f)) = (s.ramp, lay.flights.first()) {
+        // a ramp: its ends and sides, broken where the cut plane meets
+        // its top, the walking line up and its slope written on it
+        let side = f.dir.perp() * s.width / 2.0;
+        let at = |u: f64| f.start + f.dir * u;
+        let run = f.run(s.tread);
+        let split = if slope > 1e-9 {
+            (cut / slope).clamp(0.0, run)
+        } else {
+            run
+        };
+        let past = if split < run - 1e-9 {
+            Pen::Overhead
+        } else {
+            Pen::Projection
+        };
+        line(items, Pen::Projection, at(0.0) - side, at(0.0) + side);
+        line(items, past, at(run) - side, at(run) + side);
+        for sd in [-side, side] {
+            if split > 1e-9 {
+                line(items, Pen::Projection, at(0.0) + sd, at(split) + sd);
+            }
+            if run - split > 1e-9 {
+                line(items, Pen::Overhead, at(split) + sd, at(run) + sd);
+            }
+        }
+        if split < run - 1e-9 {
+            break_line(items, e, f, s, split);
+        }
+        line(items, Pen::Symbol, at(0.0), at(run));
+        let (end, back, wing) = (at(run), -f.dir * 0.25, f.dir.perp() * 0.12);
+        line(items, Pen::Symbol, end, end + back + wing);
+        line(items, Pen::Symbol, end, end + back - wing);
+        items.push(PlanItem::Label {
+            id: e.id,
+            at: at(run / 2.0) + f.dir.perp() * 0.15,
+            text: format!("{} %", (slope * 1000.0).round() / 10.0).replace('.', ","),
+        });
+        return;
+    }
     let mut broken = false;
     for f in &lay.flights {
         let side = f.dir.perp() * s.width / 2.0;
@@ -820,6 +1039,17 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
 pub fn stair_lines(s: &Stair, rise: f64, line: &mut dyn FnMut(Pen, DVec2, DVec2, f64)) {
     let lay = s.layout(rise);
     let r = lay.riser;
+    if let (Some(_), Some(f)) = (s.ramp, lay.flights.first()) {
+        let side = f.dir.perp() * s.width / 2.0;
+        let (a, b) = (f.start, f.end(s.tread));
+        line(Pen::Projection, a - side, a + side, 0.0);
+        line(Pen::Projection, b - side, b + side, rise);
+        for sd in [-side, side] {
+            line(Pen::Projection, a + sd, b + sd, rise);
+        }
+        line(Pen::Symbol, a, b, rise);
+        return;
+    }
     for f in &lay.flights {
         let side = f.dir.perp() * s.width / 2.0;
         let at = |u: f64| f.start + f.dir * u;

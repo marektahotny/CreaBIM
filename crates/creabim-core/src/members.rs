@@ -850,7 +850,16 @@ pub struct Stair {
     pub landing: Option<Landing>,
     #[serde(default)]
     pub material: Option<ElementId>,
+    /// A ramp, not steps: its slope as rise over run (George 2026-11-24:
+    /// a ramp under the Stair tool, railings fixed to it). It climbs the
+    /// same rise in one sloping flight; risers and treads don't apply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ramp: Option<f64>,
 }
+
+/// A new ramp's slope: 1 : 12 (8,33 %), the steepest a ramp for people
+/// of limited mobility may be (vyhláška MŽP SR 532/2002 Z. z.).
+pub const RAMP_SLOPE: f64 = 1.0 / 12.0;
 
 fn default_waist() -> f64 {
     0.15
@@ -866,11 +875,17 @@ pub struct Flight {
     pub risers: u32,
     /// Height of the bottom of the flight above the stair's base.
     pub z0: f64,
+    /// A ramp's flight: its plan length (it has no treads).
+    pub length: Option<f64>,
 }
 
 impl Flight {
-    /// Plan length from the first riser to the last.
+    /// Plan length from the first riser to the last (a ramp's whole
+    /// length).
     pub fn run(&self, tread: f64) -> f64 {
+        if let Some(l) = self.length {
+            return l;
+        }
         self.risers.saturating_sub(1) as f64 * tread
     }
 
@@ -903,6 +918,16 @@ impl Stair {
             waist: default_waist(),
             landing: None,
             material: None,
+            ramp: None,
+        }
+    }
+
+    /// A ramp of slope [`RAMP_SLOPE`], 1,2 m wide.
+    pub fn new_ramp(level: ElementId, start: DVec2, direction: f64) -> Self {
+        Self {
+            width: 1.2,
+            ramp: Some(RAMP_SLOPE),
+            ..Self::new(level, start, direction)
         }
     }
 
@@ -924,6 +949,21 @@ impl Stair {
 
     /// The flights and landing for a rise of `rise`.
     pub fn layout(&self, rise: f64) -> StairLayout {
+        if let Some(slope) = self.ramp.filter(|s| *s > 1e-6) {
+            // one sloping flight, as long as the slope needs
+            return StairLayout {
+                risers: 1,
+                riser: rise,
+                flights: vec![Flight {
+                    start: self.start,
+                    dir: self.dir(),
+                    risers: 1,
+                    z0: 0.0,
+                    length: Some(rise / slope),
+                }],
+                landing: None,
+            };
+        }
         let n = riser_count(rise, self.max_riser);
         let r = rise / n as f64;
         let d = self.dir();
@@ -932,6 +972,7 @@ impl Stair {
             dir: d,
             risers: n,
             z0: 0.0,
+            length: None,
         };
         let Some(l) = self.landing.filter(|l| l.after >= 1 && l.after < n) else {
             return StairLayout {
@@ -960,6 +1001,7 @@ impl Stair {
             dir: side,
             risers: n - l.after,
             z0: l.after as f64 * r,
+            length: None,
         };
         StairLayout {
             risers: n,
@@ -978,7 +1020,9 @@ impl Stair {
         let mut out: Vec<DVec3> = Vec::new();
         for (k, f) in lay.flights.iter().enumerate() {
             let s = if left { f.dir.perp() } else { -f.dir.perp() } * off;
-            let a = (f.start + s).extend(f.z0 + r);
+            // a ramp's starts on its foot, a stair's over the first nosing
+            let a0 = if self.ramp.is_some() { 0.0 } else { r };
+            let a = (f.start + s).extend(f.z0 + a0);
             let b = (f.end(self.tread) + s).extend(f.z0 + f.risers as f64 * r);
             let outer = self.landing.is_some_and(|l| l.left != left);
             if let (1, true, Some(&last)) = (k, outer, out.last()) {
@@ -1043,6 +1087,90 @@ pub struct Railing {
     /// only a bottom rail 100 mm over the floor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub infill: Option<Infill>,
+    /// What its metal is: stainless steel or aluminium (George
+    /// 2026-11-24); none: painted steel as older railings were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metal: Option<RailMetal>,
+    /// Posts, handrail and bars round tubes; else square (JAKL) ones.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub round: bool,
+    /// The posts' outer size (side or diameter), m; none: [`POST_SIZE`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_size: Option<f64>,
+    /// The handrail's outer size (side or diameter), m; none:
+    /// [`RAIL_SIZE`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rail_size: Option<f64>,
+    /// How its posts are fixed: standing on the floor, or beside it on
+    /// the edge of the slab, stair or wall they guard.
+    #[serde(default, skip_serializing_if = "Fixing::is_top")]
+    pub fixing: Fixing,
+    /// Only a handrail on brackets into a wall, no posts nor infill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wall: Option<WallRail>,
+    /// Fixed from the side: the clear gap from the edge's face to the
+    /// posts, m; none: [`SIDE_GAP`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_gap: Option<f64>,
+    /// Fixed from the side: how far the posts reach below the floor, m;
+    /// none: [`SIDE_DROP`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_drop: Option<f64>,
+}
+
+/// A railing's metal (George 2026-11-24: stainless or aluminium).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RailMetal {
+    Stainless,
+    Aluminium,
+}
+
+impl RailMetal {
+    pub const ALL: [RailMetal; 2] = [RailMetal::Stainless, RailMetal::Aluminium];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RailMetal::Stainless => "Stainless steel",
+            RailMetal::Aluminium => "Aluminium",
+        }
+    }
+}
+
+/// How a railing's posts are fixed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Fixing {
+    /// On a base plate on top of the floor, the stair's treads.
+    #[default]
+    Top,
+    /// From the side, on brackets into the edge of the slab, stair, ramp
+    /// or wall: the posts stand outside it and reach below its top.
+    Side,
+}
+
+impl Fixing {
+    pub fn is_top(&self) -> bool {
+        *self == Fixing::Top
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Fixing::Top => "From the top",
+            Fixing::Side => "From the side",
+        }
+    }
+}
+
+/// A handrail alone, on brackets into a wall.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WallRail {
+    /// The wall on the path's left (looking along it); else its right.
+    pub left: bool,
+    /// Clear distance from the wall's face to the handrail, m.
+    pub clear: f64,
+    /// Brackets no further apart than this, m.
+    pub spacing: f64,
 }
 
 /// What a railing is filled with (STN 74 3305 3.2.2).
@@ -1085,6 +1213,9 @@ pub struct Infill {
     pub bar: f64,
     /// Clear height from the floor to the bottom rail's underside, m.
     pub bottom: f64,
+    /// The bars round rods; else square ones.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub round: bool,
 }
 
 impl Default for Infill {
@@ -1094,7 +1225,146 @@ impl Default for Infill {
             gap: 0.11,
             bar: 0.02,
             bottom: 0.08,
+            round: false,
         }
+    }
+}
+
+/// A railing part a maker sells: its outer size (side or diameter, m),
+/// whether it is round, and its name and code in the maker's catalogue.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RailPart {
+    pub size: f64,
+    pub round: bool,
+    pub name: &'static str,
+}
+
+const fn part(size: f64, round: bool, name: &'static str) -> RailPart {
+    RailPart { size, round, name }
+}
+
+/// Posts of a metal (George 2026-11-24): stainless from UMAKOV (AISI 304,
+/// umakov.sk), aluminium from ALZABRADLI (EN AW 6060, zabradlie.sk).
+pub fn rail_posts(metal: RailMetal) -> &'static [RailPart] {
+    static STAINLESS: [RailPart; 2] = [
+        part(0.0424, true, "Ø42,4×2 UMAKOV A/42,4x2"),
+        part(0.04, false, "40×40×2 UMAKOV A 40x40x2"),
+    ];
+    static ALUMINIUM: [RailPart; 2] = [
+        part(0.04, true, "Ø40 ALZA 114201 / 114202"),
+        part(0.05, true, "Ø50 ALZA 115253"),
+    ];
+    match metal {
+        RailMetal::Stainless => &STAINLESS,
+        RailMetal::Aluminium => &ALUMINIUM,
+    }
+}
+
+/// Handrails of a metal, from the same makers.
+pub fn rail_handrails(metal: RailMetal) -> &'static [RailPart] {
+    static STAINLESS: [RailPart; 2] = [
+        part(0.0424, true, "Ø42,4×2 UMAKOV A/42,4x2"),
+        part(0.04, false, "40×40 UMAKOV AJP-M 40x40"),
+    ];
+    static ALUMINIUM: [RailPart; 2] = [
+        part(0.05, true, "Ø50×2,5 ALZA 115251"),
+        part(0.06, true, "Ø60×2,5 ALZA 116252"),
+    ];
+    match metal {
+        RailMetal::Stainless => &STAINLESS,
+        RailMetal::Aluminium => &ALUMINIUM,
+    }
+}
+
+/// Infill bars of a metal, from the same makers (UMAKOV's square sets
+/// are filled with its Ø12 tube too).
+pub fn rail_bars(metal: RailMetal) -> &'static [RailPart] {
+    static STAINLESS: [RailPart; 1] = [part(0.012, true, "Ø12×1,5 UMAKOV A/12x1,5")];
+    static ALUMINIUM: [RailPart; 2] = [
+        part(0.016, true, "Ø16×2 ALZA 110201"),
+        part(0.02, false, "20×20 UMAKOV FG-S20x20"),
+    ];
+    match metal {
+        RailMetal::Stainless => &STAINLESS,
+        RailMetal::Aluminium => &ALUMINIUM,
+    }
+}
+
+/// What a railing is, as George listed them (2026-11-24): upright bars,
+/// level bars, safety glass, or a handrail alone on a wall.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RailingType {
+    UprightBars,
+    LevelBars,
+    Glass,
+    WallHandrail,
+}
+
+impl RailingType {
+    pub const ALL: [RailingType; 4] = [
+        RailingType::UprightBars,
+        RailingType::LevelBars,
+        RailingType::Glass,
+        RailingType::WallHandrail,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RailingType::UprightBars => "Upright bars",
+            RailingType::LevelBars => "Horizontal bars",
+            RailingType::Glass => "Safety glass",
+            RailingType::WallHandrail => "Handrail on a wall",
+        }
+    }
+
+    /// The type a railing is, read back from its parts.
+    pub fn of(r: &Railing) -> Option<RailingType> {
+        if r.wall.is_some() {
+            return Some(RailingType::WallHandrail);
+        }
+        Some(match r.infill?.kind {
+            InfillKind::Vertical => RailingType::UprightBars,
+            InfillKind::Horizontal => RailingType::LevelBars,
+            InfillKind::Panel => RailingType::Glass,
+        })
+    }
+
+    /// Make `r` this type, of `metal` with round or square parts: its
+    /// posts, handrail and bars the catalogue's first of that shape.
+    pub fn apply(self, r: &mut Railing, metal: RailMetal, round: bool) {
+        let pick = |list: &[RailPart]| {
+            list.iter()
+                .find(|p| p.round == round)
+                .or(list.first())
+                .copied()
+        };
+        r.metal = Some(metal);
+        r.round = round;
+        r.post_size = pick(rail_posts(metal)).map(|p| p.size);
+        r.rail_size = pick(rail_handrails(metal)).map(|p| p.size);
+        r.rail_profile = None;
+        let bar = pick(rail_bars(metal));
+        let mut f = r.infill.unwrap_or_default();
+        if let Some(b) = bar {
+            f.bar = b.size;
+            f.round = b.round;
+        }
+        r.wall = None;
+        match self {
+            RailingType::UprightBars => f.kind = InfillKind::Vertical,
+            RailingType::LevelBars => f.kind = InfillKind::Horizontal,
+            RailingType::Glass => f.kind = InfillKind::Panel,
+            RailingType::WallHandrail => {
+                r.wall = Some(WallRail {
+                    left: true,
+                    clear: WALL_CLEAR,
+                    spacing: WALL_BRACKET_SPACING,
+                });
+                r.infill = None;
+                return;
+            }
+        }
+        r.infill = Some(f);
     }
 }
 
@@ -1112,6 +1382,46 @@ pub fn bars_in(clear: f64, gap: f64, bar: f64) -> (usize, f64) {
 pub const RAIL_SIZE: f64 = 0.05;
 pub const POST_SIZE: f64 = 0.04;
 
+/// Laminated safety glass Connex 4.4.2 (two 4 mm panes, two 0,38 mm PVB
+/// foils), the glass ALZABRADLI's model D is filled with.
+pub const GLASS_442: f64 = 0.00876;
+
+// Fixing parts. UMAKOV (umakov.sk) sells them by code only; the sizes
+// read from the codes: a top flange A6/85x42x6 (Ø85, 6 mm) and a side
+// anchor A6/021-6-A "D100/d42" (a Ø100 rosette). What their pages don't
+// give (the standoff, the reach below the floor, a wall bracket's
+// projection, a pane's clearance) is provisional until George gives his
+// figures (asked 2026-11-24), and editable on each railing.
+
+/// A top-fixed post's flange: across and thick, m.
+pub const BASE_PLATE: f64 = 0.085;
+pub const BASE_T: f64 = 0.006;
+/// A side anchor's rosette across, m, and any rosette's thickness.
+pub const SIDE_ROSETTE: f64 = 0.1;
+pub const ROSETTE_T: f64 = 0.006;
+/// Fixed from the side: the clear gap from the edge's face to the post
+/// (provisional).
+pub const SIDE_GAP: f64 = 0.03;
+/// Fixed from the side: how far the post reaches below the floor
+/// (provisional).
+pub const SIDE_DROP: f64 = 0.2;
+/// The side anchors' heights: the upper one this far under the floor,
+/// the lower one this far over the post's foot (provisional).
+pub const SIDE_UPPER: f64 = 0.05;
+pub const SIDE_LOWER: f64 = 0.05;
+/// A side anchor's threaded rod, M10 as in UMAKOV's sets.
+pub const SIDE_ROD: f64 = 0.01;
+/// A wall handrail: clear of the wall's face, brackets no further apart
+/// (provisional), the bracket's rod and rosette, and how far under the
+/// handrail its arm runs.
+pub const WALL_CLEAR: f64 = 0.06;
+pub const WALL_BRACKET_SPACING: f64 = 1.0;
+pub const WALL_BRACKET_ROD: f64 = 0.012;
+pub const WALL_ROSETTE: f64 = 0.06;
+pub const WALL_BRACKET_DROP: f64 = 0.03;
+/// A glass pane's clearance from the posts and rails (provisional).
+pub const GLASS_GAP: f64 = 0.02;
+
 impl Railing {
     pub fn new(level: ElementId, path: Vec<DVec3>) -> Self {
         Self {
@@ -1123,7 +1433,65 @@ impl Railing {
             material: None,
             rail_profile: None,
             infill: None,
+            metal: None,
+            round: false,
+            post_size: None,
+            rail_size: None,
+            fixing: Fixing::Top,
+            wall: None,
+            side_gap: None,
+            side_drop: None,
         }
+    }
+
+    /// Fixed from the side: the clear gap from the edge's face to the
+    /// posts, m.
+    pub fn gap_to_edge(&self) -> f64 {
+        self.side_gap.unwrap_or(SIDE_GAP)
+    }
+
+    /// The posts' outer size (side or diameter), m.
+    pub fn post(&self) -> f64 {
+        self.post_size.unwrap_or(POST_SIZE)
+    }
+
+    /// The handrail's outer size (side or diameter), m.
+    pub fn rail(&self) -> f64 {
+        self.rail_size.unwrap_or(RAIL_SIZE)
+    }
+
+    /// Which way is out, per segment of `path`: the plan normal pointing
+    /// away from what the railing guards. A stair's railing looks away
+    /// from the stair; a wall handrail toward its wall; another railing
+    /// toward the side whose floor lies lower (the fall), the left when
+    /// both are the same.
+    pub fn outward(&self, model: &Model, path: &[DVec3]) -> Vec<DVec2> {
+        let side = |left: bool, d: DVec2| if left { d.perp() } else { -d.perp() };
+        path.windows(2)
+            .map(|w| {
+                let d = (w[1] - w[0]).truncate().try_normalize().unwrap_or(DVec2::X);
+                if let Some(wr) = self.wall {
+                    return side(wr.left, d);
+                }
+                if let Some(st) = self.stair {
+                    return side(st.left, d);
+                }
+                let mid = (w[0] + w[1]) / 2.0;
+                // a floor at the railing's own height counts as under it
+                let floor = |s: f64| {
+                    crate::railcheck::floor_under(
+                        model,
+                        mid.truncate() + d.perp() * (0.3 * s),
+                        mid.z + 0.05,
+                    )
+                };
+                if floor(-1.0) < floor(1.0) - 1e-3 {
+                    -d.perp()
+                } else {
+                    d.perp()
+                }
+            })
+            .collect()
     }
 
     /// A railing along one side of `stair`.
@@ -1141,8 +1509,15 @@ impl Railing {
         if let Some(side) = self.stair {
             if let Some(ElementKind::Stair(s)) = model.get(side.stair).map(|e| &e.kind) {
                 let z = s.base(model);
+                // fixed from the side it runs at the stair's edge, its posts
+                // outside; a wall handrail clear of the wall
+                let inset = match (self.wall, self.fixing) {
+                    (Some(w), _) => w.clear + self.rail() / 2.0,
+                    (None, Fixing::Side) => 0.0,
+                    (None, Fixing::Top) => RAIL_SIZE,
+                };
                 return s
-                    .side_path(s.rise(model), side.left, RAIL_SIZE)
+                    .side_path(s.rise(model), side.left, inset)
                     .into_iter()
                     .map(|p| p + DVec3::Z * z)
                     .collect();
@@ -1160,10 +1535,62 @@ impl Railing {
     }
 
     /// Where posts stand: every corner, and in between no further apart
-    /// than the spacing.
+    /// than the spacing; on the floor (the path's height), fixed from the
+    /// side out past the edge. A wall handrail has none.
     pub fn posts(&self, model: &Model) -> Vec<DVec3> {
-        posts_along(&self.path_in(model), self.post_spacing)
+        if self.wall.is_some() {
+            return vec![];
+        }
+        posts_along(&self.axis(model), self.post_spacing)
     }
+
+    /// The line its posts, rails and infill stand on, in model
+    /// coordinates at the floor's height: the path, or fixed from the side
+    /// the path moved out past the edge by [`SIDE_GAP`] and half a post; a
+    /// wall handrail's centre line, clear of the wall the path runs on.
+    pub fn axis(&self, model: &Model) -> Vec<DVec3> {
+        let path = self.path_in(model);
+        if let Some(w) = self.wall {
+            // drawn along the wall's face; a stair's already clear of it
+            if self.stair.is_some() {
+                return path;
+            }
+            let out = self.outward(model, &path);
+            return offset_path(&path, &out, -(w.clear + self.rail() / 2.0));
+        }
+        if self.fixing != Fixing::Side {
+            return path;
+        }
+        let out = self.outward(model, &path);
+        offset_path(&path, &out, self.gap_to_edge() + self.post() / 2.0)
+    }
+
+    /// How far a post fixed from the side reaches below the floor: to its
+    /// lower bracket, [`SIDE_DROP`].
+    pub fn drop(&self) -> f64 {
+        match (self.fixing, self.wall) {
+            (Fixing::Side, None) => self.side_drop.unwrap_or(SIDE_DROP),
+            _ => 0.0,
+        }
+    }
+}
+
+/// `path` moved `by` sideways, each segment along its own `out` normal,
+/// corners mitred.
+pub fn offset_path(path: &[DVec3], out: &[DVec2], by: f64) -> Vec<DVec3> {
+    let n = path.len();
+    (0..n)
+        .map(|i| {
+            let a = out.get(i.wrapping_sub(1)).or(out.get(i)).copied();
+            let b = out.get(i).or(out.get(i.wrapping_sub(1))).copied();
+            let (Some(a), Some(b)) = (a, b) else {
+                return path[i];
+            };
+            let m = (a + b).try_normalize().unwrap_or(a);
+            let k = m.dot(a).max(0.3);
+            path[i] + (m * (by / k)).extend(0.0)
+        })
+        .collect()
 }
 
 /// Post positions along `path`: each corner, and evenly between.
