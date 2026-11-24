@@ -643,6 +643,24 @@ impl CreaBimApp {
                         .checked(on(F::Pile)),
                 ]
             }
+            // the roof and its sheet metal, one button (George 2026-11-24)
+            "tab:roof" => crate::tooltabs::ROOF_TOOLS
+                .iter()
+                .enumerate()
+                .flat_map(|(n, t)| {
+                    let i = Tool::ALL.iter().position(|x| x == t).unwrap_or(0);
+                    let item = Item::new(format!("tool:{i}"), t.label())
+                        .icon(tool_icon(*t))
+                        .hint(t.hint())
+                        .checked(self.plan.tool == *t);
+                    // the roof, then a line, then its sheet metal
+                    if n == 1 {
+                        vec![Item::Separator, item]
+                    } else {
+                        vec![item]
+                    }
+                })
+                .collect(),
             "tab:masonry" => vec![
                 Item::new("masonry:plan", "Masonry plan of this storey").icon("brick-wall"),
                 Item::new("masonry:window", "Lintels and wall rules…").icon("settings"),
@@ -4018,7 +4036,9 @@ impl CreaBimApp {
                     hint,
                 } => json!({
                     "kind": "menu", "key": key, "label": label, "hint": hint, "icon": icon,
-                    "open": self.popup_key().as_deref() == Some(key),
+                    // lit while open, or while one of its tools is on
+                    "open": self.popup_key().as_deref() == Some(key)
+                        || crate::tooltabs::menu_tools(key).contains(&self.plan.tool),
                 }),
                 Entry::Sep => json!({"kind": "sep"}),
             });

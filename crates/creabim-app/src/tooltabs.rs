@@ -79,12 +79,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             Sep,
             T(Tool::Slab),
             T(Tool::Shaft),
-            T(Tool::Roof),
-            T(Tool::Gutter),
-            T(Tool::Downpipe),
-            T(Tool::Capping),
-            T(Tool::ChimneyFlashing),
-            T(Tool::RoofOutlet),
+            Entry::Menu {
+                key: "tab:roof",
+                label: "Roof",
+                icon: "roof",
+                hint: "The roof, and its sheet metal under it: gutter, downpipe, parapet capping, chimney flashing and roof outlet",
+            },
             T(Tool::Stair),
             T(Tool::Railing),
             act(
@@ -805,9 +805,30 @@ pub fn entries(tab: usize) -> Vec<Entry> {
     }
 }
 
+/// The tools behind the Roof button's menu: the roof, then its sheet
+/// metal (klampiarske výrobky), one button for them all.
+pub const ROOF_TOOLS: [Tool; 6] = [
+    Tool::Roof,
+    Tool::Gutter,
+    Tool::Downpipe,
+    Tool::Capping,
+    Tool::ChimneyFlashing,
+    Tool::RoofOutlet,
+];
+
+/// The tools a tab's menu button `key` stands for: it is lit while one of
+/// them is the tool.
+pub fn menu_tools(key: &str) -> &'static [Tool] {
+    match key {
+        "tab:roof" => &ROOF_TOOLS,
+        "tab:footing" => &[Tool::Footing],
+        _ => &[],
+    }
+}
+
 /// Does tab `tab` show `tool`?
 pub fn holds(tab: usize, tool: Tool) -> bool {
-    // the Footing tool is behind its menu of kinds
+    // the Footing tool is behind its menu of kinds, the roof's behind its
     let menu = |key: &str| {
         entries(tab)
             .iter()
@@ -816,6 +837,7 @@ pub fn holds(tab: usize, tool: Tool) -> bool {
     ALWAYS.contains(&tool)
         || entries(tab).contains(&Entry::Tool(tool))
         || (tool == Tool::Footing && menu("tab:footing"))
+        || (ROOF_TOOLS.contains(&tool) && menu("tab:roof"))
 }
 
 /// The first tab that shows `tool`.
