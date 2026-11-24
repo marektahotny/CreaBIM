@@ -438,6 +438,49 @@ impl CreaBimApp {
             "footing.material" => {
                 self.plan.members.footing_material = (!arg.is_empty()).then(|| arg.to_string());
             }
+            "stair.shape" => {
+                if let Some(c) = arg
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|i| creabim_core::members::StairShape::ALL.get(i))
+                {
+                    self.plan.members.stair_build.shape = *c;
+                }
+            }
+            "stair.carrier" | "stair.stringer" | "stair.tread" | "stair.riser" => {
+                use crate::memberstool::StepFinishKind;
+                let i = arg.parse::<usize>().ok();
+                let b = &mut self.plan.members.stair_build;
+                match head {
+                    "stair.carrier" => {
+                        if let Some(c) =
+                            i.and_then(|i| creabim_core::members::StairCarrier::ALL.get(i))
+                        {
+                            b.carrier = *c;
+                            // on stringers, oak boards; tiles only on concrete
+                            if !b.carrier.is_concrete() {
+                                if b.tread != StepFinishKind::Oak {
+                                    b.tread = StepFinishKind::Oak;
+                                }
+                                if b.riser == StepFinishKind::Tile {
+                                    b.riser = StepFinishKind::Oak;
+                                }
+                            }
+                        }
+                    }
+                    "stair.stringer" => b.stringer = arg.to_string(),
+                    "stair.tread" => {
+                        if let Some(k) = i.and_then(|i| StepFinishKind::ALL.get(i)) {
+                            b.tread = *k;
+                        }
+                    }
+                    _ => {
+                        if let Some(k) = i.and_then(|i| StepFinishKind::ALL.get(i)) {
+                            b.riser = *k;
+                        }
+                    }
+                }
+            }
             "place.ceiling" => {
                 use crate::placement::Build;
                 self.plan.members.place.ceiling_build = match arg {

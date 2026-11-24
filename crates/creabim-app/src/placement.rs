@@ -45,6 +45,11 @@ pub struct Placement {
     /// New ceilings' underside above the floor; none, the usual height.
     pub ceiling_height: Option<f64>,
     pub ceiling_build: Build,
+    /// New stairs' (and ramps') base above the level's floor.
+    pub stair_base: f64,
+    /// New stairs' top above the level's floor; none, up to the next
+    /// level.
+    pub stair_top: Option<f64>,
 }
 
 impl Placement {
@@ -70,6 +75,14 @@ impl Placement {
     pub fn beam(&self, model: &Model, b: &mut creabim_core::Beam) {
         if let Some(t) = self.beam_top {
             b.top_offset = storey_height(model, b.level) - t;
+        }
+    }
+
+    /// `s` (just made by the Stair tool) set on its base and top.
+    pub fn stair(&self, s: &mut creabim_core::Stair) {
+        s.base_offset = self.stair_base;
+        if let Some(t) = self.stair_top {
+            s.height = Some((t - self.stair_base).max(0.05));
         }
     }
 
@@ -208,6 +221,15 @@ pub fn tool_options(
             }
             v
         }
+        Tool::Stair => {
+            let top = p.stair_top.unwrap_or(storey);
+            vec![
+                num("stair_base", "Base offset", p.stair_base, "How far above the floor of the level new stairs start"),
+                num("stair_top", "Top", top, "How high above the floor of the level new stairs climb. Typing a value fixes it; To the level above lets them climb to the next level again."),
+                toggle("stair_top", "To the level above", p.stair_top.is_none(), "levels", "New stairs climb to the next level"),
+                reach(model, level, p.stair_base, Some(top)),
+            ]
+        }
         Tool::Ceiling => {
             let h = p.ceiling_height(crate::roomtool::ceiling_height(model, level));
             vec![
@@ -236,6 +258,8 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "column_base" => p.column_base = v,
         "column_top" => p.column_top = Some(v),
         "beam_top" => p.beam_top = Some(v),
+        "stair_base" => p.stair_base = v,
+        "stair_top" => p.stair_top = Some(v),
         "ceiling_height" => p.ceiling_height = Some(v.max(0.1)),
         _ => {}
     }
@@ -262,6 +286,13 @@ pub fn toggle_option(state: &mut PlanState, model: &Model, level: Option<Element
         }
         "beam_top" => {
             p.beam_top = if p.beam_top.is_some() {
+                None
+            } else {
+                Some(storey)
+            }
+        }
+        "stair_top" => {
+            p.stair_top = if p.stair_top.is_some() {
                 None
             } else {
                 Some(storey)

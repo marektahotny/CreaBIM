@@ -285,20 +285,199 @@ pub fn ramp_profile(len: f64, rise: f64, waist: f64) -> Vec<DVec2> {
 
 /// Solid steps for every flight, and the landing between them.
 pub fn stair_mesh(s: &Stair, base: f64, rise: f64) -> TriMesh {
+    let mut p = stair_parts(s, base, rise);
+    p.carrier.append(&p.treads);
+    p.carrier.append(&p.risers);
+    p.carrier
+}
+
+/// A stair's pieces apart, each of its own material: what carries it (the
+/// concrete flight and landing, or the stringers and landing), the treads'
+/// finish or boards, the risers' finish or boards.
+#[derive(Default)]
+pub struct StairParts {
+    pub carrier: TriMesh,
+    pub treads: TriMesh,
+    pub risers: TriMesh,
+}
+
+/// A box in a flight's frame: `u` along, `v` across (both from-to), `z`
+/// up, from `origin` climbing along `dir`.
+fn flight_box(m: &mut TriMesh, origin: DVec3, dir: DVec2, u: [f64; 2], v: [f64; 2], z: [f64; 2]) {
+    if u[1] - u[0] < 1e-6 || v[1] - v[0] < 1e-6 || z[1] - z[0] < 1e-6 {
+        return;
+    }
+    let prof = [
+        DVec2::new(u[0], z[0]),
+        DVec2::new(u[1], z[0]),
+        DVec2::new(u[1], z[1]),
+        DVec2::new(u[0], z[1]),
+    ];
+    let mid = (v[0] + v[1]) / 2.0;
+    extrude_profile(
+        m,
+        &prof,
+        origin + (dir.perp() * mid).extend(0.0),
+        dir,
+        v[1] - v[0],
+    );
+}
+
+/// The band of a stringer between `d0` and `d1` below its sloping top
+/// (`c + k·u` in the flight's frame), cut level at the flight's foot and
+/// plumb at `end`, `v` across.
+fn stringer_band(
+    m: &mut TriMesh,
+    origin: DVec3,
+    dir: DVec2,
+    (c, k, end): (f64, f64, f64),
+    (d0, d1): (f64, f64),
+    v: [f64; 2],
+) {
+    let cos = 1.0 / (1.0 + k * k).sqrt();
+    let (z0, z1) = (c - d0 / cos, c - d1 / cos);
+    // where each line meets the foot, and its height at the end
+    let foot = |z: f64| -z / k;
+    let mut prof = vec![
+        DVec2::new(foot(z1), 0.0),
+        DVec2::new(end, z1 + k * end),
+        DVec2::new(end, z0 + k * end),
+        DVec2::new(foot(z0), 0.0),
+    ];
+    prof.dedup_by(|a, b| a.distance(*b) < 1e-9);
+    if prof.len() < 3 || crate::triangulate::signed_area2(&prof).abs() < 1e-9 {
+        return;
+    }
+    if crate::triangulate::signed_area2(&prof) < 0.0 {
+        prof.reverse();
+    }
+    let mid = (v[0] + v[1]) / 2.0;
+    extrude_profile(
+        m,
+        &prof,
+        origin + (dir.perp() * mid).extend(0.0),
+        dir,
+        v[1] - v[0],
+    );
+}
+
+/// A stringer's section as rectangles across (from-to) and down from its
+/// top (from-to): a timber beam is one, an I three, a channel or an angle
+/// two or three. `out` is the side the stair's edge is on.
+pub(crate) fn stringer_pieces(st: &members::Stringer, out: f64) -> Vec<([f64; 2], [f64; 2])> {
+    use members::StringerKind as K;
+    let (h, b) = (st.depth, st.width);
+    let (tw, tf) = (st.web.max(0.002), st.flange.max(0.002));
+    let x = b / 2.0;
+    let across = |a: f64, c: f64| {
+        let (p, q) = (a * out, c * out);
+        [p.min(q), p.max(q)]
+    };
+    match st.kind {
+        K::Timber => vec![([-x, x], [0.0, h])],
+        K::I => vec![
+            ([-x, x], [0.0, tf]),
+            ([-tw / 2.0, tw / 2.0], [tf, h - tf]),
+            ([-x, x], [h - tf, h]),
+        ],
+        K::U => vec![
+            (across(x - tw, x), [0.0, h]),
+            (across(-x, x - tw), [0.0, tf]),
+            (across(-x, x - tw), [h - tf, h]),
+        ],
+        K::L => vec![
+            (across(x - tw, x), [0.0, h]),
+            (across(-x, x - tw), [h - tw, h]),
+        ],
+    }
+}
+
+pub fn stair_parts(s: &Stair, base: f64, rise: f64) -> StairParts {
+    if s.by_steps() {
+        return crate::stairsteps::step_stair_parts(s, base, rise);
+    }
     let lay = s.layout(rise);
-    let mut m = TriMesh::default();
+    let mut p = StairParts::default();
+    let (r, t) = (lay.riser, s.tread);
+    let (tt, tr) = (s.tread_t(), s.riser_t());
+    let concrete = s.carrier.is_concrete() || s.ramp.is_some() || s.stringer.is_none();
+    let w = s.width / 2.0;
     for f in &lay.flights {
-        let prof = match f.length {
-            Some(len) => ramp_profile(len, lay.riser, s.waist),
-            None => flight_profile(f.risers, lay.riser, s.tread, s.waist),
-        };
-        extrude_profile(&mut m, &prof, f.start.extend(base + f.z0), f.dir, s.width);
+        let origin = f.start.extend(base + f.z0);
+        if let Some(len) = f.length {
+            let prof = ramp_profile(len, r, s.waist);
+            extrude_profile(&mut p.carrier, &prof, origin, f.dir, s.width);
+            continue;
+        }
+        let n = f.risers.max(1);
+        let run = (n - 1) as f64 * t;
+        if concrete {
+            // the cast flight under its finishes: set back by the riser
+            // finish, down by the tread finish, so the finished steps are
+            // the steps as laid out
+            let prof = flight_profile(n, r, t, s.waist);
+            let at = origin + (f.dir * tr).extend(-tt);
+            extrude_profile(&mut p.carrier, &prof, at, f.dir, s.width);
+        } else if let Some(st) = &s.stringer {
+            // stringers under the boards: their top through each tread's
+            // front underside
+            let line = (r - tt, r / t, run);
+            for o in s.stringer_offsets() {
+                let out = if o >= 0.0 { 1.0 } else { -1.0 };
+                for (v, d) in stringer_pieces(st, out) {
+                    stringer_band(
+                        &mut p.carrier,
+                        origin,
+                        f.dir,
+                        line,
+                        (d[0], d[1]),
+                        [o + v[0], o + v[1]],
+                    );
+                }
+            }
+        }
+        // the treads: finish or boards, each tread k (1..n-1) at k·r
+        if tt > 0.0 {
+            for k in 1..n {
+                let u0 = (k - 1) as f64 * t;
+                let z = k as f64 * r;
+                flight_box(
+                    &mut p.treads,
+                    origin,
+                    f.dir,
+                    [u0, u0 + t],
+                    [-w, w],
+                    [z - tt, z],
+                );
+            }
+        }
+        // the risers: closed, under each tread's front, the last under
+        // the floor or landing it climbs to
+        if s.risers_closed && tr > 0.0 {
+            for k in 1..=n {
+                let u0 = (k - 1) as f64 * t;
+                let z0 = (k - 1) as f64 * r;
+                flight_box(
+                    &mut p.risers,
+                    origin,
+                    f.dir,
+                    [u0, u0 + tr],
+                    [-w, w],
+                    [z0, k as f64 * r - tt],
+                );
+            }
+        }
     }
     if let Some((outline, z)) = &lay.landing {
-        let t = s.waist.max(lay.riser);
-        m.append(&slab_mesh(outline, base + z, t.min(*z).max(0.02)));
+        let th = s.waist.max(r);
+        let top = base + z - tt;
+        p.carrier
+            .append(&slab_mesh(outline, top, th.min(z - tt).max(0.02)));
+        if tt > 0.0 {
+            p.treads.append(&slab_mesh(outline, base + z, tt));
+        }
     }
-    m
+    p
 }
 
 /// A square bar of side `size` from `a` to `b`.
@@ -910,6 +1089,9 @@ pub fn size_slope_arrows(model: &Model, items: &mut Vec<PlanItem>, mm: f64) {
 /// A stair in plan: its sides and risers up to the cut, a break line where
 /// the plan cuts it, the rest dashed, and an arrow up the walking line.
 fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut: f64) {
+    if s.by_steps() {
+        return crate::stairsteps::step_stair_plan(items, e, s, rise, cut);
+    }
     let lay = s.layout(rise);
     let r = lay.riser;
     let line = |items: &mut Vec<PlanItem>, pen, a, b| {
@@ -1009,6 +1191,10 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
         if k == 1 {
             let f1 = lay.flights[0];
             walk.push(f1.end(s.tread) + f1.dir * s.width / 2.0);
+            if f.dir.dot(f1.dir) < -0.5 {
+                // a U: across the landing to the second flight's axis
+                walk.push(f.start + f1.dir * s.width / 2.0);
+            }
         }
         walk.push(f.start);
         walk.push(f.end(s.tread));
@@ -1037,6 +1223,9 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
 /// edge in projection and the walking line with its arrow, `z` being how
 /// high above the stair's base the line is.
 pub fn stair_lines(s: &Stair, rise: f64, line: &mut dyn FnMut(Pen, DVec2, DVec2, f64)) {
+    if s.by_steps() {
+        return crate::stairsteps::step_stair_lines(s, rise, line);
+    }
     let lay = s.layout(rise);
     let r = lay.riser;
     if let (Some(_), Some(f)) = (s.ramp, lay.flights.first()) {
@@ -1079,6 +1268,9 @@ pub fn stair_lines(s: &Stair, rise: f64, line: &mut dyn FnMut(Pen, DVec2, DVec2,
         if k == 1 {
             let f1 = lay.flights[0];
             walk.push((f1.end(s.tread) + f1.dir * s.width / 2.0, f.z0));
+            if f.dir.dot(f1.dir) < -0.5 {
+                walk.push((f.start + f1.dir * s.width / 2.0, f.z0));
+            }
         }
         walk.push((f.start, f.z0));
         walk.push((f.end(s.tread), f.z0 + f.risers as f64 * r));
@@ -1121,6 +1313,59 @@ fn break_line(items: &mut Vec<PlanItem>, e: &Element, f: &Flight, s: &Stair, u: 
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_stair_on_stringers_has_boards_and_its_stringers_and_concrete_sits_under_its_finish() {
+        use creabim_core::members::{StairCarrier, StepFinish, Stringer, StringerKind};
+        use creabim_core::{ElementId, Stair};
+        let mut s = Stair::new(ElementId::new(), DVec2::ZERO, 0.0);
+        s.height = Some(1.8);
+        let bounds = |m: &TriMesh| {
+            m.positions
+                .iter()
+                .fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+                    (lo.min(p[2] as f64), hi.max(p[2] as f64))
+                })
+        };
+        // bare concrete: no finish pieces, the top tread at its height
+        let bare = stair_parts(&s, 0.0, 1.8);
+        assert!(bare.treads.indices.is_empty() && bare.risers.indices.is_empty());
+        // finished: the concrete drops by the finish, the finish tops out
+        // where the bare concrete did
+        s.tread_finish = Some(StepFinish {
+            material: None,
+            thickness: 0.027,
+        });
+        s.riser_finish = Some(StepFinish {
+            material: None,
+            thickness: 0.018,
+        });
+        let fin = stair_parts(&s, 0.0, 1.8);
+        assert!((bounds(&fin.treads).1 - bounds(&bare.carrier).1).abs() < 1e-4);
+        assert!((bounds(&fin.carrier).1 - (bounds(&bare.carrier).1 - 0.027)).abs() < 1e-4);
+        assert!(!fin.risers.indices.is_empty());
+        // two stringers, open risers: stringers carry, no riser boards
+        s.carrier = StairCarrier::TwoStringers;
+        s.stringer = Some(Stringer {
+            name: "KVH 60 × 240".into(),
+            kind: StringerKind::Timber,
+            depth: 0.24,
+            width: 0.06,
+            web: 0.0,
+            flange: 0.0,
+            edge_offset: 0.02,
+        });
+        s.risers_closed = false;
+        assert_eq!(
+            s.stringer_offsets(),
+            vec![0.5 - 0.02 - 0.03, -(0.5 - 0.02 - 0.03)]
+        );
+        let st = stair_parts(&s, 0.0, 1.8);
+        assert!(!st.carrier.indices.is_empty() && !st.treads.indices.is_empty());
+        assert!(st.risers.indices.is_empty());
+        // the stringers stand on the floor, under the treads
+        assert!(bounds(&st.carrier).0.abs() < 1e-4);
+    }
 
     #[test]
     fn mitred_beams_meet_on_the_bisector_and_butt_ones_overlap_by_half() {

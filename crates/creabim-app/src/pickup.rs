@@ -118,7 +118,7 @@ pub fn settings_key(s: &PlanState) -> String {
         ),
         (
             m.stair_width,
-            m.stair_turn,
+            &m.stair_build,
             m.railing_height,
             &m.railing_section,
         ),
@@ -235,7 +235,13 @@ pub fn pick_up(state: &mut PlanState, model: &Model, id: ElementId) -> Result<St
         }
         ElementKind::Stair(st) => {
             s.members.stair_width = st.width;
-            s.members.stair_turn = st.landing.is_some();
+            let b = &mut s.members.stair_build;
+            b.shape = st.form();
+            b.winders = st.winders;
+            b.well = st.well;
+            if let Some(l) = st.landing {
+                b.left = l.left;
+            }
         }
         ElementKind::Railing(r) => {
             s.members.railing_height = r.height;

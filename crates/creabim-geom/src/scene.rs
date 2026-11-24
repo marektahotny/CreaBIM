@@ -899,7 +899,6 @@ fn build_scene_unjoined(
             ElementKind::Column(_)
             | ElementKind::Beam(_)
             | ElementKind::Roof(_)
-            | ElementKind::Stair(_)
             | ElementKind::Footing(_)
             | ElementKind::Flashing(_)
             | ElementKind::Pipe(_) => match crate::members::member_mesh(model, e) {
@@ -910,6 +909,43 @@ fn build_scene_unjoined(
                 Some(m) => m,
                 None => continue,
             },
+            // its carrier, treads and risers apart, each of its material
+            ElementKind::Stair(st) => {
+                let parts = crate::members::stair_parts(st, st.base(model), st.rise(model));
+                for (mesh, finish) in [
+                    (parts.treads, st.tread_finish),
+                    (parts.risers, st.riser_finish),
+                ] {
+                    if mesh.indices.is_empty() {
+                        continue;
+                    }
+                    let (color, surface) = finish
+                        .and_then(|f| f.material)
+                        .and_then(|m| match &model.get(m)?.kind {
+                            ElementKind::Material(m) => Some((m.color, m.surface())),
+                            _ => None,
+                        })
+                        .unwrap_or(([0.62, 0.48, 0.32], PLAIN_SURFACE));
+                    out.push(SceneItem {
+                        id: e.id,
+                        mesh,
+                        color,
+                        surface,
+                        ghost: false,
+                        layer: None,
+                        finish: None,
+                    });
+                }
+                let color = if st.carrier.is_concrete() || st.ramp.is_some() {
+                    [0.82, 0.80, 0.76]
+                } else {
+                    match st.stringer.as_ref().map(|x| x.kind) {
+                        Some(creabim_core::members::StringerKind::Timber) => [0.62, 0.48, 0.32],
+                        _ => [0.35, 0.37, 0.40],
+                    }
+                };
+                (parts.carrier, color)
+            }
             // its metal and its glass apart, the glass see-through
             ElementKind::Railing(r) => {
                 let (mesh, glass) = crate::members::railing_meshes(model, r);

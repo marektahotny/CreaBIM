@@ -7700,6 +7700,62 @@ impl CreaBimApp {
         self.material_combo_as(ui, "Material", current, usage)
     }
 
+    /// A stair's tread and riser finishes (or boards): material and
+    /// thickness each, the riser's only while the risers are closed.
+    fn stair_finish_fields(
+        &mut self,
+        ui: &mut egui::Ui,
+        st: &mut creabim_core::Stair,
+    ) -> &'static str {
+        use creabim_core::members::StepFinish;
+        let mut label = "";
+        let usage = creabim_core::library::MaterialUse::Any;
+        let concrete = st.carrier.is_concrete();
+        for tread in [true, false] {
+            if !tread && !st.risers_closed {
+                continue;
+            }
+            let (what, cap) = if tread {
+                ("Tread", "Tread finish")
+            } else {
+                ("Riser board", "Riser finish")
+            };
+            let slot = if tread {
+                &mut st.tread_finish
+            } else {
+                &mut st.riser_finish
+            };
+            let mut m = slot.and_then(|f| f.material);
+            if self.material_combo_as(ui, what, &mut m, usage) {
+                let t = slot.map_or(0.0, |f| f.thickness);
+                *slot = match m {
+                    None if concrete => None,
+                    m => Some(StepFinish {
+                        material: m,
+                        thickness: if t > 0.0 {
+                            t
+                        } else if tread {
+                            creabim_core::members::OAK_TREAD_CLADDING
+                        } else {
+                            creabim_core::members::OAK_RISER_CLADDING
+                        },
+                    }),
+                };
+                label = cap;
+            }
+            if let Some(f) = slot {
+                let changed = crate::props::row(ui, "Thickness", |ui| {
+                    crate::props::fill(ui, crate::units::drag(&mut f.thickness).range(0.001..=0.2))
+                        .changed()
+                });
+                if changed {
+                    label = cap;
+                }
+            }
+        }
+        label
+    }
+
     /// [`Self::material_combo`] under its own label.
     fn material_combo_as(
         &mut self,
@@ -7982,7 +8038,10 @@ impl CreaBimApp {
                     || o["kind"] == "meta"
                     || (o["kind"] == "menu"
                         && o["key"].as_str().is_some_and(|k| {
-                            k.starts_with("place.") || k == "type.tool" || k == "footing.material"
+                            k.starts_with("place.")
+                                || k.starts_with("stair.")
+                                || k == "type.tool"
+                                || k == "footing.material"
                         }))
             })
             .filter(|o| o["key"] != "view.number")
@@ -12351,6 +12410,15 @@ crate::props::row(ui, "File names", |ui| {
                     {
                         if self.material_combo(ui, m, usage) {
                             label = "Material";
+                        }
+                    }
+                    // a stair's tread and riser finishes (George 2026-11-24)
+                    if let ElementKind::Stair(st) = k {
+                        if st.ramp.is_none() {
+                            let l = self.stair_finish_fields(ui, st);
+                            if !l.is_empty() {
+                                label = l;
+                            }
                         }
                     }
                     // insulation and render round a column or beam

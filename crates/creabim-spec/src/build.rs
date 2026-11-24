@@ -1312,7 +1312,7 @@ fn stair(c: &mut Ctx, s: &f::Stair, at: &Path) {
             left: l.turn == f::Side::Left,
         }),
         material,
-        ramp: None,
+        ..core::Stair::new(level, c.p(s.start), s.direction)
     };
     c.insert(
         &s.id,

@@ -12,6 +12,164 @@ use creabim_core::{
 use eframe::egui::{self, Pos2, Stroke};
 use glam::{DVec2, DVec3};
 
+/// What a tread or riser is finished with, or what its boards are.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StepFinishKind {
+    #[default]
+    None,
+    /// Solid oak boards (DREVAX).
+    Oak,
+    /// Ceramic stair tiles (RAKO, 9 mm); on concrete only.
+    Tile,
+}
+
+impl StepFinishKind {
+    pub const ALL: [StepFinishKind; 3] = [
+        StepFinishKind::None,
+        StepFinishKind::Oak,
+        StepFinishKind::Tile,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            StepFinishKind::None => "None",
+            StepFinishKind::Oak => "Oak board",
+            StepFinishKind::Tile => "Ceramic stair tiles",
+        }
+    }
+
+    /// The library material it is of.
+    pub fn material(self) -> Option<&'static str> {
+        match self {
+            StepFinishKind::None => None,
+            StepFinishKind::Oak => Some("Timber, oak"),
+            StepFinishKind::Tile => Some("Ceramic tile"),
+        }
+    }
+
+    /// Its thickness from the makers' tables: on a tread or a riser, on
+    /// concrete (cladding) or on stringers (the boards themselves).
+    pub fn thickness(self, tread: bool, concrete: bool) -> f64 {
+        match (self, tread, concrete) {
+            (StepFinishKind::None, ..) => 0.0,
+            (StepFinishKind::Tile, ..) => members::STAIR_TILE,
+            (StepFinishKind::Oak, true, true) => members::OAK_TREAD_CLADDING,
+            (StepFinishKind::Oak, true, false) => members::OAK_TREAD_BOARD,
+            (StepFinishKind::Oak, false, true) => members::OAK_RISER_CLADDING,
+            (StepFinishKind::Oak, false, false) => members::OAK_RISER_BOARD,
+        }
+    }
+}
+
+/// What new stairs are built of.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StairBuild {
+    pub carrier: members::StairCarrier,
+    /// The stringer's catalogue name (see [`members::stringer_catalogue`]).
+    pub stringer: String,
+    /// Two stringers: their outer faces set in from the stair's edges.
+    pub edge_offset: f64,
+    pub tread: StepFinishKind,
+    pub riser: StepFinishKind,
+    pub risers_closed: bool,
+    /// The plan form of new stairs (George 2026-11-24).
+    pub shape: members::StairShape,
+    /// An L or U turns on winders, not a landing.
+    pub winders: bool,
+    /// New stairs turn left (else right).
+    pub left: bool,
+    /// A U's well, a spiral's eye radius.
+    pub well: f64,
+}
+
+impl Default for StairBuild {
+    fn default() -> Self {
+        Self {
+            carrier: members::StairCarrier::Concrete,
+            stringer: "KVH 60 × 120".into(),
+            edge_offset: 0.0,
+            tread: StepFinishKind::None,
+            riser: StepFinishKind::None,
+            risers_closed: true,
+            shape: members::StairShape::Straight,
+            winders: false,
+            left: true,
+            well: 0.2,
+        }
+    }
+}
+
+impl StairBuild {
+    /// `s`'s plan form so, turning halfway up its `n` risers.
+    pub fn shape(&self, s: &mut Stair, n: u32) {
+        use members::StairShape as S;
+        s.shape = self.shape;
+        s.winders = self.winders && matches!(self.shape, S::L | S::U);
+        s.well = self.well.max(0.0);
+        s.landing = (!self.shape.is_straight()).then_some(Landing {
+            after: (n / 2).max(1),
+            left: self.left,
+        });
+    }
+
+    /// `s` built so; the library materials the project lacks are returned,
+    /// to be added with it.
+    pub fn apply(&self, model: &Model, s: &mut Stair) -> Vec<Element> {
+        let mut new = Vec::new();
+        let concrete = self.carrier.is_concrete();
+        // on stringers the treads are boards, never left out
+        let tread = match self.tread {
+            StepFinishKind::None if !concrete => StepFinishKind::Oak,
+            k => k,
+        };
+        s.carrier = self.carrier;
+        s.stringer = (!concrete)
+            .then(|| {
+                members::stringer_catalogue()
+                    .into_iter()
+                    .find(|x| x.name == self.stringer)
+            })
+            .flatten()
+            .map(|mut x| {
+                x.edge_offset = self.edge_offset;
+                x
+            });
+        s.risers_closed = self.risers_closed;
+        let mut finish = |k: StepFinishKind, tread: bool| -> Option<members::StepFinish> {
+            let name = k.material()?;
+            let material = library_material(model, name, &mut new);
+            Some(members::StepFinish {
+                material,
+                thickness: k.thickness(tread, concrete),
+            })
+        };
+        s.tread_finish = finish(tread, true);
+        s.riser_finish = finish(self.riser, false);
+        new
+    }
+}
+
+/// The project's material of `name`, or a new one from the library pushed
+/// onto `new` (once).
+fn library_material(model: &Model, name: &str, new: &mut Vec<Element>) -> Option<ElementId> {
+    if let Some((id, _, _)) = creabim_core::library::materials(model)
+        .into_iter()
+        .find(|(_, n, _)| *n == name)
+    {
+        return Some(id);
+    }
+    if let Some(e) = new.iter().find(|e| e.name == name) {
+        return Some(e.id);
+    }
+    let entry = creabim_core::library::LIBRARY
+        .iter()
+        .find(|e| e.name == name)?;
+    let e = entry.element();
+    let id = e.id;
+    new.push(e);
+    Some(id)
+}
+
 /// Sizes and shapes for new elements, set in the tool bar.
 #[derive(Clone, Debug)]
 pub struct MemberSettings {
@@ -21,10 +179,11 @@ pub struct MemberSettings {
     pub roof_shape: RoofShape,
     pub roof_pitch: f64,
     pub stair_width: f64,
-    /// New stairs turn on a landing halfway up.
-    pub stair_turn: bool,
     /// The Stair tool draws ramps (George 2026-11-24).
     pub stair_ramp: bool,
+    /// What new stairs are built of: their carrier, stringer, finishes
+    /// and risers (George 2026-11-24).
+    pub stair_build: StairBuild,
     pub railing_height: f64,
     /// The railing path clicked so far.
     pub path: Vec<DVec2>,
@@ -92,8 +251,8 @@ impl Default for MemberSettings {
             roof_shape: RoofShape::Hip,
             roof_pitch: 30.0,
             stair_width: 1.0,
-            stair_turn: false,
             stair_ramp: false,
+            stair_build: StairBuild::default(),
             railing_height: 1.0,
             path: vec![],
             footing_kind: creabim_core::FootingKind::Strip,
@@ -300,7 +459,7 @@ pub fn click(
                     if set.stair_ramp {
                         "Click the way the ramp climbs."
                     } else {
-                        "Click the way the stair climbs."
+                        "Click the way the stair climbs (an L or a U: where it turns)."
                     }
                     .into(),
                 );
@@ -326,12 +485,17 @@ pub fn click(
                     lay.risers,
                     crate::units::len(lay.riser)
                 ));
-                add(
-                    doc,
-                    selection,
-                    Element::new("Stair", ElementKind::Stair(s)),
-                    "Draw stair",
-                )
+                // its carrier and finishes as the bar says, with the
+                // library materials they need
+                let mut s = s;
+                let mats = set.stair_build.apply(doc.model(), &mut s);
+                let e = Element::new("Stair", ElementKind::Stair(s));
+                selection.only(e.id);
+                let mut tx = Transaction::new("Draw stair");
+                for m in mats {
+                    tx = tx.insert(m);
+                }
+                doc.commit(tx.insert(e))
             }
             Some(_) => Ok(()),
         },
@@ -874,16 +1038,28 @@ pub fn new_stair(
     if set.stair_ramp {
         let mut s = Stair::new_ramp(level, a, dir);
         s.width = set.stair_width;
+        set.place.stair(&mut s);
         return s;
     }
     let mut s = Stair::new(level, a, dir);
     s.width = set.stair_width;
-    if set.stair_turn {
-        let n = members::riser_count(s.rise(model), s.max_riser);
-        s.landing = Some(Landing {
-            after: n / 2,
-            left: true,
-        });
+    // its base and top as the bar says (George 2026-11-24)
+    set.place.stair(&mut s);
+    let n = members::riser_count(s.rise(model), s.max_riser);
+    set.stair_build.shape(&mut s, n);
+    // to the norm from the start, when its tables are loaded
+    let tables = creabim_core::room::project_tables(model);
+    if let Some(rules) = creabim_core::staircheck::StairRules::for_stair(&tables, &s) {
+        let rise = s.rise(model);
+        rules.apply(&mut s, rise);
+    }
+    // an L or a U turns where the second click is, if that is far enough
+    // up to leave a flight on either side
+    if let (Some(l), true) = (&mut s.landing, s.tread > 1e-3) {
+        let k = ((b - a).length() / s.tread).round() as u32 + 1;
+        if k >= 2 && k + 2 <= n {
+            l.after = k;
+        }
     }
     s
 }
@@ -1697,6 +1873,10 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 );
                 return label;
             }
+            let l = stair_build_fields(ui, s);
+            if !l.is_empty() {
+                label = l;
+            }
             if num(ui, "Max riser", &mut s.max_riser, 0.1, 0.3) {
                 label = "Stair riser"
             }
@@ -1717,23 +1897,62 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 label = "Stair rise";
             }
             if let Some(h) = &mut s.height {
-                if num(ui, "Rise", h, 0.1, 20.0) {
+                if num(ui, "Stair rise", h, 0.1, 20.0) {
                     label = "Stair rise"
                 }
             }
             let rise = s.rise(model);
             let n = members::riser_count(rise, s.max_riser);
-            let mut turn = s.landing.is_some();
-            if crate::props::switch(ui, &mut turn, "L-shaped, with a landing").changed() {
-                s.landing = turn.then_some(Landing {
-                    after: n / 2,
-                    left: true,
+            let mut shape = s.form();
+            let mut picked = false;
+            if s.ramp.is_none() {
+                crate::props::Combo::new("Shape")
+                    .selected_text(shape.label())
+                    .show_ui(ui, |ui| {
+                        for c in members::StairShape::ALL {
+                            if ui
+                                .selectable_label(c == shape, crate::i18n::t(c.label()))
+                                .clicked()
+                                && c != shape
+                            {
+                                shape = c;
+                                picked = true;
+                            }
+                        }
+                    });
+            }
+            if picked {
+                s.shape = shape;
+                s.landing = (!shape.is_straight()).then_some(Landing {
+                    after: s.landing.map_or(n / 2, |l| l.after),
+                    left: s.landing.is_none_or(|l| l.left),
                 });
-                label = "Stair landing";
+                if !matches!(shape, members::StairShape::L | members::StairShape::U) {
+                    s.winders = false;
+                }
+                label = "Stair shape";
+            }
+            if matches!(s.form(), members::StairShape::L | members::StairShape::U)
+                && crate::props::switch(ui, &mut s.winders, "On winders (no landing)").changed()
+            {
+                label = "Stair winders";
+            }
+            if matches!(
+                s.form(),
+                members::StairShape::U | members::StairShape::Spiral
+            ) {
+                let name = if s.form() == members::StairShape::U {
+                    "Well"
+                } else {
+                    "Eye radius"
+                };
+                if num(ui, name, &mut s.well, 0.0, 3.0) {
+                    label = "Stair well"
+                }
             }
             if let Some(l) = &mut s.landing {
                 // full rows in the label and field columns (MU31)
-                crate::props::row(ui, "Landing after", |ui| {
+                crate::props::row(ui, "Turn after", |ui| {
                     let d = egui::DragValue::new(&mut l.after)
                         .range(1..=n.saturating_sub(1).max(1))
                         .suffix(crate::i18n::t(" risers"));
@@ -1743,7 +1962,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 });
                 if crate::props::choice(
                     ui,
-                    "Turns",
+                    "Turns to",
                     &mut l.left,
                     &[(true, "Left", ""), (false, "Right", "")],
                 ) {
@@ -1751,28 +1970,29 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 }
             }
             let lay = s.layout(rise);
-            let going: f64 = lay.flights.iter().map(|f| f.run(s.tread)).sum();
+            let going: f64 = if s.by_steps() {
+                lay.risers.saturating_sub(1) as f64 * s.tread
+            } else {
+                lay.flights.iter().map(|f| f.run(s.tread)).sum()
+            };
             let r2g = 2.0 * lay.riser + s.tread;
             weak(
                 ui,
                 format!(
-                    "{} risers of {}, rise {}, going {}. 2R + G = {}{}.",
+                    "{} {} {}, {} {}, {} {}. 2h + b = {}.",
                     lay.risers,
+                    crate::i18n::t("risers of"),
                     crate::units::len(lay.riser),
+                    crate::i18n::t("rise"),
                     crate::units::len(rise),
+                    crate::i18n::t("going"),
                     crate::units::len(going),
                     crate::units::len(r2g),
-                    if (0.55..=0.70).contains(&r2g) {
-                        String::new()
-                    } else {
-                        format!(
-                            " (outside the usual {}–{})",
-                            crate::units::len(0.55),
-                            crate::units::len(0.70)
-                        )
-                    }
                 ),
             );
+            if s.ramp.is_none() && stair_norm_rows(ui, model, s, rise) {
+                label = "Stair to the norm";
+            }
         }
         ElementKind::Railing(r) => {
             if num(ui, "Height", &mut r.height, 0.2, 3.0) {
@@ -2156,6 +2376,349 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
     label
 }
 
+/// A stair's carrier, stringer and risers in Properties (its finishes'
+/// materials are picked under them, by the app).
+fn stair_build_fields(ui: &mut egui::Ui, s: &mut Stair) -> &'static str {
+    let mut label = "";
+    let now = s.carrier;
+    crate::props::row(ui, "Construction", |ui| {
+        egui::ComboBox::from_id_salt("stair-carrier")
+            .icon(crate::props::combo_icon)
+            .width(ui.available_width())
+            .selected_text(crate::i18n::tr(now.label()))
+            .show_ui(ui, |ui| {
+                for c in members::StairCarrier::ALL {
+                    if ui
+                        .selectable_label(c == now, crate::i18n::tr(c.label()))
+                        .clicked()
+                        && c != now
+                    {
+                        s.carrier = c;
+                        label = "Stair construction";
+                    }
+                }
+            });
+    });
+    if label == "Stair construction" && !s.carrier.is_concrete() {
+        // on stringers: a stringer, and treads that are boards
+        if s.stringer.is_none() {
+            s.stringer = members::stringer_catalogue().into_iter().next();
+        }
+        let t = s.tread_finish.get_or_insert(members::StepFinish {
+            material: None,
+            thickness: members::OAK_TREAD_BOARD,
+        });
+        if t.thickness < members::OAK_TREAD_CLADDING {
+            t.thickness = members::OAK_TREAD_BOARD;
+        }
+    }
+    if !s.carrier.is_concrete() {
+        let name = s
+            .stringer
+            .as_ref()
+            .map_or(String::new(), |x| x.name.clone());
+        crate::props::row(ui, "Stringer", |ui| {
+            egui::ComboBox::from_id_salt("stair-stringer")
+                .icon(crate::props::combo_icon)
+                .width(ui.available_width())
+                .selected_text(name.clone())
+                .show_ui(ui, |ui| {
+                    for x in members::stringer_catalogue() {
+                        if ui.selectable_label(x.name == name, &x.name).clicked() {
+                            let off = s.stringer.as_ref().map_or(0.0, |o| o.edge_offset);
+                            s.stringer = Some(members::Stringer {
+                                edge_offset: off,
+                                ..x
+                            });
+                            label = "Stair stringer";
+                        }
+                    }
+                });
+        });
+        if s.carrier == members::StairCarrier::TwoStringers {
+            if let Some(st) = &mut s.stringer {
+                if crate::props::row(ui, "From the edge", |ui| {
+                    crate::props::fill(ui, crate::units::drag(&mut st.edge_offset).range(0.0..=0.5))
+                        .changed()
+                }) {
+                    label = "Stringer offset";
+                }
+            }
+        }
+    }
+    if crate::props::switch(ui, &mut s.risers_closed, "Risers")
+        .on_hover_text(crate::i18n::t(
+            "Closed risers (faced on concrete, boarded on stringers); off, an open stair or bare concrete risers",
+        ))
+        .changed()
+    {
+        label = "Stair risers";
+    }
+    label
+}
+
+/// The Stair tool's build-up settings: carrier, stringer, finishes,
+/// risers (George 2026-11-24); none for a ramp.
+/// The stair against STN 73 4130 and STN 73 4301, from the norms' tables
+/// in the project: what fails, and a button setting the going, the
+/// walking line and the winders as the norm wants. Without the tables, a
+/// line saying where to load them. True when the stair was changed.
+fn stair_norm_rows(ui: &mut egui::Ui, model: &Model, s: &mut Stair, rise: f64) -> bool {
+    use creabim_core::staircheck::{self, StairFault as F, StairRules};
+    let t = crate::i18n::t;
+    let mut changed = false;
+    if crate::props::choice(
+        ui,
+        "Building",
+        &mut s.flats,
+        &[
+            (
+                false,
+                "Family house",
+                "A family house, or a stair inside a flat (STN 73 4301, 6.2.3)",
+            ),
+            (
+                true,
+                "Block of flats",
+                "The main stair of a block of flats (STN 73 4301, 5.2.5, 5.2.6)",
+            ),
+        ],
+    ) {
+        changed = true;
+    }
+    if s.flats && crate::props::switch(ui, &mut s.lift, "The building has a lift").changed() {
+        changed = true;
+    }
+    let tables = creabim_core::room::project_tables(model);
+    let Some(rules) = StairRules::for_stair(&tables, s) else {
+        ui.label(
+            egui::RichText::new(t(
+                "To check the stair against STN 73 4130, load its tables in Norm parameters.",
+            ))
+            .weak(),
+        );
+        return changed;
+    };
+    let mm = |v: f64| crate::i18n::num(v * 1000.0, 0);
+    let mut found = staircheck::check(s, rise, &rules);
+    // headroom and clear height over it (čl. 22, 23): measured in the
+    // model, again only when the model or the stair changed
+    let (h1, v) = stair_clearance_cached(model, s);
+    let angle = (s.layout(rise).riser / s.tread.max(1e-6))
+        .atan()
+        .to_degrees();
+    if s.ramp.is_none() {
+        found.extend(rules.check_height(angle, h1, v));
+    }
+    if found.is_empty() {
+        let text = if s.flats {
+            "Meets STN 73 4130 and STN 73 4301 (block of flats)."
+        } else {
+            "Meets STN 73 4130 and STN 73 4301 (family house)."
+        };
+        ui.label(egui::RichText::new(t(text)).color(egui::Color32::from_rgb(30, 130, 60)));
+    }
+    for f in &found {
+        let text = match f {
+            F::Sum { have, min, max } => {
+                format!(
+                    "2h + b = {} mm, {} {}–{} mm (čl. 30)",
+                    mm(*have),
+                    t("should be"),
+                    mm(*min),
+                    mm(*max)
+                )
+            }
+            F::Class {
+                angle,
+                class: Some(c),
+                riser,
+                range: Some((a, b)),
+            } => format!(
+                "{} {:.1}° ({c}): h = {} mm, {} {}–{} mm (čl. 12)",
+                t("slope"),
+                angle,
+                mm(*riser),
+                t("should be"),
+                mm(*a),
+                mm(*b)
+            ),
+            F::Class { angle, .. } => format!(
+                "{} {:.1}°: {} (čl. 12)",
+                t("slope"),
+                angle,
+                t("steeper than any class")
+            ),
+            F::Going { have, min } => format!("b = {} < {} mm (čl. 29)", mm(*have), mm(*min)),
+            F::Tread { have, min } => {
+                format!("{} {} < {} mm (čl. 29)", t("tread"), mm(*have), mm(*min))
+            }
+            F::Narrow { have, min } => format!(
+                "{} {} < {} mm (čl. 28)",
+                t("winders' narrow end"),
+                mm(*have),
+                mm(*min)
+            ),
+            F::Risers { have, max } => {
+                format!("{} {} > {} (čl. 31)", t("risers in a flight"), have, max)
+            }
+            F::Walk { have, need } => format!(
+                "{} {} mm, {} {} mm (čl. 16)",
+                t("walking line from the outer edge"),
+                mm(*have),
+                t("should be"),
+                mm(*need)
+            ),
+            F::Width { have, min } => format!(
+                "{} {} < {} mm (STN 73 4301)",
+                t("width"),
+                mm(*have),
+                mm(*min)
+            ),
+            F::Steep { angle, max } => {
+                format!("{} {:.1}° > {:.0}° (STN 73 4301)", t("slope"), angle, max)
+            }
+            F::Headroom { have, need } => format!(
+                "{} {} < {} mm (čl. 22)",
+                t("headroom"),
+                mm(*have),
+                mm(*need)
+            ),
+            F::Clear { have, need } => format!(
+                "{} {} < {} mm (čl. 23)",
+                t("clear height"),
+                mm(*have),
+                mm(*need)
+            ),
+        };
+        ui.label(egui::RichText::new(text).color(egui::Color32::from_rgb(190, 40, 30)));
+    }
+    let fixable = found.iter().any(|f| {
+        matches!(
+            f,
+            F::Sum { .. }
+                | F::Walk { .. }
+                | F::Narrow { .. }
+                | F::Class { .. }
+                | F::Going { .. }
+                | F::Tread { .. }
+        )
+    });
+    if fixable && ui.button(t("Set to the norm")).on_hover_text(t("The going from 2h + b, the walking line and the winders' narrow ends as the norm wants")).clicked() {
+        rules.apply(s, rise);
+        return true;
+    }
+    changed
+}
+
+/// A stair's clearances keyed by model revision and the stair itself.
+type ClearanceCache = Option<(u64, String, (Option<f64>, Option<f64>))>;
+
+thread_local! {
+    static CLEARANCE: std::cell::RefCell<ClearanceCache> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// [`creabim_geom::stairsteps::stair_clearance`], kept while neither the
+/// model nor the stair changes.
+fn stair_clearance_cached(model: &Model, s: &Stair) -> (Option<f64>, Option<f64>) {
+    let key = format!("{s:?}");
+    let rev = model.revision();
+    CLEARANCE.with(|c| {
+        if let Some((r, k, v)) = &*c.borrow() {
+            if *r == rev && *k == key {
+                return *v;
+            }
+        }
+        let v = creabim_geom::stairsteps::stair_clearance(model, s);
+        *c.borrow_mut() = Some((rev, key, v));
+        v
+    })
+}
+
+fn stair_build_options(m: &MemberSettings) -> Vec<serde_json::Value> {
+    use serde_json::json;
+    if m.stair_ramp {
+        return vec![];
+    }
+    let b = &m.stair_build;
+    use members::StairShape as S;
+    let mut v = vec![json!({
+        "kind": "menu", "key": "stair.shape", "label": "Shape",
+        "value": b.shape.label(),
+        "hint": "The stair's plan: straight, L or U turning halfway up (on a landing or on winders), or spiral",
+    })];
+    if !b.shape.is_straight() {
+        v.push(json!({
+            "kind": "toggle", "id": "member:stair.left", "label": "Turns left", "on": b.left,
+            "icon": "corner-up-left",
+            "hint": "The stair turns to the left going up; off, to the right",
+        }));
+    }
+    if matches!(b.shape, S::L | S::U) {
+        v.push(json!({
+            "kind": "toggle", "id": "member:stair.winders", "label": "Winders", "on": b.winders,
+            "icon": "stair",
+            "hint": "Turn on winders (kosé stupne), no landing; their inner ends spread evenly along the inner edge",
+        }));
+    }
+    if matches!(b.shape, S::U | S::Spiral) {
+        let (label, hint) = if b.shape == S::U {
+            (
+                "Well",
+                "The gap (zrkadlo) between the two flights of a U stair",
+            )
+        } else {
+            (
+                "Eye radius",
+                "The radius of the spiral's eye, inside its inner edge",
+            )
+        };
+        v.push(json!({
+            "kind": "number", "key": "member.stair_well", "label": label,
+            "value": b.well, "unit": "m", "step": 0.01, "min": 0.0, "max": 3.0,
+            "hint": hint,
+        }));
+    }
+    v.push(json!({
+        "kind": "menu", "key": "stair.carrier", "label": "Construction",
+        "value": b.carrier.label(),
+        "hint": "What carries the steps: a reinforced concrete flight, one stringer under the middle, or two stringers set in from the edges",
+    }));
+    if !b.carrier.is_concrete() {
+        v.push(json!({
+            "kind": "menu", "key": "stair.stringer", "label": "Stringer",
+            "value": b.stringer,
+            "hint": "The stringers' section: KVH timber (DEKWOOD) or rolled steel IPE, UPN, UPE, L (ArcelorMittal)",
+        }));
+        if b.carrier == members::StairCarrier::TwoStringers {
+            v.push(json!({
+                "kind": "number", "key": "member.stair_edge", "label": "From the edge",
+                "value": b.edge_offset, "unit": "m", "step": 0.005, "min": 0.0, "max": 0.5,
+                "hint": "How far the stringers' outer faces are set in from the stair's edges",
+            }));
+        }
+    }
+    v.push(json!({
+        "kind": "menu", "key": "stair.tread", "label": "Tread",
+        "value": b.tread.label(),
+        "hint": "The treads: oak boards (DREVAX: 40 mm on stringers, 27 mm on concrete) or ceramic stair tiles (RAKO, 9 mm, on concrete)",
+    }));
+    v.push(json!({
+        "kind": "toggle", "id": "member:stair.risers", "label": "Risers", "on": b.risers_closed,
+        "icon": "stair",
+        "hint": "Closed risers (faced on concrete, boarded on stringers); off, an open stair or bare concrete risers",
+    }));
+    if b.risers_closed {
+        v.push(json!({
+            "kind": "menu", "key": "stair.riser", "label": "Riser board",
+            "value": b.riser.label(),
+            "hint": "The risers: oak (DREVAX: 20 mm boards on stringers, 18 mm on concrete) or ceramic tiles (RAKO, 9 mm, on concrete)",
+        }));
+    }
+    v
+}
+
 /// The tool bar's settings for the active tool: sizes as numbers, shapes
 /// as toggles (`member:<what>` actions).
 pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
@@ -2382,14 +2945,10 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                 5.0,
                 "Width of new stairs",
             ),
-            toggle(
-                "lshape",
-                "L-shaped",
-                m.stair_turn,
-                "corner-down-right",
-                "New stairs turn left on a landing halfway up",
-            ),
-        ],
+        ]
+        .into_iter()
+        .chain(stair_build_options(m))
+        .collect(),
         Tool::Footing => vec![
             toggle(
                 "footing.strip",
@@ -2556,6 +3115,8 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "beam_depth" => m.beam_depth = v.clamp(0.05, 3.0),
         "pitch" => m.roof_pitch = v.clamp(1.0, 75.0),
         "stair_width" => m.stair_width = v.clamp(0.5, 5.0),
+        "stair_edge" => m.stair_build.edge_offset = v.clamp(0.0, 0.5),
+        "stair_well" => m.stair_build.well = v.clamp(0.0, 3.0),
         "railing_height" => m.railing_height = v.clamp(0.3, 3.0),
         "footing_width" => m.footing_width = v.clamp(0.1, 10.0),
         "footing_thickness" => m.footing_thickness = v.clamp(0.05, 5.0),
@@ -2597,9 +3158,11 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
         "hole.round" => m.hole_round = true,
         "square" => m.set_round(false),
         "round" => m.set_round(true),
-        "lshape" => m.stair_turn = !m.stair_turn,
+        "stair.winders" => m.stair_build.winders = !m.stair_build.winders,
+        "stair.left" => m.stair_build.left = !m.stair_build.left,
         "stair.steps" => m.stair_ramp = false,
         "stair.ramp" => m.stair_ramp = true,
+        "stair.risers" => m.stair_build.risers_closed = !m.stair_build.risers_closed,
         "footing.strip" | "footing.pad" | "footing.pile" => {
             use creabim_core::{footing as fo, FootingKind};
             let kind = match what {
@@ -2769,7 +3332,7 @@ mod tests {
         }
         assert_eq!(count(&doc, |k| matches!(k, ElementKind::Beam(_))), 2);
         st.cancel();
-        st.members.stair_turn = true;
+        st.members.stair_build.shape = members::StairShape::L;
         go(&mut doc, &mut st, Tool::Stair, 20.0, 0.0);
         go(&mut doc, &mut st, Tool::Stair, 21.0, 0.0);
         assert_eq!(

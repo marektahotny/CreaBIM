@@ -481,6 +481,48 @@ impl CreaBimApp {
                         .checked(*a == self.plan.members.footing_align)
                 })
                 .collect(),
+            "stair.shape" => creabim_core::members::StairShape::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    Item::new(format!("stair.shape:{i}"), c.label())
+                        .checked(*c == self.plan.members.stair_build.shape)
+                })
+                .collect(),
+            "stair.carrier" => creabim_core::members::StairCarrier::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    Item::new(format!("stair.carrier:{i}"), c.label())
+                        .checked(*c == self.plan.members.stair_build.carrier)
+                })
+                .collect(),
+            "stair.stringer" => creabim_core::members::stringer_catalogue()
+                .into_iter()
+                .map(|x| {
+                    let on = x.name == self.plan.members.stair_build.stringer;
+                    Item::new(format!("stair.stringer:{}", x.name), x.name).checked(on)
+                })
+                .collect(),
+            "stair.tread" | "stair.riser" => {
+                let b = &self.plan.members.stair_build;
+                let now = if key == "stair.tread" {
+                    b.tread
+                } else {
+                    b.riser
+                };
+                crate::memberstool::StepFinishKind::ALL
+                    .iter()
+                    .enumerate()
+                    // tiles go on concrete only
+                    .filter(|(_, k)| {
+                        use crate::memberstool::StepFinishKind as F;
+                        b.carrier.is_concrete()
+                            || (**k != F::Tile && !(key == "stair.tread" && **k == F::None))
+                    })
+                    .map(|(i, k)| Item::new(format!("{key}:{i}"), k.label()).checked(*k == now))
+                    .collect()
+            }
             "place.ceiling" => {
                 use crate::placement::Build;
                 let now = self.plan.members.place.ceiling_build;
