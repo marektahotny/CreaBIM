@@ -110,7 +110,7 @@ fn without_partitions(model: &Model) -> Model {
         return out;
     }
     // the same copy for the same model, so caches serve it again
-    out.retain_derived(0x5747_1C5, |e| {
+    out.retain_derived(0x0574_71C5, |e| {
         !gone.contains(&e.id)
             && !matches!(&e.kind, creabim_core::ElementKind::Opening(o) if gone.contains(&o.host))
     });
