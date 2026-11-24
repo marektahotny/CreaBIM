@@ -111,6 +111,9 @@ pub struct Detail {
     /// The box the detail is cut to (its cut planes), lower and upper
     /// corner; none takes the regions' extent.
     pub bounds: Option<([f64; 2], [f64; 2])>,
+    /// Space taken out of the detail: no material and no air, its faces
+    /// adiabatic (a junction's part removed, ISO 10211 12.4.3).
+    pub voids: Vec<Vec<[f64; 2]>>,
 }
 
 /// How finely the detail is divided (C.2 b: the user decides).
@@ -296,6 +299,9 @@ impl Detail {
 
     /// The air at point `p` off the detail.
     fn air_at(&self, p: [f64; 2]) -> Option<&Air> {
+        if self.voids.iter().any(|v| inside(v, p)) {
+            return None;
+        }
         self.air
             .iter()
             .find(|(poly, _)| inside(poly, p))
@@ -331,6 +337,9 @@ impl Detail {
             let yc = 0.5 * (ys[j] + ys[j + 1]);
             for i in 0..cx {
                 let p = [0.5 * (xs[i] + xs[i + 1]), yc];
+                if self.voids.iter().any(|v| inside(v, p)) {
+                    continue;
+                }
                 for r in self.regions.iter().rev() {
                     if inside(&r.poly, p) {
                         cells[i + j * cx] = Some(r.material);
@@ -815,6 +824,9 @@ pub enum Dimensions {
 impl Detail {
     /// What lies at point `p`: a material's index, else the air there.
     fn at(&self, p: [f64; 2]) -> Result<usize, Option<&Air>> {
+        if self.voids.iter().any(|v| inside(v, p)) {
+            return Err(None);
+        }
         match self.regions.iter().rev().find(|r| inside(&r.poly, p)) {
             Some(r) => Ok(r.material),
             None => Err(self.air_at(p)),
@@ -964,6 +976,219 @@ impl Detail {
             return Err("arrangement".into());
         };
         Ok(vec![(a.clone(), la), (b.clone(), lb)])
+    }
+}
+
+/// What a junction of a wall with a floor on the ground needs besides
+/// its cut (STN EN ISO 10211, 7.2.4 table 5 and 12.4).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Ground {
+    /// The soil's material in the detail.
+    pub soil: usize,
+    /// The characteristic dimension of the floor B (ISO 13370), m.
+    pub b: f64,
+    /// The floor in the model at most this wide (12.4.1: 4 m), m.
+    pub half_max: f64,
+    /// The soil at most this deep and wide outside (12.4.1: 20 m), m.
+    pub soil_max: f64,
+    /// The soil outside and below: this many floor widths (table 5:
+    /// 2,5), and the floor inside: this share of B (table 5: 0,5).
+    pub soil_factor: f64,
+    pub floor_factor: f64,
+    /// The least distance of a cut plane from the junction (7.2.3): the
+    /// larger of this, m, and `cut_factor` times the wall's thickness.
+    pub cut_min: f64,
+    pub cut_factor: f64,
+}
+
+/// The two models of option B (12.4.3.1) and what Ψg needs from them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GroundModel {
+    /// The whole junction with the soil.
+    pub full: Detail,
+    /// The same without the wall down to the underside of the floor
+    /// slab, adiabatic where the wall was.
+    pub open: Detail,
+    /// The wall's U (layers in series with Rsi, Rse), W/(m²·K).
+    pub uw: f64,
+    /// The wall's inside height in the model, from the floor's top to the
+    /// cut plane, m.
+    pub hw: f64,
+    /// The wall's inner and outer face, the floor's top and the slab's
+    /// underside, the ground's surface, m.
+    pub wall_in: f64,
+    pub wall_out: f64,
+    pub floor_top: f64,
+    pub floor_bottom: f64,
+    pub terrain: f64,
+    /// The inside lies towards +x.
+    pub inside_right: bool,
+}
+
+/// Ψg = L2D − hw·Uw − L2D,a (STN EN ISO 10211, formula 23).
+pub fn psi_g(l2d: f64, hw: f64, uw: f64, l2d_a: f64) -> f64 {
+    l2d - hw * uw - l2d_a
+}
+
+impl Detail {
+    /// The y extent of the regions other than `skip` crossing the
+    /// vertical line x, and of those of material `only`.
+    fn on_line_x(&self, x: f64, keep: impl Fn(usize) -> bool) -> Vec<(usize, f64, f64)> {
+        let mut out = vec![];
+        for (k, r) in self.regions.iter().enumerate() {
+            if !keep(r.material) {
+                continue;
+            }
+            let n = r.poly.len();
+            let mut ys = vec![];
+            for i in 0..n {
+                let (p, q) = (r.poly[i], r.poly[(i + 1) % n]);
+                let (u0, u1) = (p[0] - x, q[0] - x);
+                if (u0 <= 0.0) != (u1 <= 0.0) {
+                    let t = u0 / (u0 - u1);
+                    ys.push(p[1] + t * (q[1] - p[1]));
+                }
+            }
+            if ys.len() >= 2 {
+                let lo = ys.iter().copied().fold(f64::INFINITY, f64::min);
+                let hi = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                out.push((k, lo, hi));
+            }
+        }
+        out
+    }
+
+    /// The models of a wall's junction with a floor on the ground, built
+    /// from this detail (its box around the junction, the room inside,
+    /// soil cut outside): the floor drawn on inwards to half of B (at
+    /// most `half_max`), the wall up to the least cut distance, the soil
+    /// out and down to `soil_factor`·B (at most `soil_max`), all cut
+    /// planes adiabatic (12.4.1, table 5).
+    pub fn ground(&self, g: &Ground, warm: usize, cold: usize) -> Result<GroundModel, String> {
+        let (lo, hi) = self.bounds.ok_or("no box")?;
+        // the wall: the flank crossing the top cut plane
+        let wall = self
+            .flanks()
+            .into_iter()
+            .find(|f| f.cut == 3 && ((f.envs == (warm, cold)) || (f.envs == (cold, warm))))
+            .ok_or("no wall crossing the box's top")?;
+        let inside_right = wall.envs.1 == warm;
+        let (wall_in, wall_out) = if inside_right {
+            (wall.faces.1, wall.faces.0)
+        } else {
+            (wall.faces.0, wall.faces.1)
+        };
+        let dir = if inside_right { 1.0 } else { -1.0 };
+        let span = (hi[0] - lo[0]).max(hi[1] - lo[1]).max(1.0);
+        let inset = 1e-7 * span;
+        let edge_in = if inside_right { hi[0] } else { lo[0] };
+        let edge_out = if inside_right { lo[0] } else { hi[0] };
+        // the floor where it crosses the inner cut plane
+        let floor = self.on_line_x(edge_in - dir * inset, |m| m != g.soil);
+        if floor.is_empty() {
+            return Err("no floor crossing the box's inner side".into());
+        }
+        let floor_top = floor.iter().map(|f| f.2).fold(f64::NEG_INFINITY, f64::max);
+        let floor_bottom = floor.iter().map(|f| f.1).fold(f64::INFINITY, f64::min);
+        // the ground's surface where the soil crosses the outer cut plane
+        let terrain = self
+            .on_line_x(edge_out + dir * inset, |m| m == g.soil)
+            .iter()
+            .map(|f| f.2)
+            .fold(f64::NEG_INFINITY, f64::max);
+        if !terrain.is_finite() {
+            return Err("no soil crossing the box's outer side".into());
+        }
+        let b = g.b.max(0.0);
+        let half = (g.floor_factor * b).min(g.half_max);
+        let soil = (g.soil_factor * b).min(g.soil_max);
+        if half <= 0.0 || soil <= 0.0 {
+            return Err("B".into());
+        }
+        let x_in = wall_in + dir * half;
+        let x_out = wall_out - dir * soil;
+        let y_bottom = terrain - soil;
+        let thick = (wall_in - wall_out).abs();
+        let top = hi[1].max(floor_top + g.cut_min.max(g.cut_factor * thick));
+        if (x_in - edge_in) * dir < 0.0 {
+            return Err("the box reaches past half of the floor".into());
+        }
+        if y_bottom >= lo[1] || (x_out - edge_out) * dir > 0.0 {
+            return Err("the box reaches past the soil's extent".into());
+        }
+        // the cut drawn on: vertices on the inner and top cut planes moved
+        let tol = 1e-9 * span;
+        let mut regions: Vec<Region> = vec![];
+        let (xmin, xmax) = (x_in.min(x_out), x_in.max(x_out));
+        // soil first, so the construction covers it: outside under the
+        // ground's surface, inside under the floor
+        let (ox0, ox1) = (x_out.min(wall_out), x_out.max(wall_out));
+        regions.push(Region::rect(g.soil, ox0, y_bottom, ox1, terrain));
+        let (ix0, ix1) = (wall_out.min(x_in), wall_out.max(x_in));
+        regions.push(Region::rect(g.soil, ix0, y_bottom, ix1, floor_bottom));
+        for r in &self.regions {
+            let mut r = r.clone();
+            for p in &mut r.poly {
+                if (p[0] - edge_in).abs() <= tol {
+                    p[0] = x_in;
+                }
+                if (p[1] - hi[1]).abs() <= tol {
+                    p[1] = top;
+                }
+            }
+            regions.push(r);
+        }
+        let mut air = self.air.clone();
+        if let Some(a) = self
+            .air
+            .iter()
+            .find(|a| a.1.env == warm)
+            .map(|a| a.1.clone())
+        {
+            let (ax0, ax1) = (wall_in.min(x_in), wall_in.max(x_in));
+            air.push((
+                vec![
+                    [ax0, floor_bottom],
+                    [ax1, floor_bottom],
+                    [ax1, top],
+                    [ax0, top],
+                ],
+                a,
+            ));
+        } else {
+            return Err("no inside air".into());
+        }
+        let full = Detail {
+            materials: self.materials.clone(),
+            regions,
+            envs: self.envs.clone(),
+            edges: self.edges.clone(),
+            air,
+            outside: self.outside.clone(),
+            bounds: Some(([xmin, y_bottom], [xmax, top])),
+            voids: vec![],
+        };
+        // option B: without the wall down to the slab's underside
+        let (vx0, vx1) = (wall_out.min(wall_in), wall_out.max(wall_in));
+        let mut open = full.clone();
+        open.voids.push(vec![
+            [vx0, floor_bottom],
+            [vx1, floor_bottom],
+            [vx1, top],
+            [vx0, top],
+        ]);
+        Ok(GroundModel {
+            full,
+            open,
+            uw: wall.u,
+            hw: top - floor_top,
+            wall_in,
+            wall_out,
+            floor_top,
+            floor_bottom,
+            terrain,
+            inside_right,
+        })
     }
 }
 
@@ -1298,5 +1523,104 @@ mod tests {
         let psi_i = psi(l2d, &sum(&int));
         let psi_e = psi(l2d, &sum(&ext));
         assert!(psi_i > 0.0 && psi_e < 0.0, "Ψi {psi_i} Ψe {psi_e}");
+    }
+
+    #[test]
+    fn ground_junction_option_b() {
+        // a 0,3 m wall (x 0..0,3) on the left of a 0,3 m floor slab, the
+        // room on the right, soil outside under the ground at −0,2
+        let mats = vec![
+            Material {
+                name: "wall".into(),
+                lambda: 0.5,
+            },
+            Material {
+                name: "slab".into(),
+                lambda: 1.0,
+            },
+            Material {
+                name: "soil".into(),
+                lambda: 2.0,
+            },
+        ];
+        let inside = Air {
+            env: 0,
+            rs_over: 0.17,
+            rs_beside: 0.13,
+            rs_under: 0.10,
+        };
+        let d = Detail {
+            materials: mats,
+            regions: vec![
+                Region::rect(2, -1.0, -1.0, 0.0, -0.2),
+                Region::rect(2, 0.3, -1.0, 1.5, -0.3),
+                Region::rect(0, 0.0, -1.0, 0.3, 2.0),
+                Region::rect(1, 0.3, -0.3, 1.5, 0.0),
+            ],
+            envs: vec![
+                Env {
+                    name: "i".into(),
+                    theta: 20.0,
+                },
+                Env {
+                    name: "e".into(),
+                    theta: 0.0,
+                },
+            ],
+            air: vec![(vec![[0.3, 0.0], [1.5, 0.0], [1.5, 2.0], [0.3, 2.0]], inside)],
+            outside: Some(Air {
+                env: 1,
+                rs_over: 0.04,
+                rs_beside: 0.04,
+                rs_under: 0.04,
+            }),
+            bounds: Some(([-1.0, -1.0], [1.5, 2.0])),
+            ..Default::default()
+        };
+        let g = Ground {
+            soil: 2,
+            b: 8.0,
+            half_max: 4.0,
+            soil_max: 20.0,
+            soil_factor: 2.5,
+            floor_factor: 0.5,
+            cut_min: 1.0,
+            cut_factor: 3.0,
+        };
+        let m = d.ground(&g, 0, 1).unwrap();
+        assert!(m.inside_right);
+        assert_eq!(
+            (
+                m.wall_in,
+                m.wall_out,
+                m.floor_top,
+                m.floor_bottom,
+                m.terrain
+            ),
+            (0.3, 0.0, 0.0, -0.3, -0.2)
+        );
+        let ((lo, hi), uw) = (m.full.bounds.unwrap(), 1.0 / (0.13 + 0.3 / 0.5 + 0.04));
+        assert_eq!((lo, hi), ([-20.0, -20.2], [4.3, 2.0]));
+        assert!((m.uw - uw).abs() < 1e-9 && (m.hw - 2.0).abs() < 1e-12);
+        let mesh = Mesh {
+            h_max: 0.25,
+            h_min: 0.005,
+            ratio: 1.25,
+        };
+        let t = std::time::Instant::now();
+        let f = m.full.solve(&mesh);
+        let a = m.open.solve(&mesh);
+        let (l2d, l2d_a) = (f.l2d(0, 1, &m.full.envs), a.l2d(0, 1, &m.open.envs));
+        eprintln!(
+            "L2D {l2d:.4} L2D,a {l2d_a:.4} Ψg {:.4} nodes {} in {:?}",
+            psi_g(l2d, m.hw, m.uw, l2d_a),
+            f.nodes(),
+            t.elapsed()
+        );
+        assert!(f.balance.abs() < 1e-4 && a.balance.abs() < 1e-4);
+        assert!(l2d > l2d_a && l2d_a > 0.0);
+        // nothing flows where the wall was taken out
+        let mid = [0.15, 1.0];
+        assert!(a.at(mid).is_none_or(|v| v.is_nan()));
     }
 }

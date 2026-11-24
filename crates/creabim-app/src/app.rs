@@ -45,6 +45,8 @@ mod circuitsui;
 mod circuitui;
 #[path = "cloudload.rs"]
 mod cloudload;
+#[path = "condensui.rs"]
+mod condensui;
 #[path = "coolingui.rs"]
 mod coolingui;
 #[path = "cropui.rs"]
@@ -143,8 +145,6 @@ mod sunui;
 pub(crate) mod terrainimport;
 #[path = "thermalui.rs"]
 mod thermalui;
-#[path = "condensui.rs"]
-mod condensui;
 #[path = "typepreview.rs"]
 mod typepreview;
 #[path = "typesui.rs"]

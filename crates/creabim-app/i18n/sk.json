@@ -8778,5 +8778,15 @@
  "tz": "tz",
  "ΔMd·t": "ΔMd·t",
  "θe": "θe",
- "φe": "φe"
+ "φe": "φe",
+ "L2D,a without the wall": "L2D,a bez steny",
+ "The floor's characteristic dimension B by STN EN ISO 13370, for a junction with the ground; above 8 m the model is the same (12.4.1).": "Charakteristický rozmer podlahy B podľa STN EN ISO 13370 pre styk s terénom; nad 8 m je model rovnaký (12.4.1).",
+ "option B, inside dimensions, STN EN ISO 10211 (23)": "voľba B, vnútorné rozmery, STN EN ISO 10211 (23)",
+ "Floor's characteristic dimension B": "Charakteristický rozmer podlahy B",
+ "Ground: B": "Terén: B",
+ "Model: floor inwards / soil outwards and down": "Model: podlaha dovnútra / zemina von a nadol",
+ "cell in the soil": "bunka v zemine",
+ "A junction with the ground: enter the floor's characteristic dimension B (STN EN ISO 13370).": "Styk s terénom: zadaj charakteristický rozmer podlahy B (STN EN ISO 13370).",
+ "Linear thermal transmittance Ψg": "Lineárny stratový súčiniteľ Ψg",
+ "The junction with the ground could not be modelled": "Styk s terénom sa nedal vymodelovať"
 }

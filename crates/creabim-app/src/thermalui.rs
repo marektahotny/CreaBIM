@@ -45,6 +45,12 @@ pub struct Thermal {
     pub external: bool,
     /// λ given by hand for materials without one, by their name.
     pub lambda: BTreeMap<String, f64>,
+    /// The floor's characteristic dimension B (ISO 13370) for a junction
+    /// with the ground, m; NaN until given.
+    pub b: f64,
+    /// Largest cell of a junction with the ground (its soil is tens of
+    /// metres), mm.
+    pub h_ground_mm: f64,
     pub result: Option<std::sync::Arc<Outcome>>,
     pub error: Option<String>,
 }
@@ -65,6 +71,8 @@ impl Default for Thermal {
             check_mesh: true,
             external: false,
             lambda: BTreeMap::new(),
+            b: f64::NAN,
+            h_ground_mm: 250.0,
             result: None,
             error: None,
         }
@@ -96,6 +104,22 @@ pub struct Outcome {
     /// The flanks' U and lengths and Ψ (formula 18), or why not.
     pub psi: Result<(Vec<(thermfield::Flank, f64)>, f64), String>,
     pub external: bool,
+    /// The part drawn (the detail's box), lower and upper corner.
+    pub view: ([f64; 2], [f64; 2]),
+    /// A junction with the ground: Ψg by option B (12.4.3.1).
+    pub ground: Option<GroundOut>,
+}
+
+/// What Ψg is made of.
+#[derive(Debug)]
+pub struct GroundOut {
+    pub b: f64,
+    pub l2d_a: f64,
+    pub hw: f64,
+    pub uw: f64,
+    /// The model's extent: floor inwards, soil outwards and down, m.
+    pub floor: f64,
+    pub soil: f64,
 }
 
 /// Materials of the detail, by name: λ and whether it was given by hand.
@@ -175,6 +199,7 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
     let mut missing: Vec<String> = vec![];
     let mut regions = vec![];
     let mut outlines = vec![];
+    let mut soil_index = None;
     for p in &cut.pieces {
         let (name, lam) = piece_material(model, p);
         let site = matches!(
@@ -201,6 +226,9 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
                 names.len() - 1
             }
         };
+        if site && soil_index.is_none() {
+            soil_index = Some(k);
+        }
         let poly: Vec<[f64; 2]> = p.points.iter().map(|q| [q.x, q.y]).collect();
         outlines.push(poly.clone());
         regions.push(Region { material: k, poly });
@@ -244,7 +272,9 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
             rs_under: rsi.e,
         }),
         bounds: Some(([cut.lo.x, cut.lo.y], [cut.hi.x, cut.hi.y])),
+        voids: vec![],
     };
+    let view = ([cut.lo.x, cut.lo.y], [cut.hi.x, cut.hi.y]);
     if cut.rooms.is_empty() {
         return Err(t(
             "No room is cut in the detail: the inside air is taken from the rooms.",
@@ -255,6 +285,47 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
         h_min: s.h_min_mm.max(0.05) / 1000.0,
         ratio: 1.25,
     };
+    let dims = if s.external {
+        thermfield::Dimensions::External
+    } else {
+        thermfield::Dimensions::Internal
+    };
+    // a junction with the ground: the model of 12.4.1 around the box,
+    // Ψg by option B (12.4.3.1, formula 23)
+    let mut ground = None;
+    let mut detail = detail;
+    let mut open = None;
+    let mut mesh = mesh;
+    if let Some(soil) = soil_index {
+        if s.b.is_nan() || s.b <= 0.0 {
+            return Err(t("A junction with the ground: enter the floor's characteristic dimension B (STN EN ISO 13370)."));
+        }
+        let g = thermcheck::ground_params(tables, soil, s.b).ok_or_else(|| {
+            format!(
+                "{}: {}",
+                t("Norm tables not read (Manage › Norm tables)"),
+                thermcheck::GROUND
+            )
+        })?;
+        let m = detail.ground(&g, 0, 1).map_err(|e| {
+            format!(
+                "{} ({e})",
+                t("The junction with the ground could not be modelled")
+            )
+        })?;
+        ground = Some(GroundOut {
+            b: s.b,
+            l2d_a: f64::NAN,
+            hw: m.hw,
+            uw: m.uw,
+            floor: (g.floor_factor * s.b).min(g.half_max),
+            soil: (g.soil_factor * s.b).min(g.soil_max),
+        });
+        outlines = m.full.regions[2..].iter().map(|r| r.poly.clone()).collect();
+        detail = m.full;
+        open = Some(m.open);
+        mesh.h_max = s.h_ground_mm.max(s.h_max_mm).max(0.1) / 1000.0;
+    }
     let (field, check, fine_nodes) = if s.check_mesh {
         let (f, fine) = detail.solve_checked(&mesh);
         let (fl, fr) = thermcheck::mesh_limits(tables).unwrap_or((f64::NAN, f64::NAN));
@@ -268,24 +339,13 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
     let min = field.min_surface(0);
     let frsi = min.map(|m| thermfield::frsi(m.theta, s.ti, s.te));
     let psat = Psat::of(tables);
-    // Ψ: a junction with the ground needs ISO 10211 12.4 (with ISO 13370)
-    let ground = cut.pieces.iter().any(|p| {
-        matches!(
-            model.get(p.element).map(|e| &e.kind),
-            Some(ElementKind::Site(_))
-        )
-    });
-    let dims = if s.external {
-        thermfield::Dimensions::External
-    } else {
-        thermfield::Dimensions::Internal
-    };
-    let psi = if ground {
-        Err(t(
-            "a junction with the ground: Ψg by STN EN ISO 10211 12.4 is not calculated yet",
-        ))
-    } else {
-        detail
+    let psi = match (&mut ground, &open) {
+        (Some(g), Some(open)) => {
+            let a = open.solve(&mesh);
+            g.l2d_a = a.l2d(0, 1, &open.envs);
+            Ok((vec![], thermfield::psi_g(l2d, g.hw, g.uw, g.l2d_a)))
+        }
+        _ => detail
             .psi_parts(0, 1, dims)
             .map(|parts| {
                 let ul: Vec<(f64, f64)> = parts.iter().map(|(f, l)| (f.u, *l)).collect();
@@ -297,7 +357,7 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
                     "{} ({e})",
                     t("Ψ needs two flanking elements crossing the box's edges")
                 )
-            })
+            }),
     };
     Ok(Outcome {
         field,
@@ -319,6 +379,8 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
         psi,
         external: s.external,
         detail,
+        view,
+        ground,
     })
 }
 
@@ -353,11 +415,11 @@ fn draw_field(ui: &mut egui::Ui, o: &Outcome, size: Vec2) {
     let p = ui.painter_at(rect);
     p.rect_filled(rect, 0.0, ui.visuals().extreme_bg_color);
     let f = &o.field;
-    let (Some(&x0), Some(&x1), Some(&y0), Some(&y1)) =
-        (f.xs.first(), f.xs.last(), f.ys.first(), f.ys.last())
-    else {
+    if f.xs.len() < 2 || f.ys.len() < 2 {
         return;
-    };
+    }
+    // the detail's box (a junction with the ground is solved far wider)
+    let ([x0, y0], [x1, y1]) = o.view;
     let w = (x1 - x0).max(1e-9);
     let h = (y1 - y0).max(1e-9);
     let pad = 34.0;
@@ -366,11 +428,18 @@ fn draw_field(ui: &mut egui::Ui, o: &Outcome, size: Vec2) {
     let oy = rect.center().y as f64 + 0.5 * h * sc;
     let to = |x: f64, y: f64| Pos2::new((ox + (x - x0) * sc) as f32, (oy - (y - y0) * sc) as f32);
     let (lo, hi) = (o.te.min(o.ti), o.te.max(o.ti));
+    // the field, its isotherms and outlines only inside the box
+    let pv = p.with_clip_rect(Rect::from_two_pos(to(x0, y0), to(x1, y1)).intersect(rect));
     let nx = f.xs.len();
     let mut mesh = egui::Mesh::default();
     for j in 0..f.ys.len() - 1 {
         for i in 0..nx - 1 {
-            if f.cells[i + j * (nx - 1)].is_none() {
+            if f.cells[i + j * (nx - 1)].is_none()
+                || f.xs[i + 1] < x0
+                || f.xs[i] > x1
+                || f.ys[j + 1] < y0
+                || f.ys[j] > y1
+            {
                 continue;
             }
             let v = [
@@ -396,20 +465,20 @@ fn draw_field(ui: &mut egui::Ui, o: &Outcome, size: Vec2) {
             mesh.add_triangle(base, base + 2, base + 3);
         }
     }
-    p.add(egui::Shape::mesh(mesh));
+    pv.add(egui::Shape::mesh(mesh));
     let iso = Stroke::new(1.0, Color32::from_black_alpha(150));
     let step = if hi - lo > 20.0 { 2.0 } else { 1.0 };
     let mut tv = (lo / step).ceil() * step;
     while tv < hi {
         for [a, b] in thermfield::isotherm(f, tv) {
-            p.line_segment([to(a[0], a[1]), to(b[0], b[1])], iso);
+            pv.line_segment([to(a[0], a[1]), to(b[0], b[1])], iso);
         }
         tv += step;
     }
     // the critical isotherm θsi,80 + Δθsi, in white
     if let (Some(t80), Some(d)) = (o.theta_si80, o.delta) {
         for [a, b] in thermfield::isotherm(f, t80 + d) {
-            p.line_segment(
+            pv.line_segment(
                 [to(a[0], a[1]), to(b[0], b[1])],
                 Stroke::new(2.0, Color32::WHITE),
             );
@@ -418,7 +487,7 @@ fn draw_field(ui: &mut egui::Ui, o: &Outcome, size: Vec2) {
     let edge = Stroke::new(1.2, Color32::from_gray(20));
     for poly in &o.outlines {
         let pts: Vec<Pos2> = poly.iter().map(|q| to(q[0], q[1])).collect();
-        p.add(egui::Shape::closed_line(pts, edge));
+        pv.add(egui::Shape::closed_line(pts, edge));
     }
     if let Some(m) = o.min {
         let at = to(m.p[0], m.p[1]);
@@ -502,6 +571,13 @@ impl CreaBimApp {
                 s.te = site.te;
                 s.site = site.name;
             }
+        }
+        // a headless screenshot: B of a junction with the ground
+        if let Some(b) = std::env::var("CREABIM_SHOT_THERMAL_B")
+            .ok()
+            .and_then(|v| creabim_core::fireparams::number(&v))
+        {
+            s.b = b;
         }
         // a headless screenshot: λ given as "name=value;…"
         if let Ok(l) = std::env::var("CREABIM_SHOT_THERMAL_LAMBDA") {
@@ -615,6 +691,17 @@ impl CreaBimApp {
                             ui.selectable_value(&mut s.external, false, t("inside dimensions"));
                             ui.selectable_value(&mut s.external, true, t("outside dimensions"));
                         });
+                    ui.separator();
+                    ui.label(t("Ground: B"));
+                    if s.b.is_nan() {
+                        if ui.button(t("enter")).on_hover_text(t("The floor's characteristic dimension B by STN EN ISO 13370, for a junction with the ground; above 8 m the model is the same (12.4.1).")).clicked() {
+                            s.b = 8.0;
+                        }
+                    } else {
+                        ui.add(egui::DragValue::new(&mut s.b).speed(0.05).range(0.5..=200.0).suffix(" m"));
+                    }
+                    ui.label(t("cell in the soil"));
+                    ui.add(egui::DragValue::new(&mut s.h_ground_mm).speed(1.0).range(20.0..=2000.0).prefix("max ").suffix(" mm"));
                 });
                 ui.horizontal_wrapped(|ui| {
                     ui.label(t("Way of heating"));
@@ -736,34 +823,67 @@ fn results_table(ui: &mut egui::Ui, o: &Outcome, s: &Thermal) {
         num(o.l2d, 4),
         "STN EN ISO 10211 (15)".into(),
     ));
-    match &o.psi {
-        Ok((parts, psi)) => {
-            let dims = if o.external {
-                t("outside dimensions")
-            } else {
-                t("inside dimensions")
-            };
-            for (k, (f, l)) in parts.iter().enumerate() {
+    if let (Some(g), Ok((_, psi))) = (&o.ground, &o.psi) {
+        rows.push((
+            t("Floor's characteristic dimension B"),
+            "m".into(),
+            num(g.b, 2),
+            "STN EN ISO 13370".into(),
+        ));
+        rows.push((
+            t("Model: floor inwards / soil outwards and down"),
+            "m".into(),
+            format!("{} / {}", num(g.floor, 2), num(g.soil, 2)),
+            "STN EN ISO 10211, 12.4.1, tab. 5".into(),
+        ));
+        rows.push((
+            t("L2D,a without the wall"),
+            "W/(m·K)".into(),
+            num(g.l2d_a, 4),
+            "STN EN ISO 10211, 12.4.3.1".into(),
+        ));
+        rows.push((
+            "Uw · hw".into(),
+            String::new(),
+            format!("{} W/(m²·K) · {} m", num(g.uw, 4), num(g.hw, 3)),
+            "STN EN ISO 10211, 12.4.3.1".into(),
+        ));
+        rows.push((
+            t("Linear thermal transmittance Ψg"),
+            "W/(m·K)".into(),
+            num(*psi, 4),
+            t("option B, inside dimensions, STN EN ISO 10211 (23)"),
+        ));
+    } else {
+        match &o.psi {
+            Ok((parts, psi)) => {
+                let dims = if o.external {
+                    t("outside dimensions")
+                } else {
+                    t("inside dimensions")
+                };
+                for (k, (f, l)) in parts.iter().enumerate() {
+                    rows.push((
+                        format!("U{} · l{}", k + 1, k + 1),
+                        String::new(),
+                        format!("{} W/(m²·K) · {} m", num(f.u, 4), num(*l, 3)),
+                        "STN EN ISO 10211, 12.3".into(),
+                    ));
+                }
                 rows.push((
-                    format!("U{} · l{}", k + 1, k + 1),
-                    String::new(),
-                    format!("{} W/(m²·K) · {} m", num(f.u, 4), num(*l, 3)),
-                    "STN EN ISO 10211, 12.3".into(),
+                    t("Linear thermal transmittance Ψ"),
+                    "W/(m·K)".into(),
+                    num(*psi, 4),
+                    format!("{dims}, STN EN ISO 10211 (18)"),
                 ));
             }
-            rows.push((
+            Err(e) => rows.push((
                 t("Linear thermal transmittance Ψ"),
-                "W/(m·K)".into(),
-                num(*psi, 4),
-                format!("{dims}, STN EN ISO 10211 (18)"),
-            ));
+                String::new(),
+                "–".into(),
+                e.clone(),
+            )),
         }
-        Err(e) => rows.push((
-            t("Linear thermal transmittance Ψ"),
-            String::new(),
-            "–".into(),
-            e.clone(),
-        )),
     }
     if let Some(m) = o.min {
         rows.push((

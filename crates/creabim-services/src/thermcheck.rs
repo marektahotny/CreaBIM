@@ -63,8 +63,31 @@ pub fn condensation_kinds(tables: &[ParamTable]) -> Vec<(String, f64, String)> {
         .collect()
 }
 
+/// STN EN ISO 10211 the model of a junction with the ground (7.2.3,
+/// table 5, 12.4.1): `key`, `value`, …
+pub const GROUND: &str = "styk_s_terenom";
+
+/// The extents of a junction with the ground for `soil` and B.
+pub fn ground_params(
+    tables: &[ParamTable],
+    soil: usize,
+    b: f64,
+) -> Option<crate::thermfield::Ground> {
+    let v = |k: &str| value(tables, GROUND, k, "value");
+    Some(crate::thermfield::Ground {
+        soil,
+        b,
+        half_max: v("podlaha_max")?,
+        soil_max: v("zemina_max")?,
+        soil_factor: v("zemina_nasobok_B")?,
+        floor_factor: v("podlaha_nasobok_B")?,
+        cut_min: v("rez_min")?,
+        cut_factor: v("rez_nasobok_hrubky")?,
+    })
+}
+
 /// The tables the checks read.
-pub const TABLES: [&str; 15] = [
+pub const TABLES: [&str; 16] = [
     RS,
     FORMULAS,
     DELTA,
@@ -80,6 +103,7 @@ pub const TABLES: [&str; 15] = [
     CONDENSATION_SK,
     crate::glaser::SK_CONSTANTS,
     crate::glaser::SK_ANNUAL,
+    GROUND,
 ];
 
 /// The norm tables of the project, else the application's.
