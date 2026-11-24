@@ -90,6 +90,8 @@ pub enum Tool {
     Room,
     /// A line that splits a room in two where there is no wall.
     RoomSeparator,
+    /// Tiling on part of a room's walls: two clicks along them.
+    Tiling,
     /// A ceiling under a room, or drawn.
     Ceiling,
     /// A box on a plan or section that makes a larger-scale detail view.
@@ -111,7 +113,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 53] = [
+    pub const ALL: [Tool; 54] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -141,6 +143,7 @@ impl Tool {
         Tool::Planting,
         Tool::Room,
         Tool::RoomSeparator,
+        Tool::Tiling,
         Tool::Ceiling,
         Tool::Section,
         Tool::Elevation,
@@ -224,6 +227,7 @@ impl Tool {
             Tool::Planting => "Planting",
             Tool::Room => "Room",
             Tool::RoomSeparator => "Room separator",
+            Tool::Tiling => "Tiling",
             Tool::Ceiling => "Ceiling",
             Tool::Callout => "Callout",
             Tool::Detail => "Detail component",
@@ -282,6 +286,7 @@ impl Tool {
             Tool::Planting => "Click to plant a tree, conifer, palm or shrub. Pick the form, canopy and height in the bar.",
             Tool::Room => "Click inside walls for a room that follows them (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch) where no walls close it off. Its name, number and finishes are in Properties.",
             Tool::RoomSeparator => "Click two points for a line that splits a room in two where there is no wall, such as between a kitchen and a dining room.",
+            Tool::Tiling => "Click where the tiling starts on a room's wall, then where it ends: it runs along the walls between, round corners too, such as over the kitchen's base cabinets. Set its height and how far above the floor it starts in the top bar.",
             Tool::Callout => "On a plan or section, click two corners of a box round what to detail: it becomes a detail view at the scale in the top bar, numbered in a bubble on this view.",
             Tool::Detail => "Pick what to draw in the top bar, then click its points; Enter, a double-click or a right-click finishes (the first point again closes a region). Esc keeps what is drawn. Detail components show in this view only.",
             Tool::Ceiling => "Click inside a room for a ceiling over it that follows its walls (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch). Set its height and thickness in the top bar or Properties.",
@@ -2215,6 +2220,7 @@ fn show_pane(
             | Tool::Footing
             | Tool::Gutter
             | Tool::RoomSeparator
+            | Tool::Tiling
     ) && matches!(kind, PaneKind::Plan { .. })
         || matches!(tool, Tool::Line | Tool::Polyline)
             && matches!(kind, PaneKind::Plan { .. } | PaneKind::Section { .. });
@@ -3348,7 +3354,8 @@ fn show_pane(
             | Tool::Railing
             | Tool::Footing
             | Tool::Gutter
-            | Tool::RoomSeparator => {
+            | Tool::RoomSeparator
+            | Tool::Tiling => {
                 let level = match kind {
                     PaneKind::Plan { level } => Some(level),
                     _ => None,
@@ -4426,6 +4433,7 @@ fn plan_click(
         Tool::Pipe => crate::pipesui::click(doc, level, p, state, selection),
         Tool::Object => crate::objecttool::click(doc, level, p, state, selection),
         Tool::RoomSeparator => crate::roomtool::separator_click(doc, level, p, state, selection),
+        Tool::Tiling => crate::roomtool::tiling_click(doc, level, p, state, selection),
         Tool::Guide => match state.pending.take() {
             None => {
                 state.pending = Some(p);
@@ -8592,7 +8600,7 @@ fn mark_boxes(model: &creabim_core::Model, items: &[PlanItem], mm: f64) -> Vec<(
             PlanItem::Annotation { id, item }
                 if matches!(
                     model.get(*id).map(|e| &e.kind),
-                    Some(ElementKind::Pipe(_) | ElementKind::Object(_))
+                    Some(ElementKind::Pipe(_) | ElementKind::Object(_) | ElementKind::Room(_))
                 ) =>
             {
                 let pts = item.extent();
@@ -8618,13 +8626,14 @@ fn column_mark(model: &creabim_core::Model, id: ElementId) -> bool {
     matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Column(_)))
 }
 
-/// A pipe's size label or a fixture's or device's mark at `w`.
+/// A pipe's size label, a fixture's or device's mark or a tiling's
+/// mark at `w`.
 fn on_mark(model: &creabim_core::Model, items: &[PlanItem], w: DVec2, mm: f64) -> bool {
     items.iter().any(|it| match it {
         PlanItem::Annotation { id, item }
             if matches!(
                 model.get(*id).map(|e| &e.kind),
-                Some(ElementKind::Pipe(_) | ElementKind::Object(_))
+                Some(ElementKind::Pipe(_) | ElementKind::Object(_) | ElementKind::Room(_))
             ) =>
         {
             let pts = item.extent();
@@ -8700,6 +8709,8 @@ fn drag_annotation(
                     Some(ElementKind::Pipe(_)) => true,
                     // a fixture's or device's mark in a trade's plan
                     Some(ElementKind::Object(_)) => true,
+                    // a tiling's mark "(600)(900)" (George 2026-11-24)
+                    Some(ElementKind::Room(_)) => true,
                     _ => false,
                 } =>
             {
@@ -8747,10 +8758,27 @@ fn drag_annotation(
             let inside = (0..4).all(|j| (q[(j + 1) % 4] - q[j]).perp_dot(w - q[j]) >= 0.0);
             inside.then_some((*id, i, place.shift))
         });
+        let mut which = None;
         state.anno_drag = match on_text {
             Some((id, i, shift)) => Some((id, w, shift, Some(i))),
             None => hit.and_then(|id| {
                 let start = match &doc.model().get(id)?.kind {
+                    // a tiling's mark: the one nearest, from where it sits
+                    // on its line
+                    ElementKind::Room(r) => {
+                        let s = creabim_core::room::shape_of(doc.model(), r)?;
+                        let (i, at) = r
+                            .tilings()
+                            .enumerate()
+                            .filter(|(_, t)| !t.no_mark)
+                            .filter_map(|(i, t)| {
+                                creabim_core::room::tiling_mark_at(doc.model(), &s, t)
+                                    .map(|(at, _)| (i, at))
+                            })
+                            .min_by(|x, y| x.1.distance(w).total_cmp(&y.1.distance(w)))?;
+                        which = Some(i);
+                        at
+                    }
                     // a door's or window's mark from where it is drawn,
                     // its leader kept clear of the leaf
                     ElementKind::Tag(t) if t.view == view => drawing
@@ -8797,7 +8825,7 @@ fn drag_annotation(
                         .unwrap_or(p.mark.unwrap_or(DVec2::ZERO)),
                     _ => return None,
                 };
-                Some((id, w, start, None))
+                Some((id, w, start, which))
             }),
         };
         state.anno_group.clear();
@@ -8886,6 +8914,14 @@ fn drag_annotation(
         Some(ElementKind::Pipe(_)) => doc.edit_merged(id, "Move mark", |e| {
             if let ElementKind::Pipe(x) = &mut e.kind {
                 x.mark = Some(start + p - grab);
+            }
+        }),
+        // a tiling's mark slides along the tiling's line
+        Some(ElementKind::Room(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Room(r) = &mut e.kind {
+                if let Some(t) = r.tiling_mut(stretch.unwrap_or(0)) {
+                    t.mark = Some(start + p - grab);
+                }
             }
         }),
         Some(ElementKind::Dimension(_)) if stretch.is_some() => {
@@ -9410,7 +9446,7 @@ fn segment_distance(p: DVec2, a: DVec2, b: DVec2) -> f64 {
     p.distance(a + ab * t)
 }
 
-fn point_in_polygon(p: DVec2, poly: &[DVec2]) -> bool {
+pub(crate) fn point_in_polygon(p: DVec2, poly: &[DVec2]) -> bool {
     let mut inside = false;
     let n = poly.len();
     for i in 0..n {

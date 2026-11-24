@@ -5405,7 +5405,7 @@ impl CreaBimApp {
             } else {
                 self.status = match (tool, self.pending_3d) {
                     (Tool::Wall, Some(_)) => format!("Drawing walls on {level_name}. Click the next corner; Esc or right-click ends."),
-                    (t, _) if t.draws_outline() || t == Tool::RoomSeparator => {
+                    (t, _) if t.draws_outline() || t == Tool::RoomSeparator || t == Tool::Tiling => {
                         self.plan.status.take().unwrap_or_default()
                     }
                     (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Capping | Tool::ChimneyFlashing | Tool::RoofOutlet | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
@@ -13932,6 +13932,30 @@ impl eframe::App for CreaBimApp {
                         pressed: frame == 14,
                         modifiers: egui::Modifiers::NONE,
                     });
+                }
+            }
+        }
+        // for a shot: primary clicks at "x,y;x,y;…", one every 12 frames
+        // from frame 14 (`CREABIM_SHOT_CLICKS`)
+        if let Ok(d) = std::env::var("CREABIM_SHOT_CLICKS") {
+            let frame = ctx.cumulative_frame_nr();
+            for (k, one) in d.split(';').enumerate() {
+                let v: Vec<f32> = one
+                    .split(',')
+                    .filter_map(|t| t.trim().parse().ok())
+                    .collect();
+                let at_frame = 14 + 12 * k as u64;
+                if v.len() == 2 && (at_frame - 2..=at_frame + 1).contains(&frame) {
+                    let at = egui::pos2(v[0], v[1]);
+                    raw_input.events.push(egui::Event::PointerMoved(at));
+                    if frame >= at_frame {
+                        raw_input.events.push(egui::Event::PointerButton {
+                            pos: at,
+                            button: egui::PointerButton::Primary,
+                            pressed: frame == at_frame,
+                            modifiers: egui::Modifiers::NONE,
+                        });
+                    }
                 }
             }
         }

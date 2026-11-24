@@ -125,6 +125,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             Sep,
             T(Tool::Room),
             T(Tool::RoomSeparator),
+            T(Tool::Tiling),
             T(Tool::Ceiling),
             Sep,
             T(Tool::Terrain),

@@ -156,24 +156,38 @@ pub fn finishes(model: &Model, e: &Element, r: &Room) -> Finishes {
         }
     }
     // tiling goes with the walls' finish, with its height and area
-    if let (Some(t), Some(s)) = (&r.tiling, &shape) {
-        let name = if t.name.trim().is_empty() {
-            tr("Tiling")
-        } else {
-            t.name.trim().to_string()
-        };
-        let area = creabim_core::room::tiling_area(model, r, s);
-        let tiles = format!(
-            "{name} {} {:.0} mm ({})",
-            tr("up to"),
-            t.height * 1000.0,
-            model.units().area(area)
-        );
-        f.walls = if f.walls.is_empty() {
-            tiles
-        } else {
-            format!("{}; {tiles}", f.walls)
-        };
+    if let Some(s) = &shape {
+        for t in r.tilings() {
+            let name = if t.name.trim().is_empty() {
+                tr("Tiling")
+            } else {
+                t.name.trim().to_string()
+            };
+            let area: f64 = creabim_core::room::tiling_panels_of(model, s, t)
+                .iter()
+                .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
+                .sum();
+            let tiles = if t.bottom.abs() < 1e-9 {
+                format!(
+                    "{name} {} {:.0} mm ({})",
+                    tr("up to"),
+                    t.height * 1000.0,
+                    model.units().area(area)
+                )
+            } else {
+                format!(
+                    "{name} {:.0}–{:.0} mm ({})",
+                    t.bottom * 1000.0,
+                    t.top() * 1000.0,
+                    model.units().area(area)
+                )
+            };
+            f.walls = if f.walls.is_empty() {
+                tiles
+            } else {
+                format!("{}; {tiles}", f.walls)
+            };
+        }
     }
     if f.ceiling.is_empty() {
         let top = creabim_core::room::height(model, r) + 0.5;
@@ -668,7 +682,7 @@ mod tests {
         r.tiling = Some(creabim_core::room::Tiling {
             height: 2.0,
             name: "Ceramic tiles".into(),
-            skip: vec![],
+            ..Default::default()
         });
         let runs: f64 = creabim_core::room::tiling_runs(&m, &shape, &[])
             .iter()

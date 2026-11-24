@@ -35,6 +35,10 @@ pub struct DetailSettings {
     pub line: creabim_core::LineLook,
     /// The look of the next room separator, once one is picked.
     pub separator: Option<creabim_core::LineLook>,
+    /// The next partial tiling's height and how far above the floor it
+    /// starts, m: as over the kitchen's base cabinets in George's ASR
+    /// drawings, (600)(900).
+    pub tiling: (f64, f64),
 }
 
 impl Default for DetailSettings {
@@ -49,6 +53,7 @@ impl Default for DetailSettings {
             callout_scale: 10.0,
             line: Default::default(),
             separator: None,
+            tiling: (0.6, 0.9),
         }
     }
 }

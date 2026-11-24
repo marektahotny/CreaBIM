@@ -1241,6 +1241,24 @@ pub fn preview(
                 a.truncate() + n,
             ]);
         }
+        // a partial tiling: the walls it will run along
+        (Tool::Tiling, Some(level)) if a.distance(b) > 1e-3 => {
+            let (a2, b2) = (a.truncate(), b.truncate());
+            if let Some((_, s)) = crate::roomtool::tiling_room(model, level, a2, b2) {
+                let (height, bottom) = state.details.tiling;
+                let t = creabim_core::room::Tiling {
+                    height,
+                    bottom,
+                    span: Some([a2, b2]),
+                    ..Default::default()
+                };
+                for (p, q) in creabim_core::room::tiling_plan_runs_of(model, &s, &t) {
+                    if let (Some(p), Some(q)) = (project(p.extend(z)), project(q.extend(z))) {
+                        painter.line_segment([p, q], Stroke::new(3.0, stroke.color));
+                    }
+                }
+            }
+        }
         (Tool::Pipe, _) => crate::pipesui::preview(painter, project, &set.pipe, a, b),
         (Tool::Railing, _) => {
             let scr: Option<Vec<Pos2>> = set.path.iter().map(|p| project(p.extend(z))).collect();

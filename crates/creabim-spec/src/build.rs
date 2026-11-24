@@ -1206,6 +1206,7 @@ fn column(c: &mut Ctx, col: &f::Column, at: &Path) {
         in_wall: None,
         wrap: None,
         piece: None,
+        mark_at: None,
         top: match top {
             Some(t) => core::WallTop::UpToLevel {
                 level: t,
@@ -1695,6 +1696,7 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         fire_ps: None,
         fire_pvm: None,
         tiling: None,
+        tiling_parts: vec![],
         ufh: None,
         decentral_hrv: false,
         living: None,
