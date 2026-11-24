@@ -971,6 +971,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 d.items
                     .extend(crate::etics::elevation_lines(model, *start, *end, *depth));
             }
+            // a structural section: ±0,000 dashed across (STA_002)
+            if v.structural && *cut {
+                if let Some(l) = crate::structural::zero_line(model, view, &d.items) {
+                    d.items.push(l);
+                }
+            }
             // rooms washed behind the cut, from floor to ceiling
             if v.room_colours && *cut && !v.structural {
                 let mut rooms = crate::rooms::section_items(model, *start, *end);

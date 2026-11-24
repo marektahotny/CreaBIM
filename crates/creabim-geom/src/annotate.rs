@@ -134,6 +134,9 @@ pub fn host_frame(model: &Model, id: ElementId) -> Option<DAffine3> {
                 (w.end - w.start).extend(0.0),
             )
         }
+        // a beam's top along its axis, so a spot level on it follows it
+        // up or down (a ring beam with its wall's top, George 2026-11-24)
+        ElementKind::Beam(b) => along(b.start.extend(b.top(model)), (b.end - b.start).extend(0.0)),
         ElementKind::Slab(s) => {
             let a = *s.boundary.first()?;
             let b = s.boundary.get(1).copied().unwrap_or(a + DVec2::X);
@@ -513,6 +516,13 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         Some(m) => format!("{m} {}", tag(t)),
         None => tag(t),
     };
+    // a lintel or ring beam: its position, P1 or V1, in a circle, as the
+    // office's výkres tvaru marks them (George 2026-11-24)
+    if matches!(e.kind, ElementKind::Beam(_)) {
+        if let Some(m) = crate::structural::beam_mark(model, id) {
+            return (m, true);
+        }
+    }
     // a mark, typed or numbered by the project's rules, is what it reads
     if !matches!(e.kind, ElementKind::Object(_)) {
         if let Some(m) = creabim_core::marks::mark_of(model, id) {

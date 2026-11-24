@@ -2435,6 +2435,12 @@ pub fn fitted_ring(model: &Model, b: &Beam) -> Option<Beam> {
     }
     let mut nb = b.clone();
     place_on_core(model, w, &mut nb, u0, u1);
+    // its top at the top of its wall, wherever that goes (George
+    // 2026-11-24)
+    nb.top_offset += nb.top(model) - wall_top(model, w);
+    if (nb.top_offset - b.top_offset).abs() < 1e-9 {
+        nb.top_offset = b.top_offset;
+    }
     Some(nb)
 }
 
@@ -3016,5 +3022,39 @@ mod tests {
         }
         doc.commit(tx).unwrap();
         assert!(mend_ring_beams(doc.model()).is_none());
+        // the wall made lower, or the beam moved down: its top goes back
+        // to the wall's top (George 2026-11-24)
+        let rid = doc
+            .model()
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::Beam(b) if ring_wall(doc.model(), b) == Some(south))
+            })
+            .unwrap()
+            .id;
+        let we = doc.model().get(south).unwrap().clone();
+        let mut lower = we.clone();
+        if let ElementKind::Wall(w) = &mut lower.kind {
+            w.height = 2.5;
+        }
+        doc.commit(Transaction::new("lower").replace(we, lower))
+            .unwrap();
+        let top = |doc: &crate::Document| match &doc.model().get(rid).unwrap().kind {
+            ElementKind::Beam(b) => b.top(doc.model()),
+            _ => unreachable!(),
+        };
+        let ElementKind::Wall(w) = &doc.model().get(south).unwrap().kind else {
+            unreachable!()
+        };
+        let want = wall_top(doc.model(), w);
+        assert!((top(&doc) - want).abs() < 1e-9, "{} {want}", top(&doc));
+        let be = doc.model().get(rid).unwrap().clone();
+        let mut down = be.clone();
+        if let ElementKind::Beam(b) = &mut down.kind {
+            b.top_offset += 0.3;
+        }
+        doc.commit(Transaction::new("down").replace(be, down))
+            .unwrap();
+        assert!((top(&doc) - want).abs() < 1e-9);
     }
 }

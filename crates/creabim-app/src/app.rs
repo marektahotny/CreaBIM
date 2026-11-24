@@ -15027,6 +15027,12 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
         tx.ops.extend(t.ops);
         any = true;
     }
+    // structural sections with their P/V marks and spot levels, once
+    // (George 2026-11-24)
+    if let Some(t) = creabim_geom::structural::section_marks(&model) {
+        tx.ops.extend(t.ops);
+        any = true;
+    }
     // a heat pump's indoor unit without its cross (George 2026-11-23)
     if let Some(t) = creabim_core::objects::mend_heat_pump_symbols(&model) {
         tx.ops.extend(t.ops);

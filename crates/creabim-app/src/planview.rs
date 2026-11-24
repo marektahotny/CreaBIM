@@ -5229,7 +5229,15 @@ fn add_section_view(
     }
     let e = Element::new(name.clone(), ElementKind::View(v));
     selection.only(e.id);
-    doc.commit(Transaction::new(format!("Add {name}")).insert(e))
+    doc.commit(Transaction::new(format!("Add {name}")).insert(e))?;
+    // a structural one with its P/V marks and spot levels (George
+    // 2026-11-24)
+    if structural {
+        if let Some(tx) = creabim_geom::structural::section_marks(doc.model()) {
+            doc.commit(tx)?;
+        }
+    }
+    Ok(())
 }
 
 /// Preview of a section or elevation being placed in a section: a vertical
