@@ -1043,6 +1043,8 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             d.items
                 .extend(crate::structural::column_marks(model, *level, mm));
             d.items.extend(crate::structural::chains(model, *level, mm));
+            d.items
+                .extend(crate::structural::opening_picks(model, *level));
         } else if v.masonry {
             d.items
                 .extend(crate::masonry::plan_marks(model, *level, v.scale / 1000.0));
