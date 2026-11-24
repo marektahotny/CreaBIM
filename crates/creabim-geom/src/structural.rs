@@ -335,6 +335,39 @@ pub fn chains(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
     out
 }
 
+/// The doors and windows of the load-bearing walls of `level`, which the
+/// structural drawing leaves as gaps: each a pick area over its gap, not
+/// drawn, so a click in the gap takes the opening (to put its lintels,
+/// George 2026-11-24).
+pub fn opening_picks(model: &Model, level: ElementId) -> Vec<PlanItem> {
+    let rules = creabim_core::masonry::rules(model);
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        let Some(host) = model.get(o.host) else {
+            continue;
+        };
+        let ElementKind::Wall(w) = &host.kind else {
+            continue;
+        };
+        if w.level != level || w.is_arc() || !structural::draws(model, host, &rules) {
+            continue;
+        }
+        let d = w.direction();
+        let n = d.perp() * (w.thickness / 2.0);
+        let a = w.start + d * o.offset;
+        let b = a + d * o.width;
+        out.push(PlanItem::Room {
+            id: e.id,
+            points: vec![a - n, b - n, b + n, a + n],
+            rgb: None,
+        });
+    }
+    out
+}
+
 /// Keep in a structural plan only what the structural drawing draws
 /// (see [`structural::draws`]): openings stay as the gaps they leave.
 pub fn keep_structure(model: &Model, items: &mut Vec<PlanItem>) {
@@ -571,15 +604,28 @@ mod tests {
         let d = crate::section::view_drawing(&m, sid).unwrap();
         let rules = creabim_core::masonry::rules(&m);
         let of = |it: &PlanItem| m.get(it.id());
-        // no partition, door or window, furniture
+        // no partition, door or window, furniture drawn; a door or window
+        // only as the pick area over its gap, not drawn
         assert!(d
             .items
             .iter()
             .all(|it| of(it).is_none_or(|e| match &e.kind {
                 ElementKind::Wall(w) => creabim_core::masonry::is_bearing(&m, w, &rules),
-                ElementKind::Opening(_) | ElementKind::Object(_) | ElementKind::Room(_) => false,
+                ElementKind::Opening(_) => matches!(it, PlanItem::Room { rgb: None, .. }),
+                ElementKind::Object(_) | ElementKind::Room(_) => false,
                 _ => true,
             })));
+        // each door and window of a load-bearing wall can be picked in
+        // its gap (for its lintels)
+        let picks = d
+            .items
+            .iter()
+            .filter(|it| {
+                matches!(it, PlanItem::Room { .. })
+                    && matches!(of(it).map(|e| &e.kind), Some(ElementKind::Opening(_)))
+            })
+            .count();
+        assert!(picks > 0);
         let texts: Vec<&str> = d
             .items
             .iter()
