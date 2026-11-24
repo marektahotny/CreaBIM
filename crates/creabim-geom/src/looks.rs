@@ -401,6 +401,7 @@ impl Looks {
         let mut s = pen_stroke_with(pen, &self.weights);
         let overhead = match pen {
             Pen::Overhead => Some(crate::paper::OVERHEAD_DASHES.to_vec()),
+            Pen::StairAbove { hidden } => Some(crate::paper::stair_above_dashes(hidden).to_vec()),
             // a dash-dot drafted line: longer than a dash and a gap
             Pen::Drafted(l) => l.kind.dashes().filter(|d| d.len() > 2).map(<[f64]>::to_vec),
             _ => None,

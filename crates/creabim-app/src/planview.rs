@@ -6885,6 +6885,12 @@ fn draw_thin(painter: &egui::Painter, xf: &Xf, item: &PlanItem, o: &Ovr) -> Opti
                     .collect(),
             ),
             Pen::Hidden | Pen::HiddenCut => Some(vec![6.0, 4.0]),
+            Pen::StairAbove { hidden } => Some(
+                creabim_geom::paper::stair_above_dashes(*hidden)
+                    .iter()
+                    .map(|d| d * 2.5)
+                    .collect(),
+            ),
             Pen::Drafted(l) => l.kind.dashes().map(|d| d.iter().map(|x| x * 2.5).collect()),
             Pen::Projection if o.dashed => Some(vec![6.0, 4.0]),
             _ => None,
@@ -7031,7 +7037,12 @@ pub fn draw_item_with(
                 }
                 // dashed pens edge by edge, as lines are (a wall cupboard
                 // over the cut drew solid, George 2026-11-22)
-                Pen::Overhead | Pen::Hidden | Pen::HiddenCut | Pen::Drafted(_) | Pen::Grid => {
+                Pen::Overhead
+                | Pen::Hidden
+                | Pen::HiddenCut
+                | Pen::Drafted(_)
+                | Pen::Grid
+                | Pen::StairAbove { .. } => {
                     let n = points.len();
                     for i in 0..n {
                         let line = PlanItem::Line {
@@ -7124,6 +7135,32 @@ pub fn draw_item_with(
                     };
                     let v = |p: egui::Pos2| DVec2::new(p.x as f64, p.y as f64);
                     let dashes = creabim_geom::paper::OVERHEAD_DASHES.map(|d| d * 2.5);
+                    for piece in
+                        creabim_geom::looks::dash_polyline(&[v(a), v(b)], &dashes, w as f64)
+                    {
+                        if let [p, .., q] = piece[..] {
+                            painter.line_segment(
+                                [
+                                    egui::pos2(p.x as f32, p.y as f32),
+                                    egui::pos2(q.x as f32, q.y as f32),
+                                ],
+                                Stroke::new(w, c),
+                            );
+                        }
+                    }
+                }
+                Pen::StairAbove { hidden } => {
+                    // the projection's weight, dash-dot (STN 01 3420, 5.9.3 d)
+                    let (w, c) = if selected {
+                        (2.0, highlight)
+                    } else {
+                        (1.0 * o.proj, grey(120))
+                    };
+                    let v = |p: egui::Pos2| DVec2::new(p.x as f64, p.y as f64);
+                    let dashes: Vec<f64> = creabim_geom::paper::stair_above_dashes(*hidden)
+                        .iter()
+                        .map(|d| d * 2.5)
+                        .collect();
                     for piece in
                         creabim_geom::looks::dash_polyline(&[v(a), v(b)], &dashes, w as f64)
                     {

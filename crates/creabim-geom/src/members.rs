@@ -5,7 +5,7 @@ use crate::plan::{Pen, PlanItem};
 use crate::scene::slab_mesh;
 use crate::triangulate::triangulate;
 use crate::TriMesh;
-use creabim_core::members::{self, Flight};
+use creabim_core::members;
 use creabim_core::{Element, ElementId, ElementKind, Model, Roof, Stair};
 use glam::{DVec2, DVec3};
 
@@ -918,7 +918,10 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
                 slope_arrows(&mut items, e, r, 0.1);
             }
         }
-        ElementKind::Stair(s) => stair_plan(&mut items, e, s, s.rise(model), cut - s.base_offset),
+        ElementKind::Stair(s) => {
+            let first = crate::stairmarks::first_number(model, e.id, s);
+            stair_plan(&mut items, e, s, s.rise(model), cut - s.base_offset, first)
+        }
         ElementKind::Footing(f) => {
             // below the floor, as usual: dashed; cut when the plan plane
             // passes through it
@@ -1086,12 +1089,15 @@ pub fn size_slope_arrows(model: &Model, items: &mut Vec<PlanItem>, mm: f64) {
     }
 }
 
-/// A stair in plan: its sides and risers up to the cut, a break line where
-/// the plan cuts it, the rest dashed, and an arrow up the walking line.
-fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut: f64) {
+/// A stair in plan as STN 01 3420, 5.9 draws it: its sides and risers up
+/// to the cut, a thin line at 30° where the plan cuts it, the rest
+/// dash-dot, the walking line from a circle to an arrow with `h × b` over
+/// it, and its steps numbered from `first` (see [`crate::stairmarks`]).
+fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut: f64, first: u32) {
     if s.by_steps() {
-        return crate::stairsteps::step_stair_plan(items, e, s, rise, cut);
+        return crate::stairsteps::step_stair_plan(items, e, s, rise, cut, first);
     }
+    let above = Pen::StairAbove { hidden: false };
     let lay = s.layout(rise);
     let r = lay.riser;
     let line = |items: &mut Vec<PlanItem>, pen, a, b| {
@@ -1114,7 +1120,7 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
             run
         };
         let past = if split < run - 1e-9 {
-            Pen::Overhead
+            above
         } else {
             Pen::Projection
         };
@@ -1125,11 +1131,12 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
                 line(items, Pen::Projection, at(0.0) + sd, at(split) + sd);
             }
             if run - split > 1e-9 {
-                line(items, Pen::Overhead, at(split) + sd, at(run) + sd);
+                line(items, above, at(split) + sd, at(run) + sd);
             }
         }
         if split < run - 1e-9 {
-            break_line(items, e, f, s, split);
+            let (a, b) = crate::stairmarks::cut_line(at(split), f.dir, s.width);
+            line(items, Pen::Symbol, a, b);
         }
         line(items, Pen::Symbol, at(0.0), at(run));
         let (end, back, wing) = (at(run), -f.dir * 0.25, f.dir.perp() * 0.12);
@@ -1149,7 +1156,7 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
         // the first riser the cut plane meets
         let cut_at: Option<u32> = (0..f.risers).find(|i| f.z0 + (*i + 1) as f64 * r > cut + 1e-9);
         let pen_for = |i: u32| match cut_at {
-            Some(k) if i > k || broken => Pen::Overhead,
+            Some(k) if i > k || broken => above,
             _ => Pen::Projection,
         };
         for i in 0..f.risers {
@@ -1169,17 +1176,18 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
                 line(items, Pen::Projection, at(0.0) + sd, at(split) + sd);
             }
             if run - split > 1e-9 {
-                line(items, Pen::Overhead, at(split) + sd, at(run) + sd);
+                line(items, above, at(split) + sd, at(run) + sd);
             }
         }
         if let (Some(_), false) = (cut_at, broken) {
-            break_line(items, e, f, s, split);
+            let (a, b) = crate::stairmarks::cut_line(at(split), f.dir, s.width);
+            line(items, Pen::Symbol, a, b);
             broken = true;
         }
     }
     if let Some((outline, z)) = &lay.landing {
         let pen = if broken || *z > cut {
-            Pen::Overhead
+            above
         } else {
             Pen::Projection
         };
@@ -1209,13 +1217,21 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
         line(items, Pen::Symbol, end, end + back + wing);
         line(items, Pen::Symbol, end, end + back - wing);
     }
-    if let Some(f) = lay.flights.first() {
-        items.push(PlanItem::Label {
-            id: e.id,
-            at: f.start - f.dir * 0.35,
-            text: "UP".into(),
-        });
-    }
+    let flights: Vec<(Vec<[DVec2; 2]>, DVec2)> = lay
+        .flights
+        .iter()
+        .map(|f| {
+            let side = f.dir.perp() * s.width / 2.0;
+            let nosings = (0..f.risers)
+                .map(|k| {
+                    let c = f.start + f.dir * (k as f64 * s.tread);
+                    [c - side, c + side]
+                })
+                .collect();
+            (nosings, f.dir)
+        })
+        .collect();
+    crate::stairmarks::marks(items, e, &walk, &flights, r, s.tread, first);
 }
 
 /// A whole stair seen from above, as the floor over it sees it through
@@ -1279,35 +1295,17 @@ pub fn stair_lines(s: &Stair, rise: f64, line: &mut dyn FnMut(Pen, DVec2, DVec2,
     for w in walk.windows(2) {
         line(Pen::Symbol, w[0].0, w[1].0, w[1].1);
     }
+    // the circle on its first nosing (STN 01 3420, 5.9.4)
+    if let Some(&(p0, z)) = walk.first() {
+        for (a, b) in crate::stairmarks::start_circle(p0) {
+            line(Pen::Symbol, a, b, z);
+        }
+    }
     if let (Some(&(end, z)), Some(f)) = (walk.last(), lay.flights.last()) {
         let back = -f.dir * 0.25;
         let wing = f.dir.perp() * 0.12;
         line(Pen::Symbol, end, end + back + wing, z);
         line(Pen::Symbol, end, end + back - wing, z);
-    }
-}
-
-/// The zigzag drawn across a flight where the plan cuts it.
-fn break_line(items: &mut Vec<PlanItem>, e: &Element, f: &Flight, s: &Stair, u: f64) {
-    let side = f.dir.perp();
-    let w = s.width / 2.0 + 0.1;
-    let slant = 0.3 * s.width;
-    let p = |v: f64, du: f64| f.start + f.dir * (u + du + slant * v / w) + side * v;
-    let pts = [
-        p(-w, 0.0),
-        p(-0.15, 0.0),
-        p(-0.05, 0.15),
-        p(0.05, -0.15),
-        p(0.15, 0.0),
-        p(w, 0.0),
-    ];
-    for k in 0..pts.len() - 1 {
-        items.push(PlanItem::Line {
-            id: e.id,
-            pen: Pen::Symbol,
-            a: pts[k],
-            b: pts[k + 1],
-        });
     }
 }
 
@@ -1780,10 +1778,18 @@ mod tests {
                 .filter(|i| matches!(i, PlanItem::Line { pen: p, .. } if *p == pen))
                 .count()
         };
-        assert!(count(Pen::Overhead) > 0 && count(Pen::Projection) > 0);
-        assert!(items
+        // past the cut dash-dot, with h × b and the first step's number
+        // (STN 01 3420, 5.9)
+        assert!(count(Pen::StairAbove { hidden: false }) > 0 && count(Pen::Projection) > 0);
+        let texts: Vec<&str> = items
             .iter()
-            .any(|i| matches!(i, PlanItem::Label { text, .. } if text == "UP")));
+            .filter_map(|i| match i {
+                PlanItem::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t.contains(" × ")), "{texts:?}");
+        assert!(texts.contains(&"1"), "{texts:?}");
         let c = Element::new(
             "C",
             ElementKind::Column(Column::new(

@@ -244,6 +244,16 @@ pub const GRID: Stroke = Stroke {
 };
 /// The dashes of [`Pen::Overhead`], paper mm: a dash and two dots.
 pub const OVERHEAD_DASHES: [f64; 6] = [4.0, 1.0, 0.0, 1.0, 0.0, 1.0];
+/// The dashes of [`Pen::StairAbove`], paper mm: a dash and a dot, or a
+/// dash and two dots for its hidden edges (the drafted line types').
+pub fn stair_above_dashes(hidden: bool) -> &'static [f64] {
+    let t = if hidden {
+        creabim_core::LineType::DashDotDot
+    } else {
+        creabim_core::LineType::DashDot
+    };
+    t.dashes().unwrap_or(&[])
+}
 /// Lines above the cut plane.
 pub const HIDDEN: Stroke = Stroke {
     width: 0.13,
@@ -286,6 +296,8 @@ pub fn pen_stroke_with(pen: Pen, w: &LineWeights) -> Stroke {
             ..HIDDEN
         },
         Pen::Overhead => Stroke::solid(w.hidden, 0.0),
+        // its dashes come from [`stair_above_dashes`]
+        Pen::StairAbove { .. } => Stroke::solid(w.projection, 0.0),
         Pen::HiddenCut => Stroke {
             width: w.cut,
             gray: 0.0,

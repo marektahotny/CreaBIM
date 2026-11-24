@@ -44,9 +44,18 @@ fn arrow(walk: &[DVec2]) -> Option<[(DVec2, DVec2); 2]> {
 }
 
 /// A stair laid out by steps, in a floor plan cut at `cut` above its
-/// base: the steps below the cut seen, those past it dashed, a break
-/// across the cut tread, and the walking line up.
-pub fn step_stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut: f64) {
+/// base, as STN 01 3420, 5.9 draws it: the steps below the cut seen,
+/// those past it dash-dot, a broken line across the cut tread (a curved
+/// flight's, 5.9.3 a), and the walking line from a circle to an arrow
+/// with `h × b` over it and its steps numbered from `first`.
+pub fn step_stair_plan(
+    items: &mut Vec<PlanItem>,
+    e: &Element,
+    s: &Stair,
+    rise: f64,
+    cut: f64,
+    first: u32,
+) {
     let sp = s.step_plan(rise);
     let r = sp.riser;
     let n = sp.risers as usize;
@@ -61,7 +70,7 @@ pub fn step_stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: 
     // the first nosing the cut plane passes under
     let cut_at = (0..n).find(|i| (*i + 1) as f64 * r > cut + 1e-9);
     let pen_nosing = |i: usize| match cut_at {
-        Some(c) if i > c => Pen::Overhead,
+        Some(c) if i > c => Pen::StairAbove { hidden: false },
         _ => Pen::Projection,
     };
     for (i, [a, b]) in sp.nosings.iter().enumerate() {
@@ -102,14 +111,13 @@ pub fn step_stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: 
             line(Pen::Symbol, a, b);
         }
     }
-    if let (Some(&p0), Some(&p1)) = (sp.walk.first(), sp.walk.get(1)) {
-        let d = (p1 - p0).normalize_or_zero();
-        items.push(PlanItem::Label {
-            id: e.id,
-            at: p0 - d * 0.35,
-            text: "UP".into(),
-        });
-    }
+    // one flight, up its walking line at its start
+    let dir = match (sp.walk.first(), sp.walk.get(1)) {
+        (Some(&p0), Some(&p1)) => (p1 - p0).normalize_or_zero(),
+        _ => DVec2::X,
+    };
+    let flights = [(sp.nosings.clone(), dir)];
+    crate::stairmarks::marks(items, e, &sp.walk, &flights, r, sp.going, first);
 }
 
 /// A stair laid out by steps seen whole from above: `line(pen, a, b, z)`
@@ -131,6 +139,11 @@ pub fn step_stair_lines(s: &Stair, rise: f64, line: &mut dyn FnMut(Pen, DVec2, D
     }
     if let Some(wings) = arrow(&sp.walk) {
         for (a, b) in wings {
+            line(Pen::Symbol, a, b, top);
+        }
+    }
+    if let Some(&p0) = sp.walk.first() {
+        for (a, b) in crate::stairmarks::start_circle(p0) {
             line(Pen::Symbol, a, b, top);
         }
     }
