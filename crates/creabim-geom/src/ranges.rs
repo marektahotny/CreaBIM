@@ -91,6 +91,32 @@ pub fn beyond(model: &Model, v: &View) -> HashSet<ElementId> {
         .collect()
 }
 
+/// The model without the walls a structural plan leaves out (partitions)
+/// and the openings in them.
+fn without_partitions(model: &Model) -> Model {
+    let rules = creabim_core::masonry::rules(model);
+    let gone: HashSet<ElementId> = model
+        .iter()
+        .filter(|e| match &e.kind {
+            creabim_core::ElementKind::Wall(_) => {
+                !creabim_core::structural::draws(model, e, &rules)
+            }
+            _ => false,
+        })
+        .map(|e| e.id)
+        .collect();
+    let mut out = model.clone();
+    if gone.is_empty() {
+        return out;
+    }
+    // the same copy for the same model, so caches serve it again
+    out.retain_derived(0x0574_71C5, |e| {
+        !gone.contains(&e.id)
+            && !matches!(&e.kind, creabim_core::ElementKind::Opening(o) if gone.contains(&o.host))
+    });
+    out
+}
+
 /// The drawing of plan view `v` of `level`: its own level as always,
 /// with the other levels its range reaches, or the view from above.
 pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
@@ -98,6 +124,16 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
     if r.from_above {
         return from_above(model, v, level, cut);
     }
+    // a structural plan draws its walls as if the partitions were not
+    // there: the load-bearing walls' faces run on unbroken where a
+    // partition joins them (George 2026-11-24)
+    let bare;
+    let model = if v.structural {
+        bare = without_partitions(model);
+        &bare
+    } else {
+        model
+    };
     // a structural plan cuts only the load-bearing layers
     let own_g = PlanGraphics {
         structure_only: v.structural,

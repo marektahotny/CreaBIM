@@ -1582,10 +1582,62 @@ pub fn rules(model: &Model) -> MasonryRules {
         .unwrap_or_default()
 }
 
-/// Is `wall` load-bearing: as it is set, else by its core's thickness.
+/// Is `wall` load-bearing: as it is set, else by its core's thickness,
+/// or because it stands on a foundation or a wall of a storey below
+/// along most of its length (a 200 mm inner wall on its own foundation
+/// wall carries, George 2026-11-24).
 pub fn is_bearing(model: &Model, wall: &Wall, rules: &MasonryRules) -> bool {
-    wall.bearing
-        .unwrap_or_else(|| core_thickness(model, wall) + 1e-6 >= rules.bearing_from)
+    wall.bearing.unwrap_or_else(|| {
+        core_thickness(model, wall) + 1e-6 >= rules.bearing_from || stands_on_support(model, wall)
+    })
+}
+
+/// Does a wall of a lower storey or a strip footing run under `wall`
+/// along at least half its length, on its line (within 0,2 m)?
+pub fn stands_on_support(model: &Model, wall: &Wall) -> bool {
+    use crate::ElementKind;
+    let Some(own) = model.level(wall.level).map(|l| l.elevation) else {
+        return false;
+    };
+    let len = wall.start.distance(wall.end);
+    if len < 1e-6 {
+        return false;
+    }
+    let d = (wall.end - wall.start) / len;
+    let mut covered: Vec<(f64, f64)> = vec![];
+    for e in model.iter() {
+        let (level, a, b) = match &e.kind {
+            ElementKind::Wall(w) => (w.level, w.start, w.end),
+            ElementKind::Footing(f) if f.start.distance(f.end) > 1e-6 => (f.level, f.start, f.end),
+            _ => continue,
+        };
+        if model.level(level).is_none_or(|l| l.elevation >= own - 1e-6) {
+            continue;
+        }
+        let u = b - a;
+        if u.length() < 1e-6 || d.perp_dot(u.normalize()).abs() > 0.02 {
+            continue;
+        }
+        let off = |p: DVec2| d.perp_dot(p - wall.start).abs();
+        if off(a) > 0.2 || off(b) > 0.2 {
+            continue;
+        }
+        let (s, t) = ((a - wall.start).dot(d), (b - wall.start).dot(d));
+        let (s, t) = (s.min(t).max(0.0), s.max(t).min(len));
+        if t > s {
+            covered.push((s, t));
+        }
+    }
+    covered.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let (mut sum, mut end) = (0.0, 0.0f64);
+    for (s, t) in covered {
+        let s = s.max(end);
+        if t > s {
+            sum += t - s;
+            end = t;
+        }
+    }
+    sum >= len * 0.5
 }
 
 /// PORFIX's table of free-standing partitions (Odborná príručka, 04-1,
