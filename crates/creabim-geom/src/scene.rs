@@ -801,6 +801,20 @@ fn build_scene_unjoined(
                         ],
                     );
                 }
+                // and in the reveals of the windows it runs across
+                for t in r.tilings() {
+                    for rt in creabim_core::room::tiling_reveals(model, &s, t) {
+                        let up = DVec3::new(0.0, 0.0, level.elevation);
+                        let [mut c0, mut c1, mut c2, mut c3] = rt.corners.map(|c| c + up);
+                        // kept right-handed, so the faces look out
+                        if (c1 - c0).cross(rt.normal).dot(c3 - c0) < 0.0 {
+                            std::mem::swap(&mut c0, &mut c1);
+                            std::mem::swap(&mut c3, &mut c2);
+                        }
+                        let n = rt.normal * TILING_THICKNESS;
+                        cuboid(&mut mesh, [c0, c1, c0 + n, c1 + n, c3, c2, c3 + n, c2 + n]);
+                    }
+                }
                 (mesh, [0.86, 0.9, 0.92])
             }
             ElementKind::Ceiling(c) => {

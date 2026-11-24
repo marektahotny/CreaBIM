@@ -135,7 +135,7 @@ impl Layout {
 }
 
 /// The order element categories are listed in: as a house is built.
-pub const CATEGORY_ORDER: [&str; 18] = [
+pub const CATEGORY_ORDER: [&str; 19] = [
     "Footings",
     "Foundation slabs",
     "Walls",
@@ -152,6 +152,7 @@ pub const CATEGORY_ORDER: [&str; 18] = [
     "Thresholds",
     "Outer sills",
     "Inner sills",
+    "Tiling",
     "Objects",
     "Masses",
 ];
@@ -180,7 +181,7 @@ pub struct Line {
     pub element: ElementId,
     /// "Walls", "Slabs", "Roofs", "Ceilings", "Columns", "Beams", "Footings",
     /// "Doors", "Windows", "Outer sills", "Inner sills", "Objects", "Stairs",
-    /// "Railings", "Masses", "Plinths" (measured only).
+    /// "Railings", "Masses", "Plinths", "Tiling" (measured only).
     pub category: &'static str,
     pub level: Option<ElementId>,
     pub material: Option<ElementId>,
@@ -580,6 +581,58 @@ pub fn lines(model: &Model) -> Vec<Line> {
                     perimeter: 0.0,
                     label: Some(label.clone()),
                 });
+            }
+        }
+    }
+    // the rooms' wall tiling, and apart from it the tiles on the window
+    // reveals it runs past (George 2026-11-24)
+    for e in model.iter() {
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        if r.tilings().next().is_none() {
+            continue;
+        }
+        let Some(shape) = crate::room::shape_of(model, r) else {
+            continue;
+        };
+        for t in r.tilings() {
+            let name = if t.name.trim().is_empty() {
+                crate::words::tr("Wall tiling")
+            } else {
+                t.name.trim().to_string()
+            };
+            let walls: f64 = crate::room::tiling_panels_of(model, &shape, t)
+                .iter()
+                .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
+                .sum();
+            let reveals: f64 = crate::room::tiling_reveals(model, &shape, t)
+                .iter()
+                .map(|v| v.area())
+                .sum();
+            let line = |label: String, area: f64| Line {
+                element: e.id,
+                category: "Tiling",
+                level: Some(r.level),
+                material: None,
+                layer: None,
+                thickness: 0.0,
+                quantity: Quantity {
+                    area,
+                    count: 1,
+                    ..Default::default()
+                },
+                perimeter: 0.0,
+                label: Some(label),
+            };
+            if walls > 1e-6 {
+                out.push(line(name.clone(), walls));
+            }
+            if reveals > 1e-6 {
+                out.push(line(
+                    format!("{name} – {}", crate::words::tr("window reveals")),
+                    reveals,
+                ));
             }
         }
     }
