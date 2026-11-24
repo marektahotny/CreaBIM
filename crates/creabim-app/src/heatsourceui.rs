@@ -369,6 +369,24 @@ impl CreaBimApp {
                             ),
                         );
                     }
+                    // the sizes with a catalogue curve down to A-7 that
+                    // reach the bivalence point aimed at: none, say so
+                    let best = hpsizing::recommend(&c.input);
+                    let rb = hpsizing::size(&c.input, &heat::hp_curve(best, c.input.t_flow));
+                    if let Some(tb) = rb.t_biv.filter(|tb| *tb > c.input.t_biv + 1e-9) {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            format!(
+                                "{} {} °C: {} {best} kW {} {} °C. {}",
+                                t("No kit with the catalogue's output down to A-7 reaches the bivalence point aimed at"),
+                                num(c.input.t_biv, 1),
+                                t("the largest,"),
+                                t("crosses the need at"),
+                                num(tb, 1),
+                                t("The 12 and 16 kW kits (H) have only their A7 output in the catalogue, so they cannot be sized by the bivalence point."),
+                            ),
+                        );
+                    }
                     diagram(ui, &c.input, c.size);
                     ui.weak("STN EN 12831-1 · STN EN 15450");
                 }

@@ -8707,5 +8707,9 @@
  "Some values of the STN EN 12831-1 table are not read, so a part of the loss is left out and the result is too low. Read the norm tables again (Manage › Norm tables › Read the folder again).": "Niektoré hodnoty tabuľky STN EN 12831-1 nie sú načítané, preto časť strát chýba a výsledok je príliš nízky. Načítajte tabuľky noriem znova (Správa › Tabuľky noriem › Načítať priečinok znova).",
  "Undercut for an air speed of": "Podrezanie dverí pre rýchlosť vzduchu",
  "Total supply / extract": "Spolu prívod / odvod",
- "Sound level": "Hladina hluku"
+ "Sound level": "Hladina hluku",
+ "No kit with the catalogue's output down to A-7 reaches the bivalence point aimed at": "Žiadna zostava s výkonom v katalógu až po A-7 nedosiahne cieľový bod bivalencie",
+ "the largest,": "najväčšia,",
+ "crosses the need at": "pretína potrebu pri",
+ "The 12 and 16 kW kits (H) have only their A7 output in the catalogue, so they cannot be sized by the bivalence point.": "Zostavy 12 a 16 kW (H) majú v katalógu len výkon pri A7, preto sa podľa bodu bivalencie navrhnúť nedajú."
 }
