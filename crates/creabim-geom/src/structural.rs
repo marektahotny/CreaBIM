@@ -388,6 +388,20 @@ pub fn keep_structure(model: &Model, items: &mut Vec<PlanItem>) {
     });
 }
 
+/// Is scene item `i` a part a structural section draws: a load-bearing
+/// layer (or an element of one material), not the insulation, render,
+/// plaster or floor build-up, not a window's glass, not the boards
+/// wrapped round a column or lintel (George 2026-11-24, as the sections
+/// of his výkres tvaru STA_002).
+pub fn bearing_part(model: &Model, i: &crate::scene::SceneItem) -> bool {
+    i.layer
+        .is_none_or(|l| l.function == creabim_core::LayerFunction::Structure)
+        && i.finish.is_none()
+        && model
+            .get(i.id)
+            .is_none_or(|e| creabim_core::wrap::piece_of(e).is_none())
+}
+
 /// Is the section mark `id` one a plan of this kind shows: a structural
 /// plan the structural sections' marks, every other plan the others.
 pub fn shows_mark(model: &Model, id: ElementId, structural_plan: bool) -> bool {
@@ -557,6 +571,20 @@ pub fn sample(model: &mut Model) {
 mod tests {
     use super::*;
     use creabim_core::{Element, Transaction, View, ViewKind};
+
+    #[test]
+    fn a_structural_section_draws_the_load_bearing_layers_only() {
+        let m = creabim_core::starter::starter_house();
+        let scene = crate::scene::shared_scene(&m);
+        let layered: Vec<_> = scene.iter().filter(|i| i.layer.is_some()).collect();
+        // the sample's walls and slabs have insulation, plaster, screed…
+        assert!(layered.iter().any(|i| !bearing_part(&m, i)));
+        // …and a core that stays
+        assert!(layered.iter().any(|i| bearing_part(&m, i)));
+        assert!(scene.iter().filter(|i| bearing_part(&m, i)).all(|i| i
+            .layer
+            .is_none_or(|l| l.function == creabim_core::LayerFunction::Structure)));
+    }
 
     #[test]
     fn the_structural_plan_draws_what_carries_with_its_positions_and_lists() {

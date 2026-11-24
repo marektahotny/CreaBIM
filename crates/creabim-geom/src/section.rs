@@ -937,9 +937,21 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                         creabim_core::structural::draws(model, host.unwrap_or(e), &rules)
                     })
             };
+            // and of what carries only the load-bearing layers: no
+            // insulation, render, plaster or floor build-up, no boards
+            // wrapped round columns and lintels (George 2026-11-24, as
+            // his výkres tvaru STA_002 draws its sections)
+            let bearing =
+                |i: &SceneItem| !v.structural || crate::structural::bearing_part(model, i);
             let items: Vec<&SceneItem> = shared
                 .iter()
-                .filter(|i| !i.ghost && !i.is_lining() && !hidden.contains(&i.id) && carries(i.id))
+                .filter(|i| {
+                    !i.ghost
+                        && !i.is_lining()
+                        && !hidden.contains(&i.id)
+                        && carries(i.id)
+                        && bearing(i)
+                })
                 .collect();
             let mut d = section_view_jogged(
                 model,
@@ -960,7 +972,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                     .extend(crate::etics::elevation_lines(model, *start, *end, *depth));
             }
             // rooms washed behind the cut, from floor to ceiling
-            if v.room_colours && *cut {
+            if v.room_colours && *cut && !v.structural {
                 let mut rooms = crate::rooms::section_items(model, *start, *end);
                 rooms.append(&mut d.items);
                 d.items = rooms;
