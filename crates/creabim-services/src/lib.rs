@@ -48,6 +48,7 @@ pub mod sanitary;
 pub mod settings;
 mod sizing;
 pub mod storm;
+pub mod thermfield;
 pub mod tree;
 pub mod water;
 
