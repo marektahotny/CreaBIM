@@ -8743,5 +8743,10 @@
  "Physical quantity": "Veličina",
  "Way of heating": "Spôsob vykurovania",
  "θe is not set: choose the project's locality (Heat loss) or enter θe.": "θe nie je zadaná: vyberte lokalitu stavby (Tepelné straty) alebo zadajte θe.",
- "enter": "zadať"
+ "enter": "zadať",
+ "a junction with the ground: Ψg by STN EN ISO 10211 12.4 is not calculated yet": "styk s terénom: Ψg podľa STN EN ISO 10211, 12.4 sa zatiaľ nepočíta",
+ "Ψ needs two flanking elements crossing the box's edges": "Ψ potrebuje dve priľahlé konštrukcie prechádzajúce okrajom výrezu",
+ "outside dimensions": "vonkajšie rozmery",
+ "inside dimensions": "vnútorné rozmery",
+ "Linear thermal transmittance Ψ": "Lineárny stratový súčiniteľ Ψ"
 }

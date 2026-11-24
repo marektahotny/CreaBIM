@@ -41,6 +41,8 @@ pub struct Thermal {
     pub h_min_mm: f64,
     /// Check the mesh by halving every cell (STN EN ISO 10211 7.2.7).
     pub check_mesh: bool,
+    /// Ψ measured on the inside or the outside dimensions.
+    pub external: bool,
     /// λ given by hand for materials without one, by their name.
     pub lambda: BTreeMap<String, f64>,
     pub result: Option<std::sync::Arc<Outcome>>,
@@ -61,6 +63,7 @@ impl Default for Thermal {
             h_max_mm: 20.0,
             h_min_mm: 2.0,
             check_mesh: true,
+            external: false,
             lambda: BTreeMap::new(),
             result: None,
             error: None,
@@ -90,6 +93,9 @@ pub struct Outcome {
     pub phi_max: Option<f64>,
     pub mesh: Option<MeshCheck>,
     pub mesh_fine_nodes: usize,
+    /// The flanks' U and lengths and Ψ (formula 18), or why not.
+    pub psi: Result<(Vec<(thermfield::Flank, f64)>, f64), String>,
+    pub external: bool,
 }
 
 /// Materials of the detail, by name: λ and whether it was given by hand.
@@ -262,6 +268,37 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
     let min = field.min_surface(0);
     let frsi = min.map(|m| thermfield::frsi(m.theta, s.ti, s.te));
     let psat = Psat::of(tables);
+    // Ψ: a junction with the ground needs ISO 10211 12.4 (with ISO 13370)
+    let ground = cut.pieces.iter().any(|p| {
+        matches!(
+            model.get(p.element).map(|e| &e.kind),
+            Some(ElementKind::Site(_))
+        )
+    });
+    let dims = if s.external {
+        thermfield::Dimensions::External
+    } else {
+        thermfield::Dimensions::Internal
+    };
+    let psi = if ground {
+        Err(t(
+            "a junction with the ground: Ψg by STN EN ISO 10211 12.4 is not calculated yet",
+        ))
+    } else {
+        detail
+            .psi_parts(0, 1, dims)
+            .map(|parts| {
+                let ul: Vec<(f64, f64)> = parts.iter().map(|(f, l)| (f.u, *l)).collect();
+                let v = thermfield::psi(l2d, &ul);
+                (parts, v)
+            })
+            .map_err(|e| {
+                format!(
+                    "{} ({e})",
+                    t("Ψ needs two flanking elements crossing the box's edges")
+                )
+            })
+    };
     Ok(Outcome {
         field,
         outlines,
@@ -279,6 +316,8 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
         phi_max: thermcheck::phi_i_max(tables),
         mesh: check,
         mesh_fine_nodes: fine_nodes,
+        psi,
+        external: s.external,
         detail,
     })
 }
@@ -568,6 +607,14 @@ impl CreaBimApp {
                             ui.selectable_value(&mut s.rsi_iso, false, t("0,10 / 0,13 / 0,17 (STN 73 0540-3)"));
                             ui.selectable_value(&mut s.rsi_iso, true, t("0,25 (STN EN ISO 13788)"));
                         });
+                    ui.separator();
+                    ui.label("Ψ");
+                    egui::ComboBox::from_id_salt("thermal.dims")
+                        .selected_text(if s.external { t("outside dimensions") } else { t("inside dimensions") })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut s.external, false, t("inside dimensions"));
+                            ui.selectable_value(&mut s.external, true, t("outside dimensions"));
+                        });
                 });
                 ui.horizontal_wrapped(|ui| {
                     ui.label(t("Way of heating"));
@@ -689,6 +736,35 @@ fn results_table(ui: &mut egui::Ui, o: &Outcome, s: &Thermal) {
         num(o.l2d, 4),
         "STN EN ISO 10211 (15)".into(),
     ));
+    match &o.psi {
+        Ok((parts, psi)) => {
+            let dims = if o.external {
+                t("outside dimensions")
+            } else {
+                t("inside dimensions")
+            };
+            for (k, (f, l)) in parts.iter().enumerate() {
+                rows.push((
+                    format!("U{} · l{}", k + 1, k + 1),
+                    String::new(),
+                    format!("{} W/(m²·K) · {} m", num(f.u, 4), num(*l, 3)),
+                    "STN EN ISO 10211, 12.3".into(),
+                ));
+            }
+            rows.push((
+                t("Linear thermal transmittance Ψ"),
+                "W/(m·K)".into(),
+                num(*psi, 4),
+                format!("{dims}, STN EN ISO 10211 (18)"),
+            ));
+        }
+        Err(e) => rows.push((
+            t("Linear thermal transmittance Ψ"),
+            String::new(),
+            "–".into(),
+            e.clone(),
+        )),
+    }
     if let Some(m) = o.min {
         rows.push((
             t("Lowest inner surface temperature θsi,min"),

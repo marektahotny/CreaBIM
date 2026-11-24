@@ -788,6 +788,185 @@ pub fn psi(l2d: f64, parts: &[(f64, f64)]) -> f64 {
     l2d - parts.iter().map(|(u, l)| u * l).sum::<f64>()
 }
 
+/// A flanking element where a cut plane crosses it between two airs:
+/// its one-dimensional build-up along the cut and its U (STN EN ISO
+/// 10211, 12.3: Uj by STN EN ISO 6946, the layers in series between the
+/// two surface resistances).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Flank {
+    /// Which cut plane: 0 left (x min), 1 right, 2 bottom (y min), 3 top.
+    pub cut: usize,
+    /// The environments on its two faces: (first, second) along the cut.
+    pub envs: (usize, usize),
+    /// Where its faces lie along the cut, in that order.
+    pub faces: (f64, f64),
+    /// Thermal transmittance, W/(m²·K).
+    pub u: f64,
+}
+
+/// The system of dimensions the lengths lj are measured in (ISO 10211,
+/// 7.1, 12.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dimensions {
+    Internal,
+    External,
+}
+
+impl Detail {
+    /// What lies at point `p`: a material's index, else the air there.
+    fn at(&self, p: [f64; 2]) -> Result<usize, Option<&Air>> {
+        match self.regions.iter().rev().find(|r| inside(&r.poly, p)) {
+            Some(r) => Ok(r.material),
+            None => Err(self.air_at(p)),
+        }
+    }
+
+    /// The flanking elements: on every cut plane of the box, each run of
+    /// material with air on both its faces of two different environments.
+    pub fn flanks(&self) -> Vec<Flank> {
+        let Some((lo, hi)) = self.bounds else {
+            return vec![];
+        };
+        let mut out = vec![];
+        for cut in 0..4 {
+            // the cut line, and the coordinate along it
+            let (fixed, along, a0, a1) = match cut {
+                0 => (lo[0], 1, lo[1], hi[1]),
+                1 => (hi[0], 1, lo[1], hi[1]),
+                2 => (lo[1], 0, lo[0], hi[0]),
+                _ => (hi[1], 0, lo[0], hi[0]),
+            };
+            // just inside the box
+            let span = (hi[0] - lo[0]).max(hi[1] - lo[1]);
+            let inset = 1e-7 * span.max(1.0);
+            let fixed_in = match cut {
+                0 | 2 => fixed + inset,
+                _ => fixed - inset,
+            };
+            let point = |t: f64| {
+                if along == 1 {
+                    [fixed_in, t]
+                } else {
+                    [t, fixed_in]
+                }
+            };
+            let mut ts = vec![a0, a1];
+            for r in &self.regions {
+                let n = r.poly.len();
+                for i in 0..n {
+                    let (p, q) = (r.poly[i], r.poly[(i + 1) % n]);
+                    let o = 1 - along;
+                    let (u0, u1) = (p[o] - fixed_in, q[o] - fixed_in);
+                    if (u0 <= 0.0) != (u1 <= 0.0) {
+                        let s = u0 / (u0 - u1);
+                        ts.push(p[along] + s * (q[along] - p[along]));
+                    } else if u0.abs() < 1e-12 && u1.abs() < 1e-12 {
+                        ts.extend([p[along], q[along]]);
+                    }
+                }
+            }
+            ts.retain(|t| *t >= a0 - 1e-12 && *t <= a1 + 1e-12);
+            ts.sort_by(|a, b| a.total_cmp(b));
+            ts.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+            // pieces along the cut: material (index, length) or air
+            let mut runs: Vec<(f64, f64, Result<usize, Option<Air>>)> = vec![];
+            for w in ts.windows(2) {
+                let what = self.at(point(0.5 * (w[0] + w[1]))).map_err(|a| a.cloned());
+                runs.push((w[0], w[1], what));
+            }
+            let mut k = 0;
+            while k < runs.len() {
+                if runs[k].2.is_err() {
+                    k += 1;
+                    continue;
+                }
+                let start = k;
+                while k < runs.len() && runs[k].2.is_ok() {
+                    k += 1;
+                }
+                // material from runs[start] to runs[k - 1], air on both sides
+                let before = start
+                    .checked_sub(1)
+                    .and_then(|b| runs[b].2.clone().err().flatten());
+                let after = runs.get(k).and_then(|r| r.2.clone().err().flatten());
+                let (Some(a), Some(b)) = (before, after) else {
+                    continue;
+                };
+                if a.env == b.env {
+                    continue;
+                }
+                let r: f64 = runs[start..k]
+                    .iter()
+                    .map(|(t0, t1, m)| (t1 - t0) / self.materials[*m.as_ref().unwrap()].lambda)
+                    .sum();
+                // the airs' resistances by where they lie against the faces
+                let (ra, rb) = if along == 1 {
+                    (a.rs(Side::Under), b.rs(Side::Over))
+                } else {
+                    (a.rs(Side::Beside), b.rs(Side::Beside))
+                };
+                out.push(Flank {
+                    cut,
+                    envs: (a.env, b.env),
+                    faces: (runs[start].0, runs[k - 1].1),
+                    u: 1.0 / (ra + r + rb),
+                });
+            }
+        }
+        out
+    }
+
+    /// The flanking elements' U and lengths lj for Ψ = L2D − Σ Uj·lj
+    /// (formula 18) between environments `warm` and `cold`: a corner of
+    /// two flanks crossing the box's perpendicular cut planes, or a run of
+    /// two on opposite cut planes (split halfway). An error for any other
+    /// arrangement.
+    pub fn psi_parts(
+        &self,
+        warm: usize,
+        cold: usize,
+        dims: Dimensions,
+    ) -> Result<Vec<(Flank, f64)>, String> {
+        let Some((lo, hi)) = self.bounds else {
+            return Err("no box".into());
+        };
+        let fl: Vec<Flank> = self
+            .flanks()
+            .into_iter()
+            .filter(|f| {
+                (f.envs.0 == warm && f.envs.1 == cold) || (f.envs.0 == cold && f.envs.1 == warm)
+            })
+            .collect();
+        if fl.len() != 2 {
+            return Err(format!("{} flanks", fl.len()));
+        }
+        // the face of a flank on the side measured from
+        let face = |f: &Flank| {
+            let inner_first = f.envs.0 == warm;
+            match (dims, inner_first) {
+                (Dimensions::Internal, true) | (Dimensions::External, false) => f.faces.0,
+                _ => f.faces.1,
+            }
+        };
+        let cut_at = |c: usize| [lo[0], hi[0], lo[1], hi[1]][c];
+        let vertical = |c: usize| c < 2;
+        let (a, b) = (&fl[0], &fl[1]);
+        let (la, lb) = if vertical(a.cut) != vertical(b.cut) {
+            // a corner: each runs from its cut plane to the other's face
+            (
+                (face(b) - cut_at(a.cut)).abs(),
+                (face(a) - cut_at(b.cut)).abs(),
+            )
+        } else if a.cut / 2 == b.cut / 2 && a.cut != b.cut {
+            let half = 0.5 * (cut_at(a.cut) - cut_at(b.cut)).abs();
+            (half, half)
+        } else {
+            return Err("arrangement".into());
+        };
+        Ok(vec![(a.clone(), la), (b.clone(), lb)])
+    }
+}
+
 /// Outcome of the mesh check (7.2.7, C.2 d).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MeshCheck {
@@ -1053,5 +1232,71 @@ mod tests {
         );
         assert_eq!(f.flows.len(), 2);
         f.flows.clear();
+    }
+
+    #[test]
+    fn corner_flanks_and_psi() {
+        // An outside corner of a 0,3 m wall: the room in the lower left,
+        // the box 2 m each way: an outer corner has Ψi > 0 > Ψe.
+        let air_in = Air {
+            env: 0,
+            rs_over: 0.13,
+            rs_beside: 0.13,
+            rs_under: 0.13,
+        };
+        let d = Detail {
+            materials: vec![Material {
+                name: "m".into(),
+                lambda: 0.5,
+            }],
+            regions: vec![Region {
+                material: 0,
+                poly: vec![
+                    [1.2, 0.0],
+                    [1.5, 0.0],
+                    [1.5, 1.5],
+                    [0.0, 1.5],
+                    [0.0, 1.2],
+                    [1.2, 1.2],
+                ],
+            }],
+            envs: vec![
+                Env {
+                    name: "i".into(),
+                    theta: 20.0,
+                },
+                Env {
+                    name: "e".into(),
+                    theta: 0.0,
+                },
+            ],
+            air: vec![(vec![[0.0, 0.0], [1.2, 0.0], [1.2, 1.2], [0.0, 1.2]], air_in)],
+            outside: Some(Air {
+                env: 1,
+                rs_over: 0.04,
+                rs_beside: 0.04,
+                rs_under: 0.04,
+            }),
+            bounds: Some(([0.0, 0.0], [2.0, 2.0])),
+            ..Default::default()
+        };
+        let fl = d.flanks();
+        assert_eq!(fl.len(), 2, "{fl:?}");
+        let u = 1.0 / (0.13 + 0.3 / 0.5 + 0.04);
+        assert!(fl.iter().all(|f| (f.u - u).abs() < 1e-9));
+        let int = d.psi_parts(0, 1, Dimensions::Internal).unwrap();
+        assert!(int.iter().all(|(_, l)| (l - 1.2).abs() < 1e-9), "{int:?}");
+        let ext = d.psi_parts(0, 1, Dimensions::External).unwrap();
+        assert!(ext.iter().all(|(_, l)| (l - 1.5).abs() < 1e-9), "{ext:?}");
+        let f = d.solve(&Mesh {
+            h_max: 0.01,
+            h_min: 0.005,
+            ratio: 1.2,
+        });
+        let l2d = f.l2d(0, 1, &d.envs);
+        let sum = |p: &[(Flank, f64)]| p.iter().map(|(f, l)| (f.u, *l)).collect::<Vec<_>>();
+        let psi_i = psi(l2d, &sum(&int));
+        let psi_e = psi(l2d, &sum(&ext));
+        assert!(psi_i > 0.0 && psi_e < 0.0, "Ψi {psi_i} Ψe {psi_e}");
     }
 }
