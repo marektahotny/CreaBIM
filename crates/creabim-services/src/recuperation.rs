@@ -330,6 +330,10 @@ pub struct Design {
     /// The unit's place and turn (back to the wall), and the boxes'.
     pub unit_at: Option<(DVec2, f64)>,
     pub boxes: [(DVec2, f64); 2],
+    /// Air velocity in the unit's mains, m/s.
+    pub main_velocity: f64,
+    /// Length of the mains on the supply and the extract side, m.
+    pub main_length: [f64; 2],
     /// The outer wall the outdoor and exhaust ducts reach.
     pub outside: Vec<DVec2>,
     /// The outer wall the unit stands at, its ducts through it.
@@ -571,8 +575,45 @@ fn friction(q_m3h: f64, d: f64, rough: f64) -> (f64, f64) {
     (v, lambda / d * 1.2 * v * v / 2.0)
 }
 
+/// A number with one decimal and a decimal comma, for Slovak text.
+fn comma(v: f64) -> String {
+    format!("{v:.1}").replace('.', ",")
+}
+
 fn ceil_to(v: f64, step: f64) -> f64 {
     (v / step).ceil() * step
+}
+
+/// Share `total` among rooms: each room first gets its need rounded up
+/// to a whole `step`, then the steps left to reach `total` go to the
+/// rooms in proportion to their needs (largest remainders first), so
+/// every room gets at least its need and the shares sum to `total`.
+fn apportion(needs: &[f64], total: f64, step: f64) -> Vec<f64> {
+    let base: Vec<i64> = needs
+        .iter()
+        .map(|n| (n / step - 1e-9).ceil().max(0.0) as i64)
+        .collect();
+    let sum: f64 = needs.iter().sum();
+    let mut left = (total / step).round() as i64 - base.iter().sum::<i64>();
+    let mut got = base.clone();
+    if left > 0 && sum > 0.0 {
+        let extra = left as f64;
+        let exact: Vec<f64> = needs.iter().map(|n| n / sum * extra).collect();
+        for (k, e) in exact.iter().enumerate() {
+            got[k] += e.floor() as i64;
+        }
+        left -= exact.iter().map(|e| e.floor() as i64).sum::<i64>();
+        let mut order: Vec<usize> = (0..needs.len()).collect();
+        order.sort_by(|&a, &b| {
+            (exact[b] - exact[b].floor())
+                .total_cmp(&(exact[a] - exact[a].floor()))
+                .then(needs[b].total_cmp(&needs[a]))
+        });
+        for &k in order.iter().take(left.max(0) as usize) {
+            got[k] += 1;
+        }
+    }
+    got.into_iter().map(|g| g as f64 * step).collect()
 }
 
 /// Decree 259/2008 Z. z., annex 2, table 4: the least air changes of
@@ -687,6 +728,14 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
         return d;
     }
     let ds = doors(model, level, &geo);
+    for g in &geo {
+        if g.height > 3.0 + 1e-6 && g.kind.needs().ach.unwrap_or(0.0) > 0.0 {
+            d.warnings.push(format!(
+                "{} {}: svetlá výška {:.2} m je nad 3 m, pre ktoré STN EN 12831-1 tab. B.7 najmenšiu výmenu vzduchu neodporúča: prietok overiť inak.",
+                g.number, g.name, g.height
+            ));
+        }
+    }
 
     // what each room gets
     for (i, g) in geo.iter().enumerate() {
@@ -734,19 +783,24 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
         .map(|r| r.need)
         .sum();
 
-    // the balance: the smaller side raised to the larger
-    let q = d.need_supply.max(d.need_extract);
-    for r in &mut d.rooms {
-        let side = match r.role {
-            Role::Supply => d.need_supply,
-            Role::Extract => d.need_extract,
-            _ => continue,
-        };
-        r.design = if side > 0.0 {
-            ceil_to(r.need * q / side, 5.0)
-        } else {
-            0.0
-        };
+    // the balance: the smaller side raised to the larger, both sides
+    // summing to the same flow in steps of 5 m³/h
+    let base = |role| -> f64 {
+        d.rooms
+            .iter()
+            .filter(|r| r.role == role)
+            .map(|r| ceil_to(r.need - 1e-9, 5.0).max(0.0))
+            .sum()
+    };
+    let q = base(Role::Supply).max(base(Role::Extract));
+    for role in [Role::Supply, Role::Extract] {
+        let idx: Vec<usize> = (0..d.rooms.len())
+            .filter(|&i| d.rooms[i].role == role)
+            .collect();
+        let needs: Vec<f64> = idx.iter().map(|&i| d.rooms[i].need).collect();
+        for (k, v) in apportion(&needs, q, 5.0).into_iter().enumerate() {
+            d.rooms[idx[k]].design = v;
+        }
     }
     let sum = |role| -> f64 {
         d.rooms
@@ -992,11 +1046,28 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             for b in d.branches.iter_mut().filter(|b| b.supply == supply) {
                 b.throttle = worst - b.dp;
             }
-            // the main from the unit to its box, and outdoors, Spiro Ø160
+            // the mains as drawn by `apply`: unit to its box (along, then
+            // up or down) and through the outer wall, Spiro of the
+            // unit's spigot; each fan pushes through both of its side's
+            // mains (supply: outdoor air + supply, extract: extract + exhaust)
             let main_q = d.flow;
-            let dm = d.unit.map_or(0.16, |i| cat.units[i].spigot / 1000.0);
-            let (_, rpm) = friction(main_q, dm, 1.5e-4);
-            let main = rpm * 3.0;
+            let u = d.unit.map(|i| &cat.units[i]);
+            let dm = u.map_or(0.16, |u| u.spigot / 1000.0);
+            let uh = u.map_or(z, |u| if u.on_ceiling() { z } else { u.size[2] + 0.15 });
+            let (vm, rpm) = friction(main_q, dm, 1.5e-4);
+            let main_len = match d.unit_at {
+                Some((at, _)) => {
+                    let to_box =
+                        at.distance(d.boxes[if supply { 0 } else { 1 }].0) + (uh - z).abs();
+                    let out = d.outside.first().map_or(0.5, |o| at.distance(*o));
+                    to_box + out
+                }
+                None => 3.0,
+            };
+            // ζ: two bends on the way to the box, one through the wall
+            let main = rpm * main_len + o.zeta_bend * 3.0 * 1.2 * vm * vm / 2.0;
+            d.main_velocity = vm;
+            d.main_length[if supply { 0 } else { 1 }] = main_len;
             if supply {
                 d.dp_supply = worst + main;
             } else {
@@ -1018,28 +1089,47 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             }
         }
         d.warnings.push(
-            "Tlakové straty sú trenie a ohyby potrubia: straty tanierových ventilov, boxov, tlmičov a žalúzií doplniť z katalógu výrobcu.".into(),
+            format!("Tlakové straty: trenie (Darcy-Weisbach, λ podľa Swameeho-Jaina, drsnosť GP 0,05 mm je predpoklad) a ohyby (ζ {} na ohyb, predpoklad: ATREA hodnoty neudáva) v GP Ø75 a v hlavných rozvodoch Ø{:.0} (prívodná strana {} m, odvodná {} m, {} m/s). Straty tanierových ventilov, boxov, tlmičov, žalúzie a filtra doplniť z katalógu výrobcu.",
+                comma(o.zeta_bend),
+                d.unit.map_or(160.0, |i| cat.units[i].spigot),
+                comma(d.main_length[0]),
+                comma(d.main_length[1]),
+                comma(d.main_velocity)),
         );
     }
 
-    // the transfer: under the doors of the rooms air is taken from
+    // the transfer: under the doors of the rooms air is blown into (it
+    // leaves them) and of the rooms it is taken from (it comes in); a
+    // door both sides use carries the larger flow
+    let mut by_door: Vec<(ElementId, f64, f64)> = vec![];
     for (i, r) in d.rooms.iter().enumerate() {
-        if r.role != Role::Extract {
+        if !matches!(r.role, Role::Supply | Role::Extract) {
             continue;
         }
         let mine: Vec<&Door> = ds
             .iter()
-            .filter(|x| !x.open && (x.a == Some(i) || x.b == Some(i)))
+            .filter(|x| {
+                !x.open && x.a.is_some() && x.b.is_some() && (x.a == Some(i) || x.b == Some(i))
+            })
             .collect();
-        let share = r.design / mine.len().max(1) as f64;
-        for dr in mine {
-            let gap = share / 3600.0 / o.transfer_v / dr.width.max(0.6) * 1000.0;
-            d.transfers.push(Transfer {
-                door: dr.id,
-                flow: share.round(),
-                gap_mm: gap.ceil(),
-            });
+        if mine.is_empty() {
+            continue;
         }
+        let share = r.design / mine.len() as f64;
+        for dr in mine {
+            match by_door.iter_mut().find(|x| x.0 == dr.id) {
+                Some(x) => x.1 = x.1.max(share),
+                None => by_door.push((dr.id, share, dr.width)),
+            }
+        }
+    }
+    for (door, flow, width) in by_door {
+        let gap = flow / 3600.0 / o.transfer_v / width.max(0.6) * 1000.0;
+        d.transfers.push(Transfer {
+            door,
+            flow: flow.round(),
+            gap_mm: gap.ceil(),
+        });
     }
 
     // room units in the outer walls of the rooms marked so
@@ -1129,6 +1219,11 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             ok: level.map(|l| l <= limits[2] + 1e-9),
             note,
         });
+    }
+    if d.flow > 0.0 {
+        d.warnings.push(
+            "Potrubie ATREA GP Ø95/75 (vnútorný Ø75) sa podľa ATREA napája spojovacou sadou na tvarovku DN100; distribučné boxy MAT s hrdlami Ø75 overiť alebo nahradiť boxami pre GP (katalóg prvkov ATREA).".into(),
+        );
     }
     d.warnings.push(if residential {
         "Bytová budova: 0,5 1/h podľa STN EN 12831-1 tab. B.7, odvod kuchyňa 100, kúpeľňa 90, WC 50 m³/h (zaužívané hodnoty, vyhláška 259/2008 ich pre byty neuvádza).".into()
@@ -1702,6 +1797,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn shares_meet_every_need_and_sum_to_the_total() {
+        // 30, 12, 38 m³/h of supply raised to 150 of extract
+        let v = apportion(&[30.0, 12.0, 38.0], 150.0, 5.0);
+        assert_eq!(v.iter().sum::<f64>(), 150.0);
+        assert!(v[0] >= 30.0 && v[1] >= 12.0 && v[2] >= 38.0);
+        assert_eq!(v, vec![55.0, 25.0, 70.0]);
+        // the larger side: each need rounded up, nothing more
+        assert_eq!(apportion(&[100.0, 50.0], 150.0, 5.0), vec![100.0, 50.0]);
+        assert_eq!(apportion(&[52.0, 90.0], 145.0, 5.0), vec![55.0, 90.0]);
+    }
+
+    #[test]
     fn the_catalogue_reads() {
         let c = catalogue();
         assert!(c.units.len() >= 3 && !c.room_units.is_empty());
@@ -1783,6 +1890,23 @@ mod tests {
                 .map(|r| r.design)
                 .sum();
             assert!(s >= d.need_supply && e >= d.need_extract);
+            // balanced exactly: both sides carry the unit's flow
+            assert_eq!(s, e);
+            assert_eq!(s, d.flow);
+            for r in d
+                .rooms
+                .iter()
+                .filter(|r| matches!(r.role, Role::Supply | Role::Extract))
+            {
+                assert!(
+                    r.design + 1e-9 >= r.need,
+                    "{} gets less than it needs",
+                    r.name
+                );
+                assert_eq!(r.design % 5.0, 0.0);
+            }
+            // every branch within ATREA's 50 m³/h per GP run
+            assert!(d.branches.iter().all(|b| b.flow <= 50.0 + 1e-9));
         }
     }
 

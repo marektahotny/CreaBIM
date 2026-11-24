@@ -8701,5 +8701,8 @@
   "clear height": "priechodná výška",
   "Number of risers": "Počet stupňov",
   "Keep to the norm": "Držať normu",
-  "Changing the rise, risers, going, width or length, the stair takes the riser height, going and count of risers the norm wants": "Pri zmene prevýšenia, počtu stupňov, šírky stupňa, šírky ramena alebo dĺžky schodisko samo nastaví výšku stupňa, šírku stupňa a počet stupňov podľa normy"
+  "Changing the rise, risers, going, width or length, the stair takes the riser height, going and count of risers the norm wants": "Pri zmene prevýšenia, počtu stupňov, šírky stupňa, šírky ramena alebo dĺžky schodisko samo nastaví výšku stupňa, šírku stupňa a počet stupňov podľa normy",
+ "Undercut for an air speed of": "Podrezanie dverí pre rýchlosť vzduchu",
+ "Total supply / extract": "Spolu prívod / odvod",
+ "Sound level": "Hladina hluku"
 }
