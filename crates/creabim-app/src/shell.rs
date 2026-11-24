@@ -672,6 +672,7 @@ impl CreaBimApp {
                 Item::Separator,
                 Item::new("masonry:check", "Check wall lengths").icon("problem"),
                 Item::new("masonry:fill", "RC columns into the long walls").icon("columns-3"),
+                Item::new("masonry:ring-wall", "Ring beam on a wall").icon("beam"),
                 Item::new("masonry:ring", "Ring beams on the load-bearing walls").icon("beam"),
             ],
             "tab:ifc" => vec![
