@@ -116,7 +116,12 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
                 // the posts and bottom bar as usual, the top rail the
                 // profile swept along the path, its insertion point on top
                 Some(p) => {
-                    let mut m = railing_mesh(&path, r.height - RAIL_SIZE, r.post_spacing);
+                    let mut m = railing_mesh(
+                        &path,
+                        r.height - RAIL_SIZE,
+                        r.post_spacing,
+                        r.infill.as_ref(),
+                    );
                     let top: Vec<DVec3> = path
                         .iter()
                         .map(|q| *q + DVec3::Z * (r.height - RAIL_SIZE))
@@ -124,7 +129,7 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
                     m.append(&crate::parts::sweep_mesh(&p, &top, false));
                     m
                 }
-                None => railing_mesh(&path, r.height, r.post_spacing),
+                None => railing_mesh(&path, r.height, r.post_spacing, r.infill.as_ref()),
             };
             (m, [0.32, 0.34, 0.38])
         }
@@ -322,10 +327,19 @@ fn bar(m: &mut TriMesh, a: DVec3, b: DVec3, size: f64) {
     m.add_quad(ring(b), along);
 }
 
-/// Posts, a top rail and a bottom rail along `path` (model coordinates).
-pub fn railing_mesh(path: &[DVec3], height: f64, spacing: f64) -> TriMesh {
+/// Posts, a top rail and a bottom rail along `path` (model coordinates),
+/// with the infill between them when it has one.
+pub fn railing_mesh(
+    path: &[DVec3],
+    height: f64,
+    spacing: f64,
+    infill: Option<&members::Infill>,
+) -> TriMesh {
     let mut m = TriMesh::default();
     let top = height - RAIL_SIZE / 2.0;
+    let post = members::POST_SIZE;
+    // the bottom rail: 100 mm up, or on the infill's clear height
+    let low = infill.map_or(0.1, |f| f.bottom + post / 2.0);
     for w in path.windows(2) {
         bar(
             &mut m,
@@ -333,22 +347,90 @@ pub fn railing_mesh(path: &[DVec3], height: f64, spacing: f64) -> TriMesh {
             w[1] + DVec3::Z * top,
             RAIL_SIZE,
         );
-        bar(
-            &mut m,
-            w[0] + DVec3::Z * 0.1,
-            w[1] + DVec3::Z * 0.1,
-            members::POST_SIZE,
-        );
+        bar(&mut m, w[0] + DVec3::Z * low, w[1] + DVec3::Z * low, post);
     }
-    for p in members::posts_along(path, spacing) {
-        bar(
-            &mut m,
-            p,
-            p + DVec3::Z * (height - RAIL_SIZE),
-            members::POST_SIZE,
-        );
+    let posts = members::posts_along(path, spacing);
+    for p in &posts {
+        bar(&mut m, *p, *p + DVec3::Z * (height - RAIL_SIZE), post);
+    }
+    let Some(f) = infill else {
+        return m;
+    };
+    // between the bottom rail's top and the top rail's underside
+    let (z0, z1) = (low + post / 2.0, height - RAIL_SIZE);
+    match f.kind {
+        members::InfillKind::Vertical => {
+            for w in posts.windows(2) {
+                let len = w[0].truncate().distance(w[1].truncate());
+                if len < 1e-6 {
+                    continue;
+                }
+                let (n, g) = members::bars_in(len - post, f.gap, f.bar);
+                let dir = (w[1] - w[0]) / len;
+                for i in 0..n {
+                    let at = post / 2.0 + g * (i + 1) as f64 + f.bar * (i as f64 + 0.5);
+                    let p = w[0] + dir * at;
+                    bar(&mut m, p + DVec3::Z * z0, p + DVec3::Z * z1, f.bar);
+                }
+            }
+        }
+        members::InfillKind::Horizontal => {
+            let (n, g) = members::bars_in(z1 - z0, f.gap, f.bar);
+            for i in 0..n {
+                let z = z0 + g * (i + 1) as f64 + f.bar * (i as f64 + 0.5);
+                for w in path.windows(2) {
+                    bar(&mut m, w[0] + DVec3::Z * z, w[1] + DVec3::Z * z, f.bar);
+                }
+            }
+        }
+        members::InfillKind::Panel => {
+            for w in path.windows(2) {
+                plate(&mut m, w[0], w[1], z0, z1, 0.012);
+            }
+        }
     }
     m
+}
+
+/// A plate `t` thick standing from `a` to `b` between heights `z0` and
+/// `z1` over them.
+fn plate(m: &mut TriMesh, a: DVec3, b: DVec3, z0: f64, z1: f64, t: f64) {
+    let along = (b - a).truncate();
+    let Some(d) = along.try_normalize() else {
+        return;
+    };
+    let n = DVec3::new(-d.y, d.x, 0.0) * (t / 2.0);
+    let c = |p: DVec3, s: f64, z: f64| p + n * s + DVec3::Z * z;
+    let (u, nz) = (DVec3::new(d.x, d.y, 0.0), DVec3::Z);
+    m.add_quad(
+        [c(a, 1.0, z0), c(b, 1.0, z0), c(b, 1.0, z1), c(a, 1.0, z1)],
+        n,
+    );
+    m.add_quad(
+        [
+            c(b, -1.0, z0),
+            c(a, -1.0, z0),
+            c(a, -1.0, z1),
+            c(b, -1.0, z1),
+        ],
+        -n,
+    );
+    m.add_quad(
+        [c(a, -1.0, z1), c(a, 1.0, z1), c(b, 1.0, z1), c(b, -1.0, z1)],
+        nz,
+    );
+    m.add_quad(
+        [c(a, 1.0, z0), c(a, -1.0, z0), c(b, -1.0, z0), c(b, 1.0, z0)],
+        -nz,
+    );
+    m.add_quad(
+        [c(a, -1.0, z0), c(a, 1.0, z0), c(a, 1.0, z1), c(a, -1.0, z1)],
+        -u,
+    );
+    m.add_quad(
+        [c(b, 1.0, z0), c(b, -1.0, z0), c(b, -1.0, z1), c(b, 1.0, z1)],
+        u,
+    );
 }
 
 /// Closed outline lines.

@@ -87,6 +87,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::RoofOutlet),
             T(Tool::Stair),
             T(Tool::Railing),
+            act(
+                "railing:check",
+                "Check railings",
+                "problem",
+                "Railings and window sills against STN 74 3305: where a railing is needed, how high, the gaps in its infill, the windows whose sill is too low over a fall",
+            ),
             Sep,
             T(Tool::Column),
             T(Tool::Beam),
