@@ -1244,6 +1244,11 @@ pub struct Lintel {
     /// the wall: pieces lie side by side from the inside out.
     #[serde(default)]
     pub across: f64,
+    /// How far its position mark in a structural plan (P1 over SH=…)
+    /// was dragged from where the drawing puts it, m (George 2026-11-24);
+    /// kept on the opening's first piece.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark_at: Option<glam::DVec2>,
 }
 
 /// What [`lintels_for`] lays over an opening.
@@ -1335,6 +1340,7 @@ pub fn lintels_for(
             product: p.id.to_string(),
             opening: Some(opening_id),
             across: k as f64 * p.width,
+            mark_at: None,
         };
         let mut b = Beam::new(w.level, DVec2::ZERO, DVec2::X);
         b.lintel = Some(lintel);

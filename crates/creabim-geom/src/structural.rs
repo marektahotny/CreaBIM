@@ -82,7 +82,23 @@ pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
                 .fold(DVec2::ZERO, |a, x| a + x)
                 / beams.len() as f64;
             let (side, half_wall) = inside_of(model, first, mid);
-            let at = mid + side * (half_wall + 5.0 * mm);
+            let sh = format!("SH={}", level_text(p.underside));
+            // the mark over its underside, upright on the sheet whichever
+            // way the wall runs, the pair clear of the wall's face on its
+            // inside (George 2026-11-24: on a wall up the sheet the two
+            // were written over each other), or where it was dragged to
+            let wide = |t: &str, size: f64| t.chars().count() as f64 * size * 0.72;
+            let half = DVec2::new(
+                wide(&p.mark, 2.5).max(wide(&sh, 1.8)) / 2.0,
+                (1.25 + 3.5 + 0.9) / 2.0,
+            ) * mm;
+            let reach = half.x * side.x.abs() + half.y * side.y.abs();
+            let dragged = model.get(ids[0]).and_then(|e| match &e.kind {
+                ElementKind::Beam(b) => b.lintel.as_ref().and_then(|l| l.mark_at),
+                _ => None,
+            });
+            let block = mid + side * (half_wall + 2.5 * mm + reach);
+            let at = block + DVec2::new(0.0, half.y - 1.25 * mm) + dragged.unwrap_or(DVec2::ZERO);
             out.push(PlanItem::Text {
                 id: ids[0],
                 at,
@@ -95,8 +111,8 @@ pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             });
             out.push(PlanItem::Text {
                 id: ids[0],
-                at: at + side * 3.5 * mm,
-                text: format!("SH={}", level_text(p.underside)),
+                at: at - DVec2::new(0.0, 3.5 * mm),
+                text: sh,
                 size: 1.8,
                 align: Anchor::Middle,
                 mm,
@@ -954,6 +970,42 @@ mod tests {
         assert!(texts.iter().any(|t| t.starts_with("SH=+")), "{texts:?}");
         assert!(texts.contains(&"S1"), "{texts:?}");
         assert!(texts.iter().any(|t| t.starts_with("HH=+")), "{texts:?}");
+        // each lintel's mark over its SH, upright, on walls either way
+        // (George 2026-11-24: on a wall up the sheet they overlapped)
+        let lintel_texts: Vec<(&str, DVec2)> = d
+            .items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Text { id, text, at, .. }
+                    if matches!(m.get(*id).map(|e| &e.kind),
+                        Some(ElementKind::Beam(b)) if b.lintel.is_some()) =>
+                {
+                    Some((text.as_str(), *at))
+                }
+                _ => None,
+            })
+            .collect();
+        let mm = m.get(sid).map_or(0.05, |e| match &e.kind {
+            ElementKind::View(v) => v.scale / 1000.0,
+            _ => 0.05,
+        });
+        for pair in lintel_texts.chunks(2) {
+            let [(p, a), (sh, b)] = pair else {
+                panic!("{pair:?}")
+            };
+            assert!(p.starts_with('P') && sh.starts_with("SH="), "{pair:?}");
+            assert!((a.x - b.x).abs() < 1e-9 && (a.y - b.y - 3.5 * mm).abs() < 1e-9);
+        }
+        if let Ok(out) = std::env::var("CREABIM_TEST_SVG") {
+            std::fs::write(
+                out,
+                d.to_svg(m.get(sid).map_or(50.0, |e| match &e.kind {
+                    ElementKind::View(v) => v.scale,
+                    _ => 50.0,
+                })),
+            )
+            .unwrap();
+        }
         // walls as outlines, a chain with the positions along them
         assert!(!d.items.iter().any(|it| matches!(it,
             PlanItem::Fill { id, .. } if matches!(m.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_))))));

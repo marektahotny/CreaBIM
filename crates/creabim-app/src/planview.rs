@@ -8680,9 +8680,14 @@ fn mark_boxes(model: &creabim_core::Model, items: &[PlanItem], mm: f64) -> Vec<(
         .collect()
 }
 
-/// Is `id` a column, whose texts in a plan are its position mark?
+/// Is `id` a column, or a lintel, whose texts in a plan are its position
+/// mark (S1, P1 over SH=…)?
 fn column_mark(model: &creabim_core::Model, id: ElementId) -> bool {
-    matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Column(_)))
+    match model.get(id).map(|e| &e.kind) {
+        Some(ElementKind::Column(_)) => true,
+        Some(ElementKind::Beam(b)) => b.lintel.is_some(),
+        _ => false,
+    }
 }
 
 /// A pipe's size label, a fixture's or device's mark or a tiling's
@@ -8870,6 +8875,9 @@ fn drag_annotation(
                     ElementKind::Object(o) => o.mark.unwrap_or(DVec2::ZERO),
                     // a column's mark moves, its leader stays on it
                     ElementKind::Column(c) => c.mark_at.unwrap_or(DVec2::ZERO),
+                    // a lintel's position mark moves, the lintel stays
+                    // (George 2026-11-24)
+                    ElementKind::Beam(b) => b.lintel.as_ref()?.mark_at.unwrap_or(DVec2::ZERO),
                     // a stack's mark: the circle moves, its riser stays;
                     // a run's size label moves, the pipe stays
                     ElementKind::Pipe(p) => drawing
@@ -8968,6 +8976,13 @@ fn drag_annotation(
         Some(ElementKind::Column(_)) => doc.edit_merged(id, "Move mark", |e| {
             if let ElementKind::Column(x) = &mut e.kind {
                 x.mark_at = Some(start + p - grab);
+            }
+        }),
+        Some(ElementKind::Beam(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Beam(x) = &mut e.kind {
+                if let Some(l) = &mut x.lintel {
+                    l.mark_at = Some(start + p - grab);
+                }
             }
         }),
         Some(ElementKind::Pipe(_)) => doc.edit_merged(id, "Move mark", |e| {
