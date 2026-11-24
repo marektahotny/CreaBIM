@@ -122,6 +122,11 @@ pub struct Column {
     /// A board of another column's wrap, kept by [`crate::wrap::settle`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub piece: Option<crate::wrap::WrapPiece>,
+    /// How far its position mark in a structural plan (S1, HH, SH) was
+    /// dragged from where the drawing puts it, m (George 2026-11-24: it
+    /// moves as the doors' and fixtures' marks do).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark_at: Option<DVec2>,
 }
 
 /// A library profile a member is made with: its name, and its outline as
@@ -148,6 +153,7 @@ impl Column {
             in_wall: None,
             wrap: None,
             piece: None,
+            mark_at: None,
         }
     }
 

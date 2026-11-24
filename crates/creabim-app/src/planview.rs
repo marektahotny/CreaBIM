@@ -8603,9 +8603,19 @@ fn mark_boxes(model: &creabim_core::Model, items: &[PlanItem], mm: f64) -> Vec<(
                 let pad = DVec2::splat(mm * 0.5);
                 Some((lo - pad, hi + pad))
             }
+            // a column's position mark (S1) in a structural plan
+            PlanItem::Text { id, at, .. } if column_mark(model, *id) => {
+                let pad = DVec2::splat(mm * 4.0);
+                Some((*at - pad, *at + pad))
+            }
             _ => None,
         })
         .collect()
+}
+
+/// Is `id` a column, whose texts in a plan are its position mark?
+fn column_mark(model: &creabim_core::Model, id: ElementId) -> bool {
+    matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Column(_)))
 }
 
 /// A pipe's size label or a fixture's or device's mark at `w`.
@@ -8627,6 +8637,7 @@ fn on_mark(model: &creabim_core::Model, items: &[PlanItem], w: DVec2, mm: f64) -
             let pad = DVec2::splat(mm * 0.5);
             w.cmpge(lo - pad).all() && w.cmple(hi + pad).all()
         }
+        PlanItem::Text { id, at, .. } if column_mark(model, *id) => at.distance(w) < 4.0 * mm,
         // a sheet-metal item's mark bubble (K-2)
         PlanItem::Tag { id, at, .. }
             if matches!(
@@ -8673,6 +8684,12 @@ fn drag_annotation(
             } => {
                 let n = (*b - *a).normalize_or_zero().perp() * *offset;
                 (segment_distance(w, *a + n, *b + n) < 6.0 / xf.scale as f64).then_some(*id)
+            }
+            // a column's position mark in a structural plan (S1, HH, SH)
+            PlanItem::Text { id, at, .. }
+                if column_mark(doc.model(), *id) && at.distance(w) < 4.0 * mm =>
+            {
+                Some(*id)
             }
             // a room's tag, drawn as its lines of text
             // and the sizes written beside a stack's mark
@@ -8764,6 +8781,8 @@ fn drag_annotation(
                     })?,
                     // a fixture's mark moves, the fixture stays
                     ElementKind::Object(o) => o.mark.unwrap_or(DVec2::ZERO),
+                    // a column's mark moves, its leader stays on it
+                    ElementKind::Column(c) => c.mark_at.unwrap_or(DVec2::ZERO),
                     // a stack's mark: the circle moves, its riser stays;
                     // a run's size label moves, the pipe stays
                     ElementKind::Pipe(p) => drawing
@@ -8857,6 +8876,11 @@ fn drag_annotation(
         Some(ElementKind::Object(_)) => doc.edit_merged(id, "Move mark", |e| {
             if let ElementKind::Object(x) = &mut e.kind {
                 x.mark = Some(start + p - grab);
+            }
+        }),
+        Some(ElementKind::Column(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Column(x) = &mut e.kind {
+                x.mark_at = Some(start + p - grab);
             }
         }),
         Some(ElementKind::Pipe(_)) => doc.edit_merged(id, "Move mark", |e| {
