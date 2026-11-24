@@ -37,6 +37,8 @@ pub enum MasonryPick {
     Lintel,
     /// The point of a wall to put an RC column in.
     Column,
+    /// The load-bearing wall to lay an RC ring beam on.
+    Ring,
 }
 
 fn tr(s: &str) -> String {
@@ -142,6 +144,7 @@ impl CreaBimApp {
             "check" => self.check_masonry(),
             "fill" => self.fill_wall_columns(),
             "ring" => self.add_ring_beams(),
+            "ring-wall" => self.start_masonry_pick(MasonryPick::Ring),
             _ => return false,
         }
         true
@@ -216,6 +219,9 @@ impl CreaBimApp {
             }
             MasonryPick::Column => {
                 tr("RC column: click the wall where it goes. Esc or a right-click leaves.")
+            }
+            MasonryPick::Ring => {
+                tr("Ring beam: click a load-bearing wall, it goes on its core. Esc or a right-click leaves.")
             }
         };
     }
@@ -307,6 +313,35 @@ impl CreaBimApp {
     }
 
     /// An RC column in the wall at `p`.
+    /// An RC ring beam on the core of the wall at `p`, unless it has one.
+    fn put_ring_beam(&mut self, level: ElementId, p: DVec2) {
+        let model = self.doc.model();
+        let Some(wall) = wall_at(model, level, p) else {
+            self.status = tr("No wall there: click on a wall.");
+            return;
+        };
+        let has = model.iter().any(|e| match &e.kind {
+            ElementKind::Beam(b) if e.name == masonry::RING_BEAM => {
+                masonry::ring_wall(model, b) == Some(wall)
+            }
+            _ => false,
+        });
+        if has {
+            self.status = tr("This wall has its ring beam already.");
+            return;
+        }
+        let Some(r) = masonry::ring_beam(model, wall) else {
+            return;
+        };
+        let id = r.id;
+        let res = self.doc.commit(Transaction::new("Ring beam").insert(r));
+        self.selection.only(id);
+        self.report(
+            res,
+            tr("Ring beam laid on the wall's load-bearing core, the wall's insulation runs on over it. Click the next wall, Esc leaves."),
+        );
+    }
+
     fn put_wall_column(&mut self, level: ElementId, p: DVec2) -> bool {
         let model = self.doc.model();
         let Some(wall) = wall_at(model, level, p) else {
@@ -354,6 +389,9 @@ impl CreaBimApp {
             },
             MasonryPick::Column => {
                 self.put_wall_column(level, p);
+            }
+            MasonryPick::Ring => {
+                self.put_ring_beam(level, p);
             }
         }
     }

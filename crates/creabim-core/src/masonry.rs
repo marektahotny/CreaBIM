@@ -1476,7 +1476,7 @@ pub fn settle(model: &Model, tx: &Transaction) -> Transaction {
     if !touches {
         return out;
     }
-    let mut out = out;
+    let mut out = refit_rings(model, out);
     for e in model.iter() {
         let ElementKind::Beam(b) = &e.kind else {
             continue;
@@ -2179,8 +2179,11 @@ pub const RING_BEAM: &str = "ŽB stužujúci veniec";
 
 /// An RC ring beam (stužujúci veniec) along the top of the wall
 /// `wall_id`: as wide as the wall's core less its shuttering on the outer
-/// side, [`MasonryRules::ring_depth`] high, its top at the wall's top,
-/// running past the wall's ends by half its width so the corners meet.
+/// side, [`MasonryRules::ring_depth`] high, its top at the wall's top.
+/// It lies on the load-bearing core only, flush with its inner face,
+/// with no insulation or render of its own: the wall's insulation runs
+/// on over it (George 2026-11-24). Its ends stop in the cores of the
+/// walls it meets (see [`ring_ends`]).
 pub fn ring_beam(model: &Model, wall_id: ElementId) -> Option<Element> {
     let ElementKind::Wall(w) = &model.get(wall_id)?.kind else {
         return None;
@@ -2193,19 +2196,223 @@ pub fn ring_beam(model: &Model, wall_id: ElementId) -> Option<Element> {
     let core = (int - ext).abs();
     let shutter = rules.ring_shutter.clamp(0.0, (core - 0.1).max(0.0));
     let width = (core - shutter).max(0.05);
-    // the shuttering on the core's outer side
-    let sign = if int >= ext { 1.0 } else { -1.0 };
-    let mid = ext + sign * (shutter + width / 2.0);
-    let n = w.direction().perp();
-    let mut b = Beam::new(w.level, w.start + n * mid, w.end + n * mid);
+    let mut b = Beam::new(w.level, w.start, w.end);
     b.width = width;
     b.depth = rules.ring_depth.max(0.05);
+    b.material = concrete(model);
     let top = wall_top(model, w);
     let level_top = b.top(model) + b.top_offset;
     b.top_offset = level_top - top;
-    b.extend = [width / 2.0, width / 2.0];
-    b.material = concrete(model);
+    let (lo, hi) = ring_ends(model, wall_id, w);
+    place_on_core(model, w, &mut b, lo, hi);
     Some(Element::new(RING_BEAM, ElementKind::Beam(b)))
+}
+
+/// Lay `b` along the core of `w` from `lo` to `hi` (along the wall from
+/// its start): no wider than the core, flush with its inner face, no
+/// ends run past, nothing round it.
+fn place_on_core(model: &Model, w: &Wall, b: &mut Beam, lo: f64, hi: f64) {
+    let (ext, int) = crate::walls::core_span(model, w);
+    let core = (int - ext).abs();
+    b.width = b.width.clamp(0.05_f64.min(core), core.max(0.05));
+    // the shuttering, if any, on the outer side
+    let sign = if int >= ext { 1.0 } else { -1.0 };
+    let mid = int - sign * b.width / 2.0;
+    let d = w.direction();
+    let n = d.perp();
+    let (s, e) = (w.start + d * lo + n * mid, w.start + d * hi + n * mid);
+    // kept the way it was drawn
+    if (b.end - b.start).dot(d) < 0.0 {
+        b.start = e;
+        b.end = s;
+    } else {
+        b.start = s;
+        b.end = e;
+    }
+    b.extend = [0.0, 0.0];
+    b.cuts = [None, None];
+    b.wrap = None;
+}
+
+/// Where a ring beam along the wall `id` ends, along it from its start:
+/// at each end, in the core of the load-bearing wall it meets. At a
+/// corner the one running more along x goes through to the other's
+/// outer face, the other stops at its inner face; meeting a wall's side
+/// (a T) it stops at that core's near face. An end meeting nothing stays
+/// at the wall's end.
+pub fn ring_ends(model: &Model, id: ElementId, w: &Wall) -> (f64, f64) {
+    let rules = rules(model);
+    let len = w.length();
+    let d = w.direction();
+    let (ext, int) = crate::walls::core_span(model, w);
+    let c0 = w.start + d.perp() * ((ext + int) / 2.0);
+    let mut ends = [0.0, len];
+    let mut best = [f64::MAX, f64::MAX];
+    for e in model.iter() {
+        let ElementKind::Wall(o) = &e.kind else {
+            continue;
+        };
+        if e.id == id
+            || o.level != w.level
+            || o.is_arc()
+            || o.curtain.is_some()
+            || o.length() < 1e-6
+            || !is_bearing(model, o, &rules)
+        {
+            continue;
+        }
+        let od = o.direction();
+        let cross = d.perp_dot(od);
+        if cross.abs() < 0.5 {
+            continue;
+        }
+        let (oe, oi) = crate::walls::core_span(model, o);
+        let on = od.perp();
+        // where the beam's centre line crosses a face of o's core
+        let hit = |off: f64| {
+            let p = o.start + on * off;
+            // c0 + d u on the line p + od t: (c0 + d u - p) · on = 0
+            let u = (p - c0).dot(on) / d.dot(on);
+            let t = (c0 + d * u - o.start).dot(od);
+            (u, t)
+        };
+        let ((ue, te), (ui, _)) = (hit(oe), hit(oi));
+        let reach = o.thickness + 0.05;
+        if te < -reach || te > o.length() + reach {
+            continue;
+        }
+        let mid = (ue + ui) / 2.0;
+        let corner = te < o.thickness || te > o.length() - o.thickness;
+        // o's outer face is the one farther from w's middle
+        let (near_lo, far_lo) = (ue.max(ui), ue.min(ui));
+        let (near_hi, far_hi) = (ue.min(ui), ue.max(ui));
+        let through = corner
+            && (d.x.abs() > od.x.abs() + 1e-9
+                || ((d.x.abs() - od.x.abs()).abs() <= 1e-9 && id < e.id));
+        for (k, end) in [0.0, len].into_iter().enumerate() {
+            let gap = (mid - end).abs();
+            if gap > o.thickness / 2.0 + 0.05 || gap >= best[k] {
+                continue;
+            }
+            best[k] = gap;
+            ends[k] = match (k, through) {
+                (0, true) => far_lo,
+                (0, false) => near_lo,
+                (_, true) => far_hi,
+                (_, false) => near_hi,
+            };
+        }
+    }
+    (ends[0], ends[1])
+}
+
+/// The wall a ring beam lies on: parallel, its middle line in the core,
+/// the most of it along the wall.
+pub fn ring_wall(model: &Model, b: &Beam) -> Option<ElementId> {
+    let bd = (b.end - b.start).normalize_or_zero();
+    let blen = b.start.distance(b.end);
+    if blen < 1e-6 {
+        return None;
+    }
+    let mut best: Option<(f64, ElementId)> = None;
+    for e in model.iter() {
+        let ElementKind::Wall(w) = &e.kind else {
+            continue;
+        };
+        if w.level != b.level || w.is_arc() || w.length() < 1e-6 {
+            continue;
+        }
+        let d = w.direction();
+        if bd.perp_dot(d).abs() > 0.02 {
+            continue;
+        }
+        let n = d.perp();
+        let (ext, int) = crate::walls::core_span(model, w);
+        let (lo, hi) = (ext.min(int) - 0.01, ext.max(int) + 0.01);
+        let off = ((b.start + b.end) / 2.0 - w.start).dot(n);
+        // a wall a bit wider than the beam had it run past its core
+        let half = (b.width / 2.0).min(w.thickness / 2.0);
+        if off < lo - half || off > hi + half {
+            continue;
+        }
+        let (u0, u1) = {
+            let a = (b.start - w.start).dot(d);
+            let c = (b.end - w.start).dot(d);
+            (a.min(c), a.max(c))
+        };
+        let along = (u1.min(w.length()) - u0.max(0.0)).max(0.0);
+        if along < blen * 0.5 {
+            continue;
+        }
+        if best.is_none_or(|x| along > x.0) {
+            best = Some((along, e.id));
+        }
+    }
+    best.map(|x| x.1)
+}
+
+/// A ring beam `b` laid back on the core of its wall after an edit: no
+/// wider than the core and inside it, its ends in the cores of the walls
+/// it meets where it reached the wall's ends, nothing round it. `None`
+/// when it lies on no wall.
+pub fn fitted_ring(model: &Model, b: &Beam) -> Option<Beam> {
+    let wid = ring_wall(model, b)?;
+    let ElementKind::Wall(w) = &model.get(wid)?.kind else {
+        return None;
+    };
+    let d = w.direction();
+    let (lo, hi) = ring_ends(model, wid, w);
+    let (mut u0, mut u1) = {
+        let a =
+            (b.start - w.start).dot(d) - b.extend[0].max(0.0) * (b.end - b.start).dot(d).signum();
+        let c = (b.end - w.start).dot(d) + b.extend[1].max(0.0) * (b.end - b.start).dot(d).signum();
+        (a.min(c), a.max(c))
+    };
+    // an end at the wall's end goes to where the cores meet; one along
+    // the wall stays, inside them
+    let near = w.thickness.max(0.3);
+    if u0 < near {
+        u0 = lo;
+    }
+    if u1 > w.length() - near {
+        u1 = hi;
+    }
+    let (u0, u1) = (u0.max(lo), u1.min(hi));
+    if u1 - u0 < 0.05 {
+        return None;
+    }
+    let mut nb = b.clone();
+    place_on_core(model, w, &mut nb, u0, u1);
+    Some(nb)
+}
+
+/// Ring beams laid back on the load-bearing core of their walls, onto
+/// `out` (see [`fitted_ring`]).
+fn refit_rings(model: &Model, mut out: Transaction) -> Transaction {
+    for e in model.iter() {
+        let ElementKind::Beam(b) = &e.kind else {
+            continue;
+        };
+        if e.name != RING_BEAM || b.lintel.is_some() || b.piece.is_some() {
+            continue;
+        }
+        let Some(next) = fitted_ring(model, b) else {
+            continue;
+        };
+        if next != *b {
+            let mut after = e.clone();
+            after.kind = ElementKind::Beam(next);
+            out = out.replace(e.clone(), after);
+        }
+    }
+    out
+}
+
+/// Ring beams of a project from before they kept to the core (George
+/// 2026-11-24): laid back on it, their insulation and render taken off.
+pub fn mend_ring_beams(model: &Model) -> Option<Transaction> {
+    let tx = refit_rings(model, Transaction::new("Ring beams on the core"));
+    (!tx.ops.is_empty()).then_some(tx)
 }
 
 /// The height of a wall's top: its level, base offset and height (kept
@@ -2684,5 +2891,78 @@ mod tests {
         }
         tx.apply(&mut m2).unwrap();
         assert!(ring_beams(&m2, None).is_empty());
+    }
+
+    /// A ring beam lies on the load-bearing core only (George
+    /// 2026-11-24): at a corner the beam along x runs through to the
+    /// other wall's outer face, the other stops at its inner face, so
+    /// nothing runs past the core; a beam made wider or given a wrap is
+    /// laid back on the core, flush with its inner face, bare.
+    #[test]
+    fn ring_beams_keep_to_the_core_and_meet_at_the_corners() {
+        let (mut doc, l, south) = house();
+        // a 9 x 6 m box of 300 mm walls on their centre lines
+        let mut tx = Transaction::new("walls");
+        let mut ids = vec![south];
+        for (a, b) in [
+            (DVec2::new(9.0, 0.0), DVec2::new(9.0, 6.0)),
+            (DVec2::new(9.0, 6.0), DVec2::new(0.0, 6.0)),
+            (DVec2::new(0.0, 6.0), DVec2::ZERO),
+        ] {
+            let mut w = Wall::new(l, a, b, 0.3, 2.8);
+            w.base_offset = 0.0;
+            w.bearing = Some(true);
+            let e = Element::new("Wall", ElementKind::Wall(w));
+            ids.push(e.id);
+            tx = tx.insert(e);
+        }
+        let mut se = doc.model().get(south).unwrap().clone();
+        if let ElementKind::Wall(w) = &mut se.kind {
+            w.bearing = Some(true);
+        }
+        tx = tx.replace(doc.model().get(south).unwrap().clone(), se);
+        doc.commit(tx).unwrap();
+        let m = doc.model();
+        let beam = |id| match ring_beam(m, id).unwrap().kind {
+            ElementKind::Beam(b) => b,
+            _ => unreachable!(),
+        };
+        // along x: from outer face to outer face
+        let b = beam(south);
+        let xs = (b.start.x.min(b.end.x), b.start.x.max(b.end.x));
+        assert!(
+            (xs.0 + 0.15).abs() < 1e-9 && (xs.1 - 9.15).abs() < 1e-9,
+            "{xs:?}"
+        );
+        assert_eq!(b.extend, [0.0, 0.0]);
+        assert!(b.wrap.is_none());
+        // along y: between the inner faces
+        let b = beam(ids[1]);
+        let ys = (b.start.y.min(b.end.y), b.start.y.max(b.end.y));
+        assert!(
+            (ys.0 - 0.15).abs() < 1e-9 && (ys.1 - 5.85).abs() < 1e-9,
+            "{ys:?}"
+        );
+        assert!((b.start.x - 9.0).abs() < 1e-9 && (b.width - 0.3).abs() < 1e-9);
+        // made 400 mm wide and wrapped: back on the 300 mm core, bare
+        let mut wide = beam(south);
+        wide.width = 0.4;
+        wide.extend = [0.2, 0.2];
+        wide.wrap = Some(crate::wrap::new_wrap(m, [0.05; 4]).0);
+        let f = fitted_ring(m, &wide).unwrap();
+        assert!((f.width - 0.3).abs() < 1e-9 && f.wrap.is_none());
+        assert!(f.start.y.abs() < 1e-9 && f.extend == [0.0, 0.0]);
+        // narrower: flush with the core's inner face (the room's side)
+        let mut narrow = beam(south);
+        narrow.width = 0.25;
+        let f = fitted_ring(m, &narrow).unwrap();
+        assert!((f.start.y - 0.025).abs() < 1e-9, "{}", f.start.y);
+        // nothing to do for a beam already on its core
+        let mut tx = Transaction::new("rings");
+        for id in &ids {
+            tx = tx.insert(ring_beam(m, *id).unwrap());
+        }
+        doc.commit(tx).unwrap();
+        assert!(mend_ring_beams(doc.model()).is_none());
     }
 }

@@ -111,8 +111,18 @@ pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             if b.level != level {
                 continue;
             }
-            // its position is written on the chain along its wall
-            outline(*id, &b.outline(), &mut out);
+            // its position is written on the chain along its wall; the
+            // beam drawn whole, seen from above on the core of its wall,
+            // as the office's "výkres tvaru" draws it
+            let pts = b.outline();
+            for (k, a) in pts.iter().enumerate() {
+                out.push(PlanItem::Line {
+                    id: *id,
+                    pen: Pen::Cut,
+                    a: *a,
+                    b: pts[(k + 1) % pts.len()],
+                });
+            }
         }
     }
     out

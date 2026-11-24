@@ -15021,6 +15021,12 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
         tx.ops.extend(t.ops);
         any = true;
     }
+    // ring beams on the load-bearing core, nothing round them (George
+    // 2026-11-24)
+    if let Some(t) = creabim_core::masonry::mend_ring_beams(&model) {
+        tx.ops.extend(t.ops);
+        any = true;
+    }
     // a heat pump's indoor unit without its cross (George 2026-11-23)
     if let Some(t) = creabim_core::objects::mend_heat_pump_symbols(&model) {
         tx.ops.extend(t.ops);
