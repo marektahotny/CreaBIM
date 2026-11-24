@@ -125,6 +125,11 @@ impl CreaBimApp {
     /// Tags the rooms of the trades' plans as the architecture plans of
     /// their storeys tag them (George 2026-11-23).
     pub(super) fn tag_trade_rooms(&mut self) {
+        // and the structural sections get their P/V marks and spot
+        // levels, once (George 2026-11-24)
+        if let Some(tx) = creabim_geom::structural::section_marks(self.doc.model()) {
+            let _ = self.doc.commit(tx);
+        }
         let tags = creabim_core::viewmodes::trade_room_tags(self.doc.model());
         if tags.is_empty() {
             return;
