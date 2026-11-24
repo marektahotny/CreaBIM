@@ -12654,16 +12654,7 @@ crate::props::row(ui, "File names", |ui| {
         if !found.is_empty() && self.prop_header(ui, "results", "Calculation results", true, None) {
             for (i, (title, rows)) in found.iter().enumerate() {
                 ui.label(egui::RichText::new(title).strong());
-                egui::Grid::new(("calc.results", i))
-                    .num_columns(2)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for (k, v) in rows {
-                            ui.label(k);
-                            ui.label(v);
-                            ui.end_row();
-                        }
-                    });
+                calcresultsui::rows(ui, ("calc.results", i), rows);
                 ui.add_space(4.0);
             }
         }
