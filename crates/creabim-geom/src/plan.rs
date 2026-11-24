@@ -418,6 +418,19 @@ pub fn clean_up_pieces_in(
     layers: Vec<CutPiece>,
     section: bool,
 ) {
+    clean_up_pieces_with(model, items, layers, section, false)
+}
+
+/// [`clean_up_pieces_in`], with `one_wall` for a structural plan: every
+/// wall's cut is one material there, so joined walls merge into one
+/// outline with no line across where they meet.
+fn clean_up_pieces_with(
+    model: &Model,
+    items: &mut Vec<PlanItem>,
+    layers: Vec<CutPiece>,
+    section: bool,
+    one_wall: bool,
+) {
     let mut cuts: Vec<CutPiece> = Vec::new();
     items.retain(|it| match it {
         PlanItem::Polygon {
@@ -489,7 +502,21 @@ pub fn clean_up_pieces_in(
             ..c.clone()
         }));
     }
-    let keys: Vec<(Option<ElementId>, u8)> = polys.iter().map(|p| p.key(model)).collect();
+    let keys: Vec<(Option<ElementId>, u8)> = polys
+        .iter()
+        .map(|p| {
+            let k = p.key(model);
+            let wall = matches!(
+                model.get(p.id).map(|e| &e.kind),
+                Some(creabim_core::ElementKind::Wall(_))
+            );
+            if one_wall && wall && k != AIR {
+                (None, u8::MAX)
+            } else {
+                k
+            }
+        })
+        .collect();
     for p in &polys {
         items.push(PlanItem::Fill {
             id: p.id,
@@ -1879,7 +1906,9 @@ pub fn plan_view_with(
     // a cut wall keeps its opening symbols but takes its outline from the slice
     items.retain(|it| !sliced.contains(&it.id()) || matches!(it, PlanItem::Label { .. }));
     layers.retain(|p| !sliced.contains(&p.id));
-    clean_up_pieces(model, &mut items, layers);
+    // a structural plan: the walls one outline where they join, whatever
+    // they are built of (George 2026-11-24)
+    clean_up_pieces_with(model, &mut items, layers, false, graphics.structure_only);
     items.append(&mut overhead);
     items.extend(foundation_lines(model, level, cut_height));
     {
