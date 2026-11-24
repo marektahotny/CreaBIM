@@ -417,6 +417,8 @@ impl CreaBimApp {
                     }
                     ui.checkbox(&mut o.gw_near, t("Ground water within 1 m under the floor slab (f_GW)"));
                 }
+                ui.checkbox(&mut o.exhaust_fans, t("Extract fans in the bathrooms, WCs and kitchen"))
+                    .on_hover_text(t("STN EN 12831-1 6.3.3.3: the air the fans take out comes in through the envelope of all rooms (24, 19); a room with a fan gets it as transfer air through its door from the heated rooms next to it (15). Off: natural airing, only the infiltration and the least air change (14)."));
                 egui::Grid::new("heat.loss.opts")
                     .num_columns(4)
                     .spacing([12.0, 5.0])
