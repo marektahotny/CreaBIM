@@ -37,8 +37,34 @@ pub const THIN_LAYERS: &str = "tenke_vrstvy";
 /// `key`, `mc_max_kg_m2a`, `vzorec`, `text`.
 pub const CONDENSATION_LIMITS: &str = "kondenzacia_limity";
 
+/// STN 73 0540-2 čl. 6.1.3 constants: `key`, `value` (`phi_i_zakladna`).
+pub const CONDENSATION_SK: &str = "kondenzacia_konstanty_sk";
+
+/// φi for the condensation inside a build-up (čl. 6.1.3), %.
+pub fn phi_i_condensation(tables: &[ParamTable]) -> Option<f64> {
+    value(tables, CONDENSATION_SK, "phi_i_zakladna", "value")
+}
+
+/// The kinds of build-up of čl. 6.1 with their limits of Mc: key, Mc
+/// max (kg/(m²·a)), text.
+pub fn condensation_kinds(tables: &[ParamTable]) -> Vec<(String, f64, String)> {
+    let Some(t) = table(tables, CONDENSATION_LIMITS) else {
+        return vec![];
+    };
+    t.rows
+        .iter()
+        .filter_map(|r| {
+            Some((
+                r[0].clone(),
+                number(t.cell(&r[0], "mc_max_kg_m2a"))?,
+                t.cell(&r[0], "text").to_string(),
+            ))
+        })
+        .collect()
+}
+
 /// The tables the checks read.
-pub const TABLES: [&str; 12] = [
+pub const TABLES: [&str; 15] = [
     RS,
     FORMULAS,
     DELTA,
@@ -51,6 +77,9 @@ pub const TABLES: [&str; 12] = [
     THIN_LAYERS,
     crate::glaser::CONSTANTS,
     CONDENSATION_LIMITS,
+    CONDENSATION_SK,
+    crate::glaser::SK_CONSTANTS,
+    crate::glaser::SK_ANNUAL,
 ];
 
 /// The norm tables of the project, else the application's.

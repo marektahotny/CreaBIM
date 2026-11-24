@@ -143,6 +143,8 @@ mod sunui;
 pub(crate) mod terrainimport;
 #[path = "thermalui.rs"]
 mod thermalui;
+#[path = "condensui.rs"]
+mod condensui;
 #[path = "typepreview.rs"]
 mod typepreview;
 #[path = "typesui.rs"]
@@ -459,6 +461,7 @@ pub struct CreaBimApp {
     )>,
     /// The thermal field of a detail, while its window is open.
     thermal: Option<thermalui::Thermal>,
+    condens: Option<condensui::Condens>,
     /// The underfloor heating window's settings, while it is open.
     floor_heat: Option<creabim_services::floorheat::Settings>,
     /// The radiators window, while it is open.
@@ -710,6 +713,7 @@ impl CreaBimApp {
             joinery: None,
             heat_loss: None,
             thermal: None,
+            condens: None,
             net_calc: None,
             auto_valves: None,
             route_check: None,
@@ -14475,6 +14479,7 @@ impl eframe::App for CreaBimApp {
         self.masonry_window(&ctx);
         self.heat_loss_window(&ctx);
         self.thermal_window(&ctx);
+        self.condens_window(&ctx);
         self.floor_heat_window(&ctx);
         self.radiators_window(&ctx);
         self.cooling_window(&ctx);

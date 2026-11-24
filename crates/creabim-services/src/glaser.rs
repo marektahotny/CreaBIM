@@ -267,6 +267,59 @@ pub fn profile(
     })
 }
 
+/// The layers of build-up `a` for the diffusion, from the outside in,
+/// and its surface resistances (Rsi by the heat flow of STN 73 0540-3
+/// table 15, Rse = Rsi past a ventilated air gap): the layers beyond a
+/// ventilated gap are left out (STN EN ISO 13788, 6.4.1). An error names
+/// what is missing (λ, μ or sd of a layer) or why it is not assessed.
+pub fn assembly_layers(
+    model: &creabim_core::Model,
+    a: &creabim_core::assembly::Assembly,
+    rs: &crate::thermcheck::SurfaceRs,
+) -> Result<(Vec<Layer>, f64, f64), String> {
+    use creabim_core::thermal::{self, HeatFlow, Outside};
+    use creabim_core::ElementKind;
+    let t = thermal::of_assembly(model, a, None);
+    if t.boundary.outside != Outside::Exterior {
+        return Err("not against outside air".into());
+    }
+    let rsi = match t.boundary.flow {
+        HeatFlow::Up => rs.up,
+        HeatFlow::Horizontal => rs.level,
+        HeatFlow::Down => rs.down,
+    };
+    let vented = t.layers.iter().any(|l| l.skipped && l.thickness > 0.0);
+    let rse = if vented { rsi } else { rs.e };
+    let mut out = vec![];
+    for l in t.layers.iter().filter(|l| !l.skipped) {
+        let Some(r) = l.r else {
+            return Err(format!("λ: {}", l.name));
+        };
+        let mat = a.layers[l.index]
+            .material
+            .and_then(|m| model.get(m))
+            .and_then(|e| match &e.kind {
+                ElementKind::Material(m) => Some(m),
+                _ => None,
+            });
+        let sd = mat
+            .and_then(|m| m.sd.or(m.mu.map(|mu| mu * l.thickness)))
+            .ok_or_else(|| format!("μ / sd: {}", l.name))?;
+        out.push(Layer {
+            name: l.name.clone(),
+            d: l.thickness,
+            r,
+            sd,
+        });
+    }
+    // layers run from the exterior of a wall and from the top of a slab
+    // or roof: heat flowing down leaves through the underside
+    if t.boundary.flow == HeatFlow::Down {
+        out.reverse();
+    }
+    Ok((out, rsi, rse))
+}
+
 /// STN 73 0540-3 formula (14) constant: `key`, `value` (`delta_a`, δa
 /// in s).
 pub const SK_CONSTANTS: &str = "difuzia_konstanty";
@@ -275,7 +328,7 @@ pub const SK_CONSTANTS: &str = "difuzia_konstanty";
 pub const SK_ANNUAL: &str = "rocna_bilancia_vlhkosti";
 /// Every layer is cut into this many slices to find the edges of the
 /// condensation zone on the continuous psat curve.
-const SLICES: usize = 400;
+pub const SLICES: usize = 400;
 
 /// One row of the annual balance (STN 73 0540-2 annex B).
 #[derive(Clone, Debug, PartialEq)]
@@ -320,7 +373,7 @@ pub struct Annual {
     pub mev: f64,
 }
 
-fn slices(layers: &[Layer], n: usize) -> Vec<Layer> {
+pub fn slices(layers: &[Layer], n: usize) -> Vec<Layer> {
     let mut out = vec![];
     for l in layers {
         // a layer without thermal resistance has one temperature: its
@@ -339,7 +392,8 @@ fn slices(layers: &[Layer], n: usize) -> Vec<Layer> {
 }
 
 /// The annual balance of `layers` (from the outside in) for a site of
-/// design temperature `theta_e_site`, inside `theta_i`, `phi_i` (0..1).
+/// design temperature `theta_e_site`, inside `theta_i`, `phi_i` (0..1),
+/// surface resistances (Rsi, Rse).
 /// The zone of each row with condensation is where the tight line
 /// touches psat; rows without keep the zone of the coldest row that has
 /// one, at their own temperatures.
@@ -347,8 +401,7 @@ pub fn annual_sk(
     layers: &[Layer],
     theta_i: f64,
     phi_i: f64,
-    rsi: f64,
-    rse: f64,
+    (rsi, rse): (f64, f64),
     theta_e_site: f64,
     tables: &[ParamTable],
     psat: &Psat,
@@ -364,7 +417,11 @@ pub fn annual_sk(
         .find(|t| t.id == SK_ANNUAL)
         .ok_or_else(|| SK_ANNUAL.to_string())?;
     // STN 73 0540-3 table 4: column A for θe ≤ −15 °C
-    let column = if theta_e_site <= -15.0 + 1e-9 { 'A' } else { 'B' };
+    let column = if theta_e_site <= -15.0 + 1e-9 {
+        'A'
+    } else {
+        'B'
+    };
     let tz = tab
         .column(&format!("{column}_tz"))
         .ok_or_else(|| format!("{SK_ANNUAL}: {column}_tz"))?;
@@ -458,15 +515,6 @@ pub fn annual_sk(
     })
 }
 
-/// The limit of STN 73 0540-2 čl. 6.1 for a build-up of kind `key`
-/// (`bez_kondenzacie`, `jednoplastova_strecha`, `ostatne`), kg/(m²·a).
-pub fn mc_limit(tables: &[ParamTable], key: &str) -> Option<f64> {
-    sci(tables
-        .iter()
-        .find(|t| t.id == crate::thermcheck::CONDENSATION_LIMITS)?
-        .cell(key, "mc_max_kg_m2a"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -537,8 +585,12 @@ mod tests {
             r: 0.0,
             sd: 20.0,
         };
-        let layers = [foil, l("wool", 0.16, 0.04, 1.0), l("board", 0.0125, 0.21, 10.0)];
-        let a = annual_sk(&layers, 20.0, 0.5, 0.13, 0.04, -15.0, &table4(), &psat()).unwrap();
+        let layers = [
+            foil,
+            l("wool", 0.16, 0.04, 1.0),
+            l("board", 0.0125, 0.21, 10.0),
+        ];
+        let a = annual_sk(&layers, 20.0, 0.5, (0.13, 0.04), -15.0, &table4(), &psat()).unwrap();
         assert_eq!(a.column, 'A');
         assert_eq!(a.rows.len(), 3);
         let r0 = &a.rows[0];
@@ -558,7 +610,7 @@ mod tests {
         let mc: f64 = a.rows.iter().map(|r| r.m()).filter(|m| *m > 0.0).sum();
         assert!((a.mc - mc).abs() < 1e-15 && a.mev > 0.0);
         // the column follows the site's θe
-        let b = annual_sk(&layers, 20.0, 0.5, 0.13, 0.04, -14.0, &table4(), &psat()).unwrap();
+        let b = annual_sk(&layers, 20.0, 0.5, (0.13, 0.04), -14.0, &table4(), &psat()).unwrap();
         assert_eq!(b.column, 'B');
         assert!((b.rows[0].t - 400_000.0).abs() < 1e-9);
     }
