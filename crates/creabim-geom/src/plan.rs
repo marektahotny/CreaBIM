@@ -1141,6 +1141,79 @@ fn above_cut_walls(
         let n = d.perp();
         let at = |u: f64, s: f64| w.start + d * ends.place(w, u, s, true) + n * s;
         let (p0, p1, q0, q1) = (at(0.0, s0), at(len, s0), at(0.0, s1), at(len, s1));
+        // where another wall ends against this one's side (a T), that
+        // side's line stops for it, so the two join as one outline
+        // (George 2026-11-23: masonry of DT blocks only against the
+        // masonry with its insulation)
+        let gaps = |side: f64| -> Vec<(f64, f64)> {
+            let a0 = w.start + n * side;
+            let mut g = vec![];
+            for (o, ow) in &walls {
+                if o == wid || ow.is_arc() {
+                    continue;
+                }
+                let ol = ow.length();
+                let d2 = (ow.end - ow.start) / ol;
+                if d.perp_dot(d2).abs() < 0.2 {
+                    continue;
+                }
+                for (end, away) in [(ow.start, d2), (ow.end, -d2)] {
+                    let rel = end - w.start;
+                    let (u, v) = (rel.dot(d), rel.dot(n));
+                    if u < 1e-3 || u > len - 1e-3 || v.abs() > w.thickness / 2.0 + 0.02 {
+                        continue;
+                    }
+                    // only the side the other wall stands on
+                    if away.dot(n) * (side - (s0 + s1) / 2.0) <= 0.0 {
+                        continue;
+                    }
+                    let (c0, c1) = if core_only {
+                        creabim_core::walls::core_span(model, ow)
+                    } else {
+                        (-ow.thickness / 2.0, ow.thickness / 2.0)
+                    };
+                    let n2 = d2.perp();
+                    let cut = |c: f64| {
+                        let p = ow.start + n2 * c;
+                        (p - a0).perp_dot(d2) / d.perp_dot(d2)
+                    };
+                    let (x0, x1) = (cut(c0), cut(c1));
+                    g.push((x0.min(x1), x0.max(x1)));
+                }
+            }
+            g
+        };
+        let mut line = |a: DVec2, b: DVec2, side: f64| {
+            let (ua, ub) = ((a - w.start).dot(d), (b - w.start).dot(d));
+            let mut from = ua;
+            let mut gs = gaps(side);
+            gs.sort_by(|x, y| x.0.total_cmp(&y.0));
+            let on = |u: f64| a + (b - a) * ((u - ua) / (ub - ua));
+            for (g0, g1) in gs {
+                if g1 <= from || g0 >= ub {
+                    continue;
+                }
+                if g0 > from + 1e-6 {
+                    out.push(PlanItem::Line {
+                        id: *wid,
+                        pen: Pen::Overhead,
+                        a: on(from),
+                        b: on(g0),
+                    });
+                }
+                from = from.max(g1);
+            }
+            if ub > from + 1e-6 {
+                out.push(PlanItem::Line {
+                    id: *wid,
+                    pen: Pen::Overhead,
+                    a: on(from),
+                    b: on(ub),
+                });
+            }
+        };
+        line(p0, p1, s0);
+        line(q0, q1, s1);
         let mut line = |a: DVec2, b: DVec2| {
             out.push(PlanItem::Line {
                 id: *wid,
@@ -1149,8 +1222,6 @@ fn above_cut_walls(
                 b,
             })
         };
-        line(p0, p1);
-        line(q0, q1);
         for (p, a, b) in [(w.start, p0, q0), (w.end, p1, q1)] {
             let joined = walls.iter().any(|(o, ow)| {
                 o != wid
@@ -3130,6 +3201,71 @@ pub fn level_under(model: &Model, z: f64) -> Option<ElementId> {
 
 #[cfg(test)]
 mod tests {
+    /// George 2026-11-23: in a foundation plan a wall of DT blocks only
+    /// ending against the masonry with its insulation joins it: the
+    /// latter's line on that side stops for it.
+    #[test]
+    fn a_wall_ending_against_another_above_the_cut_opens_its_line() {
+        use creabim_core::{Element, Level, Transaction, Wall};
+        let mut m = Model::new();
+        let lv = Element::new(
+            "L",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let l = lv.id;
+        let main = Element::new(
+            "main",
+            ElementKind::Wall(Wall::new(l, DVec2::ZERO, DVec2::new(10.0, 0.0), 0.445, 1.0)),
+        );
+        let mid = main.id;
+        let branch = Element::new(
+            "branch",
+            ElementKind::Wall(Wall::new(
+                l,
+                DVec2::new(5.0, -4.0),
+                DVec2::new(5.0, 0.0),
+                0.3,
+                1.0,
+            )),
+        );
+        Transaction::new("t")
+            .insert(lv)
+            .insert(main)
+            .insert(branch)
+            .apply(&mut m)
+            .unwrap();
+        let joins = creabim_core::wall_joins(&m);
+        let items = above_cut_walls(&m, -1.0, 1.0, true, &joins);
+        let low: Vec<(DVec2, DVec2)> = items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Line { id, a, b, .. } if *id == mid && a.y < -0.1 && b.y < -0.1 => {
+                    Some((*a, *b))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(low.len(), 2, "{low:?}");
+        assert!(
+            low.iter().all(|(a, b)| {
+                let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
+                x1 <= 4.86 || x0 >= 5.14
+            }),
+            "{low:?}"
+        );
+        // the far side runs on whole
+        assert_eq!(
+            items
+                .iter()
+                .filter(|it| matches!(it, PlanItem::Line { id, a, .. } if *id == mid && a.y > 0.1))
+                .count(),
+            1
+        );
+    }
+
     use super::*;
 
     fn cut_footings(model: &Model, level: &str, cut: f64) -> usize {

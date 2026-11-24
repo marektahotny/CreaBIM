@@ -626,7 +626,12 @@ pub(super) fn length_field(
     let (min, max) = objects::stretch_range(model, e)?;
     let mut now = objects::type_of(model, e)?.size().x;
     let mut changed = false;
-    crate::props::row(ui, "Length", |ui| {
+    // a kitchen cabinet is drawn out to its width (George 2026-11-23)
+    let cabinet = objects::base_type_of(model, e)
+        .and_then(|t| t.catalogue.as_deref())
+        .is_some_and(|k| k.ends_with("-cabinet"));
+    let label = if cabinet { "Width" } else { "Length" };
+    crate::props::row(ui, label, |ui| {
         changed = crate::props::fill(ui, crate::units::drag(&mut now).range(min..=max)).changed();
     });
     if !changed {
