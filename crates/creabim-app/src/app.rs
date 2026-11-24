@@ -7976,7 +7976,15 @@ impl CreaBimApp {
         let (_, options) = self.tool_strip(&ctx);
         let rows: Vec<&serde_json::Value> = options
             .iter()
-            .filter(|o| o["kind"] == "number" || o["kind"] == "toggle")
+            .filter(|o| {
+                o["kind"] == "number"
+                    || o["kind"] == "toggle"
+                    || o["kind"] == "meta"
+                    || (o["kind"] == "menu"
+                        && o["key"].as_str().is_some_and(|k| {
+                            k.starts_with("place.") || k == "type.tool" || k == "footing.material"
+                        }))
+            })
             .filter(|o| o["key"] != "view.number")
             .collect();
         if rows.is_empty() {
@@ -7984,16 +7992,18 @@ impl CreaBimApp {
         }
         let tool = self.plan.tool;
         ui.label(
-            egui::RichText::new(crate::i18n::tr(&format!(
-                "Next {}",
-                tool.label().to_lowercase()
-            )))
+            egui::RichText::new(
+                // "Ďalší prvok: Stena", whatever the noun's gender
+                format!(
+                    "{}: {}",
+                    crate::i18n::tr("Next element"),
+                    crate::i18n::tr(tool.label())
+                ),
+            )
             .strong()
             .size(15.0),
         );
-        if let Some(t) = typesui_type_name(self, tool) {
-            ui.label(egui::RichText::new(crate::i18n::tr(&format!("Type: {t}"))).weak());
-        }
+        // the type, if the tool has one, is a list of its own below
         ui.label(
             egui::RichText::new(
                 crate::i18n::t("Set it before you click; the ghost shows it. The same settings are in the tool bar."),
@@ -8028,6 +8038,38 @@ impl CreaBimApp {
         for o in rows {
             let label = o["label"].as_str().unwrap_or("").to_string();
             let hint = o["hint"].as_str().unwrap_or("");
+            if o["kind"] == "meta" {
+                // where it is drawn to, as elevations
+                ui.label(egui::RichText::new(label).weak());
+                continue;
+            }
+            if o["kind"] == "menu" {
+                // a choice of the bar's, as a list
+                let key = o["key"].as_str().unwrap_or("");
+                let value = crate::i18n::tr(o["value"].as_str().unwrap_or(""));
+                let items = self.menu_items(key);
+                crate::props::row(ui, &label, |ui| {
+                    egui::ComboBox::from_id_salt(("next-menu", key))
+                        .selected_text(value)
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for it in &items {
+                                if let crate::ui_model::Item::Action {
+                                    id, label, checked, ..
+                                } = it
+                                {
+                                    let on = checked.unwrap_or(false);
+                                    if ui.selectable_label(on, crate::i18n::tr(label)).clicked() {
+                                        act.push(id.clone());
+                                    }
+                                }
+                            }
+                        })
+                        .response
+                        .on_hover_text(crate::i18n::tr(hint))
+                });
+                continue;
+            }
             if o["kind"] == "number" {
                 let key = o["key"].as_str().unwrap_or("").to_string();
                 let mut v = o["value"].as_f64().unwrap_or(0.0);
@@ -15370,12 +15412,6 @@ impl CreaBimApp {
 }
 
 /// The type the tool's next element takes, by name, if one is picked.
-fn typesui_type_name(app: &CreaBimApp, tool: Tool) -> Option<String> {
-    let cat = typesui::category_of_tool(tool)?;
-    let id = app.plan.types.get(&cat)?;
-    app.doc.model().get(*id).map(|e| e.name.clone())
-}
-
 #[cfg(test)]
 mod title_tests {
     use super::window_title;

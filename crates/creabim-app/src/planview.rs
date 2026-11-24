@@ -4118,6 +4118,8 @@ pub fn new_wall(
         w = tw;
     }
     w.flip = state.wall_flip;
+    // its base and top as the bar says (George 2026-11-24)
+    state.members.place.wall(&mut w);
     creabim_core::walls::set_location_line(model, &mut w, a, b);
     w
 }

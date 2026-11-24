@@ -40,6 +40,8 @@ pub struct Outline {
     pub of_type: Option<ElementId>,
     /// Make an extrusion, a void or a site element instead of a slab.
     pub make: Option<crate::partstool::Make>,
+    /// The heights and build-ups set in the bar when it was started.
+    pub place: crate::placement::Placement,
 }
 
 /// What a pane does after passing a frame's input to [`Outline::input`].
@@ -75,6 +77,7 @@ impl Outline {
             hole_in: None,
             of_type: None,
             make: None,
+            place: Default::default(),
         })
     }
 
@@ -100,6 +103,7 @@ impl Outline {
             hole_in: Some(id),
             of_type: None,
             make: None,
+            place: Default::default(),
         })
     }
 
@@ -119,6 +123,7 @@ impl Outline {
             hole_in: None,
             of_type: None,
             make: None,
+            place: Default::default(),
         }
     }
 
@@ -305,6 +310,9 @@ impl Outline {
                 return Ok(("A slab needs at least three corners.".into(), None));
             }
             let mut slab = Slab::new(self.level, self.points, NEW_SLAB_THICKNESS);
+            if self.target.is_none() && self.hole_in.is_none() && !self.shaft {
+                self.place.outline(self.roof.is_some(), &mut slab);
+            }
             if arcs {
                 slab.bulges = bulges;
             }
@@ -317,7 +325,14 @@ impl Outline {
             }
             if let Some(space) = self.space {
                 let mut sel = crate::selection::Selection::default();
-                let msg = crate::roomtool::drawn(doc, space, self.level, slab.outline(), &mut sel)?;
+                let msg = crate::roomtool::drawn(
+                    doc,
+                    space,
+                    self.level,
+                    slab.outline(),
+                    &self.place,
+                    &mut sel,
+                )?;
                 return Ok((msg, sel.active));
             }
             if self.shaft {

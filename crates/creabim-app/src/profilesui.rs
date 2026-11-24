@@ -438,6 +438,17 @@ impl CreaBimApp {
             "footing.material" => {
                 self.plan.members.footing_material = (!arg.is_empty()).then(|| arg.to_string());
             }
+            "place.ceiling" => {
+                use crate::placement::Build;
+                self.plan.members.place.ceiling_build = match arg {
+                    "last" => Build::LikeLast,
+                    "single" => Build::Single,
+                    _ => match self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
+                        Some(e) => Build::Assembly(e.id),
+                        None => return true,
+                    },
+                };
+            }
             "beam.corner" => {
                 if let Some(c) = creabim_core::members::BeamCorner::ALL
                     .into_iter()

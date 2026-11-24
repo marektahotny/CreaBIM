@@ -45,7 +45,7 @@ fn inside_point(poly: &[DVec2]) -> DVec2 {
 
 /// The height a new ceiling hangs at on `level`: the usual one, or lower
 /// in a storey too low for it.
-fn ceiling_height(model: &Model, level: ElementId) -> f64 {
+pub fn ceiling_height(model: &Model, level: ElementId) -> f64 {
     let storey = model.level(level).map_or(3.0, |l| l.height);
     CEILING_HEIGHT.min(storey - 0.1).max(0.5)
 }
@@ -125,6 +125,7 @@ pub fn drawn(
     space: Space,
     level: ElementId,
     outline: Vec<DVec2>,
+    place: &crate::placement::Placement,
     selection: &mut Selection,
 ) -> Result<String, ModelError> {
     match space {
@@ -143,15 +144,16 @@ pub fn drawn(
             ))
         }
         Space::Ceiling => {
-            let mut c = Ceiling::drawn(level, outline, ceiling_height(doc.model(), level));
-            like_last(doc.model(), &mut c);
+            let height = place.ceiling_height(ceiling_height(doc.model(), level));
+            let mut c = Ceiling::drawn(level, outline, height);
+            place.ceiling(doc.model(), &mut c, like_last);
             let e = Element::new("Ceiling", ElementKind::Ceiling(c));
             let id = e.id;
             doc.commit(Transaction::new("Draw ceiling").insert(e))?;
             selection.only(id);
             Ok(format!(
                 "Ceiling added {} above the floor. Set its height, thickness and grid in Properties. Ctrl+Z to undo.",
-                crate::units::len(ceiling_height(doc.model(), level))
+                crate::units::len(height)
             ))
         }
     }
@@ -170,6 +172,7 @@ pub fn fill(
     space: Space,
     level: ElementId,
     p: DVec2,
+    place: &crate::placement::Placement,
     selection: &mut Selection,
 ) -> Result<String, ModelError> {
     let model = doc.model();
@@ -193,7 +196,7 @@ pub fn fill(
             ))
         }
         Space::Ceiling => {
-            let height = ceiling_height(model, level);
+            let height = place.ceiling_height(ceiling_height(model, level));
             let c = match room_at(model, level, p) {
                 Some(r) => {
                     let covered = model.iter().any(
@@ -213,7 +216,7 @@ pub fn fill(
             };
             let follows = c.room.is_some();
             let mut c = c;
-            like_last(model, &mut c);
+            place.ceiling(model, &mut c, like_last);
             let e = Element::new("Ceiling", ElementKind::Ceiling(c));
             let id = e.id;
             doc.commit(Transaction::new("Place ceiling").insert(e))?;
@@ -941,7 +944,15 @@ mod tests {
         let mut doc = Document::from_model(m.clone());
         doc.commit(tx).unwrap();
         let mut sel = Selection::default();
-        let msg = fill(&mut doc, Space::Room, level, DVec2::new(2.0, 3.5), &mut sel).unwrap();
+        let msg = fill(
+            &mut doc,
+            Space::Room,
+            level,
+            DVec2::new(2.0, 3.5),
+            &Default::default(),
+            &mut sel,
+        )
+        .unwrap();
         assert!(msg.starts_with("Room 1.10 added"), "{msg}");
         let id = sel.active.unwrap();
         assert!(room::area(doc.model(), id) > 15.0);
@@ -952,7 +963,15 @@ mod tests {
             .count();
         assert!(tags >= 1);
         // clicking there again finds it
-        let again = fill(&mut doc, Space::Room, level, DVec2::new(2.0, 3.5), &mut sel).unwrap();
+        let again = fill(
+            &mut doc,
+            Space::Room,
+            level,
+            DVec2::new(2.0, 3.5),
+            &Default::default(),
+            &mut sel,
+        )
+        .unwrap();
         assert!(again.contains("already"), "{again}");
         // and a ceiling over it follows it
         fill(
@@ -960,6 +979,7 @@ mod tests {
             Space::Ceiling,
             level,
             DVec2::new(2.0, 3.5),
+            &Default::default(),
             &mut sel,
         )
         .unwrap();
