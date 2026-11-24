@@ -795,6 +795,7 @@ impl CreaBimApp {
                     || self.auto_valves_action(head, arg)
                     || self.route_check_action(head, arg)
                     || self.rail_check_action(head, arg)
+                    || self.norm_tables_action(head, arg)
                     || self.terrain_action(head, arg)
                     || self.earthworks_action(head, arg)
                     || self.map_action(head, arg)

@@ -319,9 +319,8 @@ fn edge_clips(shape: &RoomShape, span: Option<[DVec2; 2]>) -> Vec<Vec<(f64, f64)
     let at = |p: DVec2| {
         let mut best = (f64::INFINITY, 0.0);
         let mut s0 = 0.0;
-        for i in 0..n {
+        for (i, &l) in lens.iter().enumerate() {
             let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
-            let l = lens[i];
             let t = if l > 1e-9 {
                 ((p - a).dot(b - a) / (l * l)).clamp(0.0, 1.0)
             } else {

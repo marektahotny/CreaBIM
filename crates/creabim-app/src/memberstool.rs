@@ -2511,7 +2511,7 @@ fn stair_norm_rows(ui: &mut egui::Ui, model: &Model, s: &mut Stair, rise: f64) -
     let Some(rules) = StairRules::for_stair(&tables, s) else {
         ui.label(
             egui::RichText::new(t(
-                "To check the stair against STN 73 4130, load its tables in Norm parameters.",
+                "To check the stair against STN 73 4130, read its tables in Manage › Norm tables.",
             ))
             .weak(),
         );

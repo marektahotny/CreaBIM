@@ -1865,6 +1865,7 @@ fn find_edges(m: &crate::mesh::TriMesh) -> Vec<Edge> {
                 .push(n);
         }
     }
+    mend_t_junctions(&mut edges, key);
     // in a fixed order, so drawings come out the same every time
     let mut out: Vec<((Key, Key), Edge)> = edges
         .into_iter()
@@ -1881,6 +1882,76 @@ fn find_edges(m: &crate::mesh::TriMesh) -> Vec<Edge> {
         .collect();
     out.sort_by_key(|x| x.0);
     out.into_iter().map(|(_, e)| e).collect()
+}
+
+/// Where a corner of one face lies on the edge of another (a T-junction:
+/// a hip roof's face triangulated to a valley's end on its neighbour's
+/// edge), the long edge has one face on each of its parts, and each part
+/// counted as an open boundary and drew a line across the flat roof
+/// (George 2026-11-24). The edges with one face are split at the corners
+/// of the others lying on them, and the parts met from both sides take
+/// both faces.
+fn mend_t_junctions<K: Copy + Ord + std::hash::Hash>(
+    edges: &mut HashMap<(K, K), (DVec3, DVec3, Vec<Vec3>)>,
+    key: impl Fn([f32; 3]) -> K,
+) {
+    let open: Vec<(K, K)> = edges
+        .iter()
+        .filter(|(_, e)| e.2.len() == 1)
+        .map(|(k, _)| *k)
+        .collect();
+    // a closed solid has none; an open surface (terrain) may have very
+    // many, and is left as it is
+    if open.len() < 3 || open.len() > 4000 {
+        return;
+    }
+    let ends: Vec<DVec3> = open
+        .iter()
+        .flat_map(|k| {
+            let e = &edges[k];
+            [e.0, e.1]
+        })
+        .collect();
+    let mut split = vec![];
+    for k in &open {
+        let (a, b, ns) = edges[k].clone();
+        let d = b - a;
+        let len2 = d.length_squared();
+        if len2 < 1e-12 {
+            continue;
+        }
+        let mut ts: Vec<f64> = ends
+            .iter()
+            .filter_map(|p| {
+                let t = (*p - a).dot(d) / len2;
+                (t > 1e-6 && t < 1.0 - 1e-6 && (a + d * t).distance(*p) < 1e-4).then_some(t)
+            })
+            .collect();
+        if ts.is_empty() {
+            continue;
+        }
+        ts.sort_by(|x, y| x.total_cmp(y));
+        ts.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
+        split.push((*k, a, b, ns, ts));
+    }
+    for (k, a, b, ns, ts) in split {
+        edges.remove(&k);
+        let mut prev = a;
+        for t in ts.into_iter().chain([1.0]) {
+            let q = if t >= 1.0 { b } else { a + (b - a) * t };
+            let as32 = |v: DVec3| [v.x as f32, v.y as f32, v.z as f32];
+            let (ka, kb) = (key(as32(prev)), key(as32(q)));
+            if ka != kb {
+                let id = if ka < kb { (ka, kb) } else { (kb, ka) };
+                edges
+                    .entry(id)
+                    .or_insert_with(|| (prev, q, vec![]))
+                    .2
+                    .extend(ns.iter().copied());
+            }
+            prev = q;
+        }
+    }
 }
 
 /// The mesh's edges whose faces' normals pass `keep`.

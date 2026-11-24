@@ -107,6 +107,8 @@ mod mastersui;
 mod materials;
 #[path = "medunitui.rs"]
 mod medunitui;
+#[path = "normtablesui.rs"]
+mod normtablesui;
 #[path = "objectsui.rs"]
 mod objectsui;
 #[path = "printui.rs"]
@@ -445,6 +447,7 @@ pub struct CreaBimApp {
     auto_valves: Option<creabim_core::autovalves::FillOpts>,
     route_check: Option<routecheckui::RouteCheck>,
     rail_check: Option<railcheckui::RailCheck>,
+    norm_tables: Option<normtablesui::NormTables>,
     /// The storm water or fire main calculation shown.
     net_calc: Option<stormfireui::NetCalc>,
     /// The heat loss calculation shown, with what it was given.
@@ -706,6 +709,7 @@ impl CreaBimApp {
             auto_valves: None,
             route_check: None,
             rail_check: None,
+            norm_tables: None,
             sun_open: false,
             gpu: None,
             earthworks: None,
@@ -12654,16 +12658,7 @@ crate::props::row(ui, "File names", |ui| {
         if !found.is_empty() && self.prop_header(ui, "results", "Calculation results", true, None) {
             for (i, (title, rows)) in found.iter().enumerate() {
                 ui.label(egui::RichText::new(title).strong());
-                egui::Grid::new(("calc.results", i))
-                    .num_columns(2)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for (k, v) in rows {
-                            ui.label(k);
-                            ui.label(v);
-                            ui.end_row();
-                        }
-                    });
+                calcresultsui::rows(ui, ("calc.results", i), rows);
                 ui.add_space(4.0);
             }
         }
@@ -14488,6 +14483,7 @@ impl eframe::App for CreaBimApp {
         self.auto_valves_window(&ctx);
         self.route_check_window(&ctx);
         self.rail_check_window(&ctx);
+        self.norm_tables_window(&ctx);
         self.sun_window(&ctx);
         self.earthworks_window(&ctx);
         self.maps_window(&ctx);

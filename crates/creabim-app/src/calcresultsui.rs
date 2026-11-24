@@ -81,6 +81,63 @@ pub fn of_element(
         .collect()
 }
 
+/// A calculation's values in the properties, over the panel's whole
+/// width: the label on the left wrapping between words, the value with
+/// its unit right-aligned (George 2026-11-24: a grid squeezed the labels
+/// into a narrow column, breaking words, the right half empty).
+pub(super) fn rows(
+    ui: &mut egui::Ui,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    rows: &[(String, String)],
+) {
+    ui.push_id(salt, |ui| {
+        let full = ui.available_width();
+        let gap = ui.spacing().item_spacing.x;
+        // the value's column: as wide as the widest value, at most 40 %
+        let widest = rows
+            .iter()
+            .map(|(_, v)| {
+                ui.painter()
+                    .layout_no_wrap(
+                        v.clone(),
+                        egui::TextStyle::Body.resolve(ui.style()),
+                        egui::Color32::WHITE,
+                    )
+                    .size()
+                    .x
+            })
+            .fold(0.0_f32, f32::max);
+        let vw = (widest + 6.0).min(full * 0.4);
+        let lw = (full - vw - gap).max(40.0);
+        let stripe = ui.visuals().faint_bg_color;
+        for (n, (k, v)) in rows.iter().enumerate() {
+            let bg = ui.painter().add(egui::Shape::Noop);
+            let r = ui
+                .horizontal_top(|ui| {
+                    ui.set_width(full);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(lw, 0.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.set_width(lw);
+                            ui.add(egui::Label::new(k.as_str()).wrap());
+                        },
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                        ui.add(egui::Label::new(v.as_str()).truncate());
+                    });
+                })
+                .response;
+            if n % 2 == 1 {
+                ui.painter().set(
+                    bg,
+                    egui::Shape::rect_filled(r.rect.expand2(egui::vec2(2.0, 1.0)), 2.0, stripe),
+                );
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
