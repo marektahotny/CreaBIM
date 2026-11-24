@@ -617,14 +617,14 @@ impl CreaBimApp {
         for (i, k) in creabim_core::NumberKind::ALL.into_iter().enumerate() {
             let f = pack.number_formats.get(k);
             let said = if f.is_default() {
-                "project".to_string()
+                crate::i18n::tr("project")
             } else {
                 f.write(&units, k, if k.is_level() { 3.0 } else { 1.0668 })
             };
             items.push(
                 Item::new(
                     format!("units.kind:{i}"),
-                    format!("{}  ·  {said}", k.label()),
+                    format!("{}  ·  {said}", crate::i18n::tr(k.label())),
                 )
                 .hint("Opens its number format"),
             );
