@@ -866,6 +866,7 @@ fn spot_point(model: &Model, view: &View, level: ElementId, p: DVec2) -> HostPoi
             local: p,
             from_end: false,
             body: None,
+            step: None,
         }
     }
 }

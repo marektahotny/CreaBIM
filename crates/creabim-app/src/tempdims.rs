@@ -1612,6 +1612,7 @@ mod level_tests {
             local: DVec2::new(x, 0.0),
             from_end: false,
             body: None,
+            step: None,
         };
         let dim = Element::new(
             "Dimension",

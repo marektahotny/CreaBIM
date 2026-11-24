@@ -7944,6 +7944,20 @@ fn dim_snap_guided(
                 }
             }
         }
+        // the ends of a stair's nosings: a dimension to them follows the
+        // steps (George 2026-11-24)
+        for e in model.iter() {
+            let ElementKind::Stair(s) = &e.kind else {
+                continue;
+            };
+            if s.level != level {
+                continue;
+            }
+            for [a, b] in s.nosing_lines(s.rise(model)) {
+                consider(e.id, a);
+                consider(e.id, b);
+            }
+        }
     }
     let project = |q: DVec3| Some(xf.to_screen(q.truncate()));
     let hit = snapper.and_then(|s| {

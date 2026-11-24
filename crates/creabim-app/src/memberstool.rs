@@ -1052,6 +1052,15 @@ pub fn new_stair(
     if let Some(rules) = creabim_core::staircheck::StairRules::for_stair(&tables, &s) {
         let rise = s.rise(model);
         rules.apply(&mut s, rise);
+        // a straight flight as long as it was drawn, in as many risers as
+        // the norm's going makes nearest that (George 2026-11-24)
+        let len = (b - a).length();
+        let how = if s.form().is_straight() && !s.by_steps() && len >= 1.0 {
+            creabim_core::staircheck::Fit::Run(len)
+        } else {
+            creabim_core::staircheck::Fit::Width
+        };
+        rules.fit(&mut s, rise, how);
     }
     // an L or a U turns where the second click is, if that is far enough
     // up to leave a flight on either side
@@ -1839,8 +1848,11 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 s.landing = None;
                 label = if ramp { "Make a ramp" } else { "Make a stair" };
             }
+            // what was changed, for keeping the stair to the norm
+            let mut fit: Option<creabim_core::staircheck::Fit> = None;
             if num(ui, "Width", &mut s.width, 0.5, 5.0) {
-                label = "Stair width"
+                label = "Stair width";
+                fit = Some(creabim_core::staircheck::Fit::Width);
             }
             if let Some(slope) = &mut s.ramp {
                 // the slope in per cent
@@ -1896,10 +1908,24 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 label = l;
             }
             if num(ui, "Max riser", &mut s.max_riser, 0.1, 0.3) {
-                label = "Stair riser"
+                label = "Stair riser";
+                fit = Some(creabim_core::staircheck::Fit::Rise);
+            }
+            {
+                // the count of risers, typed (George 2026-11-24)
+                let rise = s.rise(model);
+                let mut n = members::riser_count(rise, s.max_riser);
+                if crate::props::row(ui, "Number of risers", |ui| {
+                    crate::props::fill(ui, egui::DragValue::new(&mut n).range(1..=200)).changed()
+                }) {
+                    s.max_riser = ((rise / n.max(1) as f64) * 1e4).ceil() / 1e4;
+                    label = "Stair risers";
+                    fit = Some(creabim_core::staircheck::Fit::Risers(n));
+                }
             }
             if num(ui, "Tread", &mut s.tread, 0.15, 0.6) {
-                label = "Stair tread"
+                label = "Stair tread";
+                fit = Some(creabim_core::staircheck::Fit::Going);
             }
             if num(ui, "Waist", &mut s.waist, 0.05, 0.6) {
                 label = "Stair waist"
@@ -1913,10 +1939,12 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             {
                 s.height = fixed.then(|| s.rise(model));
                 label = "Stair rise";
+                fit = Some(creabim_core::staircheck::Fit::Rise);
             }
             if let Some(h) = &mut s.height {
                 if num(ui, "Stair rise", h, 0.1, 20.0) {
-                    label = "Stair rise"
+                    label = "Stair rise";
+                    fit = Some(creabim_core::staircheck::Fit::Rise);
                 }
             }
             let rise = s.rise(model);
@@ -2008,6 +2036,9 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     crate::units::len(r2g),
                 ),
             );
+            if let Some(how) = fit {
+                creabim_core::staircheck::keep_to_norm(model, s, how);
+            }
             if s.ramp.is_none() && stair_norm_rows(ui, model, s, rise) {
                 label = "Stair to the norm";
             }
@@ -2505,6 +2536,17 @@ fn stair_norm_rows(ui: &mut egui::Ui, model: &Model, s: &mut Stair, rise: f64) -
         changed = true;
     }
     if s.flats && crate::props::switch(ui, &mut s.lift, "The building has a lift").changed() {
+        changed = true;
+    }
+    if crate::props::switch(ui, &mut s.to_norm, "Keep to the norm")
+        .on_hover_text(crate::i18n::t(
+            "Changing the rise, risers, going, width or length, the stair takes the riser height, going and count of risers the norm wants",
+        ))
+        .changed()
+    {
+        if s.to_norm {
+            creabim_core::staircheck::keep_to_norm(model, s, creabim_core::staircheck::Fit::Rise);
+        }
         changed = true;
     }
     let tables = creabim_core::room::project_tables(model);

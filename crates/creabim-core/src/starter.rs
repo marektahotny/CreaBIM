@@ -2164,6 +2164,7 @@ fn annotate(b: &mut Builder, views: &Views) {
         local: DVec2::new(u, s),
         from_end,
         body: None,
+        step: None,
     };
     let dim = |view: ElementId, a: HostPoint, bb: HostPoint, offset: f64| {
         Element::new(
@@ -2284,6 +2285,7 @@ fn annotate(b: &mut Builder, views: &Views) {
             local: DVec2::new(0.8, h),
             from_end: false,
             body: None,
+            step: None,
         };
         for (a, ha, c, hc) in [
             ("Foundation", 0.0, "Ground Floor", 0.0),

@@ -66,6 +66,19 @@ pub fn resolve(model: &Model, view: &View, p: &HostPoint) -> Option<DVec2> {
         (ElementKind::Level(l), ViewKind::Section { .. }) => {
             Some(DVec2::new(p.local.x, l.elevation + p.local.y))
         }
+        // on a stair's nosing: it follows the steps
+        (ElementKind::Stair(s), ViewKind::Plan { .. }) if p.step.is_some() => {
+            let k = p.step?;
+            let lines = s.nosing_lines(s.rise(model));
+            let n = lines.len() as u32;
+            let i = if p.from_end {
+                n.checked_sub(1 + k)?
+            } else {
+                k.min(n.checked_sub(1)?)
+            };
+            let [a, b] = lines.get(i as usize)?;
+            Some(a.lerp(*b, p.local.x))
+        }
         (ElementKind::Wall(_) | ElementKind::Opening(_), ViewKind::Plan { .. }) => {
             let (w, base) = host_wall(model, host)?;
             // a door's or window's far jamb is kept from that jamb, so a
@@ -211,6 +224,7 @@ pub fn attach(model: &Model, view: &View, host: Option<ElementId>, at: DVec2) ->
             local: DVec2::new(at.x, at.y - l.elevation),
             from_end: false,
             body: None,
+            step: None,
         }),
         (ElementKind::Wall(_) | ElementKind::Opening(_), ViewKind::Plan { .. }) => {
             let (w, base) = host_wall(model, h)?;
@@ -232,9 +246,11 @@ pub fn attach(model: &Model, view: &View, host: Option<ElementId>, at: DVec2) ->
                 local: DVec2::new(if from_end { u - end } else { u - base }, s),
                 from_end,
                 body: None,
+                step: None,
             })
         }
         (ElementKind::Level(_), _) => None,
+        (ElementKind::Stair(s), ViewKind::Plan { .. }) => stair_point(model, h, s, at),
         _ => {
             let frame = host_frame(model, h)?;
             let world = unproject(model, view, at)?;
@@ -243,10 +259,100 @@ pub fn attach(model: &Model, view: &View, host: Option<ElementId>, at: DVec2) ->
                 local: at,
                 from_end: false,
                 body: Some(frame.inverse().transform_point3(world)),
+                step: None,
             })
         }
     });
     attached.unwrap_or(HostPoint::free(at))
+}
+
+/// A plan point on one of a stair's nosings, kept on that nosing (from the
+/// last when it is in the upper half), so a dimension to it follows the
+/// steps (George 2026-11-24); none off every nosing.
+fn stair_point(
+    model: &Model,
+    id: ElementId,
+    s: &creabim_core::Stair,
+    at: DVec2,
+) -> Option<HostPoint> {
+    let lines = s.nosing_lines(s.rise(model));
+    let n = lines.len();
+    let (i, t, d) = lines
+        .iter()
+        .enumerate()
+        .map(|(i, [a, b])| {
+            let ab = *b - *a;
+            let t = ((at - *a).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+            (i, t, a.lerp(*b, t).distance(at))
+        })
+        .min_by(|x, y| x.2.total_cmp(&y.2))?;
+    if d > 2e-3 {
+        return None;
+    }
+    let from_end = n > 1 && i >= n / 2 + n % 2;
+    Some(HostPoint {
+        host: Some(id),
+        local: DVec2::new(t, 0.0),
+        from_end,
+        body: None,
+        step: Some(if from_end {
+            (n - 1 - i) as u32
+        } else {
+            i as u32
+        }),
+    })
+}
+
+/// A dimension between two of a stair's nosing points set to `value`
+/// (George 2026-11-24): across one nosing it sets the flight's width;
+/// between two nosings, the going, which the norm then keeps its risers
+/// to. None when the points are not on its nosings.
+fn stair_driven(
+    model: &Model,
+    id: ElementId,
+    ha: &HostPoint,
+    hb: &HostPoint,
+    now: f64,
+    value: f64,
+) -> Option<Result<creabim_core::Transaction, String>> {
+    let e = model.get(id)?;
+    let ElementKind::Stair(s) = &e.kind else {
+        return None;
+    };
+    let n = s.nosing_lines(s.rise(model)).len() as u32;
+    let index = |h: &HostPoint| {
+        let k = h.step?;
+        Some(if h.from_end { n.checked_sub(1 + k)? } else { k })
+    };
+    let (ia, ib) = (index(ha)?, index(hb)?);
+    let mut st = s.clone();
+    if ia == ib {
+        let across = (ha.local.x - hb.local.x).abs();
+        if across < 1e-3 {
+            return Some(Err("Both ends are at one point of the stair.".into()));
+        }
+        st.width = (value / across).max(0.3);
+        creabim_core::staircheck::keep_to_norm(
+            model,
+            &mut st,
+            creabim_core::staircheck::Fit::Width,
+        );
+    } else {
+        if now < 1e-6 {
+            return None;
+        }
+        st.tread = (s.tread * value / now).clamp(0.1, 1.0);
+        creabim_core::staircheck::keep_to_norm(
+            model,
+            &mut st,
+            creabim_core::staircheck::Fit::Going,
+        );
+    }
+    let mut after = e.clone();
+    after.kind = ElementKind::Stair(st);
+    Some(Ok(
+        creabim_core::Transaction::new("Set dimension").replace(e.clone(), after)
+    ))
 }
 
 /// The centre of an element's body, in world coordinates.
@@ -1252,6 +1358,15 @@ pub fn bind_jambs(model: &Model) -> Vec<(Element, Element)> {
             };
             if let Some(o) = jamb_at(model, level, q, 2e-3) {
                 *p = attach(model, v, Some(o), q);
+            } else if p.host.is_none() {
+                // drawn to a stair's nosing before they bound to it
+                let on_stair = model.iter().find_map(|e| match &e.kind {
+                    ElementKind::Stair(s) if s.level == level => stair_point(model, e.id, s, q),
+                    _ => None,
+                });
+                if let Some(h) = on_stair {
+                    *p = h;
+                }
             }
         }
         if now != *d {
@@ -1396,7 +1511,10 @@ pub fn driven(
     if delta.abs() < 1e-7 {
         return Err("Already that far.".into());
     }
-    if ha.host.is_some() && ha.host == hb.host {
+    if let (Some(id), true) = (ha.host, ha.host == hb.host) {
+        if let Some(tx) = stair_driven(model, id, &ha, &hb, pa.distance(pb), value) {
+            return tx;
+        }
         return Err("Both ends are on the same element: change its size instead.".into());
     }
     let chosen = |h: &HostPoint| h.host.is_some_and(|id| prefer.contains(&id));
