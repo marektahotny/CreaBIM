@@ -101,6 +101,11 @@ pub struct Room {
     /// goes by its type and area ([`counts_as_living`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub living: Option<bool>,
+    /// The temperature it is heated to, °C, where the designer sets it
+    /// (a corridor inside the house heated as the rooms, George
+    /// 2026-11-24); none goes by its type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heated_to: Option<f64>,
 }
 
 /// Tiles on a room's walls: `height` high from `bottom` above the floor,

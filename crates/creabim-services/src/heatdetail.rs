@@ -705,17 +705,11 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
         0.0
     };
     let q_env_z = fqv.map(|f| q_env50 * a_env_z * f);
-    for (r, mut p) in rooms.iter().zip(parts) {
+    for (k, (r, mut p)) in rooms.iter().zip(parts).enumerate() {
         let ElementKind::Room(rm) = &r.e.kind else {
             continue;
         };
         let dt = r.ti - o.te;
-        let v_min = (r
-            .usage
-            .ach
-            .unwrap_or(if r.usage.flow.is_some() { 0.0 } else { 0.5 })
-            * p.volume)
-            .max(r.usage.flow.unwrap_or(0.0));
         let v_inf = match (q_env_z, f_dir) {
             (Some(q), Some(fd)) if a_env_z > 1e-6 => (q * p.a_env / a_env_z * fd).min(q),
             _ => {
@@ -725,9 +719,11 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                 0.0
             }
         };
+        let (v_min, v_out, v_transfer, t_transfer) =
+            crate::heatloss::air_of(model, &rooms, k, p.volume, v_inf);
         let phi_t: f64 = p.items.iter().map(|x| x.phi).sum();
         let phi_v = match rho_cp {
-            Some(c) => c * v_min.max(v_inf) * dt,
+            Some(c) => c * (v_out * dt + v_transfer * (r.ti - t_transfer.unwrap_or(r.ti))),
             None => {
                 if !p.missing.contains(&Missing::NormTable) {
                     p.missing.push(Missing::NormTable);
@@ -753,6 +749,8 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             phi: phi_t + phi_v,
             v_min,
             v_inf,
+            v_transfer,
+            t_transfer,
             facades: p.facades.len(),
             missing: p.missing,
         });

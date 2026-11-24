@@ -271,6 +271,11 @@ pub struct RoomLoss {
     /// Least air change and infiltration, m³/h.
     pub v_min: f64,
     pub v_inf: f64,
+    /// Of the air taken out (a bathroom's 90 m³/h), what comes in through
+    /// the door from the rooms next to it, m³/h, and their temperature,
+    /// °C: heated by `ti − θ` only (STN EN 12831-1, (15), q_v,transfer).
+    pub v_transfer: f64,
+    pub t_transfer: Option<f64>,
     /// Outside walls with openings, by direction.
     pub facades: usize,
     pub missing: Vec<Missing>,
@@ -369,7 +374,10 @@ pub(crate) fn rooms_of(model: &Model) -> Vec<RoomAt<'_>> {
             };
             let shape = room::shape_of(model, r).filter(|s| s.outline.len() > 2)?;
             let kind = RoomType::of(&r.occupancy, &e.name);
-            let usage = RoomUse::from(kind);
+            let mut usage = RoomUse::from(kind);
+            if let Some(t) = r.heated_to {
+                usage.temp = t;
+            }
             Some(RoomAt {
                 e,
                 level: r.level,
@@ -633,17 +641,14 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             }
         }
         // ventilation: the larger of infiltration and the least change
-        let v_min = (r
-            .usage
-            .ach
-            .unwrap_or(if r.usage.flow.is_some() { 0.0 } else { 0.5 })
-            * volume)
-            .max(r.usage.flow.unwrap_or(0.0));
+        // from outside, the rest of the air taken out from the rooms next
+        // door
         let e = shield_e(facade_dirs.len(), o.shielding);
         let eps = height_eps(elev(r.level) - ground + h / 2.0);
         let v_inf = 2.0 * volume * o.n50 * e * eps;
+        let (v_min, v_out, v_transfer, t_transfer) = air_of(model, &rooms, k, volume, v_inf);
         let phi_t: f64 = items.iter().map(|x| x.phi).sum();
-        let phi_v = 0.34 * v_min.max(v_inf) * dt;
+        let phi_v = 0.34 * (v_out * dt + v_transfer * (ti - t_transfer.unwrap_or(ti)));
         out.phi += phi_t + phi_v;
         out.area += area;
         out.rooms.push(RoomLoss {
@@ -661,6 +666,8 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             phi: phi_t + phi_v,
             v_min,
             v_inf,
+            v_transfer,
+            t_transfer,
             facades: facade_dirs.len(),
             missing,
         });
@@ -789,6 +796,80 @@ pub(crate) fn wall_of(
         ElementKind::Wall(w) => Some((e, w)),
         _ => None,
     }
+}
+
+/// The air of room `k`, m³/h: what it needs (the larger of its least
+/// air change and the air taken out of it), what of it comes from
+/// outside (that least change, or the infiltration if more), what comes
+/// through its doors from the rooms next to it and their (lowest)
+/// temperature. STN EN 12831-1, (15): the air a bathroom's fan takes out
+/// is made up by transfer air from the rooms its door opens to, heated
+/// from their temperature, not from outside (George 2026-11-24: the
+/// bathrooms lost far too much). With no door to a heated room, all of
+/// it comes from outside, as before.
+pub(crate) fn air_of(
+    model: &Model,
+    rooms: &[RoomAt],
+    k: usize,
+    volume: f64,
+    v_inf: f64,
+) -> (f64, f64, f64, Option<f64>) {
+    let r = &rooms[k];
+    let least = r
+        .usage
+        .ach
+        .unwrap_or(if r.usage.flow.is_some() { 0.0 } else { 0.5 })
+        * volume;
+    let need = least.max(r.usage.flow.unwrap_or(0.0));
+    let outside = least.max(v_inf);
+    let rest = (need - outside).max(0.0);
+    if rest <= 1e-9 {
+        return (need, outside.max(need), 0.0, None);
+    }
+    match door_temp(model, rooms, k) {
+        Some(t) if t < r.ti => (need, outside, rest, Some(t)),
+        Some(t) => (need, outside, rest, Some(t.min(r.ti))),
+        None => (need, need.max(outside), 0.0, None),
+    }
+}
+
+/// The lowest temperature of the heated rooms room `k`'s doors open to.
+fn door_temp(model: &Model, rooms: &[RoomAt], k: usize) -> Option<f64> {
+    let r = &rooms[k];
+    let n = r.shape.outline.len();
+    let mut best: Option<f64> = None;
+    for i in 0..n {
+        let Some((we, w)) = wall_of(model, r.shape.bounded_by.get(i).copied().flatten()) else {
+            continue;
+        };
+        let (a, b) = (r.shape.outline[i], r.shape.outline[(i + 1) % n]);
+        let len = a.distance(b);
+        if len < 1e-6 || w.length() < 1e-6 {
+            continue;
+        }
+        let d = (b - a) / len;
+        for e in model.dependents(we.id) {
+            let Some(ElementKind::Opening(o)) = model.get(e).map(|x| &x.kind) else {
+                continue;
+            };
+            if o.kind != creabim_core::OpeningKind::Door {
+                continue;
+            }
+            let c = w.start + w.direction() * (o.offset + o.width / 2.0);
+            let t = (c - a).dot(d);
+            if t < -1e-6 || t > len + 1e-6 || (c - a).perp_dot(d).abs() > w.thickness + 0.05 {
+                continue;
+            }
+            let p = a + d * t + DVec2::new(d.y, -d.x) * (w.thickness + 0.05);
+            let other = rooms.iter().enumerate().find(|(j, x)| {
+                *j != k && x.level == r.level && polygon::contains(&x.shape.outline, p)
+            });
+            if let Some((_, x)) = other {
+                best = Some(best.map_or(x.ti, |m: f64| m.min(x.ti)));
+            }
+        }
+    }
+    best
 }
 
 /// A point past the wall an edge `a`–`b` of a room runs along (the
