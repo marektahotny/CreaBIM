@@ -1107,22 +1107,25 @@ fn other_level_columns(
         let ElementKind::Column(c) = &e.kind else {
             continue;
         };
-        if c.level == level || (core_only && c.piece.is_some()) {
+        if core_only && c.piece.is_some() {
             continue;
         }
         let (z0, z1) = c.span(model);
         if z0 >= top_z - 1e-3 || z1 <= cut_z + 1e-3 {
             continue;
         }
-        let points = c.outline();
-        if z0 < cut_z && !core_only {
-            out.push(PlanItem::Polygon {
-                id: e.id,
-                pen: Pen::Cut,
-                points,
-            });
+        // one the plane cuts is drawn cut with the plan's own (its pieces
+        // of insulation and plaster joined, hatched); drawing it again
+        // here put a grey box with the pieces' edges over it (George
+        // 2026-11-24). Only a foundation plan draws another storey's
+        // column through its cut as above it, its core.
+        if z0 < cut_z && (!core_only || c.level == level) {
             continue;
         }
+        // its own level's columns standing above the cut (porch posts on
+        // the foundation level, their base over the footings) are seen
+        // from above too
+        let points = c.outline();
         for i in 0..points.len() {
             out.push(PlanItem::Line {
                 id: e.id,
@@ -1545,6 +1548,14 @@ pub fn plan_view_with(
                 if let Some((_, asm)) = creabim_core::assembly_of(model, e) {
                     // each layer between its own ends: a core runs on at a T
                     for band in creabim_core::assembly::wall_bands(asm, w) {
+                        // a structural plan: the masonry or concrete only,
+                        // no insulation, render or plaster (George
+                        // 2026-11-24)
+                        if graphics.structure_only
+                            && band.function != creabim_core::LayerFunction::Structure
+                        {
+                            continue;
+                        }
                         let at = |u: f64, s: f64| {
                             if w.is_arc() {
                                 w.place(u, s)
@@ -1563,6 +1574,9 @@ pub fn plan_view_with(
                     // the layers turned into the windows' reveals
                     let bands = creabim_core::assembly::wall_bands(asm, w);
                     for &(u0, u1, span, lap) in &windows {
+                        if graphics.structure_only {
+                            break;
+                        }
                         for l in creabim_core::assembly::reveal_wraps(asm, w, span, lap) {
                             let Some(band) = bands.get(l.index) else {
                                 continue;

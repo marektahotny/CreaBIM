@@ -198,6 +198,10 @@ pub struct PlanGraphics {
     /// Fill it in light grey rather than in its material's colour.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub below_grey: bool,
+    /// Only the load-bearing layers of what is cut (a structural plan):
+    /// set from its view as it is drawn, never stored.
+    #[serde(skip)]
+    pub structure_only: bool,
     /// How far it looks above and below the cut.
     #[serde(default, skip_serializing_if = "PlanRange::is_default")]
     pub range: PlanRange,
@@ -330,6 +334,7 @@ impl Default for PlanGraphics {
             below_fill: true,
             below_strength: default_strength(),
             below_grey: false,
+            structure_only: false,
             range: PlanRange::default(),
             drawing_style: DrawingStyle::default(),
             hatch_ground: HatchGround::default(),

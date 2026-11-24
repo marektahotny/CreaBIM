@@ -138,7 +138,9 @@ pub fn column_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             let Some(ElementKind::Column(c)) = model.get(*id).map(|e| &e.kind) else {
                 continue;
             };
-            if c.level != level {
+            // its own storey's, and one standing on a level below that
+            // runs up through this one (porch posts on the footings)
+            if c.level != level && !c.crosses(model, level, 1.0) {
                 continue;
             }
             let half = c
@@ -148,7 +150,10 @@ pub fn column_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
                 .map(|q| (*q - c.position).abs())
                 .fold(DVec2::ZERO, |a, q| a.max(q));
             // up and to the left of it, clear of it
-            let at = c.position + DVec2::new(-half.x - 6.0 * mm, half.y + 6.0 * mm);
+            // or where it was dragged to
+            let at = c.position
+                + DVec2::new(-half.x - 6.0 * mm, half.y + 6.0 * mm)
+                + c.mark_at.unwrap_or(DVec2::ZERO);
             let w = (p.mark.chars().count() as f64 * 0.62 + 1.4) * 2.5 * mm;
             let h = 4.0 * mm;
             out.push(PlanItem::Polygon {
@@ -330,11 +335,12 @@ pub fn keep_structure(model: &Model, items: &mut Vec<PlanItem>) {
         *keep.entry(id).or_insert_with(|| match model.get(id) {
             // what has no element of its own (view marks, titles) stays
             None => true,
-            Some(e) => {
-                // a board or column put round a column or lintel goes with it
-                let host = creabim_core::wrap::piece_of(e).and_then(|p| model.get(p.host));
-                structural::draws(model, host.unwrap_or(e), &rules)
-            }
+            // the insulation and render put round a column or lintel, and
+            // the floors and ceilings, are not drawn: only what carries, as
+            // the office's "výkres tvaru" (George 2026-11-24)
+            Some(e) if creabim_core::wrap::piece_of(e).is_some() => false,
+            Some(e) if matches!(e.kind, ElementKind::Slab(_) | ElementKind::Ceiling(_)) => false,
+            Some(e) => structural::draws(model, e, &rules),
         })
     });
 }

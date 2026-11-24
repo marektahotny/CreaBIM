@@ -98,7 +98,12 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
     if r.from_above {
         return from_above(model, v, level, cut);
     }
-    let mut d = crate::plan::plan_view_with(model, level, cut, &v.graphics);
+    // a structural plan cuts only the load-bearing layers
+    let own_g = PlanGraphics {
+        structure_only: v.structural,
+        ..v.graphics.clone()
+    };
+    let mut d = crate::plan::plan_view_with(model, level, cut, &own_g);
     let own = model.level(level).map_or(0.0, |l| l.elevation);
     drop_footings_below(
         model,
@@ -114,7 +119,7 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
             view_depth: r.view_depth,
             ..Default::default()
         },
-        ..v.graphics.clone()
+        ..own_g.clone()
     };
     let mut under = Vec::new();
     let mut over = Vec::new();
