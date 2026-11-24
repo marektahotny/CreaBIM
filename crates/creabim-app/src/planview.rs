@@ -263,7 +263,7 @@ impl Tool {
             Tool::Beam => "Click the beam's start, then its end; keep clicking to chain beams. Its top sits at the top of the storey. Esc or right-click ends.",
             Tool::Pipe => "Click where the pipe starts, then each next point; keep clicking to go on. Pick its system, type and size in the bar. Drains fall by their system's slope. Esc or right-click ends.",
             Tool::Roof => "Draw the roof's outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). Pick Flat, Mono-pitch, Gable or Hip in the bar first.",
-            Tool::Stair => "Click where the stair starts, then click the way it climbs. It rises to the next level in equal risers.",
+            Tool::Stair => "Click where the stair starts, then click the way it climbs; an L or a U turns where you click. It rises to the next level in equal risers.",
             Tool::Railing => "Click inside a stair to rail both its sides (near one side: only that side), or click the points of a path; click the last point again to finish.",
             Tool::Gutter => "Click along a roof's eave, corner by corner: the gutter hangs at the offsets set in the top bar. Click the last point again or press Enter to finish.",
             Tool::Downpipe => "Click on a gutter to put a downpipe there; move it to slide it along. The gutter falls to its downpipes, its high points midway between them.",

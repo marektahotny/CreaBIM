@@ -855,6 +855,332 @@ pub struct Stair {
     /// same rise in one sloping flight; risers and treads don't apply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ramp: Option<f64>,
+    /// What carries the steps: a cast concrete flight, or stringers
+    /// with boards on them (George 2026-11-24).
+    #[serde(default, skip_serializing_if = "StairCarrier::is_concrete")]
+    pub carrier: StairCarrier,
+    /// The stringers' profile and place, for a stair on stringers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stringer: Option<Stringer>,
+    /// What the treads are finished with (on concrete), or the boards
+    /// they are (on stringers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tread_finish: Option<StepFinish>,
+    /// What the risers are faced with (on concrete), or the riser boards
+    /// (on stringers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub riser_finish: Option<StepFinish>,
+    /// The risers are closed: faced (concrete) or boarded (stringers).
+    /// Off, an open stair, or a concrete one with bare risers.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub risers_closed: bool,
+    /// The plan form: straight, L, U or spiral (George 2026-11-24). An
+    /// older straight stair with a `landing` is an L with a landing.
+    #[serde(default, skip_serializing_if = "StairShape::is_straight")]
+    pub shape: StairShape,
+    /// An L or U turns on winders (kosé stupne) instead of a landing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub winders: bool,
+    /// A U stair's well (zrkadlo) between its flights; a spiral's eye
+    /// radius.
+    #[serde(default = "default_well")]
+    pub well: f64,
+    /// The walking line's distance from the outer edge; `None` keeps it
+    /// on the stair's axis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub walk: Option<f64>,
+    /// The narrowest a winder may be at its inner end, when a rule sets
+    /// it; the winders are spread until they are this wide.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narrow: Option<f64>,
+    /// The main stair of a block of flats (else a family house or inside
+    /// a flat), for the norms' widths, slopes and headroom.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flats: bool,
+    /// The block of flats has a lift (STN 73 4301 lets its stair be
+    /// steeper).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lift: bool,
+}
+
+fn default_well() -> f64 {
+    0.2
+}
+
+/// A stair's plan form.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StairShape {
+    #[default]
+    Straight,
+    L,
+    U,
+    Spiral,
+}
+
+impl StairShape {
+    pub const ALL: [StairShape; 4] = [
+        StairShape::Straight,
+        StairShape::L,
+        StairShape::U,
+        StairShape::Spiral,
+    ];
+
+    pub fn is_straight(&self) -> bool {
+        *self == StairShape::Straight
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            StairShape::Straight => "Straight flight",
+            StairShape::L => "L-shaped",
+            StairShape::U => "U-shaped",
+            StairShape::Spiral => "Spiral",
+        }
+    }
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
+/// What carries a stair's steps.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StairCarrier {
+    /// A reinforced concrete flight: waist slab and steps cast as one.
+    #[default]
+    Concrete,
+    /// One stringer under the middle of the flight, the treads on it.
+    CentreStringer,
+    /// Two stringers, set in from the stair's edges, the treads on them.
+    TwoStringers,
+}
+
+impl StairCarrier {
+    pub const ALL: [StairCarrier; 3] = [
+        StairCarrier::Concrete,
+        StairCarrier::CentreStringer,
+        StairCarrier::TwoStringers,
+    ];
+
+    pub fn is_concrete(&self) -> bool {
+        *self == StairCarrier::Concrete
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            StairCarrier::Concrete => "Reinforced concrete",
+            StairCarrier::CentreStringer => "Centre stringer",
+            StairCarrier::TwoStringers => "Two stringers",
+        }
+    }
+}
+
+/// The section of a stringer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StringerKind {
+    /// A sawn or glued timber beam, `width` × `depth`.
+    #[default]
+    Timber,
+    /// A rolled steel I (IPE).
+    I,
+    /// A rolled steel channel (UPN), its back to the stair's edge.
+    U,
+    /// A rolled steel angle, its upright leg to the stair's edge.
+    L,
+}
+
+/// A stringer's profile, as its catalogue gives it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Stringer {
+    /// The catalogue name, as listed ("IPE 160", "KVH 60 × 120").
+    pub name: String,
+    pub kind: StringerKind,
+    /// Height of the section (h).
+    pub depth: f64,
+    /// Width of the section (b).
+    pub width: f64,
+    /// Web (tw) and flange (tf) thickness of a steel section; an angle's
+    /// legs are `web` thick. 0 for timber.
+    #[serde(default)]
+    pub web: f64,
+    #[serde(default)]
+    pub flange: f64,
+    /// Two stringers: how far their outer faces are set in from the
+    /// stair's edges.
+    #[serde(default)]
+    pub edge_offset: f64,
+}
+
+impl Stringer {
+    /// The section's outline across the stringer, in (across, up) with
+    /// its top at 0 and its middle at 0 across; `out` is the side the
+    /// stair's edge is on (+1 or -1), which a channel's back and an
+    /// angle's upright leg face.
+    pub fn section(&self, out: f64) -> Vec<DVec2> {
+        let (h, b) = (self.depth, self.width);
+        let (tw, tf) = (self.web.max(0.002), self.flange.max(0.002));
+        let p = |v: &[(f64, f64)]| -> Vec<DVec2> {
+            v.iter().map(|(x, y)| DVec2::new(*x * out, *y)).collect()
+        };
+        let x = b / 2.0;
+        let mut pts = match self.kind {
+            StringerKind::Timber => p(&[(-x, -h), (x, -h), (x, 0.0), (-x, 0.0)]),
+            StringerKind::I => {
+                let w = tw / 2.0;
+                p(&[
+                    (-x, -h),
+                    (x, -h),
+                    (x, -h + tf),
+                    (w, -h + tf),
+                    (w, -tf),
+                    (x, -tf),
+                    (x, 0.0),
+                    (-x, 0.0),
+                    (-x, -tf),
+                    (-w, -tf),
+                    (-w, -h + tf),
+                    (-x, -h + tf),
+                ])
+            }
+            // the back (web) on the outer side, the flanges reaching in
+            StringerKind::U => p(&[
+                (x, -h),
+                (x, 0.0),
+                (-x, 0.0),
+                (-x, -tf),
+                (x - tw, -tf),
+                (x - tw, -h + tf),
+                (-x, -h + tf),
+                (-x, -h),
+            ]),
+            // the upright leg on the outer side, the other leg at its foot
+            StringerKind::L => p(&[
+                (x, -h),
+                (x, 0.0),
+                (x - tw, 0.0),
+                (x - tw, -h + tw),
+                (-x, -h + tw),
+                (-x, -h),
+            ]),
+        };
+        if crate::polygon::signed_area2(&pts) < 0.0 {
+            pts.reverse();
+        }
+        pts
+    }
+}
+
+/// Stringer sections from makers' tables (George 2026-11-24: timber e.g.
+/// 60 × 120, or steel I, U, L). Steel: ArcelorMittal sections catalogue
+/// (orangebook.arcelormittal.com: IPE, UPN, UPE, equal angles), h, b, tw,
+/// tf in mm. Timber: KVH sections sold by DEKWOOD (dekwood.cz/produkty/kvh),
+/// width × height in mm.
+pub fn stringer_catalogue() -> Vec<Stringer> {
+    let steel = |name: &str, kind: StringerKind, h: f64, b: f64, tw: f64, tf: f64| Stringer {
+        name: name.to_string(),
+        kind,
+        depth: h / 1000.0,
+        width: b / 1000.0,
+        web: tw / 1000.0,
+        flange: tf / 1000.0,
+        edge_offset: 0.0,
+    };
+    let mut v = Vec::new();
+    for (w, h) in [
+        (60.0, 120.0),
+        (60.0, 140.0),
+        (60.0, 160.0),
+        (60.0, 200.0),
+        (60.0, 240.0),
+        (80.0, 160.0),
+        (80.0, 200.0),
+        (80.0, 240.0),
+        (100.0, 200.0),
+        (100.0, 240.0),
+    ] {
+        v.push(steel(
+            &format!("KVH {w:.0} × {h:.0}"),
+            StringerKind::Timber,
+            h,
+            w,
+            0.0,
+            0.0,
+        ));
+    }
+    for (n, h, b, tw, tf) in [
+        (120, 120.0, 64.0, 4.4, 6.3),
+        (140, 140.0, 73.0, 4.7, 6.9),
+        (160, 160.0, 82.0, 5.0, 7.4),
+        (180, 180.0, 91.0, 5.3, 8.0),
+        (200, 200.0, 100.0, 5.6, 8.5),
+        (220, 220.0, 110.0, 5.9, 9.2),
+        (240, 240.0, 120.0, 6.2, 9.8),
+    ] {
+        v.push(steel(&format!("IPE {n}"), StringerKind::I, h, b, tw, tf));
+    }
+    for (n, h, b, tw, tf) in [
+        (120, 120.0, 55.0, 7.0, 9.0),
+        (140, 140.0, 60.0, 7.0, 10.0),
+        (160, 160.0, 65.0, 7.5, 10.5),
+        (180, 180.0, 70.0, 8.0, 11.0),
+        (200, 200.0, 75.0, 8.5, 11.5),
+        (220, 220.0, 80.0, 9.0, 12.5),
+        (240, 240.0, 85.0, 9.5, 13.0),
+    ] {
+        v.push(steel(&format!("UPN {n}"), StringerKind::U, h, b, tw, tf));
+    }
+    for (n, h, b, tw, tf) in [
+        (120, 120.0, 60.0, 5.0, 8.0),
+        (140, 140.0, 65.0, 5.0, 9.0),
+        (160, 160.0, 70.0, 5.5, 9.5),
+        (180, 180.0, 75.0, 5.5, 10.5),
+        (200, 200.0, 80.0, 6.0, 11.0),
+        (220, 220.0, 85.0, 6.5, 12.0),
+        (240, 240.0, 90.0, 7.0, 12.5),
+    ] {
+        v.push(steel(&format!("UPE {n}"), StringerKind::U, h, b, tw, tf));
+    }
+    for (a, t) in [
+        (60.0, 6.0),
+        (70.0, 7.0),
+        (80.0, 8.0),
+        (90.0, 9.0),
+        (100.0, 10.0),
+    ] {
+        v.push(steel(
+            &format!("L {a:.0}×{t:.0}"),
+            StringerKind::L,
+            a,
+            a,
+            t,
+            t,
+        ));
+    }
+    v
+}
+
+/// Finish and board thicknesses from makers (George 2026-11-24):
+/// solid oak stair boards by DREVAX (drevax.sk, dubové schodiskové
+/// stupne): a self-supporting tread 40 mm, a tread cladding a concrete
+/// stair 27 mm, a riser 18 mm on concrete, a riser board 20 mm; RAKO stair
+/// tiles (DCPSR588, DCPSR805, 30 × 60) 9 mm.
+pub const OAK_TREAD_BOARD: f64 = 0.040;
+pub const OAK_TREAD_CLADDING: f64 = 0.027;
+pub const OAK_RISER_CLADDING: f64 = 0.018;
+pub const OAK_RISER_BOARD: f64 = 0.020;
+pub const STAIR_TILE: f64 = 0.009;
+
+/// A finish layer on the treads or risers, or the boards a stair on
+/// stringers has.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StepFinish {
+    #[serde(default)]
+    pub material: Option<ElementId>,
+    pub thickness: f64,
 }
 
 /// A new ramp's slope: 1 : 12 (8,33 %), the steepest a ramp for people
@@ -919,6 +1245,87 @@ impl Stair {
             landing: None,
             material: None,
             ramp: None,
+            carrier: StairCarrier::Concrete,
+            stringer: None,
+            tread_finish: None,
+            riser_finish: None,
+            risers_closed: true,
+            shape: StairShape::Straight,
+            winders: false,
+            well: default_well(),
+            walk: None,
+            narrow: None,
+            flats: false,
+            lift: false,
+        }
+    }
+
+    /// The plan form as built: an older straight stair with a landing
+    /// is an L.
+    pub fn form(&self) -> StairShape {
+        if self.shape.is_straight() && self.landing.is_some() && self.ramp.is_none() {
+            StairShape::L
+        } else if self.ramp.is_some() {
+            StairShape::Straight
+        } else {
+            self.shape
+        }
+    }
+
+    /// Laid out tread by tread (winders, spirals) rather than in
+    /// straight flights.
+    pub fn by_steps(&self) -> bool {
+        match self.form() {
+            StairShape::Spiral => true,
+            StairShape::L | StairShape::U => self.winders,
+            StairShape::Straight => false,
+        }
+    }
+
+    /// The turn: risers before it and its side, for `n` risers in all.
+    pub fn turn(&self, n: u32) -> (u32, bool) {
+        let l = self.landing.unwrap_or(Landing {
+            after: n / 2,
+            left: true,
+        });
+        (l.after.clamp(1, n.saturating_sub(1).max(1)), l.left)
+    }
+
+    /// The walking line's distance from the inner edge.
+    pub fn walk_from_inner(&self) -> f64 {
+        let w = self.width.max(0.1);
+        match self.walk {
+            Some(o) => (w - o).clamp(0.0, w),
+            None => w / 2.0,
+        }
+    }
+
+    /// The tread finish's thickness (the tread board's, on stringers).
+    pub fn tread_t(&self) -> f64 {
+        self.tread_finish.map_or(0.0, |f| f.thickness.max(0.0))
+    }
+
+    /// The riser finish's thickness, when the risers are closed.
+    pub fn riser_t(&self) -> f64 {
+        if !self.risers_closed {
+            return 0.0;
+        }
+        self.riser_finish.map_or(0.0, |f| f.thickness.max(0.0))
+    }
+
+    /// The across-positions of the stringers' middles, from the stair's
+    /// axis (left positive, looking up).
+    pub fn stringer_offsets(&self) -> Vec<f64> {
+        let Some(st) = &self.stringer else {
+            return vec![];
+        };
+        match self.carrier {
+            StairCarrier::Concrete => vec![],
+            StairCarrier::CentreStringer => vec![0.0],
+            StairCarrier::TwoStringers => {
+                let o = (self.width / 2.0 - st.edge_offset - st.width / 2.0).max(0.0);
+                vec![o, -o]
+            }
         }
     }
 
@@ -964,6 +1371,9 @@ impl Stair {
                 landing: None,
             };
         }
+        if self.by_steps() {
+            return self.step_layout(rise);
+        }
         let n = riser_count(rise, self.max_riser);
         let r = rise / n as f64;
         let d = self.dir();
@@ -974,7 +1384,14 @@ impl Stair {
             z0: 0.0,
             length: None,
         };
-        let Some(l) = self.landing.filter(|l| l.after >= 1 && l.after < n) else {
+        let turned = match self.form() {
+            StairShape::L | StairShape::U if n >= 2 => {
+                let (after, left) = self.turn(n);
+                Some(Landing { after, left })
+            }
+            _ => None,
+        };
+        let Some(l) = turned.filter(|l| l.after >= 1 && l.after < n) else {
             return StairLayout {
                 risers: n,
                 riser: r,
@@ -990,18 +1407,43 @@ impl Stair {
         let edge = f1.end(self.tread);
         let side = if l.left { d.perp() } else { -d.perp() };
         let center = edge + d * (w / 2.0);
-        let landing = vec![
-            edge - d.perp() * w / 2.0,
-            edge + d * w - d.perp() * w / 2.0,
-            edge + d * w + d.perp() * w / 2.0,
-            edge + d.perp() * w / 2.0,
-        ];
-        let f2 = Flight {
-            start: center + side * (w / 2.0),
-            dir: side,
-            risers: n - l.after,
-            z0: l.after as f64 * r,
-            length: None,
+        let (landing, f2) = if self.form() == StairShape::U {
+            // a landing right across both flights and the well between,
+            // as deep as a flight is wide; the second flight comes back
+            let g = self.well.max(0.0);
+            let far = side * (w / 2.0 + g + w);
+            let mut landing = vec![
+                edge - side * w / 2.0,
+                edge + d * w - side * w / 2.0,
+                edge + d * w + far,
+                edge + far,
+            ];
+            if !l.left {
+                landing.reverse();
+            }
+            let f2 = Flight {
+                start: edge + side * (w + g),
+                dir: -d,
+                risers: n - l.after,
+                z0: l.after as f64 * r,
+                length: None,
+            };
+            (landing, f2)
+        } else {
+            let landing = vec![
+                edge - d.perp() * w / 2.0,
+                edge + d * w - d.perp() * w / 2.0,
+                edge + d * w + d.perp() * w / 2.0,
+                edge + d.perp() * w / 2.0,
+            ];
+            let f2 = Flight {
+                start: center + side * (w / 2.0),
+                dir: side,
+                risers: n - l.after,
+                z0: l.after as f64 * r,
+                length: None,
+            };
+            (landing, f2)
         };
         StairLayout {
             risers: n,
@@ -1014,6 +1456,9 @@ impl Stair {
     /// The path a handrail follows along one side, over the nosings
     /// (heights above the stair's base), set `inset` in from the edge.
     pub fn side_path(&self, rise: f64, left: bool, inset: f64) -> Vec<DVec3> {
+        if self.by_steps() {
+            return self.step_side_path(rise, left, inset);
+        }
         let lay = self.layout(rise);
         let r = lay.riser;
         let off = self.width / 2.0 - inset;
@@ -1024,11 +1469,17 @@ impl Stair {
             let a0 = if self.ramp.is_some() { 0.0 } else { r };
             let a = (f.start + s).extend(f.z0 + a0);
             let b = (f.end(self.tread) + s).extend(f.z0 + f.risers as f64 * r);
-            let outer = self.landing.is_some_and(|l| l.left != left);
+            let n = lay.risers;
+            let turned = matches!(self.form(), StairShape::L | StairShape::U);
+            let outer = turned && self.turn(n).1 != left;
             if let (1, true, Some(&last)) = (k, outer, out.last()) {
-                // round the far corner of the landing, outside the turn
+                // round the far corners of the landing, outside the turn
                 let d1 = lay.flights[0].dir;
-                out.push(last + (d1 * (self.width - inset)).extend(0.0));
+                let ahead = d1 * (self.width - inset);
+                out.push(last + ahead.extend(0.0));
+                if self.form() == StairShape::U {
+                    out.push((a.truncate() + ahead).extend(f.z0));
+                }
                 out.push(a.truncate().extend(f.z0));
             }
             out.push(a);
@@ -1040,6 +1491,9 @@ impl Stair {
 
     /// Plan footprint of each flight, counter-clockwise.
     pub fn flight_outlines(&self, rise: f64) -> Vec<Vec<DVec2>> {
+        if self.by_steps() {
+            return self.step_plan(rise).treads;
+        }
         self.layout(rise)
             .flights
             .iter()
@@ -2274,7 +2728,13 @@ pub fn drag_grip(
                 let rise = s.rise(model);
                 let lay = s.layout(rise);
                 let last = lay.flights.last().copied().ok_or("no flight")?;
-                let treads = last.risers.saturating_sub(1).max(1) as f64;
+                // a stair laid out by steps: every going lengthens
+                let risers = if s.by_steps() {
+                    lay.risers
+                } else {
+                    last.risers
+                };
+                let treads = risers.saturating_sub(1).max(1) as f64;
                 let GripMove::Along(dir) = g.how else {
                     return Ok(());
                 };

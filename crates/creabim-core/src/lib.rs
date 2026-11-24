@@ -75,6 +75,8 @@ pub mod skeleton;
 pub mod sketch;
 pub mod slab;
 pub mod split;
+pub mod staircheck;
+pub mod stairshape;
 pub mod starter;
 pub mod structural;
 pub mod styles;
