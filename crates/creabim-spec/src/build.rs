@@ -1700,6 +1700,7 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
         ufh: None,
         decentral_hrv: false,
         living: None,
+        heated_to: None,
     };
     c.insert(
         &r.id,
