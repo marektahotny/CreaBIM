@@ -27,6 +27,7 @@ pub mod fixturespec;
 pub mod floorheat;
 pub mod fluid;
 pub mod gas;
+pub mod glaser;
 pub mod groundloss;
 pub mod heatdetail;
 pub mod heating;

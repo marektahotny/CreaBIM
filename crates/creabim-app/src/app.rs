@@ -11681,7 +11681,10 @@ crate::props::row(ui, "File names", |ui| {
                 }
                 ElementKind::Material(m) => {
                     materials::preview(ui, m, 72.0);
-                    label = materials::material_fields(ui, m);
+                    let vapour = creabim_services::thermcheck::vapour_choices(
+                        &creabim_services::thermcheck::tables_of(self.doc.model()),
+                    );
+                    label = materials::material_fields(ui, m, &vapour);
                     let users = creabim_core::library::users(self.doc.model(), id).len();
                     ui.label(
                         egui::RichText::new(crate::i18n::tr(&format!("Used by {users} elements.")))

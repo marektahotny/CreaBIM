@@ -156,6 +156,8 @@ impl LibraryEntry {
             lambda: None,
             density: None,
             fire: String::new(),
+            mu: None,
+            sd: None,
         }
     }
 

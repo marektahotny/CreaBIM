@@ -93,7 +93,12 @@ fn section_of(model: &Model, view: ElementId) -> Option<(DVec2, DVec2, Option<Bo
         None => (&v.kind, None),
     };
     match kind {
-        ViewKind::Section { start, end, cut: true, .. } => Some((*start, *end, boxed)),
+        ViewKind::Section {
+            start,
+            end,
+            cut: true,
+            ..
+        } => Some((*start, *end, boxed)),
         _ => None,
     }
 }
@@ -126,7 +131,10 @@ pub fn cut(model: &Model, view: ElementId, boxed: Option<(DVec2, DVec2)>) -> Opt
             ) | None
         )
     };
-    let items: Vec<&SceneItem> = shared.iter().filter(|i| !i.ghost && !i.is_lining() && built(i.id)).collect();
+    let items: Vec<&SceneItem> = shared
+        .iter()
+        .filter(|i| !i.ghost && !i.is_lining() && built(i.id))
+        .collect();
     let mut cuts = vec![];
     for s in items {
         for loop_ in crate::section::cut_loops(s, &frame) {
@@ -137,7 +145,11 @@ pub fn cut(model: &Model, view: ElementId, boxed: Option<(DVec2, DVec2)>) -> Opt
             if pts.iter().all(|p| p.y < lo.y) || pts.iter().all(|p| p.y > hi.y) {
                 continue;
             }
-            cuts.push(CutPiece { id: s.id, points: pts, layer: s.layer });
+            cuts.push(CutPiece {
+                id: s.id,
+                points: pts,
+                layer: s.layer,
+            });
         }
     }
     let resolved = crate::plan::resolve_cuts(model, cuts, true);
@@ -153,11 +165,19 @@ pub fn cut(model: &Model, view: ElementId, boxed: Option<(DVec2, DVec2)>) -> Opt
                 l.function == creabim_core::LayerFunction::AirGap,
             ),
             None => (
-                model.get(c.id).and_then(|e| creabim_core::material_of(model, e)).map(|(m, _)| m.id),
+                model
+                    .get(c.id)
+                    .and_then(|e| creabim_core::material_of(model, e))
+                    .map(|(m, _)| m.id),
                 false,
             ),
         };
-        pieces.push(Piece { element: c.id, material, air_gap, points: pts });
+        pieces.push(Piece {
+            element: c.id,
+            material,
+            air_gap,
+            points: pts,
+        });
     }
     // the rooms the line runs through, from their floor to their ceiling
     let mut rooms = vec![];
@@ -183,7 +203,12 @@ pub fn cut(model: &Model, view: ElementId, boxed: Option<(DVec2, DVec2)>) -> Opt
             });
         }
     }
-    Some(ThermalCut { pieces, rooms, lo, hi })
+    Some(ThermalCut {
+        pieces,
+        rooms,
+        lo,
+        hi,
+    })
 }
 
 /// The stretches of the line `a`–`b` inside polygon `poly`.
@@ -217,16 +242,29 @@ mod tests {
 
     #[test]
     fn clips_to_box() {
-        let sq = vec![DVec2::new(-1.0, -1.0), DVec2::new(2.0, -1.0), DVec2::new(2.0, 2.0), DVec2::new(-1.0, 2.0)];
+        let sq = vec![
+            DVec2::new(-1.0, -1.0),
+            DVec2::new(2.0, -1.0),
+            DVec2::new(2.0, 2.0),
+            DVec2::new(-1.0, 2.0),
+        ];
         let c = clip_box(&sq, DVec2::ZERO, DVec2::ONE);
-        let area: f64 = (0..c.len()).map(|i| c[i].perp_dot(c[(i + 1) % c.len()])).sum::<f64>() / 2.0;
+        let area: f64 = (0..c.len())
+            .map(|i| c[i].perp_dot(c[(i + 1) % c.len()]))
+            .sum::<f64>()
+            / 2.0;
         assert!((area.abs() - 1.0).abs() < 1e-12);
         assert!(clip_box(&sq, DVec2::splat(5.0), DVec2::splat(6.0)).is_empty());
     }
 
     #[test]
     fn line_through_square() {
-        let sq = vec![DVec2::new(0.0, 0.0), DVec2::new(2.0, 0.0), DVec2::new(2.0, 2.0), DVec2::new(0.0, 2.0)];
+        let sq = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(2.0, 0.0),
+            DVec2::new(2.0, 2.0),
+            DVec2::new(0.0, 2.0),
+        ];
         let s = line_in(&sq, DVec2::new(-1.0, 1.0), DVec2::new(3.0, 1.0));
         assert_eq!(s.len(), 1);
         assert!((s[0].0.x - 0.0).abs() < 1e-9 && (s[0].1.x - 2.0).abs() < 1e-9);

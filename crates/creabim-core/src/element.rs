@@ -765,6 +765,16 @@ pub struct Material {
     /// Density, kg/m³.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub density: Option<f64>,
+    /// Water vapour diffusion resistance factor μ (STN 73 0540-3 table 16
+    /// or the maker's), for the condensation inside a build-up; none when
+    /// unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mu: Option<f64>,
+    /// Equivalent air layer thickness sd of a thin layer (a foil, a sheet,
+    /// a coating: STN 73 0540-3 table 17), m: it stands for μ·d whatever
+    /// thickness the layer is drawn with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd: Option<f64>,
     /// Reaction to fire class by STN EN 13501-1 ("A1", "B-s1,d0", "E");
     /// empty when unknown.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -805,6 +815,8 @@ impl Default for Material {
             rate: None,
             lambda: None,
             density: None,
+            mu: None,
+            sd: None,
             fire: String::new(),
         }
     }

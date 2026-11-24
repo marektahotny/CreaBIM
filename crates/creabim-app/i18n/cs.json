@@ -8748,5 +8748,12 @@
  "Ψ needs two flanking elements crossing the box's edges": "Ψ potřebuje dvě přilehlé konstrukce procházející okrajem výřezu",
  "outside dimensions": "vnější rozměry",
  "inside dimensions": "vnitřní rozměry",
- "Linear thermal transmittance Ψ": "Lineární činitel prostupu tepla Ψ"
+ "Linear thermal transmittance Ψ": "Lineární činitel prostupu tepla Ψ",
+ "Diffusion resistance factor μ": "Faktor difuzního odporu μ",
+ "μ by STN 73 0540-3 table 16 or the product's data sheet; 0 is unknown": "μ podle STN 73 0540-3, tab. 16 nebo technického listu výrobku; 0 = neznámý",
+ "From the norm…": "Z normy…",
+ "lower end": "dolní mez",
+ "upper end": "horní mez",
+ "Equivalent air layer thickness sd": "Ekvivalentní difuzní tloušťka sd",
+ "For a thin layer (foil, membrane, coat) its sd = μ·d by STN 73 0540-3 table 17 or the maker's; it is taken instead of μ times the layer's thickness. 0 is none": "Pro tenkou vrstvu (fólie, pás, nátěr) sd = μ·d podle STN 73 0540-3, tab. 17 nebo výrobce; použije se místo μ krát tloušťka vrstvy. 0 = nezadaná"
 }

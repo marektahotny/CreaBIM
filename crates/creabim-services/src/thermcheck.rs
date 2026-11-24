@@ -26,8 +26,19 @@ pub const ISO_10211: &str = "zjednodusenia";
 /// STN EN ISO 10211 input data (soil λ): `key`, `value`, …
 pub const ISO_10211_INPUT: &str = "vstupne_udaje";
 
+/// STN 73 0540-3 table 16: `pol`, `skupina`, `material`, `rho`,
+/// `lambda_ext`, `lambda_int`, `c`, `mu`, `delta`, `pozn`.
+pub const MATERIALS: &str = "materialy";
+/// STN 73 0540-3 table 17 (thin layers): `pol`, `skupina`, `material`,
+/// `rho`, `d_mm`, `mu`, `delta_s`, `pozn`.
+pub const THIN_LAYERS: &str = "tenke_vrstvy";
+
+/// STN 73 0540-2 čl. 6.1 limits of condensation inside a build-up:
+/// `key`, `mc_max_kg_m2a`, `vzorec`, `text`.
+pub const CONDENSATION_LIMITS: &str = "kondenzacia_limity";
+
 /// The tables the checks read.
-pub const TABLES: [&str; 8] = [
+pub const TABLES: [&str; 12] = [
     RS,
     FORMULAS,
     DELTA,
@@ -36,6 +47,10 @@ pub const TABLES: [&str; 8] = [
     ISO_13788,
     ISO_10211,
     ISO_10211_INPUT,
+    MATERIALS,
+    THIN_LAYERS,
+    crate::glaser::CONSTANTS,
+    CONDENSATION_LIMITS,
 ];
 
 /// The norm tables of the project, else the application's.
@@ -243,6 +258,93 @@ pub fn soil_lambda(tables: &[ParamTable]) -> Option<f64> {
     value(tables, ISO_10211_INPUT, "lambda_zemina_default", "value")
 }
 
+/// A number written as the whole cell ("17", "0,16"); none for an empty
+/// cell, a range or a note ("min. 3,5").
+fn exact(text: &str) -> Option<f64> {
+    let t = text.trim();
+    if t.is_empty() {
+        return None;
+    }
+    t.replace(',', ".")
+        .parse()
+        .ok()
+        .filter(|v: &f64| v.is_finite())
+}
+
+/// The values of a cell: one number, or both ends of a range "a–b" (the
+/// norm's "from a to b"); none for anything else.
+fn values(text: &str) -> Vec<f64> {
+    if let Some(v) = exact(text) {
+        return vec![v];
+    }
+    let parts: Vec<&str> = text.split('–').collect();
+    if parts.len() == 2 {
+        if let (Some(a), Some(b)) = (exact(parts[0]), exact(parts[1])) {
+            return vec![a, b];
+        }
+    }
+    vec![]
+}
+
+/// A material's diffusion data as the norm's table gives it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VapourChoice {
+    /// The table and item ("tab. 16, pol. 1.2.1").
+    pub source: String,
+    /// The group and material with its density or thickness.
+    pub name: String,
+    /// The diffusion resistance factor μ.
+    pub mu: f64,
+    /// For a thin layer of table 17 with one thickness d: sd = μ·d, m.
+    pub sd: Option<f64>,
+    /// The lower or upper end of a range the norm gives.
+    pub end: Option<bool>,
+}
+
+/// μ (and sd of the thin layers) from STN 73 0540-3 tables 16 and 17, a
+/// choice per row, two for a range (its ends: which one holds depends on
+/// where the layer lies, so the user picks).
+pub fn vapour_choices(tables: &[ParamTable]) -> Vec<VapourChoice> {
+    let mut out = vec![];
+    for (id, tab, dcol) in [(MATERIALS, "16", None), (THIN_LAYERS, "17", Some("d_mm"))] {
+        let Some(t) = table(tables, id) else { continue };
+        let col = |name: &str| t.column(name);
+        let (Some(cg), Some(cm), Some(cmu)) = (col("skupina"), col("material"), col("mu")) else {
+            continue;
+        };
+        let crho = col("rho");
+        let cd = dcol.and_then(col);
+        for r in &t.rows {
+            let get = |c: Option<usize>| c.and_then(|c| r.get(c)).map_or("", |s| s.trim());
+            let mus = values(get(Some(cmu)));
+            if mus.is_empty() {
+                continue;
+            }
+            let d = cd.map(|c| get(Some(c)));
+            let mut name = format!("{} – {}", get(Some(cg)), get(Some(cm)));
+            let rho = get(crho);
+            if !rho.is_empty() {
+                name += &format!(", ρ {rho} kg/m³");
+            }
+            if let Some(d) = d.filter(|d| !d.is_empty()) {
+                name += &format!(", d {d} mm");
+            }
+            let d_m = d.and_then(exact).map(|d| d / 1000.0);
+            let range = mus.len() == 2;
+            for (k, mu) in mus.iter().enumerate() {
+                out.push(VapourChoice {
+                    source: format!("STN 73 0540-3, tab. {tab}, pol. {}", r[0]),
+                    name: name.clone(),
+                    mu: *mu,
+                    sd: d_m.map(|d| mu * d),
+                    end: range.then_some(k == 1),
+                });
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,5 +355,22 @@ mod tests {
             magnus("610,5·exp(17,269·θ/(237,3+θ))"),
             Some((610.5, 17.269, 237.3))
         );
+    }
+
+    #[test]
+    fn reads_ranges_and_thin_layers() {
+        assert_eq!(values("17"), vec![17.0]);
+        assert_eq!(values("2,5–6,3"), vec![2.5, 6.3]);
+        assert!(values("min. 3,5").is_empty() && values("").is_empty());
+        let t = fireparams::parse(
+            "#table tenke_vrstvy\n#columns pol\tskupina\tmaterial\trho\td_mm\tmu\tdelta_s\tpozn\n\
+             1.35\tFólie\tPE fólia\t\t0,1\t124000–164000\t\t\n\
+             1.11\tPásy\tBitagit\t1345\tmin. 3,5\t13500\t\t\n",
+        );
+        let c = vapour_choices(&t);
+        assert_eq!(c.len(), 3);
+        assert!((c[0].sd.unwrap() - 12.4).abs() < 1e-9 && c[0].end == Some(false));
+        assert!((c[1].sd.unwrap() - 16.4).abs() < 1e-9 && c[1].end == Some(true));
+        assert_eq!(c[2].sd, None);
     }
 }
