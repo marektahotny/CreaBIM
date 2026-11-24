@@ -751,6 +751,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "info",
                 "Name, client, address, site and building: they fill the title blocks and the IFC export",
             ),
+            act(
+                "norms:tables",
+                "Norm tables",
+                "book-open",
+                "The tables of the norms (fire safety, heat loss, cooling, climate, railings, stairs) in one place: read a folder of table files at once, see which tables each check needs and which are missing, read it again when they change",
+            ),
 
             act(
                 "types.browser",
