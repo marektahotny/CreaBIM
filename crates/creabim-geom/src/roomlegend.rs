@@ -163,10 +163,7 @@ pub fn finishes(model: &Model, e: &Element, r: &Room) -> Finishes {
             } else {
                 t.name.trim().to_string()
             };
-            let area: f64 = creabim_core::room::tiling_panels_of(model, s, t)
-                .iter()
-                .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
-                .sum();
+            let area = creabim_core::room::tiling_area_of(model, s, t);
             let tiles = if t.bottom.abs() < 1e-9 {
                 format!(
                     "{name} {} {:.0} mm ({})",

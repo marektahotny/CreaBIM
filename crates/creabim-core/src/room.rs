@@ -518,7 +518,142 @@ pub fn tiling_plan_runs_of(model: &Model, shape: &RoomShape, t: &Tiling) -> Vec<
             }
         }
     }
+    // and on into the side reveals of the windows it runs across
+    for r in tiling_reveals(model, shape, t) {
+        if r.normal.z.abs() < 0.5 {
+            out.push((r.corners[0].truncate(), r.corners[1].truncate()));
+        }
+    }
     out
+}
+
+/// A tile in a window's reveal: the quad `corners` (plan point, height
+/// above the room's floor), its tiles facing `normal`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RevealTile {
+    pub corners: [glam::DVec3; 4],
+    pub normal: glam::DVec3,
+}
+
+impl RevealTile {
+    pub fn area(&self) -> f64 {
+        let [a, b, c, _] = self.corners;
+        a.distance(b) * b.distance(c)
+    }
+}
+
+/// The tiles one tiling puts in the reveals of the windows it runs
+/// across (George 2026-11-24): the side reveals where the tiles run
+/// across the window's height, the head only where they run on above
+/// the window, the bottom only where the window has no inner sill and
+/// the tiles run across its bottom; from the wall's face to the frame.
+pub fn tiling_reveals(model: &Model, shape: &RoomShape, t: &Tiling) -> Vec<RevealTile> {
+    use glam::DVec3;
+    const EPS: f64 = 1e-6;
+    let n = shape.outline.len();
+    let (bottom, top) = (t.bottom, t.top());
+    let clips = edge_clips(shape, t.span);
+    let mut out = vec![];
+    if t.height <= EPS {
+        return out;
+    }
+    for (i, by) in shape.bounded_by.iter().enumerate() {
+        let Some(wall) = by.and_then(|id| model.get(id)) else {
+            continue;
+        };
+        if t.skip.contains(&wall.id) || clips[i].is_empty() {
+            continue;
+        }
+        let ElementKind::Wall(w) = &wall.kind else {
+            continue;
+        };
+        let (a, b) = (shape.outline[i], shape.outline[(i + 1) % n]);
+        let len = a.distance(b);
+        let along = (w.end - w.start).normalize_or_zero();
+        if len < EPS || along == DVec2::ZERO {
+            continue;
+        }
+        let d = (b - a) / len;
+        // into the room, and where the room's face lies across the wall
+        let inward = DVec2::new(-d.y, d.x);
+        let face = (a - w.start).dot(along.perp());
+        let asm = crate::assembly_of(model, wall).map(|(_, a)| a);
+        let inside = |x: f64| clips[i].iter().any(|c| c.0 - EPS <= x && x <= c.1 + EPS);
+        for (p, q, o) in opening_spans(model, wall, w, crate::OpeningKind::Window, a, b) {
+            let frame = o.frame.fitted(o.width, o.height, w.thickness);
+            let span = o.frame_span(w, asm, frame.depth);
+            let depth = if face >= 0.0 {
+                face - span.1
+            } else {
+                span.0 - face
+            };
+            if depth < 0.005 {
+                continue;
+            }
+            let z0 = w.base_offset + o.sill;
+            let z1 = z0 + o.height;
+            let at = |x: f64, back: f64, z: f64| {
+                let pt = a + d * x - inward * back;
+                DVec3::new(pt.x, pt.y, z)
+            };
+            // the side reveals, where the tiles run across the window
+            let (lo, hi) = (z0.max(bottom), z1.min(top));
+            if hi - lo > EPS {
+                for (x, facing) in [(p, d), (q, -d)] {
+                    if inside(x) {
+                        out.push(RevealTile {
+                            corners: [
+                                at(x, 0.0, lo),
+                                at(x, depth, lo),
+                                at(x, depth, hi),
+                                at(x, 0.0, hi),
+                            ],
+                            normal: DVec3::new(facing.x, facing.y, 0.0),
+                        });
+                    }
+                }
+            }
+            let across = inside((p + q) / 2.0);
+            // the head, where the tiles run on above the window
+            if across && top > z1 + EPS && bottom < z1 - EPS {
+                out.push(RevealTile {
+                    corners: [
+                        at(p, 0.0, z1),
+                        at(q, 0.0, z1),
+                        at(q, depth, z1),
+                        at(p, depth, z1),
+                    ],
+                    normal: DVec3::NEG_Z,
+                });
+            }
+            // the bottom, with no inner sill, where the tiles run across it
+            if across && o.no_inner_sill && bottom < z0 + EPS && top > z0 + EPS {
+                out.push(RevealTile {
+                    corners: [
+                        at(p, 0.0, z0),
+                        at(q, 0.0, z0),
+                        at(q, depth, z0),
+                        at(p, depth, z0),
+                    ],
+                    normal: DVec3::Z,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// The area of one tiling, m²: on the walls and in the reveals.
+pub fn tiling_area_of(model: &Model, shape: &RoomShape, t: &Tiling) -> f64 {
+    let walls: f64 = tiling_panels_of(model, shape, t)
+        .iter()
+        .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
+        .sum();
+    let reveals: f64 = tiling_reveals(model, shape, t)
+        .iter()
+        .map(|r| r.area())
+        .sum();
+    walls + reveals
 }
 
 /// Where a tiling's mark sits on its line in a plan: the point on its
@@ -547,10 +682,7 @@ pub fn tiling_mark_at(model: &Model, shape: &RoomShape, t: &Tiling) -> Option<(D
 /// window and hole in the tiled height is left out; the tiling on part
 /// of its walls too.
 pub fn tiling_area(model: &Model, r: &Room, shape: &RoomShape) -> f64 {
-    r.tilings()
-        .flat_map(|t| tiling_panels_of(model, shape, t))
-        .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
-        .sum()
+    r.tilings().map(|t| tiling_area_of(model, shape, t)).sum()
 }
 
 impl Room {
@@ -1732,13 +1864,41 @@ mod tests {
         };
         r.tiling = Some(Tiling::default());
         let full = s.perimeter() * 2.0;
-        assert!((tiling_area(m, &r, &s) - (full - 1.2 * 1.1)).abs() < 1e-6);
-        // the plan line breaks at the window
+        // the tiles run past the window: both its side reveals tiled from
+        // the sill to the tiles' top, no head (the tiles stop under it),
+        // no bottom (it has its inner sill)
+        let reveals = tiling_reveals(m, &s, &Tiling::default());
+        assert_eq!(reveals.len(), 2, "{}", reveals.len());
+        let depth = reveals[0].area() / 1.1;
+        assert!(depth > 0.01 && depth < 0.3, "{depth}");
+        assert!(reveals.iter().all(|v| v.normal.z.abs() < 1e-9));
+        let side = 2.0 * depth * 1.1;
+        assert!((tiling_area(m, &r, &s) - (full - 1.2 * 1.1 + side)).abs() < 1e-6);
+        // tiles over the window: the head is tiled too, as wide as the
+        // window and as deep as the sides
+        let high = Tiling {
+            height: 2.5,
+            ..Tiling::default()
+        };
+        let reveals = tiling_reveals(m, &s, &high);
+        assert_eq!(reveals.len(), 3);
+        let head = reveals.iter().find(|v| v.normal.z < -0.5).expect("head");
+        assert!((head.area() - 1.2 * depth).abs() < 1e-6, "{}", head.area());
+        // tiles only to 0.8 m: under the sill, no reveal at all
+        let low = Tiling {
+            height: 0.8,
+            ..Tiling::default()
+        };
+        assert!(tiling_reveals(m, &s, &low).is_empty());
+        // the plan line breaks at the window and turns into its reveals
         let runs: f64 = tiling_plan_runs(m, &s, &[], 2.0)
             .iter()
             .map(|(a, b)| a.distance(*b))
             .sum();
-        assert!((runs - (s.perimeter() - 1.2)).abs() < 1e-6, "{runs}");
+        assert!(
+            (runs - (s.perimeter() - 1.2 + 2.0 * depth)).abs() < 1e-6,
+            "{runs}"
+        );
         // tiles only up to 0.8 m: the window is above them, nothing breaks
         let low: f64 = tiling_plan_runs(m, &s, &[], 0.8)
             .iter()
@@ -1779,12 +1939,29 @@ mod tests {
             .any(|(a, b)| (to - *a).perp_dot(*b - *a).abs() < 1e-6));
         // the room's area counts both
         r.tiling_parts.push(part.clone());
-        let more = tiling_area(m, &r, &s) - (full - 1.2 * 1.1);
+        let more = tiling_area(m, &r, &s) - (full - 1.2 * 1.1 + side);
         let own: f64 = panels
             .iter()
             .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
             .sum();
         assert!((more - own).abs() < 1e-9 && own > 0.0);
+        // without an inner sill the bottom reveal is tiled as well
+        let before = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Opening(_)))
+            .unwrap()
+            .clone();
+        let mut after = before.clone();
+        if let ElementKind::Opening(o) = &mut after.kind {
+            o.no_inner_sill = true;
+        }
+        doc.commit(Transaction::new("no sill").replace(before, after))
+            .unwrap();
+        let reveals = tiling_reveals(doc.model(), &s, &Tiling::default());
+        assert_eq!(reveals.len(), 3);
+        let bottom = reveals.iter().find(|v| v.normal.z > 0.5).expect("bottom");
+        assert!((bottom.area() - 1.2 * depth).abs() < 1e-6);
     }
 
     #[test]
