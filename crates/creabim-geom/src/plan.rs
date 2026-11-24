@@ -25,6 +25,10 @@ pub enum Pen {
     /// The wall carrying on over a door, above the cut plane: a thin
     /// line of a dash and two dots.
     Overhead,
+    /// A stair above the cut plane (STN 01 3420, 5.9.3 d): its seen edges
+    /// in the projection's weight, dash-dot; with `hidden`, the edges it
+    /// hides, dash and two dots.
+    StairAbove { hidden: bool },
     /// Where a footing's underside steps down: a heavy dashed line.
     HiddenCut,
     /// Another level traced under a plan: halftone, never printed, not

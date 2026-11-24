@@ -907,6 +907,11 @@ pub struct Stair {
     /// steeper).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub lift: bool,
+    /// Kept to the norm (George 2026-11-24): with the norms' tables in the
+    /// project, every change of its rise, risers, going or length is
+    /// followed by the riser height, going and count the norm wants.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub to_norm: bool,
 }
 
 fn default_well() -> f64 {
@@ -1263,6 +1268,7 @@ impl Stair {
             narrow: None,
             flats: false,
             lift: false,
+            to_norm: true,
         }
     }
 
@@ -1509,6 +1515,27 @@ impl Stair {
                 vec![f.start - n, e - n, e + n, f.start + n]
             })
             .collect()
+    }
+
+    /// Every riser's nosing line in plan, first to last, each from one
+    /// side of the flight to the other: what dimensions to the steps stand
+    /// on (George 2026-11-24). A ramp has none.
+    pub fn nosing_lines(&self, rise: f64) -> Vec<[DVec2; 2]> {
+        if self.ramp.is_some() {
+            return vec![];
+        }
+        if self.by_steps() {
+            return self.step_plan(rise).nosings;
+        }
+        let mut out = vec![];
+        for f in &self.layout(rise).flights {
+            let n = f.dir.perp() * self.width / 2.0;
+            for k in 0..f.risers {
+                let c = f.start + f.dir * (k as f64 * self.tread);
+                out.push([c - n, c + n]);
+            }
+        }
+        out
     }
 }
 
@@ -2729,6 +2756,7 @@ pub fn drag_grip(
                 };
                 let w = s.width + d.truncate().dot(dir);
                 s.width = round(w, step / 5.0).max(0.5);
+                crate::staircheck::keep_to_norm(model, s, crate::staircheck::Fit::Width);
             }
             _ => {
                 let rise = s.rise(model);
@@ -2745,7 +2773,17 @@ pub fn drag_grip(
                     return Ok(());
                 };
                 let t = s.tread + d.truncate().dot(dir) / treads;
+                // kept to the norm, the length dragged picks the count of
+                // risers whose going from 2h + b comes nearest it
+                let single = s.by_steps() || lay.flights.len() == 1;
+                let run = treads * s.tread + d.truncate().dot(dir);
                 s.tread = round(t, 0.005).clamp(0.15, 0.6);
+                let how = if single {
+                    crate::staircheck::Fit::Run(run)
+                } else {
+                    crate::staircheck::Fit::Going
+                };
+                crate::staircheck::keep_to_norm(model, s, how);
             }
         },
         ElementKind::Footing(f) => drag_footing(model, f, i, d, now, step)?,

@@ -66,6 +66,7 @@ pub mod sheet;
 pub mod sitefoot;
 pub mod sitetables;
 pub mod slice;
+pub mod stairmarks;
 pub mod stairsteps;
 pub mod structural;
 pub mod summary;

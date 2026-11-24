@@ -205,6 +205,104 @@ impl StairRules {
         }
         s.narrow = self.narrow_min;
     }
+
+    /// `s` brought to the norm after the user changed it (George
+    /// 2026-11-24: the stair helps while it is drawn and resized): the
+    /// risers, their height and the going that keep 2h + b in its range
+    /// with what was changed kept as near as the norm allows; never
+    /// narrower than the least width.
+    pub fn fit(&self, s: &mut Stair, rise: f64, how: Fit) {
+        if s.ramp.is_some() || rise <= 0.0 {
+            return;
+        }
+        let set_count = |s: &mut Stair, n: u32| {
+            s.max_riser = ((rise / n.max(1) as f64) * 1e4).ceil() / 1e4;
+        };
+        match how {
+            Fit::Width => {}
+            Fit::Rise => {
+                let n = riser_count(rise, s.max_riser);
+                s.tread = self.going_for(rise / n as f64);
+            }
+            Fit::Risers(n) => {
+                let n = n.max(1);
+                set_count(s, n);
+                s.tread = self.going_for(rise / n as f64);
+            }
+            Fit::Going => {
+                let least = self
+                    .going_min
+                    .unwrap_or(0.0)
+                    .max(self.tread_min.unwrap_or(0.0));
+                let b = s.tread.max(least);
+                // the riser 2h + b = sum wants, then the count giving a
+                // riser no higher, so 2h + b stays at or under it
+                let h = ((self.sum - b) / 2.0).max(0.05);
+                let n = riser_count(rise, h);
+                set_count(s, n);
+                let have = 2.0 * rise / n as f64 + b;
+                s.tread = if have >= self.sum_min - 5e-4 {
+                    b
+                } else {
+                    self.going_for(rise / n as f64)
+                };
+            }
+            Fit::Run(length) => {
+                // the count whose going, from the formula, makes the
+                // treads nearest the length asked for
+                let best = (2..=80u32)
+                    .map(|n| {
+                        let b = self.going_for(rise / n as f64);
+                        (n, b, ((n - 1) as f64 * b - length).abs())
+                    })
+                    .min_by(|x, y| x.2.total_cmp(&y.2));
+                if let Some((n, b, _)) = best {
+                    set_count(s, n);
+                    s.tread = b;
+                }
+            }
+        }
+        if let Some(w) = self.width_min {
+            s.width = s.width.max(w);
+        }
+        if s.by_steps() || !s.form().is_straight() {
+            s.walk = self.walk_from_outer(s.width);
+        }
+        if s.narrow.is_none() {
+            s.narrow = self.narrow_min;
+        }
+    }
+}
+
+/// What the user changed on a stair, for [`StairRules::fit`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Fit {
+    /// Its rise or its highest riser: the count follows, then the going.
+    Rise,
+    /// Its going (the tread width b).
+    Going,
+    /// Its count of risers.
+    Risers(u32),
+    /// The plan length of its treads on the walking line, m.
+    Run(f64),
+    /// Its width (or anything else): only the least width and the walking
+    /// line.
+    Width,
+}
+
+/// [`StairRules::fit`] with the project's tables, when the stair is kept
+/// to the norm and the tables are read; true when it was.
+pub fn keep_to_norm(model: &crate::Model, s: &mut Stair, how: Fit) -> bool {
+    if !s.to_norm || s.ramp.is_some() {
+        return false;
+    }
+    let tables = crate::room::project_tables(model);
+    let Some(rules) = StairRules::for_stair(&tables, s) else {
+        return false;
+    };
+    let rise = s.rise(model);
+    rules.fit(s, rise, how);
+    true
 }
 
 /// What does not meet the rules.
@@ -442,5 +540,32 @@ mod tests {
         assert!(has(|f| matches!(f, StairFault::Tread { .. })));
         assert!(has(|f| matches!(f, StairFault::Width { .. })));
         assert!(has(|f| matches!(f, StairFault::Class { class: None, .. })));
+    }
+
+    #[test]
+    fn a_stair_kept_to_the_norm_follows_what_was_changed() {
+        let r = rules();
+        let mut s = Stair::new(ElementId::new(), DVec2::ZERO, 0.0);
+        s.width = 0.6;
+        // a going typed: the risers follow so 2h + b fits
+        s.tread = 0.29;
+        r.fit(&mut s, 2.8, Fit::Going);
+        let n = riser_count(2.8, s.max_riser);
+        let sum = 2.0 * 2.8 / n as f64 + s.tread;
+        assert!(sum <= r.sum + 1e-6 && sum >= r.sum_min - 1e-6, "{n} {sum}");
+        assert!((s.tread - 0.29).abs() < 1e-9);
+        assert!(s.width >= r.width_min.unwrap() - 1e-9);
+        // a count typed: the riser and going follow
+        r.fit(&mut s, 2.8, Fit::Risers(14));
+        assert_eq!(riser_count(2.8, s.max_riser), 14);
+        assert!((s.tread - r.going_for(0.2)).abs() < 1e-9);
+        // a length dragged: the count whose treads come nearest
+        r.fit(&mut s, 2.8, Fit::Run(4.0));
+        let n = riser_count(2.8, s.max_riser);
+        assert!(
+            ((n - 1) as f64 * s.tread - 4.0).abs() < 0.3,
+            "{n} {}",
+            s.tread
+        );
     }
 }

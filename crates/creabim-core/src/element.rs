@@ -857,6 +857,12 @@ pub struct HostPoint {
     pub from_end: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body: Option<DVec3>,
+    /// On a stair in a plan: the riser whose nosing the point stands on,
+    /// counted from the first (from the last with `from_end`), with
+    /// `local.x` how far across the flight it is (0 one side, 1 the
+    /// other); so the dimension follows the steps (George 2026-11-24).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<u32>,
 }
 
 impl HostPoint {
@@ -866,6 +872,7 @@ impl HostPoint {
             local: p,
             from_end: false,
             body: None,
+            step: None,
         }
     }
 }
@@ -3486,6 +3493,7 @@ mod tests {
             local: DVec2::ZERO,
             from_end: false,
             body: Some(DVec3::new(1.0, -1.0, 3.0)),
+            step: None,
         };
         let text = serde_json::to_string(&on).unwrap();
         assert_eq!(serde_json::from_str::<HostPoint>(&text).unwrap(), on);

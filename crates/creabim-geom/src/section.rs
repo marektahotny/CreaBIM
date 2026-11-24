@@ -852,6 +852,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         creabim_core::ViewKind::Plan { level, cut_height } if v.graphics.range.from_above => {
             let mut d = crate::ranges::plan(model, v, *level, *cut_height);
             crate::members::size_slope_arrows(model, &mut d.items, v.scale / 1000.0);
+            crate::stairmarks::size_texts(model, &mut d.items, v.scale / 1000.0);
             d
         }
         creabim_core::ViewKind::Plan { level, cut_height } => {
@@ -873,6 +874,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             }
             // the roofs' slope arrows and pitches at the view's scale
             crate::members::size_slope_arrows(model, &mut d.items, v.scale / 1000.0);
+            crate::stairmarks::size_texts(model, &mut d.items, v.scale / 1000.0);
             // rooms under everything, separators and ceilings with them
             let mut rooms = crate::rooms::plan_items(model, v, *level, *cut_height);
             // with the pens the view's graphics give their categories

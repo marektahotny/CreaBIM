@@ -8689,5 +8689,8 @@
   "The building has a lift": "Budova má výťah",
   "Meets STN 73 4130 and STN 73 4301 (block of flats).": "Vyhovuje STN 73 4130 a STN 73 4301 (bytový dom).",
   "headroom": "podchodná výška",
-  "clear height": "priechodná výška"
+  "clear height": "priechodná výška",
+  "Number of risers": "Počet stupňov",
+  "Keep to the norm": "Držať normu",
+  "Changing the rise, risers, going, width or length, the stair takes the riser height, going and count of risers the norm wants": "Pri zmene prevýšenia, počtu stupňov, šírky stupňa, šírky ramena alebo dĺžky schodisko samo nastaví výšku stupňa, šírku stupňa a počet stupňov podľa normy"
 }

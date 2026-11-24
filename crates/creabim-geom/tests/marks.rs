@@ -620,6 +620,7 @@ fn a_typed_dimension_moves_what_its_end_is_on() {
                         local: DVec2::ZERO,
                         from_end: false,
                         body: None,
+                        step: None,
                     },
                 )?;
                 Some((e.id, p))
@@ -676,6 +677,7 @@ fn an_eq_chain_moves_the_point_between_to_the_middle() {
                         local: DVec2::ZERO,
                         from_end: false,
                         body: None,
+                        step: None,
                     },
                 )?;
                 Some((e.id, p))
@@ -1119,6 +1121,7 @@ fn spot_levels_in_plans_read_the_height_of_what_they_stand_on() {
         local: at,
         from_end: false,
         body: None,
+        step: None,
     };
     let spot = Dimension::spot(roof_plan, on_roof, HostPoint::free(at + DVec2::ONE), None);
     let spot = add(&mut doc, Element::new("Spot", ElementKind::Dimension(spot)));
