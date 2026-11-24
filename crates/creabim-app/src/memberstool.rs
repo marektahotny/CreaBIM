@@ -1418,6 +1418,64 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                         }
                     });
             });
+            // its infill (STN 74 3305 3.2.2), checked in Check railings
+            crate::props::row(ui, "Infill", |ui| {
+                let w = ui.available_width();
+                let now = r.infill.map_or("Rails only", |f| f.kind.label());
+                egui::ComboBox::from_id_salt("rail.infill")
+                    .icon(crate::props::combo_icon)
+                    .width(w)
+                    .truncate()
+                    .selected_text(crate::i18n::tw(now))
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(r.infill.is_none(), crate::i18n::tw("Rails only"))
+                            .clicked()
+                        {
+                            r.infill = None;
+                            label = "Railing infill";
+                        }
+                        for k in creabim_core::members::InfillKind::ALL {
+                            if ui
+                                .selectable_label(
+                                    r.infill.is_some_and(|f| f.kind == k),
+                                    crate::i18n::tw(k.label()),
+                                )
+                                .clicked()
+                            {
+                                let mut f = r.infill.unwrap_or_default();
+                                f.kind = k;
+                                r.infill = Some(f);
+                                label = "Railing infill";
+                            }
+                        }
+                    });
+            });
+            if let Some(f) = &mut r.infill {
+                if f.kind != creabim_core::members::InfillKind::Panel {
+                    if num(ui, "Widest gap", &mut f.gap, 0.02, 1.0) {
+                        label = "Railing infill";
+                    }
+                    if num(ui, "Bar size", &mut f.bar, 0.008, 0.1) {
+                        label = "Railing infill";
+                    }
+                }
+                if num(ui, "Clear height under it", &mut f.bottom, 0.0, 0.5) {
+                    label = "Railing infill";
+                }
+                let (up, level, _) = creabim_core::railcheck::railing_gaps(r, model);
+                let gap = up.max(level);
+                if gap > 0.0 {
+                    weak(
+                        ui,
+                        format!(
+                            "{} {}",
+                            crate::i18n::tr("Gaps as built:"),
+                            crate::units::len(gap)
+                        ),
+                    );
+                }
+            }
             if let Some(side) = &mut r.stair {
                 if crate::props::choice(
                     ui,

@@ -794,6 +794,7 @@ impl CreaBimApp {
                     || self.net_calc_action(head, arg)
                     || self.auto_valves_action(head, arg)
                     || self.route_check_action(head, arg)
+                    || self.rail_check_action(head, arg)
                     || self.terrain_action(head, arg)
                     || self.earthworks_action(head, arg)
                     || self.map_action(head, arg)

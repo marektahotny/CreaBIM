@@ -1039,6 +1039,73 @@ pub struct Railing {
     /// The top rail's profile from the library (MU36); none: a square bar.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rail_profile: Option<String>,
+    /// What fills it between the posts and under the top rail; none:
+    /// only a bottom rail 100 mm over the floor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub infill: Option<Infill>,
+}
+
+/// What a railing is filled with (STN 74 3305 3.2.2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InfillKind {
+    /// Upright bars (balusters) between the posts.
+    #[default]
+    Vertical,
+    /// Bars along the top rail.
+    Horizontal,
+    /// A solid panel or glass, no gaps in it.
+    Panel,
+}
+
+impl InfillKind {
+    pub const ALL: [InfillKind; 3] = [
+        InfillKind::Vertical,
+        InfillKind::Horizontal,
+        InfillKind::Panel,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            InfillKind::Vertical => "Upright bars",
+            InfillKind::Horizontal => "Horizontal bars",
+            InfillKind::Panel => "Solid panel or glass",
+        }
+    }
+}
+
+/// A railing's infill: its bars as many as keep each clear gap no wider
+/// than `gap`, on a bottom rail `bottom` clear above the floor.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Infill {
+    pub kind: InfillKind,
+    /// The widest clear gap between the bars (and the posts), m.
+    pub gap: f64,
+    /// The bars' side, m.
+    pub bar: f64,
+    /// Clear height from the floor to the bottom rail's underside, m.
+    pub bottom: f64,
+}
+
+impl Default for Infill {
+    fn default() -> Self {
+        Infill {
+            kind: InfillKind::Vertical,
+            gap: 0.11,
+            bar: 0.02,
+            bottom: 0.08,
+        }
+    }
+}
+
+/// How many bars of side `bar` fill `clear` so no gap is wider than
+/// `gap`, and the gap they leave.
+pub fn bars_in(clear: f64, gap: f64, bar: f64) -> (usize, f64) {
+    if clear <= gap || gap <= 0.0 {
+        return (0, clear.max(0.0));
+    }
+    let n = ((clear - gap) / (gap + bar) - 1e-9).ceil().max(0.0) as usize;
+    (n, (clear - n as f64 * bar) / (n + 1) as f64)
 }
 
 /// Rail and post section sizes.
@@ -1055,6 +1122,7 @@ impl Railing {
             stair: None,
             material: None,
             rail_profile: None,
+            infill: None,
         }
     }
 

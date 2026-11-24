@@ -173,7 +173,7 @@ impl CreaBimApp {
 
     /// Takes the tables of STN EN 12831-1 into the project and keeps them
     /// with the application's norm tables for new projects.
-    fn load_heat_tables(&mut self, tables: Vec<fireparams::ParamTable>) {
+    pub(super) fn load_heat_tables(&mut self, tables: Vec<fireparams::ParamTable>) {
         let n = tables.len();
         let mut app = fireparams::app_tables().to_vec();
         fireparams::merge(&mut app, tables.clone());

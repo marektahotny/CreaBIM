@@ -56,6 +56,7 @@ pub mod polygon;
 pub mod profiles;
 pub mod project;
 pub mod pushpull;
+pub mod railcheck;
 pub mod reference;
 pub mod refpath;
 pub mod regions;

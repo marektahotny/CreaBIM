@@ -1364,6 +1364,7 @@ fn railing(c: &mut Ctx, r: &f::Railing, at: &Path) {
         stair,
         material,
         rail_profile: None,
+        infill: None,
     };
     c.insert(
         &r.id,
