@@ -337,19 +337,6 @@ fn level_above(model: &Model, level: ElementId) -> Option<ElementId> {
 
 const SIZE: f64 = 2.0;
 
-fn text(id: ElementId, at: DVec2, text: String, mm: f64) -> PlanItem {
-    PlanItem::Text {
-        id,
-        at,
-        text,
-        size: SIZE,
-        align: crate::paper::Anchor::Middle,
-        mm,
-        rgb: None,
-        bold: false,
-    }
-}
-
 /// A label up and right of a hole's outline `ring`, clear of the room's
 /// name a valve in the middle of the room would sit on.
 fn beside(id: ElementId, ring: &[DVec2], label: String, mm: f64) -> PlanItem {
@@ -364,140 +351,304 @@ fn beside(id: ElementId, ring: &[DVec2], label: String, mm: f64) -> PlanItem {
     }
 }
 
-/// The trades' penetrations in a floor plan of `level` cut at
-/// `cut_height`, drawn as the Prestup tool draws its own, at the paper size
-/// of a drawing of `mm` metres per paper millimetre: through the walls the
-/// plan cuts (crossed where the cut passes it, dashed and dotted above,
-/// dashed below), through the floor (crossed) and through the slab or
-/// suspended ceiling over the storey (dash and two dots, "(strop)" or
-/// "(podhľad)"). A structural plan shows only what passes load-bearing
-/// walls and slabs.
+/// How a floor plan shows one crossing: its outline and mark, where its
+/// label's leader points and the label's text.
+struct Shown {
+    pen: Pen,
+    ring: Vec<DVec2>,
+    /// The broken line of a slab's mark; for a wall, the cross.
+    mark: Vec<DVec2>,
+    crossed: bool,
+    /// The penetration's middle: the label's leader ends here.
+    anchor: DVec2,
+    label: String,
+    /// Where the label sits until it is dragged, from `anchor`, paper mm.
+    home: DVec2,
+}
+
+/// Whether a plan of `level` cut at `cut_height` shows crossing `c`, and
+/// how (a structural plan only what passes load-bearing walls and slabs).
+fn shown(
+    model: &Model,
+    c: &Crossing,
+    level: ElementId,
+    cut_height: f64,
+    structural: bool,
+) -> Option<Shown> {
+    let here = model.level(level)?.elevation;
+    let above = level_above(model, level);
+    let top = above
+        .and_then(|l| model.level(l))
+        .map_or(f64::MAX, |l| l.elevation);
+    if structural && !c.bearing {
+        return None;
+    }
+    match c.through {
+        Through::Wall => {
+            let Some(ElementKind::Wall(w)) = model.get(c.host).map(|h| &h.kind) else {
+                return None;
+            };
+            // the walls of this storey
+            if c.at.z < here - 1e-6 || c.at.z > top + 1e-6 {
+                return None;
+            }
+            crate::plan::wall_rise(model, w, level, cut_height)?;
+            let cut = here + cut_height;
+            let (lo, hi) = (c.at.z - c.size[1] / 2.0, c.at.z + c.size[1] / 2.0);
+            let pen = if lo > cut {
+                Pen::Overhead
+            } else if hi < cut {
+                Pen::Hidden
+            } else {
+                Pen::Symbol
+            };
+            let n = c.dir.perp();
+            let half = w.thickness / 2.0;
+            // onto the wall's centreline
+            let (u, _) = w.along(c.at.truncate());
+            let mid = w.place(u, 0.0);
+            let hw = c.size[0] / 2.0;
+            let ring = vec![
+                mid - c.dir * hw - n * half,
+                mid + c.dir * hw - n * half,
+                mid + c.dir * hw + n * half,
+                mid - c.dir * hw + n * half,
+            ];
+            // out from the wall's face, a little along it
+            let side = if n.y < -0.1 || (n.y.abs() <= 0.1 && n.x < 0.0) {
+                -n
+            } else {
+                n
+            };
+            Some(Shown {
+                pen,
+                ring,
+                mark: vec![],
+                crossed: pen == Pen::Symbol,
+                anchor: mid,
+                label: c.label(),
+                home: side * 8.0 + c.dir * 6.0,
+            })
+        }
+        Through::Slab | Through::Ceiling | Through::Roof => {
+            // in its own floor: cut, crossed; in what is over the
+            // storey: above the cut
+            let own_floor = c.through == Through::Slab && c.host_level == level;
+            let overhead = match c.through {
+                Through::Slab => Some(c.host_level) == above,
+                Through::Ceiling => c.host_level == level,
+                // the roof plan shows where it comes out
+                Through::Roof | Through::Wall => false,
+            };
+            if !own_floor && !overhead {
+                return None;
+            }
+            let pen = if own_floor {
+                Pen::Symbol
+            } else {
+                Pen::Overhead
+            };
+            let mut label = c.label();
+            match (overhead, c.through) {
+                (true, Through::Ceiling) => label.push_str(" (podhľad)"),
+                (true, _) => label.push_str(" (strop)"),
+                _ => {}
+            }
+            Some(Shown {
+                pen,
+                ring: c.outline(),
+                mark: c.pen().slab_mark(c.at.truncate()),
+                crossed: false,
+                anchor: c.at.truncate(),
+                label,
+                home: DVec2::new(8.0, 8.0),
+            })
+        }
+    }
+}
+
+/// Is `t` the label tag of crossing `c` (on its pipe, at its point)?
+fn labels(t: &creabim_core::Tag, c: &Crossing, anchor: DVec2) -> bool {
+    t.host == c.pipe && t.end.is_some_and(|e| e.distance(anchor) < 0.05)
+}
+
+/// A penetration's label tag: on the pipe, its `end` where the
+/// penetration is in plan (so a pipe through several walls has one each).
+pub fn is_label_tag(model: &Model, t: &creabim_core::Tag) -> bool {
+    t.end.is_some()
+        && matches!(
+            model.get(t.host).map(|h| &h.kind),
+            Some(ElementKind::Pipe(_))
+        )
+}
+
+/// The floor plans the penetrations are taken over into: the architect's
+/// and the structural engineer's, with their cut.
+fn takeover_plans(model: &Model) -> Vec<(ElementId, ElementId, f64, bool, f64)> {
+    use creabim_core::viewmodes::DisplayMode;
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::View(v) => match v.kind {
+                creabim_core::ViewKind::Plan { level, cut_height }
+                    if v.callout.is_none()
+                        && !v.graphics.range.from_above
+                        && !v.graphics.range.is_site()
+                        && !v.ceiling_plan
+                        && DisplayMode::of(v) != DisplayMode::Services =>
+                {
+                    Some((e.id, level, cut_height, v.structural, v.scale / 1000.0))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+/// The centres of the penetrations `view` shows, each with the pipe that
+/// makes it: a dimension snaps to them and, kept on the pipe, follows the
+/// penetration (George 2026-11-25).
+pub fn centres(model: &Model, view: &creabim_core::View) -> Vec<(ElementId, DVec2)> {
+    use creabim_core::viewmodes::DisplayMode;
+    let creabim_core::ViewKind::Plan { level, cut_height } = view.kind else {
+        return vec![];
+    };
+    if view.callout.is_some()
+        || view.graphics.range.from_above
+        || view.graphics.range.is_site()
+        || view.ceiling_plan
+        || DisplayMode::of(view) == DisplayMode::Services
+    {
+        return vec![];
+    }
+    crossings(model)
+        .iter()
+        .filter_map(|c| {
+            Some((
+                c.pipe,
+                shown(model, c, level, cut_height, view.structural)?.anchor,
+            ))
+        })
+        .collect()
+}
+
+/// The label tags the architect's and structural plans lack for the
+/// penetrations they show (George 2026-11-25: dragged with the mouse, the
+/// leader staying on the penetration), and those left over from
+/// penetrations no longer there.
+pub fn label_tags(model: &Model) -> (Vec<creabim_core::Element>, Vec<ElementId>) {
+    let plans = takeover_plans(model);
+    if plans.is_empty() {
+        return (vec![], vec![]);
+    }
+    let all = crossings(model);
+    let tags: Vec<(ElementId, &creabim_core::Tag)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Tag(t) if is_label_tag(model, t) => Some((e.id, t)),
+            _ => None,
+        })
+        .collect();
+    let mut add = vec![];
+    let mut used = std::collections::HashSet::new();
+    for (view, level, cut, structural, mm) in &plans {
+        for c in &all {
+            let Some(s) = shown(model, c, *level, *cut, *structural) else {
+                continue;
+            };
+            match tags
+                .iter()
+                .find(|(_, t)| t.view == *view && labels(t, c, s.anchor))
+            {
+                Some((id, _)) => {
+                    used.insert(*id);
+                }
+                None => {
+                    let mut t = creabim_core::Tag::new(*view, c.pipe, s.home * *mm);
+                    t.end = Some(s.anchor);
+                    add.push(creabim_core::Element::new(
+                        "Penetration label",
+                        ElementKind::Tag(t),
+                    ));
+                }
+            }
+        }
+    }
+    let views: Vec<ElementId> = plans.iter().map(|p| p.0).collect();
+    let stale = tags
+        .iter()
+        .filter(|(id, t)| views.contains(&t.view) && !used.contains(id))
+        .map(|(id, _)| *id)
+        .collect();
+    (add, stale)
+}
+
+/// The trades' penetrations in floor plan `view` of `level` cut at
+/// `cut_height`, drawn as the Prestup tool draws its own, at the paper
+/// size of a drawing of `mm` metres per paper millimetre: through the
+/// walls the plan cuts (crossed where the cut passes it, dashed and dotted
+/// above, dashed below), through the floor (crossed) and through the slab
+/// or suspended ceiling over the storey (dash and two dots, "(strop)" or
+/// "(podhľad)"). Each label sits on a leader to its penetration, where its
+/// tag was dragged to. A structural plan shows only what passes
+/// load-bearing walls and slabs.
 pub fn plan_items(
     model: &Model,
+    view: ElementId,
     level: ElementId,
     cut_height: f64,
     mm: f64,
     structural: bool,
 ) -> Vec<PlanItem> {
-    let Some(here) = model.level(level).map(|l| l.elevation) else {
-        return vec![];
-    };
-    let above = level_above(model, level);
-    let top = above
-        .and_then(|l| model.level(l))
-        .map_or(f64::MAX, |l| l.elevation);
+    let tags: Vec<(ElementId, &creabim_core::Tag)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Tag(t) if t.view == view && is_label_tag(model, t) => Some((e.id, t)),
+            _ => None,
+        })
+        .collect();
     let mut out = vec![];
     for c in crossings(model) {
-        if structural && !c.bearing {
+        let Some(s) = shown(model, &c, level, cut_height, structural) else {
             continue;
+        };
+        if s.crossed {
+            out.extend(crate::plan::hole_marks(c.host, &s.ring, s.pen));
+        } else {
+            out.push(PlanItem::Polygon {
+                id: c.host,
+                pen: s.pen,
+                points: s.ring.clone(),
+            });
         }
-        match c.through {
-            Through::Wall => {
-                let Some(ElementKind::Wall(w)) = model.get(c.host).map(|h| &h.kind) else {
-                    continue;
-                };
-                // the walls of this storey
-                if c.at.z < here - 1e-6 || c.at.z > top + 1e-6 {
-                    continue;
-                }
-                if crate::plan::wall_rise(model, w, level, cut_height).is_none() {
-                    continue;
-                }
-                let cut = here + cut_height;
-                let (lo, hi) = (c.at.z - c.size[1] / 2.0, c.at.z + c.size[1] / 2.0);
-                let pen = if lo > cut {
-                    Pen::Overhead
-                } else if hi < cut {
-                    Pen::Hidden
-                } else {
-                    Pen::Symbol
-                };
-                let n = c.dir.perp();
-                let half = w.thickness / 2.0;
-                let mid = c.at.truncate();
-                let (mid, n) = {
-                    // onto the wall's centreline
-                    let (u, _) = w.along(mid);
-                    (w.place(u, 0.0), n)
-                };
-                let hw = c.size[0] / 2.0;
-                let ring = vec![
-                    mid - c.dir * hw - n * half,
-                    mid + c.dir * hw - n * half,
-                    mid + c.dir * hw + n * half,
-                    mid - c.dir * hw + n * half,
-                ];
-                if pen == Pen::Symbol {
-                    out.extend(crate::plan::hole_marks(c.host, &ring, pen));
-                } else {
-                    out.push(PlanItem::Polygon {
-                        id: c.host,
-                        pen,
-                        points: ring,
-                    });
-                }
-                let gap = 1.5 * mm;
-                let at = if n.x.abs() > 0.7 {
-                    mid + n * (half + gap + SIZE * 2.0 * mm)
-                } else {
-                    mid + n * (half + gap + SIZE * 0.6 * mm)
-                };
-                let mut t = text(c.host, at, c.label(), mm);
-                if n.x.abs() > 0.7 {
-                    if let PlanItem::Text { align, at, .. } = &mut t {
-                        *at = mid + n * (half + gap);
-                        *align = if n.x > 0.0 {
-                            crate::paper::Anchor::Start
-                        } else {
-                            crate::paper::Anchor::End
-                        };
-                    }
-                }
-                out.push(t);
-            }
-            Through::Slab | Through::Ceiling | Through::Roof => {
-                // in its own floor: cut, crossed; in what is over the
-                // storey: above the cut
-                let own_floor = c.through == Through::Slab && c.host_level == level;
-                let overhead = match c.through {
-                    Through::Slab => Some(c.host_level) == above,
-                    Through::Ceiling => c.host_level == level,
-                    // the roof plan shows where it comes out
-                    Through::Roof => false,
-                    Through::Wall => false,
-                };
-                if !own_floor && !overhead {
-                    continue;
-                }
-                let pen = if own_floor {
-                    Pen::Symbol
-                } else {
-                    Pen::Overhead
-                };
-                let ring = c.outline();
-                let p = c.pen();
-                out.push(PlanItem::Polygon {
-                    id: c.host,
-                    pen,
-                    points: ring.clone(),
-                });
-                for w in p.slab_mark(c.at.truncate()).windows(2) {
-                    out.push(PlanItem::Line {
-                        id: c.host,
-                        pen,
-                        a: w[0],
-                        b: w[1],
-                    });
-                }
-                let mut label = c.label();
-                match (overhead, c.through) {
-                    (true, Through::Ceiling) => label.push_str(" (podhľad)"),
-                    (true, _) => label.push_str(" (strop)"),
-                    _ => {}
-                }
-                out.push(beside(c.host, &ring, label, mm));
-            }
+        for w in s.mark.windows(2) {
+            out.push(PlanItem::Line {
+                id: c.host,
+                pen: s.pen,
+                a: w[0],
+                b: w[1],
+            });
         }
+        // its tag, where it was dragged; none yet: where it will be made
+        let (id, offset) = tags
+            .iter()
+            .find(|(_, t)| labels(t, &c, s.anchor))
+            .map_or((c.host, s.home * mm), |(id, t)| (*id, t.offset));
+        out.push(PlanItem::Tag {
+            id,
+            anchor: s.anchor,
+            at: s.anchor + offset,
+            elbow: None,
+            text: s.label,
+            round: false,
+            // the text alone, as the label it was, its leader to the hole
+            look: crate::annotation::TextLook {
+                size: SIZE,
+                shape: creabim_core::annotation::TagShape::TextOnly,
+                ..Default::default()
+            },
+        });
     }
     out
 }
@@ -639,11 +790,13 @@ mod tests {
         // Ø160 with 30 mm insulation: a Ø220 hole, its bottom at 2 290
         assert_eq!(wall.size, [0.22, 0.22]);
         assert_eq!(wall.label(), "P Ø220 VZT sp. 2 290");
-        let items = plan_items(&m, l, 1.2, 0.05, false);
+        let items = plan_items(&m, ElementId::new(), l, 1.2, 0.05, false);
         let texts: Vec<_> = items
             .iter()
             .filter_map(|i| match i {
-                PlanItem::Text { text, .. } | PlanItem::Label { text, .. } => Some(text.clone()),
+                PlanItem::Text { text, .. }
+                | PlanItem::Label { text, .. }
+                | PlanItem::Tag { text, .. } => Some(text.clone()),
                 _ => None,
             })
             .collect();
@@ -657,13 +810,52 @@ mod tests {
         );
         // a structural plan: the load-bearing wall's hole, never the
         // suspended ceiling's
-        let st: Vec<_> = plan_items(&m, l, 1.2, 0.05, true)
+        let st: Vec<_> = plan_items(&m, ElementId::new(), l, 1.2, 0.05, true)
             .into_iter()
             .filter_map(|i| match i {
-                PlanItem::Text { text, .. } | PlanItem::Label { text, .. } => Some(text),
+                PlanItem::Text { text, .. }
+                | PlanItem::Label { text, .. }
+                | PlanItem::Tag { text, .. } => Some(text),
                 _ => None,
             })
             .collect();
         assert_eq!(st, vec!["P Ø220 VZT sp. 2 290".to_string()]);
+        // each label's leader ends on its penetration: the wall's on the
+        // wall's axis where the duct crosses it, the ceiling's on the duct
+        let anchors: Vec<DVec2> = items
+            .iter()
+            .filter_map(|i| match i {
+                PlanItem::Tag { anchor, .. } => Some(*anchor),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(anchors.len(), 2, "{anchors:?}");
+        assert!(anchors
+            .iter()
+            .any(|a| a.distance(DVec2::new(2.0, 0.0)) < 1e-9));
+        assert!(anchors.iter().any(|a| a.distance(DVec2::ZERO) < 1e-9));
+        // a dimension snapped to a penetration's centre is kept on its
+        // pipe and follows it
+        let view = creabim_core::View::plan(l);
+        let centres = centres(&m, &view);
+        assert_eq!(centres.len(), 2, "{centres:?}");
+        let (pipe, at) = *centres
+            .iter()
+            .find(|(_, a)| a.distance(DVec2::ZERO) < 1e-9)
+            .unwrap();
+        let hp = crate::annotate::attach(&m, &view, Some(pipe), at);
+        assert_eq!(hp.host, Some(pipe));
+        let before = m.get(pipe).unwrap().clone();
+        let mut moved = before.clone();
+        if let ElementKind::Pipe(p) = &mut moved.kind {
+            p.start.x += 0.5;
+            p.end.x += 0.5;
+        }
+        creabim_core::Transaction::new("move")
+            .replace(before, moved)
+            .apply(&mut m)
+            .unwrap();
+        let q = crate::annotate::resolve(&m, &view, &hp).unwrap();
+        assert!(q.distance(DVec2::new(0.5, 0.0)) < 1e-9, "{q}");
     }
 }

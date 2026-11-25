@@ -350,6 +350,11 @@ fn grips(model: &Model, it: &PlanItem, mm: f64) -> Vec<(DVec2, Grab)> {
             let Some(ElementKind::Tag(t)) = model.get(*id).map(|e| &e.kind) else {
                 return vec![];
             };
+            // a penetration's label: its leader stays on the hole, only
+            // the text moves
+            if creabim_geom::tradepen::is_label_tag(model, t) {
+                return vec![];
+            }
             let centre = *anchor - t.end.unwrap_or(DVec2::ZERO);
             vec![
                 (*anchor, Grab::TagEnd(*id, centre)),

@@ -122,6 +122,33 @@ impl CreaBimApp {
         }
     }
 
+    /// After a change: the penetration labels and VZT position marks the
+    /// plans lack are made, those of penetrations gone are removed, all
+    /// with the change that called for them (one undo step).
+    pub(super) fn keep_trade_tags(&mut self) {
+        let at = self.doc.undo_steps().last().map(|s| s.id);
+        if at == self.tags_at || !self.doc.redo_steps().is_empty() {
+            self.tags_at = at;
+            return;
+        }
+        self.tags_at = at;
+        if at.is_none() {
+            return;
+        }
+        let model = self.doc.model();
+        let (mut add, stale) = creabim_geom::tradepen::label_tags(model);
+        add.extend(creabim_geom::mep::air_position_tags(model));
+        if add.is_empty() && stale.is_empty() {
+            return;
+        }
+        let mut tx = creabim_core::Transaction::new("Tags").remove_all_cascade(model, &stale);
+        for t in add {
+            tx = tx.insert(t);
+        }
+        let _ = self.doc.amend(tx);
+        self.tags_at = self.doc.undo_steps().last().map(|s| s.id);
+    }
+
     /// Tags the rooms of the trades' plans as the architecture plans of
     /// their storeys tag them (George 2026-11-23).
     pub(super) fn tag_trade_rooms(&mut self) {
