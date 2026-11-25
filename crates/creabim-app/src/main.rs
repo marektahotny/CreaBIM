@@ -94,6 +94,10 @@ fn main() -> eframe::Result {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("CreaBIM")
             .with_inner_size([1400.0, 860.0])
+            // starts filling the screen (maximized, the taskbar stays
+            // visible; George 2026-11-25); the size above is what the
+            // window returns to when un-maximized
+            .with_maximized(true)
             .with_icon(app_icon()),
         renderer: eframe::Renderer::Wgpu,
         // the windows' sizes and places are kept for the next run (egui's
