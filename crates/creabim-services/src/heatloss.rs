@@ -120,6 +120,11 @@ pub struct Opts {
     /// Air changes at 50 Pa, 1/h.
     pub n50: f64,
     pub shielding: Shielding,
+    /// The rooms whose type takes air out (bathroom, WC, kitchen…) have
+    /// fans running at their extract flow (q_v,exh of STN EN 12831-1
+    /// 6.3.3.3); without them the house airs naturally and only the
+    /// infiltration and the least air change count (formula 14).
+    pub exhaust_fans: bool,
 }
 
 impl Default for Opts {
@@ -138,6 +143,7 @@ impl Default for Opts {
             u_window: 0.6,
             u_door: 0.65,
             n50: 2.0,
+            exhaust_fans: false,
             shielding: Shielding::Moderate,
         }
     }
@@ -271,6 +277,11 @@ pub struct RoomLoss {
     /// Least air change and infiltration, m³/h.
     pub v_min: f64,
     pub v_inf: f64,
+    /// Of the air taken out (a bathroom's 90 m³/h), what comes in through
+    /// the door from the rooms next to it, m³/h, and their temperature,
+    /// °C: heated by `ti − θ` only (STN EN 12831-1, (15), q_v,transfer).
+    pub v_transfer: f64,
+    pub t_transfer: Option<f64>,
     /// Outside walls with openings, by direction.
     pub facades: usize,
     pub missing: Vec<Missing>,
@@ -369,7 +380,10 @@ pub(crate) fn rooms_of(model: &Model) -> Vec<RoomAt<'_>> {
             };
             let shape = room::shape_of(model, r).filter(|s| s.outline.len() > 2)?;
             let kind = RoomType::of(&r.occupancy, &e.name);
-            let usage = RoomUse::from(kind);
+            let mut usage = RoomUse::from(kind);
+            if let Some(t) = r.heated_to {
+                usage.temp = t;
+            }
             Some(RoomAt {
                 e,
                 level: r.level,
@@ -401,6 +415,7 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             .find(|x| x.level == level && x.e.id != not && polygon::contains(&x.shape.outline, p))
     };
     let mut out = BuildingLoss::default();
+    let mut airs: Vec<(usize, usize, f64, f64, f64, f64, f64)> = vec![];
     let north = model.project_info().map_or(0.0, |(_, p)| p.true_north);
     // (room index, outside perimeter) first, for B′
     let outside_len = |r: &RoomAt| -> f64 {
@@ -632,19 +647,25 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                 None => miss(Missing::NoRoofOrCeiling),
             }
         }
-        // ventilation: the larger of infiltration and the least change
-        let v_min = (r
-            .usage
-            .ach
-            .unwrap_or(if r.usage.flow.is_some() { 0.0 } else { 0.5 })
-            * volume)
-            .max(r.usage.flow.unwrap_or(0.0));
+        // ventilation after all rooms are known (the air the fans take
+        // out comes in through the whole envelope)
         let e = shield_e(facade_dirs.len(), o.shielding);
         let eps = height_eps(elev(r.level) - ground + h / 2.0);
         let v_inf = 2.0 * volume * o.n50 * e * eps;
+        // A_env,i: the room's envelope to the outside air (6.3.3.6)
+        let a_env: f64 = items
+            .iter()
+            .filter(|x| {
+                matches!(
+                    x.kind,
+                    "Outside wall" | "Window" | "Outside door" | "Ceiling" | "Roof"
+                )
+            })
+            .map(|x| x.area)
+            .sum();
         let phi_t: f64 = items.iter().map(|x| x.phi).sum();
-        let phi_v = 0.34 * v_min.max(v_inf) * dt;
-        out.phi += phi_t + phi_v;
+        airs.push((out.rooms.len(), k, volume, v_inf, a_env, dt, ti));
+        out.phi += phi_t;
         out.area += area;
         out.rooms.push(RoomLoss {
             id: r.e.id,
@@ -657,13 +678,41 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             volume,
             items,
             phi_t,
-            phi_v,
-            phi: phi_t + phi_v,
-            v_min,
+            phi_v: 0.0,
+            phi: phi_t,
+            v_min: 0.0,
             v_inf,
+            v_transfer: 0.0,
+            t_transfer: None,
             facades: facade_dirs.len(),
             missing,
         });
+    }
+    // the fans' extract air q_v,exh,z comes in through the envelope and is
+    // shared out by the rooms' envelope areas (STN EN 12831-1 (24), (19))
+    let q_exh_z: f64 = if o.exhaust_fans {
+        airs.iter().map(|a| q_exh_of(&rooms[a.1], true)).sum()
+    } else {
+        0.0
+    };
+    let a_env_z: f64 = airs.iter().map(|a| a.4).sum();
+    for (i, k, volume, v_inf, a_env, dt, ti) in airs {
+        let q_env = if a_env_z > 1e-9 {
+            v_inf + q_exh_z * a_env / a_env_z
+        } else {
+            v_inf
+        };
+        let (v_min, v_out, v_transfer, t_transfer) =
+            air_of(model, &rooms, k, volume, q_env, o.exhaust_fans);
+        let phi_v = 0.34 * (v_out * dt + v_transfer * (ti - t_transfer.unwrap_or(ti)));
+        let x = &mut out.rooms[i];
+        x.phi_v = phi_v;
+        x.phi += phi_v;
+        x.v_min = v_min;
+        x.v_inf = q_env;
+        x.v_transfer = v_transfer;
+        x.t_transfer = t_transfer;
+        out.phi += phi_v;
     }
     out.rooms.sort_by(|a, b| a.number.cmp(&b.number));
     out
@@ -791,6 +840,111 @@ pub(crate) fn wall_of(
     }
 }
 
+/// q_v,exh,i of a room, m³/h: the extract flow of a room its type takes
+/// air out of (bathroom, WC, kitchen, laundry), when the house has fans.
+pub(crate) fn q_exh_of(r: &RoomAt, fans: bool) -> f64 {
+    if fans && r.kind.needs().exhaust {
+        r.usage.flow.unwrap_or(0.0)
+    } else {
+        0.0
+    }
+}
+
+/// The air of room `k`, m³/h, by STN EN 12831-1 6.3.3.3: what it needs
+/// (the larger of its least air change and its extract flow, for the air
+/// balance), what is heated from outside, what comes through its door
+/// from the heated rooms next to it and their (lowest) temperature.
+/// `q_env` is the room's share of the air coming in through the envelope
+/// (q_v,env,i, formula 18). With `fans` a room with an extract flow has
+/// q_v,techn,i = q_v,exh,i (23) and its air is made up by transfer air
+/// q_v,transfer,ij = q_v,exh,i (15), heated from the neighbours'
+/// temperature; from outside only max(q_v,env,i; q_v,min,i − q_v,techn,i).
+/// Without fans max(q_v,env,i; q_v,min,i) (14). With no door to a heated
+/// room the transfer air is taken as outside air.
+pub(crate) fn air_of(
+    model: &Model,
+    rooms: &[RoomAt],
+    k: usize,
+    volume: f64,
+    q_env: f64,
+    fans: bool,
+) -> (f64, f64, f64, Option<f64>) {
+    let r = &rooms[k];
+    // q_v,min,i = n_min,i·V_i (6.3.3.5)
+    let q_min = r
+        .usage
+        .ach
+        .unwrap_or(if r.usage.flow.is_some() { 0.0 } else { 0.5 })
+        * volume;
+    let need = q_min.max(r.usage.flow.unwrap_or(0.0));
+    let q_exh = q_exh_of(r, fans);
+    if q_exh <= 1e-9 {
+        // no fan: max(q_v,env,i; q_v,min,i) from outside (formula 14/15)
+        return (need, q_env.max(q_min), 0.0, None);
+    }
+    // a fan: q_v,techn,i = q_v,exh,i (23), the air it takes out comes in
+    // through the door as q_v,transfer,ij = q_v,exh,i; from outside only
+    // max(q_v,env,i; q_v,min,i − q_v,techn,i) (15)
+    let outside = q_env.max(q_min - q_exh);
+    match door_temp(model, rooms, k) {
+        Some(t) => (need, outside, q_exh, Some(t.min(r.ti))),
+        // no door to a heated room: the air is taken as outside air
+        None => (need, outside + q_exh, 0.0, None),
+    }
+}
+
+/// The lowest temperature of the heated rooms room `k`'s doors open to,
+/// or it lies open to (an edge with no wall).
+fn door_temp(model: &Model, rooms: &[RoomAt], k: usize) -> Option<f64> {
+    let r = &rooms[k];
+    let n = r.shape.outline.len();
+    let mut best: Option<f64> = None;
+    let room_past = |p: DVec2| {
+        rooms
+            .iter()
+            .enumerate()
+            .find(|(j, x)| *j != k && x.level == r.level && polygon::contains(&x.shape.outline, p))
+            .map(|(_, x)| x.ti)
+    };
+    for i in 0..n {
+        let (a, b) = (r.shape.outline[i], r.shape.outline[(i + 1) % n]);
+        let len = a.distance(b);
+        if len < 1e-6 {
+            continue;
+        }
+        let d = (b - a) / len;
+        let Some((we, w)) = wall_of(model, r.shape.bounded_by.get(i).copied().flatten()) else {
+            // no wall: open to the room past it (a kitchen to the living
+            // room, by a room separator)
+            if let Some(t) = room_past((a + b) / 2.0 + DVec2::new(d.y, -d.x) * 0.05) {
+                best = Some(best.map_or(t, |m: f64| m.min(t)));
+            }
+            continue;
+        };
+        if w.length() < 1e-6 {
+            continue;
+        }
+        for e in model.dependents(we.id) {
+            let Some(ElementKind::Opening(o)) = model.get(e).map(|x| &x.kind) else {
+                continue;
+            };
+            if o.kind != creabim_core::OpeningKind::Door {
+                continue;
+            }
+            let c = w.start + w.direction() * (o.offset + o.width / 2.0);
+            let t = (c - a).dot(d);
+            if t < -1e-6 || t > len + 1e-6 || (c - a).perp_dot(d).abs() > w.thickness + 0.05 {
+                continue;
+            }
+            let p = a + d * t + DVec2::new(d.y, -d.x) * (w.thickness + 0.05);
+            if let Some(t) = room_past(p) {
+                best = Some(best.map_or(t, |m: f64| m.min(t)));
+            }
+        }
+    }
+    best
+}
+
 /// A point past the wall an edge `a`–`b` of a room runs along (the
 /// outline is counter-clockwise, so out is to the right).
 /// Where the direction `n` of the drawing points: degrees clockwise
@@ -870,6 +1024,42 @@ mod tests {
 
     fn house() -> Model {
         test_house()
+    }
+
+    #[test]
+    fn the_fans_air_comes_in_through_the_envelope() {
+        let m = house();
+        let off = building(
+            &m,
+            &Opts {
+                exhaust_fans: false,
+                ..Opts::default()
+            },
+        );
+        let on = building(
+            &m,
+            &Opts {
+                exhaust_fans: true,
+                ..Opts::default()
+            },
+        );
+        // without fans the bathroom has max(q_v,env,i; q_v,min,i) (14)
+        let bath = |b: &BuildingLoss| b.rooms.iter().find(|r| r.number == "1.01").unwrap().clone();
+        let (b0, b1) = (bath(&off), bath(&on));
+        let q_min = 0.5 * b0.volume;
+        assert!((b0.phi_v - 0.34 * b0.v_inf.max(q_min) * (24.0 + 11.0)).abs() < 1e-9);
+        // with them their 90 m³/h is shared out by the envelope (24, 19)
+        let sum = |b: &BuildingLoss| b.rooms.iter().map(|r| r.v_inf).sum::<f64>();
+        assert!((sum(&on) - sum(&off) - 90.0).abs() < 1e-9);
+        for (r0, r1) in off.rooms.iter().zip(&on.rooms) {
+            assert!(r1.v_inf > r0.v_inf);
+        }
+        // its door opens to the living room (20 °C): 90 m³/h transfer air
+        // (15), from outside only max(q_v,env,i; q_v,min,i − q_v,exh,i)
+        assert_eq!((b1.v_transfer, b1.t_transfer), (90.0, Some(20.0)));
+        let out = b1.v_inf.max(q_min - 90.0);
+        let phi = 0.34 * (out * (24.0 + 11.0) + 90.0 * (24.0 - 20.0));
+        assert!((b1.phi_v - phi).abs() < 1e-9);
     }
 
     #[test]

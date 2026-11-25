@@ -2510,6 +2510,11 @@ pub struct View {
     /// plans (George 2026-11-23).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub structural: bool,
+    /// A structural section already given its marks (P1, V1 over its
+    /// lintels and ring beams) and spot levels, once; after that they are
+    /// the user's to move or delete (George 2026-11-24).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub structural_marked: bool,
     /// A legend for the site plan: only the utility networks.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub site_legend: bool,
@@ -3044,6 +3049,7 @@ impl View {
             coordination: false,
             masonry: false,
             structural: false,
+            structural_marked: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
@@ -3090,6 +3096,7 @@ impl View {
             coordination: false,
             masonry: false,
             structural: false,
+            structural_marked: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
@@ -3133,6 +3140,7 @@ impl View {
             coordination: false,
             masonry: false,
             structural: false,
+            structural_marked: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
@@ -3177,6 +3185,7 @@ impl View {
             coordination: false,
             masonry: false,
             structural: false,
+            structural_marked: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),
@@ -3226,6 +3235,7 @@ impl View {
             coordination: false,
             masonry: false,
             structural: false,
+            structural_marked: false,
             site_legend: false,
             of_level: None,
             column_widths: BTreeMap::new(),

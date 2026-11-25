@@ -9,10 +9,11 @@
 //!   (θi − θe) (formula 7, 6.3.2.5), thermal bridges left out;
 //! - to the ground, H = f_θann·Σ A·U_equiv·f_ig·f_GW (formula 8), U_equiv
 //!   by annex E from B′ (E.2) and the floor's depth;
-//! - by the air (6.3.3, a zone of the whole building with no mechanical
-//!   ventilation): the envelope's leakage q_env,50 = n50·V/A_env shared
-//!   out by the rooms' envelope areas, at least the room's least air
-//!   change.
+//! - by the air (6.3.3, a zone of the whole building, no supply air):
+//!   the envelope's leakage q_env,50 = n50·V/A_env and, with extract
+//!   fans, their air q_v,exh,z (24), with f_e,z (29), shared out by the
+//!   rooms' envelope areas (18, 19); a room with a fan gets its air as
+//!   transfer air through its door ([`crate::heatloss::air_of`], 15).
 //!
 //! Every number of the norm (ΔU_TB of table B.1, f_θann, f_GW, the
 //! constants of table E.1, f_qv,z of table B.8, f_dir, ρ·c_p) is read
@@ -34,7 +35,8 @@ use glam::DVec2;
 /// `du` (W/(m²K)).
 pub const TB: &str = "heat_tb";
 /// Single factors: rows `f_theta_ann` (B.2.3), `f_gw_far`, `f_gw_near`
-/// (B.2.3), `rho_cp` (B.2.8, Wh/(m³K)), `f_dir` (B.2.14). Columns `key`,
+/// (B.2.3), `rho_cp` (B.2.8, Wh/(m³K)), `f_dir` (B.2.14), `f_fac_1`,
+/// `f_fac_more` (f_fac,z of table B.9, B.2.15). Columns `key`,
 /// `value`, `text`.
 pub const FACTORS: &str = "heat_factors";
 /// Table E.1: rows `floor` and `basement_wall`, columns `key`, `a`, `b`,
@@ -704,8 +706,8 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             volume: shape.area() * h,
         });
     }
-    // the air of the zone (6.3.3.3 with no mechanical ventilation, no
-    // air terminal devices, no large openings: q_v,env,z = q_v,inf-add,z)
+    // the air of the zone (6.3.3.3: no supply air, no air terminal
+    // devices, no large openings)
     let a_env_z: f64 = parts.iter().map(|p| p.a_env).sum();
     let v_z: f64 = parts.iter().map(|p| p.volume).sum();
     let many = {
@@ -731,20 +733,44 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
     } else {
         0.0
     };
-    let q_env_z = fqv.map(|f| q_env50 * a_env_z * f);
-    for (r, mut p) in rooms.iter().zip(parts) {
+    // the fans' extract air, unbalanced (no supply): q_v,exh,z
+    let q_exh_z: f64 = if o.exhaust_fans {
+        rooms
+            .iter()
+            .map(|r| crate::heatloss::q_exh_of(r, true))
+            .sum()
+    } else {
+        0.0
+    };
+    let leak50 = q_env50 * a_env_z;
+    // f_e,z (29): 1 when nothing is taken out unbalanced; f_fac,z of
+    // table B.9 by the exposed façades
+    let f_e = if q_exh_z > 1e-9 && leak50 > 1e-9 {
+        match (
+            factor(&tables, if many { "f_fac_more" } else { "f_fac_1" }),
+            fqv,
+        ) {
+            (Some(ff), Some(fq)) => Some(1.0 / (1.0 + ff / fq * (q_exh_z / leak50).powi(2))),
+            _ => None,
+        }
+    } else {
+        Some(1.0)
+    };
+    // q_v,inf-add,z (28) and q_v,env,z (24)
+    let q_add_z = fqv.zip(f_e).map(|(f, fe)| leak50 * f * fe);
+    let q_env_z = q_add_z.map(|a| q_exh_z + a);
+    for (k, (r, mut p)) in rooms.iter().zip(parts).enumerate() {
         let ElementKind::Room(rm) = &r.e.kind else {
             continue;
         };
         let dt = r.ti - o.te;
-        let v_min = (r
-            .usage
-            .ach
-            .unwrap_or(if r.usage.flow.is_some() { 0.0 } else { 0.5 })
-            * p.volume)
-            .max(r.usage.flow.unwrap_or(0.0));
-        let v_inf = match (q_env_z, f_dir) {
-            (Some(q), Some(fd)) if a_env_z > 1e-6 => (q * p.a_env / a_env_z * fd).min(q),
+        // q_v,env,i (18) with q_v,leak+ATD,i = q_v,env,z·A_env,i/A_env,z (19)
+        let v_inf = match (q_env_z, q_add_z, f_dir) {
+            (Some(q), Some(add), Some(fd)) if a_env_z > 1e-6 && q > 1e-9 => {
+                let leak = q * p.a_env / a_env_z;
+                add / q * q.min(leak * fd) + (q - add) / q * leak
+            }
+            (Some(_), Some(_), Some(_)) => 0.0,
             _ => {
                 if !p.missing.contains(&Missing::NormTable) {
                     p.missing.push(Missing::NormTable);
@@ -752,9 +778,11 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                 0.0
             }
         };
+        let (v_min, v_out, v_transfer, t_transfer) =
+            crate::heatloss::air_of(model, &rooms, k, p.volume, v_inf, o.exhaust_fans);
         let phi_t: f64 = p.items.iter().map(|x| x.phi).sum();
         let phi_v = match rho_cp {
-            Some(c) => c * v_min.max(v_inf) * dt,
+            Some(c) => c * (v_out * dt + v_transfer * (r.ti - t_transfer.unwrap_or(r.ti))),
             None => {
                 if !p.missing.contains(&Missing::NormTable) {
                     p.missing.push(Missing::NormTable);
@@ -780,6 +808,8 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             phi: phi_t + phi_v,
             v_min,
             v_inf,
+            v_transfer,
+            t_transfer,
             facades: p.facades.len(),
             missing: p.missing,
         });
@@ -809,7 +839,7 @@ mod tests {
     fn test_tables() -> Vec<ParamTable> {
         fireparams::parse(
             "#table heat_tb\n#columns key\tcriteria\tdu\nA\tfirst\t0,01\nB\tsecond\t0,02\n\
-             #table heat_factors\n#columns key\tvalue\ttext\nf_theta_ann\t1,1\t\nf_gw_far\t1\t\nf_gw_near\t1,2\t\nrho_cp\t0,3\t\nf_dir\t3\t\n\
+             #table heat_factors\n#columns key\tvalue\ttext\nf_theta_ann\t1,1\t\nf_gw_far\t1\t\nf_gw_near\t1,2\t\nrho_cp\t0,3\t\nf_dir\t3\t\nf_fac_1\t10\t\nf_fac_more\t6\t\n\
              #table heat_ground\n#columns key\ta\tb\tc1\tc2\tc3\tn1\tn2\tn3\td\nfloor\t1\t0\t0\t0\t0\t1\t0\t-1\t0\n\
              #table heat_f_qv\n#columns key\tfacades\th_from\th_to\tshielding\tdh5\tdh10\tdh20\tdh_more\n\
              one\t1\t\t\t\t0,1\t0,2\t0,3\t0,4\nmore\t2+\t0\t50\tmoderate\t0,5\t0,6\t0,7\t0,8\nhigh\t2+\t50\t\t\t0,9\t0,9\t0,9\t0,9\n",
@@ -907,6 +937,58 @@ mod tests {
             .find(|i| i.kind == "Floor on the ground")
             .unwrap();
         assert!(gn.f > g.f);
+    }
+
+    #[test]
+    fn the_fans_air_by_formulas_24_28_29() {
+        let mut doc = creabim_core::Document::from_model(heatloss::test_house());
+        let mut info = doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        // f_dir = 1: the rooms' shares add up to the zone's air
+        let mut t = test_tables();
+        for x in t.iter_mut().filter(|x| x.id == FACTORS) {
+            *x = fireparams::parse(
+                "#table heat_factors\n#columns key\tvalue\ttext\nf_theta_ann\t1,1\t\nf_gw_far\t1\t\nrho_cp\t0,3\t\nf_dir\t1\t\nf_fac_1\t10\t\nf_fac_more\t6\t\n",
+            )
+            .remove(0);
+        }
+        info.fire_params = t;
+        let tx = creabim_core::set_project(doc.model(), info);
+        doc.commit(tx).unwrap();
+        let model = doc.model().clone();
+        let off = building(
+            &model,
+            &Opts {
+                exhaust_fans: false,
+                ..detailed()
+            },
+        );
+        let on = building(
+            &model,
+            &Opts {
+                exhaust_fans: true,
+                ..detailed()
+            },
+        );
+        let sum = |b: &BuildingLoss| b.rooms.iter().map(|r| r.v_inf).sum::<f64>();
+        // q_v,inf-add,z with f_e = 1 is the air without fans
+        let add0 = sum(&off);
+        let leak50 = detailed().n50 * off.rooms.iter().map(|r| r.volume).sum::<f64>();
+        let fqv = add0 / leak50;
+        let fe = 1.0 / (1.0 + 6.0 / fqv * (90.0 / leak50).powi(2));
+        assert!(
+            (sum(&on) - (90.0 + add0 * fe)).abs() < 1e-6,
+            "{} {}",
+            sum(&on),
+            add0
+        );
+        assert!(on
+            .rooms
+            .iter()
+            .all(|r| !r.missing.contains(&Missing::NormTable)));
     }
 
     #[test]

@@ -155,8 +155,11 @@ pub fn finishes(model: &Model, e: &Element, r: &Room) -> Finishes {
             f.walls = names.join(", ");
         }
     }
-    // tiling goes with the walls' finish, with its height and area
+    // tiling goes with the walls' finish, with its height and area; the
+    // same tiling (name and heights) drawn in several stretches is one
+    // item with the stretches' areas summed
     if let Some(s) = &shape {
+        let mut items: Vec<(String, i64, i64, f64)> = vec![];
         for t in r.tilings() {
             let name = if t.name.trim().is_empty() {
                 tr("Tiling")
@@ -164,20 +167,25 @@ pub fn finishes(model: &Model, e: &Element, r: &Room) -> Finishes {
                 t.name.trim().to_string()
             };
             let area = creabim_core::room::tiling_area_of(model, s, t);
-            let tiles = if t.bottom.abs() < 1e-9 {
+            let bottom = (t.bottom * 1000.0).round() as i64;
+            let top = (t.top() * 1000.0).round() as i64;
+            match items
+                .iter_mut()
+                .find(|i| i.0 == name && i.1 == bottom && i.2 == top)
+            {
+                Some(i) => i.3 += area,
+                None => items.push((name, bottom, top, area)),
+            }
+        }
+        for (name, bottom, top, area) in items {
+            let tiles = if bottom == 0 {
                 format!(
-                    "{name} {} {:.0} mm ({})",
+                    "{name} {} {top} mm ({})",
                     tr("up to"),
-                    t.height * 1000.0,
                     model.units().area(area)
                 )
             } else {
-                format!(
-                    "{name} {:.0}–{:.0} mm ({})",
-                    t.bottom * 1000.0,
-                    t.top() * 1000.0,
-                    model.units().area(area)
-                )
+                format!("{name} {bottom}–{top} mm ({})", model.units().area(area))
             };
             f.walls = if f.walls.is_empty() {
                 tiles
@@ -698,6 +706,51 @@ mod tests {
         assert!(less < runs - 0.1);
         let f = finishes(&m, &tiled, &r);
         assert!(f.walls.contains("Ceramic tiles up to 2000 mm ("), "{f:?}");
+    }
+
+    /// The same tiling (name and heights) in several stretches is one
+    /// item of the legend with the stretches' areas summed; another
+    /// height stays its own item.
+    #[test]
+    fn the_same_tiling_in_stretches_is_one_item_with_the_summed_area() {
+        let m = creabim_core::starter::starter_house();
+        let (e, shape) = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Room(_)))
+            .filter_map(|e| Some((e, creabim_core::room::shape(&m, e.id)?)))
+            .max_by(|a, b| a.1.perimeter().total_cmp(&b.1.perimeter()))
+            .expect("a room");
+        let o = &shape.outline;
+        let part = |i: usize, bottom: f64| creabim_core::room::Tiling {
+            height: 0.6,
+            bottom,
+            name: "Obklad".into(),
+            span: Some([
+                o[i] + (o[i + 1] - o[i]) * 0.2,
+                o[i] + (o[i + 1] - o[i]) * 0.8,
+            ]),
+            ..Default::default()
+        };
+        let mut tiled = e.clone();
+        let ElementKind::Room(r) = &mut tiled.kind else {
+            unreachable!()
+        };
+        r.tiling = None;
+        r.wall_finish = "Omietka".into();
+        r.tiling_parts = vec![part(0, 0.9), part(1, 0.9), part(2, 1.2)];
+        let r = r.clone();
+        let one =
+            |t: &creabim_core::room::Tiling| creabim_core::room::tiling_area_of(&m, &shape, t);
+        let sum = one(&r.tiling_parts[0]) + one(&r.tiling_parts[1]);
+        assert!(sum > 0.0);
+        let f = finishes(&m, &tiled, &r);
+        assert_eq!(f.walls.matches("Obklad 900–1500 mm").count(), 1, "{f:?}");
+        assert!(
+            f.walls
+                .contains(&format!("Obklad 900–1500 mm ({})", m.units().area(sum))),
+            "{f:?}"
+        );
+        assert_eq!(f.walls.matches("Obklad 1200–1800 mm").count(), 1, "{f:?}");
     }
 }
 

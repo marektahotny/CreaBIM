@@ -9,9 +9,10 @@
 //! by raising the smaller side. Every duct is routed from its room
 //! through the doors to the unit's room, so no duct is led through a
 //! wall, a lintel or a beam (the routes check still looks). Pressure
-//! loss is the ducts' friction (Darcy–Weisbach, Swamee–Jain) and their
-//! bends; the plate valves', boxes' and the unit's own figures come from
-//! the catalogue where it gives them.
+//! loss of the GP ducts is read from ATREA's graph (element catalogue
+//! A2328 26/06), of the Spiro mains from their friction (Darcy–Weisbach,
+//! Swamee–Jain), plus their bends; the unit's figures come from its
+//! technical sheet.
 //!
 //! The bill of materials ([`bill`]) is read from the model, so whatever
 //! is moved, added or deleted by hand is priced as it is drawn.
@@ -330,6 +331,10 @@ pub struct Design {
     /// The unit's place and turn (back to the wall), and the boxes'.
     pub unit_at: Option<(DVec2, f64)>,
     pub boxes: [(DVec2, f64); 2],
+    /// Air velocity in the unit's mains, m/s.
+    pub main_velocity: f64,
+    /// Length of the mains on the supply and the extract side, m.
+    pub main_length: [f64; 2],
     /// The outer wall the outdoor and exhaust ducts reach.
     pub outside: Vec<DVec2>,
     /// The outer wall the unit stands at, its ducts through it.
@@ -555,6 +560,37 @@ fn path_length(p: &[DVec2]) -> f64 {
     p.windows(2).map(|w| w[0].distance(w[1])).sum()
 }
 
+/// ATREA GP Ø90/75: pressure loss against flow, read from the graph
+/// "Green Pipe" of the ATREA element catalogue A2328 26/06, p. 53
+/// (m³/h, Pa; taken as per metre of duct, the graph gives no length).
+const GP_LOSS: [(f64, f64); 11] = [
+    (0.0, 0.0),
+    (5.0, 0.20),
+    (10.0, 0.42),
+    (15.0, 0.68),
+    (20.0, 0.99),
+    (25.0, 1.42),
+    (30.0, 2.02),
+    (35.0, 2.74),
+    (40.0, 3.57),
+    (45.0, 4.41),
+    (50.0, 5.17),
+];
+
+/// Velocity and pressure loss per metre of an ATREA GP duct at `q` m³/h,
+/// from the maker's graph (linear between its points; beyond 50 m³/h,
+/// which ATREA does not allow, the last step goes on).
+fn gp_friction(q: f64) -> (f64, f64) {
+    let a = std::f64::consts::PI * 0.075 * 0.075 / 4.0;
+    let v = q / 3600.0 / a;
+    let k = GP_LOSS
+        .windows(2)
+        .position(|w| q <= w[1].0)
+        .unwrap_or(GP_LOSS.len() - 2);
+    let (p, n) = (GP_LOSS[k], GP_LOSS[k + 1]);
+    (v, p.1 + (n.1 - p.1) * (q - p.0) / (n.0 - p.0))
+}
+
 /// Pressure lost per metre in a round duct, Pa/m.
 fn friction(q_m3h: f64, d: f64, rough: f64) -> (f64, f64) {
     let a = std::f64::consts::PI * d * d / 4.0;
@@ -571,8 +607,45 @@ fn friction(q_m3h: f64, d: f64, rough: f64) -> (f64, f64) {
     (v, lambda / d * 1.2 * v * v / 2.0)
 }
 
+/// A number with one decimal and a decimal comma, for Slovak text.
+fn comma(v: f64) -> String {
+    format!("{v:.1}").replace('.', ",")
+}
+
 fn ceil_to(v: f64, step: f64) -> f64 {
     (v / step).ceil() * step
+}
+
+/// Share `total` among rooms: each room first gets its need rounded up
+/// to a whole `step`, then the steps left to reach `total` go to the
+/// rooms in proportion to their needs (largest remainders first), so
+/// every room gets at least its need and the shares sum to `total`.
+fn apportion(needs: &[f64], total: f64, step: f64) -> Vec<f64> {
+    let base: Vec<i64> = needs
+        .iter()
+        .map(|n| (n / step - 1e-9).ceil().max(0.0) as i64)
+        .collect();
+    let sum: f64 = needs.iter().sum();
+    let mut left = (total / step).round() as i64 - base.iter().sum::<i64>();
+    let mut got = base.clone();
+    if left > 0 && sum > 0.0 {
+        let extra = left as f64;
+        let exact: Vec<f64> = needs.iter().map(|n| n / sum * extra).collect();
+        for (k, e) in exact.iter().enumerate() {
+            got[k] += e.floor() as i64;
+        }
+        left -= exact.iter().map(|e| e.floor() as i64).sum::<i64>();
+        let mut order: Vec<usize> = (0..needs.len()).collect();
+        order.sort_by(|&a, &b| {
+            (exact[b] - exact[b].floor())
+                .total_cmp(&(exact[a] - exact[a].floor()))
+                .then(needs[b].total_cmp(&needs[a]))
+        });
+        for &k in order.iter().take(left.max(0) as usize) {
+            got[k] += 1;
+        }
+    }
+    got.into_iter().map(|g| g as f64 * step).collect()
 }
 
 /// Decree 259/2008 Z. z., annex 2, table 4: the least air changes of
@@ -687,6 +760,14 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
         return d;
     }
     let ds = doors(model, level, &geo);
+    for g in &geo {
+        if g.height > 3.0 + 1e-6 && g.kind.needs().ach.unwrap_or(0.0) > 0.0 {
+            d.warnings.push(format!(
+                "{} {}: svetlá výška {:.2} m je nad 3 m, pre ktoré STN EN 12831-1 tab. B.7 najmenšiu výmenu vzduchu neodporúča: prietok overiť inak.",
+                g.number, g.name, g.height
+            ));
+        }
+    }
 
     // what each room gets
     for (i, g) in geo.iter().enumerate() {
@@ -734,19 +815,24 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
         .map(|r| r.need)
         .sum();
 
-    // the balance: the smaller side raised to the larger
-    let q = d.need_supply.max(d.need_extract);
-    for r in &mut d.rooms {
-        let side = match r.role {
-            Role::Supply => d.need_supply,
-            Role::Extract => d.need_extract,
-            _ => continue,
-        };
-        r.design = if side > 0.0 {
-            ceil_to(r.need * q / side, 5.0)
-        } else {
-            0.0
-        };
+    // the balance: the smaller side raised to the larger, both sides
+    // summing to the same flow in steps of 5 m³/h
+    let base = |role| -> f64 {
+        d.rooms
+            .iter()
+            .filter(|r| r.role == role)
+            .map(|r| ceil_to(r.need - 1e-9, 5.0).max(0.0))
+            .sum()
+    };
+    let q = base(Role::Supply).max(base(Role::Extract));
+    for role in [Role::Supply, Role::Extract] {
+        let idx: Vec<usize> = (0..d.rooms.len())
+            .filter(|&i| d.rooms[i].role == role)
+            .collect();
+        let needs: Vec<f64> = idx.iter().map(|&i| d.rooms[i].need).collect();
+        for (k, v) in apportion(&needs, q, 5.0).into_iter().enumerate() {
+            d.rooms[idx[k]].design = v;
+        }
     }
     let sum = |role| -> f64 {
         d.rooms
@@ -866,12 +952,14 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             continue;
         }
         let ducts = (r.design / o.per_duct).ceil().max(1.0) as u32;
-        let terms = ducts.div_ceil(2) as usize;
+        // ATREA: each GP run ends at its own plate valve Ø100 (through
+        // the GP connection set on its DN100 collar)
+        let terms = ducts as usize;
         r.ducts = ducts;
         let places = terminal_places(&geo[i], &door_pts(i), terms);
         let mut left = ducts;
         for p in places {
-            let k = left.min(2);
+            let k = left.min(1);
             left -= k;
             r.terminals.push(Terminal {
                 at: p,
@@ -906,7 +994,6 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 }
             }
         }
-        let rough = crate::pipe_types::by_id("GP").map_or(5e-5, |t| t.roughness_mm / 1000.0);
         for (ri, r) in d.rooms.iter().enumerate() {
             if !matches!(r.role, Role::Supply | Role::Extract) {
                 continue;
@@ -930,7 +1017,8 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             for (ti, t) in r.terminals.iter().enumerate() {
                 for dn in 0..t.ducts {
                     // a duct of its own, a little aside of its neighbours
-                    let off = (dn as f64 - (t.ducts as f64 - 1.0) / 2.0) * 0.1;
+                    let k = r.terminals[..ti].iter().map(|x| x.ducts).sum::<u32>() + dn;
+                    let off = (k as f64 - (r.ducts as f64 - 1.0) / 2.0) * 0.1;
                     let mut pts = vec![t.at];
                     let mut room = ri;
                     for &(_, k) in &chain {
@@ -963,7 +1051,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                     pts.dedup_by(|a, b| a.distance(*b) < 0.02);
                     let length = path_length(&pts) + 2.0 * 0.3;
                     let flow = t.flow / t.ducts as f64;
-                    let (v, rpm) = friction(flow, 0.075, rough);
+                    let (v, rpm) = gp_friction(flow);
                     let bends = pts.len().saturating_sub(2) as u32 + 2;
                     let dyn_p = 1.2 * v * v / 2.0;
                     let dp = rpm * length + o.zeta_bend * bends as f64 * dyn_p;
@@ -992,11 +1080,28 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             for b in d.branches.iter_mut().filter(|b| b.supply == supply) {
                 b.throttle = worst - b.dp;
             }
-            // the main from the unit to its box, and outdoors, Spiro Ø160
+            // the mains as drawn by `apply`: unit to its box (along, then
+            // up or down) and through the outer wall, Spiro of the
+            // unit's spigot; each fan pushes through both of its side's
+            // mains (supply: outdoor air + supply, extract: extract + exhaust)
             let main_q = d.flow;
-            let dm = d.unit.map_or(0.16, |i| cat.units[i].spigot / 1000.0);
-            let (_, rpm) = friction(main_q, dm, 1.5e-4);
-            let main = rpm * 3.0;
+            let u = d.unit.map(|i| &cat.units[i]);
+            let dm = u.map_or(0.16, |u| u.spigot / 1000.0);
+            let uh = u.map_or(z, |u| if u.on_ceiling() { z } else { u.size[2] + 0.15 });
+            let (vm, rpm) = friction(main_q, dm, 1.5e-4);
+            let main_len = match d.unit_at {
+                Some((at, _)) => {
+                    let to_box =
+                        at.distance(d.boxes[if supply { 0 } else { 1 }].0) + (uh - z).abs();
+                    let out = d.outside.first().map_or(0.5, |o| at.distance(*o));
+                    to_box + out
+                }
+                None => 3.0,
+            };
+            // ζ: two bends on the way to the box, one through the wall
+            let main = rpm * main_len + o.zeta_bend * 3.0 * 1.2 * vm * vm / 2.0;
+            d.main_velocity = vm;
+            d.main_length[if supply { 0 } else { 1 }] = main_len;
             if supply {
                 d.dp_supply = worst + main;
             } else {
@@ -1007,7 +1112,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             let worst = d.dp_supply.max(d.dp_extract);
             if d.flow <= u.q_max && worst <= UNIT_PRESSURE_PA {
                 d.warnings.push(format!(
-                    "Jednotka {} dáva {:.0} m³/h pri {:.0} Pa (katalóg): pri {:.0} m³/h má rezervu aspoň {:.0} Pa na straty ventilov, boxov, tlmičov a žalúzií.",
+                    "Jednotka {} dáva {:.0} m³/h pri {:.0} Pa (katalóg): pri {:.0} m³/h má rezervu aspoň {:.0} Pa na straty tanierových ventilov, odbočiek, tlmičov a žalúzií.",
                     u.name, u.q_max, UNIT_PRESSURE_PA, d.flow, UNIT_PRESSURE_PA - worst
                 ));
             } else {
@@ -1018,28 +1123,47 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             }
         }
         d.warnings.push(
-            "Tlakové straty sú trenie a ohyby potrubia: straty tanierových ventilov, boxov, tlmičov a žalúzií doplniť z katalógu výrobcu.".into(),
+            format!("Tlakové straty: potrubie GP podľa grafu ATREA, ohyby GP ζ {} na ohyb (predpoklad: ATREA hodnotu neudáva), hlavné rozvody Spiro trením (Darcy-Weisbach, λ podľa Swameeho-Jaina) Ø{:.0} (prívodná strana {} m, odvodná {} m, {} m/s). Straty tanierových ventilov, odbočiek, tlmičov a žalúzie katalóg ATREA neudáva: doplniť od výrobcu.",
+                comma(o.zeta_bend),
+                d.unit.map_or(160.0, |i| cat.units[i].spigot),
+                comma(d.main_length[0]),
+                comma(d.main_length[1]),
+                comma(d.main_velocity)),
         );
     }
 
-    // the transfer: under the doors of the rooms air is taken from
+    // the transfer: under the doors of the rooms air is blown into (it
+    // leaves them) and of the rooms it is taken from (it comes in); a
+    // door both sides use carries the larger flow
+    let mut by_door: Vec<(ElementId, f64, f64)> = vec![];
     for (i, r) in d.rooms.iter().enumerate() {
-        if r.role != Role::Extract {
+        if !matches!(r.role, Role::Supply | Role::Extract) {
             continue;
         }
         let mine: Vec<&Door> = ds
             .iter()
-            .filter(|x| !x.open && (x.a == Some(i) || x.b == Some(i)))
+            .filter(|x| {
+                !x.open && x.a.is_some() && x.b.is_some() && (x.a == Some(i) || x.b == Some(i))
+            })
             .collect();
-        let share = r.design / mine.len().max(1) as f64;
-        for dr in mine {
-            let gap = share / 3600.0 / o.transfer_v / dr.width.max(0.6) * 1000.0;
-            d.transfers.push(Transfer {
-                door: dr.id,
-                flow: share.round(),
-                gap_mm: gap.ceil(),
-            });
+        if mine.is_empty() {
+            continue;
         }
+        let share = r.design / mine.len() as f64;
+        for dr in mine {
+            match by_door.iter_mut().find(|x| x.0 == dr.id) {
+                Some(x) => x.1 = x.1.max(share),
+                None => by_door.push((dr.id, share, dr.width)),
+            }
+        }
+    }
+    for (door, flow, width) in by_door {
+        let gap = flow / 3600.0 / o.transfer_v / width.max(0.6) * 1000.0;
+        d.transfers.push(Transfer {
+            door,
+            flow: flow.round(),
+            gap_mm: gap.ceil(),
+        });
     }
 
     // room units in the outer walls of the rooms marked so
@@ -1129,6 +1253,11 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             ok: level.map(|l| l <= limits[2] + 1e-9),
             note,
         });
+    }
+    if d.flow > 0.0 {
+        d.warnings.push(
+            "Rozvod podľa ATREA Katalógu prvkov A2328 26/06: potrubie GP Ø90/75 (najviac 50 m³/h na trasu) sa napája spojovacou sadou R316303 na tvarovky DN100 označené GP: na rozdeľovači odbočky OBJ-T 90° z hrdla jednotky na Ø100, v miestnosti tanierový ventil KI/KO Ø100. Strata potrubia GP podľa grafu výrobcu (str. 53, berie sa na 1 m).".into(),
+        );
     }
     d.warnings.push(if residential {
         "Bytová budova: 0,5 1/h podľa STN EN 12831-1 tab. B.7, odvod kuchyňa 100, kúpeľňa 90, WC 50 m³/h (zaužívané hodnoty, vyhláška 259/2008 ich pre byty neuvádza).".into()
@@ -1220,7 +1349,7 @@ fn gp_duct(level: ElementId, system: &str, a: DVec2, b: DVec2, z: f64) -> Pipe {
         end: b.extend(z),
         pipe_type: "GP".into(),
         nominal_mm: 75.0,
-        outer_mm: 95.0,
+        outer_mm: 90.0,
         inner_mm: 75.0,
         height_mm: None,
         insulation_mm: 0.0,
@@ -1614,9 +1743,9 @@ pub fn bill(model: &Model) -> Bill {
     }
     let _ = outdoor;
     lines.extend(line("Rozvody", cat.item("gp75"), (gp * 1.05).ceil()));
-    // terminals: their box by the ducts ending there
-    let (mut t1, mut t2, mut vp, mut vo, mut sil) = (0.0, 0.0, 0.0, 0.0, 0.0);
-    let mut ducts_at_boxes = 0usize;
+    // terminals: a plate valve Ø100 at the end of every GP run, the run
+    // joined at both ends by the GP connection set
+    let (mut vp, mut vo, mut sil) = (0.0, 0.0, 0.0);
     for e in model.iter() {
         let ElementKind::Valve(v) = &e.kind else {
             continue;
@@ -1625,41 +1754,29 @@ pub fn bill(model: &Model) -> Bill {
             continue;
         };
         match v.kind.as_str() {
-            "vyustP" | "vyustO" if p.pipe_type == "GP" => {
-                let end = if v.t < 0.5 { p.start } else { p.end }.truncate();
-                let n = gp_ends.iter().filter(|x| x.distance(end) < 0.2).count();
-                if n >= 2 {
-                    t2 += 1.0;
-                } else {
-                    t1 += 1.0;
-                }
-                if v.kind == "vyustP" {
-                    vp += 1.0;
-                } else {
-                    vo += 1.0;
-                }
-            }
+            "vyustP" if p.pipe_type == "GP" => vp += 1.0,
+            "vyustO" if p.pipe_type == "GP" => vo += 1.0,
             "tlmic" => sil += 1.0,
             _ => {}
         }
     }
-    for (b, _) in &boxes {
-        ducts_at_boxes += gp_ends.iter().filter(|x| x.distance(*b) < 0.5).count();
-    }
-    lines.extend(line("Koncové prvky", cat.item("tbox1"), t1));
-    lines.extend(line("Koncové prvky", cat.item("tbox2"), t2));
-    lines.extend(line("Koncové prvky", cat.item("ventilP"), vp));
-    lines.extend(line("Koncové prvky", cat.item("ventilO"), vo));
-    let outlets: u32 = boxes
-        .iter()
-        .filter_map(|(_, c)| cat.items.iter().find(|i| i.code == *c))
-        .map(|i| i.outlets)
-        .sum();
-    lines.extend(line(
-        "Rozvody",
-        cat.item("zaslepka"),
-        (outlets as f64 - ducts_at_boxes as f64).max(0.0),
-    ));
+    // the GP runs leaving the manifolds: one branch OBJ-T each, one
+    // run to every plate valve
+    let runs = if boxes.is_empty() { 0.0 } else { vp + vo };
+    let spigot = units
+        .first()
+        .and_then(|(_, c)| cat.units.iter().find(|u| u.code == *c))
+        .map_or(160.0, |u| u.spigot);
+    let branch = match spigot.round() as i64 {
+        125 => "odbocka125",
+        200 => "odbocka200",
+        _ => "odbocka160",
+    };
+    lines.extend(line("Rozvody", cat.item(branch), runs));
+    lines.extend(line("Rozvody", cat.item("kryt"), boxes.len() as f64));
+    lines.extend(line("Rozvody", cat.item("sadaGP"), 2.0 * (vp + vo)));
+    lines.extend(line("Koncové prvky", cat.item("ventilKI"), vp));
+    lines.extend(line("Koncové prvky", cat.item("ventilKO"), vo));
     lines.extend(line("Rozvody", cat.item("spiro160"), (spiro * 1.05).ceil()));
     lines.extend(line(
         "Rozvody",
@@ -1702,10 +1819,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn shares_meet_every_need_and_sum_to_the_total() {
+        // 30, 12, 38 m³/h of supply raised to 150 of extract
+        let v = apportion(&[30.0, 12.0, 38.0], 150.0, 5.0);
+        assert_eq!(v.iter().sum::<f64>(), 150.0);
+        assert!(v[0] >= 30.0 && v[1] >= 12.0 && v[2] >= 38.0);
+        assert_eq!(v, vec![55.0, 25.0, 70.0]);
+        // the larger side: each need rounded up, nothing more
+        assert_eq!(apportion(&[100.0, 50.0], 150.0, 5.0), vec![100.0, 50.0]);
+        assert_eq!(apportion(&[52.0, 90.0], 145.0, 5.0), vec![55.0, 90.0]);
+    }
+
+    #[test]
     fn the_catalogue_reads() {
         let c = catalogue();
         assert!(c.units.len() >= 3 && !c.room_units.is_empty());
-        assert!(c.item("gp75").is_some() && c.item("tbox2").is_some());
+        assert!(c.item("gp75").is_some() && c.item("sadaGP").is_some());
         assert!(crate::pipe_types::by_id("GP").is_some());
     }
 
@@ -1714,6 +1843,15 @@ mod tests {
         let (v, r) = friction(25.0, 0.075, 5e-5);
         assert!((v - 1.57).abs() < 0.01, "{v}");
         assert!(r > 0.3 && r < 1.0, "{r}");
+    }
+
+    #[test]
+    fn gp_loss_follows_the_makers_graph() {
+        // ATREA catalogue A2328 26/06, p. 53: 1.42 Pa at 25, 5.17 at 50 m³/h
+        let (v, r) = gp_friction(25.0);
+        assert!((v - 1.57).abs() < 0.01 && (r - 1.42).abs() < 1e-9);
+        assert!((gp_friction(50.0).1 - 5.17).abs() < 1e-9);
+        assert!((gp_friction(27.5).1 - 1.72).abs() < 1e-9);
     }
 
     #[test]
@@ -1783,6 +1921,23 @@ mod tests {
                 .map(|r| r.design)
                 .sum();
             assert!(s >= d.need_supply && e >= d.need_extract);
+            // balanced exactly: both sides carry the unit's flow
+            assert_eq!(s, e);
+            assert_eq!(s, d.flow);
+            for r in d
+                .rooms
+                .iter()
+                .filter(|r| matches!(r.role, Role::Supply | Role::Extract))
+            {
+                assert!(
+                    r.design + 1e-9 >= r.need,
+                    "{} gets less than it needs",
+                    r.name
+                );
+                assert_eq!(r.design % 5.0, 0.0);
+            }
+            // every branch within ATREA's 50 m³/h per GP run
+            assert!(d.branches.iter().all(|b| b.flow <= 50.0 + 1e-9));
         }
     }
 

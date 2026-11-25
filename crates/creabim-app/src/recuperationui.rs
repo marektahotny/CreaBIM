@@ -132,10 +132,22 @@ impl CreaBimApp {
                         Col::text("Decentral"),
                     ];
                     let total = |row: &mut sheet::Row| {
-                        row.text(t("Total"));
+                        // per side: supply and extract are separate sums
+                        let side = |role: Role, f: &dyn Fn(&rec::RoomAir) -> f64| -> f64 {
+                            d.rooms.iter().filter(|r| r.role == role).map(f).sum()
+                        };
+                        row.text(t("Total supply / extract"));
                         row.empty();
-                        row.text(num(d.rooms.iter().map(|r| r.need).sum::<f64>(), 0));
-                        row.text(num(d.rooms.iter().map(|r| r.design).sum::<f64>(), 0));
+                        row.text(format!(
+                            "{} / {}",
+                            num(side(Role::Supply, &|r| r.need), 0),
+                            num(side(Role::Extract, &|r| r.need), 0)
+                        ));
+                        row.text(format!(
+                            "{} / {}",
+                            num(side(Role::Supply, &|r| r.design), 0),
+                            num(side(Role::Extract, &|r| r.design), 0)
+                        ));
                         row.text(d.rooms.iter().map(|r| r.ducts as usize).sum::<usize>().to_string());
                         row.text(d.rooms.iter().map(|r| r.terminals.len()).sum::<usize>().to_string());
                     };
@@ -237,6 +249,11 @@ impl CreaBimApp {
                                         select = Some(tr.door);
                                     }
                                 }
+                                ui.weak(format!(
+                                    "{} {} m/s",
+                                    t("Undercut for an air speed of"),
+                                    num(o.transfer_v, 1)
+                                ));
                             });
                     }
                     if !d.noise.is_empty() {
@@ -248,7 +265,7 @@ impl CreaBimApp {
                                     Col::text("Room"),
                                     Col::text("Category"),
                                     Col::num("LAmax,p day / evening / night", "dB"),
-                                    Col::num("Level", "dB(A)"),
+                                    Col::num("Sound level", "dB(A)"),
                                     Col::text(""),
                                 ];
                                 sheet::show(ui, "vzt.rec.noiseg", &cols, d.noise.len(), 400.0, |row, i| {

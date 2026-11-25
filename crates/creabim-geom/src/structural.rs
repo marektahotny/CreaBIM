@@ -82,7 +82,23 @@ pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
                 .fold(DVec2::ZERO, |a, x| a + x)
                 / beams.len() as f64;
             let (side, half_wall) = inside_of(model, first, mid);
-            let at = mid + side * (half_wall + 5.0 * mm);
+            let sh = format!("SH={}", level_text(p.underside));
+            // the mark over its underside, upright on the sheet whichever
+            // way the wall runs, the pair clear of the wall's face on its
+            // inside (George 2026-11-24: on a wall up the sheet the two
+            // were written over each other), or where it was dragged to
+            let wide = |t: &str, size: f64| t.chars().count() as f64 * size * 0.72;
+            let half = DVec2::new(
+                wide(&p.mark, 2.5).max(wide(&sh, 1.8)) / 2.0,
+                (1.25 + 3.5 + 0.9) / 2.0,
+            ) * mm;
+            let reach = half.x * side.x.abs() + half.y * side.y.abs();
+            let dragged = model.get(ids[0]).and_then(|e| match &e.kind {
+                ElementKind::Beam(b) => b.lintel.as_ref().and_then(|l| l.mark_at),
+                _ => None,
+            });
+            let block = mid + side * (half_wall + 2.5 * mm + reach);
+            let at = block + DVec2::new(0.0, half.y - 1.25 * mm) + dragged.unwrap_or(DVec2::ZERO);
             out.push(PlanItem::Text {
                 id: ids[0],
                 at,
@@ -95,8 +111,8 @@ pub fn plan_marks(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             });
             out.push(PlanItem::Text {
                 id: ids[0],
-                at: at + side * 3.5 * mm,
-                text: format!("SH={}", level_text(p.underside)),
+                at: at - DVec2::new(0.0, 3.5 * mm),
+                text: sh,
                 size: 1.8,
                 align: Anchor::Middle,
                 mm,
@@ -335,6 +351,39 @@ pub fn chains(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
     out
 }
 
+/// The doors and windows of the load-bearing walls of `level`, which the
+/// structural drawing leaves as gaps: each a pick area over its gap, not
+/// drawn, so a click in the gap takes the opening (to put its lintels,
+/// George 2026-11-24).
+pub fn opening_picks(model: &Model, level: ElementId) -> Vec<PlanItem> {
+    let rules = creabim_core::masonry::rules(model);
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        let Some(host) = model.get(o.host) else {
+            continue;
+        };
+        let ElementKind::Wall(w) = &host.kind else {
+            continue;
+        };
+        if w.level != level || w.is_arc() || !structural::draws(model, host, &rules) {
+            continue;
+        }
+        let d = w.direction();
+        let n = d.perp() * (w.thickness / 2.0);
+        let a = w.start + d * o.offset;
+        let b = a + d * o.width;
+        out.push(PlanItem::Room {
+            id: e.id,
+            points: vec![a - n, b - n, b + n, a + n],
+            rgb: None,
+        });
+    }
+    out
+}
+
 /// Keep in a structural plan only what the structural drawing draws
 /// (see [`structural::draws`]): openings stay as the gaps they leave.
 pub fn keep_structure(model: &Model, items: &mut Vec<PlanItem>) {
@@ -353,6 +402,271 @@ pub fn keep_structure(model: &Model, items: &mut Vec<PlanItem>) {
             Some(e) => structural::draws(model, e, &rules),
         })
     });
+}
+
+/// The position beam `id` is listed by: its lintel position (`P1`) or
+/// its ring beam position (`V1`).
+pub fn beam_mark(model: &Model, id: ElementId) -> Option<String> {
+    if let Some(p) = structural::lintel_positions(model)
+        .into_iter()
+        .find(|p| p.groups.iter().any(|g| g.contains(&id)))
+    {
+        return Some(p.mark);
+    }
+    structural::ring_positions(model)
+        .into_iter()
+        .find(|p| p.beams.contains(&id))
+        .map(|p| p.mark)
+}
+
+/// How far above a structural section's highest construction its marks
+/// stand in a row, m (as STA_002 has them over its sections).
+const MARK_ROW: f64 = 0.8;
+/// How far apart marks in that row keep at the least, m.
+const MARK_GAP: f64 = 0.9;
+/// How far from the construction's outer face a spot level's symbol
+/// stands, m.
+const SPOT_OUT: f64 = 1.2;
+
+/// The structural sections not yet marked, each given its marks once:
+/// a P or V mark in a circle on a leader over each lintel and ring beam
+/// it draws, spot levels of the ring beams' top and underside and the
+/// base slab's top on the left outer face, of each lintel's underside and
+/// ±0,000 (George 2026-11-24, as the sections of STA_002). They are
+/// ordinary tags and spot levels: each can be moved, its leader too, or
+/// deleted, and they are not made again.
+pub fn section_marks(model: &Model) -> Option<creabim_core::Transaction> {
+    let mut tx = creabim_core::Transaction::new("Structural section marks");
+    for e in model.iter() {
+        let ElementKind::View(v) = &e.kind else {
+            continue;
+        };
+        if !v.structural || v.structural_marked {
+            continue;
+        }
+        let creabim_core::ViewKind::Section {
+            start,
+            end,
+            depth,
+            cut: true,
+        } = v.kind
+        else {
+            continue;
+        };
+        let frame = crate::section::SectionFrame::new(start, end, depth);
+        for m in marks_of_section(model, e.id, &frame) {
+            tx = tx.insert(m);
+        }
+        let mut after = e.clone();
+        if let ElementKind::View(x) = &mut after.kind {
+            x.structural_marked = true;
+        }
+        tx = tx.replace(e.clone(), after);
+    }
+    (!tx.ops.is_empty()).then_some(tx)
+}
+
+/// What [`section_marks`] gives the section `view`.
+fn marks_of_section(
+    model: &Model,
+    view: ElementId,
+    frame: &crate::section::SectionFrame,
+) -> Vec<creabim_core::Element> {
+    use creabim_core::{Dimension, Element, HostPoint, Tag};
+    use std::collections::HashMap;
+    let Some(d) = crate::section::view_drawing(model, view) else {
+        return vec![];
+    };
+    // what the section draws, each element's extent in it
+    let mut seen: HashMap<ElementId, (DVec2, DVec2)> = HashMap::new();
+    for it in &d.items {
+        if matches!(it, PlanItem::Annotation { .. } | PlanItem::Text { .. }) {
+            continue;
+        }
+        if let Some((lo, hi)) = it.bounds() {
+            seen.entry(it.id())
+                .and_modify(|b| *b = (b.0.min(lo), b.1.max(hi)))
+                .or_insert((lo, hi));
+        }
+    }
+    let kind = |id: &ElementId| model.get(*id).map(|e| &e.kind);
+    // the construction's extent: its walls and columns
+    let (lo, hi) = seen
+        .iter()
+        .filter(|(id, _)| {
+            matches!(
+                kind(id),
+                Some(ElementKind::Wall(_) | ElementKind::Column(_))
+            )
+        })
+        .map(|(_, b)| *b)
+        .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
+        .unwrap_or((DVec2::ZERO, DVec2::ZERO));
+    if hi.x - lo.x < 1e-6 {
+        return vec![];
+    }
+    let mut out = vec![];
+    // a point of the section's plane in the model
+    let world = |u: f64, z: f64| (frame.origin + frame.along * u).extend(z);
+    // a point kept on `host`, so the spot level follows it
+    let on = |host: ElementId, p: glam::DVec3| -> HostPoint {
+        match crate::annotate::host_frame(model, host) {
+            Some(f) => HostPoint {
+                host: Some(host),
+                body: Some(f.inverse().transform_point3(p)),
+                ..HostPoint::free(frame.project(p).truncate())
+            },
+            None => HostPoint::free(frame.project(p).truncate()),
+        }
+    };
+    let spot = |a: HostPoint, b: DVec2, short: bool| {
+        let mut d = Dimension::spot(view, a, HostPoint::free(b), None);
+        d.short = short;
+        Element::new("Spot level", ElementKind::Dimension(d))
+    };
+    let beam = |id: &ElementId| match kind(id) {
+        Some(ElementKind::Beam(b)) => Some(b),
+        _ => None,
+    };
+    // the marks in a row over the construction
+    let mut row: Vec<f64> = vec![];
+    let mut tag = |host: ElementId, out: &mut Vec<Element>| {
+        let Some(c) = crate::annotate::centre(model, host) else {
+            return;
+        };
+        let c = frame.project(c).truncate();
+        let mut x = c.x;
+        while row.iter().any(|r| (r - x).abs() < MARK_GAP) {
+            x += MARK_GAP;
+        }
+        row.push(x);
+        let t = Tag::new(view, host, DVec2::new(x, hi.y + MARK_ROW) - c);
+        out.push(Element::new("Tag", ElementKind::Tag(t)));
+    };
+    // each lintel over an opening once, with its underside; one of the
+    // same position seen behind another (the openings of one wall, one
+    // behind the other) not again
+    let mut done: Vec<(String, DVec2)> = vec![];
+    for p in structural::lintel_positions(model) {
+        for g in &p.groups {
+            let Some(id) = g.iter().find(|id| seen.contains_key(id)) else {
+                continue;
+            };
+            let Some(b) = beam(id) else { continue };
+            let mid = (b.start + b.end) / 2.0;
+            let under = mid.extend(b.top(model) - b.depth);
+            let at = frame.project(under).truncate();
+            if done
+                .iter()
+                .any(|(m, q)| *m == p.mark && q.distance(at) < 0.6)
+            {
+                continue;
+            }
+            done.push((p.mark.clone(), at));
+            tag(*id, &mut out);
+            out.push(spot(on(*id, under), at + DVec2::new(0.35, -0.3), true));
+        }
+    }
+    // the ring beams: each marked; the outermost cut ones on each side
+    // with their top and underside
+    let mut cut: Vec<(f64, ElementId, glam::DVec3)> = vec![];
+    for p in structural::ring_positions(model) {
+        for id in &p.beams {
+            if !seen.contains_key(id) {
+                continue;
+            }
+            tag(*id, &mut out);
+            let Some(b) = beam(id) else { continue };
+            let (s0, s1) = (
+                frame.project(b.start.extend(0.0)).z,
+                frame.project(b.end.extend(0.0)).z,
+            );
+            if s0.signum() == s1.signum() || (s1 - s0).abs() < 1e-9 {
+                continue;
+            }
+            let q = b.start.lerp(b.end, s0 / (s0 - s1));
+            let n = (b.end - b.start).normalize_or_zero().perp() * b.width / 2.0;
+            for f in [q + n, q - n] {
+                let p = f.extend(b.top(model));
+                cut.push((frame.project(p).x, *id, p));
+            }
+        }
+    }
+    // on the left: the storeys' heads stand on the right
+    let mut sides = vec![];
+    if let Some(l) = cut.iter().min_by(|a, b| a.0.total_cmp(&b.0)) {
+        sides.push((*l, -1.0));
+    }
+    for ((u, id, p), side) in &sides {
+        let depth = beam(id).map_or(0.0, |b| b.depth);
+        for z in [p.z, p.z - depth] {
+            let at = p.truncate().extend(z);
+            out.push(spot(on(*id, at), DVec2::new(u + side * SPOT_OUT, z), false));
+        }
+    }
+    // the base slab's top on both outer faces
+    let slabs: Vec<(ElementId, (DVec2, DVec2))> = seen
+        .iter()
+        .filter(|(id, _)| matches!(kind(id), Some(ElementKind::Slab(_))))
+        .map(|(id, b)| (*id, *b))
+        .collect();
+    let low = slabs.iter().map(|s| s.1 .1.y).fold(f64::INFINITY, f64::min);
+    let base: Vec<_> = slabs
+        .iter()
+        .filter(|s| (s.1 .1.y - low).abs() < 0.02)
+        .collect();
+    if let Some((id, (slo, shi))) = base.iter().min_by(|a, b| a.1 .0.x.total_cmp(&b.1 .0.x)) {
+        let p = world(slo.x, shi.y);
+        out.push(spot(on(*id, p), DVec2::new(slo.x - SPOT_OUT, shi.y), false));
+    }
+    // ±0,000 inside, by the storey at it
+    if let Some((lid, l)) = model.iter().find_map(|e| match &e.kind {
+        ElementKind::Level(l) if l.elevation.abs() < 1e-6 => Some((e.id, l)),
+        _ => None,
+    }) {
+        let u = lo.x + (hi.x - lo.x) * 0.62;
+        let a = HostPoint {
+            host: Some(lid),
+            ..HostPoint::free(DVec2::new(u, 0.0))
+        };
+        out.push(spot(a, DVec2::new(u, l.elevation + 0.35), true));
+    }
+    out
+}
+
+/// The dashed ±0,000 line across a structural section, between the
+/// faces of what it draws (STA_002).
+pub fn zero_line(model: &Model, view: ElementId, items: &[PlanItem]) -> Option<PlanItem> {
+    let (lo, hi) = items
+        .iter()
+        .filter(|it| {
+            matches!(
+                model.get(it.id()).map(|e| &e.kind),
+                Some(ElementKind::Wall(_) | ElementKind::Column(_))
+            )
+        })
+        .filter_map(|it| it.bounds())
+        .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))?;
+    (hi.x > lo.x).then_some(PlanItem::Line {
+        id: view,
+        pen: Pen::Hidden,
+        a: DVec2::new(lo.x, 0.0),
+        b: DVec2::new(hi.x, 0.0),
+    })
+}
+
+/// Is scene item `i` a part a structural section draws: a load-bearing
+/// layer (or an element of one material), not the insulation, render,
+/// plaster or floor build-up, not a window's glass, not the boards
+/// wrapped round a column or lintel (George 2026-11-24, as the sections
+/// of his výkres tvaru STA_002).
+pub fn bearing_part(model: &Model, i: &crate::scene::SceneItem) -> bool {
+    i.layer
+        .is_none_or(|l| l.function == creabim_core::LayerFunction::Structure)
+        && i.finish.is_none()
+        && model
+            .get(i.id)
+            .is_none_or(|e| creabim_core::wrap::piece_of(e).is_none())
 }
 
 /// Is the section mark `id` one a plan of this kind shows: a structural
@@ -526,6 +840,67 @@ mod tests {
     use creabim_core::{Element, Transaction, View, ViewKind};
 
     #[test]
+    fn a_structural_section_gets_its_marks_and_spot_levels_once() {
+        let mut m = creabim_core::sample::sample_house();
+        sample(&mut m);
+        let mut sec = View::section(
+            glam::DVec2::new(-1.0, 2.0),
+            glam::DVec2::new(20.0, 2.0),
+            30.0,
+            true,
+        );
+        creabim_core::viewmodes::Purpose::Structural.apply(&mut sec);
+        let s = Element::new("Rez S", ElementKind::View(sec));
+        let sid = s.id;
+        Transaction::new("v").insert(s).apply(&mut m).unwrap();
+        section_marks(&m).unwrap().apply(&mut m).unwrap();
+        // P and V marks in circles over its lintels and ring beams
+        let marks: Vec<(String, bool)> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Tag(t) if t.view == sid => Some(crate::annotate::tag_text(&m, t.host)),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            marks.iter().any(|(t, r)| t.starts_with('V') && *r),
+            "{marks:?}"
+        );
+        assert!(marks
+            .iter()
+            .all(|(t, r)| (t.starts_with('V') || t.starts_with('P')) && *r));
+        // spot levels, ±0,000 among them, drawn
+        let spots = m
+            .iter()
+            .filter(|e| {
+                matches!(&e.kind, ElementKind::Dimension(d)
+                    if d.view == sid && d.kind == creabim_core::DimensionKind::Spot)
+            })
+            .count();
+        assert!(spots >= 3, "{spots}");
+        let d = crate::section::view_drawing(&m, sid).unwrap();
+        assert!(d.items.iter().any(
+            |it| matches!(it, PlanItem::Annotation { item, .. } if item.text.contains("0,000"))
+        ));
+        // and not again: they are the user's now
+        assert!(section_marks(&m).is_none());
+    }
+
+    #[test]
+    fn a_structural_section_draws_the_load_bearing_layers_only() {
+        let m = creabim_core::starter::starter_house();
+        let scene = crate::scene::shared_scene(&m);
+        let layered: Vec<_> = scene.iter().filter(|i| i.layer.is_some()).collect();
+        // the sample's walls and slabs have insulation, plaster, screed…
+        assert!(layered.iter().any(|i| !bearing_part(&m, i)));
+        // …and a core that stays
+        assert!(layered.iter().any(|i| bearing_part(&m, i)));
+        assert!(scene.iter().filter(|i| bearing_part(&m, i)).all(|i| i
+            .layer
+            .is_none_or(|l| l.function == creabim_core::LayerFunction::Structure)));
+    }
+
+    #[test]
     fn the_structural_plan_draws_what_carries_with_its_positions_and_lists() {
         let mut m = creabim_core::sample::sample_house();
         sample(&mut m);
@@ -571,15 +946,28 @@ mod tests {
         let d = crate::section::view_drawing(&m, sid).unwrap();
         let rules = creabim_core::masonry::rules(&m);
         let of = |it: &PlanItem| m.get(it.id());
-        // no partition, door or window, furniture
+        // no partition, door or window, furniture drawn; a door or window
+        // only as the pick area over its gap, not drawn
         assert!(d
             .items
             .iter()
             .all(|it| of(it).is_none_or(|e| match &e.kind {
                 ElementKind::Wall(w) => creabim_core::masonry::is_bearing(&m, w, &rules),
-                ElementKind::Opening(_) | ElementKind::Object(_) | ElementKind::Room(_) => false,
+                ElementKind::Opening(_) => matches!(it, PlanItem::Room { rgb: None, .. }),
+                ElementKind::Object(_) | ElementKind::Room(_) => false,
                 _ => true,
             })));
+        // each door and window of a load-bearing wall can be picked in
+        // its gap (for its lintels)
+        let picks = d
+            .items
+            .iter()
+            .filter(|it| {
+                matches!(it, PlanItem::Room { .. })
+                    && matches!(of(it).map(|e| &e.kind), Some(ElementKind::Opening(_)))
+            })
+            .count();
+        assert!(picks > 0);
         let texts: Vec<&str> = d
             .items
             .iter()
@@ -592,6 +980,42 @@ mod tests {
         assert!(texts.iter().any(|t| t.starts_with("SH=+")), "{texts:?}");
         assert!(texts.contains(&"S1"), "{texts:?}");
         assert!(texts.iter().any(|t| t.starts_with("HH=+")), "{texts:?}");
+        // each lintel's mark over its SH, upright, on walls either way
+        // (George 2026-11-24: on a wall up the sheet they overlapped)
+        let lintel_texts: Vec<(&str, DVec2)> = d
+            .items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Text { id, text, at, .. }
+                    if matches!(m.get(*id).map(|e| &e.kind),
+                        Some(ElementKind::Beam(b)) if b.lintel.is_some()) =>
+                {
+                    Some((text.as_str(), *at))
+                }
+                _ => None,
+            })
+            .collect();
+        let mm = m.get(sid).map_or(0.05, |e| match &e.kind {
+            ElementKind::View(v) => v.scale / 1000.0,
+            _ => 0.05,
+        });
+        for pair in lintel_texts.chunks(2) {
+            let [(p, a), (sh, b)] = pair else {
+                panic!("{pair:?}")
+            };
+            assert!(p.starts_with('P') && sh.starts_with("SH="), "{pair:?}");
+            assert!((a.x - b.x).abs() < 1e-9 && (a.y - b.y - 3.5 * mm).abs() < 1e-9);
+        }
+        if let Ok(out) = std::env::var("CREABIM_TEST_SVG") {
+            std::fs::write(
+                out,
+                d.to_svg(m.get(sid).map_or(50.0, |e| match &e.kind {
+                    ElementKind::View(v) => v.scale,
+                    _ => 50.0,
+                })),
+            )
+            .unwrap();
+        }
         // walls as outlines, a chain with the positions along them
         assert!(!d.items.iter().any(|it| matches!(it,
             PlanItem::Fill { id, .. } if matches!(m.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_))))));

@@ -537,7 +537,36 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room, name: &str) -
                     }
                 });
         });
-        let n = found.unwrap_or(RoomType::Other).needs();
+        let mut n = found.unwrap_or(RoomType::Other).needs();
+        // the temperature it is heated to: by its type, or set here
+        crate::props::row(ui, "Heated to", |ui| {
+            let mut own = r.heated_to.is_some();
+            if ui
+                .checkbox(&mut own, tr("own"))
+                .on_hover_text(tr("Off: the temperature of its room type. On: the temperature set here (a corridor inside the house heated as the rooms)."))
+                .changed()
+            {
+                r.heated_to = own.then_some(n.temp);
+                label = "Room data";
+            }
+            let mut t = r.heated_to.unwrap_or(n.temp);
+            if ui
+                .add_enabled(
+                    own,
+                    egui::DragValue::new(&mut t)
+                        .range(0.0..=30.0)
+                        .speed(0.5)
+                        .suffix(" °C"),
+                )
+                .changed()
+            {
+                r.heated_to = Some(t);
+                label = "Room data";
+            }
+        });
+        if let Some(t) = r.heated_to {
+            n.temp = t;
+        }
         let mut air = vec![];
         if let Some(a) = n.ach {
             air.push(format!("{} {a} 1/h", tr("air change")));
