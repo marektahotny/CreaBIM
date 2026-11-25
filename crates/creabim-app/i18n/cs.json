@@ -8817,5 +8817,6 @@
  "given by hand, STN EN ISO 13370": "zadáno ručně, STN EN ISO 13370",
  "A junction with the ground: no floor slab in the detail to take B from; enter B (STN EN ISO 13370).": "Styk s terénem: v detailu není podlahová deska, ze které by se vzalo B; zadej B (STN EN ISO 13370).",
  "Floor on the ground: area A / exposed perimeter P": "Podlaha na terénu: plocha A / obvod P",
- "from the storey": "z podlaží"
+ "from the storey": "z podlaží",
+ "Not entered: the condensation takes": "Nezadáno: kondenzace bere"
 }

@@ -86,8 +86,44 @@ pub fn ground_params(
     })
 }
 
+/// μ / sd a material takes when it has none of its own: `material` (the
+/// material's name), `mu`, `sd` (m), `zdroj` (where the value is from:
+/// STN 73 0540-3 table 16/17 or the maker's sheet).
+pub const MATERIAL_VAPOUR: &str = "mu_materialov";
+
+/// The μ / sd [`MATERIAL_VAPOUR`] gives the material `name`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VapourDefault {
+    pub mu: Option<f64>,
+    pub sd: Option<f64>,
+    pub source: String,
+}
+
+/// The μ / sd of material `name` from [`MATERIAL_VAPOUR`]: none when the
+/// table is not read or does not list it.
+pub fn vapour_default(tables: &[ParamTable], name: &str) -> Option<VapourDefault> {
+    let t = table(tables, MATERIAL_VAPOUR)?;
+    let (cm, cmu, csd, csrc) = (
+        t.column("material")?,
+        t.column("mu"),
+        t.column("sd"),
+        t.column("zdroj"),
+    );
+    let r = t
+        .rows
+        .iter()
+        .find(|r| r.get(cm).is_some_and(|m| m.trim() == name.trim()))?;
+    let get = |c: Option<usize>| c.and_then(|c| r.get(c)).map_or("", |s| s.trim());
+    let (mu, sd) = (exact(get(cmu)), exact(get(csd)));
+    (mu.is_some() || sd.is_some()).then(|| VapourDefault {
+        mu,
+        sd,
+        source: get(csrc).to_string(),
+    })
+}
+
 /// The tables the checks read.
-pub const TABLES: [&str; 16] = [
+pub const TABLES: [&str; 17] = [
     RS,
     FORMULAS,
     DELTA,
@@ -104,6 +140,7 @@ pub const TABLES: [&str; 16] = [
     crate::glaser::SK_CONSTANTS,
     crate::glaser::SK_ANNUAL,
     GROUND,
+    MATERIAL_VAPOUR,
 ];
 
 /// The norm tables of the project, else the application's.
@@ -408,6 +445,23 @@ mod tests {
             magnus("610,5·exp(17,269·θ/(237,3+θ))"),
             Some((610.5, 17.269, 237.3))
         );
+    }
+
+    #[test]
+    fn material_vapour_defaults_by_name() {
+        let t = fireparams::parse(
+            "#table mu_materialov\n#columns material\tmu\tsd\tzdroj\n\
+             Železobetón\t32\t\ttab. 16 pol. 1.2.3\n\
+             PE fólia\t\t12,4\ttab. 17 pol. 1.35\n\
+             Iné\t\t\t\n",
+        );
+        let d = vapour_default(&t, "Železobetón").unwrap();
+        assert_eq!(
+            (d.mu, d.sd, d.source.as_str()),
+            (Some(32.0), None, "tab. 16 pol. 1.2.3")
+        );
+        assert_eq!(vapour_default(&t, "PE fólia").unwrap().sd, Some(12.4));
+        assert!(vapour_default(&t, "Iné").is_none() && vapour_default(&t, "X").is_none());
     }
 
     #[test]

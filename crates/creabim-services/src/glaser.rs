@@ -276,6 +276,7 @@ pub fn assembly_layers(
     model: &creabim_core::Model,
     a: &creabim_core::assembly::Assembly,
     rs: &crate::thermcheck::SurfaceRs,
+    tables: &[creabim_core::fireparams::ParamTable],
 ) -> Result<(Vec<Layer>, f64, f64), String> {
     use creabim_core::thermal::{self, HeatFlow, Outside};
     use creabim_core::ElementKind;
@@ -302,8 +303,17 @@ pub fn assembly_layers(
                 ElementKind::Material(m) => Some(m),
                 _ => None,
             });
-        let sd = mat
-            .and_then(|m| m.sd.or(m.mu.map(|mu| mu * l.thickness)))
+        // its own μ / sd, else the one the table of defaults gives its name
+        let own = mat.and_then(|m| m.sd.or(m.mu.map(|mu| mu * l.thickness)));
+        let sd = own
+            .or_else(|| {
+                let name = a.layers[l.index]
+                    .material
+                    .and_then(|m| model.get(m))
+                    .map_or(l.name.as_str(), |e| e.name.as_str());
+                let d = crate::thermcheck::vapour_default(tables, name)?;
+                d.sd.or(d.mu.map(|mu| mu * l.thickness))
+            })
             .ok_or_else(|| format!("μ / sd: {}", l.name))?;
         out.push(Layer {
             name: l.name.clone(),
