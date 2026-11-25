@@ -175,7 +175,6 @@ fn shade(m: &Material, n: [f32; 3]) -> [f32; 3] {
     out
 }
 
-/// The fields of a material. Returns the undo label of what changed, or "".
 /// A number with a decimal comma, at most `n` decimals, no trailing zeros.
 fn dec(v: f64, n: usize) -> String {
     let t = format!("{v:.n$}");
@@ -187,6 +186,7 @@ fn dec(v: f64, n: usize) -> String {
     t.replace('.', ",")
 }
 
+/// The fields of a material. Returns the undo label of what changed, or "".
 pub(super) fn material_fields(
     ui: &mut egui::Ui,
     m: &mut Material,
@@ -927,10 +927,26 @@ impl CreaBimApp {
                 });
                 ui.add_space(8.0);
                 let mut edited = m.clone();
-                let vapour = creabim_services::thermcheck::vapour_choices(
-                    &creabim_services::thermcheck::tables_of(model),
-                );
+                let tables = creabim_services::thermcheck::tables_of(model);
+                let vapour = creabim_services::thermcheck::vapour_choices(&tables);
                 let label = material_fields(ui, &mut edited, &vapour);
+                if m.mu.is_none() && m.sd.is_none() {
+                    if let Some(d) = creabim_services::thermcheck::vapour_default(&tables, &e.name) {
+                        let v = match (d.mu, d.sd) {
+                            (_, Some(sd)) => format!("sd {} m", dec(sd, 3)),
+                            (Some(mu), None) => format!("μ {}", dec(mu, 2)),
+                            (None, None) => String::new(),
+                        };
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} {v} ({})",
+                                crate::i18n::t("Not entered: the condensation takes"),
+                                d.source
+                            ))
+                            .weak(),
+                        );
+                    }
+                }
                 if !label.is_empty() {
                     asks.push(Ask::Edit(id, label, edited));
                 }
