@@ -1023,7 +1023,8 @@ pub const VALVES: &[Accessory] = &[
     },
 ];
 
-/// Roof outlets.
+/// Outlets to the outdoors: roof outlets and caps, and louvres through
+/// a wall (George 2026-11-25).
 pub const OUTLETS: &[Accessory] = &[Accessory {
     id: "KLOBER-ROVIA-KE0520",
     maker: "Klöber",
@@ -1118,6 +1119,78 @@ Accessory {
     about: "Dalap PS 315: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 3,421 kg; kód 80038, EAN 4250622603226",
     price: Some((92.15, "€ s DPH")),
     source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 315 mm (Dalap PS 315), 11/2026",
+},
+Accessory {
+    id: "DALAP-GP-102-BKF",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GP BKF ASA protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 100.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GP 102 BKF ASA: mriežka so strieškou, prírubou a spätnou klapkou na stenu alebo do potrubia, 150×150 mm / Ø100, ASA plast biela RAL 9016, -40 až +90 °C, 0,225 kg; kód 2039, EAN 4250622873865",
+    price: Some((6.15, "€ s DPH")),
+    source: "dalap.sk, Plastová vetracia mriežka so strieškou a klapkou Dalap GP 102 BKF ASA, 150x150 mm / Ø 100 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GP-122-BKF",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GP BKF ASA protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 125.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GP 122 BKF ASA: mriežka so strieškou, prírubou a spätnou klapkou na stenu alebo do potrubia, 150×150 mm / Ø125, ASA plast biela RAL 9016, -40 až +90 °C, 0,355 kg; kód 2040, EAN 4250622873872",
+    price: Some((6.60, "€ s DPH")),
+    source: "dalap.sk, Plastová vetracia mriežka so strieškou a klapkou Dalap GP 122 BKF ASA, 150x150 mm / Ø 125 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GP-152-BKF",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GP BKF ASA protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 160.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GP 152 BKF ASA: mriežka so strieškou, prírubou a spätnou klapkou na stenu alebo do potrubia, 190×190 mm / Ø150–160, ASA plast biela RAL 9016, -40 až +90 °C, 0,385 kg; kód 2041, EAN 4250622652828",
+    price: Some((10.85, "€ s DPH")),
+    source: "dalap.sk, PVC vetracia mriežka so strieškou a klapkou Dalap GP BKF ASA, 190x190 mm / Ø 150-160 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GM-102-BKN",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GM BKN nerezová protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 100.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GM 102 BKN: nerezová mriežka so strieškou, klapkou a prírubou na stenu, Ø100, -30 až +100 °C, 0,334 kg; kód 99336, EAN 4250622609075",
+    price: Some((21.45, "€ s DPH")),
+    source: "dalap.sk, Nerez vetracia mriežka Dalap GM 102 BKN so strieškou, klapkou a prírubou, Ø 100 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GM-122-BKN",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GM BKN nerezová protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 125.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GM 122 BKN: nerezová mriežka so strieškou, klapkou a prírubou na stenu, Ø125, -30 až +100 °C, 0,456 kg; kód 99337, EAN 4250622609082",
+    price: Some((28.85, "€ s DPH")),
+    source: "dalap.sk, Nerez vetracia mriežka Dalap GM 122 BKN so strieškou, klapkou a prírubou, Ø 125 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GM-152-BKN",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GM BKN nerezová protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 150.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GM 152 BKN: nerezová mriežka so strieškou, klapkou a prírubou na stenu, Ø150, -30 až +100 °C, 0,578 kg; kód 99338, EAN 4250622609150",
+    price: Some((32.50, "€ s DPH")),
+    source: "dalap.sk, Nerez vetracia mriežka Dalap GM 152 BKN so strieškou, klapkou a prírubou, Ø 150 mm, 11/2026",
 }];
 
 pub fn valve(id: &str) -> Option<&'static Accessory> {
@@ -1643,6 +1716,30 @@ mod tests {
             "Klöber Rovia univerzálny strešný prestup DN100 (KE 0520)"
         );
         assert_eq!(cap.price, Some((37.15, "€ s DPH")));
+        // the louvres through a wall: plastic Ø100–160, stainless Ø100–150
+        let gp: Vec<f64> = valve("DALAP-GP-152-BKF")
+            .unwrap()
+            .sizes()
+            .iter()
+            .map(|a| a.dn)
+            .collect();
+        assert_eq!(gp, vec![100.0, 125.0, 160.0]);
+        let gm: Vec<f64> = valve("DALAP-GM-102-BKN")
+            .unwrap()
+            .sizes()
+            .iter()
+            .map(|a| a.dn)
+            .collect();
+        assert_eq!(gm, vec![100.0, 125.0, 150.0]);
+        // a roof outlet Ø160 is still the cap, the first of its size
+        assert_eq!(
+            OUTLETS
+                .iter()
+                .find(|o| (o.dn - 160.0).abs() < 1.0)
+                .unwrap()
+                .id,
+            "DALAP-PS-160"
+        );
     }
 
     use super::*;
