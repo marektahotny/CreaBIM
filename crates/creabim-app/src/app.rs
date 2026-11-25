@@ -45,6 +45,8 @@ mod circuitsui;
 mod circuitui;
 #[path = "cloudload.rs"]
 mod cloudload;
+#[path = "condensui.rs"]
+mod condensui;
 #[path = "coolingui.rs"]
 mod coolingui;
 #[path = "cropui.rs"]
@@ -141,6 +143,8 @@ mod stylesui;
 mod sunui;
 #[path = "terrainimport.rs"]
 pub(crate) mod terrainimport;
+#[path = "thermalui.rs"]
+mod thermalui;
 #[path = "typepreview.rs"]
 mod typepreview;
 #[path = "typesui.rs"]
@@ -455,6 +459,9 @@ pub struct CreaBimApp {
         creabim_services::heatloss::Opts,
         creabim_services::heatloss::BuildingLoss,
     )>,
+    /// The thermal field of a detail, while its window is open.
+    thermal: Option<thermalui::Thermal>,
+    condens: Option<condensui::Condens>,
     /// The underfloor heating window's settings, while it is open.
     floor_heat: Option<creabim_services::floorheat::Settings>,
     /// The radiators window, while it is open.
@@ -712,6 +719,8 @@ impl CreaBimApp {
             circuits: None,
             joinery: None,
             heat_loss: None,
+            thermal: None,
+            condens: None,
             net_calc: None,
             auto_valves: None,
             route_check: None,
@@ -11683,7 +11692,10 @@ crate::props::row(ui, "File names", |ui| {
                 }
                 ElementKind::Material(m) => {
                     materials::preview(ui, m, 72.0);
-                    label = materials::material_fields(ui, m);
+                    let vapour = creabim_services::thermcheck::vapour_choices(
+                        &creabim_services::thermcheck::tables_of(self.doc.model()),
+                    );
+                    label = materials::material_fields(ui, m, &vapour);
                     let users = creabim_core::library::users(self.doc.model(), id).len();
                     ui.label(
                         egui::RichText::new(crate::i18n::tr(&format!("Used by {users} elements.")))
@@ -14473,6 +14485,8 @@ impl eframe::App for CreaBimApp {
         self.place_exact_window(&ctx);
         self.masonry_window(&ctx);
         self.heat_loss_window(&ctx);
+        self.thermal_window(&ctx);
+        self.condens_window(&ctx);
         self.floor_heat_window(&ctx);
         self.radiators_window(&ctx);
         self.cooling_window(&ctx);

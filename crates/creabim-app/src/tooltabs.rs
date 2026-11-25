@@ -431,6 +431,18 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The design heat loss of every room (STN EN 12831-1): through walls, windows, floor and roof and by ventilation, and the building's total",
             ),
             act(
+                "calc:thermalfield",
+                "Thermal field of a detail",
+                "thermometer",
+                "The temperature field of a detail called out of a section (STN EN ISO 10211): the lowest inner surface temperature, fRsi and L2D, checked by STN 73 0540-2 čl. 5.3",
+            ),
+            act(
+                "calc:condensation",
+                "Condensation in a build-up",
+                "droplet",
+                "Water vapour in a build-up by the Glaser method: the condensation zone and the annual balance Mc, Mev by STN 73 0540-2 annex B, checked by čl. 6.1 and 6.2",
+            ),
+            act(
                 "calc:floorheat",
                 "Design underfloor heating",
                 "spline",

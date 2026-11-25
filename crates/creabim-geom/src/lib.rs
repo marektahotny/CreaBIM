@@ -71,6 +71,7 @@ pub mod stairsteps;
 pub mod structural;
 pub mod summary;
 pub mod takeoff;
+pub mod thermalcut;
 pub mod titleblock;
 pub mod tradelists;
 pub mod triangulate;

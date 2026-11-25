@@ -51,7 +51,7 @@ impl CreaBimApp {
     }
 
     /// The localities: the project's table, else the one read last.
-    fn climate_sites(&self) -> Vec<ClimateSite> {
+    pub(super) fn climate_sites(&self) -> Vec<ClimateSite> {
         let own = self
             .doc
             .model()
