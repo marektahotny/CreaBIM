@@ -416,11 +416,12 @@ fn plinth_parts(
             add.push((nb, piece));
         }
     }
-    // the membrane up the masonry, past the top by its lap
+    // the membrane up the masonry to the plinth's top, never past it
+    // (George 2026-11-25: "len po výšku sokla, nesmie cez sokel presahovať")
     if let Some(m) = p.membrane {
         let band = span(inner, inner + out * PLINTH_MEMBRANE);
         let piece = layer(band, [ins.vext[0].max(0.0) + below, ins.vext[1]], ins.ext);
-        let piece = boolean_mesh(&piece, &cutter(p.lap.max(0.0), whole), BoolOp::Intersection);
+        let piece = boolean_mesh(&piece, &cutter(0.0, whole), BoolOp::Intersection);
         if !piece.indices.is_empty() {
             let mut nb = ins;
             nb.s0 = band.0;

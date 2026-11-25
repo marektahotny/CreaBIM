@@ -1,4 +1,9 @@
 {
+ "{m} – strip footing w. {w} mm": "{m} – základový pás š. {w} mm",
+ "{m} – pad footing {a} × {b} mm": "{m} – patka {a} × {b} mm",
+ "{m} – pile Ø {d} mm, length {h} mm": "{m} – pilota Ø {d} mm, hloubka {h} mm",
+ "{m} – vertical": "{m} – svislá",
+ "{m} – horizontal": "{m} – vodorovná",
  "Above the floor": "Od podlahy",
  "Mark (height)(above the floor)": "Značka (výška)(od podlahy)",
  "Partial tiling": "Částečný obklad",
@@ -8387,8 +8392,6 @@
  "Below the slab's underside": "Pod spodkem desky",
  "Flush with the facade": "V rovině s fasádou",
  "How far it runs on down past the slab's underside": "O kolik pokračuje pod spodek desky",
- "How far the waterproofing runs up past the plinth's top, behind the facade insulation": "O kolik hydroizolace přesahuje nad horní hranu soklu, za fasádní izolací",
- "Membrane over the plinth's top": "Přesah hydroizolace nad sokl",
  "Over the highest finished terrain or paving along the wall; 300 mm as usual": "Nad nejvyšším upraveným terénem nebo dlažbou u stěny; obvykle 300 mm",
  "Plinth (XPS and waterproofing)": "Sokl (XPS a hydroizolace)",
  "Plinth render": "Soklová omítka",

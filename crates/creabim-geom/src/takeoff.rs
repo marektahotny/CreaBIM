@@ -113,7 +113,65 @@ pub fn measure(model: &Model, scene: &[crate::scene::SceneItem]) -> Vec<Line> {
         }
     }
     lines.extend(plinths.lines());
+    split_waterproofing(model, &mut lines);
+    label_footings(model, &mut lines);
     lines
+}
+
+/// Footings told apart in the take-off (George 2026-11-25): a strip by
+/// its width (a line for each width), a pad by its size, a pile by its
+/// diameter and length.
+pub fn label_footings(model: &Model, lines: &mut [Line]) {
+    let mm = |v: f64| format!("{:.0}", v * 1000.0);
+    for l in lines.iter_mut() {
+        if l.category != "Footings" || l.label.is_some() {
+            continue;
+        }
+        let Some(creabim_core::ElementKind::Footing(f)) = model.get(l.element).map(|e| &e.kind)
+        else {
+            continue;
+        };
+        let name = name_of(model, l.material).unwrap_or_else(|| tr("No material"));
+        let what = match f.kind {
+            creabim_core::FootingKind::Strip => {
+                tr("{m} – strip footing w. {w} mm").replace("{w}", &mm(f.width))
+            }
+            creabim_core::FootingKind::Pad => tr("{m} – pad footing {a} × {b} mm")
+                .replace("{a}", &mm(f.width))
+                .replace("{b}", &mm(f.length)),
+            creabim_core::FootingKind::Pile => tr("{m} – pile Ø {d} mm, length {h} mm")
+                .replace("{d}", &mm(f.width))
+                .replace("{h}", &mm(f.thickness)),
+        };
+        l.label = Some(what.replace("{m}", &name));
+    }
+}
+
+/// Waterproofing listed apart laid flat and turned up a wall: Cenkros
+/// prices horizontal and vertical waterproofing as items of their own
+/// (George 2026-11-25). A line of a waterproofing material (its hatch is
+/// the membrane strip) under a wall, a plinth or a column is vertical,
+/// under a slab or a footing horizontal; its rate stays its material's.
+pub fn split_waterproofing(model: &Model, lines: &mut [Line]) {
+    for l in lines.iter_mut() {
+        if l.label.is_some() {
+            continue;
+        }
+        let Some(m) = l.material else { continue };
+        let Some(creabim_core::ElementKind::Material(mat)) = model.get(m).map(|e| &e.kind) else {
+            continue;
+        };
+        if mat.hatch != creabim_core::Hatch::Membrane {
+            continue;
+        }
+        let way = match l.category {
+            "Walls" | "Plinths" | "Columns" => "{m} – vertical",
+            "Slabs" | "Foundation slabs" | "Footings" => "{m} – horizontal",
+            _ => continue,
+        };
+        let name = name_of(model, Some(m)).unwrap_or_default();
+        l.label = Some(tr(way).replace("{m}", &name));
+    }
 }
 
 /// Categories whose area is their trimmed volume over their thickness.
