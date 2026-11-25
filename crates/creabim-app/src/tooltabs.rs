@@ -433,7 +433,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             act(
                 "calc:thermalfield",
                 "Thermal field of a detail",
-                "thermometer",
+                "grid-lines",
                 "The temperature field of a detail called out of a section (STN EN ISO 10211): the lowest inner surface temperature, fRsi and L2D, checked by STN 73 0540-2 čl. 5.3",
             ),
             act(
