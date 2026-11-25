@@ -8788,5 +8788,11 @@
  "cell in the soil": "buňka v zemině",
  "A junction with the ground: enter the floor's characteristic dimension B (STN EN ISO 13370).": "Styk s terénem: zadej charakteristický rozměr podlahy B (STN EN ISO 13370).",
  "Linear thermal transmittance Ψg": "Lineární činitel prostupu tepla Ψg",
- "The junction with the ground could not be modelled": "Styk s terénem se nepodařilo vymodelovat"
+ "The junction with the ground could not be modelled": "Styk s terénem se nepodařilo vymodelovat",
+ "rooms by outside dimensions, P outside walls only (ISO 13370, 6.7.1)": "místnosti vnějšími rozměry, P jen obvodové stěny (ISO 13370, 6.7.1)",
+ "The floor's characteristic dimension B = A / (0,5·P) by STN EN ISO 13370 (2), for a junction with the ground; above 8 m the model is the same (12.4.1).": "Charakteristický rozměr podlahy B = A / (0,5·P) podle STN EN ISO 13370 (2) pro styk s terénem; nad 8 m je model stejný (12.4.1).",
+ "given by hand, STN EN ISO 13370": "zadáno ručně, STN EN ISO 13370",
+ "A junction with the ground: no floor slab in the detail to take B from; enter B (STN EN ISO 13370).": "Styk s terénem: v detailu není podlahová deska, ze které by se vzalo B; zadej B (STN EN ISO 13370).",
+ "Floor on the ground: area A / exposed perimeter P": "Podlaha na terénu: plocha A / obvod P",
+ "from the storey": "z podlaží"
 }
