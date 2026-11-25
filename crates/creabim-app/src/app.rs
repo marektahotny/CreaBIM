@@ -45,6 +45,8 @@ mod circuitsui;
 mod circuitui;
 #[path = "cloudload.rs"]
 mod cloudload;
+#[path = "condensui.rs"]
+mod condensui;
 #[path = "coolingui.rs"]
 mod coolingui;
 #[path = "cropui.rs"]
@@ -63,6 +65,8 @@ mod ductsui;
 mod earthworksui;
 #[path = "editui.rs"]
 mod editui;
+#[path = "extractui.rs"]
+mod extractui;
 #[path = "fireparamsui.rs"]
 mod fireparamsui;
 #[path = "fittingsui.rs"]
@@ -141,6 +145,8 @@ mod stylesui;
 mod sunui;
 #[path = "terrainimport.rs"]
 pub(crate) mod terrainimport;
+#[path = "thermalui.rs"]
+mod thermalui;
 #[path = "typepreview.rs"]
 mod typepreview;
 #[path = "typesui.rs"]
@@ -238,6 +244,12 @@ pub struct CreaBimApp {
     close_state: appmenu::CloseState,
     /// The close was settled (saved, or the changes let go): let it through.
     close_ok: bool,
+    /// The main window was told to fill the screen (once, on the first
+    /// frame: some window managers skip the start-up hint; George 2026-11-25).
+    maximized_once: bool,
+    /// The undo and redo depths the trades' tags were last brought up to
+    /// date at (penetration labels, VZT position marks).
+    tags_at: Option<creabim_core::StepId>,
     /// The pointer left the drawing area (onto a web pane, or out of the
     /// window) and hasn't come back yet.
     pointer_away: bool,
@@ -345,7 +357,7 @@ pub struct CreaBimApp {
     saved_revision: Option<u64>,
     /// The undo history when it was last opened or saved: how many steps
     /// and the last one's id, to count the changes since (Save the changes).
-    saved_mark: (usize, Option<creabim_core::document::StepId>),
+    saved_mark: (usize, Option<creabim_core::StepId>),
     /// The window title last set, so it is only sent when it changes.
     title: String,
     /// The status and tool last written to the activity log.
@@ -455,6 +467,9 @@ pub struct CreaBimApp {
         creabim_services::heatloss::Opts,
         creabim_services::heatloss::BuildingLoss,
     )>,
+    /// The thermal field of a detail, while its window is open.
+    thermal: Option<thermalui::Thermal>,
+    condens: Option<condensui::Condens>,
     /// The underfloor heating window's settings, while it is open.
     floor_heat: Option<creabim_services::floorheat::Settings>,
     /// The radiators window, while it is open.
@@ -470,6 +485,7 @@ pub struct CreaBimApp {
     ducts: Option<creabim_services::ductsizing::Limits>,
     /// The heat recovery design window's options, while it is open.
     recuperation: Option<creabim_services::recuperation::Opts>,
+    extract: Option<extractui::ExtractState>,
     /// The circuit check window, while it is open.
     circuit: Option<creabim_services::electrical::Circuit>,
     herzdp: Option<creabim_services::herzdp::DpInput>,
@@ -481,6 +497,11 @@ pub struct CreaBimApp {
     joinery: Option<joineryui::JoineryEdit>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
+    /// The catalogue's Midea block: the outdoor unit's size picked there
+    /// (none: the one the heat loss or the heat source window gives) and
+    /// the indoor unit's kind (hydronic box or with a 190/240 l tank).
+    midea_out: Option<u32>,
+    midea_in: Option<creabim_core::catalogue::heat::HeatKind>,
     /// The window for ISOVER Fragment's table 30, while it is open.
     table30: Option<fragmentui::Table30>,
     /// The Sun and shadows window is open.
@@ -608,6 +629,9 @@ impl CreaBimApp {
             autosave: Default::default(),
             close_state: Default::default(),
             close_ok: false,
+            // a dev shot keeps its fixed size
+            maximized_once: std::env::var_os("CREABIM_SHOT").is_some(),
+            tags_at: None,
             pointer_away: true,
             pointer_seen: 0.0,
             prop_front: None,
@@ -691,6 +715,8 @@ impl CreaBimApp {
             masonry: None,
             masonry_pick: None,
             heat_source: None,
+            midea_out: None,
+            midea_in: None,
             table30: None,
             floor_heat: None,
             radiators: None,
@@ -699,12 +725,15 @@ impl CreaBimApp {
             results_due: None,
             ducts: None,
             recuperation: None,
+            extract: None,
             circuit: None,
             herzdp: None,
             fire_params: None,
             circuits: None,
             joinery: None,
             heat_loss: None,
+            thermal: None,
+            condens: None,
             net_calc: None,
             auto_valves: None,
             route_check: None,
@@ -11676,7 +11705,10 @@ crate::props::row(ui, "File names", |ui| {
                 }
                 ElementKind::Material(m) => {
                     materials::preview(ui, m, 72.0);
-                    label = materials::material_fields(ui, m);
+                    let vapour = creabim_services::thermcheck::vapour_choices(
+                        &creabim_services::thermcheck::tables_of(self.doc.model()),
+                    );
+                    label = materials::material_fields(ui, m, &vapour);
                     let users = creabim_core::library::users(self.doc.model(), id).len();
                     ui.label(
                         egui::RichText::new(crate::i18n::tr(&format!("Used by {users} elements.")))
@@ -13917,19 +13949,21 @@ impl eframe::App for CreaBimApp {
             }
         }
         // for a shot: a primary drag from "x0,y0" to "x1,y1", pressed at
-        // frame 14 and let go at frame 34 (`CREABIM_SHOT_DRAG`)
+        // frame 14 (or the fifth value) and let go 20 frames later
+        // (`CREABIM_SHOT_DRAG`)
         if let Ok(d) = std::env::var("CREABIM_SHOT_DRAG") {
             let v: Vec<f32> = d.split(',').filter_map(|t| t.trim().parse().ok()).collect();
             let frame = ctx.cumulative_frame_nr();
-            if v.len() == 4 && (12..=36).contains(&frame) {
-                let t = ((frame as f32 - 14.0) / 20.0).clamp(0.0, 1.0);
+            let f0 = v.get(4).map_or(14, |f| *f as u64);
+            if v.len() >= 4 && (f0 - 2..=f0 + 22).contains(&frame) {
+                let t = ((frame as f32 - f0 as f32) / 20.0).clamp(0.0, 1.0);
                 let at = egui::pos2(v[0] + (v[2] - v[0]) * t, v[1] + (v[3] - v[1]) * t);
                 raw_input.events.push(egui::Event::PointerMoved(at));
-                if frame == 14 || frame == 34 {
+                if frame == f0 || frame == f0 + 20 {
                     raw_input.events.push(egui::Event::PointerButton {
                         pos: at,
                         button: egui::PointerButton::Primary,
-                        pressed: frame == 14,
+                        pressed: frame == f0,
                         modifiers: egui::Modifiers::NONE,
                     });
                 }
@@ -14008,6 +14042,17 @@ impl eframe::App for CreaBimApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let _perf = Perf::new("frame");
         crate::files::remember_main_window(frame);
+        if !self.maximized_once {
+            self.maximized_once = true;
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
+        // the trades' tags follow the model: a penetration's label for each
+        // penetration the plans take over, a position mark for each device
+        // on the ducts (George 2026-11-25), once the mouse is up
+        if !ui.input(|i| i.pointer.any_down()) {
+            self.keep_trade_tags();
+        }
         // never lose work to a close: unsaved changes ask first
         if ui.ctx().input(|i| i.viewport().close_requested()) && !self.close_ok && self.unsaved() {
             ui.ctx()
@@ -14466,12 +14511,15 @@ impl eframe::App for CreaBimApp {
         self.place_exact_window(&ctx);
         self.masonry_window(&ctx);
         self.heat_loss_window(&ctx);
+        self.thermal_window(&ctx);
+        self.condens_window(&ctx);
         self.floor_heat_window(&ctx);
         self.radiators_window(&ctx);
         self.cooling_window(&ctx);
         self.air_balance_window(&ctx);
         self.ducts_window(&ctx);
         self.recuperation_window(&ctx);
+        self.extract_window(&ctx);
         self.circuit_window(&ctx);
         self.herzdp_window(&ctx);
         self.fire_params_window(&ctx);
@@ -15012,6 +15060,20 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // a trade's plan tags its rooms as the architecture plan of its
     // storey does (George 2026-11-23)
     for t in creabim_core::viewmodes::trade_room_tags(&model) {
+        tx = tx.insert(t);
+        any = true;
+    }
+    // the penetrations taken over into the architect's and structural
+    // plans get their labels as tags, dragged like any tag
+    let (labels, stale) = creabim_geom::tradepen::label_tags(&model);
+    any |= !labels.is_empty() || !stale.is_empty();
+    tx = tx.remove_all_cascade(&model, &stale);
+    for t in labels {
+        tx = tx.insert(t);
+    }
+    // the devices on the ducts get their position marks as tags, dragged
+    // like any tag (George 2026-11-25)
+    for t in creabim_geom::mep::air_position_tags(&model) {
         tx = tx.insert(t);
         any = true;
     }

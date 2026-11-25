@@ -491,61 +491,10 @@ fn inside_spans(a: DVec2, b: DVec2, poly: &[DVec2], eps: f64) -> Vec<(f64, f64)>
         .collect()
 }
 
-/// The key of an air gap layer: air, for where the thick line goes.
-const AIR: (Option<ElementId>, u8) = (None, 250);
-
-/// Turn cut polygons into fills plus outlines, leaving out outline segments
-/// shared with a neighbouring cut so joined elements read as one mass.
-pub fn clean_up_cuts(model: &Model, items: &mut Vec<PlanItem>) {
-    clean_up_pieces(model, items, vec![]);
-}
-
-/// [`clean_up_cuts`], with layer pieces of layered elements besides the
-/// `Pen::Cut` polygons in `items`. Each layer is filled with its own
-/// material's hatch; the line between two layers of one element is a thin
-/// one, and layers of the same material merge across joined walls.
-pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<CutPiece>) {
-    clean_up_pieces_in(model, items, layers, false)
-}
-
-/// [`clean_up_pieces`] for a plan, or with `section` for a section: there
-/// footings are filled with their material.
-pub fn clean_up_pieces_in(
-    model: &Model,
-    items: &mut Vec<PlanItem>,
-    layers: Vec<CutPiece>,
-    section: bool,
-) {
-    clean_up_pieces_with(model, items, layers, section, false)
-}
-
-/// [`clean_up_pieces_in`], with `one_wall` for a structural plan: every
-/// wall's cut is one material there, so joined walls merge into one
-/// outline with no line across where they meet.
-fn clean_up_pieces_with(
-    model: &Model,
-    items: &mut Vec<PlanItem>,
-    layers: Vec<CutPiece>,
-    section: bool,
-    one_wall: bool,
-) {
-    let mut cuts: Vec<CutPiece> = Vec::new();
-    items.retain(|it| match it {
-        PlanItem::Polygon {
-            id,
-            pen: Pen::Cut,
-            points,
-        } => {
-            cuts.push(CutPiece {
-                id: *id,
-                points: points.clone(),
-                layer: None,
-            });
-            false
-        }
-        _ => true,
-    });
-    cuts.extend(layers);
+/// The cut pieces as drawn: where two overlap the stronger cuts through
+/// the other (see `Joining::cuts`), and in a section the ground gives way
+/// to everything built in it.
+pub fn resolve_cuts(model: &Model, cuts: Vec<CutPiece>, section: bool) -> Vec<CutPiece> {
     // where cuts overlap, the stronger cuts through the other (see
     // `Joining::cuts`): a wall runs through the end of the slab that sits
     // in it, and the slab's structure through the wall's plaster
@@ -613,6 +562,186 @@ fn clean_up_pieces_with(
             ..c.clone()
         }));
     }
+    polys
+}
+
+/// The key of an air gap layer: air, for where the thick line goes.
+const AIR: (Option<ElementId>, u8) = (None, 250);
+
+/// Turn cut polygons into fills plus outlines, leaving out outline segments
+/// shared with a neighbouring cut so joined elements read as one mass.
+pub fn clean_up_cuts(model: &Model, items: &mut Vec<PlanItem>) {
+    clean_up_pieces(model, items, vec![]);
+}
+
+/// [`clean_up_cuts`], with layer pieces of layered elements besides the
+/// `Pen::Cut` polygons in `items`. Each layer is filled with its own
+/// material's hatch; the line between two layers of one element is a thin
+/// one, and layers of the same material merge across joined walls.
+pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<CutPiece>) {
+    clean_up_pieces_in(model, items, layers, false)
+}
+
+/// [`clean_up_pieces`] for a plan, or with `section` for a section: there
+/// footings are filled with their material.
+fn boxes_of(p: &[DVec2]) -> (DVec2, DVec2) {
+    p.iter().fold((DVec2::MAX, DVec2::MIN), |(lo, hi), q| {
+        (lo.min(*q), hi.max(*q))
+    })
+}
+
+/// Do polygons `a` and `b` share a stretch of their outlines?
+fn shares_edge(a: &[DVec2], b: &[DVec2], eps: f64) -> bool {
+    let edges = |p: &[DVec2]| -> Vec<(DVec2, DVec2)> {
+        (0..p.len()).map(|i| (p[i], p[(i + 1) % p.len()])).collect()
+    };
+    for (p, q) in edges(a) {
+        let len = p.distance(q);
+        if len < eps {
+            continue;
+        }
+        let d = (q - p) / len;
+        for (r, t) in edges(b) {
+            if (r - p).perp_dot(d).abs() < eps && (t - p).perp_dot(d).abs() < eps {
+                let (u, v) = ((r - p).dot(d), (t - p).dot(d));
+                if u.max(v).min(len) - u.min(v).max(0.0) > eps {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// A point snapped to a grid.
+type Grid = (i64, i64);
+
+/// The outline round polygons that touch along their edges and do not
+/// overlap, when it is one loop: each edge split where another's corner
+/// lies on it, and the edges two of them share (run opposite ways)
+/// dropped. None when the parts do not make one simple outline.
+pub(crate) fn union_touching(parts: &[&[DVec2]], eps: f64) -> Option<Vec<DVec2>> {
+    let area = |p: &[DVec2]| -> f64 {
+        (0..p.len())
+            .map(|i| p[i].perp_dot(p[(i + 1) % p.len()]))
+            .sum::<f64>()
+            / 2.0
+    };
+    let rings: Vec<Vec<DVec2>> = parts
+        .iter()
+        .map(|p| {
+            let mut r = p.to_vec();
+            if area(&r) < 0.0 {
+                r.reverse();
+            }
+            r
+        })
+        .collect();
+    let corners: Vec<DVec2> = rings.iter().flatten().copied().collect();
+    let key = |p: DVec2| ((p.x / eps).round() as i64, (p.y / eps).round() as i64);
+    let mut edges: Vec<(DVec2, DVec2)> = vec![];
+    for r in &rings {
+        for i in 0..r.len() {
+            let (a, b) = (r[i], r[(i + 1) % r.len()]);
+            let len = a.distance(b);
+            if len < eps {
+                continue;
+            }
+            let d = (b - a) / len;
+            let mut cuts: Vec<f64> = corners
+                .iter()
+                .filter(|c| (**c - a).perp_dot(d).abs() < eps)
+                .map(|c| (*c - a).dot(d))
+                .filter(|t| *t > eps && *t < len - eps)
+                .collect();
+            cuts.sort_by(f64::total_cmp);
+            let mut from = a;
+            for t in cuts {
+                let p = a + d * t;
+                if p.distance(from) > eps {
+                    edges.push((from, p));
+                    from = p;
+                }
+            }
+            edges.push((from, b));
+        }
+    }
+    // shared edges run both ways: both go
+    let mut count: std::collections::HashMap<(Grid, Grid), i32> = std::collections::HashMap::new();
+    for (a, b) in &edges {
+        *count.entry((key(*a), key(*b))).or_default() += 1;
+    }
+    let outer: Vec<(DVec2, DVec2)> = edges
+        .into_iter()
+        .filter(|(a, b)| !count.contains_key(&(key(*b), key(*a))))
+        .collect();
+    if outer.is_empty() {
+        return None;
+    }
+    let mut next: std::collections::HashMap<(i64, i64), DVec2> = std::collections::HashMap::new();
+    for (a, b) in &outer {
+        if next.insert(key(*a), *b).is_some() {
+            return None;
+        }
+    }
+    let start = outer[0].0;
+    let mut ring = vec![start];
+    let mut at = outer[0].1;
+    while key(at) != key(start) {
+        if ring.len() > outer.len() {
+            return None;
+        }
+        ring.push(at);
+        at = *next.get(&key(at))?;
+    }
+    (ring.len() == outer.len()).then_some(ring)
+}
+
+pub fn clean_up_pieces_in(
+    model: &Model,
+    items: &mut Vec<PlanItem>,
+    layers: Vec<CutPiece>,
+    section: bool,
+) {
+    clean_up_pieces_with(model, items, layers, section, false)
+}
+
+/// [`clean_up_pieces_in`], with `one_wall` for a structural plan: every
+/// wall's cut is one material there, so joined walls merge into one
+/// outline with no line across where they meet.
+fn clean_up_pieces_with(
+    model: &Model,
+    items: &mut Vec<PlanItem>,
+    layers: Vec<CutPiece>,
+    section: bool,
+    one_wall: bool,
+) {
+    let mut cuts: Vec<CutPiece> = Vec::new();
+    items.retain(|it| match it {
+        PlanItem::Polygon {
+            id,
+            pen: Pen::Cut,
+            points,
+        } => {
+            cuts.push(CutPiece {
+                id: *id,
+                points: points.clone(),
+                layer: None,
+            });
+            false
+        }
+        _ => true,
+    });
+    cuts.extend(layers);
+    let polys = resolve_cuts(model, cuts, section);
+    let bb = |p: &[DVec2]| {
+        p.iter().fold((DVec2::MAX, DVec2::MIN), |(lo, hi), q| {
+            (lo.min(*q), hi.max(*q))
+        })
+    };
+    let near = |a: (DVec2, DVec2), b: (DVec2, DVec2), eps: f64| {
+        a.0.x <= b.1.x + eps && b.0.x <= a.1.x + eps && a.0.y <= b.1.y + eps && b.0.y <= a.1.y + eps
+    };
     let keys: Vec<(Option<ElementId>, u8)> = polys
         .iter()
         .map(|p| {
@@ -628,11 +757,53 @@ fn clean_up_pieces_with(
             }
         })
         .collect();
-    for p in &polys {
+    // batt insulation of one layer cut in pieces (two ceilings meeting
+    // over a wall, the wall's top running into the wool) filled as one,
+    // so its loops run on over the joints (George 2026-11-25)
+    let mut filled = vec![false; polys.len()];
+    for (i, p) in polys.iter().enumerate() {
+        if filled[i] {
+            continue;
+        }
+        let hatch = p.hatch(model, section);
+        let mut points = p.points.clone();
+        if hatch == Hatch::Insulation {
+            let layer = |q: &CutPiece| q.layer.map(|l| l.index);
+            let mut group = vec![i];
+            let mut k = 0;
+            while k < group.len() {
+                let g = group[k];
+                for j in i + 1..polys.len() {
+                    if filled[j]
+                        || group.contains(&j)
+                        || keys[j] != keys[i]
+                        || layer(&polys[j]) != layer(p)
+                        || polys[j].hatch(model, section) != hatch
+                        || !near(boxes_of(&polys[g].points), boxes_of(&polys[j].points), 1e-4)
+                    {
+                        continue;
+                    }
+                    if shares_edge(&polys[g].points, &polys[j].points, 1e-4) {
+                        group.push(j);
+                    }
+                }
+                k += 1;
+            }
+            if group.len() > 1 {
+                let parts: Vec<&[DVec2]> = group.iter().map(|&g| &polys[g].points[..]).collect();
+                if let Some(one) = union_touching(&parts, 1e-5) {
+                    points = one;
+                    for &g in &group {
+                        filled[g] = true;
+                    }
+                }
+            }
+        }
+        filled[i] = true;
         items.push(PlanItem::Fill {
             id: p.id,
-            points: p.points.clone(),
-            hatch: p.hatch(model, section),
+            points,
+            hatch,
             rgb: p.colour(model, section),
         });
     }
@@ -2480,7 +2651,7 @@ pub(crate) fn wall_rise(
     (cut_height + floor > 1e-3 && wall_top_height(model, w) > floor + 1e-3).then_some(rise)
 }
 
-fn wall_top_height(model: &Model, w: &creabim_core::Wall) -> f64 {
+pub(crate) fn wall_top_height(model: &Model, w: &creabim_core::Wall) -> f64 {
     let Some(top) = creabim_core::walls::top_profile(model, w) else {
         return w.height;
     };
@@ -4618,5 +4789,35 @@ mod tests {
                 .any(|it| matches!(it, PlanItem::Shade { id: i, .. } if *i == id)),
             "the beam has its fill"
         );
+    }
+
+    #[test]
+    fn pieces_of_one_batt_layer_fill_as_one_outline() {
+        let p = |x: f64, y: f64| DVec2::new(x, y);
+        // a layer either side of a wall's top, and the two bits over it
+        let left = vec![
+            p(0.0, 0.0),
+            p(1.0, 0.0),
+            p(1.0, 0.02),
+            p(1.0, 0.05),
+            p(0.0, 0.05),
+        ];
+        let over = vec![p(1.0, 0.02), p(1.2, 0.02), p(1.2, 0.05), p(1.0, 0.05)];
+        let right = vec![
+            p(1.2, 0.0),
+            p(2.0, 0.0),
+            p(2.0, 0.05),
+            p(1.2, 0.05),
+            p(1.2, 0.02),
+        ];
+        let one = super::union_touching(&[&left, &over, &right], 1e-5).expect("one outline");
+        let area: f64 = (0..one.len())
+            .map(|i| one[i].perp_dot(one[(i + 1) % one.len()]))
+            .sum::<f64>()
+            / 2.0;
+        assert!((area - (0.1 - 0.2 * 0.02)).abs() < 1e-9, "{area} {one:?}");
+        // two apart make no one outline
+        let far = vec![p(5.0, 0.0), p(6.0, 0.0), p(6.0, 0.05), p(5.0, 0.05)];
+        assert!(super::union_touching(&[&left, &far], 1e-5).is_none());
     }
 }

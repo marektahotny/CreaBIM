@@ -570,6 +570,7 @@ fn valve_class(code: &str) -> Option<&'static str> {
         "klapkaReg" => "RNB006",
         "klapkaPoz" => "FMA001",
         "tlmic" => "RQC002",
+        "ventilator" => "GQB002",
         "vyvod" => "XZA003",
         _ => return None,
     })

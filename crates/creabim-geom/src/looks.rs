@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 
 /// The line a services drawing draws a pipe with, paper mm.
 pub const PIPE_LINE: f64 = 0.35;
+/// The line a services drawing draws a duct's outline with, paper mm.
+pub const DUCT_LINE: f64 = 0.25;
 
 /// The look of one element in one view, where it differs from the pens.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -235,11 +237,21 @@ impl Looks {
                 if l.colour.is_none() {
                     l.colour = Some(crate::mep::color(p));
                 }
+                // a duct is drawn in outline: told apart by its colour,
+                // its lines solid
                 if l.dashes.is_none() {
-                    l.dashes = Some(p.system_def().and_then(|s| s.dashes()));
+                    l.dashes = Some(
+                        p.system_def()
+                            .and_then(|s| s.dashes())
+                            .filter(|_| !p.kind().is_air()),
+                    );
                 }
                 if l.projection.is_none() {
-                    l.projection = Some(PIPE_LINE);
+                    l.projection = Some(if p.kind().is_air() {
+                        DUCT_LINE
+                    } else {
+                        PIPE_LINE
+                    });
                 }
             }
             // a utility network: its kind's colour and line type, heavy
@@ -759,13 +771,78 @@ fn zigzag_lines(polygon: &[DVec2], dir: Option<DVec2>, unit: f64) -> Vec<(DVec2,
 /// is thick there; a thick fill takes several rows. `unit` is drawing
 /// units per paper mm.
 fn batt_lines(polygon: &[DVec2], dir: Option<DVec2>, unit: f64) -> Vec<(DVec2, DVec2)> {
-    let n = polygon.len();
     let Some(dir) = dir.or_else(|| longest_dir(polygon)) else {
         return vec![];
     };
     if dir == DVec2::ZERO {
         return vec![];
     }
+    // a layer notched where something runs into it (a wall's top into a
+    // ceiling's wool): each stretch of its own thickness in loops as
+    // high as it is, so the wool over the wall is filled with whole
+    // loops, not the stubs of the full layer's (George 2026-11-25)
+    let pieces = notch_stretches(polygon, dir);
+    if pieces.len() > 1 {
+        return pieces
+            .iter()
+            .flat_map(|piece| batt_stretch(piece, dir, unit))
+            .collect();
+    }
+    batt_stretch(polygon, dir, unit)
+}
+
+/// A thin layer's fill cut across its run at every edge square to the
+/// run (a notch's sides), when its thickness steps there; the fill as it
+/// is otherwise. Only a band (much longer than thick) is cut, so an L of
+/// insulation round a corner keeps its one pattern.
+fn notch_stretches(polygon: &[DVec2], dir: DVec2) -> Vec<Vec<DVec2>> {
+    let n = polygon.len();
+    let nrm = dir.perp();
+    let local: Vec<DVec2> = polygon
+        .iter()
+        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
+        .collect();
+    let (lo, hi) = bounds(&local);
+    let (len, thick) = (hi.x - lo.x, hi.y - lo.y);
+    if n < 6 || len <= 0.0 || thick > 0.25 * len {
+        return vec![polygon.to_vec()];
+    }
+    let tol = 1e-6 * len.max(1.0);
+    let mut cuts: Vec<f64> = (0..n)
+        .filter_map(|i| {
+            let (a, b) = (local[i], local[(i + 1) % n]);
+            // a step of a tenth of the layer or more: not a sliver
+            ((a.x - b.x).abs() < tol
+                && (b.y - a.y).abs() > 0.1 * thick
+                && a.x > lo.x + tol
+                && a.x < hi.x - tol)
+                .then_some(a.x)
+        })
+        .collect();
+    cuts.sort_by(f64::total_cmp);
+    cuts.dedup_by(|a, b| (*a - *b).abs() < tol);
+    if cuts.is_empty() {
+        return vec![polygon.to_vec()];
+    }
+    let mut out = vec![];
+    let mut rest = polygon.to_vec();
+    for x in cuts {
+        let at = dir * x;
+        let left = clip_half(&rest, at, nrm, at - dir);
+        rest = clip_half(&rest, at, nrm, at + dir);
+        if left.len() >= 3 {
+            out.push(left);
+        }
+    }
+    if rest.len() >= 3 {
+        out.push(rest);
+    }
+    out
+}
+
+/// Batt loops over one stretch of a layer of one thickness.
+fn batt_stretch(polygon: &[DVec2], dir: DVec2, unit: f64) -> Vec<(DVec2, DVec2)> {
+    let n = polygon.len();
     let nrm = dir.perp();
     let local: Vec<DVec2> = polygon
         .iter()

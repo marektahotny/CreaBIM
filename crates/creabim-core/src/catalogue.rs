@@ -19,6 +19,7 @@ pub mod heat;
 mod jika;
 pub mod living;
 pub mod medical;
+pub mod midea;
 pub mod radiators;
 pub mod services;
 pub mod site;

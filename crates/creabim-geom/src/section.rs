@@ -813,6 +813,25 @@ thread_local! {
     static UNDERLAID: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// What a trade's plan leaves out of the building (George 2026-11-25:
+/// "v pôdoryse ZTI, VYK, ELI, Medi plyny, VZT nechcem vidieť vence, ani
+/// podhľady, ani preklady"): beams (ring beams, lintels and the boards
+/// wrapped round them), suspended ceilings, and the wall carrying on over
+/// a door above the cut (its lintel, a dash and two dots).
+fn trade_plan_leaves_out(model: &Model, it: &PlanItem) -> bool {
+    match model.get(it.id()).map(|e| &e.kind) {
+        Some(ElementKind::Beam(_) | ElementKind::Ceiling(_)) => true,
+        Some(ElementKind::Opening(_)) => matches!(
+            it,
+            PlanItem::Line {
+                pen: crate::plan::Pen::Overhead,
+                ..
+            }
+        ),
+        _ => false,
+    }
+}
+
 pub fn view_drawing(model: &Model, view: ElementId) -> Option<Drawing> {
     view_drawing_with(model, view, false)
 }
@@ -909,6 +928,11 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             let mut tiling = crate::rooms::tiling_items(model, v, *level);
             crate::plan::category_pens(model, &mut tiling, &v.graphics);
             d.items.append(&mut tiling);
+            // a trade's plan (ZTI, VYK, VZT, ELI, medical gases) shows no
+            // ring beams, lintels or suspended ceilings (George 2026-11-25)
+            if v.trade.is_some() && !v.coordination {
+                d.items.retain(|it| !trade_plan_leaves_out(model, it));
+            }
             // another level traced underneath, under the linework but
             // (over the fills, so a footing's or a slab's doesn't hide it)
             let under = match (
@@ -1147,7 +1171,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             // a roof plan: no terrain from the map under the roofs
             d.items
                 .retain(|it| !crate::sitefoot::is_terrain(model, it.id()));
-            crate::roofplan::apply(model, &mut d.items);
+            crate::roofplan::apply(model, &mut d.items, v.structural);
             // the gutters and downpipes by their own outlines (their
             // swept surfaces read as a black band at 1:100), their marks,
             // and which way each gutter run falls
@@ -1188,6 +1212,31 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 Some(ElementKind::Pipe(_) | ElementKind::Valve(_))
             ) && !crate::elplan::is_wiring_device(model, it.id())
         });
+    }
+    // but the holes the trades' pipes make through walls, slabs, ceilings
+    // and roofs are taken over into the architect's and the structural
+    // engineer's plans, and the pipes' ends standing out of the roof into
+    // the roof plan (George 2026-11-25)
+    if !services && !site {
+        if let creabim_core::ViewKind::Plan { level, cut_height } = kind {
+            let mm = v.scale / 1000.0;
+            if v.graphics.range.from_above {
+                d.items.extend(crate::tradepen::roof_items(full, mm));
+            } else if v.ceiling_plan {
+                d.items
+                    .extend(crate::tradepen::ceiling_plan_items(full, *level, mm));
+            } else {
+                // from the whole model: the view hides the pipes
+                d.items.extend(crate::tradepen::plan_items(
+                    full,
+                    view,
+                    *level,
+                    *cut_height,
+                    mm,
+                    v.structural,
+                ));
+            }
+        }
     }
     // a services drawing shows its pipes as lines, each in its system's
     // colour and line type
@@ -1234,6 +1283,8 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         let mut seen = std::collections::HashSet::new();
         let mut lines = vec![];
         let mut pipes = vec![];
+        // the devices on the ducts, numbered as the legend lists them
+        let positions = crate::mep::air_positions(model);
         // a scheme: a line a pipe, a symbol a valve, 2.5 mm on paper at
         // every scale; in space: the pipes' true widths, the valves'
         // bodies
@@ -1246,7 +1297,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             match &e.kind {
                 ElementKind::Pipe(p) => {
                     if seen.insert(e.id) {
-                        if !spatial {
+                        // ducts as VZT drawings show them, always: their
+                        // outline in true size, in their system's colour
+                        // (George 2026-11-25)
+                        if !spatial && p.kind().is_air() {
+                            lines.extend(crate::mep::duct_plan(model, e, p));
+                        } else if !spatial {
                             lines.extend(crate::mep::pipe_line(model, e, p));
                         }
                         pipes.push(e);
@@ -1260,6 +1316,23 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                         } else {
                             crate::valves::valve_plan_sized(model, e, x, half)
                         });
+                        // drawn by its tag where it has one in this view
+                        let tagged = model.iter().any(|t| {
+                            matches!(&t.kind, ElementKind::Tag(t) if t.view == view && t.host == e.id)
+                        });
+                        if let Some(n) = positions
+                            .iter()
+                            .find(|p| p.valves.contains(&e.id))
+                            .filter(|_| !tagged)
+                        {
+                            lines.extend(crate::mep::air_mark(
+                                model,
+                                e,
+                                x,
+                                n.number,
+                                v.scale / 1000.0,
+                            ));
+                        }
                     }
                     false
                 }
@@ -1409,6 +1482,26 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {
+        // a dimension to a penetration's centre is kept on its pipe, which
+        // the architect's plan hides: drawn from the whole model
+        let on_pipe = |p: &creabim_core::HostPoint| {
+            p.host.is_some_and(|h| {
+                hidden.contains(&h)
+                    && matches!(full.get(h).map(|e| &e.kind), Some(ElementKind::Pipe(_)))
+            })
+        };
+        for e in full.iter() {
+            if let ElementKind::Dimension(dim) = &e.kind {
+                if dim.view == view
+                    && dim.kind.is_linear()
+                    && !hidden.contains(&e.id)
+                    && (on_pipe(&dim.a) || on_pipe(&dim.b) || dim.mids.iter().any(on_pipe))
+                {
+                    d.items
+                        .extend(crate::annotate::linear_items(full, v, e.id, dim));
+                }
+            }
+        }
         d.items.retain(|it| !hidden.contains(&it.id()));
     }
     // a plan's names, notes and tags moved off lines and each other
@@ -1419,6 +1512,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             matches!(model.get(id).map(|e| &e.kind),
                 Some(ElementKind::Tag(t)) if !t.material
                     && crate::annotate::tag_normal(model, v, t).is_some())
+                // a penetration's label stays where it was dragged
+                || matches!(full.get(id).map(|e| &e.kind),
+                    Some(ElementKind::Tag(t)) if crate::tradepen::is_label_tag(full, t))
                 || matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Object(_)))
         };
         crate::declutter::place_labels_but(&mut d.items, v.scale / 1000.0, &square);
@@ -2022,7 +2118,7 @@ fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, 
 const ON_PLANE: f64 = 1e-5;
 
 /// Closed outlines where the plane d = 0 slices an element's mesh, in drawing coordinates.
-fn cut_loops(item: &SceneItem, frame: &SectionFrame) -> Vec<Vec<DVec2>> {
+pub(crate) fn cut_loops(item: &SceneItem, frame: &SectionFrame) -> Vec<Vec<DVec2>> {
     let m = &item.mesh;
     let mut segs: Vec<(DVec2, DVec2)> = Vec::new();
     for t in m.indices.chunks(3) {
@@ -2068,30 +2164,107 @@ fn clip_x(poly: &[DVec2], at: f64, side: f64) -> Vec<DVec2> {
     out
 }
 
-/// Join segments that share endpoints into loops.
+/// Join segments that share endpoints into loops. A cut through a mesh
+/// that boolean cuts left with T-junctions and slivers (a ceiling's
+/// layers where the partitions and the other ceiling cut them) leaves
+/// gaps in its outline: the open runs are joined end to end, the
+/// shortest gap first, so a gap is bridged by the run that continues
+/// it, never closed by a slanted line across the layer (George
+/// 2026-11-25).
 fn chain(mut segs: Vec<(DVec2, DVec2)>) -> Vec<Vec<DVec2>> {
     let close = |a: DVec2, b: DVec2| a.distance(b) < 1e-6;
     let mut loops = Vec::new();
+    let mut open: Vec<Vec<DVec2>> = Vec::new();
     while let Some((a, b)) = segs.pop() {
         let mut pts = vec![a, b];
-        loop {
-            let end = *pts.last().expect("non-empty");
-            let Some(i) = segs
-                .iter()
-                .position(|(p, q)| close(*p, end) || close(*q, end))
-            else {
-                break;
-            };
-            let (p, q) = segs.swap_remove(i);
-            let next = if close(p, end) { q } else { p };
-            if close(next, pts[0]) {
+        let mut closed = false;
+        // on from the end, then back from the start
+        for _ in 0..2 {
+            loop {
+                let end = *pts.last().expect("non-empty");
+                let Some(i) = segs
+                    .iter()
+                    .position(|(p, q)| close(*p, end) || close(*q, end))
+                else {
+                    break;
+                };
+                let (p, q) = segs.swap_remove(i);
+                let next = if close(p, end) { q } else { p };
+                if close(next, pts[0]) {
+                    closed = true;
+                    break;
+                }
+                pts.push(next);
+            }
+            if closed {
                 break;
             }
-            pts.push(next);
+            pts.reverse();
         }
-        loops.push(simplify(pts));
+        if closed {
+            loops.push(pts);
+        } else {
+            open.push(pts);
+        }
     }
+    loops.extend(join_open(open));
+    let mut loops: Vec<Vec<DVec2>> = loops.into_iter().map(simplify).collect();
     loops.retain(|l| l.len() >= 3);
+    loops
+}
+
+/// Open runs joined into loops: always the shortest gap first, between
+/// two runs' ends or a run's own two ends (which closes it).
+fn join_open(mut open: Vec<Vec<DVec2>>) -> Vec<Vec<DVec2>> {
+    let mut loops = Vec::new();
+    while !open.is_empty() {
+        // (gap, run, its end (true) or start, other run, its end or start)
+        let mut best: Option<(f64, usize, bool, usize, bool)> = None;
+        let ends: Vec<[(bool, DVec2); 2]> = open
+            .iter()
+            .map(|r| [(false, r[0]), (true, *r.last().expect("run"))])
+            .collect();
+        for (i, &ends_i) in ends.iter().enumerate() {
+            let own = ends_i[0].1.distance(ends_i[1].1);
+            if best.is_none_or(|b| own < b.0) {
+                best = Some((own, i, true, i, false));
+            }
+            for (j, &ends_j) in ends.iter().enumerate().skip(i + 1) {
+                for (ei, pi) in ends_i {
+                    for (ej, pj) in ends_j {
+                        let d = pi.distance(pj);
+                        if best.is_none_or(|b| d < b.0) {
+                            best = Some((d, i, ei, j, ej));
+                        }
+                    }
+                }
+            }
+        }
+        let Some((_, i, ei, j, ej)) = best else {
+            break;
+        };
+        if i == j {
+            loops.push(open.swap_remove(i));
+            continue;
+        }
+        // run i ends where run j starts
+        let mut b = open.swap_remove(j.max(i));
+        let mut a = open.swap_remove(j.min(i));
+        if j < i {
+            std::mem::swap(&mut a, &mut b);
+        }
+        if !ei {
+            a.reverse();
+        }
+        if ej {
+            b.reverse();
+        }
+        if a.last().expect("run").distance(b[0]) < 1e-6 {
+            b.remove(0);
+        }
+        a.extend(b);
+        open.push(a);
+    }
     loops
 }
 
@@ -3347,5 +3520,76 @@ mod tests {
             / 2.0;
         // the whole face, 0.5 wide and 2 high: no wedge
         assert!((area.abs() - 1.0).abs() < 1e-4, "{area} {l:?}");
+    }
+
+    #[test]
+    fn a_cut_outline_with_a_gap_is_bridged_not_closed_across() {
+        // a thin layer 2 m long, 15 mm thick, its top broken by a 4 cm
+        // gap a boolean cut left in its mesh
+        let (y0, y1) = (0.0, 0.015);
+        let p = |x: f64, y: f64| DVec2::new(x, y);
+        let segs = vec![
+            (p(0.0, y0), p(2.0, y0)),
+            (p(2.0, y0), p(2.0, y1)),
+            (p(2.0, y1), p(1.04, y1)),
+            (p(1.0, y1), p(0.0, y1)),
+            (p(0.0, y1), p(0.0, y0)),
+        ];
+        let loops = chain(segs);
+        assert_eq!(loops.len(), 1, "{loops:?}");
+        let l = &loops[0];
+        let area: f64 = (0..l.len())
+            .map(|i| l[i].perp_dot(l[(i + 1) % l.len()]))
+            .sum::<f64>()
+            / 2.0;
+        // the whole layer, no wedge cut off by a slanted closing line
+        assert!((area.abs() - 0.03).abs() < 1e-9, "{area} {l:?}");
+        for i in 0..l.len() {
+            let d = l[(i + 1) % l.len()] - l[i];
+            assert!(d.x.abs() < 1e-9 || d.y.abs() < 1e-9, "slanted {l:?}");
+        }
+    }
+
+    #[test]
+    fn a_trades_plan_leaves_out_ring_beams_and_the_lintels_over_doors() {
+        let m = sample();
+        let mut doc = creabim_core::Document::from_model(m.clone());
+        // a ring beam on every straight wall of the ground floor
+        let plan = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) => match v.kind {
+                    creabim_core::ViewKind::Plan { level, .. } => Some((e.id, level)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("a plan");
+        let mut tx = creabim_core::Transaction::new("Ring beams");
+        for e in m.iter() {
+            if let ElementKind::Wall(w) = &e.kind {
+                if w.level == plan.1 {
+                    if let Some(b) = creabim_core::masonry::ring_beam(&m, e.id) {
+                        tx = tx.insert(b);
+                    }
+                }
+            }
+        }
+        doc.commit(tx).unwrap();
+        let m = doc.model().clone();
+        let left_out = |m: &Model| {
+            view_drawing(m, plan.0)
+                .unwrap()
+                .items
+                .iter()
+                .filter(|it| trade_plan_leaves_out(m, it))
+                .count()
+        };
+        // the architect's plan draws them, above the cut
+        assert!(left_out(&m) > 0);
+        let zti = set_view(&m, plan.0, |v| {
+            v.trade = Some(creabim_core::viewmodes::Trade::Plumbing)
+        });
+        assert_eq!(left_out(&zti), 0);
     }
 }

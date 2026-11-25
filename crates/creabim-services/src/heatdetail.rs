@@ -23,8 +23,8 @@
 
 use crate::heatloss::{
     azimuth, beyond, overlap_area, room_number, rooms_of, round3, u_of, wall_of, BuildingLoss,
-    Item, Missing, Opts, RoomLoss, Shielding, R_CEILING_UP, R_FLOOR, R_FLOOR_DOWN, R_INNER, R_ROOF,
-    R_WALL,
+    Item, Missing, Opts, RoomAt, RoomLoss, Shielding, R_CEILING_UP, R_FLOOR, R_FLOOR_DOWN, R_INNER,
+    R_ROOF, R_WALL,
 };
 use crate::psi::{self, Frame, Ins, Joint, Picks};
 use creabim_core::fireparams::{self, ParamTable};
@@ -192,26 +192,13 @@ pub fn grown(outline: &[DVec2], out: &[f64]) -> Vec<DVec2> {
         .collect()
 }
 
-/// The heat loss of every room by the detailed method.
-pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
-    let rooms = rooms_of(model);
-    let tables = tables_of(model);
-    let elev = |id| model.level(id).map_or(0.0, |l| l.elevation);
-    let storey = |id| model.level(id).map_or(3.0, |l| l.height);
-    let north = model.project_info().map_or(0.0, |(_, p)| p.true_north);
-    let d_tb = tb_rows(&tables).get(o.tb_row).map(|r| r.1);
-    let f_ann = factor(&tables, "f_theta_ann");
-    let f_gw = factor(&tables, if o.gw_near { "f_gw_near" } else { "f_gw_far" });
-    let rho_cp = factor(&tables, "rho_cp");
-    let f_dir = factor(&tables, "f_dir");
-    let floor_k = ground_constants(&tables, "floor");
-    let psi_rows = psi::rows(&tables);
+/// Each room's edges and its outline by the outside dimensions.
+fn bounds(model: &Model, rooms: &[RoomAt]) -> (Vec<Vec<Edge>>, Vec<Vec<DVec2>>) {
     let room_at = |level, p: DVec2, not| {
         rooms.iter().position(|x| {
             x.level == level && x.e.id != not && polygon::contains(&x.shape.outline, p)
         })
     };
-    // each room's edges and its outline by the outside dimensions
     let edges: Vec<Vec<Edge>> = rooms
         .iter()
         .map(|r| {
@@ -240,6 +227,46 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
             )
         })
         .collect();
+    (edges, outer)
+}
+
+/// The floor area A and the exposed perimeter P of level `level` by the
+/// outside dimensions, for B = A / (0,5·P) (STN EN ISO 13370, 6.7.1):
+/// its rooms' outlines carried out to the outer faces of the outside
+/// walls and to the middle of the inner ones; P the outside walls only.
+pub fn floor_area_perimeter(model: &Model, level: creabim_core::ElementId) -> Option<(f64, f64)> {
+    let rooms: Vec<RoomAt> = rooms_of(model)
+        .into_iter()
+        .filter(|r| r.level == level)
+        .collect();
+    let (edges, outer) = bounds(model, &rooms);
+    let (mut a, mut p) = (0.0, 0.0);
+    for (k, o) in outer.iter().enumerate() {
+        a += polygon::signed_area2(o).abs() / 2.0;
+        let n = o.len();
+        p += (0..n)
+            .filter(|i| matches!(edges[k][*i], Edge::Outside(_)))
+            .map(|i| o[i].distance(o[(i + 1) % n]))
+            .sum::<f64>();
+    }
+    (p > 1e-6 && a > 1e-6).then_some((a, p))
+}
+
+/// The heat loss of every room by the detailed method.
+pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
+    let rooms = rooms_of(model);
+    let tables = tables_of(model);
+    let elev = |id| model.level(id).map_or(0.0, |l| l.elevation);
+    let storey = |id| model.level(id).map_or(3.0, |l| l.height);
+    let north = model.project_info().map_or(0.0, |(_, p)| p.true_north);
+    let d_tb = tb_rows(&tables).get(o.tb_row).map(|r| r.1);
+    let f_ann = factor(&tables, "f_theta_ann");
+    let f_gw = factor(&tables, if o.gw_near { "f_gw_near" } else { "f_gw_far" });
+    let rho_cp = factor(&tables, "rho_cp");
+    let f_dir = factor(&tables, "f_dir");
+    let floor_k = ground_constants(&tables, "floor");
+    let psi_rows = psi::rows(&tables);
+    let (edges, outer) = bounds(model, &rooms);
     let exposed = |k: usize| -> f64 {
         let o = &outer[k];
         let n = o.len();

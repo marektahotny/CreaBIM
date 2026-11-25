@@ -175,8 +175,23 @@ fn shade(m: &Material, n: [f32; 3]) -> [f32; 3] {
     out
 }
 
+/// A number with a decimal comma, at most `n` decimals, no trailing zeros.
+fn dec(v: f64, n: usize) -> String {
+    let t = format!("{v:.n$}");
+    let t = if t.contains('.') {
+        t.trim_end_matches('0').trim_end_matches('.')
+    } else {
+        &t
+    };
+    t.replace('.', ",")
+}
+
 /// The fields of a material. Returns the undo label of what changed, or "".
-pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static str {
+pub(super) fn material_fields(
+    ui: &mut egui::Ui,
+    m: &mut Material,
+    vapour: &[creabim_services::thermcheck::VapourChoice],
+) -> &'static str {
     let mut label = "";
     egui::Grid::new(ui.id().with("material_fields"))
         .num_columns(2)
@@ -316,6 +331,88 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             {
                 m.density = (density > 0.0).then_some(density);
                 label = "Material density";
+            }
+            ui.end_row();
+
+            // water vapour diffusion (STN 73 0540-3 tab. 16, thin layers
+            // tab. 17, else the maker's); 0 is unknown
+            ui.label(crate::i18n::tr("Diffusion resistance factor μ"));
+            ui.horizontal(|ui| {
+                let mut mu = m.mu.unwrap_or(0.0);
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut mu)
+                            .range(0.0..=10_000_000.0)
+                            .speed(1.0)
+                            .max_decimals(1),
+                    )
+                    .on_hover_text(crate::i18n::t(
+                        "μ by STN 73 0540-3 table 16 or the product's data sheet; 0 is unknown",
+                    ))
+                    .changed()
+                {
+                    m.mu = (mu > 0.0).then_some(mu);
+                    label = "Material diffusion resistance";
+                }
+                if !vapour.is_empty() {
+                    ui.menu_button(crate::i18n::t("From the norm…"), |ui| {
+                        let id = ui.id().with("vapour_filter");
+                        let mut filter: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+                        ui.add(
+                            egui::TextEdit::singleline(&mut filter)
+                                .hint_text(crate::i18n::t("Search"))
+                                .desired_width(320.0),
+                        );
+                        ui.data_mut(|d| d.insert_temp(id, filter.clone()));
+                        let f = filter.to_lowercase();
+                        egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                            for c in vapour {
+                                if !f.is_empty()
+                                    && !c.name.to_lowercase().contains(&f)
+                                    && !c.source.contains(&f)
+                                {
+                                    continue;
+                                }
+                                let end = match c.end {
+                                    Some(false) => format!(" ({})", crate::i18n::t("lower end")),
+                                    Some(true) => format!(" ({})", crate::i18n::t("upper end")),
+                                    None => String::new(),
+                                };
+                                let sd = c
+                                    .sd
+                                    .map(|sd| format!(", sd {}", dec(sd, 3)))
+                                    .unwrap_or_default();
+                                let text = format!("{}: μ {}{end}{sd}", c.name, dec(c.mu, 1));
+                                if ui.button(text).on_hover_text(&c.source).clicked() {
+                                    m.mu = Some(c.mu);
+                                    m.sd = c.sd;
+                                    label = "Material diffusion resistance";
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
+                }
+            });
+            ui.end_row();
+
+            ui.label(crate::i18n::tr("Equivalent air layer thickness sd"));
+            let mut sd = m.sd.unwrap_or(0.0);
+            if ui
+                .add(
+                    egui::DragValue::new(&mut sd)
+                        .range(0.0..=10_000.0)
+                        .speed(0.01)
+                        .max_decimals(3)
+                        .suffix(" m"),
+                )
+                .on_hover_text(crate::i18n::t(
+                    "For a thin layer (foil, membrane, coat) its sd = μ·d by STN 73 0540-3 table 17 or the maker's; it is taken instead of μ times the layer's thickness. 0 is none",
+                ))
+                .changed()
+            {
+                m.sd = (sd > 0.0).then_some(sd);
+                label = "Material diffusion resistance";
             }
             ui.end_row();
 
@@ -830,7 +927,26 @@ impl CreaBimApp {
                 });
                 ui.add_space(8.0);
                 let mut edited = m.clone();
-                let label = material_fields(ui, &mut edited);
+                let tables = creabim_services::thermcheck::tables_of(model);
+                let vapour = creabim_services::thermcheck::vapour_choices(&tables);
+                let label = material_fields(ui, &mut edited, &vapour);
+                if m.mu.is_none() && m.sd.is_none() {
+                    if let Some(d) = creabim_services::thermcheck::vapour_default(&tables, &e.name) {
+                        let v = match (d.mu, d.sd) {
+                            (_, Some(sd)) => format!("sd {} m", dec(sd, 3)),
+                            (Some(mu), None) => format!("μ {}", dec(mu, 2)),
+                            (None, None) => String::new(),
+                        };
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} {v} ({})",
+                                crate::i18n::t("Not entered: the condensation takes"),
+                                d.source
+                            ))
+                            .weak(),
+                        );
+                    }
+                }
                 if !label.is_empty() {
                     asks.push(Ask::Edit(id, label, edited));
                 }

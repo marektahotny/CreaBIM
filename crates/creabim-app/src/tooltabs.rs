@@ -431,6 +431,18 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The design heat loss of every room (STN EN 12831-1): through walls, windows, floor and roof and by ventilation, and the building's total",
             ),
             act(
+                "calc:thermalfield",
+                "Thermal field of a detail",
+                "grid-lines",
+                "The temperature field of a detail called out of a section (STN EN ISO 10211): the lowest inner surface temperature, fRsi and L2D, checked by STN 73 0540-2 čl. 5.3",
+            ),
+            act(
+                "calc:condensation",
+                "Condensation in a build-up",
+                "droplet",
+                "Water vapour in a build-up by the Glaser method: the condensation zone and the annual balance Mc, Mev by STN 73 0540-2 annex B, checked by čl. 6.1 and 6.2",
+            ),
+            act(
                 "calc:floorheat",
                 "Design underfloor heating",
                 "spline",
@@ -499,6 +511,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Heat recovery design",
                 "thermometer",
                 "Designs ventilation with heat recovery in one step: the ATREA DUPLEX unit, distribution boxes, flexible ducts Ø75 through the doors to a plate valve in every room, room units in the outer wall for the rooms marked so; pressure loss, transfer under the doors and the take-off VZT – recuperation with prices",
+            ),
+            act(
+                "calc:extract",
+                "Forced extraction",
+                "arrow-up-to-line",
+                "Own fans for bathrooms, WCs and the plant room: an extract valve in the ceiling, Spiro Ø100 through the attic, the fan (Soler & Palau TD-160/100 N SILENT or SILENT-100 CHZ) and a roof outlet; the working point from the fan's curve against the ducts, the door undercut and the bill"
             ),
             act(
                 "calc:ducts",

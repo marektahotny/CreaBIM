@@ -450,7 +450,21 @@ pub fn pipe_text(p: &Pipe) -> String {
         K::ColdWater => format!("S {size}"),
         K::HotWater => format!("T {size}"),
         K::Circulation => format!("C {size}"),
-        K::Sanitary | K::Storm | K::Flue | K::AirSupply | K::AirExhaust => {
+        // a duct: its diameter, and its insulation under it, as VZT
+        // drawings write them (George 2026-11-25)
+        K::AirSupply | K::AirExhaust => {
+            let d = format!("Ø{}", n(p.nominal_mm));
+            if p.insulation_mm > 0.0 {
+                format!(
+                    "{d}\n{} {} mm",
+                    creabim_core::words::tr("insulation"),
+                    n(p.insulation_mm)
+                )
+            } else {
+                d
+            }
+        }
+        K::Sanitary | K::Storm | K::Flue => {
             format!("DN{}", n(p.nominal_mm))
         }
         _ => format!("{} {size}", p.system),
@@ -593,6 +607,9 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
         text: String,
         /// where its label was dragged to, from where it falls by itself
         moved: Option<DVec2>,
+        /// half its width with the insulation, m: a duct's label stands
+        /// clear of its outline
+        half: f64,
     }
     let mut out = vec![];
     let mut runs: Vec<Run> = vec![];
@@ -616,7 +633,10 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
             // (K1, D2, V1), its size beside that
             let text = pipe_text(p);
             let Some(mark) = stack_mark(model, p) else {
-                let at = a + DVec2::X * (RISER_MARK + (look.width(&text) / 2.0 + 1.0) * mm);
+                let home = a + DVec2::X * (RISER_MARK + (look.width(&text) / 2.0 + 1.0) * mm);
+                // dragged away: the label alone, no leader (George
+                // 2026-11-25)
+                let at = home + p.mark.unwrap_or(DVec2::ZERO);
                 out.push(label(e.id, at, 0.0, text));
                 continue;
             };
@@ -650,6 +670,11 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
             level: p.level,
             text: pipe_text(p),
             moved: p.mark,
+            half: if p.kind().is_air() {
+                p.section_m().0 / 2.0 + p.insulation_mm / 1000.0
+            } else {
+                0.0
+            },
         });
     }
     for (mark, id, a, sizes, moved) in stacks {
@@ -745,22 +770,197 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
         // beside the bundle, clear of its outermost pipe
         let top = members.first().map_or(0.0, |m| m.0);
         let half = lines.len() as f64 * look.size * 1.25 / 2.0;
-        let home = mid + n * (top + (half + 1.0) * mm);
+        let wide = members
+            .iter()
+            .map(|(_, j)| runs[*j].half)
+            .fold(0.0, f64::max);
+        let home = mid + n * (top + wide + (half + 1.0) * mm);
         let moved = seed.moved.unwrap_or(DVec2::ZERO);
+        // dragged away: the label alone, no leader (George 2026-11-25)
         let at = home + moved;
-        // dragged away: a fine leader from the pipe to the label
-        if moved.length() > 3.0 * mm {
-            let to = at - (at - mid).normalize_or_zero() * (half + 0.5) * mm;
-            out.push(PlanItem::Line {
-                id: seed.id,
-                pen: crate::plan::Pen::Fine,
-                a: mid,
-                b: to,
-            });
-        }
         out.push(label(seed.id, at, u.to_angle(), text));
     }
     out
+}
+
+/// One position of a VZT drawing: a kind of device on the ducts (an
+/// extract valve, a fan, a roof outlet, a silencer), each product and
+/// size once, numbered as the legend lists them (George 2026-11-25).
+#[derive(Clone, Debug, PartialEq)]
+pub struct AirPosition {
+    pub number: usize,
+    pub name: String,
+    pub valves: Vec<creabim_core::ElementId>,
+}
+
+/// The devices on the model's ducts, as positions: in the order of the
+/// valve kinds, then by name.
+pub fn air_positions(model: &Model) -> Vec<AirPosition> {
+    use creabim_core::ElementKind;
+    use creabim_services::extractfans as xf;
+    let mut out: Vec<(usize, AirPosition)> = vec![];
+    for e in model.iter() {
+        let ElementKind::Valve(v) = &e.kind else {
+            continue;
+        };
+        let Some(p) = v.host(model) else { continue };
+        if !p.kind().is_air() {
+            continue;
+        }
+        let product = v.product.as_deref().unwrap_or("");
+        let name = if let Some(f) = xf::fan(product) {
+            let speed = v.preset.as_deref().filter(|_| f.speeds.len() > 1);
+            match speed {
+                Some(s) => format!("{} {} ({s})", f.maker, f.name),
+                None => format!("{} {}", f.maker, f.name),
+            }
+        } else if let Some(a) = xf::valve(product) {
+            format!("{} {}", a.maker, a.name)
+        } else {
+            let kind = v.kind_def().map_or(v.kind.clone(), |k| k.name.to_string());
+            let dn = p.nominal_mm;
+            format!("{kind} Ø{dn:.0}")
+        };
+        let order = creabim_core::mep::VALVE_KINDS
+            .iter()
+            .position(|k| k.code == v.kind)
+            .unwrap_or(usize::MAX);
+        match out.iter_mut().find(|x| x.1.name == name) {
+            Some(x) => x.1.valves.push(e.id),
+            None => out.push((
+                order,
+                AirPosition {
+                    number: 0,
+                    name,
+                    valves: vec![e.id],
+                },
+            )),
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.name.cmp(&b.1.name)));
+    out.into_iter()
+        .enumerate()
+        .map(|(i, (_, mut x))| {
+            x.number = i + 1;
+            x
+        })
+        .collect()
+}
+
+/// The position marks the VZT plans still lack, as tags (the Tag tool's
+/// own, George 2026-11-25: dragged with the mouse like any tag): each
+/// device on the ducts in each ventilation plan of its storey, its number
+/// in a circle up and to the right of it, in the label green.
+pub fn air_position_tags(model: &Model) -> Vec<Element> {
+    use creabim_core::viewmodes::{DisplayMode, Trade};
+    use creabim_core::{ElementKind, ViewKind};
+    let positions = air_positions(model);
+    if positions.is_empty() {
+        return vec![];
+    }
+    let tagged: std::collections::HashSet<(creabim_core::ElementId, creabim_core::ElementId)> =
+        model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Tag(t) => Some((t.view, t.host)),
+                _ => None,
+            })
+            .collect();
+    let mut out = vec![];
+    for ve in model.iter() {
+        let ElementKind::View(v) = &ve.kind else {
+            continue;
+        };
+        let ViewKind::Plan { level, .. } = v.kind else {
+            continue;
+        };
+        if v.callout.is_some()
+            || v.graphics.range.from_above
+            || DisplayMode::of(v) != DisplayMode::Services
+            || v.trade.is_some_and(|t| t != Trade::Ventilation)
+        {
+            continue;
+        }
+        let mm = v.scale / 1000.0;
+        for pos in &positions {
+            for &id in &pos.valves {
+                let Some(ElementKind::Valve(x)) = model.get(id).map(|e| &e.kind) else {
+                    continue;
+                };
+                if x.host(model).is_none_or(|p| p.level != level) || tagged.contains(&(ve.id, id)) {
+                    continue;
+                }
+                let mut t =
+                    creabim_core::Tag::new(ve.id, id, x.mark.unwrap_or(DVec2::new(6.0, 6.0) * mm));
+                t.color = Some(LABEL_GREEN);
+                out.push(Element::new("Position tag", ElementKind::Tag(t)));
+            }
+        }
+    }
+    out
+}
+
+/// A device's position mark in a VZT drawing: its number in a circle,
+/// the leader from the device, the circle where it was dragged to or up
+/// and to the right. `mm` is drawing units per paper mm.
+pub fn air_mark(
+    model: &Model,
+    e: &Element,
+    v: &creabim_core::mep::Valve,
+    number: usize,
+    mm: f64,
+) -> Option<PlanItem> {
+    let pipe = v.host(model)?;
+    let anchor = v.at(pipe).truncate();
+    let at = anchor + v.mark.unwrap_or(DVec2::new(6.0, 6.0) * mm);
+    Some(PlanItem::Tag {
+        id: e.id,
+        anchor,
+        at,
+        elbow: None,
+        text: number.to_string(),
+        round: true,
+        look: crate::annotation::TextLook {
+            size: 2.5,
+            rgb: Some(LABEL_GREEN),
+            ..Default::default()
+        },
+    })
+}
+
+/// A duct as a VZT drawing shows it (George 2026-11-25): its outline in
+/// true size in its system's colour (the view colours the lines), washed
+/// lightly in that colour, and where it is insulated the insulation's
+/// outline round it, thin and dashed in the same colour.
+pub fn duct_plan(model: &Model, e: &Element, p: &Pipe) -> Vec<PlanItem> {
+    let rgb = color(p);
+    let mut bare = p.clone();
+    bare.insulation_mm = 0.0;
+    let mut items: Vec<PlanItem> = pipe_plan(model, e, &bare, f64::INFINITY)
+        .into_iter()
+        .map(|it| match it {
+            // a light wash: the outline tells the duct
+            PlanItem::Shade { id, points, .. } => PlanItem::Tint {
+                id,
+                points,
+                rgb: rgb.map(|c| c + (1.0 - c) * 0.6),
+            },
+            other => other,
+        })
+        .collect();
+    if p.insulation_mm > 0.0 {
+        for it in pipe_plan(model, e, p, f64::INFINITY) {
+            if let PlanItem::Line { id, a, b, .. } = it {
+                items.push(PlanItem::Curve {
+                    id,
+                    points: vec![a, b],
+                    rgb,
+                    dashed: true,
+                });
+            }
+        }
+    }
+    items
 }
 
 /// The pipe in a plan cut `cut` above its level: its outline in plan,
@@ -1160,7 +1360,7 @@ mod tests {
         };
         assert_eq!(angle, 0.0);
         assert!((at.x - 2.5).abs() < 1e-9 && at.y > 2.2);
-        // dragged away: the label goes with the drag, a leader to the pipe
+        // dragged away: the label goes with the drag, no leader
         let mut moved = es[0].clone();
         if let ElementKind::Pipe(p) = &mut moved.kind {
             p.mark = Some(DVec2::new(0.5, 1.0));
@@ -1180,7 +1380,7 @@ mod tests {
             unreachable!()
         };
         assert!((now - was - DVec2::new(0.5, 1.0)).length() < 1e-9);
-        assert!(matches!(lone[0], PlanItem::Line { .. }) && first.len() == 1);
+        assert!(lone.len() == 1 && first.len() == 1);
     }
 
     #[test]
@@ -1281,6 +1481,7 @@ mod tests {
                 gas_cat: None,
                 product: None,
                 preset: None,
+                mark: None,
             }),
         );
         let (run_id, valve_id) = (run.id, valve.id);

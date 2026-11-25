@@ -305,6 +305,53 @@ fn sample(items: &mut Vec<PlanItem>, id: ElementId, s: &SystemDef, a: DVec2, len
     }
 }
 
+/// A sample of a duct `len` long from `a`, as the VZT drawing shows it:
+/// its outline in its system's colour washed lightly, or with `insulated`
+/// the insulation's dashed outline round it.
+fn duct_sample(
+    items: &mut Vec<PlanItem>,
+    id: ElementId,
+    s: &SystemDef,
+    a: DVec2,
+    len: f64,
+    insulated: bool,
+) {
+    let rgb = [
+        ((s.color >> 16) & 0xff) as f32 / 255.0,
+        ((s.color >> 8) & 0xff) as f32 / 255.0,
+        (s.color & 0xff) as f32 / 255.0,
+    ];
+    let half = if insulated { 0.9 } else { 1.4 };
+    let box_ = |h: f64| {
+        vec![
+            a + DVec2::new(0.0, -h),
+            a + DVec2::new(len, -h),
+            a + DVec2::new(len, h),
+            a + DVec2::new(0.0, h),
+            a + DVec2::new(0.0, -h),
+        ]
+    };
+    items.push(PlanItem::Tint {
+        id,
+        points: box_(half)[..4].to_vec(),
+        rgb,
+    });
+    items.push(PlanItem::Curve {
+        id,
+        points: box_(half),
+        rgb,
+        dashed: false,
+    });
+    if insulated {
+        items.push(PlanItem::Curve {
+            id,
+            points: box_(1.6),
+            rgb,
+            dashed: true,
+        });
+    }
+}
+
 /// The utility networks drawn in the model, each kind, state and note
 /// once, in the order of their kinds and states.
 pub fn networks(model: &Model) -> Vec<creabim_core::utility::UtilityLine> {
@@ -401,9 +448,47 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         );
         y -= HEAD + 3.0;
         for (s, types) in &systems {
-            sample(&mut items, view, s, DVec2::new(0.0, y - LINE / 2.0), SAMPLE);
+            if s.kind.is_air() {
+                duct_sample(
+                    &mut items,
+                    view,
+                    s,
+                    DVec2::new(0.0, y - LINE / 2.0),
+                    SAMPLE,
+                    false,
+                );
+            } else {
+                sample(&mut items, view, s, DVec2::new(0.0, y - LINE / 2.0), SAMPLE);
+            }
             let name = format!("{} - {}", tr(s.name), types.join(", "));
             for l in wrap(&name, tw, TEXT) {
+                text(&mut items, DVec2::new(ind, y - LINE / 2.0), &l, TEXT, None);
+                y -= LINE;
+            }
+            y -= 1.0;
+        }
+        // a duct's insulation, as the drawing marks it
+        let insulated = systems.iter().find(|(s, _)| {
+            s.kind.is_air()
+                && model.iter().any(|e| {
+                    matches!(&e.kind, ElementKind::Pipe(p)
+                        if p.system == s.code && p.insulation_mm > 0.0)
+                })
+        });
+        if let Some((s, _)) = insulated {
+            duct_sample(
+                &mut items,
+                view,
+                s,
+                DVec2::new(0.0, y - LINE / 2.0),
+                SAMPLE,
+                true,
+            );
+            for l in wrap(
+                &tr("duct insulation (thickness at the duct's size)"),
+                tw,
+                TEXT,
+            ) {
                 text(&mut items, DVec2::new(ind, y - LINE / 2.0), &l, TEXT, None);
                 y -= LINE;
             }
@@ -654,6 +739,38 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             y -= 1.5;
         }
     }
+    // the devices on the ducts, by their position numbers in the plan
+    let air = if of(Trade::Ventilation) {
+        crate::mep::air_positions(model)
+    } else {
+        vec![]
+    };
+    if !air.is_empty() {
+        y -= 1.5;
+        text(
+            &mut items,
+            DVec2::new(0.0, y - HEAD / 2.0),
+            &tr("VENTILATION DEVICES"),
+            HEAD,
+            None,
+        );
+        y -= HEAD + 3.0;
+        for a in &air {
+            text(
+                &mut items,
+                DVec2::new(2.0, y - LINE / 2.0),
+                &a.number.to_string(),
+                TEXT + 0.6,
+                Some(crate::mep::LABEL_GREEN),
+            );
+            let name = format!("{}, {} {}", a.name, a.valves.len(), tr("pcs"));
+            for l in wrap(&name, tw, TEXT) {
+                text(&mut items, DVec2::new(ind, y - LINE / 2.0), &l, TEXT, None);
+                y -= LINE;
+            }
+            y -= 1.5;
+        }
+    }
     let devices = if of(Trade::Electrical) {
         devices(model)
     } else {
@@ -738,6 +855,7 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         && !heated
         && equipment.is_empty()
         && devices.is_empty()
+        && air.is_empty()
         && marked.is_empty()
     {
         text(
@@ -972,5 +1090,62 @@ mod tests {
         assert!(texts.iter().any(|t| t == "PS PRŠ"), "{texts:?}");
         assert!(texts.iter().any(|t| t.contains("NORIA LUCA")), "{texts:?}");
         assert!(d.items.iter().any(|i| matches!(i, PlanItem::Curve { .. })));
+    }
+
+    #[test]
+    fn the_vzt_legend_numbers_the_devices_and_marks_the_insulation() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let duct = Element::new(
+            "Duct",
+            ElementKind::Pipe(Pipe {
+                level,
+                system: "VZO".into(),
+                start: DVec3::new(0.0, 0.0, 2.5),
+                end: DVec3::new(2.0, 0.0, 2.5),
+                pipe_type: "VZK".into(),
+                nominal_mm: 100.0,
+                outer_mm: 100.0,
+                inner_mm: 100.0,
+                height_mm: None,
+                insulation_mm: 30.0,
+                insulation_set: true,
+                mark: None,
+            }),
+        );
+        let mut fan = creabim_core::mep::Valve::new(duct.id, 0.5, "ventilator");
+        fan.product = Some("SP-TD160-100-SILENT".into());
+        let fan = Element::new("Fan", ElementKind::Valve(fan));
+        let mut legend = Element::new(
+            "Legenda VZT",
+            ElementKind::View(creabim_core::View::schedule(
+                creabim_core::ScheduleCategory::ServicesLegend,
+            )),
+        );
+        if let ElementKind::View(v) = &mut legend.kind {
+            v.trade = Some(Trade::Ventilation);
+        }
+        let id = legend.id;
+        doc.commit(
+            Transaction::new("t")
+                .insert(duct)
+                .insert(fan)
+                .insert(legend),
+        )
+        .unwrap();
+        let pos = crate::mep::air_positions(doc.model());
+        assert_eq!(pos.len(), 1);
+        assert_eq!(pos[0].number, 1);
+        assert!(pos[0].name.contains("TD-160/100"));
+        let texts: Vec<String> = drawing(id, "Legend", doc.model())
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                PlanItem::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t == "VENTILATION DEVICES"));
+        assert!(texts.iter().any(|t| t.contains("insulation")));
     }
 }

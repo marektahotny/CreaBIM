@@ -6772,9 +6772,14 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
                     (d * 255.0) as u8,
                 ));
             }
-            r.dashed |= p.system_def().and_then(|s| s.dashes()).is_some();
+            r.dashed |= !p.kind().is_air() && p.system_def().and_then(|s| s.dashes()).is_some();
             if r.proj == 1.0 {
-                r.proj = (creabim_geom::looks::PIPE_LINE / w.projection.max(1e-6)) as f32;
+                let pen = if p.kind().is_air() {
+                    creabim_geom::looks::DUCT_LINE
+                } else {
+                    creabim_geom::looks::PIPE_LINE
+                };
+                r.proj = (pen / w.projection.max(1e-6)) as f32;
             }
         }
         // a trade's own equipment in the medium pen, other objects very
@@ -8004,6 +8009,13 @@ fn dim_snap_guided(
             }
         }
     }
+    // the centre of a penetration taken over into the plan: a dimension
+    // to it is kept on its pipe and follows it (George 2026-11-25)
+    if cfg.allows(SnapKind::Endpoint) {
+        for (pipe, q) in creabim_geom::tradepen::centres(model, view) {
+            consider(pipe, q);
+        }
+    }
     let project = |q: DVec3| Some(xf.to_screen(q.truncate()));
     let hit = snapper.and_then(|s| {
         // from the point clicked last, as the drawing tools snap from
@@ -8890,6 +8902,18 @@ fn drag_annotation(
                             _ => None,
                         })
                         .unwrap_or(p.mark.unwrap_or(DVec2::ZERO)),
+                    // a VZT device's position mark: the circle moves, its
+                    // leader stays on the device (George 2026-11-25)
+                    ElementKind::Valve(v) => drawing
+                        .items
+                        .iter()
+                        .find_map(|it| match it {
+                            PlanItem::Tag {
+                                id: i, anchor, at, ..
+                            } if *i == id => Some(*at - *anchor),
+                            _ => None,
+                        })
+                        .unwrap_or(v.mark.unwrap_or(DVec2::ZERO)),
                     _ => return None,
                 };
                 Some((id, w, start, which))
@@ -8987,6 +9011,11 @@ fn drag_annotation(
         }),
         Some(ElementKind::Pipe(_)) => doc.edit_merged(id, "Move mark", |e| {
             if let ElementKind::Pipe(x) = &mut e.kind {
+                x.mark = Some(start + p - grab);
+            }
+        }),
+        Some(ElementKind::Valve(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Valve(x) = &mut e.kind {
                 x.mark = Some(start + p - grab);
             }
         }),

@@ -55,8 +55,10 @@ fn under(faces: &[Vec<DVec2>], a: DVec2, b: DVec2) -> Vec<(DVec2, DVec2)> {
     out
 }
 
-/// Turn a drawing seen from above into a roof plan.
-pub fn apply(model: &Model, items: &mut Vec<PlanItem>) {
+/// Turn a drawing seen from above into a roof plan. Only a structural
+/// one (`structural`) shows the lintels and ring beams under the roof: the
+/// architect's does not (George 2026-11-25).
+pub fn apply(model: &Model, items: &mut Vec<PlanItem>, structural: bool) {
     let faces = roof_faces(model);
     if faces.is_empty() {
         return;
@@ -136,6 +138,9 @@ pub fn apply(model: &Model, items: &mut Vec<PlanItem>) {
             }
         }
     }
+    if !structural {
+        return;
+    }
     // the lintels and beams of the top storey under it, their core
     let top = model
         .levels()
@@ -202,5 +207,52 @@ mod tests {
         if let Ok(dir) = std::env::var("CREABIM_ROOF_SVG") {
             std::fs::write(dir, d.to_svg(40.0)).unwrap();
         }
+    }
+
+    #[test]
+    fn the_architects_roof_plan_draws_no_ring_beams_or_lintels() {
+        let mut m = creabim_core::starter::starter_house();
+        let (top, _) = m
+            .levels()
+            .max_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+            .map(|(e, l)| (e.id, l.elevation))
+            .unwrap();
+        // a ring beam on the top storey's walls
+        let walls_level = m
+            .levels()
+            .filter(|(e, _)| {
+                m.iter()
+                    .any(|x| matches!(&x.kind, ElementKind::Wall(w) if w.level == e.id))
+            })
+            .max_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+            .map(|(e, _)| e.id)
+            .unwrap();
+        let wall = m
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Wall(w) if w.level == walls_level))
+            .map(|e| e.id)
+            .unwrap();
+        let ring = creabim_core::masonry::ring_beam(&m, wall).unwrap();
+        let ring_id = ring.id;
+        let plan = |structural: bool, m: &mut creabim_core::Model| {
+            let mut v = View::plan(top);
+            v.graphics.range.from_above = true;
+            v.structural = structural;
+            let e = creabim_core::Element::new("Roof plan", ElementKind::View(v));
+            let id = e.id;
+            Transaction::new("roof").insert(e).apply(m).unwrap();
+            id
+        };
+        Transaction::new("ring").insert(ring).apply(&mut m).unwrap();
+        let (asr, sta) = (plan(false, &mut m), plan(true, &mut m));
+        let shows = |v| {
+            crate::section::view_drawing(&m, v)
+                .unwrap()
+                .items
+                .iter()
+                .any(|it| it.id() == ring_id)
+        };
+        assert!(!shows(asr));
+        assert!(shows(sta));
     }
 }

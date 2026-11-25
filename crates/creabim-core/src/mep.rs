@@ -882,6 +882,24 @@ pub const VALVE_KINDS: &[ValveKind] = &[
         ("IfcFilter", "AIRPARTICLEFILTER"),
         "STN EN ISO 16890",
     ),
+    vk(
+        "ventilator",
+        "Ventilátor (potrubný / stropný)",
+        None,
+        None,
+        &[M::Air],
+        ("IfcFan", "NOTDEFINED"),
+        "STN EN 13141-4, STN EN ISO 5801",
+    ),
+    vk(
+        "vyfukVzt",
+        "Výfuková hlavica (strecha / fasáda)",
+        None,
+        None,
+        &[M::Air],
+        ("IfcAirTerminal", "NOTDEFINED"),
+        "STN EN 16798-3",
+    ),
     terminal(vk(
         "vyvod",
         "Vývod med. plynu (koncová jednotka)",
@@ -949,6 +967,10 @@ pub struct Valve {
     /// Its presetting, as the maker numbers it ("3,5").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preset: Option<String>,
+    /// Where its position mark was dragged to in a services plan, from
+    /// the valve (m); none: up and to the right of it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<glam::DVec2>,
 }
 
 /// A hose system of a fire main (STN EN 671-1, STN EN 671-2, STN 92 0400).
@@ -1004,6 +1026,7 @@ impl Valve {
             gas_cat: None,
             product: None,
             preset: None,
+            mark: None,
         }
     }
 
@@ -1128,7 +1151,7 @@ mod tests {
 
     #[test]
     fn valves_are_pilon_designers_and_ours_and_sit_on_their_pipe() {
-        assert_eq!(VALVE_KINDS.len(), 32);
+        assert_eq!(VALVE_KINDS.len(), 34);
         let mut codes: Vec<_> = VALVE_KINDS.iter().map(|k| k.code).collect();
         codes.sort();
         codes.dedup();

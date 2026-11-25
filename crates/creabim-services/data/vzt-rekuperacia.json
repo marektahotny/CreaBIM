@@ -3,7 +3,7 @@
   "mena": "EUR",
   "dph": 0.23,
   "kurzCzk": 25.0,
-  "poznamka": "Ceny bez DPH. Jednotky ATREA a ovládač: cenník ATREA SK platný od 1.4.2026 (DPH v cenníku neuvedené, berie sa ako bez DPH), technické údaje z technických listov DUPLEX Pro/Pro-V, Easy2 a Slim (#4537-25-04). Rozvody: e-shopy CZ (ceny s DPH 21 % prepočítané na bez DPH kurzom 25 CZK/EUR), 11/2026. Blauberg: e-shopy SK, 11/2026. Položky bez ceny treba doplniť (cena na dopyt).",
+  "poznamka": "Ceny bez DPH. Jednotky ATREA a ovládač: cenník ATREA SK platný od 1.4.2026 (DPH v cenníku neuvedené, berie sa ako bez DPH), technické údaje z technických listov DUPLEX Pro/Pro-V, Easy2 a Slim (#4537-25-04). Rozvody: e-shopy CZ (ceny s DPH 21 % prepočítané na bez DPH, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026), 11/2026. Blauberg: e-shopy SK, 11/2026. Položky bez ceny treba doplniť (cena na dopyt).",
   "jednotky": [
     {"kod": "A160613", "nazov": "ATREA DUPLEX 160 Pro-V.aM", "rada": "Pro-V", "qMax": 150, "cena": 2359.2, "lw": null, "rozmer": [0.757, 0.361, 0.807], "hrdlo": 125, "lwOkolie": 37, "zdroj": "cena: cenník ATREA SK platný od 1.4.2026 (EUR, DPH neuvedené); údaje: technický list ATREA DUPLEX Pro/Pro-V #4537-25-04 (qMax pri 100 Pa, rozmery, hrdlá, akustický výkon do okolia)"},
     {"kod": "A160614", "nazov": "ATREA DUPLEX 360 Pro-V.aM", "rada": "Pro-V", "qMax": 350, "cena": 2525.6, "lw": null, "rozmer": [0.93, 0.485, 0.9], "hrdlo": 160, "lwOkolie": 36, "zdroj": "cena: cenník ATREA SK platný od 1.4.2026 (EUR, DPH neuvedené); údaje: technický list ATREA DUPLEX Pro/Pro-V #4537-25-04 (qMax pri 100 Pa, rozmery, hrdlá, akustický výkon do okolia)"},
@@ -22,19 +22,19 @@
   ],
   "polozky": [
     {"kluc": "ovladac", "kod": "A145550", "nazov": "Ovládač aDot (k jednotke DUPLEX .aM)", "mj": "ks", "cena": 151.3, "zdroj": "cenník ATREA SK platný od 1.4.2026"},
-    {"kluc": "gp75", "kod": "R210010", "nazov": "Flexibilné PE potrubie ATREA GP Ø90/75 (antistatické, antibakteriálne)", "mj": "m", "cena": 5.32, "zdroj": "atreaeshop.cz 11/2026: 133 Kč/m bez DPH; odporúčaný prietok 15–50 m³/h, najviac 50 m³/h na trasu; tlaková strata podľa ATREA Katalógu prvkov A2328 26/06, str. 53"},
+    {"kluc": "gp75", "kod": "R210010", "nazov": "Flexibilné PE potrubie ATREA GP Ø90/75 (antistatické, antibakteriálne)", "mj": "m", "cena": 5.44, "zdroj": "atreaeshop.cz 11/2026: 5,44 €/m bez DPH (prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026); odporúčaný prietok 15–50 m³/h, najviac 50 m³/h na trasu; tlaková strata podľa ATREA Katalógu prvkov A2328 26/06, str. 53"},
     {"kluc": "rozdelovac", "kod": "", "nazov": "Rozdeľovač: odbočky ATREA na potrubí Spiro z hrdla jednotky, rozpis nižšie", "mj": "ks", "vystupy": 99, "cena": 0.0, "zdroj": "ATREA Katalóg prvkov A2328 26/06: GP sa napája spojovacou sadou na tvarovku DN100 (tvarovky označené GP)"},
     {"kluc": "odbocka125", "kod": "R221134", "nazov": "Odbočka jednostranná tesná OBJ-T 90° Ø125/Ø100 GP (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06; cena na dopyt"},
-    {"kluc": "odbocka160", "kod": "R221137", "nazov": "Odbočka jednostranná tesná OBJ-T 90° Ø160/Ø100 GP (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06; cena na dopyt (e-shop uvádza len „od 374 Kč“ bez rozmeru)"},
+    {"kluc": "odbocka160", "kod": "R221137", "nazov": "Odbočka jednostranná tesná OBJ-T 90° Ø160/Ø100 GP (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06; cena na dopyt (e-shop uvádza len „od 15,31 €“ bez rozmeru, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026)"},
     {"kluc": "odbocka200", "kod": "R221141", "nazov": "Odbočka jednostranná tesná OBJ-T 90° Ø200/Ø100 GP (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06; cena na dopyt"},
-    {"kluc": "kryt", "kod": "", "nazov": "Koncový kryt potrubia (priemer podľa hrdla jednotky, ATREA)", "mj": "ks", "cena": null, "zdroj": "atreaeshop.cz 11/2026: od 241 Kč s DPH bez rozmeru; cena na dopyt"},
-    {"kluc": "sadaGP", "kod": "R316303", "nazov": "Spojovacia sada pre rozvod GP na tvarovku DN100 (ATREA)", "mj": "ks", "cena": 2.64, "zdroj": "ATREA Katalóg prvkov A2328 26/06; atreaeshop.cz 11/2026: 80 Kč s DPH (21 %), prepočet 25 CZK/EUR"},
+    {"kluc": "kryt", "kod": "", "nazov": "Koncový kryt potrubia (priemer podľa hrdla jednotky, ATREA)", "mj": "ks", "cena": null, "zdroj": "atreaeshop.cz 11/2026: od 9,86 € s DPH bez rozmeru (prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026); cena na dopyt"},
+    {"kluc": "sadaGP", "kod": "R316303", "nazov": "Spojovacia sada pre rozvod GP na tvarovku DN100 (ATREA)", "mj": "ks", "cena": 2.71, "zdroj": "ATREA Katalóg prvkov A2328 26/06; atreaeshop.cz 11/2026: 3,27 € s DPH (21 %), prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026"},
     {"kluc": "ventilKI", "kod": "R230101", "nazov": "Tanierový ventil prívod vzduchu KI Ø100 vrátane rámčeka (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06; cena na dopyt"},
     {"kluc": "ventilKO", "kod": "R230001", "nazov": "Tanierový ventil odvod vzduchu KO Ø100 vrátane rámčeka (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06; cena na dopyt"},
-    {"kluc": "spiro160", "kod": "", "nazov": "Potrubie Spiro (priemer podľa hrdla jednotky, ATREA)", "mj": "m", "cena": 5.32, "zdroj": "atreaeshop.cz 11/2026: od 161 Kč/m s DPH"},
-    {"kluc": "izolacia", "kod": "R336030", "nazov": "Izolácia ISOVER ML 3 s Al fóliou hr. 30 mm (čerstvý a odpadový vzduch)", "mj": "m²", "cena": 14.64, "zdroj": "atreaeshop.cz 11/2026: 443 Kč/m² s DPH"},
-    {"kluc": "zaluzia", "kod": "", "nazov": "Protidažďová žalúzia AL Ø160 (nasávanie / výfuk)", "mj": "ks", "cena": 86.64, "zdroj": "atreaeshop.cz 11/2026: od 2 621 Kč s DPH"},
+    {"kluc": "spiro160", "kod": "", "nazov": "Potrubie Spiro (priemer podľa hrdla jednotky, ATREA)", "mj": "m", "cena": 5.45, "zdroj": "atreaeshop.cz 11/2026: od 6,59 €/m s DPH, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026"},
+    {"kluc": "izolacia", "kod": "R336030", "nazov": "Izolácia ISOVER ML 3 s Al fóliou hr. 30 mm (čerstvý a odpadový vzduch)", "mj": "m²", "cena": 14.98, "zdroj": "atreaeshop.cz 11/2026: 18,13 €/m² s DPH, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026"},
+    {"kluc": "zaluzia", "kod": "", "nazov": "Protidažďová žalúzia AL Ø160 (nasávanie / výfuk)", "mj": "ks", "cena": 88.65, "zdroj": "atreaeshop.cz 11/2026: od 107,26 € s DPH, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026"},
     {"kluc": "tlmic", "kod": "", "nazov": "Tlmič hluku flexibilný Ø160, dĺ. 1 m", "mj": "ks", "cena": null, "zdroj": "cena na dopyt"},
-    {"kluc": "paska", "kod": "R311030", "nazov": "Lepiaca páska Al 50 mm × 50 m", "mj": "ks", "cena": 9.49, "zdroj": "atreaeshop.cz 11/2026: 287 Kč s DPH"}
+    {"kluc": "paska", "kod": "R311030", "nazov": "Lepiaca páska Al 50 mm × 50 m", "mj": "ks", "cena": 9.71, "zdroj": "atreaeshop.cz 11/2026: 11,75 € s DPH, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026"}
   ]
 }

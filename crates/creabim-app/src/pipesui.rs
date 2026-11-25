@@ -196,6 +196,110 @@ pub fn valve_fields(
             label = "Air flow";
         }
     }
+    if matches!(v.kind.as_str(), "ventilator" | "vyustO" | "vyfukVzt") {
+        use creabim_services::extractfans as xf;
+        let tr = crate::i18n::tr;
+        let list: Vec<(&str, String, &str)> = if v.kind == "ventilator" {
+            xf::FANS
+                .iter()
+                .map(|f| (f.id, format!("{} {}", f.maker, f.name), f.about))
+                .collect()
+        } else {
+            let of = if v.kind == "vyustO" {
+                xf::VALVES
+            } else {
+                xf::OUTLETS
+            };
+            // a product sold in sizes listed once, its size picked below
+            // (George 2026-11-25)
+            let mut seen: Vec<(&str, &str)> = vec![];
+            of.iter()
+                .filter(|a| {
+                    let key = (a.maker, a.name);
+                    let first = !seen.contains(&key);
+                    seen.push(key);
+                    first
+                })
+                .map(|a| (a.id, format!("{} {}", a.maker, a.name), a.about))
+                .collect()
+        };
+        let chosen = v.product.as_deref().and_then(xf::valve);
+        let family = |id: &str| {
+            xf::valve(id).map(|a| (a.maker, a.name)) == chosen.map(|c| (c.maker, c.name))
+        };
+        let shown = list
+            .iter()
+            .find(|x| Some(x.0) == v.product.as_deref() || (chosen.is_some() && family(x.0)))
+            .map_or(tr("Generic"), |x| x.1.clone());
+        crate::app::helpui::combo(ui, "Product")
+            .selected_text(shown)
+            .width(width)
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(v.product.is_none(), tr("Generic"))
+                    .clicked()
+                    && v.product.is_some()
+                {
+                    v.product = None;
+                    v.preset = None;
+                    label = "Product";
+                }
+                for (id, name, about) in &list {
+                    let on = v.product.as_deref() == Some(*id)
+                        || (v.kind != "ventilator" && chosen.is_some() && family(id));
+                    if ui
+                        .selectable_label(on, name)
+                        .on_hover_text(*about)
+                        .clicked()
+                        && !on
+                    {
+                        v.product = Some(id.to_string());
+                        v.preset = None;
+                        label = "Product";
+                    }
+                }
+            });
+        // the size of a product sold in several
+        if let Some(a) = chosen.filter(|a| v.kind != "ventilator" && a.sizes().len() > 1) {
+            crate::app::helpui::combo(ui, "Size")
+                .selected_text(format!("Ø{:.0}", a.dn))
+                .width(width)
+                .show_ui(ui, |ui| {
+                    for s in a.sizes() {
+                        let on = s.id == a.id;
+                        if ui
+                            .selectable_label(on, format!("Ø{:.0}", s.dn))
+                            .on_hover_text(s.about)
+                            .clicked()
+                            && !on
+                        {
+                            v.product = Some(s.id.to_string());
+                            label = "Product";
+                        }
+                    }
+                });
+        }
+        if let Some(f) = v
+            .product
+            .as_deref()
+            .and_then(xf::fan)
+            .filter(|f| f.speeds.len() > 1)
+        {
+            let now = f.speed(v.preset.as_deref()).name;
+            crate::app::helpui::combo(ui, "Speed")
+                .selected_text(now)
+                .width(width)
+                .show_ui(ui, |ui| {
+                    for sp in f.speeds {
+                        let text = format!("{} ({} m³/h, {} W)", sp.name, sp.q_free, sp.watts);
+                        if ui.selectable_label(now == sp.name, text).clicked() && now != sp.name {
+                            v.preset = Some(sp.name.to_string());
+                            label = "Speed";
+                        }
+                    }
+                });
+        }
+    }
     let products: Vec<&creabim_services::herzvalves::HerzValve> =
         creabim_services::herzvalves::HERZ_VALVES
             .iter()
