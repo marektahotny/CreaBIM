@@ -1265,7 +1265,6 @@ fn plinth_panel(
                 model,
                 &["Hydroizolácia – fólia PVC", "Hydroizolácia – asfaltový pás"],
             );
-            p.lap = 0.15;
             p
         });
     }
@@ -1315,15 +1314,6 @@ fn plinth_panel(
                 &mut p.membrane,
                 None,
             );
-            if p.membrane.is_some() {
-                changed |= mm_field(
-                    ui,
-                    "Membrane over the plinth's top",
-                    "How far the waterproofing runs up past the plinth's top, behind the facade insulation",
-                    &mut p.lap,
-                    1000.0,
-                );
-            }
             changed |= plinth_material(
                 ui,
                 model,

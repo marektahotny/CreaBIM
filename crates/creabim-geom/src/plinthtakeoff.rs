@@ -99,7 +99,7 @@ fn walls(model: &Model) -> HashMap<ElementId, Wall> {
                 level: w.level,
                 top,
                 tops: tops.iter().map(|t| t.2).collect(),
-                lap: p.lap.max(0.0),
+                lap: 0.0,
                 xps: p.thickness.clamp(0.005, ins.s1 - ins.s0 + 0.2),
                 render: finish.map_or(0.0, |b| b.s1 - b.s0),
                 insulation: ins.index,
