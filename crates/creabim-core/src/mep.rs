@@ -882,6 +882,24 @@ pub const VALVE_KINDS: &[ValveKind] = &[
         ("IfcFilter", "AIRPARTICLEFILTER"),
         "STN EN ISO 16890",
     ),
+    vk(
+        "ventilator",
+        "Ventilátor (potrubný / stropný)",
+        None,
+        None,
+        &[M::Air],
+        ("IfcFan", "NOTDEFINED"),
+        "STN EN 13141-4, STN EN ISO 5801",
+    ),
+    vk(
+        "vyfukVzt",
+        "Výfuková hlavica (strecha / fasáda)",
+        None,
+        None,
+        &[M::Air],
+        ("IfcAirTerminal", "NOTDEFINED"),
+        "STN EN 16798-3",
+    ),
     terminal(vk(
         "vyvod",
         "Vývod med. plynu (koncová jednotka)",
@@ -1128,7 +1146,7 @@ mod tests {
 
     #[test]
     fn valves_are_pilon_designers_and_ours_and_sit_on_their_pipe() {
-        assert_eq!(VALVE_KINDS.len(), 32);
+        assert_eq!(VALVE_KINDS.len(), 34);
         let mut codes: Vec<_> = VALVE_KINDS.iter().map(|k| k.code).collect();
         codes.sort();
         codes.dedup();

@@ -513,6 +513,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Designs ventilation with heat recovery in one step: the ATREA DUPLEX unit, distribution boxes, flexible ducts Ø75 through the doors to a plate valve in every room, room units in the outer wall for the rooms marked so; pressure loss, transfer under the doors and the take-off VZT – recuperation with prices",
             ),
             act(
+                "calc:extract",
+                "Forced extraction",
+                "arrow-up-to-line",
+                "Own fans for bathrooms, WCs and the plant room: an extract valve in the ceiling, Spiro Ø100 through the attic, the fan (Soler & Palau TD-160/100 N SILENT or SILENT-100 CHZ) and a roof outlet; the working point from the fan's curve against the ducts, the door undercut and the bill"
+            ),
+            act(
                 "calc:ducts",
                 "Duct sizing",
                 "gauge",
