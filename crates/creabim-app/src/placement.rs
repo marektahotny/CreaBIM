@@ -267,6 +267,12 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
 
 /// A toggle clicked in the bar (`reach:<what>`): back to the automatic top.
 pub fn toggle_option(state: &mut PlanState, model: &Model, level: Option<ElementId>, what: &str) {
+    // a duct's run starting at a terminal under the ceiling, or not
+    if what == "pipe_terminal" {
+        let d = &mut state.members.pipe;
+        d.terminal_start = !d.terminal_start;
+        return;
+    }
     let storey = level.map_or(3.0, |l| storey_height(model, l));
     let p = &mut state.members.place;
     match what {
