@@ -211,6 +211,25 @@ pub fn symbol(kind: &str, c: DVec2, u: DVec2, h: f64) -> Symbol {
             ]);
             out.text = Some("TH");
         }
+        // a fan: a circle with the two lines of the blade to the outlet
+        // side (STN EN 12792), "V" beside
+        "ventilator" => {
+            out.circles.push((c, w * 1.4));
+            out.segs.extend([
+                [p(-w * 1.4, 0.0), p(w * 0.99, w * 0.99)],
+                [p(-w * 1.4, 0.0), p(w * 0.99, -w * 0.99)],
+            ]);
+            out.text = Some("V");
+        }
+        // an outlet to the outdoors: a hood over the duct's end
+        "vyfukVzt" => {
+            out.segs.extend([
+                [p(-h, w * 1.4), p(h, w * 1.4)],
+                [p(-h, -w * 1.4), p(h, -w * 1.4)],
+                [p(h, w * 1.4), p(h * 1.4, 0.0)],
+                [p(h, -w * 1.4), p(h * 1.4, 0.0)],
+            ]);
+        }
         "filterVzt" => {
             diamond(&mut out);
             out.segs.push([p(0.0, -w), p(0.0, w)]);

@@ -74,7 +74,7 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Condens) -> Result<Outcom
     }
     let psat = Psat::of(tables).ok_or("vzorce")?;
     let rs = thermcheck::surface_rs(tables, false).ok_or(thermcheck::RS)?;
-    let (layers, rsi, rse) = glaser::assembly_layers(model, a, &rs).map_err(|m| {
+    let (layers, rsi, rse) = glaser::assembly_layers(model, a, &rs, tables).map_err(|m| {
         if m == "not against outside air" {
             t("The build-up is not against outside air (set it in the build-up's U: On the outer side).")
         } else {

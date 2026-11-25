@@ -20,6 +20,7 @@ pub mod ductsizing;
 pub mod electrical;
 pub mod evacuation;
 pub mod expansion;
+pub mod extractfans;
 pub mod firewater;
 pub mod fittings;
 pub mod fixtures;

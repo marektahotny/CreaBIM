@@ -196,6 +196,76 @@ pub fn valve_fields(
             label = "Air flow";
         }
     }
+    if matches!(v.kind.as_str(), "ventilator" | "vyustO" | "vyfukVzt") {
+        use creabim_services::extractfans as xf;
+        let tr = crate::i18n::tr;
+        let list: Vec<(&str, String, &str)> = if v.kind == "ventilator" {
+            xf::FANS
+                .iter()
+                .map(|f| (f.id, format!("{} {}", f.maker, f.name), f.about))
+                .collect()
+        } else {
+            let of = if v.kind == "vyustO" {
+                xf::VALVES
+            } else {
+                xf::OUTLETS
+            };
+            of.iter()
+                .map(|a| (a.id, format!("{} {}", a.maker, a.name), a.about))
+                .collect()
+        };
+        let shown = list
+            .iter()
+            .find(|x| Some(x.0) == v.product.as_deref())
+            .map_or(tr("Generic"), |x| x.1.clone());
+        crate::app::helpui::combo(ui, "Product")
+            .selected_text(shown)
+            .width(width)
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(v.product.is_none(), tr("Generic"))
+                    .clicked()
+                    && v.product.is_some()
+                {
+                    v.product = None;
+                    v.preset = None;
+                    label = "Product";
+                }
+                for (id, name, about) in &list {
+                    let on = v.product.as_deref() == Some(*id);
+                    if ui
+                        .selectable_label(on, name)
+                        .on_hover_text(*about)
+                        .clicked()
+                        && !on
+                    {
+                        v.product = Some(id.to_string());
+                        v.preset = None;
+                        label = "Product";
+                    }
+                }
+            });
+        if let Some(f) = v
+            .product
+            .as_deref()
+            .and_then(xf::fan)
+            .filter(|f| f.speeds.len() > 1)
+        {
+            let now = f.speed(v.preset.as_deref()).name;
+            crate::app::helpui::combo(ui, "Speed")
+                .selected_text(now)
+                .width(width)
+                .show_ui(ui, |ui| {
+                    for sp in f.speeds {
+                        let text = format!("{} ({} m³/h, {} W)", sp.name, sp.q_free, sp.watts);
+                        if ui.selectable_label(now == sp.name, text).clicked() && now != sp.name {
+                            v.preset = Some(sp.name.to_string());
+                            label = "Speed";
+                        }
+                    }
+                });
+        }
+    }
     let products: Vec<&creabim_services::herzvalves::HerzValve> =
         creabim_services::herzvalves::HERZ_VALVES
             .iter()

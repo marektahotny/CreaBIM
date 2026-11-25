@@ -65,6 +65,8 @@ mod ductsui;
 mod earthworksui;
 #[path = "editui.rs"]
 mod editui;
+#[path = "extractui.rs"]
+mod extractui;
 #[path = "fireparamsui.rs"]
 mod fireparamsui;
 #[path = "fittingsui.rs"]
@@ -477,6 +479,7 @@ pub struct CreaBimApp {
     ducts: Option<creabim_services::ductsizing::Limits>,
     /// The heat recovery design window's options, while it is open.
     recuperation: Option<creabim_services::recuperation::Opts>,
+    extract: Option<extractui::ExtractState>,
     /// The circuit check window, while it is open.
     circuit: Option<creabim_services::electrical::Circuit>,
     herzdp: Option<creabim_services::herzdp::DpInput>,
@@ -713,6 +716,7 @@ impl CreaBimApp {
             results_due: None,
             ducts: None,
             recuperation: None,
+            extract: None,
             circuit: None,
             herzdp: None,
             fire_params: None,
@@ -14493,6 +14497,7 @@ impl eframe::App for CreaBimApp {
         self.air_balance_window(&ctx);
         self.ducts_window(&ctx);
         self.recuperation_window(&ctx);
+        self.extract_window(&ctx);
         self.circuit_window(&ctx);
         self.herzdp_window(&ctx);
         self.fire_params_window(&ctx);
