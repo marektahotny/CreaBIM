@@ -192,7 +192,154 @@ pub const FANS: &[Fan] = &[
         price: Some((197.52, "€")),
         source: "S&P list SILENT 100 (kvelektro.cz), krivka SILENT-100 (czvzduchotechnika.cz); cena czvzduchotechnika.cz 11/2026",
     },
+    Fan {
+        id: "SP-TD250-100-SILENT",
+        maker: "Soler & Palau",
+        name: "TD-250/100 SILENT",
+        in_room: false,
+        dn: 100.0,
+        speeds: &[
+            Speed {
+                name: "VO",
+                rpm: 2110.0,
+                q_free: 250.0,
+                watts: 27.0,
+                curve: &[
+                    (0.0, 136.6),
+                    (10.0, 130.5),
+                    (20.0, 124.4),
+                    (30.0, 118.3),
+                    (40.0, 112.4),
+                    (50.0, 106.7),
+                    (60.0, 101.3),
+                    (70.0, 96.5),
+                    (80.0, 91.9),
+                    (90.0, 87.6),
+                    (100.0, 83.3),
+                    (110.0, 79.1),
+                    (120.0, 74.9),
+                    (130.0, 70.6),
+                    (140.0, 66.4),
+                    (150.0, 62.3),
+                    (160.0, 58.0),
+                    (170.0, 52.9),
+                    (180.0, 46.7),
+                    (190.0, 40.4),
+                    (200.0, 34.5),
+                    (210.0, 29.0),
+                    (220.0, 23.0),
+                    (230.0, 15.8),
+                    (240.0, 7.3),
+                    (247.6, 0.0),
+                ],
+            },
+            Speed {
+                name: "NO",
+                rpm: 1680.0,
+                q_free: 200.0,
+                watts: 21.0,
+                curve: &[
+                    (0.0, 101.1),
+                    (10.0, 95.0),
+                    (20.0, 89.0),
+                    (30.0, 83.4),
+                    (40.0, 78.5),
+                    (50.0, 74.3),
+                    (60.0, 70.9),
+                    (70.0, 67.2),
+                    (80.0, 63.2),
+                    (90.0, 58.9),
+                    (100.0, 54.2),
+                    (110.0, 49.8),
+                    (120.0, 45.8),
+                    (130.0, 41.7),
+                    (140.0, 36.3),
+                    (150.0, 29.6),
+                    (160.0, 23.1),
+                    (170.0, 17.0),
+                    (180.0, 11.3),
+                    (190.0, 5.7),
+                    (200.3, 0.0),
+                ],
+            },
+        ],
+        about: "Potrubný diagonálny ventilátor Ø100 s hlukovým absorbérom, 230 V, 2 otáčky (VO 0,12 A, NO 0,10 A), -20 až +40 °C, 5,4 kg; regulátor REB 1 / REV 1,5, prepínač otáčok COM 2 alebo REGUL 2",
+        price: Some((5189.0, "Kč")),
+        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz, kvelektro.cz), krivka TD-250/100 SILENT (vektor PDF); cena czvzduchotechnika.cz 11/2026",
+    },
+    Fan {
+        id: "SP-TD350-125-SILENT",
+        maker: "Soler & Palau",
+        name: "TD-350/125 SILENT",
+        in_room: false,
+        dn: 125.0,
+        speeds: &[
+            Speed {
+                name: "VO",
+                rpm: 2100.0,
+                q_free: 330.0,
+                watts: 27.0,
+                curve: &[
+                    (0.0, 132.4),
+                    (15.0, 125.6),
+                    (30.0, 118.9),
+                    (45.0, 112.5),
+                    (60.0, 106.4),
+                    (75.0, 100.7),
+                    (90.0, 95.6),
+                    (105.0, 91.3),
+                    (120.0, 88.2),
+                    (135.0, 85.8),
+                    (150.0, 83.1),
+                    (165.0, 79.6),
+                    (180.0, 75.7),
+                    (195.0, 71.7),
+                    (210.0, 67.4),
+                    (225.0, 61.7),
+                    (240.0, 53.7),
+                    (255.0, 44.6),
+                    (270.0, 36.2),
+                    (285.0, 28.0),
+                    (300.0, 19.5),
+                    (315.0, 10.3),
+                    (330.5, 0.0),
+                ],
+            },
+            Speed {
+                name: "NO",
+                rpm: 1650.0,
+                q_free: 260.0,
+                watts: 21.0,
+                curve: &[
+                    (0.0, 99.3),
+                    (15.0, 91.3),
+                    (30.0, 84.7),
+                    (45.0, 79.3),
+                    (60.0, 74.9),
+                    (75.0, 71.1),
+                    (90.0, 67.4),
+                    (105.0, 63.6),
+                    (120.0, 59.5),
+                    (135.0, 54.9),
+                    (150.0, 50.0),
+                    (165.0, 45.3),
+                    (180.0, 40.4),
+                    (195.0, 34.9),
+                    (210.0, 27.7),
+                    (225.0, 18.8),
+                    (240.0, 9.4),
+                    (254.5, 0.0),
+                ],
+            },
+        ],
+        about: "Potrubný diagonálny ventilátor Ø125 s hlukovým absorbérom, 230 V, 2 otáčky (VO 0,12 A, NO 0,10 A), -20 až +40 °C, 5 kg; regulátor REB 1 / REV 1,5, prepínač otáčok COM 2 alebo REGUL 2",
+        price: Some((5596.0, "Kč")),
+        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz, kvelektro.cz), krivka TD-350/125 SILENT (vektor PDF); cena czvzduchotechnika.cz 11/2026",
+    },
 ];
+
+/// The fan a shared branch of several rooms is designed with.
+pub const CENTRAL_FAN: &str = "SP-TD350-125-SILENT";
 
 pub fn fan(id: &str) -> Option<&'static Fan> {
     FANS.iter().find(|f| f.id == id)
@@ -246,6 +393,9 @@ pub struct Inlet {
     pub bends: u32,
     /// The door undercut its room needs, mm, and the door's width, m.
     pub undercut: Option<(f64, f64)>,
+    /// What its valve must throttle beyond its own way's loss so the
+    /// fan's air shares as the rooms need, Pa (0 on the worst way).
+    pub throttle: f64,
 }
 
 /// One fan checked.
@@ -604,6 +754,7 @@ pub fn check(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Vec<Row> {
                 length,
                 bends,
                 undercut,
+                throttle: 0.0,
             });
             paths.push((*at, path));
         }
@@ -640,7 +791,7 @@ pub fn check(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Vec<Row> {
                 notes.push(n);
             }
         }
-        let system = |q: f64| -> f64 {
+        let each = |q: f64| -> Vec<f64> {
             paths
                 .iter()
                 .enumerate()
@@ -679,8 +830,9 @@ pub fn check(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Vec<Row> {
                     }
                     dp
                 })
-                .fold(0.0, f64::max)
+                .collect()
         };
+        let system = |q: f64| -> f64 { each(q).into_iter().fold(0.0, f64::max) };
         // where the curves meet: the fan falls, the ducts rise
         let (mut lo, mut hi) = (0.0, speed.q_free);
         for _ in 0..60 {
@@ -697,8 +849,12 @@ pub fn check(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Vec<Row> {
             0.0
         };
         let (dp_need, p_need) = (system(need), speed.pressure(need));
+        // what each valve must take up so the air shares as the rooms
+        // need: the worst way's loss less its own, at the need
+        let at_need = each(need);
         for (k, i) in inlets.iter_mut().enumerate() {
             i.flow = (q * share[k]).round();
+            i.throttle = at_need.get(k).map_or(0.0, |own| dp_need - own);
         }
         if outlet.is_none() {
             notes.push("Potrubie nemá výfuk von (hlavicu ani voľný koniec).".to_string());
@@ -741,6 +897,28 @@ pub struct Accessory {
 }
 
 impl Accessory {
+    /// "Dalap PS protidažďová strieška Ø160": maker, name and, for a
+    /// product sold in sizes under one name, its size.
+    pub fn title(&self) -> String {
+        let dn = format!("{:.0}", self.dn);
+        if self.name.contains(&dn) {
+            format!("{} {}", self.maker, self.name)
+        } else {
+            format!("{} {} Ø{dn}", self.maker, self.name)
+        }
+    }
+
+    /// The sizes the same product comes in (itself among them), smallest
+    /// first.
+    pub fn sizes(&self) -> Vec<&'static Accessory> {
+        let mut v: Vec<_> = VALVES
+            .iter()
+            .chain(OUTLETS)
+            .filter(|a| a.maker == self.maker && a.name == self.name)
+            .collect();
+        v.sort_by(|a, b| a.dn.total_cmp(&b.dn));
+        v
+    }
     /// Its loss at `q` m³/h, Pa: between its points straight, past them
     /// with the square of the flow.
     pub fn dp(&self, q: f64) -> f64 {
@@ -791,6 +969,48 @@ pub const VALVES: &[Accessory] = &[
         source: "Systemair, EFF handbook 2023-08 (A-EFF_DATASHEET_ENG_GLO_HANDBOOK_EFF_202308.pdf), str. 9 graf EFF-100-SW",
     },
     Accessory {
+        id: "SA-EFF-125-SW",
+        maker: "Systemair",
+        name: "EFF-125-SW tanierový ventil odvodný",
+        dn: 125.0,
+        // read off the maker's chart "EFF-125-SW Pressure drop" (vector
+        // curve of the PDF), setting +10 mm = fully open
+        loss: &[
+            (62.8, 10.8),
+            (67.0, 12.3),
+            (71.5, 13.9),
+            (74.7, 15.1),
+            (79.0, 16.9),
+            (84.9, 19.5),
+            (88.9, 21.3),
+            (93.5, 23.6),
+            (97.1, 25.4),
+            (100.7, 27.3),
+            (105.9, 30.0),
+            (110.9, 32.9),
+            (114.9, 35.4),
+            (119.0, 37.9),
+            (122.6, 40.1),
+            (126.1, 42.3),
+            (131.8, 46.2),
+            (136.0, 49.3),
+            (140.2, 52.3),
+            (146.8, 57.2),
+            (153.4, 62.3),
+            (159.7, 67.4),
+            (165.5, 72.4),
+            (171.8, 78.0),
+            (178.2, 83.7),
+            (184.0, 88.9),
+            (189.9, 94.7),
+            (196.0, 100.9),
+            (199.0, 104.1),
+        ],
+        about: "Kovový odvodný tanierový ventil (pozinkovaný plech, RAL 9003), Ø 125; montážny rámček RF-BOR-C-125; strata pri nastavení +10 mm (úplne otvorený)",
+        price: None,
+        source: "Systemair, EFF handbook 2023-08 (A-EFF_DATASHEET_ENG_GLO_HANDBOOK_EFF_202308.pdf), str. 9 graf EFF-125-SW",
+    },
+    Accessory {
     id: "ED-IT-PRO-100",
     maker: "Elektrodesign",
     name: "IT-PRO 100 tanierový ventil",
@@ -803,7 +1023,8 @@ pub const VALVES: &[Accessory] = &[
     },
 ];
 
-/// Roof outlets.
+/// Outlets to the outdoors: roof outlets and caps, and louvres through
+/// a wall (George 2026-11-25).
 pub const OUTLETS: &[Accessory] = &[Accessory {
     id: "KLOBER-ROVIA-KE0520",
     maker: "Klöber",
@@ -814,6 +1035,162 @@ pub const OUTLETS: &[Accessory] = &[Accessory {
     about: "Strešný odvetrávací prestup DN100 s hlavicou pre bežné betónové a pálené škridly, sklon strechy cca 20–50°",
     price: None,
     source: "Klöber Rovia, technický list (izomat.cz)",
+},
+Accessory {
+    id: "DALAP-PS-100",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 100.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 100: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 0,531 kg; kód 800610, EAN 4250622603592",
+    price: Some((29.10, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 100 mm (Dalap PS 100), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-125",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 125.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 125: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 0,623 kg; kód 80028, EAN 4250622603172",
+    price: Some((33.65, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 125 mm (Dalap PS 125), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-150",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 150.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 150: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 0,799 kg; kód 80029, EAN 4250622603189",
+    price: Some((40.25, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 150 mm (Dalap PS 150), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-160",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 160.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 160: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 0,855 kg; kód 80030, EAN 4250622603196",
+    price: Some((37.15, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 160 mm (Dalap PS 160), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-200",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 200.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 200: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 1,633 kg; kód 80031, EAN 4250622603202",
+    price: Some((47.90, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 200 mm (Dalap PS 200), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-250",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 250.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 250: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 2,121 kg; kód 80034, EAN 4250622603219",
+    price: Some((57.55, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 250 mm (Dalap PS 250), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-315",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 315.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 315: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 3,421 kg; kód 80038, EAN 4250622603226",
+    price: Some((92.15, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 315 mm (Dalap PS 315), 11/2026",
+},
+Accessory {
+    id: "DALAP-GP-102-BKF",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GP BKF ASA protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 100.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GP 102 BKF ASA: mriežka so strieškou, prírubou a spätnou klapkou na stenu alebo do potrubia, 150×150 mm / Ø100, ASA plast biela RAL 9016, -40 až +90 °C, 0,225 kg; kód 2039, EAN 4250622873865",
+    price: Some((6.15, "€ s DPH")),
+    source: "dalap.sk, Plastová vetracia mriežka so strieškou a klapkou Dalap GP 102 BKF ASA, 150x150 mm / Ø 100 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GP-122-BKF",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GP BKF ASA protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 125.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GP 122 BKF ASA: mriežka so strieškou, prírubou a spätnou klapkou na stenu alebo do potrubia, 150×150 mm / Ø125, ASA plast biela RAL 9016, -40 až +90 °C, 0,355 kg; kód 2040, EAN 4250622873872",
+    price: Some((6.60, "€ s DPH")),
+    source: "dalap.sk, Plastová vetracia mriežka so strieškou a klapkou Dalap GP 122 BKF ASA, 150x150 mm / Ø 125 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GP-152-BKF",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GP BKF ASA protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 160.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GP 152 BKF ASA: mriežka so strieškou, prírubou a spätnou klapkou na stenu alebo do potrubia, 190×190 mm / Ø150–160, ASA plast biela RAL 9016, -40 až +90 °C, 0,385 kg; kód 2041, EAN 4250622652828",
+    price: Some((10.85, "€ s DPH")),
+    source: "dalap.sk, PVC vetracia mriežka so strieškou a klapkou Dalap GP BKF ASA, 190x190 mm / Ø 150-160 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GM-102-BKN",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GM BKN nerezová protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 100.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GM 102 BKN: nerezová mriežka so strieškou, klapkou a prírubou na stenu, Ø100, -30 až +100 °C, 0,334 kg; kód 99336, EAN 4250622609075",
+    price: Some((21.45, "€ s DPH")),
+    source: "dalap.sk, Nerez vetracia mriežka Dalap GM 102 BKN so strieškou, klapkou a prírubou, Ø 100 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GM-122-BKN",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GM BKN nerezová protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 125.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GM 122 BKN: nerezová mriežka so strieškou, klapkou a prírubou na stenu, Ø125, -30 až +100 °C, 0,456 kg; kód 99337, EAN 4250622609082",
+    price: Some((28.85, "€ s DPH")),
+    source: "dalap.sk, Nerez vetracia mriežka Dalap GM 122 BKN so strieškou, klapkou a prírubou, Ø 125 mm, 11/2026",
+},
+Accessory {
+    id: "DALAP-GM-152-BKN",
+    maker: "Dalap",
+    // through a wall: one product in sizes, the size picked beside it
+    name: "GM BKN nerezová protidažďová žalúzia so spätnou klapkou (fasáda)",
+    dn: 150.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap GM 152 BKN: nerezová mriežka so strieškou, klapkou a prírubou na stenu, Ø150, -30 až +100 °C, 0,578 kg; kód 99338, EAN 4250622609150",
+    price: Some((32.50, "€ s DPH")),
+    source: "dalap.sk, Nerez vetracia mriežka Dalap GM 152 BKN so strieškou, klapkou a prírubou, Ø 150 mm, 11/2026",
 }];
 
 pub fn valve(id: &str) -> Option<&'static Accessory> {
@@ -866,13 +1243,7 @@ pub fn bill(model: &Model) -> Vec<BillLine> {
             }
             "vyustO" | "vyfukVzt" => {
                 if let Some(a) = v.product.as_deref().and_then(valve) {
-                    add(
-                        format!("{} {}", a.maker, a.name),
-                        "ks",
-                        1.0,
-                        a.price,
-                        a.source,
-                    );
+                    add(a.title(), "ks", 1.0, a.price, a.source);
                 }
             }
             _ => {}
@@ -1071,16 +1442,306 @@ pub fn propose(
         ));
         tags.push(tag);
     }
+    let numbers: Vec<String> = tags
+        .iter()
+        .map(|t| t.trim_start_matches(DESIGN_TAG).trim().to_string())
+        .collect();
     let remove = model
         .iter()
-        .filter(|e| tags.iter().any(|t| e.name.starts_with(&format!("{t} – "))))
+        .filter(|e| of_design(&e.name, &numbers))
         .map(|e| e.id)
         .collect();
     (add, remove, warn)
 }
 
+/// Whether an element belongs to an earlier design for one of the rooms
+/// numbered `numbers`: its name "Odvetranie 1.07 – …" or, of a shared
+/// branch, "Odvetranie 1.07+1.08+1.12 – …".
+fn of_design(name: &str, numbers: &[String]) -> bool {
+    let Some(rest) = name.strip_prefix(&format!("{DESIGN_TAG} ")) else {
+        return false;
+    };
+    let Some((head, _)) = rest.split_once(" – ") else {
+        return false;
+    };
+    head.split('+')
+        .any(|n| numbers.iter().any(|m| m == n.trim()))
+}
+
+/// The elements of one shared extract for all of `rooms` (George
+/// 2026-11-25): an extract valve in the ceiling of each, a Spiro Ø100 up
+/// into the attic and square across to one collecting duct, the
+/// collecting duct sized by the air it carries (STN EN 1506 sizes, at
+/// most [`ductsizing::Limits`]' main velocity), on past the last branch
+/// towards where the roof rises most with the fan `fan_id` on it, then up
+/// through the roof (VZE) to one roof outlet. The valves are set to share
+/// the air by each room's need. Elements of earlier designs for the same
+/// rooms are given back to be removed.
+pub fn propose_central(
+    model: &Model,
+    ho: &heatloss::Opts,
+    rooms: &[ElementId],
+    fan_id: &str,
+    speed: Option<&str>,
+) -> (Vec<creabim_core::Element>, Vec<ElementId>, Vec<String>) {
+    use creabim_core::Element;
+    let fan = fan(fan_id).unwrap_or(&FANS[0]);
+    let mut warn = vec![];
+    // each room: its number, the valve's place, its height, the attic
+    // run's height, its need, its level
+    struct Point {
+        number: String,
+        at: DVec2,
+        h: f64,
+        z_run: f64,
+        need: f64,
+        level: ElementId,
+        elev: f64,
+    }
+    let mut pts: Vec<Point> = vec![];
+    for id in rooms {
+        let Some(e) = model.get(*id) else { continue };
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        let Some(shape) = creabim_core::room::shape_of(model, r) else {
+            warn.push(format!("{} {}: miestnosť nemá obrys.", r.number, e.name));
+            continue;
+        };
+        let elev = model.level(r.level).map_or(0.0, |l| l.elevation);
+        let at = middle(&shape.outline);
+        let h = creabim_core::room::height(model, r);
+        let ceiling_top = creabim_core::room::ceiling_over(model, r.level, at, elev + h + 0.01)
+            .and_then(|(cid, z)| match model.get(cid).map(|c| &c.kind) {
+                Some(ElementKind::Ceiling(c)) => Some(z + c.thickness - elev),
+                _ => None,
+            })
+            .unwrap_or(h + 0.3);
+        pts.push(Point {
+            number: r.number.clone(),
+            at,
+            h,
+            z_run: ceiling_top + 0.35,
+            need: room_need(model, ho, *id),
+            level: r.level,
+            elev,
+        });
+    }
+    let numbers: Vec<String> = pts.iter().map(|p| p.number.clone()).collect();
+    let remove: Vec<ElementId> = model
+        .iter()
+        .filter(|e| of_design(&e.name, &numbers))
+        .map(|e| e.id)
+        .collect();
+    let Some(first) = pts.first() else {
+        return (vec![], remove, warn);
+    };
+    if pts.iter().any(|p| p.level != first.level) {
+        warn.push("Spoločná vetva: miestnosti musia byť na jednom podlaží.".to_string());
+        return (vec![], remove, warn);
+    }
+    let (level, elev) = (first.level, first.elev);
+    let z_run = pts.iter().map(|p| p.z_run).fold(f64::MIN, f64::max);
+    // the collecting duct along the way the rooms spread most, at their
+    // middle across
+    let (lo, hi) = pts.iter().fold(
+        (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+        |(lo, hi), p| (lo.min(p.at), hi.max(p.at)),
+    );
+    let along = if hi.x - lo.x >= hi.y - lo.y {
+        DVec2::X
+    } else {
+        DVec2::Y
+    };
+    let across = along.perp();
+    let mid = pts.iter().map(|p| p.at).sum::<DVec2>() / pts.len() as f64;
+    let c = mid.dot(across);
+    let foot = |p: DVec2| along * p.dot(along) + across * c;
+    // the fan's end: the end of the collecting duct where the roof is
+    // higher
+    let s_lo = pts.iter().map(|p| p.at.dot(along)).fold(f64::MAX, f64::min);
+    let s_hi = pts.iter().map(|p| p.at.dot(along)).fold(f64::MIN, f64::max);
+    let run = 1.5;
+    let end_at = |s: f64, out: f64| along * (s + out * run) + across * c;
+    let roof_at = |q: DVec2| roof_top(model, q).unwrap_or(f64::MIN);
+    let out = if roof_at(end_at(s_hi, 1.0)) >= roof_at(end_at(s_lo, -1.0)) {
+        1.0
+    } else {
+        -1.0
+    };
+    let s_fan = if out > 0.0 { s_hi } else { s_lo };
+    let m = end_at(s_fan, out);
+    let Some(top) = roof_top(model, m).map(|z| z - elev) else {
+        warn.push("Nad koncom zberného potrubia nie je strecha.".to_string());
+        return (vec![], remove, warn);
+    };
+    let tag = format!("{DESIGN_TAG} {}", numbers.join("+"));
+    let mut add = vec![];
+    let duct = |add: &mut Vec<Element>, system: &str, d: f64, from: DVec3, to: DVec3| {
+        let p = Pipe {
+            level,
+            system: system.into(),
+            start: from,
+            end: to,
+            pipe_type: "VZK".into(),
+            nominal_mm: d,
+            outer_mm: d + 1.0,
+            inner_mm: d,
+            height_mm: None,
+            // through the cold attic: insulated against condensation
+            insulation_mm: 30.0,
+            insulation_set: true,
+            mark: None,
+        };
+        let el = Element::new(format!("{tag} – potrubie Ø{d:.0}"), ElementKind::Pipe(p));
+        let id = el.id;
+        add.push(el);
+        id
+    };
+    let at3 = |q: DVec2, z: f64| DVec3::new(q.x, q.y, z);
+    // the branches: up, then square across to the collecting duct, as
+    // wide as a branch's velocity allows, with the valve of that size
+    let branch_v = ductsizing::Limits::default().branch;
+    let mut widths: Vec<(f64, f64)> = vec![];
+    for p in &pts {
+        let want = ductsizing::round_for(p.need, branch_v).max(100.0);
+        let valve = VALVES
+            .iter()
+            .filter(|v| v.dn >= want - 1.0 && !v.loss.is_empty())
+            .min_by(|a, b| a.dn.total_cmp(&b.dn))
+            .unwrap_or(&VALVES[0]);
+        let d = valve.dn;
+        widths.push((p.at.dot(along), d));
+        let up = duct(&mut add, "VZO", d, at3(p.at, p.h), at3(p.at, z_run));
+        let f = foot(p.at);
+        if f.distance(p.at) > JOIN {
+            duct(&mut add, "VZO", d, at3(p.at, z_run), at3(f, z_run));
+        }
+        let mut v = Valve::new(up, 0.0, "vyustO");
+        v.product = Some(valve.id.into());
+        add.push(Element::new(
+            format!("{tag} – odvodný ventil {}", p.number),
+            ElementKind::Valve(v),
+        ));
+    }
+    // the collecting duct from the far end to the fan's end, each piece
+    // as wide as the air it carries
+    let mut stops: Vec<f64> = pts.iter().map(|p| p.at.dot(along)).collect();
+    stops.sort_by(|a, b| (a * out).total_cmp(&(b * out)));
+    stops.dedup_by(|a, b| (*a - *b).abs() < JOIN);
+    let need_upto = |s: f64| -> f64 {
+        pts.iter()
+            .filter(|p| p.at.dot(along) * out <= s * out + JOIN)
+            .map(|p| p.need)
+            .sum()
+    };
+    let main_v = ductsizing::Limits::default().main;
+    for w in stops.windows(2) {
+        let q = need_upto(w[0]);
+        // never narrower than a branch it takes
+        let widest = widths
+            .iter()
+            .filter(|(s, _)| *s * out <= w[0] * out + JOIN)
+            .map(|x| x.1)
+            .fold(100.0, f64::max);
+        let d = ductsizing::round_for(q, main_v).max(widest);
+        duct(
+            &mut add,
+            "VZO",
+            d,
+            at3(along * w[0] + across * c, z_run),
+            at3(along * w[1] + across * c, z_run),
+        );
+    }
+    let total: f64 = pts.iter().map(|p| p.need).sum();
+    let d_fan = ductsizing::round_for(total, main_v)
+        .max(fan.dn)
+        .max(widths.iter().map(|x| x.1).fold(100.0, f64::max));
+    let to_fan = duct(
+        &mut add,
+        "VZO",
+        d_fan,
+        at3(along * s_fan + across * c, z_run),
+        at3(m, z_run),
+    );
+    let outlet = duct(
+        &mut add,
+        "VZE",
+        d_fan,
+        at3(m, z_run),
+        at3(m, top.max(z_run + 0.5)),
+    );
+    let mut fv = Valve::new(to_fan, 0.5, "ventilator");
+    fv.product = Some(fan.id.into());
+    fv.preset = speed.filter(|s| !s.is_empty()).map(str::to_string);
+    add.push(Element::new(
+        format!("{tag} – ventilátor {}", fan.name),
+        ElementKind::Valve(fv),
+    ));
+    let mut hood = Valve::new(outlet, 1.0, "vyfukVzt");
+    hood.product = OUTLETS
+        .iter()
+        .find(|o| (o.dn - d_fan).abs() < 1.0)
+        .map(|o| o.id.to_string());
+    if hood.product.is_none() {
+        warn.push(format!(
+            "Strešný výfuk Ø{d_fan:.0}: v aplikácii nie je výrobok tejto veľkosti, doplňte ho."
+        ));
+    }
+    add.push(Element::new(
+        format!("{tag} – strešná hlavica"),
+        ElementKind::Valve(hood),
+    ));
+    if fan.in_room {
+        warn.push(format!(
+            "{} sa osádza do stropu miestnosti, na spoločnú vetvu sa nehodí.",
+            fan.name
+        ));
+    }
+    (add, remove, warn)
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_dalap_cap_is_one_product_in_seven_sizes() {
+        let cap = valve("DALAP-PS-160").unwrap();
+        let sizes: Vec<f64> = cap.sizes().iter().map(|a| a.dn).collect();
+        assert_eq!(sizes, vec![100.0, 125.0, 150.0, 160.0, 200.0, 250.0, 315.0]);
+        assert_eq!(cap.title(), "Dalap PS protidažďová strieška Ø160");
+        // a name that has its size keeps it as it is
+        assert_eq!(
+            valve("KLOBER-ROVIA-KE0520").unwrap().title(),
+            "Klöber Rovia univerzálny strešný prestup DN100 (KE 0520)"
+        );
+        assert_eq!(cap.price, Some((37.15, "€ s DPH")));
+        // the louvres through a wall: plastic Ø100–160, stainless Ø100–150
+        let gp: Vec<f64> = valve("DALAP-GP-152-BKF")
+            .unwrap()
+            .sizes()
+            .iter()
+            .map(|a| a.dn)
+            .collect();
+        assert_eq!(gp, vec![100.0, 125.0, 160.0]);
+        let gm: Vec<f64> = valve("DALAP-GM-102-BKN")
+            .unwrap()
+            .sizes()
+            .iter()
+            .map(|a| a.dn)
+            .collect();
+        assert_eq!(gm, vec![100.0, 125.0, 150.0]);
+        // a roof outlet Ø160 is still the cap, the first of its size
+        assert_eq!(
+            OUTLETS
+                .iter()
+                .find(|o| (o.dn - 160.0).abs() < 1.0)
+                .unwrap()
+                .id,
+            "DALAP-PS-160"
+        );
+    }
+
     use super::*;
     use creabim_core::{Document, Element, Room, Transaction};
 
@@ -1107,8 +1768,9 @@ mod tests {
             for s in f.speeds {
                 assert!(s.curve.windows(2).all(|w| w[1].0 > w[0].0), "{}", f.name);
                 assert_eq!(s.curve.last().unwrap().1, 0.0);
+                // the table's free flow, rounded, against the chart's end
                 assert!(
-                    (s.curve.last().unwrap().0 - s.q_free).abs() <= 2.0,
+                    (s.curve.last().unwrap().0 - s.q_free).abs() <= 0.025 * s.q_free,
                     "{}",
                     f.name
                 );
@@ -1183,5 +1845,17 @@ mod tests {
         let m = doc.model();
         let rows = check(m, &ho, &Opts::default());
         assert!(!rows[0].ok() && rows[0].q < 90.0, "{:?}", rows[0]);
+    }
+
+    #[test]
+    fn a_new_design_replaces_the_old_one_of_its_rooms() {
+        let n = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert!(of_design("Odvetranie 1.08 – potrubie Ø100", &n(&["1.08"])));
+        assert!(of_design(
+            "Odvetranie 1.07+1.08+1.12 – ventilátor TD",
+            &n(&["1.12"])
+        ));
+        assert!(!of_design("Odvetranie 1.08 – potrubie Ø100", &n(&["1.07"])));
+        assert!(!of_design("Rekuperácia – VZO 1.08", &n(&["1.08"])));
     }
 }

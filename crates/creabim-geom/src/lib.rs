@@ -74,6 +74,7 @@ pub mod takeoff;
 pub mod thermalcut;
 pub mod titleblock;
 pub mod tradelists;
+pub mod tradepen;
 pub mod triangulate;
 pub mod valves;
 pub mod wall;

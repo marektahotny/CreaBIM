@@ -210,13 +210,26 @@ pub fn valve_fields(
             } else {
                 xf::OUTLETS
             };
+            // a product sold in sizes listed once, its size picked below
+            // (George 2026-11-25)
+            let mut seen: Vec<(&str, &str)> = vec![];
             of.iter()
+                .filter(|a| {
+                    let key = (a.maker, a.name);
+                    let first = !seen.contains(&key);
+                    seen.push(key);
+                    first
+                })
                 .map(|a| (a.id, format!("{} {}", a.maker, a.name), a.about))
                 .collect()
         };
+        let chosen = v.product.as_deref().and_then(xf::valve);
+        let family = |id: &str| {
+            xf::valve(id).map(|a| (a.maker, a.name)) == chosen.map(|c| (c.maker, c.name))
+        };
         let shown = list
             .iter()
-            .find(|x| Some(x.0) == v.product.as_deref())
+            .find(|x| Some(x.0) == v.product.as_deref() || (chosen.is_some() && family(x.0)))
             .map_or(tr("Generic"), |x| x.1.clone());
         crate::app::helpui::combo(ui, "Product")
             .selected_text(shown)
@@ -232,7 +245,8 @@ pub fn valve_fields(
                     label = "Product";
                 }
                 for (id, name, about) in &list {
-                    let on = v.product.as_deref() == Some(*id);
+                    let on = v.product.as_deref() == Some(*id)
+                        || (v.kind != "ventilator" && chosen.is_some() && family(id));
                     if ui
                         .selectable_label(on, name)
                         .on_hover_text(*about)
@@ -245,6 +259,26 @@ pub fn valve_fields(
                     }
                 }
             });
+        // the size of a product sold in several
+        if let Some(a) = chosen.filter(|a| v.kind != "ventilator" && a.sizes().len() > 1) {
+            crate::app::helpui::combo(ui, "Size")
+                .selected_text(format!("Ø{:.0}", a.dn))
+                .width(width)
+                .show_ui(ui, |ui| {
+                    for s in a.sizes() {
+                        let on = s.id == a.id;
+                        if ui
+                            .selectable_label(on, format!("Ø{:.0}", s.dn))
+                            .on_hover_text(s.about)
+                            .clicked()
+                            && !on
+                        {
+                            v.product = Some(s.id.to_string());
+                            label = "Product";
+                        }
+                    }
+                });
+        }
         if let Some(f) = v
             .product
             .as_deref()

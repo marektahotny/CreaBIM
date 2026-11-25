@@ -1184,6 +1184,30 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             ) && !crate::elplan::is_wiring_device(model, it.id())
         });
     }
+    // but the holes the trades' pipes make through walls, slabs, ceilings
+    // and roofs are taken over into the architect's and the structural
+    // engineer's plans, and the pipes' ends standing out of the roof into
+    // the roof plan (George 2026-11-25)
+    if !services && !site {
+        if let creabim_core::ViewKind::Plan { level, cut_height } = kind {
+            let mm = v.scale / 1000.0;
+            if v.graphics.range.from_above {
+                d.items.extend(crate::tradepen::roof_items(full, mm));
+            } else if v.ceiling_plan {
+                d.items
+                    .extend(crate::tradepen::ceiling_plan_items(full, *level, mm));
+            } else {
+                // from the whole model: the view hides the pipes
+                d.items.extend(crate::tradepen::plan_items(
+                    full,
+                    *level,
+                    *cut_height,
+                    mm,
+                    v.structural,
+                ));
+            }
+        }
+    }
     // a services drawing shows its pipes as lines, each in its system's
     // colour and line type
     if matches!(kind, creabim_core::ViewKind::Plan { .. })

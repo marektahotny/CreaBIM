@@ -94,6 +94,9 @@ fn main() -> eframe::Result {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("CreaBIM")
             .with_inner_size([1400.0, 860.0])
+            // opens over the whole screen (George 2026-11-25); a dev shot
+            // keeps its fixed size
+            .with_maximized(std::env::var_os("CREABIM_SHOT").is_none())
             .with_icon(app_icon()),
         renderer: eframe::Renderer::Wgpu,
         // the windows' sizes and places are kept for the next run (egui's

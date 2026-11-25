@@ -8848,5 +8848,8 @@
  "insulation": "izolace",
  "duct insulation (thickness at the duct's size)": "izolace potrubí (tloušťka v popisu potrubí)",
  "VENTILATION DEVICES": "ZAŘÍZENÍ VZT",
- "Not entered: the condensation takes": "Nezadáno: kondenzace bere"
+ "Not entered: the condensation takes": "Nezadáno: kondenzace bere",
+ "One fan for all the rooms picked": "Jeden ventilátor pro všechny vybrané místnosti",
+ "The valves join one collecting duct in the attic with one fan and one roof outlet; the valves are set to share the air by each room's need": "Ventily se spojí do jednoho sběrného potrubí v podkroví s jedním ventilátorem a jedním střešním výfukem; ventily se nastaví tak, aby se vzduch dělil podle potřeby místností",
+ "Valve throttles": "Škrcení ventilu"
 }
