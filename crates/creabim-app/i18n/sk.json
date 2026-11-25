@@ -8706,5 +8706,9 @@
  "STN EN 12831-1 6.3.3.3: the air the fans take out comes in through the envelope of all rooms (24, 19); a room with a fan gets it as transfer air through its door from the heated rooms next to it (15). Off: natural airing, only the infiltration and the least air change (14).": "STN EN 12831-1 6.3.3.3: vzduch odsávaný ventilátormi prichádza obalovými konštrukciami všetkých miestností (24, 19); miestnosť s ventilátorom ho dostáva ako prevádzaný vzduch cez dvere zo susedných vykurovaných miestností (15). Vypnuté: prirodzené vetranie, len infiltrácia a minimálna výmena vzduchu (14).",
  "Undercut for an air speed of": "Podrezanie dverí pre rýchlosť vzduchu",
  "Total supply / extract": "Spolu prívod / odvod",
- "Sound level": "Hladina hluku"
+ "Sound level": "Hladina hluku",
+ "Levels on sheets": "Podlažia na výkresoch",
+ "Print the level heads and their dashed lines on this view's sheets too. Off, they show only while you work here": "Tlačiť značky podlaží aj s ich čiarkovanými čiarami aj na výkresoch tohto pohľadu. Vypnuté: zobrazia sa len pri práci v pohľade",
+ "Level heads and their lines print on this view's sheets too.": "Značky podlaží a ich čiary sa tlačia aj na výkresoch tohto pohľadu.",
+ "Level heads and their lines show only while working; sheets leave them out.": "Značky podlaží a ich čiary sa zobrazujú len pri práci; na výkresoch sa netlačia."
 }

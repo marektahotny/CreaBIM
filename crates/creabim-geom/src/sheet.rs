@@ -144,6 +144,8 @@ pub fn placed_views_with(
         let (Some(view), Some(mut d)) = (view_of(model, vp.view), drawing(vp.view)) else {
             continue;
         };
+        // level heads and lines only while working, unless asked for
+        d = crate::section::for_sheet(model, vp.view, d);
         // a turned site plan lies turned on paper
         d = crate::turn::turned(d, view.turn);
         // the map or plot plan it was drawn over, lies under it
