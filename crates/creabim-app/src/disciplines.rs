@@ -130,7 +130,9 @@ impl CreaBimApp {
         if let Some(tx) = creabim_geom::structural::section_marks(self.doc.model()) {
             let _ = self.doc.commit(tx);
         }
-        let tags = creabim_core::viewmodes::trade_room_tags(self.doc.model());
+        let mut tags = creabim_core::viewmodes::trade_room_tags(self.doc.model());
+        // and the devices on the ducts their position marks
+        tags.extend(creabim_geom::mep::air_position_tags(self.doc.model()));
         if tags.is_empty() {
             return;
         }
