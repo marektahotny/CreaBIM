@@ -668,6 +668,11 @@ impl CreaBimApp {
                 Item::new("masonry:window", "Lintels and wall rules…").icon("settings"),
                 Item::Separator,
                 Item::new("masonry:lintel", "Put lintels over openings").icon("beam"),
+                Item::new(
+                    "masonry:rc-lintel",
+                    "RC lintel over an opening (cast on site)",
+                )
+                .icon("beam"),
                 Item::new("masonry:column", "RC column in a wall").icon("column"),
                 Item::Separator,
                 Item::new("masonry:check", "Check wall lengths").icon("problem"),
@@ -2295,7 +2300,7 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.binddims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.binddims" | "view.ranges" | "view.levelsheets" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "file.print" | "sheet.print" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
@@ -3107,6 +3112,22 @@ impl CreaBimApp {
                 };
             }
             "view.reveal" => self.toggle_hidden_elements(id),
+            "view.levelsheets" => {
+                let on = !self.view(id).is_some_and(|v| v.levels_on_sheets);
+                let r = self.doc.edit(id, "Levels on sheets", |e| {
+                    if let ElementKind::View(v) = &mut e.kind {
+                        v.levels_on_sheets = on;
+                    }
+                });
+                self.report(
+                    r,
+                    if on {
+                        "Level heads and their lines print on this view's sheets too."
+                    } else {
+                        "Level heads and their lines show only while working; sheets leave them out."
+                    },
+                );
+            }
             "view.colour" => self.toggle_hidden_colour(id),
             "view.xray" => self.toggle_view_xray(id),
             "view.reference" => {
@@ -4147,6 +4168,13 @@ impl CreaBimApp {
                             "kind": "toggle", "id": "view.ranges", "label": "Plan ranges",
                             "icon": "view-range", "on": self.plan.plan_ranges,
                             "hint": "Each floor plan's cut and view depth as a band: drag their grips to change them (MU34)",
+                        }));
+                    }
+                    if matches!(v.kind, ViewKind::Section { .. }) {
+                        options.push(json!({
+                            "kind": "toggle", "id": "view.levelsheets", "label": "Levels on sheets",
+                            "icon": "printer", "on": v.levels_on_sheets,
+                            "hint": "Print the level heads and their dashed lines on this view's sheets too. Off, they show only while you work here",
                         }));
                     }
                     options.push(json!({

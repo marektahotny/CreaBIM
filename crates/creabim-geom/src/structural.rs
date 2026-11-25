@@ -397,6 +397,7 @@ pub fn keep_structure(model: &Model, items: &mut Vec<PlanItem>) {
             // the insulation and render put round a column or lintel, and
             // the floors and ceilings, are not drawn: only what carries, as
             // the office's "výkres tvaru" (George 2026-11-24)
+            Some(e) if creabim_core::wrap::in_formwork(model, e) => true,
             Some(e) if creabim_core::wrap::piece_of(e).is_some() => false,
             Some(e) if matches!(e.kind, ElementKind::Slab(_) | ElementKind::Ceiling(_)) => false,
             Some(e) => structural::draws(model, e, &rules),
@@ -634,6 +635,40 @@ fn marks_of_section(
     out
 }
 
+/// The system lintels cut by a structural section (PORFIX NP, Porotherm
+/// KP, YTONG…), each piece on its own: not hatched, its outline thin and
+/// one line across it corner to corner, as the office draws a system
+/// element (George 2026-11-25: three PORFIX lintels side by side are
+/// three crossed pieces).
+pub fn cross_system_pieces(model: &Model, items: &mut Vec<PlanItem>) {
+    let system = |id: ElementId| {
+        matches!(model.get(id).map(|e| &e.kind),
+            Some(ElementKind::Beam(b)) if b.lintel.as_ref().is_some_and(|l| l.cast.is_none()))
+    };
+    let mut out = vec![];
+    items.retain(|it| match it {
+        PlanItem::Fill { id, points, .. } if system(*id) && points.len() >= 3 => {
+            out.push(PlanItem::Polygon {
+                id: *id,
+                pen: Pen::Symbol,
+                points: points.clone(),
+            });
+            let (lo, hi) = points.iter().fold((points[0], points[0]), |(lo, hi), p| {
+                (lo.min(*p), hi.max(*p))
+            });
+            out.push(PlanItem::Line {
+                id: *id,
+                pen: Pen::Symbol,
+                a: lo,
+                b: hi,
+            });
+            false
+        }
+        _ => true,
+    });
+    items.extend(out);
+}
+
 /// The dashed ±0,000 line across a structural section, between the
 /// faces of what it draws (STA_002).
 pub fn zero_line(model: &Model, view: ElementId, items: &[PlanItem]) -> Option<PlanItem> {
@@ -664,9 +699,9 @@ pub fn bearing_part(model: &Model, i: &crate::scene::SceneItem) -> bool {
     i.layer
         .is_none_or(|l| l.function == creabim_core::LayerFunction::Structure)
         && i.finish.is_none()
-        && model
-            .get(i.id)
-            .is_none_or(|e| creabim_core::wrap::piece_of(e).is_none())
+        && model.get(i.id).is_none_or(|e| {
+            creabim_core::wrap::piece_of(e).is_none() || creabim_core::wrap::in_formwork(model, e)
+        })
 }
 
 /// Is the section mark `id` one a plan of this kind shows: a structural
@@ -762,10 +797,11 @@ pub fn ring_schedule(model: &Model) -> crate::schedule::Schedule {
                 cells: vec![
                     p.mark.clone(),
                     format!(
-                        "{} {:.0}×{:.0} mm",
+                        "{} {:.0}×{:.0} mm{}",
                         creabim_core::masonry::RING_BEAM,
                         p.width * 1000.0,
-                        p.depth * 1000.0
+                        p.depth * 1000.0,
+                        creabim_core::masonry::insulation_note(model, p.beams[0])
                     ),
                     comma(p.length, 2),
                     comma(v, 2),
@@ -884,6 +920,43 @@ mod tests {
         ));
         // and not again: they are the user's now
         assert!(section_marks(&m).is_none());
+    }
+
+    #[test]
+    fn cut_system_lintels_are_thin_crossed_pieces() {
+        let mut m = creabim_core::sample::sample_house();
+        sample(&mut m);
+        let pieces: Vec<ElementId> = structural::lintel_positions(&m)[0].groups[0].clone();
+        assert!(pieces.len() > 1);
+        let square = |x: f64| {
+            vec![
+                DVec2::new(x, 2.3),
+                DVec2::new(x + 0.1, 2.3),
+                DVec2::new(x + 0.1, 2.55),
+                DVec2::new(x, 2.55),
+            ]
+        };
+        let mut items: Vec<PlanItem> = pieces
+            .iter()
+            .enumerate()
+            .map(|(k, id)| PlanItem::Fill {
+                id: *id,
+                points: square(k as f64 * 0.1),
+                hatch: creabim_core::Hatch::Diagonal,
+                rgb: None,
+            })
+            .collect();
+        cross_system_pieces(&m, &mut items);
+        assert!(!items.iter().any(|it| matches!(it, PlanItem::Fill { .. })));
+        for (k, id) in pieces.iter().enumerate() {
+            let x = k as f64 * 0.1;
+            assert!(items.iter().any(|it| matches!(it,
+                PlanItem::Polygon { id: i, pen: Pen::Symbol, .. } if i == id)));
+            assert!(items.iter().any(|it| matches!(it,
+                PlanItem::Line { id: i, pen: Pen::Symbol, a, b } if i == id
+                    && a.distance(DVec2::new(x, 2.3)) < 1e-9
+                    && b.distance(DVec2::new(x + 0.1, 2.55)) < 1e-9)));
+        }
     }
 
     #[test]

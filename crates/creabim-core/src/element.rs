@@ -2439,6 +2439,11 @@ pub struct View {
     /// wall in a cavity) with dashed hidden lines.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub show_hidden: bool,
+    /// A section or elevation: print its level heads and their dashed
+    /// datum lines on its sheets too. Off (the default) they show only while
+    /// working in the view, never on paper (George 2026-11-25).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub levels_on_sheets: bool,
     /// Draw those hidden elements in their own material colours, washed
     /// over what hides them, as well as dashed: for detailing what is
     /// inside a wall or a slab.
@@ -3032,6 +3037,7 @@ impl View {
             underlay: Underlay::None,
             browser_order: None,
             show_hidden: false,
+            levels_on_sheets: false,
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,
@@ -3079,6 +3085,7 @@ impl View {
             underlay: Underlay::None,
             browser_order: None,
             show_hidden: false,
+            levels_on_sheets: false,
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,
@@ -3123,6 +3130,7 @@ impl View {
             underlay: Underlay::None,
             browser_order: None,
             show_hidden: false,
+            levels_on_sheets: false,
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,
@@ -3168,6 +3176,7 @@ impl View {
             underlay: Underlay::None,
             browser_order: None,
             show_hidden: false,
+            levels_on_sheets: false,
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,
@@ -3218,6 +3227,7 @@ impl View {
             underlay: Underlay::None,
             browser_order: None,
             show_hidden: false,
+            levels_on_sheets: false,
             hidden_in_colour: false,
             room_colours: false,
             fire_zones: false,

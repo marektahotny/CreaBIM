@@ -2006,7 +2006,11 @@ pub fn show(
             let drawing = if turn != 0.0
                 || matches!(doc.model().get(v.viewport).map(|e| &e.kind), Some(ElementKind::Viewport(vp)) if vp.crop.is_some())
             {
-                full = creabim_geom::section::view_drawing(doc.model(), v.view).unwrap_or_default();
+                full = creabim_geom::section::for_sheet(
+                    doc.model(),
+                    v.view,
+                    creabim_geom::section::view_drawing(doc.model(), v.view).unwrap_or_default(),
+                );
                 &full
             } else {
                 &v.drawing

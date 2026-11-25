@@ -263,6 +263,30 @@ pub fn section_view_jogged<S: std::borrow::Borrow<SceneItem> + Sync>(
     PlanView { items }
 }
 
+/// What a section or elevation puts on its sheets: without the level
+/// heads and their datum lines, unless the view asks for them there
+/// ([`View::levels_on_sheets`](creabim_core::View)). Plans are left alone.
+pub fn for_sheet(model: &Model, view: ElementId, mut d: Drawing) -> Drawing {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return d;
+    };
+    if v.levels_on_sheets || !matches!(v.kind, creabim_core::ViewKind::Section { .. }) {
+        return d;
+    }
+    let level =
+        |id: &ElementId| matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Level(_)));
+    d.items.retain(|it| match it {
+        PlanItem::Line {
+            id, pen: Pen::Grid, ..
+        } => !level(id),
+        PlanItem::Annotation { id, item } => {
+            !(level(id) && matches!(item.shape, crate::annotation::Shape::Level { .. }))
+        }
+        _ => true,
+    });
+    d
+}
+
 /// Level lines across a section or elevation spanning `span` along it, a
 /// metre past each side, each with its head (name and elevation in the
 /// project's units) at the right-hand end. `scale` sizes the heads.
@@ -994,6 +1018,11 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             if !*cut {
                 d.items
                     .extend(crate::etics::elevation_lines(model, *start, *end, *depth));
+            }
+            // system lintels cut, each piece crossed: in the structural
+            // sections and the architect's too (George 2026-11-25)
+            if *cut {
+                crate::structural::cross_system_pieces(model, &mut d.items);
             }
             // a structural section: ±0,000 dashed across (STA_002)
             if v.structural && *cut {

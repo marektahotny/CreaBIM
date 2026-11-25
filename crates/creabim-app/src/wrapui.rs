@@ -18,7 +18,8 @@ fn side_names(model: &Model, e: &Element) -> [String; 4] {
         ),
         _ => (
             ["Left", "Right", "Under", "Over"],
-            matches!(&e.kind, ElementKind::Beam(b) if b.lintel.is_some()),
+            matches!(&e.kind, ElementKind::Beam(b) if b.lintel.is_some())
+                || e.name == creabim_core::masonry::RING_BEAM,
         ),
     };
     let ext = in_wall.then(|| wrap::exterior_side(model, e)).flatten();
@@ -62,6 +63,11 @@ fn choices(model: &Model, render: bool) -> (Vec<(ElementId, String)>, Vec<&'stat
     (have, presets)
 }
 
+/// The XPS a ring beam gets on its exterior side when its insulation is
+/// turned on, m: 50 mm, as with the Porotherm VT 8 ring-beam block
+/// (8 cm block + 50 mm insulation); set per beam.
+const RING_XPS: f64 = 0.05;
+
 impl CreaBimApp {
     /// The wrap rows of column or beam `e` (being edited as `k`): on or
     /// off, each side's insulation, its material, the render on it, and
@@ -93,6 +99,51 @@ impl CreaBimApp {
         }
         let names = side_names(self.doc.model(), e);
         let ext = wrap::exterior_side(self.doc.model(), e).unwrap_or(0);
+        // a ring beam: XPS on its exterior side only, inside the wall's
+        // core (George 2026-11-25)
+        let ring = e.name == creabim_core::masonry::RING_BEAM
+            && matches!(&*k, ElementKind::Beam(b) if b.lintel.is_none());
+        // a monolithic RC lintel: XPS outside and under it, each its own
+        // thickness, laid into the formwork (George 2026-11-25)
+        let cast = matches!(&*k, ElementKind::Beam(b) if b.lintel.as_ref().is_some_and(|l| l.cast.is_some()));
+        if cast {
+            if let ElementKind::Beam(b) = &mut *k {
+                if let Some(c) = b.lintel.as_mut().and_then(|l| l.cast.as_mut()) {
+                    let num = |ui: &mut egui::Ui,
+                               text: &str,
+                               hint: &str,
+                               v: &mut f64,
+                               lo: f64,
+                               hi: f64|
+                     -> bool {
+                        crate::props::row(ui, text, |ui| {
+                            crate::props::fill(ui, crate::units::drag(v).range(lo..=hi))
+                                .on_hover_text(tr(hint))
+                                .changed()
+                        })
+                    };
+                    if num(ui, "Bearing", "How far it rests on the wall at each end: at least 250 mm (PORFIX, eStav), 400 to 500 mm over 4 to 6 m spans (PORFIX)", &mut c.bearing, 0.1, 1.0) {
+                        label = "Lintel bearing";
+                    }
+                    if num(ui, "Concrete depth", "Without the insulation under it. Usual: a twelfth of the span, at least 250 mm (VUT Brno: průvlak h = L/15 to L/12)", &mut c.depth, 0.1, 1.5) {
+                        label = "Lintel depth";
+                    }
+                }
+            }
+        }
+        let only: Option<Vec<usize>> = if ring {
+            Some(vec![ext])
+        } else if cast {
+            Some(vec![ext, 2])
+        } else {
+            None
+        };
+        let plain = match &*k {
+            ElementKind::Beam(b) if ring => {
+                creabim_core::masonry::ring_plain_width(self.doc.model(), b)
+            }
+            _ => None,
+        };
         let w = match k {
             ElementKind::Column(c) => &mut c.wrap,
             ElementKind::Beam(b) => &mut b.wrap,
@@ -110,8 +161,17 @@ impl CreaBimApp {
             label = "Insulation round it";
             if on {
                 let mut sides = [0.0; 4];
-                sides[ext] = 0.1;
-                let (nw, mats) = wrap::new_wrap(self.doc.model(), sides);
+                sides[ext] = if ring || cast { RING_XPS } else { 0.1 };
+                let (mut nw, mut mats) = wrap::new_wrap(self.doc.model(), sides);
+                if ring || cast {
+                    // XPS, no render: the wall's insulation runs on over it
+                    nw.plaster = None;
+                    mats.clear();
+                    if let Some((id, m)) = wrap::preset(self.doc.model(), PRESETS[1].0) {
+                        nw.insulation = Some(id);
+                        mats.extend(m);
+                    }
+                }
                 if !mats.is_empty() {
                     let mut tx = Transaction::new("Insulation materials");
                     for m in mats {
@@ -125,6 +185,12 @@ impl CreaBimApp {
             }
         }
         let Some(wr) = w.as_mut() else {
+            // a ring beam back to the core's width less its shuttering
+            if ring && !label.is_empty() {
+                if let (ElementKind::Beam(b), Some(width)) = (&mut *k, plain) {
+                    b.width = width;
+                }
+            }
             return label;
         };
         let mut take: Option<(&'static str, bool)> = None;
@@ -173,9 +239,19 @@ impl CreaBimApp {
             })
         };
         for (i, n) in names.iter().enumerate() {
+            if only.as_ref().is_some_and(|o| !o.contains(&i)) {
+                continue;
+            }
             if num(ui, n, &mut wr.sides[i], 0.5) {
                 label = "Insulation thickness";
             }
+        }
+        if only.is_some() {
+            crate::props::note(
+                ui,
+                tr("Laid into the formwork as it is cast; the wall's insulation and render run on over it."),
+            );
+            return label;
         }
         if pick(
             ui,

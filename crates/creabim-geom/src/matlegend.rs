@@ -153,6 +153,47 @@ pub fn beside(model: &Model, view: ElementId) -> Vec<&creabim_core::View> {
     out
 }
 
+/// The makers of the system lintels (PORFIX, Wienerberger…) a cut
+/// section on the legend's sheets shows, when the model has any.
+fn system_makers_cut(model: &Model, view: ElementId) -> Vec<&'static str> {
+    let sheets: Vec<ElementId> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Viewport(vp) if vp.view == view => Some(vp.sheet),
+            _ => None,
+        })
+        .collect();
+    let cut_section = model.iter().any(|e| match &e.kind {
+        ElementKind::Viewport(vp) if sheets.contains(&vp.sheet) => matches!(
+            model.get(vp.view).map(|x| &x.kind),
+            Some(ElementKind::View(v)) if matches!(v.kind, creabim_core::ViewKind::Section { cut: true, .. })
+        ),
+        _ => false,
+    });
+    if !cut_section {
+        return vec![];
+    }
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Beam(b) = &e.kind else {
+            continue;
+        };
+        let Some(p) = b
+            .lintel
+            .as_ref()
+            .filter(|l| l.cast.is_none())
+            .and_then(|l| creabim_core::masonry::product(&l.product))
+        else {
+            continue;
+        };
+        let m = p.family.maker();
+        if !out.contains(&m) {
+            out.push(m);
+        }
+    }
+    out
+}
+
 /// The storeys a legend lists: its own, else those of the plans it
 /// stands beside; none for every storey (beside sections, or not placed).
 pub fn storeys(model: &Model, view: ElementId) -> Option<Vec<ElementId>> {
@@ -428,7 +469,22 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         HEAD + 0.8,
     );
     let mut y = 0.0;
-    let rows = rows_of_view(model, view);
+    let mut rows = rows_of_view(model, view);
+    let makers = system_makers_cut(model, view);
+    // beside sections only, the system lintels show crossed, not hatched:
+    // their material row gives way to the crossed mark's
+    if !makers.is_empty() && beside(model, view).is_empty() {
+        let lintel_materials: Vec<ElementId> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Beam(b) if b.lintel.as_ref().is_some_and(|l| l.cast.is_none()) => {
+                    b.material
+                }
+                _ => None,
+            })
+            .collect();
+        rows.retain(|r| !lintel_materials.contains(&r.material));
+    }
     for r in &rows {
         let lines = wrap(&r.text, tw, TEXT);
         let h = PATCH.y.max(lines.len() as f64 * LINE);
@@ -454,6 +510,41 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                 b: patch[(i + 1) % 4],
             });
         }
+        let mut ty = y - h / 2.0 + (lines.len() as f64 - 1.0) * LINE / 2.0;
+        for l in &lines {
+            text(&mut items, DVec2::new(ind, ty), l, TEXT);
+            ty -= LINE;
+        }
+        y -= h + 3.0;
+    }
+    // beside sections that cut system lintels: their mark, a thin outline
+    // crossed corner to corner (George 2026-11-25)
+    if !makers.is_empty() {
+        let line =
+            tr("System element (lintel), each piece crossed: {}").replace("{}", &makers.join(", "));
+        let lines = wrap(&line, tw, TEXT);
+        let h = PATCH.y.max(lines.len() as f64 * LINE);
+        let top = y - (h - PATCH.y) / 2.0;
+        let patch = [
+            DVec2::new(0.0, top - PATCH.y),
+            DVec2::new(PATCH.x, top - PATCH.y),
+            DVec2::new(PATCH.x, top),
+            DVec2::new(0.0, top),
+        ];
+        for i in 0..4 {
+            items.push(PlanItem::Line {
+                id: view,
+                pen: Pen::Symbol,
+                a: patch[i],
+                b: patch[(i + 1) % 4],
+            });
+        }
+        items.push(PlanItem::Line {
+            id: view,
+            pen: Pen::Symbol,
+            a: patch[0],
+            b: patch[2],
+        });
         let mut ty = y - h / 2.0 + (lines.len() as f64 - 1.0) * LINE / 2.0;
         for l in &lines {
             text(&mut items, DVec2::new(ind, ty), l, TEXT);

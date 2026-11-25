@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Categories whose volume is measured on their trimmed solids.
-const TRIMMED: [&str; 9] = [
+const TRIMMED: [&str; 10] = [
     "Walls",
     "Slabs",
     "Foundation slabs",
@@ -26,6 +26,7 @@ const TRIMMED: [&str; 9] = [
     "Ceilings",
     "Columns",
     "Beams",
+    "Lintels",
     "Footings",
     "Stairs",
 ];
