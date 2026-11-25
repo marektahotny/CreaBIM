@@ -8710,5 +8710,22 @@
  "Levels on sheets": "Podlažia na výkresoch",
  "Print the level heads and their dashed lines on this view's sheets too. Off, they show only while you work here": "Tlačiť značky podlaží aj s ich čiarkovanými čiarami aj na výkresoch tohto pohľadu. Vypnuté: zobrazia sa len pri práci v pohľade",
  "Level heads and their lines print on this view's sheets too.": "Značky podlaží a ich čiary sa tlačia aj na výkresoch tohto pohľadu.",
- "Level heads and their lines show only while working; sheets leave them out.": "Značky podlaží a ich čiary sa zobrazujú len pri práci; na výkresoch sa netlačia."
+ "Level heads and their lines show only while working; sheets leave them out.": "Značky podlaží a ich čiary sa zobrazujú len pri práci; na výkresoch sa netlačia.",
+ "outside": "zvonka",
+ "underneath": "zospodu",
+ "insulation": "izolácia",
+ "cast on site": "monolit na stavbe",
+ "Bearing": "Uloženie",
+ "Concrete depth": "Výška betónu",
+ "Lintel bearing": "Uloženie prekladu",
+ "Lintel depth": "Výška prekladu",
+ "How far it rests on the wall at each end: at least 250 mm (PORFIX, eStav), 400 to 500 mm over 4 to 6 m spans (PORFIX)": "Uloženie na stene na každej strane: min. 250 mm (PORFIX, eStav), pri rozpätí 4 až 6 m 400 až 500 mm (PORFIX)",
+ "Without the insulation under it. Usual: a twelfth of the span, at least 250 mm (VUT Brno: průvlak h = L/15 to L/12)": "Bez izolácie pod ním. Bežne 1/12 rozpätia, min. 250 mm (VUT Brno: prievlak h = L/15 až L/12)",
+ "Laid into the formwork as it is cast; the wall's insulation and render run on over it.": "Vkladá sa do debnenia pri betonáži; zateplenie a omietka steny idú cez neho.",
+ "RC lintel: click a door or window in the plan. Esc or a right-click leaves.": "ŽB preklad: klikni na dvere alebo okno v pôdoryse. Esc alebo pravý klik ukončí.",
+ "RC lintels cast over {} openings: bearing 250 mm (400 mm over 4 m), depth a twelfth of the span, at least 250 mm. Change them, and the insulation outside and under, in Properties.": "ŽB monolitické preklady nad {} otvormi: uloženie 250 mm (nad 4 m 400 mm), výška 1/12 rozpätia, min. 250 mm. Zmeníš ich aj zateplenie zvonka a zospodu vo Vlastnostiach.",
+ "{} openings too wide for them got a monolithic RC lintel.": "{} otvorov, na ktoré sú príliš široké, dostalo ŽB monolitický preklad.",
+ "RC lintel (cast on site)…": "ŽB preklad (monolit)…",
+ "RC lintel over an opening (cast on site)": "ŽB monolitický preklad nad otvor",
+ "RC lintels": "ŽB preklady"
 }

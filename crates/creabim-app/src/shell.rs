@@ -668,6 +668,11 @@ impl CreaBimApp {
                 Item::new("masonry:window", "Lintels and wall rules…").icon("settings"),
                 Item::Separator,
                 Item::new("masonry:lintel", "Put lintels over openings").icon("beam"),
+                Item::new(
+                    "masonry:rc-lintel",
+                    "RC lintel over an opening (cast on site)",
+                )
+                .icon("beam"),
                 Item::new("masonry:column", "RC column in a wall").icon("column"),
                 Item::Separator,
                 Item::new("masonry:check", "Check wall lengths").icon("problem"),

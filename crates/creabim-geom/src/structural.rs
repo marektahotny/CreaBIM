@@ -397,6 +397,7 @@ pub fn keep_structure(model: &Model, items: &mut Vec<PlanItem>) {
             // the insulation and render put round a column or lintel, and
             // the floors and ceilings, are not drawn: only what carries, as
             // the office's "výkres tvaru" (George 2026-11-24)
+            Some(e) if creabim_core::wrap::in_formwork(model, e) => true,
             Some(e) if creabim_core::wrap::piece_of(e).is_some() => false,
             Some(e) if matches!(e.kind, ElementKind::Slab(_) | ElementKind::Ceiling(_)) => false,
             Some(e) => structural::draws(model, e, &rules),
@@ -642,7 +643,7 @@ fn marks_of_section(
 pub fn cross_system_pieces(model: &Model, items: &mut Vec<PlanItem>) {
     let system = |id: ElementId| {
         matches!(model.get(id).map(|e| &e.kind),
-            Some(ElementKind::Beam(b)) if b.lintel.is_some())
+            Some(ElementKind::Beam(b)) if b.lintel.as_ref().is_some_and(|l| l.cast.is_none()))
     };
     let mut out = vec![];
     items.retain(|it| match it {
@@ -698,9 +699,9 @@ pub fn bearing_part(model: &Model, i: &crate::scene::SceneItem) -> bool {
     i.layer
         .is_none_or(|l| l.function == creabim_core::LayerFunction::Structure)
         && i.finish.is_none()
-        && model
-            .get(i.id)
-            .is_none_or(|e| creabim_core::wrap::piece_of(e).is_none())
+        && model.get(i.id).is_none_or(|e| {
+            creabim_core::wrap::piece_of(e).is_none() || creabim_core::wrap::in_formwork(model, e)
+        })
 }
 
 /// Is the section mark `id` one a plan of this kind shows: a structural
@@ -796,10 +797,11 @@ pub fn ring_schedule(model: &Model) -> crate::schedule::Schedule {
                 cells: vec![
                     p.mark.clone(),
                     format!(
-                        "{} {:.0}×{:.0} mm",
+                        "{} {:.0}×{:.0} mm{}",
                         creabim_core::masonry::RING_BEAM,
                         p.width * 1000.0,
-                        p.depth * 1000.0
+                        p.depth * 1000.0,
+                        creabim_core::masonry::insulation_note(model, p.beams[0])
                     ),
                     comma(p.length, 2),
                     comma(v, 2),

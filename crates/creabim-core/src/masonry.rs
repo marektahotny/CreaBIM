@@ -1249,6 +1249,43 @@ pub struct Lintel {
     /// kept on the opening's first piece.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark_at: Option<glam::DVec2>,
+    /// A monolithic RC lintel, its reinforcement tied in the formwork and
+    /// cast on site (George 2026-11-25), instead of a product: its bearing
+    /// and depth. It fills the core across, less the insulation laid into
+    /// the formwork on its exterior side and under it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cast: Option<CastLintel>,
+}
+
+/// A monolithic RC lintel's own sizes, m.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CastLintel {
+    /// How far it rests on the wall at each end.
+    pub bearing: f64,
+    /// The concrete's depth (without the insulation under it).
+    pub depth: f64,
+}
+
+/// The name of a monolithic RC lintel.
+pub const RC_LINTEL: &str = "ŽB monolitický preklad";
+
+impl CastLintel {
+    /// The usual sizes over a clear opening `span` wide: resting at least
+    /// 250 mm on each side (PORFIX odborná príručka, U-profile lintel
+    /// detail; eStav.cz "minimálně 250 mm na každé straně"), 400 mm over
+    /// spans above 4 m (PORFIX: "namiesto 300 mm ... 400 – 500 mm" for
+    /// 4 to 6 m); deep a twelfth of the span (VUT Brno FAST, předběžné
+    /// rozměry: průvlak "střešní a méně zatížené h = L/15 ~ L/12"; George
+    /// chose L/12 on 2026-11-25), rounded up to 50 mm, never less than
+    /// the 250 mm of a PORFIX U-profile.
+    pub fn usual(span: f64) -> CastLintel {
+        let bearing = if span > 4.0 + 1e-9 { 0.4 } else { 0.25 };
+        let depth = ((span / 12.0 / 0.05 - 1e-9).ceil() * 0.05).max(0.25);
+        CastLintel {
+            bearing,
+            depth: (depth * 1000.0).round() / 1000.0,
+        }
+    }
 }
 
 /// What [`lintels_for`] lays over an opening.
@@ -1341,6 +1378,7 @@ pub fn lintels_for(
             opening: Some(opening_id),
             across: k as f64 * p.width,
             mark_at: None,
+            cast: None,
         };
         let mut b = Beam::new(w.level, DVec2::ZERO, DVec2::X);
         b.lintel = Some(lintel);
@@ -1360,7 +1398,6 @@ pub fn lintels_for(
 /// opening is gone.
 pub fn fitted(model: &Model, b: &Beam) -> Option<Beam> {
     let l = b.lintel.as_ref()?;
-    let p = product(&l.product)?;
     let o_id = l.opening?;
     let ElementKind::Opening(o) = &model.get(o_id)?.kind else {
         return None;
@@ -1368,7 +1405,87 @@ pub fn fitted(model: &Model, b: &Beam) -> Option<Beam> {
     let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
         return None;
     };
+    if let Some(c) = l.cast {
+        return Some(place_cast(model, b, c, o, w));
+    }
+    let p = product(&l.product)?;
     Some(place(model, b, l, p, o, w))
+}
+
+/// A monolithic RC lintel `b` (sizes `c`) over `o`: across the whole core
+/// less the insulation on its exterior side, flush with the core's inner
+/// face, its insulation's underside (or its own) on the opening's head,
+/// resting `c.bearing` on each side. Insulation only outside and under,
+/// each its own thickness, no render: it is laid into the formwork.
+fn place_cast(model: &Model, b: &Beam, c: CastLintel, o: &Opening, w: &Wall) -> Beam {
+    let d = w.direction();
+    let n = d.perp();
+    let (ext, int) = crate::walls::core_span(model, w);
+    let core = (int - ext).abs();
+    let mut nb = b.clone();
+    // along the wall, so its right is the wall's right
+    nb.start = w.start;
+    nb.end = w.start + d;
+    let ext_side = if ext < int { 1 } else { 0 };
+    if let Some(wr) = &mut nb.wrap {
+        for i in [0, 1, 3] {
+            if i != ext_side {
+                wr.sides[i] = 0.0;
+            }
+        }
+        wr.plaster = None;
+        wr.sides[ext_side] = wr.side(ext_side).min((core - 0.05).max(0.0));
+    }
+    if nb.wrap.as_ref().is_some_and(|w| w.is_empty()) {
+        nb.wrap = None;
+    }
+    let (t_ext, t_under) = nb
+        .wrap
+        .as_ref()
+        .map_or((0.0, 0.0), |w| (w.side(ext_side), w.side(2)));
+    let width = (core - t_ext).max(0.05);
+    let out = if ext < int { -1.0 } else { 1.0 };
+    let across = int + out * width / 2.0;
+    let mid = o.offset + o.width / 2.0;
+    let length = o.width + 2.0 * c.bearing.max(0.0);
+    let at = |u: f64| w.start + d * u + n * across;
+    let head = crate::walls::base_z(model, w) + o.sill + o.height;
+    let top = crate::members::elevation(model, w.level) + storey_height(model, w.level);
+    let depth = c.depth.max(0.05);
+    nb.level = w.level;
+    nb.start = at(mid - length / 2.0);
+    nb.end = at(mid + length / 2.0);
+    nb.width = width;
+    nb.depth = depth;
+    nb.top_offset = top - (head + t_under + depth);
+    nb.section = None;
+    nb.rise = [0.0, 0.0];
+    nb.up = None;
+    nb.extend = [0.0, 0.0];
+    nb.cuts = [None, None];
+    nb
+}
+
+/// A monolithic RC lintel over opening `opening`, of the usual sizes
+/// ([`CastLintel::usual`]), in the project's reinforced concrete.
+pub fn cast_lintel(model: &Model, opening: ElementId) -> Option<Element> {
+    let ElementKind::Opening(o) = &model.get(opening)?.kind else {
+        return None;
+    };
+    let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+        return None;
+    };
+    let mut b = Beam::new(w.level, DVec2::ZERO, DVec2::X);
+    b.material = concrete(model);
+    b.lintel = Some(Lintel {
+        product: String::new(),
+        opening: Some(opening),
+        across: 0.0,
+        mark_at: None,
+        cast: Some(CastLintel::usual(o.width)),
+    });
+    let b = fitted(model, &b)?;
+    Some(Element::new(RC_LINTEL, ElementKind::Beam(b)))
 }
 
 fn place(model: &Model, b: &Beam, l: &Lintel, p: &LintelProduct, o: &Opening, w: &Wall) -> Beam {
@@ -1415,10 +1532,19 @@ pub fn lintels_over(model: &Model, opening: ElementId) -> Vec<ElementId> {
 /// pieces of one product counted.
 pub fn label(model: &Model, ids: &[ElementId]) -> String {
     let mut counts: Vec<(&'static str, usize)> = vec![];
+    let mut cast: Vec<String> = vec![];
     for id in ids {
         let Some(ElementKind::Beam(b)) = model.get(*id).map(|e| &e.kind) else {
             continue;
         };
+        if b.lintel.as_ref().is_some_and(|l| l.cast.is_some()) {
+            cast.push(format!(
+                "ŽB {:.0}×{:.0}",
+                b.width * 1000.0,
+                b.depth * 1000.0
+            ));
+            continue;
+        }
         let Some(p) = b.lintel.as_ref().and_then(|l| product(&l.product)) else {
             continue;
         };
@@ -1427,11 +1553,70 @@ pub fn label(model: &Model, ids: &[ElementId]) -> String {
             None => counts.push((p.name, 1)),
         }
     }
-    counts
-        .iter()
-        .map(|(n, c)| format!("{c}× {n}"))
-        .collect::<Vec<_>>()
-        .join(" + ")
+    let mut parts: Vec<String> = counts.iter().map(|(n, c)| format!("{c}× {n}")).collect();
+    for c in cast {
+        if !parts.contains(&c) {
+            parts.push(c);
+        }
+    }
+    let mut out = parts.join(" + ");
+    // the insulation laid into an RC lintel's formwork
+    if let Some(id) = ids.iter().find(|id| {
+        matches!(model.get(**id).map(|e| &e.kind),
+            Some(ElementKind::Beam(b)) if b.lintel.as_ref().is_some_and(|l| l.cast.is_some()))
+    }) {
+        out.push_str(&insulation_note(model, *id));
+    }
+    out
+}
+
+/// The insulation laid into a concrete member's formwork, as a list
+/// says it: ` + XPS 50 mm zvonka, 30 mm zospodu` (George 2026-11-25:
+/// the size and the insulation's thickness in the legend and lists).
+pub fn insulation_note(model: &Model, id: ElementId) -> String {
+    let Some(e) = model.get(id) else {
+        return String::new();
+    };
+    let Some(ElementKind::Beam(b)) = Some(&e.kind) else {
+        return String::new();
+    };
+    let Some(w) = &b.wrap else {
+        return String::new();
+    };
+    let Some(ext) = crate::wrap::exterior_side(model, e) else {
+        return String::new();
+    };
+    let name = w
+        .insulation
+        .and_then(|m| model.get(m))
+        .map(|m| {
+            m.name
+                .split([' ', '–', ','])
+                .next()
+                .unwrap_or("")
+                .to_string()
+        })
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| crate::words::tr("insulation"));
+    let mut parts = vec![];
+    if w.side(ext) > 1e-6 {
+        parts.push(format!(
+            "{:.0} mm {}",
+            w.side(ext) * 1000.0,
+            crate::words::tr("outside")
+        ));
+    }
+    if w.side(2) > 1e-6 {
+        parts.push(format!(
+            "{:.0} mm {}",
+            w.side(2) * 1000.0,
+            crate::words::tr("underneath")
+        ));
+    }
+    if parts.is_empty() {
+        return String::new();
+    }
+    format!(" + {name} {}", parts.join(", "))
 }
 
 /// What is wrong with the lintel `b` as it lies: bearing shorter than its
@@ -2268,11 +2453,35 @@ pub fn ring_beam(model: &Model, wall_id: ElementId) -> Option<Element> {
 
 /// Lay `b` along the core of `w` from `lo` to `hi` (along the wall from
 /// its start): no wider than the core, flush with its inner face, no
-/// ends run past, nothing round it.
+/// ends run past; insulation, if any, only on its exterior side, the two
+/// filling the core.
 fn place_on_core(model: &Model, w: &Wall, b: &mut Beam, lo: f64, hi: f64) {
     let (ext, int) = crate::walls::core_span(model, w);
     let core = (int - ext).abs();
     b.width = b.width.clamp(0.05_f64.min(core), core.max(0.05));
+    // insulation only on the exterior side, inside the core (most often
+    // XPS: George 2026-11-25); the wall's own insulation and render run
+    // on over it, so none of its own
+    let ext_side = ring_exterior(model, w, b);
+    if let Some(wr) = &mut b.wrap {
+        for i in 0..4 {
+            if i != ext_side {
+                wr.sides[i] = 0.0;
+            }
+        }
+        wr.plaster = None;
+    }
+    if b.wrap.as_ref().is_some_and(|w| w.is_empty()) {
+        b.wrap = None;
+    }
+    if let Some(t) = b.wrap.as_ref().map(|w| w.side(ext_side)) {
+        // the beam and its insulation fill the core, flush with its faces
+        let t = t.min(core - 0.05).max(0.0);
+        if let Some(wr) = &mut b.wrap {
+            wr.sides[ext_side] = t;
+        }
+        b.width = (core - t).max(0.05);
+    }
     // the shuttering, if any, on the outer side
     let sign = if int >= ext { 1.0 } else { -1.0 };
     let mid = int - sign * b.width / 2.0;
@@ -2289,7 +2498,41 @@ fn place_on_core(model: &Model, w: &Wall, b: &mut Beam, lo: f64, hi: f64) {
     }
     b.extend = [0.0, 0.0];
     b.cuts = [None, None];
-    b.wrap = None;
+}
+
+/// Which side of ring beam `b` on wall `w` faces the exterior: 0 its
+/// left, 1 its right, looking from its start to its end (as
+/// [`crate::wrap`] numbers a beam's sides).
+fn ring_exterior(model: &Model, w: &Wall, b: &Beam) -> usize {
+    let (ext, int) = crate::walls::core_span(model, w);
+    let out = w.direction().perp() * (ext - int).signum();
+    let left = (b.end - b.start).normalize_or_zero().perp();
+    if left.dot(out) >= 0.0 {
+        0
+    } else {
+        1
+    }
+}
+
+/// The exterior side of a ring beam (see [`ring_exterior`]), when it
+/// lies on a wall.
+pub fn ring_exterior_side(model: &Model, b: &Beam) -> Option<usize> {
+    let ElementKind::Wall(w) = &model.get(ring_wall(model, b)?)?.kind else {
+        return None;
+    };
+    Some(ring_exterior(model, w, b))
+}
+
+/// The width a ring beam on wall `w` has with no insulation of its own:
+/// the core less the shuttering on its outer side.
+pub fn ring_plain_width(model: &Model, b: &Beam) -> Option<f64> {
+    let ElementKind::Wall(w) = &model.get(ring_wall(model, b)?)?.kind else {
+        return None;
+    };
+    let (ext, int) = crate::walls::core_span(model, w);
+    let core = (int - ext).abs();
+    let shutter = rules(model).ring_shutter.clamp(0.0, (core - 0.1).max(0.0));
+    Some((core - shutter).max(0.05))
 }
 
 /// Where a ring beam along the wall `id` ends, along it from its start:
@@ -3008,14 +3251,33 @@ mod tests {
             "{ys:?}"
         );
         assert!((b.start.x - 9.0).abs() < 1e-9 && (b.width - 0.3).abs() < 1e-9);
-        // made 400 mm wide and wrapped: back on the 300 mm core, bare
+        // made 400 mm wide: back on the 300 mm core
         let mut wide = beam(south);
         wide.width = 0.4;
         wide.extend = [0.2, 0.2];
-        wide.wrap = Some(crate::wrap::new_wrap(m, [0.05; 4]).0);
         let f = fitted_ring(m, &wide).unwrap();
         assert!((f.width - 0.3).abs() < 1e-9 && f.wrap.is_none());
         assert!(f.start.y.abs() < 1e-9 && f.extend == [0.0, 0.0]);
+        // wrapped all round: only its exterior side (−y, its right) keeps
+        // insulation, no render, the two filling the core (George
+        // 2026-11-25: XPS on the outer side of a ring beam)
+        let mut wrapped = beam(south);
+        wrapped.wrap = Some(crate::wrap::new_wrap(m, [0.05; 4]).0);
+        let f = fitted_ring(m, &wrapped).unwrap();
+        let w = f.wrap.as_ref().unwrap();
+        assert_eq!(w.sides, [0.0, 0.05, 0.0, 0.0]);
+        assert!(w.plaster.is_none());
+        assert!((f.width - 0.25).abs() < 1e-9, "{}", f.width);
+        assert!((f.start.y - 0.025).abs() < 1e-9, "{}", f.start.y);
+        let boards = crate::wrap::beam_boards(south, &f);
+        assert_eq!(boards.len(), 1);
+        let y = boards[0].start.y;
+        assert!(
+            (y + 0.125).abs() < 1e-9 && (boards[0].width - 0.05).abs() < 1e-9,
+            "{y}"
+        );
+        // turned off again: as wide as the core less its shuttering
+        assert!((ring_plain_width(m, &f).unwrap() - 0.3).abs() < 1e-9);
         // narrower: flush with the core's inner face (the room's side)
         let mut narrow = beam(south);
         narrow.width = 0.25;
@@ -3062,5 +3324,84 @@ mod tests {
         doc.commit(Transaction::new("down").replace(be, down))
             .unwrap();
         assert!((top(&doc) - want).abs() < 1e-9);
+    }
+
+    /// A monolithic RC lintel (George 2026-11-25): resting 250 mm each
+    /// side (400 mm over 4 m), a twelfth of the span deep, at least 250 mm;
+    /// across the whole core less the insulation laid into its formwork
+    /// outside, its insulation under it on the opening's head.
+    #[test]
+    fn cast_lintels_fill_the_core_with_their_insulation() {
+        assert_eq!(
+            CastLintel::usual(1.2),
+            CastLintel {
+                bearing: 0.25,
+                depth: 0.25
+            }
+        );
+        assert_eq!(
+            CastLintel::usual(3.6),
+            CastLintel {
+                bearing: 0.25,
+                depth: 0.3
+            }
+        );
+        assert_eq!(
+            CastLintel::usual(4.5),
+            CastLintel {
+                bearing: 0.4,
+                depth: 0.4
+            }
+        );
+        let m = crate::starter::starter_house();
+        let (oid, o) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Opening(o) => Some((e.id, o.clone())),
+                _ => None,
+            })
+            .unwrap();
+        let ElementKind::Wall(w) = &m.get(o.host).unwrap().kind else {
+            panic!()
+        };
+        let (ext, int) = crate::walls::core_span(&m, w);
+        let core = (int - ext).abs();
+        let head = crate::walls::base_z(&m, w) + o.sill + o.height;
+        let e = cast_lintel(&m, oid).unwrap();
+        assert_eq!(e.name, RC_LINTEL);
+        let ElementKind::Beam(b) = &e.kind else {
+            panic!()
+        };
+        let c = CastLintel::usual(o.width);
+        assert!((b.length() - (o.width + 2.0 * c.bearing)).abs() < 1e-9);
+        assert!((b.width - core).abs() < 1e-9 && (b.depth - c.depth).abs() < 1e-9);
+        assert!((b.top(&m) - b.depth - head).abs() < 1e-9);
+        // XPS 50 outside, 30 under, and what it may not have
+        let mut wrapped = b.clone();
+        let ext_side = crate::wrap::exterior_side(&m, &e).unwrap();
+        let mut sides = [0.1; 4];
+        sides[ext_side] = 0.05;
+        sides[2] = 0.03;
+        wrapped.wrap = Some(crate::wrap::new_wrap(&m, sides).0);
+        let f = fitted(&m, &wrapped).unwrap();
+        let wr = f.wrap.as_ref().unwrap();
+        assert!(wr.plaster.is_none());
+        for i in 0..4 {
+            let want = if i == ext_side {
+                0.05
+            } else if i == 2 {
+                0.03
+            } else {
+                0.0
+            };
+            assert!((wr.side(i) - want).abs() < 1e-9, "{i} {}", wr.side(i));
+        }
+        assert!((f.width - (core - 0.05)).abs() < 1e-9);
+        assert!((f.top(&m) - f.depth - 0.03 - head).abs() < 1e-9);
+        // its inner face stays on the core's inner face
+        let n = w.direction().perp();
+        let inner = (f.start - w.start).dot(n) + (int - ext).signum() * f.width / 2.0;
+        assert!((inner - int).abs() < 1e-9, "{inner} {int}");
+        assert_eq!(crate::wrap::beam_boards(e.id, &f).len(), 2);
     }
 }

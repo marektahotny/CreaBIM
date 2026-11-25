@@ -39,6 +39,8 @@ pub enum MasonryPick {
     Column,
     /// The load-bearing wall to lay an RC ring beam on.
     Ring,
+    /// The door or window to cast an RC lintel over.
+    CastLintel,
 }
 
 fn tr(s: &str) -> String {
@@ -145,6 +147,7 @@ impl CreaBimApp {
             "fill" => self.fill_wall_columns(),
             "ring" => self.add_ring_beams(),
             "ring-wall" => self.start_masonry_pick(MasonryPick::Ring),
+            "rc-lintel" => self.cast_lintels_over_selection_or_pick(),
             _ => return false,
         }
         true
@@ -223,6 +226,9 @@ impl CreaBimApp {
             MasonryPick::Ring => {
                 tr("Ring beam: click a load-bearing wall, it goes on its core. Esc or a right-click leaves.")
             }
+            MasonryPick::CastLintel => {
+                tr("RC lintel: click a door or window in the plan. Esc or a right-click leaves.")
+            }
         };
     }
 
@@ -248,6 +254,61 @@ impl CreaBimApp {
         }
     }
 
+    /// Monolithic RC lintels over the doors and windows selected; with
+    /// none selected, the next one clicked.
+    fn cast_lintels_over_selection_or_pick(&mut self) {
+        let model = self.doc.model();
+        let picked: Vec<ElementId> = self
+            .selection
+            .all()
+            .into_iter()
+            .filter(|id| {
+                matches!(
+                    model.get(*id).map(|e| &e.kind),
+                    Some(ElementKind::Opening(_))
+                )
+            })
+            .collect();
+        if picked.is_empty() {
+            self.start_masonry_pick(MasonryPick::CastLintel);
+        } else {
+            self.put_cast_lintels(&picked);
+        }
+    }
+
+    /// A monolithic RC lintel over each of `openings`, in place of the
+    /// lintels they had.
+    fn put_cast_lintels(&mut self, openings: &[ElementId]) {
+        let model = self.doc.model();
+        let mut tx = Transaction::new("RC lintels");
+        let mut new_ids = vec![];
+        for o in openings {
+            let Some(e) = masonry::cast_lintel(model, *o) else {
+                continue;
+            };
+            for old in masonry::lintels_over(model, *o) {
+                if let Some(x) = model.get(old) {
+                    tx.ops.push(creabim_core::Op::Remove(x.clone()));
+                }
+            }
+            new_ids.push(e.id);
+            tx = tx.insert(e);
+        }
+        if new_ids.is_empty() {
+            self.status = tr("No door or window there: click on one.");
+            return;
+        }
+        let n = new_ids.len();
+        let r = self.doc.commit(tx);
+        self.selection.clear();
+        self.selection.extend(new_ids, false);
+        self.report(
+            r,
+            tr("RC lintels cast over {} openings: bearing 250 mm (400 mm over 4 m), depth a twelfth of the span, at least 250 mm. Change them, and the insulation outside and under, in Properties.")
+                .replacen("{}", &n.to_string(), 1),
+        );
+    }
+
     /// The window's set for the wall of `opening`.
     fn lintel_set(&self, wall: &Wall) -> LintelSet {
         let d = self.masonry.clone().unwrap_or_default();
@@ -269,6 +330,7 @@ impl CreaBimApp {
             tx = tx.insert(m);
         }
         let mut put = 0;
+        let mut cast = 0;
         let mut errors = vec![];
         let mut new_ids = vec![];
         for o in openings {
@@ -295,7 +357,20 @@ impl CreaBimApp {
                     }
                     put += 1;
                 }
-                Err(e) => errors.push(tr(&e)),
+                // no product spans it: a monolithic RC lintel instead
+                Err(e) => match masonry::cast_lintel(model, *o) {
+                    Some(c) => {
+                        for old in masonry::lintels_over(model, *o) {
+                            if let Some(x) = model.get(old) {
+                                tx.ops.push(creabim_core::Op::Remove(x.clone()));
+                            }
+                        }
+                        new_ids.push(c.id);
+                        tx = tx.insert(c);
+                        cast += 1;
+                    }
+                    None => errors.push(tr(&e)),
+                },
             }
         }
         let r = self.doc.commit(tx);
@@ -306,6 +381,16 @@ impl CreaBimApp {
         let mut msg = tr("Lintels put over {} openings ({}). Ctrl+Z undoes it.")
             .replacen("{}", &put.to_string(), 1)
             .replacen("{}", &tr(family.label()), 1);
+        if cast > 0 {
+            msg = format!(
+                "{msg} {}",
+                tr("{} openings too wide for them got a monolithic RC lintel.").replacen(
+                    "{}",
+                    &cast.to_string(),
+                    1
+                )
+            );
+        }
         if !errors.is_empty() {
             msg = format!("{msg} {}", errors.join(" "));
         }
@@ -393,6 +478,10 @@ impl CreaBimApp {
             MasonryPick::Ring => {
                 self.put_ring_beam(level, p);
             }
+            MasonryPick::CastLintel => match opening_at(self.doc.model(), level, p) {
+                Some(o) => self.put_cast_lintels(&[o]),
+                None => self.status = tr("No door or window there: click on one."),
+            },
         }
     }
 
@@ -558,6 +647,9 @@ impl CreaBimApp {
                         if ui.button(tr("Click an opening…")).clicked() {
                             act = Some("pick-lintel");
                         }
+                        if ui.button(tr("RC lintel (cast on site)…")).clicked() {
+                            act = Some("rc-lintel");
+                        }
                         if ui.button(tr("Masonry plan")).clicked() {
                             act = Some("plan");
                         }
@@ -671,6 +763,7 @@ impl CreaBimApp {
         match act {
             Some("lintel") => self.lintels_over_selection_or_pick(),
             Some("pick-lintel") => self.start_masonry_pick(MasonryPick::Lintel),
+            Some("rc-lintel") => self.cast_lintels_over_selection_or_pick(),
             Some("plan") => self.open_masonry_plan(),
             Some("check") => self.check_masonry(),
             Some("column") => self.start_masonry_pick(MasonryPick::Column),
