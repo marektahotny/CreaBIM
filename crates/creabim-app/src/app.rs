@@ -481,6 +481,11 @@ pub struct CreaBimApp {
     joinery: Option<joineryui::JoineryEdit>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
+    /// The catalogue's Midea block: the outdoor unit's size picked there
+    /// (none: the one the heat loss or the heat source window gives) and
+    /// the indoor unit's kind (hydronic box or with a 190/240 l tank).
+    midea_out: Option<u32>,
+    midea_in: Option<creabim_core::catalogue::heat::HeatKind>,
     /// The window for ISOVER Fragment's table 30, while it is open.
     table30: Option<fragmentui::Table30>,
     /// The Sun and shadows window is open.
@@ -691,6 +696,8 @@ impl CreaBimApp {
             masonry: None,
             masonry_pick: None,
             heat_source: None,
+            midea_out: None,
+            midea_in: None,
             table30: None,
             floor_heat: None,
             radiators: None,

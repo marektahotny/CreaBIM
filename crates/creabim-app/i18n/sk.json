@@ -8713,5 +8713,13 @@
  "crosses the need at": "pretína potrebu pri",
  "The 12 and 16 kW kits (H) have only their A7 output in the catalogue, so they cannot be sized by the bivalence point.": "Zostavy 12 a 16 kW (H) majú v katalógu len výkon pri A7, preto sa podľa bodu bivalencie navrhnúť nedajú.",
  "Midea M thermal Arctic split: the maker's catalogue values (maximum heating capacity, EN 14511) down to -25 °C; between the table's points the output is interpolated in a line.": "Midea M thermal Arctic split: hodnoty z katalógu výrobcu (maximálny vykurovací výkon, EN 14511) až po -25 °C; medzi bodmi tabuľky sa výkon interpoluje lineárne.",
- "Midea M thermal Arctic split 4–16 kW": "Midea M thermal Arctic split 4–16 kW"
+ "Midea M thermal Arctic split 4–16 kW": "Midea M thermal Arctic split 4–16 kW",
+ "1. Outdoor unit": "1. Vonkajšia jednotka",
+ "2. Indoor unit": "2. Vnútorná jednotka",
+ "By the heat loss": "Podľa tepelných strát",
+ "Not sized yet": "Zatiaľ nenavrhnutá",
+ "with a 190 l DHW tank": "so zásobníkom TV 190 l",
+ "with a 240 l DHW tank": "so zásobníkom TV 240 l",
+ "hydronic box, no tank": "hydrobox, bez zásobníka",
+ "Goes with 4–10 kW only": "Len k 4–10 kW"
 }

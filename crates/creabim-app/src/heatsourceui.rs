@@ -227,6 +227,44 @@ impl CreaBimApp {
         }
     }
 
+    /// The Midea outdoor unit's size the catalogue's Midea block places,
+    /// and whether it is the heat loss's own: the one picked in the block,
+    /// else the heat source window's Midea size, else the size the model's
+    /// heat loss recommends, else 8 kW.
+    pub(super) fn midea_size(&self) -> (u32, bool) {
+        if let Some(s) = self.midea_out {
+            return (HeatKind::HpOutdoorMidea.size(s), false);
+        }
+        if let Some(c) = self.heat_source.as_ref().filter(|c| c.kind.is_midea()) {
+            return (HeatKind::HpOutdoorMidea.size(c.size), true);
+        }
+        match self.hp_input_from_model() {
+            Some(i) => (hpsizing::recommend_of(HeatKind::HpOutdoorMidea, &i), true),
+            None => (8, false),
+        }
+    }
+
+    /// The Midea indoor unit's kind the block places: the one picked in
+    /// the block, else the heat source window's Midea indoor unit, else
+    /// the hydronic box. The 190 l tank goes with 4–10 kW only: over that,
+    /// the 240 l one.
+    pub(super) fn midea_indoor(&self, size: u32) -> HeatKind {
+        let k = self
+            .midea_in
+            .or_else(|| {
+                self.heat_source
+                    .as_ref()
+                    .map(|c| c.kind)
+                    .filter(|k| k.is_midea() && *k != HeatKind::HpOutdoorMidea)
+            })
+            .unwrap_or(HeatKind::HpIndoorMidea);
+        if k == HeatKind::HpIndoorMideaTank190 && size > 10 {
+            HeatKind::HpIndoorMideaTank240
+        } else {
+            k
+        }
+    }
+
     /// The window, while it is open.
     pub(super) fn heat_source_window(&mut self, ctx: &egui::Context) {
         let Some(mut c) = self.heat_source.clone() else {

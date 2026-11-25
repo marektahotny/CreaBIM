@@ -6,6 +6,7 @@
 //! Properties of objects and of their types.
 
 use super::*;
+use creabim_core::catalogue::heat::{self, HeatKind};
 use creabim_core::objects::{
     self, CatalogueObject, IfcKind, Mount, ObjectCategory, ObjectType, IFC_CLASSES,
 };
@@ -779,13 +780,19 @@ impl CreaBimApp {
                     Some((c, Some(id), false))
                 })
                 .collect();
-        // Midea M thermal Arctic split as one block: outdoor units,
-        // hydronic boxes and the units with a tank (George 2026-11-25)
-        let midea: Vec<(CatalogueObject, Option<ElementId>, bool)> =
-            creabim_core::catalogue::heat::midea_block()
-                .into_iter()
-                .map(|c| (c, None, false))
-                .collect();
+        // Midea M thermal Arctic split as one block (George 2026-11-25):
+        // two tiles whose type follows the heat loss (or the heat source
+        // window), each with the range to pick another from
+        let (midea_kw, midea_auto) = self.midea_size();
+        let midea_kind = self.midea_indoor(midea_kw);
+        let (mut pick_out, mut pick_in) = (self.midea_out, self.midea_in);
+        let midea: Vec<(CatalogueObject, Option<ElementId>, bool)> = [
+            heat::unit(HeatKind::HpOutdoorMidea, midea_kw),
+            heat::unit(midea_kind, midea_kw),
+        ]
+        .into_iter()
+        .map(|c| (c, None, false))
+        .collect();
         let rev = self.doc.model().revision();
         for (c, own, _) in shown.iter().chain(&project).chain(&midea) {
             let key = match own {
@@ -908,7 +915,6 @@ impl CreaBimApp {
                     .show(ui, |ui| {
                         for (heading, rows) in [
                             ("Starters", shown.iter().filter(|r| !r.2).collect::<Vec<_>>()),
-                            ("Midea M thermal Arctic split 4–16 kW", midea.iter().collect()),
                             ("Yours", shown.iter().filter(|r| r.2).collect()),
                             ("In this project", project.iter().collect()),
                         ] {
@@ -941,6 +947,79 @@ impl CreaBimApp {
                                     }
                                 });
                             }
+                            ui.add_space(6.0);
+                        }
+                        if midea.iter().any(|r| wanted(&r.0)) {
+                            ui.label(
+                                egui::RichText::new("MIDEA M THERMAL ARCTIC SPLIT 4–16 KW")
+                                    .size(10.5)
+                                    .strong()
+                                    .color(ui.visuals().weak_text_color()),
+                            );
+                            let t = crate::i18n::t;
+                            ui.horizontal_top(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.weak(t("1. Outdoor unit"));
+                                    tile(ui, &midea[0].0, None, false, &mut asks);
+                                    let auto = format!(
+                                        "{} ({midea_kw} kW)",
+                                        t(if midea_auto { "By the heat loss" } else { "Not sized yet" })
+                                    );
+                                    egui::ComboBox::from_id_salt("catalogue.midea.out")
+                                        .width(THUMB as f32 + 10.0)
+                                        .selected_text(match pick_out {
+                                            Some(k) => format!("{k} kW"),
+                                            None => auto.clone(),
+                                        })
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(&mut pick_out, None, auto);
+                                            for k in HeatKind::HpOutdoorMidea.sizes() {
+                                                let a = creabim_core::catalogue::midea::arctic(*k);
+                                                ui.selectable_value(
+                                                    &mut pick_out,
+                                                    Some(*k),
+                                                    format!("{k} kW · {}", a.outdoor),
+                                                );
+                                            }
+                                        });
+                                });
+                                ui.add_space(12.0);
+                                ui.vertical(|ui| {
+                                    ui.weak(t("2. Indoor unit"));
+                                    tile(ui, &midea[1].0, None, false, &mut asks);
+                                    let label = |k: HeatKind| match k {
+                                        HeatKind::HpIndoorMideaTank190 => t("with a 190 l DHW tank"),
+                                        HeatKind::HpIndoorMideaTank240 => t("with a 240 l DHW tank"),
+                                        _ => t("hydronic box, no tank"),
+                                    };
+                                    egui::ComboBox::from_id_salt("catalogue.midea.in")
+                                        .width(THUMB as f32 + 10.0)
+                                        .selected_text(label(midea_kind))
+                                        .show_ui(ui, |ui| {
+                                            for k in [
+                                                HeatKind::HpIndoorMidea,
+                                                HeatKind::HpIndoorMideaTank190,
+                                                HeatKind::HpIndoorMideaTank240,
+                                            ] {
+                                                let fits = k != HeatKind::HpIndoorMideaTank190
+                                                    || midea_kw <= 10;
+                                                if ui
+                                                    .add_enabled(
+                                                        fits,
+                                                        egui::Button::selectable(
+                                                            midea_kind == k,
+                                                            label(k),
+                                                        ),
+                                                    )
+                                                    .on_disabled_hover_text(t("Goes with 4–10 kW only"))
+                                                    .clicked()
+                                                {
+                                                    pick_in = Some(k);
+                                                }
+                                            }
+                                        });
+                                });
+                            });
                             ui.add_space(6.0);
                         }
                     });
@@ -986,6 +1065,8 @@ impl CreaBimApp {
                 );
             });
         self.catalogue.open = open;
+        self.midea_out = pick_out;
+        self.midea_in = pick_in;
         for a in asks {
             self.run_catalogue(a);
         }
