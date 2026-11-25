@@ -1142,7 +1142,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             // a roof plan: no terrain from the map under the roofs
             d.items
                 .retain(|it| !crate::sitefoot::is_terrain(model, it.id()));
-            crate::roofplan::apply(model, &mut d.items);
+            crate::roofplan::apply(model, &mut d.items, v.structural);
             // the gutters and downpipes by their own outlines (their
             // swept surfaces read as a black band at 1:100), their marks,
             // and which way each gutter run falls
