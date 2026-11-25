@@ -135,17 +135,20 @@ impl CreaBimApp {
         if at.is_none() {
             return;
         }
+        // the air terminals held under the ceiling go with it
+        if let Some(tx) = creabim_core::mep::settle_under_ceiling(self.doc.model()) {
+            let _ = self.doc.amend(tx);
+        }
         let model = self.doc.model();
         let (mut add, stale) = creabim_geom::tradepen::label_tags(model);
         add.extend(creabim_geom::mep::air_position_tags(model));
-        if add.is_empty() && stale.is_empty() {
-            return;
+        if !add.is_empty() || !stale.is_empty() {
+            let mut tx = creabim_core::Transaction::new("Tags").remove_all_cascade(model, &stale);
+            for t in add {
+                tx = tx.insert(t);
+            }
+            let _ = self.doc.amend(tx);
         }
-        let mut tx = creabim_core::Transaction::new("Tags").remove_all_cascade(model, &stale);
-        for t in add {
-            tx = tx.insert(t);
-        }
-        let _ = self.doc.amend(tx);
         self.tags_at = self.doc.undo_steps().last().map(|s| s.id);
     }
 

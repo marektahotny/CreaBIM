@@ -971,6 +971,12 @@ pub struct Valve {
     /// the valve (m); none: up and to the right of it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<glam::DVec2>,
+    /// An air terminal held under the ceiling (or the suspended ceiling)
+    /// over it: its duct rises or drops to the ceiling's underside and
+    /// follows it, while the run goes at its own height (George
+    /// 2026-11-25); see [`settle_under_ceiling`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub under_ceiling: bool,
 }
 
 /// A hose system of a fire main (STN EN 671-1, STN EN 671-2, STN 92 0400).
@@ -1027,6 +1033,7 @@ impl Valve {
             product: None,
             preset: None,
             mark: None,
+            under_ceiling: false,
         }
     }
 
@@ -1117,6 +1124,78 @@ mod tests {
     }
 
     #[test]
+    fn a_terminal_under_the_ceiling_gets_its_riser_and_follows_the_ceiling() {
+        use crate::{Ceiling, Element, ElementKind, Level, Model, Transaction};
+        let mut m = Model::new();
+        let lv = Element::new(
+            "1. NP",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let l = lv.id;
+        let mut p = pipe(DVec3::new(0.0, 0.0, 2.7), DVec3::new(2.0, 0.0, 2.7));
+        p.level = l;
+        p.system = "VZP".into();
+        let duct = Element::new("d", ElementKind::Pipe(p));
+        let mut v = Valve::new(duct.id, 1.0, "vyustP");
+        v.under_ceiling = true;
+        let valve = Element::new("v", ElementKind::Valve(v));
+        let vid = valve.id;
+        Transaction::new("t")
+            .insert(lv)
+            .insert(duct)
+            .insert(valve)
+            .apply(&mut m)
+            .unwrap();
+        let riser_of = |m: &Model| {
+            let Some(ElementKind::Valve(v)) = m.get(vid).map(|e| &e.kind) else {
+                panic!()
+            };
+            let Some(ElementKind::Pipe(r)) = m.get(v.pipe).map(|e| &e.kind) else {
+                panic!()
+            };
+            (r.clone(), v.t)
+        };
+        // no ceiling drawn: the level's top, 3.0 m
+        settle_under_ceiling(&m).unwrap().apply(&mut m).unwrap();
+        let (r, t) = riser_of(&m);
+        assert_eq!(
+            (r.start, r.end, t),
+            (DVec3::new(2.0, 0.0, 2.7), DVec3::new(2.0, 0.0, 3.0), 1.0)
+        );
+        assert!(settle_under_ceiling(&m).is_none());
+        // a suspended ceiling at 2.4 m: the terminal drops to it
+        Transaction::new("c")
+            .insert(Element::new(
+                "c",
+                ElementKind::Ceiling(Ceiling {
+                    level: l,
+                    boundary: vec![
+                        glam::DVec2::new(-5.0, -5.0),
+                        glam::DVec2::new(5.0, -5.0),
+                        glam::DVec2::new(5.0, 5.0),
+                        glam::DVec2::new(-5.0, 5.0),
+                    ],
+                    room: None,
+                    height: 2.4,
+                    thickness: 0.1,
+                    material: None,
+                    grid: 0.0,
+                    assembly: None,
+                    roof_space: None,
+                }),
+            ))
+            .apply(&mut m)
+            .unwrap();
+        settle_under_ceiling(&m).unwrap().apply(&mut m).unwrap();
+        let (r, _) = riser_of(&m);
+        assert!((r.end.z - 2.4).abs() < 1e-9, "{}", r.end.z);
+        assert_eq!(r.start.z, 2.7);
+    }
+
+    #[test]
     fn systems_are_pilon_designers() {
         assert_eq!(SYSTEMS.len(), 21);
         let k = system("K").unwrap();
@@ -1175,4 +1254,71 @@ mod tests {
         v.t = 1.2;
         assert!(v.validate().is_err());
     }
+}
+
+/// The air terminals held under the ceiling put there: the duct a
+/// terminal sits on, when it rises or drops to it, has that end at the
+/// underside of the ceiling (the suspended ceiling, else the slab) over
+/// it; a terminal at the end of a level run gets a riser of its own up
+/// or down to the ceiling and moves onto its top. None when all are
+/// there already.
+pub fn settle_under_ceiling(model: &crate::Model) -> Option<crate::Transaction> {
+    use crate::{Element, ElementKind};
+    let mut tx = crate::Transaction::new("Terminals under the ceiling");
+    for e in model.iter() {
+        let ElementKind::Valve(v) = &e.kind else {
+            continue;
+        };
+        if !v.under_ceiling {
+            continue;
+        }
+        let Some(pe) = model.get(v.pipe) else {
+            continue;
+        };
+        let ElementKind::Pipe(p) = &pe.kind else {
+            continue;
+        };
+        let at_end = v.t >= 0.5;
+        let end = if at_end { p.end } else { p.start };
+        let floor = model.level(p.level).map_or(0.0, |l| l.elevation);
+        let z = crate::objects::ceiling_at(model, p.level, end.truncate()) - floor;
+        if p.is_vertical() {
+            if (end.z - z).abs() < 1e-3 && (v.t - if at_end { 1.0 } else { 0.0 }).abs() < 1e-9 {
+                continue;
+            }
+            let mut after = pe.clone();
+            if let ElementKind::Pipe(q) = &mut after.kind {
+                if at_end {
+                    q.end.z = z;
+                } else {
+                    q.start.z = z;
+                }
+            }
+            tx = tx.replace(pe.clone(), after);
+            if (v.t - if at_end { 1.0 } else { 0.0 }).abs() > 1e-9 {
+                let mut moved = e.clone();
+                if let ElementKind::Valve(w) = &mut moved.kind {
+                    w.t = if at_end { 1.0 } else { 0.0 };
+                }
+                tx = tx.replace(e.clone(), moved);
+            }
+        } else {
+            if (end.z - z).abs() < 1e-3 {
+                continue;
+            }
+            // the level run stays: a riser of its own to the ceiling
+            let mut riser = p.clone();
+            riser.start = end;
+            riser.end = DVec3::new(end.x, end.y, z);
+            riser.mark = None;
+            let r = Element::new(pe.name.clone(), ElementKind::Pipe(riser));
+            let mut moved = e.clone();
+            if let ElementKind::Valve(w) = &mut moved.kind {
+                w.pipe = r.id;
+                w.t = 1.0;
+            }
+            tx = tx.insert(r).replace(e.clone(), moved);
+        }
+    }
+    (!tx.ops.is_empty()).then_some(tx)
 }
