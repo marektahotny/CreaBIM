@@ -8712,5 +8712,6 @@
  "the largest,": "největší,",
  "crosses the need at": "protíná potřebu při",
  "The 12 and 16 kW kits (H) have only their A7 output in the catalogue, so they cannot be sized by the bivalence point.": "Sestavy 12 a 16 kW (H) mají v katalogu jen výkon při A7, proto je podle bodu bivalence nelze navrhnout.",
- "Midea M thermal Arctic split: the maker's catalogue values (maximum heating capacity, EN 14511) down to -25 °C; between the table's points the output is interpolated in a line.": "Midea M thermal Arctic split: hodnoty z katalogu výrobce (maximální topný výkon, EN 14511) až do -25 °C; mezi body tabulky se výkon interpoluje lineárně."
+ "Midea M thermal Arctic split: the maker's catalogue values (maximum heating capacity, EN 14511) down to -25 °C; between the table's points the output is interpolated in a line.": "Midea M thermal Arctic split: hodnoty z katalogu výrobce (maximální topný výkon, EN 14511) až do -25 °C; mezi body tabulky se výkon interpoluje lineárně.",
+ "Midea M thermal Arctic split 4–16 kW": "Midea M thermal Arctic split 4–16 kW"
 }

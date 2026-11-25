@@ -1324,3 +1324,177 @@ mod tests {
         assert!((q - (7.27 + (curve(8, 40.0)[4].1 - 7.27) * 0.5)).abs() < 1e-12);
     }
 }
+
+/// One hydronic box (wall-hung indoor unit, no tank), as the Engineering
+/// Data Book (2026-01, V13) prints it on p. 26 ("1.2 Hydronic Box"); its
+/// connections' places are from the drawing "Dimensions of the unit"
+/// (Fig. 4-2) of Midea's "M-thermal split Indoor unit Installation and
+/// Owner's Manual" for HB-A60/100/160.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hydrobox {
+    pub model: &'static str,
+    /// The outdoor units it is paired with (the data book's sizes).
+    pub sizes: &'static [u32],
+    pub outdoors: &'static str,
+    /// Net weight, kg.
+    pub kg: f64,
+    /// Sound power / pressure (1 m), dB.
+    pub lw: u32,
+    pub lp: u32,
+    /// Built-in expansion vessel, l: none where the data book leaves the
+    /// cell empty (HB-A160).
+    pub expansion: Option<f64>,
+    /// Water flow range, m³/h.
+    pub flow: (f64, f64),
+    /// Internal water volume, l.
+    pub water: (f64, f64),
+    /// Refrigerant liquid pipe, mm (the gas one is Φ15.9 on all).
+    pub liquid: f64,
+    /// DHW tank (field supply) as the installation manual recommends it:
+    /// volume, l, and least coil area, m², stainless / enamel.
+    pub tank: (u32, u32),
+    pub coil: (f64, f64),
+    /// Balance tank, l, where the application needs one (installation
+    /// manual, "The balance tank volume requirement").
+    pub balance: u32,
+}
+
+/// The hydronic box: 420 × 790 × 270 mm (W × H × D) on all three.
+pub const HYDROBOX_WHD: [f64; 3] = [0.420, 0.790, 0.270];
+
+pub const HYDROBOXES: [Hydrobox; 3] = [
+    Hydrobox {
+        model: "HB-A60/CGN8-B2",
+        sizes: &[4, 6],
+        outdoors: "MHA-V4W/D2N8-B2, MHA-V6W/D2N8-B2",
+        kg: 37.0,
+        lw: 38,
+        lp: 28,
+        expansion: Some(8.0),
+        flow: (0.4, 1.25),
+        water: (2.2, 5.0),
+        liquid: 6.35,
+        tank: (100, 250),
+        coil: (1.4, 2.0),
+        balance: 25,
+    },
+    Hydrobox {
+        model: "HB-A100/CGN8-B2",
+        sizes: &[8, 10],
+        outdoors: "MHA-V8W/D2N8-B2, MHA-V10W/D2N8-B2",
+        kg: 37.0,
+        lw: 42,
+        lp: 30,
+        expansion: Some(8.0),
+        flow: (0.4, 2.1),
+        water: (2.2, 5.0),
+        liquid: 9.52,
+        tank: (150, 300),
+        coil: (1.4, 2.0),
+        balance: 25,
+    },
+    Hydrobox {
+        model: "HB-A160/CGN8-B2",
+        sizes: &[12, 14, 16],
+        outdoors: "MHA-V12/14/16W/D2N8-B2, MHA-V12/14/16W/D2RN8-B2",
+        kg: 39.0,
+        lw: 43,
+        lp: 32,
+        expansion: None,
+        flow: (0.7, 3.0),
+        water: (2.5, 7.3),
+        liquid: 9.52,
+        tank: (200, 500),
+        coil: (1.6, 2.5),
+        balance: 40,
+    },
+];
+
+/// The hydronic box paired with the outdoor unit of `size` kW.
+pub fn hydrobox(size: u32) -> &'static Hydrobox {
+    let size = arctic(size).size;
+    HYDROBOXES
+        .iter()
+        .find(|h| h.sizes.contains(&size))
+        .unwrap_or(&HYDROBOXES[2])
+}
+
+/// One indoor unit with its domestic hot water tank built in (floor
+/// standing), as Midea's "M thermal Arctic Split Engineering Data Book,
+/// integrated tank" (MHA/HBT, pp. 12–19) prints it. It is paired there
+/// with the outdoor units MHA-V…W/D2N8-B and D2RN8-B (the generation
+/// before -B2). The connections' places are from the drawing
+/// "Dimensions of the unit" (Fig. 4-1) of the "Installation and Owner's
+/// Manual" for HBT-A100/190, A100/240, A160/240CD30GN8-B: all on the top.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WithTank {
+    pub model: &'static str,
+    pub sizes: &'static [u32],
+    pub outdoors: &'static str,
+    /// Tank volume, l.
+    pub litres: u32,
+    /// Height, m (600 × 600 mm on plan, 602 mm deep in the drawing).
+    pub h: f64,
+    /// Net weight, kg.
+    pub kg: f64,
+    /// Tapping profile, EN 16147.
+    pub profile: &'static str,
+    /// Liquid pipe, mm.
+    pub liquid: f64,
+    /// Sound power, dB (as printed: one or the range).
+    pub lw: &'static str,
+}
+
+/// Width and depth of the units with a tank, m: 600 wide, 602 deep (the
+/// drawing; the data book prints 600 × 600).
+pub const WITH_TANK_WD: [f64; 2] = [0.600, 0.602];
+
+pub const WITH_TANK: [WithTank; 3] = [
+    WithTank {
+        model: "HBT-A100/190CD30GN8-B",
+        sizes: &[4, 6, 8, 10],
+        outdoors: "MHA-V4/6/8/10W/D2N8-B",
+        litres: 190,
+        h: 1.683,
+        kg: 140.0,
+        profile: "L",
+        liquid: 9.52,
+        lw: "38 / 40",
+    },
+    WithTank {
+        model: "HBT-A100/240CD30GN8-B",
+        sizes: &[4, 6, 8, 10],
+        outdoors: "MHA-V4/6/8/10W/D2N8-B",
+        litres: 240,
+        h: 1.943,
+        kg: 157.0,
+        profile: "XL",
+        liquid: 9.52,
+        lw: "38 / 40",
+    },
+    WithTank {
+        model: "HBT-A160/240CD30GN8-B",
+        sizes: &[12, 14, 16],
+        outdoors: "MHA-V12/14/16W/D2N8-B, MHA-V12/14/16W/D2RN8-B",
+        litres: 240,
+        h: 1.943,
+        kg: 159.0,
+        profile: "XL",
+        liquid: 9.52,
+        lw: "42 / 44",
+    },
+];
+
+/// The unit with a tank of `litres` (190 or 240) for the outdoor unit
+/// of `size` kW: the 190 l one only goes with 4–10 kW.
+pub fn with_tank(size: u32, litres: u32) -> &'static WithTank {
+    let size = arctic(size).size;
+    WITH_TANK
+        .iter()
+        .find(|t| t.sizes.contains(&size) && t.litres == litres)
+        .unwrap_or(if size > 10 {
+            &WITH_TANK[2]
+        } else {
+            &WITH_TANK[1]
+        })
+}

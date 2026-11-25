@@ -29,20 +29,14 @@ impl Default for HeatSource {
 }
 
 fn is_heat_pump(k: HeatKind) -> bool {
-    matches!(
-        k,
-        HeatKind::HpOutdoor
-            | HeatKind::HpOutdoorMidea
-            | HeatKind::HpIndoor
-            | HeatKind::HpIndoorCylinder
-    )
+    k.is_heat_pump()
 }
 
 /// The outdoor unit whose curve sizes heat pump `k`: Midea's own, the
 /// Panasonic kits for the rest (the indoor units belong to them).
 pub(super) fn curve_kind(k: HeatKind) -> HeatKind {
-    if k == HeatKind::HpOutdoorMidea {
-        k
+    if k.is_midea() {
+        HeatKind::HpOutdoorMidea
     } else {
         HeatKind::HpOutdoor
     }
@@ -442,7 +436,7 @@ impl CreaBimApp {
                                 }
                             });
                     });
-                ui.weak(t(if c.kind == HeatKind::HpOutdoorMidea {
+                ui.weak(t(if c.kind.is_midea() {
                     "Midea M thermal Arctic split: the maker's catalogue values (maximum heating capacity, EN 14511) down to -25 °C; between the table's points the output is interpolated in a line."
                 } else if hp {
                     "Panasonic Aquarea bi-bloc J and H, all-in-one J: the maker's catalogue values. Under A-7 the catalogue prints no output: it is held at A-7."

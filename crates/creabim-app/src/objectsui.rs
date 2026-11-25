@@ -779,8 +779,15 @@ impl CreaBimApp {
                     Some((c, Some(id), false))
                 })
                 .collect();
+        // Midea M thermal Arctic split as one block: outdoor units,
+        // hydronic boxes and the units with a tank (George 2026-11-25)
+        let midea: Vec<(CatalogueObject, Option<ElementId>, bool)> =
+            creabim_core::catalogue::heat::midea_block()
+                .into_iter()
+                .map(|c| (c, None, false))
+                .collect();
         let rev = self.doc.model().revision();
-        for (c, own, _) in shown.iter().chain(&project) {
+        for (c, own, _) in shown.iter().chain(&project).chain(&midea) {
             let key = match own {
                 Some(_) => format!("{}@{rev}", c.key),
                 None => c.key.clone(),
@@ -901,6 +908,7 @@ impl CreaBimApp {
                     .show(ui, |ui| {
                         for (heading, rows) in [
                             ("Starters", shown.iter().filter(|r| !r.2).collect::<Vec<_>>()),
+                            ("Midea M thermal Arctic split 4–16 kW", midea.iter().collect()),
                             ("Yours", shown.iter().filter(|r| r.2).collect()),
                             ("In this project", project.iter().collect()),
                         ] {
