@@ -1451,7 +1451,15 @@ fn place_cast(model: &Model, b: &Beam, c: CastLintel, o: &Opening, w: &Wall) -> 
     let at = |u: f64| w.start + d * u + n * across;
     let head = crate::walls::base_z(model, w) + o.sill + o.height;
     let top = crate::members::elevation(model, w.level) + storey_height(model, w.level);
-    let depth = c.depth.max(0.05);
+    let mut depth = c.depth.max(0.05);
+    // reaching into the wall's ring beam: one RC lintel up to its top,
+    // the ring beam stopping at its ends (George 2026-11-25)
+    if let Some(ring) = ring_depth_on(model, o.host) {
+        let wtop = wall_top(model, w);
+        if head + t_under + depth > wtop - ring + 1e-6 {
+            depth = (wtop - head - t_under).max(depth);
+        }
+    }
     nb.level = w.level;
     nb.start = at(mid - length / 2.0);
     nb.end = at(mid + length / 2.0);
@@ -1464,6 +1472,54 @@ fn place_cast(model: &Model, b: &Beam, c: CastLintel, o: &Opening, w: &Wall) -> 
     nb.extend = [0.0, 0.0];
     nb.cuts = [None, None];
     nb
+}
+
+/// The depth of the ring beam on wall `wall`, if it has one.
+fn ring_depth_on(model: &Model, wall: ElementId) -> Option<f64> {
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Beam(b)
+                if e.name == RING_BEAM
+                    && b.lintel.is_none()
+                    && b.piece.is_none()
+                    && ring_wall(model, b) == Some(wall) =>
+            {
+                Some(b.depth)
+            }
+            _ => None,
+        })
+        .reduce(f64::max)
+}
+
+/// Where along wall `wall` (from its start) RC lintels merged with its
+/// ring beam stand: the ring beam is not cast there.
+fn ring_gaps(model: &Model, wall: ElementId, w: &Wall) -> Vec<(f64, f64)> {
+    let wtop = wall_top(model, w);
+    let d = w.direction();
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Beam(b) = &e.kind else {
+            continue;
+        };
+        let Some(l) = b.lintel.as_ref().filter(|l| l.cast.is_some()) else {
+            continue;
+        };
+        let host = l.opening.and_then(|o| match model.get(o).map(|x| &x.kind) {
+            Some(ElementKind::Opening(o)) => Some(o.host),
+            _ => None,
+        });
+        if host != Some(wall) {
+            continue;
+        }
+        let Some(f) = fitted(model, b) else { continue };
+        if (f.top(model) - wtop).abs() > 1e-6 {
+            continue;
+        }
+        let (a, c) = ((f.start - w.start).dot(d), (f.end - w.start).dot(d));
+        out.push((a.min(c), a.max(c)));
+    }
+    out
 }
 
 /// A monolithic RC lintel over opening `opening`, of the usual sizes
@@ -1652,10 +1708,12 @@ pub fn lintel_issue(model: &Model, b: &Beam) -> Option<String> {
 pub fn settle(model: &Model, tx: &Transaction) -> Transaction {
     let out = settle_columns(model, tx, Transaction::new(tx.label.clone()));
     let touches = tx.ops.iter().any(|o| match o {
-        Op::Insert(e) | Op::Remove(e) => matches!(
-            e.kind,
-            ElementKind::Opening(_) | ElementKind::Wall(_) | ElementKind::Level(_)
-        ),
+        Op::Insert(e) | Op::Remove(e) => match &e.kind {
+            ElementKind::Opening(_) | ElementKind::Wall(_) | ElementKind::Level(_) => true,
+            // an RC lintel put or taken away: the ring beam it meets
+            ElementKind::Beam(b) => b.lintel.as_ref().is_some_and(|l| l.cast.is_some()),
+            _ => false,
+        },
         Op::Replace { after, .. } => matches!(
             after.kind,
             ElementKind::Opening(_)
@@ -2706,13 +2764,75 @@ fn refit_rings(model: &Model, mut out: Transaction) -> Transaction {
         let Some(next) = fitted_ring(model, b) else {
             continue;
         };
-        if next != *b {
-            let mut after = e.clone();
-            after.kind = ElementKind::Beam(next);
-            out = out.replace(e.clone(), after);
+        // cut where an RC lintel merged with it stands
+        let pieces = ring_wall(model, &next)
+            .and_then(|wid| match &model.get(wid)?.kind {
+                ElementKind::Wall(w) => Some(cut_ring(&next, w, &ring_gaps(model, wid, w))),
+                _ => None,
+            })
+            .unwrap_or_else(|| vec![next.clone()]);
+        if pieces.len() == 1 {
+            if pieces[0] != *b {
+                let mut after = e.clone();
+                after.kind = ElementKind::Beam(pieces[0].clone());
+                out = out.replace(e.clone(), after);
+            }
+            continue;
+        }
+        out.ops.push(crate::Op::Remove(e.clone()));
+        for p in pieces {
+            let n = Element::new(RING_BEAM, ElementKind::Beam(p));
+            out = out.insert(n);
         }
     }
     out
+}
+
+/// Ring beam `b` on wall `w` less the stretches `gaps` (along the wall):
+/// the pieces left, itself when nothing is taken out.
+fn cut_ring(b: &Beam, w: &Wall, gaps: &[(f64, f64)]) -> Vec<Beam> {
+    let d = w.direction();
+    let (a, c) = ((b.start - w.start).dot(d), (b.end - w.start).dot(d));
+    let mut runs = vec![(a.min(c), a.max(c))];
+    for &(g0, g1) in gaps {
+        let mut next = vec![];
+        for (r0, r1) in runs {
+            if g1 <= r0 + 1e-6 || g0 >= r1 - 1e-6 {
+                next.push((r0, r1));
+                continue;
+            }
+            if g0 - r0 > 0.05 {
+                next.push((r0, g0));
+            }
+            if r1 - g1 > 0.05 {
+                next.push((g1, r1));
+            }
+        }
+        runs = next;
+    }
+    if runs.len() == 1 && (runs[0].0 - a.min(c)).abs() < 1e-9 && (runs[0].1 - a.max(c)).abs() < 1e-9
+    {
+        return vec![b.clone()];
+    }
+    let n = (b.start - w.start).dot(d.perp());
+    let forward = c >= a;
+    runs.into_iter()
+        .map(|(r0, r1)| {
+            let mut p = b.clone();
+            let (s, e) = (
+                w.start + d * r0 + d.perp() * n,
+                w.start + d * r1 + d.perp() * n,
+            );
+            if forward {
+                p.start = s;
+                p.end = e;
+            } else {
+                p.start = e;
+                p.end = s;
+            }
+            p
+        })
+        .collect()
 }
 
 /// Ring beams of a project from before they kept to the core (George
@@ -2745,6 +2865,10 @@ pub fn ring_beams(model: &Model, level: Option<ElementId>) -> Vec<Element> {
             continue;
         };
         if level.is_some_and(|l| l != w.level) || !is_bearing(model, w, &rules) {
+            continue;
+        }
+        // one already on it, or its pieces either side of an RC lintel
+        if ring_depth_on(model, e.id).is_some() {
             continue;
         }
         let Some(r) = ring_beam(model, e.id) else {
@@ -3403,5 +3527,61 @@ mod tests {
         let inner = (f.start - w.start).dot(n) + (int - ext).signum() * f.width / 2.0;
         assert!((inner - int).abs() < 1e-9, "{inner} {int}");
         assert_eq!(crate::wrap::beam_boards(e.id, &f).len(), 2);
+    }
+
+    /// An RC lintel reaching into its wall's ring beam is one element up
+    /// to the ring beam's top, the ring beam stopping at its ends (George
+    /// 2026-11-25: "spoj do jedného prvku – železobetónový preklad").
+    #[test]
+    fn cast_lintels_merge_with_the_ring_beam() {
+        let mut doc = crate::Document::from_model(crate::starter::starter_house());
+        let m = doc.model();
+        let (oid, host) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Opening(o) => Some((e.id, o.host)),
+                _ => None,
+            })
+            .unwrap();
+        let ring = ring_beam(m, host).unwrap();
+        let rid = ring.id;
+        let lintel = cast_lintel(m, oid).unwrap();
+        let lid = lintel.id;
+        doc.commit(Transaction::new("r").insert(ring)).unwrap();
+        doc.commit(Transaction::new("l").insert(lintel)).unwrap();
+        // an edit fits them
+        let e = doc.model().get(lid).unwrap().clone();
+        let mut e2 = e.clone();
+        if let ElementKind::Beam(b) = &mut e2.kind {
+            if let Some(c) = b.lintel.as_mut().and_then(|l| l.cast.as_mut()) {
+                c.depth = 0.5;
+            }
+        }
+        doc.commit(Transaction::new("deep").replace(e, e2)).unwrap();
+        let m = doc.model();
+        let ElementKind::Wall(w) = &m.get(host).unwrap().kind else {
+            panic!()
+        };
+        let ElementKind::Beam(l) = &m.get(lid).unwrap().kind else {
+            panic!()
+        };
+        assert!((l.top(m) - wall_top(m, w)).abs() < 1e-9);
+        assert!(m.get(rid).is_none(), "the ring beam was cut");
+        let d = w.direction();
+        let (l0, l1) = {
+            let (a, c) = ((l.start - w.start).dot(d), (l.end - w.start).dot(d));
+            (a.min(c), a.max(c))
+        };
+        for e in m.iter() {
+            let ElementKind::Beam(b) = &e.kind else {
+                continue;
+            };
+            if e.name != RING_BEAM || ring_wall(m, b) != Some(host) {
+                continue;
+            }
+            let (a, c) = ((b.start - w.start).dot(d), (b.end - w.start).dot(d));
+            let (r0, r1) = (a.min(c), a.max(c));
+            assert!(r1 <= l0 + 1e-6 || r0 >= l1 - 1e-6, "{r0} {r1} / {l0} {l1}");
+        }
     }
 }

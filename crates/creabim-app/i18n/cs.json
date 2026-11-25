@@ -8727,5 +8727,8 @@
  "{} openings too wide for them got a monolithic RC lintel.": "{} otvorů, na které jsou příliš široké, dostalo ŽB monolitický překlad.",
  "RC lintel (cast on site)…": "ŽB překlad (monolit)…",
  "RC lintel over an opening (cast on site)": "ŽB monolitický překlad nad otvor",
- "RC lintels": "ŽB překlady"
+ "RC lintels": "ŽB překlady",
+ "System element (lintel), each piece crossed: {}": "Systémový prvek (překlad), každý kus překřížený: {}",
+ "Lintels": "Překlady",
+ "{} lintels": "překladů: {}"
 }

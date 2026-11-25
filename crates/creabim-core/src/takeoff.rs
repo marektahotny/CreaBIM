@@ -135,13 +135,14 @@ impl Layout {
 }
 
 /// The order element categories are listed in: as a house is built.
-pub const CATEGORY_ORDER: [&str; 19] = [
+pub const CATEGORY_ORDER: [&str; 20] = [
     "Footings",
     "Foundation slabs",
     "Walls",
     "Plinths",
     "Columns",
     "Beams",
+    "Lintels",
     "Slabs",
     "Stairs",
     "Roofs",
@@ -197,6 +198,52 @@ pub struct Line {
     /// What the line is listed as when it is not by its material: a
     /// window sill by its kind and size.
     pub label: Option<String>,
+}
+
+/// A lintel's line as the take-off lists it (George 2026-11-25): its
+/// type, width × height × length and how many lintels (openings) of it
+/// there are, its pieces counted by the line: `PORFIX NP 1800/100 –
+/// 100 × 250 × 1800 mm (2 lintels)`; an RC lintel with the insulation in
+/// its formwork.
+fn lintel_label(model: &Model, e: &crate::Element) -> Option<String> {
+    let ElementKind::Beam(b) = &e.kind else {
+        return None;
+    };
+    let l = b.lintel.as_ref()?;
+    let size = format!(
+        "{:.0} × {:.0} × {:.0} mm",
+        b.width * 1000.0,
+        b.depth * 1000.0,
+        b.length() * 1000.0
+    );
+    if l.cast.is_some() {
+        return Some(format!(
+            "{} – {size}{}",
+            crate::masonry::RC_LINTEL,
+            crate::masonry::insulation_note(model, e.id)
+        ));
+    }
+    let p = crate::masonry::product(&l.product)?;
+    // the openings lintels of this product lie over
+    let mut openings: Vec<ElementId> = vec![];
+    for x in model.iter() {
+        if let ElementKind::Beam(o) = &x.kind {
+            if let Some(ol) = &o.lintel {
+                if ol.product == l.product {
+                    let key = ol.opening.unwrap_or(x.id);
+                    if !openings.contains(&key) {
+                        openings.push(key);
+                    }
+                }
+            }
+        }
+    }
+    Some(format!(
+        "{} {} – {size} ({})",
+        p.family.maker(),
+        p.name,
+        crate::words::tr("{} lintels").replace("{}", &openings.len().to_string())
+    ))
 }
 
 /// Every take-off line of the model, element by element in model order.
@@ -313,7 +360,11 @@ pub fn lines(model: &Model) -> Vec<Line> {
                 )
             }
             ElementKind::Beam(b) => (
-                "Beams",
+                if b.lintel.is_some() {
+                    "Lintels"
+                } else {
+                    "Beams"
+                },
                 b.level,
                 Quantity {
                     // a board of insulation or render along a beam: its face
@@ -483,7 +534,7 @@ pub fn lines(model: &Model) -> Vec<Line> {
                     ElementKind::Opening(o) => 2.0 * (o.width + o.height),
                     _ => 0.0,
                 },
-                label: None,
+                label: lintel_label(model, e),
             });
         }
     }

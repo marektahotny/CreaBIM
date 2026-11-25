@@ -995,9 +995,13 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 d.items
                     .extend(crate::etics::elevation_lines(model, *start, *end, *depth));
             }
+            // system lintels cut, each piece crossed: in the structural
+            // sections and the architect's too (George 2026-11-25)
+            if *cut {
+                crate::structural::cross_system_pieces(model, &mut d.items);
+            }
             // a structural section: ±0,000 dashed across (STA_002)
             if v.structural && *cut {
-                crate::structural::cross_system_pieces(model, &mut d.items);
                 if let Some(l) = crate::structural::zero_line(model, view, &d.items) {
                     d.items.push(l);
                 }
