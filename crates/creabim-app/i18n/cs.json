@@ -8844,5 +8844,8 @@
  "excl. VAT": "bez DPH",
  "m / ks": "m / ks",
  "m³/h · Pa": "m³/h · Pa",
- "Bends": "Kolena"
+ "Bends": "Kolena",
+ "insulation": "izolace",
+ "duct insulation (thickness at the duct's size)": "izolace potrubí (tloušťka v popisu potrubí)",
+ "VENTILATION DEVICES": "ZAŘÍZENÍ VZT"
 }

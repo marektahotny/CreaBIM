@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 
 /// The line a services drawing draws a pipe with, paper mm.
 pub const PIPE_LINE: f64 = 0.35;
+/// The line a services drawing draws a duct's outline with, paper mm.
+pub const DUCT_LINE: f64 = 0.25;
 
 /// The look of one element in one view, where it differs from the pens.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -235,11 +237,21 @@ impl Looks {
                 if l.colour.is_none() {
                     l.colour = Some(crate::mep::color(p));
                 }
+                // a duct is drawn in outline: told apart by its colour,
+                // its lines solid
                 if l.dashes.is_none() {
-                    l.dashes = Some(p.system_def().and_then(|s| s.dashes()));
+                    l.dashes = Some(
+                        p.system_def()
+                            .and_then(|s| s.dashes())
+                            .filter(|_| !p.kind().is_air()),
+                    );
                 }
                 if l.projection.is_none() {
-                    l.projection = Some(PIPE_LINE);
+                    l.projection = Some(if p.kind().is_air() {
+                        DUCT_LINE
+                    } else {
+                        PIPE_LINE
+                    });
                 }
             }
             // a utility network: its kind's colour and line type, heavy

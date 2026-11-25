@@ -1205,6 +1205,8 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         let mut seen = std::collections::HashSet::new();
         let mut lines = vec![];
         let mut pipes = vec![];
+        // the devices on the ducts, numbered as the legend lists them
+        let positions = crate::mep::air_positions(model);
         // a scheme: a line a pipe, a symbol a valve, 2.5 mm on paper at
         // every scale; in space: the pipes' true widths, the valves'
         // bodies
@@ -1217,7 +1219,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             match &e.kind {
                 ElementKind::Pipe(p) => {
                     if seen.insert(e.id) {
-                        if !spatial {
+                        // ducts as VZT drawings show them, always: their
+                        // outline in true size, in their system's colour
+                        // (George 2026-11-25)
+                        if !spatial && p.kind().is_air() {
+                            lines.extend(crate::mep::duct_plan(model, e, p));
+                        } else if !spatial {
                             lines.extend(crate::mep::pipe_line(model, e, p));
                         }
                         pipes.push(e);
@@ -1231,6 +1238,15 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                         } else {
                             crate::valves::valve_plan_sized(model, e, x, half)
                         });
+                        if let Some(n) = positions.iter().find(|p| p.valves.contains(&e.id)) {
+                            lines.extend(crate::mep::air_mark(
+                                model,
+                                e,
+                                x,
+                                n.number,
+                                v.scale / 1000.0,
+                            ));
+                        }
                     }
                     false
                 }

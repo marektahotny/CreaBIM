@@ -967,6 +967,10 @@ pub struct Valve {
     /// Its presetting, as the maker numbers it ("3,5").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preset: Option<String>,
+    /// Where its position mark was dragged to in a services plan, from
+    /// the valve (m); none: up and to the right of it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<glam::DVec2>,
 }
 
 /// A hose system of a fire main (STN EN 671-1, STN EN 671-2, STN 92 0400).
@@ -1022,6 +1026,7 @@ impl Valve {
             gas_cat: None,
             product: None,
             preset: None,
+            mark: None,
         }
     }
 
