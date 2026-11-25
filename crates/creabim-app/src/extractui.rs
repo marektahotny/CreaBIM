@@ -20,6 +20,9 @@ pub struct ExtractState {
     pub rooms: Option<Vec<ElementId>>,
     pub fan: String,
     pub speed: String,
+    /// One fan and one roof outlet for all the rooms picked, on one
+    /// collecting duct (George 2026-11-25); else a fan each.
+    pub central: bool,
 }
 
 impl Default for ExtractState {
@@ -27,8 +30,9 @@ impl Default for ExtractState {
         Self {
             opts: Opts::default(),
             rooms: None,
-            fan: xf::FANS[0].id.into(),
+            fan: xf::CENTRAL_FAN.into(),
             speed: String::new(),
+            central: true,
         }
     }
 }
@@ -142,6 +146,20 @@ impl CreaBimApp {
                     });
                     ui.horizontal_wrapped(|ui| {
                         if ui
+                            .checkbox(&mut st.central, t("One fan for all the rooms picked"))
+                            .on_hover_text(t("The valves join one collecting duct in the attic with one fan and one roof outlet; the valves are set to share the air by each room's need"))
+                            .changed()
+                        {
+                            st.fan = if st.central {
+                                xf::CENTRAL_FAN.into()
+                            } else {
+                                xf::FANS[0].id.into()
+                            };
+                            st.speed.clear();
+                        }
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
                             .button(t("Place in the model"))
                             .on_hover_text(t("An extract valve in the ceiling, Spiro Ø100 up into the attic, the fan, the duct on through the roof and a roof outlet, for every room picked; replaces what it placed before for those rooms"))
                             .clicked()
@@ -196,6 +214,7 @@ impl CreaBimApp {
                         Col::num("Fan at need", "Pa"),
                         Col::num("Working point", "m³/h · Pa"),
                         Col::num("Door undercut", "mm"),
+                        Col::num("Valve throttles", "Pa"),
                     ];
                     sheet::show(ui, "vzt.extract.grid", &cols, rows.len(), 300.0, |row, i| {
                         let r = &rows[i];
@@ -242,6 +261,13 @@ impl CreaBimApp {
                                 .collect::<Vec<_>>()
                                 .join(", "),
                         );
+                        row.text(
+                            r.inlets
+                                .iter()
+                                .map(|x| num(x.throttle.max(0.0), 0))
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        );
                     }, None);
                     let mut said: Vec<&String> = vec![];
                     for n in rows.iter().flat_map(|r| &r.notes) {
@@ -281,12 +307,16 @@ impl CreaBimApp {
         }
         if design {
             let speed = (!st.speed.is_empty()).then_some(st.speed.as_str());
-            let (add, remove, warn) = xf::propose(self.doc.model(), &picked_now, &st.fan, speed);
+            let (add, remove, warn) = if st.central {
+                xf::propose_central(self.doc.model(), &ho, &picked_now, &st.fan, speed)
+            } else {
+                xf::propose(self.doc.model(), &picked_now, &st.fan, speed)
+            };
             let mut tx = Transaction::new("Design forced extraction");
             tx = tx.remove_all_cascade(self.doc.model(), &remove);
             let n = add
                 .iter()
-                .filter(|e| e.name.contains("ventil\u{e1}tor"))
+                .filter(|e| e.name.contains(" – ventil\u{e1}tor"))
                 .count();
             for e in add {
                 tx = tx.insert(e);

@@ -194,6 +194,9 @@ pub const FANS: &[Fan] = &[
     },
 ];
 
+/// The fan a shared branch of several rooms is designed with.
+pub const CENTRAL_FAN: &str = "SP-TD160-100-SILENT";
+
 pub fn fan(id: &str) -> Option<&'static Fan> {
     FANS.iter().find(|f| f.id == id)
 }
@@ -246,6 +249,9 @@ pub struct Inlet {
     pub bends: u32,
     /// The door undercut its room needs, mm, and the door's width, m.
     pub undercut: Option<(f64, f64)>,
+    /// What its valve must throttle beyond its own way's loss so the
+    /// fan's air shares as the rooms need, Pa (0 on the worst way).
+    pub throttle: f64,
 }
 
 /// One fan checked.
@@ -604,6 +610,7 @@ pub fn check(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Vec<Row> {
                 length,
                 bends,
                 undercut,
+                throttle: 0.0,
             });
             paths.push((*at, path));
         }
@@ -640,7 +647,7 @@ pub fn check(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Vec<Row> {
                 notes.push(n);
             }
         }
-        let system = |q: f64| -> f64 {
+        let each = |q: f64| -> Vec<f64> {
             paths
                 .iter()
                 .enumerate()
@@ -679,8 +686,9 @@ pub fn check(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Vec<Row> {
                     }
                     dp
                 })
-                .fold(0.0, f64::max)
+                .collect()
         };
+        let system = |q: f64| -> f64 { each(q).into_iter().fold(0.0, f64::max) };
         // where the curves meet: the fan falls, the ducts rise
         let (mut lo, mut hi) = (0.0, speed.q_free);
         for _ in 0..60 {
@@ -697,8 +705,12 @@ pub fn check(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Vec<Row> {
             0.0
         };
         let (dp_need, p_need) = (system(need), speed.pressure(need));
+        // what each valve must take up so the air shares as the rooms
+        // need: the worst way's loss less its own, at the need
+        let at_need = each(need);
         for (k, i) in inlets.iter_mut().enumerate() {
             i.flow = (q * share[k]).round();
+            i.throttle = at_need.get(k).map_or(0.0, |own| dp_need - own);
         }
         if outlet.is_none() {
             notes.push("Potrubie nemá výfuk von (hlavicu ani voľný koniec).".to_string());
@@ -1071,11 +1083,243 @@ pub fn propose(
         ));
         tags.push(tag);
     }
+    let numbers: Vec<String> = tags
+        .iter()
+        .map(|t| t.trim_start_matches(DESIGN_TAG).trim().to_string())
+        .collect();
     let remove = model
         .iter()
-        .filter(|e| tags.iter().any(|t| e.name.starts_with(&format!("{t} – "))))
+        .filter(|e| of_design(&e.name, &numbers))
         .map(|e| e.id)
         .collect();
+    (add, remove, warn)
+}
+
+/// Whether an element belongs to an earlier design for one of the rooms
+/// numbered `numbers`: its name "Odvetranie 1.07 – …" or, of a shared
+/// branch, "Odvetranie 1.07+1.08+1.12 – …".
+fn of_design(name: &str, numbers: &[String]) -> bool {
+    let Some(rest) = name.strip_prefix(&format!("{DESIGN_TAG} ")) else {
+        return false;
+    };
+    let Some((head, _)) = rest.split_once(" – ") else {
+        return false;
+    };
+    head.split('+')
+        .any(|n| numbers.iter().any(|m| m == n.trim()))
+}
+
+/// The elements of one shared extract for all of `rooms` (George
+/// 2026-11-25): an extract valve in the ceiling of each, a Spiro Ø100 up
+/// into the attic and square across to one collecting duct, the
+/// collecting duct sized by the air it carries (STN EN 1506 sizes, at
+/// most [`ductsizing::Limits`]' main velocity), on past the last branch
+/// towards where the roof rises most with the fan `fan_id` on it, then up
+/// through the roof (VZE) to one roof outlet. The valves are set to share
+/// the air by each room's need. Elements of earlier designs for the same
+/// rooms are given back to be removed.
+pub fn propose_central(
+    model: &Model,
+    ho: &heatloss::Opts,
+    rooms: &[ElementId],
+    fan_id: &str,
+    speed: Option<&str>,
+) -> (Vec<creabim_core::Element>, Vec<ElementId>, Vec<String>) {
+    use creabim_core::Element;
+    let fan = fan(fan_id).unwrap_or(&FANS[0]);
+    let mut warn = vec![];
+    // each room: its number, the valve's place, its height, the attic
+    // run's height, its need, its level
+    struct Point {
+        number: String,
+        at: DVec2,
+        h: f64,
+        z_run: f64,
+        need: f64,
+        level: ElementId,
+        elev: f64,
+    }
+    let mut pts: Vec<Point> = vec![];
+    for id in rooms {
+        let Some(e) = model.get(*id) else { continue };
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        let Some(shape) = creabim_core::room::shape_of(model, r) else {
+            warn.push(format!("{} {}: miestnosť nemá obrys.", r.number, e.name));
+            continue;
+        };
+        let elev = model.level(r.level).map_or(0.0, |l| l.elevation);
+        let at = middle(&shape.outline);
+        let h = creabim_core::room::height(model, r);
+        let ceiling_top = creabim_core::room::ceiling_over(model, r.level, at, elev + h + 0.01)
+            .and_then(|(cid, z)| match model.get(cid).map(|c| &c.kind) {
+                Some(ElementKind::Ceiling(c)) => Some(z + c.thickness - elev),
+                _ => None,
+            })
+            .unwrap_or(h + 0.3);
+        pts.push(Point {
+            number: r.number.clone(),
+            at,
+            h,
+            z_run: ceiling_top + 0.35,
+            need: room_need(model, ho, *id),
+            level: r.level,
+            elev,
+        });
+    }
+    let numbers: Vec<String> = pts.iter().map(|p| p.number.clone()).collect();
+    let remove: Vec<ElementId> = model
+        .iter()
+        .filter(|e| of_design(&e.name, &numbers))
+        .map(|e| e.id)
+        .collect();
+    let Some(first) = pts.first() else {
+        return (vec![], remove, warn);
+    };
+    if pts.iter().any(|p| p.level != first.level) {
+        warn.push("Spoločná vetva: miestnosti musia byť na jednom podlaží.".to_string());
+        return (vec![], remove, warn);
+    }
+    let (level, elev) = (first.level, first.elev);
+    let z_run = pts.iter().map(|p| p.z_run).fold(f64::MIN, f64::max);
+    // the collecting duct along the way the rooms spread most, at their
+    // middle across
+    let (lo, hi) = pts.iter().fold(
+        (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+        |(lo, hi), p| (lo.min(p.at), hi.max(p.at)),
+    );
+    let along = if hi.x - lo.x >= hi.y - lo.y {
+        DVec2::X
+    } else {
+        DVec2::Y
+    };
+    let across = along.perp();
+    let mid = pts.iter().map(|p| p.at).sum::<DVec2>() / pts.len() as f64;
+    let c = mid.dot(across);
+    let foot = |p: DVec2| along * p.dot(along) + across * c;
+    // the fan's end: the end of the collecting duct where the roof is
+    // higher
+    let s_lo = pts.iter().map(|p| p.at.dot(along)).fold(f64::MAX, f64::min);
+    let s_hi = pts.iter().map(|p| p.at.dot(along)).fold(f64::MIN, f64::max);
+    let run = 1.5;
+    let end_at = |s: f64, out: f64| along * (s + out * run) + across * c;
+    let roof_at = |q: DVec2| roof_top(model, q).unwrap_or(f64::MIN);
+    let out = if roof_at(end_at(s_hi, 1.0)) >= roof_at(end_at(s_lo, -1.0)) {
+        1.0
+    } else {
+        -1.0
+    };
+    let s_fan = if out > 0.0 { s_hi } else { s_lo };
+    let m = end_at(s_fan, out);
+    let Some(top) = roof_top(model, m).map(|z| z - elev) else {
+        warn.push("Nad koncom zberného potrubia nie je strecha.".to_string());
+        return (vec![], remove, warn);
+    };
+    let tag = format!("{DESIGN_TAG} {}", numbers.join("+"));
+    let mut add = vec![];
+    let duct = |add: &mut Vec<Element>, system: &str, d: f64, from: DVec3, to: DVec3| {
+        let p = Pipe {
+            level,
+            system: system.into(),
+            start: from,
+            end: to,
+            pipe_type: "VZK".into(),
+            nominal_mm: d,
+            outer_mm: d + 1.0,
+            inner_mm: d,
+            height_mm: None,
+            // through the cold attic: insulated against condensation
+            insulation_mm: 30.0,
+            insulation_set: true,
+            mark: None,
+        };
+        let el = Element::new(format!("{tag} – potrubie Ø{d:.0}"), ElementKind::Pipe(p));
+        let id = el.id;
+        add.push(el);
+        id
+    };
+    let at3 = |q: DVec2, z: f64| DVec3::new(q.x, q.y, z);
+    // the branches: up, then square across to the collecting duct
+    for p in &pts {
+        let up = duct(&mut add, "VZO", 100.0, at3(p.at, p.h), at3(p.at, z_run));
+        let f = foot(p.at);
+        if f.distance(p.at) > JOIN {
+            duct(&mut add, "VZO", 100.0, at3(p.at, z_run), at3(f, z_run));
+        }
+        let mut v = Valve::new(up, 0.0, "vyustO");
+        v.product = Some(VALVES[0].id.into());
+        add.push(Element::new(
+            format!("{tag} – odvodný ventil {}", p.number),
+            ElementKind::Valve(v),
+        ));
+    }
+    // the collecting duct from the far end to the fan's end, each piece
+    // as wide as the air it carries
+    let mut stops: Vec<f64> = pts.iter().map(|p| p.at.dot(along)).collect();
+    stops.sort_by(|a, b| (a * out).total_cmp(&(b * out)));
+    stops.dedup_by(|a, b| (*a - *b).abs() < JOIN);
+    let need_upto = |s: f64| -> f64 {
+        pts.iter()
+            .filter(|p| p.at.dot(along) * out <= s * out + JOIN)
+            .map(|p| p.need)
+            .sum()
+    };
+    let main_v = ductsizing::Limits::default().main;
+    for w in stops.windows(2) {
+        let q = need_upto(w[0]);
+        let d = ductsizing::round_for(q, main_v).max(100.0);
+        duct(
+            &mut add,
+            "VZO",
+            d,
+            at3(along * w[0] + across * c, z_run),
+            at3(along * w[1] + across * c, z_run),
+        );
+    }
+    let total: f64 = pts.iter().map(|p| p.need).sum();
+    let d_fan = ductsizing::round_for(total, main_v).max(fan.dn);
+    let to_fan = duct(
+        &mut add,
+        "VZO",
+        d_fan,
+        at3(along * s_fan + across * c, z_run),
+        at3(m, z_run),
+    );
+    let outlet = duct(
+        &mut add,
+        "VZE",
+        d_fan,
+        at3(m, z_run),
+        at3(m, top.max(z_run + 0.5)),
+    );
+    let mut fv = Valve::new(to_fan, 0.5, "ventilator");
+    fv.product = Some(fan.id.into());
+    fv.preset = speed.filter(|s| !s.is_empty()).map(str::to_string);
+    add.push(Element::new(
+        format!("{tag} – ventilátor {}", fan.name),
+        ElementKind::Valve(fv),
+    ));
+    let mut hood = Valve::new(outlet, 1.0, "vyfukVzt");
+    hood.product = OUTLETS
+        .iter()
+        .find(|o| (o.dn - d_fan).abs() < 1.0)
+        .map(|o| o.id.to_string());
+    if hood.product.is_none() {
+        warn.push(format!(
+            "Strešný výfuk Ø{d_fan:.0}: v aplikácii nie je výrobok tejto veľkosti, doplňte ho."
+        ));
+    }
+    add.push(Element::new(
+        format!("{tag} – strešná hlavica"),
+        ElementKind::Valve(hood),
+    ));
+    if fan.in_room {
+        warn.push(format!(
+            "{} sa osádza do stropu miestnosti, na spoločnú vetvu sa nehodí.",
+            fan.name
+        ));
+    }
     (add, remove, warn)
 }
 
@@ -1183,5 +1427,17 @@ mod tests {
         let m = doc.model();
         let rows = check(m, &ho, &Opts::default());
         assert!(!rows[0].ok() && rows[0].q < 90.0, "{:?}", rows[0]);
+    }
+
+    #[test]
+    fn a_new_design_replaces_the_old_one_of_its_rooms() {
+        let n = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert!(of_design("Odvetranie 1.08 – potrubie Ø100", &n(&["1.08"])));
+        assert!(of_design(
+            "Odvetranie 1.07+1.08+1.12 – ventilátor TD",
+            &n(&["1.12"])
+        ));
+        assert!(!of_design("Odvetranie 1.08 – potrubie Ø100", &n(&["1.07"])));
+        assert!(!of_design("Rekuperácia – VZO 1.08", &n(&["1.08"])));
     }
 }
