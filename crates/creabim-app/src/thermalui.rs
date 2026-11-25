@@ -114,6 +114,8 @@ pub struct Outcome {
 #[derive(Debug)]
 pub struct GroundOut {
     pub b: f64,
+    /// The floor's area and perimeter B was taken from, m², m.
+    pub ap: Option<(f64, f64)>,
     pub l2d_a: f64,
     pub hw: f64,
     pub uw: f64,
@@ -297,10 +299,20 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
     let mut open = None;
     let mut mesh = mesh;
     if let Some(soil) = soil_index {
-        if s.b.is_nan() || s.b <= 0.0 {
+        // B = A / (0,5·P) of the floor slab on the ground (STN EN ISO
+        // 13370, 6.7.1, formula 2), unless given by hand
+        let (b, ap) = if s.b.is_nan() {
+            let (a, p) = floor_area_perimeter(model, &cut).ok_or_else(|| {
+                t("A junction with the ground: no floor slab in the detail to take B from; enter B (STN EN ISO 13370).")
+            })?;
+            (a / (0.5 * p), Some((a, p)))
+        } else {
+            (s.b, None)
+        };
+        if b.is_nan() || b <= 0.0 {
             return Err(t("A junction with the ground: enter the floor's characteristic dimension B (STN EN ISO 13370)."));
         }
-        let g = thermcheck::ground_params(tables, soil, s.b).ok_or_else(|| {
+        let g = thermcheck::ground_params(tables, soil, b).ok_or_else(|| {
             format!(
                 "{}: {}",
                 t("Norm tables not read (Manage › Norm tables)"),
@@ -314,12 +326,13 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
             )
         })?;
         ground = Some(GroundOut {
-            b: s.b,
+            b,
+            ap,
             l2d_a: f64::NAN,
             hw: m.hw,
             uw: m.uw,
-            floor: (g.floor_factor * s.b).min(g.half_max),
-            soil: (g.soil_factor * s.b).min(g.soil_max),
+            floor: (g.floor_factor * b).min(g.half_max),
+            soil: (g.soil_factor * b).min(g.soil_max),
         });
         outlines = m.full.regions[2..].iter().map(|r| r.poly.clone()).collect();
         detail = m.full;
@@ -382,6 +395,33 @@ pub fn solve(model: &Model, tables: &[ParamTable], s: &Thermal) -> Result<Outcom
         view,
         ground,
     })
+}
+
+/// The floor area and exposed perimeter (STN EN ISO 13370, 6.7.1) of
+/// the storey of the floor slab on the ground the detail cuts (the
+/// lowest slab among its pieces): its rooms by the outside dimensions,
+/// P the outside walls only.
+fn floor_area_perimeter(
+    model: &Model,
+    cut: &creabim_geom::thermalcut::ThermalCut,
+) -> Option<(f64, f64)> {
+    let low = |p: &creabim_geom::thermalcut::Piece| {
+        p.points.iter().map(|q| q.y).fold(f64::INFINITY, f64::min)
+    };
+    let piece = cut
+        .pieces
+        .iter()
+        .filter(|p| {
+            matches!(
+                model.get(p.element).map(|e| &e.kind),
+                Some(ElementKind::Slab(_))
+            )
+        })
+        .min_by(|a, b| low(a).total_cmp(&low(b)))?;
+    let ElementKind::Slab(slab) = &model.get(piece.element)?.kind else {
+        return None;
+    };
+    creabim_services::heatdetail::floor_area_perimeter(model, slab.level)
 }
 
 /// Colour of temperature `v` between `lo` (blue) and `hi` (red).
@@ -692,13 +732,17 @@ impl CreaBimApp {
                             ui.selectable_value(&mut s.external, true, t("outside dimensions"));
                         });
                     ui.separator();
-                    ui.label(t("Ground: B"));
+                    ui.label(t("Ground: B")).on_hover_text(t("The floor's characteristic dimension B = A / (0,5·P) by STN EN ISO 13370 (2), for a junction with the ground; above 8 m the model is the same (12.4.1)."));
                     if s.b.is_nan() {
-                        if ui.button(t("enter")).on_hover_text(t("The floor's characteristic dimension B by STN EN ISO 13370, for a junction with the ground; above 8 m the model is the same (12.4.1).")).clicked() {
-                            s.b = 8.0;
+                        ui.weak(t("from the storey"));
+                        if ui.button(t("enter")).clicked() {
+                            s.b = s.result.as_ref().and_then(|o| o.ground.as_ref()).map_or(8.0, |g| g.b);
                         }
                     } else {
                         ui.add(egui::DragValue::new(&mut s.b).speed(0.05).range(0.5..=200.0).suffix(" m"));
+                        if ui.button(t("from the storey")).clicked() {
+                            s.b = f64::NAN;
+                        }
                     }
                     ui.label(t("cell in the soil"));
                     ui.add(egui::DragValue::new(&mut s.h_ground_mm).speed(1.0).range(20.0..=2000.0).prefix("max ").suffix(" mm"));
@@ -824,11 +868,23 @@ fn results_table(ui: &mut egui::Ui, o: &Outcome, s: &Thermal) {
         "STN EN ISO 10211 (15)".into(),
     ));
     if let (Some(g), Ok((_, psi))) = (&o.ground, &o.psi) {
+        if let Some((a, p)) = g.ap {
+            rows.push((
+                t("Floor on the ground: area A / exposed perimeter P"),
+                String::new(),
+                format!("{} m² / {} m", num(a, 2), num(p, 2)),
+                t("rooms by outside dimensions, P outside walls only (ISO 13370, 6.7.1)"),
+            ));
+        }
         rows.push((
             t("Floor's characteristic dimension B"),
             "m".into(),
             num(g.b, 2),
-            "STN EN ISO 13370".into(),
+            if g.ap.is_some() {
+                "B = A / (0,5·P), STN EN ISO 13370 (2)".into()
+            } else {
+                t("given by hand, STN EN ISO 13370")
+            },
         ));
         rows.push((
             t("Model: floor inwards / soil outwards and down"),
