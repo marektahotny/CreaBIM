@@ -452,17 +452,29 @@ pub fn pipe_text(p: &Pipe) -> String {
         K::Circulation => format!("C {size}"),
         // a duct: its diameter, and its insulation under it, as VZT
         // drawings write them (George 2026-11-25)
+        // and its height above the floor, as the samples write it: a
+        // round duct's axis "OS 2800 NP", a rectangular one's bottom
+        // edge "SH 2400 NP", its size "400/200" (George 2026-11-25)
         K::AirSupply | K::AirExhaust => {
-            let d = format!("Ø{}", n(p.nominal_mm));
+            let mut lines = vec![match p.height_mm {
+                Some(h) => format!("{}/{}", n(p.nominal_mm), n(h)),
+                None => format!("Ø{}", n(p.nominal_mm)),
+            }];
+            if (p.start.z - p.end.z).abs() < 1e-3 && !p.is_vertical() {
+                let z = p.start.z * 1000.0;
+                lines.push(match p.height_mm {
+                    Some(h) => format!("SH {:.0} NP", z - h / 2.0),
+                    None => format!("OS {z:.0} NP"),
+                });
+            }
             if p.insulation_mm > 0.0 {
-                format!(
-                    "{d}\n{} {} mm",
+                lines.push(format!(
+                    "{} {} mm",
                     creabim_core::words::tr("insulation"),
                     n(p.insulation_mm)
-                )
-            } else {
-                d
+                ));
             }
+            lines.join("\n")
         }
         K::Sanitary | K::Storm | K::Flue => {
             format!("DN{}", n(p.nominal_mm))
@@ -1482,6 +1494,7 @@ mod tests {
                 product: None,
                 preset: None,
                 mark: None,
+                under_ceiling: false,
             }),
         );
         let (run_id, valve_id) = (run.id, valve.id);

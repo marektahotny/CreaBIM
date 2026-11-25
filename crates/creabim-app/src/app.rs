@@ -247,6 +247,9 @@ pub struct CreaBimApp {
     /// The main window was told to fill the screen (once, on the first
     /// frame: some window managers skip the start-up hint; George 2026-11-25).
     maximized_once: bool,
+    /// The undo and redo depths the trades' tags were last brought up to
+    /// date at (penetration labels, VZT position marks).
+    tags_at: Option<creabim_core::StepId>,
     /// The pointer left the drawing area (onto a web pane, or out of the
     /// window) and hasn't come back yet.
     pointer_away: bool,
@@ -354,7 +357,7 @@ pub struct CreaBimApp {
     saved_revision: Option<u64>,
     /// The undo history when it was last opened or saved: how many steps
     /// and the last one's id, to count the changes since (Save the changes).
-    saved_mark: (usize, Option<creabim_core::document::StepId>),
+    saved_mark: (usize, Option<creabim_core::StepId>),
     /// The window title last set, so it is only sent when it changes.
     title: String,
     /// The status and tool last written to the activity log.
@@ -628,6 +631,7 @@ impl CreaBimApp {
             close_ok: false,
             // a dev shot keeps its fixed size
             maximized_once: std::env::var_os("CREABIM_SHOT").is_some(),
+            tags_at: None,
             pointer_away: true,
             pointer_seen: 0.0,
             prop_front: None,
@@ -14043,6 +14047,12 @@ impl eframe::App for CreaBimApp {
             ui.ctx()
                 .send_viewport_cmd(egui::ViewportCommand::Maximized(true));
         }
+        // the trades' tags follow the model: a penetration's label for each
+        // penetration the plans take over, a position mark for each device
+        // on the ducts (George 2026-11-25), once the mouse is up
+        if !ui.input(|i| i.pointer.any_down()) {
+            self.keep_trade_tags();
+        }
         // never lose work to a close: unsaved changes ask first
         if ui.ctx().input(|i| i.viewport().close_requested()) && !self.close_ok && self.unsaved() {
             ui.ctx()
@@ -15052,6 +15062,14 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     for t in creabim_core::viewmodes::trade_room_tags(&model) {
         tx = tx.insert(t);
         any = true;
+    }
+    // the penetrations taken over into the architect's and structural
+    // plans get their labels as tags, dragged like any tag
+    let (labels, stale) = creabim_geom::tradepen::label_tags(&model);
+    any |= !labels.is_empty() || !stale.is_empty();
+    tx = tx.remove_all_cascade(&model, &stale);
+    for t in labels {
+        tx = tx.insert(t);
     }
     // the devices on the ducts get their position marks as tags, dragged
     // like any tag (George 2026-11-25)

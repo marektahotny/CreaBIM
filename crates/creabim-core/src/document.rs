@@ -335,6 +335,22 @@ impl Document {
         self.redo.last().map(|s| s.tx.label.as_str())
     }
 
+    /// Apply `tx` and fold it into the last undo step, as what that edit
+    /// brought with it (labels made for what it drew), so undo takes both
+    /// back at once. Without a step to fold into, or while there is
+    /// something to redo, nothing happens.
+    pub fn amend(&mut self, tx: Transaction) -> Result<(), ModelError> {
+        if tx.ops.is_empty() || self.undo.is_empty() || !self.redo.is_empty() {
+            return Ok(());
+        }
+        let mut tx = tx;
+        self.apply_settled(&mut tx)?;
+        let step = self.undo.last_mut().expect("a step to amend");
+        step.tx.ops.extend(tx.ops);
+        step.id = StepId::next();
+        Ok(())
+    }
+
     pub fn undo(&mut self) -> bool {
         let Some(step) = self.undo.pop() else {
             return false;

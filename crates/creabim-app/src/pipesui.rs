@@ -195,6 +195,20 @@ pub fn valve_fields(
             v.flow_m3h = (q > 0.0).then_some(q);
             label = "Air flow";
         }
+        // a ceiling diffuser or valve: its duct goes up or down to the
+        // ceiling's underside and follows it (George 2026-11-25)
+        let mut under = v.under_ceiling;
+        let changed = crate::props::row(ui, "Under the ceiling", |ui| {
+            ui.checkbox(&mut under, "")
+                .on_hover_text(crate::i18n::tr(
+                    "The terminal sits at the underside of the ceiling over it (the suspended ceiling, else the slab) and follows it; its duct rises or drops to it, the run keeps its own height",
+                ))
+                .changed()
+        });
+        if changed {
+            v.under_ceiling = under;
+            label = "Under the ceiling";
+        }
     }
     if matches!(v.kind.as_str(), "ventilator" | "vyustO" | "vyfukVzt") {
         use creabim_services::extractfans as xf;
@@ -675,6 +689,12 @@ pub struct PipeDraft {
     /// The height was changed while a run is being drawn: the next click
     /// first rises or drops to it where the run is.
     pub height_set: bool,
+    /// A duct's run started on nothing begins at an air terminal under
+    /// the ceiling there: the run rises or drops from it to the height
+    /// set (George 2026-11-25).
+    pub terminal_start: bool,
+    /// Where the run being drawn began at such a terminal.
+    pub terminal_at: Option<DVec2>,
     /// How much a drain falls along its run, per cent; nothing for the
     /// systems under pressure.
     pub slope_pct: f64,
@@ -696,11 +716,17 @@ impl PipeDraft {
             height: s.height,
             last_z: None,
             height_set: false,
+            terminal_start: true,
+            terminal_at: None,
             slope_pct: s.slope_pct,
         }
     }
 
     /// Does the system run by gravity, so its pipes are drawn falling?
+    pub fn is_air(&self) -> bool {
+        matches!(self.kind(), SystemKind::AirSupply | SystemKind::AirExhaust)
+    }
+
     pub fn falls(&self) -> bool {
         self.system_def().is_some_and(|s| s.slope_pct > 0.0)
     }
@@ -830,6 +856,21 @@ pub fn connector_at(
         }
     }
     best.map(|b| b.1)
+}
+
+/// Does an air terminal sit at the duct end `at` (heights above its
+/// level)?
+fn terminal_end(model: &creabim_core::Model, at: DVec3) -> bool {
+    model.iter().any(|e| match &e.kind {
+        ElementKind::Valve(v) if v.is_air_terminal() => match model.get(v.pipe).map(|x| &x.kind) {
+            Some(ElementKind::Pipe(p)) => {
+                let end = if v.t < 0.5 { p.start } else { p.end };
+                end.distance(at) < 0.01
+            }
+            _ => false,
+        },
+        _ => false,
+    })
 }
 
 /// How near a click must be to a pipe's end or axis to join it, m.
@@ -989,6 +1030,7 @@ pub fn click(
         None => {
             draft.last_z = None;
             draft.height_set = false;
+            draft.terminal_at = None;
             let mut p = p;
             if let Some(c) = conn {
                 if let Some(def) = creabim_core::mep::system(c.kind.code()) {
@@ -1012,7 +1054,17 @@ pub fn click(
                 draft.pipe_type = n.pipe_type.clone();
                 draft.nominal_mm = n.nominal_mm;
                 draft.last_z = Some(n.at.z);
+                // from a terminal's duct end: on at the height set
+                draft.height_set = draft.is_air() && terminal_end(doc.model(), n.at);
                 p = n.at.truncate();
+            } else if draft.is_air() && draft.terminal_start {
+                // on nothing: a terminal under the ceiling there, the
+                // run then rising or dropping to the height set
+                let floor = doc.model().level(level).map_or(0.0, |l| l.elevation);
+                let z = creabim_core::objects::ceiling_at(doc.model(), level, p) - floor;
+                draft.last_z = Some(z);
+                draft.height_set = true;
+                draft.terminal_at = Some(p);
             }
             state.pending = Some(p);
             state.status = Some(format!(
@@ -1028,18 +1080,36 @@ pub fn click(
             let mut tx = Transaction::new("Draw pipe");
             let mut last = None;
             // the height was changed: rise or drop to it where the run is
+            let mut first = None;
             if let Some((z0, z1)) = draft.rise() {
                 let (t, id) = insert(tx, draft.riser(level, a, z0, z1));
                 tx = t;
                 last = Some(id);
+                first = Some(id);
                 draft.last_z = Some(z1);
             }
             draft.height_set = false;
+            // the run began at a terminal under the ceiling: it sits on
+            // the start of the first duct, held there
+            let terminal = draft.terminal_at.take().map(|_| {
+                let code = if draft.kind() == SystemKind::AirSupply {
+                    "vyustP"
+                } else {
+                    "vyustO"
+                };
+                let name = creabim_core::mep::valve_kind(code).map_or(code, |k| k.name);
+                (code, crate::i18n::tr(name))
+            });
             if a.distance(p) <= 0.01 {
                 // on the run's own point: the riser alone
                 let Some(id) = last else {
                     return Ok(());
                 };
+                if let Some((code, name)) = terminal {
+                    let mut v = creabim_core::mep::Valve::new(id, 0.0, code);
+                    v.under_ceiling = true;
+                    tx = tx.insert(Element::new(name, ElementKind::Valve(v)));
+                }
                 selection.only(id);
                 state.status = Some(format!("Z {} m", crate::i18n::num(draft.z_now(), 3)));
                 return doc.commit(tx);
@@ -1064,6 +1134,11 @@ pub fn click(
             let (t, id) = insert(tx, pipe);
             tx = t;
             last = Some(id);
+            if let Some((code, name)) = terminal {
+                let mut v = creabim_core::mep::Valve::new(first.unwrap_or(id), 0.0, code);
+                v.under_ceiling = true;
+                tx = tx.insert(Element::new(name, ElementKind::Valve(v)));
+            }
             draft.last_z = Some(end.z);
             if let Some(at) = join {
                 if (at.z - end.z).abs() > 0.01 {
@@ -1170,6 +1245,13 @@ pub fn tool_options(draft: &PipeDraft) -> Vec<serde_json::Value> {
             "hint": "Height of the pipe's axis above the floor (Z): where the run is now, also after it caught a connection's height. Changed while a run is drawn, the next click rises or drops to it where the run is; a click on the same point draws the riser alone",
         }),
     ];
+    if draft.is_air() {
+        out.push(json!({
+            "kind": "toggle", "id": "reach:pipe_terminal", "label": "Terminal at the start", "on": draft.terminal_start,
+            "icon": "fan",
+            "hint": "A run started on nothing begins at a diffuser or valve under the ceiling there; the duct rises or drops from it to the Height set",
+        }));
+    }
     if draft.falls() {
         out.push(json!({
             "kind": "number", "key": "member.pipe_slope", "label": "Slope", "value": draft.slope_pct,
@@ -1372,6 +1454,40 @@ mod tool_tests {
             .next()
             .unwrap();
         assert!((rise.end - b.at).length() < 1e-9);
+    }
+
+    #[test]
+    fn a_duct_run_begins_at_a_terminal_under_the_ceiling_then_goes_at_its_height() {
+        use creabim_core::Document;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let mut state = crate::planview::PlanState::default();
+        let mut sel = crate::selection::Selection::default();
+        assert!(action(&mut state.members.pipe, "pipe", "VZP"));
+        state.members.pipe.height = 2.0;
+        let at = DVec2::new(3.0, 3.0);
+        let floor = doc.model().level(level).unwrap().elevation;
+        let ceiling = creabim_core::objects::ceiling_at(doc.model(), level, at) - floor;
+        click(&mut doc, level, at, &mut state, &mut sel).unwrap();
+        click(&mut doc, level, DVec2::new(5.0, 3.0), &mut state, &mut sel).unwrap();
+        let model = doc.model();
+        let (v, riser) = model
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Valve(v) if v.is_air_terminal() => match model.get(v.pipe)?.kind {
+                    ElementKind::Pipe(ref p) => Some((v.clone(), p.clone())),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        assert!(v.under_ceiling && v.kind == "vyustP" && v.t == 0.0);
+        // from the terminal at the ceiling down to the run's 2.0 m
+        assert_eq!(riser.start, at.extend(ceiling));
+        assert_eq!(riser.end, at.extend(2.0));
+        assert!(model.iter().any(|e| matches!(&e.kind,
+            ElementKind::Pipe(p) if p.end == DVec3::new(5.0, 3.0, 2.0) && p.start == at.extend(2.0))));
+        assert!(creabim_core::mep::settle_under_ceiling(model).is_none());
     }
 
     #[test]

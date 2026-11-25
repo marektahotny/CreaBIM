@@ -2237,6 +2237,10 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 out.extend(linear_items(model, view, e.id, d));
             }
             ElementKind::Tag(t) if t.view == view_id => {
+                // a penetration's label is drawn with its penetration
+                if crate::tradepen::is_label_tag(model, t) {
+                    continue;
+                }
                 let Some(c) = centre(model, t.host) else {
                     continue;
                 };
