@@ -244,6 +244,9 @@ pub struct CreaBimApp {
     close_state: appmenu::CloseState,
     /// The close was settled (saved, or the changes let go): let it through.
     close_ok: bool,
+    /// The main window was told to fill the screen (once, on the first
+    /// frame: some window managers skip the start-up hint; George 2026-11-25).
+    maximized_once: bool,
     /// The pointer left the drawing area (onto a web pane, or out of the
     /// window) and hasn't come back yet.
     pointer_away: bool,
@@ -623,6 +626,8 @@ impl CreaBimApp {
             autosave: Default::default(),
             close_state: Default::default(),
             close_ok: false,
+            // a dev shot keeps its fixed size
+            maximized_once: std::env::var_os("CREABIM_SHOT").is_some(),
             pointer_away: true,
             pointer_seen: 0.0,
             prop_front: None,
@@ -14031,6 +14036,11 @@ impl eframe::App for CreaBimApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let _perf = Perf::new("frame");
         crate::files::remember_main_window(frame);
+        if !self.maximized_once {
+            self.maximized_once = true;
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
         // never lose work to a close: unsaved changes ask first
         if ui.ctx().input(|i| i.viewport().close_requested()) && !self.close_ok && self.unsaved() {
             ui.ctx()
