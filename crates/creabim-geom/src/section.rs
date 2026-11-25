@@ -1993,7 +1993,7 @@ fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, 
 const ON_PLANE: f64 = 1e-5;
 
 /// Closed outlines where the plane d = 0 slices an element's mesh, in drawing coordinates.
-fn cut_loops(item: &SceneItem, frame: &SectionFrame) -> Vec<Vec<DVec2>> {
+pub(crate) fn cut_loops(item: &SceneItem, frame: &SectionFrame) -> Vec<Vec<DVec2>> {
     let m = &item.mesh;
     let mut segs: Vec<(DVec2, DVec2)> = Vec::new();
     for t in m.indices.chunks(3) {

@@ -27,6 +27,7 @@ pub mod fixturespec;
 pub mod floorheat;
 pub mod fluid;
 pub mod gas;
+pub mod glaser;
 pub mod groundloss;
 pub mod heatdetail;
 pub mod heating;
@@ -48,6 +49,8 @@ pub mod sanitary;
 pub mod settings;
 mod sizing;
 pub mod storm;
+pub mod thermcheck;
+pub mod thermfield;
 pub mod tree;
 pub mod water;
 

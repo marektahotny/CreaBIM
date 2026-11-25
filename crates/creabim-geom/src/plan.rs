@@ -397,6 +397,67 @@ fn inside_spans(a: DVec2, b: DVec2, poly: &[DVec2], eps: f64) -> Vec<(f64, f64)>
         .collect()
 }
 
+/// The cut pieces as drawn: where two overlap the stronger cuts through
+/// the other (see `Joining::cuts`), and in a section the ground gives way
+/// to everything built in it.
+pub fn resolve_cuts(model: &Model, cuts: Vec<CutPiece>, section: bool) -> Vec<CutPiece> {
+    // where cuts overlap, the stronger cuts through the other (see
+    // `Joining::cuts`): a wall runs through the end of the slab that sits
+    // in it, and the slab's structure through the wall's plaster
+    let joining = Joining::of(model);
+    // (only cuts whose boxes meet can touch: a tower's floors have
+    // thousands of pieces)
+    let bb = |p: &[DVec2]| {
+        p.iter().fold((DVec2::MAX, DVec2::MIN), |(lo, hi), q| {
+            (lo.min(*q), hi.max(*q))
+        })
+    };
+    let near = |a: (DVec2, DVec2), b: (DVec2, DVec2), eps: f64| {
+        a.0.x <= b.1.x + eps && b.0.x <= a.1.x + eps && a.0.y <= b.1.y + eps && b.0.y <= a.1.y + eps
+    };
+    let cut_boxes: Vec<_> = cuts.iter().map(|c| bb(&c.points)).collect();
+    let mut polys: Vec<CutPiece> = Vec::new();
+    for (ci, c) in cuts.iter().enumerate() {
+        let mut pieces = vec![c.points.clone()];
+        // the ground is cut by everything built in it (footings, walls,
+        // slabs), never the other way round, so the line where they meet
+        // is a thin one and its thick line stays only where it meets air
+        // (in sections: plans keep their own rules)
+        let ground = section && is_site(model, c.id);
+        for (oi, other) in cuts.iter().enumerate() {
+            let built = !is_site(model, other.id);
+            let cuts_it = if ground && built {
+                true
+            } else if section && !ground && !built {
+                false
+            } else {
+                joining.cuts(model, other, c)
+            };
+            if !near(cut_boxes[ci], cut_boxes[oi], 1e-6) || !cuts_it || !is_convex(&other.points) {
+                continue;
+            }
+            let hole = &other.points;
+            pieces = pieces
+                .into_iter()
+                .flat_map(|p| {
+                    if !boxes_overlap(&p, hole) {
+                        vec![p]
+                    } else if ground {
+                        subtract_convex_banded(&p, hole)
+                    } else {
+                        subtract_convex(&p, hole)
+                    }
+                })
+                .collect();
+        }
+        polys.extend(pieces.into_iter().map(|p| CutPiece {
+            points: p,
+            ..c.clone()
+        }));
+    }
+    polys
+}
+
 /// The key of an air gap layer: air, for where the thick line goes.
 const AIR: (Option<ElementId>, u8) = (None, 250);
 
@@ -452,12 +513,7 @@ fn clean_up_pieces_with(
         _ => true,
     });
     cuts.extend(layers);
-    // where cuts overlap, the stronger cuts through the other (see
-    // `Joining::cuts`): a wall runs through the end of the slab that sits
-    // in it, and the slab's structure through the wall's plaster
-    let joining = Joining::of(model);
-    // (only cuts whose boxes meet can touch: a tower's floors have
-    // thousands of pieces)
+    let polys = resolve_cuts(model, cuts, section);
     let bb = |p: &[DVec2]| {
         p.iter().fold((DVec2::MAX, DVec2::MIN), |(lo, hi), q| {
             (lo.min(*q), hi.max(*q))
@@ -466,46 +522,6 @@ fn clean_up_pieces_with(
     let near = |a: (DVec2, DVec2), b: (DVec2, DVec2), eps: f64| {
         a.0.x <= b.1.x + eps && b.0.x <= a.1.x + eps && a.0.y <= b.1.y + eps && b.0.y <= a.1.y + eps
     };
-    let cut_boxes: Vec<_> = cuts.iter().map(|c| bb(&c.points)).collect();
-    let mut polys: Vec<CutPiece> = Vec::new();
-    for (ci, c) in cuts.iter().enumerate() {
-        let mut pieces = vec![c.points.clone()];
-        // the ground is cut by everything built in it (footings, walls,
-        // slabs), never the other way round, so the line where they meet
-        // is a thin one and its thick line stays only where it meets air
-        // (in sections: plans keep their own rules)
-        let ground = section && is_site(model, c.id);
-        for (oi, other) in cuts.iter().enumerate() {
-            let built = !is_site(model, other.id);
-            let cuts_it = if ground && built {
-                true
-            } else if section && !ground && !built {
-                false
-            } else {
-                joining.cuts(model, other, c)
-            };
-            if !near(cut_boxes[ci], cut_boxes[oi], 1e-6) || !cuts_it || !is_convex(&other.points) {
-                continue;
-            }
-            let hole = &other.points;
-            pieces = pieces
-                .into_iter()
-                .flat_map(|p| {
-                    if !boxes_overlap(&p, hole) {
-                        vec![p]
-                    } else if ground {
-                        subtract_convex_banded(&p, hole)
-                    } else {
-                        subtract_convex(&p, hole)
-                    }
-                })
-                .collect();
-        }
-        polys.extend(pieces.into_iter().map(|p| CutPiece {
-            points: p,
-            ..c.clone()
-        }));
-    }
     let keys: Vec<(Option<ElementId>, u8)> = polys
         .iter()
         .map(|p| {
