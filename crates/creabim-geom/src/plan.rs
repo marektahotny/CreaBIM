@@ -2530,7 +2530,7 @@ pub(crate) fn wall_rise(
     (cut_height + floor > 1e-3 && wall_top_height(model, w) > floor + 1e-3).then_some(rise)
 }
 
-fn wall_top_height(model: &Model, w: &creabim_core::Wall) -> f64 {
+pub(crate) fn wall_top_height(model: &Model, w: &creabim_core::Wall) -> f64 {
     let Some(top) = creabim_core::walls::top_profile(model, w) else {
         return w.height;
     };

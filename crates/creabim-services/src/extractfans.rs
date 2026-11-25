@@ -897,6 +897,28 @@ pub struct Accessory {
 }
 
 impl Accessory {
+    /// "Dalap PS protidažďová strieška Ø160": maker, name and, for a
+    /// product sold in sizes under one name, its size.
+    pub fn title(&self) -> String {
+        let dn = format!("{:.0}", self.dn);
+        if self.name.contains(&dn) {
+            format!("{} {}", self.maker, self.name)
+        } else {
+            format!("{} {} Ø{dn}", self.maker, self.name)
+        }
+    }
+
+    /// The sizes the same product comes in (itself among them), smallest
+    /// first.
+    pub fn sizes(&self) -> Vec<&'static Accessory> {
+        let mut v: Vec<_> = VALVES
+            .iter()
+            .chain(OUTLETS)
+            .filter(|a| a.maker == self.maker && a.name == self.name)
+            .collect();
+        v.sort_by(|a, b| a.dn.total_cmp(&b.dn));
+        v
+    }
     /// Its loss at `q` m³/h, Pa: between its points straight, past them
     /// with the square of the flow.
     pub fn dp(&self, q: f64) -> f64 {
@@ -1012,6 +1034,90 @@ pub const OUTLETS: &[Accessory] = &[Accessory {
     about: "Strešný odvetrávací prestup DN100 s hlavicou pre bežné betónové a pálené škridly, sklon strechy cca 20–50°",
     price: None,
     source: "Klöber Rovia, technický list (izomat.cz)",
+},
+Accessory {
+    id: "DALAP-PS-100",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 100.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 100: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 0,531 kg; kód 800610, EAN 4250622603592",
+    price: Some((29.10, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 100 mm (Dalap PS 100), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-125",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 125.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 125: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 0,623 kg; kód 80028, EAN 4250622603172",
+    price: Some((33.65, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 125 mm (Dalap PS 125), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-150",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 150.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 150: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 0,799 kg; kód 80029, EAN 4250622603189",
+    price: Some((40.25, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 150 mm (Dalap PS 150), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-160",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 160.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 160: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 0,855 kg; kód 80030, EAN 4250622603196",
+    price: Some((37.15, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 160 mm (Dalap PS 160), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-200",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 200.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 200: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 1,633 kg; kód 80031, EAN 4250622603202",
+    price: Some((47.90, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 200 mm (Dalap PS 200), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-250",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 250.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 250: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 2,121 kg; kód 80034, EAN 4250622603219",
+    price: Some((57.55, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 250 mm (Dalap PS 250), 11/2026",
+},
+Accessory {
+    id: "DALAP-PS-315",
+    maker: "Dalap",
+    // one product in sizes: the same name, the size picked beside it
+    name: "PS protidažďová strieška",
+    dn: 315.0,
+    // no loss data from the maker
+    loss: &[],
+    about: "Dalap PS 315: ochranná strieška na zakončenie vzduchotechnického potrubia na streche, pozinkovaný plech, -30 až +100 °C, 3,421 kg; kód 80038, EAN 4250622603226",
+    price: Some((92.15, "€ s DPH")),
+    source: "dalap.sk, Protidažďová strieška na zakončenie vzduchotechnického potrubia Ø 315 mm (Dalap PS 315), 11/2026",
 }];
 
 pub fn valve(id: &str) -> Option<&'static Accessory> {
@@ -1064,13 +1170,7 @@ pub fn bill(model: &Model) -> Vec<BillLine> {
             }
             "vyustO" | "vyfukVzt" => {
                 if let Some(a) = v.product.as_deref().and_then(valve) {
-                    add(
-                        format!("{} {}", a.maker, a.name),
-                        "ks",
-                        1.0,
-                        a.price,
-                        a.source,
-                    );
+                    add(a.title(), "ks", 1.0, a.price, a.source);
                 }
             }
             _ => {}
@@ -1530,6 +1630,21 @@ pub fn propose_central(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_dalap_cap_is_one_product_in_seven_sizes() {
+        let cap = valve("DALAP-PS-160").unwrap();
+        let sizes: Vec<f64> = cap.sizes().iter().map(|a| a.dn).collect();
+        assert_eq!(sizes, vec![100.0, 125.0, 150.0, 160.0, 200.0, 250.0, 315.0]);
+        assert_eq!(cap.title(), "Dalap PS protidažďová strieška Ø160");
+        // a name that has its size keeps it as it is
+        assert_eq!(
+            valve("KLOBER-ROVIA-KE0520").unwrap().title(),
+            "Klöber Rovia univerzálny strešný prestup DN100 (KE 0520)"
+        );
+        assert_eq!(cap.price, Some((37.15, "€ s DPH")));
+    }
+
     use super::*;
     use creabim_core::{Document, Element, Room, Transaction};
 
