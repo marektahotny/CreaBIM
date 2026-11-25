@@ -239,7 +239,16 @@ impl ViewHidden {
         for e in model.iter() {
             let host_hidden = match &e.kind {
                 ElementKind::Opening(o) => out.contains(&o.host),
-                ElementKind::Tag(t) => out.contains(&t.host),
+                // a penetration's label on a pipe stays: the architect's
+                // plan shows the penetration, not the pipe
+                ElementKind::Tag(t) => {
+                    out.contains(&t.host)
+                        && !(t.end.is_some()
+                            && matches!(
+                                model.get(t.host).map(|h| &h.kind),
+                                Some(ElementKind::Pipe(_))
+                            ))
+                }
                 ElementKind::Cut(c) => out.contains(&c.target),
                 _ => false,
             };

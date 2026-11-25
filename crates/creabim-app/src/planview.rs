@@ -8009,6 +8009,13 @@ fn dim_snap_guided(
             }
         }
     }
+    // the centre of a penetration taken over into the plan: a dimension
+    // to it is kept on its pipe and follows it (George 2026-11-25)
+    if cfg.allows(SnapKind::Endpoint) {
+        for (pipe, q) in creabim_geom::tradepen::centres(model, view) {
+            consider(pipe, q);
+        }
+    }
     let project = |q: DVec3| Some(xf.to_screen(q.truncate()));
     let hit = snapper.and_then(|s| {
         // from the point clicked last, as the drawing tools snap from
