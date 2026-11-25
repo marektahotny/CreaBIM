@@ -763,7 +763,34 @@ impl Accessory {
 }
 
 /// Extract valves (ceiling disc valves).
-pub const VALVES: &[Accessory] = &[Accessory {
+pub const VALVES: &[Accessory] = &[
+    Accessory {
+        id: "SA-EFF-100-SW",
+        maker: "Systemair",
+        name: "EFF-100-SW tanierový ventil odvodný",
+        dn: 100.0,
+        // read off the maker's chart "EFF-100-SW Pressure drop" (vector
+        // curve of the PDF), setting +10 mm = fully open
+        loss: &[
+            (47.1, 10.7),
+            (55.0, 14.6),
+            (62.5, 18.7),
+            (70.3, 23.4),
+            (77.9, 28.8),
+            (84.6, 33.6),
+            (90.4, 38.4),
+            (96.2, 43.4),
+            (103.9, 50.3),
+            (110.1, 56.6),
+            (117.4, 63.9),
+            (124.0, 71.2),
+            (130.5, 78.9),
+        ],
+        about: "Kovový odvodný tanierový ventil (pozinkovaný plech, RAL 9003), Ø A 100, Ø B 135 mm, 0,2 kg; montážny rámček RF-BOR-C-100; strata pri nastavení +10 mm (úplne otvorený), pri 0 mm napr. 80 m³/h ≈ 76 Pa; LwA 25/30/35 dB pri 52/73/90 m³/h",
+        price: None,
+        source: "Systemair, EFF handbook 2023-08 (A-EFF_DATASHEET_ENG_GLO_HANDBOOK_EFF_202308.pdf), str. 9 graf EFF-100-SW",
+    },
+    Accessory {
     id: "ED-IT-PRO-100",
     maker: "Elektrodesign",
     name: "IT-PRO 100 tanierový ventil",
@@ -773,7 +800,8 @@ pub const VALVES: &[Accessory] = &[Accessory {
     about: "Univerzálny plastový tanierový ventil (biele ABS) pre prívod aj odvod, s montážnym krúžkom do stropu alebo steny; Ø B 96, Ø C 152, Ø D 99, Ø G 146 mm; nastavenie vzdialenosti tanierika x = 6–17 mm",
     price: Some((147.0, "Kč")),
     source: "Elektrodesign katalóg IT-PRO (it-pro-en.pdf), e-shop elektrodesign.cz, kód AS100100010, 11/2026",
-}];
+    },
+];
 
 /// Roof outlets.
 pub const OUTLETS: &[Accessory] = &[Accessory {
