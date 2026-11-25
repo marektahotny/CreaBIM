@@ -31,13 +31,26 @@ impl Default for HeatSource {
 fn is_heat_pump(k: HeatKind) -> bool {
     matches!(
         k,
-        HeatKind::HpOutdoor | HeatKind::HpIndoor | HeatKind::HpIndoorCylinder
+        HeatKind::HpOutdoor
+            | HeatKind::HpOutdoorMidea
+            | HeatKind::HpIndoor
+            | HeatKind::HpIndoorCylinder
     )
+}
+
+/// The outdoor unit whose curve sizes heat pump `k`: Midea's own, the
+/// Panasonic kits for the rest (the indoor units belong to them).
+pub(super) fn curve_kind(k: HeatKind) -> HeatKind {
+    if k == HeatKind::HpOutdoorMidea {
+        k
+    } else {
+        HeatKind::HpOutdoor
+    }
 }
 
 /// The bivalence diagram: the building's need, the range's curves, the
 /// one taken, θe and the bivalence point.
-fn diagram(ui: &mut egui::Ui, i: &HpInput, sel: u32) {
+fn diagram(ui: &mut egui::Ui, i: &HpInput, kind: HeatKind, sel: u32) {
     let (rect, _) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), 200.0), egui::Sense::hover());
     let p = ui.painter_at(rect);
@@ -50,15 +63,18 @@ fn diagram(ui: &mut egui::Ui, i: &HpInput, sel: u32) {
     let t0 = (-20.0_f64).min((i.te / 5.0).floor() * 5.0 - 5.0);
     let t1 = hpsizing::T_HEAT_LIMIT + 5.0;
     // the kits whose catalogue curve is known (A-7 to A7)
-    let sizes: Vec<u32> = HeatKind::HpOutdoor
+    let sizes: Vec<u32> = kind
         .sizes()
         .iter()
         .copied()
-        .filter(|s| heat::has_curve(*s))
+        .filter(|s| heat::has_curve_of(kind, *s))
         .collect();
     let top = sizes
         .iter()
-        .map(|s| hpsizing::capacity(&heat::hp_curve(*s, i.t_flow), t1))
+        .map(|s| {
+            let pts = heat::curve_of(kind, *s, i.t_flow);
+            pts.iter().map(|x| x.1).fold(0.0, f64::max)
+        })
         .fold(hpsizing::need(i, t0), f64::max);
     let qmax = (top / 2.0).ceil() * 2.0 + 2.0;
     let at = |t: f64, q: f64| {
@@ -111,7 +127,7 @@ fn diagram(ui: &mut egui::Ui, i: &HpInput, sel: u32) {
     };
     let blue = Color32::from_rgb(37, 99, 235);
     for s in &sizes {
-        let pts = heat::hp_curve(*s, i.t_flow);
+        let pts = heat::curve_of(kind, *s, i.t_flow);
         if *s != sel {
             line(&|t| hpsizing::capacity(&pts, t), Stroke::new(1.0, weak));
         }
@@ -127,7 +143,7 @@ fn diagram(ui: &mut egui::Ui, i: &HpInput, sel: u32) {
         &|t| hpsizing::need(i, t),
         Stroke::new(2.0, Color32::from_rgb(220, 38, 38)),
     );
-    let pts = heat::hp_curve(sel, i.t_flow);
+    let pts = heat::curve_of(kind, sel, i.t_flow);
     line(&|t| hpsizing::capacity(&pts, t), Stroke::new(2.4, blue));
     p.line_segment([at(i.te, 0.0), at(i.te, qmax)], Stroke::new(1.0, blue));
     p.text(
@@ -165,7 +181,7 @@ impl CreaBimApp {
             let mut c = HeatSource::default();
             if let Some(i) = self.hp_input_from_model() {
                 c.input = i;
-                c.size = hpsizing::recommend(&i);
+                c.size = hpsizing::recommend_of(curve_kind(c.kind), &i);
             }
             self.heat_source = Some(c);
         }
@@ -201,6 +217,7 @@ impl CreaBimApp {
     ) -> creabim_core::objects::CatalogueObject {
         let kind = [
             HeatKind::HpOutdoor,
+            HeatKind::HpOutdoorMidea,
             HeatKind::HpIndoor,
             HeatKind::HpIndoorCylinder,
         ]
@@ -211,7 +228,7 @@ impl CreaBimApp {
                 .is_some_and(|n| n.parse::<u32>().is_ok())
         });
         match (kind, self.hp_input_from_model()) {
-            (Some(k), Some(i)) => heat::unit(k, hpsizing::recommend(&i)),
+            (Some(k), Some(i)) => heat::unit(k, hpsizing::recommend_of(curve_kind(k), &i)),
             _ => c,
         }
     }
@@ -321,7 +338,7 @@ impl CreaBimApp {
                                     }
                                 });
                             if hp {
-                                let s = hpsizing::recommend(&c.input);
+                                let s = hpsizing::recommend_of(curve_kind(c.kind), &c.input);
                                 if ui
                                     .button(format!("{}: {s} kW", t("By the bivalence point")))
                                     .clicked()
@@ -344,7 +361,8 @@ impl CreaBimApp {
                     c.size = s;
                 }
                 if hp {
-                    let r = hpsizing::size(&c.input, &heat::hp_curve(c.size, c.input.t_flow));
+                    let ck = curve_kind(c.kind);
+                    let r = hpsizing::size(&c.input, &heat::curve_of(ck, c.size, c.input.t_flow));
                     let biv = match r.t_biv {
                         Some(tb) => format!("{} {} °C", t("bivalence point"), num(tb, 1)),
                         None => t("covers the need on its own (monovalent)"),
@@ -359,17 +377,41 @@ impl CreaBimApp {
                         t("electric heating"),
                         num(r.backup, 1),
                     ));
-                    if r.backup > heat::backup_kw(c.size) + 1e-9 {
+                    if let Some(bk) =
+                        heat::backup_of(ck, c.size).filter(|bk| r.backup > bk + 1e-9)
+                    {
                         ui.colored_label(
                             ui.visuals().warn_fg_color,
                             format!(
                                 "{} ({} kW).",
                                 t("The indoor unit's electric heater does not cover the rest"),
-                                num(heat::backup_kw(c.size), 0)
+                                num(bk, 0)
                             ),
                         );
                     }
-                    diagram(ui, &c.input, c.size);
+                    // the sizes with a catalogue curve down to A-7 that
+                    // reach the bivalence point aimed at: none, say so
+                    let best = hpsizing::recommend_of(ck, &c.input);
+                    let rb = hpsizing::size(&c.input, &heat::curve_of(ck, best, c.input.t_flow));
+                    if let Some(tb) = rb.t_biv.filter(|tb| *tb > c.input.t_biv + 1e-9) {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            format!(
+                                "{} {} °C: {} {best} kW {} {} °C. {}",
+                                t("No kit with the catalogue's output down to A-7 reaches the bivalence point aimed at"),
+                                num(c.input.t_biv, 1),
+                                t("the largest,"),
+                                t("crosses the need at"),
+                                num(tb, 1),
+                                if ck == HeatKind::HpOutdoor {
+                                    t("The 12 and 16 kW kits (H) have only their A7 output in the catalogue, so they cannot be sized by the bivalence point.")
+                                } else {
+                                    String::new()
+                                },
+                            ),
+                        );
+                    }
+                    diagram(ui, &c.input, ck, c.size);
                     ui.weak("STN EN 12831-1 · STN EN 15450");
                 }
                 ui.separator();
@@ -400,7 +442,9 @@ impl CreaBimApp {
                                 }
                             });
                     });
-                ui.weak(t(if hp {
+                ui.weak(t(if c.kind == HeatKind::HpOutdoorMidea {
+                    "Midea M thermal Arctic split: the maker's catalogue values (maximum heating capacity, EN 14511) down to -25 °C; between the table's points the output is interpolated in a line."
+                } else if hp {
                     "Panasonic Aquarea bi-bloc J and H, all-in-one J: the maker's catalogue values. Under A-7 the catalogue prints no output: it is held at A-7."
                 } else {
                     "Usual values of the market's ranges, to design with: replace them with the maker's once the product is chosen."

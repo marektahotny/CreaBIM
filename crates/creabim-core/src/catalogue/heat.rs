@@ -25,6 +25,9 @@ pub enum HeatKind {
     BoilerCombi,
     /// Air-to-water heat pump, outdoor unit.
     HpOutdoor,
+    /// Air-to-water heat pump, outdoor unit: Midea M thermal Arctic
+    /// split ([`super::midea`]).
+    HpOutdoorMidea,
     /// Heat pump indoor unit: a wall hydromodule.
     HpIndoor,
     /// Heat pump indoor unit with a hot water cylinder built in.
@@ -32,11 +35,12 @@ pub enum HeatKind {
 }
 
 impl HeatKind {
-    pub const ALL: [HeatKind; 6] = [
+    pub const ALL: [HeatKind; 7] = [
         HeatKind::Cylinder,
         HeatKind::Boiler,
         HeatKind::BoilerCombi,
         HeatKind::HpOutdoor,
+        HeatKind::HpOutdoorMidea,
         HeatKind::HpIndoor,
         HeatKind::HpIndoorCylinder,
     ];
@@ -48,6 +52,7 @@ impl HeatKind {
             HeatKind::Boiler => "kotol",
             HeatKind::BoilerCombi => "kotolKombi",
             HeatKind::HpOutdoor => "tcVonk",
+            HeatKind::HpOutdoorMidea => "tcVonkMidea",
             HeatKind::HpIndoor => "tcVnut",
             HeatKind::HpIndoorCylinder => "tcVnutZas",
         }
@@ -61,6 +66,9 @@ impl HeatKind {
                 "Plynový kondenzačný kotol – kombinovaný (prietokový ohrev TV)"
             }
             HeatKind::HpOutdoor => "Tepelné čerpadlo vzduch–voda split – vonkajšia jednotka",
+            HeatKind::HpOutdoorMidea => {
+                "Tepelné čerpadlo vzduch–voda split Midea – vonkajšia jednotka"
+            }
             HeatKind::HpIndoor => "Tepelné čerpadlo – vnútorná jednotka (hydromodul nástenný)",
             HeatKind::HpIndoorCylinder => {
                 "Tepelné čerpadlo – vnútorná jednotka s integrovaným zásobníkom TV"
@@ -77,6 +85,8 @@ impl HeatKind {
             // Panasonic Aquarea all-in-one J: the 185 l unit with the J
             // outdoor units only
             HeatKind::HpIndoorCylinder => &[3, 5, 7, 9],
+            // Midea M thermal Arctic split
+            HeatKind::HpOutdoorMidea => &[4, 6, 8, 10, 12, 14, 16],
             // Panasonic Aquarea bi-bloc J (R32) and H (R410A) kits
             _ => &[3, 5, 7, 9, 12, 16],
         }
@@ -348,6 +358,38 @@ pub fn backup_kw(size: u32) -> f64 {
     aquarea(size).backup
 }
 
+/// The outdoor units sized by their output curve.
+pub fn is_hp_outdoor(kind: HeatKind) -> bool {
+    matches!(kind, HeatKind::HpOutdoor | HeatKind::HpOutdoorMidea)
+}
+
+/// The electric backup heater of `kind`'s indoor unit, kW: none where
+/// the catalogue gives it no output (Midea: optional, made to order).
+pub fn backup_of(kind: HeatKind, size: u32) -> Option<f64> {
+    match kind {
+        HeatKind::HpOutdoorMidea => None,
+        _ => Some(backup_kw(size)),
+    }
+}
+
+/// Whether `kind`'s kit of `size` has a catalogue curve down to A-7.
+pub fn has_curve_of(kind: HeatKind, size: u32) -> bool {
+    match kind {
+        HeatKind::HpOutdoorMidea => true,
+        _ => has_curve(size),
+    }
+}
+
+/// `kind`'s output curve at flow temperature `t_flow`: Panasonic by
+/// [`hp_curve`], Midea by its catalogue's table of maximum output from
+/// −25 to +15 °C ([`super::midea::curve`]).
+pub fn curve_of(kind: HeatKind, size: u32, t_flow: f64) -> Vec<(f64, f64)> {
+    match kind {
+        HeatKind::HpOutdoorMidea => super::midea::curve(size, t_flow),
+        _ => hp_curve(size, t_flow),
+    }
+}
+
 /// The heat pump's output, kW, by outside temperature (°C) at a flow
 /// temperature of 35 or 55 °C, as the catalogue prints it: A-7, A2 and
 /// A7. The H kits have their A7 point only.
@@ -519,6 +561,72 @@ pub fn describe(kind: HeatKind, size: u32) -> HeatUnit {
                 format!("{} × {} × {} mm", mm(w), mm(h), mm(d)),
             );
             p("Expanzná nádoba", format!("{} l", if big { 10 } else { 8 }));
+        }
+        HeatKind::HpOutdoorMidea => {
+            let a = super::midea::arctic(size);
+            let [w, h, d] = a.whd;
+            dims = [w, d, h];
+            name = format!("Midea M thermal Arctic {} – vonkajšia jednotka", a.outdoor);
+            ifc = "IfcUnitaryEquipment";
+            let x = w / 2.0 - 0.04;
+            port("Chladivo – kvapalina", "CH", [x, 0.05, 0.25], 10);
+            port("Chladivo – plyn", "CH", [x, 0.12, 0.25], 16);
+            port("Napájanie", "E", [x, -0.05, 0.4], 0);
+            port("Odvod kondenzátu", "K", [0.0, 0.0, 0.06], 32);
+            p("Hydrobox", a.hydrobox.to_string());
+            if let Some(t) = a.outdoor_3ph {
+                p("Trojfázové vyhotovenie", t.to_string());
+            }
+            for (label, (q, cop)) in ["A7/W35", "A7/W45", "A7/W55", "A-7/W35", "A-7/W55"]
+                .iter()
+                .zip(a.rated)
+            {
+                p(
+                    &format!("Tepelný výkon {label}"),
+                    format!("{} kW, COP {}", n(q, 2), n(cop, 2)),
+                );
+            }
+            p(
+                "SCOP priemerná klíma W35 / W55",
+                format!("{} / {}", n(a.scop.0, 2), n(a.scop.1, 2)),
+            );
+            p(
+                "ηs W35 / W55",
+                format!("{} % / {} %", n(a.eta_s.0, 1), n(a.eta_s.1, 1)),
+            );
+            p("Akustický výkon", format!("{} dB", a.lw));
+            p("Prevádzková teplota (vykurovanie)", "−25 až +35 °C".into());
+            p("Chladivo", format!("R32, {} kg", n(a.charge, 2)));
+            p(
+                "Rúrky chladiva kvapalina / plyn",
+                format!("Φ{} / Φ{} mm", n(a.pipes.0, 2), n(a.pipes.1, 1)),
+            );
+            p(
+                "Dĺžka potrubia chladiva / prevýšenie",
+                "2 – 30 m / 20 m".into(),
+            );
+            p(
+                "Napájanie",
+                if a.outdoor_3ph.is_some() {
+                    "1 × 230 V / 50 Hz alebo 3 × 400 V / 50 Hz".into()
+                } else {
+                    "1 × 230 V / 50 Hz".into()
+                },
+            );
+            p("Hmotnosť", format!("{:.0} kg", a.kg));
+            p(
+                "Rozmer v × š × h",
+                format!("{} × {} × {} mm", mm(h), mm(w), mm(d)),
+            );
+            p(
+                "Záložný elektrický ohrev",
+                "voliteľný, výkon podľa objednávky (katalóg ho neuvádza)".into(),
+            );
+            p(
+                "Zdroj údajov",
+                "Midea M thermal Arctic Split Engineering Data Book, 2026-01 (V13), s. 20–25, 31–51"
+                    .into(),
+            );
         }
         HeatKind::HpOutdoor => {
             let a = aquarea(size);
@@ -768,8 +876,13 @@ pub fn unit(kind: HeatKind, size: u32) -> CatalogueObject {
             b.outline(super::squircle(v2(0.0, back(0.02)), 0.05, 0.05, 2.0, 24));
             b.line(v2(-w / 2.0, -d), v2(w / 2.0, 0.0));
         }
-        HeatKind::HpOutdoor => {
-            let [_, _, _, fans] = outdoor_row(u.size);
+        HeatKind::HpOutdoor | HeatKind::HpOutdoorMidea => {
+            // Midea: one fan in every size (specification, "Number of fans")
+            let fans = if kind == HeatKind::HpOutdoorMidea {
+                1.0
+            } else {
+                outdoor_row(u.size)[3]
+            };
             // the grille drawn over most of the unit's height or half of
             // it (its size is not in the catalogue)
             let fan_d = ((h - 0.06) / fans - 0.1).min(w * 0.6);
