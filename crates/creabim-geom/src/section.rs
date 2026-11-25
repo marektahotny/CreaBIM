@@ -973,6 +973,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             }
             // a structural section: ±0,000 dashed across (STA_002)
             if v.structural && *cut {
+                crate::structural::cross_system_pieces(model, &mut d.items);
                 if let Some(l) = crate::structural::zero_line(model, view, &d.items) {
                     d.items.push(l);
                 }
