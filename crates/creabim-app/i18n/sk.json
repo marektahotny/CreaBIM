@@ -8711,5 +8711,6 @@
  "No kit with the catalogue's output down to A-7 reaches the bivalence point aimed at": "Žiadna zostava s výkonom v katalógu až po A-7 nedosiahne cieľový bod bivalencie",
  "the largest,": "najväčšia,",
  "crosses the need at": "pretína potrebu pri",
- "The 12 and 16 kW kits (H) have only their A7 output in the catalogue, so they cannot be sized by the bivalence point.": "Zostavy 12 a 16 kW (H) majú v katalógu len výkon pri A7, preto sa podľa bodu bivalencie navrhnúť nedajú."
+ "The 12 and 16 kW kits (H) have only their A7 output in the catalogue, so they cannot be sized by the bivalence point.": "Zostavy 12 a 16 kW (H) majú v katalógu len výkon pri A7, preto sa podľa bodu bivalencie navrhnúť nedajú.",
+ "Midea M thermal Arctic split: the maker's catalogue values (maximum heating capacity, EN 14511) down to -25 °C; between the table's points the output is interpolated in a line.": "Midea M thermal Arctic split: hodnoty z katalógu výrobcu (maximálny vykurovací výkon, EN 14511) až po -25 °C; medzi bodmi tabuľky sa výkon interpoluje lineárne."
 }

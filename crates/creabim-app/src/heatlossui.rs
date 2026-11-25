@@ -653,9 +653,15 @@ impl CreaBimApp {
             s.input.te = o.te.clamp(-25.0, 0.0);
             if matches!(
                 s.kind,
-                HeatKind::HpOutdoor | HeatKind::HpIndoor | HeatKind::HpIndoorCylinder
+                HeatKind::HpOutdoor
+                    | HeatKind::HpOutdoorMidea
+                    | HeatKind::HpIndoor
+                    | HeatKind::HpIndoorCylinder
             ) {
-                s.size = creabim_services::hpsizing::recommend(&s.input);
+                s.size = creabim_services::hpsizing::recommend_of(
+                    super::heatsourceui::curve_kind(s.kind),
+                    &s.input,
+                );
             }
             self.heat_source = Some(s);
         }
