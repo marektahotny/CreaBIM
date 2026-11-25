@@ -393,6 +393,13 @@ pub fn centre(model: &Model, id: ElementId) -> Option<DVec3> {
         }
         // a room: its point on its floor
         ElementKind::Room(r) => r.at.extend(elevation(r.level)),
+        // a device on a pipe or duct: where it sits on its axis
+        ElementKind::Valve(v) => {
+            let ElementKind::Pipe(p) = &model.get(v.pipe)?.kind else {
+                return None;
+            };
+            v.at(p) + DVec3::Z * elevation(p.level)
+        }
         // a ceiling: the middle of its outline, on its underside
         ElementKind::Ceiling(c) => {
             let o = c.outline(model)?;
@@ -538,6 +545,15 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
     }
     if let Some(hand) = door_hand(model, id) {
         return (format!("{hand}\n{}", e.name), true);
+    }
+    // a device on the ducts: its position in a circle (George 2026-11-25)
+    if matches!(e.kind, ElementKind::Valve(_)) {
+        if let Some(p) = crate::mep::air_positions(model)
+            .iter()
+            .find(|p| p.valves.contains(&id))
+        {
+            return (p.number.to_string(), true);
+        }
     }
     match &e.kind {
         ElementKind::Opening(o) => (e.name.clone(), o.kind == OpeningKind::Door),

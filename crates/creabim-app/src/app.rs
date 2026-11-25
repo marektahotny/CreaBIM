@@ -13945,19 +13945,21 @@ impl eframe::App for CreaBimApp {
             }
         }
         // for a shot: a primary drag from "x0,y0" to "x1,y1", pressed at
-        // frame 14 and let go at frame 34 (`CREABIM_SHOT_DRAG`)
+        // frame 14 (or the fifth value) and let go 20 frames later
+        // (`CREABIM_SHOT_DRAG`)
         if let Ok(d) = std::env::var("CREABIM_SHOT_DRAG") {
             let v: Vec<f32> = d.split(',').filter_map(|t| t.trim().parse().ok()).collect();
             let frame = ctx.cumulative_frame_nr();
-            if v.len() == 4 && (12..=36).contains(&frame) {
-                let t = ((frame as f32 - 14.0) / 20.0).clamp(0.0, 1.0);
+            let f0 = v.get(4).map_or(14, |f| *f as u64);
+            if v.len() >= 4 && (f0 - 2..=f0 + 22).contains(&frame) {
+                let t = ((frame as f32 - f0 as f32) / 20.0).clamp(0.0, 1.0);
                 let at = egui::pos2(v[0] + (v[2] - v[0]) * t, v[1] + (v[3] - v[1]) * t);
                 raw_input.events.push(egui::Event::PointerMoved(at));
-                if frame == 14 || frame == 34 {
+                if frame == f0 || frame == f0 + 20 {
                     raw_input.events.push(egui::Event::PointerButton {
                         pos: at,
                         button: egui::PointerButton::Primary,
-                        pressed: frame == 14,
+                        pressed: frame == f0,
                         modifiers: egui::Modifiers::NONE,
                     });
                 }
@@ -15048,6 +15050,12 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // a trade's plan tags its rooms as the architecture plan of its
     // storey does (George 2026-11-23)
     for t in creabim_core::viewmodes::trade_room_tags(&model) {
+        tx = tx.insert(t);
+        any = true;
+    }
+    // the devices on the ducts get their position marks as tags, dragged
+    // like any tag (George 2026-11-25)
+    for t in creabim_geom::mep::air_position_tags(&model) {
         tx = tx.insert(t);
         any = true;
     }

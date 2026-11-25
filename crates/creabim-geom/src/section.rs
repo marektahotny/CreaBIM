@@ -1286,7 +1286,15 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                         } else {
                             crate::valves::valve_plan_sized(model, e, x, half)
                         });
-                        if let Some(n) = positions.iter().find(|p| p.valves.contains(&e.id)) {
+                        // drawn by its tag where it has one in this view
+                        let tagged = model.iter().any(|t| {
+                            matches!(&t.kind, ElementKind::Tag(t) if t.view == view && t.host == e.id)
+                        });
+                        if let Some(n) = positions
+                            .iter()
+                            .find(|p| p.valves.contains(&e.id))
+                            .filter(|_| !tagged)
+                        {
                             lines.extend(crate::mep::air_mark(
                                 model,
                                 e,

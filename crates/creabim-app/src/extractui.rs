@@ -323,6 +323,8 @@ impl CreaBimApp {
             }
             match self.doc.commit(tx) {
                 Ok(_) => {
+                    // the new devices' position marks, as tags
+                    self.tag_trade_rooms();
                     self.status = format!("{}: {n}", t("Extract fans placed"));
                     if !warn.is_empty() {
                         self.status = format!("{} · {}", self.status, warn.join(" "));
