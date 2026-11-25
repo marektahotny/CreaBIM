@@ -192,10 +192,154 @@ pub const FANS: &[Fan] = &[
         price: Some((197.52, "€")),
         source: "S&P list SILENT 100 (kvelektro.cz), krivka SILENT-100 (czvzduchotechnika.cz); cena czvzduchotechnika.cz 11/2026",
     },
+    Fan {
+        id: "SP-TD250-100-SILENT",
+        maker: "Soler & Palau",
+        name: "TD-250/100 SILENT",
+        in_room: false,
+        dn: 100.0,
+        speeds: &[
+            Speed {
+                name: "VO",
+                rpm: 2110.0,
+                q_free: 250.0,
+                watts: 27.0,
+                curve: &[
+                    (0.0, 136.6),
+                    (10.0, 130.5),
+                    (20.0, 124.4),
+                    (30.0, 118.3),
+                    (40.0, 112.4),
+                    (50.0, 106.7),
+                    (60.0, 101.3),
+                    (70.0, 96.5),
+                    (80.0, 91.9),
+                    (90.0, 87.6),
+                    (100.0, 83.3),
+                    (110.0, 79.1),
+                    (120.0, 74.9),
+                    (130.0, 70.6),
+                    (140.0, 66.4),
+                    (150.0, 62.3),
+                    (160.0, 58.0),
+                    (170.0, 52.9),
+                    (180.0, 46.7),
+                    (190.0, 40.4),
+                    (200.0, 34.5),
+                    (210.0, 29.0),
+                    (220.0, 23.0),
+                    (230.0, 15.8),
+                    (240.0, 7.3),
+                    (247.6, 0.0),
+                ],
+            },
+            Speed {
+                name: "NO",
+                rpm: 1680.0,
+                q_free: 200.0,
+                watts: 21.0,
+                curve: &[
+                    (0.0, 101.1),
+                    (10.0, 95.0),
+                    (20.0, 89.0),
+                    (30.0, 83.4),
+                    (40.0, 78.5),
+                    (50.0, 74.3),
+                    (60.0, 70.9),
+                    (70.0, 67.2),
+                    (80.0, 63.2),
+                    (90.0, 58.9),
+                    (100.0, 54.2),
+                    (110.0, 49.8),
+                    (120.0, 45.8),
+                    (130.0, 41.7),
+                    (140.0, 36.3),
+                    (150.0, 29.6),
+                    (160.0, 23.1),
+                    (170.0, 17.0),
+                    (180.0, 11.3),
+                    (190.0, 5.7),
+                    (200.3, 0.0),
+                ],
+            },
+        ],
+        about: "Potrubný diagonálny ventilátor Ø100 s hlukovým absorbérom, 230 V, 2 otáčky (VO 0,12 A, NO 0,10 A), -20 až +40 °C, 5,4 kg; regulátor REB 1 / REV 1,5, prepínač otáčok COM 2 alebo REGUL 2",
+        price: Some((5189.0, "Kč")),
+        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz, kvelektro.cz), krivka TD-250/100 SILENT (vektor PDF); cena czvzduchotechnika.cz 11/2026",
+    },
+    Fan {
+        id: "SP-TD350-125-SILENT",
+        maker: "Soler & Palau",
+        name: "TD-350/125 SILENT",
+        in_room: false,
+        dn: 125.0,
+        speeds: &[
+            Speed {
+                name: "VO",
+                rpm: 2100.0,
+                q_free: 330.0,
+                watts: 27.0,
+                curve: &[
+                    (0.0, 132.4),
+                    (15.0, 125.6),
+                    (30.0, 118.9),
+                    (45.0, 112.5),
+                    (60.0, 106.4),
+                    (75.0, 100.7),
+                    (90.0, 95.6),
+                    (105.0, 91.3),
+                    (120.0, 88.2),
+                    (135.0, 85.8),
+                    (150.0, 83.1),
+                    (165.0, 79.6),
+                    (180.0, 75.7),
+                    (195.0, 71.7),
+                    (210.0, 67.4),
+                    (225.0, 61.7),
+                    (240.0, 53.7),
+                    (255.0, 44.6),
+                    (270.0, 36.2),
+                    (285.0, 28.0),
+                    (300.0, 19.5),
+                    (315.0, 10.3),
+                    (330.5, 0.0),
+                ],
+            },
+            Speed {
+                name: "NO",
+                rpm: 1650.0,
+                q_free: 260.0,
+                watts: 21.0,
+                curve: &[
+                    (0.0, 99.3),
+                    (15.0, 91.3),
+                    (30.0, 84.7),
+                    (45.0, 79.3),
+                    (60.0, 74.9),
+                    (75.0, 71.1),
+                    (90.0, 67.4),
+                    (105.0, 63.6),
+                    (120.0, 59.5),
+                    (135.0, 54.9),
+                    (150.0, 50.0),
+                    (165.0, 45.3),
+                    (180.0, 40.4),
+                    (195.0, 34.9),
+                    (210.0, 27.7),
+                    (225.0, 18.8),
+                    (240.0, 9.4),
+                    (254.5, 0.0),
+                ],
+            },
+        ],
+        about: "Potrubný diagonálny ventilátor Ø125 s hlukovým absorbérom, 230 V, 2 otáčky (VO 0,12 A, NO 0,10 A), -20 až +40 °C, 5 kg; regulátor REB 1 / REV 1,5, prepínač otáčok COM 2 alebo REGUL 2",
+        price: Some((5596.0, "Kč")),
+        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz, kvelektro.cz), krivka TD-350/125 SILENT (vektor PDF); cena czvzduchotechnika.cz 11/2026",
+    },
 ];
 
 /// The fan a shared branch of several rooms is designed with.
-pub const CENTRAL_FAN: &str = "SP-TD160-100-SILENT";
+pub const CENTRAL_FAN: &str = "SP-TD350-125-SILENT";
 
 pub fn fan(id: &str) -> Option<&'static Fan> {
     FANS.iter().find(|f| f.id == id)
@@ -803,6 +947,48 @@ pub const VALVES: &[Accessory] = &[
         source: "Systemair, EFF handbook 2023-08 (A-EFF_DATASHEET_ENG_GLO_HANDBOOK_EFF_202308.pdf), str. 9 graf EFF-100-SW",
     },
     Accessory {
+        id: "SA-EFF-125-SW",
+        maker: "Systemair",
+        name: "EFF-125-SW tanierový ventil odvodný",
+        dn: 125.0,
+        // read off the maker's chart "EFF-125-SW Pressure drop" (vector
+        // curve of the PDF), setting +10 mm = fully open
+        loss: &[
+            (62.8, 10.8),
+            (67.0, 12.3),
+            (71.5, 13.9),
+            (74.7, 15.1),
+            (79.0, 16.9),
+            (84.9, 19.5),
+            (88.9, 21.3),
+            (93.5, 23.6),
+            (97.1, 25.4),
+            (100.7, 27.3),
+            (105.9, 30.0),
+            (110.9, 32.9),
+            (114.9, 35.4),
+            (119.0, 37.9),
+            (122.6, 40.1),
+            (126.1, 42.3),
+            (131.8, 46.2),
+            (136.0, 49.3),
+            (140.2, 52.3),
+            (146.8, 57.2),
+            (153.4, 62.3),
+            (159.7, 67.4),
+            (165.5, 72.4),
+            (171.8, 78.0),
+            (178.2, 83.7),
+            (184.0, 88.9),
+            (189.9, 94.7),
+            (196.0, 100.9),
+            (199.0, 104.1),
+        ],
+        about: "Kovový odvodný tanierový ventil (pozinkovaný plech, RAL 9003), Ø 125; montážny rámček RF-BOR-C-125; strata pri nastavení +10 mm (úplne otvorený)",
+        price: None,
+        source: "Systemair, EFF handbook 2023-08 (A-EFF_DATASHEET_ENG_GLO_HANDBOOK_EFF_202308.pdf), str. 9 graf EFF-125-SW",
+    },
+    Accessory {
     id: "ED-IT-PRO-100",
     maker: "Elektrodesign",
     name: "IT-PRO 100 tanierový ventil",
@@ -1240,15 +1426,26 @@ pub fn propose_central(
         id
     };
     let at3 = |q: DVec2, z: f64| DVec3::new(q.x, q.y, z);
-    // the branches: up, then square across to the collecting duct
+    // the branches: up, then square across to the collecting duct, as
+    // wide as a branch's velocity allows, with the valve of that size
+    let branch_v = ductsizing::Limits::default().branch;
+    let mut widths: Vec<(f64, f64)> = vec![];
     for p in &pts {
-        let up = duct(&mut add, "VZO", 100.0, at3(p.at, p.h), at3(p.at, z_run));
+        let want = ductsizing::round_for(p.need, branch_v).max(100.0);
+        let valve = VALVES
+            .iter()
+            .filter(|v| v.dn >= want - 1.0 && !v.loss.is_empty())
+            .min_by(|a, b| a.dn.total_cmp(&b.dn))
+            .unwrap_or(&VALVES[0]);
+        let d = valve.dn;
+        widths.push((p.at.dot(along), d));
+        let up = duct(&mut add, "VZO", d, at3(p.at, p.h), at3(p.at, z_run));
         let f = foot(p.at);
         if f.distance(p.at) > JOIN {
-            duct(&mut add, "VZO", 100.0, at3(p.at, z_run), at3(f, z_run));
+            duct(&mut add, "VZO", d, at3(p.at, z_run), at3(f, z_run));
         }
         let mut v = Valve::new(up, 0.0, "vyustO");
-        v.product = Some(VALVES[0].id.into());
+        v.product = Some(valve.id.into());
         add.push(Element::new(
             format!("{tag} – odvodný ventil {}", p.number),
             ElementKind::Valve(v),
@@ -1268,7 +1465,13 @@ pub fn propose_central(
     let main_v = ductsizing::Limits::default().main;
     for w in stops.windows(2) {
         let q = need_upto(w[0]);
-        let d = ductsizing::round_for(q, main_v).max(100.0);
+        // never narrower than a branch it takes
+        let widest = widths
+            .iter()
+            .filter(|(s, _)| *s * out <= w[0] * out + JOIN)
+            .map(|x| x.1)
+            .fold(100.0, f64::max);
+        let d = ductsizing::round_for(q, main_v).max(widest);
         duct(
             &mut add,
             "VZO",
@@ -1278,7 +1481,9 @@ pub fn propose_central(
         );
     }
     let total: f64 = pts.iter().map(|p| p.need).sum();
-    let d_fan = ductsizing::round_for(total, main_v).max(fan.dn);
+    let d_fan = ductsizing::round_for(total, main_v)
+        .max(fan.dn)
+        .max(widths.iter().map(|x| x.1).fold(100.0, f64::max));
     let to_fan = duct(
         &mut add,
         "VZO",
@@ -1351,8 +1556,9 @@ mod tests {
             for s in f.speeds {
                 assert!(s.curve.windows(2).all(|w| w[1].0 > w[0].0), "{}", f.name);
                 assert_eq!(s.curve.last().unwrap().1, 0.0);
+                // the table's free flow, rounded, against the chart's end
                 assert!(
-                    (s.curve.last().unwrap().0 - s.q_free).abs() <= 2.0,
+                    (s.curve.last().unwrap().0 - s.q_free).abs() <= 0.025 * s.q_free,
                     "{}",
                     f.name
                 );
