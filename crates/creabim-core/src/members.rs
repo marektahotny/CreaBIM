@@ -127,6 +127,10 @@ pub struct Column {
     /// moves as the doors' and fixtures' marks do).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark_at: Option<DVec2>,
+    /// A post of a timber roof or a steel column: what it is, its section
+    /// and grade (see [`crate::framing`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<crate::framing::Framing>,
 }
 
 /// A library profile a member is made with: its name, and its outline as
@@ -154,6 +158,7 @@ impl Column {
             wrap: None,
             piece: None,
             mark_at: None,
+            framing: None,
         }
     }
 
@@ -309,6 +314,10 @@ pub struct Beam {
     /// A board of another beam's wrap, kept by [`crate::wrap::settle`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub piece: Option<crate::wrap::WrapPiece>,
+    /// A member of a timber roof or a steel frame: what it is, its
+    /// section and grade (see [`crate::framing`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<crate::framing::Framing>,
 }
 
 fn is_zero2(v: &[f64; 2]) -> bool {
@@ -415,6 +424,7 @@ impl Beam {
             lintel: None,
             wrap: None,
             piece: None,
+            framing: None,
         }
     }
 

@@ -1094,6 +1094,11 @@ pub struct Tag {
     /// keeps no room clear for the leaf or the numbers on its leader.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub placed: bool,
+    /// A roof timber's or steel member's underside height in a box
+    /// (`S.H.=+3,680`, George's sample krov 2026-11-26) instead of its
+    /// position mark.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub underside: bool,
 }
 
 impl Tag {
@@ -1110,6 +1115,7 @@ impl Tag {
             leader_end: None,
             material: false,
             placed: false,
+            underside: false,
         }
     }
 }
@@ -2876,10 +2882,16 @@ pub enum ScheduleCategory {
     DrainSections,
     /// The axonometry of the water supply, drawn at 1:50.
     WaterAxonometry,
+    /// The list of the roof's timber (výkaz reziva) by position (D-01,
+    /// D-02…): name, pieces, width, height, length of one and all, volume.
+    TimberList,
+    /// The list of steel members (výpis oceľových prvkov) by position:
+    /// section, pieces, length, kg/m and mass, with the total.
+    SteelList,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 32] = [
+    pub const ALL: [ScheduleCategory; 34] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2912,6 +2924,8 @@ impl ScheduleCategory {
         ScheduleCategory::RingBeamList,
         ScheduleCategory::DrainSections,
         ScheduleCategory::WaterAxonometry,
+        ScheduleCategory::TimberList,
+        ScheduleCategory::SteelList,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2949,6 +2963,8 @@ impl ScheduleCategory {
             ScheduleCategory::RingBeamList => return "List of ring beams".into(),
             ScheduleCategory::DrainSections => return "Drain sections".into(),
             ScheduleCategory::WaterAxonometry => return "Water supply axonometry".into(),
+            ScheduleCategory::TimberList => return "Timber list".into(),
+            ScheduleCategory::SteelList => return "Steel list".into(),
         };
         format!("{one} Schedule")
     }
@@ -2995,6 +3011,8 @@ impl ScheduleCategory {
             ScheduleCategory::RingBeamList => "List of ring beams",
             ScheduleCategory::DrainSections => "Drain sections",
             ScheduleCategory::WaterAxonometry => "Water supply axonometry",
+            ScheduleCategory::TimberList => "Timber list",
+            ScheduleCategory::SteelList => "Steel list",
         }
     }
 

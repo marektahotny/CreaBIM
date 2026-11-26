@@ -8526,6 +8526,68 @@ pub fn tags_on_placement(model: &creabim_core::Model, ids: &[ElementId]) -> Vec<
         .collect()
 }
 
+/// A roof timber's or steel member's tags in each plan of its level: its
+/// position mark in a circle to one side, a beam's underside in a box
+/// (`S.H.=+3,680`) to the other (George's sample krov 2026-11-26). Both
+/// are ordinary tags: dragged, their leaders stay on the member.
+pub fn framing_tags(model: &creabim_core::Model, ids: &[ElementId]) -> Vec<Element> {
+    use creabim_core::Tag;
+    let mut out = vec![];
+    for id in ids {
+        let Some(e) = model.get(*id) else { continue };
+        if creabim_core::framing::of(e).is_none() {
+            continue;
+        }
+        let (level, across, beam) = match &e.kind {
+            // the underside only by a level member: on a sloped one
+            // (a rafter) it says nothing (George 2026-11-26)
+            ElementKind::Beam(b) => (
+                b.level,
+                (b.end - b.start).normalize_or(DVec2::X).perp(),
+                (b.rise[1] - b.rise[0]).abs() < 1e-6,
+            ),
+            ElementKind::Column(c) => (c.level, DVec2::new(-0.7, 0.7), false),
+            _ => continue,
+        };
+        // the plans of its level, not a roof plan seen from above (no
+        // members on the architect's drawing); only the structural ones
+        // when the level has one
+        let plans: Vec<&Element> = model
+            .iter()
+            .filter(|v| match &v.kind {
+                ElementKind::View(view) => {
+                    matches!(view.kind, ViewKind::Plan { level: l, .. } if l == level)
+                        && !view.graphics.range.from_above
+                }
+                _ => false,
+            })
+            .collect();
+        let structural = plans
+            .iter()
+            .any(|v| matches!(&v.kind, ElementKind::View(view) if view.structural));
+        for v in plans {
+            let ElementKind::View(view) = &v.kind else {
+                continue;
+            };
+            if structural && !view.structural {
+                continue;
+            }
+            // 7 mm on paper off the member's middle
+            let reach = 0.007 * view.scale;
+            let mut t = Tag::new(v.id, *id, across * reach);
+            t.placed = true;
+            out.push(Element::new("Tag", ElementKind::Tag(t)));
+            if beam {
+                let mut t = Tag::new(v.id, *id, -across * reach);
+                t.underside = true;
+                t.placed = true;
+                out.push(Element::new("Tag", ElementKind::Tag(t)));
+            }
+        }
+    }
+    out
+}
+
 /// `model` with every door and window tagged in every plan: what a new
 /// project starts with.
 pub fn with_opening_tags(model: creabim_core::Model) -> creabim_core::Model {
