@@ -1783,6 +1783,8 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::BuildingFigures => core::ScheduleCategory::BuildingFigures,
                 f::ScheduleCategory::FireRisk => core::ScheduleCategory::FireRisk,
                 f::ScheduleCategory::FlashingTable => core::ScheduleCategory::FlashingTable,
+                f::ScheduleCategory::DrainSections => core::ScheduleCategory::DrainSections,
+                f::ScheduleCategory::WaterAxonometry => core::ScheduleCategory::WaterAxonometry,
                 f::ScheduleCategory::Identification => core::ScheduleCategory::Identification,
                 f::ScheduleCategory::LintelPositions => core::ScheduleCategory::LintelPositions,
                 f::ScheduleCategory::RingBeamList => core::ScheduleCategory::RingBeamList,

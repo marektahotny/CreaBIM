@@ -1071,6 +1071,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             if *category == creabim_core::ScheduleCategory::FlashingTable {
                 return Some(crate::flashingtable::drawing(view, &e.name, model));
             }
+            if *category == creabim_core::ScheduleCategory::WaterAxonometry {
+                return Some(crate::wateraxo::drawing(view, &e.name, model));
+            }
+            if *category == creabim_core::ScheduleCategory::DrainSections {
+                return Some(crate::drainsections::drawing(view, &e.name, model));
+            }
             if *category == creabim_core::ScheduleCategory::BoardDiagram {
                 return Some(crate::boarddiagram::drawing(view, &e.name, model));
             }
