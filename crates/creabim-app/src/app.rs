@@ -77,6 +77,8 @@ mod fixturelegend;
 mod floorheatui;
 #[path = "fragmentui.rs"]
 mod fragmentui;
+#[path = "framingui.rs"]
+pub(crate) mod framingui;
 #[path = "gridvis.rs"]
 mod gridvis;
 #[path = "heatlossui.rs"]
@@ -253,6 +255,9 @@ pub struct CreaBimApp {
     maximized_once: bool,
     /// Frames that have asked for the maximized main window so far.
     maximize_asks: u8,
+    /// The undo and redo depths the trades' tags were last brought up to
+    /// date at (penetration labels, VZT position marks).
+    tags_at: Option<creabim_core::StepId>,
     /// The pointer left the drawing area (onto a web pane, or out of the
     /// window) and hasn't come back yet.
     pointer_away: bool,
@@ -360,7 +365,7 @@ pub struct CreaBimApp {
     saved_revision: Option<u64>,
     /// The undo history when it was last opened or saved: how many steps
     /// and the last one's id, to count the changes since (Save the changes).
-    saved_mark: (usize, Option<creabim_core::document::StepId>),
+    saved_mark: (usize, Option<creabim_core::StepId>),
     /// The window title last set, so it is only sent when it changes.
     title: String,
     /// The status and tool last written to the activity log.
@@ -635,6 +640,7 @@ impl CreaBimApp {
             // a dev shot keeps its fixed size
             maximized_once: std::env::var_os("CREABIM_SHOT").is_some(),
             maximize_asks: 0,
+            tags_at: None,
             pointer_away: true,
             pointer_seen: 0.0,
             prop_front: None,
@@ -10627,7 +10633,23 @@ crate::props::row(ui, "File names", |ui| {
                             }
                         }
                         // the take-off groups and sorts in its own bar
-                        if *category != ScheduleCategory::Materials
+                        // the timber or steel list: by mark, or each
+                        // cross-section's lengths summed for the budget
+                        // (George 2026-11-26)
+                        let framing = matches!(
+                            category,
+                            ScheduleCategory::TimberList | ScheduleCategory::SteelList
+                        );
+                        if framing {
+                            if crate::props::switch(ui, by_type, "Group by cross-section")
+                                .on_hover_text(crate::i18n::tr(
+                                    "One row per cross-section and grade with its pieces and lengths summed, for the budget; off: a row per position mark.",
+                                ))
+                                .changed()
+                            {
+                                label = "Group schedule by cross-section"
+                            }
+                        } else if *category != ScheduleCategory::Materials
                             && crate::props::switch(ui, by_type, "Group by type")
                                 .on_hover_text(crate::i18n::tr(
                                     "List the rows under a heading per element type, with its count.",
@@ -13952,19 +13974,21 @@ impl eframe::App for CreaBimApp {
             }
         }
         // for a shot: a primary drag from "x0,y0" to "x1,y1", pressed at
-        // frame 14 and let go at frame 34 (`CREABIM_SHOT_DRAG`)
+        // frame 14 (or the fifth value) and let go 20 frames later
+        // (`CREABIM_SHOT_DRAG`)
         if let Ok(d) = std::env::var("CREABIM_SHOT_DRAG") {
             let v: Vec<f32> = d.split(',').filter_map(|t| t.trim().parse().ok()).collect();
             let frame = ctx.cumulative_frame_nr();
-            if v.len() == 4 && (12..=36).contains(&frame) {
-                let t = ((frame as f32 - 14.0) / 20.0).clamp(0.0, 1.0);
+            let f0 = v.get(4).map_or(14, |f| *f as u64);
+            if v.len() >= 4 && (f0 - 2..=f0 + 22).contains(&frame) {
+                let t = ((frame as f32 - f0 as f32) / 20.0).clamp(0.0, 1.0);
                 let at = egui::pos2(v[0] + (v[2] - v[0]) * t, v[1] + (v[3] - v[1]) * t);
                 raw_input.events.push(egui::Event::PointerMoved(at));
-                if frame == 14 || frame == 34 {
+                if frame == f0 || frame == f0 + 20 {
                     raw_input.events.push(egui::Event::PointerButton {
                         pos: at,
                         button: egui::PointerButton::Primary,
-                        pressed: frame == 14,
+                        pressed: frame == f0,
                         modifiers: egui::Modifiers::NONE,
                     });
                 }
@@ -14044,10 +14068,15 @@ impl eframe::App for CreaBimApp {
         let _perf = Perf::new("frame");
         crate::files::remember_main_window(frame);
         if !self.maximized_once {
-            let maximized = ui.ctx().input(|i| i.viewport().maximized);
             // the first frame's ask goes to the hidden window: not trusted
             self.maximize_asks += 1;
-            if (maximized == Some(true) && self.maximize_asks > 2) || self.maximize_asks > 30 {
+            // on Windows the window itself is asked (IsZoomed) and maximized
+            // straight away once it shows (ShowWindow), not through winit
+            #[cfg(windows)]
+            let maximized = crate::files::maximize_main_window();
+            #[cfg(not(windows))]
+            let maximized = ui.ctx().input(|i| i.viewport().maximized) == Some(true);
+            if (maximized && self.maximize_asks > 2) || self.maximize_asks > 30 {
                 self.maximized_once = true;
             } else {
                 ui.ctx()
@@ -14055,6 +14084,12 @@ impl eframe::App for CreaBimApp {
                 ui.ctx()
                     .request_repaint_after(std::time::Duration::from_millis(100));
             }
+        }
+        // the trades' tags follow the model: a penetration's label for each
+        // penetration the plans take over, a position mark for each device
+        // on the ducts (George 2026-11-25), once the mouse is up
+        if !ui.input(|i| i.pointer.any_down()) {
+            self.keep_trade_tags();
         }
         // never lose work to a close: unsaved changes ask first
         if ui.ctx().input(|i| i.viewport().close_requested()) && !self.close_ok && self.unsaved() {
@@ -15063,6 +15098,20 @@ pub(crate) fn with_plan_views(model: Model) -> Model {
     // a trade's plan tags its rooms as the architecture plan of its
     // storey does (George 2026-11-23)
     for t in creabim_core::viewmodes::trade_room_tags(&model) {
+        tx = tx.insert(t);
+        any = true;
+    }
+    // the penetrations taken over into the architect's and structural
+    // plans get their labels as tags, dragged like any tag
+    let (labels, stale) = creabim_geom::tradepen::label_tags(&model);
+    any |= !labels.is_empty() || !stale.is_empty();
+    tx = tx.remove_all_cascade(&model, &stale);
+    for t in labels {
+        tx = tx.insert(t);
+    }
+    // the devices on the ducts get their position marks as tags, dragged
+    // like any tag (George 2026-11-25)
+    for t in creabim_geom::mep::air_position_tags(&model) {
         tx = tx.insert(t);
         any = true;
     }

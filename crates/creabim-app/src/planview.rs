@@ -2667,9 +2667,18 @@ fn show_pane(
     // a pipe's size label or a fixture's mark (S 16x2, WC, U) is dragged
     // straight away, selected or not: it is text only, never the pipe
     let press_on_mark = response.drag_started_by(egui::PointerButton::Primary)
-        && ui
-            .input(|i| i.pointer.press_origin())
-            .is_some_and(|p0| on_mark(doc.model(), &plan.items, xf.to_world(p0), mm));
+        && ui.input(|i| i.pointer.press_origin()).is_some_and(|p0| {
+            let w = xf.to_world(p0);
+            on_mark(doc.model(), &plan.items, w, mm)
+                    // a label of the water axonometry or drain sections
+                    || creabim_geom::labels::movable(doc.model(), view)
+                        && creabim_geom::labels::found(view, &plan.items)
+                            .iter()
+                            .any(|(_, _, lo, hi)| {
+                                let pad = DVec2::splat(0.8);
+                                w.cmpge(*lo - pad).all() && w.cmple(*hi + pad).all()
+                            })
+        });
     // the dot at a selected dimension's witness line end: it lies off
     // the dimension's line, so it is looked for on its own
     let press_on_witness = response.drag_started_by(egui::PointerButton::Primary)
@@ -8009,6 +8018,13 @@ fn dim_snap_guided(
             }
         }
     }
+    // the centre of a penetration taken over into the plan: a dimension
+    // to it is kept on its pipe and follows it (George 2026-11-25)
+    if cfg.allows(SnapKind::Endpoint) {
+        for (pipe, q) in creabim_geom::tradepen::centres(model, view) {
+            consider(pipe, q);
+        }
+    }
     let project = |q: DVec3| Some(xf.to_screen(q.truncate()));
     let hit = snapper.and_then(|s| {
         // from the point clicked last, as the drawing tools snap from
@@ -8510,6 +8526,68 @@ pub fn tags_on_placement(model: &creabim_core::Model, ids: &[ElementId]) -> Vec<
         .collect()
 }
 
+/// A roof timber's or steel member's tags in each plan of its level: its
+/// position mark in a circle to one side, a beam's underside in a box
+/// (`S.H.=+3,680`) to the other (George's sample krov 2026-11-26). Both
+/// are ordinary tags: dragged, their leaders stay on the member.
+pub fn framing_tags(model: &creabim_core::Model, ids: &[ElementId]) -> Vec<Element> {
+    use creabim_core::Tag;
+    let mut out = vec![];
+    for id in ids {
+        let Some(e) = model.get(*id) else { continue };
+        if creabim_core::framing::of(e).is_none() {
+            continue;
+        }
+        let (level, across, beam) = match &e.kind {
+            // the underside only by a level member: on a sloped one
+            // (a rafter) it says nothing (George 2026-11-26)
+            ElementKind::Beam(b) => (
+                b.level,
+                (b.end - b.start).normalize_or(DVec2::X).perp(),
+                (b.rise[1] - b.rise[0]).abs() < 1e-6,
+            ),
+            ElementKind::Column(c) => (c.level, DVec2::new(-0.7, 0.7), false),
+            _ => continue,
+        };
+        // the plans of its level, not a roof plan seen from above (no
+        // members on the architect's drawing); only the structural ones
+        // when the level has one
+        let plans: Vec<&Element> = model
+            .iter()
+            .filter(|v| match &v.kind {
+                ElementKind::View(view) => {
+                    matches!(view.kind, ViewKind::Plan { level: l, .. } if l == level)
+                        && !view.graphics.range.from_above
+                }
+                _ => false,
+            })
+            .collect();
+        let structural = plans
+            .iter()
+            .any(|v| matches!(&v.kind, ElementKind::View(view) if view.structural));
+        for v in plans {
+            let ElementKind::View(view) = &v.kind else {
+                continue;
+            };
+            if structural && !view.structural {
+                continue;
+            }
+            // 7 mm on paper off the member's middle
+            let reach = 0.007 * view.scale;
+            let mut t = Tag::new(v.id, *id, across * reach);
+            t.placed = true;
+            out.push(Element::new("Tag", ElementKind::Tag(t)));
+            if beam {
+                let mut t = Tag::new(v.id, *id, -across * reach);
+                t.underside = true;
+                t.placed = true;
+                out.push(Element::new("Tag", ElementKind::Tag(t)));
+            }
+        }
+    }
+    out
+}
+
 /// `model` with every door and window tagged in every plan: what a new
 /// project starts with.
 pub fn with_opening_tags(model: creabim_core::Model) -> creabim_core::Model {
@@ -8744,6 +8822,10 @@ fn drag_annotation(
 ) -> Option<Option<String>> {
     if let Some(r) = drag_witness(doc, view, xf, response, state, selection) {
         return Some(r);
+    }
+    // the labels of the water axonometry and the drain sections
+    if creabim_geom::labels::movable(doc.model(), view) {
+        return drag_drawn_label(doc, view, drawing, xf, response, state, selection);
     }
     if response.drag_started_by(egui::PointerButton::Primary) {
         let p = response
@@ -9077,6 +9159,68 @@ fn drag_annotation(
         }
         _ => Ok(()),
     };
+    Some(r.err().map(|e| e.to_string()))
+}
+
+/// Drags a label of a drawn schedule (a pipe's size, a fixture's or a
+/// stack's mark in the water axonometry or the drain sections): it is
+/// kept in the view, what it labels stays (George 2026-11-26).
+fn drag_drawn_label(
+    doc: &mut Document,
+    view: ElementId,
+    drawing: &Drawing,
+    xf: &Xf,
+    response: &egui::Response,
+    state: &mut PlanState,
+    selection: &mut Selection,
+) -> Option<Option<String>> {
+    let moved = |doc: &Document, id: ElementId, n: u32| match doc.model().get(view).map(|e| &e.kind)
+    {
+        Some(ElementKind::View(v)) => v
+            .label_moves
+            .iter()
+            .find(|m| m.of == id && m.n == n)
+            .map_or(DVec2::ZERO, |m| m.by),
+        _ => DVec2::ZERO,
+    };
+    if response.drag_started_by(egui::PointerButton::Primary) {
+        let p = response
+            .ctx
+            .input(|i| i.pointer.press_origin())
+            .or(response.interact_pointer_pos())?;
+        let w = xf.to_world(p);
+        let pad = DVec2::splat(0.8);
+        let hit = creabim_geom::labels::found(view, &drawing.items)
+            .into_iter()
+            .rev()
+            .find(|(_, _, lo, hi)| w.cmpge(*lo - pad).all() && w.cmple(*hi + pad).all());
+        if let Some((id, n, _, _)) = hit {
+            state.anno_drag = Some((id, w, moved(doc, id, n), Some(n as usize)));
+            state.drag_owner = Some(response.id);
+            selection.only(id);
+        }
+    }
+    if state.anno_drag.is_some() && state.drag_owner != Some(response.id) {
+        return None;
+    }
+    let (id, grab, start, n) = state.anno_drag?;
+    if response.drag_stopped() || !response.dragged() {
+        state.anno_drag = None;
+        return Some(None);
+    }
+    let p = xf.to_world(response.interact_pointer_pos()?);
+    let n = n? as u32;
+    let by = start + p - grab;
+    let r = doc.edit_merged(view, "Move label", |e| {
+        if let ElementKind::View(v) = &mut e.kind {
+            match v.label_moves.iter_mut().find(|m| m.of == id && m.n == n) {
+                Some(m) => m.by = by,
+                None => v
+                    .label_moves
+                    .push(creabim_core::LabelMove { of: id, n, by }),
+            }
+        }
+    });
     Some(r.err().map(|e| e.to_string()))
 }
 

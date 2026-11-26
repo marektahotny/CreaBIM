@@ -334,6 +334,21 @@ pub fn settle(model: &Model) -> Transaction {
     out
 }
 
+/// Is `e` insulation laid into the formwork of a concrete member as it is
+/// cast (a ring beam's or an RC lintel's), so part of its shape: drawn
+/// in structural drawings too (George 2026-11-25).
+pub fn in_formwork(model: &Model, e: &Element) -> bool {
+    piece_of(e)
+        .and_then(|p| model.get(p.host))
+        .is_some_and(|h| match &h.kind {
+            ElementKind::Beam(b) => match &b.lintel {
+                Some(l) => l.cast.is_some(),
+                None => h.name == crate::masonry::RING_BEAM,
+            },
+            _ => false,
+        })
+}
+
 /// Which of `e`'s sides faces the exterior, as heat flows across it: a
 /// column's front or back, a beam's left or right. In a wall, the wall's
 /// exterior; else the side with more insulation (front, right on a tie).
@@ -353,6 +368,9 @@ pub fn exterior_side(model: &Model, e: &Element) -> Option<usize> {
             let w = c.wrap.as_ref();
             let t = |i| w.map_or(0.0, |w| w.side(i));
             Some(if t(2) > t(0) { 2 } else { 0 })
+        }
+        ElementKind::Beam(b) if e.name == crate::masonry::RING_BEAM && b.lintel.is_none() => {
+            crate::masonry::ring_exterior_side(model, b)
         }
         ElementKind::Beam(b) => {
             let wall = b.lintel.as_ref().and_then(|l| l.opening).and_then(|o| {

@@ -995,6 +995,10 @@ spec_enum! {
         Identification = "identification",
         LintelPositions = "lintel_positions",
         RingBeamList = "ring_beam_list",
+        DrainSections = "drain_sections",
+        WaterAxonometry = "water_axonometry",
+        TimberList = "timber_list",
+        SteelList = "steel_list",
     }
 }
 

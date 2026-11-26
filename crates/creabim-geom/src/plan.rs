@@ -142,6 +142,22 @@ impl Joining {
     /// join priority runs through (cores join cores, finishes stop at the
     /// structure), then columns through walls through slabs, then the
     /// element drawn first. An element without layers is all structure.
+    /// `a` is a ceiling's cut and `b` a wall's plaster.
+    fn ceiling_over_plaster_kinds(model: &Model, a: &CutPiece, b: &CutPiece) -> bool {
+        matches!(
+            model.get(a.id).map(|e| &e.kind),
+            Some(ElementKind::Ceiling(_))
+        ) && matches!(model.get(b.id).map(|e| &e.kind), Some(ElementKind::Wall(_)))
+            && b.layer
+                .is_some_and(|l| l.function == creabim_core::LayerFunction::Finish)
+    }
+
+    /// The ceiling `a` cuts the wall's plaster `b` (no join rule says
+    /// otherwise).
+    fn ceiling_over_plaster(&self, model: &Model, a: &CutPiece, b: &CutPiece) -> bool {
+        Self::ceiling_over_plaster_kinds(model, a, b) && self.cuts(model, a, b)
+    }
+
     fn cuts(&self, model: &Model, a: &CutPiece, b: &CutPiece) -> bool {
         if a.id == b.id {
             return false;
@@ -153,6 +169,14 @@ impl Joining {
             if let Some(w) = r.wins(a.id, b.id) {
                 return w;
             }
+        }
+        // a ceiling stops the wall's plaster: it ends at the boards, never
+        // runs on above them (George 2026-11-25)
+        if Self::ceiling_over_plaster_kinds(model, a, b) {
+            return true;
+        }
+        if Self::ceiling_over_plaster_kinds(model, b, a) {
+            return false;
         }
         let strength = |p: &CutPiece| {
             (
@@ -243,6 +267,76 @@ impl CutPiece {
             },
         }
     }
+}
+
+/// `poly` without points repeated (within 1e-6) or lying on the line
+/// between their neighbours.
+fn tidied(poly: &[DVec2]) -> Vec<DVec2> {
+    let mut out: Vec<DVec2> = vec![];
+    for &p in poly {
+        if out.last().is_none_or(|q| q.distance(p) > 1e-6) {
+            out.push(p);
+        }
+    }
+    while out.len() > 1 && out[0].distance(out[out.len() - 1]) <= 1e-6 {
+        out.pop();
+    }
+    let mut changed = true;
+    while changed && out.len() > 3 {
+        changed = false;
+        for i in 0..out.len() {
+            let n = out.len();
+            let (a, b, c) = (out[(i + n - 1) % n], out[i], out[(i + 1) % n]);
+            let ab = b - a;
+            let bc = c - b;
+            if ab.perp_dot(bc).abs() <= 1e-9 * (ab.length() * bc.length()).max(1e-12)
+                && ab.dot(bc) >= 0.0
+            {
+                out.remove(i);
+                changed = true;
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// A simple polygon cut into triangles (ear clipping): convex parts for
+/// [`subtract_convex`].
+fn ear_clipped(poly: &[DVec2]) -> Vec<Vec<DVec2>> {
+    let mut v: Vec<DVec2> = poly.to_vec();
+    if signed_area(&v) < 0.0 {
+        v.reverse();
+    }
+    let mut out = vec![];
+    let inside = |p: DVec2, a: DVec2, b: DVec2, c: DVec2| {
+        (b - a).perp_dot(p - a) > 1e-12
+            && (c - b).perp_dot(p - b) > 1e-12
+            && (a - c).perp_dot(p - c) > 1e-12
+    };
+    let mut guard = 0;
+    while v.len() > 3 && guard < 10_000 {
+        guard += 1;
+        let n = v.len();
+        let ear = (0..n).find(|&i| {
+            let (a, b, c) = (v[(i + n - 1) % n], v[i], v[(i + 1) % n]);
+            (b - a).perp_dot(c - b) > 1e-12
+                && !v
+                    .iter()
+                    .any(|&p| p != a && p != b && p != c && inside(p, a, b, c))
+        });
+        match ear {
+            Some(i) => {
+                out.push(vec![v[(i + n - 1) % n], v[i], v[(i + 1) % n]]);
+                v.remove(i);
+            }
+            None => break,
+        }
+    }
+    if v.len() == 3 && (v[1] - v[0]).perp_dot(v[2] - v[1]).abs() > 1e-12 {
+        out.push(v);
+    }
+    out
 }
 
 fn is_convex(poly: &[DVec2]) -> bool {
@@ -433,22 +527,35 @@ pub fn resolve_cuts(model: &Model, cuts: Vec<CutPiece>, section: bool) -> Vec<Cu
             } else {
                 joining.cuts(model, other, c)
             };
-            if !near(cut_boxes[ci], cut_boxes[oi], 1e-6) || !cuts_it || !is_convex(&other.points) {
+            if !near(cut_boxes[ci], cut_boxes[oi], 1e-6) || !cuts_it {
                 continue;
             }
-            let hole = &other.points;
-            pieces = pieces
-                .into_iter()
-                .flat_map(|p| {
-                    if !boxes_overlap(&p, hole) {
-                        vec![p]
-                    } else if ground {
-                        subtract_convex_banded(&p, hole)
-                    } else {
-                        subtract_convex(&p, hole)
-                    }
-                })
-                .collect();
+            // a slice's loop may repeat a point or run on along a line
+            // (a ceiling's layers): convex all the same once tidied
+            let tidy = tidied(&other.points);
+            let holes = if is_convex(&tidy) {
+                vec![tidy]
+            } else if joining.ceiling_over_plaster(model, other, c) {
+                // a ceiling's layer steps where it meets the wall: cut the
+                // plaster by each convex part of it
+                ear_clipped(&tidy)
+            } else {
+                continue;
+            };
+            for hole in &holes {
+                pieces = pieces
+                    .into_iter()
+                    .flat_map(|p| {
+                        if !boxes_overlap(&p, hole) {
+                            vec![p]
+                        } else if ground {
+                            subtract_convex_banded(&p, hole)
+                        } else {
+                            subtract_convex(&p, hole)
+                        }
+                    })
+                    .collect();
+            }
         }
         polys.extend(pieces.into_iter().map(|p| CutPiece {
             points: p,
@@ -711,7 +818,8 @@ fn clean_up_pieces_with(
         let touching: Vec<usize> = (0..polys.len())
             .filter(|&j| near(boxes[i], boxes[j], 2.0 * eps))
             .collect();
-        for (a, b) in edges(&piece.points) {
+        let own = edges(&piece.points);
+        for (k, &(a, b)) in own.iter().enumerate() {
             let len = a.distance(b);
             if len < eps {
                 continue;
@@ -722,6 +830,19 @@ fn clean_up_pieces_with(
             // where it is the same material, a thin line between two layers
             // of one element (drawn by the first of the two)
             let mut covered: Vec<(f64, f64)> = Vec::new();
+            // a seam of the outline itself: a loop that runs out along an
+            // edge and back (a layer and the piece of it turned into a
+            // window's reveal, cut as one) has no line there (George
+            // 2026-11-25)
+            for (kk, &(p, q)) in own.iter().enumerate() {
+                if kk != k && on_line(p) && on_line(q) {
+                    let (tp, tq) = ((p - a).dot(d), (q - a).dot(d));
+                    let (lo, hi) = (tp.min(tq).max(0.0), tp.max(tq).min(len));
+                    if hi > lo + eps {
+                        covered.push((lo, hi));
+                    }
+                }
+            }
             let mut thin: Vec<(f64, f64, bool)> = Vec::new();
             for &j in &touching {
                 let other = &polys[j];
@@ -1917,7 +2038,13 @@ pub fn plan_view_with(
             ElementKind::Roof(r)
                 if on_level && crate::members::roof_low(model, r) >= range_top - 1e-3 => {}
             k if on_level && creabim_core::members::is_member(k) => {
-                items.extend(crate::members::member_plan(model, e, cut_height));
+                items.extend(crate::framing::plan_items(
+                    model,
+                    e,
+                    crate::members::member_plan(model, e, cut_height),
+                ));
+                // a rafter drawn as its axis only, no fill (the krov plan)
+                let schematic = creabim_core::framing::of(e).is_some_and(|f| f.role.schematic());
                 // a mass or sweep below the cut: its top seen tinted, in
                 // its material under the colour styles (MU36: they read as
                 // wireframe)
@@ -1930,6 +2057,7 @@ pub fn plan_view_with(
                         crate::parts::part_mesh(model, p).map(|m| (m, [0.78, 0.76, 0.72]))
                     }
                     ElementKind::Part(_) => None,
+                    _ if schematic => None,
                     _ => crate::members::member_mesh(model, e),
                 };
                 if let Some((mesh, base)) = solid {

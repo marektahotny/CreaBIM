@@ -152,8 +152,8 @@ pub const FANS: &[Fan] = &[
             },
         ],
         about: "Potrubný diagonálny ventilátor Ø100, 230 V, 2 otáčky (VO 0,17 A, NO 0,11 A), tepelná ochrana, IP44, 1,4 kg, -20 až +40 °C; ovládanie spínačom s dobehom alebo hygrostatom (príslušenstvo)",
-        price: Some((1721.0, "Kč")),
-        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz), krivka TD-160/100 N SILENT; cena czvzduchotechnika.cz 11/2026",
+        price: Some((70.43, "€")),
+        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz), krivka TD-160/100 N SILENT; cena czvzduchotechnika.cz 11/2026, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026",
     },
     Fan {
         id: "SP-SILENT100-CHZ",
@@ -190,7 +190,7 @@ pub const FANS: &[Fan] = &[
         }],
         about: "Stropný / stenový axiálny ventilátor Ø100 s hygrostatom a dobehom 1–30 min, spätná klapka, guľôčkové ložiská, 230 V, IP45, 0,57 kg; 26,5 dB(A) v 3 m na strane sania",
         price: Some((197.52, "€")),
-        source: "S&P list SILENT 100 (kvelektro.cz), krivka SILENT-100 (czvzduchotechnika.cz); cena czvzduchotechnika.cz 11/2026",
+        source: "S&P list SILENT 100 (kvelektro.cz), krivka SILENT-100 (czvzduchotechnika.cz); cena czvzduchotechnika.cz 11/2026, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026",
     },
     Fan {
         id: "SP-TD250-100-SILENT",
@@ -264,8 +264,8 @@ pub const FANS: &[Fan] = &[
             },
         ],
         about: "Potrubný diagonálny ventilátor Ø100 s hlukovým absorbérom, 230 V, 2 otáčky (VO 0,12 A, NO 0,10 A), -20 až +40 °C, 5,4 kg; regulátor REB 1 / REV 1,5, prepínač otáčok COM 2 alebo REGUL 2",
-        price: Some((5189.0, "Kč")),
-        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz, kvelektro.cz), krivka TD-250/100 SILENT (vektor PDF); cena czvzduchotechnika.cz 11/2026",
+        price: Some((212.36, "€")),
+        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz, kvelektro.cz), krivka TD-250/100 SILENT (vektor PDF); cena czvzduchotechnika.cz 11/2026, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026",
     },
     Fan {
         id: "SP-TD350-125-SILENT",
@@ -333,8 +333,8 @@ pub const FANS: &[Fan] = &[
             },
         ],
         about: "Potrubný diagonálny ventilátor Ø125 s hlukovým absorbérom, 230 V, 2 otáčky (VO 0,12 A, NO 0,10 A), -20 až +40 °C, 5 kg; regulátor REB 1 / REV 1,5, prepínač otáčok COM 2 alebo REGUL 2",
-        price: Some((5596.0, "Kč")),
-        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz, kvelektro.cz), krivka TD-350/125 SILENT (vektor PDF); cena czvzduchotechnika.cz 11/2026",
+        price: Some((229.02, "€")),
+        source: "S&P katalóg MIXVENT-TD Silent 160–1000 (elektrodesign.cz, kvelektro.cz), krivka TD-350/125 SILENT (vektor PDF); cena czvzduchotechnika.cz 11/2026, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026",
     },
 ];
 
@@ -1018,8 +1018,8 @@ pub const VALVES: &[Accessory] = &[
     // the maker gives the loss only as a chart (settings x = 6–17 mm)
     loss: &[],
     about: "Univerzálny plastový tanierový ventil (biele ABS) pre prívod aj odvod, s montážnym krúžkom do stropu alebo steny; Ø B 96, Ø C 152, Ø D 99, Ø G 146 mm; nastavenie vzdialenosti tanierika x = 6–17 mm",
-    price: Some((147.0, "Kč")),
-    source: "Elektrodesign katalóg IT-PRO (it-pro-en.pdf), e-shop elektrodesign.cz, kód AS100100010, 11/2026",
+    price: Some((6.02, "€ bez DPH")),
+    source: "Elektrodesign katalóg IT-PRO (it-pro-en.pdf), e-shop elektrodesign.cz, kód AS100100010, 11/2026, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026",
     },
 ];
 

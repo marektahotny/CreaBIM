@@ -172,6 +172,8 @@ pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
                 | ScheduleCategory::MaterialLegend
                 | ScheduleCategory::BoardDiagram
                 | ScheduleCategory::FlashingTable
+                | ScheduleCategory::DrainSections
+                | ScheduleCategory::WaterAxonometry
         )
     {
         return None;
@@ -338,6 +340,12 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     if category == ScheduleCategory::FlashingTable {
         return crate::flashingtable::schedule(model);
     }
+    if category == ScheduleCategory::DrainSections {
+        return crate::drainsections::schedule(model);
+    }
+    if category == ScheduleCategory::WaterAxonometry {
+        return crate::wateraxo::schedule(model);
+    }
     if category == ScheduleCategory::VentilationHrv {
         return crate::tradelists::recuperation(model);
     }
@@ -358,6 +366,12 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     }
     if category == ScheduleCategory::RingBeamList {
         return crate::structural::ring_schedule(model);
+    }
+    if category == ScheduleCategory::TimberList {
+        return crate::framing::timber_schedule_by(model, by_type);
+    }
+    if category == ScheduleCategory::SteelList {
+        return crate::framing::steel_schedule_by(model, by_type);
     }
     if category == ScheduleCategory::FireZones {
         return crate::firezones::schedule(model);
@@ -780,11 +794,15 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         | ScheduleCategory::LintelList
         | ScheduleCategory::LintelPositions
         | ScheduleCategory::RingBeamList
+        | ScheduleCategory::TimberList
+        | ScheduleCategory::SteelList
         | ScheduleCategory::VentilationHrv
         | ScheduleCategory::HeaterList
         | ScheduleCategory::BuildingFigures
         | ScheduleCategory::Identification
         | ScheduleCategory::FlashingTable
+        | ScheduleCategory::DrainSections
+        | ScheduleCategory::WaterAxonometry
         | ScheduleCategory::ElectricalList => {
             unreachable!("the take-offs and the list of documentation are built on their own")
         }

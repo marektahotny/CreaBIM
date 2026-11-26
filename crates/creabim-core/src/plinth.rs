@@ -26,7 +26,9 @@ pub struct Plinth {
     /// membrane.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub membrane: Option<ElementId>,
-    /// How far the membrane runs up past the plinth's top, m.
+    /// How far the membrane ran up past the plinth's top, m. No longer
+    /// drawn or counted: the waterproofing goes up to the plinth's top and
+    /// never past it (George 2026-11-25); kept so older files read.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub lap: f64,
     /// The plinth's render; none keeps the facade's.

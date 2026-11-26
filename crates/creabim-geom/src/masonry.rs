@@ -260,6 +260,84 @@ pub fn lintel_schedule(model: &Model) -> crate::schedule::Schedule {
             }
         })
         .collect();
+    // monolithic RC lintels: each one its size and the insulation laid
+    // into its formwork (George 2026-11-25); its mass at 25 kN/m³ of
+    // reinforced concrete (STN EN 1991-1-1, table A.1)
+    let mut rows = rows;
+    let mut cast: Vec<(f64, Row)> = vec![];
+    for e in model.iter() {
+        let ElementKind::Beam(b) = &e.kind else {
+            continue;
+        };
+        let Some(l) = b.lintel.as_ref().filter(|l| l.cast.is_some()) else {
+            continue;
+        };
+        let (z, storey) = model
+            .get(b.level)
+            .map_or((0.0, String::new()), |lv| match &lv.kind {
+                ElementKind::Level(x) => (x.elevation, lv.name.clone()),
+                _ => (0.0, lv.name.clone()),
+            });
+        let opening = l.opening.and_then(|o| model.get(o)).map(|o| {
+            marks.get(&o.id).cloned().unwrap_or_else(|| match &o.kind {
+                ElementKind::Opening(op) => {
+                    format!("{:.0}×{:.0}", op.width * 1000.0, op.height * 1000.0)
+                }
+                _ => o.name.clone(),
+            })
+        });
+        let name = format!(
+            "{}{}",
+            masonry::RC_LINTEL,
+            masonry::insulation_note(model, e.id)
+        );
+        let length = format!("{:.0}", b.length() * 1000.0);
+        let section = format!("{:.0}×{:.0}", b.width * 1000.0, b.depth * 1000.0);
+        let mass = b.width * b.depth * b.length() * 2500.0;
+        match cast.iter_mut().find(|(_, r)| {
+            r.cells[0] == storey
+                && r.cells[1] == name
+                && r.cells[3] == length
+                && r.cells[4] == section
+        }) {
+            Some((_, r)) => {
+                let n = r.cells[5].parse::<usize>().unwrap_or(0) + 1;
+                r.cells[5] = n.to_string();
+                let m = r.cells[6].parse::<f64>().unwrap_or(0.0) + mass;
+                r.cells[6] = format!("{m:.0}");
+                if let Some(o) = opening {
+                    if !r.cells[7].split(", ").any(|x| x == o) {
+                        if !r.cells[7].is_empty() {
+                            r.cells[7].push_str(", ");
+                        }
+                        r.cells[7].push_str(&o);
+                    }
+                }
+            }
+            None => cast.push((
+                z,
+                Row {
+                    id: e.id,
+                    cells: vec![
+                        storey,
+                        name,
+                        tr("cast on site"),
+                        length,
+                        section,
+                        "1".into(),
+                        format!("{mass:.0}"),
+                        opening.unwrap_or_default(),
+                    ],
+                    group: false,
+                },
+            )),
+        }
+    }
+    cast.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (_, r) in cast {
+        total += r.cells[6].parse::<f64>().unwrap_or(0.0);
+        rows.push(r);
+    }
     let listed = rows.len();
     let pieces: usize = rows
         .iter()

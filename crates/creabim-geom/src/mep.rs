@@ -430,7 +430,7 @@ pub fn pipe_line(model: &Model, e: &Element, p: &Pipe) -> Vec<PlanItem> {
 }
 
 /// What a services drawing writes at a pipe, as the office's: a water
-/// pipe its letter and outside diameter by wall (`S 25x3.5`), a drain its
+/// pipe its system's code and outside diameter by wall (`SV 25x3.5`), a drain its
 /// `DN`, the rest their system's code and size.
 pub fn pipe_text(p: &Pipe) -> String {
     use creabim_core::mep::SystemKind as K;
@@ -441,31 +441,46 @@ pub fn pipe_text(p: &Pipe) -> String {
             format!("{v:.1}")
         }
     };
+    // an insulated pipe with an `i` after its size (George 2026-11-26)
+    let i = if p.insulation_mm > 0.0 { "i" } else { "" };
     let size = format!(
-        "{}x{}",
+        "{}x{}{i}",
         n(p.outer_mm),
         n((p.outer_mm - p.inner_mm).max(0.0) / 2.0)
     );
     match p.kind() {
-        K::ColdWater => format!("S {size}"),
-        K::HotWater => format!("T {size}"),
+        // SV, TV, C before the size (George 2026-11-26)
+        K::ColdWater => format!("SV {size}"),
+        K::HotWater => format!("TV {size}"),
         K::Circulation => format!("C {size}"),
         // a duct: its diameter, and its insulation under it, as VZT
         // drawings write them (George 2026-11-25)
+        // and its height above the floor, as the samples write it: a
+        // round duct's axis "OS 2800 NP", a rectangular one's bottom
+        // edge "SH 2400 NP", its size "400/200" (George 2026-11-25)
         K::AirSupply | K::AirExhaust => {
-            let d = format!("Ø{}", n(p.nominal_mm));
+            let mut lines = vec![match p.height_mm {
+                Some(h) => format!("{}/{}", n(p.nominal_mm), n(h)),
+                None => format!("Ø{}", n(p.nominal_mm)),
+            }];
+            if (p.start.z - p.end.z).abs() < 1e-3 && !p.is_vertical() {
+                let z = p.start.z * 1000.0;
+                lines.push(match p.height_mm {
+                    Some(h) => format!("SH {:.0} NP", z - h / 2.0),
+                    None => format!("OS {z:.0} NP"),
+                });
+            }
             if p.insulation_mm > 0.0 {
-                format!(
-                    "{d}\n{} {} mm",
+                lines.push(format!(
+                    "{} {} mm",
                     creabim_core::words::tr("insulation"),
                     n(p.insulation_mm)
-                )
-            } else {
-                d
+                ));
             }
+            lines.join("\n")
         }
         K::Sanitary | K::Storm | K::Flue => {
-            format!("DN{}", n(p.nominal_mm))
+            format!("DN{}{i}", n(p.nominal_mm))
         }
         _ => format!("{} {size}", p.system),
     }
@@ -634,20 +649,9 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
             let text = pipe_text(p);
             let Some(mark) = stack_mark(model, p) else {
                 let home = a + DVec2::X * (RISER_MARK + (look.width(&text) / 2.0 + 1.0) * mm);
-                // dragged away: a fine leader from the riser to the label
-                let moved = p.mark.unwrap_or(DVec2::ZERO);
-                let at = home + moved;
-                if moved.length() > 3.0 * mm {
-                    let lines = text.lines().count().max(1) as f64;
-                    let half = lines * look.size * 1.25 / 2.0;
-                    let to = at - (at - a).normalize_or_zero() * (half + 0.5) * mm;
-                    out.push(PlanItem::Line {
-                        id: e.id,
-                        pen: crate::plan::Pen::Fine,
-                        a,
-                        b: to,
-                    });
-                }
+                // dragged away: the label alone, no leader (George
+                // 2026-11-25)
+                let at = home + p.mark.unwrap_or(DVec2::ZERO);
                 out.push(label(e.id, at, 0.0, text));
                 continue;
             };
@@ -787,17 +791,8 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
             .fold(0.0, f64::max);
         let home = mid + n * (top + wide + (half + 1.0) * mm);
         let moved = seed.moved.unwrap_or(DVec2::ZERO);
+        // dragged away: the label alone, no leader (George 2026-11-25)
         let at = home + moved;
-        // dragged away: a fine leader from the pipe to the label
-        if moved.length() > 3.0 * mm {
-            let to = at - (at - mid).normalize_or_zero() * (half + 0.5) * mm;
-            out.push(PlanItem::Line {
-                id: seed.id,
-                pen: crate::plan::Pen::Fine,
-                a: mid,
-                b: to,
-            });
-        }
         out.push(label(seed.id, at, u.to_angle(), text));
     }
     out
@@ -865,6 +860,59 @@ pub fn air_positions(model: &Model) -> Vec<AirPosition> {
             x
         })
         .collect()
+}
+
+/// The position marks the VZT plans still lack, as tags (the Tag tool's
+/// own, George 2026-11-25: dragged with the mouse like any tag): each
+/// device on the ducts in each ventilation plan of its storey, its number
+/// in a circle up and to the right of it, in the label green.
+pub fn air_position_tags(model: &Model) -> Vec<Element> {
+    use creabim_core::viewmodes::{DisplayMode, Trade};
+    use creabim_core::{ElementKind, ViewKind};
+    let positions = air_positions(model);
+    if positions.is_empty() {
+        return vec![];
+    }
+    let tagged: std::collections::HashSet<(creabim_core::ElementId, creabim_core::ElementId)> =
+        model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Tag(t) => Some((t.view, t.host)),
+                _ => None,
+            })
+            .collect();
+    let mut out = vec![];
+    for ve in model.iter() {
+        let ElementKind::View(v) = &ve.kind else {
+            continue;
+        };
+        let ViewKind::Plan { level, .. } = v.kind else {
+            continue;
+        };
+        if v.callout.is_some()
+            || v.graphics.range.from_above
+            || DisplayMode::of(v) != DisplayMode::Services
+            || v.trade.is_some_and(|t| t != Trade::Ventilation)
+        {
+            continue;
+        }
+        let mm = v.scale / 1000.0;
+        for pos in &positions {
+            for &id in &pos.valves {
+                let Some(ElementKind::Valve(x)) = model.get(id).map(|e| &e.kind) else {
+                    continue;
+                };
+                if x.host(model).is_none_or(|p| p.level != level) || tagged.contains(&(ve.id, id)) {
+                    continue;
+                }
+                let mut t =
+                    creabim_core::Tag::new(ve.id, id, x.mark.unwrap_or(DVec2::new(6.0, 6.0) * mm));
+                t.color = Some(LABEL_GREEN);
+                out.push(Element::new("Position tag", ElementKind::Tag(t)));
+            }
+        }
+    }
+    out
 }
 
 /// A device's position mark in a VZT drawing: its number in a circle,
@@ -1321,13 +1369,13 @@ mod tests {
         // one label for the three, the one farthest up first, and where
         // they run
         let (text, shape) = read(&labels[2]);
-        assert_eq!(text, "C 20x2.8\nT 25x3.5\nS 25x3.5\nin the floor");
+        assert_eq!(text, "C 20x2.8\nTV 25x3.5\nSV 25x3.5\nin the floor");
         let Shape::Along { at, angle } = shape else {
             unreachable!()
         };
         assert_eq!(angle, 0.0);
         assert!((at.x - 2.5).abs() < 1e-9 && at.y > 2.2);
-        // dragged away: the label goes with the drag, a leader to the pipe
+        // dragged away: the label goes with the drag, no leader
         let mut moved = es[0].clone();
         if let ElementKind::Pipe(p) = &mut moved.kind {
             p.mark = Some(DVec2::new(0.5, 1.0));
@@ -1347,7 +1395,7 @@ mod tests {
             unreachable!()
         };
         assert!((now - was - DVec2::new(0.5, 1.0)).length() < 1e-9);
-        assert!(matches!(lone[0], PlanItem::Line { .. }) && first.len() == 1);
+        assert!(lone.len() == 1 && first.len() == 1);
     }
 
     #[test]
@@ -1449,6 +1497,7 @@ mod tests {
                 product: None,
                 preset: None,
                 mark: None,
+                under_ceiling: false,
             }),
         );
         let (run_id, valve_id) = (run.id, valve.id);

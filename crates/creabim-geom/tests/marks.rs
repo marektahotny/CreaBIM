@@ -1230,3 +1230,40 @@ fn witness_lines_start_where_their_ends_were_dragged() {
     };
     assert!(witness.unwrap()[1].distance(DVec2::new(2.0, -0.5)) < 1e-9);
 }
+
+/// Level heads and their dashed lines stay in a section while working but
+/// stay off its sheets, unless the view asks for them there (George
+/// 2026-11-25: "funkciu im nemeň, len netlačiť vo výkresoch").
+#[test]
+fn level_heads_and_lines_stay_off_sheets_unless_asked() {
+    let mut doc = Document::from_model(sample::sample_house());
+    let section = View::section(DVec2::new(-5.0, 2.0), DVec2::new(20.0, 2.0), 20.0, true);
+    let view = add(&mut doc, Element::new("S", ElementKind::View(section)));
+    let levels = |m: &Model, d: &creabim_geom::section::Drawing| {
+        d.items
+            .iter()
+            .filter(|i| match i {
+                PlanItem::Line { id, .. } | PlanItem::Annotation { id, .. } => {
+                    matches!(m.get(*id).map(|e| &e.kind), Some(ElementKind::Level(_)))
+                }
+                _ => false,
+            })
+            .count()
+    };
+    let m = doc.model();
+    let working = view_drawing(m, view).unwrap();
+    assert!(levels(m, &working) > 0, "the view shows its levels");
+    let paper = creabim_geom::section::for_sheet(m, view, working.clone());
+    assert_eq!(levels(m, &paper), 0, "sheets leave them out");
+    assert!(!paper.items.is_empty());
+    doc.edit(view, "on", |e| {
+        if let ElementKind::View(v) = &mut e.kind {
+            v.levels_on_sheets = true;
+        }
+    })
+    .unwrap();
+    let m = doc.model();
+    let d = view_drawing(m, view).unwrap();
+    let n = levels(m, &d);
+    assert_eq!(levels(m, &creabim_geom::section::for_sheet(m, view, d)), n);
+}

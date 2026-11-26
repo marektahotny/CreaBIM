@@ -263,6 +263,30 @@ pub fn section_view_jogged<S: std::borrow::Borrow<SceneItem> + Sync>(
     PlanView { items }
 }
 
+/// What a section or elevation puts on its sheets: without the level
+/// heads and their datum lines, unless the view asks for them there
+/// ([`View::levels_on_sheets`](creabim_core::View)). Plans are left alone.
+pub fn for_sheet(model: &Model, view: ElementId, mut d: Drawing) -> Drawing {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return d;
+    };
+    if v.levels_on_sheets || !matches!(v.kind, creabim_core::ViewKind::Section { .. }) {
+        return d;
+    }
+    let level =
+        |id: &ElementId| matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Level(_)));
+    d.items.retain(|it| match it {
+        PlanItem::Line {
+            id, pen: Pen::Grid, ..
+        } => !level(id),
+        PlanItem::Annotation { id, item } => {
+            !(level(id) && matches!(item.shape, crate::annotation::Shape::Level { .. }))
+        }
+        _ => true,
+    });
+    d
+}
+
 /// Level lines across a section or elevation spanning `span` along it, a
 /// metre past each side, each with its head (name and elevation in the
 /// project's units) at the right-hand end. `scale` sizes the heads.
@@ -995,6 +1019,11 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 d.items
                     .extend(crate::etics::elevation_lines(model, *start, *end, *depth));
             }
+            // system lintels cut, each piece crossed: in the structural
+            // sections and the architect's too (George 2026-11-25)
+            if *cut {
+                crate::structural::cross_system_pieces(model, &mut d.items);
+            }
             // a structural section: ±0,000 dashed across (STA_002)
             if v.structural && *cut {
                 if let Some(l) = crate::structural::zero_line(model, view, &d.items) {
@@ -1041,6 +1070,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             }
             if *category == creabim_core::ScheduleCategory::FlashingTable {
                 return Some(crate::flashingtable::drawing(view, &e.name, model));
+            }
+            if *category == creabim_core::ScheduleCategory::WaterAxonometry {
+                return Some(crate::wateraxo::drawing(view, &e.name, model));
+            }
+            if *category == creabim_core::ScheduleCategory::DrainSections {
+                return Some(crate::drainsections::drawing(view, &e.name, model));
             }
             if *category == creabim_core::ScheduleCategory::BoardDiagram {
                 return Some(crate::boarddiagram::drawing(view, &e.name, model));
@@ -1200,6 +1235,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 // from the whole model: the view hides the pipes
                 d.items.extend(crate::tradepen::plan_items(
                     full,
+                    view,
                     *level,
                     *cut_height,
                     mm,
@@ -1286,7 +1322,15 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                         } else {
                             crate::valves::valve_plan_sized(model, e, x, half)
                         });
-                        if let Some(n) = positions.iter().find(|p| p.valves.contains(&e.id)) {
+                        // drawn by its tag where it has one in this view
+                        let tagged = model.iter().any(|t| {
+                            matches!(&t.kind, ElementKind::Tag(t) if t.view == view && t.host == e.id)
+                        });
+                        if let Some(n) = positions
+                            .iter()
+                            .find(|p| p.valves.contains(&e.id))
+                            .filter(|_| !tagged)
+                        {
                             lines.extend(crate::mep::air_mark(
                                 model,
                                 e,
@@ -1444,6 +1488,26 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {
+        // a dimension to a penetration's centre is kept on its pipe, which
+        // the architect's plan hides: drawn from the whole model
+        let on_pipe = |p: &creabim_core::HostPoint| {
+            p.host.is_some_and(|h| {
+                hidden.contains(&h)
+                    && matches!(full.get(h).map(|e| &e.kind), Some(ElementKind::Pipe(_)))
+            })
+        };
+        for e in full.iter() {
+            if let ElementKind::Dimension(dim) = &e.kind {
+                if dim.view == view
+                    && dim.kind.is_linear()
+                    && !hidden.contains(&e.id)
+                    && (on_pipe(&dim.a) || on_pipe(&dim.b) || dim.mids.iter().any(on_pipe))
+                {
+                    d.items
+                        .extend(crate::annotate::linear_items(full, v, e.id, dim));
+                }
+            }
+        }
         d.items.retain(|it| !hidden.contains(&it.id()));
     }
     // a plan's names, notes and tags moved off lines and each other
@@ -1454,6 +1518,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             matches!(model.get(id).map(|e| &e.kind),
                 Some(ElementKind::Tag(t)) if !t.material
                     && crate::annotate::tag_normal(model, v, t).is_some())
+                // a penetration's label stays where it was dragged
+                || matches!(full.get(id).map(|e| &e.kind),
+                    Some(ElementKind::Tag(t)) if crate::tradepen::is_label_tag(full, t))
                 || matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Object(_)))
         };
         crate::declutter::place_labels_but(&mut d.items, v.scale / 1000.0, &square);

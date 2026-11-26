@@ -329,10 +329,14 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::LintelList => "beam",
         ScheduleCategory::LintelPositions => "beam",
         ScheduleCategory::RingBeamList => "beam",
+        ScheduleCategory::TimberList => "timber-list",
+        ScheduleCategory::SteelList => "steel-list",
         ScheduleCategory::VentilationHrv => "wind",
         ScheduleCategory::HeaterList => "flame",
         ScheduleCategory::BuildingFigures => "table-2",
         ScheduleCategory::FlashingTable => "table-2",
+        ScheduleCategory::DrainSections => "pipe",
+        ScheduleCategory::WaterAxonometry => "pipe",
         ScheduleCategory::Identification => "table-2",
         ScheduleCategory::Documents => "sheet-template",
         ScheduleCategory::MaterialLegend => "brick-wall",
@@ -432,6 +436,9 @@ impl CreaBimApp {
     /// The items of a menu or dropdown, by its key.
     pub(super) fn menu_items(&self, key: &str) -> Vec<Item> {
         if let Some(items) = self.area_menu(key) {
+            return items;
+        }
+        if let Some(items) = crate::app::framingui::menu_items(&self.plan.members, key) {
             return items;
         }
         // a group of the folded browser's rail: its items, to pick (MU29)
@@ -663,18 +670,67 @@ impl CreaBimApp {
                     }
                 })
                 .collect(),
+            "tab:ringbeams" => vec![
+                Item::new("masonry:ring-wall", "Ring beam on a wall").icon("ring-beam"),
+                Item::new("masonry:ring", "Ring beams on the load-bearing walls").icon("rows-3"),
+                Item::Separator,
+                Item::new("new.schedule:29", "List of ring beams").icon("table-2"),
+            ],
+            "tab:lintels" => vec![
+                Item::new("masonry:lintel", "Put lintels over openings").icon("lintel"),
+                Item::new(
+                    "masonry:rc-lintel",
+                    "RC lintel over an opening (cast on site)",
+                )
+                .icon("beam"),
+                Item::Separator,
+                Item::new("new.schedule:28", "List of lintels").icon("table-2"),
+                Item::new("new.schedule:22", "Lintel list").icon("table-2"),
+            ],
             "tab:masonry" => vec![
                 Item::new("masonry:plan", "Masonry plan of this storey").icon("brick-wall"),
                 Item::new("masonry:window", "Lintels and wall rules…").icon("settings"),
                 Item::Separator,
-                Item::new("masonry:lintel", "Put lintels over openings").icon("beam"),
                 Item::new("masonry:column", "RC column in a wall").icon("column"),
                 Item::Separator,
                 Item::new("masonry:check", "Check wall lengths").icon("problem"),
                 Item::new("masonry:fill", "RC columns into the long walls").icon("columns-3"),
-                Item::new("masonry:ring-wall", "Ring beam on a wall").icon("beam"),
-                Item::new("masonry:ring", "Ring beams on the load-bearing walls").icon("beam"),
             ],
+            "tab:timber" | "tab:steel" => {
+                use creabim_core::framing::Role;
+                let roles: &[Role] = if key == "tab:timber" {
+                    &Role::TIMBER
+                } else {
+                    &Role::STEEL
+                };
+                let now = self.plan.members.framing.as_ref().map(|f| f.role);
+                let mut v: Vec<Item> = roles
+                    .iter()
+                    .map(|r| {
+                        let i = Role::ALL.iter().position(|x| x == r).unwrap_or(0);
+                        Item::new(format!("framing.role:{i}"), r.label())
+                            .icon(r.icon())
+                            .checked(now == Some(*r))
+                    })
+                    .collect();
+                v.push(Item::Separator);
+                v.push(
+                    Item::new(
+                        if key == "tab:timber" {
+                            "new.schedule:32"
+                        } else {
+                            "new.schedule:33"
+                        },
+                        if key == "tab:timber" {
+                            "Timber list"
+                        } else {
+                            "Steel list"
+                        },
+                    )
+                    .icon("table-2"),
+                );
+                v
+            }
             "tab:ifc" => vec![
                 Item::new("open", "Open an IFC file…").icon("folder-open"),
                 Item::Separator,
@@ -1719,6 +1775,9 @@ impl CreaBimApp {
                 .find(|e| e.id.0.to_string() == arg)
                 .map(|e| e.id)
         };
+        if self.framing_action(head, arg) {
+            return;
+        }
         if self.area_action(head, arg) {
             return;
         }
@@ -1749,6 +1808,42 @@ impl CreaBimApp {
                     },
                     _ => self.run_command(ctx, c, at),
                 }
+            }
+            // the Statika tab's timber roof and steel menus: the member
+            // picked, then the Beam or Column tool draws it
+            "framing.role" => {
+                use creabim_core::framing::{Framing, Role};
+                let Some(role) = arg.parse::<usize>().ok().and_then(|i| Role::ALL.get(i).copied())
+                else {
+                    return;
+                };
+                let tool = if role.is_column() { Tool::Column } else { Tool::Beam };
+                if let Some(i) = Tool::ALL.iter().position(|t| *t == tool) {
+                    self.run_action(ctx, &format!("tool:{i}"));
+                }
+                // the last one of the same role keeps its section and grade
+                let keep = self
+                    .plan
+                    .members
+                    .framing
+                    .take()
+                    .filter(|f| f.role == role);
+                self.plan.members.framing = Some(keep.unwrap_or_else(|| Framing::new(role)));
+                self.plan.members.framing_angle = role.default_angle();
+                self.plan.members.beam_section = None;
+                self.plan.members.column_section = None;
+                self.shell.tab_tool = Some(tool);
+                self.status = format!(
+                    "{}: {}",
+                    crate::i18n::tr(role.label()),
+                    crate::i18n::tr(if role.is_column() {
+                        "click where it stands; its section, grade and height are in the bar."
+                    } else if role.slopes() {
+                        "click its start, then its end in plan; it climbs from the start at the bar's slope."
+                    } else {
+                        "click its start, then its end; its section, grade and height are in the bar."
+                    })
+                );
             }
             // the Footing tool's menu: strip, pad or pile, picked as the
             // tool is (then its kind set)
@@ -1876,6 +1971,8 @@ impl CreaBimApp {
                     self.pending_3d = None;
                     self.beam_face = None;
                     self.plan.members.last_beam = None;
+                    // a plain beam or column, not the last roof timber
+                    self.plan.members.framing = None;
                     self.status = t.hint().into();
                     if *t == Tool::Pipe {
                         self.open_trade_plan();
@@ -2295,7 +2392,7 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.binddims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "view.tempdims" | "view.thin" | "view.dimopenings" | "view.dimrooms" | "view.joindims" | "view.binddims" | "view.ranges" | "view.levelsheets" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "file.print" | "sheet.print" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
@@ -3107,6 +3204,22 @@ impl CreaBimApp {
                 };
             }
             "view.reveal" => self.toggle_hidden_elements(id),
+            "view.levelsheets" => {
+                let on = !self.view(id).is_some_and(|v| v.levels_on_sheets);
+                let r = self.doc.edit(id, "Levels on sheets", |e| {
+                    if let ElementKind::View(v) = &mut e.kind {
+                        v.levels_on_sheets = on;
+                    }
+                });
+                self.report(
+                    r,
+                    if on {
+                        "Level heads and their lines print on this view's sheets too."
+                    } else {
+                        "Level heads and their lines show only while working; sheets leave them out."
+                    },
+                );
+            }
             "view.colour" => self.toggle_hidden_colour(id),
             "view.xray" => self.toggle_view_xray(id),
             "view.reference" => {
@@ -4147,6 +4260,13 @@ impl CreaBimApp {
                             "kind": "toggle", "id": "view.ranges", "label": "Plan ranges",
                             "icon": "view-range", "on": self.plan.plan_ranges,
                             "hint": "Each floor plan's cut and view depth as a band: drag their grips to change them (MU34)",
+                        }));
+                    }
+                    if matches!(v.kind, ViewKind::Section { .. }) {
+                        options.push(json!({
+                            "kind": "toggle", "id": "view.levelsheets", "label": "Levels on sheets",
+                            "icon": "printer", "on": v.levels_on_sheets,
+                            "hint": "Print the level heads and their dashed lines on this view's sheets too. Off, they show only while you work here",
                         }));
                     }
                     options.push(json!({

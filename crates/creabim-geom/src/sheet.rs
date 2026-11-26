@@ -144,6 +144,8 @@ pub fn placed_views_with(
         let (Some(view), Some(mut d)) = (view_of(model, vp.view), drawing(vp.view)) else {
             continue;
         };
+        // level heads and lines only while working, unless asked for
+        d = crate::section::for_sheet(model, vp.view, d);
         // a turned site plan lies turned on paper
         d = crate::turn::turned(d, view.turn);
         // the map or plot plan it was drawn over, lies under it
@@ -613,8 +615,20 @@ pub fn scale_text(model: &Model, views: &[PlacedView]) -> String {
     let mut scales: Vec<i64> = views
         .iter()
         .filter_map(|v| view_of(model, v.view))
-        .filter(|v| !matches!(v.kind, creabim_core::ViewKind::Schedule { .. }))
-        .map(|v| v.scale.round() as i64)
+        .filter_map(|v| match v.kind {
+            // the drain sections are drawn at a scale of their own
+            creabim_core::ViewKind::Schedule {
+                category: creabim_core::ScheduleCategory::DrainSections,
+                ..
+            } => Some(crate::drainsections::SCALE),
+            creabim_core::ViewKind::Schedule {
+                category: creabim_core::ScheduleCategory::WaterAxonometry,
+                ..
+            } => Some(crate::wateraxo::SCALE),
+            creabim_core::ViewKind::Schedule { .. } => None,
+            _ => Some(v.scale),
+        })
+        .map(|s| s.round() as i64)
         .collect();
     scales.sort();
     scales.dedup();
