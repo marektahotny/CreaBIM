@@ -80,6 +80,42 @@ pub fn size_text(p: &Pipe) -> String {
     )
 }
 
+/// The pieces a line from `a` to `b` is drawn in, paper mm: `pattern`
+/// is dashes and gaps by turns (a dash of 0 is a dot), run on from `a`;
+/// none is the whole line.
+pub fn dash(a: DVec2, b: DVec2, pattern: Option<&[f64]>) -> Vec<(DVec2, DVec2)> {
+    let len = a.distance(b);
+    let Some(pat) = pattern.filter(|p| p.len() >= 2 && p.iter().sum::<f64>() > 0.0) else {
+        return vec![(a, b)];
+    };
+    if len < 1e-9 {
+        return vec![];
+    }
+    let u = (b - a) / len;
+    // a dot is drawn this long
+    const DOT: f64 = 0.15;
+    let mut out = vec![];
+    let mut t = 0.0;
+    let mut i = 0;
+    while t < len {
+        let step = pat[i % pat.len()];
+        if i % 2 == 0 {
+            let l = if step <= 0.0 { DOT } else { step };
+            let end = (t + l).min(len);
+            out.push((a + u * t, a + u * end));
+            t += step.max(0.0);
+        } else {
+            t += step;
+        }
+        i += 1;
+        if step <= 0.0 && i % 2 == 1 {
+            // a dot takes no length of the pattern itself
+            continue;
+        }
+    }
+    out
+}
+
 /// The fixtures the water pipes reach: each with its mark, where its
 /// water connector is in the model and its floor's height, m.
 pub fn fixtures(model: &Model) -> Vec<(ElementId, String, DVec3, f64)> {
@@ -183,12 +219,17 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         let rgb = pipe
             .system_def()
             .map_or([0.2, 0.2, 0.2], |s| rgb_of(s.color));
-        items.push(PlanItem::Curve {
-            id: *id,
-            points: vec![pa, pb],
-            rgb,
-            dashed: pipe.kind() != SystemKind::ColdWater,
-        });
+        // in its system's line: cold water dash-dot, hot water and
+        // circulation dash and two dots (George 2026-11-26)
+        let pattern = pipe.system_def().and_then(|s| s.dashes());
+        for (a, b) in dash(pa, pb, pattern.as_deref()) {
+            items.push(PlanItem::Curve {
+                id: *id,
+                points: vec![a, b],
+                rgb,
+                dashed: false,
+            });
+        }
         if a.distance(*b) < SHORT || (pipe.is_vertical() && a.distance(*b) < 0.6) {
             continue;
         }
@@ -429,6 +470,15 @@ mod tests {
         assert!(texts.contains(&"20x2,8"), "{texts:?}");
         let h = format!("{:.0}", (fx[0].2.z - fx[0].3) * 1000.0);
         assert!(texts.contains(&h.as_str()), "{texts:?}");
+        // cold water dash-dot: a dash, a dot, a dash
+        let pieces = dash(
+            DVec2::ZERO,
+            DVec2::new(10.0, 0.0),
+            Some(&[5.0, 1.2, 0.0, 1.2]),
+        );
+        assert_eq!(pieces.len(), 3, "{pieces:?}");
+        assert!((pieces[0].1.x - 5.0).abs() < 1e-9 && (pieces[1].0.x - 6.2).abs() < 1e-9);
+        assert!((pieces[2].0.x - 7.4).abs() < 1e-9);
         // y slants at 45° at its full length
         let q = project(DVec3::new(0.0, 1.0, 0.0));
         assert!((q.length() - 1.0).abs() < 1e-9);
