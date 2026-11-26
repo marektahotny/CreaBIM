@@ -672,13 +672,13 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             },
             Sep,
             act(
-                "new.schedule:30",
+                "new.schedule:32",
                 "Timber list",
                 "timber-list",
                 "The list of timber (výkaz reziva): each position with its section, length, pieces and volume",
             ),
             act(
-                "new.schedule:31",
+                "new.schedule:33",
                 "Steel list",
                 "steel-list",
                 "The list of steel members (výpis oceľových prvkov): each position with its section, length, pieces, kg/m and mass, and the total",

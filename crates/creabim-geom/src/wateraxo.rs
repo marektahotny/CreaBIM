@@ -1,0 +1,637 @@
+//! The axonometry of the water supply (axonometria vodovodu), as the
+//! samples George gave (Vodovod – Axonometrie 3.NP, Axonometrie vodovodu
+//! A3): every pipe of cold water, hot water and circulation drawn in an
+//! oblique projection, the plan's x across, its y slanting up at 45° at
+//! [`DEPTH`] of its length, heights upright; each system in its colour, cold
+//! water dash-dot, hot water and circulation dash and two dots, each pipe
+//! with its system and size (`SV 20x2,8`), the risers with their marks (V1), the
+//! fixtures in their outlines with their marks and the height of their outlets above the floor, the valves on
+//! the pipes. Drawn on paper (1 unit = 1 mm) at [`SCALE`].
+
+use crate::paper::Anchor;
+use crate::plan::{Pen, PlanItem, PlanView};
+use creabim_core::mep::{Pipe, SystemKind};
+use creabim_core::words::tr;
+use creabim_core::{ElementId, ElementKind, Model};
+use glam::{DVec2, DVec3};
+
+/// How long the plan's depth (y) is drawn: half, as a cabinet
+/// projection, since at full length it looks drawn out (George
+/// 2026-11-26).
+pub const DEPTH: f64 = 0.5;
+/// The scale it is drawn at, as the samples: 1:50.
+pub const SCALE: f64 = 50.0;
+const K: f64 = 1000.0 / SCALE;
+const HEAD: f64 = 3.2;
+const TEXT: f64 = 2.2;
+const SMALL: f64 = 1.8;
+/// A pipe shorter than this gets no size written, m.
+const SHORT: f64 = 0.4;
+/// How near a pipe's end must be to a fixture's connector, m.
+const REACH: f64 = 0.03;
+
+/// Is a pipe of this system drawn in it?
+pub fn is_water(k: SystemKind) -> bool {
+    matches!(
+        k,
+        SystemKind::ColdWater | SystemKind::HotWater | SystemKind::Circulation
+    )
+}
+
+/// The water pipes of the model, with their ends in the model, m.
+pub fn pipes(model: &Model) -> Vec<(ElementId, &Pipe, DVec3, DVec3)> {
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Pipe(p) if is_water(p.kind()) && p.length() > 1e-6 => {
+                let z = DVec3::Z * model.level(p.level).map_or(0.0, |l| l.elevation);
+                Some((e.id, p, p.start + z, p.end + z))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Where a point of the model falls in the drawing, m: x across, y
+/// slanting at 45° at [`DEPTH`] of its length, z up.
+pub fn project(p: DVec3) -> DVec2 {
+    let c = std::f64::consts::FRAC_1_SQRT_2 * DEPTH;
+    DVec2::new(p.x + p.y * c, p.z + p.y * c)
+}
+
+fn rgb_of(c: u32) -> [f32; 3] {
+    [
+        ((c >> 16) & 0xff) as f32 / 255.0,
+        ((c >> 8) & 0xff) as f32 / 255.0,
+        (c & 0xff) as f32 / 255.0,
+    ]
+}
+
+/// A pipe's size as the samples write it: outside diameter by wall,
+/// `20x2,8`, and an insulated pipe with an `i` after it, `20x2,8i`
+/// (George 2026-11-26).
+pub fn size_text(p: &Pipe) -> String {
+    let n = |v: f64| {
+        if (v - v.round()).abs() < 0.05 {
+            format!("{v:.0}")
+        } else {
+            format!("{v:.1}").replace('.', ",")
+        }
+    };
+    format!(
+        "{}x{}{}",
+        n(p.outer_mm),
+        n((p.outer_mm - p.inner_mm).max(0.0) / 2.0),
+        if p.insulation_mm > 0.0 { "i" } else { "" }
+    )
+}
+
+/// The pieces a line from `a` to `b` is drawn in, paper mm: `pattern`
+/// is dashes and gaps by turns (a dash of 0 is a dot), run on from `a`;
+/// none is the whole line.
+pub fn dash(a: DVec2, b: DVec2, pattern: Option<&[f64]>) -> Vec<(DVec2, DVec2)> {
+    let len = a.distance(b);
+    let Some(pat) = pattern.filter(|p| p.len() >= 2 && p.iter().sum::<f64>() > 0.0) else {
+        return vec![(a, b)];
+    };
+    if len < 1e-9 {
+        return vec![];
+    }
+    let u = (b - a) / len;
+    // a dot is drawn this long
+    const DOT: f64 = 0.15;
+    let mut out = vec![];
+    let mut t = 0.0;
+    let mut i = 0;
+    while t < len {
+        let step = pat[i % pat.len()];
+        if i % 2 == 0 {
+            let l = if step <= 0.0 { DOT } else { step };
+            let end = (t + l).min(len);
+            out.push((a + u * t, a + u * end));
+            t += step.max(0.0);
+        } else {
+            t += step;
+        }
+        i += 1;
+        if step <= 0.0 && i % 2 == 1 {
+            // a dot takes no length of the pattern itself
+            continue;
+        }
+    }
+    out
+}
+
+/// The fixtures the water pipes reach: each with its mark, where its
+/// water connector is in the model and its floor's height, m.
+pub fn fixtures(model: &Model) -> Vec<(ElementId, String, DVec3, f64)> {
+    use creabim_core::fixture::{self, ConnKind};
+    let ends: Vec<DVec3> = pipes(model).iter().flat_map(|p| [p.2, p.3]).collect();
+    let marks: Vec<(ElementId, String)> = creabim_services::fixturespec::legend(model, None)
+        .into_iter()
+        .flat_map(|r| {
+            let m = r.spec.mark.clone();
+            r.fixtures.into_iter().map(move |f| (f, m.clone()))
+        })
+        .collect();
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Object(o) = &e.kind else {
+            continue;
+        };
+        if fixture::family_of(model, e).is_none() {
+            continue;
+        }
+        let floor = model.level(o.level).map_or(0.0, |l| l.elevation);
+        let reached = fixture::connectors(model, e)
+            .into_iter()
+            .filter(|c| matches!(c.kind, ConnKind::SV | ConnKind::TV))
+            .map(|c| c.at + DVec3::Z * floor)
+            .find(|at| ends.iter().any(|q| q.distance(*at) <= REACH));
+        let Some(at) = reached else {
+            continue;
+        };
+        let mark = marks
+            .iter()
+            .find(|m| m.0 == e.id)
+            .map_or(String::new(), |m| m.1.clone());
+        out.push((e.id, mark, at, floor));
+    }
+    out
+}
+
+/// Where the eye looks along in [`project`]: every point on this line
+/// falls on one spot of the paper.
+const VIEW: DVec3 = DVec3::new(
+    -std::f64::consts::FRAC_1_SQRT_2 * DEPTH,
+    1.0,
+    -std::f64::consts::FRAC_1_SQRT_2 * DEPTH,
+);
+
+/// The outline of a placed fixture, as the model's edges it shows: the
+/// edges facing the eye that bound it (an open edge), fold it (faces
+/// meeting at more than 30°) or turn it away (its silhouette), in model
+/// coordinates.
+pub fn outline(model: &Model, id: ElementId) -> Vec<(DVec3, DVec3)> {
+    use std::collections::HashMap;
+    let Some(e) = model.get(id) else {
+        return vec![];
+    };
+    let fold = 30f64.to_radians().cos();
+    let mut out = vec![];
+    for (m, _) in creabim_core::objects::model_parts(model, e) {
+        let mut edges: HashMap<(u32, u32), Vec<DVec3>> = HashMap::new();
+        for (i, face) in m.faces.iter().enumerate() {
+            let n = m.face_normal(i);
+            for k in 0..face.len() {
+                let (a, b) = (face[k], face[(k + 1) % face.len()]);
+                edges.entry((a.min(b), a.max(b))).or_default().push(n);
+            }
+        }
+        for ((a, b), ns) in edges {
+            let front = |n: &DVec3| n.dot(VIEW) < -1e-9;
+            if !ns.iter().any(front) {
+                continue;
+            }
+            let shown = match ns.as_slice() {
+                [_] => true,
+                [n1, n2] => n1.dot(*n2) < fold || front(n1) != front(n2),
+                _ => true,
+            };
+            if shown {
+                out.push((m.vertices[a as usize], m.vertices[b as usize]));
+            }
+        }
+    }
+    out
+}
+
+/// The drawing of the view `view`, named `title`.
+pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
+    let mut items: Vec<PlanItem> = vec![];
+    let green = Some(crate::mep::LABEL_GREEN);
+    let text = |items: &mut Vec<PlanItem>, at: DVec2, t: &str, size: f64, align: Anchor| {
+        items.push(PlanItem::Text {
+            id: view,
+            at,
+            text: t.to_string(),
+            size,
+            align,
+            mm: 1.0,
+            rgb: green,
+            bold: false,
+        })
+    };
+    // the labels go where they were dragged
+    let mut labels = crate::labels::Labels::of(model, view);
+    let p = DVec2::new;
+    items.push(PlanItem::Text {
+        id: view,
+        at: p(0.0, 6.0),
+        text: title.to_uppercase(),
+        size: HEAD + 0.8,
+        align: Anchor::Start,
+        mm: 1.0,
+        rgb: None,
+        bold: true,
+    });
+    let list = pipes(model);
+    if list.is_empty() {
+        items.push(PlanItem::Text {
+            id: view,
+            at: p(0.0, -4.0),
+            text: tr("No water pipe in the model yet."),
+            size: TEXT,
+            align: Anchor::Start,
+            mm: 1.0,
+            rgb: None,
+            bold: false,
+        });
+        return PlanView { items };
+    }
+    let fx = fixtures(model);
+    // the drawing's corner, under the title
+    let mut lo = DVec2::splat(f64::MAX);
+    let mut hi = DVec2::splat(f64::MIN);
+    for (_, _, a, b) in &list {
+        for q in [project(*a), project(*b)] {
+            lo = lo.min(q);
+            hi = hi.max(q);
+        }
+    }
+    let outlines: Vec<(ElementId, Vec<(DVec3, DVec3)>)> =
+        fx.iter().map(|f| (f.0, outline(model, f.0))).collect();
+    for (_, at, floor) in fx.iter().map(|f| (f.0, f.2, f.3)) {
+        let q = project(DVec3::new(at.x, at.y, floor));
+        lo = lo.min(q);
+    }
+    for (_, edges) in &outlines {
+        for q in edges.iter().flat_map(|e| [project(e.0), project(e.1)]) {
+            lo = lo.min(q);
+            hi = hi.max(q);
+        }
+    }
+    let at = |q: DVec3| {
+        let v = project(q);
+        p(4.0 + (v.x - lo.x) * K, -14.0 - (hi.y - v.y) * K)
+    };
+    // the fixtures in their outlines, thin, under the pipes
+    for (id, edges) in &outlines {
+        for (a, b) in edges {
+            items.push(PlanItem::Line {
+                id: *id,
+                pen: Pen::Symbol,
+                a: at(*a),
+                b: at(*b),
+            });
+        }
+    }
+    // the pipes, each system its colour, and their sizes
+    for (id, pipe, a, b) in &list {
+        let (pa, pb) = (at(*a), at(*b));
+        let rgb = pipe
+            .system_def()
+            .map_or([0.2, 0.2, 0.2], |s| rgb_of(s.color));
+        // in its system's line: cold water dash-dot, hot water and
+        // circulation dash and two dots (George 2026-11-26)
+        let pattern = pipe.system_def().and_then(|s| s.dashes());
+        for (a, b) in dash(pa, pb, pattern.as_deref()) {
+            items.push(PlanItem::Curve {
+                id: *id,
+                points: vec![a, b],
+                rgb,
+                dashed: false,
+            });
+        }
+        if a.distance(*b) < SHORT || (pipe.is_vertical() && a.distance(*b) < 0.6) {
+            continue;
+        }
+        let mid = (pa + pb) / 2.0;
+        let d = (pb - pa).normalize_or_zero();
+        let side = if d.x.abs() < 1e-3 {
+            p(-1.2, 0.0)
+        } else {
+            d.perp() * if d.x > 0.0 { 1.0 } else { -1.0 } * 1.0
+        };
+        let align = if d.x.abs() < 1e-3 {
+            Anchor::End
+        } else {
+            Anchor::Middle
+        };
+        // its system's code before its size: SV 16x2, TV 16x2, C 16x2
+        // (George 2026-11-26)
+        let code = match pipe.kind() {
+            SystemKind::ColdWater => "SV",
+            SystemKind::HotWater => "TV",
+            _ => "C",
+        };
+        labels.write(
+            &mut items,
+            *id,
+            mid + side,
+            &format!("{code} {}", size_text(pipe)),
+            SMALL,
+            align,
+            green,
+        );
+    }
+    // the risers' marks, once a stack
+    let mut marked: Vec<String> = vec![];
+    for (rid, pipe, a, b) in &list {
+        if !pipe.is_vertical() {
+            continue;
+        }
+        let Some(m) = crate::mep::stack_mark(model, pipe) else {
+            continue;
+        };
+        if marked.contains(&m) {
+            continue;
+        }
+        marked.push(m.clone());
+        let top = if a.z > b.z { *a } else { *b };
+        // its leader stays on the riser; the circle goes where it was put
+        let c = at(top) + p(0.0, 6.0) + labels.next(*rid);
+        items.push(PlanItem::Arc {
+            id: view,
+            pen: Pen::Projection,
+            center: c,
+            radius: 3.0,
+            start: 0.0,
+            end: std::f64::consts::TAU,
+        });
+        items.push(PlanItem::Line {
+            id: view,
+            pen: Pen::Fine,
+            a: at(top),
+            b: c - p(0.0, 3.0),
+        });
+        items.push(PlanItem::Text {
+            id: *rid,
+            at: c + p(0.0, -HEAD * 0.36),
+            text: m,
+            size: HEAD - 0.4,
+            align: Anchor::Middle,
+            mm: 1.0,
+            rgb: green,
+            bold: false,
+        });
+    }
+    // the fixtures: their marks and their outlets' heights over the floor
+    for (id, mark, q, floor) in &fx {
+        let top = at(*q);
+        let foot = at(DVec3::new(q.x, q.y, *floor));
+        // the height of the outlet over the floor, beside it
+        let off = p(3.0, 0.0);
+        let tick = |items: &mut Vec<PlanItem>, c: DVec2| {
+            items.push(PlanItem::Line {
+                id: *id,
+                pen: Pen::Fine,
+                a: c - p(1.0, 0.0),
+                b: c + p(1.0, 0.0),
+            })
+        };
+        items.push(PlanItem::Line {
+            id: *id,
+            pen: Pen::Fine,
+            a: foot + off,
+            b: top + off,
+        });
+        tick(&mut items, foot + off);
+        tick(&mut items, top + off);
+        let h = ((q.z - floor) * 1000.0).round();
+        if h > 0.0 {
+            text(
+                &mut items,
+                (foot + top) / 2.0 + off + p(0.8, -0.8),
+                &format!("{h:.0}"),
+                SMALL,
+                Anchor::Start,
+            );
+        }
+        if !mark.is_empty() {
+            labels.write(
+                &mut items,
+                *id,
+                top + p(-1.2, 0.6),
+                mark,
+                TEXT + 0.4,
+                Anchor::End,
+                green,
+            );
+        }
+    }
+    // the valves on the pipes: a bow tie across the pipe
+    for e in model.iter() {
+        let ElementKind::Valve(v) = &e.kind else {
+            continue;
+        };
+        let Some((_, pipe, a, b)) = list.iter().find(|l| l.0 == v.pipe) else {
+            continue;
+        };
+        let c = at(a.lerp(*b, v.t));
+        let d = (at(*b) - at(*a)).normalize_or_zero();
+        let n = d.perp();
+        let r = 1.0;
+        let pts = vec![
+            c - d * r + n * r,
+            c + d * r - n * r,
+            c + d * r + n * r,
+            c - d * r - n * r,
+        ];
+        items.push(PlanItem::Polygon {
+            id: e.id,
+            pen: Pen::Projection,
+            points: pts,
+        });
+        let _ = pipe;
+    }
+    PlanView { items }
+}
+
+/// The water pipes as a table, for the export to a spreadsheet: their
+/// length by system and size.
+pub fn schedule(model: &Model) -> crate::schedule::Schedule {
+    use crate::schedule::{Column, Row, Schedule};
+    let col = |title: &'static str, width: f64, numeric: bool| Column {
+        title,
+        field: None,
+        width,
+        numeric,
+        align: None,
+    };
+    let columns = vec![
+        col("System", 40.0, false),
+        col("Size", 20.0, false),
+        col("Length m", 20.0, true),
+    ];
+    let mut sums: Vec<(String, String, f64)> = vec![];
+    for (_, pipe, a, b) in pipes(model) {
+        let sys = pipe
+            .system_def()
+            .map_or(pipe.system.clone(), |s| tr(s.name));
+        let size = size_text(pipe);
+        match sums.iter_mut().find(|s| s.0 == sys && s.1 == size) {
+            Some(s) => s.2 += a.distance(b),
+            None => sums.push((sys, size, a.distance(b))),
+        }
+    }
+    let rows: Vec<Row> = sums
+        .into_iter()
+        .map(|(s, z, l)| Row {
+            id: ElementId::default(),
+            cells: vec![s, z, format!("{l:.2}").replace('.', ",")],
+            group: false,
+        })
+        .collect();
+    let listed = rows.len();
+    Schedule {
+        category: creabim_core::ScheduleCategory::WaterAxonometry,
+        columns,
+        rows,
+        totals: vec![],
+        listed,
+        above_totals: vec![],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use creabim_core::{Document, Element, Transaction};
+
+    #[test]
+    fn a_basin_fed_by_cold_and_hot_water_is_drawn_with_sizes_and_its_outlet() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let o = creabim_core::catalogue::starter("starter/washbasin").unwrap();
+        let (tx, id) =
+            creabim_core::objects::place(doc.model(), &o, level, DVec2::new(1.0, 3.0), 0.0);
+        doc.commit(tx).unwrap();
+        let e = doc.model().get(id).unwrap();
+        let conns: Vec<_> = creabim_core::fixture::connectors(doc.model(), e)
+            .into_iter()
+            .filter(|c| {
+                matches!(
+                    c.kind,
+                    creabim_core::fixture::ConnKind::SV | creabim_core::fixture::ConnKind::TV
+                )
+            })
+            .collect();
+        assert!(!conns.is_empty());
+        let pipe = |sys: &str, a: DVec3, b: DVec3| {
+            Element::new(
+                "",
+                ElementKind::Pipe(Pipe {
+                    level,
+                    system: sys.into(),
+                    start: a,
+                    end: b,
+                    pipe_type: "HERZ".into(),
+                    nominal_mm: 20.0,
+                    outer_mm: 20.0,
+                    inner_mm: 14.4,
+                    height_mm: None,
+                    insulation_mm: 0.0,
+                    insulation_set: false,
+                    mark: None,
+                }),
+            )
+        };
+        let mut tx = Transaction::new("water");
+        for c in &conns {
+            let sys = if c.kind == creabim_core::fixture::ConnKind::SV {
+                "SV"
+            } else {
+                "TV"
+            };
+            let low = DVec3::new(c.at.x, c.at.y, 0.3);
+            tx = tx
+                .insert(pipe(sys, c.at, low))
+                .insert(pipe(sys, low, low + DVec3::X * 2.0));
+        }
+        doc.commit(tx).unwrap();
+        let fx = fixtures(doc.model());
+        assert_eq!(fx.len(), 1);
+        let d = drawing(ElementId::default(), "Axonometria", doc.model());
+        let texts: Vec<&str> = d
+            .items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.contains(&"SV 20x2,8"), "{texts:?}");
+        let h = format!("{:.0}", (fx[0].2.z - fx[0].3) * 1000.0);
+        assert!(texts.contains(&h.as_str()), "{texts:?}");
+        // the basin in its outline, thin, a fraction of its edges
+        let lines = d
+            .items
+            .iter()
+            .filter(|it| matches!(it, PlanItem::Line { id: i, pen: Pen::Symbol, .. } if *i == id))
+            .count();
+        let edges: usize =
+            creabim_core::objects::model_parts(doc.model(), doc.model().get(id).unwrap())
+                .iter()
+                .map(|(m, _)| m.faces.iter().map(|f| f.len()).sum::<usize>() / 2)
+                .sum();
+        assert!(lines >= 4 && lines < edges, "{lines} of {edges}");
+        // cold water dash-dot: a dash, a dot, a dash
+        let pieces = dash(
+            DVec2::ZERO,
+            DVec2::new(10.0, 0.0),
+            Some(&[5.0, 1.2, 0.0, 1.2]),
+        );
+        assert_eq!(pieces.len(), 3, "{pieces:?}");
+        assert!((pieces[0].1.x - 5.0).abs() < 1e-9 && (pieces[1].0.x - 6.2).abs() < 1e-9);
+        assert!((pieces[2].0.x - 7.4).abs() < 1e-9);
+        // an insulated pipe's size with an `i`; a label dragged in the
+        // view moves, the pipe stays
+        let first = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Pipe(p) if p.start.distance(p.end) > 1.0))
+            .unwrap()
+            .clone();
+        let mut warm = first.clone();
+        if let ElementKind::Pipe(p) = &mut warm.kind {
+            p.insulation_mm = 9.0;
+        }
+        let mut v = creabim_core::View::schedule(creabim_core::ScheduleCategory::WaterAxonometry);
+        let label = |d: &PlanView, id| {
+            d.items.iter().find_map(|it| match it {
+                PlanItem::Text {
+                    id: i, at, text, ..
+                } if *i == id => Some((*at, text.clone())),
+                _ => None,
+            })
+        };
+        v.label_moves.push(creabim_core::LabelMove {
+            of: first.id,
+            n: 0,
+            by: DVec2::new(5.0, -3.0),
+        });
+        let ve = Element::new("Axo", ElementKind::View(v));
+        let vid = ve.id;
+        doc.commit(
+            Transaction::new("v")
+                .insert(ve)
+                .replace(first.clone(), warm),
+        )
+        .unwrap();
+        assert!(crate::labels::movable(doc.model(), vid));
+        let before = label(&d, first.id);
+        let after = drawing(vid, "Axonometria", doc.model());
+        let moved = label(&after, first.id);
+        let (b, m) = (before.unwrap(), moved.unwrap());
+        assert_eq!(m.1, format!("{}i", b.1));
+        assert!(m.1.starts_with("SV ") || m.1.starts_with("TV "), "{}", m.1);
+        assert!((m.0 - b.0 - DVec2::new(5.0, -3.0)).length() < 1e-9);
+        let found = crate::labels::found(vid, &after.items);
+        assert!(found.iter().any(|f| f.0 == first.id && f.1 == 0));
+        // y slants at 45° at half its length; the eye's line falls on a spot
+        let q = project(DVec3::new(0.0, 1.0, 0.0));
+        assert!((q.length() - DEPTH).abs() < 1e-9 && (q.x - q.y).abs() < 1e-9);
+        assert!(project(VIEW).length() < 1e-9);
+    }
+}

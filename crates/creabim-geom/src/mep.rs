@@ -430,7 +430,7 @@ pub fn pipe_line(model: &Model, e: &Element, p: &Pipe) -> Vec<PlanItem> {
 }
 
 /// What a services drawing writes at a pipe, as the office's: a water
-/// pipe its letter and outside diameter by wall (`S 25x3.5`), a drain its
+/// pipe its system's code and outside diameter by wall (`SV 25x3.5`), a drain its
 /// `DN`, the rest their system's code and size.
 pub fn pipe_text(p: &Pipe) -> String {
     use creabim_core::mep::SystemKind as K;
@@ -441,14 +441,17 @@ pub fn pipe_text(p: &Pipe) -> String {
             format!("{v:.1}")
         }
     };
+    // an insulated pipe with an `i` after its size (George 2026-11-26)
+    let i = if p.insulation_mm > 0.0 { "i" } else { "" };
     let size = format!(
-        "{}x{}",
+        "{}x{}{i}",
         n(p.outer_mm),
         n((p.outer_mm - p.inner_mm).max(0.0) / 2.0)
     );
     match p.kind() {
-        K::ColdWater => format!("S {size}"),
-        K::HotWater => format!("T {size}"),
+        // SV, TV, C before the size (George 2026-11-26)
+        K::ColdWater => format!("SV {size}"),
+        K::HotWater => format!("TV {size}"),
         K::Circulation => format!("C {size}"),
         // a duct: its diameter, and its insulation under it, as VZT
         // drawings write them (George 2026-11-25)
@@ -477,7 +480,7 @@ pub fn pipe_text(p: &Pipe) -> String {
             lines.join("\n")
         }
         K::Sanitary | K::Storm | K::Flue => {
-            format!("DN{}", n(p.nominal_mm))
+            format!("DN{}{i}", n(p.nominal_mm))
         }
         _ => format!("{} {size}", p.system),
     }
@@ -1366,7 +1369,7 @@ mod tests {
         // one label for the three, the one farthest up first, and where
         // they run
         let (text, shape) = read(&labels[2]);
-        assert_eq!(text, "C 20x2.8\nT 25x3.5\nS 25x3.5\nin the floor");
+        assert_eq!(text, "C 20x2.8\nTV 25x3.5\nSV 25x3.5\nin the floor");
         let Shape::Along { at, angle } = shape else {
             unreachable!()
         };

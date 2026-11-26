@@ -2577,6 +2577,20 @@ pub struct View {
     /// building while the site plan lies square to the parcel.
     #[serde(default, skip_serializing_if = "is_zero_f64")]
     pub turn: f64,
+    /// The labels of a drawn schedule (the axonometry of the water
+    /// supply, the drain sections) dragged from where they fall by
+    /// themselves: what each is of, and by how much, paper mm.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub label_moves: Vec<LabelMove>,
+}
+
+/// A label of a drawn schedule dragged away (George 2026-11-26): the
+/// `n`th label of the element `of`, moved `by` paper mm.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LabelMove {
+    pub of: ElementId,
+    pub n: u32,
+    pub by: DVec2,
 }
 
 /// A section line's own look and course: broken in the middle (only its
@@ -2863,6 +2877,11 @@ pub enum ScheduleCategory {
     /// The structural drawing's list of ring beams by position (V1, V2…):
     /// section and running length.
     RingBeamList,
+    /// The developed sections of the foul drainage, a section a stack
+    /// (rozvinuté rezy kanalizácie), drawn at 1:50.
+    DrainSections,
+    /// The axonometry of the water supply, drawn at 1:50.
+    WaterAxonometry,
     /// The list of the roof's timber (výkaz reziva) by position (D-01,
     /// D-02…): name, pieces, width, height, length of one and all, volume.
     TimberList,
@@ -2872,7 +2891,7 @@ pub enum ScheduleCategory {
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 32] = [
+    pub const ALL: [ScheduleCategory; 34] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2903,6 +2922,8 @@ impl ScheduleCategory {
         ScheduleCategory::Identification,
         ScheduleCategory::LintelPositions,
         ScheduleCategory::RingBeamList,
+        ScheduleCategory::DrainSections,
+        ScheduleCategory::WaterAxonometry,
         ScheduleCategory::TimberList,
         ScheduleCategory::SteelList,
     ];
@@ -2940,6 +2961,8 @@ impl ScheduleCategory {
             ScheduleCategory::Identification => return "Identification data".into(),
             ScheduleCategory::LintelPositions => return "List of lintels".into(),
             ScheduleCategory::RingBeamList => return "List of ring beams".into(),
+            ScheduleCategory::DrainSections => return "Drain sections".into(),
+            ScheduleCategory::WaterAxonometry => return "Water supply axonometry".into(),
             ScheduleCategory::TimberList => return "Timber list".into(),
             ScheduleCategory::SteelList => return "Steel list".into(),
         };
@@ -2986,6 +3009,8 @@ impl ScheduleCategory {
             ScheduleCategory::Identification => "Identification data",
             ScheduleCategory::LintelPositions => "List of lintels",
             ScheduleCategory::RingBeamList => "List of ring beams",
+            ScheduleCategory::DrainSections => "Drain sections",
+            ScheduleCategory::WaterAxonometry => "Water supply axonometry",
             ScheduleCategory::TimberList => "Timber list",
             ScheduleCategory::SteelList => "Steel list",
         }
@@ -3001,6 +3026,8 @@ impl ScheduleCategory {
                     | ScheduleCategory::MaterialLegend
                     | ScheduleCategory::BoardDiagram
                     | ScheduleCategory::FlashingTable
+                    | ScheduleCategory::DrainSections
+                    | ScheduleCategory::WaterAxonometry
             )
     }
 
@@ -3086,6 +3113,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 
@@ -3134,6 +3162,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 }
@@ -3179,6 +3208,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 
@@ -3225,6 +3255,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 
@@ -3276,6 +3307,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 

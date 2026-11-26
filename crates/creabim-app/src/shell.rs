@@ -335,6 +335,8 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::HeaterList => "flame",
         ScheduleCategory::BuildingFigures => "table-2",
         ScheduleCategory::FlashingTable => "table-2",
+        ScheduleCategory::DrainSections => "pipe",
+        ScheduleCategory::WaterAxonometry => "pipe",
         ScheduleCategory::Identification => "table-2",
         ScheduleCategory::Documents => "sheet-template",
         ScheduleCategory::MaterialLegend => "brick-wall",
@@ -715,9 +717,9 @@ impl CreaBimApp {
                 v.push(
                     Item::new(
                         if key == "tab:timber" {
-                            "new.schedule:30"
+                            "new.schedule:32"
                         } else {
-                            "new.schedule:31"
+                            "new.schedule:33"
                         },
                         if key == "tab:timber" {
                             "Timber list"
