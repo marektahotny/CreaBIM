@@ -480,6 +480,16 @@ mod tests {
             0,
             creabim_core::Element::new("Výkres krovu", ElementKind::View(kv)),
         );
+        // the timber list grouped by cross-section, for the budget
+        let mut sv = creabim_core::View::plan(roof);
+        sv.kind = ViewKind::Schedule {
+            category: creabim_core::ScheduleCategory::TimberList,
+            by_type: true,
+        };
+        ids.push(creabim_core::Element::new(
+            "Výkaz reziva podľa prierezu",
+            ElementKind::View(sv),
+        ));
         let mut tx = creabim_core::Transaction::new("framing");
         let mut probe = doc.model().clone();
         let mut ok = vec![];

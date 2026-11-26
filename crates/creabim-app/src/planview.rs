@@ -8530,10 +8530,12 @@ pub fn framing_tags(model: &creabim_core::Model, ids: &[ElementId]) -> Vec<Eleme
             continue;
         }
         let (level, across, beam) = match &e.kind {
+            // the underside only by a level member: on a sloped one
+            // (a rafter) it says nothing (George 2026-11-26)
             ElementKind::Beam(b) => (
                 b.level,
                 (b.end - b.start).normalize_or(DVec2::X).perp(),
-                true,
+                (b.rise[1] - b.rise[0]).abs() < 1e-6,
             ),
             ElementKind::Column(c) => (c.level, DVec2::new(-0.7, 0.7), false),
             _ => continue,

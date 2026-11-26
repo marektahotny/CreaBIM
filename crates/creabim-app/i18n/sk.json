@@ -8942,5 +8942,8 @@
  "numbered": "číslované",
  "Section from the member's cross-section; width and depth follow it.": "Rozmery z prierezu prvku; šírka a výška sa podľa neho nastavia.",
  "Position mark": "Pozičné označenie",
- "Total paint area (m²)": "Celková náterová plocha (m²)"
+ "Total paint area (m²)": "Celková náterová plocha (m²)",
+ "Group by cross-section": "Zoskupiť podľa prierezu",
+ "One row per cross-section and grade with its pieces and lengths summed, for the budget; off: a row per position mark.": "Jeden riadok za každý prierez a triedu so spočítanými kusmi a dĺžkami (pre rozpočet); vypnuté: riadok za každé pozičné označenie.",
+ "Group schedule by cross-section": "Zoskupenie výkazu podľa prierezu"
 }

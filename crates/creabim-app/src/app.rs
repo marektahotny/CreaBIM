@@ -10626,7 +10626,23 @@ crate::props::row(ui, "File names", |ui| {
                             }
                         }
                         // the take-off groups and sorts in its own bar
-                        if *category != ScheduleCategory::Materials
+                        // the timber or steel list: by mark, or each
+                        // cross-section's lengths summed for the budget
+                        // (George 2026-11-26)
+                        let framing = matches!(
+                            category,
+                            ScheduleCategory::TimberList | ScheduleCategory::SteelList
+                        );
+                        if framing {
+                            if crate::props::switch(ui, by_type, "Group by cross-section")
+                                .on_hover_text(crate::i18n::tr(
+                                    "One row per cross-section and grade with its pieces and lengths summed, for the budget; off: a row per position mark.",
+                                ))
+                                .changed()
+                            {
+                                label = "Group schedule by cross-section"
+                            }
+                        } else if *category != ScheduleCategory::Materials
                             && crate::props::switch(ui, by_type, "Group by type")
                                 .on_hover_text(crate::i18n::tr(
                                     "List the rows under a heading per element type, with its count.",

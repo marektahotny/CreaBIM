@@ -2288,6 +2288,11 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     ));
                     continue;
                 }
+                // no underside by a sloped member, though it was tagged
+                // level (George 2026-11-26: on a rafter it says nothing)
+                if t.underside && crate::framing::sloped(model, t.host) {
+                    continue;
+                }
                 // a material tag reads the build-up (Annotate step 5)
                 let (text, round) = if t.material {
                     (material_text(model, t.host), false)

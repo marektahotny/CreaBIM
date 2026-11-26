@@ -37,6 +37,15 @@ pub fn underside(model: &Model, id: ElementId) -> Option<f64> {
     }
 }
 
+/// Is member `id` a beam lying on a slope (a rafter), its underside no
+/// one height?
+pub fn sloped(model: &Model, id: ElementId) -> bool {
+    matches!(
+        model.get(id).map(|e| &e.kind),
+        Some(creabim_core::ElementKind::Beam(b)) if (b.rise[1] - b.rise[0]).abs() > 1e-6
+    )
+}
+
 /// What a member's underside tag reads: `S.H.=+ 3,680`.
 pub fn underside_text(model: &Model, id: ElementId) -> String {
     underside(model, id).map_or_else(String::new, |z| format!("S.H.={}", level_text(z)))
@@ -60,6 +69,65 @@ fn mm(v: f64) -> String {
 /// drawing, name, pieces, width and height in mm, length of one and of
 /// all in m, volume in m³, and the timber in all.
 pub fn timber_schedule(model: &Model) -> Schedule {
+    timber_schedule_by(model, false)
+}
+
+/// Positions alike in section and grade taken together, for the budget
+/// (George 2026-11-26): what they are, how many, their total length,
+/// volume or mass and turnbuckles; the first position's first member
+/// standing for the row.
+struct Lot<'a> {
+    first: &'a Position,
+    roles: Vec<String>,
+    count: usize,
+    length: f64,
+    volume: f64,
+    mass: Option<f64>,
+    turnbuckles: usize,
+}
+
+fn lots(positions: &[Position]) -> Vec<Lot<'_>> {
+    use creabim_core::words::tr;
+    let mut out: Vec<Lot> = Vec::new();
+    for p in positions {
+        let key = (framing::section_label(&p.section), p.grade.clone());
+        let found = out.iter_mut().find(|l| {
+            (
+                framing::section_label(&l.first.section),
+                l.first.grade.clone(),
+            ) == key
+        });
+        let lot = match found {
+            Some(l) => l,
+            None => {
+                out.push(Lot {
+                    first: p,
+                    roles: vec![],
+                    count: 0,
+                    length: 0.0,
+                    volume: 0.0,
+                    mass: Some(0.0),
+                    turnbuckles: 0,
+                });
+                out.last_mut().unwrap()
+            }
+        };
+        let role = tr(p.role.label());
+        if !lot.roles.contains(&role) {
+            lot.roles.push(role);
+        }
+        lot.count += p.count();
+        lot.length += p.length * p.count() as f64;
+        lot.volume += p.volume();
+        lot.mass = lot.mass.zip(p.mass()).map(|(a, b)| a + b);
+        lot.turnbuckles += p.turnbuckles;
+    }
+    out
+}
+
+/// The list of timber, by position mark or (`by_section`) with the
+/// members of one cross-section and grade together, their lengths summed.
+pub fn timber_schedule_by(model: &Model, by_section: bool) -> Schedule {
     use creabim_core::words::tr;
     let columns = vec![
         col("Mark on drawing", 14.0, false),
@@ -72,23 +140,43 @@ pub fn timber_schedule(model: &Model) -> Schedule {
         col("Volume (m³)", 15.0, true),
     ];
     let positions: Vec<Position> = framing::positions(model, true);
-    let rows: Vec<Row> = positions
-        .iter()
-        .map(|p| Row {
-            id: p.members[0],
-            cells: vec![
-                p.mark.clone(),
-                tr(p.role.label()),
-                p.count().to_string(),
-                mm(p.section.b),
-                mm(p.section.h),
-                comma(p.length, 3),
-                comma(p.length * p.count() as f64, 3),
-                comma(p.volume(), 6),
-            ],
-            group: false,
-        })
-        .collect();
+    let rows: Vec<Row> = if by_section {
+        lots(&positions)
+            .iter()
+            .map(|l| Row {
+                id: l.first.members[0],
+                cells: vec![
+                    String::new(),
+                    l.roles.join(", "),
+                    l.count.to_string(),
+                    mm(l.first.section.b),
+                    mm(l.first.section.h),
+                    String::new(),
+                    comma(l.length, 3),
+                    comma(l.volume, 6),
+                ],
+                group: false,
+            })
+            .collect()
+    } else {
+        positions
+            .iter()
+            .map(|p| Row {
+                id: p.members[0],
+                cells: vec![
+                    p.mark.clone(),
+                    tr(p.role.label()),
+                    p.count().to_string(),
+                    mm(p.section.b),
+                    mm(p.section.h),
+                    comma(p.length, 3),
+                    comma(p.length * p.count() as f64, 3),
+                    comma(p.volume(), 6),
+                ],
+                group: false,
+            })
+            .collect()
+    };
     let volume: f64 = positions.iter().map(Position::volume).sum();
     let paint: f64 = positions.iter().map(Position::paint_area).sum();
     Schedule {
@@ -126,6 +214,32 @@ pub fn timber_schedule(model: &Model) -> Schedule {
 /// the total mass of the structure, as the structural engineer's "Výpis
 /// materiálu"; a bracing rod's turnbuckles under it.
 pub fn steel_schedule(model: &Model) -> Schedule {
+    steel_schedule_by(model, false)
+}
+
+/// A bracing rod's turnbuckles, a row under it.
+fn turnbuckle_row(id: ElementId, t: &framing::Turnbuckle, n: usize) -> Row {
+    use creabim_core::words::tr;
+    Row {
+        id,
+        cells: vec![
+            String::new(),
+            format!("{} M{}", tr("Turnbuckle"), t.thread),
+            format!("Rothoblaas {}", t.code),
+            "S355".into(),
+            n.to_string(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        ],
+        group: false,
+    }
+}
+
+/// The list of steel members, by position mark or (`by_section`) with the
+/// members of one section and grade together, lengths and masses summed.
+pub fn steel_schedule_by(model: &Model, by_section: bool) -> Schedule {
     use creabim_core::words::tr;
     let columns = vec![
         col("Mark", 10.0, false),
@@ -142,7 +256,36 @@ pub fn steel_schedule(model: &Model) -> Schedule {
     let mut rows = vec![];
     let mut total = 0.0;
     let paint: f64 = positions.iter().map(Position::paint_area).sum();
-    for p in &positions {
+    if by_section {
+        for l in lots(&positions) {
+            let kg = l.mass.unwrap_or(0.0);
+            total += kg;
+            rows.push(Row {
+                id: l.first.members[0],
+                cells: vec![
+                    String::new(),
+                    l.roles.join(", "),
+                    framing::section_label(&l.first.section),
+                    l.first.grade.clone(),
+                    l.count.to_string(),
+                    String::new(),
+                    comma(l.length, 3),
+                    l.first
+                        .section
+                        .mass
+                        .map_or_else(String::new, |m| comma(m, 2)),
+                    comma(kg, 2),
+                ],
+                group: false,
+            });
+            if l.turnbuckles > 0 && l.first.section.shape == Shape::Bar {
+                if let Some(t) = framing::turnbuckle_for(l.first.section.b) {
+                    rows.push(turnbuckle_row(l.first.members[0], &t, l.turnbuckles));
+                }
+            }
+        }
+    }
+    for p in positions.iter().filter(|_| !by_section) {
         let kg = p.mass().unwrap_or(0.0);
         total += kg;
         rows.push(Row {
@@ -162,21 +305,7 @@ pub fn steel_schedule(model: &Model) -> Schedule {
         });
         if p.turnbuckles > 0 && p.section.shape == Shape::Bar {
             if let Some(t) = framing::turnbuckle_for(p.section.b) {
-                rows.push(Row {
-                    id: p.members[0],
-                    cells: vec![
-                        String::new(),
-                        format!("{} M{}", tr("Turnbuckle"), t.thread),
-                        format!("Rothoblaas {}", t.code),
-                        "S355".into(),
-                        p.turnbuckles.to_string(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                    ],
-                    group: false,
-                });
+                rows.push(turnbuckle_row(p.members[0], &t, p.turnbuckles));
             }
         }
     }
@@ -490,5 +619,22 @@ mod tests {
         assert!(
             matches!(&r[0], PlanItem::Line { pen: Pen::Drafted(look), .. } if look.kind == creabim_core::LineType::DashDot)
         );
+    }
+
+    #[test]
+    fn grouped_by_section_the_lengths_are_summed() {
+        let mut m = Model::new();
+        let l = level(&mut m);
+        member(&mut m, l, Role::WallPlate, "150/150", 6.42);
+        member(&mut m, l, Role::WallPlate, "150/150", 2.9);
+        member(&mut m, l, Role::Post, "150/150", 2.0);
+        member(&mut m, l, Role::Rafter, "80/200", 6.14);
+        let s = timber_schedule_by(&m, true);
+        assert_eq!(s.rows.len(), 2);
+        assert_eq!(s.rows[0].cells[2], "3");
+        assert_eq!(s.rows[0].cells[6], "11,320");
+        assert!(s.rows[0].cells[1].contains(", "));
+        // the same totals as by mark
+        assert_eq!(s.totals, timber_schedule(&m).totals);
     }
 }
