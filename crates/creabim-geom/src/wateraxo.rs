@@ -4,7 +4,7 @@
 //! oblique projection, the plan's x across, its y slanting up at 45° at
 //! [`DEPTH`] of its length, heights upright; each system in its colour, cold
 //! water dash-dot, hot water and circulation dash and two dots, each pipe
-//! with its size (`20x2,8`), the risers with their marks (V1), the
+//! with its system and size (`SV 20x2,8`), the risers with their marks (V1), the
 //! fixtures in their outlines with their marks and the height of their outlets above the floor, the valves on
 //! the pipes. Drawn on paper (1 unit = 1 mm) at [`SCALE`].
 
@@ -318,11 +318,18 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         } else {
             Anchor::Middle
         };
+        // its system's code before its size: SV 16x2, TV 16x2, C 16x2
+        // (George 2026-11-26)
+        let code = match pipe.kind() {
+            SystemKind::ColdWater => "SV",
+            SystemKind::HotWater => "TV",
+            _ => "C",
+        };
         labels.write(
             &mut items,
             *id,
             mid + side,
-            &size_text(pipe),
+            &format!("{code} {}", size_text(pipe)),
             SMALL,
             align,
             green,
@@ -554,7 +561,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(texts.contains(&"20x2,8"), "{texts:?}");
+        assert!(texts.contains(&"SV 20x2,8"), "{texts:?}");
         let h = format!("{:.0}", (fx[0].2.z - fx[0].3) * 1000.0);
         assert!(texts.contains(&h.as_str()), "{texts:?}");
         // the basin in its outline, thin, a fraction of its edges
@@ -618,6 +625,7 @@ mod tests {
         let moved = label(&after, first.id);
         let (b, m) = (before.unwrap(), moved.unwrap());
         assert_eq!(m.1, format!("{}i", b.1));
+        assert!(m.1.starts_with("SV ") || m.1.starts_with("TV "), "{}", m.1);
         assert!((m.0 - b.0 - DVec2::new(5.0, -3.0)).length() < 1e-9);
         let found = crate::labels::found(vid, &after.items);
         assert!(found.iter().any(|f| f.0 == first.id && f.1 == 0));
