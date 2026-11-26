@@ -2522,9 +2522,9 @@ fn place_on_core(model: &Model, w: &Wall, b: &mut Beam, lo: f64, hi: f64) {
     // on over it, so none of its own
     let ext_side = ring_exterior(model, w, b);
     if let Some(wr) = &mut b.wrap {
-        for i in 0..4 {
+        for (i, t) in wr.sides.iter_mut().enumerate() {
             if i != ext_side {
-                wr.sides[i] = 0.0;
+                *t = 0.0;
             }
         }
         wr.plaster = None;
