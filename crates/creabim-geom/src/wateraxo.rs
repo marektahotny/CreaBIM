@@ -593,7 +593,9 @@ mod tests {
         let mut v = creabim_core::View::schedule(creabim_core::ScheduleCategory::WaterAxonometry);
         let label = |d: &PlanView, id| {
             d.items.iter().find_map(|it| match it {
-                PlanItem::Text { id: i, at, text, .. } if *i == id => Some((*at, text.clone())),
+                PlanItem::Text {
+                    id: i, at, text, ..
+                } if *i == id => Some((*at, text.clone())),
                 _ => None,
             })
         };
@@ -604,8 +606,12 @@ mod tests {
         });
         let ve = Element::new("Axo", ElementKind::View(v));
         let vid = ve.id;
-        doc.commit(Transaction::new("v").insert(ve).replace(first.clone(), warm))
-            .unwrap();
+        doc.commit(
+            Transaction::new("v")
+                .insert(ve)
+                .replace(first.clone(), warm),
+        )
+        .unwrap();
         assert!(crate::labels::movable(doc.model(), vid));
         let before = label(&d, first.id);
         let after = drawing(vid, "Axonometria", doc.model());
