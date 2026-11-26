@@ -177,6 +177,8 @@ FINAL={
  "mod-louvres": '<path d="M4 3v18" /><path d="M4 5l10 3M4 11l10 3M4 17l10 3" />',
  "mod-bevel": '<path d="M4 21V11l7-7h9" />',
  "mod-shell": '<path d="M3 4h18v16H3z" /><path d="M7 4v12h10V4" />',
+ # Mirror copy: the original kept, its mirrored twin filled
+ "mirror-copy": '<path d="m3 7 5 5-5 5V7" /> <path d="m21 7-5 5 5 5V7" fill="currentColor" /> <path d="M12 2v20" stroke-dasharray="2 2" />',
  "offset": '<rect x="8" y="8" width="8" height="8" /><path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5" />',
  "sel-box": '<rect x="4" y="5" width="16" height="14" stroke-dasharray="3 2" />',
  "sel-circle": '<circle cx="12" cy="12" r="8" stroke-dasharray="3 2" />',

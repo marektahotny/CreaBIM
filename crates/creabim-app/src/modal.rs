@@ -130,8 +130,9 @@ impl Mode {
     }
 
     /// Does it make copies by default (Ctrl keeps the original instead)?
+    /// Mirror doesn't: Mirror copy is its own command (George 2026-11-26).
     fn copies_by_default(self) -> bool {
-        matches!(self, Mode::Mirror | Mode::Offset)
+        matches!(self, Mode::Offset)
     }
 }
 
@@ -343,10 +344,23 @@ struct CopyPreview {
 }
 
 impl CopyPreview {
-    fn new(doc: &Document, originals: &[Element]) -> Option<Self> {
+    /// Copies of `originals`; `with_tags`, their tags in plans too (a
+    /// mirrored copy of a rafter comes with its mark, George 2026-11-26).
+    fn new(doc: &Document, originals: &[Element], with_tags: bool) -> Option<Self> {
         let model = doc.model();
-        let ids: Vec<ElementId> = originals.iter().map(|e| e.id).collect();
-        let set = transform::copy_set(model, &ids);
+        let ids: Vec<ElementId> = originals
+            .iter()
+            .filter(|e| !matches!(e.kind, ElementKind::Tag(_)))
+            .map(|e| e.id)
+            .collect();
+        let mut set = transform::copy_set(model, &ids);
+        if with_tags {
+            for t in transform::tags_hosted_on(model, &set) {
+                if !set.contains(&t) {
+                    set.push(t);
+                }
+            }
+        }
         let elements: Vec<Element> = set
             .iter()
             .filter_map(|id| model.get(*id))
@@ -730,6 +744,24 @@ impl Modal {
                 (m, n, _) => format!("None of the {n} selected can take a {}.", m.verb().to_lowercase()),
             });
         }
+        // a mirror turns the tags of what it mirrors over with it: a
+        // rafter's mark and a purlin's S.H. box (George 2026-11-26)
+        if mode == Mode::Mirror {
+            let hosts: Vec<ElementId> = kept.iter().map(|k| k.0.id).collect();
+            for t in transform::tags_hosted_on(model, &hosts) {
+                let (Some(e), false) = (model.get(t), hosts.contains(&t)) else {
+                    continue;
+                };
+                let ElementKind::Tag(tag) = &e.kind else {
+                    continue;
+                };
+                let at = kept
+                    .iter()
+                    .find(|k| k.0.id == tag.host)
+                    .map_or(DVec3::ZERO, |k| k.1);
+                kept.push((e.clone(), at));
+            }
+        }
         let own: Vec<DVec3> = kept.iter().map(|k| k.1).collect();
         let n = own.len() as f64;
         let median = own.iter().copied().sum::<DVec3>() / n;
@@ -758,7 +790,7 @@ impl Modal {
         m.individual = individual;
         m.skipped = skipped;
         if mode.copies_by_default() {
-            m.copies = CopyPreview::new(doc, m.edit.originals());
+            m.copies = CopyPreview::new(doc, m.edit.originals(), false);
             m.copy = m.copies.is_some();
         }
         Ok(m)
@@ -778,6 +810,11 @@ impl Modal {
 
     pub fn stage(&self) -> Stage {
         self.stage
+    }
+
+    /// Is it making copies (the originals kept)?
+    pub fn copying(&self) -> bool {
+        self.copy
     }
 
     /// The workplane it works on, in 3D.
@@ -1390,7 +1427,8 @@ impl Modal {
                     c.applied = false;
                     self.placed += 1;
                     // the next copy has ids of its own
-                    self.copies = CopyPreview::new(doc, self.edit.originals());
+                    self.copies =
+                        CopyPreview::new(doc, self.edit.originals(), self.mode == Mode::Mirror);
                     self.typed.clear();
                     return Outcome::Running(format!(
                         "{} placed. Click to place another, Esc to finish. Ctrl+Z undoes one at a time.",
@@ -1472,7 +1510,8 @@ impl Modal {
         if on {
             self.edit.cancel(doc);
             if self.copies.is_none() {
-                self.copies = CopyPreview::new(doc, self.edit.originals());
+                self.copies =
+                    CopyPreview::new(doc, self.edit.originals(), self.mode == Mode::Mirror);
             }
             self.copy = self.copies.is_some();
         } else {
@@ -1589,7 +1628,9 @@ impl Modal {
                 .data_mut(|m| m.insert_persisted(key, egui::Vec2::ZERO));
         }
         grip.on_hover_cursor(egui::CursorIcon::Grab)
-            .on_hover_text("Drag to move the bar; double-click puts it back");
+            .on_hover_text(crate::i18n::t(
+                "Drag to move the bar; double-click puts it back",
+            ));
         let icon = match self.mode {
             Mode::Move => "move",
             Mode::Rotate => "rotate-cw",
@@ -1601,7 +1642,11 @@ impl Modal {
         let (ir, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
         crate::svgicon::paint(ui.painter(), ir, icon, p.accent);
         if !compact {
-            ui.label(egui::RichText::new(self.mode.verb()).strong());
+            let verb = match (self.mode, self.copy) {
+                (Mode::Mirror, true) => "Mirror copy",
+                (m, _) => m.verb(),
+            };
+            ui.label(egui::RichText::new(crate::i18n::t(verb)).strong());
         }
         let muted = p.muted;
         let border = p.border;
@@ -1619,12 +1664,12 @@ impl Modal {
                     _ => ui.visuals().text_color(),
                 };
                 ui.add(
-                    egui::Button::new(egui::RichText::new(text).color(ink))
+                    egui::Button::new(egui::RichText::new(crate::i18n::t(text)).color(ink))
                         .fill(fill)
                         .corner_radius(9.0)
                         .min_size(egui::vec2(24.0, 20.0)),
                 )
-                .on_hover_text(tip)
+                .on_hover_text(crate::i18n::t(tip))
                 .clicked()
             };
         let icon_chip = |ui: &mut egui::Ui, on: bool, icon: &str, tip: &str| {
@@ -1639,7 +1684,7 @@ impl Modal {
             let ink = if on { egui::Color32::WHITE } else { muted };
             let ir = egui::Rect::from_center_size(r.center(), egui::vec2(14.0, 14.0));
             crate::svgicon::paint(ui.painter(), ir, icon, ink);
-            resp.on_hover_text(tip).clicked()
+            resp.on_hover_text(crate::i18n::t(tip)).clicked()
         };
         let sep = |ui: &mut egui::Ui| {
             let (r, _) = ui.allocate_exact_size(egui::vec2(7.0, 18.0), egui::Sense::hover());
@@ -1701,7 +1746,9 @@ impl Modal {
             Mode::Rotate | Mode::Mirror => "Angle",
             Mode::Scale => "Factor",
         };
-        let letter = &what[..1];
+        // the badge's letter in the interface's language: V(zdialenosť),
+        // U(hol), K(oeficient) in Slovak
+        let letter: String = crate::i18n::t(what).chars().take(1).collect();
         // a help mark, not a button: it lights as the ? marks do (MU39)
         let (br, badge) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
         let lit = badge.hovered();
@@ -1715,22 +1762,26 @@ impl Modal {
         ui.painter().text(
             br.center(),
             egui::Align2::CENTER_CENTER,
-            letter,
+            &letter,
             egui::FontId::proportional(10.5),
             ink,
         );
-        badge.on_hover_text(match self.mode {
+        badge.on_hover_text(crate::i18n::t(match self.mode {
             Mode::Move | Mode::Offset | Mode::Grip => "Distance: type how far, then Enter",
             Mode::Rotate | Mode::Mirror => "Angle: type how far it turns, then Enter",
             Mode::Scale => "Factor: type how much bigger (2) or smaller (0.5), then Enter",
-        });
+        }));
         ui.add(
             egui::TextEdit::singleline(&mut self.typed)
                 .vertical_align(egui::Align::Center)
                 .desired_width(56.0)
-                .hint_text("type"),
+                .hint_text(crate::i18n::t("type a value")),
         )
-        .on_hover_text(format!("{what}: type it and press Enter"));
+        .on_hover_text(crate::i18n::t(match self.mode {
+            Mode::Move | Mode::Offset | Mode::Grip => "Distance: type it and press Enter",
+            Mode::Rotate | Mode::Mirror => "Angle: type it and press Enter",
+            Mode::Scale => "Factor: type it and press Enter",
+        }));
         if self.copies_allowed() {
             let tip = match self.mode {
                 Mode::Move => "Copy (Ctrl): leave copies behind, each click places one",
@@ -1751,7 +1802,11 @@ impl Modal {
         ui.painter().rect_filled(r, 9.0, fill);
         let ir = egui::Rect::from_center_size(r.center(), egui::vec2(14.0, 14.0));
         crate::svgicon::paint(ui.painter(), ir, "check", egui::Color32::WHITE);
-        if resp.on_hover_text("Finish (Enter)").clicked() && ready {
+        if resp
+            .on_hover_text(crate::i18n::t("Finish (Enter)"))
+            .clicked()
+            && ready
+        {
             self.ask = Some(true);
         }
         if icon_chip(ui, false, "x", "Cancel (Esc)") {
@@ -2731,7 +2786,7 @@ mod tests {
     }
 
     #[test]
-    fn mirror_makes_a_mirrored_copy_across_two_clicked_points() {
+    fn mirror_turns_the_selection_over_in_place_across_two_clicked_points() {
         let mut doc = Document::from_model(sample_house());
         let (id, _) = first_wall(&doc);
         let ElementKind::Wall(w0) = doc.model().get(id).unwrap().kind.clone() else {
@@ -2739,6 +2794,30 @@ mod tests {
         };
         let n = doc.model().len();
         let mut m = tool(&doc, Mode::Mirror, id);
+        assert!(!m.copying());
+        with_map(&[], |map| {
+            m.step(&mut doc, &click(at(20.0, 0.0)), map);
+            m.step(&mut doc, &pointer(at(20.0, 5.0)), map);
+            let out = m.step(&mut doc, &click(at(20.0, 5.0)), map);
+            assert!(matches!(out, Outcome::Done(_)));
+        });
+        // nothing new: the wall itself is across the line
+        assert_eq!(doc.model().len(), n);
+        assert!(wall_start(&doc, id).distance(DVec2::new(40.0 - w0.start.x, w0.start.y)) < 1e-9);
+    }
+
+    #[test]
+    fn mirror_copy_makes_a_mirrored_copy_across_two_clicked_points() {
+        let mut doc = Document::from_model(sample_house());
+        let (id, _) = first_wall(&doc);
+        let ElementKind::Wall(w0) = doc.model().get(id).unwrap().kind.clone() else {
+            unreachable!()
+        };
+        let n = doc.model().len();
+        let mut m = tool(&doc, Mode::Mirror, id);
+        // as Mirror copy starts it (George 2026-11-26)
+        m.set_copy(&mut doc, true);
+        assert!(m.copying());
         assert_eq!(m.stage(), Stage::Base);
         // the mirror line: x = 20, up the plan
         with_map(&[], |map| {

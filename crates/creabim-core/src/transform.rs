@@ -609,9 +609,57 @@ pub fn mirror_xforms(at: DVec3, normal: DVec3) -> Option<Vec<Xform>> {
 /// when it can't be (a wall can't be turned upside down, a door goes with
 /// its wall).
 pub fn mirrored(model: &Model, e: &Element, at: DVec3, normal: DVec3) -> Option<Element> {
+    if let ElementKind::Tag(_) = &e.kind {
+        return mirrored_tag(model, e, normal);
+    }
     let mut out = e.clone();
     for t in mirror_xforms(at, normal)? {
         out = transformed(model, &out, &t)?;
+    }
+    Some(out)
+}
+
+/// The tags in plans on any of `ids`.
+pub fn tags_hosted_on(model: &Model, ids: &[ElementId]) -> Vec<ElementId> {
+    model
+        .iter()
+        .filter(|e| match &e.kind {
+            ElementKind::Tag(t) => {
+                ids.contains(&t.host)
+                    && matches!(
+                        crate::DrawingFrame::of(model, t.view),
+                        Some(crate::DrawingFrame::Plan { .. })
+                    )
+            }
+            _ => false,
+        })
+        .map(|e| e.id)
+        .collect()
+}
+
+/// `e`, a tag in a plan, turned over with its host across the upright
+/// plane facing `normal`: its place beside the host, its leader's bend and
+/// end mirrored too, so a mirrored rafter's mark (D-01) and a purlin's
+/// S.H. box stand on the mirrored side (George 2026-11-26). `None` for a
+/// tag in a section, or a level mirror plane.
+pub fn mirrored_tag(model: &Model, e: &Element, normal: DVec3) -> Option<Element> {
+    let ElementKind::Tag(t) = &e.kind else {
+        return None;
+    };
+    if !matches!(
+        crate::DrawingFrame::of(model, t.view),
+        Some(crate::DrawingFrame::Plan { .. })
+    ) || normal.z.abs() > 1e-6
+    {
+        return None;
+    }
+    let n = normal.truncate().try_normalize()?;
+    let flip = |v: DVec2| v - n * (2.0 * v.dot(n));
+    let mut out = e.clone();
+    if let ElementKind::Tag(t) = &mut out.kind {
+        t.offset = flip(t.offset);
+        t.elbow = t.elbow.map(flip);
+        t.end = t.end.map(flip);
     }
     Some(out)
 }
@@ -1355,6 +1403,102 @@ mod tests {
         // a normal a hair off level (read off a face's mesh) is level
         let hair = DVec3::new(1.0, -1.0, 1e-8);
         assert!(mirrored(&m, wall, DVec3::ZERO, hair).is_some());
+    }
+
+    #[test]
+    fn a_rafter_mirrored_at_the_ridge_lies_on_the_other_roof_face() {
+        use crate::framing::{self, Framing, Role};
+        let mut m = sample_house();
+        let level = m.levels().next().unwrap().0.id;
+        // a rafter rising 35° from x = 0 to the ridge at x = 4, lying on
+        // its roof face, its foot cut plumb; and a steel angle beside it
+        let mut b = crate::Beam::new(level, DVec2::ZERO, DVec2::new(4.0, 0.0));
+        let slope = 35f64.to_radians();
+        b.rise = [0.0, framing::rise_for(b.start, b.end, 35.0)];
+        b.up = Some(DVec3::new(-slope.sin(), 0.0, slope.cos()));
+        b.cuts = [Some(DVec3::X), None];
+        let mut rafter = Element::new("Krokva", ElementKind::Beam(b));
+        framing::apply(&mut rafter, Framing::new(Role::Rafter));
+        let mut angle = Element::new(
+            "L",
+            ElementKind::Beam(crate::Beam::new(
+                level,
+                DVec2::new(0.0, 1.0),
+                DVec2::new(4.0, 1.0),
+            )),
+        );
+        let mut f = Framing::new(Role::SteelBeam);
+        f.section = "L 50×50×5".into();
+        framing::apply(&mut angle, f);
+        crate::Transaction::new("t")
+            .insert(rafter.clone())
+            .insert(angle.clone())
+            .apply(&mut m)
+            .unwrap();
+        // across the upright plane x = 4 (the ridge)
+        let at = DVec3::new(4.0, 0.0, 0.0);
+        let ElementKind::Beam(r) = mirrored(&m, &rafter, at, DVec3::X).unwrap().kind else {
+            panic!()
+        };
+        assert!(r.start.distance(DVec2::new(8.0, 0.0)) < 1e-9);
+        assert!(r.end.distance(DVec2::new(4.0, 0.0)) < 1e-9);
+        // still rising to the ridge, on the face sloping the other way
+        assert_eq!(r.rise, rafter_rise(&rafter));
+        let up = r.up.unwrap();
+        assert!(up.distance(DVec3::new(slope.sin(), 0.0, slope.cos())) < 1e-9);
+        assert!(r.cuts[0].unwrap().distance(-DVec3::X) < 1e-9);
+        assert!(r.framing.as_ref().is_some_and(|f| f.role == Role::Rafter));
+        // the angle's leg that stood to one side stands to the other
+        let ElementKind::Beam(a0) = &angle.kind else {
+            panic!()
+        };
+        let ElementKind::Beam(a) = mirrored(&m, &angle, at, DVec3::X).unwrap().kind else {
+            panic!()
+        };
+        let p0 = &a0.section.as_ref().unwrap().points;
+        let p = &a.section.as_ref().unwrap().points;
+        let flipped: Vec<DVec2> = p0.iter().rev().map(|q| DVec2::new(-q.x, q.y)).collect();
+        assert_eq!(p, &flipped);
+        // mirrored twice it is as it was
+        let twice = mirrored(
+            &m,
+            &mirrored(&m, &angle, at, DVec3::X).unwrap(),
+            at,
+            DVec3::X,
+        )
+        .unwrap();
+        assert_eq!(twice.kind, angle.kind);
+    }
+
+    fn rafter_rise(e: &Element) -> [f64; 2] {
+        match &e.kind {
+            ElementKind::Beam(b) => b.rise,
+            _ => [0.0; 2],
+        }
+    }
+
+    #[test]
+    fn a_tag_in_a_plan_turns_over_with_its_host() {
+        let m = sample_house();
+        let plan = m
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. })))
+            .unwrap()
+            .id;
+        let wall = m
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Wall(_)))
+            .unwrap()
+            .id;
+        let mut t = crate::Tag::new(plan, wall, DVec2::new(0.5, 0.3));
+        t.elbow = Some(DVec2::new(0.2, 0.1));
+        let tag = Element::new("Tag", ElementKind::Tag(t));
+        let ElementKind::Tag(f) = mirrored(&m, &tag, DVec3::ZERO, DVec3::X).unwrap().kind else {
+            panic!()
+        };
+        assert_eq!(f.offset, DVec2::new(-0.5, 0.3));
+        assert_eq!(f.elbow, Some(DVec2::new(-0.2, 0.1)));
+        assert_eq!(f.host, wall);
     }
 
     #[test]
