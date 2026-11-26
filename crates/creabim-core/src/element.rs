@@ -2860,10 +2860,12 @@ pub enum ScheduleCategory {
     /// The developed sections of the foul drainage, a section a stack
     /// (rozvinuté rezy kanalizácie), drawn at 1:50.
     DrainSections,
+    /// The axonometry of the water supply, drawn at 1:50.
+    WaterAxonometry,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 31] = [
+    pub const ALL: [ScheduleCategory; 32] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2895,6 +2897,7 @@ impl ScheduleCategory {
         ScheduleCategory::LintelPositions,
         ScheduleCategory::RingBeamList,
         ScheduleCategory::DrainSections,
+        ScheduleCategory::WaterAxonometry,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2931,6 +2934,7 @@ impl ScheduleCategory {
             ScheduleCategory::LintelPositions => return "List of lintels".into(),
             ScheduleCategory::RingBeamList => return "List of ring beams".into(),
             ScheduleCategory::DrainSections => return "Drain sections".into(),
+            ScheduleCategory::WaterAxonometry => return "Water supply axonometry".into(),
         };
         format!("{one} Schedule")
     }
@@ -2976,6 +2980,7 @@ impl ScheduleCategory {
             ScheduleCategory::LintelPositions => "List of lintels",
             ScheduleCategory::RingBeamList => "List of ring beams",
             ScheduleCategory::DrainSections => "Drain sections",
+            ScheduleCategory::WaterAxonometry => "Water supply axonometry",
         }
     }
 
@@ -2990,6 +2995,7 @@ impl ScheduleCategory {
                     | ScheduleCategory::BoardDiagram
                     | ScheduleCategory::FlashingTable
                     | ScheduleCategory::DrainSections
+                    | ScheduleCategory::WaterAxonometry
             )
     }
 

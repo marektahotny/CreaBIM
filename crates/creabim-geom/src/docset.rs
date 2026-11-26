@@ -760,6 +760,19 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
                 &[d, legend],
             );
         }
+        // and the axonometry of its water supply beside the legend
+        if trade == Trade::Plumbing && !crate::wateraxo::pipes(&b.m).is_empty() {
+            let d = schedule(
+                &mut b,
+                ScheduleCategory::WaterAxonometry,
+                "Water supply axonometry",
+            );
+            b.sheet(
+                number(&part, "AXO", &mut n),
+                tr("Water supply axonometry"),
+                &[d, legend],
+            );
+        }
         // the electrician's board diagram on a sheet of its own
         if trade == Trade::Electrical && !creabim_core::electrical::circuits(&b.m).is_empty() {
             let d = schedule(&mut b, ScheduleCategory::BoardDiagram, "Board diagram");

@@ -8886,5 +8886,7 @@
  "Drain sections": "Rezy kanalizácie",
  "No foul drainage stack in the model yet.": "V modeli ešte nie je kanalizačné stúpacie potrubie.",
  "Qww l/s": "Qww l/s",
- "Qmax l/s": "Qmax l/s"
+ "Qmax l/s": "Qmax l/s",
+ "Water supply axonometry": "Axonometria vodovodu",
+ "No water pipe in the model yet.": "V modeli ešte nie je vodovodné potrubie."
 }

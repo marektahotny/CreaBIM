@@ -996,6 +996,7 @@ spec_enum! {
         LintelPositions = "lintel_positions",
         RingBeamList = "ring_beam_list",
         DrainSections = "drain_sections",
+        WaterAxonometry = "water_axonometry",
     }
 }
 

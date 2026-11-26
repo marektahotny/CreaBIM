@@ -1114,6 +1114,7 @@ fn view(e: &Element, id: &str, v: &core::View, ids: &Ids) -> f::View {
                 core::ScheduleCategory::FireRisk => f::ScheduleCategory::FireRisk,
                 core::ScheduleCategory::FlashingTable => f::ScheduleCategory::FlashingTable,
                 core::ScheduleCategory::DrainSections => f::ScheduleCategory::DrainSections,
+                core::ScheduleCategory::WaterAxonometry => f::ScheduleCategory::WaterAxonometry,
                 core::ScheduleCategory::Identification => f::ScheduleCategory::Identification,
                 core::ScheduleCategory::LintelPositions => f::ScheduleCategory::LintelPositions,
                 core::ScheduleCategory::RingBeamList => f::ScheduleCategory::RingBeamList,

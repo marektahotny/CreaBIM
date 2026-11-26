@@ -621,6 +621,10 @@ pub fn scale_text(model: &Model, views: &[PlacedView]) -> String {
                 category: creabim_core::ScheduleCategory::DrainSections,
                 ..
             } => Some(crate::drainsections::SCALE),
+            creabim_core::ViewKind::Schedule {
+                category: creabim_core::ScheduleCategory::WaterAxonometry,
+                ..
+            } => Some(crate::wateraxo::SCALE),
             creabim_core::ViewKind::Schedule { .. } => None,
             _ => Some(v.scale),
         })

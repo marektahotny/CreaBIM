@@ -79,6 +79,7 @@ pub mod tradepen;
 pub mod triangulate;
 pub mod valves;
 pub mod wall;
+pub mod wateraxo;
 pub mod xlsx;
 
 pub use mesh::TriMesh;
