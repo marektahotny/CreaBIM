@@ -246,9 +246,15 @@ pub struct CreaBimApp {
     close_state: appmenu::CloseState,
     /// The close was settled (saved, or the changes let go): let it through.
     close_ok: bool,
-    /// The main window was told to fill the screen (once, on the first
-    /// frame: some window managers skip the start-up hint; George 2026-11-25).
+    /// The main window fills the screen at start (George 2026-11-25): done,
+    /// or still being asked for. Windows drops the start-up hint and a
+    /// Maximized sent while the window is still hidden (eframe shows it only
+    /// after the first painted frame, and that show restores it), so it is
+    /// asked again on the frames after, until the window says it is
+    /// maximized or 30 frames (about 3 s) have asked.
     maximized_once: bool,
+    /// Frames that have asked for the maximized main window so far.
+    maximize_asks: u8,
     /// The undo and redo depths the trades' tags were last brought up to
     /// date at (penetration labels, VZT position marks).
     tags_at: Option<creabim_core::StepId>,
@@ -633,6 +639,7 @@ impl CreaBimApp {
             close_ok: false,
             // a dev shot keeps its fixed size
             maximized_once: std::env::var_os("CREABIM_SHOT").is_some(),
+            maximize_asks: 0,
             tags_at: None,
             pointer_away: true,
             pointer_seen: 0.0,
@@ -14061,9 +14068,22 @@ impl eframe::App for CreaBimApp {
         let _perf = Perf::new("frame");
         crate::files::remember_main_window(frame);
         if !self.maximized_once {
-            self.maximized_once = true;
-            ui.ctx()
-                .send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+            // the first frame's ask goes to the hidden window: not trusted
+            self.maximize_asks += 1;
+            // on Windows the window itself is asked (IsZoomed) and maximized
+            // straight away once it shows (ShowWindow), not through winit
+            #[cfg(windows)]
+            let maximized = crate::files::maximize_main_window();
+            #[cfg(not(windows))]
+            let maximized = ui.ctx().input(|i| i.viewport().maximized) == Some(true);
+            if (maximized && self.maximize_asks > 2) || self.maximize_asks > 30 {
+                self.maximized_once = true;
+            } else {
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(100));
+            }
         }
         // the trades' tags follow the model: a penetration's label for each
         // penetration the plans take over, a position mark for each device
