@@ -3,9 +3,9 @@
 //! A3): every pipe of cold water, hot water and circulation drawn in an
 //! oblique projection, the plan's x across, its y slanting up at 45° at
 //! its full length, heights upright; each system in its colour, cold
-//! water solid, hot water and circulation dashed, each pipe with its size
-//! (`20x2,8`), the risers with their marks (V1), the fixtures with their
-//! marks and the height of their outlets above the floor, the valves on
+//! water dash-dot, hot water and circulation dash and two dots, each pipe
+//! with its size (`20x2,8`), the risers with their marks (V1), the
+//! fixtures in their outlines with their marks and the height of their outlets above the floor, the valves on
 //! the pipes. Drawn on paper (1 unit = 1 mm) at [`SCALE`].
 
 use crate::paper::Anchor;
@@ -154,6 +154,52 @@ pub fn fixtures(model: &Model) -> Vec<(ElementId, String, DVec3, f64)> {
     out
 }
 
+/// Where the eye looks along in [`project`]: every point on this line
+/// falls on one spot of the paper.
+const VIEW: DVec3 = DVec3::new(
+    -std::f64::consts::FRAC_1_SQRT_2,
+    1.0,
+    -std::f64::consts::FRAC_1_SQRT_2,
+);
+
+/// The outline of a placed fixture, as the model's edges it shows: the
+/// edges facing the eye that bound it (an open edge), fold it (faces
+/// meeting at more than 30°) or turn it away (its silhouette), in model
+/// coordinates.
+pub fn outline(model: &Model, id: ElementId) -> Vec<(DVec3, DVec3)> {
+    use std::collections::HashMap;
+    let Some(e) = model.get(id) else {
+        return vec![];
+    };
+    let fold = 30f64.to_radians().cos();
+    let mut out = vec![];
+    for (m, _) in creabim_core::objects::model_parts(model, e) {
+        let mut edges: HashMap<(u32, u32), Vec<DVec3>> = HashMap::new();
+        for (i, face) in m.faces.iter().enumerate() {
+            let n = m.face_normal(i);
+            for k in 0..face.len() {
+                let (a, b) = (face[k], face[(k + 1) % face.len()]);
+                edges.entry((a.min(b), a.max(b))).or_default().push(n);
+            }
+        }
+        for ((a, b), ns) in edges {
+            let front = |n: &DVec3| n.dot(VIEW) < -1e-9;
+            if !ns.iter().any(front) {
+                continue;
+            }
+            let shown = match ns.as_slice() {
+                [_] => true,
+                [n1, n2] => n1.dot(*n2) < fold || front(n1) != front(n2),
+                _ => true,
+            };
+            if shown {
+                out.push((m.vertices[a as usize], m.vertices[b as usize]));
+            }
+        }
+    }
+    out
+}
+
 /// The drawing of the view `view`, named `title`.
 pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
     let mut items: Vec<PlanItem> = vec![];
@@ -205,14 +251,33 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             hi = hi.max(q);
         }
     }
-    for (_, _, at, floor) in &fx {
-        let q = project(DVec3::new(at.x, at.y, *floor));
+    let outlines: Vec<(ElementId, Vec<(DVec3, DVec3)>)> =
+        fx.iter().map(|f| (f.0, outline(model, f.0))).collect();
+    for (_, at, floor) in fx.iter().map(|f| (f.0, f.2, f.3)) {
+        let q = project(DVec3::new(at.x, at.y, floor));
         lo = lo.min(q);
+    }
+    for (_, edges) in &outlines {
+        for q in edges.iter().flat_map(|e| [project(e.0), project(e.1)]) {
+            lo = lo.min(q);
+            hi = hi.max(q);
+        }
     }
     let at = |q: DVec3| {
         let v = project(q);
         p(4.0 + (v.x - lo.x) * K, -14.0 - (hi.y - v.y) * K)
     };
+    // the fixtures in their outlines, thin, under the pipes
+    for (id, edges) in &outlines {
+        for (a, b) in edges {
+            items.push(PlanItem::Line {
+                id: *id,
+                pen: Pen::Symbol,
+                a: at(*a),
+                b: at(*b),
+            });
+        }
+    }
     // the pipes, each system its colour, and their sizes
     for (id, pipe, a, b) in &list {
         let (pa, pb) = (at(*a), at(*b));
@@ -470,6 +535,18 @@ mod tests {
         assert!(texts.contains(&"20x2,8"), "{texts:?}");
         let h = format!("{:.0}", (fx[0].2.z - fx[0].3) * 1000.0);
         assert!(texts.contains(&h.as_str()), "{texts:?}");
+        // the basin in its outline, thin, a fraction of its edges
+        let lines = d
+            .items
+            .iter()
+            .filter(|it| matches!(it, PlanItem::Line { id: i, pen: Pen::Symbol, .. } if *i == id))
+            .count();
+        let edges: usize =
+            creabim_core::objects::model_parts(doc.model(), doc.model().get(id).unwrap())
+                .iter()
+                .map(|(m, _)| m.faces.iter().map(|f| f.len()).sum::<usize>() / 2)
+                .sum();
+        assert!(lines >= 4 && lines < edges, "{lines} of {edges}");
         // cold water dash-dot: a dash, a dot, a dash
         let pieces = dash(
             DVec2::ZERO,
