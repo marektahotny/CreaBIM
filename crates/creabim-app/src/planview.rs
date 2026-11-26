@@ -2667,9 +2667,18 @@ fn show_pane(
     // a pipe's size label or a fixture's mark (S 16x2, WC, U) is dragged
     // straight away, selected or not: it is text only, never the pipe
     let press_on_mark = response.drag_started_by(egui::PointerButton::Primary)
-        && ui
-            .input(|i| i.pointer.press_origin())
-            .is_some_and(|p0| on_mark(doc.model(), &plan.items, xf.to_world(p0), mm));
+        && ui.input(|i| i.pointer.press_origin()).is_some_and(|p0| {
+            let w = xf.to_world(p0);
+            on_mark(doc.model(), &plan.items, w, mm)
+                    // a label of the water axonometry or drain sections
+                    || creabim_geom::labels::movable(doc.model(), view)
+                        && creabim_geom::labels::found(view, &plan.items)
+                            .iter()
+                            .any(|(_, _, lo, hi)| {
+                                let pad = DVec2::splat(0.8);
+                                w.cmpge(*lo - pad).all() && w.cmple(*hi + pad).all()
+                            })
+        });
     // the dot at a selected dimension's witness line end: it lies off
     // the dimension's line, so it is looked for on its own
     let press_on_witness = response.drag_started_by(egui::PointerButton::Primary)
@@ -8752,6 +8761,10 @@ fn drag_annotation(
     if let Some(r) = drag_witness(doc, view, xf, response, state, selection) {
         return Some(r);
     }
+    // the labels of the water axonometry and the drain sections
+    if creabim_geom::labels::movable(doc.model(), view) {
+        return drag_drawn_label(doc, view, drawing, xf, response, state, selection);
+    }
     if response.drag_started_by(egui::PointerButton::Primary) {
         let p = response
             .ctx
@@ -9084,6 +9097,68 @@ fn drag_annotation(
         }
         _ => Ok(()),
     };
+    Some(r.err().map(|e| e.to_string()))
+}
+
+/// Drags a label of a drawn schedule (a pipe's size, a fixture's or a
+/// stack's mark in the water axonometry or the drain sections): it is
+/// kept in the view, what it labels stays (George 2026-11-26).
+fn drag_drawn_label(
+    doc: &mut Document,
+    view: ElementId,
+    drawing: &Drawing,
+    xf: &Xf,
+    response: &egui::Response,
+    state: &mut PlanState,
+    selection: &mut Selection,
+) -> Option<Option<String>> {
+    let moved = |doc: &Document, id: ElementId, n: u32| match doc.model().get(view).map(|e| &e.kind)
+    {
+        Some(ElementKind::View(v)) => v
+            .label_moves
+            .iter()
+            .find(|m| m.of == id && m.n == n)
+            .map_or(DVec2::ZERO, |m| m.by),
+        _ => DVec2::ZERO,
+    };
+    if response.drag_started_by(egui::PointerButton::Primary) {
+        let p = response
+            .ctx
+            .input(|i| i.pointer.press_origin())
+            .or(response.interact_pointer_pos())?;
+        let w = xf.to_world(p);
+        let pad = DVec2::splat(0.8);
+        let hit = creabim_geom::labels::found(view, &drawing.items)
+            .into_iter()
+            .rev()
+            .find(|(_, _, lo, hi)| w.cmpge(*lo - pad).all() && w.cmple(*hi + pad).all());
+        if let Some((id, n, _, _)) = hit {
+            state.anno_drag = Some((id, w, moved(doc, id, n), Some(n as usize)));
+            state.drag_owner = Some(response.id);
+            selection.only(id);
+        }
+    }
+    if state.anno_drag.is_some() && state.drag_owner != Some(response.id) {
+        return None;
+    }
+    let (id, grab, start, n) = state.anno_drag?;
+    if response.drag_stopped() || !response.dragged() {
+        state.anno_drag = None;
+        return Some(None);
+    }
+    let p = xf.to_world(response.interact_pointer_pos()?);
+    let n = n? as u32;
+    let by = start + p - grab;
+    let r = doc.edit_merged(view, "Move label", |e| {
+        if let ElementKind::View(v) = &mut e.kind {
+            match v.label_moves.iter_mut().find(|m| m.of == id && m.n == n) {
+                Some(m) => m.by = by,
+                None => v
+                    .label_moves
+                    .push(creabim_core::LabelMove { of: id, n, by }),
+            }
+        }
+    });
     Some(r.err().map(|e| e.to_string()))
 }
 

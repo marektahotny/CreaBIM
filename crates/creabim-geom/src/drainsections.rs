@@ -51,6 +51,8 @@ pub struct LaidPipe {
     /// Part of the stack itself.
     pub stack: bool,
     pub outer_mm: f64,
+    /// Insulated: its size is written with an `i` after it.
+    pub insulated: bool,
     pub rgb: [f32; 3],
 }
 
@@ -215,6 +217,7 @@ pub fn sections(model: &Model) -> Vec<Section> {
                             b3: v3(node.p2),
                             stack: mine,
                             outer_mm: p.outer_mm,
+                            insulated: p.insulation_mm > 0.0,
                             rgb: rgb_of(sys.color),
                         });
                     }
@@ -302,6 +305,8 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             bold: false,
         })
     };
+    // the labels go where they were dragged
+    let mut labels = crate::labels::Labels::of(model, view);
     let line = |items: &mut Vec<PlanItem>, a: DVec2, b: DVec2, pen: Pen| {
         items.push(PlanItem::Line {
             id: view,
@@ -460,8 +465,9 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                 .find(|f| f.0 == *id)
                 .map_or(0.0, |f| f.1.x);
             if let Some((_, m)) = marks.iter().find(|m| m.0 == *id) {
-                text(
+                labels.write(
                     &mut items,
+                    *id,
                     at(p(fx, *top_z)) + p(0.0, 2.5),
                     m,
                     HEAD,
@@ -496,10 +502,11 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                 continue;
             }
             sized.push(key);
-            let size = format!("{:.0}", q.outer_mm);
+            let size = format!("{:.0}{}", q.outer_mm, if q.insulated { "i" } else { "" });
             if vertical {
-                text(
+                labels.write(
                     &mut items,
+                    q.pipe,
                     mid + p(-1.5, 3.0),
                     &size,
                     SMALL,
@@ -507,8 +514,9 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                     green,
                 );
             } else {
-                text(
+                labels.write(
                     &mut items,
+                    q.pipe,
                     mid + p(0.0, 1.2),
                     &size,
                     SMALL,
@@ -538,8 +546,9 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                 continue;
             }
             written.push(here);
-            text(
+            labels.write(
                 &mut items,
+                f.pipes.first().copied().unwrap_or(view),
                 here + p(1.2, -2.6),
                 &t,
                 SMALL,
@@ -575,8 +584,9 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                 pen: Pen::Projection,
                 points: vec![c + p(0.0, r), c + p(r, 0.0), c + p(0.0, -r), c + p(-r, 0.0)],
             });
-            text(
+            labels.write(
                 &mut items,
+                e.id,
                 c + p(r + 1.0, -0.8),
                 &name,
                 SMALL,
@@ -586,7 +596,14 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         }
         // its mark in a circle under it, with its flows
         let lowest = at(p(0.0, zlo)).y;
-        let c = p(at(p(0.0, 0.0)).x, lowest - 9.0);
+        // dragged with its flows
+        let owner = s.pipes.iter().find(|q| q.stack).map_or(view, |q| q.pipe);
+        let c = p(at(p(0.0, 0.0)).x, lowest - 9.0)
+            + if owner == view {
+                DVec2::ZERO
+            } else {
+                labels.next(owner)
+            };
         items.push(PlanItem::Arc {
             id: view,
             pen: Pen::Projection,
@@ -595,14 +612,16 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             start: 0.0,
             end: std::f64::consts::TAU,
         });
-        text(
-            &mut items,
-            c + p(0.0, -HEAD * 0.36),
-            &s.mark,
-            HEAD,
-            Anchor::Middle,
-            Some([0.55, 0.1, 0.1]),
-        );
+        items.push(PlanItem::Text {
+            id: owner,
+            at: c + p(0.0, -HEAD * 0.36),
+            text: s.mark.clone(),
+            size: HEAD,
+            align: Anchor::Middle,
+            mm: 1.0,
+            rgb: Some([0.55, 0.1, 0.1]),
+            bold: false,
+        });
         let lines = [
             format!("Qww = {} l/s", num(s.qww, 3)),
             format!("Qmax = {} l/s (DN {:.0})", num(s.qmax, 1), s.dn),

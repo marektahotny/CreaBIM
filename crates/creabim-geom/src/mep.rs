@@ -441,8 +441,10 @@ pub fn pipe_text(p: &Pipe) -> String {
             format!("{v:.1}")
         }
     };
+    // an insulated pipe with an `i` after its size (George 2026-11-26)
+    let i = if p.insulation_mm > 0.0 { "i" } else { "" };
     let size = format!(
-        "{}x{}",
+        "{}x{}{i}",
         n(p.outer_mm),
         n((p.outer_mm - p.inner_mm).max(0.0) / 2.0)
     );
@@ -477,7 +479,7 @@ pub fn pipe_text(p: &Pipe) -> String {
             lines.join("\n")
         }
         K::Sanitary | K::Storm | K::Flue => {
-            format!("DN{}", n(p.nominal_mm))
+            format!("DN{}{i}", n(p.nominal_mm))
         }
         _ => format!("{} {size}", p.system),
     }

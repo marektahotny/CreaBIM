@@ -2571,6 +2571,20 @@ pub struct View {
     /// building while the site plan lies square to the parcel.
     #[serde(default, skip_serializing_if = "is_zero_f64")]
     pub turn: f64,
+    /// The labels of a drawn schedule (the axonometry of the water
+    /// supply, the drain sections) dragged from where they fall by
+    /// themselves: what each is of, and by how much, paper mm.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub label_moves: Vec<LabelMove>,
+}
+
+/// A label of a drawn schedule dragged away (George 2026-11-26): the
+/// `n`th label of the element `of`, moved `by` paper mm.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LabelMove {
+    pub of: ElementId,
+    pub n: u32,
+    pub by: DVec2,
 }
 
 /// A section line's own look and course: broken in the middle (only its
@@ -3081,6 +3095,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 
@@ -3129,6 +3144,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 }
@@ -3174,6 +3190,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 
@@ -3220,6 +3237,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 
@@ -3271,6 +3289,7 @@ impl View {
             notes: String::new(),
             turn: 0.0,
             spatial: false,
+            label_moves: vec![],
         }
     }
 

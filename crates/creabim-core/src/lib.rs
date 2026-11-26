@@ -109,9 +109,9 @@ pub use editmesh::EditMesh;
 pub use element::{layer_edge_offsets, set_layer_edge, LayerEdge, LayerEnd, LocationLine, WallTop};
 pub use element::{
     ColumnAlign, Cut, Dimension, Element, ElementKind, FreeMesh, Grid, GridGroup, Guide, Hatch,
-    HostPoint, Ink, LeafOp, Level, LevelHead, Material, Opening, OpeningFrame, OpeningKind,
-    Penetration, ScheduleCategory, SectionJog, SectionLine, Sheet, SheetTitle, Sketch, Slab,
-    SlabKind, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall, Workplane,
+    HostPoint, Ink, LabelMove, LeafOp, Level, LevelHead, Material, Opening, OpeningFrame,
+    OpeningKind, Penetration, ScheduleCategory, SectionJog, SectionLine, Sheet, SheetTitle, Sketch,
+    Slab, SlabKind, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall, Workplane,
 };
 pub use footing::{Footing, FootingAlign, FootingKind};
 pub use graphics::{LineWeights, PlanGraphics};

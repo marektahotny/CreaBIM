@@ -36,6 +36,7 @@ pub mod fragment;
 pub mod gbxml;
 pub mod heatplan;
 pub mod joinerylist;
+pub mod labels;
 pub mod looks;
 pub mod markers;
 pub mod masonry;
