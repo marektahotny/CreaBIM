@@ -231,6 +231,12 @@ pub struct MemberSettings {
     /// The beam this chain placed last: the next joins only it, and a new
     /// chain starts with none (MU40: a new Beam command joined the old one).
     pub last_beam: Option<ElementId>,
+    /// The roof timber or steel member the Beam and Column tools draw
+    /// next (Statika tab, George 2026-11-26); none, a plain beam or
+    /// column.
+    pub framing: Option<creabim_core::framing::Framing>,
+    /// The slope a sloped member climbs at from its first point, degrees.
+    pub framing_angle: f64,
     /// What the Pipe tool draws next.
     pub pipe: crate::pipesui::PipeDraft,
     /// What the Gutter and Downpipe tools draw next.
@@ -274,6 +280,8 @@ impl Default for MemberSettings {
             railing_section: None,
             railing_style: RailStyle::default(),
             last_beam: None,
+            framing: None,
+            framing_angle: 0.0,
             pipe: Default::default(),
             flashing: Default::default(),
             place: Default::default(),
@@ -361,6 +369,26 @@ pub fn outline_element(
     }
 }
 
+/// A roof timber or steel member `e` added with `tx`, tagged at once in
+/// the plans of its level: its mark and underside.
+fn add_tagged(
+    doc: &mut Document,
+    selection: &mut Selection,
+    e: Element,
+    tx: Transaction,
+) -> Result<(), ModelError> {
+    selection.only(e.id);
+    let id = e.id;
+    let mut tx = tx.insert(e);
+    let mut m = doc.model().clone();
+    if tx.clone().apply(&mut m).is_ok() {
+        for t in crate::planview::framing_tags(&m, &[id]) {
+            tx = tx.insert(t);
+        }
+    }
+    doc.commit(tx)
+}
+
 /// A click with the Column, Beam, Stair or Railing tool on `level`.
 pub fn click(
     doc: &mut Document,
@@ -394,7 +422,18 @@ pub fn click(
                 lib.map_or_else(|| set.column.label(), |(n, _)| n.to_string())
             ));
             set.place.column(&mut c);
-            let e = state.typed(doc.model(), Element::new("Column", ElementKind::Column(c)));
+            // a post of the roof's timber or a steel column (Statika tab)
+            let name = match &set.framing {
+                Some(f) => {
+                    crate::app::framingui::make_column(&mut c, f);
+                    crate::app::framingui::name_of(f)
+                }
+                None => "Column".to_string(),
+            };
+            let e = state.typed(doc.model(), Element::new(name, ElementKind::Column(c)));
+            if set.framing.is_some() {
+                return add_tagged(doc, selection, e, Transaction::new("Place member"));
+            }
             add(doc, selection, e, "Place column")
         }
         Tool::Beam => {
@@ -422,11 +461,20 @@ pub fn click(
                     b.top_offset = creabim_core::members::beam_top_offset(doc.model(), level, a, p);
                     // or where the bar says (George 2026-11-24)
                     set.place.beam(doc.model(), &mut b);
+                    // a roof's timber or a steel member (Statika tab): its
+                    // section, and the slope it climbs at from `a`
+                    let name = match &set.framing {
+                        Some(f) => {
+                            crate::app::framingui::make_beam(&mut b, f, set.framing_angle);
+                            crate::app::framingui::name_of(f)
+                        }
+                        None => "Beam".to_string(),
+                    };
                     state.pending = Some(p);
                     state.status = Some(
                         "Beam added. Click on to chain another; Esc or right-click ends.".into(),
                     );
-                    let e = state.typed(doc.model(), Element::new("Beam", ElementKind::Beam(b)));
+                    let e = state.typed(doc.model(), Element::new(name, ElementKind::Beam(b)));
                     // the beam before it in the chain, ending here: the two
                     // meet as the tool's Corners says (MU40)
                     let prev = state
@@ -443,8 +491,15 @@ pub fn click(
                             {
                                 creabim_core::members::join_beams(pb, nb, set.beam_corner);
                             }
+                            if set.framing.is_some() {
+                                let tx = Transaction::new("Draw member").replace(pe, pe2);
+                                return add_tagged(doc, selection, ne, tx);
+                            }
                             selection.only(ne.id);
                             doc.commit(Transaction::new("Draw beam").replace(pe, pe2).insert(ne))
+                        }
+                        None if set.framing.is_some() => {
+                            add_tagged(doc, selection, e, Transaction::new("Draw member"))
                         }
                         None => add(doc, selection, e, "Draw beam"),
                     }
@@ -1501,6 +1556,14 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
     let weak = |ui: &mut egui::Ui, t: String| crate::props::note(ui, t);
     match kind {
         ElementKind::Column(c) => {
+            if let Some(mut f) = c.framing.clone() {
+                let l = crate::app::framingui::properties(ui, &mut f, None);
+                if !l.is_empty() {
+                    c.framing = Some(f);
+                    creabim_core::framing::fit_column(c);
+                    return l;
+                }
+            }
             let mut round = matches!(c.profile, Profile::Round { .. });
             if crate::props::choice(
                 ui,
@@ -1601,6 +1664,30 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             }
         }
         ElementKind::Beam(b) => {
+            // a roof's timber or a steel member: what it is, its section
+            if let Some(mut f) = b.framing.clone() {
+                let run = b.start.distance(b.end);
+                let mut angle = if run > 1e-6 {
+                    ((b.rise[1] - b.rise[0]) / run).atan().to_degrees()
+                } else {
+                    0.0
+                };
+                let was = angle;
+                let l = crate::app::framingui::properties(ui, &mut f, Some(&mut angle));
+                if !l.is_empty() {
+                    if (angle - was).abs() > 1e-9 {
+                        b.rise[1] = b.rise[0] + run * angle.to_radians().tan();
+                        b.up = crate::app::framingui::up_of(b);
+                    }
+                    b.framing = Some(f);
+                    creabim_core::framing::fit_beam(b);
+                    return l;
+                }
+                weak(
+                    ui,
+                    "Section from the member's cross-section; width and depth follow it.".into(),
+                );
+            }
             if num(ui, "Width", &mut b.width, 0.02, 3.0) {
                 label = "Beam width"
             }
@@ -2842,7 +2929,10 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             ),
         ]
     };
+    let framed = m.framing.is_some() && matches!(state.tool, Tool::Beam | Tool::Column);
     let mut out = match state.tool {
+        // a roof's timber or a steel member (Statika tab)
+        Tool::Beam | Tool::Column if framed => crate::app::framingui::tool_options(m),
         Tool::Door | Tool::Window => {
             let mut v = if state.tool == Tool::Door {
                 opening("door", m.door, "door")
@@ -3157,6 +3247,9 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
 /// A number typed in the tool bar.
 pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
     let m = &mut state.members;
+    if crate::app::framingui::set_option(m, key.trim_start_matches("member."), v) {
+        return;
+    }
     match key.trim_start_matches("member.") {
         "column" => m.set_column_size(v.clamp(0.05, 3.0)),
         "beam_width" => m.beam_width = v.clamp(0.05, 2.0),
@@ -3207,6 +3300,9 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
         return;
     }
     let m = &mut state.members;
+    if crate::app::framingui::toggle_option(m, what) {
+        return;
+    }
     match what {
         "beam.onface" => m.beam_on_face = !m.beam_on_face,
         w if w.starts_with("flashing.") => crate::flashingui::toggle_option(&mut m.flashing, w),

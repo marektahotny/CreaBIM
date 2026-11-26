@@ -1094,6 +1094,11 @@ pub struct Tag {
     /// keeps no room clear for the leaf or the numbers on its leader.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub placed: bool,
+    /// A roof timber's or steel member's underside height in a box
+    /// (`S.H.=+3,680`, George's sample krov 2026-11-26) instead of its
+    /// position mark.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub underside: bool,
 }
 
 impl Tag {
@@ -1110,6 +1115,7 @@ impl Tag {
             leader_end: None,
             material: false,
             placed: false,
+            underside: false,
         }
     }
 }
@@ -2857,10 +2863,16 @@ pub enum ScheduleCategory {
     /// The structural drawing's list of ring beams by position (V1, V2…):
     /// section and running length.
     RingBeamList,
+    /// The list of the roof's timber (výkaz reziva) by position (D-01,
+    /// D-02…): name, pieces, width, height, length of one and all, volume.
+    TimberList,
+    /// The list of steel members (výpis oceľových prvkov) by position:
+    /// section, pieces, length, kg/m and mass, with the total.
+    SteelList,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 30] = [
+    pub const ALL: [ScheduleCategory; 32] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2891,6 +2903,8 @@ impl ScheduleCategory {
         ScheduleCategory::Identification,
         ScheduleCategory::LintelPositions,
         ScheduleCategory::RingBeamList,
+        ScheduleCategory::TimberList,
+        ScheduleCategory::SteelList,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2926,6 +2940,8 @@ impl ScheduleCategory {
             ScheduleCategory::Identification => return "Identification data".into(),
             ScheduleCategory::LintelPositions => return "List of lintels".into(),
             ScheduleCategory::RingBeamList => return "List of ring beams".into(),
+            ScheduleCategory::TimberList => return "Timber list".into(),
+            ScheduleCategory::SteelList => return "Steel list".into(),
         };
         format!("{one} Schedule")
     }
@@ -2970,6 +2986,8 @@ impl ScheduleCategory {
             ScheduleCategory::Identification => "Identification data",
             ScheduleCategory::LintelPositions => "List of lintels",
             ScheduleCategory::RingBeamList => "List of ring beams",
+            ScheduleCategory::TimberList => "Timber list",
+            ScheduleCategory::SteelList => "Steel list",
         }
     }
 

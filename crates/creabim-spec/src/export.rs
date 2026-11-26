@@ -1116,6 +1116,8 @@ fn view(e: &Element, id: &str, v: &core::View, ids: &Ids) -> f::View {
                 core::ScheduleCategory::Identification => f::ScheduleCategory::Identification,
                 core::ScheduleCategory::LintelPositions => f::ScheduleCategory::LintelPositions,
                 core::ScheduleCategory::RingBeamList => f::ScheduleCategory::RingBeamList,
+                core::ScheduleCategory::TimberList => f::ScheduleCategory::TimberList,
+                core::ScheduleCategory::SteelList => f::ScheduleCategory::SteelList,
             });
         }
     }

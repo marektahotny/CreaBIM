@@ -77,6 +77,8 @@ mod fixturelegend;
 mod floorheatui;
 #[path = "fragmentui.rs"]
 mod fragmentui;
+#[path = "framingui.rs"]
+pub(crate) mod framingui;
 #[path = "gridvis.rs"]
 mod gridvis;
 #[path = "heatlossui.rs"]

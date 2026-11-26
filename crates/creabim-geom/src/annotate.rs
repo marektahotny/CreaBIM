@@ -523,6 +523,13 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         Some(m) => format!("{m} {}", tag(t)),
         None => tag(t),
     };
+    // a roof's timber or a steel member: its position, D-01, in a circle
+    // (George's sample krov 2026-11-26)
+    if creabim_core::framing::of(e).is_some() {
+        if let Some((m, _)) = creabim_core::framing::mark_of(model, id) {
+            return (m, true);
+        }
+    }
     // a lintel or ring beam: its position, P1 or V1, in a circle, as the
     // office's výkres tvaru marks them (George 2026-11-24)
     if matches!(e.kind, ElementKind::Beam(_)) {
@@ -2284,6 +2291,8 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 // a material tag reads the build-up (Annotate step 5)
                 let (text, round) = if t.material {
                     (material_text(model, t.host), false)
+                } else if t.underside {
+                    (crate::framing::underside_text(model, t.host), false)
                 } else {
                     tag_text(model, t.host)
                 };

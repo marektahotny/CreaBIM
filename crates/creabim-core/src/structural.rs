@@ -184,7 +184,10 @@ pub fn column_positions(model: &Model) -> Vec<ColumnPosition> {
         let ElementKind::Column(c) = &e.kind else {
             continue;
         };
-        if crate::wrap::piece_of(e).is_some() || c.in_wall.as_ref().is_some_and(|w| w.of.is_some())
+        // a timber post or a steel column is a member of its own list
+        if crate::wrap::piece_of(e).is_some()
+            || c.in_wall.as_ref().is_some_and(|w| w.of.is_some())
+            || c.framing.is_some()
         {
             continue;
         }

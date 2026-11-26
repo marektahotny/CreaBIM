@@ -995,6 +995,8 @@ spec_enum! {
         Identification = "identification",
         LintelPositions = "lintel_positions",
         RingBeamList = "ring_beam_list",
+        TimberList = "timber_list",
+        SteelList = "steel_list",
     }
 }
 

@@ -1207,6 +1207,7 @@ fn column(c: &mut Ctx, col: &f::Column, at: &Path) {
         wrap: None,
         piece: None,
         mark_at: None,
+        framing: None,
         top: match top {
             Some(t) => core::WallTop::UpToLevel {
                 level: t,
@@ -1265,6 +1266,7 @@ fn beam(c: &mut Ctx, b: &f::Beam, at: &Path) {
         lintel: None,
         wrap: None,
         piece: None,
+        framing: None,
     };
     let mut e = Element::new(name_of(&b.name, &b.id), ElementKind::Beam(beam));
     if !stamp(c, &mut e, &b.r#type, f::TypeCategory::Beam, at) {
@@ -1786,6 +1788,8 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::Identification => core::ScheduleCategory::Identification,
                 f::ScheduleCategory::LintelPositions => core::ScheduleCategory::LintelPositions,
                 f::ScheduleCategory::RingBeamList => core::ScheduleCategory::RingBeamList,
+                f::ScheduleCategory::TimberList => core::ScheduleCategory::TimberList,
+                f::ScheduleCategory::SteelList => core::ScheduleCategory::SteelList,
             };
             let mut view = core::View::schedule(category);
             view.kind = core::ViewKind::Schedule {

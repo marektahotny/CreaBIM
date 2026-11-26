@@ -32,6 +32,7 @@ pub mod flashing;
 pub mod flashingtable;
 pub mod font;
 pub mod fragment;
+pub mod framing;
 pub mod gbxml;
 pub mod heatplan;
 pub mod joinerylist;

@@ -30,7 +30,7 @@ pub enum Entry {
 
 /// The first is called Model upstream; this fork names it after its
 /// discipline, and puts the building services' disciplines beside it.
-pub const TABS: [&str; 10] = [
+pub const TABS: [&str; 11] = [
     "Architecture",
     "Cadastre",
     "Plumbing and gas",
@@ -38,13 +38,17 @@ pub const TABS: [&str; 10] = [
     "HVAC",
     "Medical gases",
     "Electrical installation",
+    "Structural design",
     "Annotate",
     "View",
     "Manage",
 ];
 
 /// The tab where annotating starts; the ones before it are disciplines.
-pub const ANNOTATE: usize = 7;
+pub const ANNOTATE: usize = 8;
+
+/// The Statika tab (George 2026-11-26).
+pub const STRUCTURAL: usize = 7;
 
 /// On every tab, before it.
 pub const ALWAYS: [Tool; 2] = [Tool::Select, Tool::Align];
@@ -101,12 +105,6 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 label: "Footing",
                 icon: "footing",
                 hint: "Foundations: a strip footing under walls, a pad footing or a bored pile under columns (on their axis) or on its own",
-            },
-            Entry::Menu {
-                key: "tab:masonry",
-                label: "Masonry",
-                icon: "brick-wall",
-                hint: "System lintels (PORFIX, Porotherm) put by hand in the storey's masonry plan, RC columns in walls, and the check of how far masonry walls run between braces",
             },
             Sep,
             T(Tool::Object),
@@ -640,6 +638,61 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "A circuit's design current, voltage drop, protection IB ≤ In ≤ Iz and fault loop, with the smallest breaker and cable that pass (STN 33 2000-5-52)",
             ),
         ],
+        STRUCTURAL => vec![
+            Entry::Menu {
+                key: "tab:ringbeams",
+                label: "Ring beams",
+                icon: "ring-beam",
+                hint: "RC ring beams (vence) on the load-bearing core of masonry walls: on one wall, or on all load-bearing walls at once",
+            },
+            Entry::Menu {
+                key: "tab:lintels",
+                label: "Lintels",
+                icon: "lintel",
+                hint: "System lintels (PORFIX, Porotherm) over the openings picked, or an RC lintel cast on site",
+            },
+            Entry::Menu {
+                key: "tab:masonry",
+                label: "Masonry",
+                icon: "brick-wall",
+                hint: "The storey's masonry plan, RC columns in walls, and the check of how far masonry walls run between braces",
+            },
+            Sep,
+            Entry::Menu {
+                key: "tab:timber",
+                label: "Timber roof",
+                icon: "timber-roof",
+                hint: "The timber of a roof as the structural drawing gives it: pick the member (rafter, purlin, wall plate, post, collar ties, strut…), then its section and slope, and draw it; each gets its position mark",
+            },
+            Entry::Menu {
+                key: "tab:steel",
+                label: "Steel members",
+                icon: "steel-frame",
+                hint: "Steel columns, level and sloped beams (IPE, HEA, HEB, UPN, hollow sections, angles) and bracing rods with a turnbuckle, with their position marks",
+            },
+            Sep,
+            act(
+                "new.schedule:30",
+                "Timber list",
+                "timber-list",
+                "The list of timber (výkaz reziva): each position with its section, length, pieces and volume",
+            ),
+            act(
+                "new.schedule:31",
+                "Steel list",
+                "steel-list",
+                "The list of steel members (výpis oceľových prvkov): each position with its section, length, pieces, kg/m and mass, and the total",
+            ),
+            Sep,
+            T(Tool::Column),
+            T(Tool::Beam),
+            Entry::Menu {
+                key: "tab:footing",
+                label: "Footing",
+                icon: "footing",
+                hint: "Foundations: a strip footing under walls, a pad footing or a bored pile under columns (on their axis) or on its own",
+            },
+        ],
         ANNOTATE => vec![
             T(Tool::Line),
             T(Tool::Polyline),
@@ -693,7 +746,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "The open view as the architect draws it: hatches, dimensions, tags and notes",
             ),
         ],
-        8 => vec![
+        9 => vec![
             // levels are what plans are cut from, so they sit with the
             // views that come from them (MU20)
             T(Tool::Level),
