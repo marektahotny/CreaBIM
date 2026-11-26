@@ -20,6 +20,7 @@ pub mod declutter;
 pub mod detail;
 pub mod doclist;
 pub mod docset;
+pub mod drainsections;
 pub mod dxfout;
 pub mod elplan;
 pub mod etics;

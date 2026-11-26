@@ -1387,7 +1387,8 @@
         "flashing_table",
         "identification",
         "lintel_positions",
-        "ring_beam_list"
+        "ring_beam_list",
+        "drain_sections"
       ]
     },
     "Callout": {

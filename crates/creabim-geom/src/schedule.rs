@@ -172,6 +172,7 @@ pub fn view_table(model: &Model, view: ElementId) -> Option<Schedule> {
                 | ScheduleCategory::MaterialLegend
                 | ScheduleCategory::BoardDiagram
                 | ScheduleCategory::FlashingTable
+                | ScheduleCategory::DrainSections
         )
     {
         return None;
@@ -337,6 +338,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     }
     if category == ScheduleCategory::FlashingTable {
         return crate::flashingtable::schedule(model);
+    }
+    if category == ScheduleCategory::DrainSections {
+        return crate::drainsections::schedule(model);
     }
     if category == ScheduleCategory::VentilationHrv {
         return crate::tradelists::recuperation(model);
@@ -785,6 +789,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         | ScheduleCategory::BuildingFigures
         | ScheduleCategory::Identification
         | ScheduleCategory::FlashingTable
+        | ScheduleCategory::DrainSections
         | ScheduleCategory::ElectricalList => {
             unreachable!("the take-offs and the list of documentation are built on their own")
         }

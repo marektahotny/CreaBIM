@@ -615,8 +615,16 @@ pub fn scale_text(model: &Model, views: &[PlacedView]) -> String {
     let mut scales: Vec<i64> = views
         .iter()
         .filter_map(|v| view_of(model, v.view))
-        .filter(|v| !matches!(v.kind, creabim_core::ViewKind::Schedule { .. }))
-        .map(|v| v.scale.round() as i64)
+        .filter_map(|v| match v.kind {
+            // the drain sections are drawn at a scale of their own
+            creabim_core::ViewKind::Schedule {
+                category: creabim_core::ScheduleCategory::DrainSections,
+                ..
+            } => Some(crate::drainsections::SCALE),
+            creabim_core::ViewKind::Schedule { .. } => None,
+            _ => Some(v.scale),
+        })
+        .map(|s| s.round() as i64)
         .collect();
     scales.sort();
     scales.dedup();

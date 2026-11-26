@@ -750,6 +750,16 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
                 &[v, legend].into_iter().chain(list).collect::<Vec<_>>(),
             );
         }
+        // the plumber's developed sections of the drains, a stack each,
+        // beside the legend (the office's ZTI.005 Rezy kanalizácie)
+        if trade == Trade::Plumbing && !crate::drainsections::sections(&b.m).is_empty() {
+            let d = schedule(&mut b, ScheduleCategory::DrainSections, "Drain sections");
+            b.sheet(
+                number(&part, "REZ", &mut n),
+                tr("Drain sections"),
+                &[d, legend],
+            );
+        }
         // the electrician's board diagram on a sheet of its own
         if trade == Trade::Electrical && !creabim_core::electrical::circuits(&b.m).is_empty() {
             let d = schedule(&mut b, ScheduleCategory::BoardDiagram, "Board diagram");

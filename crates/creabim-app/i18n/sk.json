@@ -8882,5 +8882,9 @@
  "Not entered: the condensation takes": "Nezadané: kondenzácia berie",
  "One fan for all the rooms picked": "Jeden ventilátor pre všetky vybrané miestnosti",
  "The valves join one collecting duct in the attic with one fan and one roof outlet; the valves are set to share the air by each room's need": "Ventily sa spoja do jedného zberného potrubia v podkroví s jedným ventilátorom a jedným strešným výfukom; ventily sa nastavia tak, aby sa vzduch delil podľa potreby miestností",
- "Valve throttles": "Škrtenie ventilu"
+ "Valve throttles": "Škrtenie ventilu",
+ "Drain sections": "Rezy kanalizácie",
+ "No foul drainage stack in the model yet.": "V modeli ešte nie je kanalizačné stúpacie potrubie.",
+ "Qww l/s": "Qww l/s",
+ "Qmax l/s": "Qmax l/s"
 }

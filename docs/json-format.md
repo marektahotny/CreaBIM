@@ -888,6 +888,7 @@ What a schedule lists.
 - `"identification"`
 - `"lintel_positions"`
 - `"ring_beam_list"`
+- `"drain_sections"`
 
 ### Callout
 

@@ -2857,10 +2857,13 @@ pub enum ScheduleCategory {
     /// The structural drawing's list of ring beams by position (V1, V2…):
     /// section and running length.
     RingBeamList,
+    /// The developed sections of the foul drainage, a section a stack
+    /// (rozvinuté rezy kanalizácie), drawn at 1:50.
+    DrainSections,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 30] = [
+    pub const ALL: [ScheduleCategory; 31] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2891,6 +2894,7 @@ impl ScheduleCategory {
         ScheduleCategory::Identification,
         ScheduleCategory::LintelPositions,
         ScheduleCategory::RingBeamList,
+        ScheduleCategory::DrainSections,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2926,6 +2930,7 @@ impl ScheduleCategory {
             ScheduleCategory::Identification => return "Identification data".into(),
             ScheduleCategory::LintelPositions => return "List of lintels".into(),
             ScheduleCategory::RingBeamList => return "List of ring beams".into(),
+            ScheduleCategory::DrainSections => return "Drain sections".into(),
         };
         format!("{one} Schedule")
     }
@@ -2970,6 +2975,7 @@ impl ScheduleCategory {
             ScheduleCategory::Identification => "Identification data",
             ScheduleCategory::LintelPositions => "List of lintels",
             ScheduleCategory::RingBeamList => "List of ring beams",
+            ScheduleCategory::DrainSections => "Drain sections",
         }
     }
 
@@ -2983,6 +2989,7 @@ impl ScheduleCategory {
                     | ScheduleCategory::MaterialLegend
                     | ScheduleCategory::BoardDiagram
                     | ScheduleCategory::FlashingTable
+                    | ScheduleCategory::DrainSections
             )
     }
 
