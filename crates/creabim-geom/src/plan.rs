@@ -2038,7 +2038,13 @@ pub fn plan_view_with(
             ElementKind::Roof(r)
                 if on_level && crate::members::roof_low(model, r) >= range_top - 1e-3 => {}
             k if on_level && creabim_core::members::is_member(k) => {
-                items.extend(crate::members::member_plan(model, e, cut_height));
+                items.extend(crate::framing::plan_items(
+                    model,
+                    e,
+                    crate::members::member_plan(model, e, cut_height),
+                ));
+                // a rafter drawn as its axis only, no fill (the krov plan)
+                let schematic = creabim_core::framing::of(e).is_some_and(|f| f.role.schematic());
                 // a mass or sweep below the cut: its top seen tinted, in
                 // its material under the colour styles (MU36: they read as
                 // wireframe)
@@ -2051,6 +2057,7 @@ pub fn plan_view_with(
                         crate::parts::part_mesh(model, p).map(|m| (m, [0.78, 0.76, 0.72]))
                     }
                     ElementKind::Part(_) => None,
+                    _ if schematic => None,
                     _ => crate::members::member_mesh(model, e),
                 };
                 if let Some((mesh, base)) = solid {

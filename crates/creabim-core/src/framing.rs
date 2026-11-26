@@ -130,6 +130,16 @@ impl Role {
         matches!(self, Role::Post | Role::SteelColumn)
     }
 
+    /// Drawn in the krov plan as one thin dash-dot line along its axis,
+    /// not its outline (George 2026-11-26, as his sample drawing: the
+    /// rafters, hip and valley rafters over everything else).
+    pub fn schematic(self) -> bool {
+        matches!(
+            self,
+            Role::Rafter | Role::ValleyRafter | Role::HipRafter | Role::Sprocket
+        )
+    }
+
     /// Does it lie on a slope as it is drawn (its angle set in the bar)?
     pub fn slopes(self) -> bool {
         matches!(
@@ -318,6 +328,32 @@ pub struct SectionData {
 }
 
 impl SectionData {
+    /// The perimeter painted, m (painting surface per metre, m²/m),
+    /// worked out from the section's dimensions: an I or U section's
+    /// faces with the root radii (the toe radii and a UPN's flange slope
+    /// left out), an angle's, a hollow section's with its outer corners
+    /// rounded to 2 t (EN 10219-2 for t ≤ 6 mm; 2,5 t to 10 mm), a round
+    /// bar's circumference, timber's four sides.
+    pub fn paint_perimeter(&self) -> f64 {
+        use std::f64::consts::PI;
+        let (h, b, tw, r) = (self.h, self.b, self.tw, self.r);
+        match self.shape {
+            Shape::Timber => 2.0 * (h + b),
+            Shape::I => 2.0 * h + 4.0 * b - 2.0 * tw - (8.0 - 2.0 * PI) * r,
+            Shape::U => 2.0 * h + 4.0 * b - 2.0 * tw - (4.0 - PI) * r,
+            Shape::L => 2.0 * (h + b) - (2.0 - PI / 2.0) * r,
+            Shape::Hollow => {
+                let ro = if tw <= 0.006 + 1e-9 {
+                    2.0 * tw
+                } else {
+                    2.5 * tw
+                };
+                2.0 * (h + b) - (8.0 - 2.0 * PI) * ro
+            }
+            Shape::Bar => PI * b,
+        }
+    }
+
     /// The section's outline about its centre, x across, y up.
     pub fn outline(&self) -> Vec<DVec2> {
         let (h, b) = (self.h, self.b);
@@ -681,6 +717,11 @@ impl Position {
         self.section
             .mass
             .map(|m| m * self.length * self.count() as f64)
+    }
+    /// The surface of all of them painted, m²: their sides along the
+    /// length (the ends left out).
+    pub fn paint_area(&self) -> f64 {
+        self.section.paint_perimeter() * self.length * self.count() as f64
     }
 }
 
