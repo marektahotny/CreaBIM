@@ -364,29 +364,28 @@ pub fn remember_main_window(frame: &eframe::Frame) {
     let _ = frame;
 }
 
-/// Maximizes the main window once Windows shows it, and says whether it is
-/// maximized now (the start fills the screen, George 2026-11-26). Asked of
-/// the window itself: the start-up hint and winit's Maximized were lost on
-/// George's PC (0.7-14, 0.7-16).
+/// Maximizes the main window once Windows shows it: (shown, maximized now)
+/// (the start fills the screen, George 2026-11-26). Asked of the window
+/// itself (IsWindowVisible/IsZoomed, ShowWindow), not through winit.
 #[cfg(windows)]
-pub fn maximize_main_window() -> bool {
+pub fn maximize_main_window() -> (bool, bool) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         IsWindowVisible, IsZoomed, ShowWindow, SW_MAXIMIZE,
     };
     let hwnd = MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed);
     if hwnd == 0 {
-        return false;
+        return (false, false);
     }
     let hwnd = hwnd as windows_sys::Win32::Foundation::HWND;
     unsafe {
         if IsWindowVisible(hwnd) == 0 {
-            return false;
+            return (false, false);
         }
         if IsZoomed(hwnd) != 0 {
-            return true;
+            return (true, true);
         }
         ShowWindow(hwnd, SW_MAXIMIZE);
-        IsZoomed(hwnd) != 0
+        (true, IsZoomed(hwnd) != 0)
     }
 }
 
