@@ -183,7 +183,10 @@ impl GasSettings {
     /// Read back from [`GasSettings::saved`]: a meter not in [`METERS`]
     /// takes G4.
     pub fn from_saved((mut s, meter): (GasSettings, String)) -> Self {
-        s.min_meter = METERS.iter().find(|(n, _)| *n == meter).map_or("G4", |(n, _)| n);
+        s.min_meter = METERS
+            .iter()
+            .find(|(n, _)| *n == meter)
+            .map_or("G4", |(n, _)| n);
         s
     }
 

@@ -440,11 +440,15 @@ mod tests {
         };
         let mut a = ResultSet::new("heatloss", "Tepelné straty", "STN EN 12831-1");
         a.put(id, vec![CalcValue::num("phi", "Φ", 1250.0, Unit::W)]);
-        a.put(ElementId::new(), vec![CalcValue::num("phi", "Φ", 1.0, Unit::W)]);
+        a.put(
+            ElementId::new(),
+            vec![CalcValue::num("phi", "Φ", 1.0, Unit::W)],
+        );
         let a = a.with_settings(&o);
         assert!(!is_written(doc.model(), &a));
         assert_eq!(settings_of::<Opts>(doc.model(), "heatloss"), None);
-        doc.commit(write(doc.model(), a.clone(), "2026-11-27")).unwrap();
+        doc.commit(write(doc.model(), a.clone(), "2026-11-27"))
+            .unwrap();
         // reopened: the same settings, nothing to write
         assert_eq!(settings_of::<Opts>(doc.model(), "heatloss"), Some(o));
         assert!(is_written(doc.model(), &a));
@@ -461,10 +465,8 @@ mod tests {
         // nothing found and nothing written: nothing to write
         assert!(is_written(doc.model(), &ResultSet::new("gas", "Plyn", "")));
         // a project from before settings were kept reads as unwritten
-        let old: ResultSet = serde_json::from_str(
-            r#"{"calc":"x","title":"X","elements":[]}"#,
-        )
-        .unwrap();
+        let old: ResultSet =
+            serde_json::from_str(r#"{"calc":"x","title":"X","elements":[]}"#).unwrap();
         assert!(old.settings.is_empty());
     }
 
