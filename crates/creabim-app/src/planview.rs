@@ -3656,7 +3656,7 @@ fn show_pane(
     // a typed length places the Line or Polyline tool's next point
     if let (true, Some(p), true) = (tracker_enter, hover_world, detail_last.is_some()) {
         state.tracker.clear();
-        if let Err(e) = crate::detailtool::detail_click(doc, view, p, p, state, selection) {
+        if let Err(e) = crate::detailtool::detail_click(doc, view, p, p, 1e-6, state, selection) {
             error = Some(e.to_string());
         }
     } else if let (true, Some(p), PaneKind::Plan { level }) = (tracker_enter, hover_world, kind) {
@@ -3912,7 +3912,15 @@ fn show_pane(
             (PaneKind::Plan { .. } | PaneKind::Section { .. }, t)
                 if crate::detailtool::drafts(t) =>
             {
-                crate::detailtool::detail_click(doc, view, p, raw, state, selection)
+                crate::detailtool::detail_click(
+                    doc,
+                    view,
+                    p,
+                    raw,
+                    4.0 / xf.scale as f64,
+                    state,
+                    selection,
+                )
             }
             (_, t) if crate::annotate::is_tool(t) => match &view_def {
                 Some(v) => crate::annotate::click(
