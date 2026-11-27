@@ -158,7 +158,7 @@ impl CreaBimApp {
                         .as_ref()
                         .and_then(|w| w.formwork.as_ref())
                         .is_some_and(|f| f.two_sided);
-                    let w = b.wrap.get_or_insert_with(|| wrap::Wrap {
+                    let w = b.wrap.get_or_insert(wrap::Wrap {
                         insulation: None,
                         sides: [0.0; 4],
                         plaster: None,
