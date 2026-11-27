@@ -9033,5 +9033,7 @@
  "Base slab": "Podkladní",
  "A base slab (podkladová doska) between strip footings: it may take KARI mesh. Listed with the foundation slabs, IFC BASESLAB.": "Podkladní deska mezi základovými pasy: může mít KARI síť. Ve výkazu se základovými deskami, IFC BASESLAB.",
  "KARI mesh only in a base slab: set the slab type to Base slab.": "KARI síť jen v podkladní desce: nastavte typ desky na Podkladní.",
- "A foundation slab (základová doska) carrying the building without strip footings, with tied reinforcement; listed apart in the take-off and exported as IFC BASESLAB.": "Základová deska nesoucí stavbu bez základových pasů, s vázanou výztuží; ve výkazu zvlášť, IFC BASESLAB."
+ "A foundation slab (základová doska) carrying the building without strip footings, with tied reinforcement; listed apart in the take-off and exported as IFC BASESLAB.": "Základová deska nesoucí stavbu bez základových pasů, s vázanou výztuží; ve výkazu zvlášť, IFC BASESLAB.",
+ "Foundation structure – {}": "Základová konstrukce – {}",
+ "Outline of {}, thickness {t} mm": "Obrys – {}, tloušťky {t} mm"
 }
