@@ -91,6 +91,7 @@ pub mod types;
 pub mod underfloor;
 pub mod units;
 pub mod utility;
+pub mod velox;
 pub mod viewmodes;
 pub mod visibility;
 pub mod walls;
