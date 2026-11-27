@@ -4040,7 +4040,7 @@ pub fn interact(
         pill(
             painter,
             at + Vec2::new(0.0, -34.0),
-            name.as_deref().unwrap_or(k.name()),
+            crate::i18n::t(name.as_deref().unwrap_or(k.name())),
             &look,
             1.0,
         );
@@ -4053,7 +4053,7 @@ pub fn interact(
             note(
                 painter,
                 p + Vec2::new(0.0, 22.0),
-                tip,
+                crate::i18n::t(tip),
                 Color32::from_gray(40),
             );
         }
@@ -4588,21 +4588,70 @@ pub fn interact(
         crate::actlog::mm(crate::snaps::current_step()),
         painter.ctx().input(|i| i.unstable_dt) * 1000.0,
     ));
+    // a dragged corner or end not caught by a point holds first the way
+    // its own line runs, then level and plumb from its neighbours
+    // (George 2026-11-27)
+    let point_snap = snapped.as_ref().is_some_and(|(_, sn)| {
+        matches!(
+            sn.kind,
+            SnapKind::Endpoint
+                | SnapKind::Midpoint
+                | SnapKind::Center
+                | SnapKind::Intersection
+                | SnapKind::Quadrant
+        )
+    });
+    let held = match (d.kind, d.edit.originals().first(), d.constraint) {
+        (Some(k), Some(orig), Constraint::Plane { .. }) if !point_snap => {
+            hold_lines(doc.model(), input, orig, k, now)
+        }
+        _ => None,
+    };
+    let was_held = held.is_some();
+    let now = match held {
+        Some((on, guides, what)) => {
+            let ink = Color32::from_rgb(60, 140, 220);
+            for (a, b) in guides {
+                if let (Some(a), Some(b)) = ((input.project)(a), (input.project)(b)) {
+                    let v = (b - a).normalized();
+                    painter.add(egui::Shape::dashed_line(
+                        &[a - v * 2000.0, a + v * 2000.0],
+                        Stroke::new(1.0, ink),
+                        6.0,
+                        4.0,
+                    ));
+                }
+            }
+            // above the grip: the length's pill is below it
+            if let Some(b) = (input.project)(on) {
+                painter.text(
+                    b + Vec2::new(14.0, -14.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    crate::i18n::t(what),
+                    egui::FontId::proportional(12.0),
+                    ink,
+                );
+            }
+            on
+        }
+        None => now,
+    };
     // a section line's end not caught by a point: the line holds level,
     // plumb, or along or square to a wall when it comes within a few
     // pixels of one
     let now = match (d.kind, fixed) {
         (Some(HandleKind::ViewEnd { .. }), Some(f))
-            if snapped.as_ref().is_none_or(|(_, sn)| {
-                !matches!(
-                    sn.kind,
-                    SnapKind::Endpoint
-                        | SnapKind::Midpoint
-                        | SnapKind::Center
-                        | SnapKind::Intersection
-                        | SnapKind::Quadrant
-                )
-            }) =>
+            if !was_held
+                && snapped.as_ref().is_none_or(|(_, sn)| {
+                    !matches!(
+                        sn.kind,
+                        SnapKind::Endpoint
+                            | SnapKind::Midpoint
+                            | SnapKind::Center
+                            | SnapKind::Intersection
+                            | SnapKind::Quadrant
+                    )
+                }) =>
         {
             match align_line_end(doc.model(), input, f, now) {
                 Some((on, what)) => {
@@ -4635,6 +4684,154 @@ pub fn interact(
     follow(doc, painter, d, input, now, grid, Some(pos), status);
     painter.ctx().request_repaint();
     true
+}
+
+/// Where a held grip goes, the guide lines (two points each) to draw, and
+/// what it holds to.
+type Held = (DVec3, Vec<(DVec3, DVec3)>, &'static str);
+
+/// The lines a dragged grip holds to near the pointer (8 px on screen),
+/// with the guide lines to draw and what it holds to. First the grip's
+/// own line, as it ran before the drag: a line's or a polyline's end goes
+/// on along its segment, a wall's end along the wall, a section line's
+/// along the section. Only then level and plumb through its neighbours
+/// (in plans and sections), where two of those cross, that crossing.
+fn hold_lines(
+    model: &Model,
+    input: &PaneInput,
+    orig: &Element,
+    kind: HandleKind,
+    now: DVec3,
+) -> Option<Held> {
+    const TOL: f32 = 8.0;
+    // (through, along): the grip's own lines, and the points level and
+    // plumb lines go through
+    let mut own: Vec<(DVec3, DVec3)> = vec![];
+    let mut anchors: Vec<DVec3> = vec![];
+    match (kind, &orig.kind) {
+        (HandleKind::Vertex { ring, i }, _) => {
+            let r = crate::editmode::rings(model, orig)
+                .into_iter()
+                .find(|r| r.ring == ring)?;
+            let n = r.corners.len();
+            if i >= n || n < 2 {
+                return None;
+            }
+            // an arc's or a curve's points have no straight line of their own
+            let straight = !matches!(
+                &orig.kind,
+                ElementKind::Detail(dt) if matches!(dt.kind, DetailKind::Arc(_) | DetailKind::Curve(_))
+            );
+            let prev = if i > 0 {
+                Some(i - 1)
+            } else if r.closed {
+                Some(n - 1)
+            } else {
+                None
+            };
+            let next = if i + 1 < n {
+                Some(i + 1)
+            } else if r.closed {
+                Some(0)
+            } else {
+                None
+            };
+            for j in [prev, next].into_iter().flatten() {
+                if j == i {
+                    continue;
+                }
+                let a = r.corners[j];
+                anchors.push(a);
+                let v = r.corners[i] - a;
+                if straight && v.length() > 1e-9 {
+                    own.push((a, v.normalize()));
+                }
+            }
+        }
+        (HandleKind::WallEnd { end }, ElementKind::Wall(w)) => {
+            let (a, b) = walls::location_line(model, w);
+            let z = now.z;
+            let (from, to) = if end { (a, b) } else { (b, a) };
+            let v = to - from;
+            if v.length() > 1e-9 {
+                own.push((from.extend(z), v.normalize().extend(0.0)));
+            }
+        }
+        (HandleKind::ViewEnd { end }, ElementKind::View(v)) => {
+            if let ViewKind::Section { start, end: e, .. } = v.kind {
+                let (from, to) = if end { (start, e) } else { (e, start) };
+                let d = to - from;
+                if d.length() > 1e-9 {
+                    own.push((from.extend(now.z), d.normalize().extend(0.0)));
+                }
+            }
+        }
+        _ => return None,
+    }
+    let at = (input.project)(now)?;
+    // the foot of `now` on a line, and how far it is on screen
+    let foot = |p: DVec3, dir: DVec3| -> Option<(f32, DVec3)> {
+        let f = p + dir * (now - p).dot(dir);
+        // not at the anchor itself, where any line goes through
+        let (sa, sf) = ((input.project)(p)?, (input.project)(f)?);
+        if sa.distance(sf) < 2.0 * TOL {
+            return None;
+        }
+        Some((sf.distance(at), f))
+    };
+    let mut best: Option<(f32, DVec3, (DVec3, DVec3))> = None;
+    for (p, dir) in &own {
+        if let Some((dist, f)) = foot(*p, *dir) {
+            if dist < TOL && best.is_none_or(|b| dist < b.0) {
+                best = Some((dist, f, (*p, *p + *dir)));
+            }
+        }
+    }
+    if let Some((_, f, g)) = best {
+        return Some((f, vec![g], "Along its own line"));
+    }
+    // level and plumb on screen: in plans X and Y, in sections along the
+    // section and up
+    if input.view.is_none() || anchors.is_empty() {
+        return None;
+    }
+    let (h, v) = if input.look.z.abs() > 0.99 {
+        (DVec3::X, DVec3::Y)
+    } else {
+        (DVec3::Z.cross(input.look).normalize_or_zero(), DVec3::Z)
+    };
+    let mut hs: Vec<(f32, DVec3, DVec3)> = vec![];
+    let mut vs: Vec<(f32, DVec3, DVec3)> = vec![];
+    for a in &anchors {
+        if let Some((dist, f)) = foot(*a, h) {
+            if dist < TOL {
+                hs.push((dist, f, *a));
+            }
+        }
+        if let Some((dist, f)) = foot(*a, v) {
+            if dist < TOL {
+                vs.push((dist, f, *a));
+            }
+        }
+    }
+    let nearest = |l: &[(f32, DVec3, DVec3)]| l.iter().copied().min_by(|x, y| x.0.total_cmp(&y.0));
+    match (nearest(&hs), nearest(&vs)) {
+        // level from one neighbour and plumb from the other
+        (Some((_, _, ah)), Some((_, _, av))) if ah.distance(av) > 1e-9 => {
+            let p = ah + h * (av - ah).dot(h);
+            Some((p, vec![(ah, ah + h), (av, av + v)], "Level and plumb"))
+        }
+        (Some(x), Some(y)) => {
+            if x.0 <= y.0 {
+                Some((x.1, vec![(x.2, x.2 + h)], "Horizontal"))
+            } else {
+                Some((y.1, vec![(y.2, y.2 + v)], "Vertical"))
+            }
+        }
+        (Some(x), None) => Some((x.1, vec![(x.2, x.2 + h)], "Horizontal")),
+        (None, Some(y)) => Some((y.1, vec![(y.2, y.2 + v)], "Vertical")),
+        (None, None) => None,
+    }
 }
 
 /// The bearings (degrees, 0..180) a line can hold to: level, plumb, and
