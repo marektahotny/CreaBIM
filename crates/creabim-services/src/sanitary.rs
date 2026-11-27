@@ -12,7 +12,8 @@ use crate::storm::{fill_for, partial_flow};
 use creabim_core::{ElementId, Model};
 
 /// The design of a drainage system.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct DrainSettings {
     /// The frequency factor K (0.5 homes, 0.7 schools and hospitals,
     /// 1.0 public toilets, 1.2 laboratories).

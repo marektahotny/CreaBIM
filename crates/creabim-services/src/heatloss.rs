@@ -19,7 +19,7 @@ use creabim_core::{polygon, Element, ElementId, ElementKind, Model, OpeningKind}
 use glam::DVec2;
 
 /// How sheltered the building stands (STN EN 12831 table D.8).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Shielding {
     /// In the wind; tall buildings in towns.
     None,
@@ -66,7 +66,7 @@ pub fn height_eps(z: f64) -> f64 {
 }
 
 /// How the losses are worked out.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Method {
     /// One surcharge ΔU for every outside wall, floors and ceilings
     /// between storeys left out.
@@ -89,7 +89,8 @@ impl Method {
 }
 
 /// What the calculation is given.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Opts {
     pub method: Method,
     /// The detailed method's row of table B.1 (ΔU_TB by the kind of

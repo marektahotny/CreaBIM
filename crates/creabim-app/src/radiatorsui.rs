@@ -5,8 +5,7 @@
 
 use super::{CreaBimApp, Tool};
 use creabim_core::catalogue::radiators::{Panel, HEIGHTS};
-use creabim_services::heatloss;
-use creabim_services::radiators::{self, Settings};
+use creabim_services::radiators::{self};
 use eframe::egui::{self, Vec2};
 
 impl CreaBimApp {
@@ -16,9 +15,9 @@ impl CreaBimApp {
             return false;
         }
         if self.radiators.is_none() {
-            self.radiators = Some(Settings::default());
+            // reopened: as it was last written (George 2026-11-27)
+            self.radiators = Some(self.saved_settings("radiators").unwrap_or_default());
         }
-        self.results_due = Some("radiators");
         true
     }
 
@@ -29,13 +28,15 @@ impl CreaBimApp {
         };
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
-        let o = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(heatloss::Opts::default, |x| x.0);
-        let floor = self.floor_heat.unwrap_or_default();
+        let o = self.heat_opts();
+        let floor = self
+            .floor_heat
+            .or_else(|| self.saved_settings("floorheat"))
+            .unwrap_or_default();
         let d = radiators::design(self.doc.model(), &o, &s, &floor);
-        let mut write_now = self.results_due.take_if(|c| *c == "radiators").is_some();
+        let found = creabim_services::calcresults::radiators(&d).with_settings(&s);
+        let written = self.is_written(&found);
+        let mut write_now = false;
         let mut open = true;
         let mut select = None;
         let mut place: Option<Panel> = None;
@@ -49,7 +50,7 @@ impl CreaBimApp {
             .constrain_to(area)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if super::calcresultsui::write_button(ui) {
+                    if super::calcresultsui::write_button(ui, written) {
                         write_now = true;
                     }
                     if ui
@@ -229,7 +230,7 @@ impl CreaBimApp {
             self.plan.tool = Tool::Object;
         }
         if write_now {
-            self.write_results_said(creabim_services::calcresults::radiators(&d));
+            self.write_results_said(found);
         }
         self.radiators = if open { Some(s) } else { None };
     }

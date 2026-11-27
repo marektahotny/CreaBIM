@@ -12,7 +12,8 @@ use creabim_core::underfloor::Underfloor;
 use creabim_core::{ElementId, ElementKind, Model};
 
 /// What the system is designed with.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Settings {
     /// Supply temperature, °C, and the drop σ, K.
     pub supply_c: f64,

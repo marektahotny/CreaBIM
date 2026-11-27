@@ -7188,6 +7188,7 @@
  "Write the master out as SVG": "Uložiť predlohu ako SVG",
  "Write the presettings to the valves": "Zapísať prednastavenia do ventilov",
  "Write the results to the model": "Zapísať výsledky do modelu",
+ "These results, with these settings, are already written in the project; change a setting or the model to write them again.": "Tieto výsledky s týmito nastaveniami sú už zapísané v projekte; zmeňte nastavenie alebo model a budete ich môcť zapísať znova.",
  "Write the rules' numbers onto the elements without a mark, so later changes to the model leave them as they are. With Replace, every element is numbered afresh.": "Zapísať čísla z pravidiel do prvkov bez označenia, aby ich neskoršie zmeny modelu nemenili. S Nahradiť sa očíslujú všetky prvky nanovo.",
  "Written after the code in the line: a size, a material": "Vpíše sa za skratku do čiary: dimenzia, materiál",
  "Written to IFC as IfcMaterial.Category": "Zapísané do IFC ako IfcMaterial.Category",
