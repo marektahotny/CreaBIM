@@ -333,6 +333,7 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::RingBeamList => "beam",
         ScheduleCategory::TimberList => "timber-list",
         ScheduleCategory::SteelList => "steel-list",
+        ScheduleCategory::KariList => "steel-list",
         ScheduleCategory::VentilationHrv => "wind",
         ScheduleCategory::HeaterList => "flame",
         ScheduleCategory::BuildingFigures => "table-2",

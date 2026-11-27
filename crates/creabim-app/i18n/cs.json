@@ -742,6 +742,7 @@
  "Automatic disconnection: tick Ze to check the fault loop.": "Samočinné odpojení: zadejte Ze pro posouzení poruchové smyčky.",
  "Automatic: floor slab (a slab under it).": "Automaticky: stropní deska (pod ní je jiná deska).",
  "Automatic: foundation slab (no slab under it).": "Automaticky: základová deska (pod ní není jiná deska).",
+ "Automatic: base slab (it lies on strip footings), KARI mesh can be set.": "Automaticky: podkladová deska (leží na základových pásech), lze jí zadat KARI síť.",
  "Autosave": "Automatické ukládání",
  "Autosaved work brought back. Save it to keep it.": "Automaticky uložená práce obnovena. Uložte ji, aby se zachovala.",
  "Autosaved work found": "Nalezena automaticky uložená práce",
@@ -9097,5 +9098,12 @@
  "Two-sided": "Oboustranné",
  "WSC 35 on the inner side too, clips AB + ES": "i zevnitř WSC 35, spony AB + ES",
  "{maker} clips AB + ES, masonry {w} mm (sets of {n} pcs)": "{maker} spony AB + ES, zdivo {w} mm (sady po {n} ks)",
- "{maker} clips HB, masonry {w} mm (sets of {n} pcs)": "{maker} spony HB, zdivo {w} mm (sady po {n} ks)"
+ "{maker} clips HB, masonry {w} mm (sets of {n} pcs)": "{maker} spony HB, zdivo {w} mm (sady po {n} ks)",
+ "Lap (mm)": "Přesah (mm)",
+ "kg/piece": "kg/ks",
+ "Weight (t)": "Hmotnost (t)",
+ "KARI mesh list": "Výkaz KARI sítí",
+ "Edge of the slab": "Okraj",
+ "top edge": "horní",
+ "bottom edge": "spodní"
 }

@@ -892,6 +892,7 @@ What a schedule lists.
 - `"water_axonometry"`
 - `"timber_list"`
 - `"steel_list"`
+- `"kari_list"`
 
 ### Callout
 

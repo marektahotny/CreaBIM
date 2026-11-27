@@ -1793,6 +1793,7 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
                 f::ScheduleCategory::RingBeamList => core::ScheduleCategory::RingBeamList,
                 f::ScheduleCategory::TimberList => core::ScheduleCategory::TimberList,
                 f::ScheduleCategory::SteelList => core::ScheduleCategory::SteelList,
+                f::ScheduleCategory::KariList => core::ScheduleCategory::KariList,
             };
             let mut view = core::View::schedule(category);
             view.kind = core::ViewKind::Schedule {
