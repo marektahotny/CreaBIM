@@ -52,6 +52,7 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(t("Ducts laid"));
+                    ui.selectable_value(&mut o.route, Route::Split, t("supply in the floor, extract above the ceiling"));
                     ui.selectable_value(&mut o.route, Route::Floor, t("in the floor"));
                     ui.selectable_value(&mut o.route, Route::Ceiling, t("above the ceiling"));
                     ui.separator();

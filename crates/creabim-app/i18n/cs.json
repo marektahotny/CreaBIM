@@ -9079,5 +9079,6 @@
  "WSC 35 on the inner side too, clips AB + ES": "i zevnitř WSC 35, spony AB + ES",
  "{maker} clips AB + ES, masonry {w} mm (sets of {n} pcs)": "{maker} spony AB + ES, zdivo {w} mm (sady po {n} ks)",
  "{maker} clips HB, masonry {w} mm (sets of {n} pcs)": "{maker} spony HB, zdivo {w} mm (sady po {n} ks)",
- "runs into one valve": "hadic GP na ventil"
+ "runs into one valve": "hadic GP na ventil",
+ "supply in the floor, extract above the ceiling": "přívod v podlaze, odvod nad stropem"
 }

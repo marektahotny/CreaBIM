@@ -164,6 +164,8 @@ pub fn catalogue() -> &'static Catalogue {
 pub const UNIT_KEY: &str = "vzt/duplex/";
 pub const BOX_KEY: &str = "vzt/box/";
 pub const ROOM_UNIT_KEY: &str = "vzt/dec/";
+/// How far apart the GP runs branch off a manifold (OBJ-T Ø100 GP), m.
+const MANIFOLD_STEP: f64 = 0.15;
 /// The names the design gives what it places, so designing again
 /// replaces them and nothing drawn by hand.
 pub const TAG: &str = "Rekuperácia";
@@ -178,6 +180,10 @@ pub enum Route {
     /// Above the ceiling (attic insulation, a suspended ceiling, the
     /// slab).
     Ceiling,
+    /// Supply in the floor, extract above the ceiling: the two never
+    /// cross (George 2026-11-27: "nekrížiť sa v 3D"), and the air is
+    /// taken out high in the room.
+    Split,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -206,7 +212,7 @@ pub struct Opts {
 impl Default for Opts {
     fn default() -> Self {
         Self {
-            route: Route::Floor,
+            route: Route::Split,
             series: "Pro-V".into(),
             per_duct: 45.0,
             runs_per_valve: 1,
@@ -361,6 +367,8 @@ pub struct Design {
     pub noise: Vec<Noise>,
     /// Height of the flexible ducts above the level, m.
     pub z: f64,
+    /// The height the extract side runs at, m (`z` unless split).
+    pub z_extract: f64,
 }
 
 struct RoomGeo {
@@ -657,6 +665,21 @@ fn ell_from(pts: &[DVec2], b: DVec2, outline: Option<&[DVec2]>) -> Option<DVec2>
 }
 
 /// The path without the points it runs straight through.
+/// A jog narrower than a GP (the valve's run stepping over by a few
+/// centimetres to its lane) at the valve's end: the first piece shifted
+/// onto the lane instead.
+fn no_jog(mut pts: Vec<DVec2>) -> Vec<DVec2> {
+    if pts.len() >= 4 {
+        let (a, b, c, e) = (pts[0], pts[1], pts[2], pts[3]);
+        let jog = c - b;
+        if jog.length() < 0.1 && (b - a).perp_dot(e - c).abs() < 1e-9 && (b - a).dot(e - c) > 0.0 {
+            pts[0] = a + jog;
+            pts.remove(1);
+        }
+    }
+    straighten(pts)
+}
+
 fn straighten(pts: Vec<DVec2>) -> Vec<DVec2> {
     let mut out: Vec<DVec2> = vec![];
     for p in pts {
@@ -673,6 +696,59 @@ fn straighten(pts: Vec<DVec2>) -> Vec<DVec2> {
         out.push(p);
     }
     out
+}
+
+/// How many pieces of `path` cross or run within a GP's width (0.09 m)
+/// of the pieces of `laid`, the last piece into the manifold aside.
+fn crossings(path: &[DVec2], laid: &[&Vec<DVec2>]) -> usize {
+    let near = |a: DVec2, b: DVec2, c: DVec2, e: DVec2| {
+        let d = |p: DVec2, a: DVec2, b: DVec2| {
+            let ab = b - a;
+            let t = if ab.length_squared() < 1e-12 {
+                0.0
+            } else {
+                ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0)
+            };
+            p.distance(a + ab * t)
+        };
+        let cross = |o: DVec2, p: DVec2, q: DVec2| (p - o).perp_dot(q - o);
+        let proper = cross(a, b, c) * cross(a, b, e) < 0.0 && cross(c, e, a) * cross(c, e, b) < 0.0;
+        proper || d(a, c, e).min(d(b, c, e)).min(d(c, a, b)).min(d(e, a, b)) < 0.09
+    };
+    let pieces = |p: &[DVec2]| -> Vec<(DVec2, DVec2)> {
+        let n = p.len();
+        p.windows(2)
+            .enumerate()
+            .filter(|(i, _)| i + 2 < n)
+            .map(|(_, w)| (w[0], w[1]))
+            .collect()
+    };
+    let mine = pieces(path);
+    laid.iter()
+        .flat_map(|o| pieces(o))
+        .filter(|(c, e)| mine.iter().any(|(a, b)| near(*a, *b, *c, *e)))
+        .count()
+}
+
+/// How many pieces of `path` cross a piece of `laid` outright (the last
+/// pieces, into the manifold, aside).
+fn crossings_proper(path: &[DVec2], laid: &[&Branch]) -> usize {
+    let cr = |o: DVec2, p: DVec2, q: DVec2| (p - o).perp_dot(q - o);
+    let cut = |p: &[DVec2]| p.len().saturating_sub(2);
+    let mine = &path.windows(2).collect::<Vec<_>>()[..cut(path)];
+    let mut n = 0;
+    for o in laid {
+        let theirs = o.path.windows(2).collect::<Vec<_>>();
+        for w in &theirs[..cut(&o.path)] {
+            for m in mine {
+                let (a, b, c, e) = (m[0], m[1], w[0], w[1]);
+                if cr(a, b, c) * cr(a, b, e) < -1e-9 && cr(c, e, a) * cr(c, e, b) < -1e-9 {
+                    n += 1;
+                }
+            }
+        }
+    }
+    n
 }
 
 fn path_length(p: &[DVec2]) -> f64 {
@@ -1009,11 +1085,13 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 .then_some(i)
         })
     });
+    let ceiling = unit_room.map_or(2.6, |i| geo[i].height) + 0.08;
     let z = match o.route {
-        Route::Floor => -0.06,
-        Route::Ceiling => unit_room.map_or(2.6, |i| geo[i].height) + 0.08,
+        Route::Floor | Route::Split => -0.06,
+        Route::Ceiling => ceiling,
     };
     d.z = z;
+    d.z_extract = if o.route == Route::Split { ceiling } else { z };
     if central {
         match unit_room {
             None => d.warnings.push(
@@ -1185,8 +1263,8 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                     };
                     let (ns, ne) = (count(true), count(false));
                     // supply on one side of the door, extract on the other
-                    let s = line - along * (0.25 + ns * 0.05);
-                    let e = line + along * (0.25 + ne * 0.05);
+                    let s = line - along * (0.35 + ns * MANIFOLD_STEP / 2.0);
+                    let e = line + along * (0.35 + ne * MANIFOLD_STEP / 2.0);
                     if creabim_core::polygon::contains(&geo[x].outline, s)
                         && creabim_core::polygon::contains(&geo[x].outline, e)
                     {
@@ -1218,9 +1296,36 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
         let mut lane: Vec<std::collections::HashMap<usize, f64>> =
             vec![Default::default(); runs.len()];
         for (k, dr) in ds.iter().enumerate() {
-            let through: Vec<usize> = (0..runs.len())
+            let mut through: Vec<usize> = (0..runs.len())
                 .filter(|&j| runs[j].chain.contains(&k))
                 .collect();
+            // side by side as they fan out on the terminals' side: each
+            // by where it comes from (its valve, or the door before),
+            // so none crosses another leaving the door
+            let from = |j: usize| -> DVec2 {
+                let r = &runs[j];
+                let at = r.chain.iter().position(|x| *x == k).unwrap_or(0);
+                if at == 0 {
+                    d.rooms[r.room].terminals[r.terminal].at
+                } else {
+                    ds[r.chain[at - 1]].mid
+                }
+            };
+            // nested: of those turning off to one side, the one turning
+            // first (the nearest the door) runs outermost on that side
+            let axis = dr.n.perp();
+            let key = |j: usize| {
+                let v = from(j) - dr.mid;
+                let (across, deep) = (v.dot(axis), v.dot(dr.n).abs());
+                if across > 0.15 {
+                    1e3 - deep
+                } else if across < -0.15 {
+                    -1e3 + deep
+                } else {
+                    across
+                }
+            };
+            through.sort_by(|a, b| key(*a).total_cmp(&key(*b)));
             let n = through.len();
             if n == 0 {
                 continue;
@@ -1250,77 +1355,162 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 lane[j].insert(k, (pos as f64 - (n as f64 - 1.0) / 2.0) * step);
             }
         }
-        // the runs on each side line up along the manifold, 0.1 m apart
-        let mut at_box = [0usize; 2];
-        let side_count = |sup: bool| {
-            runs.iter()
-                .filter(|x| (d.rooms[x.room].role == Role::Supply) == sup)
-                .count()
+        // each run through its doors, up to the room of the manifolds
+        // two ways out of its valve: first one way or the other; the one
+        // crossing the runs already laid the least is taken below
+        let mut heads: Vec<[(Vec<DVec2>, usize); 2]> = vec![];
+        for (j, run) in runs.iter().enumerate() {
+            let mut both = vec![];
+            for vertical_first in [false, true] {
+                let t = &d.rooms[run.room].terminals[run.terminal];
+                // the PKS's spigots 0.1 m apart
+                let spig = (run.dn as f64 - (t.ducts as f64 - 1.0) / 2.0) * 0.1;
+                let mut pts = vec![t.at + DVec2::new(spig, spig)];
+                let mut room = run.room;
+                for &k in &run.chain {
+                    let dr = &ds[k];
+                    let side =
+                        if room_at(&geo, dr.mid + dr.n * (dr.thick / 2.0 + 0.15)) == Some(room) {
+                            1.0
+                        } else {
+                            -1.0
+                        };
+                    let along = dr.n.perp();
+                    let lane = along * lane[j].get(&k).copied().unwrap_or(0.0);
+                    let here = dr.mid + lane + dr.n * side * (dr.thick / 2.0 + 0.3);
+                    let there = dr.mid + lane - dr.n * side * (dr.thick / 2.0 + 0.3);
+                    let c = if pts.len() == 1 {
+                        ell(pts[0], here, Some(&geo[room].outline), vertical_first)
+                    } else {
+                        ell_from(&pts, here, Some(&geo[room].outline))
+                    };
+                    if let Some(c) = c {
+                        pts.push(c);
+                    }
+                    pts.push(here);
+                    pts.push(there);
+                    room = room_at(&geo, there).unwrap_or(room);
+                }
+                both.push((pts, room));
+            }
+            let second = both.pop().unwrap();
+            let first = both.pop().unwrap();
+            heads.push([first, second]);
+        }
+        // the runs on each side branch off the manifold MANIFOLD_STEP
+        // apart, square to it, and never along it: the ones heading on
+        // towards an end of the manifold take the places nearest that
+        // end, nested (the nearest the end the closest to the manifold),
+        // so none crosses another (George 2026-11-27: "nekrížiť sa")
+        let along = if d.box_along.length() > 0.5 {
+            d.box_along
+        } else {
+            DVec2::X
         };
-        let counts = [side_count(true), side_count(false)];
+        let across = along.perp();
+        let mut place: Vec<(DVec2, f64)> = vec![(DVec2::ZERO, 0.0); runs.len()];
+        for s in 0..2 {
+            let box_at = d.boxes[s].0;
+            let mine: Vec<usize> = (0..runs.len())
+                .filter(|&j| (d.rooms[runs[j].room].role == Role::Supply) == (s == 0))
+                .collect();
+            let n = mine.len();
+            // where each comes from along the manifold
+            let mut order = mine.clone();
+            let key =
+                |j: usize| (heads[j][0].0.last().copied().unwrap_or(box_at) - box_at).dot(along);
+            order.sort_by(|a, b| key(*a).total_cmp(&key(*b)));
+            for (slot, &j) in order.iter().enumerate() {
+                let at = box_at + along * ((slot as f64 - (n as f64 - 1.0) / 2.0) * MANIFOLD_STEP);
+                // how many places lie between it and the end it heads to
+                let k = key(j) - (at - box_at).dot(along);
+                let rank = if k < 0.0 { slot } else { n - 1 - slot };
+                place[j] = (at, 0.25 + 0.1 * rank as f64);
+            }
+        }
         for (j, run) in runs.iter().enumerate() {
             let ri = run.room;
             let ti = run.terminal;
             let t = d.rooms[ri].terminals[ti].clone();
             let supply = d.rooms[ri].role == Role::Supply;
-            let s = if supply { 0 } else { 1 };
-            let target = d.boxes[s].0
-                + d.box_along * ((at_box[s] as f64 - (counts[s] as f64 - 1.0) / 2.0) * 0.1);
-            at_box[s] += 1;
-            {
-                {
-                    // the PKS's spigots 0.1 m apart
-                    let spig = (run.dn as f64 - (t.ducts as f64 - 1.0) / 2.0) * 0.1;
-                    let mut pts = vec![t.at + DVec2::new(spig, spig)];
-                    let mut room = ri;
-                    for &k in &run.chain {
-                        let dr = &ds[k];
-                        let side = if room_at(&geo, dr.mid + dr.n * (dr.thick / 2.0 + 0.15))
-                            == Some(room)
-                        {
-                            1.0
-                        } else {
-                            -1.0
-                        };
-                        let along = dr.n.perp();
-                        let lane = along * lane[j].get(&k).copied().unwrap_or(0.0);
-                        let here = dr.mid + lane + dr.n * side * (dr.thick / 2.0 + 0.3);
-                        let there = dr.mid + lane - dr.n * side * (dr.thick / 2.0 + 0.3);
-                        let last = *pts.last().unwrap();
-                        if let Some(c) = ell_from(&pts, here, Some(&geo[room].outline)) {
-                            pts.push(c);
-                        }
-                        let _ = last;
-                        pts.push(here);
-                        pts.push(there);
-                        room = room_at(&geo, there).unwrap_or(room);
-                    }
-                    let end = target;
-                    if let Some(c) = ell_from(&pts, end, Some(&geo[room].outline)) {
+            let (target, off) = place[j];
+            let finish = |(mut pts, room): (Vec<DVec2>, usize)| -> Vec<DVec2> {
+                let last = *pts.last().unwrap();
+                // over to its own line beside the manifold, along it, and in
+                let side = if (last - target).dot(across) >= 0.0 {
+                    1.0
+                } else {
+                    -1.0
+                };
+                let lane_at =
+                    |p: DVec2| target + across * side * off + along * (p - target).dot(along);
+                let near = (last - target).dot(across).abs() <= off + 0.05;
+                if !near {
+                    let c = lane_at(last);
+                    if creabim_core::polygon::contains(&geo[room].outline, c) {
+                        pts.push(c);
+                    } else if let Some(c) =
+                        ell_from(&pts, lane_at(target), Some(&geo[room].outline))
+                    {
                         pts.push(c);
                     }
-                    pts.push(end);
-                    pts.dedup_by(|a, b| a.distance(*b) < 0.02);
-                    let pts = straighten(pts);
-                    let length = path_length(&pts) + 2.0 * 0.3;
-                    let flow = t.flow / t.ducts as f64;
-                    let (v, rpm) = gp_friction(flow);
-                    let bends = pts.len().saturating_sub(2) as u32 + 2;
-                    let dyn_p = 1.2 * v * v / 2.0;
-                    let dp = rpm * length + o.zeta_bend * bends as f64 * dyn_p;
-                    d.branches.push(Branch {
-                        room: ri,
-                        terminal: ti,
-                        supply,
-                        path: pts,
-                        length,
-                        flow,
-                        velocity: v,
-                        bends,
-                        dp,
-                        throttle: 0.0,
-                    });
+                } else {
+                    // beside it already: out to its line first
+                    pts.push(lane_at(last));
                 }
+                pts.push(lane_at(target));
+                pts.push(target);
+                pts.dedup_by(|a, b| a.distance(*b) < 0.02);
+                no_jog(straighten(pts))
+            };
+            let laid: Vec<&Vec<DVec2>> = d
+                .branches
+                .iter()
+                .filter(|b| b.supply == supply)
+                .map(|b| &b.path)
+                .collect();
+            let [a, b] = heads[j].clone();
+            let (pa, pb) = (finish(a), finish(b));
+            let pts = if crossings(&pb, &laid) < crossings(&pa, &laid) {
+                pb
+            } else {
+                pa
+            };
+            let length = path_length(&pts) + 2.0 * 0.3;
+            let flow = t.flow / t.ducts as f64;
+            let (v, rpm) = gp_friction(flow);
+            let bends = pts.len().saturating_sub(2) as u32 + 2;
+            let dyn_p = 1.2 * v * v / 2.0;
+            let dp = rpm * length + o.zeta_bend * bends as f64 * dyn_p;
+            d.branches.push(Branch {
+                room: ri,
+                terminal: ti,
+                supply,
+                path: pts,
+                length,
+                flow,
+                velocity: v,
+                bends,
+                dp,
+                throttle: 0.0,
+            });
+        }
+        // runs crossing in the floor: GP can't step over another there
+        for supply in [true, false] {
+            let z_side = if supply { d.z } else { d.z_extract };
+            if z_side > 0.5 {
+                continue;
+            }
+            let mut n = 0;
+            let bs: Vec<&Branch> = d.branches.iter().filter(|b| b.supply == supply).collect();
+            for (i, b) in bs.iter().enumerate() {
+                n += crossings_proper(&b.path, &bs[..i]);
+            }
+            if n > 0 {
+                d.warnings.push(format!(
+                    "{n} križovaní hadíc GP v podlahe ({}): v podlahe sa hadica nemôže preložiť cez inú, upraviť trasy ručne alebo viesť nad stropom.",
+                    if supply { "prívod" } else { "odvod" }
+                ));
             }
         }
         for supply in [true, false] {
@@ -1352,7 +1542,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                         .windows(2)
                         .map(|w| (w[1] - w[0]).abs().element_sum())
                         .sum::<f64>()
-                        + (uh - z).abs();
+                        + (uh - if supply { z } else { d.z_extract }).abs();
                     let out = match d.through_roof {
                         Some(top) => top - uh,
                         None => d.outside.first().map_or(0.5, |o| at.distance(*o)),
@@ -1772,8 +1962,8 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
                     ElementKind::Pipe(spiro(
                         level,
                         sys,
-                        w[0].extend(z),
-                        w[1].extend(z),
+                        w[0].extend(if k == 0 { z } else { d.z_extract }),
+                        w[1].extend(if k == 0 { z } else { d.z_extract }),
                         0.0,
                         u.spigot,
                     )),
@@ -1792,7 +1982,11 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
             ("VZE", None, false),
         ] {
             let (a, b, ins) = match to {
-                Some(p) => (at.extend(uh), p.extend(z), 0.0),
+                Some(p) => (
+                    at.extend(uh),
+                    p.extend(if sys == "VZP" { z } else { d.z_extract }),
+                    0.0,
+                ),
                 None if d.through_roof.is_some() => {
                     let side = if sys == "VZC" { -0.2 } else { 0.2 };
                     let s = at + n.perp() * side;
@@ -1864,22 +2058,55 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
             }
         }
     }
-    // flexible ducts and their plate valves
+    // flexible ducts and their plate valves; above the ceiling one that
+    // would cross a run laid before steps over it, 0.1 m higher (GP Ø90),
+    // in the floor a crossing is warned of (George 2026-11-27: "aby sa
+    // nekrížili v 3D")
+    let mut laid: Vec<(DVec2, DVec2, bool)> = vec![];
+    let crosses = |a: DVec2, b: DVec2, c: DVec2, e: DVec2| {
+        let cr = |o: DVec2, p: DVec2, q: DVec2| (p - o).perp_dot(q - o);
+        cr(a, b, c) * cr(a, b, e) < -1e-9 && cr(c, e, a) * cr(c, e, b) < -1e-9
+    };
     for (bi, b) in d.branches.iter().enumerate() {
         let r = &d.rooms[b.room];
         let t = &r.terminals[b.terminal];
         let sys = if b.supply { "VZP" } else { "VZO" };
+        let base = if b.supply { z } else { d.z_extract };
+        let above = base > 0.5;
         let mut first = None;
-        for w in b.path.windows(2) {
+        let n = b.path.len();
+        let mut lifted_before = false;
+        for (i, w) in b.path.windows(2).enumerate() {
+            // the last piece, into the manifold, meets the others there
+            let over = i + 2 < n
+                && laid
+                    .iter()
+                    .any(|(c, e, s)| *s == b.supply && crosses(w[0], w[1], *c, *e));
+            let lift = over && above;
+            let zz = if lift { base + 0.1 } else { base };
+            let mut duct = gp_duct(level, sys, w[1], w[0], zz);
+            duct.start.z = zz;
+            duct.end.z = zz;
             let e = Element::new(
                 format!("{TAG} – {sys} {}", r.number),
-                ElementKind::Pipe(gp_duct(level, sys, w[1], w[0], z)),
+                ElementKind::Pipe(duct),
             );
             if first.is_none() {
                 first = Some(e.id);
             }
             tx = tx.insert(e);
+            // up at its start, unless the piece before was up too
+            if lift != lifted_before {
+                let mut up = gp_duct(level, sys, w[0], w[0], base);
+                up.end.z = base + 0.1;
+                tx = tx.insert(Element::new(
+                    format!("{TAG} – {sys} {}", r.number),
+                    ElementKind::Pipe(up),
+                ));
+            }
+            lifted_before = lift;
         }
+        laid.extend(b.path.windows(2).map(|w| (w[0], w[1], b.supply)));
         // the valve once a terminal, on its first duct's room end
         let lead = d.branches[..bi]
             .iter()
