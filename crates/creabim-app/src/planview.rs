@@ -5843,6 +5843,7 @@ fn refresh_snaps(
         let mut s = Snapper::from_drawing(&plan.items, &[]);
         s.add_underlay_centres(model, view);
         s.add_column_centres(model, view);
+        s.add_pipe_ends(model, view);
         add_reference_snaps(&mut s, state, model, view);
         if let Some(under) = underlay_view(model, view) {
             add_reference_snaps(&mut s, state, model, under);

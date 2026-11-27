@@ -998,6 +998,31 @@ impl Snapper {
         }
     }
 
+    /// The axis and the ends of every pipe and duct on a plan's level, so
+    /// a pipe drawn or dragged catches the end of another (George
+    /// 2026-11-27: "prichytávať sa ku koncu iného potrubia").
+    pub fn add_pipe_ends(&mut self, model: &creabim_core::Model, view: ElementId) {
+        let Some(creabim_core::ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+            return;
+        };
+        let creabim_core::ViewKind::Plan { level, .. } = v.kind else {
+            return;
+        };
+        for e in model.iter() {
+            if let creabim_core::ElementKind::Pipe(p) = &e.kind {
+                if p.level != level {
+                    continue;
+                }
+                let (a, b) = (p.start.truncate().extend(0.0), p.end.truncate().extend(0.0));
+                if a.distance(b) > 1e-6 {
+                    self.add_segment(a, b, Source::Edge, Some(e.id));
+                } else {
+                    self.point(a, SnapKind::Endpoint, Source::Edge, Some(e.id));
+                }
+            }
+        }
+    }
+
     pub fn add_guides(&mut self, model: &creabim_core::Model, reach: f64) {
         for e in model.iter() {
             if let creabim_core::ElementKind::Guide(g) = &e.kind {

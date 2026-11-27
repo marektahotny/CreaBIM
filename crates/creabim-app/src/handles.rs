@@ -4601,9 +4601,30 @@ pub fn interact(
                 | SnapKind::Quadrant
         )
     });
+    // a pipe's end gives way only to another pipe's end (its axis end):
+    // the corners and crossings of the linework round it would otherwise
+    // always catch it in a busy plan (George 2026-11-27)
+    let any_point = point_snap;
+    let point_snap = match (d.edit.originals().first().map(|e| &e.kind), &snapped) {
+        (Some(ElementKind::Pipe(p)), Some((_, sn))) if point_snap => {
+            let moved: Vec<ElementId> = d.edit.originals().iter().map(|e| e.id).collect();
+            sn.kind == SnapKind::Endpoint
+                && doc.model().iter().any(|x| match &x.kind {
+                    ElementKind::Pipe(o) if o.level == p.level && !moved.contains(&x.id) => {
+                        [o.start, o.end]
+                            .iter()
+                            .any(|q| q.truncate().distance(sn.p.truncate()) < 0.002)
+                    }
+                    _ => false,
+                })
+        }
+        _ => point_snap,
+    };
     let held = match (d.kind, d.edit.originals().first(), d.constraint) {
         (Some(k), Some(orig), Constraint::Plane { .. }) if !point_snap => {
-            hold_lines(doc.model(), input, orig, k, now)
+            // from the pointer itself when a point it gave way to caught it
+            let from = if any_point { free } else { now };
+            hold_lines(doc.model(), input, orig, k, from)
         }
         _ => None,
     };
@@ -4755,6 +4776,37 @@ fn hold_lines(
             let v = to - from;
             if v.length() > 1e-9 {
                 own.push((from.extend(z), v.normalize().extend(0.0)));
+            }
+        }
+        // a pipe's or duct's end: on along the pipe, and on along the
+        // pipes joined at that end (their other ends stay)
+        (HandleKind::Member { i, .. }, ElementKind::Pipe(p)) if i < 2 => {
+            let z = DVec3::Z * model.level(p.level).map_or(0.0, |l| l.elevation);
+            let (here, other) = if i == 0 {
+                (p.start, p.end)
+            } else {
+                (p.end, p.start)
+            };
+            let flat = |q: DVec3| q.truncate().extend(now.z);
+            let v = (here - other).truncate();
+            if v.length() > 1e-9 {
+                own.push((flat(other + z), v.normalize().extend(0.0)));
+                anchors.push(flat(other + z));
+            }
+            for x in model.iter() {
+                let ElementKind::Pipe(o) = &x.kind else {
+                    continue;
+                };
+                if x.id == orig.id || o.level != p.level {
+                    continue;
+                }
+                for (a, b) in [(o.start, o.end), (o.end, o.start)] {
+                    let w = (b - a).truncate();
+                    if a.distance(here) < 0.002 && w.length() > 1e-9 {
+                        own.push((flat(b + z), w.normalize().extend(0.0)));
+                        anchors.push(flat(b + z));
+                    }
+                }
             }
         }
         (HandleKind::ViewEnd { end }, ElementKind::View(v)) => {
