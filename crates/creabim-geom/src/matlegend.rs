@@ -444,6 +444,124 @@ fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
     out
 }
 
+/// Does the legend `view` stand beside the foundations: its own storey,
+/// or a plan beside it, is one the footings are drawn on?
+pub fn of_foundations(model: &Model, view: ElementId) -> bool {
+    let footing_levels: Vec<ElementId> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Footing(f) => Some(f.plan_level(model)),
+            _ => None,
+        })
+        .collect();
+    storeys(model, view).is_some_and(|ls| ls.iter().any(|l| footing_levels.contains(l)))
+}
+
+/// What a foundations' legend lists, as George's ASR.002: the footings'
+/// materials (their description, else "Foundation structure – name"),
+/// and the outlines of the walls on the footings' storey (the formwork
+/// blocks), a line for each material and thickness.
+pub fn foundation_rows(model: &Model, view: ElementId) -> (Vec<String>, Vec<String>) {
+    let left_out: Vec<ElementId> = match model.get(view).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => v.left_out.clone(),
+        _ => vec![],
+    };
+    let levels = storeys(model, view).unwrap_or_default();
+    let words = |id: ElementId| -> Option<String> {
+        let e = model.get(id)?;
+        let ElementKind::Material(m) = &e.kind else {
+            return None;
+        };
+        let plain = plain_description(&m.description);
+        Some(if plain.trim().is_empty() {
+            tr(e.name.trim())
+        } else {
+            tr(&plain)
+        })
+    };
+    let mut footings: Vec<(ElementId, String)> = vec![];
+    for e in model.iter() {
+        let ElementKind::Footing(f) = &e.kind else {
+            continue;
+        };
+        let Some(m) = f.material.filter(|m| !left_out.contains(m)) else {
+            continue;
+        };
+        if !levels.contains(&f.plan_level(model)) || footings.iter().any(|x| x.0 == m) {
+            continue;
+        }
+        let has_own = model.get(m).is_some_and(|x| {
+            matches!(&x.kind, ElementKind::Material(mat) if !plain_description(&mat.description).trim().is_empty())
+        });
+        if let Some(w) = words(m) {
+            let t = if has_own {
+                w
+            } else {
+                tr("Foundation structure – {}").replace("{}", &w)
+            };
+            footings.push((m, t));
+        }
+    }
+    let mut outlines: Vec<(ElementId, i64, String)> = vec![];
+    for e in model.iter() {
+        let ElementKind::Wall(w) = &e.kind else {
+            continue;
+        };
+        if !levels.contains(&w.level) {
+            continue;
+        }
+        // the wall's structure: its build-up's structural layers, else
+        // its own material
+        let made: Vec<(ElementId, f64)> = match creabim_core::assembly_of(model, e) {
+            Some((_, a)) => a
+                .layers
+                .iter()
+                .filter(|l| l.function == creabim_core::LayerFunction::Structure)
+                .filter_map(|l| Some((l.material?, l.thickness)))
+                .collect(),
+            None => w.material.map(|m| (m, w.thickness)).into_iter().collect(),
+        };
+        for (m, t) in made {
+            let mm = (t * 1000.0).round() as i64;
+            if left_out.contains(&m) || outlines.iter().any(|x| x.0 == m && x.1 == mm) {
+                continue;
+            }
+            if let Some(words) = words(m) {
+                let text = tr("Outline of {}, thickness {t} mm")
+                    .replace("{}", &words)
+                    .replace("{t}", &mm.to_string());
+                outlines.push((m, mm, text));
+            }
+        }
+    }
+    outlines.sort_by_key(|x| -x.1);
+    (
+        footings.into_iter().map(|x| x.1).collect(),
+        outlines.into_iter().map(|x| x.2).collect(),
+    )
+}
+
+/// The welded meshes a foundations' legend lists, a line each: "KARI
+/// rohož KY50 8x150/8x150 mm pri spodnom okraji podkladnej dosky".
+pub fn kari_rows(model: &Model, view: ElementId) -> Vec<String> {
+    if !of_foundations(model, view) {
+        return vec![];
+    }
+    let mut out: Vec<String> = vec![];
+    for l in creabim_core::kari::laid(model) {
+        let t = tr(if l.top {
+            "KARI mesh {} at the top edge of the base slab"
+        } else {
+            "KARI mesh {} at the bottom edge of the base slab"
+        })
+        .replace("{}", &l.mesh.designation());
+        if !out.contains(&t) {
+            out.push(t);
+        }
+    }
+    out
+}
+
 /// The legend as a drawing in paper millimetres, its top left corner at
 /// the origin.
 pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
@@ -469,8 +587,60 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         HEAD + 0.8,
     );
     let mut y = 0.0;
-    let mut rows = rows_of_view(model, view);
-    let makers = system_makers_cut(model, view);
+    // the foundations' legend is George's ASR.002: the footings as a
+    // thick outline, the formwork blocks' outline dash-dotted, the
+    // meshes, the notes; no hatches (2026-11-27)
+    let foundations = of_foundations(model, view);
+    let mut rows = if foundations {
+        vec![]
+    } else {
+        rows_of_view(model, view)
+    };
+    let makers = if foundations {
+        vec![]
+    } else {
+        system_makers_cut(model, view)
+    };
+    if foundations {
+        let (footings, outlines) = foundation_rows(model, view);
+        let pens = footings
+            .iter()
+            .map(|t| (t, SWATCH_EDGE))
+            .chain(outlines.iter().map(|t| {
+                (
+                    t,
+                    Pen::Drafted(creabim_core::LineLook {
+                        pen: creabim_core::LinePen::Thin,
+                        kind: creabim_core::LineType::DashDot,
+                    }),
+                )
+            }));
+        for (words, pen) in pens {
+            let lines = wrap(words, tw, TEXT);
+            let h = PATCH.y.max(lines.len() as f64 * LINE);
+            let top = y - (h - PATCH.y) / 2.0;
+            let patch = [
+                DVec2::new(0.0, top - PATCH.y),
+                DVec2::new(PATCH.x, top - PATCH.y),
+                DVec2::new(PATCH.x, top),
+                DVec2::new(0.0, top),
+            ];
+            for i in 0..4 {
+                items.push(PlanItem::Line {
+                    id: view,
+                    pen,
+                    a: patch[i],
+                    b: patch[(i + 1) % 4],
+                });
+            }
+            let mut ty = y - h / 2.0 + (lines.len() as f64 - 1.0) * LINE / 2.0;
+            for l in &lines {
+                text(&mut items, DVec2::new(ind, ty), l, TEXT);
+                ty -= LINE;
+            }
+            y -= h + 3.0;
+        }
+    }
     // beside sections only, the system lintels show crossed, not hatched:
     // their material row gives way to the crossed mark's
     if !makers.is_empty() && beside(model, view).is_empty() {
@@ -552,7 +722,46 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         }
         y -= h + 3.0;
     }
-    if rows.is_empty() {
+    // beside the foundations: the welded meshes of the base slabs, each a
+    // number in a circle as George's sample (ASR.002) marks them
+    let meshes = kari_rows(model, view);
+    for (i, words) in meshes.iter().enumerate() {
+        let lines = wrap(words, tw, TEXT);
+        let h = PATCH.y.max(lines.len() as f64 * LINE);
+        let c = DVec2::new(PATCH.x / 2.0, y - h / 2.0);
+        let r = 2.2;
+        let ring: Vec<DVec2> = (0..=32)
+            .map(|k| {
+                let a = k as f64 / 32.0 * std::f64::consts::TAU;
+                c + DVec2::new(a.cos(), a.sin()) * r
+            })
+            .collect();
+        for w in ring.windows(2) {
+            items.push(PlanItem::Line {
+                id: view,
+                pen: Pen::Symbol,
+                a: w[0],
+                b: w[1],
+            });
+        }
+        items.push(PlanItem::Text {
+            id: view,
+            at: c,
+            text: (i + 1).to_string(),
+            size: TEXT,
+            align: Anchor::Middle,
+            mm: 1.0,
+            rgb: None,
+            bold: false,
+        });
+        let mut ty = y - h / 2.0 + (lines.len() as f64 - 1.0) * LINE / 2.0;
+        for l in &lines {
+            text(&mut items, DVec2::new(ind, ty), l, TEXT);
+            ty -= LINE;
+        }
+        y -= h + 3.0;
+    }
+    if rows.is_empty() && meshes.is_empty() && !foundations {
         text(
             &mut items,
             DVec2::new(0.0, y - LINE / 2.0),
@@ -641,12 +850,13 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         }
     }
     // the notes of the drawing, the legend view's own, a line each
+    // (each can be switched off on its own, George 2026-11-27)
     let notes: Vec<String> = match model.get(view).map(|e| &e.kind) {
         Some(ElementKind::View(v)) => v
             .notes
             .lines()
             .map(str::trim)
-            .filter(|l| !l.is_empty())
+            .filter(|l| !l.is_empty() && !v.notes_off.iter().any(|o| o.trim() == *l))
             .map(|l| format!("- {}", l.trim_start_matches("- ")))
             .collect(),
         _ => vec![],
@@ -661,7 +871,8 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         );
         y -= HEAD + 3.0;
         for n in &notes {
-            for l in wrap(&n.to_uppercase(), ind + tw, TEXT) {
+            // as typed, as the sample's notes are written
+            for l in wrap(n, ind + tw, TEXT) {
                 text(&mut items, DVec2::new(0.0, y - LINE / 2.0), &l, TEXT);
                 y -= LINE;
             }

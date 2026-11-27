@@ -1584,6 +1584,10 @@ pub struct Slab {
     /// priced apart. `None` works it out, see [`crate::slab::kind_of`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<SlabKind>,
+    /// Welded mesh (KARI) at the bottom of its base slab layer; none for
+    /// most. See [`crate::kari`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reinforcement: Option<crate::kari::SlabMesh>,
 }
 
 /// A floor/ceiling slab (stropná doska) or a foundation slab (základová
@@ -1591,7 +1595,12 @@ pub struct Slab {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SlabKind {
     Floor,
+    /// A foundation slab carrying the building on its own, with tied
+    /// reinforcement (no strip footings).
     Foundation,
+    /// A base slab (podkladová doska) between strip footings: plain or
+    /// with KARI mesh (George 2026-11-27); set by hand, never automatic.
+    Base,
 }
 
 impl Slab {
@@ -1608,6 +1617,7 @@ impl Slab {
             holes: vec![],
             layer_edges: vec![],
             kind: None,
+            reinforcement: None,
         }
     }
 
@@ -2571,6 +2581,9 @@ pub struct View {
     /// line; empty writes the usual ones of its trades.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
+    /// The notes switched off: kept in [`View::notes`], not written.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes_off: Vec<String>,
     /// How far a plan is turned on screen and on paper, degrees
     /// anticlockwise (Revit's "true north" orientation of a site plan):
     /// the model stays as it is, so the floor plans keep square to the
@@ -3111,6 +3124,7 @@ impl View {
             takeoff: Default::default(),
             perimeter: None,
             notes: String::new(),
+            notes_off: vec![],
             turn: 0.0,
             spatial: false,
             label_moves: vec![],
@@ -3160,6 +3174,7 @@ impl View {
             takeoff: Default::default(),
             perimeter: None,
             notes: String::new(),
+            notes_off: vec![],
             turn: 0.0,
             spatial: false,
             label_moves: vec![],
@@ -3206,6 +3221,7 @@ impl View {
             takeoff: Default::default(),
             perimeter: None,
             notes: String::new(),
+            notes_off: vec![],
             turn: 0.0,
             spatial: false,
             label_moves: vec![],
@@ -3253,6 +3269,7 @@ impl View {
             takeoff: Default::default(),
             perimeter: None,
             notes: String::new(),
+            notes_off: vec![],
             turn: 0.0,
             spatial: false,
             label_moves: vec![],
@@ -3305,6 +3322,7 @@ impl View {
             takeoff: Default::default(),
             perimeter: None,
             notes: String::new(),
+            notes_off: vec![],
             turn: 0.0,
             spatial: false,
             label_moves: vec![],

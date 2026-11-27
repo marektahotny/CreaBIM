@@ -73,6 +73,7 @@ pub fn sample_house() -> Model {
             format!("{lname} Slab"),
             ElementKind::Slab(Slab {
                 layer_edges: vec![],
+                reinforcement: None,
                 kind: None,
                 level,
                 boundary: corners.to_vec(),

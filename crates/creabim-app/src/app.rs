@@ -10412,27 +10412,105 @@ crate::props::row(ui, "File names", |ui| {
                         creabim_core::SlabKind::Foundation => {
                             "Automatic: foundation slab (no slab under it)."
                         }
-                        creabim_core::SlabKind::Floor => "Automatic: floor slab (a slab under it).",
+                        creabim_core::SlabKind::Floor | creabim_core::SlabKind::Base => {
+                            "Automatic: floor slab (a slab under it)."
+                        }
                     };
-                    if crate::props::choice(
-                        ui,
-                        "Slab type",
-                        &mut s.kind,
-                        &[
-                            (None, "Auto", auto),
-                            (
-                                Some(creabim_core::SlabKind::Floor),
-                                "Floor slab",
-                                "A floor or ceiling slab (stropná doska).",
-                            ),
-                            (
-                                Some(creabim_core::SlabKind::Foundation),
-                                "Foundation slab",
-                                "A foundation slab (základová doska), listed apart in the take-off and exported as IFC BASESLAB.",
-                            ),
-                        ],
-                    ) {
-                        label = "Slab type"
+                    // four kinds: a list, the buttons would not fit
+                    let kinds: [(Option<creabim_core::SlabKind>, &str, &str); 4] = [
+                        (None, "Auto", auto),
+                        (
+                            Some(creabim_core::SlabKind::Floor),
+                            "Floor slab",
+                            "A floor or ceiling slab (stropná doska).",
+                        ),
+                        (
+                            Some(creabim_core::SlabKind::Foundation),
+                            "Foundation slab",
+                            "A foundation slab (základová doska) carrying the building without strip footings, with tied reinforcement; listed apart in the take-off and exported as IFC BASESLAB.",
+                        ),
+                        (
+                            Some(creabim_core::SlabKind::Base),
+                            "Base slab",
+                            "A base slab (podkladová doska) between strip footings: it may take KARI mesh. Listed with the foundation slabs, IFC BASESLAB.",
+                        ),
+                    ];
+                    crate::props::row(ui, "Slab type", |ui| {
+                        let now = kinds.iter().find(|k| k.0 == s.kind).map_or("", |k| k.1);
+                        egui::ComboBox::from_id_salt("slab.kind")
+                            .icon(crate::props::combo_icon)
+                            .selected_text(crate::i18n::t(now))
+                            .width(ui.available_width())
+                            .show_ui(ui, |ui| {
+                                for (k, name, tip) in kinds {
+                                    if ui
+                                        .selectable_label(s.kind == k, crate::i18n::t(name))
+                                        .on_hover_text(crate::i18n::t(tip))
+                                        .clicked()
+                                    {
+                                        s.kind = k;
+                                        label = "Slab type";
+                                    }
+                                }
+                            });
+                    });
+                    // welded mesh at the bottom of a base slab only (George
+                    // 2026-11-27): a floor slab or a foundation slab without
+                    // footings gets tied bars; sizes and weights from the
+                    // maker's table
+                    let foundation = creabim_core::slab::kind_of(self.doc.model(), s)
+                        == creabim_core::SlabKind::Base;
+                    let mut kari = s.reinforcement.is_some();
+                    if !foundation {
+                        if kari {
+                            crate::props::note(ui, crate::i18n::t("KARI mesh only in a base slab: set the slab type to Base slab."));
+                        }
+                    } else if crate::props::switch(ui, &mut kari, "KARI mesh reinforcement")
+                        .on_hover_text(crate::i18n::t(
+                            "Welded mesh at the bottom edge of the slab's base layer, listed in the take-off (designation, area, pieces with laps, weight) and in the foundations' legend of materials.",
+                        ))
+                        .changed()
+                    {
+                        s.reinforcement = kari.then(creabim_core::kari::SlabMesh::default);
+                        label = "KARI mesh reinforcement"
+                    }
+                    if let Some(r) = s.reinforcement.as_mut().filter(|_| foundation) {
+                        crate::props::row(ui, "Mesh", |ui| {
+                            let now = creabim_core::kari::mesh(&r.mesh)
+                                .map_or_else(|| r.mesh.clone(), |m| m.designation());
+                            egui::ComboBox::from_id_salt("slab.kari")
+                                .icon(crate::props::combo_icon)
+                                .selected_text(now)
+                                .width(ui.available_width())
+                                .show_ui(ui, |ui| {
+                                    for m in creabim_core::kari::CATALOGUE.iter() {
+                                        let text = format!(
+                                            "{}  ({}×{} m, {} kg/ks)",
+                                            m.designation(),
+                                            format!("{:.1}", m.sheet.0).replace('.', ","),
+                                            format!("{:.1}", m.sheet.1).replace('.', ","),
+                                            format!("{:.2}", m.kg_sheet).replace('.', ",")
+                                        );
+                                        if ui.selectable_label(r.mesh == m.code, text).clicked() {
+                                            r.mesh = m.code.to_string();
+                                            label = "KARI mesh";
+                                        }
+                                    }
+                                });
+                        });
+                        if num(ui, "Lap of the sheets", &mut r.lap, 0.0, 1.0) {
+                            label = "KARI lap"
+                        }
+                        if crate::props::switch(ui, &mut r.top, "Also at the top edge")
+                            .on_hover_text(crate::i18n::t("A second mesh of the same type at the top edge of the base slab (a slab against water under pressure)."))
+                            .changed()
+                        {
+                            label = "KARI mesh at the top edge"
+                        }
+                        crate::props::note(
+                            ui,
+                            crate::i18n::t("Sheets and weights: WAGNER SERVICECENTRUM s.r.o., KARI types (BSt 500 M). Lap 300 mm by default (atreon.sk, eko-vystuze.sk); the lap is the designer's figure."),
+                        );
                     }
                     let level = self.doc.model().level(s.level).map_or(0.0, |l| l.elevation);
                     crate::props::note(
@@ -11002,6 +11080,40 @@ crate::props::row(ui, "File names", |ui| {
                         {
                             label = "Notes of the legend";
                         }
+                        // each note on or off on its own (George 2026-11-27)
+                        let lines: Vec<String> = v
+                            .notes
+                            .lines()
+                            .map(str::trim)
+                            .filter(|l| !l.is_empty())
+                            .map(str::to_string)
+                            .collect();
+                        if !lines.is_empty() {
+                            ui.label(crate::i18n::t("Notes written on the drawing"));
+                        }
+                        for (i, l) in lines.iter().enumerate() {
+                            let mut on = !v.notes_off.iter().any(|o| o.trim() == l);
+                            let short: String = l.chars().take(70).collect();
+                            let short = if short.len() < l.len() {
+                                format!("{short}…")
+                            } else {
+                                short
+                            };
+                            if ui
+                                .push_id(("legend-note", i), |ui| ui.checkbox(&mut on, short))
+                                .inner
+                                .on_hover_text(l.as_str())
+                                .changed()
+                            {
+                                v.notes_off.retain(|o| o.trim() != l);
+                                if !on {
+                                    v.notes_off.push(l.clone());
+                                }
+                                label = "Note on the drawing";
+                            }
+                        }
+                        // the switched-off notes of lines no longer there
+                        v.notes_off.retain(|o| lines.iter().any(|l| l == o.trim()));
                     }
                     // a services plan is one trade's, or every trade's
                     if matches!(v.kind, ViewKind::Plan { .. })

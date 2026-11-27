@@ -34,6 +34,7 @@ pub mod holds;
 pub mod id;
 pub mod joinery;
 pub mod joins;
+pub mod kari;
 pub mod levels;
 pub mod library;
 pub mod lock;
