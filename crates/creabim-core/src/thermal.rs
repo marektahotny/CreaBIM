@@ -294,6 +294,140 @@ pub fn of_element(model: &Model, e: &Element) -> Option<Thermal> {
     Some(of_assembly(model, &one, None))
 }
 
+/// A concrete member set into a wall's load-bearing core (a ring beam,
+/// a monolithic RC lintel, an RC column in the wall), with whatever
+/// insulation or VELOX boards were laid into its formwork: where it is
+/// on the wall's face and the build-up across the wall there.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Insert {
+    pub element: crate::ElementId,
+    /// "ŽB stužujúci veniec + VELOX WSC-EPS 85 zvonka".
+    pub name: String,
+    /// Along the wall from its start, m.
+    pub along: (f64, f64),
+    /// Its bottom and top, m above ±0.
+    pub z: (f64, f64),
+    /// The wall's build-up with its core taken by the member's layers,
+    /// from the exterior in.
+    pub assembly: Assembly,
+}
+
+/// The concrete members in the core of wall `wall` (see [`Insert`]), so
+/// heat loss counts the wall's face over them with their own build-up
+/// (George 2026-11-27) instead of the masonry's.
+pub fn inserts(model: &Model, wall: crate::ElementId) -> Vec<Insert> {
+    let Some(we) = model.get(wall) else {
+        return vec![];
+    };
+    let ElementKind::Wall(w) = &we.kind else {
+        return vec![];
+    };
+    let (ext, int) = crate::walls::core_span(model, w);
+    let core = (int - ext).abs();
+    let d = w.direction();
+    let along = |pts: &[glam::DVec2]| {
+        let (mut lo, mut hi) = (f64::MAX, f64::MIN);
+        for p in pts {
+            let t = (*p - w.start).dot(d);
+            lo = lo.min(t);
+            hi = hi.max(t);
+        }
+        (lo, hi)
+    };
+    let mut out = vec![];
+    for e in model.iter() {
+        let (on_wall, span, z, own, width) = match &e.kind {
+            ElementKind::Beam(b) if b.piece.is_none() => {
+                let host = match &b.lintel {
+                    Some(l) if l.cast.is_some() => {
+                        l.opening.and_then(|o| match model.get(o).map(|x| &x.kind) {
+                            Some(ElementKind::Opening(o)) => Some(o.host),
+                            _ => None,
+                        })
+                    }
+                    Some(_) => None,
+                    None if e.name == crate::masonry::RING_BEAM => {
+                        crate::masonry::ring_wall(model, b)
+                    }
+                    None => None,
+                };
+                let top = b.top(model);
+                (
+                    host == Some(wall),
+                    along(&b.outline()),
+                    (top - b.depth, top),
+                    b.material,
+                    b.width,
+                )
+            }
+            ElementKind::Column(c) if c.piece.is_none() => {
+                let Some(iw) = c.in_wall.as_ref().filter(|iw| iw.of.is_none()) else {
+                    continue;
+                };
+                let base = crate::members::elevation(model, c.level) + c.base_offset;
+                let crate::Profile::Rectangle { depth, .. } = c.profile else {
+                    continue;
+                };
+                (
+                    iw.wall == wall,
+                    along(&c.outline()),
+                    (base, base + c.height_in(model)),
+                    c.material,
+                    depth,
+                )
+            }
+            _ => continue,
+        };
+        if !on_wall {
+            continue;
+        }
+        // across the core, from the exterior in
+        let mut layers: Vec<(Option<crate::ElementId>, f64)> =
+            crate::wrap::layers_across(model, e).unwrap_or_else(|| vec![(own, width)]);
+        let taken: f64 = layers.iter().map(|l| l.1).sum();
+        // what of the core it leaves (a shuttering block) stays masonry
+        let wall_asm = crate::assembly::assembly_of(model, we).map(|(_, a)| a.clone());
+        let core_mat = wall_asm
+            .as_ref()
+            .map(|a| a.layers[a.core().0].material)
+            .unwrap_or(w.material);
+        if core - taken > 1e-3 {
+            layers.insert(0, (core_mat, core - taken));
+        }
+        let mine = layers
+            .into_iter()
+            .map(|(m, t)| crate::assembly::Layer::new(LayerFunction::Structure, m, t));
+        let assembly = match wall_asm {
+            Some(a) => {
+                let (i, j) = a.core();
+                let mut l: Vec<_> = a.layers[..i].to_vec();
+                l.extend(mine);
+                l.extend(a.layers[j + 1..].iter().cloned());
+                let mut x = a.clone();
+                x.layers = l;
+                x
+            }
+            None => Assembly::new(AssemblyUse::Wall, mine.collect()),
+        };
+        let note = match &e.kind {
+            ElementKind::Beam(_) => crate::masonry::insulation_note(model, e.id),
+            _ => String::new(),
+        };
+        let name = match &e.kind {
+            ElementKind::Beam(b) if b.lintel.is_some() => crate::masonry::RC_LINTEL.to_string(),
+            _ => e.name.clone(),
+        };
+        out.push(Insert {
+            element: e.id,
+            name: format!("{name}{note}"),
+            along: span,
+            z,
+            assembly,
+        });
+    }
+    out
+}
+
 /// "0,245" — U or R as the editor and the lists show it.
 pub fn shown(v: f64) -> String {
     format!("{v:.3}").replace('.', ",")

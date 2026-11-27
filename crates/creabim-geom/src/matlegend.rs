@@ -404,7 +404,13 @@ fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
                 // walls' when they have it, else with its thickness
                 // (George 2026-11-22)
                 match creabim_core::wrap::piece_of(e) {
-                    Some(p) if p.plaster => {}
+                    // a VELOX board's wood-cement layer is no render
+                    Some(p)
+                        if p.plaster
+                            && !model.get(p.host).is_some_and(|h| {
+                                matches!(&h.kind, ElementKind::Beam(b)
+                                    if b.wrap.as_ref().is_some_and(|w| w.formwork.is_some()))
+                            }) => {}
                     Some(p) => {
                         let t = creabim_core::members::level_of(&e.kind)
                             .and(model.get(p.host))

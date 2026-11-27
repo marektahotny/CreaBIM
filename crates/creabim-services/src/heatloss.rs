@@ -361,6 +361,67 @@ pub(crate) fn u_of(model: &Model, e: &Element, r_surfaces: f64) -> Option<(f64, 
     Some((1.0 / r, ae.name.clone()))
 }
 
+/// The U of build-up `asm` with surface resistances `r_surfaces` (an
+/// unventilated gap with no material 0,18), none while a layer has no λ.
+pub(crate) fn u_of_assembly(
+    model: &Model,
+    asm: &creabim_core::assembly::Assembly,
+    r_surfaces: f64,
+) -> Option<f64> {
+    let mut r = r_surfaces;
+    for l in &asm.layers {
+        if l.thickness <= 0.0 {
+            continue;
+        }
+        let Some(m) = l.material else {
+            r += 0.18;
+            continue;
+        };
+        let ElementKind::Material(mat) = &model.get(m)?.kind else {
+            return None;
+        };
+        r += l.thickness / mat.lambda.filter(|x| *x > 0.0)?;
+    }
+    Some(1.0 / r)
+}
+
+/// The face of outside wall `we` between `s` along it (from its start)
+/// and heights `z` that concrete members in its core take: ring beams,
+/// RC lintels, RC columns, with the insulation or VELOX boards in their
+/// formwork (George 2026-11-27): each one's detail, area and U (none
+/// when a layer has no λ). Where two overlap, the first keeps it.
+pub(crate) fn insert_parts(
+    model: &Model,
+    we: &Element,
+    wall_name: &str,
+    s: (f64, f64),
+    z: (f64, f64),
+    r_surfaces: f64,
+) -> Vec<(String, f64, Option<f64>)> {
+    type Rect = ((f64, f64), (f64, f64));
+    let clip = |a: (f64, f64), b: (f64, f64)| (a.0.max(b.0), a.1.min(b.1));
+    let area = |r: Rect| (r.0 .1 - r.0 .0).max(0.0) * (r.1 .1 - r.1 .0).max(0.0);
+    let mut taken: Vec<Rect> = vec![];
+    let mut out = vec![];
+    for ins in creabim_core::thermal::inserts(model, we.id) {
+        let r = (clip(ins.along, s), clip(ins.z, z));
+        let mut a = area(r);
+        if a < 1e-6 {
+            continue;
+        }
+        for t in &taken {
+            a -= area((clip(r.0, t.0), clip(r.1, t.1)));
+        }
+        taken.push(r);
+        if a < 1e-6 {
+            continue;
+        }
+        let u = u_of_assembly(model, &ins.assembly, r_surfaces);
+        out.push((format!("{wall_name} – {}", ins.name), a, u));
+    }
+    out
+}
+
 pub(crate) struct RoomAt<'a> {
     pub e: &'a Element,
     pub level: ElementId,
@@ -544,14 +605,31 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                         add(kind, "", oa, uo + o.d_u, 1.0, Some(az));
                     }
                     match u_of(model, we, R_WALL) {
-                        Some((uw, name)) => add(
-                            "Outside wall",
-                            &name,
-                            net.max(0.0),
-                            uw + o.d_u,
-                            1.0,
-                            Some(az),
-                        ),
+                        Some((uw, name)) => {
+                            // ring beams, RC lintels and columns in the
+                            // core: their own build-up over their face
+                            let z0 = elev(r.level);
+                            for (detail, ia, iu) in
+                                insert_parts(model, we, &name, (s0, s1), (z0, z0 + h), R_WALL)
+                            {
+                                match iu {
+                                    Some(iu) => {
+                                        let ia = ia.min(net.max(0.0));
+                                        net -= ia;
+                                        add("Outside wall", &detail, ia, iu + o.d_u, 1.0, Some(az));
+                                    }
+                                    None => miss(Missing::WallBuildUp),
+                                }
+                            }
+                            add(
+                                "Outside wall",
+                                &name,
+                                net.max(0.0),
+                                uw + o.d_u,
+                                1.0,
+                                Some(az),
+                            )
+                        }
                         None => miss(Missing::WallBuildUp),
                     }
                 }
