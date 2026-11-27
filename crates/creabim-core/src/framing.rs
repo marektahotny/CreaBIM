@@ -257,9 +257,71 @@ pub enum EndCut {
     /// it at the same point (a rafter at the ridge: one runs through cut
     /// square, the other is fitted to it).
     Fitted,
-    /// A lap joint (preplátovanie, spoj na plát) over this length, m: the
-    /// lower half runs on (`upper` false) or the upper half does.
-    Lap { length: f64, upper: bool },
+    /// A lap joint (preplátovanie, spoj na plát) over this length, m (0:
+    /// twice the member's depth, 2v as George's sketch has it): the lower
+    /// part runs on (`upper` false) or the upper part does; its faces as
+    /// `style` says.
+    Lap {
+        length: f64,
+        upper: bool,
+        #[serde(default)]
+        style: LapStyle,
+    },
+}
+
+/// The kinds of lap joint (George 2026-11-27, his sketch of five,
+/// v the member's depth, the lap 2v long).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LapStyle {
+    /// a) Straight: plumb shoulders, the halves meeting level at v/2.
+    #[default]
+    Straight,
+    /// c) Slanted shoulders: each leans out v/4 over the half depth, the
+    /// joint v/4 + 2v + v/4 long.
+    SlantedShoulders,
+    /// d) Oblique: shoulders v/5 deep, the halves meeting on the diagonal
+    /// between them.
+    Oblique,
+    /// e) Sloped: the shoulders 3/5 and 2/5 deep, the halves meeting on
+    /// the slope between them.
+    Sloped,
+}
+
+impl LapStyle {
+    pub const ALL: [LapStyle; 4] = [
+        LapStyle::Straight,
+        LapStyle::SlantedShoulders,
+        LapStyle::Oblique,
+        LapStyle::Sloped,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LapStyle::Straight => "Straight lap",
+            LapStyle::SlantedShoulders => "Lap with slanted shoulders",
+            LapStyle::Oblique => "Oblique lap",
+            LapStyle::Sloped => "Lap with a sloped seat",
+        }
+    }
+
+    /// The faces where the two pieces meet, from the top down, as
+    /// (along, down): along from the shoulder of the piece whose lower
+    /// part runs on, m; down from the top, a share of the depth. `l` the
+    /// lap's length, `h` the member's depth. And the joint's whole length.
+    pub fn faces(self, l: f64, h: f64) -> (Vec<(f64, f64)>, f64) {
+        match self {
+            LapStyle::Straight => (vec![(0.0, 0.0), (0.0, 0.5), (l, 0.5), (l, 1.0)], l),
+            LapStyle::SlantedShoulders => {
+                let q = h / 4.0;
+                (
+                    vec![(q, 0.0), (0.0, 0.5), (l + 2.0 * q, 0.5), (l + q, 1.0)],
+                    l + 2.0 * q,
+                )
+            }
+            LapStyle::Oblique => (vec![(0.0, 0.0), (0.0, 0.2), (l, 0.8), (l, 1.0)], l),
+            LapStyle::Sloped => (vec![(0.0, 0.0), (0.0, 0.6), (l, 0.4), (l, 1.0)], l),
+        }
+    }
 }
 
 impl EndCut {
@@ -274,6 +336,7 @@ impl EndCut {
         EndCut::Lap {
             length: 0.0,
             upper: false,
+            style: LapStyle::Straight,
         },
     ];
 
@@ -317,10 +380,22 @@ pub struct Framing {
     /// How a timber beam's start and end are cut (see [`side_profile`]).
     #[serde(default, skip_serializing_if = "square_ends")]
     pub cuts: [EndCut; 2],
+    /// A rafter seated (osedlaná) on the wall plates and purlins it
+    /// crosses: notched where its underside runs below their tops.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub seat: bool,
+    /// A tenon (čap) on the start and the end, its length out from the
+    /// cut face, m; 0 none.
+    #[serde(default, skip_serializing_if = "no_tenons")]
+    pub tenons: [f64; 2],
 }
 
 fn square_ends(c: &[EndCut; 2]) -> bool {
     c[0] == EndCut::Square && c[1] == EndCut::Square
+}
+
+fn no_tenons(t: &[f64; 2]) -> bool {
+    t[0] <= 0.0 && t[1] <= 0.0
 }
 
 impl Framing {
@@ -333,6 +408,8 @@ impl Framing {
             turnbuckle: role == Role::BracingRod,
             mark: None,
             cuts: [EndCut::Square; 2],
+            seat: matches!(role, Role::Rafter | Role::HipRafter | Role::ValleyRafter),
+            tenons: [0.0; 2],
         }
     }
 }
@@ -747,7 +824,12 @@ pub fn axis(model: &Model, e: &Element) -> Option<(DVec3, DVec3)> {
 pub fn length(model: &Model, e: &Element) -> f64 {
     if let Some(p) = side_profile(model, e) {
         let d = glam::DVec2::new(1.0, p.slope).normalize();
-        let s: Vec<f64> = p.points.iter().map(|q| q.dot(d)).collect();
+        let s: Vec<f64> = p
+            .points
+            .iter()
+            .chain(p.tenons.iter().flatten())
+            .map(|q| q.dot(d))
+            .collect();
         let lo = s.iter().cloned().fold(f64::INFINITY, f64::min);
         let hi = s.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         return hi - lo;
@@ -770,6 +852,11 @@ pub struct SideProfile {
     pub points: Vec<glam::DVec2>,
     /// Its width across, m.
     pub width: f64,
+    /// Its tenons' outlines in the same frame, a third of its width
+    /// thick, in the middle.
+    pub tenons: Vec<Vec<glam::DVec2>>,
+    /// Where it is seated on a wall plate or purlin.
+    pub seats: Vec<Seat>,
 }
 
 /// A timber beam's side outline with its ends cut as its framing says;
@@ -839,43 +926,240 @@ pub fn side_profile(model: &Model, e: &Element) -> Option<SideProfile> {
                 let r = deg.clamp(5.0, 175.0).to_radians();
                 to_bottom(t, DVec2::new(out * r.cos(), -r.sin())).map_or(plumb, |p| vec![t, p])
             }
-            EndCut::Lap { length, upper } => {
-                let l = length.max(0.0).min(len / 2.0);
-                if l < 1e-6 {
+            EndCut::Lap {
+                length,
+                upper,
+                style,
+            } => {
+                // 2v unless typed (George's sketch)
+                let l = if length > 1e-6 { length } else { 2.0 * h };
+                let (faces, whole) = style.faces(l, h);
+                if whole > len / 2.0 + 1e-9 {
                     return plumb;
                 }
-                let x1 = tx - out * l;
-                let mid = |x: f64| top(x) - hv / 2.0;
-                if upper {
-                    vec![
-                        t,
-                        DVec2::new(tx, mid(tx)),
-                        DVec2::new(x1, mid(x1)),
-                        DVec2::new(x1, bottom(x1)),
-                    ]
-                } else {
-                    vec![
-                        DVec2::new(x1, top(x1)),
-                        DVec2::new(x1, mid(x1)),
-                        DVec2::new(tx, mid(tx)),
-                        DVec2::new(tx, bottom(tx)),
-                    ]
-                }
+                faces
+                    .into_iter()
+                    .map(|(along, down)| {
+                        // in from this end: the piece whose upper part runs
+                        // on is the other piece turned end for end
+                        let u = if upper { along } else { whole - along };
+                        let x = tx - out * u;
+                        DVec2::new(x, top(x) - down * hv)
+                    })
+                    .collect()
             }
             EndCut::Fitted => fitted(model, e.id, b, k, a, dir, slope, hv, t).unwrap_or(plumb),
         }
     };
     let end = cut(1);
     let start = cut(0);
+    // tenons on a cut of one face, out along the member, `l` deep square
+    // to the face (George 2026-11-27: a knee brace into its post and
+    // purlin)
+    let mut tenons = vec![];
+    for (k, face) in [(0usize, &start), (1, &end)] {
+        let l = f.tenons[k];
+        let single = matches!(
+            f.cuts[k],
+            EndCut::Square | EndCut::Plumb | EndCut::Level | EndCut::Angle(_)
+        );
+        if l <= 0.0 || !single || face.len() != 2 {
+            continue;
+        }
+        let out = if k == 0 { -1.0 } else { 1.0 };
+        let along = DVec2::new(out, out * slope).normalize();
+        let (t, q) = (face[0], face[1]);
+        let mut n = (q - t).perp().normalize_or_zero();
+        if n.dot(along) < 0.0 {
+            n = -n;
+        }
+        let c = along.dot(n);
+        if c < 0.2 {
+            continue;
+        }
+        let v = along * (l / c);
+        // a hair off the face, so that a section cuts it as a piece of its
+        // own and not one outline with the member's
+        let g = n * 2e-4;
+        let mut p = vec![t + g, t + v, q + v, q + g];
+        if k == 0 {
+            p.reverse();
+        }
+        tenons.push(p);
+    }
+    let ne = end.len();
     let mut points = end;
     points.extend(start.into_iter().rev());
+    let mut seats = vec![];
+    if f.seat && ne >= 1 && points.len() > ne {
+        let (from, to) = (points[ne - 1], points[ne]);
+        let notches = supports(model, e.id, a, dir, b.width);
+        let under = seat_line(from, to, &notches, slope, hv, &mut seats);
+        points.splice(ne..ne, under);
+    }
     Some(SideProfile {
         origin: a,
         dir,
         slope,
         points,
         width: b.width,
+        tenons,
+        seats,
     })
+}
+
+/// A rafter's seat (osedlanie) on a wall plate or purlin.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Seat {
+    pub support: ElementId,
+    /// How deep the notch reaches into the rafter, square to its axis, m.
+    pub depth: f64,
+}
+
+/// The wall plates and purlins a member's line crosses in plan, in its
+/// side frame: (which, from, to along it, their top up from `origin`).
+fn supports(
+    model: &Model,
+    id: ElementId,
+    origin: DVec3,
+    dir: glam::DVec2,
+    width: f64,
+) -> Vec<(ElementId, f64, f64, f64)> {
+    let mut out = vec![];
+    for o in model.iter() {
+        let ElementKind::Beam(ob) = &o.kind else {
+            continue;
+        };
+        if o.id == id {
+            continue;
+        }
+        let Some(of) = &ob.framing else { continue };
+        if !matches!(of.role, Role::WallPlate | Role::Purlin | Role::RidgePurlin) {
+            continue;
+        }
+        let (oa, oz) = ob.axis(model);
+        let run = (oz - oa).truncate();
+        let sl = run.length();
+        if sl < 1e-6 {
+            continue;
+        }
+        let sd = run / sl;
+        let sin = dir.perp_dot(sd);
+        if sin.abs() < 0.2 {
+            continue;
+        }
+        let w = oa.truncate() - origin.truncate();
+        let x = w.perp_dot(sd) / sin;
+        let s = w.perp_dot(dir) / sin;
+        let tol = width / 2.0 / sin.abs() + 1e-6;
+        if s < -tol || s > sl + tol {
+            continue;
+        }
+        let half = ob.width / 2.0 / sin.abs();
+        let zs = oa.z + (oz.z - oa.z) * s.clamp(0.0, sl) / sl - origin.z;
+        out.push((o.id, x - half, x + half, zs));
+    }
+    out
+}
+
+/// The underside from `from` to `to` (both on it) with the material
+/// below the supports' tops taken out over their widths; the points
+/// between, and each seat's depth into `seats`. A support whose top
+/// reaches the member's top is left out (it would cut it through).
+fn seat_line(
+    from: glam::DVec2,
+    to: glam::DVec2,
+    notches: &[(ElementId, f64, f64, f64)],
+    slope: f64,
+    hv: f64,
+    seats: &mut Vec<Seat>,
+) -> Vec<glam::DVec2> {
+    use glam::DVec2;
+    let top = |x: f64| slope * x;
+    let bottom = |x: f64| slope * x - hv;
+    let (lo, hi) = (from.x.min(to.x), from.x.max(to.x));
+    let valid: Vec<_> = notches
+        .iter()
+        .filter(|n| n.3 < top(n.1) - 0.01 && n.3 < top(n.2) - 0.01)
+        .filter(|n| n.2 > lo + 1e-6 && n.1 < hi - 1e-6)
+        .collect();
+    for n in &valid {
+        let (a, b) = (n.1.max(lo), n.2.min(hi));
+        let d = (n.3 - bottom(a)).max(n.3 - bottom(b));
+        if d > 1e-4 {
+            seats.push(Seat {
+                support: n.0,
+                depth: d / (1.0 + slope * slope).sqrt(),
+            });
+        }
+    }
+    if seats.is_empty() {
+        return vec![];
+    }
+    // where the line changes: the notches' sides and where the underside
+    // meets their tops
+    let mut xs = vec![];
+    for n in &valid {
+        xs.push(n.1);
+        xs.push(n.2);
+        if slope.abs() > 1e-9 {
+            let x = (n.3 + hv) / slope;
+            if x > n.1 && x < n.2 {
+                xs.push(x);
+            }
+        }
+    }
+    xs.retain(|x| *x > lo + 1e-6 && *x < hi - 1e-6);
+    let fwd = to.x > from.x;
+    xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    if !fwd {
+        xs.reverse();
+    }
+    xs.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    // the level over a stretch, at its middle
+    let level = |m: f64| {
+        valid
+            .iter()
+            .filter(|n| n.1 < m && m < n.2)
+            .map(|n| n.3)
+            .fold(f64::NEG_INFINITY, f64::max)
+    };
+    let at = |x: f64, lv: f64| DVec2::new(x, bottom(x).max(lv));
+    let mut out: Vec<DVec2> = vec![];
+    // up from the end's own corner when it lies under a seat
+    let first = xs.first().copied().unwrap_or(to.x);
+    let up = at(from.x, level((from.x + first) / 2.0));
+    if up.y > from.y + 1e-9 {
+        out.push(up);
+    }
+    let mut prev = from.x;
+    for (i, &x) in xs.iter().enumerate() {
+        let next = xs.get(i + 1).copied().unwrap_or(to.x);
+        let before = at(x, level((prev + x) / 2.0));
+        let after = at(x, level((x + next) / 2.0));
+        out.push(before);
+        if before.distance(after) > 1e-9 {
+            out.push(after);
+        }
+        prev = x;
+    }
+    let down = at(to.x, level((prev + to.x) / 2.0));
+    if down.y > to.y + 1e-9 {
+        out.push(down);
+    }
+    // no point on the plain underside between two others
+    let mut all = vec![from];
+    all.extend(out);
+    all.push(to);
+    let mut kept: Vec<DVec2> = vec![all[0]];
+    for i in 1..all.len() - 1 {
+        let (p, q, r) = (*kept.last().unwrap(), all[i], all[i + 1]);
+        if (q - p).perp_dot(r - q).abs() < 1e-9 || q.distance(p) < 1e-9 {
+            continue;
+        }
+        kept.push(q);
+    }
+    kept[1..].to_vec()
 }
 
 /// A rafter's end at the ridge fitted to the rafter meeting it there
@@ -1174,5 +1458,100 @@ mod tests {
         assert!((q.x - 4.0).abs() < 1e-6, "{q:?}");
         // the piece to order runs to the ridge on its top edge
         assert!((length(&m, m.get(oe.id).unwrap()) - (4.0f64.powi(2) + 4.0).sqrt()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_rafter_is_seated_on_the_wall_plate_it_crosses() {
+        use crate::{Beam, Transaction};
+        let (mut m, e) = rafter([EndCut::Square, EndCut::Square]);
+        let p0 = side_profile(&m, &e).unwrap();
+        let (s, hv) = (0.5, 0.2 * 1.25f64.sqrt());
+        // a plate 150/150 across it at 1 m, its top where the rafter's
+        // underside passes its uphill edge
+        let ElementKind::Beam(rb) = &e.kind else {
+            panic!()
+        };
+        let zs = p0.origin.z + s * 1.075 - hv;
+        let mut b = Beam::new(rb.level, DVec2::new(1.0, -1.0), DVec2::new(1.0, 1.0));
+        let mut f = Framing::new(Role::WallPlate);
+        f.section = "150/150".into();
+        let mut w = Element::new("p", ElementKind::Beam(b.clone()));
+        apply(&mut w, f.clone());
+        let (a, _) = b.axis(&m);
+        b.top_offset += a.z - zs;
+        let mut w = Element::new("p", ElementKind::Beam(b));
+        apply(&mut w, f);
+        Transaction::new("t")
+            .insert(w.clone())
+            .apply(&mut m)
+            .unwrap();
+        let p = side_profile(&m, &e).unwrap();
+        assert_eq!(p.seats.len(), 1);
+        assert_eq!(p.seats[0].support, w.id);
+        // as deep as the plate's width runs down the slope, square to it
+        assert!((p.seats[0].depth - 0.15 * s / 1.25f64.sqrt()).abs() < 1e-6);
+        // a level seat over the plate's width, a plumb face at its
+        // downhill edge
+        let z = zs - p.origin.z;
+        let near = |x: f64, y: f64| {
+            p.points
+                .iter()
+                .any(|q| (q.x - x).abs() < 1e-6 && (q.y - y).abs() < 1e-6)
+        };
+        assert!(near(1.075, z) && near(0.925, z) && near(0.925, s * 0.925 - hv));
+        assert_eq!(p.points.len(), p0.points.len() + 3);
+        // without the seat, none
+        let mut m2 = m.clone();
+        let mut e2 = e.clone();
+        if let ElementKind::Beam(b) = &mut e2.kind {
+            b.framing.as_mut().unwrap().seat = false;
+        }
+        Transaction::new("t")
+            .replace(e.clone(), e2.clone())
+            .apply(&mut m2)
+            .unwrap();
+        assert!(side_profile(&m2, &e2).unwrap().seats.is_empty());
+    }
+
+    #[test]
+    fn the_laps_as_george_sketched_them() {
+        // the lower part runs on at the end, 2v long by default
+        let (m, e) = rafter([
+            EndCut::Square,
+            EndCut::Lap {
+                length: 0.0,
+                upper: false,
+                style: LapStyle::Oblique,
+            },
+        ]);
+        let p = side_profile(&m, &e).unwrap();
+        let hv = 0.2 * 1.25f64.sqrt();
+        let top = |x: f64| 0.5 * x;
+        let (a, b, c, d) = (p.points[0], p.points[1], p.points[2], p.points[3]);
+        assert!((a.x - 3.6).abs() < 1e-9 && (a.y - top(3.6)).abs() < 1e-9);
+        assert!((b.x - 3.6).abs() < 1e-9 && (b.y - (top(3.6) - 0.2 * hv)).abs() < 1e-9);
+        assert!((c.x - 4.0).abs() < 1e-9 && (c.y - (top(4.0) - 0.8 * hv)).abs() < 1e-9);
+        assert!((d.x - 4.0).abs() < 1e-9 && (d.y - (top(4.0) - hv)).abs() < 1e-9);
+        // the other piece, its upper part running on, meets it on the same
+        // faces turned end for end
+        let (faces, whole) = LapStyle::SlantedShoulders.faces(0.4, 0.2);
+        assert!((whole - 0.5).abs() < 1e-12);
+        assert_eq!(faces[0], (0.05, 0.0));
+        assert_eq!(faces[3], (0.45, 1.0));
+    }
+
+    #[test]
+    fn a_tenon_runs_on_out_of_its_face() {
+        let (m, e) = rafter([EndCut::Plumb, EndCut::Square]);
+        let l0 = length(&m, &e);
+        let mut e2 = e.clone();
+        if let ElementKind::Beam(b) = &mut e2.kind {
+            b.framing.as_mut().unwrap().tenons = [0.05, 0.0];
+        }
+        let p = side_profile(&m, &e2).unwrap();
+        assert_eq!(p.tenons.len(), 1);
+        // 5 cm out square to the plumb face
+        assert!(p.tenons[0].iter().any(|q| (q.x + 0.05).abs() < 1e-9));
+        assert!((length(&m, &e2) - l0 - 0.05 * 1.25f64.sqrt()).abs() < 1e-9);
     }
 }

@@ -1702,6 +1702,44 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     creabim_core::framing::fit_beam(b);
                     return l;
                 }
+                // its seats: how deep, against a third of its depth
+                // (Tesařské spoje II: the notch a third of the member's
+                // height)
+                if f.seat {
+                    let probe = creabim_core::Element::new("", ElementKind::Beam(b.clone()));
+                    let h = b.depth;
+                    for s in creabim_core::framing::side_profile(model, &probe)
+                        .map(|p| p.seats)
+                        .unwrap_or_default()
+                    {
+                        let name = model
+                            .get(s.support)
+                            .map(|o| {
+                                creabim_core::framing::of(o).map_or(o.name.clone(), |f| {
+                                    crate::i18n::tr(f.role.label()).to_string()
+                                })
+                            })
+                            .unwrap_or_default();
+                        let text = format!(
+                            "{}: {name}, {} {} mm (h/3 = {} mm)",
+                            crate::i18n::tr("Rafter seat"),
+                            crate::i18n::tr("notch"),
+                            (s.depth * 1000.0).round(),
+                            (h / 3.0 * 1000.0).round()
+                        );
+                        if s.depth > h / 3.0 + 5e-4 {
+                            ui.colored_label(
+                                ui.visuals().warn_fg_color,
+                                format!(
+                                    "{text} — {}",
+                                    crate::i18n::tr("deeper than a third of the rafter")
+                                ),
+                            );
+                        } else {
+                            weak(ui, text);
+                        }
+                    }
+                }
                 weak(
                     ui,
                     "Section from the member's cross-section; width and depth follow it.".into(),

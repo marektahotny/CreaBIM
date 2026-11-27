@@ -338,10 +338,28 @@ fn end_cuts(ui: &mut eframe::egui::Ui, f: &mut Framing) -> bool {
                     .changed()
                 });
             }
-            EndCut::Lap { length, upper } => {
+            EndCut::Lap {
+                length,
+                upper,
+                style,
+            } => {
+                let now = *style;
+                crate::props::Combo::new("Lap kind")
+                    .selected_text(tr(now.label()))
+                    .show_ui(ui, |ui| {
+                        for c in creabim_core::framing::LapStyle::ALL {
+                            if ui.selectable_label(now == c, tr(c.label())).clicked() && now != c {
+                                *style = c;
+                                changed = true;
+                            }
+                        }
+                    });
                 changed |= crate::props::row(ui, "Lap length", |ui| {
                     crate::props::fill(ui, crate::units::drag(length).range(0.0..=3.0)).changed()
                 });
+                if *length <= 1e-6 {
+                    ui.weak(tr("0: twice the member's depth (2v)"));
+                }
                 changed |= crate::props::check(
                     ui,
                     "Upper half runs on",
@@ -352,6 +370,42 @@ fn end_cuts(ui: &mut eframe::egui::Ui, f: &mut Framing) -> bool {
             }
             _ => {}
         }
+        // a tenon on a cut of one face (George 2026-11-27: a knee brace)
+        if matches!(
+            f.cuts[k],
+            EndCut::Square | EndCut::Plumb | EndCut::Level | EndCut::Angle(_)
+        ) {
+            let mut on = f.tenons[k] > 0.0;
+            if crate::props::check(ui, title, &mut on, tr("Tenon"))
+                .on_hover_text(tr(
+                    "A third of the member's width thick, the whole cut face high; \
+                     its length a quarter to a half of the depth (Tesařské spoje)",
+                ))
+                .changed()
+            {
+                let h = creabim_core::framing::section(&f.section).map_or(0.1, |s| s.h);
+                f.tenons[k] = if on { h / 2.0 } else { 0.0 };
+                changed = true;
+            }
+            if on {
+                changed |= crate::props::row(ui, "Tenon length", |ui| {
+                    crate::props::fill(ui, crate::units::drag(&mut f.tenons[k]).range(0.01..=0.5))
+                        .changed()
+                });
+            }
+        }
+    }
+    if matches!(
+        f.role,
+        Role::Rafter | Role::HipRafter | Role::ValleyRafter | Role::Sprocket
+    ) {
+        changed |= crate::props::check(
+            ui,
+            "Rafter seat",
+            &mut f.seat,
+            tr("Seated on the wall plates and purlins it crosses"),
+        )
+        .changed();
     }
     changed
 }
@@ -597,12 +651,20 @@ mod tests {
         );
         // sections through the roof across two rafter pairs, the cuts
         // seen from the side
-        for (name, x) in [("Rez krovu A", 6.5), ("Rez krovu B", 7.4)] {
+        let yp = 0.23 + 2.6;
+        for (name, a, b, depth) in [
+            ("Rez krovu A", (6.5, 13.0), (6.5, -1.0), 0.45),
+            ("Rez krovu B", (7.4, 13.0), (7.4, -1.0), 0.45),
+            // along the front purlin: its lap, the post, the knee braces
+            ("Rez krovu C", (16.0, yp), (-1.0, yp), 0.3),
+            // through a rafter: its seats on the plate and the purlin
+            ("Rez krovu D", (7.725, 13.0), (7.725, -1.0), 0.2),
+        ] {
             let mut sv = creabim_core::View::plan(roof);
             sv.kind = ViewKind::Section {
-                start: glam::DVec2::new(x, 13.0),
-                end: glam::DVec2::new(x, -1.0),
-                depth: 0.45,
+                start: glam::DVec2::new(a.0, a.1),
+                end: glam::DVec2::new(b.0, b.1),
+                depth,
                 cut: true,
             };
             sv.scale = 50.0;
@@ -711,9 +773,12 @@ mod tests {
         ] {
             out.push(beam(roof, a, b, Role::WallPlate, "150/150"));
         }
-        // rafters 80/200 on the plates, the ridge over the middle
+        // rafters 80/200 seated on the plates (George 2026-11-27): their
+        // underside through the plates' inner top edge, 0,60 out past
+        // them; the ridge over the middle
         let ym = (y0 + y1) / 2.0;
-        let z0 = zp + 0.2 / 25f64.to_radians().cos();
+        let z0 = zp + 0.2 / 25f64.to_radians().cos() - 0.075 * t;
+        let o = 0.6;
         let half = ym - y0;
         let zr = z0 + half * t;
         let (rx0, rx1) = (x0 + half, x1 - half);
@@ -721,14 +786,14 @@ mod tests {
         while x <= rx1 + 1e-6 {
             out.push(beam(
                 roof,
-                v(x, y0, z0),
+                v(x, y0 - o, z0 - o * t),
                 v(x, ym, zr),
                 Role::Rafter,
                 "80/200",
             ));
             out.push(beam(
                 roof,
-                v(x, y1, z0),
+                v(x, y1 + o, z0 - o * t),
                 v(x, ym, zr),
                 Role::Rafter,
                 "80/200",
@@ -764,14 +829,14 @@ mod tests {
                 let _ = s;
                 out.push(beam(
                     roof,
-                    v(xa, y0, z0),
+                    v(xa, y0 - o, z0 - o * t),
                     v(xa, y0 + d, z0 + d * t),
                     Role::Rafter,
                     "80/200",
                 ));
                 out.push(beam(
                     roof,
-                    v(xa, y1, z0),
+                    v(xa, y1 + o, z0 - o * t),
                     v(xa, y1 - d, z0 + d * t),
                     Role::Rafter,
                     "80/200",
@@ -780,7 +845,7 @@ mod tests {
             for (ya, _) in [(y0 + d, 1.0), (y1 - d, -1.0)] {
                 out.push(beam(
                     roof,
-                    v(x0, ya, z0),
+                    v(x0 - o, ya, z0 - o * t),
                     v(
                         x0 + d.min(ya - y0).min(y1 - ya),
                         ya,
@@ -791,7 +856,7 @@ mod tests {
                 ));
                 out.push(beam(
                     roof,
-                    v(x1, ya, z0),
+                    v(x1 + o, ya, z0 - o * t),
                     v(
                         x1 - d.min(ya - y0).min(y1 - ya),
                         ya,
@@ -812,33 +877,64 @@ mod tests {
             (DVec2::new(x1, y0), DVec2::new(rx1, ym)),
             (DVec2::new(x1, y1), DVec2::new(rx1, ym)),
         ] {
+            let c = c + (c - r).normalize() * o * 2f64.sqrt();
             out.push(beam(
                 roof,
-                c.extend(z0),
+                c.extend(z0 - o * t),
                 r.extend(hz(c, r)),
                 Role::HipRafter,
                 "120/200",
             ));
         }
-        // ridge purlin 150/250 under the rafters' tops
+        // ridge purlin 150/250 under the rafters, its top where their
+        // undersides meet
         out.push(beam(
             roof,
-            v(rx0, ym, zr - 0.22),
-            v(rx1, ym, zr - 0.22),
+            v(rx0, ym, zr - 0.2 / 25f64.to_radians().cos()),
+            v(rx1, ym, zr - 0.2 / 25f64.to_radians().cos()),
             Role::RidgePurlin,
             "150/250",
         ));
-        // middle purlins 160/240 on posts 150/150, the rafters on them
-        for yp in [y0 + 2.6, y1 - 2.6] {
-            let zt = z0 + 2.6 * t - 0.2 / 25f64.to_radians().cos();
-            out.push(beam(
+        // middle purlins 160/240 on posts 150/150, the rafters seated on
+        // them; each purlin two pieces lapped over the middle post (2v),
+        // the front one an oblique lap (d), the back one with slanted
+        // shoulders (c); knee braces 100/100 either side of that post,
+        // tenoned into it and into the purlin
+        let xm = 7.34;
+        for (yp, style) in [
+            (y0 + 2.6, framing::LapStyle::Oblique),
+            (y1 - 2.6, framing::LapStyle::SlantedShoulders),
+        ] {
+            let zt = z0 + 2.6 * t - 0.2 / 25f64.to_radians().cos() + 0.075 * t;
+            let (_, whole) = style.faces(0.48, 0.24);
+            let mut one = beam(
                 roof,
                 v(x0 + 2.6, yp, zt),
+                v(xm + whole / 2.0, yp, zt),
+                Role::Purlin,
+                "160/240",
+            );
+            let mut two = beam(
+                roof,
+                v(xm - whole / 2.0, yp, zt),
                 v(x1 - 2.6, yp, zt),
                 Role::Purlin,
                 "160/240",
-            ));
-            for xp in [x0 + 2.6, 7.34, x1 - 2.6] {
+            );
+            for (e, k, upper) in [(&mut one, 1, false), (&mut two, 0, true)] {
+                if let ElementKind::Beam(b) = &mut e.kind {
+                    if let Some(f) = &mut b.framing {
+                        f.cuts[k] = EndCut::Lap {
+                            length: 0.0,
+                            upper,
+                            style,
+                        };
+                    }
+                }
+            }
+            out.push(one);
+            out.push(two);
+            for xp in [x0 + 2.6, xm, x1 - 2.6] {
                 let base = 0.0;
                 out.push(column(
                     roof,
@@ -848,6 +944,24 @@ mod tests {
                     Role::Post,
                     "150/150",
                 ));
+            }
+            let zu = zt - 0.24;
+            for s in [1.0, -1.0] {
+                let xa = xm + s * 0.075;
+                let mut kb = beam(
+                    roof,
+                    v(xa, yp, zu - 0.6),
+                    v(xa + s * 0.6, yp, zu),
+                    Role::KneeBrace,
+                    "100/100",
+                );
+                if let ElementKind::Beam(b) = &mut kb.kind {
+                    if let Some(f) = &mut b.framing {
+                        f.cuts = [EndCut::Plumb, EndCut::Level];
+                        f.tenons = [0.05, 0.05];
+                    }
+                }
+                out.push(kb);
             }
         }
         // collar ties 50/200, a pair either side of a rafter, their ends

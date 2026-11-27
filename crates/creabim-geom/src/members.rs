@@ -89,6 +89,10 @@ pub fn beam_mesh(model: &Model, b: &creabim_core::Beam) -> TriMesh {
 /// its width, turned into the upright plane of its axis.
 pub fn side_profile_mesh(p: &creabim_core::framing::SideProfile) -> TriMesh {
     let mut m = slab_mesh(&p.points, p.width / 2.0, p.width);
+    for t in &p.tenons {
+        let w = p.width / 3.0;
+        m.append(&slab_mesh(t, w / 2.0, w));
+    }
     // a right-handed turn: x along the member, y up, z across
     let ex = p.dir.extend(0.0);
     let ey = DVec3::Z;
@@ -104,6 +108,30 @@ pub fn side_profile_mesh(p: &creabim_core::framing::SideProfile) -> TriMesh {
         *n = turn(*n).as_vec3().to_array();
     }
     m
+}
+
+/// The boxes round a timber member's tenons, in the model.
+pub fn tenon_boxes(model: &Model, e: &Element) -> Vec<(DVec3, DVec3)> {
+    let Some(p) = creabim_core::framing::side_profile(model, e) else {
+        return vec![];
+    };
+    let ex = p.dir.extend(0.0);
+    let ez = ex.cross(DVec3::Z);
+    p.tenons
+        .iter()
+        .map(|t| {
+            let mut lo = DVec3::splat(f64::INFINITY);
+            let mut hi = DVec3::splat(f64::NEG_INFINITY);
+            for q in t {
+                for s in [-1.0, 1.0] {
+                    let v = p.origin + ex * q.x + DVec3::Z * q.y + ez * (s * p.width / 6.0);
+                    lo = lo.min(v);
+                    hi = hi.max(v);
+                }
+            }
+            (lo, hi)
+        })
+        .collect()
 }
 
 /// The mesh and default colour of a member; `None` for other elements.
