@@ -145,6 +145,8 @@ impl Outline {
             "Drawing a room"
         } else if self.space == Some(crate::roomtool::Space::Ceiling) {
             "Drawing a ceiling"
+        } else if matches!(self.space, Some(crate::roomtool::Space::UfhZone(_))) {
+            "Drawing an underfloor heating zone"
         } else if self.roof.is_some() {
             "Drawing a roof"
         } else {

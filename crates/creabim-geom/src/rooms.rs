@@ -169,7 +169,8 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                     // the return dashed beside it
                     if let (Some(u), false) = (&r.ufh, view.ceiling_plan) {
                         for sp in creabim_core::underfloor::loops(&s.outline, u) {
-                            for (pts, pen) in [(&sp.supply, Pen::Symbol), (&sp.ret, Pen::Hidden)] {
+                            for (pts, supply) in sp.pieces() {
+                                let pen = if supply { Pen::Symbol } else { Pen::Hidden };
                                 for w in pts.windows(2) {
                                     loops.push(PlanItem::Line {
                                         id: e.id,
@@ -180,6 +181,7 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                                 }
                             }
                         }
+                        crate::heatplan::zone_items(&mut loops, e.id, u, view.scale / 1000.0);
                     }
                     // a fire drawing: the zone's wash and its code
                     let zone = r.fire_zone.trim();

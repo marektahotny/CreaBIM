@@ -362,6 +362,7 @@ pub fn tool_page(t: Tool) -> &'static str {
         Tool::Wall => "walls",
         Tool::Door | Tool::Window => "doors-windows",
         Tool::Pipe => "pipes",
+        Tool::UfhZone => "pipes#underfloor-heating",
         Tool::Opening => "holes#wall-openings",
         Tool::Slab => "slabs",
         Tool::Shaft => "holes#shafts",

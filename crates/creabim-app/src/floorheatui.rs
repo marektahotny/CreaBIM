@@ -1,17 +1,32 @@
 //! Underfloor heating ([`creabim_services::floorheat`], STN EN 1264): a
-//! window with every room's design from its heat loss, a switch that
-//! gives a room its loops (drawn in the plan), its spacing, and what to
+//! window with every room's design from its heat loss and the floor
+//! build-up it stands on, a switch that gives a room its loops (drawn in
+//! the plan), its spacing and how they are laid, its edge zones, places
+//! of reduced output and holes, where its loops are split, and what to
 //! set at the manifold.
 
 use super::CreaBimApp;
-use creabim_core::underfloor::Underfloor;
+use crate::planview::Tool;
+use crate::roomtool::UfhZone;
+use creabim_core::underfloor::{Layout, Split, Underfloor, ZoneKind};
 use creabim_core::{ElementId, ElementKind, Transaction};
-use creabim_services::floorheat::{self, SPACINGS};
+use creabim_services::floorheat;
 use eframe::egui::{self, Vec2};
 
 impl CreaBimApp {
-    /// `calc:floorheat` from the Heating tab: open the window.
+    /// `calc:floorheat` from the Heating tab: open the window; `ufh:edge`,
+    /// `ufh:reduced`, `ufh:hole`: draw such a zone in a room.
     pub(super) fn floor_heat_action(&mut self, head: &str, arg: &str) -> bool {
+        if head == "ufh" {
+            let kind = match arg {
+                "edge" => UfhZone::Edge,
+                "reduced" => UfhZone::Reduced,
+                "hole" => UfhZone::Hole,
+                _ => return false,
+            };
+            self.start_ufh_zone(kind);
+            return true;
+        }
         if head != "calc" || arg != "floorheat" {
             return false;
         }
@@ -22,9 +37,27 @@ impl CreaBimApp {
         true
     }
 
+    /// The zone tool, drawing `kind` as a polygon or a rectangle.
+    fn start_ufh_zone(&mut self, kind: UfhZone) {
+        self.plan.tool = Tool::UfhZone;
+        self.plan.cancel();
+        self.plan.ufh_zone = kind;
+        if !matches!(
+            self.plan.slab_mode,
+            crate::slabtool::SlabMode::Polygon | crate::slabtool::SlabMode::Rectangle
+        ) {
+            self.plan.slab_mode = crate::slabtool::SlabMode::Polygon;
+        }
+        self.status = format!(
+            "{}: {}",
+            crate::i18n::tr(kind.label()),
+            crate::i18n::tr("click its corners (1 Polygon) or two opposite corners (2 Rectangle) inside a room with underfloor heating.")
+        );
+    }
+
     /// The window, while it is open.
     pub(super) fn floor_heat_window(&mut self, ctx: &egui::Context) {
-        let Some(mut s) = self.floor_heat else {
+        let Some(mut s) = self.floor_heat.clone() else {
             return;
         };
         let t = crate::i18n::tr;
@@ -36,14 +69,15 @@ impl CreaBimApp {
         let mut write_now = false;
         let mut open = true;
         let mut select = None;
+        let mut draw: Option<UfhZone> = None;
         // a room's underfloor heating to set (none takes it away)
         let mut set: Vec<(ElementId, Option<Underfloor>)> = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Underfloor heating"))
             .id(egui::Id::new("floor.heat"))
             .open(&mut open)
-            .default_pos(area.center() - Vec2::new(360.0, 260.0))
-            .default_size(crate::app::shell::at_least(Vec2::new(720.0, 520.0)))
+            .default_pos(area.center() - Vec2::new(420.0, 300.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(900.0, 620.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 if super::calcresultsui::write_button(ui, written) {
@@ -69,6 +103,45 @@ impl CreaBimApp {
                         num(o.te, 0),
                         t("from the heat loss window")
                     ));
+                });
+                // the pipe: the board maker's by default, or one picked
+                ui.horizontal(|ui| {
+                    ui.label(t("Pipe"));
+                    let now = d.pipe.clone();
+                    let shown = now.as_ref().map_or(String::new(), |p| {
+                        format!("{} {}{}", p.name, p.segment, code(&p.code))
+                    });
+                    let auto = s.pipe.is_none();
+                    egui::ComboBox::from_id_salt("floor.heat.pipe")
+                        .width(420.0)
+                        .selected_text(if auto {
+                            format!("{} ({})", shown, t("by the system board"))
+                        } else {
+                            shown
+                        })
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_label(auto, t("By the system board's maker")).clicked() {
+                                s.pipe = None;
+                                s.pipe_mm = None;
+                            }
+                            for ty in floorheat::ufh_pipes() {
+                                for z in &ty.sizes {
+                                    let on = !auto
+                                        && s.pipe.as_deref() == Some(ty.id.as_str())
+                                        && now.as_ref().is_some_and(|p| (p.outer_mm - z.outer_mm).abs() < 1e-6);
+                                    let label = format!(
+                                        "{} {}{}",
+                                        ty.name,
+                                        z.segment.clone().unwrap_or_else(|| format!("{}", z.outer_mm)),
+                                        code(z.code.as_deref().unwrap_or(""))
+                                    );
+                                    if ui.selectable_label(on, label).clicked() {
+                                        s.pipe = Some(ty.id.clone());
+                                        s.pipe_mm = Some(z.outer_mm);
+                                    }
+                                }
+                            }
+                        });
                 });
                 if d.rooms.is_empty() {
                     ui.label(t("No rooms to calculate: place rooms first."));
@@ -104,6 +177,14 @@ impl CreaBimApp {
                         );
                     }
                 });
+                ui.horizontal(|ui| {
+                    ui.label(t("Draw in a room:"));
+                    for k in [UfhZone::Edge, UfhZone::Reduced, UfhZone::Hole] {
+                        if ui.button(t(k.label())).clicked() {
+                            draw = Some(k);
+                        }
+                    }
+                });
                 if d.no_manifold {
                     ui.colored_label(
                         ui.visuals().warn_fg_color,
@@ -118,21 +199,23 @@ impl CreaBimApp {
                         Col::num("Φ", "W"),
                         Col::num("q / needed", "W/m²"),
                         Col::text("Spacing"),
+                        Col::text("Laying"),
                         Col::num("RλB", "m²K/W"),
+                        Col::num("su", "mm"),
+                        Col::num("qu", "W/m²"),
                         Col::num("Loops", "pcs"),
                         Col::num("Loop", "m"),
                         Col::num("Flow", "l/h"),
                         Col::num("Δp", "kPa"),
                         Col::num("Throttle by", "kPa"),
                     ];
-                    let on: Vec<_> = d.rooms.iter().filter(|x| x.on).collect();
                     let total = |row: &mut sheet::Row| {
                         row.empty();
                         row.text(t("Total"));
                         row.text(num(on.iter().map(|x| x.phi).sum::<f64>(), 0));
-                        row.empty();
-                        row.empty();
-                        row.empty();
+                        for _ in 0..6 {
+                            row.empty();
+                        }
                         row.text(d.loops.to_string());
                         row.empty();
                         row.text(num(d.flow_ls * 3600.0, 0));
@@ -148,7 +231,16 @@ impl CreaBimApp {
                         });
                         let name = format!("{} {}", x.number, x.name);
                         row.cell(|ui| {
-                            if ui.link(name.trim()).clicked() {
+                            let r = ui.link(name.trim());
+                            let r = if x.notes.is_empty() {
+                                r
+                            } else {
+                                ui.colored_label(ui.visuals().warn_fg_color, "⚠").on_hover_text(
+                                    x.notes.iter().map(|n| t(n.text())).collect::<Vec<_>>().join("\n"),
+                                );
+                                r
+                            };
+                            if r.clicked() {
                                 select = Some(x.id);
                             }
                         });
@@ -169,40 +261,56 @@ impl CreaBimApp {
                             });
                         }
                         row.cell(|ui| {
-                                if x.on {
-                                    let mut sp = x.spacing;
-                                    egui::ComboBox::from_id_salt(("floor.heat.t", x.id))
-                                        .width(70.0)
-                                        .selected_text(format!("{} mm", num(sp * 1000.0, 0)))
-                                        .show_ui(ui, |ui| {
-                                            for v in SPACINGS {
-                                                ui.selectable_value(
-                                                    &mut sp,
-                                                    v,
-                                                    format!("{} mm", num(v * 1000.0, 0)),
-                                                );
-                                            }
-                                        });
-                                    if (sp - x.spacing).abs() > 1e-9 {
-                                        // loops for the new spacing
-                                        let coil = x.area / sp;
-                                        let loops = ((coil + 2.0 * x.feed) / floorheat::MAX_LOOP_M)
-                                            .ceil()
-                                            .max(1.0) as u32;
-                                        set.push((
-                                            x.id,
-                                            Some(Underfloor {
-                                                spacing: sp,
-                                                loops,
-                                                finish_r: None,
-                                            }),
-                                        ));
-                                    }
-                                } else {
-                                    ui.weak(format!("{} mm", num(x.spacing * 1000.0, 0)));
+                            if x.on {
+                                let mut sp = x.spacing;
+                                egui::ComboBox::from_id_salt(("floor.heat.t", x.id))
+                                    .width(70.0)
+                                    .selected_text(format!("{} mm", num(sp * 1000.0, 0)))
+                                    .show_ui(ui, |ui| {
+                                        for v in &x.spacings {
+                                            ui.selectable_value(
+                                                &mut sp,
+                                                *v,
+                                                format!("{} mm", num(v * 1000.0, 0)),
+                                            );
+                                        }
+                                    });
+                                if (sp - x.spacing).abs() > 1e-9 {
+                                    // loops for the new spacing
+                                    let coil = x.area / sp;
+                                    let loops = ((coil + 2.0 * x.feed) / floorheat::MAX_LOOP_M)
+                                        .ceil()
+                                        .max(1.0) as u32;
+                                    let mut u = x.underfloor(None);
+                                    u.spacing = sp;
+                                    u.loops = loops;
+                                    set.push((x.id, Some(u)));
                                 }
+                            } else {
+                                ui.weak(format!("{} mm", num(x.spacing * 1000.0, 0)));
+                            }
                         });
-                        row.text(num(x.finish_r, 2));
+                        row.cell(|ui| {
+                            if let (true, Some(u)) = (x.on, &x.ufh) {
+                                let mut l = u.layout;
+                                egui::ComboBox::from_id_salt(("floor.heat.l", x.id))
+                                    .width(150.0)
+                                    .selected_text(t(l.label()))
+                                    .show_ui(ui, |ui| {
+                                        for v in Layout::ALL {
+                                            ui.selectable_value(&mut l, v, t(v.label()));
+                                        }
+                                    });
+                                if l != u.layout {
+                                    let mut u = u.clone();
+                                    u.layout = l;
+                                    set.push((x.id, Some(u)));
+                                }
+                            }
+                        });
+                        row.text(num(x.finish_r, 3));
+                        row.text(num(x.su * 1000.0, 0));
+                        row.text(num(x.q_down, 1));
                         row.text(x.loops.to_string());
                         row.text(num(x.loop_len, 0));
                         row.text(num(x.flow_ls * 3600.0, 0));
@@ -212,12 +320,44 @@ impl CreaBimApp {
                         }
                     }, Some(&total));
                     ui.add_space(6.0);
-                    ui.weak(t("System A, PE-Xa / PE-RT 16 × 2 under 45 mm of screed, loops of 100 m at most. Yellow: the floor alone does not cover the room's loss (the limit flux or the spacing): add a radiator or raise the supply temperature. RλB comes from the room's floor finish."));
-                    ui.weak("STN EN 1264-2 · STN EN 1264-4 · STN EN 12831-1");
+                    // the rooms' zones and how their loops are split
+                    let zoned: Vec<&floorheat::RoomDesign> = d
+                        .rooms
+                        .iter()
+                        .filter(|x| x.on && x.ufh.as_ref().is_some_and(|u| !u.zones.is_empty() || u.loops > 1))
+                        .collect();
+                    if !zoned.is_empty() {
+                        egui::CollapsingHeader::new(t("Zones and loops split"))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                for x in zoned {
+                                    let Some(u) = &x.ufh else { continue };
+                                    zones_ui(ui, x, u, &mut set);
+                                }
+                            });
+                    }
+                    // what the floors are built of
+                    let floors = d.floors();
+                    egui::CollapsingHeader::new(t("Floor build-ups"))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            if floors.is_empty() {
+                                ui.weak(t("No room with underfloor heating stands on a floor with a build-up."));
+                            }
+                            for (f, rooms) in floors {
+                                floor_ui(ui, f, &rooms);
+                            }
+                        });
+                    ui.add_space(6.0);
+                    ui.weak(t("System A after STN EN 1264-2: λE and the cover su of the screed over the system board, RλB of the layers on the screed, the loss downwards qu from the insulation under the pipes (STN EN 1264-3, to the room under it or the ground at the year's mean outside temperature). Spacings as the board allows, loops of 100 m at most. Yellow: the floor alone does not cover the room's loss: add a radiator or raise the supply temperature."));
+                    ui.weak("STN EN 1264-2 · STN EN 1264-3 · STN EN 1264-4 · STN EN 12831-1");
                 });
             });
         if let Some(id) = select {
             self.selection.only(id);
+        }
+        if let Some(k) = draw {
+            self.start_ufh_zone(k);
         }
         if !set.is_empty() {
             let mut tx = Transaction::new("Underfloor heating");
@@ -241,4 +381,211 @@ impl CreaBimApp {
         }
         self.floor_heat = if open { Some(s) } else { None };
     }
+}
+
+fn code(c: &str) -> String {
+    if c.trim().is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", c.trim())
+    }
+}
+
+/// A room's zones (on, kind, area, spacing or share, remove) and where
+/// its loops are split.
+fn zones_ui(
+    ui: &mut egui::Ui,
+    x: &floorheat::RoomDesign,
+    u: &Underfloor,
+    set: &mut Vec<(ElementId, Option<Underfloor>)>,
+) {
+    let t = crate::i18n::tr;
+    let num = crate::i18n::num;
+    ui.label(egui::RichText::new(format!("{} {}", x.number, x.name).trim().to_string()).strong());
+    let mut v = u.clone();
+    let mut drop = None;
+    ui.indent(("ufh.zones", x.id), |ui| {
+        for (k, z) in v.zones.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut z.on, "");
+                let area = z.area();
+                match &mut z.kind {
+                    ZoneKind::Edge { spacing } => {
+                        ui.label(format!("{} · {} m²", t("Edge zone"), num(area, 2)));
+                        ui.label(t("Spacing"));
+                        let mut mm = *spacing * 1000.0;
+                        egui::ComboBox::from_id_salt(("ufh.edge.t", x.id, k))
+                            .width(70.0)
+                            .selected_text(format!("{} mm", num(mm, 0)))
+                            .show_ui(ui, |ui| {
+                                let mut all: Vec<f64> =
+                                    x.spacings.iter().map(|v| v * 1000.0).collect();
+                                // the board's raster halved, as a nub board lays it
+                                if let Some(r) = x.floor.as_ref().and_then(|f| f.spec.raster_mm) {
+                                    all.insert(0, r);
+                                }
+                                if !all.iter().any(|v| (v - 50.0).abs() < 1e-6)
+                                    && x.floor.as_ref().is_none_or(|f| f.spec.raster_mm.is_none())
+                                {
+                                    all.insert(0, 50.0);
+                                }
+                                for a in all {
+                                    ui.selectable_value(&mut mm, a, format!("{} mm", num(a, 0)));
+                                }
+                            });
+                        *spacing = mm / 1000.0;
+                        if x.edge_area > 0.0 {
+                            ui.weak(format!("q {} W/m²", num(x.q_edge, 0)));
+                        }
+                    }
+                    ZoneKind::Reduced { percent } => {
+                        ui.label(format!(
+                            "{} · {} m²",
+                            t("Place of reduced output"),
+                            num(area, 2)
+                        ));
+                        ui.label(t("gives less by"));
+                        ui.add(
+                            egui::DragValue::new(percent)
+                                .range(0.0..=100.0)
+                                .speed(1.0)
+                                .suffix(" %"),
+                        );
+                    }
+                    ZoneKind::Hole => {
+                        ui.label(format!("{} · {} m²", t("Hole with no pipe"), num(area, 2)));
+                    }
+                }
+                if ui.small_button("✕").on_hover_text(t("Remove")).clicked() {
+                    drop = Some(k);
+                }
+            });
+        }
+        if x.reduced_w > 0.0 {
+            ui.weak(format!(
+                "{} {} W",
+                t("The places of reduced output take off"),
+                num(x.reduced_w, 0)
+            ));
+        }
+        if u.loops > 1 {
+            ui.horizontal(|ui| {
+                ui.label(t("Loops split"));
+                let mut way = match &v.split {
+                    None => 0,
+                    Some(s) if s.vertical => 1,
+                    Some(_) => 2,
+                };
+                let before = way;
+                for (i, l) in ["evenly", "vertically", "horizontally"].iter().enumerate() {
+                    ui.radio_value(&mut way, i, t(l));
+                }
+                if way != before {
+                    v.split = match way {
+                        0 => None,
+                        w => Some(Split {
+                            vertical: w == 1,
+                            at: vec![],
+                        }),
+                    };
+                }
+            });
+            if let Some(sp) = &mut v.split {
+                ui.horizontal(|ui| {
+                    ui.label(if sp.vertical { t("at x") } else { t("at y") });
+                    while sp.at.len() < u.loops as usize - 1 {
+                        sp.at.push(f64::NAN);
+                    }
+                    sp.at.truncate(u.loops as usize - 1);
+                    for a in sp.at.iter_mut() {
+                        let mut val = if a.is_finite() { *a } else { 0.0 };
+                        let r = ui.add(egui::DragValue::new(&mut val).speed(0.01).suffix(" m"));
+                        if r.changed() {
+                            *a = val;
+                        }
+                    }
+                    ui.weak(t("(plan coordinates, m)"));
+                });
+                sp.at.retain(|a| a.is_finite());
+            }
+        }
+    });
+    if let Some(k) = drop {
+        v.zones.remove(k);
+    }
+    if v != *u {
+        set.push((x.id, Some(v)));
+    }
+}
+
+/// What a floor is built of, as the calculation reads it.
+fn floor_ui(ui: &mut egui::Ui, f: &floorheat::FloorBuild, rooms: &[&str]) {
+    let t = crate::i18n::tr;
+    let num = crate::i18n::num;
+    ui.label(egui::RichText::new(&f.assembly).strong());
+    ui.indent(("ufh.floor", &f.assembly), |ui| {
+        ui.weak(format!("{}: {}", t("Rooms"), rooms.join(", ")));
+        ui.label(format!(
+            "{}: {} — RλB {} m²K/W",
+            t("On the screed"),
+            if f.finish.is_empty() {
+                "–".to_string()
+            } else {
+                f.finish.join(" + ")
+            },
+            num(f.finish_r, 3)
+        ));
+        ui.label(format!(
+            "{}: {} {} mm, λE {} W/(m·K)",
+            t("Heating layer (screed with the pipes)"),
+            f.screed,
+            num(f.screed_t * 1000.0, 0),
+            num(f.lambda_e, 2)
+        ));
+        match &f.board {
+            Some(b) => {
+                let mut x = vec![];
+                if let Some([lo, hi]) = f.spec.pipe_mm {
+                    x.push(format!("{} {}–{} mm", t("pipes"), num(lo, 0), num(hi, 0)));
+                }
+                if let Some(r) = f.spec.raster_mm {
+                    x.push(format!("{} {} mm", t("raster"), num(r, 0)));
+                }
+                if !f.spec.spacings_mm.is_empty() {
+                    x.push(format!(
+                        "{} {} mm",
+                        t("spacings"),
+                        f.spec
+                            .spacings_mm
+                            .iter()
+                            .map(|v| num(*v, 0))
+                            .collect::<Vec<_>>()
+                            .join(" / ")
+                    ));
+                }
+                ui.label(format!(
+                    "{}: {}{}",
+                    t("System board"),
+                    b,
+                    if x.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({})", x.join(", "))
+                    }
+                ));
+            }
+            None => {
+                ui.colored_label(
+                    ui.visuals().warn_fg_color,
+                    t("The floor build-up has no underfloor heating system board"),
+                );
+            }
+        }
+        ui.label(format!(
+            "{}: {} — R {} m²K/W",
+            t("Under the pipes"),
+            f.under.join(" + "),
+            num(f.r_under, 2)
+        ));
+    });
 }

@@ -23,6 +23,128 @@ const WIDTH: f64 = 0.25;
 /// The tables' letters, paper mm.
 const TEXT: f64 = 2.0;
 
+/// The outline `o` with its corners rounded off by `r` (an arc of a few
+/// chords at each), closed.
+pub fn rounded(o: &[DVec2], r: f64) -> Vec<DVec2> {
+    let n = o.len();
+    let mut out = vec![];
+    for i in 0..n {
+        let (p, c, q) = (o[(i + n - 1) % n], o[i], o[(i + 1) % n]);
+        let (u, v) = ((p - c).normalize_or_zero(), (q - c).normalize_or_zero());
+        let k = r.min(c.distance(p) / 2.0).min(c.distance(q) / 2.0);
+        let (a, b) = (c + u * k, c + v * k);
+        // a quadratic curve from a to b about c
+        for j in 0..=4 {
+            let t = j as f64 / 4.0;
+            out.push(a * (1.0 - t) * (1.0 - t) + c * 2.0 * t * (1.0 - t) + b * t * t);
+        }
+    }
+    if let Some(f) = out.first().copied() {
+        out.push(f);
+    }
+    out
+}
+
+/// A room's edge zones, places of reduced output and holes as the
+/// office draws them (George 2026-11-27): an edge zone a dashed line with
+/// rounded corners and a small triangle; a place of reduced output
+/// stippled with a folded corner and what it gives less; a hole outlined
+/// and crossed.
+pub fn zone_items(
+    items: &mut Vec<PlanItem>,
+    id: ElementId,
+    u: &creabim_core::underfloor::Underfloor,
+    mm: f64,
+) {
+    use crate::plan::Pen;
+    use creabim_core::underfloor::ZoneKind;
+    let line = |items: &mut Vec<PlanItem>, pen: Pen, pts: &[DVec2]| {
+        for w in pts.windows(2) {
+            items.push(PlanItem::Line {
+                id,
+                pen,
+                a: w[0],
+                b: w[1],
+            });
+        }
+    };
+    for z in u.zones.iter().filter(|z| z.on && z.outline.len() > 2) {
+        let o = &z.outline;
+        let (lo, hi) = o.iter().fold(
+            (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+            |(lo, hi), p| (lo.min(*p), hi.max(*p)),
+        );
+        let mid = o.iter().copied().sum::<DVec2>() / o.len() as f64;
+        match z.kind {
+            ZoneKind::Edge { .. } => {
+                line(items, Pen::Hidden, &rounded(o, 0.12));
+                // the triangle, pointing down
+                let s = 2.5 * mm;
+                let tri = [
+                    mid + DVec2::new(-s, s * 0.6),
+                    mid + DVec2::new(s, s * 0.6),
+                    mid + DVec2::new(0.0, -s),
+                    mid + DVec2::new(-s, s * 0.6),
+                ];
+                line(items, Pen::Symbol, &tri);
+            }
+            ZoneKind::Reduced { percent } => {
+                items.push(PlanItem::Fill {
+                    id,
+                    points: o.clone(),
+                    hatch: creabim_core::Hatch::Concrete,
+                    rgb: None,
+                });
+                let mut ring = o.clone();
+                ring.push(o[0]);
+                line(items, Pen::Fine, &ring);
+                // the folded corner at the top right
+                let c = *o
+                    .iter()
+                    .max_by(|a, b| (a.x + a.y).total_cmp(&(b.x + b.y)))
+                    .unwrap_or(&hi);
+                let f = (0.25f64).min((hi - lo).min_element() / 3.0);
+                line(
+                    items,
+                    Pen::Symbol,
+                    &[
+                        c - DVec2::new(f, 0.0),
+                        c - DVec2::new(f, f),
+                        c - DVec2::new(0.0, f),
+                        c - DVec2::new(f, 0.0),
+                    ],
+                );
+                items.push(PlanItem::Annotation {
+                    id,
+                    item: Box::new(Annotation {
+                        shape: Shape::Along {
+                            at: mid,
+                            angle: 0.0,
+                        },
+                        text: format!("−{} %", num(percent, 0)),
+                        look: TextLook {
+                            size: TEXT,
+                            ..Default::default()
+                        },
+                        mm,
+                    }),
+                });
+            }
+            ZoneKind::Hole => {
+                let mut ring = o.clone();
+                ring.push(o[0]);
+                line(items, Pen::Projection, &ring);
+                line(items, Pen::Fine, &[lo, hi]);
+                line(
+                    items,
+                    Pen::Fine,
+                    &[DVec2::new(lo.x, hi.y), DVec2::new(hi.x, lo.y)],
+                );
+            }
+        }
+    }
+}
+
 /// The line through `pts` as thin strips in `rgb`, `dashes` (dash and
 /// gap, paper mm) running on round its corners; `mm` drawing units make
 /// a paper millimetre.
@@ -87,23 +209,30 @@ pub fn items(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
         return vec![];
     }
     rooms.sort_by(|a, b| (&a.1.number, &a.0.name).cmp(&(&b.1.number, &b.0.name)));
-    let settings = floorheat::Settings::default();
+    // as the window last wrote it
+    let settings: floorheat::Settings =
+        creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
     let design = floorheat::design(model, &heatloss::Opts::default(), &settings);
     let storey = model.get(level).map_or(String::new(), |e| e.name.clone());
-    let pipe = format!(
-        "{}x{}",
-        floorheat::PIPE_OUTER_MM,
-        (floorheat::PIPE_OUTER_MM - floorheat::PIPE_INNER_MM) / 2.0
-    );
+    let pipe = design
+        .pipe
+        .as_ref()
+        .map_or_else(|| "16x2".to_string(), |p| p.segment.replace(' ', ""));
     let mut out = vec![];
     let mut tables = vec![];
     let mut circuits = 0;
     for (e, r, u, shape) in &rooms {
         let loops = creabim_core::underfloor::loops(&shape.outline, u);
         for sp in &loops {
-            strips(&mut out, e.id, &sp.supply, SUPPLY, None, mm);
-            strips(&mut out, e.id, &sp.ret, RETURN, Some(DASH), mm);
+            for (pts, supply) in sp.pieces() {
+                if supply {
+                    strips(&mut out, e.id, pts, SUPPLY, None, mm);
+                } else {
+                    strips(&mut out, e.id, pts, RETURN, Some(DASH), mm);
+                }
+            }
         }
+        zone_items(&mut out, e.id, u, mm);
         let n = loops.len().max(1);
         let which = if n > 1 {
             format!("{}-{}", circuits + 1, circuits + n)
@@ -252,6 +381,7 @@ mod tests {
             spacing: 0.15,
             loops: 2,
             finish_r: None,
+            ..Underfloor::default()
         });
         let room = Element::new("Kúpeľňa", ElementKind::Room(r));
         let id = room.id;

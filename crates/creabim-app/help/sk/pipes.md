@@ -37,3 +37,11 @@ Typy sú z katalógu PilonDesignera: systém ponúka typy pre médium, ktoré ve
 Vyberte potrubie a zmeňte jeho systém, typ potrubia, dimenziu, izoláciu a výšky koncov. Iný typ zachová vonkajší priemer tak blízko, ako to jeho rad dovolí, ako keď ťah mení materiál. Kanalizácia zobrazuje svoj sklon.
 
 Potrubia sa v pôdoryse kreslia vo farbe svojho systému, prerezané, viditeľné pod rezom alebo čiarkované nad rezom pôdorysu, a v 3D ako valce (štvorhranný vzduchovod ako kváder). Do IFC sa exportujú ako IfcPipeSegment alebo IfcDuctSegment.
+
+## Podlahové vykurovanie {#underfloor-heating}
+
+Okno *Navrhnúť podlahové vykurovanie* navrhne miestnostiam okruhy z ich tepelnej straty a zo skladby podlahy pod nimi: systémová doska (jej rúry a raster), poter nad ňou (λE, krytie su), RλB vrstiev na potere a izolácia pod rúrami pre tepelný tok smerom dole (STN EN 1264-2, -3). Každá miestnosť sa kladie ako špirála, meander alebo dvojitý meander, prípadne sa nevykreslí.
+
+1. Na karte *Vykurovanie* zvoľte *Okrajová zóna*, *Miesto zníženého výkonu* alebo *Diera bez potrubia*.
+2. Nakreslite ju vnútri miestnosti s podlahovým kúrením mnohouholníkom (1) alebo obdĺžnikom (2).
+3. V okne nastavte rozostup okrajovej zóny alebo o koľko % miesto dáva menej, zóny vypnite či zapnite a okruhy miestnosti rozdeľte zvisle alebo vodorovne.

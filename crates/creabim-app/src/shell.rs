@@ -190,6 +190,7 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Callout => "callout",
         Tool::Detail => "detail-component",
         Tool::Pipe => "pipe",
+        Tool::UfhZone => "spline",
     }
 }
 
@@ -224,7 +225,7 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::Tiling
         | Tool::Ceiling => 1,
         Tool::Terrain | Tool::Paving | Tool::Planting => 5,
-        Tool::Pipe => 6,
+        Tool::Pipe | Tool::UfhZone => 6,
         Tool::Section | Tool::Elevation | Tool::Callout => 2,
         Tool::Dimension
         | Tool::Tag
