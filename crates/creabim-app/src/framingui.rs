@@ -65,6 +65,13 @@ pub fn tool_options(m: &MemberSettings) -> Vec<serde_json::Value> {
             "hint": "A turnbuckle at the rod's middle: Rothoblaas TENDITORE for its thread (M12–M30)",
         }));
     }
+    if f.role == Role::Collar {
+        v.push(json!({
+            "kind": "toggle", "id": "member:framing.pair", "label": "Pair",
+            "on": m.framing_pair, "icon": "columns-2",
+            "hint": "Two collar ties, one each side of the rafter, apart by the rafter's width",
+        }));
+    }
     v
 }
 
@@ -97,6 +104,10 @@ pub fn set_option(m: &mut MemberSettings, key: &str, v: f64) -> bool {
 
 /// A toggle in the bar; false when it isn't a member's.
 pub fn toggle_option(m: &mut MemberSettings, what: &str) -> bool {
+    if what == "framing.pair" {
+        m.framing_pair = !m.framing_pair;
+        return true;
+    }
     if what != "framing.turnbuckle" {
         return false;
     }
@@ -246,6 +257,105 @@ pub fn name_of(f: &Framing) -> String {
     crate::i18n::tr(f.role.label())
 }
 
+/// A collar tie `e` as two, one each side of the rafter it is drawn
+/// across (George 2026-11-27: kleštiny 2 ks, one on each face): apart by
+/// the width of a rafter at either of its ends, or the default rafter's.
+pub fn pair(
+    model: &creabim_core::Model,
+    e: &creabim_core::Element,
+) -> (creabim_core::Element, creabim_core::Element) {
+    use creabim_core::ElementKind;
+    let ElementKind::Beam(b) = &e.kind else {
+        return (e.clone(), e.clone());
+    };
+    let near = |q: glam::DVec2| {
+        model.iter().find_map(|o| {
+            let ElementKind::Beam(r) = &o.kind else {
+                return None;
+            };
+            let f = r.framing.as_ref()?;
+            if !matches!(f.role, Role::Rafter | Role::HipRafter | Role::ValleyRafter) {
+                return None;
+            }
+            let d = r.end - r.start;
+            let t = ((q - r.start).dot(d) / d.length_squared().max(1e-12)).clamp(0.0, 1.0);
+            (r.start + d * t)
+                .distance(q)
+                .lt(&(r.width / 2.0 + 0.05))
+                .then_some(r.width)
+        })
+    };
+    let gap = near(b.start)
+        .or_else(|| near(b.end))
+        .or_else(|| framing::section(Role::Rafter.default_section()).map(|s| s.b))
+        .unwrap_or(0.0);
+    let across =
+        (b.end - b.start).normalize_or(glam::DVec2::X).perp() * (gap / 2.0 + b.width / 2.0);
+    let shifted = |k: f64| {
+        let mut x = e.clone();
+        x.id = creabim_core::ElementId::new();
+        if let ElementKind::Beam(xb) = &mut x.kind {
+            xb.start += across * k;
+            xb.end += across * k;
+        }
+        x
+    };
+    (shifted(1.0), shifted(-1.0))
+}
+
+/// The rows choosing how each end of a timber beam is cut, with an
+/// angle's degrees and a lap's length; whether one changed.
+fn end_cuts(ui: &mut eframe::egui::Ui, f: &mut Framing) -> bool {
+    use creabim_core::framing::EndCut;
+    let tr = crate::i18n::tr;
+    let mut changed = false;
+    for (k, title) in [(0, "Start cut"), (1, "End cut")] {
+        let now = f.cuts[k];
+        crate::props::Combo::new(title)
+            .selected_text(tr(now.label()))
+            .show_ui(ui, |ui| {
+                for c in EndCut::ALL {
+                    if ui
+                        .selectable_label(now.same_kind(c), tr(c.label()))
+                        .clicked()
+                        && !now.same_kind(c)
+                    {
+                        f.cuts[k] = c;
+                        changed = true;
+                    }
+                }
+            });
+        match &mut f.cuts[k] {
+            EndCut::Angle(deg) => {
+                changed |= crate::props::row(ui, "Cut angle", |ui| {
+                    crate::props::fill(
+                        ui,
+                        eframe::egui::DragValue::new(deg)
+                            .speed(0.5)
+                            .range(5.0..=175.0)
+                            .suffix("°"),
+                    )
+                    .changed()
+                });
+            }
+            EndCut::Lap { length, upper } => {
+                changed |= crate::props::row(ui, "Lap length", |ui| {
+                    crate::props::fill(ui, crate::units::drag(length).range(0.0..=3.0)).changed()
+                });
+                changed |= crate::props::check(
+                    ui,
+                    "Upper half runs on",
+                    upper,
+                    tr("Off: the lower half of this end runs on under the other piece"),
+                )
+                .changed();
+            }
+            _ => {}
+        }
+    }
+    changed
+}
+
 /// The Properties rows of a member: what it is, its section, grade,
 /// slope, how its ends are held, its turnbuckle and mark, and the
 /// section's properties a calculation takes. The undo label when
@@ -317,6 +427,7 @@ pub fn properties(
                 }
             }
         });
+    let beam = slope.is_some();
     if let Some(a) = slope {
         if crate::props::row(ui, "Pitch", |ui| {
             crate::props::fill(
@@ -330,6 +441,10 @@ pub fn properties(
         }) {
             label = "Member slope";
         }
+    }
+    // how a timber beam's ends are cut (George 2026-11-27)
+    if beam && f.role.is_timber() && end_cuts(ui, f) {
+        label = "Member end cuts";
     }
     let ends = [
         (EndFix::Pinned, "Pinned", "A hinge: held, free to turn"),
@@ -480,6 +595,21 @@ mod tests {
             0,
             creabim_core::Element::new("Výkres krovu", ElementKind::View(kv)),
         );
+        // sections through the roof across two rafter pairs, the cuts
+        // seen from the side
+        for (name, x) in [("Rez krovu A", 6.5), ("Rez krovu B", 7.4)] {
+            let mut sv = creabim_core::View::plan(roof);
+            sv.kind = ViewKind::Section {
+                start: glam::DVec2::new(x, 13.0),
+                end: glam::DVec2::new(x, -1.0),
+                depth: 0.45,
+                cut: true,
+            };
+            sv.scale = 50.0;
+            sv.structural = true;
+            sv.hidden.set_category(creabim_core::Category::Roofs, true);
+            ids.push(creabim_core::Element::new(name, ElementKind::View(sv)));
+        }
         // the timber list grouped by cross-section, for the budget
         let mut sv = creabim_core::View::plan(roof);
         sv.kind = ViewKind::Schedule {
@@ -532,7 +662,7 @@ mod tests {
         roof: creabim_core::ElementId,
         ground: creabim_core::ElementId,
     ) -> Vec<creabim_core::Element> {
-        use creabim_core::framing::{self, Framing, Role};
+        use creabim_core::framing::{self, EndCut, Framing, Role};
         use creabim_core::members::{elevation, storey_height};
         use creabim_core::{Beam, Column, Element, ElementKind};
         use glam::{DVec2, DVec3};
@@ -604,6 +734,28 @@ mod tests {
                 "80/200",
             ));
             x += 0.9;
+        }
+        // their ends cut as George sketched (2026-11-27): at the eaves
+        // plumb and level, at the ridge the one from the front square
+        // and running through, the one from the back fitted to it; one
+        // pair for the other ways: square at the eaves, both plumb at
+        // the ridge
+        for e in out.iter_mut() {
+            let ElementKind::Beam(b) = &mut e.kind else {
+                continue;
+            };
+            let Some(f) = &mut b.framing else { continue };
+            if f.role != Role::Rafter || (b.end.y - ym).abs() > 1e-6 {
+                continue;
+            }
+            let other = (b.start.x - (rx0 + 0.9)).abs() < 1e-6;
+            let front = b.start.y < ym;
+            f.cuts = match (other, front) {
+                (false, true) => [EndCut::PlumbLevel, EndCut::Square],
+                (false, false) => [EndCut::PlumbLevel, EndCut::Fitted],
+                (true, true) => [EndCut::Square, EndCut::Plumb],
+                (true, false) => [EndCut::Plumb, EndCut::Plumb],
+            };
         }
         // jack rafters up to the hips, both ends
         let mut d = 0.9;
@@ -698,23 +850,32 @@ mod tests {
                 ));
             }
         }
-        // collar ties 50/200 between the purlins at each post
-        for xp in [x0 + 2.6, 7.34, x1 - 2.6] {
-            let zc = z0 + 2.6 * t + 0.1;
-            out.push(beam(
+        // collar ties 50/200, a pair either side of a rafter, their ends
+        // cut at the roof's pitch
+        for xp in [rx0 + 0.9 * 2.0, rx0 + 0.9 * 4.0] {
+            // their tops at the rafters' tops, 3 m in from the plates
+            let zc = z0 + 3.0 * t;
+            let mut c = beam(
                 roof,
-                v(xp + 0.075, y0 + 2.3, zc),
-                v(xp + 0.075, y1 - 2.3, zc),
+                v(xp, y0 + 3.0, zc),
+                v(xp, y1 - 3.0, zc),
                 Role::Collar,
                 "50/200",
-            ));
-            out.push(beam(
-                roof,
-                v(xp - 0.075, y0 + 2.3, zc),
-                v(xp - 0.075, y1 - 2.3, zc),
-                Role::Collar,
-                "50/200",
-            ));
+            );
+            if let ElementKind::Beam(b) = &mut c.kind {
+                if let Some(f) = &mut b.framing {
+                    f.cuts = [EndCut::Angle(25.0); 2];
+                }
+            }
+            let mut probe = m.clone();
+            let mut tx = creabim_core::Transaction::new("probe");
+            for e in &out {
+                tx = tx.insert(e.clone());
+            }
+            tx.apply(&mut probe).unwrap();
+            let (one, two) = super::pair(&probe, &c);
+            out.push(one);
+            out.push(two);
         }
         // a steel carport beside the house: RHS columns, sloped beams at
         // 4°, SHS purlins, crossed rods Ø 12 with turnbuckles

@@ -237,6 +237,9 @@ pub struct MemberSettings {
     pub framing: Option<creabim_core::framing::Framing>,
     /// The slope a sloped member climbs at from its first point, degrees.
     pub framing_angle: f64,
+    /// Collar ties (kleštiny) drawn as a pair, one each side of the
+    /// rafters (George 2026-11-27).
+    pub framing_pair: bool,
     /// What the Pipe tool draws next.
     pub pipe: crate::pipesui::PipeDraft,
     /// What the Gutter and Downpipe tools draw next.
@@ -282,6 +285,7 @@ impl Default for MemberSettings {
             last_beam: None,
             framing: None,
             framing_angle: 0.0,
+            framing_pair: true,
             pipe: Default::default(),
             flashing: Default::default(),
             place: Default::default(),
@@ -499,6 +503,21 @@ pub fn click(
                             doc.commit(Transaction::new("Draw beam").replace(pe, pe2).insert(ne))
                         }
                         None if set.framing.is_some() => {
+                            // collar ties in a pair, either side of the rafter
+                            let paired = set.framing_pair
+                                && set
+                                    .framing
+                                    .as_ref()
+                                    .is_some_and(|f| f.role == creabim_core::framing::Role::Collar);
+                            if paired {
+                                let (one, two) = crate::app::framingui::pair(doc.model(), &e);
+                                return add_tagged(
+                                    doc,
+                                    selection,
+                                    one,
+                                    Transaction::new("Draw member").insert(two),
+                                );
+                            }
                             add_tagged(doc, selection, e, Transaction::new("Draw member"))
                         }
                         None => add(doc, selection, e, "Draw beam"),

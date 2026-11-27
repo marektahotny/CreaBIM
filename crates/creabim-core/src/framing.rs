@@ -235,6 +235,66 @@ impl EndFix {
     }
 }
 
+/// How a timber member's end is cut, seen from its side (George
+/// 2026-11-27, his sketches of a rafter at the eaves and at the ridge):
+/// every cut starts at the end's point on the top edge.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum EndCut {
+    /// Square to the member's axis.
+    #[default]
+    Square,
+    /// Plumb (zvislý rez).
+    Plumb,
+    /// Plumb down to the height of a square cut's lower corner, then level
+    /// in to it (zvislý a vodorovný rez, at the eaves).
+    PlumbLevel,
+    /// Level (vodorovný rez): a brace butting under a purlin.
+    Level,
+    /// At this angle from the horizontal, degrees, the lower edge running
+    /// on outward (a collar tie cut to the rafter's pitch).
+    Angle(f64),
+    /// Against the square-cut end and the underside of the member meeting
+    /// it at the same point (a rafter at the ridge: one runs through cut
+    /// square, the other is fitted to it).
+    Fitted,
+    /// A lap joint (preplátovanie, spoj na plát) over this length, m: the
+    /// lower half runs on (`upper` false) or the upper half does.
+    Lap { length: f64, upper: bool },
+}
+
+impl EndCut {
+    /// The kinds offered, an angle and a lap with their first values.
+    pub const ALL: [EndCut; 7] = [
+        EndCut::Square,
+        EndCut::Plumb,
+        EndCut::PlumbLevel,
+        EndCut::Level,
+        EndCut::Angle(90.0),
+        EndCut::Fitted,
+        EndCut::Lap {
+            length: 0.0,
+            upper: false,
+        },
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            EndCut::Square => "Square cut",
+            EndCut::Plumb => "Plumb cut",
+            EndCut::PlumbLevel => "Plumb and level cut",
+            EndCut::Level => "Level cut",
+            EndCut::Angle(_) => "Cut at an angle",
+            EndCut::Fitted => "Fitted to the member it meets",
+            EndCut::Lap { .. } => "Lap joint",
+        }
+    }
+
+    /// The same kind (an angle or a lap whatever its values).
+    pub fn same_kind(self, other: EndCut) -> bool {
+        std::mem::discriminant(&self) == std::mem::discriminant(&other)
+    }
+}
+
 /// What makes a beam or column a member of the roof's timber or of a
 /// steel frame.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -254,6 +314,13 @@ pub struct Framing {
     /// A mark typed over the numbered one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<String>,
+    /// How a timber beam's start and end are cut (see [`side_profile`]).
+    #[serde(default, skip_serializing_if = "square_ends")]
+    pub cuts: [EndCut; 2],
+}
+
+fn square_ends(c: &[EndCut; 2]) -> bool {
+    c[0] == EndCut::Square && c[1] == EndCut::Square
 }
 
 impl Framing {
@@ -265,6 +332,7 @@ impl Framing {
             ends: role.default_ends(),
             turnbuckle: role == Role::BracingRod,
             mark: None,
+            cuts: [EndCut::Square; 2],
         }
     }
 }
@@ -674,9 +742,202 @@ pub fn axis(model: &Model, e: &Element) -> Option<(DVec3, DVec3)> {
     }
 }
 
-/// A member's length along its axis, m.
+/// A member's length along its axis, m; a timber beam's cut ends taken
+/// in, the longest it runs (the piece to order).
 pub fn length(model: &Model, e: &Element) -> f64 {
+    if let Some(p) = side_profile(model, e) {
+        let d = glam::DVec2::new(1.0, p.slope).normalize();
+        let s: Vec<f64> = p.points.iter().map(|q| q.dot(d)).collect();
+        let lo = s.iter().cloned().fold(f64::INFINITY, f64::min);
+        let hi = s.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        return hi - lo;
+    }
     axis(model, e).map_or(0.0, |(a, b)| a.distance(b))
+}
+
+/// A timber beam seen from its side: the outline of its cut ends, in the
+/// upright plane through its axis.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SideProfile {
+    /// The start of its top line in the model, m.
+    pub origin: DVec3,
+    /// Its direction in plan, unit.
+    pub dir: glam::DVec2,
+    /// How much its top rises a metre in plan.
+    pub slope: f64,
+    /// Its outline: x along `dir` in plan, z up from `origin`, m: the end's
+    /// cut from its top point down, then the start's from its bottom up.
+    pub points: Vec<glam::DVec2>,
+    /// Its width across, m.
+    pub width: f64,
+}
+
+/// A timber beam's side outline with its ends cut as its framing says;
+/// none for steel, a column, a beam lying on a slope sideways (its
+/// section not upright) or one without framing.
+pub fn side_profile(model: &Model, e: &Element) -> Option<SideProfile> {
+    use glam::DVec2;
+    let ElementKind::Beam(b) = &e.kind else {
+        return None;
+    };
+    let f = b.framing.as_ref()?;
+    if !f.role.is_timber() {
+        return None;
+    }
+    let (a, z) = b.axis(model);
+    let run = (z - a).truncate();
+    let len = run.length();
+    if len < 1e-6 {
+        return None;
+    }
+    let dir = run / len;
+    let across = dir.perp().extend(0.0);
+    // the section upright in the plane of the axis
+    if b.up
+        .is_some_and(|u| u.normalize_or(DVec3::Z).dot(across).abs() > 1e-3)
+    {
+        return None;
+    }
+    let slope = (z.z - a.z) / len;
+    let h = b.depth;
+    let hv = h * (1.0 + slope * slope).sqrt();
+    let top = |x: f64| slope * x;
+    let bottom = |x: f64| slope * x - hv;
+    // square to the axis, down
+    let down = DVec2::new(slope, -1.0).normalize() * h;
+    // where the line from `p` along `d` meets the bottom line
+    let to_bottom = |p: DVec2, d: DVec2| -> Option<DVec2> {
+        let den = d.y - slope * d.x;
+        if den.abs() < 1e-9 {
+            return None;
+        }
+        let t = (bottom(p.x) - p.y) / den;
+        (t > 0.0).then(|| p + d * t)
+    };
+    let cut = |k: usize| -> Vec<DVec2> {
+        let tx = if k == 0 { 0.0 } else { len };
+        let t = DVec2::new(tx, top(tx));
+        let out = if k == 0 { -1.0 } else { 1.0 };
+        let plumb = vec![t, DVec2::new(tx, bottom(tx))];
+        match f.cuts[k] {
+            EndCut::Square => vec![t, t + down],
+            EndCut::Plumb => plumb,
+            EndCut::PlumbLevel => {
+                let sq = t + down;
+                // the square cut's lower corner inside the end: plumb to
+                // its height, level in to it
+                if (sq.x - tx) * out < -1e-6 {
+                    vec![t, DVec2::new(tx, sq.y), sq]
+                } else {
+                    plumb
+                }
+            }
+            EndCut::Level => to_bottom(t, DVec2::new(out, 0.0))
+                .or_else(|| to_bottom(t, DVec2::new(-out, 0.0)))
+                .map_or(plumb.clone(), |p| vec![t, p]),
+            EndCut::Angle(deg) => {
+                let r = deg.clamp(5.0, 175.0).to_radians();
+                to_bottom(t, DVec2::new(out * r.cos(), -r.sin())).map_or(plumb, |p| vec![t, p])
+            }
+            EndCut::Lap { length, upper } => {
+                let l = length.max(0.0).min(len / 2.0);
+                if l < 1e-6 {
+                    return plumb;
+                }
+                let x1 = tx - out * l;
+                let mid = |x: f64| top(x) - hv / 2.0;
+                if upper {
+                    vec![
+                        t,
+                        DVec2::new(tx, mid(tx)),
+                        DVec2::new(x1, mid(x1)),
+                        DVec2::new(x1, bottom(x1)),
+                    ]
+                } else {
+                    vec![
+                        DVec2::new(x1, top(x1)),
+                        DVec2::new(x1, mid(x1)),
+                        DVec2::new(tx, mid(tx)),
+                        DVec2::new(tx, bottom(tx)),
+                    ]
+                }
+            }
+            EndCut::Fitted => fitted(model, e.id, b, k, a, dir, slope, hv, t).unwrap_or(plumb),
+        }
+    };
+    let end = cut(1);
+    let start = cut(0);
+    let mut points = end;
+    points.extend(start.into_iter().rev());
+    Some(SideProfile {
+        origin: a,
+        dir,
+        slope,
+        points,
+        width: b.width,
+    })
+}
+
+/// A rafter's end at the ridge fitted to the rafter meeting it there
+/// (square cut, running through): down its cut face, then up under its
+/// underside to this one's own. In `this` beam's side frame.
+#[allow(clippy::too_many_arguments)]
+fn fitted(
+    model: &Model,
+    id: ElementId,
+    this: &crate::Beam,
+    k: usize,
+    origin: DVec3,
+    dir: glam::DVec2,
+    slope: f64,
+    hv: f64,
+    t: glam::DVec2,
+) -> Option<Vec<glam::DVec2>> {
+    use glam::DVec2;
+    let (a, z) = this.axis(model);
+    let at = if k == 0 { a } else { z };
+    let frame = |p: DVec3| DVec2::new((p.truncate() - origin.truncate()).dot(dir), p.z - origin.z);
+    for o in model.iter() {
+        let ElementKind::Beam(ob) = &o.kind else {
+            continue;
+        };
+        if o.id == id || ob.framing.is_none() {
+            continue;
+        }
+        let (oa, oz) = ob.axis(model);
+        // the other's end at this one's end, in the same upright plane
+        let near = if oa.distance(at) < 0.02 {
+            oa
+        } else if oz.distance(at) < 0.02 {
+            oz
+        } else {
+            continue;
+        };
+        let far = if near == oa { oz } else { oa };
+        let off = (far.truncate() - origin.truncate()).perp_dot(dir).abs();
+        if off > 0.02 {
+            continue;
+        }
+        let (p, q) = (frame(near), frame(far));
+        let os = (q.y - p.y) / (q.x - p.x);
+        if !os.is_finite() || (os - slope).abs() < 1e-6 {
+            continue;
+        }
+        let ohv = ob.depth * (1.0 + os * os).sqrt();
+        // the other's square face, from the shared top point down to its
+        // lower corner, which lies past this end
+        let along = (q - p).normalize();
+        let sq_down = DVec2::new(-along.y, along.x);
+        let sq_down = if sq_down.y > 0.0 { -sq_down } else { sq_down };
+        let corner = p + sq_down * ob.depth;
+        // where the other's underside meets this one's
+        let ob_bottom = |x: f64| p.y + os * (x - p.x) - ohv;
+        let x = (p.y - os * p.x - ohv + hv) / (slope - os);
+        let meet = DVec2::new(x, slope * x - hv);
+        debug_assert!((ob_bottom(x) - meet.y).abs() < 1e-6);
+        return Some(vec![t, corner, meet]);
+    }
+    None
 }
 
 /// A sloped member from `a` to `b` in plan rising `angle` degrees from
@@ -827,5 +1088,91 @@ mod tests {
     fn rise_follows_the_angle() {
         let r = rise_for(DVec2::ZERO, DVec2::new(4.0, 0.0), 45.0);
         assert!((r - 4.0).abs() < 1e-9);
+    }
+
+    fn rafter(cuts: [EndCut; 2]) -> (Model, Element) {
+        use crate::{Beam, Level, Transaction};
+        let lv = Element::new(
+            "L",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let l = lv.id;
+        let mut m = Model::from_elements([lv]).unwrap();
+        // 4 m in plan rising 2 m, 80/200
+        let mut b = Beam::new(l, DVec2::ZERO, DVec2::new(4.0, 0.0));
+        b.rise = [0.0, 2.0];
+        let mut f = Framing::new(Role::Rafter);
+        f.section = "80/200".into();
+        f.cuts = cuts;
+        let mut e = Element::new("r", ElementKind::Beam(b));
+        apply(&mut e, f);
+        Transaction::new("t")
+            .insert(e.clone())
+            .apply(&mut m)
+            .unwrap();
+        let e = m.get(e.id).unwrap().clone();
+        (m, e)
+    }
+
+    #[test]
+    fn the_eaves_cuts_as_george_sketched_them() {
+        let s = 0.5f64;
+        let hv = 0.2 * (1.0 + s * s).sqrt();
+        // plumb: the start's cut straight down from the top
+        let (m, e) = rafter([EndCut::Plumb, EndCut::Square]);
+        let p = side_profile(&m, &e).unwrap();
+        let start: Vec<_> = p.points.iter().rev().take(2).collect();
+        assert!(start.iter().all(|q| q.x.abs() < 1e-9));
+        assert!(p
+            .points
+            .iter()
+            .any(|q| (q.y + hv).abs() < 1e-9 && q.x.abs() < 1e-9));
+        // square: its lower corner square to the axis, inside the end
+        let (m, e) = rafter([EndCut::Square, EndCut::Square]);
+        let p = side_profile(&m, &e).unwrap();
+        let corner = p.points[p.points.len() - 2];
+        let d = DVec2::new(1.0, s).normalize();
+        assert!(corner.dot(d).abs() < 1e-9 && corner.x > 0.0);
+        // plumb and level: down to that corner's height, then in to it
+        let (m, e) = rafter([EndCut::PlumbLevel, EndCut::Square]);
+        let p = side_profile(&m, &e).unwrap();
+        let n = p.points.len();
+        let (c, l, t) = (p.points[n - 3], p.points[n - 2], p.points[n - 1]);
+        assert!(t.length() < 1e-9 && l.x.abs() < 1e-9 && (l.y - c.y).abs() < 1e-9);
+        assert!((c - corner).length() < 1e-9);
+    }
+
+    #[test]
+    fn a_rafter_fitted_at_the_ridge_takes_in_the_one_running_through() {
+        use crate::Transaction;
+        let (mut m, e) = rafter([EndCut::Square, EndCut::Square]);
+        let ElementKind::Beam(b) = &e.kind else {
+            panic!()
+        };
+        // its pair from the other side, meeting at the ridge
+        let mut o = b.clone();
+        o.start = DVec2::new(8.0, 0.0);
+        o.end = DVec2::new(4.0, 0.0);
+        if let Some(f) = &mut o.framing {
+            f.cuts = [EndCut::Square, EndCut::Fitted];
+        }
+        let oe = Element::new("r2", ElementKind::Beam(o));
+        Transaction::new("t")
+            .insert(oe.clone())
+            .apply(&mut m)
+            .unwrap();
+        let p = side_profile(&m, m.get(oe.id).unwrap()).unwrap();
+        // its end: the ridge, the other's square cut's lower corner past
+        // the ridge on this side, then under the other's underside back
+        // to the ridge's plumb line
+        let (t, c, q) = (p.points[0], p.points[1], p.points[2]);
+        assert!((t.x - 4.0).abs() < 1e-9);
+        assert!(c.x < 4.0 && c.y < t.y);
+        assert!((q.x - 4.0).abs() < 1e-6, "{q:?}");
+        // the piece to order runs to the ridge on its top edge
+        assert!((length(&m, m.get(oe.id).unwrap()) - (4.0f64.powi(2) + 4.0).sqrt()).abs() < 1e-6);
     }
 }

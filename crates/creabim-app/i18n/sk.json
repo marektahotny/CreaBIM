@@ -8973,5 +8973,21 @@
  "Member mark": "Označenie prvku",
  "Member section": "Prierez prvku",
  "Member slope": "Sklon prvku",
- "Member supports": "Uloženie prvku"
+ "Member supports": "Uloženie prvku",
+ "Start cut": "Rez na začiatku",
+ "End cut": "Rez na konci",
+ "Square cut": "Kolmý rez",
+ "Plumb cut": "Zvislý rez",
+ "Plumb and level cut": "Zvislý a vodorovný rez",
+ "Level cut": "Vodorovný rez",
+ "Cut at an angle": "Rez v uhle",
+ "Fitted to the member it meets": "Dorazený k prvku vo vrchole",
+ "Lap joint": "Preplátovanie",
+ "Cut angle": "Uhol rezu",
+ "Lap length": "Dĺžka plátu",
+ "Upper half runs on": "Pokračuje horná polovica",
+ "Off: the lower half of this end runs on under the other piece": "Vypnuté: pod druhý kus pokračuje spodná polovica tohto konca",
+ "Pair": "Pár",
+ "Two collar ties, one each side of the rafter, apart by the rafter's width": "Dve kleštiny, z každej strany krokvy jedna, od seba o šírku krokvy",
+ "Member end cuts": "Rezy koncov prvku"
 }
