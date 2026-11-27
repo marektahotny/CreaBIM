@@ -177,6 +177,8 @@ pub fn timber_schedule_by(model: &Model, by_section: bool) -> Schedule {
             })
             .collect()
     };
+    let mut rows = rows;
+    rows.extend(bolt_rows(model, 8));
     let volume: f64 = positions.iter().map(Position::volume).sum();
     let paint: f64 = positions.iter().map(Position::paint_area).sum();
     Schedule {
@@ -207,6 +209,44 @@ pub fn timber_schedule_by(model: &Model, by_section: bool) -> Schedule {
             comma(volume, 6),
         ]],
     }
+}
+
+/// The collar ties' bolts under the timber, alike ones together: the
+/// threaded rod with its washers and nuts, how many, the rod's length
+/// (George 2026-11-27). `n` cells a row.
+fn bolt_rows(model: &Model, n: usize) -> Vec<Row> {
+    use creabim_core::words::tr;
+    let mut lots: Vec<(u32, f64, usize, ElementId)> = vec![];
+    for b in framing::bolts(model) {
+        let l = b.length();
+        match lots
+            .iter_mut()
+            .find(|x| x.0 == b.thread && (x.1 - l).abs() < 1e-6)
+        {
+            Some(x) => x.2 += 1,
+            None => lots.push((b.thread, l, 1, b.collars[0])),
+        }
+    }
+    lots.sort_by(|a, b| (a.0, a.1).partial_cmp(&(b.0, b.1)).unwrap());
+    lots.into_iter()
+        .map(|(t, l, k, id)| {
+            let mut cells = vec![String::new(); n];
+            cells[1] = format!(
+                "{} M{t} × {:.0}, {}",
+                tr("Bolt"),
+                l * 1000.0,
+                tr("2 washers DIN 440 R, 2 nuts DIN 934")
+            );
+            cells[2] = k.to_string();
+            cells[5] = comma(l, 3);
+            cells[6] = comma(l * k as f64, 3);
+            Row {
+                id,
+                cells,
+                group: false,
+            }
+        })
+        .collect()
 }
 
 /// The list of steel members (výpis oceľových prvkov): mark, member,
