@@ -367,25 +367,70 @@ pub fn remember_main_window(frame: &eframe::Frame) {
 /// Maximizes the main window once Windows shows it: (shown, maximized now)
 /// (the start fills the screen, George 2026-11-26). Asked of the window
 /// itself (IsWindowVisible/IsZoomed, ShowWindow), not through winit.
+///
+/// Maximized means filling the monitor's work area too: on George's PC
+/// (0.7-18) Windows said the window was maximized (IsZoomed) while it kept
+/// its 1400 × 860 start size in the top-left corner, because the start size
+/// was set on the window after it had been maximized; such a window is
+/// restored and maximized again.
 #[cfg(windows)]
 pub fn maximize_main_window() -> (bool, bool) {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        IsWindowVisible, IsZoomed, ShowWindow, SW_MAXIMIZE,
+        GetWindowRect, IsWindowVisible, IsZoomed, ShowWindow, SW_MAXIMIZE, SW_RESTORE,
     };
     let hwnd = MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed);
     if hwnd == 0 {
         return (false, false);
     }
     let hwnd = hwnd as windows_sys::Win32::Foundation::HWND;
+    // the window covers the work area of its monitor (a maximized window
+    // reaches a little past it, under its own borders)
+    let fills = || unsafe {
+        let mut win: RECT = std::mem::zeroed();
+        if GetWindowRect(hwnd, &mut win) == 0 {
+            return true;
+        }
+        let mut info: MONITORINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if GetMonitorInfoW(monitor, &mut info) == 0 {
+            return true;
+        }
+        let work = info.rcWork;
+        let fills = win.right - win.left >= work.right - work.left - 8
+            && win.bottom - win.top >= work.bottom - work.top - 8;
+        if !fills {
+            crate::actlog::line(format!(
+                "main window {}×{} at ({}, {}), work area {}×{}, zoomed {}",
+                win.right - win.left,
+                win.bottom - win.top,
+                win.left,
+                win.top,
+                work.right - work.left,
+                work.bottom - work.top,
+                IsZoomed(hwnd) != 0
+            ));
+        }
+        fills
+    };
     unsafe {
         if IsWindowVisible(hwnd) == 0 {
             return (false, false);
         }
         if IsZoomed(hwnd) != 0 {
-            return (true, true);
+            if fills() {
+                return (true, true);
+            }
+            // "maximized" in name only: back to normal first, so that the
+            // maximize below is not taken as already done
+            ShowWindow(hwnd, SW_RESTORE);
         }
         ShowWindow(hwnd, SW_MAXIMIZE);
-        (true, IsZoomed(hwnd) != 0)
+        (true, IsZoomed(hwnd) != 0 && fills())
     }
 }
 
