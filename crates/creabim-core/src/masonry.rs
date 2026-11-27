@@ -1435,17 +1435,20 @@ fn place_cast(model: &Model, b: &Beam, c: CastLintel, o: &Opening, w: &Wall) -> 
         }
         wr.plaster = None;
         wr.sides[ext_side] = wr.side(ext_side).min((core - 0.05).max(0.0));
+        // VELOX boards outside (and inside): their own thicknesses
+        crate::wrap::Formwork::lay(wr, ext_side);
     }
     if nb.wrap.as_ref().is_some_and(|w| w.is_empty()) {
         nb.wrap = None;
     }
-    let (t_ext, t_under) = nb
-        .wrap
-        .as_ref()
-        .map_or((0.0, 0.0), |w| (w.side(ext_side), w.side(2)));
+    let (t_ext, t_under) = nb.wrap.as_ref().map_or((0.0, 0.0), |w| {
+        (w.through(ext_side) + w.through(1 - ext_side), w.side(2))
+    });
     let width = (core - t_ext).max(0.05);
     let out = if ext < int { -1.0 } else { 1.0 };
-    let across = int + out * width / 2.0;
+    // flush with the core's inner face, or the inner board's face
+    let t_int = nb.wrap.as_ref().map_or(0.0, |w| w.through(1 - ext_side));
+    let across = int + out * (t_int + width / 2.0);
     let mid = o.offset + o.width / 2.0;
     let length = o.width + 2.0 * c.bearing.max(0.0);
     let at = |u: f64| w.start + d * u + n * across;
@@ -1642,6 +1645,42 @@ pub fn insulation_note(model: &Model, id: ElementId) -> String {
     let Some(ext) = crate::wrap::exterior_side(model, e) else {
         return String::new();
     };
+    if let Some(f) = &w.formwork {
+        // VELOX boards: by the maker's name (George 2026-11-27)
+        let mut parts = vec![format!(
+            "{} {} {}",
+            crate::velox::MAKER,
+            f.product().short(),
+            crate::words::tr("on the outside")
+        )];
+        if f.two_sided {
+            parts.push(format!(
+                "{} {}",
+                crate::velox::WSC.short(),
+                crate::words::tr("on the inside")
+            ));
+        }
+        if w.side(2) > 1e-6 {
+            let under = w
+                .insulation
+                .and_then(|m| model.get(m))
+                .map(|m| {
+                    m.name
+                        .split([' ', '–', ','])
+                        .next()
+                        .unwrap_or("")
+                        .to_string()
+                })
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| crate::words::tr("insulation"));
+            parts.push(format!(
+                "{under} {:.0} mm {}",
+                w.side(2) * 1000.0,
+                crate::words::tr("underneath")
+            ));
+        }
+        return format!(" + {}", parts.join(", "));
+    }
     let name = w
         .insulation
         .and_then(|m| model.get(m))
@@ -2528,21 +2567,30 @@ fn place_on_core(model: &Model, w: &Wall, b: &mut Beam, lo: f64, hi: f64) {
             }
         }
         wr.plaster = None;
+        // VELOX boards outside (and inside): their own thicknesses
+        crate::wrap::Formwork::lay(wr, ext_side);
     }
     if b.wrap.as_ref().is_some_and(|w| w.is_empty()) {
         b.wrap = None;
     }
-    if let Some(t) = b.wrap.as_ref().map(|w| w.side(ext_side)) {
-        // the beam and its insulation fill the core, flush with its faces
-        let t = t.min(core - 0.05).max(0.0);
-        if let Some(wr) = &mut b.wrap {
-            wr.sides[ext_side] = t;
+    let mut t_int = 0.0;
+    if let Some(w) = b.wrap.clone() {
+        // the beam and its insulation (boards) fill the core, flush with
+        // its faces
+        if w.formwork.is_some() {
+            t_int = w.through(1 - ext_side);
+            b.width = (core - w.through(ext_side) - t_int).max(0.05);
+        } else {
+            let t = w.side(ext_side).min(core - 0.05).max(0.0);
+            if let Some(wr) = &mut b.wrap {
+                wr.sides[ext_side] = t;
+            }
+            b.width = (core - t).max(0.05);
         }
-        b.width = (core - t).max(0.05);
     }
     // the shuttering, if any, on the outer side
     let sign = if int >= ext { 1.0 } else { -1.0 };
-    let mid = int - sign * b.width / 2.0;
+    let mid = int - sign * (t_int + b.width / 2.0);
     let d = w.direction();
     let n = d.perp();
     let (s, e) = (w.start + d * lo + n * mid, w.start + d * hi + n * mid);
@@ -2579,6 +2627,28 @@ pub fn ring_exterior_side(model: &Model, b: &Beam) -> Option<usize> {
         return None;
     };
     Some(ring_exterior(model, w, b))
+}
+
+/// The width of the masonry core of the wall ring beam `b` lies on.
+pub fn ring_core_width(model: &Model, b: &Beam) -> Option<f64> {
+    let ElementKind::Wall(w) = &model.get(ring_wall(model, b)?)?.kind else {
+        return None;
+    };
+    let (ext, int) = crate::walls::core_span(model, w);
+    Some((int - ext).abs())
+}
+
+/// The width of the masonry core of the wall lintel `b` lies in.
+pub fn lintel_core_width(model: &Model, b: &Beam) -> Option<f64> {
+    let o = b.lintel.as_ref()?.opening?;
+    let ElementKind::Opening(o) = &model.get(o)?.kind else {
+        return None;
+    };
+    let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+        return None;
+    };
+    let (ext, int) = crate::walls::core_span(model, w);
+    Some((int - ext).abs())
 }
 
 /// The width a ring beam on wall `w` has with no insulation of its own:
