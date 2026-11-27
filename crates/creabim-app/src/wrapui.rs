@@ -69,6 +69,171 @@ fn choices(model: &Model, render: bool) -> (Vec<(ElementId, String)>, Vec<&'stat
 const RING_XPS: f64 = 0.05;
 
 impl CreaBimApp {
+    /// The VELOX formwork rows of ring beam or RC lintel `k`: which
+    /// board (or none), one- or two-sided, and what the maker's brochure
+    /// says of the wall it is in.
+    fn formwork_fields(
+        &mut self,
+        ui: &mut egui::Ui,
+        k: &mut ElementKind,
+        ext: usize,
+        ring: bool,
+    ) -> Option<&'static str> {
+        use creabim_core::velox;
+        let ElementKind::Beam(b) = &mut *k else {
+            return None;
+        };
+        let model = self.doc.model();
+        let core = if ring {
+            creabim_core::masonry::ring_core_width(model, b)
+        } else {
+            creabim_core::masonry::lintel_core_width(model, b)
+        };
+        let now = b
+            .wrap
+            .as_ref()
+            .and_then(|w| w.formwork.as_ref())
+            .map(|f| f.product());
+        let name = |p: &velox::Board| format!("{} {}", velox::MAKER, p.short());
+        let mut pick: Option<Option<&'static velox::Board>> = None;
+        crate::app::helpui::combo(ui, "Formwork")
+            .selected_text(now.map_or(tr("Own insulation (XPS…)"), name))
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(now.is_none(), tr("Own insulation (XPS…)"))
+                    .clicked()
+                {
+                    pick = Some(None);
+                }
+                for p in &velox::BOARDS {
+                    let fits = core.is_none_or(|c| p.fits(c));
+                    let text = tr("{name} – wall {a}–{b} mm, R = {r} m²K/W")
+                        .replace("{name}", &name(p))
+                        .replace("{a}", &format!("{:.0}", p.wall.0 * 1000.0))
+                        .replace("{b}", &format!("{:.0}", p.wall.1 * 1000.0))
+                        .replace("{r}", &format!("{:.2}", p.r).replace('.', ","));
+                    let text = if fits {
+                        egui::RichText::new(text)
+                    } else {
+                        egui::RichText::new(text).weak()
+                    };
+                    if ui
+                        .selectable_label(now.is_some_and(|n| n.id == p.id), text)
+                        .clicked()
+                    {
+                        pick = Some(Some(p));
+                    }
+                }
+            });
+        let mut label = None;
+        if let Some(choice) = pick {
+            label = Some("Formwork");
+            match choice {
+                None => {
+                    if let Some(w) = &mut b.wrap {
+                        w.formwork = None;
+                        w.sides = [0.0; 4];
+                        if w.insulation.is_some() {
+                            w.sides[if ring { ext } else { 2 }] = RING_XPS;
+                            if !ring {
+                                w.sides[ext] = RING_XPS;
+                            }
+                        }
+                    }
+                    if b.wrap.as_ref().is_some_and(|w| w.is_empty()) {
+                        b.wrap = None;
+                    }
+                }
+                Some(p) => {
+                    let (wood, eps, mats) = velox::materials(self.doc.model(), p);
+                    if !mats.is_empty() {
+                        let mut tx = Transaction::new("VELOX materials");
+                        for m in mats {
+                            tx = tx.insert(m);
+                        }
+                        let _ = self.doc.commit(tx);
+                    }
+                    let two = b
+                        .wrap
+                        .as_ref()
+                        .and_then(|w| w.formwork.as_ref())
+                        .is_some_and(|f| f.two_sided);
+                    let w = b.wrap.get_or_insert(wrap::Wrap {
+                        insulation: None,
+                        sides: [0.0; 4],
+                        plaster: None,
+                        plaster_thickness: wrap::PLASTER,
+                        formwork: None,
+                    });
+                    // a lintel keeps its insulation under it, nothing else
+                    let under = if ring { 0.0 } else { w.side(2) };
+                    w.sides = [0.0; 4];
+                    w.sides[2] = under;
+                    w.formwork = Some(wrap::Formwork {
+                        board: p.id.to_string(),
+                        two_sided: two,
+                        ext: ext as u8,
+                        wood,
+                        eps,
+                    });
+                    wrap::Formwork::lay(w, ext);
+                }
+            }
+        }
+        let Some(w) = b.wrap.as_mut() else {
+            return label;
+        };
+        let Some(f) = w.formwork.as_mut() else {
+            return label;
+        };
+        let p = *f.product();
+        let mut two = f.two_sided;
+        if crate::props::check(
+            ui,
+            "Two-sided",
+            &mut two,
+            "WSC 35 on the inner side too, clips AB + ES",
+        )
+        .changed()
+        {
+            f.two_sided = two;
+            wrap::Formwork::lay(w, ext);
+            label = Some("Formwork");
+        }
+        // what the brochure says, and whether this wall is in its range
+        let mut notes = vec![tr(if p.eps > 0.0 {
+            "{maker} {name}: {t} mm ({eps} mm EPS against the concrete, 35 mm wood-cement board outside), 250 × 2000 mm boards, R = {r} m²K/W. Clips HB (5 pcs) or AB + ES (10 pcs) for each 2 m, as long as the masonry is wide."
+        } else {
+            "{maker} {name}: 35 mm wood-cement board, 250 × 2000 mm, R = {r} m²K/W. Clips HB (5 pcs) or AB + ES (10 pcs) for each 2 m, as long as the masonry is wide."
+        })
+        .replace("{maker}", velox::MAKER)
+        .replace("{name}", p.short())
+        .replace("{t}", &format!("{:.0}", p.thickness() * 1000.0))
+        .replace("{eps}", &format!("{:.0}", p.eps * 1000.0))
+        .replace("{r}", &format!("{:.2}", p.r).replace('.', ","))];
+        if let Some(c) = core {
+            if !p.fits(c) {
+                notes.push(
+                    tr("! The maker recommends {name} for walls {a}–{b} mm; this masonry is {c} mm.")
+                        .replace("{name}", p.short())
+                        .replace("{a}", &format!("{:.0}", p.wall.0 * 1000.0))
+                        .replace("{b}", &format!("{:.0}", p.wall.1 * 1000.0))
+                        .replace("{c}", &format!("{:.0}", c * 1000.0)),
+                );
+            }
+        }
+        if (b.depth - p.height).abs() > 1e-3 {
+            notes.push(
+                tr("! The boards are 250 mm high; this one is {d} mm deep. For deeper ring beams VELOX gives WS 35 or WSD 35 boards cut to 300–500 mm (with precast floor panels).")
+                    .replace("{d}", &format!("{:.0}", b.depth * 1000.0)),
+            );
+        }
+        for n in notes {
+            crate::props::note(ui, n);
+        }
+        label
+    }
+
     /// The wrap rows of column or beam `e` (being edited as `k`): on or
     /// off, each side's insulation, its material, the render on it, and
     /// U across. A board of a wrap only says whose it is.
@@ -131,7 +296,22 @@ impl CreaBimApp {
                 }
             }
         }
-        let only: Option<Vec<usize>> = if ring {
+        // VELOX ring-beam boards as the formwork (George 2026-11-27)
+        if ring || cast {
+            if let Some(l) = self.formwork_fields(ui, k, ext, ring) {
+                label = l;
+            }
+        }
+        let formwork = match &*k {
+            ElementKind::Beam(b) => b.wrap.as_ref().is_some_and(|w| w.formwork.is_some()),
+            _ => false,
+        };
+        if formwork && ring {
+            return label;
+        }
+        let only: Option<Vec<usize>> = if formwork {
+            Some(vec![2])
+        } else if ring {
             Some(vec![ext])
         } else if cast {
             Some(vec![ext, 2])
@@ -149,17 +329,42 @@ impl CreaBimApp {
             ElementKind::Beam(b) => &mut b.wrap,
             _ => return label,
         };
-        let mut on = w.is_some();
+        let mut on = w
+            .as_ref()
+            .is_some_and(|w| w.formwork.is_none() || w.side(2) > 1e-6);
         if crate::props::check(
             ui,
             "Wrap",
             &mut on,
-            "Thermal insulation and exterior render",
+            if formwork {
+                "Insulation under it"
+            } else {
+                "Thermal insulation and exterior render"
+            },
         )
         .changed()
         {
             label = "Insulation round it";
-            if on {
+            if formwork {
+                // under a lintel with VELOX boards: XPS of its own
+                if let Some(wr) = w.as_mut() {
+                    if on {
+                        wr.sides[2] = RING_XPS;
+                        if wr.insulation.is_none() {
+                            if let Some((id, m)) = wrap::preset(self.doc.model(), PRESETS[1].0) {
+                                if let Some(m) = m {
+                                    let _ = self
+                                        .doc
+                                        .commit(Transaction::new("Insulation materials").insert(m));
+                                }
+                                wr.insulation = Some(id);
+                            }
+                        }
+                    } else {
+                        wr.sides[2] = 0.0;
+                    }
+                }
+            } else if on {
                 let mut sides = [0.0; 4];
                 sides[ext] = if ring || cast { RING_XPS } else { 0.1 };
                 let (mut nw, mut mats) = wrap::new_wrap(self.doc.model(), sides);
@@ -183,6 +388,9 @@ impl CreaBimApp {
             } else {
                 *w = None;
             }
+        }
+        if formwork && !on {
+            return label;
         }
         let Some(wr) = w.as_mut() else {
             // a ring beam back to the core's width less its shuttering
