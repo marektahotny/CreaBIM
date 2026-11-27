@@ -5215,9 +5215,17 @@ fn model_depth(doc: &Document, start: DVec2, end: DVec2) -> (f64, f64) {
 }
 
 /// Is `view` one of the structural drawings?
-fn structural_view(doc: &Document, view: Option<ElementId>) -> bool {
-    matches!(view.and_then(|v| doc.model().get(v)).map(|e| &e.kind),
-        Some(ElementKind::View(v)) if v.structural)
+/// What the view a section is drawn in is for: a new section is drawn as
+/// it is (a structural one, a trade's over the blind building, George
+/// 2026-11-27).
+fn structural_view(
+    doc: &Document,
+    view: Option<ElementId>,
+) -> Option<creabim_core::viewmodes::Purpose> {
+    match view.and_then(|v| doc.model().get(v)).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => Some(creabim_core::viewmodes::Purpose::of(v)),
+        _ => None,
+    }
 }
 
 /// Add a section or elevation view along `a` → `b`, named in sequence;
@@ -5228,9 +5236,11 @@ fn add_section_view(
     a: DVec2,
     b: DVec2,
     cut: bool,
-    structural: bool,
+    purpose: Option<creabim_core::viewmodes::Purpose>,
     selection: &mut Selection,
 ) -> Result<(), creabim_core::ModelError> {
+    use creabim_core::viewmodes::Purpose;
+    let structural = purpose == Some(Purpose::Structural);
     let n = doc
         .model()
         .iter()
@@ -5242,8 +5252,8 @@ fn add_section_view(
         format!("Elevation {}", n + 1)
     };
     let mut v = View::section(a, b, 30.0, cut);
-    if structural {
-        creabim_core::viewmodes::Purpose::Structural.apply(&mut v);
+    if let Some(p) = purpose.filter(|p| *p != Purpose::Architecture) {
+        p.apply(&mut v);
     }
     let e = Element::new(name.clone(), ElementKind::View(v));
     selection.only(e.id);
@@ -10355,6 +10365,55 @@ mod tests {
             assert!(near < 0.25, "{t}: {near}");
         }
         assert!(bulge_through(a, DVec2::ZERO, b).is_none());
+    }
+
+    /// A section drawn in a VZT plan is a VZT section: its ducts over the
+    /// blind building, marked only in the VZT plans (George 2026-11-27).
+    #[test]
+    fn a_section_drawn_in_a_trade_plan_is_that_trades() {
+        use creabim_core::viewmodes::{DisplayMode, Purpose, Trade};
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let plan = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. })))
+            .unwrap()
+            .clone();
+        let mut vzt = plan.clone();
+        if let ElementKind::View(v) = &mut vzt.kind {
+            Purpose::Trade(Trade::Ventilation).apply(v);
+        }
+        doc.commit(Transaction::new("vzt").replace(plan.clone(), vzt))
+            .unwrap();
+        let mut sel = crate::selection::Selection::default();
+        let purpose = super::structural_view(&doc, Some(plan.id));
+        super::add_section_view(
+            &mut doc,
+            DVec2::ZERO,
+            DVec2::X * 5.0,
+            true,
+            purpose,
+            &mut sel,
+        )
+        .unwrap();
+        let id = sel.all()[0];
+        let Some(ElementKind::View(v)) = doc.model().get(id).map(|e| &e.kind) else {
+            panic!("no section");
+        };
+        assert_eq!(v.trade, Some(Trade::Ventilation));
+        assert_eq!(DisplayMode::of(v), DisplayMode::Services);
+        // its mark: in the VZT plan, not in the architecture one
+        let ElementKind::View(p) = &doc.model().get(plan.id).unwrap().kind else {
+            unreachable!()
+        };
+        assert!(creabim_geom::structural::shows_mark(doc.model(), id, p));
+        let mut arch = p.clone();
+        Purpose::Architecture.apply(&mut arch);
+        assert!(!creabim_geom::structural::shows_mark(
+            doc.model(),
+            id,
+            &arch
+        ));
     }
 
     /// Two areas showing the same plan, side by side, share the drag; a

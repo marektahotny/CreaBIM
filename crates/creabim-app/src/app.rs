@@ -14275,10 +14275,8 @@ impl eframe::App for CreaBimApp {
                     .iter()
                     .any(|e| matches!(e, crate::tooltabs::Entry::Tool(x) if *x == t))
             };
-            if !on(tab) {
-                if let Some(i) = (0..crate::tooltabs::TABS.len()).find(|i| on(*i)) {
-                    self.shell.settings.tools_tab = i;
-                }
+            if !on(tab) && (0..crate::tooltabs::TABS.len()).any(on) {
+                self.shell.settings.tools_tab = crate::tooltabs::home_of(t);
             }
         }
         let m = ctx.input(|i| i.modifiers);

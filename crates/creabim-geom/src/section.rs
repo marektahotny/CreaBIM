@@ -1127,7 +1127,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 .extend(crate::masonry::plan_marks(model, *level, v.scale / 1000.0));
         }
         d.items
-            .retain(|it| crate::structural::shows_mark(model, it.id(), v.structural));
+            .retain(|it| crate::structural::shows_mark(model, it.id(), v));
     }
     if reveal && v.hidden_in_colour {
         tint_hidden(model, view, kind, &mut d.items);
