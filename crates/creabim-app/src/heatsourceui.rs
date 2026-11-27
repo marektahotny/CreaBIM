@@ -185,10 +185,7 @@ impl CreaBimApp {
     /// The heat pump's input from the model's heat loss (STN EN 12831-1,
     /// with the project's locality): none without rooms.
     pub(super) fn hp_input_from_model(&self) -> Option<HpInput> {
-        let o = self.heat_loss.as_ref().map_or_else(
-            || self.site_opts(creabim_services::heatloss::Opts::default()),
-            |x| x.0,
-        );
+        let o = self.heat_opts();
         let b = creabim_services::heatloss::building(self.doc.model(), &o);
         if b.rooms.is_empty() || b.phi <= 0.0 {
             return None;

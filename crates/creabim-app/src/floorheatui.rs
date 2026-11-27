@@ -6,8 +6,7 @@
 use super::CreaBimApp;
 use creabim_core::underfloor::Underfloor;
 use creabim_core::{ElementId, ElementKind, Transaction};
-use creabim_services::floorheat::{self, Settings, SPACINGS};
-use creabim_services::heatloss;
+use creabim_services::floorheat::{self, SPACINGS};
 use eframe::egui::{self, Vec2};
 
 impl CreaBimApp {
@@ -17,9 +16,9 @@ impl CreaBimApp {
             return false;
         }
         if self.floor_heat.is_none() {
-            self.floor_heat = Some(Settings::default());
+            // reopened: as it was last written (George 2026-11-27)
+            self.floor_heat = Some(self.saved_settings("floorheat").unwrap_or_default());
         }
-        self.results_due = Some("floorheat");
         true
     }
 
@@ -30,12 +29,11 @@ impl CreaBimApp {
         };
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
-        let o = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(heatloss::Opts::default, |x| x.0);
+        let o = self.heat_opts();
         let d = floorheat::design(self.doc.model(), &o, &s);
-        let mut write_now = self.results_due.take_if(|c| *c == "floorheat").is_some();
+        let found = creabim_services::calcresults::floor_heat(&d).with_settings(&s);
+        let written = self.is_written(&found);
+        let mut write_now = false;
         let mut open = true;
         let mut select = None;
         // a room's underfloor heating to set (none takes it away)
@@ -48,7 +46,7 @@ impl CreaBimApp {
             .default_size(crate::app::shell::at_least(Vec2::new(720.0, 520.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui) {
+                if super::calcresultsui::write_button(ui, written) {
                     write_now = true;
                 }
                 ui.horizontal(|ui| {
@@ -239,7 +237,7 @@ impl CreaBimApp {
             }
         }
         if write_now {
-            self.write_results_said(creabim_services::calcresults::floor_heat(&d));
+            self.write_results_said(found);
         }
         self.floor_heat = if open { Some(s) } else { None };
     }

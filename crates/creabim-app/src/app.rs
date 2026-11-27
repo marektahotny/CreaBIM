@@ -489,9 +489,9 @@ pub struct CreaBimApp {
     cooling: Option<creabim_services::coolingload::Settings>,
     /// The air balance window is open.
     air_balance: bool,
-    /// The calculation whose window, just opened, writes its results to
-    /// the model when it is next drawn.
-    results_due: Option<&'static str>,
+    /// The duct sizing's results, as the window found them last frame,
+    /// are what the project holds.
+    ducts_written: bool,
     /// The duct sizing window's velocities, while it is open.
     ducts: Option<creabim_services::ductsizing::Limits>,
     /// The heat recovery design window's options, while it is open.
@@ -735,7 +735,7 @@ impl CreaBimApp {
             radiators: None,
             cooling: None,
             air_balance: false,
-            results_due: None,
+            ducts_written: false,
             ducts: None,
             recuperation: None,
             extract: None,
@@ -14044,6 +14044,11 @@ impl CreaBimApp {
             }
         }
         if frame == at {
+            // the project saved as it is now (`CREABIM_SHOT_SAVE=<file.creabim>`),
+            // to open it again in a next shot
+            if let Ok(p) = std::env::var("CREABIM_SHOT_SAVE") {
+                self.save_as_to(p);
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
         let shot = ctx.input(|i| {

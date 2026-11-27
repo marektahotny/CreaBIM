@@ -13,12 +13,15 @@ use creabim_services::electrical::{Method, BREAKER_IN, IZ_S};
 use eframe::egui::{self, Vec2};
 
 /// The window's state while it is open.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub(super) struct CircuitsWindow {
     /// The simultaneity β the designer takes, and the most sockets a
     /// proposed circuit gets.
     beta: f64,
     max_sockets: usize,
     /// The circuit whose devices are shown.
+    #[serde(skip)]
     open: Option<ElementId>,
 }
 
@@ -69,9 +72,9 @@ impl CreaBimApp {
             return false;
         }
         if self.circuits.is_none() {
-            self.circuits = Some(CircuitsWindow::default());
+            // reopened: as it was last written (George 2026-11-27)
+            self.circuits = Some(self.saved_settings("circuits").unwrap_or_default());
         }
-        self.results_due = Some("circuits");
         true
     }
 
@@ -119,7 +122,9 @@ impl CreaBimApp {
             })
             .collect();
         let mut ask: Option<Ask> = None;
-        let mut write_now = self.results_due.take_if(|c| *c == "circuits").is_some();
+        let found = creabim_services::calcresults::circuits(&results).with_settings(&w);
+        let written = self.is_written(&found);
+        let mut write_now = false;
         let mut open = true;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Circuits"))
@@ -129,7 +134,7 @@ impl CreaBimApp {
             .default_size(crate::app::shell::at_least(Vec2::new(860.0, 560.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui) {
+                if super::calcresultsui::write_button(ui, written) {
                     write_now = true;
                 }
                 ui.horizontal_wrapped(|ui| {
@@ -474,7 +479,7 @@ impl CreaBimApp {
                 ));
             });
         if write_now {
-            self.write_results_said(creabim_services::calcresults::circuits(&results));
+            self.write_results_said(found);
         }
         if let Some(a) = ask {
             self.circuits_apply(a, &w, method);
