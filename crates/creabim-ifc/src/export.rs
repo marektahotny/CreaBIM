@@ -643,7 +643,9 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                     None => c.shape("SweptSolid", &[solid]),
                 };
                 let tail = match creabim_core::slab::kind_of(model, slab) {
-                    creabim_core::SlabKind::Foundation => ",$,.BASESLAB.",
+                    creabim_core::SlabKind::Foundation | creabim_core::SlabKind::Base => {
+                        ",$,.BASESLAB."
+                    }
                     creabim_core::SlabKind::Floor => ",$,.FLOOR.",
                 };
                 let r = product(&mut c, "IFCSLAB", e, pl, shape, tail);

@@ -190,12 +190,16 @@ pub fn callout_click(
 /// A click with the Detail tool in `view`: each click adds a point; a
 /// click on the last point again (or Enter) finishes the path, and for a
 /// filled region a click on the first point closes it. A break line ends
-/// at its second point.
+/// at its second point. `tol` is how near (view units) a click counts as
+/// on a point already clicked: a few pixels on screen, so a short line is
+/// drawn at any zoom (George 2026-11-27).
+#[allow(clippy::too_many_arguments)]
 pub fn detail_click(
     doc: &mut Document,
     view: ElementId,
     p: DVec2,
     raw: DVec2,
+    tol: f64,
     state: &mut PlanState,
     selection: &mut Selection,
 ) -> Result<(), ModelError> {
@@ -208,7 +212,7 @@ pub fn detail_click(
         d.off.clear();
         d.view = Some(view);
     }
-    let near = |a: DVec2| a.distance(p) < 0.004_f64.max(view_scale(doc.model(), view) * 0.0015);
+    let near = |a: DVec2| a.distance(p) < tol.max(1e-6);
     let done = match (d.path.first(), d.path.last()) {
         (Some(first), _) if kind.is_area() && d.path.len() >= 3 && near(*first) => true,
         // a polyline or curve closed on its first point
@@ -298,10 +302,6 @@ pub fn keep(doc: &mut Document, state: &mut PlanState, selection: &mut Selection
             false
         }
     }
-}
-
-fn view_scale(model: &Model, view: ElementId) -> f64 {
-    view_of(model, view).map_or(100.0, |v| v.scale)
 }
 
 /// Make the component from the points clicked so far.
@@ -593,6 +593,25 @@ mod tests {
     use super::*;
     use crate::planview::Tool;
 
+    /// A few pixels at an ordinary zoom, in metres.
+    const TOL: f64 = 0.004;
+
+    #[test]
+    fn a_short_line_is_drawn_too() {
+        let (mut doc, section) = doc_with_section();
+        let mut state = PlanState::default();
+        state.tool = Tool::Line;
+        let mut sel = Selection::default();
+        let p = DVec2::new;
+        // 5 cm and 1 cm long: once dropped as a click on the first point
+        for q in [p(0.0, 0.0), p(0.05, 0.0), p(1.0, 0.0), p(1.0, 0.01)] {
+            detail_click(&mut doc, section, q, q, TOL, &mut state, &mut sel).unwrap();
+        }
+        let l = lines(&doc);
+        assert_eq!(l.len(), 2);
+        assert!((l[0].points[1] - l[0].points[0]).length() > 0.009);
+    }
+
     fn doc_with_section() -> (Document, ElementId) {
         let mut doc = Document::new();
         let v = Element::new(
@@ -639,7 +658,7 @@ mod tests {
         let mut sel = Selection::default();
         let p = DVec2::new;
         for q in [p(0.0, 0.0), p(1.0, 0.0), p(1.0, 0.5), p(1.0, 0.5)] {
-            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+            detail_click(&mut doc, section, q, q, TOL, &mut state, &mut sel).unwrap();
         }
         let items: Vec<&DetailItem> = doc
             .model()
@@ -670,6 +689,7 @@ mod tests {
                 section,
                 q,
                 q - p(0.0, 0.003),
+                TOL,
                 &mut state,
                 &mut sel,
             )
@@ -698,6 +718,7 @@ mod tests {
             section,
             p(0.0, 1.0),
             p(0.0, 1.0),
+            TOL,
             &mut state,
             &mut sel,
         )
@@ -727,7 +748,7 @@ mod tests {
         let mut sel = Selection::default();
         let p = DVec2::new;
         for q in [p(0.0, 0.0), p(2.0, 0.0), p(0.0, 1.0), p(2.0, 1.0)] {
-            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+            detail_click(&mut doc, section, q, q, TOL, &mut state, &mut sel).unwrap();
         }
         let l = lines(&doc);
         assert_eq!(l.len(), 2);
@@ -746,7 +767,7 @@ mod tests {
         let mut sel = Selection::default();
         let p = DVec2::new;
         for q in [p(0.0, 0.0), p(2.0, 0.0), p(2.0, 1.0)] {
-            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+            detail_click(&mut doc, section, q, q, TOL, &mut state, &mut sel).unwrap();
         }
         assert!(lines(&doc).is_empty());
         assert_eq!(last_point(&state, section), Some(p(2.0, 1.0)));
@@ -755,7 +776,7 @@ mod tests {
         assert_eq!(lines(&doc)[0].points.len(), 3);
         // a second one, closed on its first point
         for q in [p(0.0, 2.0), p(2.0, 2.0), p(2.0, 3.0), p(0.0, 2.0)] {
-            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+            detail_click(&mut doc, section, q, q, TOL, &mut state, &mut sel).unwrap();
         }
         let l = lines(&doc);
         assert_eq!(l.len(), 2);
@@ -772,7 +793,7 @@ mod tests {
         let mut sel = Selection::default();
         let p = DVec2::new;
         for q in [p(0.0, 0.0), p(2.0, 0.0), p(1.0, 1.0)] {
-            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+            detail_click(&mut doc, section, q, q, TOL, &mut state, &mut sel).unwrap();
         }
         let all: Vec<DetailItem> = doc
             .model()
@@ -787,7 +808,7 @@ mod tests {
         assert_eq!(all[0].points.len(), 3);
         state.tool = Tool::Curve;
         for q in [p(0.0, 2.0), p(2.0, 2.0), p(2.0, 3.0), p(0.0, 2.0)] {
-            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
+            detail_click(&mut doc, section, q, q, TOL, &mut state, &mut sel).unwrap();
         }
         let curve = doc
             .model()

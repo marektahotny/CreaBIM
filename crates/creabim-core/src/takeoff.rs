@@ -135,9 +135,10 @@ impl Layout {
 }
 
 /// The order element categories are listed in: as a house is built.
-pub const CATEGORY_ORDER: [&str; 20] = [
+pub const CATEGORY_ORDER: [&str; 21] = [
     "Footings",
     "Foundation slabs",
+    "Reinforcement",
     "Walls",
     "Plinths",
     "Columns",
@@ -288,7 +289,7 @@ pub fn lines(model: &Model) -> Vec<Line> {
                 let area = s.area();
                 (
                     match crate::slab::kind_of(model, s) {
-                        crate::SlabKind::Foundation => "Foundation slabs",
+                        crate::SlabKind::Foundation | crate::SlabKind::Base => "Foundation slabs",
                         crate::SlabKind::Floor => "Slabs",
                     },
                     s.level,
@@ -687,7 +688,44 @@ pub fn lines(model: &Model) -> Vec<Line> {
             }
         }
     }
+    out.extend(kari_lines(model));
     out
+}
+
+/// The welded meshes laid in slabs (George 2026-11-27): a line for each
+/// mesh on a storey, its designation, sheets with their laps and weight
+/// in tonnes, its area the slabs' area reinforced.
+pub fn kari_lines(model: &Model) -> Vec<Line> {
+    crate::kari::laid(model)
+        .into_iter()
+        .map(|l| {
+            let t = format!("{:.3}", l.kg() / 1000.0).replace('.', ",");
+            let label = crate::words::tr(if l.top {
+                "KARI mesh {d}, top edge – {n} pcs, lap {lap} mm, {t} t"
+            } else {
+                "KARI mesh {d}, bottom edge – {n} pcs, lap {lap} mm, {t} t"
+            })
+            .replace("{d}", &l.mesh.designation())
+            .replace("{n}", &l.pieces.to_string())
+            .replace("{lap}", &format!("{:.0}", l.lap * 1000.0))
+            .replace("{t}", &t);
+            Line {
+                element: l.slabs[0],
+                category: "Reinforcement",
+                level: Some(l.level),
+                material: None,
+                layer: None,
+                thickness: l.mesh.wire / 1000.0,
+                quantity: Quantity {
+                    area: l.area,
+                    count: l.pieces,
+                    ..Default::default()
+                },
+                perimeter: 0.0,
+                label: Some(label),
+            }
+        })
+        .collect()
 }
 
 /// The quantities of one material, or of one level, added up.
