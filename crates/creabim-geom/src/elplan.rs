@@ -217,12 +217,14 @@ pub fn is_device(model: &Model, id: ElementId) -> bool {
 }
 
 /// An electrical device that only the electrical drawings show: a
-/// socket, switch, light, board or low-current device. Appliances (a
-/// fridge, a cooker, a washing machine) are furniture to the architect.
+/// socket, switch, light or low-current device. Appliances (a fridge, a
+/// cooker, a washing machine) are furniture to the architect, and the
+/// distribution board is drawn in his plans too (George 2026-11-27).
 pub fn is_wiring_device(model: &Model, id: ElementId) -> bool {
     model.get(id).is_some_and(|e| {
         matches!(e.kind, ElementKind::Object(_))
-            && el::device_kind(model, e).is_some_and(|k| k != el::DeviceKind::Appliance)
+            && el::device_kind(model, e)
+                .is_some_and(|k| !matches!(k, el::DeviceKind::Appliance | el::DeviceKind::Board))
     })
 }
 

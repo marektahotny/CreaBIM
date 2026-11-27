@@ -590,8 +590,8 @@ pub enum Belongs {
     Trade(Trade),
     /// A piece of plant with several inputs and outputs (a heat pump's
     /// units, a boiler, a cylinder or tank, a water heater, a heat
-    /// recovery unit, a manifold, a pump): every drawing, the
-    /// architect's too.
+    /// recovery unit, a manifold, a pump, the electrical distribution
+    /// board): every drawing, the architect's too.
     Plant,
 }
 
@@ -669,11 +669,15 @@ pub fn belongs(model: &crate::Model, e: &crate::Element) -> Belongs {
             if class == "ifcsanitaryterminal" || matches!(t.category, C::Toilet) {
                 return Belongs::Building;
             }
-            // sockets, switches, lights, boards, low current; not the
-            // appliances (a fridge, a cooker), which are furniture
-            if crate::electrical::device_kind(model, e)
-                .is_some_and(|k| k != crate::electrical::DeviceKind::Appliance)
-            {
+            // the distribution board: in the architect's drawings too
+            // (George 2026-11-27)
+            let device = crate::electrical::device_kind(model, e);
+            if device == Some(crate::electrical::DeviceKind::Board) {
+                return Belongs::Plant;
+            }
+            // sockets, switches, lights, low current; not the appliances
+            // (a fridge, a cooker), which are furniture
+            if device.is_some_and(|k| k != crate::electrical::DeviceKind::Appliance) {
                 return Belongs::Trade(Trade::Electrical);
             }
             for trade in [Trade::Heating, Trade::Ventilation, Trade::MedGas] {
