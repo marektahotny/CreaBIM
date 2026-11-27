@@ -124,7 +124,7 @@ pub use joins::{
 };
 pub use marks::{marks, material_of, MarkClass, MarkOrder, MarkRule, MarkRules};
 pub use members::{
-    Beam, Column, Landing, Profile, Railing, Roof, RoofShape, RoofSlope, Stair, StairSide,
+    Battens, Beam, Column, Landing, Profile, Railing, Roof, RoofShape, RoofSlope, Stair, StairSide,
 };
 pub use model::Model;
 pub use modifiers::{Axis, Modifier, ModifierKind};

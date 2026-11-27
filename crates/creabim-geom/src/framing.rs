@@ -198,17 +198,73 @@ pub fn timber_schedule_by(model: &Model, by_section: bool) -> Schedule {
             String::new(),
             comma(paint, 2),
         ],
-        above_totals: vec![vec![
-            tr("Timber in all"),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            comma(volume, 6),
-        ]],
+        above_totals: {
+            let mut a = vec![sum_row(tr("Timber in all"), None, volume)];
+            let laths = batten_rows(model);
+            if !laths.is_empty() {
+                let all = volume + laths.iter().map(|x| x.1).sum::<f64>();
+                for (text, v, l) in laths {
+                    a.push(sum_row(text, Some(l), v));
+                }
+                a.push(sum_row(tr("Timber altogether"), None, all));
+            }
+            a
+        },
     }
+}
+
+/// A row over the totals: its text, the length (m) if any, the volume.
+fn sum_row(text: String, length: Option<f64>, volume: f64) -> Vec<String> {
+    let mut r = vec![String::new(); 8];
+    r[0] = text;
+    if let Some(l) = length {
+        r[6] = comma(l, 2);
+    }
+    r[7] = comma(volume, 6);
+    r
+}
+
+/// The roofs' laths and counter-laths, alike ones together, as George's
+/// list gives them: "Latovanie pod strešnú krytinu 50 x 40 vo
+/// vzdialenosti 33,53 cm" and "Latovanie pozdĺž krokiev 50 x 50
+/// celkovej dĺžky l=204,55 m": text, volume m³, length m.
+fn batten_rows(model: &Model) -> Vec<(String, f64, f64)> {
+    use creabim_core::words::tr;
+    let mut laths: Vec<([f64; 2], f64, f64)> = vec![];
+    let mut counters: Vec<([f64; 2], f64)> = vec![];
+    for r in framing::batten_runs(model) {
+        let b = &r.battens;
+        match laths
+            .iter_mut()
+            .find(|x| x.0 == b.lath && (x.1 - b.spacing).abs() < 1e-6)
+        {
+            Some(x) => x.2 += r.laths,
+            None => laths.push((b.lath, b.spacing, r.laths)),
+        }
+        if let Some(c) = b.counter {
+            match counters.iter_mut().find(|x| x.0 == c) {
+                Some(x) => x.1 += r.counter,
+                None => counters.push((c, r.counter)),
+            }
+        }
+    }
+    let mm0 = |v: f64| format!("{:.0}", v * 1000.0);
+    let mut out = vec![];
+    for (s, sp, l) in laths {
+        let text = tr("Battens under the roofing {b} x {h} at {s} cm")
+            .replace("{b}", &mm0(s[0]))
+            .replace("{h}", &mm0(s[1]))
+            .replace("{s}", &comma(sp * 100.0, 2));
+        out.push((text, l * s[0] * s[1], l));
+    }
+    for (s, l) in counters {
+        let text = tr("Battens along the rafters {b} x {h}, total length l={l} m")
+            .replace("{b}", &mm0(s[0]))
+            .replace("{h}", &mm0(s[1]))
+            .replace("{l}", &comma(l, 2));
+        out.push((text, l * s[0] * s[1], l));
+    }
+    out
 }
 
 /// The collar ties' bolts under the timber, alike ones together: the

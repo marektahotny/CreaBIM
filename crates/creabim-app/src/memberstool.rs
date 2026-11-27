@@ -1804,6 +1804,22 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                         }
                     }
                 }
+                // timber 50 mm off a chimney's face (CSS rules XVI-4.3.8.4,
+                // ČSN 73 4201)
+                if let Some((_, gap)) = creabim_core::framing::chimney_too_near(
+                    model,
+                    &creabim_core::Element::new("", ElementKind::Beam(b.clone())),
+                ) {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        format!(
+                            "{} {} mm (≥ 50 mm, {})",
+                            crate::i18n::tr("Gap to the chimney"),
+                            (gap * 1000.0).round(),
+                            crate::i18n::tr("CSS rules XVI-4.3.8.4, ČSN 73 4201")
+                        ),
+                    );
+                }
                 if f.role == creabim_core::framing::Role::Collar {
                     if let Some(p) = f.bolt.and_then(creabim_core::framing::bolt_parts) {
                         let d = p.thread as f64;
@@ -2067,6 +2083,93 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     crate::units::len(r.peak())
                 ),
             );
+            // its laths and counter-laths in the list of timber (George
+            // 2026-11-27)
+            let mut on = r.battens.is_some();
+            if crate::props::check(
+                ui,
+                "Battens",
+                &mut on,
+                "Laths and counter-laths in the list of timber",
+            )
+            .changed()
+            {
+                r.battens = on.then(creabim_core::Battens::default);
+                label = "Roof battens";
+            }
+            if let Some(b) = &mut r.battens {
+                // in cm to two places, as a maker states it (33,53 cm)
+                let mut cm = b.spacing * 100.0;
+                let spaced = crate::props::row(ui, "Lath spacing", |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut cm)
+                            .speed(0.01)
+                            .range(5.0..=100.0)
+                            .custom_formatter(|v, _| format!("{v:.2} cm").replace('.', ","))
+                            .custom_parser(|s| {
+                                s.trim()
+                                    .trim_end_matches("cm")
+                                    .trim()
+                                    .replace(',', ".")
+                                    .parse()
+                                    .ok()
+                            }),
+                    )
+                    .changed()
+                });
+                if spaced {
+                    b.spacing = cm / 100.0;
+                    label = "Roof battens";
+                }
+                weak(
+                    ui,
+                    crate::i18n::tr("The roofing's covering length, from its maker.").to_string(),
+                );
+                if num(ui, "Lath width", &mut b.lath[0], 0.02, 0.2)
+                    | num(ui, "Lath height", &mut b.lath[1], 0.01, 0.2)
+                {
+                    label = "Roof battens";
+                }
+                let mut counter = b.counter.is_some();
+                if crate::props::check(ui, "", &mut counter, "Counter-laths along the rafters")
+                    .changed()
+                {
+                    b.counter = counter.then_some([0.05, 0.05]);
+                    label = "Roof battens";
+                }
+                if let Some(c) = &mut b.counter {
+                    if num(ui, "Counter-lath width", &mut c[0], 0.02, 0.2)
+                        | num(ui, "Counter-lath height", &mut c[1], 0.01, 0.2)
+                    {
+                        label = "Roof battens";
+                    }
+                }
+                // the least laths and counter-laths (CSS rules)
+                let warn = |ui: &mut egui::Ui, t: &str| {
+                    ui.colored_label(ui.visuals().warn_fg_color, crate::i18n::tr(t));
+                };
+                let [lw, lh] = creabim_core::members::LATH_MIN;
+                if b.lath[0].max(b.lath[1]) < lw - 1e-6 || b.lath[0].min(b.lath[1]) < lh - 1e-6 {
+                    warn(ui, "A lath at least 50 × 24 mm (CSS rules III-7.1, p. 94)");
+                }
+                if b.counter
+                    .is_some_and(|c| c[1] < creabim_core::members::COUNTER_LATH_MIN_H - 1e-6)
+                {
+                    warn(
+                        ui,
+                        "A counter-lath at least 40 mm high (CSS rules II, p. 26; VII-4.1, p. 306)",
+                    );
+                }
+                weak(
+                    ui,
+                    format!(
+                        "{} {}",
+                        crate::i18n::tr("Area of the slopes"),
+                        crate::units::area(r.slope_area())
+                    ),
+                );
+            }
         }
         ElementKind::Stair(s) => {
             let mut ramp = s.ramp.is_some();

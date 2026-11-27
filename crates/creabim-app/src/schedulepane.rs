@@ -485,8 +485,21 @@ pub fn show(
         // the sums over the totals (living area), then the totals
         for sum in table.above_totals.iter().chain([&table.totals]) {
             let t = row(ui, Some(HEADER));
-            for ((c, col), text) in cells(t).into_iter().zip(&table.columns).zip(sum) {
-                text_at(ui, c, text, col.numeric, MUTED, false);
+            let cs = cells(t);
+            let n = cs.len().min(sum.len());
+            let mut i = 0;
+            while i < n {
+                // a label runs on across the empty cells after it, up to
+                // its value ("Latovanie pod strešnú krytinu ... 1,006979")
+                let mut j = i + 1;
+                if !sum[i].is_empty() && !table.columns[i].numeric {
+                    while j < n && sum[j].is_empty() {
+                        j += 1;
+                    }
+                }
+                let c = cs[i].union(cs[j - 1]);
+                text_at(ui, c, &sum[i], table.columns[i].numeric, MUTED, false);
+                i = j;
             }
         }
     });
