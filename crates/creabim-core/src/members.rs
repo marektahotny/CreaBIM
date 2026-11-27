@@ -562,7 +562,45 @@ pub struct Roof {
     /// missing are [`RoofSlope::Auto`]. Hip and gable roofs only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub slopes: Vec<RoofSlope>,
+    /// The laths the roofing hangs on and the counter-laths along the
+    /// rafters under them (latovanie), for the list of timber; none when
+    /// not counted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub battens: Option<Battens>,
 }
+
+/// A roof's laths and counter-laths (latovanie, kontralaty), as George's
+/// list of timber gives them: "Latovanie pod strešnú krytinu 50 x 40 vo
+/// vzdialenosti 33,53 cm", "Latovanie pozdĺž krokiev 50 x 50".
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Battens {
+    /// From lath to lath up the slope, m: the roofing's covering length,
+    /// from its maker.
+    pub spacing: f64,
+    /// A lath's width and height, m.
+    pub lath: [f64; 2],
+    /// A counter-lath's width and height, m; none without them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counter: Option<[f64; 2]>,
+}
+
+impl Default for Battens {
+    /// George's sample list of timber (RD with a hipped roof): laths
+    /// 50 × 40 at 33,53 cm, counter-laths 50 × 50.
+    fn default() -> Self {
+        Self {
+            spacing: 0.3353,
+            lath: [0.05, 0.04],
+            counter: Some([0.05, 0.05]),
+        }
+    }
+}
+
+/// The least laths and counter-laths (Pokrývačské pravidlá CSS 01/2026):
+/// a lath at least 50 × 24 mm (časť III, 7.1 (2), s. 94), a counter-lath
+/// at least 40 mm high (časť II, s. 26; časť VII, 4.1 (8), s. 306).
+pub const LATH_MIN: [f64; 2] = [0.05, 0.024];
+pub const COUNTER_LATH_MIN_H: f64 = 0.04;
 
 /// One flat piece of a roof's underside: its outline in plan and the plane
 /// `z = c + g · p` (relative to the roof's base).
@@ -608,6 +646,7 @@ impl Roof {
             assembly: None,
             holes: vec![],
             slopes: vec![],
+            battens: None,
         }
     }
 
@@ -830,6 +869,30 @@ impl Roof {
     /// Plan area covered, overhang included.
     pub fn plan_area(&self) -> f64 {
         crate::polygon::signed_area2(&self.eave_outline()).abs() / 2.0
+    }
+
+    /// The area of its slopes, overhang included, holes left out: each
+    /// flat piece's plan area over the cosine of its slope.
+    pub fn slope_area(&self) -> f64 {
+        let faces = self.faces();
+        let factor = |f: &RoofFace| (1.0 + f.g.length_squared()).sqrt();
+        let mut a: f64 = faces
+            .iter()
+            .map(|f| crate::polygon::signed_area2(&f.outline).abs() / 2.0 * factor(f))
+            .sum();
+        for h in &self.holes {
+            if h.len() < 3 {
+                continue;
+            }
+            let c = h.iter().copied().sum::<DVec2>() / h.len() as f64;
+            if let Some(f) = faces
+                .iter()
+                .find(|f| crate::polygon::contains(&f.outline, c))
+            {
+                a -= crate::polygon::signed_area2(h).abs() / 2.0 * factor(f);
+            }
+        }
+        a.max(0.0)
     }
 }
 
@@ -3089,6 +3152,7 @@ mod tests {
             assembly: None,
             holes: vec![],
             slopes: vec![],
+            battens: None,
         };
         crate::set_layer_edge(&mut r.layer_edges, 0, 0, 0.1);
         let ys = |faces: &[RoofFace]| {

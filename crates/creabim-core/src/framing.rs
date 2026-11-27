@@ -769,6 +769,196 @@ impl Bolt {
     }
 }
 
+/// The least spacings of a bolt in timber, as multiples of its
+/// diameter d (Pokrývačské pravidlá CSS 01/2026, časť III, 6.8 (5),
+/// p. 91): from a loaded end 7d and at least 80 mm, from a loaded edge
+/// 4d.
+pub const BOLT_END_D: f64 = 7.0;
+pub const BOLT_END_MIN: f64 = 0.08;
+pub const BOLT_EDGE_D: f64 = 4.0;
+
+/// A washer under a bolt in timber at least 3d across and 0,3d thick
+/// (Pokrývačské pravidlá CSS 01/2026, časť III, 6.8 (2), p. 91).
+pub fn washer_fits(p: &BoltParts) -> bool {
+    let d = p.thread as f64;
+    p.d2 >= 3.0 * d - 1e-9 && p.h >= 0.3 * d - 1e-9
+}
+
+/// How far a bolt is from a member it passes through, m: along the
+/// member to its nearer end, and square to it to its nearer edge.
+pub fn bolt_clearance(model: &Model, bolt: &Bolt, e: &Element) -> Option<(f64, f64)> {
+    use glam::DVec2;
+    let p = side_profile(model, e)?;
+    let q = DVec2::new(
+        (bolt.at.truncate() - p.origin.truncate()).dot(p.dir),
+        bolt.at.z - p.origin.z,
+    );
+    let u = DVec2::new(1.0, p.slope).normalize();
+    let n = u.perp();
+    // the nearest crossing of the outline from q along +-v
+    let ray = |v: DVec2| {
+        let mut best = f64::INFINITY;
+        let k = p.points.len();
+        for i in 0..k {
+            let (a, b) = (p.points[i], p.points[(i + 1) % k]);
+            let e = b - a;
+            let den = v.perp_dot(e);
+            if den.abs() < 1e-12 {
+                continue;
+            }
+            let t = (a - q).perp_dot(e) / den;
+            let s = (a - q).perp_dot(v) / den;
+            if t > 1e-9 && (-1e-9..=1.0 + 1e-9).contains(&s) {
+                best = best.min(t);
+            }
+        }
+        best
+    };
+    let end = ray(u).min(ray(-u));
+    let edge = ray(n).min(ray(-n));
+    (end.is_finite() && edge.is_finite()).then_some((end, edge))
+}
+
+/// A roof's laths and counter-laths, as long as they run.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BattenRun {
+    pub roof: ElementId,
+    pub battens: crate::Battens,
+    /// The laths, m: the slopes' area over their spacing.
+    pub laths: f64,
+    /// The counter-laths, m: one along each rafter under the roof, as
+    /// long as it (George's sample: the rafters' total length).
+    pub counter: f64,
+}
+
+/// The laths and counter-laths of the roofs that count them.
+pub fn batten_runs(model: &Model) -> Vec<BattenRun> {
+    let rafters: Vec<(glam::DVec2, f64)> = model
+        .iter()
+        .filter_map(|e| {
+            let f = of(e)?;
+            let ElementKind::Beam(b) = &e.kind else {
+                return None;
+            };
+            (f.role == Role::Rafter).then(|| ((b.start + b.end) / 2.0, length(model, e)))
+        })
+        .collect();
+    model
+        .iter()
+        .filter_map(|e| {
+            let ElementKind::Roof(r) = &e.kind else {
+                return None;
+            };
+            let b = r.battens.clone()?;
+            let laths = if b.spacing > 1e-6 {
+                r.slope_area() / b.spacing
+            } else {
+                0.0
+            };
+            let eaves = r.eave_outline();
+            let counter = if b.counter.is_some() {
+                rafters
+                    .iter()
+                    .filter(|(m, _)| crate::polygon::contains(&eaves, *m))
+                    .map(|x| x.1)
+                    .sum()
+            } else {
+                0.0
+            };
+            Some(BattenRun {
+                roof: e.id,
+                battens: b,
+                laths,
+                counter,
+            })
+        })
+        .collect()
+}
+
+/// The least gap between timber and a chimney's face (Pokrývačské
+/// pravidlá CSS 01/2026, časť XVI, 4.3.8.4, s. 531, after ČSN 73 4201
+/// 6.5.5): 50 mm, to be filled with stone wool.
+pub const CHIMNEY_GAP: f64 = 0.05;
+
+/// The chimneys: outlines in plan pulled up through a roof, with how
+/// high they run, m.
+pub fn chimneys(model: &Model) -> Vec<(ElementId, Vec<glam::DVec2>, f64, f64)> {
+    model
+        .iter()
+        .filter_map(|e| {
+            let ElementKind::Part(p) = &e.kind else {
+                return None;
+            };
+            if p.void {
+                return None;
+            }
+            let o = crate::roofmetal::chimney_outline(model, e.id)?;
+            let crate::parts::Form::Extrusion { base, height, .. } = &p.form else {
+                return None;
+            };
+            let z0 = crate::members::elevation(model, p.level) + base;
+            let z1 = z0 + height;
+            let c = o.iter().copied().sum::<glam::DVec2>() / o.len() as f64;
+            let top = crate::roofmetal::roof_top_at(model, c)?;
+            (z0 < top && z1 > top).then_some((e.id, o, z0, z1))
+        })
+        .collect()
+}
+
+/// How near a timber member comes to a chimney, m, where it is nearer
+/// than [`CHIMNEY_GAP`]: the chimney and the gap in plan between its
+/// face and the member, at heights both reach.
+pub fn chimney_too_near(model: &Model, e: &Element) -> Option<(ElementId, f64)> {
+    use glam::DVec2;
+    let f = of(e)?;
+    if !f.role.is_timber() {
+        return None;
+    }
+    let ElementKind::Beam(b) = &e.kind else {
+        return None;
+    };
+    let p = side_profile(model, e)?;
+    let (lo, hi) = p
+        .points
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, c), q| {
+            (a.min(q.y), c.max(q.y))
+        });
+    let (z0, z1) = (p.origin.z + lo, p.origin.z + hi);
+    let xs = p
+        .points
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, c), q| {
+            (a.min(q.x), c.max(q.x))
+        });
+    let across = p.dir.perp() * b.width / 2.0;
+    let o = p.origin.truncate();
+    let (a, c) = (o + p.dir * xs.0, o + p.dir * xs.1);
+    let foot = vec![a - across, c - across, c + across, a + across];
+    let seg = |q: DVec2, s0: DVec2, s1: DVec2| {
+        let d = s1 - s0;
+        let t = ((q - s0).dot(d) / d.length_squared().max(1e-12)).clamp(0.0, 1.0);
+        q.distance(s0 + d * t)
+    };
+    let gap = |a: &[DVec2], b: &[DVec2]| {
+        if crate::polygon::overlap(a, b) {
+            return 0.0;
+        }
+        let one = |a: &[DVec2], b: &[DVec2]| {
+            a.iter()
+                .flat_map(|q| (0..b.len()).map(move |i| seg(*q, b[i], b[(i + 1) % b.len()])))
+                .fold(f64::INFINITY, f64::min)
+        };
+        one(a, b).min(one(b, a))
+    };
+    chimneys(model)
+        .into_iter()
+        .filter(|(_, _, c0, c1)| *c0 < z1 && *c1 > z0)
+        .map(|(id, out, _, _)| (id, gap(&foot, &out)))
+        .filter(|(_, d)| *d < CHIMNEY_GAP - 1e-6)
+        .min_by(|x, y| x.1.total_cmp(&y.1))
+}
+
 /// The bolts of the collar ties: one where a bolted collar tie clamps a
 /// rafter, through it and the tie on its other side when they are a
 /// pair (George 2026-11-27).
@@ -1721,6 +1911,123 @@ mod tests {
             .apply(&mut m2)
             .unwrap();
         assert!(side_profile(&m2, &e2).unwrap().seats.is_empty());
+    }
+
+    #[test]
+    fn a_bolt_keeps_its_distance_from_the_collar_end() {
+        use crate::{Beam, Transaction};
+        let (mut m, e) = rafter([EndCut::Square, EndCut::Square]);
+        let p0 = side_profile(&m, &e).unwrap();
+        let ElementKind::Beam(rb) = &e.kind else {
+            panic!()
+        };
+        // a collar tie 50/200 alongside it, level, from 1 m to 2 m, its
+        // top at the rafter's top at 2 m
+        let zt = p0.origin.z + 0.5 * 2.0;
+        let mut b = Beam::new(rb.level, DVec2::new(1.0, 0.065), DVec2::new(2.0, 0.065));
+        let mut f = Framing::new(Role::Collar);
+        f.section = "50/200".into();
+        let mut c = Element::new("c", ElementKind::Beam(b.clone()));
+        apply(&mut c, f.clone());
+        let (a, _) = b.axis(&m);
+        b.top_offset += a.z - zt;
+        let mut c = Element::new("c", ElementKind::Beam(b));
+        apply(&mut c, f);
+        Transaction::new("t")
+            .insert(c.clone())
+            .apply(&mut m)
+            .unwrap();
+        let bs = bolts(&m);
+        assert_eq!(bs.len(), 1);
+        let bolt = &bs[0];
+        assert_eq!(bolt.collars, vec![c.id]);
+        // along the level tie to its end at 2 m; across it to its
+        // nearer edge
+        let (end, edge) = bolt_clearance(&m, bolt, &c).unwrap();
+        assert!((end - (2.0 - bolt.at.x)).abs() < 1e-9);
+        let dz = zt - bolt.at.z;
+        assert!((edge - dz.min(0.2 - dz)).abs() < 1e-9);
+        assert!(end > 0.0 && edge > 0.0);
+        // in the rafter: square to its slope to its nearer edge
+        let (_, re) = bolt_clearance(&m, bolt, &e).unwrap();
+        assert!(re > 0.0 && re < 0.1);
+        // DIN 440 R washers are 3d across and 0,3d thick up to M20, not M24
+        assert!(BOLT_PARTS[..4].iter().all(washer_fits));
+        assert!(!washer_fits(&BOLT_PARTS[4]));
+    }
+
+    #[test]
+    fn timber_keeps_50_mm_from_a_chimney() {
+        use crate::{Part, Roof, RoofShape, Transaction};
+        let (mut m, e) = rafter([EndCut::Square, EndCut::Square]);
+        let ElementKind::Beam(rb) = &e.kind else {
+            panic!()
+        };
+        let l = rb.level;
+        let roof = Roof::new(
+            l,
+            crate::polygon::rectangle(DVec2::new(-1.0, -3.0), DVec2::new(5.0, 3.0)),
+            RoofShape::Gable,
+        );
+        let stack = |y: f64| {
+            Element::new(
+                "Komín",
+                ElementKind::Part(Part::extrusion(
+                    l,
+                    crate::polygon::rectangle(DVec2::new(1.5, y), DVec2::new(2.1, y + 0.5)),
+                    0.0,
+                    20.0,
+                )),
+            )
+        };
+        // 30 mm off the rafter's side (it is 80 wide on y = 0)
+        let near = stack(0.07);
+        Transaction::new("t")
+            .insert(Element::new("r", ElementKind::Roof(roof)))
+            .insert(near.clone())
+            .apply(&mut m)
+            .unwrap();
+        assert_eq!(chimneys(&m).len(), 1);
+        let (id, gap) = chimney_too_near(&m, &e).unwrap();
+        assert_eq!(id, near.id);
+        assert!((gap - 0.03).abs() < 1e-9);
+        // 100 mm off: far enough
+        Transaction::new("t")
+            .replace(near.clone(), {
+                let mut f = stack(0.14);
+                f.id = near.id;
+                f
+            })
+            .apply(&mut m)
+            .unwrap();
+        assert!(chimney_too_near(&m, &e).is_none());
+    }
+
+    #[test]
+    fn laths_cover_the_slopes_and_counter_laths_run_along_the_rafters() {
+        use crate::{Battens, Roof, RoofShape, Transaction};
+        let (mut m, e) = rafter([EndCut::Square, EndCut::Square]);
+        let ElementKind::Beam(rb) = &e.kind else {
+            panic!()
+        };
+        let mut roof = Roof::new(
+            rb.level,
+            crate::polygon::rectangle(DVec2::new(-1.0, -3.0), DVec2::new(5.0, 3.0)),
+            RoofShape::Gable,
+        );
+        // one pitch all round: the slopes are the plan over its cosine
+        let plan = roof.plan_area();
+        let slopes = roof.slope_area();
+        assert!((slopes - plan / roof.pitch.to_radians().cos()).abs() < 1e-6);
+        roof.battens = Some(Battens::default());
+        Transaction::new("t")
+            .insert(Element::new("r", ElementKind::Roof(roof)))
+            .apply(&mut m)
+            .unwrap();
+        let runs = batten_runs(&m);
+        assert_eq!(runs.len(), 1);
+        assert!((runs[0].laths - slopes / 0.3353).abs() < 1e-6);
+        assert!((runs[0].counter - length(&m, &e)).abs() < 1e-9);
     }
 
     #[test]

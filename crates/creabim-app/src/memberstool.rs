@@ -1740,6 +1740,110 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                         }
                     }
                 }
+                // the least timber section (Pokrývačské pravidlá CSS
+                // 01/2026, časť III, 3 (2), p. 59, after ČSN 73 1702):
+                // 24 mm thick, 1400 mm² across
+                if f.role.is_timber() {
+                    let (t, a) = (b.width.min(b.depth) * 1000.0, b.width * b.depth * 1e6);
+                    if t < 24.0 - 1e-6 || a < 1400.0 - 1e-6 {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            crate::i18n::tr(
+                                "Under the least load-bearing timber section: 24 mm thick, 1400 mm² (CSS rules III-3)",
+                            ),
+                        );
+                    }
+                }
+                // the bolts through it: how far from its end and edges,
+                // against 7d (at least 80 mm) and 4d, and their washers
+                // (CSS rules III-6.8, p. 91)
+                let mine = ElementKind::Beam(b.clone());
+                let me = model.iter().find(|o| o.kind == mine).map(|o| o.id);
+                if let Some(me) = me {
+                    let probe = creabim_core::Element::new("", mine);
+                    for bolt in creabim_core::framing::bolts(model) {
+                        if bolt.rafter != me && !bolt.collars.contains(&me) {
+                            continue;
+                        }
+                        let Some((end, edge)) =
+                            creabim_core::framing::bolt_clearance(model, &bolt, &probe)
+                        else {
+                            continue;
+                        };
+                        let d = bolt.thread as f64 / 1000.0;
+                        let need_end = (creabim_core::framing::BOLT_END_D * d)
+                            .max(creabim_core::framing::BOLT_END_MIN);
+                        let need_edge = creabim_core::framing::BOLT_EDGE_D * d;
+                        let mm = |v: f64| (v * 1000.0).round();
+                        // a rafter runs on past its collar ties: its ends
+                        // are far, only its edges matter
+                        let collar = bolt.collars.contains(&me);
+                        let mut text = format!("{} M{}: ", crate::i18n::tr("Bolt"), bolt.thread);
+                        if collar {
+                            text += &format!(
+                                "{} {} mm (7d ≥ {} mm), ",
+                                crate::i18n::tr("from the end"),
+                                mm(end),
+                                mm(need_end)
+                            );
+                        }
+                        text += &format!(
+                            "{} {} mm (4d = {} mm)",
+                            crate::i18n::tr("from the edge"),
+                            mm(edge),
+                            mm(need_edge)
+                        );
+                        let short = (collar && end < need_end - 5e-4) || edge < need_edge - 5e-4;
+                        if short {
+                            ui.colored_label(
+                                ui.visuals().warn_fg_color,
+                                format!("{text} — {}", crate::i18n::tr("too close")),
+                            );
+                        } else {
+                            weak(ui, text);
+                        }
+                    }
+                }
+                // timber 50 mm off a chimney's face (CSS rules XVI-4.3.8.4,
+                // ČSN 73 4201)
+                if let Some((_, gap)) = creabim_core::framing::chimney_too_near(
+                    model,
+                    &creabim_core::Element::new("", ElementKind::Beam(b.clone())),
+                ) {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        format!(
+                            "{} {} mm (≥ 50 mm, {})",
+                            crate::i18n::tr("Gap to the chimney"),
+                            (gap * 1000.0).round(),
+                            crate::i18n::tr("CSS rules XVI-4.3.8.4, ČSN 73 4201")
+                        ),
+                    );
+                }
+                if f.role == creabim_core::framing::Role::Collar {
+                    if let Some(p) = f.bolt.and_then(creabim_core::framing::bolt_parts) {
+                        let d = p.thread as f64;
+                        let text = format!(
+                            "{} DIN 440 R Ø{}×{} mm: 3d = {} mm, 0,3d = {} mm",
+                            crate::i18n::tr("Washer"),
+                            p.d2,
+                            p.h,
+                            3.0 * d,
+                            format!("{:.1}", 0.3 * d).replace('.', ",")
+                        );
+                        if creabim_core::framing::washer_fits(&p) {
+                            weak(ui, text);
+                        } else {
+                            ui.colored_label(
+                                ui.visuals().warn_fg_color,
+                                format!(
+                                    "{text} — {}",
+                                    crate::i18n::tr("thinner than 0,3d: use a thicker washer")
+                                ),
+                            );
+                        }
+                    }
+                }
                 weak(
                     ui,
                     "Section from the member's cross-section; width and depth follow it.".into(),
@@ -1979,6 +2083,93 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     crate::units::len(r.peak())
                 ),
             );
+            // its laths and counter-laths in the list of timber (George
+            // 2026-11-27)
+            let mut on = r.battens.is_some();
+            if crate::props::check(
+                ui,
+                "Battens",
+                &mut on,
+                "Laths and counter-laths in the list of timber",
+            )
+            .changed()
+            {
+                r.battens = on.then(creabim_core::Battens::default);
+                label = "Roof battens";
+            }
+            if let Some(b) = &mut r.battens {
+                // in cm to two places, as a maker states it (33,53 cm)
+                let mut cm = b.spacing * 100.0;
+                let spaced = crate::props::row(ui, "Lath spacing", |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut cm)
+                            .speed(0.01)
+                            .range(5.0..=100.0)
+                            .custom_formatter(|v, _| format!("{v:.2} cm").replace('.', ","))
+                            .custom_parser(|s| {
+                                s.trim()
+                                    .trim_end_matches("cm")
+                                    .trim()
+                                    .replace(',', ".")
+                                    .parse()
+                                    .ok()
+                            }),
+                    )
+                    .changed()
+                });
+                if spaced {
+                    b.spacing = cm / 100.0;
+                    label = "Roof battens";
+                }
+                weak(
+                    ui,
+                    crate::i18n::tr("The roofing's covering length, from its maker.").to_string(),
+                );
+                if num(ui, "Lath width", &mut b.lath[0], 0.02, 0.2)
+                    | num(ui, "Lath height", &mut b.lath[1], 0.01, 0.2)
+                {
+                    label = "Roof battens";
+                }
+                let mut counter = b.counter.is_some();
+                if crate::props::check(ui, "", &mut counter, "Counter-laths along the rafters")
+                    .changed()
+                {
+                    b.counter = counter.then_some([0.05, 0.05]);
+                    label = "Roof battens";
+                }
+                if let Some(c) = &mut b.counter {
+                    if num(ui, "Counter-lath width", &mut c[0], 0.02, 0.2)
+                        | num(ui, "Counter-lath height", &mut c[1], 0.01, 0.2)
+                    {
+                        label = "Roof battens";
+                    }
+                }
+                // the least laths and counter-laths (CSS rules)
+                let warn = |ui: &mut egui::Ui, t: &str| {
+                    ui.colored_label(ui.visuals().warn_fg_color, crate::i18n::tr(t));
+                };
+                let [lw, lh] = creabim_core::members::LATH_MIN;
+                if b.lath[0].max(b.lath[1]) < lw - 1e-6 || b.lath[0].min(b.lath[1]) < lh - 1e-6 {
+                    warn(ui, "A lath at least 50 × 24 mm (CSS rules III-7.1, p. 94)");
+                }
+                if b.counter
+                    .is_some_and(|c| c[1] < creabim_core::members::COUNTER_LATH_MIN_H - 1e-6)
+                {
+                    warn(
+                        ui,
+                        "A counter-lath at least 40 mm high (CSS rules II, p. 26; VII-4.1, p. 306)",
+                    );
+                }
+                weak(
+                    ui,
+                    format!(
+                        "{} {}",
+                        crate::i18n::tr("Area of the slopes"),
+                        crate::units::area(r.slope_area())
+                    ),
+                );
+            }
         }
         ElementKind::Stair(s) => {
             let mut ramp = s.ramp.is_some();

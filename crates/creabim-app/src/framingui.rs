@@ -717,6 +717,29 @@ mod tests {
         for t in crate::planview::framing_tags(&probe, &ok) {
             tx = tx.insert(t);
         }
+        // the roof's laths and counter-laths as George's list has them;
+        // a chimney 30 mm off a rafter's side, to show the 50 mm check
+        for e in doc.model().iter() {
+            if let ElementKind::Roof(_) = &e.kind {
+                let mut after = e.clone();
+                if let ElementKind::Roof(r) = &mut after.kind {
+                    r.battens = Some(creabim_core::Battens::default());
+                }
+                tx = tx.replace(e.clone(), after);
+            }
+        }
+        tx = tx.insert(creabim_core::Element::new(
+            "Komín",
+            ElementKind::Part(creabim_core::Part::extrusion(
+                ground,
+                creabim_core::polygon::rectangle(
+                    glam::DVec2::new(7.795, 2.0),
+                    glam::DVec2::new(8.395, 2.6),
+                ),
+                0.0,
+                9.0,
+            )),
+        ));
         // the 3D view's crop box off, the roof framing seen whole
         for e in doc.model().iter() {
             if let ElementKind::CropBox(_) = &e.kind {
@@ -728,10 +751,24 @@ mod tests {
             }
         }
         doc.commit(tx).unwrap();
+        // the rafter by the chimney named, to pick it for a shot
+        let near = doc
+            .model()
+            .iter()
+            .find(|e| creabim_core::framing::chimney_too_near(doc.model(), e).is_some());
+        if let Some(e) = near {
+            let mut after = e.clone();
+            after.name = "Krokva pri komíne".into();
+            let tx = creabim_core::Transaction::new("name").replace(e.clone(), after);
+            doc.commit(tx).unwrap();
+        }
         creabim_store::save(&o, &doc).unwrap();
         let t = creabim_geom::framing::timber_schedule(doc.model());
         for r in &t.rows {
             println!("{:?}", r.cells);
+        }
+        for r in &t.above_totals {
+            println!("{r:?}");
         }
         println!("{:?}", t.totals);
         let s = creabim_geom::framing::steel_schedule(doc.model());
