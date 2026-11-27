@@ -31,6 +31,7 @@ impl CreaBimApp {
         let o = self.heat_opts();
         let floor = self
             .floor_heat
+            .clone()
             .or_else(|| self.saved_settings("floorheat"))
             .unwrap_or_default();
         let d = radiators::design(self.doc.model(), &o, &s, &floor);

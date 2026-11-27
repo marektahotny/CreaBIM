@@ -629,13 +629,12 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             None,
         );
         y -= HEAD + 3.0;
-        let pipe = format!(
-            "{}x{}",
-            creabim_services::floorheat::PIPE_OUTER_MM,
-            (creabim_services::floorheat::PIPE_OUTER_MM
-                - creabim_services::floorheat::PIPE_INNER_MM)
-                / 2.0
-        );
+        let pipe = {
+            use creabim_services::floorheat;
+            let s: floorheat::Settings =
+                creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
+            floorheat::model_pipe(model, &s).segment.replace(' ', "")
+        };
         for (name, rgb, dashes) in [
             ("underfloor heating - supply", crate::heatplan::SUPPLY, None),
             (

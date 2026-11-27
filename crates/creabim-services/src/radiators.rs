@@ -376,6 +376,7 @@ mod tests {
                     spacing: 0.1,
                     loops: 3,
                     finish_r: None,
+                    ..Underfloor::default()
                 });
             }
             tx = tx.insert(Element::new(name, ElementKind::Room(r)));

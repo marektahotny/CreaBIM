@@ -111,10 +111,13 @@ pub enum Tool {
     Arc,
     /// A drafted smooth curve through the points clicked.
     Curve,
+    /// An underfloor heating zone in a room: an edge zone, a place of
+    /// reduced output or a hole, drawn as a polygon or a rectangle.
+    UfhZone,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 55] = [
+    pub const ALL: [Tool; 56] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -170,6 +173,7 @@ impl Tool {
         Tool::Grid,
         Tool::Level,
         Tool::Align,
+        Tool::UfhZone,
     ];
 
     /// Dimensions, tags and notes: tools that annotate a view.
@@ -234,6 +238,7 @@ impl Tool {
             Tool::Ceiling => "Ceiling",
             Tool::Callout => "Callout",
             Tool::Detail => "Detail component",
+            Tool::UfhZone => "Underfloor heating zone",
         }
     }
 
@@ -293,6 +298,7 @@ impl Tool {
             Tool::Tiling => "Click where the tiling starts on a room's wall, then where it ends: it runs along the walls between, round corners too, such as over the kitchen's base cabinets. Set its height and how far above the floor it starts in the top bar.",
             Tool::Callout => "On a plan or section, click two corners of a box round what to detail: it becomes a detail view at the scale in the top bar, numbered in a bubble on this view.",
             Tool::Detail => "Pick what to draw in the top bar, then click its points; Enter, a double-click or a right-click finishes (the first point again closes a region). Esc keeps what is drawn. Detail components show in this view only.",
+            Tool::UfhZone => "Draw an edge zone, a place of reduced output or a hole in a room with underfloor heating, as a polygon (1) or a rectangle (2). Pick which in the top bar; its spacing or how much less it gives in the Underfloor heating window.",
             Tool::Ceiling => "Click inside a room for a ceiling over it that follows its walls (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch). Set its height and thickness in the top bar or Properties.",
         }
     }
@@ -310,6 +316,7 @@ impl Tool {
                 | Tool::Paving
                 | Tool::Room
                 | Tool::Ceiling
+                | Tool::UfhZone
         )
     }
 
@@ -490,6 +497,8 @@ pub struct PlanState {
     pub outline: Option<crate::outline::Outline>,
     /// How the Slab tool draws.
     pub slab_mode: crate::slabtool::SlabMode,
+    /// What the underfloor heating zone tool draws.
+    pub ufh_zone: crate::roomtool::UfhZone,
     /// The next side of a slab outline is an arc.
     pub slab_arc: bool,
     /// A new slab thickness keeps the underside where it is (the top
@@ -773,6 +782,7 @@ impl Default for PlanState {
             guide_edge: None,
             outline: None,
             slab_mode: Default::default(),
+            ufh_zone: Default::default(),
             slab_arc: false,
             slab_keep_bottom: false,
             boxsel: None,
@@ -4437,7 +4447,8 @@ fn plan_click(
         | Tool::Terrain
         | Tool::Paving
         | Tool::Room
-        | Tool::Ceiling => crate::slabtool::click(doc, level, p, state, selection),
+        | Tool::Ceiling
+        | Tool::UfhZone => crate::slabtool::click(doc, level, p, state, selection),
         Tool::Sweep | Tool::Planting | Tool::Chimney => {
             crate::partstool::click(doc, level, tool, p, state, selection)
         }

@@ -309,7 +309,7 @@ pub fn click(
                 o.roof = Some((state.members.roof_shape, state.members.roof_pitch));
             }
             o.shaft = state.tool == crate::planview::Tool::Shaft;
-            o.space = crate::roomtool::Space::of(state.tool);
+            o.space = crate::roomtool::Space::of_state(state);
             o.place = state.members.place;
             let cat = if o.roof.is_some() {
                 creabim_core::TypeCategory::Roof
@@ -345,7 +345,7 @@ pub fn click(
                     return Ok(());
                 }
                 let rect = vec![lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
-                if let Some(space) = crate::roomtool::Space::of(state.tool) {
+                if let Some(space) = crate::roomtool::Space::of_state(state) {
                     state.status = Some(crate::roomtool::drawn(
                         doc,
                         space,
@@ -371,7 +371,7 @@ pub fn click(
             }
         },
         SlabMode::FillRoom => {
-            if let Some(space) = crate::roomtool::Space::of(state.tool) {
+            if let Some(space) = crate::roomtool::Space::of_state(state) {
                 state.status = Some(crate::roomtool::fill(
                     doc,
                     space,
@@ -450,7 +450,7 @@ pub fn click(
                 }
                 return doc.commit(tx);
             }
-            if let Some(space) = crate::roomtool::Space::of(state.tool) {
+            if let Some(space) = crate::roomtool::Space::of_state(state) {
                 let Some(ElementKind::Sketch(sk)) = doc.model().get(id).map(|e| &e.kind) else {
                     return Ok(());
                 };
