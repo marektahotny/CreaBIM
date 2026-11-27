@@ -2190,6 +2190,7 @@ impl CreaBimApp {
             | Command::Rotate
             | Command::Scale
             | Command::Mirror
+            | Command::MirrorCopy
             | Command::Offset
             | Command::Duplicate => {}
         }
@@ -2242,8 +2243,11 @@ impl CreaBimApp {
             (Mode::Rotate, true) => {
                 "Rotate: click the centre in a view, then a reference direction, then the new direction.".into()
             }
+            (Mode::Mirror, _) if m.1 => {
+                "Mirror copy: click the first point of the axis to mirror across (a rafter's apex, say), then the second. The original stays; Ctrl mirrors it in place instead.".into()
+            }
             (Mode::Mirror, _) => {
-                "Mirror: click the first point of the line to mirror across, then the second. In 3D it lies on the workplane (a face, or the level). A mirrored copy is made; Ctrl keeps only the mirrored one.".into()
+                "Mirror: click the first point of the axis to mirror across (a rafter's apex, say), then the second. The selection is turned over in place; Ctrl keeps the original too.".into()
             }
             (Mode::Offset, _) => {
                 "Offset: point at a view and move the pointer to the side to offset to, or type a distance; click to place a copy. Ctrl moves the original instead.".into()
@@ -7714,7 +7718,7 @@ impl CreaBimApp {
     fn new_schedule(&mut self, category: ScheduleCategory) {
         let label = category.label();
         let e = Element::new(
-            category.schedule_name(),
+            crate::i18n::tr(&category.schedule_name()),
             ElementKind::View(View::schedule(category)),
         );
         let id = e.id;

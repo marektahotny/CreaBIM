@@ -727,7 +727,13 @@ impl CreaBimApp {
                 let e = self.doc.model().get(v);
                 let icon = e.map_or("map", |e| icon_name(Icon::of(e)));
                 let group = self.group_title(v);
-                (icon, group, e.map_or(String::new(), |e| e.name.clone()))
+                // a schedule's own name, set in English by an older
+                // version, reads in the interface's language
+                (
+                    icon,
+                    group,
+                    e.map_or(String::new(), |e| crate::i18n::tr(&e.name)),
+                )
             }
             Shows::Notes => ("sticky-note", "Notes", "Notepad".to_string()),
             // the name is the profile shown; it lists the project's (MU37)
@@ -772,7 +778,7 @@ impl CreaBimApp {
         let r =
             name_button(&mut child, &name, name_w, &p).on_hover_text(crate::i18n::tr(&format!(
                 "{name}: click to show another of the {}",
-                kind_label.to_lowercase()
+                crate::i18n::tr(kind_label).to_lowercase()
             )));
         if r.clicked() {
             asks.push(Ask::Popup(
