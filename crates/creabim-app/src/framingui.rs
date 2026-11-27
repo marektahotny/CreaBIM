@@ -65,6 +65,13 @@ pub fn tool_options(m: &MemberSettings) -> Vec<serde_json::Value> {
             "hint": "A turnbuckle at the rod's middle: Rothoblaas TENDITORE for its thread (M12–M30)",
         }));
     }
+    if f.role == Role::Collar {
+        v.push(json!({
+            "kind": "toggle", "id": "member:framing.pair", "label": "Pair",
+            "on": m.framing_pair, "icon": "columns-2",
+            "hint": "Two collar ties, one each side of the rafter, apart by the rafter's width",
+        }));
+    }
     v
 }
 
@@ -97,6 +104,10 @@ pub fn set_option(m: &mut MemberSettings, key: &str, v: f64) -> bool {
 
 /// A toggle in the bar; false when it isn't a member's.
 pub fn toggle_option(m: &mut MemberSettings, what: &str) -> bool {
+    if what == "framing.pair" {
+        m.framing_pair = !m.framing_pair;
+        return true;
+    }
     if what != "framing.turnbuckle" {
         return false;
     }
@@ -246,6 +257,159 @@ pub fn name_of(f: &Framing) -> String {
     crate::i18n::tr(f.role.label())
 }
 
+/// A collar tie `e` as two, one each side of the rafter it is drawn
+/// across (George 2026-11-27: kleštiny 2 ks, one on each face): apart by
+/// the width of a rafter at either of its ends, or the default rafter's.
+pub fn pair(
+    model: &creabim_core::Model,
+    e: &creabim_core::Element,
+) -> (creabim_core::Element, creabim_core::Element) {
+    use creabim_core::ElementKind;
+    let ElementKind::Beam(b) = &e.kind else {
+        return (e.clone(), e.clone());
+    };
+    let near = |q: glam::DVec2| {
+        model.iter().find_map(|o| {
+            let ElementKind::Beam(r) = &o.kind else {
+                return None;
+            };
+            let f = r.framing.as_ref()?;
+            if !matches!(f.role, Role::Rafter | Role::HipRafter | Role::ValleyRafter) {
+                return None;
+            }
+            let d = r.end - r.start;
+            let t = ((q - r.start).dot(d) / d.length_squared().max(1e-12)).clamp(0.0, 1.0);
+            (r.start + d * t)
+                .distance(q)
+                .lt(&(r.width / 2.0 + 0.05))
+                .then_some(r.width)
+        })
+    };
+    let gap = near(b.start)
+        .or_else(|| near(b.end))
+        .or_else(|| framing::section(Role::Rafter.default_section()).map(|s| s.b))
+        .unwrap_or(0.0);
+    let across =
+        (b.end - b.start).normalize_or(glam::DVec2::X).perp() * (gap / 2.0 + b.width / 2.0);
+    let shifted = |k: f64| {
+        let mut x = e.clone();
+        x.id = creabim_core::ElementId::new();
+        if let ElementKind::Beam(xb) = &mut x.kind {
+            xb.start += across * k;
+            xb.end += across * k;
+        }
+        x
+    };
+    (shifted(1.0), shifted(-1.0))
+}
+
+/// The rows choosing how each end of a timber beam is cut, with an
+/// angle's degrees and a lap's length; whether one changed.
+fn end_cuts(ui: &mut eframe::egui::Ui, f: &mut Framing) -> bool {
+    use creabim_core::framing::EndCut;
+    let tr = crate::i18n::tr;
+    let mut changed = false;
+    for (k, title) in [(0, "Start cut"), (1, "End cut")] {
+        let now = f.cuts[k];
+        crate::props::Combo::new(title)
+            .selected_text(tr(now.label()))
+            .show_ui(ui, |ui| {
+                for c in EndCut::ALL {
+                    if ui
+                        .selectable_label(now.same_kind(c), tr(c.label()))
+                        .clicked()
+                        && !now.same_kind(c)
+                    {
+                        f.cuts[k] = c;
+                        changed = true;
+                    }
+                }
+            });
+        match &mut f.cuts[k] {
+            EndCut::Angle(deg) => {
+                changed |= crate::props::row(ui, "Cut angle", |ui| {
+                    crate::props::fill(
+                        ui,
+                        eframe::egui::DragValue::new(deg)
+                            .speed(0.5)
+                            .range(5.0..=175.0)
+                            .suffix("°"),
+                    )
+                    .changed()
+                });
+            }
+            EndCut::Lap {
+                length,
+                upper,
+                style,
+            } => {
+                let now = *style;
+                crate::props::Combo::new("Lap kind")
+                    .selected_text(tr(now.label()))
+                    .show_ui(ui, |ui| {
+                        for c in creabim_core::framing::LapStyle::ALL {
+                            if ui.selectable_label(now == c, tr(c.label())).clicked() && now != c {
+                                *style = c;
+                                changed = true;
+                            }
+                        }
+                    });
+                changed |= crate::props::row(ui, "Lap length", |ui| {
+                    crate::props::fill(ui, crate::units::drag(length).range(0.0..=3.0)).changed()
+                });
+                if *length <= 1e-6 {
+                    ui.weak(tr("0: twice the member's depth (2v)"));
+                }
+                changed |= crate::props::check(
+                    ui,
+                    "Upper half runs on",
+                    upper,
+                    tr("Off: the lower half of this end runs on under the other piece"),
+                )
+                .changed();
+            }
+            _ => {}
+        }
+        // a tenon on a cut of one face (George 2026-11-27: a knee brace)
+        if matches!(
+            f.cuts[k],
+            EndCut::Square | EndCut::Plumb | EndCut::Level | EndCut::Angle(_)
+        ) {
+            let mut on = f.tenons[k] > 0.0;
+            if crate::props::check(ui, title, &mut on, tr("Tenon"))
+                .on_hover_text(tr(
+                    "A third of the member's width thick, the whole cut face high; \
+                     its length a quarter to a half of the depth (Tesařské spoje)",
+                ))
+                .changed()
+            {
+                let h = creabim_core::framing::section(&f.section).map_or(0.1, |s| s.h);
+                f.tenons[k] = if on { h / 2.0 } else { 0.0 };
+                changed = true;
+            }
+            if on {
+                changed |= crate::props::row(ui, "Tenon length", |ui| {
+                    crate::props::fill(ui, crate::units::drag(&mut f.tenons[k]).range(0.01..=0.5))
+                        .changed()
+                });
+            }
+        }
+    }
+    if matches!(
+        f.role,
+        Role::Rafter | Role::HipRafter | Role::ValleyRafter | Role::Sprocket
+    ) {
+        changed |= crate::props::check(
+            ui,
+            "Rafter seat",
+            &mut f.seat,
+            tr("Seated on the wall plates and purlins it crosses"),
+        )
+        .changed();
+    }
+    changed
+}
+
 /// The Properties rows of a member: what it is, its section, grade,
 /// slope, how its ends are held, its turnbuckle and mark, and the
 /// section's properties a calculation takes. The undo label when
@@ -317,6 +481,7 @@ pub fn properties(
                 }
             }
         });
+    let beam = slope.is_some();
     if let Some(a) = slope {
         if crate::props::row(ui, "Pitch", |ui| {
             crate::props::fill(
@@ -330,6 +495,10 @@ pub fn properties(
         }) {
             label = "Member slope";
         }
+    }
+    // how a timber beam's ends are cut (George 2026-11-27)
+    if beam && f.role.is_timber() && end_cuts(ui, f) {
+        label = "Member end cuts";
     }
     let ends = [
         (EndFix::Pinned, "Pinned", "A hinge: held, free to turn"),
@@ -480,6 +649,29 @@ mod tests {
             0,
             creabim_core::Element::new("Výkres krovu", ElementKind::View(kv)),
         );
+        // sections through the roof across two rafter pairs, the cuts
+        // seen from the side
+        let yp = 0.23 + 2.6;
+        for (name, a, b, depth) in [
+            ("Rez krovu A", (6.5, 13.0), (6.5, -1.0), 0.45),
+            ("Rez krovu B", (7.4, 13.0), (7.4, -1.0), 0.45),
+            // along the front purlin: its lap, the post, the knee braces
+            ("Rez krovu C", (16.0, yp), (-1.0, yp), 0.3),
+            // through a rafter: its seats on the plate and the purlin
+            ("Rez krovu D", (7.725, 13.0), (7.725, -1.0), 0.2),
+        ] {
+            let mut sv = creabim_core::View::plan(roof);
+            sv.kind = ViewKind::Section {
+                start: glam::DVec2::new(a.0, a.1),
+                end: glam::DVec2::new(b.0, b.1),
+                depth,
+                cut: true,
+            };
+            sv.scale = 50.0;
+            sv.structural = true;
+            sv.hidden.set_category(creabim_core::Category::Roofs, true);
+            ids.push(creabim_core::Element::new(name, ElementKind::View(sv)));
+        }
         // the timber list grouped by cross-section, for the budget
         let mut sv = creabim_core::View::plan(roof);
         sv.kind = ViewKind::Schedule {
@@ -532,7 +724,7 @@ mod tests {
         roof: creabim_core::ElementId,
         ground: creabim_core::ElementId,
     ) -> Vec<creabim_core::Element> {
-        use creabim_core::framing::{self, Framing, Role};
+        use creabim_core::framing::{self, EndCut, Framing, Role};
         use creabim_core::members::{elevation, storey_height};
         use creabim_core::{Beam, Column, Element, ElementKind};
         use glam::{DVec2, DVec3};
@@ -581,9 +773,12 @@ mod tests {
         ] {
             out.push(beam(roof, a, b, Role::WallPlate, "150/150"));
         }
-        // rafters 80/200 on the plates, the ridge over the middle
+        // rafters 80/200 seated on the plates (George 2026-11-27): their
+        // underside through the plates' inner top edge, 0,60 out past
+        // them; the ridge over the middle
         let ym = (y0 + y1) / 2.0;
-        let z0 = zp + 0.2 / 25f64.to_radians().cos();
+        let z0 = zp + 0.2 / 25f64.to_radians().cos() - 0.075 * t;
+        let o = 0.6;
         let half = ym - y0;
         let zr = z0 + half * t;
         let (rx0, rx1) = (x0 + half, x1 - half);
@@ -591,19 +786,41 @@ mod tests {
         while x <= rx1 + 1e-6 {
             out.push(beam(
                 roof,
-                v(x, y0, z0),
+                v(x, y0 - o, z0 - o * t),
                 v(x, ym, zr),
                 Role::Rafter,
                 "80/200",
             ));
             out.push(beam(
                 roof,
-                v(x, y1, z0),
+                v(x, y1 + o, z0 - o * t),
                 v(x, ym, zr),
                 Role::Rafter,
                 "80/200",
             ));
             x += 0.9;
+        }
+        // their ends cut as George sketched (2026-11-27): at the eaves
+        // plumb and level, at the ridge the one from the front square
+        // and running through, the one from the back fitted to it; one
+        // pair for the other ways: square at the eaves, both plumb at
+        // the ridge
+        for e in out.iter_mut() {
+            let ElementKind::Beam(b) = &mut e.kind else {
+                continue;
+            };
+            let Some(f) = &mut b.framing else { continue };
+            if f.role != Role::Rafter || (b.end.y - ym).abs() > 1e-6 {
+                continue;
+            }
+            let other = (b.start.x - (rx0 + 0.9)).abs() < 1e-6;
+            let front = b.start.y < ym;
+            f.cuts = match (other, front) {
+                (false, true) => [EndCut::PlumbLevel, EndCut::Square],
+                (false, false) => [EndCut::PlumbLevel, EndCut::Fitted],
+                (true, true) => [EndCut::Square, EndCut::Plumb],
+                (true, false) => [EndCut::Plumb, EndCut::Plumb],
+            };
         }
         // jack rafters up to the hips, both ends
         let mut d = 0.9;
@@ -612,14 +829,14 @@ mod tests {
                 let _ = s;
                 out.push(beam(
                     roof,
-                    v(xa, y0, z0),
+                    v(xa, y0 - o, z0 - o * t),
                     v(xa, y0 + d, z0 + d * t),
                     Role::Rafter,
                     "80/200",
                 ));
                 out.push(beam(
                     roof,
-                    v(xa, y1, z0),
+                    v(xa, y1 + o, z0 - o * t),
                     v(xa, y1 - d, z0 + d * t),
                     Role::Rafter,
                     "80/200",
@@ -628,7 +845,7 @@ mod tests {
             for (ya, _) in [(y0 + d, 1.0), (y1 - d, -1.0)] {
                 out.push(beam(
                     roof,
-                    v(x0, ya, z0),
+                    v(x0 - o, ya, z0 - o * t),
                     v(
                         x0 + d.min(ya - y0).min(y1 - ya),
                         ya,
@@ -639,7 +856,7 @@ mod tests {
                 ));
                 out.push(beam(
                     roof,
-                    v(x1, ya, z0),
+                    v(x1 + o, ya, z0 - o * t),
                     v(
                         x1 - d.min(ya - y0).min(y1 - ya),
                         ya,
@@ -660,33 +877,64 @@ mod tests {
             (DVec2::new(x1, y0), DVec2::new(rx1, ym)),
             (DVec2::new(x1, y1), DVec2::new(rx1, ym)),
         ] {
+            let c = c + (c - r).normalize() * o * 2f64.sqrt();
             out.push(beam(
                 roof,
-                c.extend(z0),
+                c.extend(z0 - o * t),
                 r.extend(hz(c, r)),
                 Role::HipRafter,
                 "120/200",
             ));
         }
-        // ridge purlin 150/250 under the rafters' tops
+        // ridge purlin 150/250 under the rafters, its top where their
+        // undersides meet
         out.push(beam(
             roof,
-            v(rx0, ym, zr - 0.22),
-            v(rx1, ym, zr - 0.22),
+            v(rx0, ym, zr - 0.2 / 25f64.to_radians().cos()),
+            v(rx1, ym, zr - 0.2 / 25f64.to_radians().cos()),
             Role::RidgePurlin,
             "150/250",
         ));
-        // middle purlins 160/240 on posts 150/150, the rafters on them
-        for yp in [y0 + 2.6, y1 - 2.6] {
-            let zt = z0 + 2.6 * t - 0.2 / 25f64.to_radians().cos();
-            out.push(beam(
+        // middle purlins 160/240 on posts 150/150, the rafters seated on
+        // them; each purlin two pieces lapped over the middle post (2v),
+        // the front one an oblique lap (d), the back one with slanted
+        // shoulders (c); knee braces 100/100 either side of that post,
+        // tenoned into it and into the purlin
+        let xm = 7.34;
+        for (yp, style) in [
+            (y0 + 2.6, framing::LapStyle::Oblique),
+            (y1 - 2.6, framing::LapStyle::SlantedShoulders),
+        ] {
+            let zt = z0 + 2.6 * t - 0.2 / 25f64.to_radians().cos() + 0.075 * t;
+            let (_, whole) = style.faces(0.48, 0.24);
+            let mut one = beam(
                 roof,
                 v(x0 + 2.6, yp, zt),
+                v(xm + whole / 2.0, yp, zt),
+                Role::Purlin,
+                "160/240",
+            );
+            let mut two = beam(
+                roof,
+                v(xm - whole / 2.0, yp, zt),
                 v(x1 - 2.6, yp, zt),
                 Role::Purlin,
                 "160/240",
-            ));
-            for xp in [x0 + 2.6, 7.34, x1 - 2.6] {
+            );
+            for (e, k, upper) in [(&mut one, 1, false), (&mut two, 0, true)] {
+                if let ElementKind::Beam(b) = &mut e.kind {
+                    if let Some(f) = &mut b.framing {
+                        f.cuts[k] = EndCut::Lap {
+                            length: 0.0,
+                            upper,
+                            style,
+                        };
+                    }
+                }
+            }
+            out.push(one);
+            out.push(two);
+            for xp in [x0 + 2.6, xm, x1 - 2.6] {
                 let base = 0.0;
                 out.push(column(
                     roof,
@@ -697,24 +945,51 @@ mod tests {
                     "150/150",
                 ));
             }
+            let zu = zt - 0.24;
+            for s in [1.0, -1.0] {
+                let xa = xm + s * 0.075;
+                let mut kb = beam(
+                    roof,
+                    v(xa, yp, zu - 0.6),
+                    v(xa + s * 0.6, yp, zu),
+                    Role::KneeBrace,
+                    "100/100",
+                );
+                if let ElementKind::Beam(b) = &mut kb.kind {
+                    if let Some(f) = &mut b.framing {
+                        f.cuts = [EndCut::Plumb, EndCut::Level];
+                        f.tenons = [0.05, 0.05];
+                    }
+                }
+                out.push(kb);
+            }
         }
-        // collar ties 50/200 between the purlins at each post
-        for xp in [x0 + 2.6, 7.34, x1 - 2.6] {
-            let zc = z0 + 2.6 * t + 0.1;
-            out.push(beam(
+        // collar ties 50/200, a pair either side of a rafter, their ends
+        // cut at the roof's pitch
+        for xp in [rx0 + 0.9 * 2.0, rx0 + 0.9 * 4.0] {
+            // their tops at the rafters' tops, 3 m in from the plates
+            let zc = z0 + 3.0 * t;
+            let mut c = beam(
                 roof,
-                v(xp + 0.075, y0 + 2.3, zc),
-                v(xp + 0.075, y1 - 2.3, zc),
+                v(xp, y0 + 3.0, zc),
+                v(xp, y1 - 3.0, zc),
                 Role::Collar,
                 "50/200",
-            ));
-            out.push(beam(
-                roof,
-                v(xp - 0.075, y0 + 2.3, zc),
-                v(xp - 0.075, y1 - 2.3, zc),
-                Role::Collar,
-                "50/200",
-            ));
+            );
+            if let ElementKind::Beam(b) = &mut c.kind {
+                if let Some(f) = &mut b.framing {
+                    f.cuts = [EndCut::Angle(25.0); 2];
+                }
+            }
+            let mut probe = m.clone();
+            let mut tx = creabim_core::Transaction::new("probe");
+            for e in &out {
+                tx = tx.insert(e.clone());
+            }
+            tx.apply(&mut probe).unwrap();
+            let (one, two) = super::pair(&probe, &c);
+            out.push(one);
+            out.push(two);
         }
         // a steel carport beside the house: RHS columns, sloped beams at
         // 4°, SHS purlins, crossed rods Ø 12 with turnbuckles

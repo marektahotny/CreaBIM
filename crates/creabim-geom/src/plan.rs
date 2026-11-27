@@ -178,6 +178,23 @@ impl Joining {
         if Self::ceiling_over_plaster_kinds(model, b, a) {
             return false;
         }
+        // a member's tenon sits in its mortise in the member it meets:
+        // the tenoned one cuts the other (George 2026-11-27)
+        let tenoned = |p: &CutPiece| {
+            model
+                .get(p.id)
+                .and_then(creabim_core::framing::of)
+                .is_some_and(|f| f.tenons.iter().any(|t| *t > 0.0))
+        };
+        let member = |p: &CutPiece| {
+            model
+                .get(p.id)
+                .and_then(creabim_core::framing::of)
+                .is_some()
+        };
+        if member(a) && member(b) && tenoned(a) != tenoned(b) {
+            return tenoned(a);
+        }
         let strength = |p: &CutPiece| {
             (
                 std::cmp::Reverse(p.layer.map_or(1, |l| l.priority)),
@@ -750,8 +767,16 @@ fn clean_up_pieces_with(
                 model.get(p.id).map(|e| &e.kind),
                 Some(creabim_core::ElementKind::Wall(_))
             );
+            // every member of a roof's timber or a steel frame its own
+            // piece: a line between two, a rafter's seat on its plate
+            // showing (George 2026-11-27)
+            let member = model
+                .get(p.id)
+                .is_some_and(|e| creabim_core::framing::of(e).is_some());
             if one_wall && wall && k != AIR {
                 (None, u8::MAX)
+            } else if member {
+                (Some(p.id), u8::MAX - 1)
             } else {
                 k
             }

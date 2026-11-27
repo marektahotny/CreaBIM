@@ -85,6 +85,55 @@ pub fn beam_mesh(model: &Model, b: &creabim_core::Beam) -> TriMesh {
     m
 }
 
+/// A timber member from its side outline: the outline as a slab across
+/// its width, turned into the upright plane of its axis.
+pub fn side_profile_mesh(p: &creabim_core::framing::SideProfile) -> TriMesh {
+    let mut m = slab_mesh(&p.points, p.width / 2.0, p.width);
+    for t in &p.tenons {
+        let w = p.width / 3.0;
+        m.append(&slab_mesh(t, w / 2.0, w));
+    }
+    // a right-handed turn: x along the member, y up, z across
+    let ex = p.dir.extend(0.0);
+    let ey = DVec3::Z;
+    let ez = ex.cross(ey);
+    let turn = |v: [f32; 3]| {
+        let v = DVec3::new(v[0] as f64, v[1] as f64, v[2] as f64);
+        ex * v.x + ey * v.y + ez * v.z
+    };
+    for q in m.positions.iter_mut() {
+        *q = (p.origin + turn(*q)).as_vec3().to_array();
+    }
+    for n in m.normals.iter_mut() {
+        *n = turn(*n).as_vec3().to_array();
+    }
+    m
+}
+
+/// The boxes round a timber member's tenons, in the model.
+pub fn tenon_boxes(model: &Model, e: &Element) -> Vec<(DVec3, DVec3)> {
+    let Some(p) = creabim_core::framing::side_profile(model, e) else {
+        return vec![];
+    };
+    let ex = p.dir.extend(0.0);
+    let ez = ex.cross(DVec3::Z);
+    p.tenons
+        .iter()
+        .map(|t| {
+            let mut lo = DVec3::splat(f64::INFINITY);
+            let mut hi = DVec3::splat(f64::NEG_INFINITY);
+            for q in t {
+                for s in [-1.0, 1.0] {
+                    let v = p.origin + ex * q.x + DVec3::Z * q.y + ez * (s * p.width / 6.0);
+                    lo = lo.min(v);
+                    hi = hi.max(v);
+                }
+            }
+            (lo, hi)
+        })
+        .collect()
+}
+
 /// The mesh and default colour of a member; `None` for other elements.
 pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
     Some(match &e.kind {
@@ -94,7 +143,12 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
         }
         // a library section swept along the beam, hung so its top is the
         // beam's top (MU37)
-        ElementKind::Beam(b) => (beam_mesh(model, b), [0.72, 0.64, 0.52]),
+        // a timber member with its ends cut as its framing says (George
+        // 2026-11-27): its side outline swept across its width
+        ElementKind::Beam(b) => match creabim_core::framing::side_profile(model, e) {
+            Some(p) => (side_profile_mesh(&p), [0.72, 0.64, 0.52]),
+            None => (beam_mesh(model, b), [0.72, 0.64, 0.52]),
+        },
         ElementKind::Roof(r) => {
             let holes = creabim_core::slab::holes_of(model, e);
             (
@@ -842,7 +896,26 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
             let base = b.top(model);
             let top = base + b.rise[0].max(b.rise[1]);
             let bottom = base + b.rise[0].min(b.rise[1]) - b.depth;
-            let pts = b.outline();
+            // a timber member as far as its cut ends reach
+            let pts = match creabim_core::framing::side_profile(model, e) {
+                Some(p) => {
+                    let lo = p.points.iter().map(|q| q.x).fold(f64::INFINITY, f64::min);
+                    let hi = p
+                        .points
+                        .iter()
+                        .map(|q| q.x)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let o = p.origin.truncate();
+                    let c = p.dir.perp() * (p.width / 2.0);
+                    vec![
+                        o + p.dir * lo - c,
+                        o + p.dir * hi - c,
+                        o + p.dir * hi + c,
+                        o + p.dir * lo + c,
+                    ]
+                }
+                None => b.outline(),
+            };
             if bottom < z && z < top {
                 items.push(PlanItem::Polygon {
                     id: e.id,

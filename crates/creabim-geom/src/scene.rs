@@ -1262,7 +1262,33 @@ fn apply_joins(model: &Model, items: &mut [SceneItem]) {
             if rule.is_some_and(|r| !r.cleanup) {
                 continue;
             }
-            let a_wins = match rule.and_then(|r| r.wins(a.id, b.id)) {
+            // timber and steel members are cut as their ends and seats say,
+            // not by each other, except that a tenon sits in its mortise in
+            // the member it meets: the tenoned one cuts that one (George
+            // 2026-11-27)
+            let member = |id: ElementId| {
+                model
+                    .get(id)
+                    .filter(|e| creabim_core::framing::of(e).is_some())
+            };
+            let mortise = match (member(a.id), member(b.id)) {
+                (Some(ea), Some(eb)) => {
+                    let into = |t: &Element, o: (glam::Vec3, glam::Vec3)| {
+                        crate::members::tenon_boxes(model, t)
+                            .iter()
+                            .any(|(lo, hi)| overlap((lo.as_vec3(), hi.as_vec3()), o))
+                    };
+                    if into(ea, bb) {
+                        Some(true)
+                    } else if into(eb, ba) {
+                        Some(false)
+                    } else {
+                        continue;
+                    }
+                }
+                _ => None,
+            };
+            let a_wins = match rule.and_then(|r| r.wins(a.id, b.id)).or(mortise) {
                 Some(w) => w,
                 None => {
                     let (sa, sb) = (strength(a), strength(b));
