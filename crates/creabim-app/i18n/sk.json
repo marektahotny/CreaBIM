@@ -9007,5 +9007,11 @@
  "No bolts": "Bez svorníkov",
  "Collar tie bolts": "Svorníky kleštín",
  "Bolt": "Svorník",
- "2 washers DIN 440 R, 2 nuts DIN 934": "2 podložky DIN 440 R, 2 matice DIN 934"
+ "2 washers DIN 440 R, 2 nuts DIN 934": "2 podložky DIN 440 R, 2 matice DIN 934",
+ "Under the least load-bearing timber section: 24 mm thick, 1400 mm² (CSS rules III-3)": "Menší ako najmenší nosný prierez dreva: hrúbka 24 mm, plocha 1400 mm² (Pokrývačské pravidlá CSS, časť III-3)",
+ "from the end": "od konca",
+ "from the edge": "od okraja",
+ "too close": "príliš blízko",
+ "Washer": "Podložka",
+ "thinner than 0,3d: use a thicker washer": "tenšia ako 0,3d: treba hrubšiu podložku"
 }

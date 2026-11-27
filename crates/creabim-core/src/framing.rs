@@ -769,6 +769,56 @@ impl Bolt {
     }
 }
 
+/// The least spacings of a bolt in timber, as multiples of its
+/// diameter d (Pokrývačské pravidlá CSS 01/2026, časť III, 6.8 (5),
+/// p. 91): from a loaded end 7d and at least 80 mm, from a loaded edge
+/// 4d.
+pub const BOLT_END_D: f64 = 7.0;
+pub const BOLT_END_MIN: f64 = 0.08;
+pub const BOLT_EDGE_D: f64 = 4.0;
+
+/// A washer under a bolt in timber at least 3d across and 0,3d thick
+/// (Pokrývačské pravidlá CSS 01/2026, časť III, 6.8 (2), p. 91).
+pub fn washer_fits(p: &BoltParts) -> bool {
+    let d = p.thread as f64;
+    p.d2 >= 3.0 * d - 1e-9 && p.h >= 0.3 * d - 1e-9
+}
+
+/// How far a bolt is from a member it passes through, m: along the
+/// member to its nearer end, and square to it to its nearer edge.
+pub fn bolt_clearance(model: &Model, bolt: &Bolt, e: &Element) -> Option<(f64, f64)> {
+    use glam::DVec2;
+    let p = side_profile(model, e)?;
+    let q = DVec2::new(
+        (bolt.at.truncate() - p.origin.truncate()).dot(p.dir),
+        bolt.at.z - p.origin.z,
+    );
+    let u = DVec2::new(1.0, p.slope).normalize();
+    let n = u.perp();
+    // the nearest crossing of the outline from q along +-v
+    let ray = |v: DVec2| {
+        let mut best = f64::INFINITY;
+        let k = p.points.len();
+        for i in 0..k {
+            let (a, b) = (p.points[i], p.points[(i + 1) % k]);
+            let e = b - a;
+            let den = v.perp_dot(e);
+            if den.abs() < 1e-12 {
+                continue;
+            }
+            let t = (a - q).perp_dot(e) / den;
+            let s = (a - q).perp_dot(v) / den;
+            if t > 1e-9 && (-1e-9..=1.0 + 1e-9).contains(&s) {
+                best = best.min(t);
+            }
+        }
+        best
+    };
+    let end = ray(u).min(ray(-u));
+    let edge = ray(n).min(ray(-n));
+    (end.is_finite() && edge.is_finite()).then_some((end, edge))
+}
+
 /// The bolts of the collar ties: one where a bolted collar tie clamps a
 /// rafter, through it and the tie on its other side when they are a
 /// pair (George 2026-11-27).
@@ -1721,6 +1771,49 @@ mod tests {
             .apply(&mut m2)
             .unwrap();
         assert!(side_profile(&m2, &e2).unwrap().seats.is_empty());
+    }
+
+    #[test]
+    fn a_bolt_keeps_its_distance_from_the_collar_end() {
+        use crate::{Beam, Transaction};
+        let (mut m, e) = rafter([EndCut::Square, EndCut::Square]);
+        let p0 = side_profile(&m, &e).unwrap();
+        let ElementKind::Beam(rb) = &e.kind else {
+            panic!()
+        };
+        // a collar tie 50/200 alongside it, level, from 1 m to 2 m, its
+        // top at the rafter's top at 2 m
+        let zt = p0.origin.z + 0.5 * 2.0;
+        let mut b = Beam::new(rb.level, DVec2::new(1.0, 0.065), DVec2::new(2.0, 0.065));
+        let mut f = Framing::new(Role::Collar);
+        f.section = "50/200".into();
+        let mut c = Element::new("c", ElementKind::Beam(b.clone()));
+        apply(&mut c, f.clone());
+        let (a, _) = b.axis(&m);
+        b.top_offset += a.z - zt;
+        let mut c = Element::new("c", ElementKind::Beam(b));
+        apply(&mut c, f);
+        Transaction::new("t")
+            .insert(c.clone())
+            .apply(&mut m)
+            .unwrap();
+        let bs = bolts(&m);
+        assert_eq!(bs.len(), 1);
+        let bolt = &bs[0];
+        assert_eq!(bolt.collars, vec![c.id]);
+        // along the level tie to its end at 2 m; across it to its
+        // nearer edge
+        let (end, edge) = bolt_clearance(&m, bolt, &c).unwrap();
+        assert!((end - (2.0 - bolt.at.x)).abs() < 1e-9);
+        let dz = zt - bolt.at.z;
+        assert!((edge - dz.min(0.2 - dz)).abs() < 1e-9);
+        assert!(end > 0.0 && edge > 0.0);
+        // in the rafter: square to its slope to its nearer edge
+        let (_, re) = bolt_clearance(&m, bolt, &e).unwrap();
+        assert!(re > 0.0 && re < 0.1);
+        // DIN 440 R washers are 3d across and 0,3d thick up to M20, not M24
+        assert!(BOLT_PARTS[..4].iter().all(washer_fits));
+        assert!(!washer_fits(&BOLT_PARTS[4]));
     }
 
     #[test]

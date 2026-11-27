@@ -1740,6 +1740,94 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                         }
                     }
                 }
+                // the least timber section (Pokrývačské pravidlá CSS
+                // 01/2026, časť III, 3 (2), p. 59, after ČSN 73 1702):
+                // 24 mm thick, 1400 mm² across
+                if f.role.is_timber() {
+                    let (t, a) = (b.width.min(b.depth) * 1000.0, b.width * b.depth * 1e6);
+                    if t < 24.0 - 1e-6 || a < 1400.0 - 1e-6 {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            crate::i18n::tr(
+                                "Under the least load-bearing timber section: 24 mm thick, 1400 mm² (CSS rules III-3)",
+                            ),
+                        );
+                    }
+                }
+                // the bolts through it: how far from its end and edges,
+                // against 7d (at least 80 mm) and 4d, and their washers
+                // (CSS rules III-6.8, p. 91)
+                let mine = ElementKind::Beam(b.clone());
+                let me = model.iter().find(|o| o.kind == mine).map(|o| o.id);
+                if let Some(me) = me {
+                    let probe = creabim_core::Element::new("", mine);
+                    for bolt in creabim_core::framing::bolts(model) {
+                        if bolt.rafter != me && !bolt.collars.contains(&me) {
+                            continue;
+                        }
+                        let Some((end, edge)) =
+                            creabim_core::framing::bolt_clearance(model, &bolt, &probe)
+                        else {
+                            continue;
+                        };
+                        let d = bolt.thread as f64 / 1000.0;
+                        let need_end = (creabim_core::framing::BOLT_END_D * d)
+                            .max(creabim_core::framing::BOLT_END_MIN);
+                        let need_edge = creabim_core::framing::BOLT_EDGE_D * d;
+                        let mm = |v: f64| (v * 1000.0).round();
+                        // a rafter runs on past its collar ties: its ends
+                        // are far, only its edges matter
+                        let collar = bolt.collars.contains(&me);
+                        let mut text = format!("{} M{}: ", crate::i18n::tr("Bolt"), bolt.thread);
+                        if collar {
+                            text += &format!(
+                                "{} {} mm (7d ≥ {} mm), ",
+                                crate::i18n::tr("from the end"),
+                                mm(end),
+                                mm(need_end)
+                            );
+                        }
+                        text += &format!(
+                            "{} {} mm (4d = {} mm)",
+                            crate::i18n::tr("from the edge"),
+                            mm(edge),
+                            mm(need_edge)
+                        );
+                        let short = (collar && end < need_end - 5e-4) || edge < need_edge - 5e-4;
+                        if short {
+                            ui.colored_label(
+                                ui.visuals().warn_fg_color,
+                                format!("{text} — {}", crate::i18n::tr("too close")),
+                            );
+                        } else {
+                            weak(ui, text);
+                        }
+                    }
+                }
+                if f.role == creabim_core::framing::Role::Collar {
+                    if let Some(p) = f.bolt.and_then(creabim_core::framing::bolt_parts) {
+                        let d = p.thread as f64;
+                        let text = format!(
+                            "{} DIN 440 R Ø{}×{} mm: 3d = {} mm, 0,3d = {} mm",
+                            crate::i18n::tr("Washer"),
+                            p.d2,
+                            p.h,
+                            3.0 * d,
+                            format!("{:.1}", 0.3 * d).replace('.', ",")
+                        );
+                        if creabim_core::framing::washer_fits(&p) {
+                            weak(ui, text);
+                        } else {
+                            ui.colored_label(
+                                ui.visuals().warn_fg_color,
+                                format!(
+                                    "{text} — {}",
+                                    crate::i18n::tr("thinner than 0,3d: use a thicker washer")
+                                ),
+                            );
+                        }
+                    }
+                }
                 weak(
                     ui,
                     "Section from the member's cross-section; width and depth follow it.".into(),
