@@ -233,6 +233,10 @@ pub fn socket(p: &Pipe) -> Option<(f64, f64)> {
     if p.height_mm.is_some() || p.insulation_mm > 0.0 {
         return None;
     }
+    // a flexible hose (ATREA GP) is laid in one piece: no fitting
+    if creabim_services::pipe_types::by_id(&p.pipe_type).is_some_and(|t| t.flex) {
+        return None;
+    }
     let d = p.outer_mm;
     let drain = creabim_services::pipe_types::by_id(&p.pipe_type).map_or_else(
         || p.system == "K" || p.system.starts_with('K'),
