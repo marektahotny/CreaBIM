@@ -83,6 +83,8 @@ pub(crate) mod framingui;
 mod gridvis;
 #[path = "heatlossui.rs"]
 mod heatlossui;
+#[path = "heatplace.rs"]
+mod heatplace;
 #[path = "heatsourceui.rs"]
 mod heatsourceui;
 #[path = "helpui.rs"]
@@ -508,6 +510,10 @@ pub struct CreaBimApp {
     joinery: Option<joineryui::JoineryEdit>,
     /// The heat source window, while it is open.
     heat_source: Option<heatsourceui::HeatSource>,
+    /// A heat source being placed step by step, its windows tucked away.
+    heat_place: Option<heatplace::HeatPlace>,
+    /// Windows brought back, to put on top one a frame (their old order).
+    restore_order: Vec<egui::LayerId>,
     /// The catalogue's Midea block: the outdoor unit's size picked there
     /// (none: the one the heat loss or the heat source window gives) and
     /// the indoor unit's kind (hydronic box or with a 190/240 l tank).
@@ -728,6 +734,8 @@ impl CreaBimApp {
             masonry: None,
             masonry_pick: None,
             heat_source: None,
+            heat_place: None,
+            restore_order: vec![],
             midea_out: None,
             midea_in: None,
             table30: None,
@@ -14729,6 +14737,7 @@ impl eframe::App for CreaBimApp {
         self.report_window(&ctx);
         self.close_window(&ctx);
         self.overwrite_window(&ctx);
+        self.heat_place_frame(&ctx);
         // a plan in its own window keeps egui's menus
         self.plan.web_menus = false;
 

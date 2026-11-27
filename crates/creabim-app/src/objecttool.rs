@@ -31,6 +31,9 @@ pub struct ObjectSettings {
     /// How high the next one sits above its floor (or below the ceiling,
     /// hung), when set before placing; none takes its type's (MU19).
     pub offset: Option<f64>,
+    /// How many objects the tool has placed: a step-by-step placing
+    /// (the heat source's units) sees from it that one went in.
+    pub placed: u64,
 }
 
 /// How an object went against a wall.
@@ -111,6 +114,7 @@ pub fn click(
         None => objects::place(doc.model(), &c, level, at, rotation),
     };
     doc.commit(tx)?;
+    state.objects.placed += 1;
     // a height set before placing (MU19), in the same undo step
     if let Some(off) = state.objects.offset {
         if let Some(e) = doc.model().get(id).cloned() {

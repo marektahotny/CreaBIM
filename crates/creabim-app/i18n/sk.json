@@ -9078,5 +9078,11 @@
  "Two-sided": "Obojstranné",
  "WSC 35 on the inner side too, clips AB + ES": "aj zvnútra WSC 35, spony AB + ES",
  "{maker} clips AB + ES, masonry {w} mm (sets of {n} pcs)": "{maker} spony AB + ES, murivo {w} mm (sady po {n} ks)",
- "{maker} clips HB, masonry {w} mm (sets of {n} pcs)": "{maker} spony HB, murivo {w} mm (sady po {n} ks)"
+ "{maker} clips HB, masonry {w} mm (sets of {n} pcs)": "{maker} spony HB, murivo {w} mm (sady po {n} ks)",
+ "Placing": "Osadzujem",
+ "Placing the indoor unit": "Osadzujem vnútornú jednotku",
+ "Placing the outdoor unit": "Osadzujem vonkajšiu jednotku",
+ "Click in a plan or the 3D view; Space turns it, Esc ends.": "Kliknite do pôdorysu alebo 3D pohľadu; medzerník otáča, Esc ukončí.",
+ "Heat source placed.": "Zdroj tepla osadený.",
+ "Shows the window for a while; it comes back where it was once the heat source is placed.": "Dočasne zobrazí okno; po osadení zdroja tepla sa vráti tam, kde bolo."
 }
