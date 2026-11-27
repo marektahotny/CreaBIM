@@ -1391,7 +1391,8 @@
         "drain_sections",
         "water_axonometry",
         "timber_list",
-        "steel_list"
+        "steel_list",
+        "kari_list"
       ]
     },
     "Callout": {

@@ -373,6 +373,9 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
     if category == ScheduleCategory::SteelList {
         return crate::framing::steel_schedule_by(model, by_type);
     }
+    if category == ScheduleCategory::KariList {
+        return crate::framing::kari_schedule(model);
+    }
     if category == ScheduleCategory::FireZones {
         return crate::firezones::schedule(model);
     }
@@ -796,6 +799,7 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         | ScheduleCategory::RingBeamList
         | ScheduleCategory::TimberList
         | ScheduleCategory::SteelList
+        | ScheduleCategory::KariList
         | ScheduleCategory::VentilationHrv
         | ScheduleCategory::HeaterList
         | ScheduleCategory::BuildingFigures

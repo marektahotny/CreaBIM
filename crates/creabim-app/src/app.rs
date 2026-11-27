@@ -10412,9 +10412,10 @@ crate::props::row(ui, "File names", |ui| {
                         creabim_core::SlabKind::Foundation => {
                             "Automatic: foundation slab (no slab under it)."
                         }
-                        creabim_core::SlabKind::Floor | creabim_core::SlabKind::Base => {
-                            "Automatic: floor slab (a slab under it)."
+                        creabim_core::SlabKind::Base => {
+                            "Automatic: base slab (it lies on strip footings), KARI mesh can be set."
                         }
+                        creabim_core::SlabKind::Floor => "Automatic: floor slab (a slab under it).",
                     };
                     // four kinds: a list, the buttons would not fit
                     let kinds: [(Option<creabim_core::SlabKind>, &str, &str); 4] = [
@@ -11081,13 +11082,24 @@ crate::props::row(ui, "File names", |ui| {
                             label = "Notes of the legend";
                         }
                         // each note on or off on its own (George 2026-11-27)
-                        let lines: Vec<String> = v
-                            .notes
-                            .lines()
-                            .map(str::trim)
-                            .filter(|l| !l.is_empty())
-                            .map(str::to_string)
-                            .collect();
+                        // (a foundations legend without notes of its own
+                        // offers George's usual ones)
+                        let lines: Vec<String> = if matches!(
+                            v.kind,
+                            ViewKind::Schedule {
+                                category: ScheduleCategory::MaterialLegend,
+                                ..
+                            }
+                        ) {
+                            creabim_geom::matlegend::notes_of(self.doc.model(), e.id)
+                        } else {
+                            v.notes
+                                .lines()
+                                .map(str::trim)
+                                .filter(|l| !l.is_empty())
+                                .map(str::to_string)
+                                .collect()
+                        };
                         if !lines.is_empty() {
                             ui.label(crate::i18n::t("Notes written on the drawing"));
                         }
