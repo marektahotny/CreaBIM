@@ -1019,6 +1019,20 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 d.items
                     .extend(crate::etics::elevation_lines(model, *start, *end, *depth));
             }
+            // the trades' penetrations the cut passes through, in the
+            // architect's and the structural sections (George 2026-11-27)
+            if *cut
+                && creabim_core::viewmodes::DisplayMode::of(v)
+                    != creabim_core::viewmodes::DisplayMode::Services
+            {
+                d.items.extend(crate::tradepen::section_items(
+                    full,
+                    *start,
+                    *end,
+                    v.scale / 1000.0,
+                    v.structural,
+                ));
+            }
             // system lintels cut, each piece crossed: in the structural
             // sections and the architect's too (George 2026-11-25)
             if *cut {
