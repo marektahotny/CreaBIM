@@ -38,6 +38,77 @@ pub struct Wrap {
     /// The render's thickness, m (0: none).
     #[serde(default = "default_plaster")]
     pub plaster_thickness: f64,
+    /// A maker's formwork system laid on the outside instead (a ring
+    /// beam's or an RC lintel's): its boards are the layers on that side,
+    /// and on the inner side too when two-sided.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formwork: Option<Formwork>,
+}
+
+/// VELOX ring-beam boards as a ring beam's or RC lintel's formwork (see
+/// [`crate::velox`]): on the exterior side the board (EPS against the
+/// concrete, the wood-cement board outside it), and with two-sided
+/// formwork a WSC 35 on the interior side.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Formwork {
+    /// The board on the exterior side ([`crate::velox::Board::id`]).
+    pub board: String,
+    /// Boards on both sides (the inner one a WSC 35), set with AB + ES
+    /// clips; else on the exterior side only, with HB clips.
+    #[serde(default)]
+    pub two_sided: bool,
+    /// The exterior side, as [`Wrap::sides`] numbers them: set by the
+    /// placing of its beam.
+    #[serde(default)]
+    pub ext: u8,
+    /// The materials of the wood-cement board and of the EPS.
+    #[serde(default)]
+    pub wood: Option<ElementId>,
+    #[serde(default)]
+    pub eps: Option<ElementId>,
+}
+
+impl Formwork {
+    pub fn product(&self) -> &'static crate::velox::Board {
+        crate::velox::board(&self.board).unwrap_or(&crate::velox::WSC)
+    }
+
+    /// The beam side across from the exterior one.
+    pub fn inner(&self) -> usize {
+        [1, 0, 3, 2][self.ext as usize % 4]
+    }
+
+    /// The layers' thicknesses it puts on side `i`: (insulation slot,
+    /// outer slot). The EPS goes in the insulation slot and the board
+    /// outside it; a board with no EPS fills the insulation slot itself.
+    pub fn layers_on(&self, i: usize) -> Option<(f64, f64)> {
+        let p = self.product();
+        if i == self.ext as usize {
+            Some(if p.eps > 0.0 {
+                (p.eps, p.board)
+            } else {
+                (p.board, 0.0)
+            })
+        } else if self.two_sided && i == self.inner() {
+            Some((crate::velox::WSC.board, 0.0))
+        } else {
+            None
+        }
+    }
+
+    /// Set its exterior side to `ext` and the wrap's thicknesses there
+    /// (and on the inner side) to its boards'.
+    pub fn lay(w: &mut Wrap, ext: usize) {
+        let Some(f) = w.formwork.as_mut() else {
+            return;
+        };
+        f.ext = ext as u8;
+        let f = f.clone();
+        for i in [ext, f.inner()] {
+            w.sides[i] = f.layers_on(i).map_or(0.0, |l| l.0);
+        }
+        w.plaster = None;
+    }
 }
 
 /// A thin-layer render with its adhesive and mesh, m.
@@ -55,6 +126,9 @@ impl Wrap {
 
     /// The render's thickness on side `i`: only over insulation.
     pub fn plaster_on(&self, i: usize) -> f64 {
+        if let Some(f) = &self.formwork {
+            return f.layers_on(i).map_or(0.0, |l| l.1);
+        }
         if self.side(i) > 1e-6 && self.plaster.is_some() {
             self.plaster_thickness.max(0.0)
         } else {
@@ -64,6 +138,31 @@ impl Wrap {
 
     pub fn is_empty(&self) -> bool {
         (0..4).all(|i| self.side(i) < 1e-6)
+    }
+
+    /// All it lays on side `i`, insulation and what is over it, m.
+    pub fn through(&self, i: usize) -> f64 {
+        self.side(i) + self.plaster_on(i)
+    }
+
+    /// The material of the layer on side `i`: the insulation, or
+    /// (`outer`) what is over it; a formwork's own boards on its sides.
+    pub fn material(&self, i: usize, outer: bool) -> Option<ElementId> {
+        if let Some(f) = &self.formwork {
+            if f.layers_on(i).is_some() {
+                // the EPS against the concrete, the wood-cement board out
+                return if !outer && i == f.ext as usize && f.product().eps > 0.0 {
+                    f.eps
+                } else {
+                    f.wood
+                };
+            }
+        }
+        if outer {
+            self.plaster
+        } else {
+            self.insulation
+        }
     }
 }
 
@@ -142,6 +241,7 @@ pub fn new_wrap(model: &Model, sides: [f64; 4]) -> (Wrap, Vec<Element>) {
         sides,
         plaster: pick(PRESETS[3].0),
         plaster_thickness: PLASTER,
+        formwork: None,
     };
     (w, new)
 }
@@ -178,14 +278,6 @@ fn boards(w: &Wrap, a: (f64, f64), b: (f64, f64), map: [usize; 4]) -> Vec<(u8, b
     out
 }
 
-fn material_of(w: &Wrap, plaster: bool) -> Option<ElementId> {
-    if plaster {
-        w.plaster
-    } else {
-        w.insulation
-    }
-}
-
 /// The boards round column `c` (`id`): rectangular columns only.
 pub fn column_boards(id: ElementId, c: &Column) -> Vec<Column> {
     let Some(w) = &c.wrap else { return vec![] };
@@ -206,7 +298,7 @@ pub fn column_boards(id: ElementId, c: &Column) -> Vec<Column> {
                 width: x1 - x0,
                 depth: y1 - y0,
             };
-            b.material = material_of(w, plaster);
+            b.material = w.material(side as usize, plaster);
             b.wrap = None;
             b.in_wall = None;
             b.piece = Some(WrapPiece {
@@ -240,7 +332,7 @@ pub fn beam_boards(id: ElementId, b: &Beam) -> Vec<Beam> {
             p.width = a1 - a0;
             p.depth = z1 - z0;
             p.top_offset = b.top_offset - z1;
-            p.material = material_of(w, plaster);
+            p.material = w.material(side as usize, plaster);
             p.wrap = None;
             p.lintel = None;
             p.piece = Some(WrapPiece {
@@ -284,6 +376,10 @@ pub fn settle(model: &Model) -> Transaction {
     }
     let mut kept = vec![];
     for h in hosts {
+        let h_formwork = match &h.kind {
+            ElementKind::Beam(b) => b.wrap.as_ref().is_some_and(|w| w.formwork.is_some()),
+            _ => false,
+        };
         let want: Vec<ElementKind> = match &h.kind {
             ElementKind::Column(c) => column_boards(h.id, c)
                 .into_iter()
@@ -303,7 +399,9 @@ pub fn settle(model: &Model) -> Transaction {
                 _ => None,
             };
             let k = key(&kind);
-            let name = if k.is_some_and(|k| k.1) {
+            let name = if h_formwork {
+                "Debnenie vencov VELOX"
+            } else if k.is_some_and(|k| k.1) {
                 "Omietka"
             } else {
                 "Zateplenie"
@@ -434,10 +532,10 @@ pub fn layers_across(model: &Model, e: &Element) -> Option<Vec<(Option<ElementId
         if let Some(w) = wrap {
             let mut l = vec![];
             if w.plaster_on(i) > 0.0 {
-                l.push((w.plaster, w.plaster_on(i)));
+                l.push((w.material(i, true), w.plaster_on(i)));
             }
             if w.side(i) > 0.0 {
-                l.push((w.insulation, w.side(i)));
+                l.push((w.material(i, false), w.side(i)));
             }
             if !outer_first {
                 l.reverse();

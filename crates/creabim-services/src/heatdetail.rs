@@ -437,6 +437,32 @@ pub fn building(model: &Model, o: &Opts) -> BuildingLoss {
                     }
                     match u_of(model, we, R_WALL) {
                         Some((uw, name)) => {
+                            // ring beams, RC lintels and columns in the
+                            // core over the outside dimensions: their own
+                            // build-up over their face (George 2026-11-27)
+                            let (o0, o1) = {
+                                let (p, q) = (ring[i], ring[(i + 1) % n]);
+                                let (x, y) = ((p - wall.start).dot(u), (q - wall.start).dot(u));
+                                (x.min(y), x.max(y))
+                            };
+                            let z0 = model.level(r.level).map_or(0.0, |l| l.elevation);
+                            for (detail, ia, iu) in crate::heatloss::insert_parts(
+                                model,
+                                we,
+                                &name,
+                                (o0, o1),
+                                (z0, z0 + hs),
+                                R_WALL,
+                            ) {
+                                match iu {
+                                    Some(iu) => {
+                                        let ia = ia.min(net.max(0.0));
+                                        net -= ia;
+                                        add("Outside wall", &detail, ia, iu + tb, 1.0, Some(az));
+                                    }
+                                    None => miss(Missing::WallBuildUp),
+                                }
+                            }
                             add("Outside wall", &name, net.max(0.0), uw + tb, 1.0, Some(az))
                         }
                         None => miss(Missing::WallBuildUp),

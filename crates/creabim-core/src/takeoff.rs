@@ -255,6 +255,10 @@ pub fn lines(model: &Model) -> Vec<Line> {
     let strips = crate::footing::strip_outlines(model);
     let joins = crate::wall_joins(model);
     for e in model.iter() {
+        // VELOX boards are listed as boards and clips (velox_lines)
+        if formwork_of(model, e).is_some() {
+            continue;
+        }
         // the measure of the whole element and its thickness
         let (category, level, whole, thickness) = match &e.kind {
             ElementKind::Wall(w) => {
@@ -722,7 +726,138 @@ pub fn lines(model: &Model) -> Vec<Line> {
         }
     }
     out.extend(kari_lines(model));
+    out.extend(velox_lines(model));
     out
+}
+
+/// The VELOX formwork board `e` is part of, and its host.
+fn formwork_of<'a>(
+    model: &'a Model,
+    e: &crate::Element,
+) -> Option<(&'a crate::Element, &'a crate::wrap::Formwork)> {
+    let p = crate::wrap::piece_of(e)?;
+    let h = model.get(p.host)?;
+    match &h.kind {
+        ElementKind::Beam(b) => b.wrap.as_ref()?.formwork.as_ref().map(|f| (h, f)),
+        _ => None,
+    }
+}
+
+/// VELOX ring-beam formwork (George 2026-11-27) as the maker sells it,
+/// a line each for a storey's boards of one kind and its clips: boards
+/// 2 m long, rounded up, and sets of clips for 2 m each (HB of 5 pcs
+/// one-sided, AB + ES of 10 pcs two-sided), as long as the masonry is
+/// wide (brochure *Debnenie vencov*, SKBVA5/11.24/4.0).
+pub fn velox_lines(model: &Model) -> Vec<Line> {
+    use crate::velox;
+    // (category, level, label, clips) → (first element, length)
+    type Key = (&'static str, ElementId, String, bool);
+    let mut sums: Vec<(Key, ElementId, f64)> = vec![];
+    let mut put = |key: Key, id: ElementId, len: f64| match sums.iter_mut().find(|s| s.0 == key) {
+        Some(s) => s.2 += len,
+        None => sums.push((key, id, len)),
+    };
+    for e in model.iter() {
+        let ElementKind::Beam(b) = &e.kind else {
+            continue;
+        };
+        let Some(f) = b.wrap.as_ref().and_then(|w| w.formwork.as_ref()) else {
+            continue;
+        };
+        if b.piece.is_some() {
+            continue;
+        }
+        let category = if b.lintel.is_some() {
+            "Lintels"
+        } else {
+            "Beams"
+        };
+        // the board along the exterior side runs over the corners
+        let along = |side: usize| {
+            model
+                .iter()
+                .find_map(|x| match &x.kind {
+                    ElementKind::Beam(p)
+                        if p.piece.is_some_and(|q| {
+                            q.host == e.id && q.side as usize == side && !q.plaster
+                        }) =>
+                    {
+                        Some(p.length())
+                    }
+                    _ => None,
+                })
+                .unwrap_or(b.length())
+        };
+        let board = |p: &velox::Board| {
+            crate::words::tr("{maker} {name} – {t} × {h} × {l} mm")
+                .replace("{maker}", velox::MAKER)
+                .replace("{name}", p.short())
+                .replace("{t}", &format!("{:.0}", p.thickness() * 1000.0))
+                .replace("{h}", &format!("{:.0}", p.height * 1000.0))
+                .replace("{l}", &format!("{:.0}", p.length * 1000.0))
+        };
+        let ext = along(f.ext as usize);
+        put((category, b.level, board(f.product()), false), e.id, ext);
+        if f.two_sided {
+            put(
+                (category, b.level, board(&velox::WSC), false),
+                e.id,
+                along(f.inner()),
+            );
+        }
+        // the clips as long as the masonry is wide
+        let wall = match category {
+            "Beams" => crate::masonry::ring_core_width(model, b),
+            _ => crate::masonry::lintel_core_width(model, b),
+        };
+        let clips = crate::words::tr(if f.two_sided {
+            "{maker} clips AB + ES, masonry {w} mm (sets of {n} pcs)"
+        } else {
+            "{maker} clips HB, masonry {w} mm (sets of {n} pcs)"
+        })
+        .replace("{maker}", velox::MAKER)
+        .replace(
+            "{w}",
+            &wall.map_or("?".into(), |w| format!("{:.0}", w * 1000.0)),
+        )
+        .replace(
+            "{n}",
+            &(if f.two_sided {
+                velox::AB_ES_SET
+            } else {
+                velox::HB_SET
+            })
+            .to_string(),
+        );
+        put((category, b.level, clips, true), e.id, b.length());
+    }
+    sums.into_iter()
+        .map(|((category, level, label, clips), element, len)| {
+            let per = if clips {
+                velox::CLIP_SET_LENGTH
+            } else {
+                velox::WSC.length
+            };
+            let n = (len / per - 1e-6).ceil().max(0.0) as usize;
+            let unit = crate::words::tr(if clips { "{n} sets" } else { "{n} pcs" })
+                .replace("{n}", &n.to_string());
+            Line {
+                element,
+                category,
+                level: Some(level),
+                material: None,
+                layer: None,
+                thickness: 0.0,
+                quantity: Quantity {
+                    length: len,
+                    count: n,
+                    ..Default::default()
+                },
+                perimeter: 0.0,
+                label: Some(format!("{unit} – {label}")),
+            }
+        })
+        .collect()
 }
 
 /// The welded meshes laid in slabs (George 2026-11-27): a line for each

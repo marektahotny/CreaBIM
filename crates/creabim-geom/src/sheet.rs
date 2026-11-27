@@ -927,7 +927,8 @@ pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_nor
             c.text(
                 at(DVec2::new(0.0, 0.42 * s + 3.0)),
                 3.5,
-                "N",
+                // "S" (sever) in Slovak and Czech
+                &creabim_core::words::tr("N"),
                 Anchor::Middle,
             );
         }
