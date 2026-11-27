@@ -111,6 +111,22 @@ fn hole_of(p: &creabim_core::mep::Pipe) -> (bool, [f64; 2], String) {
     }
 }
 
+/// From what size a pipe's or duct's hole through a wall or a slab is
+/// taken over into the architect's and the structural drawings, mm
+/// (George 2026-11-27: "prestupy cez steny väčších potrubí, jedno aká
+/// profesia, od dimenzie 90 mm"; "patria aj do výkresov STA").
+pub const MIN_DIMENSION_MM: f64 = 90.0;
+
+/// A pipe's or duct's own size, mm: a round one's diameter (a pipe's
+/// outside where it is known), a rectangular duct's bigger side.
+pub fn pipe_dimension_mm(p: &creabim_core::mep::Pipe) -> f64 {
+    match p.height_mm {
+        Some(h) => p.nominal_mm.max(h),
+        None if p.kind().is_air() => p.nominal_mm,
+        None => p.outer_mm.max(p.nominal_mm),
+    }
+}
+
 /// Every place a trade's pipe passes through a wall, a slab, a ceiling or
 /// a roof (where no penetration was drawn there by hand).
 pub fn crossings(model: &Model) -> Vec<Crossing> {
@@ -268,6 +284,19 @@ pub fn crossings(model: &Model) -> Vec<Crossing> {
             }
         }
     }
+    // the bigger pipes and ducts only, whatever the trade: from 90 mm
+    // through walls and slabs (George 2026-11-27); a suspended ceiling's
+    // hole and an outlet through the roof whatever their size
+    out.retain(|c| match c.through {
+        Through::Wall | Through::Slab => model
+            .get(c.pipe)
+            .and_then(|e| match &e.kind {
+                ElementKind::Pipe(p) => Some(pipe_dimension_mm(p)),
+                _ => None,
+            })
+            .is_some_and(|d| d >= MIN_DIMENSION_MM - 1e-6),
+        Through::Ceiling | Through::Roof => true,
+    });
     // a pipe's two pieces meeting in a wall or a slab: once
     let mut kept: Vec<Crossing> = vec![];
     for c in out {
