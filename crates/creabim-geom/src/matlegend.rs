@@ -444,6 +444,40 @@ fn cut(model: &Model, level: Option<ElementId>) -> Vec<Row> {
     out
 }
 
+/// Does the legend `view` stand beside the foundations: its own storey,
+/// or a plan beside it, is one the footings are drawn on?
+pub fn of_foundations(model: &Model, view: ElementId) -> bool {
+    let footing_levels: Vec<ElementId> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Footing(f) => Some(f.plan_level(model)),
+            _ => None,
+        })
+        .collect();
+    storeys(model, view).is_some_and(|ls| ls.iter().any(|l| footing_levels.contains(l)))
+}
+
+/// The welded meshes a foundations' legend lists, a line each: "KARI
+/// rohož KY50 8x150/8x150 mm pri spodnom okraji podkladnej dosky".
+pub fn kari_rows(model: &Model, view: ElementId) -> Vec<String> {
+    if !of_foundations(model, view) {
+        return vec![];
+    }
+    let mut out: Vec<String> = vec![];
+    for l in creabim_core::kari::laid(model) {
+        let t = tr(if l.top {
+            "KARI mesh {} at the top edge of the base slab"
+        } else {
+            "KARI mesh {} at the bottom edge of the base slab"
+        })
+        .replace("{}", &l.mesh.designation());
+        if !out.contains(&t) {
+            out.push(t);
+        }
+    }
+    out
+}
+
 /// The legend as a drawing in paper millimetres, its top left corner at
 /// the origin.
 pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
@@ -552,7 +586,46 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         }
         y -= h + 3.0;
     }
-    if rows.is_empty() {
+    // beside the foundations: the welded meshes of the base slabs, each a
+    // number in a circle as George's sample (ASR.002) marks them
+    let meshes = kari_rows(model, view);
+    for (i, words) in meshes.iter().enumerate() {
+        let lines = wrap(words, tw, TEXT);
+        let h = PATCH.y.max(lines.len() as f64 * LINE);
+        let c = DVec2::new(PATCH.x / 2.0, y - h / 2.0);
+        let r = 2.2;
+        let ring: Vec<DVec2> = (0..=32)
+            .map(|k| {
+                let a = k as f64 / 32.0 * std::f64::consts::TAU;
+                c + DVec2::new(a.cos(), a.sin()) * r
+            })
+            .collect();
+        for w in ring.windows(2) {
+            items.push(PlanItem::Line {
+                id: view,
+                pen: Pen::Symbol,
+                a: w[0],
+                b: w[1],
+            });
+        }
+        items.push(PlanItem::Text {
+            id: view,
+            at: c,
+            text: (i + 1).to_string(),
+            size: TEXT,
+            align: Anchor::Middle,
+            mm: 1.0,
+            rgb: None,
+            bold: false,
+        });
+        let mut ty = y - h / 2.0 + (lines.len() as f64 - 1.0) * LINE / 2.0;
+        for l in &lines {
+            text(&mut items, DVec2::new(ind, ty), l, TEXT);
+            ty -= LINE;
+        }
+        y -= h + 3.0;
+    }
+    if rows.is_empty() && meshes.is_empty() {
         text(
             &mut items,
             DVec2::new(0.0, y - LINE / 2.0),
@@ -641,12 +714,13 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         }
     }
     // the notes of the drawing, the legend view's own, a line each
+    // (each can be switched off on its own, George 2026-11-27)
     let notes: Vec<String> = match model.get(view).map(|e| &e.kind) {
         Some(ElementKind::View(v)) => v
             .notes
             .lines()
             .map(str::trim)
-            .filter(|l| !l.is_empty())
+            .filter(|l| !l.is_empty() && !v.notes_off.iter().any(|o| o.trim() == *l))
             .map(|l| format!("- {}", l.trim_start_matches("- ")))
             .collect(),
         _ => vec![],
@@ -661,7 +735,8 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
         );
         y -= HEAD + 3.0;
         for n in &notes {
-            for l in wrap(&n.to_uppercase(), ind + tw, TEXT) {
+            // as typed, as the sample's notes are written
+            for l in wrap(n, ind + tw, TEXT) {
                 text(&mut items, DVec2::new(0.0, y - LINE / 2.0), &l, TEXT);
                 y -= LINE;
             }

@@ -229,18 +229,17 @@ fn device_symbol(items: &mut Vec<PlanItem>, id: ElementId, row: &DeviceRow, cent
 /// The notes of the legend drawn as `view`: its own, a line each, else
 /// the usual ones of the trades the model has pipes of.
 pub fn notes(model: &Model, view: ElementId) -> Vec<String> {
-    let own: Vec<String> = match model.get(view).map(|e| &e.kind) {
-        Some(ElementKind::View(v)) => v
-            .notes
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty())
-            .map(str::to_string)
-            .collect(),
-        _ => vec![],
-    };
-    if !own.is_empty() {
-        return own;
+    // its own, less those switched off (all off: none, not the usual)
+    if let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) {
+        if !v.notes.trim().is_empty() {
+            return v
+                .notes
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !v.notes_off.iter().any(|o| o.trim() == *l))
+                .map(str::to_string)
+                .collect();
+        }
     }
     let trade = trade_of(model, view);
     if trade.is_some_and(|t| t != Trade::Plumbing && t != Trade::Heating) {

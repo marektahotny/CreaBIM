@@ -1696,6 +1696,7 @@ impl<'a> Importer<'a> {
             name: Self::name(e, "Slab"),
             kind: ElementKind::Slab(Slab {
                 layer_edges: vec![],
+                reinforcement: None,
                 kind: None,
                 level: lid,
                 boundary: p.outline,

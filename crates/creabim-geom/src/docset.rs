@@ -276,6 +276,36 @@ pub fn skeleton(model: &Model) -> Option<(Transaction, Made)> {
     set(model, true)
 }
 
+/// The notes of George's foundations drawing (ASR.002), as its legend
+/// writes them; the project's to change or switch off one by one.
+pub const FOUNDATION_NOTES: [&str; 4] = [
+    "before the foundation structure is concreted, the penetrations for the individual installations must be left out according to the drawings of the respective trades",
+    "make the strip footings of concrete C 16/20; cast the base slab and the infill of the formwork blocks of concrete C 16/20 too",
+    "if less bearing soil (under 125 kPa) is found in the footing bottom, contact the structural engineer to widen the strip footings",
+    "the underside of the strip footing must lie at least 100 cm deep in the undisturbed (original) ground",
+];
+
+/// The foundations' legend of materials (of the footings' storey
+/// `level`), made when missing with the notes of George's sample
+/// (ASR.002), each switchable (2026-11-27).
+fn foundations_legend(b: &mut Builder, level: ElementId, name: &str) -> ElementId {
+    b.find(|_, x| {
+        matches!(x.kind, ViewKind::Schedule { category, .. }
+            if category == ScheduleCategory::MaterialLegend)
+            && x.of_level == Some(level)
+    })
+    .unwrap_or_else(|| {
+        let mut x = View::schedule(ScheduleCategory::MaterialLegend);
+        x.of_level = Some(level);
+        x.notes = FOUNDATION_NOTES
+            .iter()
+            .map(|t| tr(t))
+            .collect::<Vec<_>>()
+            .join("\n");
+        b.view(format!("{} {name}", tr("Legend of materials")), x)
+    })
+}
+
 /// The house a new project's sections and elevations are set round, m.
 const FRAME: DVec2 = DVec2::new(10.0, 8.0);
 
@@ -405,7 +435,27 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
             .find(|l| l.0 == id && l.0 != bottom.0)
     }) {
         let v = plan_of(&mut b, id, &name, l.elevation);
-        b.sheet(number(asr, "VYZ", &mut n), tr("Foundations"), &[v]);
+        let legend = foundations_legend(&mut b, id, &name);
+        b.sheet(number(asr, "VYZ", &mut n), tr("Foundations"), &[v, legend]);
+    }
+    // a foundations sheet made before (or by hand): its legend of
+    // materials goes on it beside the plan, once
+    let vyz = b.m.iter().find_map(|e| match &e.kind {
+        ElementKind::Sheet(s) if s.number.contains("_VYZ") => footing_level.map(|l| (e.id, l)),
+        _ => None,
+    });
+    if let Some((sheet, level)) = vyz {
+        let name = b.m.get(level).map(|e| e.name.clone()).unwrap_or_default();
+        let legend = foundations_legend(&mut b, level, &name);
+        let placed = b.m.iter().any(|e| {
+            matches!(&e.kind, ElementKind::Viewport(vp) if vp.sheet == sheet && vp.view == legend)
+        });
+        if !placed {
+            let at = crate::sheet::free_spot(&b.m, sheet, legend);
+            let vp = crate::sheet::new_viewport(&b.m, sheet, legend, at);
+            b.add(Element::new("Viewport", ElementKind::Viewport(vp)));
+            b.fixed = true;
+        }
     }
     let (mut above, mut below) = (0, storeys.iter().filter(|s| s.2 < -1.0).count() + 1);
     // each storey's code and its plan

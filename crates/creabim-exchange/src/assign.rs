@@ -171,6 +171,7 @@ pub fn fit(
             }
             Ok(ElementKind::Slab(Slab {
                 layer_edges: vec![],
+                reinforcement: None,
                 kind: None,
                 level,
                 boundary,

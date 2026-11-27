@@ -618,6 +618,11 @@ pub fn auto_class(model: &Model, e: &crate::Element) -> Option<&'static Class> {
         {
             Some("NCD002")
         }
+        // a base slab between strip footings: DSS "podkladní vrstva"
+        // (IfcSlab BASESLAB, "podkladní beton"); a foundation slab
+        // carrying the building on its own stays "nosná deska" (George
+        // 2026-11-27)
+        ElementKind::Slab(s) if s.kind == Some(crate::SlabKind::Base) => Some("UMC002"),
         ElementKind::Slab(_) => Some("ULK001"),
         ElementKind::Opening(o) => match o.kind {
             crate::OpeningKind::Door => Some("QQC001"),
@@ -892,7 +897,14 @@ impl Ctx {
 fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Known, Source)> {
     let mut out = Vec::new();
     // measured as the take-off measures it
-    let lines: &[crate::takeoff::Line] = cx.lines.get(&e.id).map_or(&[], |v| v.as_slice());
+    // (a base slab's KARI mesh is a line of its own, not the slab's)
+    let lines: Vec<&crate::takeoff::Line> = cx
+        .lines
+        .get(&e.id)
+        .map_or(&[][..], |v| v.as_slice())
+        .iter()
+        .filter(|l| l.category != "Reinforcement")
+        .collect();
     if !lines.is_empty() {
         let vol: f64 = lines.iter().map(|l| l.quantity.volume).sum();
         let area = lines.iter().map(|l| l.quantity.area).fold(0.0, f64::max);
@@ -925,6 +937,18 @@ fn known(model: &Model, cx: &Ctx, e: &crate::Element) -> Vec<(&'static str, Know
         }
         ElementKind::Slab(s) => {
             put(&mut out, "hrúbka", Known::Len(s.thickness));
+            // a base slab's welded mesh (UMC002 "typ siete")
+            if let Some(m) = s
+                .reinforcement
+                .as_ref()
+                .and_then(|r| crate::kari::mesh(&r.mesh))
+            {
+                put(
+                    &mut out,
+                    "typ siete",
+                    Known::Text(format!("KARI {}", m.designation())),
+                );
+            }
             let mut per = 0.0;
             for i in 0..s.boundary.len() {
                 per += (s.boundary[(i + 1) % s.boundary.len()] - s.boundary[i]).length();

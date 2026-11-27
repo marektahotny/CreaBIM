@@ -5089,6 +5089,7 @@ fn section_tool(
                     "Slab",
                     ElementKind::Slab(Slab {
                         layer_edges: vec![],
+                        reinforcement: None,
                         kind: None,
                         level,
                         boundary,
