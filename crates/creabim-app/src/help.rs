@@ -392,6 +392,7 @@ pub fn tool_page(t: Tool) -> &'static str {
         Tool::Align => "align",
         Tool::Object => "furniture",
         Tool::Extrusion | Tool::Sweep => "parts",
+        Tool::Chimney => "parts#chimneys",
         Tool::Void => "parts#voids",
         Tool::Terrain | Tool::Paving | Tool::Planting => "site",
         Tool::Room | Tool::RoomSeparator | Tool::Tiling => "rooms",
