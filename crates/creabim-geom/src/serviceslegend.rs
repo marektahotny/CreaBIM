@@ -678,6 +678,58 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             TEXT,
             None,
         );
+        y -= LINE + 1.0;
+        // the area of transit pipes: a yellow wash under the dashed edge
+        let a = DVec2::new(0.0, y - LINE / 2.0);
+        items.push(PlanItem::Shade {
+            id: view,
+            points: vec![
+                a - DVec2::Y * 1.2,
+                a + DVec2::new(SAMPLE, -1.2),
+                a + DVec2::new(SAMPLE, 1.2),
+                a + DVec2::Y * 1.2,
+            ],
+            rgb: crate::heatplan::TRANSIT,
+        });
+        crate::heatplan::strips(
+            &mut items,
+            view,
+            &[
+                a - DVec2::Y * 1.2,
+                a + DVec2::new(SAMPLE, -1.2),
+                a + DVec2::new(SAMPLE, 1.2),
+                a + DVec2::Y * 1.2,
+                a - DVec2::Y * 1.2,
+            ],
+            crate::heatplan::FIELD,
+            Some((1.5, 1.0)),
+            1.0,
+        );
+        text(
+            &mut items,
+            DVec2::new(ind, y - LINE / 2.0),
+            &tr("area of transit pipes"),
+            TEXT,
+            None,
+        );
+        y -= LINE + 2.0;
+        // pipes in sleeves
+        let a = DVec2::new(0.0, y - LINE / 2.0);
+        crate::heatplan::strips(
+            &mut items,
+            view,
+            &[a, a + DVec2::X * SAMPLE],
+            crate::heatplan::SLEEVE,
+            Some((0.3, 0.5)),
+            1.0,
+        );
+        text(
+            &mut items,
+            DVec2::new(ind, y - LINE / 2.0),
+            &tr("pipes in a sleeve"),
+            TEXT,
+            None,
+        );
         y -= LINE + 4.0;
     }
     let rows = if of(Trade::Plumbing) {

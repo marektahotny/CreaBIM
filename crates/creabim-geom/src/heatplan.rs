@@ -22,6 +22,82 @@ pub const DASH: (f64, f64) = (4.0, 1.5);
 const WIDTH: f64 = 0.25;
 /// The tables' letters, paper mm.
 const TEXT: f64 = 2.0;
+/// The area of transit pipes' wash.
+pub const TRANSIT: [f32; 3] = [1.0, 0.96, 0.72];
+/// The sleeves' dots, and how far a sleeve runs past a doorway's side, m.
+pub const SLEEVE: [f32; 3] = [0.15, 0.15, 0.15];
+const SLEEVE_HALF: f64 = 0.1;
+/// The pipes of a bundle apart, m.
+const PITCH: f64 = 0.05;
+
+/// The way through `pts` to `end` square to the plan: from each point
+/// it goes on as it came, then turns onto the next.
+pub fn square(pts: &[DVec2], end: DVec2) -> Vec<DVec2> {
+    let mut all = pts.to_vec();
+    all.push(end);
+    let mut out: Vec<DVec2> = vec![];
+    for (i, q) in all.iter().enumerate() {
+        if let (Some(p), true) = (out.last().copied(), i > 0) {
+            let d = q - p;
+            if d.x.abs() > 1e-6 && d.y.abs() > 1e-6 {
+                let came = if out.len() > 1 {
+                    p - out[out.len() - 2]
+                } else {
+                    d
+                };
+                let elbow = if came.x.abs() >= came.y.abs() {
+                    DVec2::new(q.x, p.y)
+                } else {
+                    DVec2::new(p.x, q.y)
+                };
+                out.push(elbow);
+            }
+        }
+        out.push(*q);
+    }
+    out
+}
+
+/// `pts` without repeated points, points on a straight run and points
+/// where it turns back.
+pub fn tidy(pts: &[DVec2]) -> Vec<DVec2> {
+    let mut out: Vec<DVec2> = vec![];
+    for p in pts {
+        if out.last().is_some_and(|q| q.distance(*p) < 1e-4) {
+            continue;
+        }
+        while out.len() >= 2 {
+            let (a, b) = (out[out.len() - 2], out[out.len() - 1]);
+            let (u, v) = ((b - a).normalize_or_zero(), (*p - b).normalize_or_zero());
+            // straight on, or back the way it came
+            if u.perp_dot(v).abs() < 1e-6 {
+                out.pop();
+            } else {
+                break;
+            }
+        }
+        out.push(*p);
+    }
+    out
+}
+
+/// `pts` moved `d` to its left, each corner mitred.
+pub fn offset(pts: &[DVec2], d: f64) -> Vec<DVec2> {
+    let n = pts.len();
+    if n < 2 {
+        return pts.to_vec();
+    }
+    let dir = |i: usize| (pts[i + 1] - pts[i]).normalize_or_zero();
+    (0..n)
+        .map(|i| {
+            let a = if i > 0 { dir(i - 1) } else { dir(0) };
+            let b = if i + 1 < n { dir(i) } else { dir(n - 2) };
+            let m = (a.perp() + b.perp()).normalize_or_zero();
+            let c = m.dot(b.perp()).max(0.3);
+            pts[i] + m * d / c
+        })
+        .collect()
+}
 
 /// The outline `o` with its corners rounded off by `r` (an arc of a few
 /// chords at each), closed.
@@ -221,8 +297,101 @@ pub fn items(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
     let mut out = vec![];
     let mut tables = vec![];
     let mut circuits = 0;
+    // the rooms the pipes pass through with no loops of their own: the
+    // area of transit pipes, washed yellow under a dashed edge
+    let mut transit: Vec<ElementId> = vec![];
+    for x in design.rooms.iter().filter(|x| x.on) {
+        for t in x.route.iter().flat_map(|w| w.transit.iter()) {
+            if !transit.contains(t) && !rooms.iter().any(|r| r.0.id == *t) {
+                transit.push(*t);
+            }
+        }
+    }
+    for t in &transit {
+        let Some(e) = model.get(*t) else { continue };
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        if r.level != level {
+            continue;
+        }
+        let Some(shape) = room::shape_of(model, r) else {
+            continue;
+        };
+        if let Some(mut ring) = creabim_core::underfloor::inset_ring(
+            &shape.outline,
+            creabim_core::underfloor::EDGE / 2.0,
+        ) {
+            out.push(PlanItem::Shade {
+                id: *t,
+                points: ring.clone(),
+                rgb: TRANSIT,
+            });
+            if let Some(first) = ring.first().copied() {
+                ring.push(first);
+            }
+            strips(&mut out, *t, &ring, FIELD, Some((1.5, 1.0)), mm);
+        }
+    }
+    // each loop's supply and return from the manifold, side by side
+    let mut k = 0usize;
+    for (e, _, u, shape) in &rooms {
+        let Some(w) = design
+            .rooms
+            .iter()
+            .find(|x| x.id == e.id)
+            .and_then(|x| x.route.as_ref())
+        else {
+            continue;
+        };
+        let from = design
+            .rooms
+            .iter()
+            .find(|x| x.id == e.id)
+            .and_then(|x| x.route.as_ref())
+            .and_then(|w| w.points.last().copied());
+        let loops = creabim_core::underfloor::loops_from(&shape.outline, u, from);
+        for sp in &loops {
+            let (Some(a), Some(b)) = (sp.supply.first(), sp.ret.last()) else {
+                continue;
+            };
+            let off = (k as f64 * 2.0 + 0.5) * PITCH;
+            // to the loop's ends, the last step straight onto them
+            // along the way side by side, the last steps square onto
+            // the loop's end
+            let along = |end: DVec2, d: f64| {
+                let c = tidy(&square(&w.points, end));
+                let body = &c[..c.len().saturating_sub(1)];
+                let o = offset(body, d);
+                square(&o, end)
+            };
+            let sup = along(*a, off);
+            let ret = along(*b, off + PITCH);
+            // the pipes in sleeves where they cross a doorway's joint
+            for j in 0..w.doors.len() {
+                let (Some(p), Some(q)) = (w.points.get(1 + 2 * j), w.points.get(2 + 2 * j)) else {
+                    continue;
+                };
+                let u = (*q - *p).normalize_or_zero();
+                let ext = SLEEVE_HALF;
+                for d in [off, off + PITCH] {
+                    let o = offset(&[*p - u * ext, *q + u * ext], d);
+                    strips(&mut out, e.id, &o, SLEEVE, Some((0.3, 0.5)), mm);
+                }
+            }
+            strips(&mut out, e.id, &sup, SUPPLY, None, mm);
+            strips(&mut out, e.id, &ret, RETURN, Some(DASH), mm);
+            k += 1;
+        }
+    }
     for (e, r, u, shape) in &rooms {
-        let loops = creabim_core::underfloor::loops(&shape.outline, u);
+        let from = design
+            .rooms
+            .iter()
+            .find(|x| x.id == e.id)
+            .and_then(|x| x.route.as_ref())
+            .and_then(|w| w.points.last().copied());
+        let loops = creabim_core::underfloor::loops_from(&shape.outline, u, from);
         for sp in &loops {
             for (pts, supply) in sp.pieces() {
                 if supply {

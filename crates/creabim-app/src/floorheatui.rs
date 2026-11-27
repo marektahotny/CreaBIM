@@ -204,6 +204,7 @@ impl CreaBimApp {
                     return;
                 }
                 let on: Vec<&floorheat::RoomDesign> = d.rooms.iter().filter(|x| x.on).collect();
+                let marks = creabim_core::marks(self.doc.model());
                 ui.horizontal(|ui| {
                     if ui.button(t("All rooms")).clicked() {
                         for x in d.rooms.iter().filter(|x| !x.on) {
@@ -271,6 +272,7 @@ impl CreaBimApp {
                         Col::num("q / needed", "W/m²"),
                         Col::text("Spacing"),
                         Col::text("Laying"),
+                        Col::text("Connected by"),
                         Col::num("RλB", "m²K/W"),
                         Col::num("su", "mm"),
                         Col::num("qu", "W/m²"),
@@ -283,7 +285,7 @@ impl CreaBimApp {
                         row.empty();
                         row.text(t("Total"));
                         row.text(num(on.iter().map(|x| x.phi).sum::<f64>(), 0));
-                        for _ in 0..6 {
+                        for _ in 0..7 {
                             row.empty();
                         }
                         row.text(d.loops.to_string());
@@ -376,6 +378,39 @@ impl CreaBimApp {
                                     u.layout = l;
                                     set.push((x.id, Some(u)));
                                 }
+                            }
+                        });
+                        // the doorway the loops come in by from the manifold
+                        row.cell(|ui| {
+                            let (true, Some(u)) = (x.on, &x.ufh) else {
+                                return;
+                            };
+                            if x.doors.is_empty() {
+                                ui.weak("–");
+                                return;
+                            }
+                            let name = |id: ElementId| {
+                                marks.get(&id).cloned().unwrap_or_else(|| t("Door"))
+                            };
+                            let shown = match (u.door, x.door) {
+                                (Some(d), _) => name(d),
+                                (None, Some(d)) => format!("{} ({})", name(d), t("auto")),
+                                _ => t("auto"),
+                            };
+                            let mut pick = u.door;
+                            egui::ComboBox::from_id_salt(("floor.heat.door", x.id))
+                                .width(90.0)
+                                .selected_text(shown)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut pick, None, t("auto"));
+                                    for w in &x.doors {
+                                        ui.selectable_value(&mut pick, Some(w.id), name(w.id));
+                                    }
+                                });
+                            if pick != u.door {
+                                let mut u = u.clone();
+                                u.door = pick;
+                                set.push((x.id, Some(u)));
                             }
                         });
                         row.text(num(x.finish_r, 3));

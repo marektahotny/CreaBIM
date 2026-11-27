@@ -33,6 +33,10 @@ pub struct Underfloor {
     /// splits evenly across the longer side.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub split: Option<Split>,
+    /// The doorway its loops come in by from the manifold; none takes
+    /// the one on the shortest way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub door: Option<crate::ElementId>,
 }
 
 /// How a room's loops are split, set by hand.
@@ -54,6 +58,7 @@ impl Default for Underfloor {
             layout: Layout::default(),
             zones: vec![],
             split: None,
+            door: None,
         }
     }
 }
@@ -338,9 +343,12 @@ fn pt(ax: usize, x: f64, y: f64) -> DVec2 {
     }
 }
 
+/// A row: its position across and its span along.
+type Row = (f64, f64, f64);
+
 /// The lines across the inset outline at `t` apart, along its longer
 /// side: (y, x from, x to), and the axis they run along.
-fn rows(outline: &[DVec2], t: f64, edge: f64, first: f64) -> Option<(usize, Vec<(f64, f64, f64)>)> {
+fn rows(outline: &[DVec2], t: f64, edge: f64, first: f64) -> Option<(usize, Vec<Row>)> {
     let o = inset_ring(outline, edge)?;
     let (lo, hi) = o.iter().fold(
         (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
@@ -683,6 +691,12 @@ pub fn split_zones(outline: &[DVec2], n: usize, split: Option<&Split>) -> Vec<Ve
 /// when it is not drawn; an edge zone's pipe laid at its own spacing, the
 /// room's kept out of it.
 pub fn loops(outline: &[DVec2], u: &Underfloor) -> Vec<Spiral> {
+    loops_from(outline, u, None)
+}
+
+/// The loops, each spiral setting out from its corner nearest `from`
+/// (where the pipes come in from the manifold).
+pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec<Spiral> {
     let strips = split_zones(outline, u.loops.max(1) as usize, u.split.as_ref());
     // each strip laid part by convex part, so an L-shaped room is filled
     // all over (George 2026-11-27)
@@ -692,7 +706,16 @@ pub fn loops(outline: &[DVec2], u: &Underfloor) -> Vec<Spiral> {
             let mut all = Spiral::default();
             for (k, part) in convex_parts(z).iter().enumerate() {
                 let sp = match u.layout {
-                    Layout::Spiral | Layout::SpiralLeading => spiral(part, u.spacing, EDGE, 0),
+                    Layout::Spiral | Layout::SpiralLeading => {
+                        let start = from.map_or(0, |f| {
+                            (0..part.len())
+                                .min_by(|a, b| {
+                                    part[*a].distance(f).total_cmp(&part[*b].distance(f))
+                                })
+                                .unwrap_or(0)
+                        });
+                        spiral(part, u.spacing, EDGE, start)
+                    }
                     Layout::Meander => meander(part, u.spacing, EDGE),
                     Layout::DoubleMeander => double_meander(part, u.spacing, EDGE),
                     Layout::Hidden => Spiral::default(),

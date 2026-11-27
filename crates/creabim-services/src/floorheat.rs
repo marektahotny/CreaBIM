@@ -489,9 +489,11 @@ pub struct RoomDesign {
     pub perimeter: f64,
     /// Its doorways: the joints in the screed (Wavin handbook p. 42).
     pub doors: Vec<Doorway>,
-    /// The doorway its loops leave by to the manifold: the one nearest
-    /// to it.
+    /// The doorway its loops leave by to the manifold.
     pub door: Option<ElementId>,
+    /// The way from the manifold: the doorways crossed and the rooms
+    /// passed through.
+    pub route: Option<crate::ufhroute::Route>,
 }
 
 /// A doorway of a room.
@@ -745,6 +747,52 @@ fn below_ti(
         .map(|x| x.ti)
 }
 
+/// A storey's manifold for the ways to the rooms: its storey, the room
+/// it stands in, the point in front of it and the storey's doorways.
+pub struct Feeds {
+    pub level: ElementId,
+    pub start: ElementId,
+    pub from: glam::DVec2,
+    pub doors: Vec<crate::ufhroute::Door>,
+}
+
+/// The ways from each storey's manifold.
+fn feeds(model: &Model, rooms: &[heatloss::RoomAt]) -> Vec<Feeds> {
+    let mut out: Vec<Feeds> = vec![];
+    for e in model.iter() {
+        let ElementKind::Object(ob) = &e.kind else {
+            continue;
+        };
+        if !fixture::family_of(model, e).is_some_and(fixture::is_manifold) {
+            continue;
+        }
+        if out.iter().any(|f| f.level == ob.level) {
+            continue;
+        }
+        let on: Vec<(ElementId, Vec<glam::DVec2>)> = rooms
+            .iter()
+            .filter(|r| r.level == ob.level)
+            .map(|r| (r.e.id, r.shape.outline.clone()))
+            .collect();
+        // in front of it (−y is the room)
+        let from = ob.to_plan(glam::DVec2::new(0.0, -0.3));
+        let Some(start) = on
+            .iter()
+            .find(|r| r.1.len() > 2 && polygon::contains(&r.1, from))
+            .map(|r| r.0)
+        else {
+            continue;
+        };
+        out.push(Feeds {
+            level: ob.level,
+            start,
+            from,
+            doors: crate::ufhroute::doors(model, ob.level, &on),
+        });
+    }
+    out
+}
+
 #[allow(clippy::too_many_arguments)]
 fn one(
     model: &Model,
@@ -756,6 +804,7 @@ fn one(
     pipe: &Pipe,
     max_flow_ls: Option<f64>,
     norm: Option<&crate::ufhnorm::Norm>,
+    ways: &[Feeds],
 ) -> Option<RoomDesign> {
     let e = model.get(hl.id)?;
     let ElementKind::Room(r) = &e.kind else {
@@ -898,10 +947,18 @@ fn one(
         None => q * (DOWN_FACTOR - 1.0),
     };
     // from the storey's manifold to the room, as the crow flies × 1.2
-    let feed = manifolds
-        .iter()
-        .find(|m| m.0 == r.level)
-        .map_or(0.0, |m| m.1.distance(r.at) * 1.2);
+    // the way from the storey's manifold through the doorways, else as
+    // the crow flies × 1.2
+    let route = ways.iter().find(|f| f.level == r.level).and_then(|f| {
+        crate::ufhroute::route(&f.doors, f.start, f.from, hl.id, own.and_then(|u| u.door))
+    });
+    let feed = match &route {
+        Some(w) => w.length,
+        None => manifolds
+            .iter()
+            .find(|m| m.0 == r.level)
+            .map_or(0.0, |m| m.1.distance(r.at) * 1.2),
+    };
     let coil =
         (area - edge_area - hole_area) / spacing + edges.iter().map(|(a, t)| a / t).sum::<f64>();
     // loops of 100 m at most, each within what its flowmeter shows
@@ -920,15 +977,18 @@ fn one(
         .unwrap_or_default();
     let perimeter = perimeter_of(&outline);
     let doors = doorways(model, r.level, &outline);
-    let door = manifolds
-        .iter()
-        .find(|m| m.0 == r.level)
-        .and_then(|m| {
-            doors
-                .iter()
-                .min_by(|a, b| a.at.distance(m.1).total_cmp(&b.at.distance(m.1)))
-        })
-        .map(|d| d.id);
+    let door = match &route {
+        Some(w) => w.doors.last().copied(),
+        None => manifolds
+            .iter()
+            .find(|m| m.0 == r.level)
+            .and_then(|m| {
+                doors
+                    .iter()
+                    .min_by(|a, b| a.at.distance(m.1).total_cmp(&b.at.distance(m.1)))
+            })
+            .map(|d| d.id),
+    };
     Some(RoomDesign {
         id: hl.id,
         number: hl.number.clone(),
@@ -969,6 +1029,7 @@ fn one(
         perimeter,
         doors,
         door,
+        route,
     })
 }
 
@@ -1070,6 +1131,7 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
         .flowmeter_lmin()
         .map(|m| m / 60.0);
     let norm = crate::ufhnorm::Norm::of_model(model);
+    let ways = feeds(model, &rooms);
     let mut out = Design {
         norm: norm.is_some(),
         no_manifold: manifolds.is_empty(),
@@ -1090,6 +1152,7 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
                 &pipe,
                 max_flow_ls,
                 norm.as_ref(),
+                &ways,
             )
         })
         .collect();
@@ -1555,8 +1618,13 @@ fn accessories(d: &Design, add: &mut impl FnMut(BillLine)) {
     // the sleeves: both pipes of every loop through its doorway
     let sleeve: f64 = on
         .iter()
-        .filter(|x| x.door.is_some())
-        .map(|x| 2.0 * x.loops as f64 * range.sleeve_m())
+        .map(|x| {
+            let crossed = x
+                .route
+                .as_ref()
+                .map_or(x.door.is_some() as usize, |w| w.doors.len());
+            2.0 * x.loops as f64 * range.sleeve_m() * crossed as f64
+        })
         .sum();
     if sleeve > 0.0 {
         let (name, code, roll) = range.sleeve(outer);

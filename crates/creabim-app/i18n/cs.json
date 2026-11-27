@@ -9193,5 +9193,9 @@
   "Ends placing (Esc)": "Ukončí osazování (Esc)",
   "Underfloor heating (STN EN 1264-2, STN EN 1264-4)": "Podlahové vytápění (ČSN EN 1264-2, ČSN EN 1264-4)",
   "The tables of STN EN 1264-2 are not loaded (Manage › Norm tables): the heat flux is approximated.": "Tabulky ČSN EN 1264-2 nejsou načteny (Správa › Tabulky norem): tepelný tok je jen přibližný.",
-  "The layers under the pipes resist less than STN EN 1264-4, table 1 asks (Rλ,ins)": "Vrstvy pod trubkami mají menší tepelný odpor, než požaduje ČSN EN 1264-4, tab. 1 (Rλ,ins)"
+  "The layers under the pipes resist less than STN EN 1264-4, table 1 asks (Rλ,ins)": "Vrstvy pod trubkami mají menší tepelný odpor, než požaduje ČSN EN 1264-4, tab. 1 (Rλ,ins)",
+  "area of transit pipes": "plocha přechodových potrubí",
+  "pipes in a sleeve": "potrubí v ochranné trubce",
+  "Connected by": "Napojení přes",
+  "auto": "auto"
 }

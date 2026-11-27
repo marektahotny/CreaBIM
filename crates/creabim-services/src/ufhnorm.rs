@@ -257,6 +257,7 @@ impl Norm {
     }
 
     /// ΔθH,G: where the limit curve crosses the characteristic, K.
+    #[allow(clippy::too_many_arguments)]
     pub fn dtheta_hg(
         &self,
         zone: Zone,
@@ -275,6 +276,7 @@ impl Norm {
 
     /// The most the floor gives, W/m²: KH · ΔθH,G (for T over 0,375 by
     /// 0,375/T).
+    #[allow(clippy::too_many_arguments)]
     pub fn q_g(&self, zone: Zone, ti: f64, t: f64, su: f64, lambda_e: f64, r: f64, d: f64) -> f64 {
         let kh = self.k_h(t, su, lambda_e, r, d);
         kh * self.dtheta_hg(zone, ti, t, su, lambda_e, r, d)
