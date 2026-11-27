@@ -119,6 +119,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::Extrusion),
             T(Tool::Sweep),
             T(Tool::Void),
+            T(Tool::Chimney),
             T(Tool::Sketch),
             Sep,
             T(Tool::Room),

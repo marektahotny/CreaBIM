@@ -86,6 +86,7 @@ pub enum Tool {
     Paving,
     /// Trees and shrubs.
     Planting,
+    Chimney,
     /// A room: click inside walls, or draw its outline.
     Room,
     /// A line that splits a room in two where there is no wall.
@@ -113,7 +114,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 54] = [
+    pub const ALL: [Tool; 55] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -141,6 +142,7 @@ impl Tool {
         Tool::Terrain,
         Tool::Paving,
         Tool::Planting,
+        Tool::Chimney,
         Tool::Room,
         Tool::RoomSeparator,
         Tool::Tiling,
@@ -225,6 +227,7 @@ impl Tool {
             Tool::Terrain => "Terrain",
             Tool::Paving => "Hard landscape",
             Tool::Planting => "Planting",
+            Tool::Chimney => "Chimney",
             Tool::Room => "Room",
             Tool::RoomSeparator => "Room separator",
             Tool::Tiling => "Tiling",
@@ -283,6 +286,7 @@ impl Tool {
             Tool::Void => "Draw the void's outline like a slab. It cuts every wall, slab, roof, site surface and extrusion it meets, between its base and height: a firebox, a hole through a floor. In the 3D view, draw it on any face, a sloped roof or a wall: it cuts square into that face, as deep as Depth on a face.",
             Tool::Terrain => "Draw the ground's outline like a slab. It starts flat at the level; add spot heights in Properties to shape it. Paving drawn inside it sits flush.",
             Tool::Paving => "Draw paving, gravel, a driveway or decking like a slab. Pick what in the bar; each has its own pattern and material.",
+            Tool::Chimney => "Click where the chimney stands: a Schiedel chimney of the system and flue picked in the bar, its block turned by Rotation. Its outline and flue are the maker's; Properties changes them.",
             Tool::Planting => "Click to plant a tree, conifer, palm or shrub. Pick the form, canopy and height in the bar.",
             Tool::Room => "Click inside walls for a room that follows them (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch) where no walls close it off. Its name, number and finishes are in Properties.",
             Tool::RoomSeparator => "Click two points for a line that splits a room in two where there is no wall, such as between a kitchen and a dining room.",
@@ -4434,7 +4438,7 @@ fn plan_click(
         | Tool::Paving
         | Tool::Room
         | Tool::Ceiling => crate::slabtool::click(doc, level, p, state, selection),
-        Tool::Sweep | Tool::Planting => {
+        Tool::Sweep | Tool::Planting | Tool::Chimney => {
             crate::partstool::click(doc, level, tool, p, state, selection)
         }
         Tool::Column

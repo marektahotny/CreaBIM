@@ -39,6 +39,12 @@ A sweep made with a library profile has a **Profile** section in *Properties*: c
 
 Any sketch (on any plane, open or closed), slab or extrusion can become a profile: **Make a profile** in its *Properties*.
 
+## Chimneys
+
+The **Chimney** tool places a Schiedel chimney at a click: pick the system (KERASTAR, ABSOLUT, UNI ADVANCED PLUS) and the flue in the bar, with its base, height and the turn of its block. Its outline and flue are the maker's sizes, as printed in Schiedel Slovensko's data sheets; Properties shows them with their source and changes the system or flue in place. A chimney through a roof takes its flashing and keeps timber 50 mm off as any extrusion does, and the take-off lists it under Chimneys by its running metres and weight.
+
+Blocks with a ventilation shaft and two-flue blocks are still to come.
+
 ## Voids
 
 A **void** cuts every wall, slab, roof, terrain, hard landscape area and solid extrusion or sweep it meets. Use it for the firebox in a chimney, a hole through a slab, or a niche in a wall.
