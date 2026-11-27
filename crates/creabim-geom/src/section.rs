@@ -1342,7 +1342,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                                 model,
                                 e,
                                 x,
-                                n.number,
+                                &n.label(),
                                 v.scale / 1000.0,
                             ));
                         }

@@ -8878,7 +8878,7 @@
  "Bends": "Kolená",
  "insulation": "izolácia",
  "duct insulation (thickness at the duct's size)": "izolácia potrubia (hrúbka v popise potrubia)",
- "VENTILATION DEVICES": "ZARIADENIA VZT",
+ "VENTILATION DEVICES": "VZDUCHOTECHNICKÉ ZARIADENIA",
  "Not entered: the condensation takes": "Nezadané: kondenzácia berie",
  "One fan for all the rooms picked": "Jeden ventilátor pre všetky vybrané miestnosti",
  "The valves join one collecting duct in the attic with one fan and one roof outlet; the valves are set to share the air by each room's need": "Ventily sa spoja do jedného zberného potrubia v podkroví s jedným ventilátorom a jedným strešným výfukom; ventily sa nastavia tak, aby sa vzduch delil podľa potreby miestností",
@@ -9080,5 +9080,6 @@
  "{maker} clips AB + ES, masonry {w} mm (sets of {n} pcs)": "{maker} spony AB + ES, murivo {w} mm (sady po {n} ks)",
  "{maker} clips HB, masonry {w} mm (sets of {n} pcs)": "{maker} spony HB, murivo {w} mm (sady po {n} ks)",
  "runs into one valve": "hadíc GP na ventil",
- "supply in the floor, extract above the ceiling": "prívod v podlahe, odvod nad stropom"
+ "supply in the floor, extract above the ceiling": "prívod v podlahe, odvod nad stropom",
+ "Other devices": "Ostatné zariadenia"
 }

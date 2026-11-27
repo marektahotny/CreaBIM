@@ -807,9 +807,22 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
 /// size once, numbered as the legend lists them (George 2026-11-25).
 #[derive(Clone, Debug, PartialEq)]
 pub struct AirPosition {
+    /// Its device (zariadenie) and its number in it, as George's sample
+    /// VZT drawings number positions: "1.12".
+    pub device: usize,
     pub number: usize,
+    /// What the device is: "Rekuperácia", "Odvetranie 1.07+1.08", or empty
+    /// for the devices drawn by hand.
+    pub device_name: String,
     pub name: String,
     pub valves: Vec<creabim_core::ElementId>,
+}
+
+impl AirPosition {
+    /// "1.12"
+    pub fn label(&self) -> String {
+        format!("{}.{}", self.device, self.number)
+    }
 }
 
 /// The devices on the model's ducts, as positions: in the order of the
@@ -823,6 +836,12 @@ pub fn air_positions(model: &Model) -> Vec<AirPosition> {
             continue;
         };
         let Some(p) = v.host(model) else { continue };
+        // its device: what its duct's name starts with ("Rekuperácia –
+        // …", "Odvetranie 1.07 – …"), as the designs name them
+        let device_name = model
+            .get(v.pipe)
+            .and_then(|d| d.name.split_once(" – ").map(|x| x.0.to_string()))
+            .unwrap_or_default();
         if !p.kind().is_air() {
             continue;
         }
@@ -844,23 +863,46 @@ pub fn air_positions(model: &Model) -> Vec<AirPosition> {
             .iter()
             .position(|k| k.code == v.kind)
             .unwrap_or(usize::MAX);
-        match out.iter_mut().find(|x| x.1.name == name) {
+        match out
+            .iter_mut()
+            .find(|x| x.1.name == name && x.1.device_name == device_name)
+        {
             Some(x) => x.1.valves.push(e.id),
             None => out.push((
                 order,
                 AirPosition {
+                    device: 0,
                     number: 0,
+                    device_name,
                     name,
                     valves: vec![e.id],
                 },
             )),
         }
     }
-    out.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.name.cmp(&b.1.name)));
+    // the devices: heat recovery first, then by name, the hand-drawn last
+    let rank = |d: &str| (d.is_empty(), !d.starts_with("Rekuper"), d.to_string());
+    out.sort_by(|a, b| {
+        rank(&a.1.device_name)
+            .cmp(&rank(&b.1.device_name))
+            .then(a.0.cmp(&b.0))
+            .then_with(|| a.1.name.cmp(&b.1.name))
+    });
+    let mut devices: Vec<String> = vec![];
+    let mut counts: Vec<usize> = vec![];
     out.into_iter()
-        .enumerate()
-        .map(|(i, (_, mut x))| {
-            x.number = i + 1;
+        .map(|(_, mut x)| {
+            let d = match devices.iter().position(|d| *d == x.device_name) {
+                Some(d) => d,
+                None => {
+                    devices.push(x.device_name.clone());
+                    counts.push(0);
+                    devices.len() - 1
+                }
+            };
+            counts[d] += 1;
+            x.device = d + 1;
+            x.number = counts[d];
             x
         })
         .collect()
@@ -926,7 +968,7 @@ pub fn air_mark(
     model: &Model,
     e: &Element,
     v: &creabim_core::mep::Valve,
-    number: usize,
+    number: &str,
     mm: f64,
 ) -> Option<PlanItem> {
     let pipe = v.host(model)?;

@@ -754,11 +754,29 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             None,
         );
         y -= HEAD + 3.0;
+        let mut device = 0;
         for a in &air {
+            // each device under its own line: "1 Rekuperácia"
+            if a.device != device {
+                device = a.device;
+                let what = if a.device_name.is_empty() {
+                    tr("Other devices")
+                } else {
+                    a.device_name.clone()
+                };
+                text(
+                    &mut items,
+                    DVec2::new(0.0, y - LINE / 2.0),
+                    &format!("{} {what}", a.device),
+                    TEXT + 0.6,
+                    None,
+                );
+                y -= LINE + 1.0;
+            }
             text(
                 &mut items,
                 DVec2::new(2.0, y - LINE / 2.0),
-                &a.number.to_string(),
+                &a.label(),
                 TEXT + 0.6,
                 Some(crate::mep::LABEL_GREEN),
             );
@@ -1135,6 +1153,7 @@ mod tests {
         let pos = crate::mep::air_positions(doc.model());
         assert_eq!(pos.len(), 1);
         assert_eq!(pos[0].number, 1);
+        assert_eq!(pos[0].label(), "1.1");
         assert!(pos[0].name.contains("TD-160/100"));
         let texts: Vec<String> = drawing(id, "Legend", doc.model())
             .items

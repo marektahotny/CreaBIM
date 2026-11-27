@@ -1988,9 +1988,15 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
                     0.0,
                 ),
                 None if d.through_roof.is_some() => {
-                    let side = if sys == "VZC" { -0.2 } else { 0.2 };
+                    // apart, so the intake doesn't draw in the exhaust
+                    let side = if sys == "VZC" { -0.3 } else { 0.3 };
                     let s = at + n.perp() * side;
-                    let top = d.through_roof.unwrap_or(3.0);
+                    // 0.5 m over the roof where one is modelled over it
+                    let elev = model.level(level).map_or(0.0, |l| l.elevation);
+                    let top = crate::extractfans::roof_top(model, s)
+                        .map(|z| z - elev + 0.5)
+                        .or(d.through_roof)
+                        .unwrap_or(3.0);
                     (s.extend(uh), s.extend(top), 0.03)
                 }
                 None => {
@@ -2025,6 +2031,7 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
             plan.dedup_by(|p, q| p.distance(*q) < 0.01);
             let plan = straighten(plan);
             let mut pid = None;
+            let mut last_id = None;
             for w in plan.windows(2) {
                 let pe = Element::new(
                     format!("{TAG} – {sys}"),
@@ -2038,6 +2045,7 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
                     )),
                 );
                 pid.get_or_insert(pe.id);
+                last_id = Some(pe.id);
                 tx = tx.insert(pe);
             }
             let end = plan.last().copied().unwrap_or(b.truncate()).extend(a.z);
@@ -2047,9 +2055,20 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
                     ElementKind::Pipe(spiro(level, sys, end, b, ins, u.spigot)),
                 );
                 pid.get_or_insert(pe.id);
+                last_id = Some(pe.id);
                 tx = tx.insert(pe);
             }
             let Some(pid) = pid else { continue };
+            // through the roof: its head on top (ATREA VHO exhaust head,
+            // RH rain cap over the intake) and the roof passage VILPE
+            if to.is_none() && d.through_roof.is_some() {
+                if let Some(top) = last_id {
+                    tx = tx.insert(Element::new(
+                        format!("{TAG} – strešná hlavica {sys}"),
+                        ElementKind::Valve(Valve::new(top, 1.0, "vyfukVzt")),
+                    ));
+                }
+            }
             if sil {
                 tx = tx.insert(Element::new(
                     format!("{TAG} – tlmič {sys}"),
@@ -2276,8 +2295,11 @@ pub fn bill(model: &Model) -> Bill {
         let len = p.start.distance(p.end);
         if p.pipe_type == "GP" {
             gp += len;
-            gp_ends.push(p.start.truncate());
-            gp_ends.push(p.end.truncate());
+            // a step up over another run has no end of its own in plan
+            if p.start.truncate().distance(p.end.truncate()) > 1e-6 {
+                gp_ends.push(p.start.truncate());
+                gp_ends.push(p.end.truncate());
+            }
         } else if p.pipe_type == "VZK" && (units.len() + boxes.len()) > 0 {
             spiro += len;
             if matches!(p.system.as_str(), "VZC" | "VZE") {
@@ -2314,7 +2336,7 @@ pub fn bill(model: &Model) -> Bill {
         match x.kind.as_str() {
             "vyustP" | "vyustO" if p.pipe_type == "GP" => {
                 let end = if x.t < 0.5 { p.start } else { p.end }.truncate();
-                let n = gp_ends.iter().filter(|g| g.distance(end) < 0.2).count();
+                let n = gp_ends.iter().filter(|g| g.distance(end) < 0.08).count();
                 let two = usize::from(n >= 2);
                 let side = usize::from(x.kind == "vyustO");
                 v[side][two] += 1.0;
@@ -2358,10 +2380,35 @@ pub fn bill(model: &Model) -> Bill {
         (insul * 10.0).ceil() / 10.0,
     ));
     lines.extend(line("Rozvody", cat.item("tlmic"), sil));
+    // outdoor air and exhaust: through the roof (a head on top, the roof
+    // passage), else louvres in the outer wall
+    let heads: Vec<&str> = model
+        .iter()
+        .filter(|e| e.name.starts_with(TAG))
+        .filter_map(|e| match &e.kind {
+            ElementKind::Valve(x) if x.kind == "vyfukVzt" => {
+                match model.get(x.pipe).map(|y| &y.kind) {
+                    Some(ElementKind::Pipe(p)) => Some(p.system.as_str()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .collect();
+    let size = match spigot.round() as i64 {
+        250 => "250",
+        200 => "200",
+        _ => "160",
+    };
+    let vho = heads.iter().filter(|s| **s == "VZE").count() as f64;
+    let rh = heads.iter().filter(|s| **s == "VZC").count() as f64;
+    lines.extend(line("Rozvody", cat.item(&format!("vho{size}")), vho));
+    lines.extend(line("Rozvody", cat.item(&format!("rh{size}")), rh));
+    lines.extend(line("Rozvody", cat.item("vilpe"), vho + rh));
     lines.extend(line(
         "Rozvody",
         cat.item("zaluzia"),
-        2.0 * units.len() as f64,
+        (2.0 * units.len() as f64 - vho - rh).max(0.0),
     ));
     lines.extend(line("Rozvody", cat.item("paska"), units.len() as f64));
 

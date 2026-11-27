@@ -37,6 +37,13 @@
     {"kluc": "ventilKO125", "kod": "R230002", "nazov": "Tanierový ventil odvod vzduchu KO Ø125 vrátane rámčeka (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06, str. 39 a 43; cena na dopyt"},
     {"kluc": "spiro160", "kod": "", "nazov": "Potrubie Spiro (priemer podľa hrdla jednotky, ATREA)", "mj": "m", "cena": 5.45, "zdroj": "atreaeshop.cz 11/2026: od 6,59 €/m s DPH, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026"},
     {"kluc": "izolacia", "kod": "R336030", "nazov": "Izolácia ISOVER ML 3 s Al fóliou hr. 30 mm (čerstvý a odpadový vzduch)", "mj": "m²", "cena": 14.98, "zdroj": "atreaeshop.cz 11/2026: 18,13 €/m² s DPH, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026"},
+    {"kluc": "vho160", "kod": "R225304", "nazov": "Výfuková hlavica VHO Ø160 (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06, str. 41–42; cena na dopyt"},
+    {"kluc": "vho200", "kod": "R225306", "nazov": "Výfuková hlavica VHO Ø200 (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06, str. 41–42; cena na dopyt"},
+    {"kluc": "vho250", "kod": "R225308", "nazov": "Výfuková hlavica VHO Ø250 (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06, str. 41–42; cena na dopyt"},
+    {"kluc": "rh160", "kod": "R225204", "nazov": "Protidažďová strieška RH Ø160, nasávanie (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06, str. 41–42; cena na dopyt"},
+    {"kluc": "rh200", "kod": "R225205", "nazov": "Protidažďová strieška RH Ø200, nasávanie (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06, str. 41–42; cena na dopyt"},
+    {"kluc": "rh250", "kod": "R225206", "nazov": "Protidažďová strieška RH Ø250, nasávanie (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06, str. 41–42; cena na dopyt"},
+    {"kluc": "vilpe", "kod": "R225431", "nazov": "Prechodový prvok VILPE PRO pre škridlové strechy, čierny (ATREA)", "mj": "ks", "cena": null, "zdroj": "ATREA Katalóg prvkov A2328 26/06, str. 41–42; cena na dopyt"},
     {"kluc": "zaluzia", "kod": "", "nazov": "Protidažďová žalúzia AL Ø160 (nasávanie / výfuk)", "mj": "ks", "cena": 88.65, "zdroj": "atreaeshop.cz 11/2026: od 107,26 € s DPH, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026"},
     {"kluc": "tlmic", "kod": "", "nazov": "Tlmič hluku flexibilný Ø160, dĺ. 1 m", "mj": "ks", "cena": null, "zdroj": "cena na dopyt"},
     {"kluc": "paska", "kod": "R311030", "nazov": "Lepiaca páska Al 50 mm × 50 m", "mj": "ks", "cena": 9.71, "zdroj": "atreaeshop.cz 11/2026: 11,75 € s DPH, prepočet z CZK kurzom ECB 24,435 CZK/EUR z 25. 11. 2026"}
