@@ -14,6 +14,7 @@
 use crate::heatloss::{self, RoomLoss};
 use crate::pipe_types::{self, PipeType};
 use creabim_core::assembly::{assembly_of, LayerFunction};
+use creabim_core::catalogue::ufhmanifold::{Cabinet, ManifoldConfig, Range};
 use creabim_core::fixture;
 use creabim_core::underfloor::Underfloor;
 use creabim_core::{polygon, ElementId, ElementKind, Model};
@@ -32,6 +33,22 @@ pub struct Settings {
     pub pipe: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pipe_mm: Option<f64>,
+    /// The manifolds' range, none for the board maker's
+    /// ([`Range::for_pipe`]); its cabinet and whether a mixing set goes in
+    /// it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<Range>,
+    pub cabinet: Cabinet,
+    pub mixing: bool,
+    /// The radiators fed from the manifold of their storey, through the
+    /// floor's insulation layer (George 2026-11-27).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub radiators: Vec<ElementId>,
+    /// The radiators' supply and return, °C.
+    pub radiator_supply_c: f64,
+    pub radiator_return_c: f64,
+    /// The insulation the distribution pipes get.
+    pub insulation: crate::pipeinsul::Product,
 }
 
 impl Default for Settings {
@@ -41,6 +58,13 @@ impl Default for Settings {
             sigma_k: 5.0,
             pipe: None,
             pipe_mm: None,
+            range: None,
+            cabinet: Cabinet::Flush,
+            mixing: false,
+            radiators: vec![],
+            radiator_supply_c: crate::heating::HeatSettings::default().supply_c,
+            radiator_return_c: crate::heating::HeatSettings::default().return_c,
+            insulation: crate::pipeinsul::Product::default(),
         }
     }
 }
@@ -479,6 +503,129 @@ pub struct Design {
     pub loops: u32,
     /// No manifold stands in the model.
     pub no_manifold: bool,
+    /// A manifold for each storey with underfloor heating.
+    pub manifolds: Vec<ManifoldDesign>,
+}
+
+/// The maker's pipe for distribution (from the source to the manifold,
+/// from the manifold to the radiators): HERZ PipeFix, Wavin Tigris K5;
+/// PEX-AL-PEX for another maker.
+pub fn distribution_type(maker: &str) -> &'static str {
+    let m = maker.to_lowercase();
+    if m.contains("wavin") {
+        "WTIGK"
+    } else if m.contains("herz") {
+        "HERZ"
+    } else {
+        "PEXAL"
+    }
+}
+
+/// A distribution pipe sized for its flow.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SizedPipe {
+    pub pipe: Pipe,
+    /// Its flow, l/s, velocity, m/s, and loss by friction, Pa/m.
+    pub flow_ls: f64,
+    pub velocity: f64,
+    pub r_pa_m: f64,
+    /// Its heat insulation, mm at λ 0,035 (as a heating pipe of the
+    /// services), and the maker's tube that does as well.
+    pub insulation_mm: f64,
+    pub tube: Option<crate::pipeinsul::Tube>,
+}
+
+/// The smallest size of the type `id` that carries `flow_ls` at
+/// `vmax` m/s and `rmax` Pa/m at most (the rules of the radiators'
+/// heating, [`crate::heating::HeatSettings`]); the biggest when none does.
+pub fn size_pipe(id: &str, flow_ls: f64, vmax: f64, rmax: f64, temp_c: f64) -> Option<SizedPipe> {
+    let t = pipe_types::by_id(id)?;
+    let hs = crate::heating::HeatSettings::default();
+    let fluid = crate::fluid::Fluid::water(temp_c);
+    let k = t.roughness_mm / 1000.0;
+    let fits = |inner: f64| {
+        let d = inner / 1000.0;
+        crate::hydraulics::velocity(flow_ls, d) <= vmax
+            && crate::hydraulics::r(flow_ls, d, k, &fluid) <= rmax
+    };
+    let z = t
+        .sizes
+        .iter()
+        .filter(|z| z.inner_mm >= hs.min_inner_mm)
+        .find(|z| fits(z.inner_mm))
+        .or_else(|| t.sizes.last())?;
+    let pipe = pipe_of(t, z.outer_mm)?;
+    let d = pipe.inner_mm / 1000.0;
+    Some(SizedPipe {
+        flow_ls,
+        velocity: crate::hydraulics::velocity(flow_ls, d),
+        r_pa_m: crate::hydraulics::r(flow_ls, d, k, &fluid),
+        insulation_mm: creabim_core::mep::heat_insulation_mm(pipe.outer_mm),
+        tube: None,
+        pipe,
+    })
+}
+
+/// Its tube of `product` for water at `medium_c` in a room at 20 °C.
+fn insulated(
+    p: Option<SizedPipe>,
+    product: crate::pipeinsul::Product,
+    medium_c: f64,
+) -> Option<SizedPipe> {
+    p.map(|mut p| {
+        let air = crate::heating::HeatSettings::default().room_c;
+        p.tube = product.tube(p.pipe.outer_mm, p.insulation_mm, medium_c, air);
+        p
+    })
+}
+
+/// A radiator fed from a manifold.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RadiatorFeed {
+    pub id: ElementId,
+    /// The number of the room it stands in.
+    pub room: String,
+    /// Its output at the radiators' temperatures, W.
+    pub output_w: f64,
+    /// The way to it and back, m (as the crow flies × 1.2 each way).
+    pub length: f64,
+    pub pipe: Option<SizedPipe>,
+}
+
+/// The numbers of the rooms objects stand in.
+pub fn room_numbers(model: &Model, objects: &[&creabim_core::Element]) -> Vec<(ElementId, String)> {
+    let rooms = heatloss::rooms_of(model);
+    objects
+        .iter()
+        .filter_map(|e| {
+            let ElementKind::Object(o) = &e.kind else {
+                return None;
+            };
+            // a little into the room from the wall it hangs on (−y)
+            let p = o.to_plan(glam::DVec2::new(0.0, -0.2));
+            rooms
+                .iter()
+                .find(|x| x.level == o.level && polygon::contains(&x.shape.outline, p))
+                .and_then(|x| match &x.e.kind {
+                    ElementKind::Room(r) => Some((e.id, r.number.clone())),
+                    _ => None,
+                })
+        })
+        .collect()
+}
+
+/// A storey's manifold: the product its circuits pick, the pipe that
+/// feeds it from the source and the radiators on it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ManifoldDesign {
+    pub level: ElementId,
+    /// The manifold standing on the storey, none when none does yet.
+    pub element: Option<ElementId>,
+    pub config: ManifoldConfig,
+    /// The underfloor heating's flow and the radiators', l/s.
+    pub flow_ls: f64,
+    pub radiators: Vec<RadiatorFeed>,
+    pub feed: Option<SizedPipe>,
 }
 
 impl Design {
@@ -706,6 +853,11 @@ fn one(
 /// The pipe of the model's underfloor heating: the one picked, else of
 /// the maker of the boards most rooms with underfloor heating stand on.
 pub fn model_pipe(model: &Model, s: &Settings) -> Pipe {
+    pipe(s, &model_maker(model))
+}
+
+/// The maker of the boards most rooms with underfloor heating stand on.
+pub fn model_maker(model: &Model) -> String {
     let mut makers: Vec<(String, usize)> = vec![];
     for e in model.iter() {
         let ElementKind::Room(r) = &e.kind else {
@@ -721,16 +873,15 @@ pub fn model_pipe(model: &Model, s: &Settings) -> Pipe {
             }
         }
     }
-    let maker = makers
+    makers
         .iter()
         .max_by_key(|m| m.1)
-        .map_or(String::new(), |m| m.0.clone());
-    pipe(s, &maker)
+        .map_or(String::new(), |m| m.0.clone())
 }
 
 /// Underfloor heating for every room of the model, from its heat loss.
 pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
-    let manifolds: Vec<(ElementId, glam::DVec2)> = model
+    let placed: Vec<(ElementId, ElementId, glam::DVec2)> = model
         .iter()
         .filter_map(|e| {
             let ElementKind::Object(ob) = &e.kind else {
@@ -738,9 +889,10 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
             };
             fixture::family_of(model, e)
                 .filter(|f| fixture::is_manifold(f))
-                .map(|_| (ob.level, ob.to_plan(glam::DVec2::ZERO)))
+                .map(|_| (e.id, ob.level, ob.to_plan(glam::DVec2::ZERO)))
         })
         .collect();
+    let manifolds: Vec<(ElementId, glam::DVec2)> = placed.iter().map(|m| (m.1, m.2)).collect();
     let losses = heatloss::building(model, o);
     let rooms = heatloss::rooms_of(model);
     let pipe = model_pipe(model, s);
@@ -760,13 +912,307 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
         out.loops += x.loops;
     }
     out.head_kpa = (out.critical_kpa + MANIFOLD_KPA) * 1.1;
+    out.manifolds = manifold_designs(model, s, &out, &placed);
     out.pipe = Some(pipe);
     out
+}
+
+/// A manifold for each storey with underfloor heating: its loops and the
+/// radiators picked on it make its circuits, the range is the board
+/// maker's; the pipe from the source carries both flows.
+fn manifold_designs(
+    model: &Model,
+    s: &Settings,
+    d: &Design,
+    placed: &[(ElementId, ElementId, glam::DVec2)],
+) -> Vec<ManifoldDesign> {
+    let maker = model_maker(model);
+    let dist = distribution_type(&maker);
+    let hs = crate::heating::HeatSettings {
+        supply_c: s.radiator_supply_c,
+        return_c: s.radiator_return_c,
+        ..Default::default()
+    };
+    let rooms = heatloss::rooms_of(model);
+    let mut levels: Vec<ElementId> = vec![];
+    for x in d.rooms.iter().filter(|x| x.on) {
+        let Some(ElementKind::Room(r)) = model.get(x.id).map(|e| &e.kind) else {
+            continue;
+        };
+        if !levels.contains(&r.level) {
+            levels.push(r.level);
+        }
+    }
+    let mut out = vec![];
+    for level in levels {
+        let here = placed.iter().find(|m| m.1 == level);
+        let at = here.map(|m| m.2);
+        let mut loops = 0;
+        let mut flow = 0.0;
+        for x in d.rooms.iter().filter(|x| x.on) {
+            if matches!(model.get(x.id).map(|e| &e.kind), Some(ElementKind::Room(r)) if r.level == level)
+            {
+                loops += x.loops;
+                flow += x.flow_ls * x.loops as f64;
+            }
+        }
+        let mut radiators = vec![];
+        let dt = (s.radiator_supply_c - s.radiator_return_c).max(1.0);
+        let fluid = crate::fluid::Fluid::water((s.radiator_supply_c + s.radiator_return_c) / 2.0);
+        for &id in &s.radiators {
+            let Some(e) = model.get(id) else { continue };
+            let ElementKind::Object(ob) = &e.kind else {
+                continue;
+            };
+            if ob.level != level {
+                continue;
+            }
+            let w = crate::heating::radiator_w(model, id, &hs).unwrap_or(0.0);
+            let q = w / (fluid.rho * 4180.0 * dt) * 1000.0;
+            let p = ob.to_plan(glam::DVec2::ZERO);
+            let length = at.map_or(0.0, |m| 2.0 * 1.2 * m.distance(p));
+            let room = rooms
+                .iter()
+                .find(|x| {
+                    x.level == level
+                        && polygon::contains(
+                            &x.shape.outline,
+                            ob.to_plan(glam::DVec2::new(0.0, -0.2)),
+                        )
+                })
+                .and_then(|x| match &x.e.kind {
+                    ElementKind::Room(r) => Some(r.number.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            radiators.push(RadiatorFeed {
+                id,
+                room,
+                output_w: w,
+                length,
+                pipe: insulated(
+                    size_pipe(dist, q, hs.vmax_branch, hs.rmax, s.radiator_supply_c),
+                    s.insulation,
+                    s.radiator_supply_c,
+                ),
+            });
+        }
+        let rad_flow: f64 = radiators
+            .iter()
+            .filter_map(|r| r.pipe.as_ref())
+            .map(|p| p.flow_ls)
+            .sum();
+        let config = ManifoldConfig {
+            range: s.range.unwrap_or_else(|| Range::for_pipe(&maker)),
+            loops,
+            extra: radiators.len() as u32,
+            cabinet: s.cabinet,
+            mixing: s.mixing,
+        };
+        let total = flow + rad_flow;
+        let temp = if rad_flow > 0.0 {
+            s.radiator_supply_c
+        } else {
+            s.supply_c
+        };
+        out.push(ManifoldDesign {
+            level,
+            element: here.map(|m| m.0),
+            config,
+            flow_ls: total,
+            radiators,
+            feed: insulated(
+                (total > 0.0)
+                    .then(|| size_pipe(dist, total, hs.vmax_main, hs.rmax, temp))
+                    .flatten(),
+                s.insulation,
+                temp,
+            ),
+        });
+    }
+    out
+}
+
+/// A line of the heating's bill of materials.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BillLine {
+    /// The element it is counted on (for picking it in the list).
+    pub id: ElementId,
+    pub item: String,
+    pub code: String,
+    pub size: String,
+    pub quantity: f64,
+    /// "m", "m²", "pcs".
+    pub unit: &'static str,
+}
+
+/// How many coils of `coil` metres the loops take, none cut across two
+/// coils (first fit, the longest loops first).
+pub fn coils(loops: &[f64], coil: f64) -> usize {
+    let mut v: Vec<f64> = loops.iter().copied().filter(|l| *l > 0.0).collect();
+    v.sort_by(|a, b| b.total_cmp(a));
+    let mut left: Vec<f64> = vec![];
+    for l in v {
+        match left.iter_mut().find(|r| **r + 1e-9 >= l) {
+            Some(r) => *r -= l,
+            None => left.push((coil - l).max(0.0)),
+        }
+    }
+    left.len()
+}
+
+/// The underfloor heating's materials as designed: the system boards
+/// under the rooms with it, the loops' pipe (and the coils it comes in),
+/// the manifolds with their cabinets, the pipes to the radiators on them
+/// and their insulation.
+pub fn bill(d: &Design) -> Vec<BillLine> {
+    let mut out: Vec<BillLine> = vec![];
+    let mut add = |l: BillLine| match out
+        .iter_mut()
+        .find(|x| x.item == l.item && x.code == l.code && x.size == l.size && x.unit == l.unit)
+    {
+        Some(x) => x.quantity += l.quantity,
+        None => out.push(l),
+    };
+    let on: Vec<&RoomDesign> = d.rooms.iter().filter(|x| x.on).collect();
+    for x in &on {
+        if let Some(b) = x.floor.as_ref().and_then(|f| f.board.clone()) {
+            add(BillLine {
+                id: x.id,
+                item: b,
+                code: String::new(),
+                size: String::new(),
+                quantity: x.area,
+                unit: "m²",
+            });
+        }
+    }
+    if let Some(p) = &d.pipe {
+        let loops: Vec<f64> = on
+            .iter()
+            .flat_map(|x| std::iter::repeat_n(x.loop_len, x.loops as usize))
+            .collect();
+        let total: f64 = loops.iter().sum();
+        if let Some(x) = on.first() {
+            if total > 0.0 {
+                add(BillLine {
+                    id: x.id,
+                    item: p.name.clone(),
+                    code: p.code.clone(),
+                    size: p.segment.clone(),
+                    quantity: total,
+                    unit: "m",
+                });
+                let coil = pipe_types::by_id(&p.id)
+                    .and_then(|t| t.closest_outer(p.outer_mm))
+                    .and_then(|z| z.coil_m);
+                if let Some(c) = coil {
+                    add(BillLine {
+                        id: x.id,
+                        item: format!("{} – kotúč {c} m", p.name),
+                        code: p.code.clone(),
+                        size: p.segment.clone(),
+                        quantity: coils(&loops, c) as f64,
+                        unit: "pcs",
+                    });
+                }
+            }
+        }
+    }
+    for m in &d.manifolds {
+        let id = m.element.unwrap_or(m.level);
+        if let (Some(_), Some(code)) = (m.config.circuits(), m.config.code()) {
+            add(BillLine {
+                id,
+                item: m.config.name(),
+                code,
+                size: String::new(),
+                quantity: 1.0,
+                unit: "pcs",
+            });
+        }
+        if let Some(c) = m.config.cabinet_spec() {
+            add(BillLine {
+                id,
+                item: format!(
+                    "Skriňa rozdeľovača {} × {} × {} mm",
+                    c.width, c.height, c.depth
+                ),
+                code: c.code,
+                size: String::new(),
+                quantity: 1.0,
+                unit: "pcs",
+            });
+        }
+        for r in &m.radiators {
+            let Some(p) = &r.pipe else { continue };
+            add(BillLine {
+                id: r.id,
+                item: p.pipe.name.clone(),
+                code: p.pipe.code.clone(),
+                size: p.pipe.segment.clone(),
+                quantity: r.length,
+                unit: "m",
+            });
+            if let Some(t) = &p.tube {
+                add(BillLine {
+                    id: r.id,
+                    item: t.name.clone(),
+                    code: t.code.clone(),
+                    size: String::new(),
+                    quantity: r.length,
+                    unit: "m",
+                });
+            }
+        }
+    }
+    out
+}
+
+/// The bill of the model's underfloor heating with the settings and
+/// the heat loss options written with its results (defaults otherwise).
+pub fn model_bill(model: &Model) -> Vec<BillLine> {
+    // once per revision of the model: the list redraws every frame
+    static LAST: std::sync::Mutex<Option<(u64, Vec<BillLine>)>> = std::sync::Mutex::new(None);
+    let rev = model.revision();
+    if rev != 0 {
+        if let Some((r, b)) = LAST.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            if *r == rev {
+                return b.clone();
+            }
+        }
+    }
+    let b = model_bill_now(model);
+    if rev != 0 {
+        *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some((rev, b.clone()));
+    }
+    b
+}
+
+fn model_bill_now(model: &Model) -> Vec<BillLine> {
+    let s: Settings = creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
+    let o: heatloss::Opts =
+        creabim_core::results::settings_of(model, "heatloss").unwrap_or_default();
+    if !model
+        .iter()
+        .any(|e| matches!(&e.kind, ElementKind::Room(r) if r.ufh.is_some()))
+    {
+        return vec![];
+    }
+    let d = design(model, &o, &s);
+    bill(&d)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loops_are_cut_from_whole_coils() {
+        assert_eq!(coils(&[90.0, 80.0, 60.0, 40.0, 20.0], 200.0), 2);
+        assert_eq!(coils(&[110.0, 100.0, 95.0], 200.0), 2);
+        assert_eq!(coils(&[], 200.0), 0);
+    }
 
     #[test]
     fn the_characteristic_and_the_limit_flux() {

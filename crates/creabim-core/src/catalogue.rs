@@ -26,6 +26,7 @@ pub mod site;
 pub mod soakaway;
 pub mod stretch;
 pub mod towels;
+pub mod ufhmanifold;
 pub mod valvebox;
 
 // ---- outlines and solids ----
@@ -1645,6 +1646,7 @@ pub fn starters() -> Vec<CatalogueObject> {
     .chain(jika::starters())
     .chain(medical::starters())
     .chain(valvebox::starters())
+    .chain(ufhmanifold::starters())
     .chain(site::starters())
     .chain(soakaway::starters())
     .chain(heat::starters())

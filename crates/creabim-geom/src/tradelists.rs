@@ -107,6 +107,9 @@ pub fn pipes(model: &Model, trade: Option<creabim_core::viewmodes::Trade>) -> Sc
             ));
         }
     }
+    if trade == Some(creabim_core::viewmodes::Trade::Heating) {
+        heating_rows(model, &mut rows);
+    }
     let listed = rows.len();
     Schedule {
         category: ScheduleCategory::PipeList,
@@ -121,6 +124,110 @@ pub fn pipes(model: &Model, trade: Option<creabim_core::viewmodes::Trade>) -> Sc
         ],
         listed,
         above_totals: vec![],
+    }
+}
+
+/// The heating's bill beyond its pipes and valves (George 2026-11-27):
+/// the drawn pipes' insulation as the maker's tubes, the heat sources,
+/// manifolds and radiators by type, and the underfloor heating as
+/// designed (system boards, loops' pipe and coils, manifolds and their
+/// cabinets, the pipes to the radiators on them and their insulation).
+fn heating_rows(model: &Model, rows: &mut Vec<Row>) {
+    use creabim_core::fixture::{self, ConnKind};
+    use creabim_core::mep::SystemKind;
+    use creabim_services::floorheat;
+    let s: floorheat::Settings =
+        creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
+    let qty = |v: f64, unit: &str| {
+        if unit == "pcs" {
+            format!("{v:.0}")
+        } else {
+            metres(v)
+        }
+    };
+    // the drawn pipes' insulation, by tube
+    let insulation = tr("Insulation");
+    let mut tubes: Vec<(String, String, f64, ElementId)> = vec![];
+    for e in model.iter() {
+        let ElementKind::Pipe(p) = &e.kind else {
+            continue;
+        };
+        let medium = match p.kind() {
+            SystemKind::HeatingSupply => s.radiator_supply_c,
+            SystemKind::HeatingReturn => s.radiator_return_c,
+            _ => continue,
+        };
+        let air = creabim_services::heating::HeatSettings::default().room_c;
+        let Some(t) = s.insulation.tube(p.outer_mm, p.insulation(), medium, air) else {
+            continue;
+        };
+        let label = if t.code.is_empty() {
+            t.name.clone()
+        } else {
+            format!("{} ({})", t.name, t.code)
+        };
+        match tubes.iter_mut().find(|x| x.0 == label) {
+            Some(x) => x.2 += p.length(),
+            None => tubes.push((label, format!("{} mm", t.wall_mm), p.length(), e.id)),
+        }
+    }
+    for (name, size, len, id) in tubes {
+        rows.push(row(
+            id,
+            [insulation.clone(), name, size, metres(len), "m".into()],
+        ));
+    }
+    // the heat sources, manifolds and radiators: objects on heating
+    let devices = tr("Heating devices");
+    let mut objects: Vec<(String, usize, ElementId)> = vec![];
+    for e in model.iter() {
+        if !matches!(e.kind, ElementKind::Object(_)) {
+            continue;
+        }
+        let on_heating = fixture::connectors(model, e)
+            .iter()
+            .any(|c| matches!(c.kind, ConnKind::UKP | ConnKind::UKS));
+        let family = fixture::family_of(model, e);
+        if !on_heating && !family.is_some_and(|f| fixture::is_heating(f) || fixture::is_manifold(f))
+        {
+            continue;
+        }
+        let name = tr(&e.name);
+        match objects.iter_mut().find(|x| x.0 == name) {
+            Some(x) => x.1 += 1,
+            None => objects.push((name, 1, e.id)),
+        }
+    }
+    objects.sort_by(|a, b| a.0.cmp(&b.0));
+    for (name, n, id) in objects {
+        rows.push(row(
+            id,
+            [
+                devices.clone(),
+                name,
+                String::new(),
+                n.to_string(),
+                tr("pcs"),
+            ],
+        ));
+    }
+    // the underfloor heating as designed
+    let ufh = tr("Underfloor heating");
+    for l in floorheat::model_bill(model) {
+        let name = if l.code.is_empty() {
+            l.item
+        } else {
+            format!("{} ({})", l.item, l.code)
+        };
+        let unit = if l.unit == "pcs" {
+            tr("pcs")
+        } else {
+            l.unit.to_string()
+        };
+        rows.push(row(
+            l.id,
+            [ufh.clone(), name, l.size, qty(l.quantity, l.unit), unit],
+        ));
     }
 }
 
