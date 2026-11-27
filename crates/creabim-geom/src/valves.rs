@@ -173,22 +173,25 @@ pub fn symbol(kind: &str, c: DVec2, u: DVec2, h: f64) -> Symbol {
                 p(-w * 0.5, w * 0.5),
             ]);
         }
-        // air: a circle with a solid arrow out (supply) or in (exhaust)
-        "vyustP" => {
-            out.circles.push((c, w * 1.3));
-            out.fills.push(vec![
-                p(-w * 0.2, -w * 0.6),
-                p(-w * 0.2, w * 0.6),
-                p(w * 0.9, 0.0),
-            ]);
-        }
-        "vyustO" => {
-            out.circles.push((c, w * 1.3));
-            out.fills.push(vec![
-                p(w * 0.2, -w * 0.6),
-                p(w * 0.2, w * 0.6),
-                p(-w * 0.9, 0.0),
-            ]);
+        // air: a circle with four arrows, out for supply, in for
+        // exhaust (George's sample VZT drawings)
+        "vyustP" | "vyustO" => {
+            let r = w * 1.3;
+            out.circles.push((c, r));
+            let supply = kind == "vyustP";
+            for d in [DVec2::X, DVec2::Y, -DVec2::X, -DVec2::Y] {
+                let (tip, base) = if supply {
+                    (d * (r + w * 0.9), d * (r + w * 0.15))
+                } else {
+                    (d * (r + w * 0.05), d * (r + w * 0.8))
+                };
+                let side = d.perp() * w * 0.35;
+                out.fills.push(vec![
+                    p(tip.x, tip.y),
+                    p(base.x + side.x, base.y + side.y),
+                    p(base.x - side.x, base.y - side.y),
+                ]);
+            }
         }
         "klapkaReg" => {
             out.segs.extend([
