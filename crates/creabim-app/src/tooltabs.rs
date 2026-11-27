@@ -134,6 +134,7 @@ fn tab_entries(tab: usize) -> Vec<Entry> {
             T(Tool::Extrusion),
             T(Tool::Sweep),
             T(Tool::Void),
+            T(Tool::Chimney),
             T(Tool::Sketch),
             Sep,
             T(Tool::Room),
@@ -460,6 +461,24 @@ fn tab_entries(tab: usize) -> Vec<Entry> {
                 "Design underfloor heating",
                 "spline",
                 "Give rooms their underfloor loops from their heat loss: spacing, loops of 100 m at most, flows and what to set at the manifold (STN EN 1264)",
+            ),
+            act(
+                "ufh:edge",
+                "Edge zone",
+                "square-dashed",
+                "Draw an edge zone of underfloor heating in a room (by a window or a door), as a polygon or a rectangle: its pipes laid closer",
+            ),
+            act(
+                "ufh:reduced",
+                "Place of reduced output",
+                "square",
+                "Draw a place of reduced output in a room (under a bed with no legs), as a polygon or a rectangle: set in the Underfloor heating window by how many % it gives less",
+            ),
+            act(
+                "ufh:hole",
+                "Hole with no pipe",
+                "scan",
+                "Draw a hole in a room's underfloor heating, as a polygon or a rectangle: the system board, but no pipe",
             ),
             act(
                 "calc:radiators",
@@ -931,6 +950,11 @@ pub fn holds(tab: usize, tool: Tool) -> bool {
         || entries(tab).contains(&Entry::Tool(tool))
         || (tool == Tool::Footing && menu("tab:footing"))
         || (ROOF_TOOLS.contains(&tool) && menu("tab:roof"))
+        // the zone tool behind its three kinds' buttons
+        || (tool == Tool::UfhZone
+            && entries(tab)
+                .iter()
+                .any(|e| matches!(e, Entry::Act { id, .. } if id.starts_with("ufh:"))))
 }
 
 /// The first tab that shows `tool`.

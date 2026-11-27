@@ -19,13 +19,43 @@ use glam::DVec2;
 pub enum Space {
     Room,
     Ceiling,
+    /// An underfloor heating zone of the kind picked.
+    UfhZone(UfhZone),
+}
+
+/// The kind of underfloor heating zone the tool draws.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UfhZone {
+    #[default]
+    Edge,
+    Reduced,
+    Hole,
+}
+
+impl UfhZone {
+    pub fn label(self) -> &'static str {
+        match self {
+            UfhZone::Edge => "Edge zone",
+            UfhZone::Reduced => "Place of reduced output",
+            UfhZone::Hole => "Hole with no pipe",
+        }
+    }
 }
 
 impl Space {
+    /// The space the tool draws, the zone tool's kind as picked.
+    pub fn of_state(state: &crate::planview::PlanState) -> Option<Space> {
+        match state.tool {
+            Tool::UfhZone => Some(Space::UfhZone(state.ufh_zone)),
+            t => Space::of(t),
+        }
+    }
+
     pub fn of(tool: Tool) -> Option<Space> {
         match tool {
             Tool::Room => Some(Space::Room),
             Tool::Ceiling => Some(Space::Ceiling),
+            Tool::UfhZone => Some(Space::UfhZone(UfhZone::Edge)),
             _ => None,
         }
     }
@@ -156,7 +186,70 @@ pub fn drawn(
                 crate::units::len(height)
             ))
         }
+        Space::UfhZone(kind) => ufh_zone(doc, kind, level, outline, selection),
     }
+}
+
+/// An underfloor heating zone drawn in a room (George 2026-11-27): added
+/// to the room it lies in, which must have underfloor heating.
+fn ufh_zone(
+    doc: &mut Document,
+    kind: UfhZone,
+    level: ElementId,
+    mut outline: Vec<DVec2>,
+    selection: &mut Selection,
+) -> Result<String, ModelError> {
+    use creabim_core::underfloor::{Zone, ZoneKind};
+    let model = doc.model();
+    let p = inside_point(&outline);
+    let Some(id) = room_at(model, level, p) else {
+        return Ok("Draw the zone inside a room.".into());
+    };
+    let Some(before) = model.get(id).cloned() else {
+        return Ok(String::new());
+    };
+    let ElementKind::Room(r) = &before.kind else {
+        return Ok(String::new());
+    };
+    let Some(u) = r.ufh.clone() else {
+        return Ok("The room has no underfloor heating: switch it on in the Underfloor heating window first.".into());
+    };
+    if creabim_core::polygon::signed_area2(&outline) < 0.0 {
+        outline.reverse();
+    }
+    let kind = match kind {
+        // the closest spacing the board allows, else half the room's
+        UfhZone::Edge => {
+            let spacing = creabim_services::floorheat::floor_build(model, r.level, r.at)
+                .map(|f| f.spec.spacings())
+                .and_then(|v| v.first().copied())
+                .filter(|t| *t < u.spacing - 1e-6)
+                .unwrap_or((u.spacing / 2.0).max(0.05));
+            ZoneKind::Edge { spacing }
+        }
+        UfhZone::Reduced => ZoneKind::Reduced { percent: 50.0 },
+        UfhZone::Hole => ZoneKind::Hole,
+    };
+    let mut after = before.clone();
+    if let ElementKind::Room(r) = &mut after.kind {
+        let mut u = u;
+        u.zones.push(Zone {
+            kind,
+            outline,
+            on: true,
+        });
+        r.ufh = Some(u);
+    }
+    doc.commit(Transaction::new("Underfloor heating zone").replace(before, after))?;
+    selection.only(id);
+    Ok(match kind {
+        ZoneKind::Edge { spacing } => format!(
+            "Edge zone added, its pipes {} apart. Change it or switch it off in the Underfloor heating window. Ctrl+Z to undo.",
+            crate::units::len(spacing)
+        ),
+        ZoneKind::Reduced { .. } => "Place of reduced output added, giving 50 % less. Set how much less in the Underfloor heating window. Ctrl+Z to undo.".into(),
+        ZoneKind::Hole => "Hole added: the system board, but no pipe. Ctrl+Z to undo.".into(),
+    })
 }
 
 fn number_of(model: &Model, id: ElementId) -> String {
@@ -177,6 +270,10 @@ pub fn fill(
 ) -> Result<String, ModelError> {
     let model = doc.model();
     match space {
+        Space::UfhZone(_) => {
+            let _ = (place, selection);
+            Ok("Draw the zone as a polygon (1) or a rectangle (2).".into())
+        }
         Space::Room => {
             if let Some(there) = room_at(model, level, p) {
                 selection.only(there);

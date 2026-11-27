@@ -4,7 +4,7 @@
 //! air handling unit is sized for.
 
 use super::CreaBimApp;
-use creabim_services::{airbalance, heatloss};
+use creabim_services::airbalance;
 use eframe::egui::{self, Vec2};
 
 impl CreaBimApp {
@@ -14,7 +14,6 @@ impl CreaBimApp {
             return false;
         }
         self.air_balance = true;
-        self.results_due = Some("air");
         true
     }
 
@@ -25,12 +24,11 @@ impl CreaBimApp {
         }
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
-        let o = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(heatloss::Opts::default, |x| x.0);
+        let o = self.heat_opts();
         let b = airbalance::balance(self.doc.model(), &o);
-        let mut write_now = self.results_due.take_if(|c| *c == "air").is_some();
+        let found = creabim_services::calcresults::air(&b);
+        let written = self.is_written(&found);
+        let mut write_now = false;
         let mut open = true;
         let mut select = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
@@ -41,7 +39,7 @@ impl CreaBimApp {
             .default_size(crate::app::shell::at_least(Vec2::new(640.0, 480.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui) {
+                if super::calcresultsui::write_button(ui, written) {
                     write_now = true;
                 }
                 if b.rooms.is_empty() {
@@ -127,7 +125,7 @@ impl CreaBimApp {
             self.selection.only(id);
         }
         if write_now {
-            self.write_results_said(creabim_services::calcresults::air(&b));
+            self.write_results_said(found);
         }
         self.air_balance = open;
     }

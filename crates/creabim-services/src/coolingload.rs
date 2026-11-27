@@ -13,7 +13,7 @@ use crate::heatloss::{self, RoomLoss};
 use creabim_core::{ElementId, Model};
 
 /// How the windows are shaded.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Shading {
     /// Outside blinds or shutters.
     External,
@@ -45,7 +45,7 @@ impl Shading {
 }
 
 /// How the load is calculated.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Method {
     /// PilonDesigner's: the sun on walls and roofs as an added Δθ, the
     /// windows' sun cut by a storage factor.
@@ -78,7 +78,7 @@ pub const PEOPLE_COOKING: &str = "lahka_praca";
 
 /// How clear the air is where the building stands (STN 73 0548, art.
 /// 64): the sun of table 10 is for the average.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Region {
     #[default]
     Average,
@@ -108,7 +108,8 @@ impl Region {
 }
 
 /// What the load is calculated with.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub method: Method,
     /// [`Method::Norm`]: the rows of table 12 (ε) picked for the outside
@@ -177,7 +178,7 @@ pub struct Settings {
 
 /// How much heat the room's inner surfaces store: the mass of the
 /// layers from the inside to the insulation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Mass {
     /// Plasterboard, timber frame: under 60 kg/m².
     Light,

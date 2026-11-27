@@ -9,7 +9,15 @@
    "color": "#2b2b2b",
    "maker": "HERZ",
    "kind": "nopová systémová doska (EPS DEO + čierna PS fólia 0,6 mm)",
-   "note": "hrúbka vrstvy = izolácia 10 mm (λ 0,035, RD 0,285 m²K/W); výška vrátane nopov 32 mm; max. zaťaženie 45 kPa; potrubie 14–18 mm, raster 6,5 cm; doska 1300 × 780 mm; podľa: technický list HERZ 3FS3113 (herz.cz)"
+   "note": "hrúbka vrstvy = izolácia 10 mm (λ 0,035, RD 0,285 m²K/W); výška vrátane nopov 32 mm; max. zaťaženie 45 kPa; potrubie 14–18 mm, raster 6,5 cm; doska 1300 × 780 mm; podľa: technický list HERZ 3FS3113 (herz.cz)",
+   "ufh": {
+    "pipe_mm": [
+     14,
+     18
+    ],
+    "raster_mm": 65,
+    "system": "A"
+   }
   },
   {
    "id": "herz-nop-30-65",
@@ -20,7 +28,15 @@
    "color": "#2b2b2b",
    "maker": "HERZ",
    "kind": "nopová systémová doska s kročajovou izoláciou (EPS DES sg + čierna PS fólia 0,6 mm)",
-   "note": "hrúbka vrstvy = izolácia 30 mm (λ 0,040, RD 0,75 m²K/W); výška vrátane nopov 52 mm; max. zaťaženie 5 kPa; útlm kročajového hluku 26 dB (izolácia kročajového hluku 28 dB); potrubie 14–16 mm, raster 6,5 cm; doska 1300 × 780 mm; podľa: technický list HERZ 3FS3112 (podlahove-topeni-herz.cz)"
+   "note": "hrúbka vrstvy = izolácia 30 mm (λ 0,040, RD 0,75 m²K/W); výška vrátane nopov 52 mm; max. zaťaženie 5 kPa; útlm kročajového hluku 26 dB (izolácia kročajového hluku 28 dB); potrubie 14–16 mm, raster 6,5 cm; doska 1300 × 780 mm; podľa: technický list HERZ 3FS3112 (podlahove-topeni-herz.cz)",
+   "ufh": {
+    "pipe_mm": [
+     14,
+     16
+    ],
+    "raster_mm": 65,
+    "system": "A"
+   }
   },
   {
    "id": "herz-nop-30-50",
@@ -31,7 +47,15 @@
    "color": "#2b2b2b",
    "maker": "HERZ",
    "kind": "nopová systémová doska s kročajovou izoláciou (EPS DES sg + čierna PS fólia 0,6 mm)",
-   "note": "hrúbka vrstvy = izolácia 30 mm (λ 0,040, RD 0,75 m²K/W); výška vrátane nopov 51 mm; max. zaťaženie 5 kPa; útlm kročajového hluku 26 dB (izolácia kročajového hluku 28 dB); potrubie 14–18 mm, raster 5 cm; doska 1400 × 800 mm; podľa: technický list HERZ Combitop Star 30-2, 3 FS31 09"
+   "note": "hrúbka vrstvy = izolácia 30 mm (λ 0,040, RD 0,75 m²K/W); výška vrátane nopov 51 mm; max. zaťaženie 5 kPa; útlm kročajového hluku 26 dB (izolácia kročajového hluku 28 dB); potrubie 14–18 mm, raster 5 cm; doska 1400 × 800 mm; podľa: technický list HERZ Combitop Star 30-2, 3 FS31 09",
+   "ufh": {
+    "pipe_mm": [
+     14,
+     18
+    ],
+    "raster_mm": 50,
+    "system": "A"
+   }
   },
   {
    "id": "herz-tacker-30",
@@ -42,7 +66,15 @@
    "color": "#c7ccd3",
    "maker": "HERZ",
    "kind": "tacker – pás EPS 70 s kašírovanou PE fóliou a rastrom",
-   "note": "hrúbka 30 mm, λ 0,039; max. zaťaženie 5 kPa; potrubie 16×2 až 20×2, raster 50 mm; rolka 1000 × 10000 mm; reakcia na oheň neuvedená; podľa: HERZ Systémy podlahového topení – podklad pro návrh a montáž (2020-10), s. 17"
+   "note": "hrúbka 30 mm, λ 0,039; max. zaťaženie 5 kPa; potrubie 16×2 až 20×2, raster 50 mm; rolka 1000 × 10000 mm; reakcia na oheň neuvedená; podľa: HERZ Systémy podlahového topení – podklad pro návrh a montáž (2020-10), s. 17",
+   "ufh": {
+    "pipe_mm": [
+     16,
+     20
+    ],
+    "raster_mm": 50,
+    "system": "A"
+   }
   },
   {
    "id": "herz-sucha-25",
@@ -53,7 +85,19 @@
    "color": "#e9e9e4",
    "maker": "HERZ",
    "kind": "suchý systém – EPS doska s drážkami a hliníkovými lamelami",
-   "note": "izolácia 25 mm, λ 0,035; výrobca uvádza tepelný odpor 0,60 m²K/W; max. zaťaženie 35 kPa; DIN 4108-10 DEO; potrubie 16 mm, rozteč 167 / 250 / 333 mm; doska 1000 × 500 mm; podľa: HERZ Plošné systémy sálavého vytápění – Suchý systém podlahového topení (herz.cz)"
+   "note": "izolácia 25 mm, λ 0,035; výrobca uvádza tepelný odpor 0,60 m²K/W; max. zaťaženie 35 kPa; DIN 4108-10 DEO; potrubie 16 mm, rozteč 167 / 250 / 333 mm; doska 1000 × 500 mm; podľa: HERZ Plošné systémy sálavého vytápění – Suchý systém podlahového topení (herz.cz)",
+   "ufh": {
+    "pipe_mm": [
+     16,
+     16
+    ],
+    "spacings_mm": [
+     167,
+     250,
+     333
+    ],
+    "system": "B"
+   }
   },
   {
    "id": "wavin-simple-white-50",
@@ -64,7 +108,11 @@
    "color": "#f2f2ee",
    "maker": "Wavin",
    "kind": "nopová systémová doska (EPS 150 + tvrdá plastová fólia)",
-   "note": "hrúbka vrstvy = najmenšia izolácia 28 mm (λD 0,034); výška 50 mm; výrobca uvádza RD 0,95 m²K/W; CS(10) ≥ 150/200 kPa; rozteč rúr po 50 mm; doska 1400 × 800 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 41 (aj Wavin NL Noppenplaten 50 mm, kód 4855414080)"
+   "note": "hrúbka vrstvy = najmenšia izolácia 28 mm (λD 0,034); výška 50 mm; výrobca uvádza RD 0,95 m²K/W; CS(10) ≥ 150/200 kPa; rozteč rúr po 50 mm; doska 1400 × 800 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 41 (aj Wavin NL Noppenplaten 50 mm, kód 4855414080)",
+   "ufh": {
+    "raster_mm": 50,
+    "system": "A"
+   }
   },
   {
    "id": "wavin-compact-basic-45",
@@ -75,7 +123,10 @@
    "color": "#f2f2ee",
    "maker": "Wavin",
    "kind": "nopová systémová doska (tvarovaný EPS)",
-   "note": "hrúbka vrstvy = najmenšia izolácia 21 mm (λD 0,035); výška 45 mm; výrobca uvádza RD 0,75 m²K/W; CS(10) ≥ 200 kPa; doska 1200 × 700 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 47"
+   "note": "hrúbka vrstvy = najmenšia izolácia 21 mm (λD 0,035); výška 45 mm; výrobca uvádza RD 0,75 m²K/W; CS(10) ≥ 200 kPa; doska 1200 × 700 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 47",
+   "ufh": {
+    "system": "A"
+   }
   },
   {
    "id": "wavin-roller-30",
@@ -86,7 +137,10 @@
    "color": "#c7ccd3",
    "maker": "Wavin",
    "kind": "tacker – rolovaná EPS doska s fóliou a rastrom",
-   "note": "hrúbka 30 mm, λD 0,035, RD 0,85 m²K/W; CS(10) ≥ 150 kPa; rolka 1000 × 10000 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 45"
+   "note": "hrúbka 30 mm, λD 0,035, RD 0,85 m²K/W; CS(10) ≥ 150 kPa; rolka 1000 × 10000 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 45",
+   "ufh": {
+    "system": "A"
+   }
   },
   {
    "id": "wavin-reflex-ultra-23",
@@ -97,7 +151,10 @@
    "color": "#d9dde2",
    "maker": "Wavin",
    "kind": "rovná systémová doska (EPS s reflexnou fóliou a rastrom)",
-   "note": "hrúbka 23 mm, λD 0,031, RD 0,75 m²K/W; CS(10) ≥ 200 kPa; doska 1000 × 500 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 37"
+   "note": "hrúbka 23 mm, λD 0,031, RD 0,75 m²K/W; CS(10) ≥ 200 kPa; doska 1000 × 500 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 37",
+   "ufh": {
+    "system": "A"
+   }
   },
   {
    "id": "fermacell-2e22",

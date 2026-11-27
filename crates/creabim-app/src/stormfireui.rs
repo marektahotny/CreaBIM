@@ -53,9 +53,9 @@ impl NetCalc {
         Some(match self {
             NetCalc::Storm(Some(r)) => cr::storm(r),
             NetCalc::Fire(Some(r)) => cr::fire(r),
-            NetCalc::Gas(Some(r), _) => cr::gas(r),
-            NetCalc::Heat(Some(r), _) => cr::heating(r),
-            NetCalc::Drain(Some(r), _) => cr::drain(r),
+            NetCalc::Gas(Some(r), s) => cr::gas(r).with_settings(&s.saved()),
+            NetCalc::Heat(Some(r), s) => cr::heating(r).with_settings(s),
+            NetCalc::Drain(Some(r), s) => cr::drain(r).with_settings(s),
             NetCalc::Circ(Some(r)) => cr::circulation(r),
             NetCalc::Med(rs) if !rs.is_empty() => cr::med(rs),
             _ => return None,
@@ -136,14 +136,23 @@ impl CreaBimApp {
             "fire" => NetCalc::fire(self.doc.model()),
             "medgas" => NetCalc::med(self.doc.model()),
             "circulation" => NetCalc::circ(self.doc.model()),
-            "drain" => NetCalc::drain(self.doc.model(), sanitary::DrainSettings::default()),
-            "heating" => NetCalc::heat(self.doc.model(), heating::HeatSettings::default()),
-            "gas" => NetCalc::gas(self.doc.model(), gas::GasSettings::default()),
+            // reopened: as they were last written (George 2026-11-27)
+            "drain" => NetCalc::drain(
+                self.doc.model(),
+                self.saved_settings("drain").unwrap_or_default(),
+            ),
+            "heating" => NetCalc::heat(
+                self.doc.model(),
+                self.saved_settings("heating").unwrap_or_default(),
+            ),
+            "gas" => NetCalc::gas(
+                self.doc.model(),
+                self.saved_settings("gas")
+                    .map(gas::GasSettings::from_saved)
+                    .unwrap_or_default(),
+            ),
             _ => return false,
         });
-        if let Some(set) = self.net_calc.as_ref().and_then(NetCalc::results) {
-            self.write_results(set);
-        }
         true
     }
 
@@ -158,6 +167,7 @@ impl CreaBimApp {
         let mut open = true;
         let (mut do_apply, mut again) = (false, false);
         let mut write_now = false;
+        let written = calc.results().is_none_or(|f| self.is_written(&f));
         let mut select = None;
         let sizes = calc.proposals();
         let n_changes = changes(model, &sizes).len();
@@ -195,7 +205,7 @@ impl CreaBimApp {
             .default_size(crate::app::shell::at_least(Vec2::new(620.0, 500.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui) {
+                if super::calcresultsui::write_button(ui, written) {
                     write_now = true;
                 }
                 ui.horizontal(|ui| {

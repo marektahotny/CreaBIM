@@ -5,8 +5,7 @@
 
 use super::CreaBimApp;
 use creabim_core::{ElementId, ElementKind, Transaction};
-use creabim_services::ductsizing::{self, Limits};
-use creabim_services::heatloss;
+use creabim_services::ductsizing::{self};
 use eframe::egui::{self, Vec2};
 
 /// The air systems it sizes.
@@ -19,9 +18,9 @@ impl CreaBimApp {
             return false;
         }
         if self.ducts.is_none() {
-            self.ducts = Some(Limits::default());
+            // reopened: as it was last written (George 2026-11-27)
+            self.ducts = Some(self.saved_settings("ducts").unwrap_or_default());
         }
-        self.results_due = Some("ducts");
         true
     }
 
@@ -32,11 +31,12 @@ impl CreaBimApp {
         };
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
-        let o = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(heatloss::Opts::default, |x| x.0);
-        let mut write_now = self.results_due.take_if(|c| *c == "ducts").is_some();
+        let o = self.heat_opts();
+        // the results are gathered while the window is drawn: the button
+        // goes by what the last frame found
+        let written = self.ducts_written;
+        let start = limits;
+        let mut write_now = false;
         let mut found = creabim_core::results::ResultSet::new(
             "ducts",
             "Dimenzovanie VZT potrubia",
@@ -53,7 +53,7 @@ impl CreaBimApp {
             .default_size(crate::app::shell::at_least(Vec2::new(660.0, 500.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui) {
+                if super::calcresultsui::write_button(ui, written) {
                     write_now = true;
                 }
                 ui.horizontal(|ui| {
@@ -182,8 +182,12 @@ impl CreaBimApp {
                 Err(e) => self.status = format!("Couldn't do that: {e}"),
             }
         }
+        let found = found.with_settings(&start);
         if write_now {
             self.write_results_said(found);
+            self.ducts_written = true;
+        } else {
+            self.ducts_written = self.is_written(&found);
         }
         self.ducts = if open { Some(limits) } else { None };
     }

@@ -999,6 +999,7 @@ spec_enum! {
         WaterAxonometry = "water_axonometry",
         TimberList = "timber_list",
         SteelList = "steel_list",
+        KariList = "kari_list",
     }
 }
 

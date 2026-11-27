@@ -208,6 +208,12 @@ pub struct ResultSet {
     /// ("SV", "UK"...); "" for the whole building (its total heat loss).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub systems: Vec<(String, Vec<CalcValue>)>,
+    /// What the calculation's window was set to when these were written
+    /// (JSON of the calculation's own settings): reopened, the window
+    /// takes them back (George 2026-11-27). Empty in projects written
+    /// before.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub settings: String,
 }
 
 impl ResultSet {
@@ -219,7 +225,14 @@ impl ResultSet {
             at: String::new(),
             elements: vec![],
             systems: vec![],
+            settings: String::new(),
         }
+    }
+
+    /// The same set, written with the window's `settings`.
+    pub fn with_settings<T: Serialize>(mut self, settings: &T) -> Self {
+        self.settings = serde_json::to_string(settings).unwrap_or_default();
+        self
     }
 
     /// Add `values` for the system drawn in `code` ("" the building).
@@ -252,6 +265,7 @@ impl ResultSet {
             && self.norm == other.norm
             && self.elements == other.elements
             && self.systems == other.systems
+            && self.settings == other.settings
     }
 }
 
@@ -317,6 +331,7 @@ pub fn of(model: &Model, id: ElementId) -> Vec<(ResultSet, Vec<CalcValue>)> {
                             at: s.at.clone(),
                             elements: vec![],
                             systems: vec![],
+                            settings: String::new(),
                         };
                         (head, v.to_vec())
                     })
@@ -325,6 +340,42 @@ pub fn of(model: &Model, id: ElementId) -> Vec<(ResultSet, Vec<CalcValue>)> {
             _ => None,
         })
         .unwrap_or_default()
+}
+
+/// The settings calculation `calc` was written with, read back into
+/// its window's settings (none: never written, written before settings
+/// were kept, or no longer readable).
+pub fn settings_of<T: serde::de::DeserializeOwned>(model: &Model, calc: &str) -> Option<T> {
+    model.iter().find_map(|e| match &e.kind {
+        ElementKind::Results(r) => r
+            .sets
+            .iter()
+            .find(|s| s.calc == calc && !s.settings.is_empty())
+            .and_then(|s| serde_json::from_str(&s.settings).ok()),
+        _ => None,
+    })
+}
+
+/// `set` is what the model already holds for its calculation, with the
+/// same settings: writing it would change nothing (and the window's
+/// *Write the results to the model* has nothing to do). A calculation
+/// that found nothing and has nothing written counts as written too.
+pub fn is_written(model: &Model, set: &ResultSet) -> bool {
+    let kept = |(id, _): &&(ElementId, Vec<CalcValue>)| model.get(*id).is_some();
+    let stored = model.iter().find_map(|e| match &e.kind {
+        ElementKind::Results(r) => r.sets.iter().find(|s| s.calc == set.calc),
+        _ => None,
+    });
+    match stored {
+        Some(s) => {
+            s.title == set.title
+                && s.norm == set.norm
+                && s.systems == set.systems
+                && s.settings == set.settings
+                && s.elements.iter().eq(set.elements.iter().filter(kept))
+        }
+        None => set.systems.is_empty() && !set.elements.iter().any(|e| kept(&e)),
+    }
 }
 
 /// The edit that puts `set` in place of what the same calculation wrote
@@ -364,6 +415,60 @@ pub fn write(model: &Model, mut set: ResultSet, at: &str) -> Transaction {
 mod tests {
     use super::*;
     use crate::Document;
+
+    #[test]
+    fn settings_are_kept_and_an_unchanged_calculation_counts_as_written() {
+        #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
+        #[serde(default)]
+        struct Opts {
+            method: String,
+            te: f64,
+        }
+        let mut doc = Document::new();
+        let level = crate::Element::new(
+            "L",
+            ElementKind::Level(crate::Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let id = level.id;
+        doc.commit(Transaction::new("l").insert(level)).unwrap();
+        let o = Opts {
+            method: "Detailed".into(),
+            te: -12.5,
+        };
+        let mut a = ResultSet::new("heatloss", "Tepelné straty", "STN EN 12831-1");
+        a.put(id, vec![CalcValue::num("phi", "Φ", 1250.0, Unit::W)]);
+        a.put(
+            ElementId::new(),
+            vec![CalcValue::num("phi", "Φ", 1.0, Unit::W)],
+        );
+        let a = a.with_settings(&o);
+        assert!(!is_written(doc.model(), &a));
+        assert_eq!(settings_of::<Opts>(doc.model(), "heatloss"), None);
+        doc.commit(write(doc.model(), a.clone(), "2026-11-27"))
+            .unwrap();
+        // reopened: the same settings, nothing to write
+        assert_eq!(settings_of::<Opts>(doc.model(), "heatloss"), Some(o));
+        assert!(is_written(doc.model(), &a));
+        // a setting changed: to write again
+        let b = a.clone().with_settings(&Opts {
+            method: "Detailed".into(),
+            te: -11.0,
+        });
+        assert!(!is_written(doc.model(), &b));
+        // a result changed: to write again
+        let mut c = a.clone();
+        c.elements[0].1[0] = CalcValue::num("phi", "Φ", 1300.0, Unit::W);
+        assert!(!is_written(doc.model(), &c));
+        // nothing found and nothing written: nothing to write
+        assert!(is_written(doc.model(), &ResultSet::new("gas", "Plyn", "")));
+        // a project from before settings were kept reads as unwritten
+        let old: ResultSet =
+            serde_json::from_str(r#"{"calc":"x","title":"X","elements":[]}"#).unwrap();
+        assert!(old.settings.is_empty());
+    }
 
     #[test]
     fn a_calculation_replaces_its_own_results_only() {

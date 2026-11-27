@@ -26,17 +26,54 @@ fn today() -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
-/// The button that writes a calculation's results to the model.
-pub(super) fn write_button(ui: &mut egui::Ui) -> bool {
-    ui.button(crate::i18n::tr("Write the results to the model"))
-        .on_hover_text(crate::i18n::tr(
+/// The button that writes a calculation's results to the model, off
+/// while the project already holds these very results with these
+/// settings (George 2026-11-27: reopened and unchanged, there is nothing
+/// to write).
+pub(super) fn write_button(ui: &mut egui::Ui, written: bool) -> bool {
+    let t = crate::i18n::tr;
+    let b = ui.add_enabled(
+        !written,
+        egui::Button::new(t("Write the results to the model")),
+    );
+    if written {
+        b.on_disabled_hover_text(t(
+            "These results, with these settings, are already written in the project; \
+             change a setting or the model to write them again.",
+        ))
+        .clicked()
+    } else {
+        b.on_hover_text(t(
             "Keeps what the calculation found on the rooms, pipes and devices: \
              it shows in their properties and goes to IFC.",
         ))
         .clicked()
+    }
 }
 
 impl CreaBimApp {
+    /// The settings calculation `calc` was last written to the project
+    /// with, for its window opened again.
+    pub(super) fn saved_settings<T: serde::de::DeserializeOwned>(&self, calc: &str) -> Option<T> {
+        results::settings_of(self.doc.model(), calc)
+    }
+
+    /// The project already holds `set` (same results, same settings).
+    pub(super) fn is_written(&self, set: &ResultSet) -> bool {
+        results::is_written(self.doc.model(), set)
+    }
+
+    /// What the heat loss is calculated with: its open window's, else
+    /// what it was last written with, else the locality's defaults.
+    pub(super) fn heat_opts(&self) -> creabim_services::heatloss::Opts {
+        match &self.heat_loss {
+            Some(x) => x.0,
+            None => self
+                .saved_settings("heatloss")
+                .unwrap_or_else(|| self.site_opts(Default::default())),
+        }
+    }
+
     /// Keep `set` in the model in place of what the same calculation
     /// wrote before; nothing when it found the same.
     pub(super) fn write_results(&mut self, set: ResultSet) {

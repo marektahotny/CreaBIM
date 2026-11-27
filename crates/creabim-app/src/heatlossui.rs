@@ -204,10 +204,8 @@ impl CreaBimApp {
         if head != "calc" || !matches!(arg, "heatloss" | "heatloss-detailed" | "heatloss-psi") {
             return false;
         }
-        let mut o = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(|| self.site_opts(Opts::default()), |x| x.0);
+        // reopened: as it was last written (George 2026-11-27)
+        let mut o = self.heat_opts();
         if arg != "heatloss" {
             o.method = Method::Detailed;
             o.psi = arg == "heatloss-psi";
@@ -218,7 +216,6 @@ impl CreaBimApp {
         } else {
             crate::i18n::tr("Heat loss calculated")
         };
-        self.write_results(heatloss_results(&b, &o));
         self.heat_loss = Some((o, b));
         true
     }
@@ -234,6 +231,8 @@ impl CreaBimApp {
         let mut select = None;
         let mut to_source = false;
         let mut write_now = false;
+        let found = heatloss_results(&b, &o);
+        let written = self.is_written(&found);
         let sites = self.climate_sites();
         let site_name = self
             .doc
@@ -252,7 +251,7 @@ impl CreaBimApp {
             .default_size(crate::app::shell::at_least(Vec2::new(660.0, 560.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui) {
+                if super::calcresultsui::write_button(ui, written) {
                     write_now = true;
                 }
                 ui.horizontal(|ui| {
@@ -659,7 +658,7 @@ impl CreaBimApp {
             self.heat_source = Some(s);
         }
         if write_now {
-            self.write_results_said(heatloss_results(&b, &o));
+            self.write_results_said(found);
         }
         if !open {
             self.heat_loss = None;
@@ -671,5 +670,5 @@ impl CreaBimApp {
 }
 
 fn heatloss_results(b: &heatloss::BuildingLoss, o: &Opts) -> creabim_core::results::ResultSet {
-    creabim_services::calcresults::heat_loss(b, o)
+    creabim_services::calcresults::heat_loss(b, o).with_settings(o)
 }

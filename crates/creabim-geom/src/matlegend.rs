@@ -547,6 +547,29 @@ pub fn foundation_rows(model: &Model, view: ElementId) -> (Vec<String>, Vec<Stri
     )
 }
 
+/// The notes a legend of materials can write, a line each, before any is
+/// switched off: its own, else beside the foundations George's notes of
+/// ASR.002 (a legend made before them has none of its own).
+pub fn notes_of(model: &Model, view: ElementId) -> Vec<String> {
+    let own: Vec<String> = match model.get(view).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => v
+            .notes
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect(),
+        _ => vec![],
+    };
+    if own.is_empty() && of_foundations(model, view) {
+        return crate::docset::FOUNDATION_NOTES
+            .iter()
+            .map(|t| tr(t))
+            .collect();
+    }
+    own
+}
+
 /// The welded meshes a foundations' legend lists, a line each: "KARI
 /// rohož KY50 8x150/8x150 mm pri spodnom okraji podkladnej dosky".
 pub fn kari_rows(model: &Model, view: ElementId) -> Vec<String> {
@@ -617,7 +640,9 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
                     t,
                     Pen::Drafted(creabim_core::LineLook {
                         pen: creabim_core::LinePen::Thin,
-                        kind: creabim_core::LineType::DashDot,
+                        // as the foundations plan draws them (George
+                        // 2026-11-27): thin dash-double-dot
+                        kind: creabim_core::LineType::DashDotDot,
                     }),
                 )
             }));
@@ -858,11 +883,9 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
     // the notes of the drawing, the legend view's own, a line each
     // (each can be switched off on its own, George 2026-11-27)
     let notes: Vec<String> = match model.get(view).map(|e| &e.kind) {
-        Some(ElementKind::View(v)) => v
-            .notes
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && !v.notes_off.iter().any(|o| o.trim() == *l))
+        Some(ElementKind::View(v)) => notes_of(model, view)
+            .into_iter()
+            .filter(|l| !v.notes_off.iter().any(|o| o.trim() == l))
             .map(|l| format!("- {}", l.trim_start_matches("- ")))
             .collect(),
         _ => vec![],

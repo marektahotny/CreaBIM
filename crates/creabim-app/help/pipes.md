@@ -37,3 +37,11 @@ The types are PilonDesigner's catalogue: a system offers the types for what it c
 Select a pipe to change its system, pipe type, size, insulation and the heights of its ends. Another type keeps the outside diameter as near as its series allows, as where a run changes material. A drain shows its fall.
 
 Pipes are drawn in plan in their system's colour, cut, seen below or dashed above the plan's cut, and in 3D as cylinders (a rectangular duct as a box). They export to IFC as IfcPipeSegment or IfcDuctSegment.
+
+## Underfloor heating
+
+The *Design underfloor heating* window gives rooms their loops from their heat loss and the floor build-up under them: the system board (its pipes and raster), the screed over it (λE, the cover su), RλB of the layers on the screed and the insulation under the pipes for the loss downwards (STN EN 1264-2, -3). Each room is laid as a spiral, a meander or a double meander, or not drawn.
+
+1. Pick *Edge zone*, *Place of reduced output* or *Hole with no pipe* on the *Heating* tab.
+2. Draw it inside a room with underfloor heating, as a polygon (1) or a rectangle (2).
+3. In the window set the edge zone's spacing or by how many % the place gives less, switch zones off or on, and split a room's loops vertically or horizontally.

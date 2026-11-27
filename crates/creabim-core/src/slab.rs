@@ -740,6 +740,40 @@ mod tests {
         sk.closed = false;
         assert!(slab_from_sketch(&m, &sk, 0.2).is_err());
     }
+
+    /// George 2026-11-27: a slab laid on strip footings is a base slab
+    /// (KARI mesh); the same slab with no strips under it is a raft.
+    #[test]
+    fn a_slab_on_strip_footings_is_a_base_slab() {
+        let (mut m, l) = level_model();
+        let slab = Slab::new(
+            l,
+            vec![
+                DVec2::ZERO,
+                DVec2::new(4.0, 0.0),
+                DVec2::new(4.0, 3.0),
+                DVec2::new(0.0, 3.0),
+            ],
+            0.15,
+        );
+        let e = Element::new("Slab", ElementKind::Slab(slab));
+        let id = e.id;
+        Transaction::new("slab").insert(e).apply(&mut m).unwrap();
+        let kind = |m: &Model| match &m.get(id).unwrap().kind {
+            ElementKind::Slab(s) => kind_of(m, s),
+            _ => unreachable!(),
+        };
+        assert_eq!(kind(&m), crate::SlabKind::Foundation);
+        // a strip under the wall along its edge, its top under the slab
+        let mut f =
+            crate::footing::Footing::strip(l, DVec2::new(-0.1, -0.1), DVec2::new(4.1, -0.1));
+        f.below = 0.15;
+        Transaction::new("strip")
+            .insert(Element::new("Footing", ElementKind::Footing(f)))
+            .apply(&mut m)
+            .unwrap();
+        assert_eq!(kind(&m), crate::SlabKind::Base);
+    }
 }
 
 /// A shaft: a vertical hole through every slab and roof between its base
@@ -1104,7 +1138,24 @@ pub fn kind_of(model: &Model, slab: &Slab) -> crate::SlabKind {
         _ => false,
     });
     if under {
-        crate::SlabKind::Floor
+        return crate::SlabKind::Floor;
+    }
+    // laid on strip footings (George 2026-11-27): a base slab, which takes
+    // a KARI mesh; a slab with no strips under it is a raft
+    // (a strip under a wall along the slab's edge counts: its line within
+    // half its width of the slab's box)
+    let on_strips = model.iter().any(|e| match &e.kind {
+        crate::ElementKind::Footing(f) if f.kind == crate::FootingKind::Strip => {
+            let (a, b) = f.line(model);
+            let m = f.width / 2.0 + 0.01;
+            let near =
+                |p: DVec2| p.x > lo.x - m && p.x < hi.x + m && p.y > lo.y - m && p.y < hi.y + m;
+            f.top(model) < bottom + 1e-3 && (0..=20).any(|i| near(a.lerp(b, i as f64 / 20.0)))
+        }
+        _ => false,
+    });
+    if on_strips {
+        crate::SlabKind::Base
     } else {
         crate::SlabKind::Foundation
     }

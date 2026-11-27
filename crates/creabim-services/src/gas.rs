@@ -15,7 +15,7 @@ use crate::tree::{self, Tree};
 use creabim_core::{ElementId, Model};
 
 /// The gases a building is supplied with.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GasKind {
     #[default]
     Natural,
@@ -104,7 +104,8 @@ impl GasProps {
 }
 
 /// The settings of a gas calculation.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct GasSettings {
     pub gas: GasKind,
     /// The installation runs at medium pressure (5–400 kPa), not low.
@@ -132,6 +133,8 @@ pub struct GasSettings {
     /// A gas meter in the cabinet.
     pub metering: bool,
     /// The least meter (G4 for homes).
+    /// Kept by [`GasSettings::saved`] beside the rest.
+    #[serde(skip)]
     pub min_meter: &'static str,
     /// Enlarge the worst appliance's way until its loss is met.
     pub enlarge_critical: bool,
@@ -171,6 +174,22 @@ impl Default for GasSettings {
 }
 
 impl GasSettings {
+    /// The settings as a project keeps them: the rest and the least
+    /// meter's name.
+    pub fn saved(&self) -> (GasSettings, String) {
+        (self.clone(), self.min_meter.to_string())
+    }
+
+    /// Read back from [`GasSettings::saved`]: a meter not in [`METERS`]
+    /// takes G4.
+    pub fn from_saved((mut s, meter): (GasSettings, String)) -> Self {
+        s.min_meter = METERS
+            .iter()
+            .find(|(n, _)| *n == meter)
+            .map_or("G4", |(n, _)| n);
+        s
+    }
+
     /// The overpressure where the installation starts, kPa.
     pub fn start_kpa(&self) -> f64 {
         if self.medium_pressure {

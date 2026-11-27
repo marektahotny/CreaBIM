@@ -182,6 +182,7 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Terrain => "terrain",
         Tool::Paving => "paving",
         Tool::Planting => "planting",
+        Tool::Chimney => "chimney",
         Tool::Room => "room",
         Tool::RoomSeparator => "room-separator",
         Tool::Tiling => "tiling",
@@ -189,6 +190,7 @@ pub(crate) fn tool_icon(t: Tool) -> &'static str {
         Tool::Callout => "callout",
         Tool::Detail => "detail-component",
         Tool::Pipe => "pipe",
+        Tool::UfhZone => "spline",
     }
 }
 
@@ -217,12 +219,13 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::Extrusion
         | Tool::Sweep
         | Tool::Void
+        | Tool::Chimney
         | Tool::Room
         | Tool::RoomSeparator
         | Tool::Tiling
         | Tool::Ceiling => 1,
         Tool::Terrain | Tool::Paving | Tool::Planting => 5,
-        Tool::Pipe => 6,
+        Tool::Pipe | Tool::UfhZone => 6,
         Tool::Section | Tool::Elevation | Tool::Callout => 2,
         Tool::Dimension
         | Tool::Tag
@@ -331,6 +334,7 @@ fn schedule_icon(c: ScheduleCategory) -> &'static str {
         ScheduleCategory::RingBeamList => "beam",
         ScheduleCategory::TimberList => "timber-list",
         ScheduleCategory::SteelList => "steel-list",
+        ScheduleCategory::KariList => "steel-list",
         ScheduleCategory::VentilationHrv => "wind",
         ScheduleCategory::HeaterList => "flame",
         ScheduleCategory::BuildingFigures => "table-2",

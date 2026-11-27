@@ -19,7 +19,8 @@ const NU: f64 = 15.0e-6;
 const ROUGH: f64 = 0.15e-3;
 
 /// The velocities allowed, m/s.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Limits {
     /// In the run from the unit to the last branching.
     pub main: f64,

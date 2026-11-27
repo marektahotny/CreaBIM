@@ -16,7 +16,8 @@ use creabim_core::catalogue::radiators::{lengths, Heater, Panel, PanelKind};
 use creabim_core::{ElementId, ElementKind, Model, Transaction};
 
 /// What the system is designed with.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub supply_c: f64,
     pub return_c: f64,
@@ -375,6 +376,7 @@ mod tests {
                     spacing: 0.1,
                     loops: 3,
                     finish_r: None,
+                    ..Underfloor::default()
                 });
             }
             tx = tx.insert(Element::new(name, ElementKind::Room(r)));

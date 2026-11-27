@@ -5,7 +5,6 @@
 //! [`creabim_services::hpsizing`]), then placed as any catalogue object.
 
 use super::CreaBimApp;
-use super::Tool;
 use creabim_core::catalogue::heat::{self, HeatKind};
 use creabim_services::hpsizing::{self, HpInput};
 use eframe::egui::{self, Color32, Pos2, Stroke, Vec2};
@@ -185,10 +184,7 @@ impl CreaBimApp {
     /// The heat pump's input from the model's heat loss (STN EN 12831-1,
     /// with the project's locality): none without rooms.
     pub(super) fn hp_input_from_model(&self) -> Option<HpInput> {
-        let o = self.heat_loss.as_ref().map_or_else(
-            || self.site_opts(creabim_services::heatloss::Opts::default()),
-            |x| x.0,
-        );
+        let o = self.heat_opts();
         let b = creabim_services::heatloss::building(self.doc.model(), &o);
         if b.rooms.is_empty() || b.phi <= 0.0 {
             return None;
@@ -487,17 +483,12 @@ impl CreaBimApp {
                 }
             });
         if place {
-            let unit = heat::unit(c.kind, c.size);
-            self.status = format!(
-                "{}: {}",
-                unit.name,
-                t("click in a plan or the 3D view to place it. Space turns it; Esc ends.")
-            );
-            self.plan.objects.current = Some(unit);
-            self.plan.objects.offset = None;
-            self.plan.objects.project_type = None;
-            self.plan.cancel();
-            self.plan.tool = Tool::Object;
+            // the indoor unit first, then its outdoor one; the windows
+            // out of the way meanwhile (crate::app::heatplace)
+            let size = c.kind.size(c.size);
+            let mi = self.midea_indoor(size);
+            let units = super::heatplace::pair(c.kind, c.size, mi);
+            self.heat_place_start(ctx, &units);
         }
         self.heat_source = if open { Some(c) } else { None };
     }

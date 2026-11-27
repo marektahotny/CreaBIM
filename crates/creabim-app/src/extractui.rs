@@ -8,7 +8,6 @@
 use super::CreaBimApp;
 use creabim_core::{ElementId, Transaction};
 use creabim_services::extractfans::{self as xf, Opts};
-use creabim_services::heatloss;
 use eframe::egui::{self, Vec2};
 
 /// What the window keeps while it is open.
@@ -56,10 +55,7 @@ impl CreaBimApp {
         };
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
-        let ho = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(heatloss::Opts::default, |x| x.0);
+        let ho = self.heat_opts();
         let model = self.doc.model();
         let cands = xf::candidates(model);
         let picked = st.rooms.clone().unwrap_or_else(|| {

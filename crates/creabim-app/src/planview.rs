@@ -86,6 +86,7 @@ pub enum Tool {
     Paving,
     /// Trees and shrubs.
     Planting,
+    Chimney,
     /// A room: click inside walls, or draw its outline.
     Room,
     /// A line that splits a room in two where there is no wall.
@@ -110,10 +111,13 @@ pub enum Tool {
     Arc,
     /// A drafted smooth curve through the points clicked.
     Curve,
+    /// An underfloor heating zone in a room: an edge zone, a place of
+    /// reduced output or a hole, drawn as a polygon or a rectangle.
+    UfhZone,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 54] = [
+    pub const ALL: [Tool; 56] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -141,6 +145,7 @@ impl Tool {
         Tool::Terrain,
         Tool::Paving,
         Tool::Planting,
+        Tool::Chimney,
         Tool::Room,
         Tool::RoomSeparator,
         Tool::Tiling,
@@ -168,6 +173,7 @@ impl Tool {
         Tool::Grid,
         Tool::Level,
         Tool::Align,
+        Tool::UfhZone,
     ];
 
     /// Dimensions, tags and notes: tools that annotate a view.
@@ -225,12 +231,14 @@ impl Tool {
             Tool::Terrain => "Terrain",
             Tool::Paving => "Hard landscape",
             Tool::Planting => "Planting",
+            Tool::Chimney => "Chimney",
             Tool::Room => "Room",
             Tool::RoomSeparator => "Room separator",
             Tool::Tiling => "Tiling",
             Tool::Ceiling => "Ceiling",
             Tool::Callout => "Callout",
             Tool::Detail => "Detail component",
+            Tool::UfhZone => "Underfloor heating zone",
         }
     }
 
@@ -283,12 +291,14 @@ impl Tool {
             Tool::Void => "Draw the void's outline like a slab. It cuts every wall, slab, roof, site surface and extrusion it meets, between its base and height: a firebox, a hole through a floor. In the 3D view, draw it on any face, a sloped roof or a wall: it cuts square into that face, as deep as Depth on a face.",
             Tool::Terrain => "Draw the ground's outline like a slab. It starts flat at the level; add spot heights in Properties to shape it. Paving drawn inside it sits flush.",
             Tool::Paving => "Draw paving, gravel, a driveway or decking like a slab. Pick what in the bar; each has its own pattern and material.",
+            Tool::Chimney => "Click where the chimney stands: a Schiedel chimney of the system and flue picked in the bar, its block turned by Rotation. Its outline and flue are the maker's; Properties changes them.",
             Tool::Planting => "Click to plant a tree, conifer, palm or shrub. Pick the form, canopy and height in the bar.",
             Tool::Room => "Click inside walls for a room that follows them (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch) where no walls close it off. Its name, number and finishes are in Properties.",
             Tool::RoomSeparator => "Click two points for a line that splits a room in two where there is no wall, such as between a kitchen and a dining room.",
             Tool::Tiling => "Click where the tiling starts on a room's wall, then where it ends: it runs along the walls between, round corners too, such as over the kitchen's base cabinets. Set its height and how far above the floor it starts in the top bar.",
             Tool::Callout => "On a plan or section, click two corners of a box round what to detail: it becomes a detail view at the scale in the top bar, numbered in a bubble on this view.",
             Tool::Detail => "Pick what to draw in the top bar, then click its points; Enter, a double-click or a right-click finishes (the first point again closes a region). Esc keeps what is drawn. Detail components show in this view only.",
+            Tool::UfhZone => "Draw an edge zone, a place of reduced output or a hole in a room with underfloor heating, as a polygon (1) or a rectangle (2). Pick which in the top bar; its spacing or how much less it gives in the Underfloor heating window.",
             Tool::Ceiling => "Click inside a room for a ceiling over it that follows its walls (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch). Set its height and thickness in the top bar or Properties.",
         }
     }
@@ -306,6 +316,7 @@ impl Tool {
                 | Tool::Paving
                 | Tool::Room
                 | Tool::Ceiling
+                | Tool::UfhZone
         )
     }
 
@@ -486,6 +497,8 @@ pub struct PlanState {
     pub outline: Option<crate::outline::Outline>,
     /// How the Slab tool draws.
     pub slab_mode: crate::slabtool::SlabMode,
+    /// What the underfloor heating zone tool draws.
+    pub ufh_zone: crate::roomtool::UfhZone,
     /// The next side of a slab outline is an arc.
     pub slab_arc: bool,
     /// A new slab thickness keeps the underside where it is (the top
@@ -769,6 +782,7 @@ impl Default for PlanState {
             guide_edge: None,
             outline: None,
             slab_mode: Default::default(),
+            ufh_zone: Default::default(),
             slab_arc: false,
             slab_keep_bottom: false,
             boxsel: None,
@@ -4433,8 +4447,9 @@ fn plan_click(
         | Tool::Terrain
         | Tool::Paving
         | Tool::Room
-        | Tool::Ceiling => crate::slabtool::click(doc, level, p, state, selection),
-        Tool::Sweep | Tool::Planting => {
+        | Tool::Ceiling
+        | Tool::UfhZone => crate::slabtool::click(doc, level, p, state, selection),
+        Tool::Sweep | Tool::Planting | Tool::Chimney => {
             crate::partstool::click(doc, level, tool, p, state, selection)
         }
         Tool::Column
