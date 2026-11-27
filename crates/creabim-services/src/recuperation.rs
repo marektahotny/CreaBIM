@@ -188,6 +188,10 @@ pub struct Opts {
     /// The most air one duct Ø75 carries, m³/h (GP: 15–50 recommended
     /// by ATREA; quieter the less).
     pub per_duct: f64,
+    /// GP runs into one plate valve: 1 (PKS Ø100/Ø100 GP, valve Ø100) or
+    /// 2 (PKS 2×Ø100/Ø125 GP, valve Ø125). George 2026-11-27: one, at
+    /// 45 m³/h a run.
+    pub runs_per_valve: u32,
     /// The share of the unit's largest flow it is designed to run at.
     pub use_of_unit: f64,
     /// Air velocity through a door's undercut, m/s (the transfer).
@@ -204,7 +208,8 @@ impl Default for Opts {
         Self {
             route: Route::Floor,
             series: "Pro-V".into(),
-            per_duct: 25.0,
+            per_duct: 45.0,
+            runs_per_valve: 1,
             use_of_unit: 0.7,
             transfer_v: 1.0,
             zeta_bend: 0.5,
@@ -1071,12 +1076,13 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
         // ATREA: a plate valve takes one GP run (transition chamber PKS
         // Ø100/Ø100 GP, valve Ø100) or two (PKS 2×Ø100/Ø125 GP, valve
         // Ø125), each run by the GP connection set
-        let terms = ducts.div_ceil(2) as usize;
+        let per_valve = o.runs_per_valve.clamp(1, 2);
+        let terms = ducts.div_ceil(per_valve) as usize;
         r.ducts = ducts;
         let places = terminal_places(&geo[i], &door_pts(i), terms);
         let mut left = ducts;
         for p in places {
-            let k = left.min(2);
+            let k = left.min(per_valve);
             left -= k;
             r.terminals.push(Terminal {
                 at: p,

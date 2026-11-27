@@ -69,6 +69,8 @@ impl CreaBimApp {
                             .speed(1.0)
                             .suffix(" m³/h"),
                     );
+                    ui.label(t("runs into one valve"));
+                    ui.add(egui::DragValue::new(&mut o.runs_per_valve).range(1..=2));
                     ui.label(t("unit run at most at"));
                     let mut pc = o.use_of_unit * 100.0;
                     if ui
