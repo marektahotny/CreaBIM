@@ -22,6 +22,7 @@ rfd = "0.15"
 # pictures traced over (PNG, JPEG), MU18
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "bmp"] }
 serde.workspace = true
+ron = "0.12"
 serde_json.workspace = true
 base64 = "0.22"
 wry = "0.57"
