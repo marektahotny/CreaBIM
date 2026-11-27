@@ -57,6 +57,10 @@ fn groups() -> Vec<(&'static str, Vec<&'static str>)> {
         ),
         ("Cooling load (STN 73 0548)", coolnorm::TABLES.to_vec()),
         (
+            "Underfloor heating (STN EN 1264-2, STN EN 1264-4)",
+            creabim_services::ufhnorm::TABLES.to_vec(),
+        ),
+        (
             "Climate and localities",
             fireparams::CLIMATE_TABLES.to_vec(),
         ),

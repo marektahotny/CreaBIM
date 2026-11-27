@@ -18,12 +18,15 @@
 //! - Wavin stainless (XF1565xxW) and composite (XF1570xxW) manifolds:
 //!   2 to 12 circuits, lengths from the Wavin technical handbook for
 //!   surface heating (p. 48), 50 mm outlet pitch, bars 200 / 210 mm
-//!   apart, flowmeter 0 to 6 l/min; cabinets XF1580/XF1582 for 7 to 14
-//!   circuits (wavin.com/cz).
+//!   apart, flowmeter 0 to 6 l/min; cabinets XF1580xxW on the wall and
+//!   XF1582xxW flush (price list of 1. 7. 2026, handbook p. 63).
 
 use super::{cuboid, cylinder, metal, v2, v3, Build};
 use crate::objects::{CatalogueObject, Mount, ObjectCategory};
 use serde::{Deserialize, Serialize};
+
+/// A maker's part: its name, code and how many it takes.
+pub type Part = (&'static str, &'static str, u32);
 
 /// A maker's range of manifolds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -101,6 +104,213 @@ impl Range {
         match self {
             Range::HerzPush => (747.0 - 193.0) / 10.0,
             _ => 50.0,
+        }
+    }
+
+    /// The fitting that joins a pipe of `segment` ("16 x 2") to its
+    /// G 3/4 Eurocone outlet, by the maker's code: HERZ "Přechodka na
+    /// plastovou trubku G3/4" (herz.cz e-shop), Wavin "Napojovací spojka
+    /// D × 3/4"" (technical handbook p. 64); HERZ PUSH takes the pipe in
+    /// its push-fit outlet with a reinforcing sleeve 231700 (16 × 2.0).
+    /// The name always, the code when the maker lists the size.
+    pub fn outlet_fitting(self, segment: &str) -> (String, &'static str) {
+        let k: String = segment
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .replace(",0", "")
+            .replace(['×', 'X'], "x");
+        match self {
+            Range::HerzBrass => {
+                let code = match k.as_str() {
+                    "10x1,3" => "1609818",
+                    "15x1,5" => "1066152V",
+                    "16x2" => "1609803",
+                    "18x2" => "1609807",
+                    _ => "",
+                };
+                (
+                    format!("HERZ prechodka na plastovú rúru G 3/4 Eurokonus {k}"),
+                    code,
+                )
+            }
+            Range::HerzPush => (
+                format!("HERZ PUSH výstužné puzdro {k}"),
+                if k == "16x2" { "231700" } else { "" },
+            ),
+            Range::WavinSteel | Range::WavinComposite => {
+                let code = match k.as_str() {
+                    "16x2" => "XF135790W",
+                    "17x2" => "XF135030W",
+                    "20x2,25" => "XF135050W",
+                    _ => "",
+                };
+                (
+                    format!("Wavin napojovacia spojka Eurokonus {k} × 3/4\""),
+                    code,
+                )
+            }
+        }
+    }
+
+    /// The valves its circuits are preset by: turns and kv (supply and
+    /// return together), from the maker's sheet; none when the maker
+    /// gives no kv (the circuit is then set by its flowmeter in l/min).
+    /// HERZ 1 8532: insert 8531, TL 853X.
+    pub fn presets(self) -> &'static [(&'static str, f64)] {
+        match self {
+            Range::HerzBrass => &[
+                ("0,25", 0.107),
+                ("0,5", 0.198),
+                ("0,75", 0.247),
+                ("1", 0.342),
+                ("1,25", 0.476),
+                ("1,5", 0.627),
+                ("1,75", 0.775),
+                ("2", 0.94),
+                ("2,25", 1.057),
+                ("2,5", 1.196),
+                ("2,75", 1.335),
+                ("3", 1.449),
+                ("otv.", 1.5),
+            ],
+            _ => &[],
+        }
+    }
+
+    /// The most its flowmeters show, l/min (HERZ 1 8532 and PUSH 2.4,
+    /// Wavin stainless 6; none read for Wavin composite).
+    pub fn flowmeter_lmin(self) -> Option<f64> {
+        match self {
+            Range::HerzBrass | Range::HerzPush => Some(2.4),
+            Range::WavinSteel => Some(6.0),
+            Range::WavinComposite => None,
+        }
+    }
+
+    /// Its ball valves on the supply and return: (name, code, pieces).
+    pub fn ball_valves(self) -> Vec<(&'static str, &'static str, f64)> {
+        match self {
+            Range::HerzBrass => vec![
+                (
+                    "HERZ guľový kohút HERZCULES priamy DN 25, červený",
+                    "1220513",
+                    1.0,
+                ),
+                (
+                    "HERZ guľový kohút HERZCULES priamy DN 25, modrý",
+                    "1220523",
+                    1.0,
+                ),
+            ],
+            Range::HerzPush => vec![(
+                "HERZ guľový kohút s prevlečnou maticou 6/4\" pre PUSH",
+                "1226903",
+                2.0,
+            )],
+            Range::WavinSteel | Range::WavinComposite => {
+                vec![("Wavin guľový kohút nerezový 1\" (pár)", "TF359600W", 1.0)]
+            }
+        }
+    }
+
+    /// A pipe's bend guide where it rises to the manifold, for its
+    /// outside diameter.
+    pub fn bend_guide(self, outer_mm: f64) -> (&'static str, &'static str) {
+        let small = outer_mm <= 18.0 + 1e-6;
+        match (self.maker(), small) {
+            ("HERZ", true) => ("HERZ fixačný oblúk pre rúru 14–18 mm", "3F11008"),
+            ("HERZ", false) => ("HERZ fixačný oblúk pre rúru 20–23 mm", "3F11009"),
+            (_, true) => ("Wavin vodiaci oblúk rúry 16–18 mm", "TF450001W"),
+            (_, false) => ("Wavin vodiaci oblúk rúry 20–23 mm", "TF450002W"),
+        }
+    }
+
+    /// The edge strip along the walls: (name, code, metres a roll).
+    pub fn edge_strip(self) -> (&'static str, &'static str, Option<f64>) {
+        match self.maker() {
+            "HERZ" => ("HERZ dilatačný pás PE 10 × 150 mm", "3F08002A", Some(25.0)),
+            _ => ("Wavin okrajový dilatačný pás 8/150", "TF359100W", None),
+        }
+    }
+
+    /// The expansion joint profile in doorways: (name, code, piece m).
+    pub fn joint_profile(self) -> (&'static str, &'static str, f64) {
+        match self.maker() {
+            "HERZ" => (
+                "HERZ dilatačný T-profil samolepiaci 80 mm",
+                "3F08002SA",
+                2.0,
+            ),
+            _ => ("Wavin dilatačný profil 8 × 100 mm", "TF359110W", 2.0),
+        }
+    }
+
+    /// The sleeve over pipes crossing an expansion joint: (name, code,
+    /// roll m), by the pipe's outside diameter.
+    pub fn sleeve(self, outer_mm: f64) -> (&'static str, &'static str, Option<f64>) {
+        match self.maker() {
+            "HERZ" if outer_mm <= 17.0 + 1e-6 => (
+                "HERZ ochranná rúrka 15–17 mm (červená)",
+                "3F09099",
+                Some(50.0),
+            ),
+            "HERZ" => (
+                "HERZ ochranná rúrka 18–21 mm (červená)",
+                "HEIN1247C",
+                Some(50.0),
+            ),
+            // MIRELON PROTEKT, 3 mm LDPE, rolls of 10 m (Mirel)
+            _ if outer_mm <= 17.0 + 1e-6 => ("MIRELON PROTEKT chránička Ø 18", "", Some(10.0)),
+            _ => ("MIRELON PROTEKT chránička Ø 22", "", Some(10.0)),
+        }
+    }
+
+    /// A sleeve's length where a pipe crosses a joint, m: Wavin's 0.5
+    /// (handbook p. 42), else STN EN 1264-4, 4.2.2.9.4: 0.3.
+    pub fn sleeve_m(self) -> f64 {
+        match self.maker() {
+            "Wavin" => 0.5,
+            _ => 0.3,
+        }
+    }
+
+    /// The thermal actuator on a circuit's valve and the room thermostat,
+    /// 24 V: (name, code) each.
+    pub fn actuator(self) -> (&'static str, &'static str) {
+        match self.maker() {
+            "HERZ" => ("HERZ termopohon M28×1,5 NC 24 V", "1770852"),
+            _ => ("Wavin Sentio pohon 24 V NC VA50", "TF000450W"),
+        }
+    }
+
+    pub fn thermostat(self) -> (&'static str, &'static str) {
+        match self.maker() {
+            "HERZ" => ("HERZ priestorový termostat manuálny 24 V", "3F79912"),
+            _ => ("Wavin Sentio RT-210 drôtový termostat", "TF000100W"),
+        }
+    }
+
+    /// The wiring centre: (name, code, zones it takes) and its extension
+    /// (Wavin EU-208-A, 8 more).
+    pub fn wiring(self) -> (Part, Option<Part>) {
+        match self.maker() {
+            "HERZ" => (
+                (
+                    "HERZ centrálna svorkovnica 6 zón 230 V / 24 V",
+                    "3F79802",
+                    6,
+                ),
+                None,
+            ),
+            _ => (
+                ("Wavin Sentio CCU-208 riadiaca jednotka", "TF000401W", 8),
+                Some((
+                    "Wavin Sentio EU-208-A rozšírenie +8 okruhov",
+                    "TF000404W",
+                    8,
+                )),
+            ),
         }
     }
 
@@ -237,19 +447,37 @@ impl ManifoldConfig {
                 })
             }
             (Range::WavinSteel | Range::WavinComposite, c) => {
+                // circuits by the price list of 1. 7. 2026, sizes by the
+                // technical handbook p. 63
                 let wall = c == Cabinet::Wall;
-                let (k, w) = match n {
-                    0..=6 => return None,
-                    7..=9 => (4, 680.0),
-                    10..=12 => (5, 830.0),
-                    _ => (6, 1030.0),
+                let (k, w) = if wall {
+                    match n {
+                        0..=3 => (1, 385.0),
+                        4..=5 => (2, 485.0),
+                        6 => (3, 615.0),
+                        7..=9 => (4, 760.0),
+                        10..=12 => (5, 845.0),
+                        _ => (6, 1015.0),
+                    }
+                } else {
+                    match n {
+                        0..=5 => (2, 480.0),
+                        6 => (3, 610.0),
+                        7..=9 => (4, 760.0),
+                        10..=12 => (5, 840.0),
+                        _ => (6, 1010.0),
+                    }
                 };
                 Some(CabinetSpec {
                     code: format!("XF158{}0{k}W", if wall { 0 } else { 2 }),
                     width: w,
-                    height: if wall { 600.0 } else { 605.0 },
-                    depth: if wall { 120.0 } else { 160.0 },
-                    note: String::new(),
+                    height: if wall { 580.0 } else { 665.0 },
+                    depth: if wall { 125.0 } else { 115.0 },
+                    note: if wall {
+                        String::new()
+                    } else {
+                        "575–665 mm".into()
+                    },
                 })
             }
         }

@@ -101,6 +101,9 @@ impl CreaBimApp {
         let Some(mut s) = self.floor_heat.clone() else {
             return;
         };
+        if self.parked_bar(ctx, "floor.heat") {
+            return;
+        }
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
         let o = self.heat_opts();
@@ -238,6 +241,12 @@ impl CreaBimApp {
                         }
                     }
                 });
+                if !d.norm {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        t("The tables of STN EN 1264-2 are not loaded (Manage › Norm tables): the heat flux is approximated."),
+                    );
+                }
                 if d.no_manifold {
                     ui.colored_label(
                         ui.visuals().warn_fg_color,
@@ -269,7 +278,6 @@ impl CreaBimApp {
                         Col::num("Loop", "m"),
                         Col::num("Flow", "l/h"),
                         Col::num("Δp", "kPa"),
-                        Col::num("Throttle by", "kPa"),
                     ];
                     let total = |row: &mut sheet::Row| {
                         row.empty();
@@ -377,9 +385,6 @@ impl CreaBimApp {
                         row.text(num(x.loop_len, 0));
                         row.text(num(x.flow_ls * 3600.0, 0));
                         row.text(num(x.dp_kpa, 1));
-                        if x.on {
-                            row.text(num(d.critical_kpa - x.dp_kpa, 1));
-                        }
                     }, Some(&total));
                     ui.add_space(6.0);
                     // the rooms' zones and how their loops are split
@@ -420,6 +425,7 @@ impl CreaBimApp {
         }
         if let Some(k) = draw {
             self.start_ufh_zone(k);
+            self.park("floor.heat", t("Underfloor heating"), t(k.label()));
         }
         if let Some(c) = place {
             let unit = creabim_core::catalogue::ufhmanifold::manifold(&c);
@@ -428,11 +434,14 @@ impl CreaBimApp {
                 unit.name,
                 t("click in a plan or the 3D view to place it. Space turns it; Esc ends.")
             );
+            let what = unit.name.clone();
             self.plan.objects.current = Some(unit);
             self.plan.objects.offset = None;
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = super::Tool::Object;
+            let title = crate::i18n::tr("Underfloor heating");
+            self.park("floor.heat", title, what);
         }
         if !set.is_empty() {
             let mut tx = Transaction::new("Underfloor heating");
@@ -715,6 +724,7 @@ fn manifold_ui(
             });
         ui.checkbox(&mut s.mixing, t("Mixing set"));
     });
+    ui.checkbox(&mut s.regulation, t("Regulation (actuators, thermostats)"));
     let level_name = |id| model.get(id).map_or(String::new(), |l| l.name.clone());
     for m in &d.manifolds {
         ui.add_space(4.0);
@@ -861,6 +871,79 @@ fn manifold_ui(
             },
             None,
         );
+        // the circuits balanced: presetting, flow on the flowmeter
+        if !m.circuits.is_empty() {
+            let cols = [
+                Col::text("Circuit"),
+                Col::num("Flow", "l/h"),
+                Col::num("Flowmeter", "l/min"),
+                Col::num("Δp pipe", "kPa"),
+                Col::text("Presetting"),
+                Col::num("kv", "m³/h"),
+                Col::num("Δp valve", "kPa"),
+                Col::num("Δp total", "kPa"),
+            ];
+            sheet::show(
+                ui,
+                ("floor.heat.circuits", m.level),
+                &cols,
+                m.circuits.len(),
+                220.0,
+                |row, i| {
+                    let c = &m.circuits[i];
+                    let label = if c.radiator {
+                        format!("{} {}", t("Radiator"), c.label)
+                    } else {
+                        c.label.clone()
+                    };
+                    if c.index {
+                        row.cell(|ui| {
+                            ui.strong(format!("{label} ({})", t("index")));
+                        });
+                    } else {
+                        row.text(label);
+                    }
+                    row.text(num(c.flow_ls * 3600.0, 0));
+                    let f = num(c.flow_lmin(), 2);
+                    if c.over_flowmeter {
+                        row.cell(|ui| {
+                            ui.colored_label(ui.visuals().warn_fg_color, f)
+                                .on_hover_text(t("More than the flowmeter shows: split the loop"));
+                        });
+                    } else {
+                        row.text(f);
+                    }
+                    row.text(num(c.dp_pipe_kpa, 1));
+                    match (c.preset, c.kv) {
+                        (Some(p), Some(kv)) => {
+                            if c.under {
+                                row.cell(|ui| {
+                                    ui.colored_label(ui.visuals().warn_fg_color, p)
+                                        .on_hover_text(t(
+                                            "Even the smallest presetting throttles too little",
+                                        ));
+                                });
+                            } else {
+                                row.text(p.to_string());
+                            }
+                            row.text(num(kv, 3));
+                        }
+                        _ => {
+                            row.text(t("by the flowmeter"));
+                            row.empty();
+                        }
+                    }
+                    row.text(num(c.dp_valve_kpa, 1));
+                    row.text(num(c.dp_pipe_kpa + c.dp_valve_kpa, 1));
+                },
+                None,
+            );
+            ui.weak(if m.config.range.presets().is_empty() {
+                t("The maker gives no kv of its valves: every circuit is balanced by setting its flow on the flowmeter (l/min); the manifold's own loss is not counted.")
+            } else {
+                t("The index circuit (the worst) has its valve wide open; every other valve is preset to take what its pipe does not (kv = Q / √(Δp / 100), the maker's table). Set the flow of every circuit on its flowmeter as well.")
+            });
+        }
         // the radiators standing on the storey, to feed from the manifold
         let radiators: Vec<&creabim_core::Element> = model
             .iter()
@@ -869,7 +952,7 @@ fn manifold_ui(
             )
             .filter(|e| {
                 creabim_core::fixture::family_of(model, e)
-                    .is_some_and(|f| creabim_core::fixture::is_heating(f))
+                    .is_some_and(creabim_core::fixture::is_heating)
             })
             .collect();
         if !radiators.is_empty() {

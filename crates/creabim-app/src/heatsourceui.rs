@@ -267,6 +267,9 @@ impl CreaBimApp {
         let Some(mut c) = self.heat_source.clone() else {
             return;
         };
+        if self.parked_bar(ctx, "heat.source") {
+            return;
+        }
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
         let mut open = true;
@@ -490,11 +493,14 @@ impl CreaBimApp {
                 unit.name,
                 t("click in a plan or the 3D view to place it. Space turns it; Esc ends.")
             );
+            let what = unit.name.clone();
             self.plan.objects.current = Some(unit);
             self.plan.objects.offset = None;
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = Tool::Object;
+            let title = crate::i18n::tr("Heat source");
+            self.park("heat.source", title, what);
         }
         self.heat_source = if open { Some(c) } else { None };
     }

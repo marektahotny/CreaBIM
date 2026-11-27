@@ -46,6 +46,11 @@ fn row(id: ElementId, cells: [String; 5]) -> Row {
 pub fn pipes(model: &Model, trade: Option<creabim_core::viewmodes::Trade>) -> Schedule {
     let mut rows = vec![];
     let mut total = 0.0;
+    let fittings = if trade == Some(creabim_core::viewmodes::Trade::Heating) {
+        creabim_services::fittings::derive(model)
+    } else {
+        vec![]
+    };
     for s in SYSTEMS {
         if trade.is_some_and(|t| !t.shows(s.kind) || s.kind == creabim_core::mep::SystemKind::Other)
         {
@@ -93,6 +98,36 @@ pub fn pipes(model: &Model, trade: Option<creabim_core::viewmodes::Trade>) -> Sc
                 id,
                 [system.clone(), name, size, metres(length), "m".into()],
             ));
+        }
+        // the fittings where its pipes meet (heating: George 2026-11-27)
+        if trade == Some(creabim_core::viewmodes::Trade::Heating) {
+            let found: Vec<creabim_services::fittings::Fitting> = fittings
+                .iter()
+                .filter(|f| f.system == s.code)
+                .cloned()
+                .collect();
+            for l in creabim_services::fittings::summary(&found) {
+                let id = found
+                    .iter()
+                    .find(|f| f.label == l.label)
+                    .and_then(|f| f.pipes.first().copied())
+                    .unwrap_or_else(ElementId::new);
+                let name = if l.code.is_empty() {
+                    l.label
+                } else {
+                    format!("{} ({})", l.label, l.code)
+                };
+                rows.push(row(
+                    id,
+                    [
+                        system.clone(),
+                        name,
+                        String::new(),
+                        l.count.to_string(),
+                        tr("pcs"),
+                    ],
+                ));
+            }
         }
         for (name, n, id) in valves {
             rows.push(row(

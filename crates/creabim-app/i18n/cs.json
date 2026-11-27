@@ -9176,5 +9176,22 @@
  "Heating devices": "Vytápěcí zařízení",
  "Bill of materials": "Výkaz materiálu",
  "The heating's bill of materials: heat sources, manifolds and radiators, pipes by type and size with their valves and insulation (Tubolit, MIRELON), the underfloor heating's system boards, pipe and coils": "Výkaz materiálu vytápění: zdroje tepla, rozdělovače a radiátory, trubky podle typu a dimenze s armaturami a izolací (Tubolit, MIRELON), systémové desky podlahového vytápění, trubka a kotouče",
- "The heating's bill of materials, as last written": "Výkaz materiálu vytápění podle naposledy zapsaných výsledků"
+ "The heating's bill of materials, as last written": "Výkaz materiálu vytápění podle naposledy zapsaných výsledků",
+  "Regulation (actuators, thermostats)": "Regulace (pohony, termostaty)",
+  "Flowmeter": "Průtokoměr",
+  "Δp pipe": "Δp trubky",
+  "Δp valve": "Δp ventilu",
+  "Δp total": "Δp celkem",
+  "index": "index",
+  "More than the flowmeter shows: split the loop": "Více, než ukáže průtokoměr: rozdělte okruh",
+  "Even the smallest presetting throttles too little": "Ani nejmenší přednastavení neškrtí dost",
+  "by the flowmeter": "průtokoměrem",
+  "The maker gives no kv of its valves: every circuit is balanced by setting its flow on the flowmeter (l/min); the manifold's own loss is not counted.": "Výrobce neuvádí kv ventilů: každý okruh se vyváží nastavením jeho průtoku na průtokoměru (l/min); vlastní ztráta rozdělovače není započtena.",
+  "The index circuit (the worst) has its valve wide open; every other valve is preset to take what its pipe does not (kv = Q / √(Δp / 100), the maker's table). Set the flow of every circuit on its flowmeter as well.": "Index okruh (nejnepříznivější) má ventil zcela otevřený; ostatní ventily jsou přednastaveny tak, aby škrtily rozdíl (kv = Q / √(Δp / 100), tabulka výrobce). Na průtokoměru nastavte i průtok každého okruhu.",
+  "Placing": "Osazuje se",
+  "Back to the window": "Zpět do okna",
+  "Ends placing (Esc)": "Ukončí osazování (Esc)",
+  "Underfloor heating (STN EN 1264-2, STN EN 1264-4)": "Podlahové vytápění (ČSN EN 1264-2, ČSN EN 1264-4)",
+  "The tables of STN EN 1264-2 are not loaded (Manage › Norm tables): the heat flux is approximated.": "Tabulky ČSN EN 1264-2 nejsou načteny (Správa › Tabulky norem): tepelný tok je jen přibližný.",
+  "The layers under the pipes resist less than STN EN 1264-4, table 1 asks (Rλ,ins)": "Vrstvy pod trubkami mají menší tepelný odpor, než požaduje ČSN EN 1264-4, tab. 1 (Rλ,ins)"
 }

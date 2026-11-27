@@ -49,6 +49,9 @@ pub struct Settings {
     pub radiator_return_c: f64,
     /// The insulation the distribution pipes get.
     pub insulation: crate::pipeinsul::Product,
+    /// With the maker's regulation: a thermal actuator on every loop, a
+    /// thermostat in every room, the wiring centre.
+    pub regulation: bool,
 }
 
 impl Default for Settings {
@@ -65,6 +68,7 @@ impl Default for Settings {
             radiator_supply_c: crate::heating::HeatSettings::default().supply_c,
             radiator_return_c: crate::heating::HeatSettings::default().return_c,
             insulation: crate::pipeinsul::Product::default(),
+            regulation: false,
         }
     }
 }
@@ -314,6 +318,11 @@ pub fn d_theta_h(supply: f64, ret: f64, ti: f64) -> f64 {
     (supply - ret) / ((supply - ti) / (ret - ti)).ln()
 }
 
+/// The edge zone's limit with no norm tables loaded (θF,max 35 °C).
+fn q_limit_edge(ti: f64) -> f64 {
+    8.92 * (35.0 - ti).max(0.0).powf(1.1)
+}
+
 /// The limit heat flux qG, W/m² (θF,max 29 °C where people stay, 33 °C
 /// in a bathroom).
 pub fn q_limit(ti: f64, bath: bool) -> f64 {
@@ -335,6 +344,8 @@ pub enum Note {
     DrySystem,
     /// The cover over the pipe is less than the pipe's diameter.
     ThinCover,
+    /// The layers under the pipes resist less than STN EN 1264-4 asks.
+    InsulationThin,
 }
 
 impl Note {
@@ -346,6 +357,7 @@ impl Note {
             Note::SpacingNotForBoard => "The spacing is not one the system board allows",
             Note::DrySystem => "A dry system: the characteristic of system A does not hold for it",
             Note::ThinCover => "The screed over the pipe is thinner than the pipe",
+            Note::InsulationThin => "The layers under the pipes resist less than STN EN 1264-4, table 1 asks (Rλ,ins)",
         }
     }
 }
@@ -473,6 +485,52 @@ pub struct RoomDesign {
     pub ok: bool,
     /// The room has it in the model.
     pub on: bool,
+    /// Along its walls, m (the edge strip).
+    pub perimeter: f64,
+    /// Its doorways: the joints in the screed (Wavin handbook p. 42).
+    pub doors: Vec<Doorway>,
+    /// The doorway its loops leave by to the manifold: the one nearest
+    /// to it.
+    pub door: Option<ElementId>,
+}
+
+/// A doorway of a room.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Doorway {
+    pub id: ElementId,
+    pub at: glam::DVec2,
+    pub width: f64,
+}
+
+/// A circuit of a manifold balanced: a loop or a radiator's outlet.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Circuit {
+    /// The room's number (and the loop's ordinal of several).
+    pub label: String,
+    /// The room or the radiator.
+    pub id: ElementId,
+    pub radiator: bool,
+    pub flow_ls: f64,
+    /// The pipe's loss there and back, kPa.
+    pub dp_pipe_kpa: f64,
+    /// The valve's presetting (turns) and its kv, by the maker's table.
+    pub preset: Option<&'static str>,
+    pub kv: Option<f64>,
+    /// What the valve takes at its presetting, kPa.
+    pub dp_valve_kpa: f64,
+    /// Above what the flowmeter shows.
+    pub over_flowmeter: bool,
+    /// The index circuit: wide open.
+    pub index: bool,
+    /// Even the smallest presetting throttles too little.
+    pub under: bool,
+}
+
+impl Circuit {
+    /// The flow to set on its flowmeter, l/min.
+    pub fn flow_lmin(&self) -> f64 {
+        self.flow_ls * 60.0
+    }
 }
 
 impl RoomDesign {
@@ -505,6 +563,10 @@ pub struct Design {
     pub no_manifold: bool,
     /// A manifold for each storey with underfloor heating.
     pub manifolds: Vec<ManifoldDesign>,
+    /// With the maker's regulation (actuators, thermostats).
+    pub regulation: bool,
+    /// Calculated from the tables of STN EN 1264-2 (else approximated).
+    pub norm: bool,
 }
 
 /// The maker's pipe for distribution (from the source to the manifold,
@@ -626,6 +688,10 @@ pub struct ManifoldDesign {
     pub flow_ls: f64,
     pub radiators: Vec<RadiatorFeed>,
     pub feed: Option<SizedPipe>,
+    /// Its circuits balanced, and the index circuit's loss with its
+    /// valve wide open, kPa.
+    pub circuits: Vec<Circuit>,
+    pub dp_kpa: f64,
 }
 
 impl Design {
@@ -688,6 +754,8 @@ fn one(
     manifolds: &[(ElementId, glam::DVec2)],
     rooms: &[heatloss::RoomAt],
     pipe: &Pipe,
+    max_flow_ls: Option<f64>,
+    norm: Option<&crate::ufhnorm::Norm>,
 ) -> Option<RoomDesign> {
     let e = model.get(hl.id)?;
     let ElementKind::Room(r) = &e.kind else {
@@ -732,16 +800,38 @@ fn one(
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| SPACINGS.to_vec());
     let dt = d_theta_h(s.supply_c, ret, ti);
-    let qg = q_limit(ti, bath);
+    let zone = if bath {
+        crate::ufhnorm::Zone::Bathroom
+    } else {
+        crate::ufhnorm::Zone::Occupied
+    };
     let q_req = if area > 0.0 { hl.phi / area } else { 0.0 };
-    let flux = |t: f64| (k_h(t, rf, lambda_e, d) * dt).min(qg);
+    // STN EN 1264-2 from the norm's tables: KH · min(ΔθH, ΔθH,G) of the
+    // zone; else the old approximation
+    let flux_in = |t: f64, z: crate::ufhnorm::Zone| match norm {
+        Some(n) => {
+            n.k_h(t, su, lambda_e, rf, d) * dt.min(n.dtheta_hg(z, ti, t, su, lambda_e, rf, d))
+        }
+        None => (k_h(t, rf, lambda_e, d) * dt).min(match z {
+            crate::ufhnorm::Zone::Peripheral => q_limit_edge(ti),
+            _ => q_limit(ti, bath),
+        }),
+    };
+    let limit = |t: f64| match norm {
+        Some(n) => n.q_g(zone, ti, t, su, lambda_e, rf, d),
+        None => q_limit(ti, bath),
+    };
+    let flux = |t: f64| flux_in(t, zone);
     // the edge zones at their spacing; the places of reduced output
     // give less by their share (George 2026-11-27)
     let edges: Vec<(f64, f64)> = own
         .map(|u| u.edges().map(|(z, t)| (z.area(), t)).collect())
         .unwrap_or_default();
     let edge_area = edges.iter().map(|e| e.0).sum::<f64>().min(area);
-    let edge_w: f64 = edges.iter().map(|(a, t)| a * flux(*t)).sum::<f64>()
+    let edge_w: f64 = edges
+        .iter()
+        .map(|(a, t)| a * flux_in(*t, crate::ufhnorm::Zone::Peripheral))
+        .sum::<f64>()
         * if edges.iter().map(|e| e.0).sum::<f64>() > area {
             area / edges.iter().map(|e| e.0).sum::<f64>()
         } else {
@@ -787,6 +877,13 @@ fn one(
     // the year's mean outside temperature (as STN EN 12831-1 takes it)
     let below = below_ti(rooms, model, r.level, r.at);
     let theta_u = below.unwrap_or(o.te_mean.unwrap_or(o.te));
+    // STN EN 1264-4, table 1: the layers under the pipes resist enough
+    if let (Some(n), Some(f)) = (norm, floor.as_ref()) {
+        let need = n.r_ins_min(below.is_some_and(|t| t >= 15.0), None);
+        if need.is_some_and(|m| f.r_under + 1e-9 < m) {
+            notes.push(Note::InsulationThin);
+        }
+    }
     let r_up = 1.0 / ALPHA + rf + su / lambda_e;
     let r_down = floor.as_ref().filter(|f| f.r_under > 0.0).map(|f| {
         f.r_under
@@ -807,9 +904,31 @@ fn one(
         .map_or(0.0, |m| m.1.distance(r.at) * 1.2);
     let coil =
         (area - edge_area - hole_area) / spacing + edges.iter().map(|(a, t)| a / t).sum::<f64>();
-    let loops = ((coil + 2.0 * feed) / MAX_LOOP_M).ceil().max(1.0) as u32;
+    // loops of 100 m at most, each within what its flowmeter shows
+    let flow_all = area * (q + q_down) / (4180.0 * s.sigma_k);
+    let by_flow = max_flow_ls.map_or(1.0, |m| (flow_all / m - 1e-9).ceil());
+    let loops = ((coil + 2.0 * feed) / MAX_LOOP_M)
+        .ceil()
+        .max(by_flow)
+        .max(1.0) as u32;
     let loop_len = coil / loops as f64 + 2.0 * feed;
-    let flow_ls = area * (q + q_down) / (4180.0 * s.sigma_k) / loops as f64;
+    let flow_ls = flow_all / loops as f64;
+    let outline = rooms
+        .iter()
+        .find(|x| x.e.id == hl.id)
+        .map(|x| x.shape.outline.clone())
+        .unwrap_or_default();
+    let perimeter = perimeter_of(&outline);
+    let doors = doorways(model, r.level, &outline);
+    let door = manifolds
+        .iter()
+        .find(|m| m.0 == r.level)
+        .and_then(|m| {
+            doors
+                .iter()
+                .min_by(|a, b| a.at.distance(m.1).total_cmp(&b.at.distance(m.1)))
+        })
+        .map(|d| d.id);
     Some(RoomDesign {
         id: hl.id,
         number: hl.number.clone(),
@@ -819,7 +938,7 @@ fn one(
         area,
         q_req: if area > 0.0 { hl.phi / area } else { 0.0 },
         q,
-        q_limit: qg,
+        q_limit: limit(spacing),
         spacing,
         manual: own.is_some(),
         spacings,
@@ -847,7 +966,56 @@ fn one(
         dp_kpa: loop_loss(pipe, flow_ls, loop_len),
         ok: covered >= hl.phi * 0.98,
         on: own.is_some(),
+        perimeter,
+        doors,
+        door,
     })
+}
+
+/// An outline's length round, m.
+fn perimeter_of(outline: &[glam::DVec2]) -> f64 {
+    let n = outline.len();
+    if n < 2 {
+        return 0.0;
+    }
+    let mut l: f64 = outline.windows(2).map(|w| w[0].distance(w[1])).sum();
+    if outline[0].distance(outline[n - 1]) > 1e-9 {
+        l += outline[0].distance(outline[n - 1]);
+    }
+    l
+}
+
+/// The doors in the walls round an outline on a storey.
+fn doorways(model: &Model, level: ElementId, outline: &[glam::DVec2]) -> Vec<Doorway> {
+    let mut out = vec![];
+    if outline.len() < 3 {
+        return out;
+    }
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        if o.kind != creabim_core::OpeningKind::Door {
+            continue;
+        }
+        let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+            continue;
+        };
+        if w.level != level {
+            continue;
+        }
+        let along = (w.end - w.start).normalize_or_zero();
+        let mid = w.start + along * (o.offset + o.width / 2.0);
+        let n = glam::DVec2::new(-along.y, along.x) * (w.thickness / 2.0 + 0.15);
+        if polygon::contains(outline, mid + n) || polygon::contains(outline, mid - n) {
+            out.push(Doorway {
+                id: e.id,
+                at: mid,
+                width: o.width,
+            });
+        }
+    }
+    out
 }
 
 /// The pipe of the model's underfloor heating: the one picked, else of
@@ -896,14 +1064,34 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
     let losses = heatloss::building(model, o);
     let rooms = heatloss::rooms_of(model);
     let pipe = model_pipe(model, s);
+    let max_flow_ls = s
+        .range
+        .unwrap_or_else(|| Range::for_pipe(&model_maker(model)))
+        .flowmeter_lmin()
+        .map(|m| m / 60.0);
+    let norm = crate::ufhnorm::Norm::of_model(model);
     let mut out = Design {
+        norm: norm.is_some(),
         no_manifold: manifolds.is_empty(),
+        regulation: s.regulation,
         ..Design::default()
     };
     out.rooms = losses
         .rooms
         .iter()
-        .filter_map(|hl| one(model, s, o, hl, &manifolds, &rooms, &pipe))
+        .filter_map(|hl| {
+            one(
+                model,
+                s,
+                o,
+                hl,
+                &manifolds,
+                &rooms,
+                &pipe,
+                max_flow_ls,
+                norm.as_ref(),
+            )
+        })
         .collect();
     for x in out.rooms.iter().filter(|x| x.on) {
         out.output_kw += x.covered / 1000.0;
@@ -911,8 +1099,15 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
         out.critical_kpa = out.critical_kpa.max(x.dp_kpa);
         out.loops += x.loops;
     }
-    out.head_kpa = (out.critical_kpa + MANIFOLD_KPA) * 1.1;
     out.manifolds = manifold_designs(model, s, &out, &placed);
+    // the worst manifold's index circuit, its valves wide open, and the
+    // rest of the way to the source
+    let worst = out
+        .manifolds
+        .iter()
+        .map(|m| m.dp_kpa)
+        .fold(out.critical_kpa, f64::max);
+    out.head_kpa = (worst + MANIFOLD_KPA) * 1.1;
     out.pipe = Some(pipe);
     out
 }
@@ -1010,6 +1205,7 @@ fn manifold_designs(
             mixing: s.mixing,
         };
         let total = flow + rad_flow;
+        let (circuits, dp_kpa) = balance(model, d, level, &radiators, config.range);
         let temp = if rad_flow > 0.0 {
             s.radiator_supply_c
         } else {
@@ -1028,9 +1224,120 @@ fn manifold_designs(
                 s.insulation,
                 temp,
             ),
+            circuits,
+            dp_kpa,
         });
     }
     out
+}
+
+/// A manifold's circuits balanced (STN EN 1264-4, the maker's sheet):
+/// the index circuit, the worst with its valve wide open, sets the
+/// manifold's loss; every other circuit's valve is preset to take what
+/// its pipe does not (kv = Q / √(Δp / 100), HERZ's way), else, with no
+/// kv from the maker, its flowmeter is set to its flow.
+fn balance(
+    model: &Model,
+    d: &Design,
+    level: ElementId,
+    radiators: &[RadiatorFeed],
+    range: Range,
+) -> (Vec<Circuit>, f64) {
+    let mut c: Vec<Circuit> = vec![];
+    for x in d.rooms.iter().filter(|x| x.on) {
+        if !matches!(model.get(x.id).map(|e| &e.kind), Some(ElementKind::Room(r)) if r.level == level)
+        {
+            continue;
+        }
+        for i in 0..x.loops {
+            c.push(Circuit {
+                label: if x.loops > 1 {
+                    format!("{}/{}", x.number, i + 1)
+                } else {
+                    x.number.clone()
+                },
+                id: x.id,
+                radiator: false,
+                flow_ls: x.flow_ls,
+                dp_pipe_kpa: x.dp_kpa,
+                preset: None,
+                kv: None,
+                dp_valve_kpa: 0.0,
+                over_flowmeter: false,
+                index: false,
+                under: false,
+            });
+        }
+    }
+    for r in radiators {
+        let Some(p) = &r.pipe else { continue };
+        c.push(Circuit {
+            label: r.room.clone(),
+            id: r.id,
+            radiator: true,
+            flow_ls: p.flow_ls,
+            dp_pipe_kpa: p.r_pa_m * r.length * LOCAL_FACTOR / 1000.0,
+            preset: None,
+            kv: None,
+            dp_valve_kpa: 0.0,
+            over_flowmeter: false,
+            index: false,
+            under: false,
+        });
+    }
+    let presets = range.presets();
+    let open = presets.iter().map(|p| p.1).fold(0.0, f64::max);
+    let wide = |x: &Circuit| {
+        x.dp_pipe_kpa
+            + if open > 0.0 {
+                crate::herzvalves::dp_kpa(x.flow_ls * 3.6, open)
+            } else {
+                0.0
+            }
+    };
+    let Some((ix, dp)) = c
+        .iter()
+        .enumerate()
+        .map(|(i, x)| (i, wide(x)))
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+    else {
+        return (c, 0.0);
+    };
+    let fm = range.flowmeter_lmin();
+    for (i, x) in c.iter_mut().enumerate() {
+        x.index = i == ix;
+        x.over_flowmeter = fm.is_some_and(|m| x.flow_lmin() > m + 1e-9);
+        if presets.is_empty() {
+            continue;
+        }
+        // the presetting nearest the kv asked for (the flowmeter trims
+        // what is left); wide open for the index circuit
+        let q = x.flow_ls * 3.6;
+        let need = (dp - x.dp_pipe_kpa).max(0.0);
+        let kv_req = if need > 0.0 {
+            q / (need / 100.0).sqrt()
+        } else {
+            f64::INFINITY
+        };
+        let min = presets.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+        let pick = if x.index || kv_req >= open {
+            presets.iter().max_by(|a, b| a.1.total_cmp(&b.1))
+        } else {
+            presets.iter().min_by(|a, b| {
+                (a.1 / kv_req)
+                    .ln()
+                    .abs()
+                    .total_cmp(&(b.1 / kv_req).ln().abs())
+            })
+        };
+        if let Some(&(preset, kv)) = pick {
+            x.preset = Some(preset);
+            x.kv = Some(kv);
+            x.dp_valve_kpa = crate::herzvalves::dp_kpa(q, kv);
+            x.under = kv_req < min * 0.95;
+        }
+    }
+    (c, dp)
 }
 
 /// A line of the heating's bill of materials.
@@ -1119,6 +1426,34 @@ pub fn bill(d: &Design) -> Vec<BillLine> {
             }
         }
     }
+    // every loop's two ends and every radiator outlet's pipe screwed to
+    // the manifold's G 3/4 Eurocone outlets by the maker's compression
+    // fitting; no joint in the screed (STN EN 1264-4)
+    for m in &d.manifolds {
+        let id = m.element.unwrap_or(m.level);
+        let range = m.config.range;
+        let mut ends = |segment: &str, n: f64| {
+            if n > 0.0 {
+                let (item, code) = range.outlet_fitting(segment);
+                add(BillLine {
+                    id,
+                    item,
+                    code: code.into(),
+                    size: "G 3/4".into(),
+                    quantity: n,
+                    unit: "pcs",
+                });
+            }
+        };
+        if let Some(p) = &d.pipe {
+            ends(&p.segment, 2.0 * m.config.loops as f64);
+        }
+        for r in &m.radiators {
+            if let Some(p) = &r.pipe {
+                ends(&p.pipe.segment, 2.0);
+            }
+        }
+    }
     for m in &d.manifolds {
         let id = m.element.unwrap_or(m.level);
         if let (Some(_), Some(code)) = (m.config.circuits(), m.config.code()) {
@@ -1166,7 +1501,150 @@ pub fn bill(d: &Design) -> Vec<BillLine> {
             }
         }
     }
+    accessories(d, &mut add);
     out
+}
+
+/// What the loops are laid and joined with, by the manifolds' maker:
+/// the edge strip round the rooms, the joints in their doorways and the
+/// sleeves over the pipes crossing them ([`Range::sleeve_m`]), the bend guides where the pipes rise to the manifold, its
+/// ball valves and mixing set, and the regulation picked.
+fn accessories(d: &Design, add: &mut impl FnMut(BillLine)) {
+    let Some(m0) = d.manifolds.first() else {
+        return;
+    };
+    let on: Vec<&RoomDesign> = d.rooms.iter().filter(|x| x.on).collect();
+    let Some(first) = on.first() else { return };
+    let range = m0.config.range;
+    let outer = d.pipe.as_ref().map_or(PIPE_OUTER_MM, |p| p.outer_mm);
+    let line = |id, item: &str, code: &str, quantity: f64, unit: &'static str| BillLine {
+        id,
+        item: item.into(),
+        code: code.into(),
+        size: String::new(),
+        quantity,
+        unit,
+    };
+    // the edge strip, m and its rolls
+    let edge: f64 = on.iter().map(|x| x.perimeter).sum();
+    if edge > 0.0 {
+        let (name, code, roll) = range.edge_strip();
+        add(line(first.id, name, code, edge, "m"));
+        if let Some(r) = roll {
+            add(line(
+                first.id,
+                &format!("{name} – kotúč {} m", r),
+                code,
+                (edge / r).ceil(),
+                "pcs",
+            ));
+        }
+    }
+    // the doorways: each once, a profile piece per 2 m of its width
+    let mut seen: Vec<ElementId> = vec![];
+    let (pname, pcode, piece) = range.joint_profile();
+    for x in &on {
+        for w in &x.doors {
+            if seen.contains(&w.id) {
+                continue;
+            }
+            seen.push(w.id);
+            add(line(w.id, pname, pcode, (w.width / piece).ceil(), "pcs"));
+        }
+    }
+    // the sleeves: both pipes of every loop through its doorway
+    let sleeve: f64 = on
+        .iter()
+        .filter(|x| x.door.is_some())
+        .map(|x| 2.0 * x.loops as f64 * range.sleeve_m())
+        .sum();
+    if sleeve > 0.0 {
+        let (name, code, roll) = range.sleeve(outer);
+        add(line(first.id, name, code, sleeve, "m"));
+        if let Some(r) = roll {
+            add(line(
+                first.id,
+                &format!("{name} – kotúč {} m", r),
+                code,
+                (sleeve / r).ceil(),
+                "pcs",
+            ));
+        }
+    }
+    for m in &d.manifolds {
+        let id = m.element.unwrap_or(m.level);
+        let r = m.config.range;
+        let loops = m.config.loops as f64;
+        if loops > 0.0 {
+            let (name, code) = r.bend_guide(outer);
+            add(line(id, name, code, 2.0 * loops, "pcs"));
+        }
+        for (name, code, n) in r.ball_valves() {
+            add(line(id, name, code, n, "pcs"));
+        }
+        if m.config.mixing {
+            match r {
+                Range::HerzBrass => add(line(
+                    id,
+                    "HERZ Unimix V20 zmiešavacia zostava s čerpadlom G 1\"",
+                    "1732002",
+                    1.0,
+                    "pcs",
+                )),
+                Range::HerzPush => {
+                    add(line(
+                        id,
+                        "HERZ Unimix V20 zmiešavacia zostava s čerpadlom G 1\"",
+                        "1732002",
+                        1.0,
+                        "pcs",
+                    ));
+                    add(line(
+                        id,
+                        "HERZ distančný kus Unimix – PUSH",
+                        "2140812R",
+                        1.0,
+                        "pcs",
+                    ));
+                }
+                _ => add(line(
+                    id,
+                    "Wavin zmiešavacia sada s čerpadlom Wilo Yonos RD25/6",
+                    "XF159988W",
+                    1.0,
+                    "pcs",
+                )),
+            }
+        }
+        if d.regulation && loops > 0.0 {
+            let (name, code) = r.actuator();
+            add(line(id, name, code, loops, "pcs"));
+            let rooms = on
+                .iter()
+                .filter(|x| m.circuits.iter().any(|c| !c.radiator && c.id == x.id))
+                .count() as f64;
+            let (tname, tcode) = r.thermostat();
+            add(line(id, tname, tcode, rooms, "pcs"));
+            let ((wname, wcode, zones), ext) = r.wiring();
+            match ext {
+                // one unit for the manifold, extensions for the loops past it
+                Some((ename, ecode, more)) => {
+                    add(line(id, wname, wcode, 1.0, "pcs"));
+                    let past = (loops - zones as f64).max(0.0);
+                    if past > 0.0 {
+                        add(line(id, ename, ecode, (past / more as f64).ceil(), "pcs"));
+                    }
+                }
+                None => add(line(
+                    id,
+                    wname,
+                    wcode,
+                    (rooms / zones as f64).ceil().max(1.0),
+                    "pcs",
+                )),
+            }
+        }
+    }
 }
 
 /// The bill of the model's underfloor heating with the settings and
@@ -1275,6 +1753,23 @@ mod tests {
         // only the rooms that have it count for the manifold
         assert_eq!(d.loops, bath.loops);
         assert!((d.flow_ls - bath.flow_ls * bath.loops as f64).abs() < 1e-12);
-        assert!((d.head_kpa - (bath.dp_kpa + MANIFOLD_KPA) * 1.1).abs() < 1e-9);
+        // the manifold's circuits: the bathroom's loops, the index one
+        // wide open (HERZ 8531 kv 1.5), the others preset to match
+        let m = &d.manifolds[0];
+        assert_eq!(m.circuits.len(), bath.loops as usize);
+        assert_eq!(m.circuits.iter().filter(|c| c.index).count(), 1);
+        let open = crate::herzvalves::dp_kpa(bath.flow_ls * 3.6, 1.5);
+        assert!((m.dp_kpa - (bath.dp_kpa + open)).abs() < 1e-9);
+        assert!(m.circuits.iter().all(|c| c.preset.is_some()));
+        assert!((d.head_kpa - (m.dp_kpa + MANIFOLD_KPA) * 1.1).abs() < 1e-9);
+        // the bill: the edge strip round the bathroom, ball valves
+        let b = bill(&d);
+        assert!(b
+            .iter()
+            .any(|l| l.code == "3F08002A" && (l.quantity - bath.perimeter).abs() < 1e-9));
+        assert!(b.iter().any(|l| l.code == "1220513"));
+        assert!(b
+            .iter()
+            .any(|l| l.code == "1609803" && l.quantity == 2.0 * bath.loops as f64));
     }
 }

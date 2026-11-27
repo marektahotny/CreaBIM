@@ -117,6 +117,8 @@ mod medunitui;
 mod normtablesui;
 #[path = "objectsui.rs"]
 mod objectsui;
+#[path = "parkui.rs"]
+mod parkui;
 #[path = "printui.rs"]
 mod printui;
 #[path = "profilesui.rs"]
@@ -483,6 +485,8 @@ pub struct CreaBimApp {
     condens: Option<condensui::Condens>,
     /// The underfloor heating window's settings, while it is open.
     floor_heat: Option<creabim_services::floorheat::Settings>,
+    /// A calculation window stepped aside while its object is placed.
+    parked: Option<parkui::Parked>,
     /// The radiators window, while it is open.
     radiators: Option<creabim_services::radiators::Settings>,
     /// The cooling load window, while it is open.
@@ -732,6 +736,7 @@ impl CreaBimApp {
             midea_in: None,
             table30: None,
             floor_heat: None,
+            parked: None,
             radiators: None,
             cooling: None,
             air_balance: false,
@@ -14693,6 +14698,7 @@ impl eframe::App for CreaBimApp {
             self.paper_is_dark = dark;
             self.geometry_key = None;
         }
+        self.parked_tick(&ctx);
         self.project_window(&ctx);
         self.discipline_window(&ctx);
         self.water_calc_window(&ctx);
