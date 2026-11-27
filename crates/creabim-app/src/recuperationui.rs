@@ -8,7 +8,6 @@
 
 use super::CreaBimApp;
 use creabim_core::{ElementKind, Transaction};
-use creabim_services::heatloss;
 use creabim_services::recuperation::{self as rec, Opts, Role, Route};
 use eframe::egui::{self, Vec2};
 
@@ -31,10 +30,7 @@ impl CreaBimApp {
         };
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
-        let ho = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(heatloss::Opts::default, |x| x.0);
+        let ho = self.heat_opts();
         let d = rec::design(self.doc.model(), &ho, &o);
         let bill = rec::bill(self.doc.model());
         let cat = rec::catalogue();

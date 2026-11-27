@@ -485,6 +485,7 @@ mod tests {
                 material: None,
                 ifc_class: "IfcBuildingElementProxy".into(),
                 profile: None,
+                chimney: None,
             }),
         );
         let id = p.id;

@@ -9,6 +9,7 @@ pub mod assembly;
 pub mod autovalves;
 pub mod catalogue;
 pub mod checks;
+pub mod chimney;
 pub mod constraint;
 pub mod cropbox;
 pub mod csg;

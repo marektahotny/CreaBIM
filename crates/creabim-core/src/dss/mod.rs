@@ -622,7 +622,9 @@ pub fn auto_class(model: &Model, e: &crate::Element) -> Option<&'static Class> {
         // (IfcSlab BASESLAB, "podkladní beton"); a foundation slab
         // carrying the building on its own stays "nosná deska" (George
         // 2026-11-27)
-        ElementKind::Slab(s) if s.kind == Some(crate::SlabKind::Base) => Some("UMC002"),
+        ElementKind::Slab(s) if crate::slab::kind_of(model, s) == crate::SlabKind::Base => {
+            Some("UMC002")
+        }
         ElementKind::Slab(_) => Some("ULK001"),
         ElementKind::Opening(o) => match o.kind {
             crate::OpeningKind::Door => Some("QQC001"),

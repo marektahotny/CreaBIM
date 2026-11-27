@@ -20,7 +20,8 @@ use creabim_core::{ElementId, ElementKind, Model};
 use glam::DVec3;
 
 /// The design of a heating system.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct HeatSettings {
     pub supply_c: f64,
     pub return_c: f64,

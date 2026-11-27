@@ -333,6 +333,73 @@ fn turnbuckle_row(id: ElementId, t: &framing::Turnbuckle, n: usize) -> Row {
     }
 }
 
+/// The list of KARI mesh in the base slabs (George 2026-11-27): the
+/// number of its row in the legend of the foundations (a mesh type
+/// and edge each), the mesh, the edge, the storey, the area reinforced, the lap,
+/// the sheets laid with their laps, kg a sheet (WAGNER table) and the
+/// weight in tonnes, with the total.
+pub fn kari_schedule(model: &Model) -> Schedule {
+    use creabim_core::words::tr;
+    let columns = vec![
+        col("Mark", 20.0, false),
+        col("Mesh", 46.0, false),
+        col("Edge of the slab", 14.0, false),
+        col("Storey", 20.0, false),
+        col("Area (m²)", 18.0, true),
+        col("Lap (mm)", 20.0, true),
+        col("Pieces", 12.0, true),
+        col("kg/piece", 14.0, true),
+        col("Weight (t)", 22.0, true),
+    ];
+    let laid = creabim_core::kari::laid(model);
+    let mut marks: Vec<(&str, bool)> = vec![];
+    let (mut rows, mut pieces, mut kg) = (vec![], 0, 0.0);
+    for l in &laid {
+        let key = (l.mesh.code, l.top);
+        let i = marks.iter().position(|m| *m == key).unwrap_or_else(|| {
+            marks.push(key);
+            marks.len() - 1
+        });
+        pieces += l.pieces;
+        kg += l.kg();
+        rows.push(Row {
+            id: l.slabs[0],
+            cells: vec![
+                (i + 1).to_string(),
+                l.mesh.designation(),
+                tr(if l.top { "top edge" } else { "bottom edge" }),
+                model
+                    .get(l.level)
+                    .map_or_else(String::new, |e| e.name.clone()),
+                comma(l.area, 2),
+                format!("{:.0}", l.lap * 1000.0),
+                l.pieces.to_string(),
+                comma(l.mesh.kg_sheet, 2),
+                comma(l.kg() / 1000.0, 3),
+            ],
+            group: false,
+        });
+    }
+    Schedule {
+        category: creabim_core::ScheduleCategory::KariList,
+        columns,
+        listed: laid.len(),
+        rows,
+        totals: vec![
+            tr("Total"),
+            String::new(),
+            String::new(),
+            String::new(),
+            comma(laid.iter().map(|l| l.area).sum(), 2),
+            String::new(),
+            pieces.to_string(),
+            String::new(),
+            comma(kg / 1000.0, 3),
+        ],
+        above_totals: vec![],
+    }
+}
+
 /// The list of steel members, by position mark or (`by_section`) with the
 /// members of one section and grade together, lengths and masses summed.
 pub fn steel_schedule_by(model: &Model, by_section: bool) -> Schedule {

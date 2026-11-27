@@ -447,14 +447,20 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
     if let Some((sheet, level)) = vyz {
         let name = b.m.get(level).map(|e| e.name.clone()).unwrap_or_default();
         let legend = foundations_legend(&mut b, level, &name);
-        let placed = b.m.iter().any(|e| {
-            matches!(&e.kind, ElementKind::Viewport(vp) if vp.sheet == sheet && vp.view == legend)
-        });
-        if !placed {
-            let at = crate::sheet::free_spot(&b.m, sheet, legend);
-            let vp = crate::sheet::new_viewport(&b.m, sheet, legend, at);
-            b.add(Element::new("Viewport", ElementKind::Viewport(vp)));
-            b.fixed = true;
+        // with KARI mesh laid in a base slab, its list beside the legend
+        // (George 2026-11-27)
+        let kari = (!creabim_core::kari::laid(model).is_empty())
+            .then(|| schedule(&mut b, ScheduleCategory::KariList, "KARI mesh list"));
+        for view in std::iter::once(legend).chain(kari) {
+            let placed = b.m.iter().any(|e| {
+                matches!(&e.kind, ElementKind::Viewport(vp) if vp.sheet == sheet && vp.view == view)
+            });
+            if !placed {
+                let at = crate::sheet::free_spot(&b.m, sheet, view);
+                let vp = crate::sheet::new_viewport(&b.m, sheet, view, at);
+                b.add(Element::new("Viewport", ElementKind::Viewport(vp)));
+                b.fixed = true;
+            }
         }
     }
     let (mut above, mut below) = (0, storeys.iter().filter(|s| s.2 < -1.0).count() + 1);

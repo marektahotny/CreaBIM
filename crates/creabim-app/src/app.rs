@@ -491,9 +491,9 @@ pub struct CreaBimApp {
     cooling: Option<creabim_services::coolingload::Settings>,
     /// The air balance window is open.
     air_balance: bool,
-    /// The calculation whose window, just opened, writes its results to
-    /// the model when it is next drawn.
-    results_due: Option<&'static str>,
+    /// The duct sizing's results, as the window found them last frame,
+    /// are what the project holds.
+    ducts_written: bool,
     /// The duct sizing window's velocities, while it is open.
     ducts: Option<creabim_services::ductsizing::Limits>,
     /// The heat recovery design window's options, while it is open.
@@ -743,7 +743,7 @@ impl CreaBimApp {
             radiators: None,
             cooling: None,
             air_balance: false,
-            results_due: None,
+            ducts_written: false,
             ducts: None,
             recuperation: None,
             extract: None,
@@ -5462,7 +5462,7 @@ impl CreaBimApp {
                     (t, _) if t.draws_outline() || t == Tool::RoomSeparator || t == Tool::Tiling => {
                         self.plan.status.take().unwrap_or_default()
                     }
-                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Capping | Tool::ChimneyFlashing | Tool::RoofOutlet | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
+                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Capping | Tool::ChimneyFlashing | Tool::RoofOutlet | Tool::Object | Tool::Sweep | Tool::Planting | Tool::Chimney, _) => self
                         .plan
                         .status
                         .take()
@@ -10420,9 +10420,10 @@ crate::props::row(ui, "File names", |ui| {
                         creabim_core::SlabKind::Foundation => {
                             "Automatic: foundation slab (no slab under it)."
                         }
-                        creabim_core::SlabKind::Floor | creabim_core::SlabKind::Base => {
-                            "Automatic: floor slab (a slab under it)."
+                        creabim_core::SlabKind::Base => {
+                            "Automatic: base slab (it lies on strip footings), KARI mesh can be set."
                         }
+                        creabim_core::SlabKind::Floor => "Automatic: floor slab (a slab under it).",
                     };
                     // four kinds: a list, the buttons would not fit
                     let kinds: [(Option<creabim_core::SlabKind>, &str, &str); 4] = [
@@ -11089,13 +11090,24 @@ crate::props::row(ui, "File names", |ui| {
                             label = "Notes of the legend";
                         }
                         // each note on or off on its own (George 2026-11-27)
-                        let lines: Vec<String> = v
-                            .notes
-                            .lines()
-                            .map(str::trim)
-                            .filter(|l| !l.is_empty())
-                            .map(str::to_string)
-                            .collect();
+                        // (a foundations legend without notes of its own
+                        // offers George's usual ones)
+                        let lines: Vec<String> = if matches!(
+                            v.kind,
+                            ViewKind::Schedule {
+                                category: ScheduleCategory::MaterialLegend,
+                                ..
+                            }
+                        ) {
+                            creabim_geom::matlegend::notes_of(self.doc.model(), e.id)
+                        } else {
+                            v.notes
+                                .lines()
+                                .map(str::trim)
+                                .filter(|l| !l.is_empty())
+                                .map(str::to_string)
+                                .collect()
+                        };
                         if !lines.is_empty() {
                             ui.label(crate::i18n::t("Notes written on the drawing"));
                         }
@@ -14052,6 +14064,11 @@ impl CreaBimApp {
             }
         }
         if frame == at {
+            // the project saved as it is now (`CREABIM_SHOT_SAVE=<file.creabim>`),
+            // to open it again in a next shot
+            if let Ok(p) = std::env::var("CREABIM_SHOT_SAVE") {
+                self.save_as_to(p);
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
         let shot = ctx.input(|i| {

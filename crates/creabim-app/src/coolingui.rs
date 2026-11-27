@@ -3,9 +3,8 @@
 //! of, and the fan-coil that covers it.
 
 use super::CreaBimApp;
-use creabim_services::coolingload::{self, Mass, Method, Settings, Shading};
+use creabim_services::coolingload::{self, Mass, Method, Shading};
 use creabim_services::coolnorm;
-use creabim_services::heatloss;
 use eframe::egui::{self, Vec2};
 
 impl CreaBimApp {
@@ -14,11 +13,16 @@ impl CreaBimApp {
         if head != "calc" || !matches!(arg, "cooling" | "cooling-norm") {
             return false;
         }
-        let s = self.cooling.get_or_insert_with(Settings::default);
+        if self.cooling.is_none() {
+            // reopened: as it was last written (George 2026-11-27)
+            self.cooling = Some(self.saved_settings("cooling").unwrap_or_default());
+        }
+        let Some(s) = self.cooling.as_mut() else {
+            return false;
+        };
         if arg == "cooling-norm" {
             s.method = Method::Norm;
         }
-        self.results_due = Some("cooling");
         true
     }
 
@@ -29,15 +33,14 @@ impl CreaBimApp {
         };
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
-        let o = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(heatloss::Opts::default, |x| x.0);
+        let o = self.heat_opts();
         let b = coolingload::building(self.doc.model(), &o, &s);
         let norm_tables = coolnorm::tables_of(self.doc.model());
         let months = creabim_core::fireparams::summer_max(&self.climate_tables());
         let mut load = false;
-        let mut write_now = self.results_due.take_if(|c| *c == "cooling").is_some();
+        let found = creabim_services::calcresults::cooling(&b).with_settings(&s);
+        let written = self.is_written(&found);
+        let mut write_now = false;
         let mut open = true;
         let mut select = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
@@ -48,7 +51,7 @@ impl CreaBimApp {
             .default_size(crate::app::shell::at_least(Vec2::new(680.0, 520.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui) {
+                if super::calcresultsui::write_button(ui, written) {
                     write_now = true;
                 }
                 ui.horizontal(|ui| {
@@ -398,7 +401,7 @@ impl CreaBimApp {
             self.selection.only(id);
         }
         if write_now {
-            self.write_results_said(creabim_services::calcresults::cooling(&b));
+            self.write_results_said(found);
         }
         self.cooling = if open { Some(s) } else { None };
         if load {

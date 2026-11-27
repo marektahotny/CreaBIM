@@ -101,7 +101,6 @@ impl CreaBimApp {
         } else {
             crate::i18n::tr("Water supply calculated")
         };
-        self.write_results(water_results(&calcs));
         self.water_calc = Some(calcs);
         true
     }
@@ -117,6 +116,8 @@ impl CreaBimApp {
         let mut apply = false;
         let mut again = false;
         let mut write_now = false;
+        let found = water_results(calcs);
+        let written = self.is_written(&found);
         let mut select = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Water supply calculation"))
@@ -127,7 +128,7 @@ impl CreaBimApp {
             .min_width(640.0)
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui) {
+                if super::calcresultsui::write_button(ui, written) {
                     write_now = true;
                 }
                 if calcs.is_empty() {

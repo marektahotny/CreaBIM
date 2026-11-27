@@ -2901,10 +2901,13 @@ pub enum ScheduleCategory {
     /// The list of steel members (výpis oceľových prvkov) by position:
     /// section, pieces, length, kg/m and mass, with the total.
     SteelList,
+    /// The list of KARI mesh in base slabs (výkaz KARI sietí): mark, edge,
+    /// area, lap, sheets, kg a sheet and tonnes, with the total.
+    KariList,
 }
 
 impl ScheduleCategory {
-    pub const ALL: [ScheduleCategory; 34] = [
+    pub const ALL: [ScheduleCategory; 35] = [
         ScheduleCategory::Doors,
         ScheduleCategory::Windows,
         ScheduleCategory::Walls,
@@ -2939,6 +2942,7 @@ impl ScheduleCategory {
         ScheduleCategory::WaterAxonometry,
         ScheduleCategory::TimberList,
         ScheduleCategory::SteelList,
+        ScheduleCategory::KariList,
     ];
 
     /// The name of a new schedule of it: "Door Schedule".
@@ -2978,6 +2982,7 @@ impl ScheduleCategory {
             ScheduleCategory::WaterAxonometry => return "Water supply axonometry".into(),
             ScheduleCategory::TimberList => return "Timber list".into(),
             ScheduleCategory::SteelList => return "Steel list".into(),
+            ScheduleCategory::KariList => return "KARI mesh list".into(),
         };
         format!("{one} Schedule")
     }
@@ -3026,6 +3031,7 @@ impl ScheduleCategory {
             ScheduleCategory::WaterAxonometry => "Water supply axonometry",
             ScheduleCategory::TimberList => "Timber list",
             ScheduleCategory::SteelList => "Steel list",
+            ScheduleCategory::KariList => "KARI mesh list",
         }
     }
 
