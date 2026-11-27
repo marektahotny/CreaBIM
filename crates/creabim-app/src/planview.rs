@@ -5590,6 +5590,10 @@ pub fn start_modal(
     works_on: modal::Target,
     plane: Option<creabim_core::Workplane>,
 ) -> Result<(Modal, Vec<ElementId>), String> {
+    // Mirror copy previews its copies as Ctrl does, so Ctrl can still
+    // turn it back into a plain mirror
+    let mirror_copy = duplicate && mode == Mode::Mirror;
+    let duplicate = duplicate && !mirror_copy;
     let targets = if duplicate {
         modal::duplicate(doc, ids)?
     } else {
@@ -5603,6 +5607,9 @@ pub fn start_modal(
     ) {
         Ok(mut m) => {
             m.duplicated = duplicate;
+            if mirror_copy {
+                m.set_copy(doc, true);
+            }
             // a mass's picked vertices in Edit mode are what moves (MU39)
             if let ([one], false) = (targets.as_slice(), duplicate) {
                 if let Some(vs) = crate::handles::mesh_pick(*one) {

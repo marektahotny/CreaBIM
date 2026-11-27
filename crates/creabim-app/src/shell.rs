@@ -367,6 +367,7 @@ fn command_icon(c: Command) -> &'static str {
         Command::Rotate => "rotate-cw",
         Command::Scale => "scaling",
         Command::Mirror => "flip-horizontal-2",
+        Command::MirrorCopy => "mirror-copy",
         Command::Offset => "offset",
         Command::Duplicate => "duplicate",
         Command::Copy => "copy",
@@ -414,16 +415,17 @@ impl CreaBimApp {
             .plan
             .modal
             .as_ref()
-            .map(|m| m.mode)
-            .or(self.plan.armed.map(|a| a.0))
-            .is_some_and(|m| {
+            .map(|m| (m.mode, m.copying()))
+            .or(self.plan.armed)
+            .is_some_and(|(m, copy)| {
                 matches!(
-                    (m, c),
-                    (crate::modal::Mode::Move, Command::Move)
-                        | (crate::modal::Mode::Rotate, Command::Rotate)
-                        | (crate::modal::Mode::Scale, Command::Scale)
-                        | (crate::modal::Mode::Mirror, Command::Mirror)
-                        | (crate::modal::Mode::Offset, Command::Offset)
+                    (m, c, copy),
+                    (crate::modal::Mode::Move, Command::Move, _)
+                        | (crate::modal::Mode::Rotate, Command::Rotate, _)
+                        | (crate::modal::Mode::Scale, Command::Scale, _)
+                        | (crate::modal::Mode::Mirror, Command::Mirror, false)
+                        | (crate::modal::Mode::Mirror, Command::MirrorCopy, true)
+                        | (crate::modal::Mode::Offset, Command::Offset, _)
                 )
             });
         Item::new(format!("cmd:{c:?}"), label)
@@ -887,6 +889,7 @@ impl CreaBimApp {
                             Command::Rotate,
                             Command::Scale,
                             Command::Mirror,
+                            Command::MirrorCopy,
                             Command::Offset,
                             Command::Duplicate,
                         ][..],
@@ -1230,6 +1233,7 @@ impl CreaBimApp {
                 Command::Rotate,
                 Command::Scale,
                 Command::Mirror,
+                Command::MirrorCopy,
                 Command::Offset,
                 Command::Duplicate,
             ],
@@ -3499,23 +3503,27 @@ impl CreaBimApp {
         let opt = |id: String, label: &str, on: bool, hint: &str| json!({"id": id, "label": label, "on": on, "hint": hint});
         let mut options = vec![];
         if let Some(m) = &self.plan.modal {
-            let verb = m.mode.verb();
+            let copy = m.mode == crate::modal::Mode::Mirror && m.copying();
+            let verb = if copy { "Mirror copy" } else { m.mode.verb() };
             let icon = match m.mode {
                 crate::modal::Mode::Move => "move",
                 crate::modal::Mode::Rotate => "rotate-cw",
                 crate::modal::Mode::Scale => "scaling",
+                crate::modal::Mode::Mirror if copy => "mirror-copy",
                 crate::modal::Mode::Mirror => "flip-horizontal-2",
                 crate::modal::Mode::Offset => "offset",
                 crate::modal::Mode::Grip => "spline",
             };
             return (json!({"label": verb, "icon": icon}), options);
         }
-        if let Some((m, _)) = self.plan.armed {
-            let verb = format!("{m:?}");
+        if let Some((m, copy)) = self.plan.armed {
+            let copy = copy && m == crate::modal::Mode::Mirror;
+            let verb = if copy { "Mirror copy" } else { m.verb() };
             let icon = match m {
                 crate::modal::Mode::Move => "move",
                 crate::modal::Mode::Rotate => "rotate-cw",
                 crate::modal::Mode::Scale => "scaling",
+                crate::modal::Mode::Mirror if copy => "mirror-copy",
                 crate::modal::Mode::Mirror => "flip-horizontal-2",
                 crate::modal::Mode::Offset => "offset",
                 crate::modal::Mode::Grip => "spline",
@@ -4084,6 +4092,8 @@ impl CreaBimApp {
             Some(Command::Move),
             Some(Command::Rotate),
             Some(Command::Scale),
+            Some(Command::Mirror),
+            Some(Command::MirrorCopy),
             Some(Command::Duplicate),
             None,
             Some(Command::Copy),

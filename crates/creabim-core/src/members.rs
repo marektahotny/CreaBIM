@@ -2321,6 +2321,15 @@ pub fn is_member(kind: &ElementKind) -> bool {
     level_of(kind).is_some()
 }
 
+/// A library section's outline turned over by `factor` (one of its axes
+/// negated), still running the same way round.
+fn flip_section(s: &mut Section, factor: DVec2) {
+    for p in &mut s.points {
+        *p *= factor;
+    }
+    s.points.reverse();
+}
+
 /// Move, turn or scale a member. `None` when it can't take `t`.
 pub fn transform(model: &Model, kind: &mut ElementKind, t: &Xform) -> Option<()> {
     // a part can tilt: it then stands on a plane of its own
@@ -2337,9 +2346,14 @@ pub fn transform(model: &Model, kind: &mut ElementKind, t: &Xform) -> Option<()>
     };
     match kind {
         ElementKind::Column(c) => {
+            let at = c.position;
             c.position = t.point2(c.position);
             c.rotation = (c.rotation + turn).rem_euclid(360.0);
             c.base_offset += dz;
+            // its mark dragged off it turns with it
+            if let Some(o) = &mut c.mark_at {
+                *o = t.point2(at + *o) - c.position;
+            }
             match t {
                 Xform::Scale { factor, .. } => match &mut c.profile {
                     Profile::Rectangle { width, depth } => {
@@ -2352,6 +2366,13 @@ pub fn transform(model: &Model, kind: &mut ElementKind, t: &Xform) -> Option<()>
                 // turned over, so it only goes to the mirrored place
                 Xform::Stretch { factor, .. } => {
                     c.rotation = crate::transform::mirrored_angle(c.rotation, *factor)?;
+                    // a steel section that is not symmetric (an angle, a
+                    // channel) turns over with it (George 2026-11-26)
+                    if factor.x * factor.y < 0.0 {
+                        if let Some(s) = &mut c.section {
+                            flip_section(s, DVec2::new(1.0, -1.0));
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -2362,6 +2383,26 @@ pub fn transform(model: &Model, kind: &mut ElementKind, t: &Xform) -> Option<()>
             b.top_offset -= dz;
             if matches!(t, Xform::Stretch { .. }) && b.length() < 1e-6 {
                 return None;
+            }
+            // the face it lies on and its ends' cuts turn (and, mirrored,
+            // turn over) with it: a rafter on a roof face mirrored onto
+            // the other face (George 2026-11-26)
+            let normal = |v: DVec3| match t {
+                Xform::Stretch { factor, .. } => (v / *factor).normalize_or(v),
+                _ => t.direction(v),
+            };
+            b.up = b.up.map(normal);
+            for c in b.cuts.iter_mut().flatten() {
+                *c = normal(*c);
+            }
+            // mirrored, a section that is not symmetric (an angle, a
+            // channel) turns over: what was on its left is on its right
+            if let Xform::Stretch { factor, .. } = t {
+                if factor.x * factor.y * factor.z < 0.0 {
+                    if let Some(s) = &mut b.section {
+                        flip_section(s, DVec2::new(-1.0, 1.0));
+                    }
+                }
             }
         }
         ElementKind::Roof(r) => {

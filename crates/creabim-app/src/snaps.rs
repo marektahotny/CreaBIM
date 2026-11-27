@@ -1848,7 +1848,8 @@ pub fn draw(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) {
     let Some(c) = marker(painter, snap, at, from) else {
         return;
     };
-    let label = snap.kind.label();
+    // in the interface's language: "Koncový bod"
+    let label = crate::i18n::t(snap.kind.label());
     if !label.is_empty() {
         painter.text(
             at + egui::vec2(10.0, 10.0),
