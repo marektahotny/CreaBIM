@@ -135,7 +135,7 @@ impl Layout {
 }
 
 /// The order element categories are listed in: as a house is built.
-pub const CATEGORY_ORDER: [&str; 21] = [
+pub const CATEGORY_ORDER: [&str; 22] = [
     "Footings",
     "Foundation slabs",
     "Reinforcement",
@@ -146,6 +146,7 @@ pub const CATEGORY_ORDER: [&str; 21] = [
     "Lintels",
     "Slabs",
     "Stairs",
+    "Chimneys",
     "Roofs",
     "Ceilings",
     "Railings",
@@ -481,6 +482,35 @@ pub fn lines(model: &Model) -> Vec<Line> {
                     0.0,
                 )
             }
+            // a Schiedel chimney: its height, as the maker prices it per
+            // running metre, and its solid between the flue and the outside
+            ElementKind::Part(p) if p.chimney.is_some() && !p.void => {
+                let crate::parts::Form::Extrusion {
+                    outline,
+                    holes,
+                    height,
+                    ..
+                } = &p.form
+                else {
+                    continue;
+                };
+                let area = (crate::polygon::signed_area2(outline).abs() / 2.0)
+                    - holes
+                        .iter()
+                        .map(|h| crate::polygon::signed_area2(h).abs() / 2.0)
+                        .sum::<f64>();
+                (
+                    "Chimneys",
+                    p.level,
+                    Quantity {
+                        length: *height,
+                        volume: area * height,
+                        count: 1,
+                        ..Default::default()
+                    },
+                    0.0,
+                )
+            }
             // a mass: its volume as modelled, modifiers and scale included
             ElementKind::FreeMesh(m) => {
                 let Some(level) = m.level else {
@@ -539,7 +569,10 @@ pub fn lines(model: &Model) -> Vec<Line> {
                     ElementKind::Opening(o) => 2.0 * (o.width + o.height),
                     _ => 0.0,
                 },
-                label: lintel_label(model, e),
+                label: lintel_label(model, e).or_else(|| match &e.kind {
+                    ElementKind::Part(p) => p.chimney.map(|c| c.label(whole.length)),
+                    _ => None,
+                }),
             });
         }
     }
@@ -974,6 +1007,43 @@ mod tests {
     use super::*;
     use crate::sample::{layered_house, sample_house};
     use crate::{Document, Element, Transaction};
+
+    #[test]
+    fn a_schiedel_chimney_is_listed_by_its_metres_and_weight() {
+        let mut model = sample_house();
+        let level = model
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let c = crate::chimney::Chimney {
+            system: crate::chimney::System::Absolut,
+            flue: 200,
+        };
+        let e = Element::new(
+            "Chimney",
+            ElementKind::Part(crate::parts::Part::chimney(
+                level,
+                c,
+                glam::DVec2::new(1.0, 1.0),
+                glam::DVec2::X,
+                0.0,
+                6.0,
+            )),
+        );
+        let id = e.id;
+        model = Model::from_elements(model.iter().cloned().chain([e])).unwrap();
+        let all = lines(&model);
+        let l = all.iter().find(|l| l.element == id).unwrap();
+        assert_eq!(l.category, "Chimneys");
+        assert!((l.quantity.length - 6.0).abs() < 1e-9);
+        let area = 0.38 * 0.38 - std::f64::consts::PI * 0.1 * 0.1;
+        assert!((l.quantity.volume - area * 6.0).abs() < 1e-3);
+        assert_eq!(
+            l.label.as_deref(),
+            Some("Schiedel ABSOLUT 20 – 380 × 380 mm (80 kg/m)")
+        );
+    }
 
     #[test]
     fn a_plain_wall_measures_its_face_less_openings_and_its_volume() {

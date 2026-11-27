@@ -190,6 +190,13 @@ pub struct PartSettings {
     pub library: Option<String>,
     /// A library profile the Extrusion tool places, pulled up (MU36).
     pub extrusion_library: Option<String>,
+    /// The Schiedel system and flue new chimneys take.
+    pub chimney: creabim_core::chimney::Chimney,
+    /// New chimneys' undersides above the level, their height, and the
+    /// turn of their blocks, degrees.
+    pub chimney_base: f64,
+    pub chimney_height: f64,
+    pub chimney_rotation: f64,
 }
 
 impl PartSettings {
@@ -241,6 +248,10 @@ impl Default for PartSettings {
             plant_height: 6.0,
             library: None,
             extrusion_library: None,
+            chimney: Default::default(),
+            chimney_base: 0.0,
+            chimney_height: 7.0,
+            chimney_rotation: 0.0,
         }
     }
 }
@@ -402,6 +413,30 @@ pub fn click(
         doc.commit(Transaction::new(label).insert(e))
     };
     match tool {
+        Tool::Chimney => {
+            let a = s.chimney_rotation.to_radians();
+            let part = Part::chimney(
+                level,
+                s.chimney,
+                p,
+                DVec2::new(a.cos(), a.sin()),
+                s.chimney_base,
+                s.chimney_height,
+            );
+            state.status = Some(format!(
+                "{} {} {}. {}",
+                s.chimney.name(),
+                s.chimney.size(),
+                crate::i18n::t("placed"),
+                crate::i18n::t("Click on for the next chimney.")
+            ));
+            add(
+                doc,
+                selection,
+                Element::new("Chimney", ElementKind::Part(part)),
+                "Place chimney",
+            )
+        }
         Tool::Planting => {
             let plant = Site::plant(level, p, s.plant, s.canopy, s.plant_height);
             state.status = Some(format!(
@@ -621,6 +656,52 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                 )
             })
             .collect())],
+        Tool::Chimney => {
+            use creabim_core::chimney::System;
+            let mut v = vec![seg(System::ALL
+                .iter()
+                .map(|x| {
+                    opt(
+                        format!("part:chimney.system.{x:?}"),
+                        x.name().trim_start_matches("Schiedel "),
+                        s.chimney.system == *x,
+                        "The Schiedel system of new chimneys",
+                    )
+                })
+                .collect())];
+            v.push(seg(s
+                .chimney
+                .system
+                .types()
+                .iter()
+                .map(|t| {
+                    opt(
+                        format!("part:chimney.flue.{}", t.flue),
+                        &format!("Ø{}", t.flue),
+                        s.chimney.flue == t.flue,
+                        "The flue of new chimneys, inner Ø in mm",
+                    )
+                })
+                .collect()));
+            v.push(num(
+                "chimney_base",
+                "Base",
+                s.chimney_base,
+                "Height of new chimneys' undersides above the level",
+            ));
+            v.push(num(
+                "chimney_height",
+                "Height",
+                s.chimney_height,
+                "Height of new chimneys, from their underside to their top",
+            ));
+            v.push(json!({
+                "kind": "number", "key": "part.chimney_rotation", "label": "Rotation", "value": s.chimney_rotation,
+                "unit": "°", "step": 15.0, "min": -360.0, "max": 360.0,
+                "hint": "The turn of new chimneys' blocks in plan",
+            }));
+            v
+        }
         Tool::Planting => {
             let mut v = vec![seg(PlantForm::ALL
                 .iter()
@@ -672,6 +753,9 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "earth_slope" => s.earth_slope = v.clamp(0.0, 10.0),
         "canopy" => s.canopy = v.clamp(0.2, 50.0),
         "plant_height" => s.plant_height = v.clamp(0.2, 100.0),
+        "chimney_base" => s.chimney_base = v.clamp(-100.0, 1000.0),
+        "chimney_height" => s.chimney_height = v.clamp(0.1, 1000.0),
+        "chimney_rotation" => s.chimney_rotation = v.clamp(-360.0, 360.0),
         _ => {}
     }
 }
@@ -696,6 +780,16 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
         }
     } else if let Some(i) = what.strip_prefix("area.") {
         s.area = i.parse().unwrap_or(0).min(AREAS.len() - 1);
+    } else if let Some(x) = what.strip_prefix("chimney.system.") {
+        use creabim_core::chimney::System;
+        if let Some(sys) = System::ALL.into_iter().find(|y| format!("{y:?}") == x) {
+            s.chimney.system = sys;
+            s.chimney.flue = sys.of(s.chimney.flue).flue;
+        }
+    } else if let Some(f) = what.strip_prefix("chimney.flue.") {
+        if let Ok(f) = f.parse::<u16>() {
+            s.chimney.flue = s.chimney.system.of(f).flue;
+        }
     } else if let Some(f) = what.strip_prefix("plant.") {
         if let Some(f) = PlantForm::ALL.into_iter().find(|x| x.label() == f) {
             s.plant = f;
@@ -710,6 +804,98 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
 }
 
 // ---- Properties ----
+
+/// A number with a decimal comma, as the maker prints it: 8,5.
+fn dec(v: f64) -> String {
+    format!("{v}").replace('.', ",")
+}
+
+/// A Schiedel chimney's system and flue, and the maker's sizes of it.
+/// True when the type changed (its outline and flue are redrawn).
+fn chimney_fields(ui: &mut egui::Ui, p: &mut Part) -> bool {
+    use creabim_core::chimney::{Outer, System};
+    let Some(c) = p.chimney.as_mut() else {
+        return false;
+    };
+    let mut changed = false;
+    crate::props::row(ui, "System", |ui| {
+        egui::ComboBox::from_id_salt("chimney_system")
+            .icon(crate::props::combo_icon)
+            .selected_text(c.system.name())
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for x in System::ALL {
+                    if ui.selectable_value(&mut c.system, x, x.name()).changed() {
+                        c.flue = x.of(c.flue).flue;
+                        changed = true;
+                    }
+                }
+            });
+    });
+    crate::props::row(ui, "Chimney flue", |ui| {
+        egui::ComboBox::from_id_salt("chimney_flue")
+            .icon(crate::props::combo_icon)
+            .selected_text(format!("Ø{} mm", c.flue))
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for t in c.system.types() {
+                    changed |= ui
+                        .selectable_value(
+                            &mut c.flue,
+                            t.flue,
+                            format!("Ø{} mm – {}", t.flue, t.name),
+                        )
+                        .changed();
+                }
+            });
+    });
+    let t = c.kind();
+    let mut info = vec![format!(
+        "{}: {}",
+        crate::i18n::t(match t.outer {
+            Outer::Round(_) => "Outer diameter",
+            Outer::Block(..) => "Block",
+        }),
+        c.size()
+    )];
+    if t.liner > 0.0 {
+        info.push(format!(
+            "{}: {} mm",
+            crate::i18n::t("Liner wall"),
+            dec(t.liner)
+        ));
+    }
+    if t.insulation > 0.0 {
+        info.push(format!(
+            "{}: {} mm",
+            crate::i18n::t("Insulation"),
+            dec(t.insulation)
+        ));
+    }
+    if t.kg_m > 0.0 {
+        info.push(format!(
+            "{}: {} kg/m",
+            crate::i18n::t("Chimney weight"),
+            dec(t.kg_m)
+        ));
+    } else if t.kg_block > 0.0 {
+        info.push(format!(
+            "{}: {} kg / {}",
+            crate::i18n::t("Chimney weight"),
+            dec(t.kg_block),
+            crate::i18n::t("block 33 cm")
+        ));
+    }
+    weak(ui, info.join(" · "));
+    weak(
+        ui,
+        format!("{}: {}", crate::i18n::t("Source"), c.system.source()),
+    );
+    if changed {
+        p.reshape_chimney();
+    }
+    changed
+}
 
 fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
     crate::props::row(ui, text, |ui| {
@@ -733,6 +919,9 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
 
 fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
     let mut label = "";
+    if chimney_fields(ui, p) {
+        label = "Chimney type";
+    }
     if crate::props::switch(ui, &mut p.void, "Void: cuts what it meets")
         .on_hover_text(crate::i18n::t("A void cuts every wall, slab, roof, site surface and solid part it meets, and is drawn only as a see-through outline in 3D"))
         .changed()

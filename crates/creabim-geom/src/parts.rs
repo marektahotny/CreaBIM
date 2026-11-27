@@ -1421,6 +1421,7 @@ mod plan_look_tests {
                 material: None,
                 ifc_class: creabim_core::parts::PROXY.into(),
                 profile: None,
+                chimney: None,
             }),
         )
     }

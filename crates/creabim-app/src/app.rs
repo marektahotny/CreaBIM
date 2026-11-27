@@ -5454,7 +5454,7 @@ impl CreaBimApp {
                     (t, _) if t.draws_outline() || t == Tool::RoomSeparator || t == Tool::Tiling => {
                         self.plan.status.take().unwrap_or_default()
                     }
-                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Capping | Tool::ChimneyFlashing | Tool::RoofOutlet | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
+                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Gutter | Tool::Downpipe | Tool::Capping | Tool::ChimneyFlashing | Tool::RoofOutlet | Tool::Object | Tool::Sweep | Tool::Planting | Tool::Chimney, _) => self
                         .plan
                         .status
                         .take()

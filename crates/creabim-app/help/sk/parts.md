@@ -39,6 +39,12 @@ CreaBIM nerozhoduje, čím diel je. Komín, ohnisko, atiková krycia lišta, sok
 
 Profilom sa môže stať ľubovoľný náčrt (v ľubovoľnej rovine, otvorený či uzavretý), doska alebo vytiahnutie: **Vytvoriť profil** v jeho *Vlastnostiach*.
 
+## Komíny {#chimneys}
+
+Nástroj **Komín** umiestni komín Schiedel kliknutím: v lište zvoľte systém (KERASTAR, ABSOLUT, UNI ADVANCED PLUS) a prieduch, jeho spodok, výšku a pootočenie tvárnice. Obrys a prieduch majú rozmery výrobcu podľa dátových listov Schiedel Slovensko; Vlastnosti ich ukazujú aj so zdrojom a systém či prieduch zmenia na mieste. Komín prechádzajúci strechou dostane lemovanie a krov od neho drží 50 mm ako pri každom diele; výkaz ho uvádza v skupine Komíny v bežných metroch a s hmotnosťou.
+
+Tvárnice s vetracou šachtou a dvojprieduchové tvárnice pribudnú.
+
 ## Dutiny {#voids}
 
 **Dutina** reže každú stenu, dosku, strechu, terén, spevnenú plochu a plné vytiahnutie či ťahanie, ktoré stretne. Použite ju na ohnisko v komíne, otvor cez dosku alebo nik v stene.
