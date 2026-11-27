@@ -920,10 +920,31 @@ fn build_scene_unjoined(
             | ElementKind::Roof(_)
             | ElementKind::Footing(_)
             | ElementKind::Flashing(_)
-            | ElementKind::Pipe(_) => match crate::members::member_mesh(model, e) {
-                Some(m) => m,
-                None => continue,
-            },
+            | ElementKind::Pipe(_) => {
+                // a collar tie's bolts, steel, a piece of their own in a
+                // section (George 2026-11-27)
+                if let Some(mesh) = crate::members::collar_bolts_mesh(model, e) {
+                    out.push(SceneItem {
+                        id: e.id,
+                        mesh,
+                        color: [0.35, 0.37, 0.40],
+                        surface: METAL_SURFACE,
+                        ghost: false,
+                        layer: Some(LayerPart {
+                            index: usize::MAX,
+                            material: None,
+                            function: creabim_core::LayerFunction::Structure,
+                            core: false,
+                            priority: 0,
+                        }),
+                        finish: None,
+                    });
+                }
+                match crate::members::member_mesh(model, e) {
+                    Some(m) => m,
+                    None => continue,
+                }
+            }
             ElementKind::Valve(v) => match crate::valves::valve_mesh(model, v) {
                 Some(m) => m,
                 None => continue,

@@ -388,6 +388,11 @@ pub struct Framing {
     /// cut face, m; 0 none.
     #[serde(default, skip_serializing_if = "no_tenons")]
     pub tenons: [f64; 2],
+    /// A collar tie bolted (svorník) to each rafter it clamps: the
+    /// thread, mm (12: M12); a washer and a nut each side (George
+    /// 2026-11-27).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bolt: Option<u32>,
 }
 
 fn square_ends(c: &[EndCut; 2]) -> bool {
@@ -410,6 +415,7 @@ impl Framing {
             cuts: [EndCut::Square; 2],
             seat: matches!(role, Role::Rafter | Role::HipRafter | Role::ValleyRafter),
             tenons: [0.0; 2],
+            bolt: (role == Role::Collar).then_some(12),
         }
     }
 }
@@ -694,6 +700,210 @@ const fn tb(code: &'static str, thread: u32, a: f64, c: f64, k: f64, n: f64) -> 
 pub fn turnbuckle_for(d: f64) -> Option<Turnbuckle> {
     let mm = (d * 1000.0).round() as u32;
     TURNBUCKLES.iter().copied().find(|t| t.thread == mm)
+}
+
+/// A bolt's washer (DIN 440 R, for timber) and nut (DIN 934 / ISO 4032),
+/// mm: washer hole d1, outside d2, thickness h, mass kg per 1000; nut
+/// across flats s, height m.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BoltParts {
+    pub thread: u32,
+    pub d1: f64,
+    pub d2: f64,
+    pub h: f64,
+    pub washer_kg_1000: f64,
+    pub s: f64,
+    pub m: f64,
+}
+
+/// DIN 440 R washers (westfieldfasteners.co.uk, Table 1; the same on
+/// fasteners.eu) and DIN 934 nuts (Mädler K42 557, the same on norelem
+/// 07210), M10 to M24.
+pub const BOLT_PARTS: [BoltParts; 5] = [
+    bp(10, 11.0, 34.0, 3.0, 19.1, 17.0, 8.0),
+    bp(12, 13.5, 44.0, 4.0, 43.3, 19.0, 10.0),
+    bp(16, 17.5, 56.0, 5.0, 87.2, 24.0, 13.0),
+    bp(20, 22.0, 72.0, 6.0, 174.0, 30.0, 16.0),
+    bp(24, 26.0, 85.0, 6.0, 242.0, 36.0, 19.0),
+];
+
+const fn bp(thread: u32, d1: f64, d2: f64, h: f64, kg: f64, s: f64, m: f64) -> BoltParts {
+    BoltParts {
+        thread,
+        d1,
+        d2,
+        h,
+        washer_kg_1000: kg,
+        s,
+        m,
+    }
+}
+
+pub fn bolt_parts(thread: u32) -> Option<BoltParts> {
+    BOLT_PARTS.iter().copied().find(|b| b.thread == thread)
+}
+
+/// A bolt through collar ties and the rafter they clamp.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bolt {
+    /// Its middle, in the rafter's plane, m.
+    pub at: DVec3,
+    /// Along it, unit, level.
+    pub axis: DVec3,
+    /// What it holds together, m: the collar ties' and the rafter's
+    /// widths.
+    pub grip: f64,
+    pub thread: u32,
+    /// The rafter and the collar ties.
+    pub rafter: ElementId,
+    pub collars: Vec<ElementId>,
+}
+
+impl Bolt {
+    /// The threaded rod to order, m: through the grip, a washer and a
+    /// nut each side, rounded up to whole centimetres.
+    pub fn length(&self) -> f64 {
+        let p = bolt_parts(self.thread);
+        let ends = p.map_or(0.0, |p| 2.0 * (p.h + p.m) / 1000.0);
+        ((self.grip + ends) * 100.0 - 1e-6).ceil() / 100.0
+    }
+}
+
+/// The bolts of the collar ties: one where a bolted collar tie clamps a
+/// rafter, through it and the tie on its other side when they are a
+/// pair (George 2026-11-27).
+pub fn bolts(model: &Model) -> Vec<Bolt> {
+    use glam::DVec2;
+    let mut out: Vec<Bolt> = vec![];
+    let collars: Vec<(&Element, SideProfile, u32)> = model
+        .iter()
+        .filter_map(|e| {
+            let f = of(e)?;
+            let t = f.bolt?;
+            (f.role == Role::Collar).then_some(())?;
+            Some((e, side_profile(model, e)?, t))
+        })
+        .collect();
+    if collars.is_empty() {
+        return out;
+    }
+    for r in model.iter() {
+        let Some(f) = of(r) else { continue };
+        if !matches!(f.role, Role::Rafter | Role::HipRafter | Role::ValleyRafter) {
+            continue;
+        }
+        let Some(rp) = side_profile(model, r) else {
+            continue;
+        };
+        let across = rp.dir.perp();
+        let to_frame = |p: &SideProfile, q: DVec2| {
+            let w = p.origin + (p.dir * q.x).extend(q.y);
+            DVec2::new(
+                (w.truncate() - rp.origin.truncate()).dot(rp.dir),
+                w.z - rp.origin.z,
+            )
+        };
+        let mut here: Vec<(DVec2, f64, ElementId, f64, u32)> = vec![];
+        for (c, cp, t) in &collars {
+            if cp.dir.perp_dot(rp.dir).abs() > 0.02 {
+                continue;
+            }
+            let off = (cp.origin.truncate() - rp.origin.truncate()).dot(across);
+            if (off.abs() - (cp.width + rp.width) / 2.0).abs() > 0.005 {
+                continue;
+            }
+            let poly: Vec<DVec2> = cp.points.iter().map(|q| to_frame(cp, *q)).collect();
+            let Some((centre, area)) = overlap(&rp.points, &poly) else {
+                continue;
+            };
+            if area < 1e-4 {
+                continue;
+            }
+            here.push((centre, off, c.id, cp.width, *t));
+        }
+        // the ties either side at one place: one bolt through them all
+        let mut used = vec![false; here.len()];
+        for i in 0..here.len() {
+            if used[i] {
+                continue;
+            }
+            used[i] = true;
+            let mut group = vec![i];
+            for j in i + 1..here.len() {
+                if !used[j]
+                    && here[j].0.distance(here[i].0) < 0.05
+                    && here[j].1.signum() != here[i].1.signum()
+                {
+                    used[j] = true;
+                    group.push(j);
+                    break;
+                }
+            }
+            let centre = group.iter().map(|&k| here[k].0).sum::<DVec2>() / group.len() as f64;
+            let mid = if group.len() == 2 {
+                0.0
+            } else {
+                // a single tie: the bolt's middle between it and the
+                // rafter's far face
+                here[i].1.signum() * here[i].3 / 2.0
+            };
+            let at = rp.origin + (rp.dir * centre.x + across * mid).extend(centre.y);
+            out.push(Bolt {
+                at,
+                axis: across.extend(0.0),
+                grip: rp.width + group.iter().map(|&k| here[k].3).sum::<f64>(),
+                thread: group.iter().map(|&k| here[k].4).max().unwrap_or(12),
+                rafter: r.id,
+                collars: group.iter().map(|&k| here[k].2).collect(),
+            });
+        }
+    }
+    out
+}
+
+/// Where outline `a` and the convex outline `b` overlap: the middle of
+/// the overlap and its area.
+fn overlap(a: &[glam::DVec2], b: &[glam::DVec2]) -> Option<(glam::DVec2, f64)> {
+    use glam::DVec2;
+    let area = |p: &[DVec2]| -> f64 {
+        (0..p.len())
+            .map(|i| p[i].perp_dot(p[(i + 1) % p.len()]))
+            .sum::<f64>()
+            / 2.0
+    };
+    let sign = area(b).signum();
+    let mut poly = a.to_vec();
+    for i in 0..b.len() {
+        let (p, q) = (b[i], b[(i + 1) % b.len()]);
+        let inside = |x: DVec2| (q - p).perp_dot(x - p) * sign >= 0.0;
+        let mut next = vec![];
+        for k in 0..poly.len() {
+            let (s, e) = (poly[k], poly[(k + 1) % poly.len()]);
+            let (si, ei) = (inside(s), inside(e));
+            if si {
+                next.push(s);
+            }
+            if si != ei {
+                let d1 = (q - p).perp_dot(s - p);
+                let d2 = (q - p).perp_dot(e - p);
+                next.push(s + (e - s) * (d1 / (d1 - d2)));
+            }
+        }
+        poly = next;
+        if poly.len() < 3 {
+            return None;
+        }
+    }
+    let a2 = area(&poly);
+    if a2.abs() < 1e-12 {
+        return None;
+    }
+    let mut c = DVec2::ZERO;
+    for i in 0..poly.len() {
+        let (p, q) = (poly[i], poly[(i + 1) % poly.len()]);
+        c += (p + q) * p.perp_dot(q);
+    }
+    Some((c / (6.0 * a2), a2.abs()))
 }
 
 /// The steel sections offered.

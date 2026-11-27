@@ -500,6 +500,28 @@ pub fn properties(
     if beam && f.role.is_timber() && end_cuts(ui, f) {
         label = "Member end cuts";
     }
+    // a collar tie's bolt through each rafter it clamps, a washer and a
+    // nut each side (George 2026-11-27)
+    if f.role == Role::Collar {
+        let now = f.bolt;
+        let name =
+            |t: Option<u32>| t.map_or_else(|| tr("No bolts").to_string(), |t| format!("M{t}"));
+        crate::props::Combo::new("Bolts")
+            .selected_text(name(now))
+            .show_ui(ui, |ui| {
+                let all = std::iter::once(None).chain(
+                    creabim_core::framing::BOLT_PARTS
+                        .iter()
+                        .map(|p| Some(p.thread)),
+                );
+                for t in all {
+                    if ui.selectable_label(now == t, name(t)).clicked() && now != t {
+                        f.bolt = t;
+                        label = "Collar tie bolts";
+                    }
+                }
+            });
+    }
     let ends = [
         (EndFix::Pinned, "Pinned", "A hinge: held, free to turn"),
         (EndFix::Fixed, "Fixed", "Held against turning too"),
@@ -659,6 +681,8 @@ mod tests {
             ("Rez krovu C", (16.0, yp), (-1.0, yp), 0.3),
             // through a rafter: its seats on the plate and the purlin
             ("Rez krovu D", (7.725, 13.0), (7.725, -1.0), 0.2),
+            // along a collar tie's bolt
+            ("Rez krovu E", (16.0, 3.2522), (-1.0, 3.2522), 0.2),
         ] {
             let mut sv = creabim_core::View::plan(roof);
             sv.kind = ViewKind::Section {
@@ -966,7 +990,7 @@ mod tests {
         }
         // collar ties 50/200, a pair either side of a rafter, their ends
         // cut at the roof's pitch
-        for xp in [rx0 + 0.9 * 2.0, rx0 + 0.9 * 4.0] {
+        for xp in [rx0 + 0.9 * 2.0, rx0 + 0.9 * 3.0] {
             // their tops at the rafters' tops, 3 m in from the plates
             let zc = z0 + 3.0 * t;
             let mut c = beam(

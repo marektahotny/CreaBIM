@@ -110,6 +110,68 @@ pub fn side_profile_mesh(p: &creabim_core::framing::SideProfile) -> TriMesh {
     m
 }
 
+/// A bolt through collar ties and a rafter: the rod, and a washer and a
+/// nut each side.
+pub fn bolt_mesh(b: &creabim_core::framing::Bolt) -> TriMesh {
+    let mut m = TriMesh::default();
+    let Some(p) = creabim_core::framing::bolt_parts(b.thread) else {
+        return m;
+    };
+    let ring = |r: f64, n: usize, turn: f64| -> Vec<DVec2> {
+        (0..n)
+            .map(|i| {
+                let a = turn + i as f64 / n as f64 * std::f64::consts::TAU;
+                DVec2::new(a.cos(), a.sin()) * r
+            })
+            .collect()
+    };
+    let rod = ring(b.thread as f64 / 2000.0, 16, 0.0);
+    let washer = ring(p.d2 / 2000.0, 24, 0.0);
+    // a hexagon across flats s: its corners at s / √3 out
+    let nut = ring(p.s / 1000.0 / 3f64.sqrt(), 6, std::f64::consts::FRAC_PI_6);
+    let (g, h, n) = (b.grip / 2.0, p.h / 1000.0, p.m / 1000.0);
+    let len = b.length() / 2.0;
+    let mut add = |pts: &[DVec2], z0: f64, z1: f64| {
+        m.append(&slab_mesh(pts, z1, z1 - z0));
+    };
+    add(&rod, -len, len);
+    for s in [-1.0, 1.0] {
+        let (a, c) = (s * g, s * (g + h));
+        add(&washer, a.min(c), a.max(c));
+        let (a, c) = (s * (g + h), s * (g + h + n));
+        add(&nut, a.min(c), a.max(c));
+    }
+    // x up, y across the axis, z along it
+    let ez = b.axis;
+    let ex = DVec3::Z;
+    let ey = ez.cross(ex);
+    let turn = |v: [f32; 3]| {
+        let v = DVec3::new(v[0] as f64, v[1] as f64, v[2] as f64);
+        ex * v.x + ey * v.y + ez * v.z
+    };
+    for q in m.positions.iter_mut() {
+        *q = (b.at + turn(*q)).as_vec3().to_array();
+    }
+    for nn in m.normals.iter_mut() {
+        *nn = turn(*nn).as_vec3().to_array();
+    }
+    m
+}
+
+/// The bolts a collar tie carries (those it is the first of), as one
+/// mesh; none for anything else.
+pub fn collar_bolts_mesh(model: &Model, e: &Element) -> Option<TriMesh> {
+    let f = creabim_core::framing::of(e)?;
+    f.bolt?;
+    let mut m = TriMesh::default();
+    for bolt in creabim_core::framing::bolts(model) {
+        if bolt.collars.first() == Some(&e.id) {
+            m.append(&bolt_mesh(&bolt));
+        }
+    }
+    (!m.is_empty()).then_some(m)
+}
+
 /// The boxes round a timber member's tenons, in the model.
 pub fn tenon_boxes(model: &Model, e: &Element) -> Vec<(DVec3, DVec3)> {
     let Some(p) = creabim_core::framing::side_profile(model, e) else {
