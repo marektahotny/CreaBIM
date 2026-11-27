@@ -25,9 +25,6 @@ impl CreaBimApp {
         let Some(mut c) = self.med_unit.clone() else {
             return;
         };
-        if self.parked_bar(ctx, "med.unit") {
-            return;
-        }
         let t = crate::i18n::tr;
         let mut open = true;
         let mut place = false;
@@ -216,8 +213,7 @@ impl CreaBimApp {
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = Tool::Object;
-            let title = crate::i18n::tr("Medical supply unit");
-            self.park("med.unit", title, what);
+            self.park(what);
         }
         self.med_unit = if open { Some(c) } else { None };
     }

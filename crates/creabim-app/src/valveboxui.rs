@@ -25,9 +25,6 @@ impl CreaBimApp {
         let Some(mut c) = self.valve_box.clone() else {
             return;
         };
-        if self.parked_bar(ctx, "med.box") {
-            return;
-        }
         let t = crate::i18n::tr;
         let mut open = true;
         let mut place = false;
@@ -136,8 +133,7 @@ impl CreaBimApp {
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = Tool::Object;
-            let title = crate::i18n::tr("Medical gas valve box");
-            self.park("med.box", title, what);
+            self.park(what);
         }
         self.valve_box = if open { Some(c) } else { None };
     }

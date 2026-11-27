@@ -111,6 +111,22 @@ fn hole_of(p: &creabim_core::mep::Pipe) -> (bool, [f64; 2], String) {
     }
 }
 
+/// From what size a pipe's or duct's hole through a wall or a slab is
+/// taken over into the architect's and the structural drawings, mm
+/// (George 2026-11-27: "prestupy cez steny väčších potrubí, jedno aká
+/// profesia"; "patria aj do výkresov STA"; "daj od DN80").
+pub const MIN_DIMENSION_MM: f64 = 80.0;
+
+/// A pipe's or duct's own size, mm: a round one's diameter (a pipe's
+/// outside where it is known), a rectangular duct's bigger side.
+pub fn pipe_dimension_mm(p: &creabim_core::mep::Pipe) -> f64 {
+    match p.height_mm {
+        Some(h) => p.nominal_mm.max(h),
+        None if p.kind().is_air() => p.nominal_mm,
+        None => p.outer_mm.max(p.nominal_mm),
+    }
+}
+
 /// Every place a trade's pipe passes through a wall, a slab, a ceiling or
 /// a roof (where no penetration was drawn there by hand).
 pub fn crossings(model: &Model) -> Vec<Crossing> {
@@ -268,6 +284,19 @@ pub fn crossings(model: &Model) -> Vec<Crossing> {
             }
         }
     }
+    // the bigger pipes and ducts only, whatever the trade: from DN 80
+    // through walls and slabs (George 2026-11-27); a suspended ceiling's
+    // hole and an outlet through the roof whatever their size
+    out.retain(|c| match c.through {
+        Through::Wall | Through::Slab => model
+            .get(c.pipe)
+            .and_then(|e| match &e.kind {
+                ElementKind::Pipe(p) => Some(pipe_dimension_mm(p)),
+                _ => None,
+            })
+            .is_some_and(|d| d >= MIN_DIMENSION_MM - 1e-6),
+        Through::Ceiling | Through::Roof => true,
+    });
     // a pipe's two pieces meeting in a wall or a slab: once
     let mut kept: Vec<Crossing> = vec![];
     for c in out {
@@ -704,6 +733,101 @@ pub fn roof_items(model: &Model, mm: f64) -> Vec<PlanItem> {
             format!("{} {} – vyvedenie nad strechu", c.code, c.pipe_size),
             mm,
         ));
+    }
+    out
+}
+
+/// The trades' penetrations a section from `start` to `end` cuts, in the
+/// section's own coordinates (along the line from `start`, height), drawn
+/// as holes: outlined and crossed where the cut plane passes through them,
+/// each with its label beside it, at the paper size of a drawing of `mm`
+/// metres per paper millimetre (George 2026-11-27: penetrations of the
+/// bigger pipes correctly drawn in ASR, and in STA). A structural section
+/// shows only what passes load-bearing walls and slabs.
+pub fn section_items(
+    model: &Model,
+    start: DVec2,
+    end: DVec2,
+    mm: f64,
+    structural: bool,
+) -> Vec<PlanItem> {
+    let mut out = vec![];
+    let len = start.distance(end);
+    if len < 1e-6 {
+        return out;
+    }
+    let u = (end - start) / len;
+    let n = u.perp();
+    for c in crossings(model) {
+        if structural && !c.bearing {
+            continue;
+        }
+        let q = c.at.truncate();
+        let along = (q - start).dot(u);
+        let off = (q - start).dot(n);
+        if along < -1e-6 || along > len + 1e-6 {
+            continue;
+        }
+        // the hole's footprint in plan about its middle: two half axes
+        let (ax, ay, lo, hi) = match c.through {
+            Through::Wall => {
+                let Some(ElementKind::Wall(w)) = model.get(c.host).map(|h| &h.kind) else {
+                    continue;
+                };
+                (
+                    c.dir * c.size[0] / 2.0,
+                    c.dir.perp() * w.thickness / 2.0,
+                    c.at.z - c.size[1] / 2.0,
+                    c.at.z + c.size[1] / 2.0,
+                )
+            }
+            through => {
+                let (lo, hi) = match (through, model.get(c.host).map(|h| &h.kind)) {
+                    (Through::Slab, Some(ElementKind::Slab(s))) => {
+                        (c.at.z - s.thickness / 2.0, c.at.z + s.thickness / 2.0)
+                    }
+                    (Through::Ceiling, Some(ElementKind::Ceiling(x))) => x.span(model),
+                    (Through::Roof, Some(ElementKind::Roof(r))) => (
+                        c.at.z - r.vertical_thickness() / 2.0,
+                        c.at.z + r.vertical_thickness() / 2.0,
+                    ),
+                    _ => continue,
+                };
+                if c.round {
+                    // a round hole cut by the plane: the chord at its offset
+                    let r = c.size[0] / 2.0;
+                    if off.abs() > r {
+                        continue;
+                    }
+                    let h = (r * r - off * off).sqrt();
+                    (u * h, n * 1e-9, lo, hi)
+                } else {
+                    (
+                        DVec2::X * c.size[0] / 2.0,
+                        DVec2::Y * c.size[1] / 2.0,
+                        lo,
+                        hi,
+                    )
+                }
+            }
+        };
+        // the plane passes through it, and how wide it is along the cut
+        let reach_n = ax.dot(n).abs() + ay.dot(n).abs();
+        if off.abs() > reach_n + 1e-6 && reach_n > 1e-6 {
+            continue;
+        }
+        let half = ax.dot(u).abs() + ay.dot(u).abs();
+        if half < 1e-4 || hi - lo < 1e-4 {
+            continue;
+        }
+        let ring = vec![
+            DVec2::new(along - half, lo),
+            DVec2::new(along + half, lo),
+            DVec2::new(along + half, hi),
+            DVec2::new(along - half, hi),
+        ];
+        out.extend(crate::plan::hole_marks(c.host, &ring, Pen::Symbol));
+        out.push(beside(c.host, &ring, c.label(), mm));
     }
     out
 }

@@ -26,9 +26,6 @@ impl CreaBimApp {
         let Some(mut s) = self.radiators else {
             return;
         };
-        if self.parked_bar(ctx, "radiators") {
-            return;
-        }
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
         let o = self.heat_opts();
@@ -233,8 +230,7 @@ impl CreaBimApp {
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = Tool::Object;
-            let title = crate::i18n::tr("Radiators");
-            self.park("radiators", title, what);
+            self.park(what);
         }
         if write_now {
             self.write_results_said(found);

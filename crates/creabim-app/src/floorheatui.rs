@@ -101,9 +101,6 @@ impl CreaBimApp {
         let Some(mut s) = self.floor_heat.clone() else {
             return;
         };
-        if self.parked_bar(ctx, "floor.heat") {
-            return;
-        }
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
         let o = self.heat_opts();
@@ -460,7 +457,7 @@ impl CreaBimApp {
         }
         if let Some(k) = draw {
             self.start_ufh_zone(k);
-            self.park("floor.heat", t("Underfloor heating"), t(k.label()));
+            self.park(t(k.label()));
         }
         if let Some(c) = place {
             let unit = creabim_core::catalogue::ufhmanifold::manifold(&c);
@@ -475,8 +472,7 @@ impl CreaBimApp {
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = super::Tool::Object;
-            let title = crate::i18n::tr("Underfloor heating");
-            self.park("floor.heat", title, what);
+            self.park(what);
         }
         if !set.is_empty() {
             let mut tx = Transaction::new("Underfloor heating");

@@ -564,18 +564,132 @@ impl Trade {
         }
     }
 
-    /// Does its drawing show the element `id`: a pipe or what is on one by
-    /// its system; anything else is the building all trades draw over.
+    /// Does its drawing show the element `id`: what belongs to this trade,
+    /// the building all trades draw over and the plant every trade shows
+    /// ([`belongs`]); not another trade's pipes, devices and marks.
     pub fn shows_element(self, model: &crate::Model, id: crate::ElementId) -> bool {
-        use crate::ElementKind;
-        let pipe = |id: crate::ElementId| match model.get(id).map(|e| &e.kind) {
-            Some(ElementKind::Pipe(p)) => Some(self.shows(p.kind())),
-            _ => None,
-        };
-        match model.get(id).map(|e| &e.kind) {
-            Some(ElementKind::Pipe(p)) => self.shows(p.kind()),
-            Some(ElementKind::Valve(v)) => pipe(v.pipe).unwrap_or(true),
-            _ => true,
+        match belongs_id(model, id) {
+            Belongs::Trade(t) => t == self,
+            Belongs::Building | Belongs::Plant => true,
         }
+    }
+}
+
+/// Whose drawings an element is drawn in (George 2026-11-27: "väčšina
+/// nakresleného patrí iba pre tú profesiu, v ktorej je to kreslené; iba
+/// koordinačný výkres zobrazí všetky profesie pokope; technologické
+/// zariadenia s viacerými vstupmi a výstupmi musia byť zobrazené aj v iných
+/// profesiách").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Belongs {
+    /// The building, its furniture and its sanitary ware: every drawing.
+    Building,
+    /// One trade's alone: its pipes, ducts, what is on them, its terminals
+    /// and devices (radiators, vents, sockets, drains, medical rails…).
+    /// Only that trade's drawings and the coordination show it.
+    Trade(Trade),
+    /// A piece of plant with several inputs and outputs (a heat pump's
+    /// units, a boiler, a cylinder or tank, a water heater, a heat
+    /// recovery unit, a manifold, a pump, the electrical distribution
+    /// board): every drawing, the architect's too.
+    Plant,
+}
+
+/// Is the object type `t` a piece of plant ([`Belongs::Plant`])?
+pub fn is_plant(t: &crate::objects::ObjectType) -> bool {
+    let class = t.ifc.class.to_ascii_lowercase();
+    let family = crate::fixture::family_of_type(t);
+    if family.is_some_and(crate::fixture::is_manifold) {
+        return true;
+    }
+    // a fan-coil is a terminal on the chilled water, as a radiator is
+    if family.is_some_and(crate::fixture::is_cooling) {
+        return false;
+    }
+    matches!(
+        class.as_str(),
+        "ifcboiler"
+            | "ifctank"
+            | "ifcunitaryequipment"
+            | "ifcairtoairheatrecovery"
+            | "ifcpump"
+            | "ifcchiller"
+            | "ifcheatexchanger"
+            | "ifcelectricwaterheater"
+    )
+}
+
+/// Whose drawings the element `id` is drawn in; a tag goes with what it
+/// marks.
+pub fn belongs_id(model: &crate::Model, id: crate::ElementId) -> Belongs {
+    match model.get(id) {
+        Some(e) => match &e.kind {
+            crate::ElementKind::Tag(t) if t.host != id => match model.get(t.host) {
+                Some(h) if !matches!(h.kind, crate::ElementKind::Tag(_)) => belongs(model, h),
+                _ => Belongs::Building,
+            },
+            _ => belongs(model, e),
+        },
+        None => Belongs::Building,
+    }
+}
+
+/// Whose drawings the element `e` is drawn in.
+pub fn belongs(model: &crate::Model, e: &crate::Element) -> Belongs {
+    use crate::objects::ObjectCategory as C;
+    use crate::ElementKind;
+    let of_pipe = |id: crate::ElementId| match model.get(id).map(|e| &e.kind) {
+        Some(ElementKind::Pipe(p)) => Some(Belongs::Trade(Trade::of_system(p.kind()))),
+        _ => None,
+    };
+    match &e.kind {
+        ElementKind::Pipe(p) => Belongs::Trade(Trade::of_system(p.kind())),
+        ElementKind::Valve(v) => of_pipe(v.pipe).unwrap_or(Belongs::Building),
+        ElementKind::Circuit(_) => Belongs::Trade(Trade::Electrical),
+        ElementKind::Object(_) => {
+            let Some(t) = crate::objects::type_of(model, e) else {
+                return Belongs::Building;
+            };
+            if is_plant(t) {
+                return Belongs::Plant;
+            }
+            let class = t.ifc.class.to_ascii_lowercase();
+            let family = crate::fixture::family_of_type(t);
+            // sanitary ware and appliances are the architect's fixtures;
+            // a floor drain and an outside tap are the plumber's
+            if let Some(f) = family {
+                if crate::fixture::is_sanitary(f) {
+                    return if matches!(f, "Podlahová vpusť" | "Výtokový ventil") {
+                        Belongs::Trade(Trade::Plumbing)
+                    } else {
+                        Belongs::Building
+                    };
+                }
+            }
+            if class == "ifcsanitaryterminal" || matches!(t.category, C::Toilet) {
+                return Belongs::Building;
+            }
+            // the distribution board: in the architect's drawings too
+            // (George 2026-11-27)
+            let device = crate::electrical::device_kind(model, e);
+            if device == Some(crate::electrical::DeviceKind::Board) {
+                return Belongs::Plant;
+            }
+            // sockets, switches, lights, low current; not the appliances
+            // (a fridge, a cooker), which are furniture
+            if device.is_some_and(|k| k != crate::electrical::DeviceKind::Appliance) {
+                return Belongs::Trade(Trade::Electrical);
+            }
+            for trade in [Trade::Heating, Trade::Ventilation, Trade::MedGas] {
+                if trade.owns(model, e) {
+                    return Belongs::Trade(trade);
+                }
+            }
+            if class == "ifcwasteterminal" || class == "ifcvalve" || t.category == C::Plumbing {
+                return Belongs::Trade(Trade::Plumbing);
+            }
+            Belongs::Building
+        }
+        _ => Belongs::Building,
     }
 }

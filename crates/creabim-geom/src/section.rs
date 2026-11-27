@@ -1019,6 +1019,20 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 d.items
                     .extend(crate::etics::elevation_lines(model, *start, *end, *depth));
             }
+            // the trades' penetrations the cut passes through, in the
+            // architect's and the structural sections (George 2026-11-27)
+            if *cut
+                && creabim_core::viewmodes::DisplayMode::of(v)
+                    != creabim_core::viewmodes::DisplayMode::Services
+            {
+                d.items.extend(crate::tradepen::section_items(
+                    full,
+                    *start,
+                    *end,
+                    v.scale / 1000.0,
+                    v.structural,
+                ));
+            }
             // system lintels cut, each piece crossed: in the structural
             // sections and the architect's too (George 2026-11-25)
             if *cut {
@@ -1208,6 +1222,26 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     let services = creabim_core::viewmodes::DisplayMode::of(v)
         == creabim_core::viewmodes::DisplayMode::Services;
     let site = v.graphics.range.is_site();
+    // what a trade draws belongs to its drawings alone: the architect's
+    // and the structural engineer's leave out every trade's pipes, ducts,
+    // terminals and devices, its underfloor heating and its marks, and
+    // keep the building, its sanitary ware and the plant (heat pumps,
+    // boilers, heat recovery units…) (George 2026-11-27)
+    if !services && !site {
+        d.items.retain(|it| {
+            !matches!(
+                creabim_core::viewmodes::belongs_id(model, it.id()),
+                creabim_core::viewmodes::Belongs::Trade(_)
+            )
+        });
+    }
+    // one trade's drawing, plan, section or 3D, leaves out the other
+    // trades' (only the coordination and all the trades' show them all)
+    if services && !v.coordination {
+        if let Some(trade) = v.trade {
+            d.items.retain(|it| trade.shows_element(model, it.id()));
+        }
+    }
     if (!services && !site)
         || v.hidden
             .hides_category(creabim_core::visibility::Category::Pipes)

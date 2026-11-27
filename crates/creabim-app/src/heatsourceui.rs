@@ -5,7 +5,6 @@
 //! [`creabim_services::hpsizing`]), then placed as any catalogue object.
 
 use super::CreaBimApp;
-use super::Tool;
 use creabim_core::catalogue::heat::{self, HeatKind};
 use creabim_services::hpsizing::{self, HpInput};
 use eframe::egui::{self, Color32, Pos2, Stroke, Vec2};
@@ -267,9 +266,6 @@ impl CreaBimApp {
         let Some(mut c) = self.heat_source.clone() else {
             return;
         };
-        if self.parked_bar(ctx, "heat.source") {
-            return;
-        }
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
         let mut open = true;
@@ -487,20 +483,12 @@ impl CreaBimApp {
                 }
             });
         if place {
-            let unit = heat::unit(c.kind, c.size);
-            self.status = format!(
-                "{}: {}",
-                unit.name,
-                t("click in a plan or the 3D view to place it. Space turns it; Esc ends.")
-            );
-            let what = unit.name.clone();
-            self.plan.objects.current = Some(unit);
-            self.plan.objects.offset = None;
-            self.plan.objects.project_type = None;
-            self.plan.cancel();
-            self.plan.tool = Tool::Object;
-            let title = crate::i18n::tr("Heat source");
-            self.park("heat.source", title, what);
+            // the indoor unit first, then its outdoor one; the windows
+            // out of the way meanwhile (crate::app::heatplace)
+            let size = c.kind.size(c.size);
+            let mi = self.midea_indoor(size);
+            let units = super::heatplace::pair(c.kind, c.size, mi);
+            self.heat_place_start(ctx, &units);
         }
         self.heat_source = if open { Some(c) } else { None };
     }

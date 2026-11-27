@@ -197,6 +197,15 @@ impl Looks {
                     ElementKind::Object(_) if crate::elplan::is_device(model, e.id) => {
                         Some(Trade::Electrical)
                     }
+                    // a trade's terminals and devices in its colour, the
+                    // plant in the colour of the trade it serves
+                    ElementKind::Object(_) => match creabim_core::viewmodes::belongs(model, e) {
+                        creabim_core::viewmodes::Belongs::Trade(t) => Some(t),
+                        creabim_core::viewmodes::Belongs::Plant => {
+                            Trade::ALL.into_iter().find(|t| t.owns(model, e))
+                        }
+                        creabim_core::viewmodes::Belongs::Building => None,
+                    },
                     _ => None,
                 };
                 l.colour = trade.map(Trade::colour);

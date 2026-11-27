@@ -135,9 +135,6 @@ impl CreaBimApp {
         let Some(mut d) = self.soakaway.clone() else {
             return;
         };
-        if self.parked_bar(ctx, "site.soakaway") {
-            return;
-        }
         let stations = self.rain_stations();
         let mut load = false;
         let t = crate::i18n::tr;
@@ -465,12 +462,7 @@ impl CreaBimApp {
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = Tool::Object;
-            let title = crate::i18n::tr(if d.c.retention {
-                "Retention tank (DRENBLOK)"
-            } else {
-                "Soakaway (DRENBLOK)"
-            });
-            self.park("site.soakaway", title, what);
+            self.park(what);
         }
         self.soakaway = if open { Some(d) } else { None };
         if load {
