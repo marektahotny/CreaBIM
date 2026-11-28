@@ -713,6 +713,24 @@ pub fn drawing(view: ElementId, title: &str, model: &Model) -> PlanView {
             None,
         );
         y -= LINE + 2.0;
+        // a movement joint between loops
+        let a = DVec2::new(0.0, y - LINE / 2.0);
+        crate::heatplan::strips(
+            &mut items,
+            view,
+            &[a, a + DVec2::X * SAMPLE],
+            crate::heatplan::JOINT,
+            Some(crate::heatplan::JOINT_DASH),
+            1.0,
+        );
+        text(
+            &mut items,
+            DVec2::new(ind, y - LINE / 2.0),
+            &tr("movement joint between loops"),
+            TEXT,
+            None,
+        );
+        y -= LINE + 1.0;
         // pipes in sleeves
         let a = DVec2::new(0.0, y - LINE / 2.0);
         crate::heatplan::strips(

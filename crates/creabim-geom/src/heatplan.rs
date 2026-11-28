@@ -27,6 +27,12 @@ pub const TRANSIT: [f32; 3] = [1.0, 0.96, 0.72];
 /// The sleeves' dots, and how far a sleeve runs past a doorway's side, m.
 pub const SLEEVE: [f32; 3] = [0.15, 0.15, 0.15];
 const SLEEVE_HALF: f64 = 0.1;
+/// A movement joint between loops, and its dashes, paper mm.
+pub const JOINT: [f32; 3] = [0.0, 0.0, 0.0];
+pub const JOINT_DASH: (f64, f64) = (6.0, 1.0);
+/// Half a sleeve where a connecting pipe crosses a joint, m (STN EN
+/// 1264-4 4.2.2.9.4: about 0.3 m).
+const JOINT_SLEEVE_HALF: f64 = 0.15;
 /// The pipes of a bundle apart, m.
 const PITCH: f64 = 0.05;
 
@@ -402,6 +408,33 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
                     strips(&mut out, e.id, &o, SLEEVE, Some((0.3, 0.5)), mm);
                 }
             }
+            // and where they cross a joint between the room's loops
+            for j in creabim_core::underfloor::joints(&shape.outline, u) {
+                for pipe in [&sup, &ret] {
+                    for w in pipe.windows(2) {
+                        let (a, b) = (w[0], w[1]);
+                        let (r, q) = (b - a, j[1] - j[0]);
+                        let den = r.perp_dot(q);
+                        if den.abs() < 1e-12 {
+                            continue;
+                        }
+                        let t = (j[0] - a).perp_dot(q) / den;
+                        let v = (j[0] - a).perp_dot(r) / den;
+                        if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&v) {
+                            let x = a + r * t;
+                            let d = r.normalize_or_zero() * JOINT_SLEEVE_HALF;
+                            strips(
+                                &mut out,
+                                e.id,
+                                &[x - d, x + d],
+                                SLEEVE,
+                                Some((0.3, 0.5)),
+                                mm,
+                            );
+                        }
+                    }
+                }
+            }
             strips(&mut out, e.id, &sup, SUPPLY, None, mm);
             strips(&mut out, e.id, &ret, RETURN, Some(DASH), mm);
             k += 1;
@@ -425,6 +458,10 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
             }
         }
         zone_items(&mut out, e.id, u, mm);
+        // the movement joints between its loops
+        for j in creabim_core::underfloor::joints(&shape.outline, u) {
+            strips(&mut out, e.id, &j, JOINT, Some(JOINT_DASH), mm);
+        }
         let n = loops.len().max(1);
         let which = if n > 1 {
             format!("{}-{}", circuits + 1, circuits + n)
