@@ -135,7 +135,7 @@ impl Layout {
 }
 
 /// The order element categories are listed in: as a house is built.
-pub const CATEGORY_ORDER: [&str; 22] = [
+pub const CATEGORY_ORDER: [&str; 23] = [
     "Footings",
     "Foundation slabs",
     "Reinforcement",
@@ -155,6 +155,7 @@ pub const CATEGORY_ORDER: [&str; 22] = [
     "Thresholds",
     "Outer sills",
     "Inner sills",
+    "Penetrations",
     "Tiling",
     "Objects",
     "Masses",
@@ -570,7 +571,7 @@ pub fn lines(model: &Model) -> Vec<Line> {
                     _ => 0.0,
                 },
                 label: lintel_label(model, e).or_else(|| match &e.kind {
-                    ElementKind::Part(p) => p.chimney.map(|c| c.label(whole.length)),
+                    ElementKind::Part(p) => p.chimney.map(|c| c.label()),
                     _ => None,
                 }),
             });
@@ -1019,6 +1020,7 @@ mod tests {
         let c = crate::chimney::Chimney {
             system: crate::chimney::System::Absolut,
             flue: 200,
+            ..Default::default()
         };
         let e = Element::new(
             "Chimney",
@@ -1041,7 +1043,7 @@ mod tests {
         assert!((l.quantity.volume - area * 6.0).abs() < 1e-3);
         assert_eq!(
             l.label.as_deref(),
-            Some("Schiedel ABSOLUT 20 – 380 × 380 mm (80 kg/m)")
+            Some("Schiedel ABSOLUT 20 – 380 × 380 mm (87,1 kg/m)")
         );
     }
 

@@ -799,6 +799,7 @@ impl CreaBimApp {
             "render3d" => self.render_items(),
             "viewstyle" => self.view_style_items(),
             "wall.location" => self.wall_location_items(),
+            "chimney.type" => crate::partstool::chimney_type_items(&self.plan),
             "tempdims.ref" => self.temp_ref_items(),
             "view.reno" => self.reno_items(),
             "type.tool" => self.tool_type_items(),

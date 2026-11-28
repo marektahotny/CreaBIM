@@ -1,4 +1,11 @@
 {
+ "Penetrations": "Prostupy",
+ "Penetration through a wall th. {t} mm – {s}": "Prostup stěnou tl. {t} mm – {s}",
+ "Penetration through a load-bearing wall th. {t} mm – {s}": "Prostup nosnou stěnou tl. {t} mm – {s}",
+ "Penetration through a slab th. {t} mm – {s}": "Prostup stropní deskou tl. {t} mm – {s}",
+ "Penetration through a slab – {s}": "Prostup stropní deskou – {s}",
+ "Penetration through a suspended ceiling th. {t} mm – {s}": "Prostup podhledem tl. {t} mm – {s}",
+ "Penetration through the roof th. {t} mm – {s}": "Prostup střechou tl. {t} mm – {s}",
  "{m} – strip footing w. {w} mm": "{m} – základový pás š. {w} mm",
  "{m} – pad footing {a} × {b} mm": "{m} – patka {a} × {b} mm",
  "{m} – pile Ø {d} mm, length {h} mm": "{m} – pilota Ø {d} mm, hloubka {h} mm",
@@ -9068,7 +9075,6 @@
  "placed": "umístěn",
  "Click on for the next chimney.": "Klikněte dál pro další komín.",
  "The Schiedel system of new chimneys": "Systém Schiedel nových komínů",
- "The flue of new chimneys, inner Ø in mm": "Průduch nových komínů, světlý Ø v mm",
  "Height of new chimneys' undersides above the level": "Výška spodku nových komínů nad podlažím",
  "Height of new chimneys, from their underside to their top": "Výška nových komínů od spodku po vrchol",
  "The turn of new chimneys' blocks in plan": "Pootočení tvárnic nových komínů v půdorysu",
@@ -9076,8 +9082,6 @@
  "Outer diameter": "Vnější průměr",
  "Liner wall": "Tloušťka vložky",
  "Chimney weight": "Hmotnost",
- "block 33 cm": "tvárnice 33 cm",
- "chimney blocks": "tvárnic",
  "Place chimney": "Umístit komín",
  "Chimney type": "Typ komína",
  "on the outside": "zvenku",
@@ -9227,5 +9231,13 @@
  "The edge zone lies outside the room.": "Okrajová zóna leží mimo místnost.",
  "Edge zone added:": "Okrajová zóna přidána:",
  "its pipes": "rozteč trubek",
- "Change its spacing or switch it off in the Underfloor heating window. Ctrl+Z to undo.": "Rozteč změníte nebo zónu vypnete v okně Podlahové vytápění. Ctrl+Z vrátí zpět."
+ "Change its spacing or switch it off in the Underfloor heating window. Ctrl+Z to undo.": "Rozteč změníte nebo zónu vypnete v okně Podlahové vytápění. Ctrl+Z vrátí zpět.",
+ "One flue": "Jednoprůduch",
+ "One flue with a shaft": "Jednoprůduch se šachtou",
+ "Two flues": "Dvouprůduch",
+ "Two flues with a shaft": "Dvouprůduch se šachtou",
+ "The flues of new chimneys, inner Ø in cm, and their ventilation shaft": "Průduchy nových komínů, světlý Ø v cm, a jejich větrací šachta",
+ "shaft": "šachta",
+ "STN 73 4301 čl. 4.2.2.2: at least 15 m³/h of fresh air a person present, and 0.5 air changes an hour of the dwelling.": "STN 73 4301 čl. 4.2.2.2: nejméně 15 m³/h čerstvého vzduchu na přítomnou osobu a zároveň průměrně 0,5násobná výměna vzduchu bytu za hodinu.",
+ "STN 73 4301 čl. 4.2.2.2 least fresh air": "Nejmenší přívod čerstvého vzduchu podle STN 73 4301 čl. 4.2.2.2"
 }

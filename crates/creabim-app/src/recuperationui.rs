@@ -68,6 +68,9 @@ impl CreaBimApp {
                     );
                     ui.label(t("runs into one valve"));
                     ui.add(egui::DragValue::new(&mut o.runs_per_valve).range(1..=2));
+                    ui.label(t("Persons"));
+                    ui.add(egui::DragValue::new(&mut o.persons).range(1..=20))
+                        .on_hover_text(t("STN 73 4301 čl. 4.2.2.2: at least 15 m³/h of fresh air a person present, and 0.5 air changes an hour of the dwelling."));
                     ui.label(t("unit run at most at"));
                     let mut pc = o.use_of_unit * 100.0;
                     if ui
@@ -106,6 +109,17 @@ impl CreaBimApp {
                     ))
                     .strong(),
                 );
+                if d.need_norm > 0.0 {
+                    ui.label(format!(
+                        "{}: max(0,5 1/h × {} m³ = {} m³/h; 15 m³/h × {} = {} m³/h) = {} m³/h",
+                        t("STN 73 4301 čl. 4.2.2.2 least fresh air"),
+                        num(d.volume, 0),
+                        num(0.5 * d.volume, 0),
+                        o.persons,
+                        15 * o.persons,
+                        num(d.need_norm, 0),
+                    ));
+                }
                 if !d.branches.is_empty() {
                     ui.label(format!(
                         "{}: {} {} Pa · {} {} Pa · {} {} · GP Ø75 {} m",
