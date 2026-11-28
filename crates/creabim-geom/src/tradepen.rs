@@ -9,7 +9,7 @@
 //! is made, so they follow the trade's design without being kept twice: a
 //! wall a pipe runs through, a floor or ceiling slab, a suspended ceiling
 //! (podhľad) and the roof. The hole is the pipe's outer size with its
-//! insulation, rounded up to whole centimetres; no clearance is added.
+//! insulation and 20 mm of clearance, rounded up to whole centimetres.
 
 use creabim_core::mep::SystemKind;
 use creabim_core::viewmodes::Trade;
@@ -81,9 +81,15 @@ fn mm(v: f64) -> String {
     format!("{}", (v * 1000.0).round() as i64)
 }
 
-/// The hole a pipe needs: its outer size with its insulation.
+/// What a hole is made bigger than the pipe with its insulation, m: 20 mm
+/// on its size, 10 mm all round (George 2026-11-28: "Prestupy: áno, daj
+/// +20 mm").
+pub const CLEARANCE: f64 = 0.02;
+
+/// The hole a pipe needs: its outer size with its insulation and the
+/// clearance ([`CLEARANCE`]), up to whole centimetres.
 fn hole_of(p: &creabim_core::mep::Pipe) -> (bool, [f64; 2], String) {
-    let ins = p.insulation() / 1000.0;
+    let ins = p.insulation() / 1000.0 + CLEARANCE / 2.0;
     match p.height_mm {
         Some(h) => {
             let w = p.nominal_mm / 1000.0;
@@ -911,9 +917,10 @@ mod tests {
         let c = crossings(&m);
         assert_eq!(c.len(), 2, "{c:?}");
         let wall = c.iter().find(|c| c.through == Through::Wall).unwrap();
-        // Ø160 with 30 mm insulation: a Ø220 hole, its bottom at 2 290
-        assert_eq!(wall.size, [0.22, 0.22]);
-        assert_eq!(wall.label(), "P Ø220 VZT sp. 2 290");
+        // Ø160 with 30 mm insulation and 20 mm clearance: a Ø240 hole,
+        // its bottom at 2 280
+        assert_eq!(wall.size, [0.24, 0.24]);
+        assert_eq!(wall.label(), "P Ø240 VZT sp. 2 280");
         let items = plan_items(&m, ElementId::new(), l, 1.2, 0.05, false);
         let texts: Vec<_> = items
             .iter()
@@ -925,11 +932,11 @@ mod tests {
             })
             .collect();
         assert!(
-            texts.contains(&"P Ø220 VZT (podhľad)".to_string()),
+            texts.contains(&"P Ø240 VZT (podhľad)".to_string()),
             "{texts:?}"
         );
         assert!(
-            texts.contains(&"P Ø220 VZT sp. 2 290".to_string()),
+            texts.contains(&"P Ø240 VZT sp. 2 280".to_string()),
             "{texts:?}"
         );
         // a structural plan: the load-bearing wall's hole, never the
@@ -943,7 +950,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(st, vec!["P Ø220 VZT sp. 2 290".to_string()]);
+        assert_eq!(st, vec!["P Ø240 VZT sp. 2 280".to_string()]);
         // each label's leader ends on its penetration: the wall's on the
         // wall's axis where the duct crosses it, the ceiling's on the duct
         let anchors: Vec<DVec2> = items
