@@ -27,6 +27,9 @@ pub enum Grab {
 pub struct Picked {
     pub room: Option<(ElementId, usize)>,
     pub drag: Option<(Grab, DVec2)>,
+    /// A drag of a manifold's main route: the manifold, the point (or,
+    /// when inserting, the segment) and where it set out.
+    pub route: Option<(ElementId, usize, bool, DVec2)>,
 }
 
 fn zones_on(doc: &Document, level: ElementId) -> Vec<(ElementId, usize, Zone)> {
@@ -150,6 +153,9 @@ pub fn handle(
         return None;
     }
     let px = 1.0 / xf.scale as f64;
+    if let Some(r) = route(doc, level, xf, response, painter, state, selection, px) {
+        return Some(r);
+    }
     // the picked zone stays picked while its room is
     if let Some((room, _)) = state.ufh_zone_pick.room {
         if !selection.contains(room) {
@@ -210,7 +216,7 @@ pub fn handle(
             Some((room, k, _)) => {
                 state.ufh_zone_pick = Picked {
                     room: Some((room, k)),
-                    drag: None,
+                    ..Picked::default()
                 };
                 selection.only(room);
                 return Some(Some(crate::i18n::tr("Zone picked: drag it to move it, a corner to reshape it, an edge zone's dashed line to change its width; Delete takes it away.").to_string()));
@@ -245,5 +251,96 @@ fn outline(painter: &egui::Painter, xf: &Xf, z: &Zone, dragging: bool) {
             [xf.to_screen(m[0]), xf.to_screen(m[1])],
             Stroke::new(3.0, c),
         );
+    }
+}
+
+/// The selected manifold's main route: not printed, shown only while the
+/// manifold is selected, its points dragged and a midpoint dragged to put
+/// in a new one (George 2026-11-28: "bude sa dat editovat ako ciara").
+#[allow(clippy::too_many_arguments)]
+fn route(
+    doc: &mut Document,
+    level: ElementId,
+    xf: &Xf,
+    response: &egui::Response,
+    painter: &egui::Painter,
+    state: &mut PlanState,
+    selection: &crate::selection::Selection,
+    px: f64,
+) -> Option<Option<String>> {
+    let (id, pts) = doc.model().iter().find_map(|e| match &e.kind {
+        ElementKind::Object(ob)
+            if ob.level == level && ob.route.len() >= 2 && selection.contains(e.id) =>
+        {
+            Some((e.id, ob.route.clone()))
+        }
+        _ => None,
+    })?;
+    let mids: Vec<DVec2> = pts.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
+    if response.drag_started_by(egui::PointerButton::Primary) {
+        if let Some(p0) = response.interact_pointer_pos().map(|p| xf.to_world(p)) {
+            if let Some(i) = pts.iter().position(|c| c.distance(p0) < 8.0 * px) {
+                state.ufh_zone_pick.route = Some((id, i, false, p0));
+            } else if let Some(i) = mids.iter().position(|c| c.distance(p0) < 8.0 * px) {
+                state.ufh_zone_pick.route = Some((id, i, true, p0));
+            }
+        }
+    }
+    let mut shown = pts.clone();
+    if let Some((rid, i, insert, p0)) = state.ufh_zone_pick.route.filter(|r| r.0 == id) {
+        let now = response
+            .interact_pointer_pos()
+            .or(response.hover_pos())
+            .map(|p| xf.to_world(p))
+            .unwrap_or(p0);
+        if insert {
+            shown.insert(i + 1, mids[i] + (now - p0));
+        } else if let Some(p) = shown.get_mut(i) {
+            *p += now - p0;
+        }
+        draw_route(painter, xf, &shown, true);
+        if response.drag_stopped() || !response.dragged() {
+            state.ufh_zone_pick.route = None;
+            if now.distance(p0) > 1e-4 {
+                let before = doc.model().get(rid)?.clone();
+                let mut after = before.clone();
+                if let ElementKind::Object(ob) = &mut after.kind {
+                    ob.route = shown;
+                }
+                let what = "Main route changed";
+                return Some(Some(
+                    match doc.commit(Transaction::new(what).replace(before, after)) {
+                        Ok(()) => format!("{}. Ctrl+Z to undo.", crate::i18n::tr(what)),
+                        Err(e) => e.to_string(),
+                    },
+                ));
+            }
+        }
+        return Some(None);
+    }
+    draw_route(painter, xf, &shown, false);
+    None
+}
+
+/// A main route drawn on screen only: a thin line, its points' grips and
+/// small grips at its segments' midpoints.
+fn draw_route(painter: &egui::Painter, xf: &Xf, pts: &[DVec2], dragging: bool) {
+    let c = if dragging {
+        Color32::from_rgb(230, 120, 0)
+    } else {
+        Color32::from_rgb(200, 40, 160)
+    };
+    let s: Vec<egui::Pos2> = pts.iter().map(|p| xf.to_screen(*p)).collect();
+    painter.add(egui::Shape::dashed_line(&s, Stroke::new(2.0, c), 10.0, 5.0));
+    for p in &s {
+        painter.rect_filled(
+            egui::Rect::from_center_size(*p, egui::vec2(7.0, 7.0)),
+            1.0,
+            c,
+        );
+    }
+    for w in s.windows(2) {
+        let m = w[0] + (w[1] - w[0]) / 2.0;
+        painter.circle_stroke(m, 4.0, Stroke::new(1.5, c));
     }
 }

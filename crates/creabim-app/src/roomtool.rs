@@ -30,6 +30,9 @@ pub enum UfhZone {
     Edge,
     Reduced,
     Hole,
+    /// A manifold's main route of the connecting pipes (George
+    /// 2026-11-28), an open line like an edge zone's.
+    Route,
 }
 
 impl UfhZone {
@@ -38,6 +41,7 @@ impl UfhZone {
             UfhZone::Edge => "Edge zone",
             UfhZone::Reduced => "Place of reduced output",
             UfhZone::Hole => "Hole with no pipe",
+            UfhZone::Route => "Main route",
         }
     }
 }
@@ -229,6 +233,7 @@ fn ufh_zone(
         }
         UfhZone::Reduced => ZoneKind::Reduced { percent: 50.0 },
         UfhZone::Hole => ZoneKind::Hole,
+        UfhZone::Route => return Ok(String::new()),
     };
     let mut after = before.clone();
     if let ElementKind::Room(r) = &mut after.kind {

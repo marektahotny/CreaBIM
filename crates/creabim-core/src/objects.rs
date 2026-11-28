@@ -855,6 +855,11 @@ pub struct Object {
     /// otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub own: Option<Box<ObjectType>>,
+    /// A manifold's main route of the underfloor heating's connecting
+    /// pipes, drawn by hand along the corridor, in plan (George
+    /// 2026-11-28): the loops' supplies and returns run along it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route: Vec<DVec2>,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -870,6 +875,7 @@ impl Object {
             rotation,
             mark: None,
             own: None,
+            route: vec![],
         }
     }
 

@@ -9259,5 +9259,20 @@
  "bend": "ohyb",
  "from the wall": "od steny",
  "the radiators": "radiátory",
- "together": "spolu"
+ "together": "spolu",
+ "Nothing heats the room: no underfloor heating loop and no radiator on the manifold cover its loss of": "Miestnosť nič nevykuruje: jej stratu nepokrýva žiadny okruh podlahového vykurovania ani radiátor na rozdeľovači, strata",
+ "the pipes passing through": "prechádzajúce potrubia",
+ "more than its loss: insulate them there": "viac ako jej strata: tu ich treba izolovať",
+ "a spiral off the return of the loop of": "špirála zo spiatočky okruhu miestnosti",
+ "spacing": "rozostup",
+ "Its loss is not covered:": "Jej strata nie je pokrytá:",
+ "Main route": "Hlavná trasa",
+ "Main route drawn.": "Hlavná trasa nakreslená.",
+ "Main route changed": "Hlavná trasa zmenená",
+ "The connecting pipes are laid along it. Ctrl+Z to undo.": "Pripojovacie potrubia sa vedú po nej. Upraví sa ťahaním jej bodov pri vybranom rozdeľovači. Ctrl+Z vráti späť.",
+ "Place a manifold on the storey first.": "Najprv osaďte na podlažie rozdeľovač.",
+ "Sketch with a polyline from the manifold where the connecting pipes go, mostly along the corridor. It is not printed; edit it like a line and the pipes follow it.": "Načrtnite lomenou čiarou od rozdeľovača, kadiaľ vedú pripojovacie potrubia, hlavne chodbou. Netlačí sa; upravuje sa ako čiara (pri vybranom rozdeľovači) a potrubia sa jej vždy prispôsobia.",
+ "click from the manifold along the corridor where the connecting pipes go; Enter finishes it.": "klikajte od rozdeľovača po chodbe, kadiaľ vedú pripojovacie potrubia; Enter ju ukončí.",
+ "Main route ({} points): click from the manifold along the corridor where the connecting pipes go. Enter, right-click or a double-click finishes it. Backspace takes back a point, Esc cancels.": "Hlavná trasa ({} bodov): klikajte od rozdeľovača po chodbe, kadiaľ vedú pripojovacie potrubia. Enter, pravé tlačidlo alebo dvojklik ju ukončí. Backspace vráti bod, Esc zruší.",
+ "Pipes passing through insulated": "Prechádzajúce potrubia izolované"
 }
