@@ -426,6 +426,87 @@ pub fn pipe(s: &Settings, maker: &str) -> Pipe {
         })
 }
 
+/// The rooms with underfloor heating open to each other (a room
+/// separator on their common edge, no wall) taken as one space: each
+/// knows the others, and the space's loss and what its floors give.
+fn open_spaces(model: &Model, rooms: &[heatloss::RoomAt<'_>], designs: &mut [RoomDesign]) {
+    use creabim_core::ElementKind;
+    let seps: Vec<(ElementId, glam::DVec2, glam::DVec2)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::RoomSeparator(s) => Some((s.level, s.a, s.b)),
+            _ => None,
+        })
+        .collect();
+    if seps.is_empty() {
+        return;
+    }
+    let near = |o: &[glam::DVec2], p: glam::DVec2| {
+        (0..o.len()).any(|i| {
+            let (a, b) = (o[i], o[(i + 1) % o.len()]);
+            let d = b - a;
+            let t = ((p - a).dot(d) / d.length_squared().max(1e-12)).clamp(0.0, 1.0);
+            (a + d * t).distance(p) < 0.05
+        })
+    };
+    let on: Vec<(usize, ElementId, ElementId, Vec<glam::DVec2>)> = designs
+        .iter()
+        .enumerate()
+        .filter(|(_, x)| x.on)
+        .filter_map(|(i, x)| {
+            let r = rooms.iter().find(|r| r.e.id == x.id)?;
+            Some((i, x.id, r.level, r.shape.outline.clone()))
+        })
+        .collect();
+    // which open to which, joined into spaces
+    let mut group: Vec<usize> = (0..designs.len()).collect();
+    fn root(g: &mut [usize], i: usize) -> usize {
+        let mut i = i;
+        while g[i] != i {
+            g[i] = g[g[i]];
+            i = g[i];
+        }
+        i
+    }
+    for (k, a) in on.iter().enumerate() {
+        for b in &on[k + 1..] {
+            if a.2 != b.2 {
+                continue;
+            }
+            let open = seps.iter().any(|(lv, p, q)| {
+                *lv == a.2
+                    && p.distance(*q) > 0.3
+                    && [*p, (*p + *q) / 2.0, *q]
+                        .iter()
+                        .all(|m| near(&a.3, *m) && near(&b.3, *m))
+            });
+            if open {
+                designs[a.0].open_to.push(b.1);
+                designs[b.0].open_to.push(a.1);
+                let (ra, rb) = (root(&mut group, a.0), root(&mut group, b.0));
+                group[ra] = rb;
+            }
+        }
+    }
+    let mut totals: std::collections::HashMap<usize, (f64, f64)> = Default::default();
+    for (i, x) in designs.iter().enumerate().filter(|(_, x)| x.on) {
+        let r = root(&mut group, i);
+        let t = totals.entry(r).or_default();
+        t.0 += x.phi;
+        t.1 += x.covered;
+    }
+    for i in 0..designs.len() {
+        if !designs[i].on || designs[i].open_to.is_empty() {
+            continue;
+        }
+        let r = root(&mut group, i);
+        if let Some((phi, covered)) = totals.get(&r) {
+            designs[i].space_phi = *phi;
+            designs[i].space_covered = *covered;
+        }
+    }
+}
+
 /// A room's underfloor heating designed.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RoomDesign {
@@ -483,6 +564,13 @@ pub struct RoomDesign {
     pub dp_kpa: f64,
     /// The floor covers the loss.
     pub ok: bool,
+    /// The rooms with underfloor heating it is open to (a room separator
+    /// between them, no wall): one space, its loss and what its floors
+    /// give together, W (George 2026-11-28: the kitchen open to the
+    /// living room). Alone, its own.
+    pub open_to: Vec<ElementId>,
+    pub space_phi: f64,
+    pub space_covered: f64,
     /// The room has it in the model.
     pub on: bool,
     /// Along its walls, m (the edge strip).
@@ -1024,6 +1112,9 @@ fn one(
         flow_ls,
         dp_kpa: loop_loss(pipe, flow_ls, loop_len),
         ok: covered >= hl.phi * 0.98,
+        open_to: vec![],
+        space_phi: hl.phi,
+        space_covered: covered,
         on: own.is_some(),
         perimeter,
         doors,
@@ -1155,6 +1246,7 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
             )
         })
         .collect();
+    open_spaces(model, &rooms, &mut out.rooms);
     for x in out.rooms.iter().filter(|x| x.on) {
         out.output_kw += x.covered / 1000.0;
         out.flow_ls += x.flow_ls * x.loops as f64;

@@ -238,12 +238,21 @@ pub fn zone_items(
                 let mut ring = o.clone();
                 ring.push(o[0]);
                 line(items, Pen::Projection, &ring);
-                line(items, Pen::Fine, &[lo, hi]);
-                line(
-                    items,
-                    Pen::Fine,
-                    &[DVec2::new(lo.x, hi.y), DVec2::new(hi.x, lo.y)],
-                );
+                // each convex part crossed by itself, not the whole
+                // bounding box (an L along the kitchen units)
+                let _ = (lo, hi);
+                for part in creabim_core::underfloor::convex_parts(o) {
+                    let (a, b) = part.iter().fold(
+                        (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+                        |(lo, hi), p| (lo.min(*p), hi.max(*p)),
+                    );
+                    line(items, Pen::Fine, &[a, b]);
+                    line(
+                        items,
+                        Pen::Fine,
+                        &[DVec2::new(a.x, b.y), DVec2::new(b.x, a.y)],
+                    );
+                }
             }
         }
     }
@@ -305,7 +314,7 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
         .iter()
         .filter_map(|e| match &e.kind {
             ElementKind::Room(r) if r.level == level => {
-                Some((e, r, r.ufh.as_ref()?, room::shape_of(model, r)?))
+                Some((e, r, r.ufh.clone()?, room::shape_of(model, r)?))
             }
             _ => None,
         })
@@ -318,6 +327,12 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
     let settings: floorheat::Settings =
         creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
     let design = floorheat::design(model, &heatloss::Opts::default(), &settings);
+    // as many loops drawn as the design lays (George 2026-11-28)
+    for rm in rooms.iter_mut() {
+        if let Some(x) = design.rooms.iter().find(|x| x.id == rm.0.id && x.on) {
+            rm.2.loops = x.loops.max(1);
+        }
+    }
     let storey = model.get(level).map_or(String::new(), |e| e.name.clone());
     let pipe = design
         .pipe

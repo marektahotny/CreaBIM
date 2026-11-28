@@ -922,6 +922,20 @@ pub fn loops(outline: &[DVec2], u: &Underfloor) -> Vec<Spiral> {
 pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec<Spiral> {
     let tidied = tidy(outline, 0.05);
     let strips = split_zones(&tidied, u.loops.max(1) as usize, u.split.as_ref());
+    // the holes along the walls (under kitchen units) taken off the field
+    // the coil is laid in, so it goes round them as one pipe
+    let holes: Vec<&[DVec2]> = u.holes().map(|z| &z.outline[..]).collect();
+    let strips: Vec<Vec<DVec2>> = strips
+        .into_iter()
+        .map(|z| {
+            if holes.is_empty() {
+                return z;
+            }
+            square_less(&z, &holes)
+                .filter(|r| r.len() >= 3)
+                .unwrap_or(z)
+        })
+        .collect();
     let corner = |part: &[DVec2]| {
         from.map_or(0, |f| {
             (0..part.len())
@@ -939,6 +953,64 @@ pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec
             if sp.length >= 0.8 * area / u.spacing || convex_parts(z).len() < 2 {
                 return sp;
             }
+            // the rings cannot fill it (round a notch): its smaller parts
+            // a serpentine each, then on into the coil over the largest,
+            // still one pipe
+            let mut parts = convex_parts(z);
+            parts.sort_by(|a, b| {
+                crate::polygon::signed_area2(b)
+                    .abs()
+                    .total_cmp(&crate::polygon::signed_area2(a).abs())
+            });
+            let main = parts.remove(0);
+            let mut supply: Vec<DVec2> = vec![];
+            let mut length = 0.0;
+            let mut at = from;
+            while !parts.is_empty() {
+                // the nearest part next
+                let k = (0..parts.len())
+                    .min_by(|a, b| {
+                        let d = |q: &Vec<DVec2>| {
+                            at.map_or(0.0, |f| {
+                                q.iter().map(|p| p.distance(f)).fold(f64::MAX, f64::min)
+                            })
+                        };
+                        d(&parts[*a]).total_cmp(&d(&parts[*b]))
+                    })
+                    .unwrap_or(0);
+                let p = parts.remove(k);
+                let mut s = meander_at(&p, u.spacing, EDGE, u.spacing / 2.0).supply;
+                if s.len() < 2 {
+                    continue;
+                }
+                if let Some(f) = at {
+                    if s[s.len() - 1].distance(f) < s[0].distance(f) {
+                        s.reverse();
+                    }
+                }
+                if let Some(&l) = supply.last() {
+                    let c = square_corner(z, l, s[0]);
+                    length += plen(&[l, c, s[0]]);
+                    supply.push(c);
+                }
+                length += plen(&s);
+                at = s.last().copied();
+                supply.extend(s);
+            }
+            let coil = spiral(&main, u.spacing, EDGE, nearest(&main, at));
+            if let (Some(&l), Some(&f)) = (supply.last(), coil.supply.first()) {
+                let c = square_corner(z, l, f);
+                length += plen(&[l, c, f]);
+                supply.push(c);
+            }
+            length += coil.length;
+            supply.extend(coil.supply);
+            return Spiral {
+                supply,
+                ret: coil.ret,
+                length,
+                more: vec![],
+            };
         }
         let mut all = Spiral::default();
         for (k, part) in convex_parts(z).iter().enumerate() {
@@ -1180,6 +1252,106 @@ fn square_corner(z: &[DVec2], a: DVec2, b: DVec2) -> DVec2 {
     }
 }
 
+/// `poly` less `holes` when all of them are square to the plan: the
+/// largest piece left, as one outline; `None` otherwise.
+pub fn square_less(poly: &[DVec2], holes: &[&[DVec2]]) -> Option<Vec<DVec2>> {
+    let square = |q: &[DVec2]| {
+        (0..q.len()).all(|i| {
+            let d = q[(i + 1) % q.len()] - q[i];
+            // as drawn: a few millimetres off is still square
+            d.x.abs() < 0.005 || d.y.abs() < 0.005
+        })
+    };
+    if !square(poly) || !holes.iter().all(|h| square(h)) {
+        return None;
+    }
+    let mut xs: Vec<f64> = poly
+        .iter()
+        .chain(holes.iter().flat_map(|h| h.iter()))
+        .map(|p| p.x)
+        .collect();
+    let mut ys: Vec<f64> = poly
+        .iter()
+        .chain(holes.iter().flat_map(|h| h.iter()))
+        .map(|p| p.y)
+        .collect();
+    for v in [&mut xs, &mut ys] {
+        v.sort_by(f64::total_cmp);
+        v.dedup_by(|a, b| (*a - *b).abs() < 0.005);
+    }
+    let (nx, ny) = (xs.len(), ys.len());
+    if nx < 2 || ny < 2 || nx * ny > 40_000 {
+        return None;
+    }
+    let mut on = vec![false; (nx - 1) * (ny - 1)];
+    for i in 0..nx - 1 {
+        for j in 0..ny - 1 {
+            let c = DVec2::new((xs[i] + xs[i + 1]) / 2.0, (ys[j] + ys[j + 1]) / 2.0);
+            on[i * (ny - 1) + j] = crate::polygon::contains(poly, c)
+                && !holes.iter().any(|h| crate::polygon::contains(h, c));
+        }
+    }
+    let cell = |i: isize, j: isize| {
+        i >= 0
+            && j >= 0
+            && (i as usize) < nx - 1
+            && (j as usize) < ny - 1
+            && on[i as usize * (ny - 1) + j as usize]
+    };
+    // the cells' outline: an edge where a cell meets one that is off,
+    // counter-clockwise round the cells, keyed by grid corners
+    let mut next: std::collections::HashMap<(usize, usize), Vec<(usize, usize)>> =
+        Default::default();
+    for i in 0..nx - 1 {
+        for j in 0..ny - 1 {
+            if !on[i * (ny - 1) + j] {
+                continue;
+            }
+            let (ii, jj) = (i as isize, j as isize);
+            if !cell(ii, jj - 1) {
+                next.entry((i, j)).or_default().push((i + 1, j));
+            }
+            if !cell(ii + 1, jj) {
+                next.entry((i + 1, j)).or_default().push((i + 1, j + 1));
+            }
+            if !cell(ii, jj + 1) {
+                next.entry((i + 1, j + 1)).or_default().push((i, j + 1));
+            }
+            if !cell(ii - 1, jj) {
+                next.entry((i, j + 1)).or_default().push((i, j));
+            }
+        }
+    }
+    let mut best: Option<Vec<DVec2>> = None;
+    while let Some(&start) = next.keys().next() {
+        let mut ring = vec![];
+        let mut at = start;
+        loop {
+            let Some(v) = next.get_mut(&at) else { break };
+            let Some(to) = v.pop() else { break };
+            if v.is_empty() {
+                next.remove(&at);
+            }
+            ring.push(DVec2::new(xs[at.0], ys[at.1]));
+            at = to;
+            if at == start {
+                break;
+            }
+        }
+        let ring = clean(ring);
+        if ring.len() >= 3 && crate::polygon::signed_area2(&ring) > 0.0 {
+            let a = crate::polygon::signed_area2(&ring);
+            if best
+                .as_ref()
+                .is_none_or(|b| a > crate::polygon::signed_area2(b))
+            {
+                best = Some(ring);
+            }
+        }
+    }
+    best
+}
+
 /// The corner of `part` nearest `f` (its first without one).
 fn nearest(part: &[DVec2], f: Option<DVec2>) -> usize {
     f.map_or(0, |f| {
@@ -1410,5 +1582,38 @@ mod tests {
         // wider than the room: cut to it
         let z = edge_zones(&room, &[DVec2::ZERO, DVec2::new(6.0, 0.0)], false, 9.0, 0.1);
         assert!((z[0].area() - 24.0).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod hole_tests {
+    use super::*;
+
+    #[test]
+    fn a_field_goes_round_its_holes_along_the_walls() {
+        let room = vec![
+            DVec2::new(0.31, 0.31),
+            DVec2::new(2.3, 0.31),
+            DVec2::new(2.3, 3.3),
+            DVec2::new(0.31, 3.3),
+        ];
+        let units = vec![
+            DVec2::new(0.31, 0.31),
+            DVec2::new(4.29, 0.31),
+            DVec2::new(4.29, 3.3),
+            DVec2::new(3.69, 3.3),
+            DVec2::new(3.69, 0.91),
+            DVec2::new(0.31, 0.91),
+        ];
+        let fridge = vec![
+            DVec2::new(0.31, 2.2),
+            DVec2::new(2.11, 2.2),
+            DVec2::new(2.11, 2.82),
+            DVec2::new(0.31, 2.82),
+        ];
+        let left = square_less(&room, &[&units, &fridge]).unwrap();
+        let area = crate::polygon::signed_area2(&left) / 2.0;
+        let want = 1.99 * 2.39 - 1.8 * 0.62;
+        assert!((area - want).abs() < 1e-6, "{area} {want} {left:?}");
     }
 }
