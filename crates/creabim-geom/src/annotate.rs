@@ -2283,7 +2283,11 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                         centre + t.offset,
                         centre,
                         outline.as_deref(),
-                        look_of(model, t.style, t.color),
+                        {
+                            let mut look = look_of(model, t.style, t.color);
+                            look.back |= t.back;
+                            look
+                        },
                         view.scale / 1000.0,
                         creabim_core::styles::active_pack(model).room_tags,
                     ));

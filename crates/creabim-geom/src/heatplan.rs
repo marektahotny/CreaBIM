@@ -27,6 +27,12 @@ pub const TRANSIT: [f32; 3] = [1.0, 0.96, 0.72];
 /// The sleeves' dots, and how far a sleeve runs past a doorway's side, m.
 pub const SLEEVE: [f32; 3] = [0.15, 0.15, 0.15];
 const SLEEVE_HALF: f64 = 0.1;
+/// A movement joint between loops, and its dashes, paper mm.
+pub const JOINT: [f32; 3] = [0.0, 0.0, 0.0];
+pub const JOINT_DASH: (f64, f64) = (6.0, 1.0);
+/// Half a sleeve where a connecting pipe crosses a joint, m (STN EN
+/// 1264-4 4.2.2.9.4: about 0.3 m).
+const JOINT_SLEEVE_HALF: f64 = 0.15;
 /// The pipes of a bundle apart, m.
 const PITCH: f64 = 0.05;
 
@@ -232,12 +238,21 @@ pub fn zone_items(
                 let mut ring = o.clone();
                 ring.push(o[0]);
                 line(items, Pen::Projection, &ring);
-                line(items, Pen::Fine, &[lo, hi]);
-                line(
-                    items,
-                    Pen::Fine,
-                    &[DVec2::new(lo.x, hi.y), DVec2::new(hi.x, lo.y)],
-                );
+                // each convex part crossed by itself, not the whole
+                // bounding box (an L along the kitchen units)
+                let _ = (lo, hi);
+                for part in creabim_core::underfloor::convex_parts(o) {
+                    let (a, b) = part.iter().fold(
+                        (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+                        |(lo, hi), p| (lo.min(*p), hi.max(*p)),
+                    );
+                    line(items, Pen::Fine, &[a, b]);
+                    line(
+                        items,
+                        Pen::Fine,
+                        &[DVec2::new(a.x, b.y), DVec2::new(b.x, a.y)],
+                    );
+                }
             }
         }
     }
@@ -294,12 +309,39 @@ fn num(x: f64, places: usize) -> String {
 /// The underfloor heating of the rooms of `level` in a plan where `mm`
 /// drawing units make a paper millimetre; `view`'s tables of the rooms
 /// (their tags) where they were moved to.
+/// The model's underfloor heating design as the window last wrote it,
+/// worked out once per revision (every heating plan of every storey and
+/// sheet draws from it).
+fn design_of(model: &Model) -> std::sync::Arc<floorheat::Design> {
+    use std::sync::{Arc, Mutex};
+    static CACHE: Mutex<Option<(u64, u64, Arc<floorheat::Design>)>> = Mutex::new(None);
+    let key = (model as *const Model as u64, model.revision());
+    if key.1 != 0 {
+        if let Some((p, r, d)) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            if (*p, *r) == key {
+                return d.clone();
+            }
+        }
+    }
+    let settings: floorheat::Settings =
+        creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
+    let d = Arc::new(floorheat::design(
+        model,
+        &heatloss::Opts::default(),
+        &settings,
+    ));
+    if key.1 != 0 {
+        *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((key.0, key.1, d.clone()));
+    }
+    d
+}
+
 pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) -> Vec<PlanItem> {
     let mut rooms: Vec<_> = model
         .iter()
         .filter_map(|e| match &e.kind {
             ElementKind::Room(r) if r.level == level => {
-                Some((e, r, r.ufh.as_ref()?, room::shape_of(model, r)?))
+                Some((e, r, r.ufh.clone()?, room::shape_of(model, r)?))
             }
             _ => None,
         })
@@ -309,9 +351,16 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
     }
     rooms.sort_by(|a, b| (&a.1.number, &a.0.name).cmp(&(&b.1.number, &b.0.name)));
     // as the window last wrote it
+    let design = design_of(model);
     let settings: floorheat::Settings =
         creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
-    let design = floorheat::design(model, &heatloss::Opts::default(), &settings);
+    // as many loops drawn as the design lays (George 2026-11-28)
+    for rm in rooms.iter_mut() {
+        if let Some(x) = design.rooms.iter().find(|x| x.id == rm.0.id && x.on) {
+            rm.2.loops = x.loops.max(1);
+            rm.2.wall = x.wall;
+        }
+    }
     let storey = model.get(level).map_or(String::new(), |e| e.name.clone());
     let pipe = design
         .pipe
@@ -356,6 +405,22 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
             strips(&mut out, *t, &ring, FIELD, Some((1.5, 1.0)), mm);
         }
     }
+    // each room's coils laid once, for its feeds and its loops
+    let coils: std::collections::HashMap<ElementId, Vec<creabim_core::underfloor::Spiral>> = rooms
+        .iter()
+        .map(|(e, _, u, shape)| {
+            let from = design
+                .rooms
+                .iter()
+                .find(|x| x.id == e.id)
+                .and_then(|x| x.route.as_ref())
+                .and_then(|w| w.points.last().copied());
+            (
+                e.id,
+                creabim_core::underfloor::loops_from(&shape.outline, u, from),
+            )
+        })
+        .collect();
     // each loop's supply and return from the manifold, side by side
     let mut k = 0usize;
     for (e, _, u, shape) in &rooms {
@@ -367,14 +432,10 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
         else {
             continue;
         };
-        let from = design
-            .rooms
-            .iter()
-            .find(|x| x.id == e.id)
-            .and_then(|x| x.route.as_ref())
-            .and_then(|w| w.points.last().copied());
-        let loops = creabim_core::underfloor::loops_from(&shape.outline, u, from);
-        for sp in &loops {
+        let Some(loops) = coils.get(&e.id) else {
+            continue;
+        };
+        for sp in loops {
             let (Some(a), Some(b)) = (sp.supply.first(), sp.ret.last()) else {
                 continue;
             };
@@ -402,20 +463,43 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
                     strips(&mut out, e.id, &o, SLEEVE, Some((0.3, 0.5)), mm);
                 }
             }
+            // and where they cross a joint between the room's loops
+            for j in creabim_core::underfloor::joints(&shape.outline, u) {
+                for pipe in [&sup, &ret] {
+                    for w in pipe.windows(2) {
+                        let (a, b) = (w[0], w[1]);
+                        let (r, q) = (b - a, j[1] - j[0]);
+                        let den = r.perp_dot(q);
+                        if den.abs() < 1e-12 {
+                            continue;
+                        }
+                        let t = (j[0] - a).perp_dot(q) / den;
+                        let v = (j[0] - a).perp_dot(r) / den;
+                        if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&v) {
+                            let x = a + r * t;
+                            let d = r.normalize_or_zero() * JOINT_SLEEVE_HALF;
+                            strips(
+                                &mut out,
+                                e.id,
+                                &[x - d, x + d],
+                                SLEEVE,
+                                Some((0.3, 0.5)),
+                                mm,
+                            );
+                        }
+                    }
+                }
+            }
             strips(&mut out, e.id, &sup, SUPPLY, None, mm);
             strips(&mut out, e.id, &ret, RETURN, Some(DASH), mm);
             k += 1;
         }
     }
     for (e, r, u, shape) in &rooms {
-        let from = design
-            .rooms
-            .iter()
-            .find(|x| x.id == e.id)
-            .and_then(|x| x.route.as_ref())
-            .and_then(|w| w.points.last().copied());
-        let loops = creabim_core::underfloor::loops_from(&shape.outline, u, from);
-        for sp in &loops {
+        let Some(loops) = coils.get(&e.id) else {
+            continue;
+        };
+        for sp in loops {
             for (pts, supply) in sp.pieces() {
                 if supply {
                     strips(&mut out, e.id, pts, SUPPLY, None, mm);
@@ -425,6 +509,10 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
             }
         }
         zone_items(&mut out, e.id, u, mm);
+        // the movement joints between its loops
+        for j in creabim_core::underfloor::joints(&shape.outline, u) {
+            strips(&mut out, e.id, &j, JOINT, Some(JOINT_DASH), mm);
+        }
         let n = loops.len().max(1);
         let which = if n > 1 {
             format!("{}-{}", circuits + 1, circuits + n)

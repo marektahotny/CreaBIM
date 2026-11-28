@@ -462,6 +462,8 @@ pub struct PlanState {
     /// With a stretch's number when it is that stretch's text of a
     /// dimension that is dragged, not its line.
     anno_drag: Option<(ElementId, DVec2, DVec2, Option<usize>)>,
+    /// An underfloor heating zone picked in the plan, and its drag.
+    pub ufh_zone_pick: crate::ufhzonedit::Picked,
     /// The other selected dimensions dragged along with `anno_drag`'s:
     /// each with its line's offset at the start and the way it moves.
     anno_group: Vec<(ElementId, f64, DVec2)>,
@@ -768,6 +770,7 @@ impl Default for PlanState {
             dim: vec![],
             tag_host: None,
             anno_drag: None,
+            ufh_zone_pick: Default::default(),
             witness_drag: None,
             anno_group: vec![],
             drag_owner: None,
@@ -2519,6 +2522,25 @@ fn show_pane(
                 .and_then(|h| h.at(pane, p))
                 .or_else(|| hit_test(&plan.items, xf.to_world(p), 6.0 / xf.scale as f64, mm))
         };
+        // underfloor heating zones picked, dragged and reshaped where the
+        // heating is shown (George 2026-11-28)
+        if let (Tool::Select, PaneKind::Plan { level }) = (tool, kind) {
+            let shown = match doc.model().get(view).map(|e| &e.kind) {
+                Some(ElementKind::View(v)) => {
+                    creabim_core::viewmodes::DisplayMode::of(v)
+                        == creabim_core::viewmodes::DisplayMode::Services
+                        && v.trade
+                            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Heating)
+                        && !v.ceiling_plan
+                }
+                _ => false,
+            };
+            if let Some(r) = crate::ufhzonedit::handle(
+                doc, level, &xf, &response, &painter, state, selection, shown,
+            ) {
+                return r;
+            }
+        }
         let edits = keyboard_edits(
             ui, doc, view, space, &painter, &response, state, selection, &map, &pick,
         );

@@ -161,35 +161,12 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
     let mut out = vec![];
     // drawn over the rooms' floors
     let mut loops = vec![];
-    let ufh_shown = creabim_core::viewmodes::DisplayMode::of(view)
-        == creabim_core::viewmodes::DisplayMode::Services
-        && view
-            .trade
-            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Heating);
     for e in model.iter() {
         match &e.kind {
             ElementKind::Room(r) if r.level == level => {
                 if let Some(s) = room::shape_of(model, r) {
-                    // underfloor heating loops: the supply in full lines,
-                    // the return dashed beside it
-                    // (the heating's, all the trades' and the coordination
-                    // drawings' alone: George 2026-11-27)
-                    if let (Some(u), false, true) = (&r.ufh, view.ceiling_plan, ufh_shown) {
-                        for sp in creabim_core::underfloor::loops(&s.outline, u) {
-                            for (pts, supply) in sp.pieces() {
-                                let pen = if supply { Pen::Symbol } else { Pen::Hidden };
-                                for w in pts.windows(2) {
-                                    loops.push(PlanItem::Line {
-                                        id: e.id,
-                                        pen,
-                                        a: w[0],
-                                        b: w[1],
-                                    });
-                                }
-                            }
-                        }
-                        crate::heatplan::zone_items(&mut loops, e.id, u, view.scale / 1000.0);
-                    }
+                    // underfloor heating loops are the heating plan's
+                    // (heatplan::items), drawn once there
                     // a fire drawing: the zone's wash and its code
                     let zone = r.fire_zone.trim();
                     let fire = view.fire_zones && !zone.is_empty();

@@ -487,6 +487,14 @@ pub struct CreaBimApp {
     condens: Option<condensui::Condens>,
     /// The underfloor heating window's settings, while it is open.
     floor_heat: Option<creabim_services::floorheat::Settings>,
+    /// The floor heating window's design, worked out once per model
+    /// revision and what it was given, not every frame.
+    floor_heat_design: Option<(
+        u64,
+        creabim_services::floorheat::Settings,
+        creabim_services::heatloss::Opts,
+        std::sync::Arc<creabim_services::floorheat::Design>,
+    )>,
     /// An edge zone's line drawn, its width and spacing asked.
     ufh_edge: Option<floorheatui::EdgeDraft>,
     /// A calculation window stepped aside while its object is placed.
@@ -746,6 +754,7 @@ impl CreaBimApp {
             midea_in: None,
             table30: None,
             floor_heat: None,
+            floor_heat_design: None,
             ufh_edge: None,
             parked: None,
             radiators: None,
@@ -2657,7 +2666,12 @@ impl CreaBimApp {
         if redo {
             self.run_command(ctx, Command::Redo, None);
         }
-        if delete {
+        if delete && self.plan.ufh_zone_pick.room.is_some() {
+            // a picked underfloor heating zone, not its room
+            if let Some(m) = crate::ufhzonedit::delete(&mut self.doc, &mut self.plan) {
+                self.status = m;
+            }
+        } else if delete {
             self.run_command(ctx, Command::Delete, None);
         }
         if extrude {
@@ -12150,6 +12164,12 @@ crate::props::row(ui, "File names", |ui| {
                         .map(|e| e.name.clone())
                         .unwrap_or_default();
                     ui.label(crate::i18n::tr(&format!("Tags {host}")));
+                    if crate::props::switch(ui, &mut t.back, "Text background")
+                        .on_hover_text(crate::i18n::t("Its texts cover what is drawn under them"))
+                        .changed()
+                    {
+                        label = "Tag text background";
+                    }
                     if crate::props::switch(ui, &mut t.material, "Reads the material")
                         .on_hover_text(crate::i18n::t("A material tag: its material, or its layers one line each, outside to inside"))
                         .changed()

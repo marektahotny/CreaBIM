@@ -113,7 +113,15 @@ impl CreaBimApp {
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
         let o = self.heat_opts();
-        let d = floorheat::design(self.doc.model(), &o, &s);
+        let rev = self.doc.model().revision();
+        let d = match &self.floor_heat_design {
+            Some((r, s0, o0, d)) if *r == rev && *s0 == s && *o0 == o => d.clone(),
+            _ => {
+                let d = std::sync::Arc::new(floorheat::design(self.doc.model(), &o, &s));
+                self.floor_heat_design = Some((rev, s.clone(), o, d.clone()));
+                d
+            }
+        };
         let found = creabim_services::calcresults::floor_heat(&d).with_settings(&s);
         let written = self.is_written(&found);
         let mut write_now = false;
@@ -314,7 +322,19 @@ impl CreaBimApp {
                                 r
                             } else {
                                 ui.colored_label(ui.visuals().warn_fg_color, "⚠").on_hover_text(
-                                    x.notes.iter().map(|n| t(n.text())).collect::<Vec<_>>().join("\n"),
+                                    x.notes
+                                        .iter()
+                                        .map(|n| match (n, x.bend) {
+                                            (floorheat::Note::BendTight, Some((r, need))) => format!(
+                                                "{} (R {} mm < {} mm)",
+                                                t(n.text()),
+                                                num(r * 1000.0, 0),
+                                                num(need * 1000.0, 0)
+                                            ),
+                                            _ => t(n.text()),
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n"),
                                 );
                                 r
                             };
@@ -324,8 +344,20 @@ impl CreaBimApp {
                         });
                         row.text(num(x.phi, 0));
                         let q = format!("{} / {}", num(x.q, 0), num(x.q_req, 0));
+                        let space_ok = x.space_covered >= x.space_phi * 0.98;
                         if x.ok {
                             row.text(q);
+                        } else if !x.open_to.is_empty() && space_ok {
+                            // short alone, but covered by the space it is open to
+                            row.cell(|ui| {
+                                ui.label(format!("{q} ↔")).on_hover_text(format!(
+                                    "{} {} W {} {} W",
+                                    t("Open to the next room: together the floors give"),
+                                    num(x.space_covered, 0),
+                                    t("of"),
+                                    num(x.space_phi, 0),
+                                ));
+                            });
                         } else {
                             row.cell(|ui| {
                                 ui.colored_label(ui.visuals().warn_fg_color, q).on_hover_text(format!(
@@ -427,6 +459,64 @@ impl CreaBimApp {
                         row.text(num(x.flow_ls * 3600.0, 0));
                         row.text(num(x.dp_kpa, 1));
                     }, Some(&total));
+                    // rooms open to each other: one space (George 2026-11-28)
+                    let mut shown: Vec<ElementId> = vec![];
+                    for x in d.rooms.iter().filter(|x| x.on && !x.open_to.is_empty()) {
+                        if shown.contains(&x.id) {
+                            continue;
+                        }
+                        let members: Vec<&floorheat::RoomDesign> = d
+                            .rooms
+                            .iter()
+                            .filter(|y| y.on && (y.id == x.id || y.open_to.contains(&x.id) || x.open_to.contains(&y.id) || y.open_to.iter().any(|o| x.open_to.contains(o))))
+                            .collect();
+                        shown.extend(members.iter().map(|y| y.id));
+                        let names = members.iter().map(|y| y.number.clone()).collect::<Vec<_>>().join(" + ");
+                        let short = x.space_phi - x.space_covered;
+                        let text = if short <= x.space_phi * 0.02 {
+                            format!(
+                                "{names}: {} {} W {} {} W.",
+                                t("one space, together the floors give"),
+                                num(x.space_covered, 0),
+                                t("of"),
+                                num(x.space_phi, 0)
+                            )
+                        } else {
+                            // the rest on the room that has room to give more:
+                            // the one covering its own loss with most to spare
+                            let help = members
+                                .iter()
+                                .filter(|y| y.ok)
+                                .max_by(|a, b| a.area.total_cmp(&b.area))
+                                .or_else(|| members.iter().max_by(|a, b| a.area.total_cmp(&b.area)));
+                            let more = help.map_or(String::new(), |h| {
+                                let need = (h.covered + short) / h.area.max(1e-6);
+                                format!(
+                                    " {} {} {} {} W/m² ({} {} W/m²).",
+                                    t("Close the spacing in"),
+                                    h.number,
+                                    t("to give"),
+                                    num(need.max(h.q), 0),
+                                    t("now"),
+                                    num(h.q, 0)
+                                )
+                            });
+                            format!(
+                                "{names}: {} {} W {} {} W, {} {} W.{more}",
+                                t("one space, together the floors give"),
+                                num(x.space_covered, 0),
+                                t("of"),
+                                num(x.space_phi, 0),
+                                t("short by"),
+                                num(short, 0)
+                            )
+                        };
+                        if short <= x.space_phi * 0.02 {
+                            ui.label(text);
+                        } else {
+                            ui.colored_label(ui.visuals().warn_fg_color, text);
+                        }
+                    }
                     ui.add_space(6.0);
                     // the rooms' zones and how their loops are split
                     let zoned: Vec<&floorheat::RoomDesign> = d
@@ -738,6 +828,15 @@ fn floor_ui(ui: &mut egui::Ui, f: &floorheat::FloorBuild, rooms: &[&str]) {
                 }
                 if let Some(r) = f.spec.raster_mm {
                     x.push(format!("{} {} mm", t("raster"), num(r, 0)));
+                }
+                if let Some(g) = f.spec.guide_mm {
+                    x.push(format!("{} {} mm", t("guide lines"), num(g, 0)));
+                }
+                if let Some(k) = f.spec.bend_d {
+                    x.push(format!("{} R ≥ {} × Da", t("bend"), num(k, 0)));
+                }
+                if let Some(w) = f.spec.wall_mm {
+                    x.push(format!("{} ≥ {} mm", t("from the wall"), num(w, 0)));
                 }
                 if !f.spec.spacings_mm.is_empty() {
                     x.push(format!(

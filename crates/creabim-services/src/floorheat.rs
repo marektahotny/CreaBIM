@@ -108,6 +108,13 @@ pub struct BoardSpec {
     pub spacings_mm: Vec<f64>,
     /// "A": the pipe in the screed; "B": a dry system under a dry screed.
     pub system: String,
+    /// The pipe's least bending radius its maker gives, in pipe outside
+    /// diameters (5 for 5 × Da).
+    pub bend_d: Option<f64>,
+    /// How far the coil keeps off the walls, mm, as the maker asks.
+    pub wall_mm: Option<f64>,
+    /// The lines printed on a flat board to lay by, mm apart.
+    pub guide_mm: Option<f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -346,6 +353,9 @@ pub enum Note {
     ThinCover,
     /// The layers under the pipes resist less than STN EN 1264-4 asks.
     InsulationThin,
+    /// A 180° bend between neighbouring pipes (a meander, an edge zone's
+    /// serpentine) is tighter than the maker's least bending radius.
+    BendTight,
 }
 
 impl Note {
@@ -358,6 +368,7 @@ impl Note {
             Note::DrySystem => "A dry system: the characteristic of system A does not hold for it",
             Note::ThinCover => "The screed over the pipe is thinner than the pipe",
             Note::InsulationThin => "The layers under the pipes resist less than STN EN 1264-4, table 1 asks (Rλ,ins)",
+            Note::BendTight => "The 180° bends between neighbouring pipes are tighter than the least bending radius the maker gives",
         }
     }
 }
@@ -426,6 +437,87 @@ pub fn pipe(s: &Settings, maker: &str) -> Pipe {
         })
 }
 
+/// The rooms with underfloor heating open to each other (a room
+/// separator on their common edge, no wall) taken as one space: each
+/// knows the others, and the space's loss and what its floors give.
+fn open_spaces(model: &Model, rooms: &[heatloss::RoomAt<'_>], designs: &mut [RoomDesign]) {
+    use creabim_core::ElementKind;
+    let seps: Vec<(ElementId, glam::DVec2, glam::DVec2)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::RoomSeparator(s) => Some((s.level, s.a, s.b)),
+            _ => None,
+        })
+        .collect();
+    if seps.is_empty() {
+        return;
+    }
+    let near = |o: &[glam::DVec2], p: glam::DVec2| {
+        (0..o.len()).any(|i| {
+            let (a, b) = (o[i], o[(i + 1) % o.len()]);
+            let d = b - a;
+            let t = ((p - a).dot(d) / d.length_squared().max(1e-12)).clamp(0.0, 1.0);
+            (a + d * t).distance(p) < 0.05
+        })
+    };
+    let on: Vec<(usize, ElementId, ElementId, Vec<glam::DVec2>)> = designs
+        .iter()
+        .enumerate()
+        .filter(|(_, x)| x.on)
+        .filter_map(|(i, x)| {
+            let r = rooms.iter().find(|r| r.e.id == x.id)?;
+            Some((i, x.id, r.level, r.shape.outline.clone()))
+        })
+        .collect();
+    // which open to which, joined into spaces
+    let mut group: Vec<usize> = (0..designs.len()).collect();
+    fn root(g: &mut [usize], i: usize) -> usize {
+        let mut i = i;
+        while g[i] != i {
+            g[i] = g[g[i]];
+            i = g[i];
+        }
+        i
+    }
+    for (k, a) in on.iter().enumerate() {
+        for b in &on[k + 1..] {
+            if a.2 != b.2 {
+                continue;
+            }
+            let open = seps.iter().any(|(lv, p, q)| {
+                *lv == a.2
+                    && p.distance(*q) > 0.3
+                    && [*p, (*p + *q) / 2.0, *q]
+                        .iter()
+                        .all(|m| near(&a.3, *m) && near(&b.3, *m))
+            });
+            if open {
+                designs[a.0].open_to.push(b.1);
+                designs[b.0].open_to.push(a.1);
+                let (ra, rb) = (root(&mut group, a.0), root(&mut group, b.0));
+                group[ra] = rb;
+            }
+        }
+    }
+    let mut totals: std::collections::HashMap<usize, (f64, f64)> = Default::default();
+    for (i, x) in designs.iter().enumerate().filter(|(_, x)| x.on) {
+        let r = root(&mut group, i);
+        let t = totals.entry(r).or_default();
+        t.0 += x.phi;
+        t.1 += x.covered;
+    }
+    for (i, x) in designs.iter_mut().enumerate() {
+        if !x.on || x.open_to.is_empty() {
+            continue;
+        }
+        let r = root(&mut group, i);
+        if let Some((phi, covered)) = totals.get(&r) {
+            x.space_phi = *phi;
+            x.space_covered = *covered;
+        }
+    }
+}
+
 /// A room's underfloor heating designed.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RoomDesign {
@@ -460,6 +552,10 @@ pub struct RoomDesign {
     pub theta_u: f64,
     pub q_down: f64,
     pub notes: Vec<Note>,
+    /// The tightest 180° bend's radius and the least the maker allows, m.
+    pub bend: Option<(f64, f64)>,
+    /// How far the coil keeps off the walls, m, as the board's maker asks.
+    pub wall: Option<f64>,
     /// The room's underfloor heating in the model.
     pub ufh: Option<Underfloor>,
     /// Its edge zones' area, m², spacing, m, and flux, W/m²; the places of
@@ -483,6 +579,13 @@ pub struct RoomDesign {
     pub dp_kpa: f64,
     /// The floor covers the loss.
     pub ok: bool,
+    /// The rooms with underfloor heating it is open to (a room separator
+    /// between them, no wall): one space, its loss and what its floors
+    /// give together, W (George 2026-11-28: the kitchen open to the
+    /// living room). Alone, its own.
+    pub open_to: Vec<ElementId>,
+    pub space_phi: f64,
+    pub space_covered: f64,
     /// The room has it in the model.
     pub on: bool,
     /// Along its walls, m (the edge strip).
@@ -911,6 +1014,43 @@ fn one(
     if own.is_some() && !spacings.iter().any(|v| (v - spacing).abs() < 1e-6) {
         notes.push(Note::SpacingNotForBoard);
     }
+    // an edge zone's spacing on a nub board: a multiple of its raster
+    if let Some(r) = floor
+        .as_ref()
+        .and_then(|f| f.spec.raster_mm)
+        .filter(|r| *r > 0.0)
+    {
+        if edges.iter().any(|(_, t)| {
+            let k = t * 1000.0 / r;
+            (k - k.round()).abs() > 1e-6 || k.round() < 1.0
+        }) && !notes.contains(&Note::SpacingNotForBoard)
+        {
+            notes.push(Note::SpacingNotForBoard);
+        }
+    }
+    // the maker's least bending radius (5 × Da): a 180° bend between
+    // neighbouring pipes of a meander or of an edge zone's serpentine has
+    // half their spacing for its radius; a double spiral turns only at
+    // its middle, at a whole spacing
+    let bend = floor.as_ref().and_then(|f| f.spec.bend_d).and_then(|k| {
+        let need = k * d;
+        let layout = own.map(|u| u.layout).unwrap_or_default();
+        let mut have: Vec<f64> = edges.iter().map(|(_, t)| t / 2.0).collect();
+        have.push(match layout {
+            creabim_core::underfloor::Layout::Meander
+            | creabim_core::underfloor::Layout::DoubleMeander => spacing / 2.0,
+            _ => spacing,
+        });
+        let r = have.into_iter().fold(f64::MAX, f64::min);
+        (r + 1e-9 < need).then_some((r, need))
+    });
+    if bend.is_some() {
+        notes.push(Note::BendTight);
+    }
+    let wall = floor
+        .as_ref()
+        .and_then(|f| f.spec.wall_mm)
+        .map(|w| w / 1000.0);
     let q_main = flux(spacing);
     let (covered, reduced_w) = gives(spacing);
     // the flux over the whole floor, as the loss and the flow take it
@@ -1010,6 +1150,8 @@ fn one(
         theta_u,
         q_down,
         notes,
+        bend,
+        wall,
         ufh: own.cloned(),
         edge_area,
         edge_spacing: edges.first().map(|e| e.1),
@@ -1024,6 +1166,9 @@ fn one(
         flow_ls,
         dp_kpa: loop_loss(pipe, flow_ls, loop_len),
         ok: covered >= hl.phi * 0.98,
+        open_to: vec![],
+        space_phi: hl.phi,
+        space_covered: covered,
         on: own.is_some(),
         perimeter,
         doors,
@@ -1155,6 +1300,7 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
             )
         })
         .collect();
+    open_spaces(model, &rooms, &mut out.rooms);
     for x in out.rooms.iter().filter(|x| x.on) {
         out.output_kw += x.covered / 1000.0;
         out.flow_ls += x.flow_ls * x.loops as f64;
@@ -1751,6 +1897,17 @@ fn model_bill_now(model: &Model) -> Vec<BillLine> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_system_board_names_its_bending_radius() {
+        // the makers' sheets give each pipe board a least bending radius;
+        // where a maker asks a distance off the walls it is read too
+        for b in boards().iter().filter(|b| b.ufh.is_some()) {
+            let u = b.ufh.as_ref().unwrap();
+            assert!(u.bend_d.is_some_and(|k| k > 0.0), "{}", b.name);
+            assert!(u.wall_mm.is_none_or(|w| w > 50.0), "{}", b.name);
+        }
+    }
 
     #[test]
     fn loops_are_cut_from_whole_coils() {
