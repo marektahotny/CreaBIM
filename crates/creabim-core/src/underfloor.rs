@@ -378,6 +378,11 @@ pub const EDGE: f64 = 0.1;
 /// The outline moved in by `d` (its edges' crossings); none once an
 /// edge is lost on the way.
 pub fn inset_ring(o: &[DVec2], d: f64) -> Option<Vec<DVec2>> {
+    inset_ring_by(o, &|_, _| d)
+}
+
+/// As [`inset_ring`], each edge `a`–`b` moved in by its own `d(a, b)`.
+pub fn inset_ring_by(o: &[DVec2], d: &dyn Fn(DVec2, DVec2) -> f64) -> Option<Vec<DVec2>> {
     let n = o.len();
     if n < 3 {
         return None;
@@ -391,7 +396,7 @@ pub fn inset_ring(o: &[DVec2], d: f64) -> Option<Vec<DVec2>> {
         .map(|i| {
             let (a, b) = (o[i], o[(i + 1) % n]);
             let u = (b - a).normalize_or(DVec2::X);
-            (u, a + DVec2::new(-u.y, u.x) * sg * d)
+            (u, a + DVec2::new(-u.y, u.x) * sg * d(a, b))
         })
         .collect();
     let vs: Vec<DVec2> = (0..n)
@@ -441,6 +446,19 @@ impl Spiral {
 /// then go on round its largest convex part: one coil (George
 /// 2026-11-28: as many coils drawn as there are loops).
 pub fn spiral(outline: &[DVec2], t: f64, edge: f64, start: usize) -> Spiral {
+    spiral_by(outline, t, start, &|_, _, j| edge + j as f64 * t)
+}
+
+/// As [`spiral`], ring `j` kept `d(a, b, j)` off each edge `a`–`b`: an
+/// edge zone's rings closer along its edge, the same coil going on into
+/// the rest of the room (George 2026-11-28: the supply and the return
+/// still in turn, only denser there).
+pub fn spiral_by(
+    outline: &[DVec2],
+    t: f64,
+    start: usize,
+    dist: &dyn Fn(DVec2, DVec2, usize) -> f64,
+) -> Spiral {
     let n = outline.len();
     if n < 3 || t <= 0.0 {
         return Spiral::default();
@@ -449,15 +467,15 @@ pub fn spiral(outline: &[DVec2], t: f64, edge: f64, start: usize) -> Spiral {
     let mut rings: Vec<Vec<DVec2>> = vec![];
     let mut current = o.clone();
     for j in 0..400 {
-        let d = edge + j as f64 * t;
-        let ring = match inset_ring(&current, d) {
+        let d = |a: DVec2, b: DVec2| dist(a, b, j);
+        let ring = match inset_ring_by(&current, &d) {
             Some(r) => Some(r),
             None => {
                 // the narrower part filled: on round the largest convex
                 // part it still has room in
                 largest_convex(&current, 0)
                     .filter(|p| p.len() != current.len() || p != &current)
-                    .and_then(|p| inset_ring(&p, d).map(|r| (p, r)))
+                    .and_then(|p| inset_ring_by(&p, &d).map(|r| (p, r)))
                     .map(|(p, r)| {
                         current = p;
                         r
@@ -1125,7 +1143,18 @@ pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec
         .then(|| {
             strips
                 .iter()
-                .map(|z| loop_with_edges(z, &marked, u.spacing, edge, from, &lay))
+                .map(|z| {
+                    if matches!(u.layout, Layout::Spiral | Layout::SpiralLeading) {
+                        let sp = spiral_by(z, u.spacing, corner(z), &|a, b, j| {
+                            zoned_offset(a, b, j, u.spacing, edge, &marked)
+                        });
+                        let area = crate::polygon::signed_area2(z).abs() / 2.0;
+                        if sp.length >= 0.8 * area / u.spacing {
+                            return Some(sp);
+                        }
+                    }
+                    loop_with_edges(z, &marked, u.spacing, edge, from, &lay)
+                })
                 .collect()
         })
         .flatten();
@@ -1183,6 +1212,42 @@ pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec
     }
     out.retain(|s| s.pieces().next().is_some());
     out
+}
+
+/// How far ring `j` keeps off the edge `a`–`b`: along an edge zone's edge
+/// its rings at the zone's spacing until the zone is filled, then on at
+/// the room's; elsewhere at the room's spacing.
+fn zoned_offset(a: DVec2, b: DVec2, j: usize, t: f64, edge: f64, marked: &[(&Zone, f64)]) -> f64 {
+    let room = edge + j as f64 * t;
+    let ab = b - a;
+    if ab.length() < 1e-9 {
+        return room;
+    }
+    let mid = (a + b) / 2.0;
+    for (zone, tz) in marked {
+        let Some([p, q, e]) = zone.mark else { continue };
+        let pq = q - p;
+        let l = pq.length();
+        if l < 1e-9 || *tz <= 0.0 {
+            continue;
+        }
+        let w = pq.perp_dot(e - p).abs() / l;
+        // parallel to the dashed line, the zone's width off it, on the
+        // edge's side, and alongside it
+        let par = ab.normalize().perp_dot(pq / l).abs() < 0.05;
+        let off = pq.perp_dot(mid - p) / l;
+        let side = pq.perp_dot(e - p) / l;
+        let s = (mid - p).dot(pq) / (l * l);
+        if par && (off - side).abs() < 0.05 && off * side > 0.0 && (-0.05..=1.05).contains(&s) {
+            let n = ((w - edge) / tz).round().max(1.0) as usize;
+            return if j < n {
+                edge + j as f64 * tz
+            } else {
+                edge + n as f64 * tz + (j - n) as f64 * t
+            };
+        }
+    }
+    room
 }
 
 /// One loop in strip `z` with the edge zones `marked` in it: a closer
@@ -1624,8 +1689,10 @@ mod tests {
 
     #[test]
     fn an_edge_zone_runs_through_every_loop() {
-        let room = rect(6.0, 4.0);
-        let edge = [DVec2::new(0.0, 0.0), DVec2::new(6.0, 0.0)];
+        // 6 × 8, three loops across the 8 m, the edge zone along the
+        // left wall in each of them
+        let room = rect(6.0, 8.0);
+        let edge = [DVec2::new(0.0, 0.0), DVec2::new(0.0, 8.0)];
         let mut u = Underfloor {
             spacing: 0.2,
             loops: 3,
@@ -1637,21 +1704,34 @@ mod tests {
         assert_eq!(ls.len(), 3);
         for s in &ls {
             assert!(s.more.is_empty());
-            // each loop closer along the edge: some of its pipe below 1 m
-            assert!(s.supply.iter().filter(|p| p.y < 0.9).count() > 4);
-        }
-        // the rows in the zone 0.1 m apart
-        let mut ys: Vec<f64> = ls[0]
-            .supply
-            .iter()
-            .map(|p| p.y)
-            .filter(|y| *y < 0.95)
-            .collect();
-        ys.sort_by(f64::total_cmp);
-        ys.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
-        assert!(ys.len() >= 8, "{ys:?}");
-        for w in ys.windows(2) {
-            assert!((w[1] - w[0] - 0.1).abs() < 1e-6, "{ys:?}");
+            // the same coil goes on into the zone, only closer: its rows
+            // there 0.1 m apart, the supply and the return in turn
+            let mut xs: Vec<f64> = s
+                .supply
+                .iter()
+                .chain(&s.ret)
+                .map(|p| p.x)
+                .filter(|x| *x < 0.65)
+                .collect();
+            xs.sort_by(f64::total_cmp);
+            xs.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+            assert!(xs.len() >= 6, "{xs:?}");
+            for w in xs.windows(2) {
+                assert!((w[1] - w[0] - 0.1).abs() < 1e-6, "{xs:?}");
+            }
+            // and away from it at the room's spacing
+            let mut ys: Vec<f64> = s
+                .supply
+                .iter()
+                .chain(&s.ret)
+                .map(|p| p.x)
+                .filter(|x| *x > 5.0)
+                .collect();
+            ys.sort_by(f64::total_cmp);
+            ys.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+            for w in ys.windows(2) {
+                assert!((w[1] - w[0] - 0.2).abs() < 1e-6, "{ys:?}");
+            }
         }
         let with: f64 = ls.iter().map(|s| s.length).sum();
         assert!(with > plain, "{plain} {with}");

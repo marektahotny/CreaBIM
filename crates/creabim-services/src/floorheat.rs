@@ -504,7 +504,7 @@ fn open_spaces(model: &Model, rooms: &[heatloss::RoomAt<'_>], designs: &mut [Roo
         let r = root(&mut group, i);
         let t = totals.entry(r).or_default();
         t.0 += x.phi;
-        t.1 += x.covered;
+        t.1 += x.covered + x.radiators_w;
     }
     for (i, x) in designs.iter_mut().enumerate() {
         if !x.on || x.open_to.is_empty() {
@@ -569,6 +569,9 @@ pub struct RoomDesign {
     pub hole_area: f64,
     /// What the floor gives, W.
     pub covered: f64,
+    /// What the radiators fed from the manifold give in the room, at
+    /// their temperatures, W: with the floor they cover its loss.
+    pub radiators_w: f64,
     pub loops: u32,
     /// A loop's length with its way from the manifold and back, m.
     pub loop_len: f64,
@@ -1029,18 +1032,25 @@ fn one(
         }
     }
     // the maker's least bending radius (5 × Da): a 180° bend between
-    // neighbouring pipes of a meander or of an edge zone's serpentine has
-    // half their spacing for its radius; a double spiral turns only at
-    // its middle, at a whole spacing
+    // neighbouring pipes of a meander has half their spacing for its
+    // radius
     let bend = floor.as_ref().and_then(|f| f.spec.bend_d).and_then(|k| {
         let need = k * d;
         let layout = own.map(|u| u.layout).unwrap_or_default();
-        let mut have: Vec<f64> = edges.iter().map(|(_, t)| t / 2.0).collect();
-        have.push(match layout {
+        // a spiral turns by 90° and goes on into its edge zones closer,
+        // turning back once in its middle at a whole spacing; a meander
+        // turns back at each row, its edge zones' too
+        let meander = matches!(
+            layout,
             creabim_core::underfloor::Layout::Meander
-            | creabim_core::underfloor::Layout::DoubleMeander => spacing / 2.0,
-            _ => spacing,
-        });
+                | creabim_core::underfloor::Layout::DoubleMeander
+        );
+        let mut have: Vec<f64> = if meander {
+            edges.iter().map(|(_, t)| t / 2.0).collect()
+        } else {
+            vec![]
+        };
+        have.push(if meander { spacing / 2.0 } else { spacing });
         let r = have.into_iter().fold(f64::MAX, f64::min);
         (r + 1e-9 < need).then_some((r, need))
     });
@@ -1160,6 +1170,7 @@ fn one(
         reduced_w,
         hole_area,
         covered,
+        radiators_w: 0.0,
         loops,
         loop_len,
         feed,
@@ -1300,7 +1311,6 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
             )
         })
         .collect();
-    open_spaces(model, &rooms, &mut out.rooms);
     for x in out.rooms.iter().filter(|x| x.on) {
         out.output_kw += x.covered / 1000.0;
         out.flow_ls += x.flow_ls * x.loops as f64;
@@ -1308,6 +1318,22 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
         out.loops += x.loops;
     }
     out.manifolds = manifold_designs(model, s, &out, &placed);
+    // the radiators on the manifold (a bathroom's ladder) cover the
+    // room's loss with its floor (George 2026-11-28)
+    for x in out.rooms.iter_mut() {
+        x.radiators_w = out
+            .manifolds
+            .iter()
+            .flat_map(|m| &m.radiators)
+            .filter(|f| !x.number.is_empty() && f.room == x.number)
+            .map(|f| f.output_w)
+            .sum();
+        if x.on && x.radiators_w > 0.0 {
+            x.ok = x.covered + x.radiators_w >= x.phi * 0.98;
+            x.space_covered = x.covered + x.radiators_w;
+        }
+    }
+    open_spaces(model, &rooms, &mut out.rooms);
     // the worst manifold's index circuit, its valves wide open, and the
     // rest of the way to the source
     let worst = out
@@ -1370,10 +1396,6 @@ fn manifold_designs(
             if ob.level != level {
                 continue;
             }
-            let w = crate::heating::radiator_w(model, id, &hs).unwrap_or(0.0);
-            let q = w / (fluid.rho * 4180.0 * dt) * 1000.0;
-            let p = ob.to_plan(glam::DVec2::ZERO);
-            let length = at.map_or(0.0, |m| 2.0 * 1.2 * m.distance(p));
             let room = rooms
                 .iter()
                 .find(|x| {
@@ -1388,6 +1410,21 @@ fn manifold_designs(
                     _ => None,
                 })
                 .unwrap_or_default();
+            // its output in its room's air (a bathroom's 24 °C)
+            let ti = d
+                .rooms
+                .iter()
+                .find(|x| !room.is_empty() && x.number == room)
+                .map_or(hs.room_c, |x| x.ti);
+            let w = crate::heating::radiator_w(
+                model,
+                id,
+                &crate::heating::HeatSettings { room_c: ti, ..hs },
+            )
+            .unwrap_or(0.0);
+            let q = w / (fluid.rho * 4180.0 * dt) * 1000.0;
+            let p = ob.to_plan(glam::DVec2::ZERO);
+            let length = at.map_or(0.0, |m| 2.0 * 1.2 * m.distance(p));
             radiators.push(RadiatorFeed {
                 id,
                 room,
@@ -1907,6 +1944,52 @@ mod tests {
             assert!(u.bend_d.is_some_and(|k| k > 0.0), "{}", b.name);
             assert!(u.wall_mm.is_none_or(|w| w > 50.0), "{}", b.name);
         }
+    }
+
+    #[test]
+    fn a_radiator_on_the_manifold_covers_the_room_with_its_floor() {
+        use creabim_core::catalogue::radiators::{Panel, PanelKind};
+        use creabim_core::{Document, Element, Room, Transaction};
+        use glam::DVec2;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let mut r = Room::new(level, DVec2::new(2.5, 3.0));
+        r.number = "1.01".into();
+        r.ufh = Some(Underfloor {
+            spacing: 0.3,
+            loops: 1,
+            ..Underfloor::default()
+        });
+        doc.commit(Transaction::new("room").insert(Element::new("Kúpeľňa", ElementKind::Room(r))))
+            .unwrap();
+        let plain = design(
+            doc.model(),
+            &heatloss::Opts::default(),
+            &Settings::default(),
+        );
+        let p = Panel {
+            kind: PanelKind::ALL[2],
+            height: 600,
+            length: 1600,
+        };
+        let (tx, rad) = creabim_core::objects::place(
+            doc.model(),
+            &p.object(),
+            level,
+            DVec2::new(2.5, 3.0),
+            0.0,
+        );
+        doc.commit(tx).unwrap();
+        let s = Settings {
+            radiators: vec![rad],
+            ..Settings::default()
+        };
+        let d = design(doc.model(), &heatloss::Opts::default(), &s);
+        let (a, b) = (&plain.rooms[0], &d.rooms[0]);
+        assert_eq!(a.radiators_w, 0.0);
+        assert!(b.radiators_w > 0.0, "{b:?}");
+        assert!((b.space_covered - (b.covered + b.radiators_w)).abs() < 1e-9);
+        assert_eq!(b.ok, b.covered + b.radiators_w >= b.phi * 0.98);
     }
 
     #[test]

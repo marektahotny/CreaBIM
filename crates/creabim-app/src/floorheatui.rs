@@ -345,7 +345,22 @@ impl CreaBimApp {
                         row.text(num(x.phi, 0));
                         let q = format!("{} / {}", num(x.q, 0), num(x.q_req, 0));
                         let space_ok = x.space_covered >= x.space_phi * 0.98;
-                        if x.ok {
+                        if x.ok && x.radiators_w > 0.0 {
+                            // the floor and the radiators on the manifold together
+                            row.cell(|ui| {
+                                ui.label(format!("{q} +")).on_hover_text(format!(
+                                    "{} {} W, {} {} W: {} {} W {} {} W",
+                                    t("The floor gives"),
+                                    num(x.covered, 0),
+                                    t("the radiators"),
+                                    num(x.radiators_w, 0),
+                                    t("together"),
+                                    num(x.covered + x.radiators_w, 0),
+                                    t("of"),
+                                    num(x.phi, 0),
+                                ));
+                            });
+                        } else if x.ok {
                             row.text(q);
                         } else if !x.open_to.is_empty() && space_ok {
                             // short alone, but covered by the space it is open to
@@ -361,9 +376,18 @@ impl CreaBimApp {
                         } else {
                             row.cell(|ui| {
                                 ui.colored_label(ui.visuals().warn_fg_color, q).on_hover_text(format!(
-                                    "{} {} W {} {} W (qG {} W/m²)",
+                                    "{} {} W{} {} {} W (qG {} W/m²)",
                                     t("The floor gives"),
                                     num(x.covered, 0),
+                                    if x.radiators_w > 0.0 {
+                                        format!(
+                                            ", {} {} W",
+                                            t("the radiators"),
+                                            num(x.radiators_w, 0)
+                                        )
+                                    } else {
+                                        String::new()
+                                    },
                                     t("of"),
                                     num(x.phi, 0),
                                     num(x.q_limit, 0),
