@@ -11,6 +11,33 @@ use creabim_core::{
 use eframe::egui::{self, Pos2, Stroke};
 use glam::{DVec2, DVec3};
 
+/// An edge zone's line, drawn and waiting for its width and spacing.
+#[derive(Clone, Debug)]
+pub struct EdgeLine {
+    pub level: ElementId,
+    pub points: Vec<DVec2>,
+    pub closed: bool,
+}
+
+thread_local! {
+    static EDGE: std::cell::RefCell<Option<EdgeLine>> = const { std::cell::RefCell::new(None) };
+}
+
+fn stash_edge(level: ElementId, points: Vec<DVec2>, closed: bool) {
+    EDGE.with(|e| {
+        *e.borrow_mut() = Some(EdgeLine {
+            level,
+            points,
+            closed,
+        })
+    });
+}
+
+/// The edge zone line drawn last, taken once.
+pub fn take_edge() -> Option<EdgeLine> {
+    EDGE.with(|e| e.borrow_mut().take())
+}
+
 /// Thickness of a newly drawn slab.
 pub const NEW_SLAB_THICKNESS: f64 = 0.25;
 
@@ -131,7 +158,22 @@ impl Outline {
         self.wall
     }
 
+    /// An underfloor heating edge zone: an open line along the heated
+    /// field's edge (George 2026-11-28), its width asked once drawn.
+    fn edge_line(&self) -> bool {
+        self.space
+            == Some(crate::roomtool::Space::UfhZone(
+                crate::roomtool::UfhZone::Edge,
+            ))
+    }
+
     pub fn hint(&self) -> String {
+        if self.edge_line() {
+            return format!(
+                "Edge zone ({} points): click along the edge of the heated field, a line or a polyline. Enter, right-click or a double-click finishes it, then its width is asked. Backspace takes back a point, Esc cancels.",
+                self.points.len()
+            );
+        }
         if self.wall {
             return "Redrawing the wall: click each corner of its new path. Enter or right-click finishes, clicking the first corner closes the loop, Esc cancels.".into();
         }
@@ -258,6 +300,24 @@ impl Outline {
             }
             return Next::Cancel("Outline cancelled.");
         }
+        if self.edge_line() {
+            if escape {
+                return Next::Cancel("Edge zone cancelled.");
+            }
+            if (enter || right_click || double) && self.points.len() >= 2 {
+                if double {
+                    if let Some((p, _)) = click {
+                        if self.points.last().is_some_and(|q| q.distance(p) > 0.002) {
+                            self.points.push(p);
+                        }
+                    }
+                }
+                return Next::Finish(false);
+            }
+            if right_click {
+                return Next::Cancel("Edge zone cancelled.");
+            }
+        }
         if double && !self.wall && self.points.len() >= 3 {
             return Next::Finish(true);
         }
@@ -304,6 +364,20 @@ impl Outline {
         closed: bool,
     ) -> Result<(String, Option<ElementId>), ModelError> {
         let model = doc.model();
+        // an edge zone's line: its width asked in a dialog
+        if self.edge_line() {
+            if self.points.len() < 2 {
+                return Ok((
+                    "An edge zone needs a line of two points at least.".into(),
+                    None,
+                ));
+            }
+            stash_edge(self.level, self.points, closed);
+            return Ok((
+                "Edge zone drawn: set its width and spacing in the dialog.".into(),
+                None,
+            ));
+        }
         if !self.wall {
             let mut bulges = self.bulges;
             bulges.resize(self.points.len(), 0.0);

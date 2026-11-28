@@ -678,7 +678,7 @@ impl CreaBimApp {
                     Item::Separator,
                     Item::new("ufh:edge", "Edge zone")
                         .icon("square-dashed")
-                        .hint("Draw an edge zone of underfloor heating in a room (by a window or a door), as a polygon or a rectangle: its pipes laid closer")
+                        .hint("Trace the edge of the heated field (by a window or an outside wall) with a line or a polyline: the edge zone is set off from it, 1 m unless changed, its pipes laid closer")
                         .checked(zone(UfhZone::Edge)),
                     Item::new("ufh:reduced", "Place of reduced output")
                         .icon("square")

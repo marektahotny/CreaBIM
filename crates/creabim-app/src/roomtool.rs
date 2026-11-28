@@ -237,6 +237,7 @@ fn ufh_zone(
             kind,
             outline,
             on: true,
+            mark: None,
         });
         r.ufh = Some(u);
     }

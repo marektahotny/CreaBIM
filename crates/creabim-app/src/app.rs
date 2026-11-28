@@ -487,6 +487,8 @@ pub struct CreaBimApp {
     condens: Option<condensui::Condens>,
     /// The underfloor heating window's settings, while it is open.
     floor_heat: Option<creabim_services::floorheat::Settings>,
+    /// An edge zone's line drawn, its width and spacing asked.
+    ufh_edge: Option<floorheatui::EdgeDraft>,
     /// A calculation window stepped aside while its object is placed.
     parked: Option<parkui::Parked>,
     /// The radiators window, while it is open.
@@ -744,6 +746,7 @@ impl CreaBimApp {
             midea_in: None,
             table30: None,
             floor_heat: None,
+            ufh_edge: None,
             parked: None,
             radiators: None,
             cooling: None,
@@ -14157,6 +14160,16 @@ impl eframe::App for CreaBimApp {
                     .filter_map(|t| t.trim().parse().ok())
                     .collect();
                 let at_frame = 14 + 12 * k as u64;
+                // "enter" presses Enter instead of a click
+                if one.trim() == "enter" && (at_frame..=at_frame + 1).contains(&frame) {
+                    raw_input.events.push(egui::Event::Key {
+                        key: egui::Key::Enter,
+                        physical_key: None,
+                        pressed: frame == at_frame,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    });
+                }
                 if v.len() == 2 && (at_frame - 2..=at_frame + 1).contains(&frame) {
                     let at = egui::pos2(v[0], v[1]);
                     raw_input.events.push(egui::Event::PointerMoved(at));
@@ -14722,6 +14735,7 @@ impl eframe::App for CreaBimApp {
         self.thermal_window(&ctx);
         self.condens_window(&ctx);
         self.floor_heat_window(&ctx);
+        self.ufh_edge_window(&ctx);
         self.radiators_window(&ctx);
         self.cooling_window(&ctx);
         self.air_balance_window(&ctx);

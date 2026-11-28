@@ -152,6 +152,28 @@ pub fn zone_items(
         );
         let mid = o.iter().copied().sum::<DVec2>() / o.len() as f64;
         match z.kind {
+            ZoneKind::Edge { .. } if z.mark.is_some() => {
+                // set off from an edge drawn along the field (George
+                // 2026-11-28, as VYK.001): a dashed line at the zone's
+                // width, an arrow on it pointing at the edge
+                let [a, b, edge] = z.mark.unwrap_or_default();
+                line(items, Pen::Hidden, &[a, b]);
+                let m = (a + b) / 2.0;
+                let dir = (edge - m).normalize_or_zero();
+                if dir != DVec2::ZERO {
+                    let along = dir.perp();
+                    let (len, half) = (4.0 * mm, 1.2 * mm);
+                    let tip = m + dir * len;
+                    line(items, Pen::Symbol, &[m, tip]);
+                    let head = [tip + dir * 1.5 * mm, tip + along * half, tip - along * half];
+                    items.push(PlanItem::Shade {
+                        id,
+                        points: head.to_vec(),
+                        rgb: [0.0, 0.0, 0.0],
+                    });
+                    line(items, Pen::Symbol, &[head[0], head[1], head[2], head[0]]);
+                }
+            }
             ZoneKind::Edge { .. } => {
                 line(items, Pen::Hidden, &rounded(o, 0.12));
                 // the triangle, pointing down
