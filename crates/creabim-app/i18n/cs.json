@@ -9207,5 +9207,7 @@
   "area of transit pipes": "plocha přechodových potrubí",
   "pipes in a sleeve": "potrubí v ochranné trubce",
   "Connected by": "Napojení přes",
-  "auto": "auto"
+  "auto": "auto",
+ "STN 73 4301 čl. 4.2.2.2: at least 15 m³/h of fresh air a person present, and 0.5 air changes an hour of the dwelling.": "STN 73 4301 čl. 4.2.2.2: nejméně 15 m³/h čerstvého vzduchu na přítomnou osobu a zároveň průměrně 0,5násobná výměna vzduchu bytu za hodinu.",
+ "STN 73 4301 čl. 4.2.2.2 least fresh air": "Nejmenší přívod čerstvého vzduchu podle STN 73 4301 čl. 4.2.2.2"
 }
