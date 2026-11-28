@@ -624,21 +624,20 @@ pub fn size_pipe(id: &str, flow_ls: f64, vmax: f64, rmax: f64, temp_c: f64) -> O
         flow_ls,
         velocity: crate::hydraulics::velocity(flow_ls, d),
         r_pa_m: crate::hydraulics::r(flow_ls, d, k, &fluid),
-        insulation_mm: creabim_core::mep::heat_insulation_mm(pipe.outer_mm),
+        insulation_mm: creabim_core::mep::heat_insulation_mm(pipe.inner_mm),
         tube: None,
         pipe,
     })
 }
 
-/// Its tube of `product` for water at `medium_c` in a room at 20 °C.
+/// Its tube of `product` for water at `medium_c`.
 fn insulated(
     p: Option<SizedPipe>,
     product: crate::pipeinsul::Product,
     medium_c: f64,
 ) -> Option<SizedPipe> {
     p.map(|mut p| {
-        let air = crate::heating::HeatSettings::default().room_c;
-        p.tube = product.tube(p.pipe.outer_mm, p.insulation_mm, medium_c, air);
+        p.tube = product.tube(p.pipe.outer_mm, p.insulation_mm, medium_c);
         p
     })
 }

@@ -880,6 +880,126 @@ pub fn section_items(
     out
 }
 
+/// The take-off's lines for the penetrations (George: a take-off lists
+/// all there is to price): every trade's penetration the drawings take
+/// over (through walls and slabs from DN 80, through suspended ceilings
+/// and roofs all), and those drawn by hand with the Prestup tool, a line
+/// a hole, listed by what it passes, that construction's thickness and
+/// the hole's size: "Prestup nosnou stenou hr. 300 mm – Ø240 (VZT)".
+pub fn takeoff_lines(model: &Model) -> Vec<creabim_core::takeoff::Line> {
+    use creabim_core::takeoff::{Line, Quantity};
+    use creabim_core::words::tr;
+    let mm = |v: f64| format!("{}", (v * 1000.0).round() as i64);
+    let size = |round: bool, s: [f64; 2]| {
+        if round {
+            format!("Ø{}", mm(s[0]))
+        } else {
+            format!("{} × {}", mm(s[0]), mm(s[1]))
+        }
+    };
+    let area = |round: bool, s: [f64; 2]| {
+        if round {
+            std::f64::consts::PI * s[0] * s[0] / 4.0
+        } else {
+            s[0] * s[1]
+        }
+    };
+    let rules = creabim_core::masonry::rules(model);
+    let wall_text = |w: &creabim_core::Wall, s: String| {
+        let key = if creabim_core::masonry::is_bearing(model, w, &rules) {
+            "Penetration through a load-bearing wall th. {t} mm – {s}"
+        } else {
+            "Penetration through a wall th. {t} mm – {s}"
+        };
+        tr(key).replace("{t}", &mm(w.thickness)).replace("{s}", &s)
+    };
+    let line = |element, level, text: String, round: bool, s: [f64; 2], deep: f64| Line {
+        element,
+        category: "Penetrations",
+        level: Some(level),
+        material: None,
+        layer: None,
+        thickness: deep,
+        quantity: Quantity {
+            area: area(round, s),
+            length: deep,
+            count: 1,
+            ..Default::default()
+        },
+        perimeter: 0.0,
+        label: Some(text),
+    };
+    let mut out = vec![];
+    for c in crossings(model) {
+        let s = format!("{} ({})", size(c.round, c.size), c.code);
+        let host = model.get(c.host).map(|h| &h.kind);
+        let (text, deep) = match (c.through, host) {
+            (Through::Wall, Some(ElementKind::Wall(w))) => (wall_text(w, s), w.thickness),
+            (Through::Slab, Some(ElementKind::Slab(x))) => (
+                tr("Penetration through a slab th. {t} mm – {s}")
+                    .replace("{t}", &mm(x.thickness))
+                    .replace("{s}", &s),
+                x.thickness,
+            ),
+            (Through::Ceiling, Some(ElementKind::Ceiling(x))) => {
+                let (lo, hi) = x.span(model);
+                (
+                    tr("Penetration through a suspended ceiling th. {t} mm – {s}")
+                        .replace("{t}", &mm(hi - lo))
+                        .replace("{s}", &s),
+                    hi - lo,
+                )
+            }
+            (Through::Roof, Some(ElementKind::Roof(r))) => (
+                tr("Penetration through the roof th. {t} mm – {s}")
+                    .replace("{t}", &mm(r.vertical_thickness()))
+                    .replace("{s}", &s),
+                r.vertical_thickness(),
+            ),
+            _ => continue,
+        };
+        out.push(line(c.host, c.host_level, text, c.round, c.size, deep));
+    }
+    // drawn by hand
+    for e in model.iter() {
+        match &e.kind {
+            ElementKind::Opening(o) if o.is_penetration() => {
+                let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+                    continue;
+                };
+                let round = o.penetration.as_ref().is_some_and(|p| p.round);
+                let s = [o.width, o.height];
+                out.push(line(
+                    e.id,
+                    w.level,
+                    wall_text(w, size(round, s)),
+                    round,
+                    s,
+                    w.thickness,
+                ));
+            }
+            ElementKind::Shaft(sh) if sh.penetration.is_some() => {
+                let p = sh.penetration.as_ref().unwrap();
+                let (lo, hi) = sh.boundary.iter().fold(
+                    (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+                    |(a, b), q| (a.min(*q), b.max(*q)),
+                );
+                let s = p.size.unwrap_or([hi.x - lo.x, hi.y - lo.y]);
+                out.push(line(
+                    e.id,
+                    sh.level,
+                    tr("Penetration through a slab – {s}").replace("{s}", &size(p.round, s)),
+                    p.round,
+                    s,
+                    0.0,
+                ));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1053,124 +1173,4 @@ mod tests {
         let q = crate::annotate::resolve(&m, &view, &hp).unwrap();
         assert!(q.distance(DVec2::new(0.5, 0.0)) < 1e-9, "{q}");
     }
-}
-
-/// The take-off's lines for the penetrations (George: a take-off lists
-/// all there is to price): every trade's penetration the drawings take
-/// over (through walls and slabs from DN 80, through suspended ceilings
-/// and roofs all), and those drawn by hand with the Prestup tool, a line
-/// a hole, listed by what it passes, that construction's thickness and
-/// the hole's size: "Prestup nosnou stenou hr. 300 mm – Ø240 (VZT)".
-pub fn takeoff_lines(model: &Model) -> Vec<creabim_core::takeoff::Line> {
-    use creabim_core::takeoff::{Line, Quantity};
-    use creabim_core::words::tr;
-    let mm = |v: f64| format!("{}", (v * 1000.0).round() as i64);
-    let size = |round: bool, s: [f64; 2]| {
-        if round {
-            format!("Ø{}", mm(s[0]))
-        } else {
-            format!("{} × {}", mm(s[0]), mm(s[1]))
-        }
-    };
-    let area = |round: bool, s: [f64; 2]| {
-        if round {
-            std::f64::consts::PI * s[0] * s[0] / 4.0
-        } else {
-            s[0] * s[1]
-        }
-    };
-    let rules = creabim_core::masonry::rules(model);
-    let wall_text = |w: &creabim_core::Wall, s: String| {
-        let key = if creabim_core::masonry::is_bearing(model, w, &rules) {
-            "Penetration through a load-bearing wall th. {t} mm – {s}"
-        } else {
-            "Penetration through a wall th. {t} mm – {s}"
-        };
-        tr(key).replace("{t}", &mm(w.thickness)).replace("{s}", &s)
-    };
-    let line = |element, level, text: String, round: bool, s: [f64; 2], deep: f64| Line {
-        element,
-        category: "Penetrations",
-        level: Some(level),
-        material: None,
-        layer: None,
-        thickness: deep,
-        quantity: Quantity {
-            area: area(round, s),
-            length: deep,
-            count: 1,
-            ..Default::default()
-        },
-        perimeter: 0.0,
-        label: Some(text),
-    };
-    let mut out = vec![];
-    for c in crossings(model) {
-        let s = format!("{} ({})", size(c.round, c.size), c.code);
-        let host = model.get(c.host).map(|h| &h.kind);
-        let (text, deep) = match (c.through, host) {
-            (Through::Wall, Some(ElementKind::Wall(w))) => (wall_text(w, s), w.thickness),
-            (Through::Slab, Some(ElementKind::Slab(x))) => (
-                tr("Penetration through a slab th. {t} mm – {s}")
-                    .replace("{t}", &mm(x.thickness))
-                    .replace("{s}", &s),
-                x.thickness,
-            ),
-            (Through::Ceiling, Some(ElementKind::Ceiling(x))) => {
-                let (lo, hi) = x.span(model);
-                (
-                    tr("Penetration through a suspended ceiling th. {t} mm – {s}")
-                        .replace("{t}", &mm(hi - lo))
-                        .replace("{s}", &s),
-                    hi - lo,
-                )
-            }
-            (Through::Roof, Some(ElementKind::Roof(r))) => (
-                tr("Penetration through the roof th. {t} mm – {s}")
-                    .replace("{t}", &mm(r.vertical_thickness()))
-                    .replace("{s}", &s),
-                r.vertical_thickness(),
-            ),
-            _ => continue,
-        };
-        out.push(line(c.host, c.host_level, text, c.round, c.size, deep));
-    }
-    // drawn by hand
-    for e in model.iter() {
-        match &e.kind {
-            ElementKind::Opening(o) if o.is_penetration() => {
-                let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
-                    continue;
-                };
-                let round = o.penetration.as_ref().is_some_and(|p| p.round);
-                let s = [o.width, o.height];
-                out.push(line(
-                    e.id,
-                    w.level,
-                    wall_text(w, size(round, s)),
-                    round,
-                    s,
-                    w.thickness,
-                ));
-            }
-            ElementKind::Shaft(sh) if sh.penetration.is_some() => {
-                let p = sh.penetration.as_ref().unwrap();
-                let (lo, hi) = sh.boundary.iter().fold(
-                    (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
-                    |(a, b), q| (a.min(*q), b.max(*q)),
-                );
-                let s = p.size.unwrap_or([hi.x - lo.x, hi.y - lo.y]);
-                out.push(line(
-                    e.id,
-                    sh.level,
-                    tr("Penetration through a slab – {s}").replace("{s}", &size(p.round, s)),
-                    p.round,
-                    s,
-                    0.0,
-                ));
-            }
-            _ => {}
-        }
-    }
-    out
 }

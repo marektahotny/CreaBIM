@@ -397,7 +397,7 @@ impl Pipe {
         } else if self.height_mm.is_some() {
             0.0
         } else {
-            default_insulation_mm(self.kind(), &self.pipe_type, self.outer_mm)
+            default_insulation_mm(self.kind(), &self.pipe_type, self.outer_mm, self.inner_mm)
         }
     }
 
@@ -459,28 +459,36 @@ pub const INSULATION_CHOICES: [f64; 13] = [
     0.0, 6.0, 9.0, 13.0, 19.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0, 100.0,
 ];
 
-/// Heat insulation of a heating or hot water pipe of `outer_mm`, mm, at
-/// λ = 0,035 W/(m·K) (PilonDesigner's `heatInsulMm`): up to 22 mm 20 mm,
-/// to 35 mm 30 mm, to 100 mm as thick as the pipe (whole centimetres),
-/// above 100 mm.
-pub fn heat_insulation_mm(outer_mm: f64) -> f64 {
-    if outer_mm <= 22.0 {
+/// The least heat insulation of a heating or hot water pipe of
+/// `inner_mm` inside, mm, at λ = 0,035 W/(m·K) at 0 °C (vyhláška MH SR
+/// č. 14/2016 Z. z., príloha č. 1): up to 22 mm 20 mm, to 35 mm 30 mm,
+/// to 100 mm as thick as the pipe is inside, above it 100 mm. Other
+/// insulation than λ 0,035 is reckoned by its príloha č. 2
+/// (`creabim_services::pipeinsul`).
+pub fn heat_insulation_mm(inner_mm: f64) -> f64 {
+    if inner_mm <= 22.0 {
         20.0
-    } else if outer_mm <= 35.0 {
+    } else if inner_mm <= 35.0 {
         30.0
-    } else if outer_mm <= 100.0 {
-        (outer_mm / 10.0).ceil() * 10.0
+    } else if inner_mm <= 100.0 {
+        inner_mm
     } else {
         100.0
     }
 }
 
-/// The insulation a pipe of a system wants, mm (PilonDesigner's
-/// `defaultInsulMm`): heat insulation on hot water, circulation and
-/// heating; against condensation on cold water (9 mm) and cooling (13,
+/// The insulation a pipe of `outer_mm` (`inner_mm` inside, 0 when not
+/// known) of a system wants, mm (PilonDesigner's `defaultInsulMm`): heat
+/// insulation on hot water, circulation and heating
+/// ([`heat_insulation_mm`]); against condensation on cold water (9 mm) and cooling (13,
 /// from 42 mm 19); none on underfloor heating pipe, drainage, gas, flue
 /// and air.
-pub fn default_insulation_mm(kind: SystemKind, pipe_type: &str, outer_mm: f64) -> f64 {
+pub fn default_insulation_mm(
+    kind: SystemKind,
+    pipe_type: &str,
+    outer_mm: f64,
+    inner_mm: f64,
+) -> f64 {
     if pipe_type == "HERZFH" || pipe_type == "PEX" {
         return 0.0;
     }
@@ -488,7 +496,9 @@ pub fn default_insulation_mm(kind: SystemKind, pipe_type: &str, outer_mm: f64) -
         SystemKind::HotWater
         | SystemKind::Circulation
         | SystemKind::HeatingSupply
-        | SystemKind::HeatingReturn => heat_insulation_mm(outer_mm),
+        | SystemKind::HeatingReturn => {
+            heat_insulation_mm(if inner_mm > 0.0 { inner_mm } else { outer_mm })
+        }
         SystemKind::ColdWater => 9.0,
         SystemKind::CoolingSupply | SystemKind::CoolingReturn => {
             if outer_mm >= 42.0 {
@@ -1154,22 +1164,22 @@ mod tests {
     fn a_pipe_takes_its_systems_insulation_unless_one_is_typed() {
         assert_eq!(heat_insulation_mm(16.0), 20.0);
         assert_eq!(heat_insulation_mm(32.0), 30.0);
-        assert_eq!(heat_insulation_mm(54.0), 60.0);
+        assert_eq!(heat_insulation_mm(54.0), 54.0);
         assert_eq!(heat_insulation_mm(160.0), 100.0);
         assert_eq!(
-            default_insulation_mm(SystemKind::ColdWater, "Cu", 22.0),
+            default_insulation_mm(SystemKind::ColdWater, "Cu", 22.0, 0.0),
             9.0
         );
         assert_eq!(
-            default_insulation_mm(SystemKind::CoolingSupply, "Cu", 42.0),
+            default_insulation_mm(SystemKind::CoolingSupply, "Cu", 42.0, 0.0),
             19.0
         );
         assert_eq!(
-            default_insulation_mm(SystemKind::Sanitary, "PPHT", 110.0),
+            default_insulation_mm(SystemKind::Sanitary, "PPHT", 110.0, 0.0),
             0.0
         );
         assert_eq!(
-            default_insulation_mm(SystemKind::HeatingSupply, "HERZFH", 16.0),
+            default_insulation_mm(SystemKind::HeatingSupply, "HERZFH", 16.0, 0.0),
             0.0
         );
     }

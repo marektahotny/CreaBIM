@@ -302,6 +302,13 @@ pub fn click(
     state: &mut PlanState,
     selection: &mut Selection,
 ) -> Result<(), creabim_core::ModelError> {
+    // an edge zone is only a line or a polyline (George 2026-11-28)
+    if state.tool == crate::planview::Tool::UfhZone
+        && state.ufh_zone == crate::roomtool::UfhZone::Edge
+    {
+        state.slab_mode = SlabMode::Polygon;
+        state.pending = None;
+    }
     match state.slab_mode {
         SlabMode::Polygon => {
             let mut o = crate::outline::Outline::new_slab(doc.model(), level, p);

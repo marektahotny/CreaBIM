@@ -152,6 +152,28 @@ pub fn zone_items(
         );
         let mid = o.iter().copied().sum::<DVec2>() / o.len() as f64;
         match z.kind {
+            ZoneKind::Edge { .. } if z.mark.is_some() => {
+                // set off from an edge drawn along the field (George
+                // 2026-11-28, as VYK.001): a dashed line at the zone's
+                // width, an arrow on it pointing at the edge
+                let [a, b, edge] = z.mark.unwrap_or_default();
+                line(items, Pen::Hidden, &[a, b]);
+                let m = (a + b) / 2.0;
+                let dir = (edge - m).normalize_or_zero();
+                if dir != DVec2::ZERO {
+                    let along = dir.perp();
+                    let (len, half) = (4.0 * mm, 1.2 * mm);
+                    let tip = m + dir * len;
+                    line(items, Pen::Symbol, &[m, tip]);
+                    let head = [tip + dir * 1.5 * mm, tip + along * half, tip - along * half];
+                    items.push(PlanItem::Shade {
+                        id,
+                        points: head.to_vec(),
+                        rgb: [0.0, 0.0, 0.0],
+                    });
+                    line(items, Pen::Symbol, &[head[0], head[1], head[2], head[0]]);
+                }
+            }
             ZoneKind::Edge { .. } => {
                 line(items, Pen::Hidden, &rounded(o, 0.12));
                 // the triangle, pointing down
@@ -270,8 +292,9 @@ fn num(x: f64, places: usize) -> String {
 }
 
 /// The underfloor heating of the rooms of `level` in a plan where `mm`
-/// drawing units make a paper millimetre.
-pub fn items(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
+/// drawing units make a paper millimetre; `view`'s tables of the rooms
+/// (their tags) where they were moved to.
+pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) -> Vec<PlanItem> {
     let mut rooms: Vec<_> = model
         .iter()
         .filter_map(|e| match &e.kind {
@@ -415,6 +438,8 @@ pub fn items(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             which,
             format!("{} - {}", r.number, e.name),
             design.rooms.iter().find(|x| x.id == e.id),
+            shape.outline.clone(),
+            u.edges().next().map(|z| z.1),
         ));
         // the heated field's edge, a yellow dashed line
         if let Some(mut ring) = creabim_core::underfloor::inset_ring(
@@ -440,18 +465,35 @@ pub fn items(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
             mm,
         }),
     };
-    for (id, at, which, name, d) in tables {
+    for (room_id, at, which, name, d, outline, edge) in tables {
+        // the room's table tag in this view: the table where it was moved
+        // to, picked and dragged as the tag (George 2026-11-28)
+        let tag = view.and_then(|v| {
+            model.iter().find_map(|t| match &t.kind {
+                ElementKind::Tag(x) if x.ufh && x.view == v && x.host == room_id => {
+                    Some((t.id, x.offset))
+                }
+                _ => None,
+            })
+        });
+        let id = tag.map_or(room_id, |t| t.0);
         // two columns, as the office's table of a circuit
         let mut rows = vec![(
             format!("RZ 1 - {storey} ({circuits}/{which})"),
             format!("tp = {} °C", num(settings.supply_c, 0)),
         )];
         if let Some(d) = d {
-            rows.extend([
-                (
-                    format!("Lpz = {} mm", num(d.spacing * 1000.0, 0)),
-                    format!("L = {} m", num(d.loop_len, 1)),
+            // the edge zone's spacing beside the room's (VYK.001: Lpz/Loz)
+            let spacing = match edge {
+                Some(oz) => format!(
+                    "Lpz/Loz = {}/{} mm",
+                    num(d.spacing * 1000.0, 0),
+                    num(oz * 1000.0, 0)
                 ),
+                None => format!("Lpz = {} mm", num(d.spacing * 1000.0, 0)),
+            };
+            rows.extend([
+                (spacing, format!("L = {} m", num(d.loop_len, 1))),
                 (name, format!("{} {pipe}", creabim_core::words::tr("Pipe"))),
                 (
                     format!("Δp = {} kPa", num(d.dp_kpa, 1)),
@@ -470,9 +512,40 @@ pub fn items(model: &Model, level: ElementId, mm: f64) -> Vec<PlanItem> {
         };
         let (w0, w1) = (col(&|r| &r.0), col(&|r| &r.1));
         let h = rows.len() as f64 * row;
-        // under the room's name
-        let top = at - DVec2::Y * 9.0 * mm - DVec2::X * (w0 + w1) / 2.0 * mm;
+        // under the room's name, or where its tag was moved to
+        let offset = tag.map_or(DVec2::Y * -9.0 * mm, |t| t.1);
+        let top = at + offset - DVec2::X * (w0 + w1) / 2.0 * mm;
         let p = |x: f64, y: f64| top + DVec2::new(x, -y) * mm;
+        // on a leader to the room's label point once out of the room
+        let box_ = [p(0.0, 0.0), p(w0 + w1, 0.0), p(w0 + w1, h), p(0.0, h)];
+        let middle = p((w0 + w1) / 2.0, h / 2.0);
+        if !creabim_core::polygon::contains(&outline, middle) {
+            let (lo, hi) = (box_[3], box_[1]);
+            let from = at.clamp(lo, hi);
+            out.push(PlanItem::Line {
+                id,
+                pen: crate::plan::Pen::Fine,
+                a: from,
+                b: at,
+            });
+            let r = 0.6 * mm;
+            out.push(PlanItem::Shade {
+                id,
+                points: (0..12)
+                    .map(|k| {
+                        let a = k as f64 / 12.0 * std::f64::consts::TAU;
+                        at + DVec2::new(a.cos(), a.sin()) * r
+                    })
+                    .collect(),
+                rgb: [0.0, 0.0, 0.0],
+            });
+        }
+        // the table on white, over the loops
+        out.push(PlanItem::Shade {
+            id,
+            points: box_.to_vec(),
+            rgb: [1.0, 1.0, 1.0],
+        });
         let mut rule = |a: DVec2, b: DVec2| {
             out.push(PlanItem::Line {
                 id,
@@ -543,7 +616,7 @@ mod tests {
     fn a_heated_room_gets_coloured_loops_and_its_table() {
         let mut doc = Document::from_model(creabim_core::sample::sample_house());
         let level = doc.model().levels().next().unwrap().0.id;
-        assert!(items(doc.model(), level, 0.1).is_empty());
+        assert!(items(doc.model(), level, None, 0.1).is_empty());
         let mut r = Room::new(level, DVec2::new(2.5, 3.0));
         r.number = "1.01".into();
         r.ufh = Some(Underfloor {
@@ -555,7 +628,7 @@ mod tests {
         let room = Element::new("Kúpeľňa", ElementKind::Room(r));
         let id = room.id;
         doc.commit(Transaction::new("room").insert(room)).unwrap();
-        let out = items(doc.model(), level, 0.1);
+        let out = items(doc.model(), level, None, 0.1);
         let count = |c: [f32; 3]| {
             out.iter()
                 .filter(|i| matches!(i, PlanItem::Shade { rgb, .. } if *rgb == c))

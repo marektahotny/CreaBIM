@@ -89,6 +89,15 @@ impl CreaBimApp {
         ) {
             self.plan.slab_mode = crate::slabtool::SlabMode::Polygon;
         }
+        if kind == UfhZone::Edge {
+            self.plan.slab_mode = crate::slabtool::SlabMode::Polygon;
+            self.status = format!(
+                "{}: {}",
+                crate::i18n::tr(kind.label()),
+                crate::i18n::tr("trace the edge of the heated field with a line or a polyline; Enter finishes it, then its width and spacing are asked.")
+            );
+            return;
+        }
         self.status = format!(
             "{}: {}",
             crate::i18n::tr(kind.label()),
@@ -474,7 +483,18 @@ impl CreaBimApp {
             self.plan.tool = super::Tool::Object;
             self.park(what);
         }
-        if !set.is_empty() {
+        // each room's table its own tag in the heating plans, to move
+        let tags = if !set.is_empty() || write_now {
+            let on: Vec<ElementId> = set
+                .iter()
+                .filter(|(_, u)| u.is_some())
+                .map(|(id, _)| *id)
+                .collect();
+            table_tags(self.doc.model(), &on)
+        } else {
+            vec![]
+        };
+        if !set.is_empty() || !tags.is_empty() {
             let mut tx = Transaction::new("Underfloor heating");
             for (id, u) in set {
                 let Some(before) = self.doc.model().get(id).cloned() else {
@@ -485,6 +505,9 @@ impl CreaBimApp {
                     r.ufh = u;
                 }
                 tx = tx.replace(before, after);
+            }
+            for tag in tags {
+                tx = tx.insert(tag);
             }
             match self.doc.commit(tx) {
                 Ok(_) => self.status = t("Underfloor heating"),
@@ -499,6 +522,53 @@ impl CreaBimApp {
         }
         self.floor_heat = if open { Some(s) } else { None };
     }
+}
+
+/// The tags of the underfloor heating tables a heating plan wants and
+/// has not got: of the rooms with underfloor heating, and of `also`
+/// (just given it), in each plan of their storey that draws heating.
+fn table_tags(model: &creabim_core::Model, also: &[ElementId]) -> Vec<creabim_core::Element> {
+    use creabim_core::{Element, ElementKind, Tag, ViewKind};
+    let mut out = vec![];
+    let rooms: Vec<(ElementId, ElementId)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Room(r) if r.ufh.is_some() || also.contains(&e.id) => {
+                Some((e.id, r.level))
+            }
+            _ => None,
+        })
+        .collect();
+    for v in model.iter() {
+        let ElementKind::View(view) = &v.kind else {
+            continue;
+        };
+        let ViewKind::Plan { level, .. } = &view.kind else {
+            continue;
+        };
+        let heating = view
+            .trade
+            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Heating);
+        if view.ceiling_plan || !heating {
+            continue;
+        }
+        for (room, _) in rooms.iter().filter(|r| r.1 == *level) {
+            let has = model.iter().any(|t| {
+                matches!(&t.kind, ElementKind::Tag(x) if x.ufh && x.view == v.id && x.host == *room)
+            });
+            if !has {
+                // under the room's name, as the plan drew it (9 mm down)
+                let mm = view.scale / 1000.0;
+                let mut tag = Tag::new(v.id, *room, glam::DVec2::new(0.0, -9.0 * mm));
+                tag.ufh = true;
+                out.push(Element::new(
+                    "Underfloor heating table",
+                    ElementKind::Tag(tag),
+                ));
+            }
+        }
+    }
+    out
 }
 
 fn code(c: &str) -> String {
@@ -817,7 +887,11 @@ fn manifold_ui(
             Col::num("Flow", "l/h"),
             Col::num("v", "m/s"),
             Col::num("R", "Pa/m"),
-            Col::num("Insulation", "mm"),
+            Col {
+                title: "Insulation",
+                unit: "mm",
+                num: false,
+            },
             Col::num("Length", "m"),
         ];
         // (role, pipe, code, flow l/h, v, R, insulation, length)
@@ -862,7 +936,19 @@ fn manifold_ui(
                 num(p.flow_ls * 3600.0, 0),
                 num(p.velocity, 2),
                 num(p.r_pa_m, 0),
-                num(p.insulation_mm, 0),
+                // the least by the vyhláška at λ 0,035, the product's least
+                // and its tube
+                match &p.tube {
+                    Some(tb) => format!(
+                        "{} · {}: {} × {}{}",
+                        num(p.insulation_mm, 0),
+                        num(tb.least_mm, 0),
+                        tb.inner_mm,
+                        tb.wall_mm,
+                        if tb.enough { "" } else { " !" }
+                    ),
+                    None => num(p.insulation_mm, 0),
+                },
                 len,
             ]
         };
@@ -901,6 +987,13 @@ fn manifold_ui(
                 }
             },
             None,
+        );
+        ui.label(
+            egui::RichText::new(t(
+                "Insulation: the least thickness at λ 0.035 W/(m·K) by the pipe's inner diameter (vyhláška MH SR č. 14/2016 Z. z., príloha č. 1) · the product's least at its λ at 0 °C (príloha č. 2, α2 = 10 W/(m²·K)): its tube, inner diameter × wall, mm; ! not thick enough even at its thickest.",
+            ))
+            .small()
+            .weak(),
         );
         // the circuits balanced: presetting, flow on the flowmeter
         if !m.circuits.is_empty() {
@@ -1032,5 +1125,215 @@ fn cabinet_label(c: creabim_core::catalogue::ufhmanifold::Cabinet) -> &'static s
         Cabinet::Flush => "Under the plaster",
         Cabinet::Wall => "On the wall",
         Cabinet::None => "No cabinet",
+    }
+}
+
+/// An edge zone's line drawn along the heated field (George 2026-11-28),
+/// waiting for how wide the zone is from it and its spacing.
+#[derive(Clone, Debug)]
+pub struct EdgeDraft {
+    line: crate::outline::EdgeLine,
+    room: ElementId,
+    /// Its width from the edge, m (1 m unless changed).
+    width: f64,
+    /// Its spacing, mm: one step closer than the room's unless changed.
+    spacing_mm: f64,
+    /// The spacings the floor's board allows, mm.
+    choices: Vec<f64>,
+    room_spacing_mm: f64,
+    /// Frames it has been shown: the Enter that finished the line does
+    /// not also confirm it.
+    shown: u32,
+}
+
+/// The spacings a room's floor allows, mm, closest first.
+fn spacing_choices(model: &creabim_core::Model, r: &creabim_core::Room) -> Vec<f64> {
+    let floor = floorheat::floor_build(model, r.level, r.at);
+    let mut all: Vec<f64> = floor
+        .as_ref()
+        .map(|f| f.spec.spacings())
+        .unwrap_or_else(|| floorheat::SPACINGS.to_vec())
+        .iter()
+        .map(|v| v * 1000.0)
+        .collect();
+    // the board's raster halved, as a nub board lays it
+    match floor.as_ref().and_then(|f| f.spec.raster_mm) {
+        Some(r) => all.insert(0, r),
+        None => {
+            if !all.iter().any(|v| (v - 50.0).abs() < 1e-6) {
+                all.insert(0, 50.0);
+            }
+        }
+    }
+    all.sort_by(f64::total_cmp);
+    all.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    all
+}
+
+impl CreaBimApp {
+    /// The edge zone just drawn: find its room and ask its width.
+    fn take_ufh_edge(&mut self) {
+        let Some(line) = crate::outline::take_edge() else {
+            return;
+        };
+        let model = self.doc.model();
+        let (a, b) = (line.points[0], line.points[1]);
+        let mid = (a + b) / 2.0;
+        let n = (b - a).normalize_or_zero().perp();
+        let found = [mid + n * 0.05, mid - n * 0.05, mid]
+            .into_iter()
+            .find_map(|p| {
+                let id = crate::roomtool::room_at(model, line.level, p)?;
+                match model.get(id).map(|e| &e.kind) {
+                    Some(ElementKind::Room(r)) if r.ufh.is_some() => Some((id, r.clone())),
+                    _ => None,
+                }
+            });
+        let Some((room, r)) = found else {
+            self.status = crate::i18n::tr(
+                "Draw the edge zone along the edge of a room with underfloor heating.",
+            )
+            .to_string();
+            return;
+        };
+        let room_mm = r.ufh.as_ref().map_or(150.0, |u| u.spacing * 1000.0);
+        let choices = spacing_choices(model, &r);
+        // one step closer than the room's, as it is mostly laid
+        let spacing_mm = choices
+            .iter()
+            .rev()
+            .find(|v| **v < room_mm - 1e-6)
+            .copied()
+            .unwrap_or((room_mm - 50.0).max(50.0));
+        self.ufh_edge = Some(EdgeDraft {
+            line,
+            room,
+            width: 1.0,
+            spacing_mm,
+            choices,
+            room_spacing_mm: room_mm,
+            shown: 0,
+        });
+    }
+
+    /// The dialog asking an edge zone's width and spacing.
+    pub(super) fn ufh_edge_window(&mut self, ctx: &egui::Context) {
+        self.take_ufh_edge();
+        let Some(mut d) = self.ufh_edge.take() else {
+            return;
+        };
+        let t = crate::i18n::tr;
+        let num = crate::i18n::num;
+        let mut ok = false;
+        let mut cancel = false;
+        let keys = d.shown > 1;
+        d.shown = d.shown.saturating_add(1);
+        let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
+        egui::Window::new(t("Edge zone"))
+            .id(egui::Id::new("ufh.edge.dialog"))
+            .collapsible(false)
+            .resizable(false)
+            .default_pos(area.center() - Vec2::new(160.0, 80.0))
+            .constrain_to(area)
+            .show(ctx, |ui| {
+                ui.label(t("How wide is the edge zone from the edge drawn?"));
+                egui::Grid::new("ufh.edge.grid")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        ui.label(t("Width from the edge"));
+                        ui.add(
+                            egui::DragValue::new(&mut d.width)
+                                .range(0.1..=5.0)
+                                .speed(0.05)
+                                .fixed_decimals(2)
+                                .suffix(" m"),
+                        );
+                        ui.end_row();
+                        ui.label(t("Spacing in the zone"));
+                        egui::ComboBox::from_id_salt("ufh.edge.spacing")
+                            .width(80.0)
+                            .selected_text(format!("{} mm", num(d.spacing_mm, 0)))
+                            .show_ui(ui, |ui| {
+                                for a in d.choices.clone() {
+                                    ui.selectable_value(
+                                        &mut d.spacing_mm,
+                                        a,
+                                        format!("{} mm", num(a, 0)),
+                                    );
+                                }
+                            });
+                        ui.end_row();
+                    });
+                ui.weak(format!(
+                    "{} {} mm",
+                    t("The room's loops are spaced"),
+                    num(d.room_spacing_mm, 0)
+                ));
+                ui.horizontal(|ui| {
+                    if ui.button(t("OK")).clicked()
+                        || (keys && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                    {
+                        ok = true;
+                    }
+                    if ui.button(t("Cancel")).clicked()
+                        || (keys && ui.input(|i| i.key_pressed(egui::Key::Escape)))
+                    {
+                        cancel = true;
+                    }
+                });
+            });
+        if cancel {
+            self.status = t("Edge zone cancelled.").to_string();
+            return;
+        }
+        if !ok {
+            self.ufh_edge = Some(d);
+            return;
+        }
+        self.status = match self.commit_ufh_edge(&d) {
+            Ok(m) => m,
+            Err(e) => e.to_string(),
+        };
+    }
+
+    fn commit_ufh_edge(&mut self, d: &EdgeDraft) -> Result<String, creabim_core::ModelError> {
+        let model = self.doc.model();
+        let Some(before) = model.get(d.room).cloned() else {
+            return Ok(String::new());
+        };
+        let ElementKind::Room(r) = &before.kind else {
+            return Ok(String::new());
+        };
+        let Some(shape) = creabim_core::room::shape_of(model, r) else {
+            return Ok(crate::i18n::tr("The room has no closed outline.").to_string());
+        };
+        let spacing = d.spacing_mm / 1000.0;
+        let zones = creabim_core::underfloor::edge_zones(
+            &shape.outline,
+            &d.line.points,
+            d.line.closed,
+            d.width,
+            spacing,
+        );
+        if zones.is_empty() {
+            return Ok(crate::i18n::tr("The edge zone lies outside the room.").to_string());
+        }
+        let mut after = before.clone();
+        if let ElementKind::Room(r) = &mut after.kind {
+            if let Some(u) = r.ufh.as_mut() {
+                u.zones.extend(zones);
+            }
+        }
+        self.doc
+            .commit(Transaction::new("Underfloor heating zone").replace(before, after))?;
+        self.selection.only(d.room);
+        Ok(format!(
+            "{} {} m, {} {} mm. {}",
+            crate::i18n::tr("Edge zone added:"),
+            crate::i18n::num(d.width, 2),
+            crate::i18n::tr("its pipes"),
+            crate::i18n::num(d.spacing_mm, 0),
+            crate::i18n::tr("Change its spacing or switch it off in the Underfloor heating window. Ctrl+Z to undo.")
+        ))
     }
 }

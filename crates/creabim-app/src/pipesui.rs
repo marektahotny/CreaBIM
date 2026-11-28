@@ -549,7 +549,12 @@ pub fn pipe_fields(ui: &mut egui::Ui, p: &mut Pipe) -> &'static str {
     }
     // insulation: its system's (for the schedule), or a thickness picked
     if p.height_mm.is_none() {
-        let auto = creabim_core::mep::default_insulation_mm(p.kind(), &p.pipe_type, p.outer_mm);
+        let auto = creabim_core::mep::default_insulation_mm(
+            p.kind(),
+            &p.pipe_type,
+            p.outer_mm,
+            p.inner_mm,
+        );
         let mm = |v: f64| {
             if v > 0.0 {
                 format!("{v:.0} mm")

@@ -122,6 +122,11 @@ pub struct Zone {
     /// Off, it is kept but neither drawn nor counted.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub on: bool,
+    /// An edge zone set off from an edge drawn along the heated field
+    /// (George 2026-11-28): the dashed line's ends at its width from the
+    /// edge, and the point of the edge its arrow points at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<[DVec2; 3]>,
 }
 
 fn yes() -> bool {
@@ -189,6 +194,115 @@ impl Underfloor {
         }
         Ok(())
     }
+}
+
+/// The edge zones `width` wide along the edge `line` drawn in the room
+/// `room` (its outline), on the side the room lies (George 2026-11-28):
+/// a piece a leg of the line, the line's corners mitred, each cut to
+/// the room, with its dashed line and arrow ([`Zone::mark`]). `closed`
+/// runs it round from the last point to the first too.
+pub fn edge_zones(
+    room: &[DVec2],
+    line: &[DVec2],
+    closed: bool,
+    width: f64,
+    spacing: f64,
+) -> Vec<Zone> {
+    let mut pts: Vec<DVec2> = line.to_vec();
+    pts.dedup_by(|a, b| a.distance(*b) < 1e-6);
+    if closed && pts.len() > 2 {
+        pts.push(pts[0]);
+    }
+    let n = pts.len();
+    if n < 2 || width <= 0.0 {
+        return vec![];
+    }
+    // the side the room lies on, from the first leg's middle
+    let leg = |i: usize| (pts[i + 1] - pts[i]).normalize_or_zero();
+    let mid = (pts[0] + pts[1]) / 2.0;
+    let left = leg(0).perp();
+    let probe = 0.05_f64.min(width / 2.0);
+    let side = if crate::polygon::contains(room, mid + left * probe) {
+        1.0
+    } else {
+        -1.0
+    };
+    let normal = |i: usize| leg(i).perp() * side;
+    // each point set off, mitred at the corners
+    let off: Vec<DVec2> = (0..n)
+        .map(|i| {
+            let (a, b) = match (i, closed) {
+                (0, true) => (normal(n - 2), normal(0)),
+                (0, false) => (normal(0), normal(0)),
+                (i, true) if i == n - 1 => (normal(n - 2), normal(0)),
+                (i, false) if i == n - 1 => (normal(n - 2), normal(n - 2)),
+                (i, _) => (normal(i - 1), normal(i)),
+            };
+            let m = a + b;
+            let k = 1.0 + a.dot(b);
+            let m = if k > 1e-6 { m / k } else { a };
+            pts[i] + m * width
+        })
+        .collect();
+    let mut out = vec![];
+    for i in 0..n - 1 {
+        let mut quad = vec![pts[i], pts[i + 1], off[i + 1], off[i]];
+        if crate::polygon::signed_area2(&quad) < 0.0 {
+            quad.reverse();
+        }
+        let cut = clip_convex(room, &quad);
+        if cut.len() < 3 || crate::polygon::signed_area2(&cut).abs() < 1e-6 {
+            continue;
+        }
+        out.push(Zone {
+            kind: ZoneKind::Edge { spacing },
+            outline: cut,
+            on: true,
+            mark: Some([off[i], off[i + 1], (pts[i] + pts[i + 1]) / 2.0]),
+        });
+    }
+    out
+}
+
+/// `subject` cut to the convex, counter-clockwise `clip`
+/// (Sutherland–Hodgman).
+fn clip_convex(subject: &[DVec2], clip: &[DVec2]) -> Vec<DVec2> {
+    let mut out: Vec<DVec2> = subject.to_vec();
+    if crate::polygon::signed_area2(&out) < 0.0 {
+        out.reverse();
+    }
+    for i in 0..clip.len() {
+        let (a, b) = (clip[i], clip[(i + 1) % clip.len()]);
+        let inside = |p: DVec2| (b - a).perp_dot(p - a) >= -1e-12;
+        let input = std::mem::take(&mut out);
+        let Some(&last) = input.last() else {
+            return vec![];
+        };
+        let mut s = last;
+        for &e in &input {
+            let cross = |p: DVec2, q: DVec2| {
+                let d = q - p;
+                let den = (b - a).perp_dot(d);
+                if den.abs() < 1e-15 {
+                    q
+                } else {
+                    p + d * ((b - a).perp_dot(a - p) / den).clamp(0.0, 1.0)
+                }
+            };
+            match (inside(e), inside(s)) {
+                (true, true) => out.push(e),
+                (true, false) => {
+                    out.push(cross(s, e));
+                    out.push(e);
+                }
+                (false, true) => out.push(cross(s, e)),
+                _ => {}
+            }
+            s = e;
+        }
+    }
+    out.dedup_by(|a, b| a.distance(*b) < 1e-9);
+    out
 }
 
 /// The edge strip left free along the walls, m.
@@ -879,6 +993,7 @@ mod tests {
                 DVec2::new(1.0, 3.0),
             ],
             on: true,
+            mark: None,
         });
         let holed = loops(&rect(6.0, 4.0), &u);
         for s in &holed {
@@ -904,5 +1019,28 @@ mod tests {
         let z = split_zones(&rect(6.0, 4.0), 2, u.split.as_ref());
         let area = |q: &[DVec2]| crate::polygon::signed_area2(q).abs() / 2.0;
         assert!((area(&z[0]) - 4.0).abs() < 1e-9 && (area(&z[1]) - 20.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn an_edge_zone_set_off_from_an_edge() {
+        let room = rect(6.0, 4.0);
+        // along the bottom wall, 1 m wide, into the room
+        let z = edge_zones(&room, &[DVec2::ZERO, DVec2::new(6.0, 0.0)], false, 1.0, 0.1);
+        assert_eq!(z.len(), 1);
+        assert!((z[0].area() - 6.0).abs() < 1e-9, "{}", z[0].area());
+        let m = z[0].mark.unwrap();
+        assert!((m[0].y - 1.0).abs() < 1e-9 && (m[1].y - 1.0).abs() < 1e-9);
+        // drawn the other way round: still into the room
+        let z = edge_zones(&room, &[DVec2::new(6.0, 0.0), DVec2::ZERO], false, 1.0, 0.1);
+        assert!((z[0].area() - 6.0).abs() < 1e-9);
+        // round a corner: two pieces, mitred, no overlap
+        let l = [DVec2::new(0.0, 4.0), DVec2::ZERO, DVec2::new(6.0, 0.0)];
+        let z = edge_zones(&room, &l, false, 1.0, 0.1);
+        let a: f64 = z.iter().map(Zone::area).sum();
+        assert_eq!(z.len(), 2);
+        assert!((a - (4.0 + 6.0 - 1.0)).abs() < 1e-9, "{a}");
+        // wider than the room: cut to it
+        let z = edge_zones(&room, &[DVec2::ZERO, DVec2::new(6.0, 0.0)], false, 9.0, 0.1);
+        assert!((z[0].area() - 24.0).abs() < 1e-9);
     }
 }

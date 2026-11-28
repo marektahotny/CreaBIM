@@ -237,6 +237,7 @@ fn ufh_zone(
             kind,
             outline,
             on: true,
+            mark: None,
         });
         r.ufh = Some(u);
     }
@@ -455,7 +456,7 @@ pub fn tag_rooms(doc: &mut Document, view: ElementId) -> Result<usize, ModelErro
     let tagged: std::collections::HashSet<ElementId> = model
         .iter()
         .filter_map(|e| match &e.kind {
-            ElementKind::Tag(t) if t.view == view => Some(t.host),
+            ElementKind::Tag(t) if t.view == view && !t.ufh => Some(t.host),
             _ => None,
         })
         .collect();
