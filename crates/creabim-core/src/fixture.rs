@@ -125,6 +125,26 @@ impl ConnKind {
         }
     }
 
+    /// How a drawing labels it by trade and medium (George 2026-11-23):
+    /// ZTI-SV, ZTI-TV, ZTI-K, UK-P, UK-S...
+    pub fn label(self) -> &'static str {
+        match self {
+            ConnKind::SV => "ZTI-SV",
+            ConnKind::TV => "ZTI-TV",
+            ConnKind::C => "ZTI-C",
+            ConnKind::K => "ZTI-K",
+            ConnKind::UKP => "UK-P",
+            ConnKind::UKS => "UK-S",
+            ConnKind::CHP => "CH-P",
+            ConnKind::CHS => "CH-S",
+            ConnKind::P => "PLYN",
+            ConnKind::O2 => "MPL-O2",
+            ConnKind::AIR => "MPL-AIR",
+            ConnKind::VAC => "MPL-VAC",
+            ConnKind::N2O => "MPL-N2O",
+        }
+    }
+
     /// Its name, in English: the app translates it.
     pub fn name(self) -> &'static str {
         match self {
@@ -602,11 +622,16 @@ pub fn family_of_type(t: &ObjectType) -> Option<&'static str> {
         "washbasin" | "pd-basin" => Some("Umývadlo"),
         "wc" | "pd-wc" => Some("WC s nádržkou"),
         "bathtub" | "bath" => Some("Vaňa"),
+        k if k.starts_with("bathtub-") => Some("Vaňa"),
         "shower" => Some("Sprcha"),
         "sink-unit" | "sink-unit-1000" | "sink" => Some("Kuchynský drez"),
         "floor-drain" => Some("Podlahová vpusť"),
         "outside-tap" => Some("Výtokový ventil"),
         "radiator" => Some("Doskové vykurovacie teleso"),
+        k if k.starts_with("ufh-manifold") => Some(crate::catalogue::ufhmanifold::FAMILY),
+        k if k.starts_with("koralux-klcm-") => Some("Kúpeľňový rebrík"),
+        k if k.starts_with("jika-basin") => Some("Umývadlo"),
+        k if k.starts_with("jika-wc") => Some("Závesné WC s podomietkovou nádržkou"),
         _ => None,
     };
     if by_key.is_some() {
@@ -755,6 +780,18 @@ pub fn connectors(model: &Model, e: &Element) -> Vec<Connector> {
             .collect();
     }
     let Some(family) = family_of_type(t) else {
+        // a gas cooker: its gas tap behind it, at the side, under the
+        // worktop
+        if crate::objects::Supply::of(t).is_some_and(|s| s.gas_kw.is_some()) {
+            let (lo, hi) = t.bounds();
+            let base = crate::objects::base_z_of(model, o, t) - floor;
+            let at = DVec2::new(hi.x - 0.1, hi.y - 0.03);
+            return vec![Connector {
+                kind: ConnKind::P,
+                at: o.to_plan(at).extend(base + (lo.z + 0.5).min(hi.z)),
+                dn: 15.0,
+            }];
+        }
         return vec![];
     };
     let len = length_of(family, t);

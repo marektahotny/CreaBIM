@@ -1,16 +1,16 @@
 {
   "name": "Standard",
-  "description": "CreaBIM's own look: black linework with a clear weight hierarchy, grey poch\u00e9 and the usual hatches. Heavier pens at 1:75 and larger.",
+  "description": "CreaBIM's own look: black linework with a clear weight hierarchy, grey poch\u00e9 and the usual hatches. The same pens at every scale, hatching in the thinnest.",
   "pens": [
     {
       "up_to": 75.0,
       "weights": {
-        "cut": 0.7,
-        "projection": 0.35,
-        "symbol": 0.25,
-        "fine": 0.18,
-        "hatch": 0.13,
-        "hidden": 0.18
+        "cut": 0.5,
+        "projection": 0.25,
+        "symbol": 0.18,
+        "fine": 0.13,
+        "hatch": 0.09,
+        "hidden": 0.13
       }
     },
     {

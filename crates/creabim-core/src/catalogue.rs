@@ -16,9 +16,18 @@ use std::f64::consts::{FRAC_PI_2, TAU};
 mod entourage;
 mod fixtures;
 pub mod heat;
+mod jika;
+pub mod living;
 pub mod medical;
+pub mod midea;
 pub mod radiators;
-mod services;
+pub mod services;
+pub mod site;
+pub mod soakaway;
+pub mod stretch;
+pub mod towels;
+pub mod ufhmanifold;
+pub mod valvebox;
 
 // ---- outlines and solids ----
 
@@ -280,6 +289,49 @@ impl Build {
         self
     }
 
+    /// A closed outline in a utility network's colour (see
+    /// [`SymbolItem::Net`]).
+    fn net(&mut self, points: Vec<DVec2>, code: &str, dashed: bool) -> &mut Self {
+        self.symbol.push(SymbolItem::Net {
+            points,
+            code: code.into(),
+            dashed,
+        });
+        self
+    }
+
+    /// Every part and the symbol moved by `d`.
+    fn shift(&mut self, d: DVec3) -> &mut Self {
+        for p in &mut self.parts {
+            for v in &mut p.mesh.vertices {
+                *v += d;
+            }
+        }
+        let m = d.truncate();
+        for s in &mut self.symbol {
+            match s {
+                SymbolItem::Loop(p) | SymbolItem::Net { points: p, .. } => {
+                    p.iter_mut().for_each(|q| *q += m)
+                }
+                SymbolItem::Line(a, b) => {
+                    *a += m;
+                    *b += m;
+                }
+                SymbolItem::Text { at, .. } => *at += m,
+            }
+        }
+        self
+    }
+
+    /// A short name by the symbol.
+    fn text(&mut self, at: DVec2, text: &str) -> &mut Self {
+        self.symbol.push(SymbolItem::Text {
+            at,
+            text: text.into(),
+        });
+        self
+    }
+
     fn line(&mut self, a: DVec2, b: DVec2) -> &mut Self {
         self.symbol.push(SymbolItem::Line(a, b));
         self
@@ -308,6 +360,7 @@ impl Build {
                 parts: std::mem::take(&mut self.parts),
                 symbol: std::mem::take(&mut self.symbol),
                 catalogue: Some(key),
+                supply: None,
             },
             materials: std::mem::take(&mut self.materials),
         }
@@ -412,40 +465,61 @@ fn wc() -> CatalogueObject {
         "wc",
         "WC, close-coupled",
         "Floor-standing pan with its cistern, seat height 420 mm",
-        ObjectCategory::Bathroom,
+        ObjectCategory::Toilet,
         ("IfcSanitaryTerminal", "TOILETPAN"),
         Mount::Wall,
     )
 }
 
+/// The bath sizes sold here, mm (Mexen, Roca, JIKA: 1500 × 700 to
+/// 1800 × 800); the 1700 × 750 one keeps the plain key.
+pub const BATH_SIZES: [(u32, u32); 4] = [(1500, 700), (1600, 700), (1700, 750), (1800, 800)];
+
 fn bathtub() -> CatalogueObject {
+    bathtub_sized(1700, 750)
+}
+
+/// A rectangular acrylic bath `w` × `d` mm: the same shape at every size,
+/// its rim, basin and floor kept as far in from its edges.
+fn bathtub_sized(w: u32, d: u32) -> CatalogueObject {
     let mut b = Build::new();
-    let (w, d, h, k) = (1.7, 0.75, 0.56, 6);
+    let (w, d) = (w as f64 / 1000.0, d as f64 / 1000.0);
+    let (h, k) = (0.56, 6);
     let c = v2(0.0, -d / 2.0);
     let inner = c + v2(0.05, 0.0);
+    let (iw, id) = (w - 0.18, d - 0.15);
     b.add(
         "Bath",
         acrylic(),
         stack(&[
             (rrect(c, w, d, 0.03, k), 0.0),
             (rrect(c, w, d, 0.03, k), h),
-            (rrect(inner, 1.52, 0.6, 0.26, k), h),
-            (rrect(inner, 1.46, 0.54, 0.24, k), h - 0.2),
-            (rrect(inner + v2(0.03, 0.0), 1.28, 0.42, 0.19, k), 0.12),
+            (rrect(inner, iw, id, 0.26, k), h),
+            (rrect(inner, iw - 0.06, id - 0.06, 0.24, k), h - 0.2),
+            (
+                rrect(inner + v2(0.03, 0.0), iw - 0.24, id - 0.18, 0.19, k),
+                0.12,
+            ),
         ]),
         true,
     );
-    b.outline(rrect(inner, 1.52, 0.6, 0.26, k));
+    b.outline(rrect(inner, iw, id, 0.26, k));
     b.add(
         "Waste",
         chrome(),
-        cylinder(inner + v2(0.58, 0.0), 0.035, 0.12, 0.125),
+        cylinder(inner + v2(iw / 2.0 - 0.18, 0.0), 0.035, 0.12, 0.125),
         false,
     );
-    tap(&mut b, v2(0.79, -0.37), h, 0.12);
+    tap(&mut b, v2(w / 2.0 - 0.06, -d / 2.0 + 0.005), h, 0.12);
+    let (wm, dm) = ((w * 1000.0).round(), (d * 1000.0).round());
+    let key = if (wm, dm) == (1700.0, 750.0) {
+        "bathtub".to_string()
+    } else {
+        format!("bathtub-{wm:.0}x{dm:.0}")
+    };
     b.finish(
-        "bathtub",
-        "Bath 1700 × 750",
+        &key,
+        &format!("Bath {wm:.0} × {dm:.0}"),
         "Acrylic bath with its taps at one end",
         ObjectCategory::Bathroom,
         ("IfcSanitaryTerminal", "BATH"),
@@ -697,6 +771,199 @@ fn cooker_unit() -> CatalogueObject {
     )
 }
 
+/// A dishwasher built into the kitchen row: behind a kitchen front,
+/// under the worktop, with its cold water and waste (family "Umývačka
+/// riadu").
+fn dishwasher_unit() -> CatalogueObject {
+    let mut b = Build::new();
+    let w = 0.6;
+    b.add(
+        "Plinth",
+        plinth(),
+        cuboid(v3(-w / 2.0, -0.5, 0.0), v3(w / 2.0, 0.0, 0.1)),
+        false,
+    );
+    b.add(
+        "Dishwasher",
+        appliance_white(),
+        cuboid(
+            v3(-w / 2.0 + 0.002, -0.56, 0.1),
+            v3(w / 2.0 - 0.002, 0.0, 0.87),
+        ),
+        false,
+    );
+    b.add(
+        "Door",
+        kitchen_front(),
+        cuboid(v3(-0.298, -0.58, 0.102), v3(0.298, -0.56, 0.868)),
+        false,
+    );
+    b.add(
+        "Handle",
+        stainless(),
+        cuboid(v3(-0.2, -0.6, 0.8), v3(0.2, -0.58, 0.812)),
+        false,
+    );
+    worktop(&mut b, w);
+    b.line(v2(-0.3, -0.58), v2(0.3, -0.58));
+    // the appliance under the worktop: its box crossed
+    b.line(v2(-0.3, -0.56), v2(0.3, 0.0));
+    b.line(v2(-0.3, 0.0), v2(0.3, -0.56));
+    b.finish(
+        "dishwasher-600",
+        "Built-in dishwasher 600",
+        "Fully integrated dishwasher behind a kitchen front, under the worktop, with its cold water, waste and socket",
+        ObjectCategory::Kitchen,
+        ("IfcElectricAppliance", "DISHWASHER"),
+        Mount::Wall,
+    )
+}
+
+/// A heat pump tumble dryer: electricity only, its condensate in its own
+/// tank (or by its hose into the washing machine's trap).
+fn dryer() -> CatalogueObject {
+    let mut b = Build::new();
+    let (w, d, h) = (0.6, 0.62, 0.85);
+    b.add(
+        "Body",
+        appliance_white(),
+        soft_box(v3(-w / 2.0, -d, 0.0), v3(w / 2.0, 0.0, h), 0.02, 0.008),
+        true,
+    );
+    // the round door: a disc stood up on the front (turned a quarter
+    // about x, which keeps its faces outwards)
+    let mut door = prism(squircle(v2(0.0, 0.0), 0.2, 0.2, 2.0, 32), 0.0, 0.03);
+    for v in &mut door.vertices {
+        *v = v3(v.x, -d - v.z, 0.42 + v.y);
+    }
+    b.add(
+        "Door",
+        look(
+            "Door ring, grey",
+            "plastic",
+            Hatch::Empty,
+            [150, 154, 160],
+            0.4,
+        ),
+        door,
+        false,
+    );
+    b.add(
+        "Controls",
+        look(
+            "Plastic, charcoal",
+            "plastic",
+            Hatch::Empty,
+            [46, 48, 52],
+            0.5,
+        ),
+        cuboid(
+            v3(-0.28, -d - 0.006, h - 0.1),
+            v3(0.28, -d + 0.01, h - 0.03),
+        ),
+        false,
+    );
+    b.line(v2(-0.2, -d), v2(0.2, -d - 0.03));
+    b.line(v2(0.2, -d - 0.03), v2(0.2, -d));
+    b.line(v2(-0.2, -d), v2(-0.2, -d - 0.03));
+    b.text(v2(0.0, -d / 2.0), "Sušička");
+    b.finish(
+        "dryer-600",
+        "Tumble dryer 600",
+        "Heat pump tumble dryer 600 × 620 × 850 on its own socket; its condensate in its tank or by its hose into the washing machine's trap",
+        ObjectCategory::Laundry,
+        ("IfcElectricAppliance", "TUMBLEDRYER"),
+        Mount::Wall,
+    )
+}
+
+/// A tall kitchen cabinet as IKEA's METOD sets 60 × 60 × 200 (George
+/// 2026-11-22, "nič si nevymýšľaj"): its frame 600 wide, 600 deep with
+/// the rail, 2000 high on legs to 2080 overall, the fronts out to 621 mm
+/// (ikea.com, METOD high cabinet with shelves/2 doors and high cab f
+/// micro w 2 doors/shelves). The pantry has its 1200 and 800 doors; the
+/// microwave one its two 800 doors with a Bosch BFL524MS0 between them
+/// (spec sheet: 382 × 594 × 317 mm, niche 362–365 × 560–568 × 300 mm,
+/// 1270 W at 230 V on a 10 A fuse).
+fn tall_cabinet(microwave: bool) -> CatalogueObject {
+    let mut b = Build::new();
+    // METOD: 600 × 600 frame, 2000 high on its legs, 2080 overall
+    let (w, d, legs, top) = (0.6, 0.6, 0.08, 2.08);
+    let front_d = 0.621 - d;
+    b.add(
+        "Plinth",
+        plinth(),
+        cuboid(v3(-w / 2.0, -0.5, 0.0), v3(w / 2.0, 0.0, legs)),
+        false,
+    );
+    b.add(
+        "Carcass",
+        laminate(),
+        cuboid(v3(-w / 2.0, -d, legs), v3(w / 2.0, 0.0, top)),
+        true,
+    );
+    let door = |b: &mut Build, z0: f64, z1: f64| {
+        b.add(
+            "Door",
+            kitchen_front(),
+            cuboid(
+                v3(-0.298, -d - front_d, z0 + 0.002),
+                v3(0.298, -d, z1 - 0.002),
+            ),
+            false,
+        );
+    };
+    if microwave {
+        // two 800 doors, the 400 between them the microwave's
+        let (m0, m1) = (legs + 0.8, legs + 1.2);
+        door(&mut b, legs, m0);
+        // Bosch BFL524MS0: 382 high, 594 wide, 317 deep in a 300 niche
+        let (h, mw, md) = (0.382, 0.594, 0.317);
+        let z = (m0 + m1 - h) / 2.0;
+        b.add(
+            "Microwave",
+            black_glass(),
+            // its 317 in the 300 niche: 17 mm proud of the frame
+            cuboid(
+                v3(-mw / 2.0, -d - (md - 0.3), z),
+                v3(mw / 2.0, -d + 0.3, z + h),
+            ),
+            false,
+        );
+        door(&mut b, m1, top);
+    } else {
+        door(&mut b, legs, legs + 1.2);
+        door(&mut b, legs + 1.2, top);
+    }
+    // a tall unit in plan: its box crossed, its fronts' line
+    b.line(v2(-w / 2.0, -d), v2(w / 2.0, 0.0));
+    b.line(v2(-w / 2.0, 0.0), v2(w / 2.0, -d));
+    b.line(v2(-w / 2.0, -d - front_d), v2(w / 2.0, -d - front_d));
+    if microwave {
+        // a cabinet (DSS skriňa) whose microwave takes the Bosch's
+        // 1270 W at 230 V, on a socket circuit
+        let mut c = b.finish(
+            "tall-cabinet-microwave-600",
+            "Tall cabinet 600 with microwave",
+            "IKEA METOD high cabinet 60 × 60 × 200 for a microwave, two 80 cm doors, on legs 208 cm overall, with a built-in Bosch BFL524MS0 (382 × 594 × 317 mm, 1270 W / 230 V, 10 A)",
+            ObjectCategory::Kitchen,
+            ("IfcFurniture", "USERDEFINED"),
+            Mount::Wall,
+        );
+        c.object.supply = Some(crate::objects::Supply::single(1_270.0, false));
+        c
+    } else {
+        b.finish(
+            "tall-pantry-600",
+            "Tall pantry cabinet 600",
+            "IKEA METOD high cabinet 60 × 60 × 200 with shelves, a 120 and an 80 cm door, on legs 208 cm overall",
+            ObjectCategory::Kitchen,
+            ("IfcFurniture", "USERDEFINED"),
+            Mount::Wall,
+        )
+    }
+}
+
 fn wall_cabinet() -> CatalogueObject {
     let mut b = Build::new();
     let (w, z0, z1) = (0.6, 1.45, 2.17);
@@ -722,6 +989,103 @@ fn wall_cabinet() -> CatalogueObject {
         "wall-cabinet-600",
         "Wall cabinet 600",
         "Kitchen wall unit 720 mm high, hung at 1450 mm",
+        ObjectCategory::Kitchen,
+        ("IfcFurniture", "USERDEFINED"),
+        Mount::Wall,
+    )
+}
+
+/// An L-shaped kitchen corner cabinet as IKEA's METOD makes it (George
+/// 2026-11-22: "parametrické, ale reálne"): `arm` along each wall (the
+/// frame with its rail), `depth` out from the wall (the system depth),
+/// `z0` to `z1` high; the fronts close the inner corner, hinged to each
+/// other, 21 mm proud as on the METOD high cabinet. Its back runs along
+/// y = 0, its other side along x = +arm/2.
+fn corner_cabinet(b: &mut Build, arm: f64, depth: f64, z0: f64, z1: f64) {
+    let (l, r) = (-arm / 2.0, arm / 2.0);
+    let inner = v2(r - depth, -depth);
+    // counter-clockwise, seen from above
+    let l_shape = vec![
+        v2(l, 0.0),
+        v2(l, -depth),
+        inner,
+        v2(r - depth, -arm),
+        v2(r, -arm),
+        v2(r, 0.0),
+    ];
+    b.add("Carcass", laminate(), prism(l_shape.clone(), z0, z1), true);
+    let f = 0.021;
+    // the leaf across the back run, the one across the side run
+    b.add(
+        "Door",
+        kitchen_front(),
+        cuboid(
+            v3(l + 0.002, -depth - f, z0 + 0.002),
+            v3(inner.x - f, -depth, z1 - 0.002),
+        ),
+        false,
+    );
+    b.add(
+        "Door",
+        kitchen_front(),
+        cuboid(
+            v3(inner.x - f, -arm + 0.002, z0 + 0.002),
+            v3(inner.x, -depth - f, z1 - 0.002),
+        ),
+        false,
+    );
+    b.outline(l_shape);
+    // the fronts' line in plan
+    b.line(v2(l, -depth - f), v2(inner.x - f, -depth - f));
+    b.line(v2(inner.x - f, -depth - f), v2(inner.x - f, -arm));
+}
+
+/// IKEA METOD corner base cabinet 88 × 88 × 80 (ikea.com, METOD corner
+/// base cabinet frame: width 87.5, depth with suspension rail 87.5,
+/// system depth 60, height 80 cm; legs 8 cm and doors sold separately).
+fn corner_base_cabinet() -> CatalogueObject {
+    let mut b = Build::new();
+    let (arm, depth, legs) = (0.875, 0.6, 0.08);
+    // the legs' plinth, set back as on the straight units
+    b.add(
+        "Plinth",
+        plinth(),
+        prism(
+            vec![
+                v2(-arm / 2.0, 0.0),
+                v2(-arm / 2.0, -depth + 0.1),
+                v2(arm / 2.0 - depth + 0.1, -depth + 0.1),
+                v2(arm / 2.0 - depth + 0.1, -arm),
+                v2(arm / 2.0, -arm),
+                v2(arm / 2.0, 0.0),
+            ],
+            0.0,
+            legs,
+        ),
+        false,
+    );
+    corner_cabinet(&mut b, arm, depth, legs, legs + 0.8);
+    b.finish(
+        "corner-base-cabinet-880",
+        "Corner base cabinet 880 × 880",
+        "IKEA METOD corner base cabinet 88 × 88 × 80 cm on 8 cm legs (88 cm to the worktop), system depth 60 cm, two hinged fronts in the corner",
+        ObjectCategory::Kitchen,
+        ("IfcFurniture", "USERDEFINED"),
+        Mount::Wall,
+    )
+}
+
+/// IKEA METOD corner wall cabinet 68 × 68 × 80 (ikea.com, METOD corner
+/// wall cabinet: frame width 68, frame depth 68, system depth 37, height
+/// 80 cm). Hung with its top level with the wall units' (2170 mm).
+fn corner_wall_cabinet() -> CatalogueObject {
+    let mut b = Build::new();
+    let top = 2.17;
+    corner_cabinet(&mut b, 0.68, 0.37, top - 0.8, top);
+    b.finish(
+        "corner-wall-cabinet-680",
+        "Corner wall cabinet 680 × 680",
+        "IKEA METOD corner wall cabinet 68 × 68 × 80 cm, system depth 37 cm, its top at 2170 mm",
         ObjectCategory::Kitchen,
         ("IfcFurniture", "USERDEFINED"),
         Mount::Wall,
@@ -1065,11 +1429,29 @@ fn bed(w: f64, pillows: usize, cover: Look) -> Build {
     b
 }
 
+/// The double beds' mattress widths, mm (all 2000 long); the 1600 one
+/// keeps the plain key.
+pub const DOUBLE_BED_WIDTHS: [u32; 3] = [1600, 1800, 2000];
+
 fn double_bed() -> CatalogueObject {
-    bed(1.6, 2, fabric("Duvet, blue", [134, 160, 194])).finish(
-        "double-bed",
-        "Double bed 1600",
-        "Oak bed for a 1600 × 2000 mattress, with its headboard",
+    double_bed_sized(1600)
+}
+
+fn double_bed_sized(width: u32) -> CatalogueObject {
+    let key = if width == 1600 {
+        "double-bed".to_string()
+    } else {
+        format!("double-bed-{width}")
+    };
+    bed(
+        width as f64 / 1000.0,
+        2,
+        fabric("Duvet, blue", [134, 160, 194]),
+    )
+    .finish(
+        &key,
+        &format!("Double bed {width}"),
+        &format!("Oak bed for a {width} × 2000 mattress, with its headboard"),
         ObjectCategory::Bedroom,
         ("IfcFurniture", "BED"),
         Mount::Wall,
@@ -1227,19 +1609,30 @@ pub fn starters() -> Vec<CatalogueObject> {
     vec![
         washbasin(),
         wc(),
+        bathtub_sized(1500, 700),
+        bathtub_sized(1600, 700),
         bathtub(),
+        bathtub_sized(1800, 800),
         shower(),
         sink_unit(),
         base_cabinet(),
         cooker_unit(),
+        dishwasher_unit(),
+        tall_cabinet(false),
+        tall_cabinet(true),
         wall_cabinet(),
+        corner_base_cabinet(),
+        corner_wall_cabinet(),
         fridge(),
+        dryer(),
         sofa(),
         armchair(),
         coffee_table(),
         dining_table(),
         chair(),
         double_bed(),
+        double_bed_sized(1800),
+        double_bed_sized(2000),
         single_bed(),
         wardrobe(),
         bedside(),
@@ -1247,8 +1640,15 @@ pub fn starters() -> Vec<CatalogueObject> {
     ]
     .into_iter()
     .chain(services::starters())
+    .chain(living::starters())
+    .chain(stretch::starters())
     .chain(fixtures::starters())
+    .chain(jika::starters())
     .chain(medical::starters())
+    .chain(valvebox::starters())
+    .chain(ufhmanifold::starters())
+    .chain(site::starters())
+    .chain(soakaway::starters())
     .chain(heat::starters())
     .chain(entourage::starters())
     .collect()
@@ -1314,5 +1714,55 @@ mod tests {
         let basin = starter("starter/washbasin").unwrap();
         let (lo, hi) = basin.object.bounds();
         assert!(lo.z > 0.6 && (hi.z - 1.01).abs() < 0.01, "{lo} {hi}");
+    }
+
+    /// George: baths at the sizes sold, double beds from 1600 wide; each
+    /// the same shape, its 3D and its plan symbol as big as it says.
+    #[test]
+    fn baths_and_double_beds_come_in_their_sizes() {
+        let span = |pts: &mut dyn Iterator<Item = glam::DVec2>| {
+            let (mut lo, mut hi) = (glam::DVec2::splat(f64::MAX), glam::DVec2::splat(f64::MIN));
+            for p in pts {
+                lo = lo.min(p);
+                hi = hi.max(p);
+            }
+            hi - lo
+        };
+        for (w, d) in BATH_SIZES {
+            let key = if (w, d) == (1700, 750) {
+                "starter/bathtub".to_string()
+            } else {
+                format!("starter/bathtub-{w}x{d}")
+            };
+            let c = starter(&key).unwrap_or_else(|| panic!("{key}"));
+            let (lo, hi) = c.object.bounds();
+            let size = (hi - lo).truncate();
+            assert!((size.x - w as f64 / 1000.0).abs() < 0.03, "{key}: {size}");
+            assert!((size.y - d as f64 / 1000.0).abs() < 0.03, "{key}: {size}");
+            let plan = span(
+                &mut c.object.plan_symbol().into_iter().flat_map(|l| match l {
+                    crate::objects::SymbolItem::Loop(p) => p,
+                    crate::objects::SymbolItem::Line(a, b) => vec![a, b],
+                    _ => vec![],
+                }),
+            );
+            assert!(
+                plan.x <= w as f64 / 1000.0 + 1e-6 && plan.x > w as f64 / 1000.0 - 0.25,
+                "{key}: {plan}"
+            );
+        }
+        for w in DOUBLE_BED_WIDTHS {
+            let key = if w == 1600 {
+                "starter/double-bed".to_string()
+            } else {
+                format!("starter/double-bed-{w}")
+            };
+            let c = starter(&key).unwrap_or_else(|| panic!("{key}"));
+            let (lo, hi) = c.object.bounds();
+            assert!(
+                ((hi.x - lo.x) - (w as f64 / 1000.0 + 0.06)).abs() < 0.07,
+                "{key}"
+            );
+        }
     }
 }

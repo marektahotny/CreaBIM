@@ -7,7 +7,7 @@ use crate::plan::{Pen, PlanItem, PlanView};
 use creabim_core::graphics::{PlanGraphics, PlanRange};
 use creabim_core::{ElementId, ElementKind, Model, View};
 use glam::{DVec2, DVec3, Vec3};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// The level an element stands on, for drawing it in a range: a door or
 /// window takes its wall's.
@@ -40,13 +40,7 @@ fn bands(model: &Model, level: ElementId, cut: f64, r: &PlanRange) -> Vec<(Eleme
     let cut_z = own + cut;
     let bottom = r.bottom.map_or(own, |b| b.z(model, own));
     let top = r.top.map_or_else(
-        || {
-            model
-                .levels()
-                .map(|(_, l)| l.elevation)
-                .filter(|z| *z > own + 1e-6)
-                .fold(f64::INFINITY, f64::min)
-        },
+        || crate::plan::next_level_above(model, own),
         |t| t.z(model, own),
     );
     let beyond = r.beyond.map(|b| b.z(model, own));
@@ -97,6 +91,32 @@ pub fn beyond(model: &Model, v: &View) -> HashSet<ElementId> {
         .collect()
 }
 
+/// The model without the walls a structural plan leaves out (partitions)
+/// and the openings in them.
+fn without_partitions(model: &Model) -> Model {
+    let rules = creabim_core::masonry::rules(model);
+    let gone: HashSet<ElementId> = model
+        .iter()
+        .filter(|e| match &e.kind {
+            creabim_core::ElementKind::Wall(_) => {
+                !creabim_core::structural::draws(model, e, &rules)
+            }
+            _ => false,
+        })
+        .map(|e| e.id)
+        .collect();
+    let mut out = model.clone();
+    if gone.is_empty() {
+        return out;
+    }
+    // the same copy for the same model, so caches serve it again
+    out.retain_derived(0x0574_71C5, |e| {
+        !gone.contains(&e.id)
+            && !matches!(&e.kind, creabim_core::ElementKind::Opening(o) if gone.contains(&o.host))
+    });
+    out
+}
+
 /// The drawing of plan view `v` of `level`: its own level as always,
 /// with the other levels its range reaches, or the view from above.
 pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
@@ -104,30 +124,59 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
     if r.from_above {
         return from_above(model, v, level, cut);
     }
-    let mut d = crate::plan::plan_view_with(model, level, cut, &v.graphics);
+    // a structural plan draws its walls as if the partitions were not
+    // there: the load-bearing walls' faces run on unbroken where a
+    // partition joins them (George 2026-11-24)
+    let bare;
+    let model = if v.structural {
+        bare = without_partitions(model);
+        &bare
+    } else {
+        model
+    };
+    // a structural plan cuts only the load-bearing layers
+    let own_g = PlanGraphics {
+        structure_only: v.structural,
+        ..v.graphics.clone()
+    };
+    let mut d = crate::plan::plan_view_with(model, level, cut, &own_g);
+    let own = model.level(level).map_or(0.0, |l| l.elevation);
+    drop_footings_below(
+        model,
+        &mut d.items,
+        r.bottom.map_or(own, |b| b.z(model, own)),
+    );
     if !r.spans_levels() {
         return d;
     }
-    let own = model.level(level).map_or(0.0, |l| l.elevation);
     // the other levels draw as plans of their own, without their range
     let g = PlanGraphics {
         range: PlanRange {
             view_depth: r.view_depth,
             ..Default::default()
         },
-        ..v.graphics.clone()
+        ..own_g.clone()
     };
     let mut under = Vec::new();
     let mut over = Vec::new();
+    // walls of other levels that stand in this storey are in its own
+    // plan already
+    let drawn: HashSet<ElementId> = d.items.iter().map(|it| it.id()).collect();
+    let foundation = crate::plan::is_foundation_plan(model, level, cut);
     for (l, z, band) in bands(model, level, cut, r) {
-        let theirs = |it: &PlanItem| element_level(model, it.id()) == Some(l);
+        let theirs =
+            |it: &PlanItem| element_level(model, it.id()) == Some(l) && !drawn.contains(&it.id());
         match band {
             Band::Below | Band::Beyond => {
                 let sub = crate::plan::plan_view_with(model, l, own + cut - z, &g);
                 under.extend(sub.items.into_iter().filter(|it| theirs(it)));
             }
+            // a foundation plan draws nothing of the storey above (George
+            // 2026-11-20): only the masonry standing on the footings, its
+            // load-bearing outline (see `plan::above_cut_walls`)
+            Band::Overhead if foundation => {}
             Band::Overhead => {
-                // just above its floor, then every line dashed
+                // just above its floor, then every line as overhead
                 let sub = crate::plan::plan_view_with(model, l, 0.001, &g);
                 for it in sub.items.into_iter().filter(|it| theirs(it)) {
                     if let Some(it) = overhead(it) {
@@ -137,24 +186,58 @@ pub fn plan(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
             }
         }
     }
+    // what of the storeys below lies under this storey's cut walls and
+    // slabs: a thin dashed line over them (a foundation wall under the
+    // ground floor's wall), so it shows and can be picked
+    let mut probe: Vec<PlanItem> = d
+        .items
+        .iter()
+        .filter(|it| matches!(it, PlanItem::Fill { .. }))
+        .cloned()
+        .collect();
+    let n = probe.len();
+    probe.extend(
+        under
+            .iter()
+            .filter(|it| !matches!(it, PlanItem::Fill { .. }))
+            .cloned(),
+    );
+    let m = probe.len();
+    crate::plan::reveal_covered(model, &mut probe);
+    let covered: Vec<PlanItem> = probe.drain(m.max(n)..).collect();
     under.append(&mut d.items);
+    under.extend(covered);
     under.append(&mut over);
     PlanView { items: under }
 }
 
+/// Footings wholly under the bottom of a plan's range are left out of it
+/// (George 2026-11-20: a storey's plan with its bottom at its floor shows
+/// no footing under that floor, dashed or not); lowering the bottom under
+/// them shows them again, dashed.
+fn drop_footings_below(model: &Model, items: &mut Vec<PlanItem>, bottom: f64) {
+    let under = |id: ElementId| match model.get(id).map(|e| &e.kind) {
+        // a footing whose top is at the floor is under it too
+        Some(creabim_core::ElementKind::Footing(f)) => f.top(model) <= bottom + 1e-6,
+        _ => false,
+    };
+    items.retain(|it| !under(it.id()));
+}
+
 /// An item of a level above the cut, as an overhead plan draws it:
-/// its lines dashed, its fills and labels left out.
+/// its lines thin, a dash and two dots, as all above the cut; its fills
+/// and labels left out.
 fn overhead(it: PlanItem) -> Option<PlanItem> {
     Some(match it {
         PlanItem::Line { id, a, b, .. } => PlanItem::Line {
             id,
-            pen: Pen::Hidden,
+            pen: Pen::Overhead,
             a,
             b,
         },
         PlanItem::Polygon { id, points, .. } => PlanItem::Polygon {
             id,
-            pen: Pen::Hidden,
+            pen: Pen::Overhead,
             points,
         },
         PlanItem::Arc {
@@ -166,7 +249,7 @@ fn overhead(it: PlanItem) -> Option<PlanItem> {
             ..
         } => PlanItem::Arc {
             id,
-            pen: Pen::Hidden,
+            pen: Pen::Overhead,
             center,
             radius,
             start,
@@ -276,6 +359,45 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
         });
     }
     items.extend(image);
+    // a roof shows only its folds, eaves and holes: what else its solids'
+    // edges give (its lower layers and joins at the very height of a wall
+    // top, near-flush with its surface) is no line of it (George
+    // 2026-11-22: stray lines along a hip and the eaves)
+    let mut lines = lines;
+    let mut folds: HashMap<ElementId, Vec<(DVec2, DVec2)>> = HashMap::new();
+    lines.retain(|it| {
+        let PlanItem::Line { id, a, b, .. } = it else {
+            return true;
+        };
+        let Some(ElementKind::Roof(r)) = model.get(*id).map(|e| &e.kind) else {
+            return true;
+        };
+        let segs = folds.entry(*id).or_insert_with(|| {
+            let mut out = vec![];
+            let mut ring = |o: &[DVec2]| {
+                for i in 0..o.len() {
+                    out.push((o[i], o[(i + 1) % o.len()]));
+                }
+            };
+            for f in r.faces() {
+                ring(&f.outline);
+            }
+            for h in &r.holes {
+                ring(h);
+            }
+            out
+        });
+        let on = |p: DVec2, (s, t): (DVec2, DVec2)| {
+            let d = t - s;
+            let l = d.length_squared();
+            if l < 1e-12 {
+                return p.distance(s) < 0.02;
+            }
+            let u = ((p - s).dot(d) / l).clamp(0.0, 1.0);
+            p.distance(s + d * u) < 0.02
+        };
+        segs.is_empty() || segs.iter().any(|&sg| on(*a, sg) && on(*b, sg))
+    });
     items.extend(lines);
     // which way each roof falls
     for e in model.iter() {
@@ -287,7 +409,7 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
                 PlanItem::Line {
                     pen: Pen::Symbol, ..
                 }
-                | PlanItem::Label { .. } => items.push(it),
+                | PlanItem::Text { .. } => items.push(it),
                 _ => {}
             }
         }
@@ -299,6 +421,33 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
             .is_some_and(|e| matches!(e.kind, ElementKind::Grid(_) | ElementKind::View(_)));
         if keep {
             items.push(it);
+        }
+    }
+    // utility networks and the site's symbols, whichever level they were
+    // drawn on, and what was sketched in a site plan: the site plan is
+    // where they show (unless sketches are hidden)
+    if v.graphics.range.is_site()
+        && !v
+            .hidden
+            .hides_category(creabim_core::visibility::Category::Sketches)
+    {
+        for e in model.iter() {
+            if let ElementKind::Sketch(sk) = &e.kind {
+                let drawn_here = sk.view.is_some_and(|w| {
+                    matches!(model.get(w).map(|e| &e.kind),
+                        Some(ElementKind::View(x)) if x.graphics.range.is_site())
+                });
+                if sk.net.is_some() || sk.mark.is_some() || drawn_here {
+                    // lines on the map, not a face over it
+                    items.extend(
+                        crate::plan::sketch_items(e.id, sk, &|p| p)
+                            .into_iter()
+                            .filter(|it| {
+                                !matches!(it, PlanItem::Tint { .. } | PlanItem::Shade { .. })
+                            }),
+                    );
+                }
+            }
         }
     }
     PlanView { items }
@@ -385,13 +534,79 @@ mod tests {
     }
 
     #[test]
-    fn a_plan_without_a_range_draws_its_own_level_only() {
+    fn a_plan_without_a_range_draws_what_stands_in_its_storey() {
         let (m, lv, el) = levels();
         let v = View::plan(lv[1]);
         let d = plan(&m, &v, lv[1], 1.2);
         let got = ids(&d);
         assert!(got.contains(&el[1]));
-        assert!(!got.contains(&el[0]) && !got.contains(&el[2]) && !got.contains(&el[3]));
+        // the site's wall, 1.8 m from -0.45, is cut at +1.2 too
+        assert!(got.contains(&el[0]));
+        assert!(!got.contains(&el[2]) && !got.contains(&el[3]));
+        // cut over its top it is seen from above, once, whatever the range
+        let mut low = View::plan(lv[1]);
+        low.graphics.range.bottom = Some(RangeLimit {
+            level: lv[0],
+            offset: 0.0,
+        });
+        let d = plan(&m, &low, lv[1], 1.5);
+        let walls = d
+            .items
+            .iter()
+            .filter(|it| it.id() == el[0] && matches!(it, PlanItem::Polygon { .. }))
+            .count();
+        assert_eq!(walls, 1);
+    }
+
+    #[test]
+    fn a_foundation_wall_under_the_ground_floor_wall_shows_dashed() {
+        let mut m = Model::new();
+        let found = Element::new(
+            "Foundation",
+            ElementKind::Level(Level {
+                elevation: -0.8,
+                height: 0.8,
+            }),
+        );
+        let ground = Element::new(
+            "Ground",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let (lf, lg) = (found.id, ground.id);
+        let dt = Element::new(
+            "DT wall",
+            ElementKind::Wall(Wall::new(lf, DVec2::ZERO, DVec2::new(10.0, 0.0), 0.3, 0.8)),
+        );
+        let above = Element::new(
+            "GF wall",
+            ElementKind::Wall(Wall::new(lg, DVec2::ZERO, DVec2::new(10.0, 0.0), 0.45, 3.0)),
+        );
+        let dt_id = dt.id;
+        Transaction::new("t")
+            .insert(found)
+            .insert(ground)
+            .insert(dt)
+            .insert(above)
+            .apply(&mut m)
+            .unwrap();
+        let mut v = View::plan(lg);
+        v.graphics.range.bottom = Some(RangeLimit {
+            level: lg,
+            offset: -0.8,
+        });
+        let d = plan(&m, &v, lg, 1.2);
+        let dashed = d
+            .items
+            .iter()
+            .filter(|it| matches!(it, PlanItem::Line { id, pen: Pen::Hidden, .. } if *id == dt_id))
+            .count();
+        assert!(dashed >= 2, "{dashed}");
+        // a plan down to its own floor leaves it out
+        let d = plan(&m, &View::plan(lg), lg, 1.2);
+        assert!(!ids(&d).contains(&dt_id));
     }
 
     #[test]
@@ -421,11 +636,11 @@ mod tests {
         // the site wall, 1.8 m from -0.45, is cut by the plane at +1.2
         assert!(pens(el[0]).contains(&Pen::Cut), "{:?}", pens(el[0]));
         assert!(pens(el[1]).contains(&Pen::Cut));
-        // both roofs above the cut, dashed
+        // both roofs above the cut, a dash and two dots
         for r in [el[2], el[3]] {
             let p = pens(r);
             assert!(
-                !p.is_empty() && p.iter().all(|p| *p == Pen::Hidden),
+                !p.is_empty() && p.iter().all(|p| *p == Pen::Overhead),
                 "{p:?}"
             );
         }

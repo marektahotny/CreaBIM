@@ -23,6 +23,7 @@ mod drawfont;
 mod editmode;
 mod files;
 mod fillpreview;
+mod flashingui;
 mod ghost;
 mod handles;
 mod help;
@@ -38,24 +39,31 @@ mod optionbar;
 mod outline;
 mod paneface;
 mod partstool;
+mod pickup;
 mod pipesui;
+mod placement;
 mod planview;
+mod printing;
 mod props;
 mod render3d;
 mod roomtool;
 mod schedulepane;
 mod selection;
+mod sheet;
 mod sheetview;
 mod sketch;
 mod slabtool;
 mod snaps;
+mod sun;
 mod svgicon;
+mod takeoffpane;
 mod tempdims;
 mod textures;
 mod theme;
 mod tooltabs;
 mod trace;
 mod tracker;
+mod ufhzonedit;
 mod ui_model;
 mod units;
 mod viewcube;
@@ -83,12 +91,22 @@ fn main() -> eframe::Result {
     }));
     #[cfg(target_os = "linux")]
     linux_setup();
+    forget_old_window_place();
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("CreaBIM")
             .with_inner_size([1400.0, 860.0])
+            // starts filling the screen (maximized, the taskbar stays
+            // visible; George 2026-11-25); the size above is what the
+            // window returns to when un-maximized; a dev shot keeps its
+            // fixed size
+            .with_maximized(std::env::var_os("CREABIM_SHOT").is_none())
             .with_icon(app_icon()),
         renderer: eframe::Renderer::Wgpu,
+        // the windows' sizes and places are kept for the next run (egui's
+        // memory, George 2026-11-23); the main window keeps its own
+        // (files::remember_main_window)
+        persist_window: false,
         #[cfg(target_os = "linux")]
         event_loop_builder: Some(Box::new(|b| {
             use winit::platform::x11::EventLoopBuilderExtX11;
@@ -96,11 +114,56 @@ fn main() -> eframe::Result {
         })),
         ..Default::default()
     };
+    #[cfg(target_os = "macos")]
+    let options = metal(options);
     eframe::run_native(
         "CreaBIM",
         options,
         Box::new(|cc| Ok(Box::new(app::CreaBimApp::new(cc)))),
     )
+}
+
+/// Drops the main window's place and size that older versions saved (before
+/// 0.7-14 eframe kept them): eframe loads them over the start-up settings,
+/// so the window came back small, un-maximized, in the top-left corner on
+/// George's PC (0.7-14 … 0.7-17). Nothing saves them anymore
+/// (`persist_window: false`); egui's memory (the dialogs' sizes) stays.
+fn forget_old_window_place() {
+    let Some(path) = eframe::storage_dir("CreaBIM").map(|d| d.join("app.ron")) else {
+        return;
+    };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(mut kept) = ron::from_str::<std::collections::HashMap<String, String>>(&text) else {
+        return;
+    };
+    if kept.remove("window").is_none() {
+        return;
+    }
+    if let Ok(text) = ron::to_string(&kept) {
+        let ok = std::fs::write(&path, text).is_ok();
+        OLD_WINDOW_PLACE_DROPPED.store(ok, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// The old main window place was dropped at this start (for the activity
+/// log, which opens later).
+pub static OLD_WINDOW_PLACE_DROPPED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// On a Mac the window and the 3D view draw through Metal, Apple's own
+/// GPU interface (the only one Apple Silicon runs natively), on the GPU
+/// that draws the screen; `WGPU_BACKEND` still overrides it.
+#[cfg(target_os = "macos")]
+fn metal(mut o: eframe::NativeOptions) -> eframe::NativeOptions {
+    use eframe::egui_wgpu::{wgpu, WgpuSetup};
+    if let WgpuSetup::CreateNew(s) = &mut o.wgpu_options.wgpu_setup {
+        if std::env::var_os("WGPU_BACKEND").is_none() {
+            s.instance_descriptor.backends = wgpu::Backends::METAL;
+        }
+    }
+    o
 }
 
 /// The web panes are GTK child windows of an X11 window, so on Wayland the

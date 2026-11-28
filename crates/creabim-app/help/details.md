@@ -34,6 +34,17 @@ The kinds are:
 
 A detail component belongs to the view it is drawn in and shows in no other view. Detail components are drafting, not building parts: they don't appear in schedules, and IFC export leaves them out. To name them, add [notes](notes) with leaders.
 
+## Lines
+
+**Line**, **Polyline**, **Arc by three points** and **Curve** on the Annotate tab draw plain lines in the open plan, section or detail, as PilonDesigner's Line: only in that view, never in 3D, schedules or IFC.
+
+- **Line**: click its start and its end. Each two clicks make one line.
+- **Polyline**: click its points one after another; Enter, a double-click or a right-click finishes it, and a click on the first point closes it.
+- **Arc by three points**: click its start, its end, then a point it passes through.
+- **Curve**: click the points a smooth curve passes through (paths, beds, terrain edges); finish it as a polyline, a click on the first point closes it. Its points can be moved later by their grips.
+
+In the tool options pick the **line type** (solid, dashed for what is hidden below the cut, dash-dot for axes, dash-double-dot for what is above the cut) and the **pen** (0,10 / 0,15 / 0,20 / 0,50 mm on paper). Points snap to ends, middles and edges; Shift keeps a segment square, and a length typed while drawing places the next point at that distance (Enter). A placed line's type and pen are in *Properties*.
+
 ## The details in the starter house
 
 The [starter house](starter-house) has a sheet **A501 Details**. It shows section C-C through the south wall at 1:25, with three callouts at 1:10: the wall base, the window head and sill, and the eaves.

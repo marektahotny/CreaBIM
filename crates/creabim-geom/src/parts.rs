@@ -197,22 +197,23 @@ pub fn sweep_mesh(profile: &[DVec2], path: &[DVec3], closed: bool) -> TriMesh {
 }
 
 /// The shoelace area of `p`, positive counter-clockwise.
-fn signed_area(p: &[DVec2]) -> f64 {
+pub(crate) fn signed_area(p: &[DVec2]) -> f64 {
     let n = p.len();
     (0..n).map(|i| p[i].perp_dot(p[(i + 1) % n])).sum::<f64>() / 2.0
 }
 
 // ---- site ----
 
-/// The triangles of a terrain's top surface, in model coordinates.
-pub fn terrain_top(model: &Model, s: &Site) -> Vec<[DVec3; 3]> {
+/// A terrain's top surface: its corners in model coordinates and its
+/// triangles.
+pub fn terrain_top_mesh(model: &Model, s: &Site) -> (Vec<DVec3>, Vec<[usize; 3]>) {
     let edited = edited(model, s);
     let s = edited.as_ref().unwrap_or(s);
     let SiteForm::Terrain {
         boundary, points, ..
     } = &s.form
     else {
-        return vec![];
+        return (vec![], vec![]);
     };
     let z = members::elevation(model, s.level);
     let inside: Vec<DVec2> = points
@@ -222,9 +223,44 @@ pub fn terrain_top(model: &Model, s: &Site) -> Vec<[DVec3; 3]> {
         .collect();
     let (verts, tris) = refine(boundary, &inside);
     let h = s.ground_heights(&verts);
-    tris.iter()
-        .map(|t| t.map(|i| verts[i].extend(z + h[i])))
-        .collect()
+    let pts: Vec<DVec3> = verts.iter().zip(&h).map(|(v, h)| v.extend(z + h)).collect();
+    (pts, tris)
+}
+
+/// The triangles of a terrain's top surface, in model coordinates.
+pub fn terrain_top(model: &Model, s: &Site) -> Vec<[DVec3; 3]> {
+    let (pts, tris) = terrain_top_mesh(model, s);
+    tris.iter().map(|t| t.map(|i| pts[i])).collect()
+}
+
+/// A terrain's top drawn smooth (George 2026-11-22: "zaobľ hrany"): its
+/// triangles share their corners, each corner lit by the mean of the
+/// faces round it (area-weighted), so no facet or crease shows.
+fn add_smooth_top(m: &mut TriMesh, pts: &[DVec3], tris: &[[usize; 3]]) {
+    let mut normals = vec![DVec3::ZERO; pts.len()];
+    let mut tris_up: Vec<[usize; 3]> = Vec::with_capacity(tris.len());
+    for t in tris {
+        let n = (pts[t[1]] - pts[t[0]]).cross(pts[t[2]] - pts[t[0]]);
+        // every face looks up
+        let (t, n) = if n.z < 0.0 {
+            ([t[0], t[2], t[1]], -n)
+        } else {
+            (*t, n)
+        };
+        for i in t {
+            normals[i] += n;
+        }
+        tris_up.push(t);
+    }
+    let base = m.positions.len() as u32;
+    for (p, n) in pts.iter().zip(&normals) {
+        let n = n.try_normalize().unwrap_or(DVec3::Z);
+        m.positions.push([p.x as f32, p.y as f32, p.z as f32]);
+        m.normals.push([n.x as f32, n.y as f32, n.z as f32]);
+    }
+    for t in tris_up {
+        m.indices.extend(t.map(|i| base + i as u32));
+    }
 }
 
 fn refine(boundary: &[DVec2], inner: &[DVec2]) -> (Vec<DVec2>, Vec<[usize; 3]>) {
@@ -262,17 +298,10 @@ fn terrain_mesh(model: &Model, s: &Site) -> TriMesh {
         let holes = creabim_core::site::ground_holes(model, s);
         return slab_mesh_with_holes(boundary, &holes, z + top, *thickness);
     }
-    let tops = terrain_top(model, s);
+    let (pts, tris) = terrain_top_mesh(model, s);
     let mut m = TriMesh::default();
-    for t in &tops {
-        m.add_polygon(t, &[[0, 1, 2]], (t[1] - t[0]).cross(t[2] - t[0]));
-    }
-    let low = tops
-        .iter()
-        .flatten()
-        .map(|p| p.z)
-        .fold(f64::INFINITY, f64::min)
-        - thickness;
+    add_smooth_top(&mut m, &pts, &tris);
+    let low = pts.iter().map(|p| p.z).fold(f64::INFINITY, f64::min) - thickness;
     let tris = triangulate(boundary);
     let under: Vec<DVec3> = boundary.iter().map(|p| p.extend(low)).collect();
     m.add_polygon(&under, &tris, -DVec3::Z);
@@ -1392,6 +1421,7 @@ mod plan_look_tests {
                 material: None,
                 ifc_class: creabim_core::parts::PROXY.into(),
                 profile: None,
+                chimney: None,
             }),
         )
     }

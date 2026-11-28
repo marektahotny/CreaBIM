@@ -146,7 +146,7 @@ impl Category {
             ElementKind::Guide(_) => Category::Guides,
             ElementKind::Column(_) => Category::Columns,
             ElementKind::Beam(_) => Category::Beams,
-            ElementKind::Roof(_) => Category::Roofs,
+            ElementKind::Roof(_) | ElementKind::Flashing(_) => Category::Roofs,
             ElementKind::Stair(_) => Category::Stairs,
             ElementKind::Railing(_) => Category::Railings,
             ElementKind::Object(_) => Category::Objects,
@@ -239,7 +239,16 @@ impl ViewHidden {
         for e in model.iter() {
             let host_hidden = match &e.kind {
                 ElementKind::Opening(o) => out.contains(&o.host),
-                ElementKind::Tag(t) => out.contains(&t.host),
+                // a penetration's label on a pipe stays: the architect's
+                // plan shows the penetration, not the pipe
+                ElementKind::Tag(t) => {
+                    out.contains(&t.host)
+                        && !(t.end.is_some()
+                            && matches!(
+                                model.get(t.host).map(|h| &h.kind),
+                                Some(ElementKind::Pipe(_))
+                            ))
+                }
                 ElementKind::Cut(c) => out.contains(&c.target),
                 _ => false,
             };
@@ -287,7 +296,21 @@ pub fn without(model: &Model, hidden: &HashSet<ElementId>) -> Model {
         })
         .map(|e| e.id)
         .collect();
-    m.retain(|e| match &e.kind {
+    // nothing that is in the model left out: the model itself, with its
+    // revision (and the 3D scene already built for it)
+    if removed.is_empty() {
+        return m;
+    }
+    // what was left out, in a fixed order: the same for the same copy
+    let key = {
+        use std::hash::{Hash, Hasher};
+        let mut ids: Vec<&ElementId> = removed.iter().collect();
+        ids.sort();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        ids.hash(&mut h);
+        h.finish()
+    };
+    m.retain_derived(key, |e| match &e.kind {
         ElementKind::Cut(c) => !removed.contains(&c.target) && !removed.contains(&c.cutter),
         _ => !removed.contains(&e.id),
     });

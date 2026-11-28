@@ -8,14 +8,16 @@
 //! sized straight on the design heat load: its output does not depend
 //! on the weather.
 
-use creabim_core::catalogue::heat::{backup_kw, hp_curve, HeatKind};
+use creabim_core::catalogue::heat::{backup_of, curve_of, has_curve_of, HeatKind};
 
 /// Hot water's share, kW a person (VDI 4645).
 pub const DHW_KW_PER_PERSON: f64 = 0.25;
 /// Heating stops at this outside temperature, °C.
 pub const T_HEAT_LIMIT: f64 = 15.0;
-/// The heat pump runs down to this outside temperature, °C.
-pub const T_HP_MIN: f64 = -25.0;
+/// The heat pump runs down to this outside temperature, °C (Panasonic
+/// Aquarea J: −20 to +35 °C), for a curve of a single point; a curve of
+/// more starts where the unit's range does.
+pub const T_HP_MIN: f64 = -20.0;
 
 /// What the heat pump is sized for.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,7 +66,10 @@ pub fn need(i: &HpInput, t: f64) -> f64 {
 /// curve's points in a line, beyond them along the end ones, constant
 /// over the last.
 pub fn capacity(pts: &[(f64, f64)], t: f64) -> f64 {
-    if pts.is_empty() || t < T_HP_MIN {
+    if pts.is_empty() || t < T_HP_MIN.min(pts[0].0) - 1e-9 {
+        return 0.0;
+    }
+    if pts.len() > 1 && t < pts[0].0 - 1e-9 {
         return 0.0;
     }
     let last = pts[pts.len() - 1];
@@ -120,23 +125,37 @@ pub fn size(i: &HpInput, pts: &[(f64, f64)]) -> HpResult {
     }
 }
 
-/// The size to take from the range: the smallest whose bivalence point
-/// is at or under the one aimed at and whose electric heater covers the
-/// rest at θe; the largest when none does.
-pub fn recommend(i: &HpInput) -> u32 {
-    let sizes = HeatKind::HpOutdoor.sizes();
-    for s in sizes {
-        let r = size(i, &hp_curve(*s, i.t_flow));
-        if r.t_biv.is_none_or(|t| t <= i.t_biv) && r.backup <= backup_kw(*s) + 1e-9 {
+/// The size to take from `kind`'s range: the smallest whose bivalence
+/// point is at or under the one aimed at and whose electric heater (where
+/// the catalogue gives it) covers the rest at θe; the largest when none
+/// does. Only kits whose catalogue curve down to A-7 is known are taken.
+pub fn recommend_of(kind: HeatKind, i: &HpInput) -> u32 {
+    let sizes: Vec<u32> = kind
+        .sizes()
+        .iter()
+        .copied()
+        .filter(|s| has_curve_of(kind, *s))
+        .collect();
+    for s in &sizes {
+        let r = size(i, &curve_of(kind, *s, i.t_flow));
+        if r.t_biv.is_none_or(|t| t <= i.t_biv)
+            && backup_of(kind, *s).is_none_or(|b| r.backup <= b + 1e-9)
+        {
             return *s;
         }
     }
     sizes[sizes.len() - 1]
 }
 
+/// [`recommend_of`] the Panasonic kits.
+pub fn recommend(i: &HpInput) -> u32 {
+    recommend_of(HeatKind::HpOutdoor, i)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use creabim_core::catalogue::heat::{backup_kw, hp_curve};
 
     #[test]
     fn the_need_takes_hot_water_and_blocking() {
@@ -149,18 +168,22 @@ mod tests {
 
     #[test]
     fn the_curve_is_read_between_and_beyond_its_points() {
-        let pts = hp_curve(10, 35.0);
-        assert_eq!(capacity(&pts, 7.0), 10.0);
-        assert_eq!(capacity(&pts, 20.0), 10.0);
-        assert!((capacity(&pts, -11.0) - 7.85).abs() < 1e-12);
-        // under A-15 along the first stretch
-        assert!((capacity(&pts, -23.0) - (7.2 - 1.3)).abs() < 1e-12);
-        assert_eq!(capacity(&pts, -26.0), 0.0);
+        // KIT-WC09J3E5 W35: A-7 6,12, A2 7,00, A7 9,00 kW
+        let pts = hp_curve(9, 35.0);
+        assert_eq!(capacity(&pts, 7.0), 9.0);
+        assert_eq!(capacity(&pts, 20.0), 9.0);
+        assert!((capacity(&pts, -2.5) - (6.12 + 0.88 * 0.5)).abs() < 1e-12);
+        // under A-7 held, under −20 °C off
+        assert!((capacity(&pts, -15.0) - 6.12).abs() < 1e-12);
+        assert_eq!(capacity(&pts, -21.0), 0.0);
     }
 
     #[test]
     fn the_smallest_with_its_bivalence_point_low_enough_is_taken() {
-        let i = HpInput::default();
+        let i = HpInput {
+            heat_load: 5.0,
+            ..HpInput::default()
+        };
         let s = recommend(&i);
         let r = size(&i, &hp_curve(s, i.t_flow));
         assert!(r.t_biv.is_none_or(|t| t <= -7.0), "{r:?}");
@@ -171,20 +194,38 @@ mod tests {
         assert!(k > 0);
         let under = size(&i, &hp_curve(sizes[k - 1], i.t_flow));
         assert!(under.t_biv.unwrap() > -7.0, "{under:?}");
-        // the crossing is where output meets need
         if let Some(t) = r.t_biv {
             let pts = hp_curve(s, i.t_flow);
             assert!((capacity(&pts, t) - need(&i, t)).abs() < 0.05);
         }
-        assert_eq!(s, 10);
+        assert_eq!(s, 7);
     }
 
     #[test]
-    fn a_big_house_gets_the_largest() {
+    fn midea_is_sized_on_its_table_down_to_minus_25() {
+        // Midea M thermal Arctic 8 kW, Maximum, LWT 35: −10 °C 7,08 kW,
+        // −7 °C 7,27 kW (Engineering Data Book p. 37)
+        let pts = curve_of(HeatKind::HpOutdoorMidea, 8, 35.0);
+        assert!((capacity(&pts, -10.0) - 7.08).abs() < 1e-12);
+        assert!((capacity(&pts, -8.5) - (7.08 + 0.19 * 0.5)).abs() < 1e-12);
+        assert!(capacity(&pts, -24.0) > 0.0);
+        assert_eq!(capacity(&pts, -26.0), 0.0);
+        let i = HpInput {
+            heat_load: 6.665,
+            te: -11.0,
+            ..HpInput::default()
+        };
+        let s = recommend_of(HeatKind::HpOutdoorMidea, &i);
+        let r = size(&i, &curve_of(HeatKind::HpOutdoorMidea, s, 35.0));
+        assert!(r.t_biv.is_none_or(|t| t <= -7.0), "{s} {r:?}");
+    }
+
+    #[test]
+    fn a_big_house_gets_the_largest_with_a_known_curve() {
         let i = HpInput {
             heat_load: 40.0,
             ..HpInput::default()
         };
-        assert_eq!(recommend(&i), 16);
+        assert_eq!(recommend(&i), 9);
     }
 }

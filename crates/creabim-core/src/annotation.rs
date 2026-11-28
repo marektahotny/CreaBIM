@@ -31,16 +31,21 @@ pub enum DimensionKind {
     /// plan's own level: a level marker), written at `b` from the
     /// dimension's pattern, such as "+0.45 FFL".
     Spot,
+    /// The slope of the line from `a` to `b`: an arrow beside it,
+    /// `offset` to its left, pointing down the slope, and the slope over
+    /// it as `pattern` says (see [`slope_text`]).
+    Slope,
 }
 
 impl DimensionKind {
-    pub const ALL: [DimensionKind; 6] = [
+    pub const ALL: [DimensionKind; 7] = [
         DimensionKind::Linear,
         DimensionKind::Angular,
         DimensionKind::Radius,
         DimensionKind::Diameter,
         DimensionKind::ArcLength,
         DimensionKind::Spot,
+        DimensionKind::Slope,
     ];
 
     pub fn label(self) -> &'static str {
@@ -51,12 +56,16 @@ impl DimensionKind {
             DimensionKind::Diameter => "Diameter",
             DimensionKind::ArcLength => "Arc length",
             DimensionKind::Spot => "Spot level",
+            DimensionKind::Slope => "Slope",
         }
     }
 
     /// Does this kind measure about a centre point?
     pub fn has_center(self) -> bool {
-        !matches!(self, DimensionKind::Linear | DimensionKind::Spot)
+        !matches!(
+            self,
+            DimensionKind::Linear | DimensionKind::Spot | DimensionKind::Slope
+        )
     }
 
     pub fn is_linear(&self) -> bool {
@@ -338,6 +347,10 @@ pub struct TextStyle {
     /// How a note's or tag's lines line up (MU31).
     #[serde(default, skip_serializing_if = "TextAlign::is_usual")]
     pub align: TextAlign,
+    /// Texts in this style cover what is drawn under them ("Pozadie"):
+    /// dimension numbers, spot levels, notes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub back: bool,
 }
 
 /// How the lines of a note or tag line up: Usual is each kind's own
@@ -375,6 +388,7 @@ impl Default for TextStyle {
             purpose: StyleUse::Any,
             break_at_tags: false,
             align: TextAlign::Usual,
+            back: false,
         }
     }
 }
@@ -406,10 +420,106 @@ impl TextStyle {
 /// The pattern a spot level is written with when it has none of its own.
 pub const SPOT_PATTERN: &str = "{elevation}";
 
+/// How a slope dimension reads: these patterns measure its line (in a
+/// section or elevation); any other text is written as it is (in a plan,
+/// where every line is level, the slope is typed: `2 %`).
+pub const SLOPE_FORMATS: [&str; 3] = ["%", "°", "1:n"];
+
+/// A number with a decimal comma (STN 01 3420), to `places` decimals,
+/// dropping them when it is whole.
+fn comma(v: f64, places: usize) -> String {
+    let k = 10f64.powi(places as i32);
+    let r = (v * k).round() / k;
+    if (r - r.round()).abs() < 1e-9 {
+        format!("{:.0}", r)
+    } else {
+        format!("{r:.places$}").replace('.', ",")
+    }
+}
+
+/// What a slope dimension over a run `d` (across, up) reads with
+/// `pattern`: `%` (the default) gives `2 %` or `2,5 %`, `°` gives `35°`,
+/// `1:n` gives `1:40`; other text is written as it is. A level run reads
+/// `0 %`, a plumb one `90°` (or `∞` as a percentage).
+pub fn slope_text(d: DVec2, pattern: Option<&str>) -> String {
+    let (run, rise) = (d.x.abs(), d.y.abs());
+    let p = pattern
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .unwrap_or("%");
+    match p {
+        "%" if run < 1e-9 => "∞ %".into(),
+        "%" => format!("{} %", comma(rise / run * 100.0, 1)),
+        "°" => format!("{}°", comma(rise.atan2(run).to_degrees(), 1)),
+        "1:n" if rise < 1e-9 => "0 %".into(),
+        "1:n" => format!("1:{}", comma(run / rise, 1)),
+        other => other.to_string(),
+    }
+}
+
+/// A coordinate mark's pattern, as PilonDesigner's in its cadastre: the
+/// point's S-JTSK Y and X (positive, as the cadastre writes them).
+pub const SJTSK_PATTERN: &str = "Y = {Y}\nX = {X}";
+
+/// Whether a spot's pattern writes the point's coordinates.
+pub fn writes_coordinates(pattern: &str) -> bool {
+    pattern.contains("{Y}") || pattern.contains("{X}")
+}
+
+/// A metre value as the cadastre writes it: two decimals after a comma,
+/// thousands apart (1 234 567,89).
+pub fn cadastre_number(v: f64) -> String {
+    let t = format!("{:.2}", v.abs());
+    let (whole, frac) = t.split_once('.').unwrap_or((&t, "00"));
+    let mut grouped = String::new();
+    for (i, c) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i) % 3 == 0 {
+            grouped.push('\u{a0}');
+        }
+        grouped.push(c);
+    }
+    format!("{}{grouped},{frac}", if v < 0.0 { "-" } else { "" })
+}
+
+/// `pattern` with the plan point `p`'s S-JTSK coordinates in it: `{Y}`
+/// and `{X}` from the project's S-JTSK origin, turned by its true north
+/// (the model turns with it, the ground stays), and `{Bpv}`, the height
+/// `z` above sea level. Without an origin the local x and y are written,
+/// and said to be so.
+pub fn coordinate_text(model: &Model, pattern: &str, p: glam::DVec2, z: f64) -> String {
+    let info = model
+        .project_info()
+        .map(|(_, i)| i.clone())
+        .unwrap_or_default();
+    let bpv = cadastre_number(info.elevation + z);
+    // read off the map drawing under it when there is one: the map may
+    // have been moved and turned under the building since
+    match crate::mapgroup::sjtsk_of(model, p) {
+        Some(q) => {
+            let (e, n) = (q.x, q.y);
+            pattern
+                .replace("{Y}", &cadastre_number(-e))
+                .replace("{X}", &cadastre_number(-n))
+                .replace("{Bpv}", &bpv)
+        }
+        None => format!(
+            "{}\n({})",
+            pattern
+                .replace("Y = {Y}", "x = {Y}")
+                .replace("X = {X}", "y = {X}")
+                .replace("{Y}", &cadastre_number(p.x))
+                .replace("{X}", &cadastre_number(p.y))
+                .replace("{Bpv}", &bpv),
+            crate::words::tr("no S-JTSK origin")
+        ),
+    }
+}
+
 /// A spot level's text: `pattern` with `{elevation}` (signed, in the
 /// project's units), `{m}` (signed metres to two places, "+0.45"), `{m3}`
-/// (to three), `{mm}` (signed millimetres) and `{level}` (the name of the
-/// level at or below it) filled in for the height `z`.
+/// (to three), `{mm}` (signed millimetres), `{level}` (the name of the
+/// level at or below it) and `{Bpv}` (above sea level, see [`bpv`])
+/// filled in for the height `z` (from ±0,000).
 pub fn spot_text(model: &Model, pattern: &str, z: f64) -> String {
     let signed = |v: f64, places: usize| {
         let t = format!("{:.*}", places, v.abs());
@@ -436,6 +546,18 @@ pub fn spot_text(model: &Model, pattern: &str, z: f64) -> String {
         .replace("{m}", &signed(z, 2))
         .replace("{mm}", &signed(z * 1000.0, 0))
         .replace("{level}", &level)
+        .replace("{Bpv}", &bpv(model, z))
+}
+
+/// A spot level's height above sea level, in the Baltic vertical datum
+/// after levelling (Bpv): the project's ±0,000 in Bpv plus `z`.
+pub const BPV_PATTERN: &str = "{Bpv} m n. m. Bpv";
+
+/// The height `z` (from ±0,000) in Bpv, metres to three places with a
+/// decimal comma, as site plans write it: `245,350`.
+pub fn bpv(model: &Model, z: f64) -> String {
+    let base = model.project_info().map_or(0.0, |(_, i)| i.elevation);
+    format!("{:.3}", base + z).replace('.', ",")
 }
 
 /// The style an annotation refers to, or the default when it refers to
@@ -485,6 +607,20 @@ pub struct Note {
     /// Read the text as markdown: headings, bullets, numbers, checkboxes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub markdown: bool,
+    /// How far its lines turn from level on paper, degrees anticlockwise
+    /// about where its first line starts.
+    #[serde(default, skip_serializing_if = "crate::annotation::is_zero")]
+    pub angle: f64,
+    /// Its letters' height on paper, mm, over its style's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<f64>,
+    /// Its text covers what is drawn under it, over its style's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub back: bool,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
 }
 
 impl Note {
@@ -500,6 +636,9 @@ impl Note {
             leader_end: None,
             width: None,
             markdown: false,
+            angle: 0.0,
+            size: None,
+            back: false,
         }
     }
 
@@ -518,6 +657,36 @@ impl Note {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_slope_reads_in_percent_degrees_or_one_in_n() {
+        let d = DVec2::new(4.0, -0.1);
+        assert_eq!(slope_text(d, None), "2,5 %");
+        assert_eq!(slope_text(DVec2::new(5.0, 0.1), Some("%")), "2 %");
+        assert_eq!(slope_text(DVec2::new(1.0, 1.0), Some("°")), "45°");
+        assert_eq!(slope_text(d, Some("1:n")), "1:40");
+        assert_eq!(slope_text(d, Some("2 %")), "2 %");
+        assert_eq!(slope_text(DVec2::new(0.0, 1.0), Some("°")), "90°");
+    }
+
+    #[test]
+    fn a_coordinate_mark_writes_the_point_in_sjtsk() {
+        use glam::DVec2;
+        assert_eq!(cadastre_number(1234567.891), "1\u{a0}234\u{a0}567,89");
+        assert_eq!(cadastre_number(5.0), "5,00");
+        let mut m = crate::sample::sample_house();
+        let mut info = m.project_info().map(|(_, i)| i.clone()).unwrap_or_default();
+        info.sjtsk = Some([-450_000.0, -1_250_000.0]);
+        info.true_north = 0.0;
+        crate::set_project(&m, info.clone()).apply(&mut m).unwrap();
+        let t = coordinate_text(&m, SJTSK_PATTERN, DVec2::new(10.0, 20.0), 0.0);
+        assert_eq!(t, "Y = 449\u{a0}990,00\nX = 1\u{a0}249\u{a0}980,00");
+        // the model turned 90° anticlockwise: the same ground point
+        info.true_north = 90.0;
+        crate::set_project(&m, info).apply(&mut m).unwrap();
+        let t = coordinate_text(&m, SJTSK_PATTERN, DVec2::new(-20.0, 10.0), 0.0);
+        assert_eq!(t, "Y = 449\u{a0}990,00\nX = 1\u{a0}249\u{a0}980,00");
+    }
     use crate::{Dimension, Element, Transaction};
 
     #[test]

@@ -253,6 +253,18 @@
    "color": "#e9e4da"
   },
   {
+   "id": "omietka-mozaik",
+   "category": "Omietky a povrchy",
+   "name": "Omietka mozaiková (marmolit)",
+   "lambda": 0.7,
+   "density": 1700,
+   "fire": "B-s1,d0",
+   "color": "#a39a8c",
+   "maker": "Baumit",
+   "kind": "MosaikTop – dekoratívna omietka z farebných kamienkov, čistá akrylátová disperzia, na sokel",
+   "note": "technický list Baumit MosaikTop (SK 06/2023): zrno 2 mm, spotreba cca 5,5 kg/m² (Essential Line) / 4,5 kg/m² (Natural Line), hrúbka cca 1,5 × zrno, μ 110–140, W2 (STN EN 1062-1), V2, vedro 25 kg, penetrácia Baumit PremiumPrimer; λ ≈ 0,7 W/(m·K), hustota ≈ 1,7 kg/dm³, reakcia na oheň B-s1,d0 podľa EN 15824 z nemeckého technického listu Baumit (Stand 16-02/20)"
+  },
+  {
    "id": "sdk",
    "category": "Sadrokartón a drevo",
    "name": "Sadrokartón",
@@ -260,6 +272,29 @@
    "density": 800,
    "fire": "A2-s1,d0",
    "color": "#f2f2f2"
+  },
+  {
+   "id": "sdk-df",
+   "category": "Sadrokartón a drevo",
+   "name": "Sadrokartónová doska protipožiarna typ DF (EN 520)",
+   "lambda": 0.25,
+   "density": 933,
+   "fire": "A2-s1,d0",
+   "kind": "protipožiarna sadrokartónová doska",
+   "note": "hodnoty prevzaté z technického listu NORGIPS S GKFI 15 mm typ DFH2, technický list (vydané február 2026): λ 0,25 W/(m·K), jadro ≥ 800 kg/m³, 14 kg/m², μ 10, A2-s1,d0 – rovnaké jadro bez impregnácie; overiť listom použitého výrobcu",
+   "color": "#f4e4e4"
+  },
+  {
+   "id": "sdk-dfh2",
+   "category": "Sadrokartón a drevo",
+   "name": "Sadrokartónová doska impregnovaná protipožiarna typ DFH2 (EN 520)",
+   "lambda": 0.25,
+   "density": 933,
+   "fire": "A2-s1,d0",
+   "maker": "NORGIPS",
+   "kind": "impregnovaná protipožiarna sadrokartónová doska",
+   "note": "NORGIPS S GKFI 15 mm typ DFH2, technický list (vydané február 2026): λ 0,25 W/(m·K), jadro ≥ 800 kg/m³, 14 kg/m², μ 10, A2-s1,d0",
+   "color": "#e4efe4"
   },
   {
    "id": "osb",
@@ -289,6 +324,15 @@
    "color": "#d7dde3"
   },
   {
+   "id": "lepidlo-dlazba",
+   "category": "Podlahy",
+   "name": "Lepidlo na dlažbu",
+   "lambda": 1.16,
+   "density": 2000,
+   "fire": "A1",
+   "color": "#aeb4ba"
+  },
+  {
    "id": "laminat",
    "category": "Podlahy",
    "name": "Laminátová / drevená podlaha",
@@ -296,6 +340,15 @@
    "density": 900,
    "fire": "D-s2,d0",
    "color": "#b98a5a"
+  },
+  {
+   "id": "podlozka-parkety",
+   "category": "Podlahy",
+   "name": "Podložka pod parkety",
+   "lambda": 0.35,
+   "density": 950,
+   "fire": "E",
+   "color": "#9aa3ad"
   },
   {
    "id": "hydroizolacia",
@@ -372,7 +425,7 @@
   {
    "id": "nasyp-zemina",
    "category": "Zeminy a kamenivo",
-   "name": "Zhutnený násyp zeminou",
+   "name": "Zhutnený násyp zeminou 0,3 MPa",
    "lambda": 2,
    "density": 1800,
    "fire": "A1",
@@ -1343,7 +1396,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -1376,7 +1433,11 @@
    "layers": [
     {
      "material": "laminat",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "podlozka-parkety",
+     "mm": 2
     },
     {
      "material": "poter-anhydrit",
@@ -1409,7 +1470,11 @@
    "layers": [
     {
      "material": "dlazba",
-     "mm": 10
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
     },
     {
      "material": "poter-cem",
@@ -1452,6 +1517,62 @@
     {
      "material": "omietka-sadra",
      "mm": 10
+    }
+   ]
+  },
+  {
+   "id": "PODHLAD-VAZ-DF",
+   "name": "Podhľad pod väzníkovou strechou – SDK DF 15, MW 50 + 100 + 120",
+   "boundary": "exterier",
+   "layers": [
+    {
+     "material": "mw-medzi",
+     "mm": 120
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 100,
+     "core": true
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 50
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "sdk-df",
+     "mm": 15
+    }
+   ]
+  },
+  {
+   "id": "PODHLAD-VAZ-DFH2",
+   "name": "Podhľad pod väzníkovou strechou – SDK DFH2 15, MW 50 + 100 + 120",
+   "boundary": "exterier",
+   "layers": [
+    {
+     "material": "mw-medzi",
+     "mm": 120
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 100,
+     "core": true
+    },
+    {
+     "material": "mw-medzi",
+     "mm": 50
+    },
+    {
+     "material": "pe-folia",
+     "mm": 0.2
+    },
+    {
+     "material": "sdk-dfh2",
+     "mm": 15
     }
    ]
   }

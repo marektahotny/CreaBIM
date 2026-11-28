@@ -1,0 +1,222 @@
+{
+ "_about": "Požiarna odolnosť skladieb a výrobkov len podľa dokladov výrobcov (George 2026-11-20). Hodnota bez dokladu sa nevpisuje: skladba je v PNP požiarne otvorená, kým ju projektant nedoplní.",
+ "assemblies": {
+  "Obvodová – PORFIX P2-440 300 + EPS šedý 150": {
+   "fire": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 7 (PDF s. 15), tabuľka tvárnic pre nosné murivo; tab. 8 Odborná príručka PORFIX (elektronická verzia), 04-4 Požiarna bezpečnosť s. 11 (PDF s. 79) (P2-440 250, väčšia hrúbka dovolená)",
+   "maxHeight": 3000
+  },
+  "Nosná vnútorná – PORFIX P4-600 250": {
+   "fire": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 7 (PDF s. 15), tabuľka tvárnic pre nosné murivo; tab. 9 Odborná príručka PORFIX (elektronická verzia), 04-4 Požiarna bezpečnosť s. 11 (PDF s. 79) (P4-600 200, väčšia hrúbka dovolená)",
+   "maxHeight": 3000
+  },
+  "Priečka – PORFIX priečkovka P2-500 100": {
+   "fire": "EI 180",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek; tab. 7 Odborná príručka PORFIX (elektronická verzia), 04-4 Požiarna bezpečnosť s. 11 (PDF s. 79)",
+   "maxHeight": 4000
+  },
+  "Priečka – PORFIX priečkovka P2-500 150": {
+   "fire": "EI 180",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek; tab. 7 Odborná príručka PORFIX (elektronická verzia), 04-4 Požiarna bezpečnosť s. 11 (PDF s. 79)",
+   "maxHeight": 6000
+  },
+  "Priečka – PORFIX priečkovka P2-500 125": {
+   "fire": "EI 180",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek; tab. 7 Odborná príručka PORFIX (elektronická verzia), 04-4 Požiarna bezpečnosť s. 11 (PDF s. 79)",
+   "maxHeight": 5000
+  },
+  "Priečka – PORFIX priečkovka P2-500 200": {
+   "fire": "EI 180",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek; tab. 7 Odborná príručka PORFIX (elektronická verzia), 04-4 Požiarna bezpečnosť s. 11 (PDF s. 79)",
+   "maxHeight": 8000
+  },
+  "Priečka – PORFIX P4-600 200": {
+   "fire": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek; tab. 9 Odborná príručka PORFIX (elektronická verzia), 04-4 Požiarna bezpečnosť s. 11 (PDF s. 79)",
+   "maxHeight": 3000
+  },
+  "Priečka – Porotherm 8 Profi Dryfix": {
+   "fire": "EI 90",
+   "source": "Wienerberger technický list CZ Porotherm 8 Profi Dryfix (údaje skladieb priečok, 2026-11-20)"
+  },
+  "Priečka – Porotherm 11,5 P+D": {
+   "fire": "REI 180",
+   "source": "Wienerberger technický list CZ Porotherm 11,5 P+D (údaje skladieb priečok, 2026-11-20)"
+  },
+  "Priečka – Porotherm 11,5 AKU": {
+   "fire": "REI 120",
+   "source": "Wienerberger technický list SK Porotherm 11,5 AKU (údaje skladieb priečok, 2026-11-20)"
+  },
+  "Priečka – Porotherm 11,5 AKU Profi": {
+   "fire": "REI 120",
+   "source": "Wienerberger technický list SK Porotherm 11,5 AKU Profi (údaje skladieb priečok, 2026-11-20)"
+  },
+  "Priečka – Porotherm 14": {
+   "fire": "EI 180",
+   "source": "Wienerberger technický list SK Porotherm 14 (údaje skladieb priečok, 2026-11-20)"
+  },
+  "Priečka – Porotherm 14 Profi": {
+   "fire": "EI 180",
+   "source": "Wienerberger technický list SK Porotherm 14 Profi (údaje skladieb priečok, 2026-11-20)"
+  },
+  "Priečka – Porotherm 17,5": {
+   "fire": "REI 90",
+   "source": "Wienerberger technický list SK Porotherm 17,5 (údaje skladieb priečok, 2026-11-20)"
+  }
+ },
+ "materials": {
+  "porfix-p2-440-250": {
+   "fireRes": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 7 (PDF s. 15), tabuľka tvárnic pre nosné murivo"
+  },
+  "porfix-p2-440-300": {
+   "fireRes": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 7 (PDF s. 15), tabuľka tvárnic pre nosné murivo"
+  },
+  "porfix-p2-440-375": {
+   "fireRes": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 7 (PDF s. 15), tabuľka tvárnic pre nosné murivo"
+  },
+  "porfix-p4-600-200": {
+   "fireRes": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek"
+  },
+  "porfix-p4-600-250": {
+   "fireRes": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 7 (PDF s. 15), tabuľka tvárnic pre nosné murivo"
+  },
+  "porfix-p4-600-300": {
+   "fireRes": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 7 (PDF s. 15), tabuľka tvárnic pre nosné murivo"
+  },
+  "porfix-p4-600-375": {
+   "fireRes": "REI-M 240",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 7 (PDF s. 15), tabuľka tvárnic pre nosné murivo"
+  },
+  "porfix-p2-500-100": {
+   "fireRes": "EI 180",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek"
+  },
+  "porfix-p2-500-125": {
+   "fireRes": "EI 180",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek"
+  },
+  "porfix-p2-500-150": {
+   "fireRes": "EI 180",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek"
+  },
+  "porfix-p2-500-200": {
+   "fireRes": "EI 180",
+   "source": "Odborná príručka PORFIX (elektronická verzia), 02 Produktová časť s. 8 (PDF s. 16), tabuľka priečkoviek"
+  },
+  "porotherm-8-profi": {
+   "fireRes": null,
+   "source": "Wienerberger technický list CZ Porotherm 8 Profi Dryfix (údaje skladieb priečok, 2026-11-20)"
+  },
+  "porotherm-11-5": {
+   "fireRes": null,
+   "source": "Wienerberger technický list CZ Porotherm 11,5 P+D (údaje skladieb priečok, 2026-11-20)"
+  },
+  "porotherm-11-5-aku": {
+   "fireRes": null,
+   "source": "Wienerberger technický list SK Porotherm 11,5 AKU (údaje skladieb priečok, 2026-11-20)"
+  },
+  "porotherm-11-5-aku-profi": {
+   "fireRes": null,
+   "source": "Wienerberger technický list SK Porotherm 11,5 AKU Profi (údaje skladieb priečok, 2026-11-20)"
+  },
+  "porotherm-14": {
+   "fireRes": null,
+   "source": "Wienerberger technický list SK Porotherm 14 (údaje skladieb priečok, 2026-11-20)"
+  },
+  "porotherm-14-profi": {
+   "fireRes": null,
+   "source": "Wienerberger technický list SK Porotherm 14 Profi (údaje skladieb priečok, 2026-11-20)"
+  },
+  "porotherm-17-5": {
+   "fireRes": null,
+   "source": "Wienerberger technický list SK Porotherm 17,5 (údaje skladieb priečok, 2026-11-20)"
+  },
+  "eps-70f": {
+   "reaction": "E",
+   "source": "Isover EPS 70F, technický list 1. 5. 2025",
+   "url": "https://www.isover.cz/dokumenty/technicke-listy/tl-isover-eps-70f-cz.pdf"
+  },
+  "eps-sedy": {
+   "reaction": "E",
+   "source": "Isover EPS GreyWall Plus, technický list 1. 5. 2025",
+   "url": "https://www.isover.cz/dokumenty/technicke-listy/tl-isover-eps-greywall-plus-cz.pdf"
+  },
+  "eps-100": {
+   "reaction": "E",
+   "source": "Isover EPS 100, technický list 20. 5. 2026",
+   "url": "https://www.isover.cz/dokumenty/technicke-listy/tl-isover-eps-100-en.pdf"
+  },
+  "eps-150": {
+   "reaction": "E",
+   "source": "Isover EPS 150, technický list 1. 5. 2025",
+   "url": "https://www.isover.cz/dokumenty/technicke-listy/tl-isover-eps-150-cz.pdf"
+  },
+  "xps": {
+   "reaction": "E",
+   "source": "Austrotherm XPS TOP 30 TB SF, vyhlásenie o parametroch 002/XGSFTOP30TB/010724",
+   "url": "https://austrotherm.hu/fileadmin/user_upload/HU/Termekek/Teljesitmeny_nyilatkozatok/DoP_XPS_TOP_30_TB_SF_EN.pdf"
+  },
+  "mw-fasada": {
+   "reaction": "A1",
+   "source": "Isover TF Profi, technický list 15. 4. 2026",
+   "url": "https://www.isover.cz/en/documents/technicke-listy/tl-isover-tf-profi-cz.pdf"
+  },
+  "mw-medzi": {
+   "reaction": "A1",
+   "source": "Isover Unirol Plus, technický list",
+   "url": "https://www.isover.cz/dokumenty/technicke-listy/tl-isover-unirol-plus-cz.pdf"
+  },
+  "mw-krocaj": {
+   "reaction": "A1",
+   "source": "Isover N, technický list 4. 11. 2024",
+   "url": "https://www.isover.cz/en/documents/technicke-listy/tl-4.11.2024-isover-n-cz.pdf"
+  }
+ },
+ "missing": {
+  "Obvodová – PORFIX Premium P2-400 500 bez zateplenia": "príručka PORFIX uvádza pri P2-400 požiarnu odolnosť „-“ (PDF s. 15); treba protokol o klasifikácii alebo technický list PORFIX Premium",
+  "Medzibytová – PORFIX AKU 248 (Rw 56 dB)": "PORFIX AKU (silikát) v príručke nie je; treba technický list / klasifikáciu PORFIX AKU",
+  "Medzibytová / hotelová – PORFIX AKU 199 (Rw 54 dB)": "ako vyššie",
+  "Nosná vnútorná – PORFIX AKU 175 (Rw 52 dB)": "ako vyššie",
+  "Priečka – PORFIX AKU 150 (Rw 51 dB)": "ako vyššie",
+  "Priečka – PORFIX AKU 125 (Rw 48 dB)": "ako vyššie",
+  "Priečka – PORFIX priečkovka P2-500 50": "príručka PORFIX uvádza „-“ (PDF s. 16)",
+  "Priečka – PORFIX priečkovka P2-500 75": "príručka PORFIX uvádza „-“ (PDF s. 16)",
+  "Priečka – PORFIX P6-650 200": "príručka PORFIX uvádza „-“ (PDF s. 16)",
+  "Obvodová – tehla 300 + EPS 150": "všeobecná tehla bez výrobcu; treba konkrétny výrobok (napr. technický list Porotherm)",
+  "Obvodová – tehla 250 + minerálna vlna 200": "všeobecná tehla bez výrobcu",
+  "Obvodová – pórobetón 375 + EPS 100": "všeobecný pórobetón P2-400 375; PORFIX P2-400 má v príručke „-“",
+  "Obvodová – tehla 440 brúsená bez zateplenia": "všeobecná tehla bez výrobcu",
+  "Nosná vnútorná – tehla 250": "všeobecná tehla bez výrobcu",
+  "Nosná vnútorná – železobetón 200": "železobetón: podľa STN EN 1992-1-2 (krytie výstuže, zaťaženie); norma tu nie je",
+  "Priečka – tehla 115": "všeobecná priečkovka bez výrobcu",
+  "Priečka – pórobetón 100": "všeobecný pórobetón P4-500; zodpovedá PORFIX P2-500 100 (EI 180) len ak ide o tento výrobok",
+  "Priečka – sadrokartón 100": "treba systémový list výrobcu SDK (Knauf/Rigips) pre konkrétnu skladbu",
+  "Nadzákladová stena – DT 300 + hydroizolácia 5 + XPS 140": "treba technický list debniacich tvárnic DT 300",
+  "Vikier – drevený rám, MW 160 medzi stĺpikmi, oplechovanie": "drevostavba: treba klasifikáciu skladby",
+  "Strop ŽB 200 – laminát, poter, kročajová MW": "železobetón: STN EN 1992-1-2",
+  "Strop ŽB 250 – dlažba, poter, EPS 100": "železobetón: STN EN 1992-1-2",
+  "Strop pod nevykurovaným podkrovím – MW 300": "železobetón: STN EN 1992-1-2",
+  "Šikmá strecha – škridla, MW 200 medzi + 60 pod krokvami": "krov so SDK podhľadom: treba systémový list SDK podhľadu",
+  "Šikmá strecha – plech, MW 240 medzi krokvami": "ako vyššie",
+  "Plochá strecha – hydroizolácia, EPS 250, ŽB 200": "železobetón: STN EN 1992-1-2",
+  "Podlaha na teréne – dlažba, poter, EPS 150": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podlaha na teréne – podlahové kúrenie HERZ nopová 10 mm (3FS3113)": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podlaha na teréne – podlahové kúrenie HERZ nopová 30 mm, rozteč 65 (3FS3112)": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podlaha na teréne – podlahové kúrenie HERZ Combitop Star 30-2, rozteč 50": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podlaha na teréne – podlahové kúrenie HERZ Tacker EPS 70 30 mm": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podlaha na teréne – podlahové kúrenie Wavin SIMPLE WHITE 50": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podlaha na teréne – podlahové kúrenie Wavin COMPACT BASIC 45": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podlaha na teréne – podlahové kúrenie Wavin ROLLER 30 (tacker)": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podlaha na teréne – podlahové kúrenie Wavin REFLEX ULTRA 23": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podlaha na teréne – podlahové kúrenie HERZ suchý systém 25 mm": "podlaha na teréne: požiarna odolnosť sa nepožaduje / nie je doklad",
+  "Podhľad pod väzníkovou strechou – SDK DF 15, MW 50 + 100 + 120": "treba systémový list výrobcu SDK pre podhľad na závesoch pod väzníkmi (Knauf/Rigips/Norgips): požiarna odolnosť sa bez neho nevpisuje",
+  "Podhľad pod väzníkovou strechou – SDK DFH2 15, MW 50 + 100 + 120": "treba systémový list výrobcu SDK pre podhľad na závesoch pod väzníkmi (Knauf/Rigips/Norgips): požiarna odolnosť sa bez neho nevpisuje"
+ }
+}

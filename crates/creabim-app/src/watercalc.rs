@@ -36,6 +36,16 @@ pub fn calculate(model: &Model) -> Vec<SystemCalc> {
         .collect()
 }
 
+/// What the calculation found, for the model.
+fn water_results(calcs: &[SystemCalc]) -> creabim_core::results::ResultSet {
+    let mut set =
+        creabim_core::results::ResultSet::new("water", "Vodovod", "STN EN 806-3, STN 73 6655");
+    for c in calcs {
+        creabim_services::calcresults::water(&mut set, c.code, &c.net, &c.result);
+    }
+    set
+}
+
 /// The edits that give every calculated pipe its proposed size.
 pub fn apply_sizes(model: &Model, calcs: &[SystemCalc]) -> Option<Transaction> {
     let mut tx = Transaction::new("Apply proposed pipe sizes");
@@ -105,15 +115,22 @@ impl CreaBimApp {
         let mut open = true;
         let mut apply = false;
         let mut again = false;
+        let mut write_now = false;
+        let found = water_results(calcs);
+        let written = self.is_written(&found);
         let mut select = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Water supply calculation"))
             .id(egui::Id::new("water.calc"))
             .open(&mut open)
-            .default_pos(area.center() - Vec2::new(300.0, 250.0))
-            .default_size(Vec2::new(600.0, 500.0))
+            .default_pos(area.center() - Vec2::new(380.0, 300.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(760.0, 600.0)))
+            .min_width(640.0)
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui, written) {
+                    write_now = true;
+                }
                 if calcs.is_empty() {
                     ui.label(t("Draw cold (SV) or hot (TV) water pipes to the fixtures' connectors, then calculate."));
                 }
@@ -133,17 +150,22 @@ impl CreaBimApp {
                         .count();
                     if ui
                         .add_enabled(changes > 0, egui::Button::new(t("Apply proposed sizes")))
-                        .on_hover_text(format!("{}: {changes}", t("Pipes to change")))
+                        .on_hover_text(crate::i18n::tr(&format!("{}: {changes}", t("Pipes to change"))))
                         .clicked()
                     {
                         apply = true;
                     }
                 });
-                egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.add_space(4.0);
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
                     for c in calcs {
                         let name = creabim_core::mep::system(c.code)
                             .map_or(c.code.to_string(), |s| format!("{} – {}", s.code, t(s.name)));
-                        crate::props::section(ui, &name);
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new(name).size(15.0).strong());
+                        ui.add_space(4.0);
                         let r = &c.result;
                         let fixtures = c
                             .net
@@ -152,30 +174,48 @@ impl CreaBimApp {
                             .iter()
                             .filter(|n| n.fixture.is_some())
                             .count();
-                        crate::props::row(ui, "Fixtures", |ui| ui.label(fixtures.to_string()));
-                        crate::props::row(ui, "Design flow", |ui| {
-                            ui.label(crate::i18n::num(r.root_flow_ls, 2) + " l/s")
-                        });
-                        crate::props::row(ui, "Pressure needed", |ui| ui.label(kpa(r.required_pa)));
-                        crate::props::row(ui, "Pressure available", |ui| ui.label(kpa(r.available_pa)));
+                        // the figures side by side, each in its own card
                         let short = r.shortfall_pa();
-                        crate::props::row(ui, "Result", |ui| {
-                            if short > 0.0 {
-                                ui.colored_label(
-                                    ui.visuals().error_fg_color,
-                                    format!("{} {}", t("Short by"), kpa(short)),
-                                )
-                            } else {
-                                ui.label(t("Enough pressure"))
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+                            let mut cards = vec![
+                                ("Fixtures", fixtures.to_string()),
+                                ("Design flow", crate::i18n::num(r.root_flow_ls, 2) + " l/s"),
+                                ("Pressure needed", kpa(r.required_pa)),
+                                ("Pressure available", kpa(r.available_pa)),
+                            ];
+                            if let Some(k) = r.reducer_setting_kpa {
+                                cards.push(("Pressure reducer", kpa(k * 1000.0)));
+                            }
+                            for (label, value) in cards {
+                                egui::Frame::group(ui.style())
+                                    .inner_margin(egui::Margin::symmetric(12, 8))
+                                    .corner_radius(6.0)
+                                    .show(ui, |ui| {
+                                        ui.vertical(|ui| {
+                                            ui.set_min_width(104.0);
+                                            ui.label(egui::RichText::new(t(label)).weak().size(11.0));
+                                            ui.label(egui::RichText::new(value).size(16.0).strong());
+                                        });
+                                    });
                             }
                         });
-                        if let Some(k) = r.reducer_setting_kpa {
-                            crate::props::row(ui, "Pressure reducer", |ui| {
-                                ui.label(format!("{} {}", t("set to"), kpa(k * 1000.0)))
-                            });
-                        }
+                        ui.add_space(4.0);
+                        // the verdict on a line of its own, in colour
+                        let (color, verdict) = if short > 0.0 {
+                            (
+                                ui.visuals().error_fg_color,
+                                format!("✖  {} {}", t("Short by"), kpa(short)),
+                            )
+                        } else {
+                            (
+                                egui::Color32::from_rgb(70, 170, 100),
+                                format!("✔  {}", t("Enough pressure")),
+                            )
+                        };
+                        ui.label(egui::RichText::new(verdict).color(color).strong());
                         let warn = |ui: &mut egui::Ui, s: String| {
-                            ui.colored_label(ui.visuals().warn_fg_color, s);
+                            ui.colored_label(ui.visuals().warn_fg_color, format!("⚠  {s}"));
                         };
                         if !c.net.open_ends.is_empty() {
                             warn(ui, format!("{}: {}", t("Pipe ends joined to nothing"), c.net.open_ends.len()));
@@ -191,32 +231,52 @@ impl CreaBimApp {
                                 warn(ui, format!("{}: {}", t("Fixtures counted as unknown"), v.join(", ")));
                             }
                         }
-                        egui::Grid::new(("water.calc.pipes", c.code))
-                            .striped(true)
-                            .num_columns(6)
-                            .show(ui, |ui| {
-                                for h in ["Pipe", "Size", "Proposed", "Flow l/s", "v m/s", "R Pa/m"] {
-                                    ui.strong(t(h));
-                                }
-                                ui.end_row();
-                                for (id, p) in &c.pipes {
-                                    let name = model.get(*id).map_or(String::new(), |e| e.name.clone());
-                                    let label = if p.on_critical_path {
-                                        egui::RichText::new(name).strong()
-                                    } else {
-                                        egui::RichText::new(name)
-                                    };
-                                    if ui.link(label).clicked() {
-                                        select = Some(*id);
-                                    }
-                                    ui.label(size_text(model, *id, None));
-                                    ui.label(size_text(model, *id, p.proposed.map(|s| s.nominal_mm)));
-                                    ui.label(crate::i18n::num(p.flow_ls, 3));
-                                    ui.label(crate::i18n::num(p.velocity_ms, 2));
-                                    ui.label(crate::i18n::num(p.r_pa_per_m, 0));
-                                    ui.end_row();
+                        ui.add_space(8.0);
+                        // the stretches: names left, numbers right, a
+                        // size to change in the accent
+                        let accent = ui.visuals().selection.stroke.color;
+                        use crate::sheet::{self, Col};
+                        let cols = [
+                            Col::num("#", ""),
+                            Col::text("Pipe"),
+                            Col::text("Size"),
+                            Col::text("Proposed"),
+                            Col::num("Flow", "l/s"),
+                            Col::num("v", "m/s"),
+                            Col::num("R", "Pa/m"),
+                        ];
+                        sheet::show(ui, ("water.calc.pipes", c.code), &cols, c.pipes.len(), 420.0, |row, n| {
+                            let (id, p) = &c.pipes[n];
+                            row.weak((n + 1).to_string());
+                            let name = model.get(*id).map_or(String::new(), |e| e.name.clone());
+                            let label = if p.on_critical_path {
+                                egui::RichText::new(name).strong()
+                            } else {
+                                egui::RichText::new(name)
+                            };
+                            row.cell(|ui| {
+                                if ui
+                                    .link(label)
+                                    .on_hover_text(t("Select the pipe in the drawing"))
+                                    .clicked()
+                                {
+                                    select = Some(*id);
                                 }
                             });
+                            let now = size_text(model, *id, None);
+                            let proposed = size_text(model, *id, p.proposed.map(|s| s.nominal_mm));
+                            row.text(now.clone());
+                            if proposed != now {
+                                row.text(egui::RichText::new(proposed).color(accent).strong());
+                            } else {
+                                row.weak(proposed);
+                            }
+                            row.text(crate::i18n::num(p.flow_ls, 3));
+                            row.text(crate::i18n::num(p.velocity_ms, 2));
+                            row.text(crate::i18n::num(p.r_pa_per_m, 0));
+                        }, None);
+                        ui.add_space(10.0);
+                        ui.separator();
                     }
                     ui.add_space(6.0);
                     ui.label(
@@ -242,6 +302,10 @@ impl CreaBimApp {
         }
         if again {
             self.water_calc = Some(calculate(self.doc.model()));
+        }
+        if write_now {
+            let set = water_results(self.water_calc.as_deref().unwrap_or(&[]));
+            self.write_results_said(set);
         }
         if !open {
             self.water_calc = None;

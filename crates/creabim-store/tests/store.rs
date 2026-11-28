@@ -1,5 +1,5 @@
 use creabim_core::{sample::sample_house, Document, Element, ElementKind, Level, Transaction};
-use creabim_store::{import_json, load, open, read_meta, save, Store, StoreError};
+use creabim_store::{import_json, load, open, open_mended, read_meta, save, Store, StoreError};
 use std::path::{Path, PathBuf};
 
 fn tmp() -> (tempfile::TempDir, PathBuf) {
@@ -309,10 +309,10 @@ fn damaged_or_foreign_files_give_errors_not_panics() {
         &path,
         "DELETE FROM ops WHERE seq = (SELECT MAX(seq) FROM ops)",
     );
-    assert!(
-        matches!(open(&path), Err(StoreError::History(_))),
-        "a history that no longer fits the model"
-    );
+    // a history that no longer fits the model is cut; the model opens
+    let (doc, mended) = open_mended(&path).expect("the model opens");
+    assert!(mended.is_some(), "and says the history was cut");
+    assert_eq!(doc.model(), open(&path).unwrap().model());
 
     assert!(matches!(
         open(dir.path().join("missing.creabim")),
@@ -428,4 +428,174 @@ fn materials_saved_before_the_library_open_unchanged() {
         creabim_core::Material::new(creabim_core::Hatch::Brick, [0.78, 0.55, 0.45])
     );
     assert_eq!((m.roughness, m.metallic, m.opacity), (0.8, 0.0, 1.0));
+}
+
+#[test]
+fn saving_keeps_the_file_it_replaces_as_one_backup() {
+    let (_dir, path) = tmp();
+    let mut doc = Document::from_model(sample_house());
+    creabim_store::save_with_backup(&path, &doc).unwrap();
+    let bak = creabim_store::backup_path(&path);
+    assert!(bak.ends_with("house.bak.creabim"));
+    // nothing to back up the first time
+    assert!(!bak.exists());
+    let before = doc.model().clone();
+    add_level(&mut doc, "Second");
+    creabim_store::save_with_backup(&path, &doc).unwrap();
+    assert_eq!(load(&bak).unwrap().model(), &before);
+    assert_eq!(load(&path).unwrap().model(), doc.model());
+    // a third save replaces the one backup
+    add_level(&mut doc, "Third");
+    let second = load(&path).unwrap().model().clone();
+    creabim_store::save_with_backup(&path, &doc).unwrap();
+    assert_eq!(load(&bak).unwrap().model(), &second);
+    let files = std::fs::read_dir(path.parent().unwrap()).unwrap().count();
+    assert_eq!(
+        files, 3,
+        "the project, its backup and the older saves' folder, nothing left over"
+    );
+}
+
+#[test]
+fn an_autosave_newer_than_its_project_is_found() {
+    let (_dir, path) = tmp();
+    let doc = Document::from_model(sample_house());
+    save(&path, &doc).unwrap();
+    assert!(creabim_store::newer_autosave(&path).is_none());
+    let auto = creabim_store::autosave_path(&path);
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    save(&auto, &doc).unwrap();
+    assert_eq!(creabim_store::newer_autosave(&path), Some(auto));
+}
+
+#[test]
+fn the_project_information_reads_without_the_model() {
+    let (_dir, path) = tmp();
+    let mut doc = Document::from_model(sample_house());
+    save(&path, &doc).unwrap();
+    assert!(creabim_store::read_project_info(&path).unwrap().is_none());
+    let info = creabim_core::ProjectInfo {
+        name: "Rodinný dom".into(),
+        number: "24-017".into(),
+        client: "Ján Novák".into(),
+        ..Default::default()
+    };
+    let tx = creabim_core::set_project(doc.model(), info.clone());
+    doc.commit(tx).unwrap();
+    save(&path, &doc).unwrap();
+    let read = creabim_store::read_project_info(&path).unwrap().unwrap();
+    assert_eq!(
+        (read.name, read.number, read.client),
+        (info.name, info.number, info.client)
+    );
+}
+
+/// Every sample project (between them every kind of element the samples
+/// build) saves and opens back the same, history and all; saving again
+/// keeps the file it replaces as the backup and the older ones in their
+/// folder.
+#[test]
+fn every_sample_saves_and_opens_back_the_same() {
+    use creabim_core::sample;
+    let models = [
+        sample::sample_house(),
+        sample::layered_house(),
+        sample::typed_house(),
+        sample::furnished_house(),
+        sample::sample_with_buried_beam().0,
+    ];
+    for (i, m) in models.into_iter().enumerate() {
+        let (dir, path) = tmp();
+        let mut doc = Document::from_model(m);
+        let wall = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Wall(_)))
+            .map(|e| e.id);
+        add_level(&mut doc, "Podkrovie");
+        if let Some(w) = wall {
+            doc.edit(w, "Wall thickness", set_thickness(0.45)).unwrap();
+        }
+        doc.undo();
+        save(&path, &doc).unwrap();
+        let back = open(&path).unwrap();
+        assert_same(&doc, &back);
+        let (_, mended) = open_mended(&path).unwrap();
+        assert!(mended.is_none(), "sample {i}: nothing to mend");
+        drop(dir);
+    }
+}
+
+#[test]
+fn saves_keep_a_backup_and_the_older_saves() {
+    let (_dir, path) = tmp();
+    let mut doc = edited_sample();
+    for n in 0..(creabim_store::OLDER_BACKUPS + 4) {
+        add_level(&mut doc, &format!("L{n}"));
+        creabim_store::save_with_backup(&path, &doc).unwrap();
+        // distinct times for the older saves' names
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(creabim_store::backup_path(&path).exists());
+    let older = creabim_store::older_backups(&path);
+    assert_eq!(older.len(), creabim_store::OLDER_BACKUPS);
+    for o in &older {
+        open(o).expect("every older save opens");
+    }
+    assert_same(&doc, &open(&path).unwrap());
+}
+
+/// A history that no longer fits the model (a merged edit once lost the
+/// boards it added): the project still opens, the history is cut, and
+/// saved again the file is whole.
+#[test]
+fn a_project_whose_history_lost_an_insert_opens_and_saves_whole() {
+    let (_dir, path) = tmp();
+    let mut doc = Document::from_model(sample_house());
+    let l = add_level(&mut doc, "Podkrovie");
+    // a wall on the new level, then made thicker
+    let mut wall = doc.model().get(first_wall(&doc)).unwrap().clone();
+    wall.id = creabim_core::ElementId::new();
+    if let ElementKind::Wall(w) = &mut wall.kind {
+        w.level = l;
+    }
+    let id = wall.id;
+    doc.commit(Transaction::new("Add wall up").insert(wall))
+        .unwrap();
+    doc.edit(id, "Wall thickness", set_thickness(0.5)).unwrap();
+    save(&path, &doc).unwrap();
+    // the journal loses the wall's insert: undoing the level would now
+    // take it from under the wall
+    sql(&path, "DELETE FROM ops WHERE label = 'Add wall up'");
+    let (back, mended) = open_mended(&path).expect("it opens");
+    let m = mended.expect("and says what was cut");
+    assert!(m.undo_dropped >= 1 && m.elements_dropped == 0);
+    assert_eq!(back.model(), doc.model());
+    creabim_store::save_with_backup(&path, &back).unwrap();
+    let (_, again) = open_mended(&path).unwrap();
+    assert!(again.is_none(), "saved again, nothing left to mend");
+}
+
+/// An element whose reference is gone is left out; the rest opens.
+#[test]
+fn an_element_with_a_missing_reference_is_left_out_not_the_project() {
+    let (_dir, path) = tmp();
+    let doc = edited_sample();
+    save(&path, &doc).unwrap();
+    // the first level goes from under everything standing on it
+    let level = doc
+        .model()
+        .iter()
+        .find(|e| matches!(e.kind, ElementKind::Level(_)))
+        .unwrap()
+        .id;
+    let _ = level;
+    sql(
+        &path,
+        "DELETE FROM elements WHERE ord = (SELECT MIN(ord) FROM elements WHERE kind = 'Level')",
+    );
+    let (back, mended) = open_mended(&path).expect("it opens");
+    let m = mended.expect("and says what was left out");
+    assert!(m.elements_dropped > 0);
+    assert!(back.model().len() < doc.model().len());
 }

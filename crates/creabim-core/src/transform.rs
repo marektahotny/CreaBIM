@@ -164,6 +164,22 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
                     *e += by;
                 }
             }
+            // a note turns its lines on paper; written in a plan or on a
+            // sheet it goes round the centre with the rest
+            Xform::Rotate { center, degrees } => {
+                if !matches!(
+                    crate::DrawingFrame::of(model, n.view),
+                    Some(crate::DrawingFrame::Section { .. })
+                ) {
+                    let by = t.point2(n.at) - n.at;
+                    n.at += by;
+                    if let Some(e) = &mut n.elbow {
+                        *e += by;
+                    }
+                }
+                let _ = center;
+                n.angle = (n.angle + degrees).rem_euclid(360.0);
+            }
             _ => return None,
         },
         // a paper mark only moves across its sheet
@@ -365,8 +381,28 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             p.end = origin(p.end, level);
             p.validate().ok()?;
         }
+        // a gutter moves with its trace; a downpipe slides along its
+        // gutter to where it is taken
+        ElementKind::Flashing(f) => match &mut f.item {
+            crate::flashing::FlashingItem::Gutter(g) => {
+                for p in &mut g.trace {
+                    *p = t.point2(*p);
+                }
+            }
+            crate::flashing::FlashingItem::Downpipe(d) => {
+                let (at, _, _) = crate::flashing::downpipe_place(model, d)?;
+                let g = crate::flashing::gutter_of(model, d.gutter)?;
+                d.at = g.station_on_axis(model, t.point2(at));
+            }
+            // on its wall or chimney: it goes with that
+            crate::flashing::FlashingItem::Capping(_)
+            | crate::flashing::FlashingItem::Chimney(_) => {}
+            crate::flashing::FlashingItem::Outlet(o) => o.at = t.point2(o.at),
+        },
         // a valve rides its pipe
         ElementKind::Valve(_) => {}
+        // a circuit is nowhere
+        ElementKind::Circuit(_) => {}
         ElementKind::Shaft(s) => {
             if !t.keeps_upright() {
                 return None;
@@ -475,7 +511,7 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             let dd = frame.to_drawing(o + *d) - frame.to_drawing(o);
             let (a, b) = (drawn_at(model, &dim.a), drawn_at(model, &dim.b));
             let mut moved = false;
-            for p in [&mut dim.a, &mut dim.b] {
+            for p in dim.points_mut() {
                 if p.host.is_none() {
                     p.local += dd;
                     moved = true;
@@ -506,6 +542,8 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         | ElementKind::Units(_)
         | ElementKind::Project(_)
         | ElementKind::MarkRules(_)
+        | ElementKind::Results(_)
+        | ElementKind::Dss(_)
         | ElementKind::StylePack(_)
         | ElementKind::Cut(_)
         | ElementKind::Join(_)
@@ -571,9 +609,57 @@ pub fn mirror_xforms(at: DVec3, normal: DVec3) -> Option<Vec<Xform>> {
 /// when it can't be (a wall can't be turned upside down, a door goes with
 /// its wall).
 pub fn mirrored(model: &Model, e: &Element, at: DVec3, normal: DVec3) -> Option<Element> {
+    if let ElementKind::Tag(_) = &e.kind {
+        return mirrored_tag(model, e, normal);
+    }
     let mut out = e.clone();
     for t in mirror_xforms(at, normal)? {
         out = transformed(model, &out, &t)?;
+    }
+    Some(out)
+}
+
+/// The tags in plans on any of `ids`.
+pub fn tags_hosted_on(model: &Model, ids: &[ElementId]) -> Vec<ElementId> {
+    model
+        .iter()
+        .filter(|e| match &e.kind {
+            ElementKind::Tag(t) => {
+                ids.contains(&t.host)
+                    && matches!(
+                        crate::DrawingFrame::of(model, t.view),
+                        Some(crate::DrawingFrame::Plan { .. })
+                    )
+            }
+            _ => false,
+        })
+        .map(|e| e.id)
+        .collect()
+}
+
+/// `e`, a tag in a plan, turned over with its host across the upright
+/// plane facing `normal`: its place beside the host, its leader's bend and
+/// end mirrored too, so a mirrored rafter's mark (D-01) and a purlin's
+/// S.H. box stand on the mirrored side (George 2026-11-26). `None` for a
+/// tag in a section, or a level mirror plane.
+pub fn mirrored_tag(model: &Model, e: &Element, normal: DVec3) -> Option<Element> {
+    let ElementKind::Tag(t) = &e.kind else {
+        return None;
+    };
+    if !matches!(
+        crate::DrawingFrame::of(model, t.view),
+        Some(crate::DrawingFrame::Plan { .. })
+    ) || normal.z.abs() > 1e-6
+    {
+        return None;
+    }
+    let n = normal.truncate().try_normalize()?;
+    let flip = |v: DVec2| v - n * (2.0 * v.dot(n));
+    let mut out = e.clone();
+    if let ElementKind::Tag(t) = &mut out.kind {
+        t.offset = flip(t.offset);
+        t.elbow = t.elbow.map(flip);
+        t.end = t.end.map(flip);
     }
     Some(out)
 }
@@ -617,6 +703,28 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
         },
         ElementKind::Guide(g) => (g.a + g.b) / 2.0 + DVec3::Z * elevation(g.level),
         ElementKind::Pipe(p) => (p.start + p.end) / 2.0 + DVec3::Z * elevation(Some(p.level)),
+        ElementKind::Flashing(f) => match &f.item {
+            crate::flashing::FlashingItem::Gutter(g) => {
+                let pts = g.axis_plan(model);
+                (pts.iter().copied().sum::<DVec2>() / pts.len().max(1) as f64).extend(g.top(model))
+            }
+            crate::flashing::FlashingItem::Downpipe(d) => {
+                let (at, top, foot) = crate::flashing::downpipe_place(model, d)?;
+                at.extend((top + foot) / 2.0)
+            }
+            crate::flashing::FlashingItem::Capping(c) => {
+                let p = crate::roofmetal::capping_place(model, c)?;
+                ((p.a + p.b) / 2.0).extend(p.z)
+            }
+            crate::flashing::FlashingItem::Chimney(c) => {
+                let o = crate::roofmetal::chimney_outline(model, c.part)?;
+                let m = o.iter().copied().sum::<DVec2>() / o.len() as f64;
+                m.extend(crate::roofmetal::roof_top_at(model, m).unwrap_or(0.0))
+            }
+            crate::flashing::FlashingItem::Outlet(o) => {
+                o.at.extend(crate::roofmetal::roof_top_at(model, o.at).unwrap_or(0.0))
+            }
+        },
         ElementKind::Valve(v) => {
             let p = v.host(model)?;
             v.at(p) + DVec3::Z * elevation(Some(p.level))
@@ -680,7 +788,12 @@ fn drawn_at(model: &Model, p: &crate::HostPoint) -> Option<DVec2> {
         ElementKind::Opening(o) => match &model.get(o.host)?.kind {
             ElementKind::Wall(w) => {
                 let d = w.direction();
-                Some(w.start + d * (o.offset + p.local.x) + d.perp() * p.local.y)
+                let from = if p.from_end {
+                    o.offset + o.width
+                } else {
+                    o.offset
+                };
+                Some(w.start + d * (from + p.local.x) + d.perp() * p.local.y)
             }
             _ => None,
         },
@@ -704,6 +817,7 @@ pub fn duplicate(model: &Model, id: ElementId) -> Vec<Element> {
             | ElementKind::Grid(_)
             | ElementKind::Guide(_)
             | ElementKind::Pipe(_)
+            | ElementKind::Flashing(_)
             | ElementKind::Shaft(_)
             | ElementKind::Object(_)
             | ElementKind::Room(_)
@@ -893,7 +1007,24 @@ pub fn flip_view(model: &Model, view: ElementId) -> Option<crate::Transaction> {
         return None;
     };
     let length = start.distance(*end);
-    std::mem::swap(start, end);
+    let look = (*end - *start).normalize_or_zero().perp();
+    // a jogged line keeps its cut where it was: the new line runs where
+    // the old last stretch cut, and its steps are counted from the other end
+    let stretches = v.line.stretches(length);
+    let last = stretches.last().map_or(0.0, |s| s.2);
+    let (s0, e0) = (*start, *end);
+    *start = e0 + look * last;
+    *end = s0 + look * last;
+    if !v.line.jogs.is_empty() {
+        v.line.jogs = stretches
+            .windows(2)
+            .rev()
+            .map(|w| crate::SectionJog {
+                at: length - w[0].1,
+                offset: last - w[0].2,
+            })
+            .collect();
+    }
     let label = if matches!(v.kind, ViewKind::Section { cut: false, .. }) {
         "Flip elevation"
     } else {
@@ -911,8 +1042,7 @@ pub fn flip_view(model: &Model, view: ElementId) -> Option<crate::Transaction> {
         let mut changed = e.clone();
         let mine = match &mut changed.kind {
             ElementKind::Dimension(d) if d.view == view => {
-                free(&mut d.a);
-                free(&mut d.b);
+                d.points_mut().for_each(free);
                 if let Some(c) = &mut d.center {
                     free(c);
                 }
@@ -940,10 +1070,78 @@ pub fn flip_view(model: &Model, view: ElementId) -> Option<crate::Transaction> {
     Some(tx)
 }
 
+/// A section or elevation line turned `deg` degrees (counter-clockwise)
+/// about its middle; its jogs, depth and notes go round with it. False for
+/// any other view.
+pub fn turn_view(v: &mut crate::View, deg: f64) -> bool {
+    let ViewKind::Section { start, end, .. } = &mut v.kind else {
+        return false;
+    };
+    let mid = (*start + *end) / 2.0;
+    let r = DVec2::from_angle(deg.to_radians());
+    *start = mid + r.rotate(*start - mid);
+    *end = mid + r.rotate(*end - mid);
+    true
+}
+
+/// The bearing of a section or elevation line, start to end, in degrees
+/// from the x axis counter-clockwise (0..360).
+pub fn view_angle(v: &crate::View) -> Option<f64> {
+    let ViewKind::Section { start, end, .. } = v.kind else {
+        return None;
+    };
+    let d = end - start;
+    Some(d.y.atan2(d.x).to_degrees().rem_euclid(360.0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{sample::sample_house, Wall};
+
+    #[test]
+    fn a_flipped_jogged_section_cuts_where_it_did() {
+        let mut v = crate::View::section(DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0), 8.0, true);
+        v.line.jogs = vec![crate::SectionJog {
+            at: 4.0,
+            offset: 2.0,
+        }];
+        let el = Element::new("S", ElementKind::View(v));
+        let id = el.id;
+        let mut doc = crate::Document::from_model(sample_house());
+        doc.commit(crate::Transaction::new("Add").insert(el))
+            .unwrap();
+        doc.commit(flip_view(doc.model(), id).unwrap()).unwrap();
+        let ElementKind::View(v) = &doc.model().get(id).unwrap().kind else {
+            panic!()
+        };
+        let ViewKind::Section { start, end, .. } = v.kind else {
+            panic!()
+        };
+        // the line now runs on the stepped stretch (y = 2), the other way
+        assert_eq!((start, end), (DVec2::new(10.0, 2.0), DVec2::new(0.0, 2.0)));
+        // and steps back to y = 0 at x = 4: 6 m along, 2 m to its new look
+        // side (it looks south now, so +2 is down to y = 0)
+        assert_eq!(
+            v.line.jogs,
+            vec![crate::SectionJog {
+                at: 6.0,
+                offset: 2.0
+            }]
+        );
+    }
+
+    #[test]
+    fn a_section_turns_about_its_middle() {
+        let mut v = crate::View::section(DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0), 8.0, true);
+        assert!(turn_view(&mut v, 90.0));
+        let ViewKind::Section { start, end, .. } = v.kind else {
+            panic!()
+        };
+        assert!(start.distance(DVec2::new(5.0, -5.0)) < 1e-9);
+        assert!(end.distance(DVec2::new(5.0, 5.0)) < 1e-9);
+        assert!((view_angle(&v).unwrap() - 90.0).abs() < 1e-9);
+    }
 
     #[test]
     fn a_flipped_section_looks_the_other_way_and_keeps_its_notes_in_place() {
@@ -1205,6 +1403,102 @@ mod tests {
         // a normal a hair off level (read off a face's mesh) is level
         let hair = DVec3::new(1.0, -1.0, 1e-8);
         assert!(mirrored(&m, wall, DVec3::ZERO, hair).is_some());
+    }
+
+    #[test]
+    fn a_rafter_mirrored_at_the_ridge_lies_on_the_other_roof_face() {
+        use crate::framing::{self, Framing, Role};
+        let mut m = sample_house();
+        let level = m.levels().next().unwrap().0.id;
+        // a rafter rising 35° from x = 0 to the ridge at x = 4, lying on
+        // its roof face, its foot cut plumb; and a steel angle beside it
+        let mut b = crate::Beam::new(level, DVec2::ZERO, DVec2::new(4.0, 0.0));
+        let slope = 35f64.to_radians();
+        b.rise = [0.0, framing::rise_for(b.start, b.end, 35.0)];
+        b.up = Some(DVec3::new(-slope.sin(), 0.0, slope.cos()));
+        b.cuts = [Some(DVec3::X), None];
+        let mut rafter = Element::new("Krokva", ElementKind::Beam(b));
+        framing::apply(&mut rafter, Framing::new(Role::Rafter));
+        let mut angle = Element::new(
+            "L",
+            ElementKind::Beam(crate::Beam::new(
+                level,
+                DVec2::new(0.0, 1.0),
+                DVec2::new(4.0, 1.0),
+            )),
+        );
+        let mut f = Framing::new(Role::SteelBeam);
+        f.section = "L 50×50×5".into();
+        framing::apply(&mut angle, f);
+        crate::Transaction::new("t")
+            .insert(rafter.clone())
+            .insert(angle.clone())
+            .apply(&mut m)
+            .unwrap();
+        // across the upright plane x = 4 (the ridge)
+        let at = DVec3::new(4.0, 0.0, 0.0);
+        let ElementKind::Beam(r) = mirrored(&m, &rafter, at, DVec3::X).unwrap().kind else {
+            panic!()
+        };
+        assert!(r.start.distance(DVec2::new(8.0, 0.0)) < 1e-9);
+        assert!(r.end.distance(DVec2::new(4.0, 0.0)) < 1e-9);
+        // still rising to the ridge, on the face sloping the other way
+        assert_eq!(r.rise, rafter_rise(&rafter));
+        let up = r.up.unwrap();
+        assert!(up.distance(DVec3::new(slope.sin(), 0.0, slope.cos())) < 1e-9);
+        assert!(r.cuts[0].unwrap().distance(-DVec3::X) < 1e-9);
+        assert!(r.framing.as_ref().is_some_and(|f| f.role == Role::Rafter));
+        // the angle's leg that stood to one side stands to the other
+        let ElementKind::Beam(a0) = &angle.kind else {
+            panic!()
+        };
+        let ElementKind::Beam(a) = mirrored(&m, &angle, at, DVec3::X).unwrap().kind else {
+            panic!()
+        };
+        let p0 = &a0.section.as_ref().unwrap().points;
+        let p = &a.section.as_ref().unwrap().points;
+        let flipped: Vec<DVec2> = p0.iter().rev().map(|q| DVec2::new(-q.x, q.y)).collect();
+        assert_eq!(p, &flipped);
+        // mirrored twice it is as it was
+        let twice = mirrored(
+            &m,
+            &mirrored(&m, &angle, at, DVec3::X).unwrap(),
+            at,
+            DVec3::X,
+        )
+        .unwrap();
+        assert_eq!(twice.kind, angle.kind);
+    }
+
+    fn rafter_rise(e: &Element) -> [f64; 2] {
+        match &e.kind {
+            ElementKind::Beam(b) => b.rise,
+            _ => [0.0; 2],
+        }
+    }
+
+    #[test]
+    fn a_tag_in_a_plan_turns_over_with_its_host() {
+        let m = sample_house();
+        let plan = m
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. })))
+            .unwrap()
+            .id;
+        let wall = m
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Wall(_)))
+            .unwrap()
+            .id;
+        let mut t = crate::Tag::new(plan, wall, DVec2::new(0.5, 0.3));
+        t.elbow = Some(DVec2::new(0.2, 0.1));
+        let tag = Element::new("Tag", ElementKind::Tag(t));
+        let ElementKind::Tag(f) = mirrored(&m, &tag, DVec3::ZERO, DVec3::X).unwrap().kind else {
+            panic!()
+        };
+        assert_eq!(f.offset, DVec2::new(-0.5, 0.3));
+        assert_eq!(f.elbow, Some(DVec2::new(-0.2, 0.1)));
+        assert_eq!(f.host, wall);
     }
 
     #[test]

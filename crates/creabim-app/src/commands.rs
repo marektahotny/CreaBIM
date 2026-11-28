@@ -9,8 +9,11 @@ pub enum Command {
     Move,
     Rotate,
     Scale,
-    /// Mirror across a line of two clicks.
+    /// Mirror across a line of two clicks, in place.
     Mirror,
+    /// A mirrored copy across a line of two clicks, the original kept
+    /// (George 2026-11-26: one half of a roof's timber mirrored over).
+    MirrorCopy,
     /// Offset a line or an outline to one side.
     Offset,
     Duplicate,
@@ -33,11 +36,12 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Command; 19] = [
+    pub const ALL: [Command; 20] = [
         Command::Move,
         Command::Rotate,
         Command::Scale,
         Command::Mirror,
+        Command::MirrorCopy,
         Command::Offset,
         Command::Duplicate,
         Command::Copy,
@@ -61,6 +65,7 @@ impl Command {
             Command::Rotate => "Rotate",
             Command::Scale => "Scale",
             Command::Mirror => "Mirror",
+            Command::MirrorCopy => "Mirror copy",
             Command::Offset => "Offset",
             Command::Duplicate => "Duplicate",
             Command::Copy => "Copy",
@@ -84,7 +89,7 @@ impl Command {
             Command::Move => "M",
             Command::Rotate => "R",
             Command::Scale => "S",
-            Command::Mirror | Command::Offset => "",
+            Command::Mirror | Command::MirrorCopy | Command::Offset => "",
             Command::Duplicate => "Shift+D",
             Command::Copy => "Ctrl+C",
             Command::Cut => "Ctrl+X",
@@ -109,6 +114,7 @@ impl Command {
             self,
             Command::Scale
                 | Command::Mirror
+                | Command::MirrorCopy
                 | Command::Offset
                 | Command::Duplicate
                 | Command::Copy
@@ -127,6 +133,7 @@ impl Command {
             Command::Rotate => Some((Mode::Rotate, false)),
             Command::Scale => Some((Mode::Scale, false)),
             Command::Mirror => Some((Mode::Mirror, false)),
+            Command::MirrorCopy => Some((Mode::Mirror, true)),
             Command::Offset => Some((Mode::Offset, false)),
             Command::Duplicate => Some((Mode::Move, true)),
             _ => None,
@@ -168,6 +175,7 @@ pub fn context_menu(ui: &mut egui::Ui, selected: usize) -> Option<Command> {
             Command::Rotate,
             Command::Scale,
             Command::Mirror,
+            Command::MirrorCopy,
             Command::Offset,
             Command::Duplicate,
         ] {
@@ -205,6 +213,7 @@ pub fn modify_bar(ui: &mut egui::Ui, selected: bool) -> Option<Command> {
             Command::Rotate,
             Command::Scale,
             Command::Mirror,
+            Command::MirrorCopy,
             Command::Offset,
             Command::Duplicate,
         ],
@@ -216,7 +225,7 @@ pub fn modify_bar(ui: &mut egui::Ui, selected: bool) -> Option<Command> {
             let enabled = selected || !c.needs_selection();
             if ui
                 .add_enabled(enabled, egui::Button::new(c.label()).small())
-                .on_hover_text(c.shortcut())
+                .on_hover_text(crate::i18n::tr(c.shortcut()))
                 .clicked()
             {
                 picked = Some(*c);

@@ -5,6 +5,10 @@
 use crate::visibility::Category;
 use serde::{Deserialize, Serialize};
 
+/// The thinnest pen of the standard pens, mm: hatching and fill
+/// patterns are drawn with it (George 2026-11-22).
+pub const THINNEST_PEN: f64 = 0.09;
+
 /// Pen widths on paper, in millimetres, from heavy to light.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LineWeights {
@@ -23,28 +27,18 @@ pub struct LineWeights {
 }
 
 impl LineWeights {
-    /// The pens of a drawing at 1:`scale`: heavier at 1:50 and larger,
-    /// where there is room for a clear hierarchy, lighter at 1:100 and
-    /// smaller.
-    pub fn for_scale(scale: f64) -> Self {
-        if scale <= 75.0 {
-            Self {
-                cut: 0.70,
-                projection: 0.35,
-                symbol: 0.25,
-                fine: 0.18,
-                hatch: 0.13,
-                hidden: 0.18,
-            }
-        } else {
-            Self {
-                cut: 0.50,
-                projection: 0.25,
-                symbol: 0.18,
-                fine: 0.13,
-                hatch: 0.09,
-                hidden: 0.13,
-            }
+    /// The pens of a drawing at 1:`scale`: the same at every scale, so
+    /// a 1:50 section prints as fine as a 1:100 plan (George 2026-11-22:
+    /// sections on sheets drew heavier than the view), and hatching in
+    /// the thinnest of them.
+    pub fn for_scale(_scale: f64) -> Self {
+        Self {
+            cut: 0.50,
+            projection: 0.25,
+            symbol: 0.18,
+            fine: 0.13,
+            hatch: THINNEST_PEN,
+            hidden: 0.13,
         }
     }
 
@@ -135,6 +129,11 @@ pub struct PlanRange {
     /// and roofs hiding what is under them: a roof or site plan.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub from_above: bool,
+    /// Seen from above, the building as a site plan shows it: only its
+    /// outer walls and the columns outside, cut and filled dark grey,
+    /// without plaster, openings, inner walls, pipes or view marks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub footprint: bool,
 }
 
 /// A height given by a level and an offset from it, so it moves with the
@@ -156,6 +155,13 @@ impl RangeLimit {
 impl PlanRange {
     pub fn is_default(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// A site plan: seen from above with the building as its footprint.
+    /// A roof plan is seen from above too, but shows no map, terrain,
+    /// networks or site sketches (George).
+    pub fn is_site(&self) -> bool {
+        self.from_above && self.footprint
     }
 
     /// Does it reach past its own level (or look from above)?
@@ -192,12 +198,59 @@ pub struct PlanGraphics {
     /// Fill it in light grey rather than in its material's colour.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub below_grey: bool,
+    /// Only the load-bearing layers of what is cut (a structural plan):
+    /// set from its view as it is drawn, never stored.
+    #[serde(skip)]
+    pub structure_only: bool,
     /// How far it looks above and below the cut.
     #[serde(default, skip_serializing_if = "PlanRange::is_default")]
     pub range: PlanRange,
     /// How what is cut is drawn (A4-11).
     #[serde(default, skip_serializing_if = "DrawingStyle::is_default")]
     pub drawing_style: DrawingStyle,
+    /// What lies behind the hatch of what is cut, in a drawing that is not
+    /// a renovation stage (those keep their own colours).
+    #[serde(default, skip_serializing_if = "HatchGround::is_default")]
+    pub hatch_ground: HatchGround,
+}
+
+/// The background under a cut hatch (walls, slabs): very light grey by
+/// default, the paper's colour, or the darker grey drawings had before.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HatchGround {
+    /// A very light grey, the hatch reading clearly over it.
+    #[default]
+    Light,
+    /// The paper's (background's) colour: no fill under the hatch.
+    Paper,
+    /// The grey of the hatch pattern, or the graphic styles' own fill.
+    Grey,
+}
+
+impl HatchGround {
+    pub const ALL: [HatchGround; 3] = [HatchGround::Light, HatchGround::Paper, HatchGround::Grey];
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            HatchGround::Light => "Very light grey",
+            HatchGround::Paper => "Paper colour",
+            HatchGround::Grey => "Grey (pattern's own)",
+        }
+    }
+
+    /// The fill under a hatch in this ground, none leaving the pattern's
+    /// own (or the graphic styles').
+    pub fn rgb(self) -> Option<[f32; 3]> {
+        match self {
+            HatchGround::Light => Some([0.965; 3]),
+            HatchGround::Paper => Some([1.0; 3]),
+            HatchGround::Grey => None,
+        }
+    }
 }
 
 /// How a view draws what it cuts (A4-11): a set of overrides over its
@@ -281,8 +334,10 @@ impl Default for PlanGraphics {
             below_fill: true,
             below_strength: default_strength(),
             below_grey: false,
+            structure_only: false,
             range: PlanRange::default(),
             drawing_style: DrawingStyle::default(),
+            hatch_ground: HatchGround::default(),
         }
     }
 }
@@ -340,7 +395,9 @@ mod tests {
             assert!(w.symbol > w.fine && w.fine > w.hatch);
             assert!(w.hidden <= w.symbol);
         }
-        assert!(LineWeights::for_scale(50.0).cut > LineWeights::for_scale(100.0).cut);
+        // a section at 1:50 prints with the pens of a plan at 1:100
+        assert_eq!(LineWeights::for_scale(50.0), LineWeights::for_scale(100.0));
+        assert_eq!(LineWeights::for_scale(50.0).hatch, THINNEST_PEN);
     }
 
     #[test]

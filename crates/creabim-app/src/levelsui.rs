@@ -81,7 +81,7 @@ impl CreaBimApp {
     }
 
     fn add_level_at(&mut self, elevation: f64, height: f64) {
-        let name = levels::next_name(self.doc.model());
+        let name = levels::storey_name(self.doc.model(), elevation);
         let (tx, id, plan) = levels::add(
             self.doc.model(),
             &name,
@@ -158,7 +158,7 @@ impl CreaBimApp {
                 Underlay::None => "underlay:none".to_string(),
                 Underlay::Below => "underlay:below".to_string(),
                 Underlay::Above => "underlay:above".to_string(),
-                Underlay::Level(l) => format!("underlay:{}", l.0),
+                Underlay::Level(l) | Underlay::View(l) => format!("underlay:{}", l.0),
             };
             items.push(Item::new(id, label).checked(u == current));
         }
@@ -189,6 +189,15 @@ impl CreaBimApp {
                 out.push((Underlay::Level(id), n));
             }
         }
+        // the plans seen from above (the site plan with its cadastre and
+        // terrain, the roof plan), as they are drawn
+        for e in model.iter() {
+            if let ElementKind::View(v) = &e.kind {
+                if matches!(v.kind, ViewKind::Plan { .. }) && v.graphics.range.from_above {
+                    out.push((Underlay::View(e.id), e.name.clone()));
+                }
+            }
+        }
         out
     }
 
@@ -203,7 +212,9 @@ impl CreaBimApp {
             Underlay::None => "Underlay off.".to_string(),
             u => {
                 let level = match self.view(view).map(|v| &v.kind) {
-                    Some(ViewKind::Plan { level, .. }) => u.level(self.doc.model(), *level),
+                    Some(ViewKind::Plan { level, .. }) => u
+                        .level(self.doc.model(), *level)
+                        .or_else(|| u.view(self.doc.model(), view)),
                     _ => None,
                 };
                 match level.and_then(|l| self.doc.model().get(l)) {
@@ -226,7 +237,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Levels")
+        crate::app::shell::window(crate::i18n::tr("Levels"))
             .open(&mut open)
             // below the 3D view's navigation buttons, which draw on top
             .default_pos(area.min + Vec2::new(16.0, 56.0))
@@ -248,18 +259,20 @@ impl CreaBimApp {
         let list = levels::sorted(model);
         crate::props::flow(ui, |ui| {
             if ui
-                .button("Add level above the top")
-                .on_hover_text("One storey above the highest level, as tall as it")
+                .button(crate::i18n::t("Add level above the top"))
+                .on_hover_text(crate::i18n::t(
+                    "One storey above the highest level, as tall as it",
+                ))
                 .clicked()
             {
                 asks.push(Ask::AddAbove);
             }
             ui.separator();
-            ui.label("Add at");
+            ui.label(crate::i18n::t("Add at"));
             ui.add(crate::units::drag(&mut self.levels.at).range(-1000.0..=10_000.0));
             if ui
-                .button("Add")
-                .on_hover_text("A new level at this elevation")
+                .button(crate::i18n::t("Add"))
+                .on_hover_text(crate::i18n::t("A new level at this elevation"))
                 .clicked()
             {
                 asks.push(Ask::AddAt(self.levels.at));
@@ -267,12 +280,12 @@ impl CreaBimApp {
         });
         ui.checkbox(
             &mut self.levels.with_plan,
-            "Make a floor plan for each new level",
+            crate::i18n::t("Make a floor plan for each new level"),
         );
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(
-                "Highest first. Moving a level moves everything on it. Height is the storey's: new walls and columns are this tall. In a section or elevation you can also drag a level line, or draw a new one with the Level tool.",
+                crate::i18n::t("Highest first. Moving a level moves everything on it. Height is the storey's: new walls and columns are this tall. In a section or elevation you can also drag a level line, or draw a new one with the Level tool."),
             )
             .weak(),
         );
@@ -284,14 +297,14 @@ impl CreaBimApp {
             .show(ui, |ui| {
                 for h in [
                     "Name",
-                    "Elevation",
-                    "Height",
+                    "level\u{4}Elevation",
+                    "level\u{4}Height",
                     "To next",
                     "On it",
                     "Floor plan",
                     "",
                 ] {
-                    ui.label(egui::RichText::new(h).strong());
+                    ui.label(egui::RichText::new(crate::i18n::t(h)).strong());
                 }
                 ui.end_row();
                 for (i, (id, name, l)) in list.iter().enumerate().rev() {
@@ -315,16 +328,19 @@ impl CreaBimApp {
                     match list.get(i + 1) {
                         Some((_, above, a)) => {
                             let gap = a.elevation - l.elevation;
-                            crate::props::flow(ui, |ui| {
+                            // one line: a wrapped cell clips the row (George)
+                            ui.horizontal(|ui| {
                                 ui.label(crate::units::len(gap))
-                                    .on_hover_text(format!("From here up to {above}"));
+                                    .on_hover_text(crate::i18n::tr(&format!(
+                                        "From here up to {above}"
+                                    )));
                                 if (gap - l.height).abs() > 1e-6
                                     && gap > 0.5
                                     && ui
-                                        .small_button("Fit")
-                                        .on_hover_text(format!(
+                                        .small_button(crate::i18n::t("Fit"))
+                                        .on_hover_text(crate::i18n::tr(&format!(
                                             "Make the storey as tall as the gap up to {above}"
-                                        ))
+                                        )))
                                         .clicked()
                                 {
                                     asks.push(Ask::Set(*id, l.elevation, gap));
@@ -332,17 +348,20 @@ impl CreaBimApp {
                             });
                         }
                         None => {
-                            ui.label(egui::RichText::new("top").weak());
+                            ui.label(egui::RichText::new(crate::i18n::t("top")).weak());
                         }
                     }
                     let n = levels::on_level(model, *id).len();
-                    ui.label(format!("{n} element{}", if n == 1 { "" } else { "s" }));
+                    ui.label(crate::i18n::tr(&format!(
+                        "{n} element{}",
+                        if n == 1 { "" } else { "s" }
+                    )));
                     let plans = levels::plan_views(model, *id);
                     match plans.first() {
                         Some(v) => {
                             if ui
-                                .button("Open")
-                                .on_hover_text("Show it in the 2D view")
+                                .button(crate::i18n::t("Open"))
+                                .on_hover_text(crate::i18n::t("Show it in the 2D view"))
                                 .clicked()
                             {
                                 asks.push(Ask::OpenPlan(*v));
@@ -350,25 +369,25 @@ impl CreaBimApp {
                         }
                         None => {
                             if ui
-                                .button("Make")
-                                .on_hover_text("Make a floor plan of this level")
+                                .button(crate::i18n::t("Make"))
+                                .on_hover_text(crate::i18n::t("Make a floor plan of this level"))
                                 .clicked()
                             {
                                 asks.push(Ask::MakePlan(*id));
                             }
                         }
                     }
-                    crate::props::flow(ui, |ui| {
-                        ui.menu_button("Duplicate", |ui| {
-                            if ui.button("The level only").clicked() {
+                    ui.horizontal(|ui| {
+                        ui.menu_button(crate::i18n::t("Duplicate"), |ui| {
+                            if ui.button(crate::i18n::t("The level only")).clicked() {
                                 asks.push(Ask::Duplicate(*id, false));
                                 ui.close();
                             }
                             if ui
-                                .button("With everything on it")
-                                .on_hover_text(
+                                .button(crate::i18n::t("With everything on it"))
+                                .on_hover_text(crate::i18n::t(
                                     "Walls, slabs, doors, windows and the rest, one storey up",
-                                )
+                                ))
                                 .clicked()
                             {
                                 asks.push(Ask::Duplicate(*id, true));
@@ -376,11 +395,13 @@ impl CreaBimApp {
                             }
                         })
                         .response
-                        .on_hover_text("A copy above the top level");
+                        .on_hover_text(crate::i18n::t("A copy above the top level"));
                         let can = list.len() > 1;
                         if ui
-                            .add_enabled(can, egui::Button::new("Delete"))
-                            .on_disabled_hover_text("A project keeps at least one level")
+                            .add_enabled(can, egui::Button::new(crate::i18n::t("Delete")))
+                            .on_disabled_hover_text(crate::i18n::t(
+                                "A project keeps at least one level",
+                            ))
                             .clicked()
                         {
                             asks.push(Ask::Delete(*id));
@@ -402,7 +423,7 @@ impl CreaBimApp {
         ui.separator();
         let on = levels::on_level(model, del);
         let plans = levels::plan_views(model, del);
-        ui.label(egui::RichText::new(format!("Delete {}?", e.name)).strong());
+        ui.label(egui::RichText::new(crate::i18n::tr(&format!("Delete {}?", e.name))).strong());
         let mut what = vec![];
         if !plans.is_empty() {
             what.push(format!(
@@ -412,12 +433,15 @@ impl CreaBimApp {
             ));
         }
         if on.is_empty() {
-            ui.label("Nothing is on it.");
+            ui.label(crate::i18n::t("Nothing is on it."));
             if !what.is_empty() {
-                ui.label(format!("This also deletes {}.", what.join(" and ")));
+                ui.label(crate::i18n::tr(&format!(
+                    "This also deletes {}.",
+                    what.join(" and ")
+                )));
             }
         } else {
-            ui.label(format!(
+            ui.label(crate::i18n::tr(&format!(
                 "{} element{} on it. This also deletes {}.",
                 on.len(),
                 if on.len() == 1 { " is" } else { "s are" },
@@ -426,14 +450,14 @@ impl CreaBimApp {
                 } else {
                     what.join(" and ")
                 }
-            ));
+            )));
             let others: Vec<&(ElementId, String, creabim_core::Level)> =
                 list.iter().filter(|(id, ..)| *id != del).collect();
             let mut keep = target.is_some();
             ui.radio_value(
                 &mut keep,
                 true,
-                "Move them to another level, keeping them where they are",
+                crate::i18n::t("Move them to another level, keeping them where they are"),
             );
             if keep {
                 let current = target
@@ -450,7 +474,11 @@ impl CreaBimApp {
                         });
                 });
             }
-            ui.radio_value(&mut keep, false, "Delete them with the level");
+            ui.radio_value(
+                &mut keep,
+                false,
+                crate::i18n::t("Delete them with the level"),
+            );
             if keep && target.is_none() {
                 target = nearest(&list, del);
             } else if !keep {
@@ -460,15 +488,18 @@ impl CreaBimApp {
         }
         crate::props::flow(ui, |ui| {
             if ui
-                .button(egui::RichText::new("Delete level").color(Color32::from_rgb(190, 50, 40)))
+                .button(
+                    egui::RichText::new(crate::i18n::t("Delete level"))
+                        .color(Color32::from_rgb(190, 50, 40)),
+                )
                 .clicked()
             {
                 asks.push(Ask::ConfirmDelete(del, target));
             }
-            if ui.button("Cancel").clicked() {
+            if ui.button(crate::i18n::t("Cancel")).clicked() {
                 asks.push(Ask::CancelDelete);
             }
-            ui.label(egui::RichText::new("Ctrl+Z brings it all back.").weak());
+            ui.label(egui::RichText::new(crate::i18n::t("Ctrl+Z brings it all back.")).weak());
         });
     }
 
@@ -545,7 +576,11 @@ impl CreaBimApp {
                     .get(id)
                     .map(|e| e.name.clone())
                     .unwrap_or_default();
-                let v = Element::new(format!("{name} plan"), ElementKind::View(View::plan(id)));
+                let z = self.doc.model().level(id).map_or(0.0, |l| l.elevation);
+                let v = Element::new(
+                    creabim_core::levels::plan_name(&name),
+                    ElementKind::View(creabim_core::levels::plan_of(self.doc.model(), id, z)),
+                );
                 let vid = v.id;
                 let r = self
                     .doc
@@ -612,7 +647,7 @@ impl CreaBimApp {
         let formats_before = formats;
         let mut kind = self.levels.units_kind;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Number formats")
+        crate::app::shell::small_window(crate::i18n::tr("Number formats"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
             .constrain_to(area)
@@ -622,11 +657,14 @@ impl CreaBimApp {
                 ui.horizontal_top(|ui| {
                     // the kinds, the project's units first
                     ui.vertical(|ui| {
-                        ui.set_width(170.0);
+                        ui.set_width(220.0);
                         let row = |ui: &mut egui::Ui, on: bool, name: &str, said: String| {
                             let r = ui.add_sized(
-                                [170.0, 26.0],
-                                egui::Button::selectable(on, format!("{name}   {said}")),
+                                [220.0, 26.0],
+                                egui::Button::selectable(
+                                    on,
+                                    format!("{}   {said}", crate::i18n::tr(name)),
+                                ),
                             );
                             r.clicked()
                         };
@@ -642,7 +680,7 @@ impl CreaBimApp {
                         for k in creabim_core::NumberKind::ALL {
                             let f = formats.get(k);
                             let said = if f.is_default() {
-                                "project".to_string()
+                                crate::i18n::tr("project")
                             } else {
                                 format_summary(&f, &units, k)
                             };
@@ -738,12 +776,12 @@ fn project_units(ui: &mut egui::Ui, units: &mut Units) {
     crate::props::row(ui, "Looks like", |ui| {
         ui.add(
             egui::Label::new(
-                egui::RichText::new(format!(
+                egui::RichText::new(crate::i18n::tr(&format!(
                     "{}  ·  {}  ·  {}",
                     units.length(1.0668),
                     units.length(0.2032),
                     units.area(12.5)
-                ))
+                )))
                 .monospace(),
             )
             .wrap(),
@@ -879,15 +917,21 @@ pub(super) fn kind_format(
                 let h = ui.spacing().interact_size.y;
                 let w = ((ui.available_width() - 1.0) / 2.0).max(40.0);
                 if ui
-                    .add_sized([w, h], egui::Button::selectable(lead, "Leading 0.450"))
-                    .on_hover_text("Off: .450")
+                    .add_sized(
+                        [w, h],
+                        egui::Button::selectable(lead, crate::i18n::tr("Leading 0.450")),
+                    )
+                    .on_hover_text(crate::i18n::t("Off: .450"))
                     .clicked()
                 {
                     lead = !lead;
                 }
                 if ui
-                    .add_sized([w, h], egui::Button::selectable(trail, "Trailing 3.000"))
-                    .on_hover_text("Off: 3")
+                    .add_sized(
+                        [w, h],
+                        egui::Button::selectable(trail, crate::i18n::tr("Trailing 3.000")),
+                    )
+                    .on_hover_text(crate::i18n::t("Off: 3"))
                     .clicked()
                 {
                     trail = !trail;

@@ -46,6 +46,8 @@ pub enum Tool {
     Diameter,
     ArcLength,
     Note,
+    /// A free text: a note without a leader, turned and sized as wanted.
+    Text,
     /// A spot level or a level marker: the height of a point.
     SpotLevel,
     Sketch,
@@ -58,6 +60,16 @@ pub enum Tool {
     Railing,
     /// A strip footing under a wall or a pad footing under a column.
     Footing,
+    /// An eaves gutter traced along a roof's eave.
+    Gutter,
+    /// A downpipe clicked on a gutter.
+    Downpipe,
+    /// A parapet's capping, clicked on the parapet wall.
+    Capping,
+    /// The flashing round a chimney, clicked on the chimney.
+    ChimneyFlashing,
+    /// A roof outlet, clicked on a flat roof.
+    RoofOutlet,
     Level,
     Align,
     /// A piece of furniture or a fixture from the catalogue.
@@ -74,10 +86,13 @@ pub enum Tool {
     Paving,
     /// Trees and shrubs.
     Planting,
+    Chimney,
     /// A room: click inside walls, or draw its outline.
     Room,
     /// A line that splits a room in two where there is no wall.
     RoomSeparator,
+    /// Tiling on part of a room's walls: two clicks along them.
+    Tiling,
     /// A ceiling under a room, or drawn.
     Ceiling,
     /// A box on a plan or section that makes a larger-scale detail view.
@@ -86,10 +101,23 @@ pub enum Tool {
     Detail,
     /// A pipe or duct of building services, in the system picked.
     Pipe,
+    /// A drafted straight line in this view (PilonDesigner's Čiara).
+    Line,
+    /// A drafted line of straight segments, one after another.
+    Polyline,
+    /// A slope dimension: an arrow down a sloping line, its slope over it.
+    Slope,
+    /// A drafted arc through three points.
+    Arc,
+    /// A drafted smooth curve through the points clicked.
+    Curve,
+    /// An underfloor heating zone in a room: an edge zone, a place of
+    /// reduced output or a hole, drawn as a polygon or a rectangle.
+    UfhZone,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 42] = [
+    pub const ALL: [Tool; 56] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -104,6 +132,11 @@ impl Tool {
         Tool::Stair,
         Tool::Railing,
         Tool::Footing,
+        Tool::Gutter,
+        Tool::Downpipe,
+        Tool::Capping,
+        Tool::ChimneyFlashing,
+        Tool::RoofOutlet,
         Tool::Pipe,
         Tool::Object,
         Tool::Extrusion,
@@ -112,8 +145,10 @@ impl Tool {
         Tool::Terrain,
         Tool::Paving,
         Tool::Planting,
+        Tool::Chimney,
         Tool::Room,
         Tool::RoomSeparator,
+        Tool::Tiling,
         Tool::Ceiling,
         Tool::Section,
         Tool::Elevation,
@@ -121,10 +156,16 @@ impl Tool {
         Tool::Dimension,
         Tool::Tag,
         Tool::Angle,
+        Tool::Slope,
         Tool::Radius,
         Tool::Diameter,
         Tool::ArcLength,
         Tool::Note,
+        Tool::Text,
+        Tool::Line,
+        Tool::Polyline,
+        Tool::Arc,
+        Tool::Curve,
         Tool::Detail,
         Tool::SpotLevel,
         Tool::Sketch,
@@ -132,6 +173,7 @@ impl Tool {
         Tool::Grid,
         Tool::Level,
         Tool::Align,
+        Tool::UfhZone,
     ];
 
     /// Dimensions, tags and notes: tools that annotate a view.
@@ -145,7 +187,7 @@ impl Tool {
             Tool::Wall => "Wall",
             Tool::Door => "Door",
             Tool::Window => "Window",
-            Tool::Opening => "Wall opening",
+            Tool::Opening => "Penetration",
             Tool::Slab => "Slab",
             Tool::Shaft => "Shaft",
             Tool::Mass => "Mass",
@@ -153,11 +195,17 @@ impl Tool {
             Tool::Elevation => "Elevation",
             Tool::Dimension => "Dimension",
             Tool::Tag => "Tag",
-            Tool::Angle => "Angle",
+            Tool::Angle => "Angle dimension",
+            Tool::Slope => "Slope dimension",
+            Tool::Line => "Line",
+            Tool::Polyline => "Polyline",
+            Tool::Arc => "Arc by three points",
+            Tool::Curve => "Curve",
             Tool::Radius => "Radius",
             Tool::Diameter => "Diameter",
             Tool::ArcLength => "Arc length",
             Tool::Note => "Note",
+            Tool::Text => "Text",
             Tool::SpotLevel => "Spot level",
             Tool::Sketch => "Sketch",
             Tool::Guide => "Guide",
@@ -169,6 +217,11 @@ impl Tool {
             Tool::Stair => "Stair",
             Tool::Railing => "Railing",
             Tool::Footing => "Footing",
+            Tool::Gutter => "Gutter",
+            Tool::Downpipe => "Downpipe",
+            Tool::Capping => "Parapet capping",
+            Tool::ChimneyFlashing => "Chimney flashing",
+            Tool::RoofOutlet => "Roof outlet",
             Tool::Level => "Level",
             Tool::Align => "Align",
             Tool::Object => "Object",
@@ -178,11 +231,14 @@ impl Tool {
             Tool::Terrain => "Terrain",
             Tool::Paving => "Hard landscape",
             Tool::Planting => "Planting",
+            Tool::Chimney => "Chimney",
             Tool::Room => "Room",
             Tool::RoomSeparator => "Room separator",
+            Tool::Tiling => "Tiling",
             Tool::Ceiling => "Ceiling",
             Tool::Callout => "Callout",
             Tool::Detail => "Detail component",
+            Tool::UfhZone => "Underfloor heating zone",
         }
     }
 
@@ -192,7 +248,7 @@ impl Tool {
             Tool::Wall => "Click to start, click again to place each wall. Esc or right-click ends the chain. Shift keeps it orthogonal.",
             Tool::Door => "Click on a wall to place a door.",
             Tool::Window => "Click on a wall to place a window.",
-            Tool::Opening => "Click on a wall to cut a bare rectangular opening in it: no door or window, just the hole. Set its size and sill in Properties.",
+            Tool::Opening => "Click on a wall for a penetration through it (outline, cross, label P 300×300 sp. 300), or on a floor or ceiling slab for one through the slab (outline, broken line from corner to corner, label P 300×300). Pick the host and the shape in the top bar, the size in Properties.",
             Tool::Shaft => "Draw the shaft's outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). It runs from this level to the one above, cutting every slab and roof in between.",
             Tool::Slab => "Click the slab's corners, then the first again or Enter. A draws arcs, L lines; Esc or right-click takes back a point, right-click again leaves. 1–4: Polygon, Rectangle, Fill room, From sketch.",
             Tool::Mass => "Click to place a freeform mass you can then edit like a mesh.",
@@ -201,10 +257,16 @@ impl Tool {
             Tool::Dimension => "Click two points to measure, then click where the dimension line goes. Points snap to wall corners, door and window edges and levels, and stay attached to them.",
             Tool::Tag => "Click a door, window, wall, slab, roof, column, beam, stair, railing, room or ceiling, then click where its tag goes.",
             Tool::Angle => "Click two lines (wall faces, edges) for the angle between them, or click the corner and a point on each arm. Then click where the arc goes.",
+            Tool::Slope => "Click a sloping line (a roof, a ramp, terrain, a pipe in a section) or two points on it, then the side the arrow goes. In a plan, where lines are level, click two points the way it falls; its slope is typed in the top bar.",
+            Tool::Line => "Click the start and the end of a line; it is drawn in this view only, in the pen and line type picked in the top bar. Snaps to ends, middles and edges; Shift keeps it square; type a length and Enter.",
+            Tool::Arc => "Click the arc's start, its end, then a point it passes through; it is drawn in this view only, in the pen and line type picked in the top bar. Points snap to ends, middles and edges.",
+            Tool::Curve => "Click the points a smooth curve passes through (paths, beds, terrain edges); Enter, a double-click or a right-click finishes it, the first point again closes it. Pen and line type in the top bar; move its points later by their grips.",
+            Tool::Polyline => "Click the points of a continuous line of straight segments; Enter, a double-click or a right-click finishes it, the first point again closes it. Shift keeps a segment square; type a length and Enter. Pen and line type in the top bar.",
             Tool::Radius => "Click an arc or circle, or three points on one. Then click where the dimension line goes.",
             Tool::Diameter => "Click an arc or circle, or three points on one. Then click where the dimension line goes.",
             Tool::ArcLength => "Click an arc, or its start, a point on it and its end. Then click where the dimension line goes.",
             Tool::SpotLevel => "Click a point on a floor, slab or roof in a section or elevation, or on a slab in a plan (elsewhere in a plan it marks the plan's level), then click where its text goes. Its text pattern is in Properties.",
+            Tool::Text => "Click where the text starts, then type it in Properties. Its size and angle are there too; drag it to move it, R turns it. Works in plans, sections, elevations and on sheets.",
             Tool::Note => "Click what the note points at, then where its text goes (turn Leader off to just click). Type its text in Properties. Works on sheets too.",
             Tool::Sketch => "Click the corners of a sketch on this level. Click the first corner to close it, Enter or right-click to leave it open, Esc to cancel. L, A and C draw lines, arcs and circles. Then E extrudes it.",
             Tool::Guide => "Click two points for a guide through them. Or click an edge, then click where its parallel guide goes. Everything snaps to guides.",
@@ -213,9 +275,14 @@ impl Tool {
             Tool::Beam => "Click the beam's start, then its end; keep clicking to chain beams. Its top sits at the top of the storey. Esc or right-click ends.",
             Tool::Pipe => "Click where the pipe starts, then each next point; keep clicking to go on. Pick its system, type and size in the bar. Drains fall by their system's slope. Esc or right-click ends.",
             Tool::Roof => "Draw the roof's outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). Pick Flat, Mono-pitch, Gable or Hip in the bar first.",
-            Tool::Stair => "Click where the stair starts, then click the way it climbs. It rises to the next level in equal risers.",
-            Tool::Railing => "Click inside a stair to rail both its sides, or click the points of a path; click the last point again to finish.",
-            Tool::Footing => "Showing footings while the tool is on. Strip: click a wall to put a strip footing under it, or click two points for one on its own. Pad: click a column to put a pad under it, or click anywhere for one on its own. Keep clicking for more, or drag a box over walls or columns for all of them at once. Pick Strip or Pad, and the size, in the top bar.",
+            Tool::Stair => "Click where the stair starts, then click the way it climbs; an L or a U turns where you click. It rises to the next level in equal risers.",
+            Tool::Railing => "Click inside a stair to rail both its sides (near one side: only that side), or click the points of a path; click the last point again to finish.",
+            Tool::Gutter => "Click along a roof's eave, corner by corner: the gutter hangs at the offsets set in the top bar. Click the last point again or press Enter to finish.",
+            Tool::Downpipe => "Click on a gutter to put a downpipe there; move it to slide it along. The gutter falls to its downpipes, its high points midway between them.",
+            Tool::Capping => "Click on a parapet wall: its capping is laid along its whole top on an OSB board and XPS in a fall towards the roof, with the corner strip at its inner foot.",
+            Tool::ChimneyFlashing => "Click on a chimney where it comes through the roof: it is flashed all round.",
+            Tool::RoofOutlet => "Click on a flat roof to put a roof outlet there; keep clicking for more.",
+            Tool::Footing => "Showing footings while the tool is on. Strip: click a wall to put a strip footing under it, or draw strips on their own point by point as walls, Esc ending the chain. Pad: click a column to put a pad under it, or click anywhere for one on its own. Keep clicking for more, or drag a box over walls or columns for all of them at once. Pick Strip or Pad, and the size, in the top bar.",
             Tool::Level => "In a section or elevation, click where the level line starts (its height), then where it ends; its floor plan is made with it. In other views the Levels window opens to add, rename and move levels.",
             Tool::Align => "Click a reference line (a wall face, slab edge, guide or grid line), then the edge of what to align: it turns parallel and moves flush. In Extend mode a wall, beam or grid line end stretches to the reference instead; in Stretch mode the face moves and the rest stays. Centre lines (dashed purple) can be picked too, both ways. In 3D, click a face, edge, corner, centre line or grid line, then a face.",
             Tool::Object => "Click to place the object picked in the Catalogue window. Sinks, WCs, kitchen units, beds and sofas back onto the nearest wall; Space turns the next one a quarter.",
@@ -224,11 +291,14 @@ impl Tool {
             Tool::Void => "Draw the void's outline like a slab. It cuts every wall, slab, roof, site surface and extrusion it meets, between its base and height: a firebox, a hole through a floor. In the 3D view, draw it on any face, a sloped roof or a wall: it cuts square into that face, as deep as Depth on a face.",
             Tool::Terrain => "Draw the ground's outline like a slab. It starts flat at the level; add spot heights in Properties to shape it. Paving drawn inside it sits flush.",
             Tool::Paving => "Draw paving, gravel, a driveway or decking like a slab. Pick what in the bar; each has its own pattern and material.",
+            Tool::Chimney => "Click where the chimney stands: a Schiedel chimney of the system and flue picked in the bar, its block turned by Rotation. Its outline and flue are the maker's; Properties changes them.",
             Tool::Planting => "Click to plant a tree, conifer, palm or shrub. Pick the form, canopy and height in the bar.",
             Tool::Room => "Click inside walls for a room that follows them (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch) where no walls close it off. Its name, number and finishes are in Properties.",
             Tool::RoomSeparator => "Click two points for a line that splits a room in two where there is no wall, such as between a kitchen and a dining room.",
+            Tool::Tiling => "Click where the tiling starts on a room's wall, then where it ends: it runs along the walls between, round corners too, such as over the kitchen's base cabinets. Set its height and how far above the floor it starts in the top bar.",
             Tool::Callout => "On a plan or section, click two corners of a box round what to detail: it becomes a detail view at the scale in the top bar, numbered in a bubble on this view.",
             Tool::Detail => "Pick what to draw in the top bar, then click its points; Enter, a double-click or a right-click finishes (the first point again closes a region). Esc keeps what is drawn. Detail components show in this view only.",
+            Tool::UfhZone => "Draw an edge zone, a place of reduced output or a hole in a room with underfloor heating, as a polygon (1) or a rectangle (2). Pick which in the top bar; its spacing or how much less it gives in the Underfloor heating window.",
             Tool::Ceiling => "Click inside a room for a ceiling over it that follows its walls (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch). Set its height and thickness in the top bar or Properties.",
         }
     }
@@ -246,6 +316,7 @@ impl Tool {
                 | Tool::Paving
                 | Tool::Room
                 | Tool::Ceiling
+                | Tool::UfhZone
         )
     }
 
@@ -317,6 +388,9 @@ enum Handle {
 }
 
 pub struct PlanState {
+    /// The view a pane last handled input in: a section drawn in a
+    /// structural plan is one of the structural drawings.
+    pub in_view: Option<ElementId>,
     /// Pan and zoom per view: centre in drawing units, pixels per metre.
     pub cameras: HashMap<ElementId, (DVec2, f32)>,
     /// While Divide is open: where it will divide (model lines; true: plans
@@ -385,7 +459,17 @@ pub struct PlanState {
     /// Element picked for a tag, waiting for the tag's position.
     tag_host: Option<ElementId>,
     /// Tag or dimension being dragged: where the drag began and its offset then.
-    anno_drag: Option<(ElementId, DVec2, DVec2)>,
+    /// With a stretch's number when it is that stretch's text of a
+    /// dimension that is dragged, not its line.
+    anno_drag: Option<(ElementId, DVec2, DVec2, Option<usize>)>,
+    /// An underfloor heating zone picked in the plan, and its drag.
+    pub ufh_zone_pick: crate::ufhzonedit::Picked,
+    /// The other selected dimensions dragged along with `anno_drag`'s:
+    /// each with its line's offset at the start and the way it moves.
+    anno_group: Vec<(ElementId, f64, DVec2)>,
+    /// A selected dimension's witness line whose far end is dragged: the
+    /// dimension and the point's place in its points.
+    witness_drag: Option<(ElementId, usize)>,
     /// The area whose drag holds `anno_drag`, `level_drag` or `drag`:
     /// another area, not dragged, must not end it (MU32: a dimension moved
     /// a step per drag).
@@ -415,6 +499,8 @@ pub struct PlanState {
     pub outline: Option<crate::outline::Outline>,
     /// How the Slab tool draws.
     pub slab_mode: crate::slabtool::SlabMode,
+    /// What the underfloor heating zone tool draws.
+    pub ufh_zone: crate::roomtool::UfhZone,
     /// The next side of a slab outline is an arc.
     pub slab_arc: bool,
     /// A new slab thickness keeps the underside where it is (the top
@@ -506,8 +592,34 @@ pub struct PlanState {
     /// Continuous dimensions (MU23 board): each click after the first
     /// dimension adds the next on the same line.
     pub dim_chain: bool,
+    /// New linear dimensions have short witness lines.
+    pub dim_short: bool,
+    /// The next click on a line in a plan turns the project so that the
+    /// line is level or upright (project north by a line).
+    pub north_pick: bool,
+    /// The next click on a line in this view turns the view (not the
+    /// model) so that the line lies level or upright on screen and paper.
+    pub turn_pick: Option<ElementId>,
+    /// Placing the building on the site: `Some(None)` waits for the side
+    /// of the place drawn on the map (its corner, the way it runs),
+    /// `Some(Some(..))` for the building's matching side.
+    pub place_pick: Option<Option<(DVec2, DVec2)>>,
+    /// Placing the building exactly: the lines picked so far (the side
+    /// boundary, the building's side along it, the rear boundary).
+    pub place_exact: Option<Vec<(DVec2, DVec2)>>,
+    /// Metres from the side boundary and from the rear one.
+    pub place_dist: [f64; 2],
+    /// A dimension's number being typed over.
+    pub dim_edit: Option<DimEdit>,
+    /// What was selected before the last click: a double-click on a
+    /// dimension's number moves that one of its two ends.
+    pub dim_edit_prefer: Vec<ElementId>,
     /// The line a chain runs on: its axis and a point on it.
     pub chain_line: Option<(creabim_core::DimAxis, DVec2)>,
+    /// The chain being drawn: each further click adds a point to it.
+    pub chain_dim: Option<ElementId>,
+    /// Doors and windows are tagged in the plans as they are placed.
+    pub tag_new: bool,
     /// Rows of dimensions land on steps of this many paper mm from what
     /// they measure (0: free).
     pub dim_step_mm: f64,
@@ -538,6 +650,9 @@ pub struct PlanState {
     pub details: crate::detailtool::DetailSettings,
     /// A view made in a pane that the app should open: a new detail view.
     pub want_view: Option<ElementId>,
+    /// Frame the selection in this view the next time it is drawn (the
+    /// take-off's Show in plan).
+    pub frame_selection_in: Option<ElementId>,
     /// The Snap menu's Custom step being typed.
     pub step_prompt: Option<String>,
     /// The tracker's typed length and angle while a line is drawn (2.10).
@@ -569,6 +684,9 @@ pub struct PlanState {
     pub calibrated: Option<(ElementId, DVec2, DVec2)>,
     /// Temporary dimensions muted (MU21): none shown, none clicked.
     pub temp_dims_off: bool,
+    /// What temporary dimensions measure walls from: their core's faces
+    /// unless set otherwise (PilonDesigner).
+    pub temp_ref: creabim_core::walls::WallRef,
     /// Sections show the floor plans' ranges: each plan's cut and view
     /// depth as a band, dragged by their grips (MU34 A1).
     pub plan_ranges: bool,
@@ -589,6 +707,11 @@ pub struct PlanState {
     pub footing_placed: bool,
     /// What a Fill room click would fill, under the pointer.
     pub fill_look: Option<crate::fillpreview::Cached>,
+    /// The element Alt+click picked up: new elements its tool draws take
+    /// its parameters (see [`crate::pickup`]).
+    pub picked: Option<crate::pickup::Picked>,
+    /// Alt+click just picked one up: the app shows its tool's tab.
+    pub picked_now: bool,
 }
 
 impl PlanState {
@@ -598,6 +721,14 @@ impl PlanState {
         let t = creabim_core::TypeCategory::of(&e.kind).and_then(|c| self.types.get(&c));
         if let Some(t) = t {
             creabim_core::types::stamp(model, &mut e, *t);
+            // picking a type sets the tool's location line to the type's;
+            // one chosen in the bar since is the wall's own, with the type
+            if let (ElementKind::Wall(w), Some(r)) = (&mut e.kind, &mut e.of_type) {
+                if w.location != self.wall_location {
+                    w.location = self.wall_location;
+                    r.overrides.push(creabim_core::types::Param::Location);
+                }
+            }
         }
         e
     }
@@ -606,6 +737,7 @@ impl PlanState {
 impl Default for PlanState {
     fn default() -> Self {
         Self {
+            in_view: None,
             cameras: HashMap::new(),
             divide_marks: vec![],
             divide_labels: vec![],
@@ -638,6 +770,9 @@ impl Default for PlanState {
             dim: vec![],
             tag_host: None,
             anno_drag: None,
+            ufh_zone_pick: Default::default(),
+            witness_drag: None,
+            anno_group: vec![],
             drag_owner: None,
             anno: Default::default(),
             modal: None,
@@ -650,6 +785,7 @@ impl Default for PlanState {
             guide_edge: None,
             outline: None,
             slab_mode: Default::default(),
+            ufh_zone: Default::default(),
             slab_arc: false,
             slab_keep_bottom: false,
             boxsel: None,
@@ -684,8 +820,18 @@ impl Default for PlanState {
             guide_step: 45.0,
             hover_guide: None,
             dim_axis: None,
-            dim_chain: false,
+            dim_chain: true,
+            dim_short: false,
+            north_pick: false,
+            turn_pick: None,
+            place_pick: None,
+            place_exact: None,
+            place_dist: [2.0, 5.0],
+            dim_edit: None,
+            dim_edit_prefer: Vec::new(),
             chain_line: None,
+            chain_dim: None,
+            tag_new: true,
             dim_step_mm: 0.0,
             dim_step_size: 7.0,
             dim_lock: None,
@@ -698,6 +844,7 @@ impl Default for PlanState {
             types: HashMap::new(),
             details: Default::default(),
             want_view: None,
+            frame_selection_in: None,
             step_prompt: None,
             temp: Default::default(),
             tracker: Default::default(),
@@ -711,6 +858,7 @@ impl Default for PlanState {
             dropped: vec![],
             calibrated: None,
             temp_dims_off: false,
+            temp_ref: Default::default(),
             plan_ranges: false,
             range_drag: None,
             range_ends: HashMap::new(),
@@ -720,6 +868,8 @@ impl Default for PlanState {
             host_cycle: 0,
             footing_placed: false,
             fill_look: None,
+            picked: None,
+            picked_now: false,
         }
     }
 }
@@ -731,17 +881,28 @@ impl PlanState {
         self.snaps.clear();
     }
 
+    /// Go on with dimension `id` as a chain: each Dimension tool click adds
+    /// a point to it or takes one out.
+    pub fn continue_chain(&mut self, id: ElementId, start: (HostPoint, DVec2)) {
+        self.cancel();
+        self.chain_dim = Some(id);
+        self.dim = vec![start];
+    }
+
     /// Drop any half-finished tool input.
     pub fn cancel(&mut self) {
         self.pending = None;
         self.dim.clear();
         self.chain_line = None;
+        self.chain_dim = None;
         self.anno.clear();
         self.tag_host = None;
         self.sketch = None;
         self.guide_edge = None;
         self.outline = None;
         self.members.path.clear();
+        self.members.flashing.trace.clear();
+        self.members.flashing.roof = None;
         self.parts.path.clear();
         self.chain.1.clear();
         self.rested.1.clear();
@@ -761,6 +922,7 @@ impl PlanState {
             || self.outline.is_some()
             || self.armed.is_some()
             || !self.members.path.is_empty()
+            || !self.members.flashing.trace.is_empty()
             || self.align.has_input()
             || !self.details.path.is_empty()
     }
@@ -858,21 +1020,194 @@ pub fn esc_once(ctx: &egui::Context) -> bool {
     })
 }
 
+/// The flip controls of the one door or window selected in a plan,
+/// clicked as Revit's: a double arrow along the wall beside it hinges a
+/// door on its other jamb, one across the wall turns its swing (a
+/// window's outside) to the wall's other face. The edit's message.
+fn flip_arrows(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    xf: &Xf,
+    doc: &mut Document,
+    selection: &Selection,
+) -> Option<String> {
+    let id = selection.active?;
+    if selection.all().len() != 1 {
+        return None;
+    }
+    let ElementKind::Opening(o) = &doc.model().get(id)?.kind else {
+        return None;
+    };
+    if o.kind == creabim_core::OpeningKind::Hole {
+        return None;
+    }
+    let ElementKind::Wall(w) = &doc.model().get(o.host)?.kind else {
+        return None;
+    };
+    let door = o.kind == creabim_core::OpeningKind::Door;
+    let mid = o.offset + o.width / 2.0;
+    let t = w.tangent_at(mid).normalize_or_zero();
+    let n = t.perp();
+    // the side it opens to (a window's outside)
+    let side = if o.faces_left(w) { 1.0 } else { -1.0 };
+    let reach = w.thickness / 2.0;
+    let centre = xf.to_screen(w.place(mid, 0.0));
+    let to = |v: DVec2| {
+        let d = xf.to_screen(w.place(mid, 0.0) + v) - centre;
+        d.normalized()
+    };
+    let (ts, ns) = (to(t), to(n * side));
+    // past the wall's face away from the side it opens to, clear of its
+    // swing and its tag
+    let wall_px = (reach as f32 * xf.scale).max(6.0);
+    let base = centre - ns * (wall_px + 18.0);
+    let mut spots: Vec<(Pos2, Vec2, bool)> = vec![(base, ns, false)];
+    if door {
+        spots.push((base + ts * 26.0, ts, true));
+    }
+    let ink = egui::Color32::from_rgb(59, 130, 246);
+    let mut msg = None;
+    for (i, (at, dir, hand)) in spots.into_iter().enumerate() {
+        let r = Rect::from_center_size(at, Vec2::splat(22.0));
+        let resp = ui
+            .interact(r, egui::Id::new(("flip_arrow", id, i)), egui::Sense::click())
+            .on_hover_text(crate::i18n::t(if hand {
+                "Hinge it on the other jamb (Shift+Space)."
+            } else if door {
+                "Open it to the other side of the wall (Space)."
+            } else {
+                "Turn it round in its wall: its sill board and frame move to the other face (Space)."
+            }));
+        let lit = resp.hovered();
+        painter.circle(
+            at,
+            10.0,
+            if lit { ink } else { egui::Color32::WHITE },
+            Stroke::new(1.2, ink),
+        );
+        let fg = if lit { egui::Color32::WHITE } else { ink };
+        // a double arrow along `dir`
+        let (a, b) = (at - dir * 6.5, at + dir * 6.5);
+        let st = Stroke::new(1.6, fg);
+        painter.line_segment([a, b], st);
+        let q = dir.rot90();
+        for (tip, back) in [(b, -dir), (a, dir)] {
+            painter.line_segment([tip, tip + (back + q) * 3.5], st);
+            painter.line_segment([tip, tip + (back - q) * 3.5], st);
+        }
+        if resp.clicked() {
+            let (label, done) = match (door, hand) {
+                (_, true) => ("Flip door hand", "Door hinged on its other jamb."),
+                (true, false) => ("Flip door swing", "Door opens to the other side."),
+                (false, false) => ("Flip window", "Window turned round in its wall."),
+            };
+            let r = doc.edit(id, label, |e| {
+                if let ElementKind::Opening(o) = &mut e.kind {
+                    if hand {
+                        creabim_core::walls::flip_hand(o);
+                    } else {
+                        creabim_core::walls::flip_facing(o);
+                    }
+                }
+            });
+            msg = Some(match r {
+                Ok(()) => crate::i18n::t(done).to_string(),
+                Err(e) => e.to_string(),
+            });
+        }
+    }
+    msg
+}
+
+/// A view's turn, degrees anticlockwise, after which the line `a`–`b`
+/// (model points) lies level or upright on screen: the nearest such.
+pub fn turn_to_line(now: f64, a: DVec2, b: DVec2) -> f64 {
+    let th = (b - a).to_angle().to_degrees() + now;
+    let by = (th / 90.0).round() * 90.0 - th;
+    let t = ((now + by + 180.0).rem_euclid(360.0) - 180.0) * 1e9;
+    t.round() / 1e9
+}
+
+/// Turn `view` to `degrees` anticlockwise (folded to -180..180).
+pub fn set_view_turn(
+    doc: &mut Document,
+    view: ElementId,
+    degrees: f64,
+) -> Result<(), creabim_core::ModelError> {
+    let t = (degrees + 180.0).rem_euclid(360.0) - 180.0;
+    let t = if (t + 180.0).abs() < 1e-9 { 180.0 } else { t };
+    doc.edit(view, "Turn view", |e| {
+        if let ElementKind::View(v) = &mut e.kind {
+            v.turn = if t.abs() < 1e-9 { 0.0 } else { t };
+        }
+    })
+}
+
 pub struct Xf {
     pub rect: Rect,
     pub center: DVec2,
     pub scale: f32,
+    /// How far the drawing is turned on screen, radians anticlockwise:
+    /// a turned site plan ([`creabim_core::View::turn`]). `center` and
+    /// every point given or returned stay in the model's own frame.
+    pub turn: f64,
 }
 
 impl Xf {
+    /// The same view unturned, for drawing an item already turned on
+    /// paper ([`creabim_geom::turn`]): its centre turned with it.
+    pub fn unturned(&self) -> Xf {
+        Xf {
+            rect: self.rect,
+            center: DVec2::from_angle(self.turn).rotate(self.center),
+            scale: self.scale,
+            turn: 0.0,
+        }
+    }
+
     pub fn to_screen(&self, p: DVec2) -> Pos2 {
-        let d = (p - self.center).as_vec2() * self.scale;
+        let d = p - self.center;
+        let d = if self.turn == 0.0 {
+            d
+        } else {
+            DVec2::from_angle(self.turn).rotate(d)
+        };
+        let d = d.as_vec2() * self.scale;
         self.rect.center() + Vec2::new(d.x, -d.y)
     }
 
     pub fn to_world(&self, p: Pos2) -> DVec2 {
-        let d = (p - self.rect.center()) / self.scale;
-        self.center + DVec2::new(d.x as f64, -d.y as f64)
+        self.center + self.unturn(self.screen_delta(p - self.rect.center()))
+    }
+
+    /// A move on screen as a move in the drawing's (turned) frame, metres.
+    pub fn screen_delta(&self, d: Vec2) -> DVec2 {
+        let d = d / self.scale;
+        DVec2::new(d.x as f64, -d.y as f64)
+    }
+
+    /// A direction in the turned frame of the screen back in the model's.
+    pub fn unturn(&self, v: DVec2) -> DVec2 {
+        if self.turn == 0.0 {
+            v
+        } else {
+            DVec2::from_angle(-self.turn).rotate(v)
+        }
+    }
+
+    /// The model area the pane shows: the corners of its rect.
+    pub fn world_bounds(&self) -> (DVec2, DVec2) {
+        let r = self.rect;
+        let c = [
+            r.left_top(),
+            r.right_top(),
+            r.left_bottom(),
+            r.right_bottom(),
+        ]
+        .map(|p| self.to_world(p));
+        let lo = c.iter().fold(c[0], |a, b| a.min(*b));
+        let hi = c.iter().fold(c[0], |a, b| a.max(*b));
+        (lo, hi)
     }
 }
 
@@ -889,6 +1224,107 @@ pub fn show(
     selection: &mut Selection,
     style: PaneStyle,
 ) -> Option<String> {
+    let out = show_pane(ui, rect, doc, view, kind, plan, state, selection, style);
+    if style.decorations && matches!(kind, PaneKind::Plan { .. }) {
+        north_mark(ui, rect, doc.model(), view);
+    }
+    work_cursor(ui, rect, state);
+    out
+}
+
+/// Where north is, at the top right of a plan beside its zoom buttons
+/// (George, 2026-11-20): true north turned as the view is turned. Not
+/// printed; a sheet's own north arrow is a paper mark.
+fn north_mark(ui: &egui::Ui, rect: Rect, model: &creabim_core::Model, view: ElementId) {
+    if rect.width() < 260.0 || rect.height() < 120.0 {
+        return;
+    }
+    let north = model.project_info().map_or(0.0, |(_, p)| p.true_north)
+        + creabim_geom::turn::view_turn(model, view);
+    let c = egui::pos2(rect.right() - 74.0, rect.top() + 40.0);
+    let r = 15.0_f32;
+    // degrees anticlockwise from up, on a screen whose y runs down
+    let a = north.to_radians() as f32;
+    let up = egui::vec2(-a.sin(), -a.cos());
+    let side = egui::vec2(up.y, -up.x);
+    let p = crate::theme::Palette::of(ui.ctx());
+    let ink = p.text.gamma_multiply(0.8);
+    let painter = ui.painter_at(rect);
+    painter.circle_stroke(c, r, Stroke::new(1.0, ink.gamma_multiply(0.6)));
+    let tip = c + up * r;
+    let tail = c - up * r * 0.7;
+    // a kite: its left half filled, as on drawings
+    painter.add(egui::Shape::convex_polygon(
+        vec![tip, c - side * r * 0.42 - up * r * 0.25, tail],
+        ink,
+        Stroke::NONE,
+    ));
+    painter.add(egui::Shape::closed_line(
+        vec![
+            tip,
+            c - side * r * 0.42 - up * r * 0.25,
+            tail,
+            c + side * r * 0.42 - up * r * 0.25,
+        ],
+        Stroke::new(1.0, ink),
+    ));
+    painter.text(
+        c + up * (r + 9.0),
+        egui::Align2::CENTER_CENTER,
+        crate::i18n::t("N"),
+        egui::FontId::proportional(12.0),
+        ink,
+    );
+}
+
+/// The working cursor (PilonDesigner, as Revit): while a tool draws or a
+/// point is asked for, a small cross about 33 px across, light with a
+/// dark edge so it reads on any drawing, in place of the system pointer.
+fn work_cursor(ui: &egui::Ui, rect: Rect, state: &PlanState) {
+    let Some(p) = ui
+        .input(|i| i.pointer.hover_pos())
+        .filter(|p| rect.contains(*p))
+    else {
+        return;
+    };
+    let asked = ui.ctx().output(|o| o.cursor_icon) == egui::CursorIcon::Crosshair;
+    let drawing = state.tool != Tool::Select && state.modal.is_none();
+    if !(asked || drawing) {
+        return;
+    }
+    ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+    let top = ui
+        .ctx()
+        .layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("work_cursor"),
+        ))
+        .with_clip_rect(rect);
+    let p = Pos2::new(p.x.round() + 0.5, p.y.round() + 0.5);
+    let arm = 16.0;
+    let edge = Stroke::new(3.0, Color32::from_rgba_unmultiplied(15, 23, 42, 140));
+    let ink = Stroke::new(1.0, Color32::from_rgb(241, 245, 249));
+    for s in [edge, ink] {
+        top.line_segment([p - egui::vec2(arm, 0.0), p + egui::vec2(arm, 0.0)], s);
+        top.line_segment([p - egui::vec2(0.0, arm), p + egui::vec2(0.0, arm)], s);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn show_pane(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    doc: &mut Document,
+    view: ElementId,
+    kind: PaneKind,
+    plan: &Drawing,
+    state: &mut PlanState,
+    selection: &mut Selection,
+    style: PaneStyle,
+) -> Option<String> {
+    if ui.rect_contains_pointer(rect) {
+        state.in_view = Some(view);
+    }
     // while a point is asked for, a click gives it and selects nothing
     let picking = state.point_pick && matches!(kind, PaneKind::Plan { .. });
     let sense = if picking {
@@ -901,6 +1337,9 @@ pub fn show(
     if let Some(bg) = style.background {
         painter.rect_filled(rect, 0.0, bg);
     }
+    // a site plan turned square to its parcel; the model stays put
+    let turn = creabim_geom::turn::view_turn(doc.model(), view).to_radians();
+    let unturn = |v: DVec2| DVec2::from_angle(-turn).rotate(v);
 
     let (mut center, mut scale) = match style.camera {
         Some(c) => c,
@@ -957,6 +1396,7 @@ pub fn show(
                 rect,
                 center,
                 scale,
+                turn,
             };
             let before = xf.to_world(at);
             scale = (scale * k).clamp(2.0, 2000.0);
@@ -964,6 +1404,7 @@ pub fn show(
                 rect,
                 center,
                 scale,
+                turn,
             };
             center += before - xf.to_world(at);
         }
@@ -971,18 +1412,19 @@ pub fn show(
         || response.dragged_by(egui::PointerButton::Middle)
     {
         let d = response.drag_delta() / scale;
-        center -= DVec2::new(d.x as f64, -d.y as f64);
+        center -= unturn(DVec2::new(d.x as f64, -d.y as f64));
     }
     if response.hovered() {
         // a touchpad's two fingers pan; a wheel and a pinch zoom (MU24)
         let (pan, scroll) = wheel(ui);
-        center -= DVec2::new(pan.x as f64, -pan.y as f64) / scale as f64;
+        center -= unturn(DVec2::new(pan.x as f64, -pan.y as f64)) / scale as f64;
         if scroll != 0.0 {
             if let Some(hover) = response.hover_pos() {
                 let xf = Xf {
                     rect,
                     center,
                     scale,
+                    turn,
                 };
                 let before = xf.to_world(hover);
                 scale = (scale * (1.0 + scroll * 0.002)).clamp(2.0, 2000.0);
@@ -990,6 +1432,7 @@ pub fn show(
                     rect,
                     center,
                     scale,
+                    turn,
                 };
                 center += before - xf.to_world(hover);
             }
@@ -1008,6 +1451,15 @@ pub fn show(
                 .collect(),
         };
         let fit_sel = (!picked.items.is_empty()).then(|| fit(&picked, rect));
+        // asked from the take-off: frame what it picked, once
+        if state.frame_selection_in == Some(view) {
+            state.frame_selection_in = None;
+            if let Some((c, k)) = fit_sel {
+                center = c;
+                // not closer than a room's width across the pane
+                scale = k.min(rect.width().min(rect.height()) / 4.0);
+            }
+        }
         if let Some((c, k)) = nav_column(ui, rect, view, || fit(plan, rect), fit_sel, center, scale)
         {
             center = c;
@@ -1028,6 +1480,7 @@ pub fn show(
         rect,
         center,
         scale,
+        turn,
     };
 
     if style.decorations && kind != PaneKind::Schedule {
@@ -1149,8 +1602,21 @@ pub fn show(
             state.point_pick = false;
         }
     }
-    // the references shown in this view, under the drawing (MU19)
+    // the references shown in this view, under the drawing (MU19); first
+    // those of the plan traced under it (the site plan's cadastre)
     if style.decorations {
+        if let Some(under) = underlay_view(doc.model(), view) {
+            for over in [false, true] {
+                crate::trace::draw_view(
+                    &painter,
+                    doc.model(),
+                    &mut state.ref_cache,
+                    under,
+                    over,
+                    &|p| xf.to_screen(p),
+                );
+            }
+        }
         crate::trace::draw_view(
             &painter,
             doc.model(),
@@ -1190,16 +1656,46 @@ pub fn show(
             state.status = said;
         }
     }
+    // Alt+click on an element picks up its parameters: its tool is taken
+    // up, set as it is, and draws the next one the same (George
+    // 2026-11-20, as ArchiCAD's). Not while a tool is part way through,
+    // where Alt places a point free of snaps.
+    let alt_click = response.clicked()
+        && ui.input(|i| i.modifiers.alt && !i.modifiers.command)
+        && !state.has_input()
+        && state.modal.is_none()
+        && state.grip.is_none();
+    if alt_click {
+        if let Some(p) = response.interact_pointer_pos() {
+            let tol = 6.0 / xf.scale as f64;
+            let mut under = under_pointer(state, doc, view, kind, plan, xf.to_world(p), tol, mm);
+            if let Some(h) = state.hover.as_ref().and_then(|h| h.at(pane, p)) {
+                under.retain(|id| *id != h);
+                under.insert(0, h);
+            }
+            let sel = selection.all();
+            if let Some(id) = crate::pickup::choose(&under, &sel) {
+                state.status = Some(match crate::pickup::pick_up(state, doc.model(), id) {
+                    Ok(msg) | Err(msg) => msg,
+                });
+                return None;
+            }
+        }
+    }
     let hovered = hoverpick::highlighted(&state.hover)
         .filter(|id| !selection.contains(*id) && !response.dragged());
     let hovered_slab = hovered.filter(|id| slabs.iter().any(|(s, _)| s == id));
+    // only the slab under the pointer or selected is filled: a faint fill
+    // on every slab showed only on those whose outline the plan draws
+    // (a kitchen's tiled floor beside a room separator), and read as a
+    // colour of that floor (George 2026-11-24)
     for (id, points) in &slabs {
         let fill = if selection.contains(*id) {
             SLAB_SELECTED
         } else if hovered_slab == Some(*id) {
             SLAB_HOVER
         } else {
-            SLAB_FILL
+            continue;
         };
         fill_polygon(&painter, &xf, points, fill);
     }
@@ -1226,6 +1722,70 @@ pub fn show(
             draw_item_with(&p, &xf, item, selected, mm, o);
         } else {
             draw_item(&painter, &xf, item, selected, mm);
+        }
+    }
+    // a fixture's connector under the pointer says what it is: ZTI-SV
+    // studená voda, DN 20, at its height (George 2026-11-23)
+    if let (PaneKind::Plan { .. }, Some(h)) = (kind, response.hover_pos()) {
+        let at = xf.to_world(h);
+        let reach = creabim_geom::objects::CONNECTOR_MARK.max(5.0 / xf.scale as f64);
+        let model = doc.model();
+        let found = plan.items.iter().find_map(|it| match it {
+            PlanItem::Arc {
+                id, center, radius, ..
+            } if (*radius - creabim_geom::objects::CONNECTOR_MARK).abs() < 1e-9
+                && center.distance(at) <= reach =>
+            {
+                let e = model.get(*id)?;
+                creabim_core::fixture::connectors(model, e)
+                    .into_iter()
+                    .find(|c| c.at.truncate().distance(*center) < 1e-6)
+            }
+            _ => None,
+        });
+        if let Some(c) = found {
+            let text = format!(
+                "{} {}, DN {:.0}, {} {} m",
+                c.kind.label(),
+                crate::i18n::tr(c.kind.name()),
+                c.dn,
+                crate::i18n::tr("height"),
+                crate::i18n::num(c.at.z, 3)
+            );
+            let font = egui::FontId::proportional(13.0);
+            let vis = ui.visuals();
+            let (ink, ground) = (vis.text_color(), vis.window_fill);
+            let galley = painter.layout_no_wrap(text, font, ink);
+            let pos = h + egui::vec2(14.0, -24.0);
+            let rect = egui::Rect::from_min_size(pos, galley.size()).expand(5.0);
+            painter.rect_filled(rect, 4.0, ground);
+            painter.rect_stroke(
+                rect,
+                4.0,
+                Stroke::new(1.0, crate::theme::interaction()),
+                egui::StrokeKind::Outside,
+            );
+            painter.galley(pos, galley, ink);
+        }
+    }
+    // a selected window or door of a plan shows its fire-dangerous space,
+    // unless the plan shows every opening's already
+    if let PaneKind::Plan { level } = kind {
+        let shown = matches!(
+            doc.model().get(view).map(|e| &e.kind),
+            Some(ElementKind::View(v)) if v.fire_distances
+        );
+        if !shown {
+            for id in selection.active.iter().chain(&selection.others) {
+                if matches!(
+                    doc.model().get(*id).map(|e| &e.kind),
+                    Some(ElementKind::Opening(_))
+                ) {
+                    for item in selected_pnp(doc.model(), level, *id, mm) {
+                        draw_item(&painter, &xf, &item, false, mm);
+                    }
+                }
+            }
         }
     }
     // the references drawn over the model, then the outline of each one
@@ -1274,6 +1834,7 @@ pub fn show(
             witness,
             text,
             look,
+            place,
             ..
         } = item
         {
@@ -1288,7 +1849,7 @@ pub fn show(
                 _ => None,
             };
             if let Some(current) = current {
-                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
                 let px = crate::annotate::text_px(look, mm, &xf);
                 let half = paper::text_width(text, look.size) * mm * xf.scale as f64 / 2.0;
                 let along = DVec2::from_angle(g.angle);
@@ -1359,6 +1920,59 @@ pub fn show(
         painter.add(egui::Shape::closed_line(pts, Stroke::new(2.0, SLAB_EDGE)));
     }
     crate::annotate::draw_grips(&painter, &xf, doc.model(), &plan.items, selection, mm);
+    if tool == Tool::Select {
+        // the far ends of the selected dimensions' witness lines
+        for (_, _, ends) in selected_witness_ends(doc.model(), view, selection) {
+            for e in ends {
+                painter.rect(
+                    egui::Rect::from_center_size(xf.to_screen(e.start), egui::Vec2::splat(6.0)),
+                    0.0,
+                    Color32::WHITE,
+                    Stroke::new(1.5, crate::theme::interaction()),
+                    egui::StrokeKind::Middle,
+                );
+            }
+        }
+    }
+    // a selected roof's edges numbered, as its Slopes by edge list them
+    if matches!(kind, PaneKind::Plan { .. }) {
+        if let Some(creabim_core::Element {
+            kind: creabim_core::ElementKind::Roof(r),
+            ..
+        }) = selection.active.and_then(|id| doc.model().get(id))
+        {
+            let n = r.boundary.len();
+            let ccw = creabim_core::polygon::signed_area2(&r.boundary) > 0.0;
+            for i in 0..n {
+                let (a, b) = (r.boundary[i], r.boundary[(i + 1) % n]);
+                let d = (b - a).normalize_or_zero();
+                let out = if ccw { -d.perp() } else { d.perp() };
+                let mid = xf.to_screen((a + b) / 2.0);
+                let away = (xf.to_screen((a + b) / 2.0 + out) - mid).normalized();
+                let at = mid + away * 12.0;
+                let text = format!("{}", i + 1);
+                painter.circle(
+                    at,
+                    8.0,
+                    Color32::WHITE,
+                    Stroke::new(1.0, crate::theme::interaction()),
+                );
+                painter.text(
+                    at,
+                    egui::Align2::CENTER_CENTER,
+                    text,
+                    egui::FontId::proportional(10.0),
+                    crate::theme::interaction(),
+                );
+            }
+        }
+    }
+    // a selected door's or window's flip arrows beside it, as Revit's
+    if matches!(kind, PaneKind::Plan { .. }) && tool == Tool::Select {
+        if let Some(msg) = flip_arrows(ui, &painter, &xf, doc, selection) {
+            state.status = Some(msg);
+        }
+    }
     crate::sketch::draw_marks_in_pane(&painter, doc.model(), selection.active, kind, &xf);
     // the centre lines the Align tool can take here
     let centre_lines = match (tool, kind) {
@@ -1418,6 +2032,13 @@ pub fn show(
     };
     if matches!(kind, PaneKind::Plan { .. } | PaneKind::Section { .. }) {
         refresh_snaps(state, doc.model(), view, plan, &exclude);
+        // the drawings' lines near the pointer, to snap to
+        if let (Some(h), Some((_, _, s))) = (response.hover_pos(), state.snaps.get_mut(&view)) {
+            s.focus(
+                xf.to_world(h),
+                snaps::TOLERANCE as f64 / (xf.scale as f64).max(1e-9),
+            );
+        }
     }
     let pane_project = |p: DVec3| Some(xf.to_screen(p.truncate()));
     // a line starts from the tool's first click, or the sketch's last corner
@@ -1434,10 +2055,13 @@ pub fn show(
         .outline
         .as_ref()
         .and_then(|o| o.points.last().copied());
+    // the Line, Polyline and Detail tools' path goes on from its last point
+    let detail_last = crate::detailtool::last_point(state, view);
     let drawing_from = state
         .pending
         .or(sketch_last.map(from_pane))
         .or(last)
+        .or(detail_last)
         .map(|a| a.extend(0.0));
     // temporary guide lines: from the points and edges rested on in the
     // drawing tools, and through where the line being drawn starts
@@ -1574,7 +2198,7 @@ pub fn show(
             level,
             &xf,
             xf.to_world(p),
-            state.pending,
+            state.pending.or(detail_last),
             shift,
             &[],
             &snap_cfg,
@@ -1582,7 +2206,7 @@ pub fn show(
         PaneKind::Axonometric | PaneKind::Schedule => xf.to_world(p),
         PaneKind::Section { .. } => {
             let mut p = xf.to_world(p);
-            if let (true, Some(a)) = (shift, state.pending) {
+            if let (true, Some(a)) = (shift, state.pending.or(detail_last)) {
                 let d = p - a;
                 p = if d.x.abs() >= d.y.abs() {
                     DVec2::new(p.x, a.y)
@@ -1611,10 +2235,14 @@ pub fn show(
             | Tool::Pipe
             | Tool::Railing
             | Tool::Footing
+            | Tool::Gutter
             | Tool::RoomSeparator
-    ) && matches!(kind, PaneKind::Plan { .. });
+            | Tool::Tiling
+    ) && matches!(kind, PaneKind::Plan { .. })
+        || matches!(tool, Tool::Line | Tool::Polyline)
+            && matches!(kind, PaneKind::Plan { .. } | PaneKind::Section { .. });
     let mut tracker_enter = false;
-    let hover_world = match (state.pending, pointer_world, line_tool) {
+    let hover_world = match (state.pending.or(detail_last), pointer_world, line_tool) {
         (Some(a), Some(b), true) if response.hovered() => {
             if state.tracker.keys(ui.ctx()) == crate::tracker::Keys::Enter {
                 tracker_enter = true;
@@ -1734,6 +2362,20 @@ pub fn show(
             || state.anno_drag.is_some()
             || state.boxsel.is_some()
             || response.dragged();
+        // the box the selected element's body covers, for elements
+        // measured by their sides (equipment, stairs…)
+        let foot = selection.active.and_then(|id| {
+            let scene = cached_pick_scene(state, doc, view);
+            let (lo, hi) = scene
+                .iter()
+                .filter(|it| it.id == id)
+                .filter_map(|it| it.mesh.bounds())
+                .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)))?;
+            Some((
+                DVec2::new(lo.x as f64, lo.y as f64),
+                DVec2::new(hi.x as f64, hi.y as f64),
+            ))
+        });
         if let Some(r) = crate::tempdims::interact(
             ui,
             doc,
@@ -1747,6 +2389,8 @@ pub fn show(
             &mut state.status,
             &mut state.hint,
             quiet,
+            state.temp_ref,
+            foot,
         ) {
             return r;
         }
@@ -1878,6 +2522,25 @@ pub fn show(
                 .and_then(|h| h.at(pane, p))
                 .or_else(|| hit_test(&plan.items, xf.to_world(p), 6.0 / xf.scale as f64, mm))
         };
+        // underfloor heating zones picked, dragged and reshaped where the
+        // heating is shown (George 2026-11-28)
+        if let (Tool::Select, PaneKind::Plan { level }) = (tool, kind) {
+            let shown = match doc.model().get(view).map(|e| &e.kind) {
+                Some(ElementKind::View(v)) => {
+                    creabim_core::viewmodes::DisplayMode::of(v)
+                        == creabim_core::viewmodes::DisplayMode::Services
+                        && v.trade
+                            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Heating)
+                        && !v.ceiling_plan
+                }
+                _ => false,
+            };
+            if let Some(r) = crate::ufhzonedit::handle(
+                doc, level, &xf, &response, &painter, state, selection, shown,
+            ) {
+                return r;
+            }
+        }
         let edits = keyboard_edits(
             ui, doc, view, space, &painter, &response, state, selection, &map, &pick,
         );
@@ -1932,8 +2595,18 @@ pub fn show(
             // what is under others (picked with Tab, or in X-ray) can be
             // dragged by its body too
             let hover_now = state.hover.clone();
+            // a fixture's mark (WC, U) or a pipe's size label is dragged
+            // on its own, never its fixture or pipe with it, selected or
+            // not (George 2026-11-23)
+            let marks = mark_boxes(doc.model(), &plan.items, mm);
             let grab_body = |pos: Pos2, id: ElementId| {
                 let w = xf.to_world(pos);
+                if marks
+                    .iter()
+                    .any(|(lo, hi)| w.cmpge(*lo).all() && w.cmple(*hi).all())
+                {
+                    return None;
+                }
                 let on = hit_all(&plan.items, w, 6.0 / xf.scale as f64, mm).contains(&id)
                     || hover_now.as_ref().and_then(|h| h.at(pane, pos)) == Some(id);
                 on.then(|| pane_to_model(space, w, level_z))
@@ -2027,9 +2700,265 @@ pub fn show(
                 .into_iter()
                 .any(|id| selection.contains(id))
         });
+    // a pipe's size label or a fixture's mark (S 16x2, WC, U) is dragged
+    // straight away, selected or not: it is text only, never the pipe
+    let press_on_mark = response.drag_started_by(egui::PointerButton::Primary)
+        && ui.input(|i| i.pointer.press_origin()).is_some_and(|p0| {
+            let w = xf.to_world(p0);
+            on_mark(doc.model(), &plan.items, w, mm)
+                    // a label of the water axonometry or drain sections
+                    || creabim_geom::labels::movable(doc.model(), view)
+                        && creabim_geom::labels::found(view, &plan.items)
+                            .iter()
+                            .any(|(_, _, lo, hi)| {
+                                let pad = DVec2::splat(0.8);
+                                w.cmpge(*lo - pad).all() && w.cmple(*hi + pad).all()
+                            })
+        });
+    // the dot at a selected dimension's witness line end: it lies off
+    // the dimension's line, so it is looked for on its own
+    let press_on_witness = response.drag_started_by(egui::PointerButton::Primary)
+        && ui.input(|i| i.pointer.press_origin()).is_some_and(|p0| {
+            let w = xf.to_world(p0);
+            let tol = 6.0 / scale as f64;
+            selected_witness_ends(doc.model(), view, selection)
+                .iter()
+                .any(|(_, _, ends)| ends.iter().any(|e| e.start.distance(w) < tol))
+        });
     let annotation_drag = state.anno.grab.is_some()
         || !response.drag_started_by(egui::PointerButton::Primary)
-        || press_on_selected;
+        || press_on_selected
+        || press_on_mark
+        || press_on_witness;
+    // a site plan turns itself by a line, the model stays put
+    let site_plan = matches!(doc.model().get(view).map(|e| &e.kind),
+        Some(ElementKind::View(v)) if v.graphics.range.is_site());
+    if state.north_pick && site_plan {
+        state.north_pick = false;
+        state.turn_pick = Some(view);
+    }
+    if state.place_exact.is_some() && site_plan {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            state.place_exact = None;
+            state.status = Some(crate::i18n::tr("The site is left as it was."));
+            return None;
+        }
+        if response.clicked() {
+            let at = xf.to_world(response.interact_pointer_pos()?);
+            let tol = 12.0 / xf.scale as f64;
+            let Some(line) = line_at(state, doc.model(), view, plan, at, tol) else {
+                state.status = Some(crate::i18n::tr(
+                    "There is no line here: click nearer a boundary, a map line or a wall.",
+                ));
+                return None;
+            };
+            let picked = state.place_exact.get_or_insert_with(Vec::new);
+            picked.push(line);
+            match picked.len() {
+                1 => {
+                    state.status = Some(crate::i18n::tr(
+                        "Now click the building's side that runs along that boundary.",
+                    ))
+                }
+                2 => {
+                    state.status = Some(crate::i18n::tr(
+                        "Now click the rear boundary (it may run askew).",
+                    ))
+                }
+                _ => {
+                    let lines = state.place_exact.take().unwrap_or_default();
+                    // the building's outline: what the site plan cuts
+                    let mut corners = vec![];
+                    for it in &plan.items {
+                        match it {
+                            PlanItem::Line {
+                                pen: Pen::Cut,
+                                a,
+                                b,
+                                ..
+                            } => corners.extend([*a, *b]),
+                            PlanItem::Polygon {
+                                pen: Pen::Cut,
+                                points,
+                                ..
+                            } => corners.extend(points.iter().copied()),
+                            _ => {}
+                        }
+                    }
+                    let [d1, d2] = state.place_dist;
+                    let r = match creabim_core::mapgroup::fit_exact(
+                        lines[0], lines[1], lines[2], &corners, d1, d2,
+                    ) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            state.status = Some(crate::i18n::tr(&e));
+                            return None;
+                        }
+                    };
+                    let tx = creabim_core::mapgroup::move_ground(doc.model(), &r);
+                    if tx.ops.is_empty() {
+                        state.status = Some(crate::i18n::tr(
+                            "There is no map to move: download or import the site's map first.",
+                        ));
+                        return None;
+                    }
+                    if let Err(e) = doc.commit(tx) {
+                        return Some(e.to_string());
+                    }
+                    state.status = Some(crate::i18n::tr(&format!(
+                        "The site moved under the building: {d1} m from the side boundary, {d2} m from the rear one at its nearest corner. Ctrl+Z to undo."
+                    )));
+                }
+            }
+        }
+        return None;
+    }
+    if state.place_pick.is_some() && site_plan {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            state.place_pick = None;
+            state.status = Some(crate::i18n::tr("The site is left as it was."));
+            return None;
+        }
+        if response.clicked() {
+            let at = xf.to_world(response.interact_pointer_pos()?);
+            let tol = 12.0 / xf.scale as f64;
+            let Some((a, b)) = line_at(state, doc.model(), view, plan, at, tol) else {
+                state.status = Some(crate::i18n::tr(
+                    "There is no line here: click nearer a boundary, a map line or a wall.",
+                ));
+                return None;
+            };
+            // the side's corner nearer the click, and the way it runs
+            let side = if a.distance(at) <= b.distance(at) {
+                (a, b)
+            } else {
+                (b, a)
+            };
+            match state.place_pick {
+                Some(None) => {
+                    state.place_pick = Some(Some(side));
+                    state.status = Some(crate::i18n::tr(
+                        "Now click the building's matching side, near the matching corner.",
+                    ));
+                }
+                Some(Some(ground)) => {
+                    state.place_pick = None;
+                    let r = creabim_core::mapgroup::fit(ground, side);
+                    let tx = creabim_core::mapgroup::move_ground(doc.model(), &r);
+                    if tx.ops.is_empty() {
+                        state.status = Some(crate::i18n::tr(
+                            "There is no map to move: download or import the site's map first.",
+                        ));
+                        return None;
+                    }
+                    if let Err(e) = doc.commit(tx) {
+                        return Some(e.to_string());
+                    }
+                    state.status = Some(crate::i18n::tr(
+                        "The site moved under the building: the corners meet, the sides run together. The S-JTSK coordinates follow the map. Ctrl+Z to undo.",
+                    ));
+                }
+                None => {}
+            }
+        }
+        return None;
+    }
+    if state.turn_pick == Some(view) {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            state.turn_pick = None;
+            state.status = Some("The view is left as it was.".into());
+            return None;
+        }
+        if response.clicked() {
+            let at = xf.to_world(response.interact_pointer_pos()?);
+            let tol = 12.0 / xf.scale as f64;
+            let Some((a, b)) = line_at(state, doc.model(), view, plan, at, tol) else {
+                state.status = Some(
+                    "There is no line here: click nearer a boundary, a map line or a wall.".into(),
+                );
+                return None;
+            };
+            state.turn_pick = None;
+            let now = creabim_geom::turn::view_turn(doc.model(), view);
+            let turn = turn_to_line(now, a, b);
+            if (turn - now).abs() < 1e-7 {
+                state.status = Some("The line is level or upright already.".into());
+                return None;
+            }
+            if let Err(e) = set_view_turn(doc, view, turn) {
+                return Some(e.to_string());
+            }
+            state.status = Some(crate::i18n::tr(&format!(
+                "View turned to {turn}°: the line lies level or upright, the model has not moved. Ctrl+Z to undo."
+            )));
+        }
+        return None;
+    }
+    if state.north_pick && matches!(kind, PaneKind::Plan { .. }) {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            state.north_pick = false;
+            state.status = Some("Project north is left as it was.".into());
+            return None;
+        }
+        if response.clicked() {
+            let at = xf.to_world(response.interact_pointer_pos()?);
+            let tol = 12.0 / xf.scale as f64;
+            let best = line_at(state, doc.model(), view, plan, at, tol);
+            let Some((a, b)) = best else {
+                state.status = Some(
+                    "There is no line here: click nearer a boundary, a map line or a wall.".into(),
+                );
+                return None;
+            };
+            state.north_pick = false;
+            // the site plans turn, each so the line lies level or upright
+            // on it; the model, and so this plan, stays as drawn
+            let mut tx = creabim_core::Transaction::new("Rotate project north");
+            for e in doc.model().iter() {
+                let ElementKind::View(v) = &e.kind else {
+                    continue;
+                };
+                if !v.graphics.range.is_site() {
+                    continue;
+                }
+                let mut now = e.clone();
+                if let ElementKind::View(w) = &mut now.kind {
+                    w.turn = turn_to_line(v.turn, a, b);
+                }
+                if now != *e {
+                    tx = tx.replace(e.clone(), now);
+                }
+            }
+            if tx.ops.is_empty() {
+                state.status = Some("The line is level or upright already.".into());
+                return None;
+            }
+            if let Err(e) = doc.commit(tx) {
+                return Some(e.to_string());
+            }
+            state.status = Some(crate::i18n::tr(
+                "Site plans turned: the line lies level or upright in them; the floor plans stay as drawn. Ctrl+Z to undo.",
+            ));
+        }
+        return None;
+    }
+    if tool == Tool::Select {
+        // what is selected besides dimensions: the end a typed dimension moves
+        let chosen = selection.all();
+        if chosen.is_empty()
+            || chosen.iter().any(|id| {
+                !matches!(
+                    doc.model().get(*id).map(|e| &e.kind),
+                    Some(ElementKind::Dimension(_))
+                )
+            })
+        {
+            state.dim_edit_prefer = chosen;
+        }
+        if let Some(r) = edit_dimension_value(ui, doc, view, plan, &xf, &response, state, mm) {
+            return r;
+        }
+    }
     if tool == Tool::Select && annotation_drag {
         if let Some(r) = drag_annotation(doc, view, plan, &xf, &response, state, selection, mm) {
             return r;
@@ -2098,10 +3027,10 @@ pub fn show(
                         return None;
                     }
                     let (lo, hi) = it.bounds()?;
-                    Some((
-                        it.id(),
-                        Rect::from_two_pos(xf.to_screen(lo), xf.to_screen(hi)),
-                    ))
+                    // all four corners: a turned site plan turns the box
+                    let c = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)]
+                        .map(|p| xf.to_screen(p));
+                    Some((it.id(), Rect::from_points(&c)))
                 });
                 let ids = boxsel::pick(p0, now, parts)
                     .into_iter()
@@ -2114,8 +3043,7 @@ pub fn show(
                     return None;
                 }
                 if footing_box {
-                    let pad = crate::memberstool::footing_kind(doc.model(), state)
-                        == creabim_core::FootingKind::Pad;
+                    let pad = crate::memberstool::footing_kind(doc.model(), state).at_point();
                     let hosts: Vec<ElementId> = ids
                         .filter(|id| match doc.model().get(*id).map(|e| &e.kind) {
                             Some(ElementKind::Wall(w)) => !pad && w.curtain.is_none(),
@@ -2236,6 +3164,8 @@ pub fn show(
         );
     }
     match (state.dim.as_slice(), dim_hover, response.hover_pos()) {
+        // a chain grows by its points: the new point shows on its line
+        ([_], Some((_, _)), _) if state.chain_dim.is_some() => {}
         ([(_, a)], Some((_, b)), _) if a.distance(b) > 1e-6 => {
             preview_dimension(&painter, &xf, *a, b, dim_axis, 0.0, &dim_look, mm, accent);
         }
@@ -2289,7 +3219,9 @@ pub fn show(
                     crate::ghost::draw(&painter, &|p| Some(xf.to_screen(p.truncate())), &g, accent);
                     state.ghost_now = Some((state.pane_now, g));
                 }
-                None if matches!(tool, Tool::Door | Tool::Window | Tool::Opening) => {
+                None if matches!(tool, Tool::Door | Tool::Window)
+                    || (tool == Tool::Opening && state.members.hole_host == 1) =>
+                {
                     if let Some(at) = response.hover_pos() {
                         let look =
                             crate::handles::PillLook::of(&crate::theme::Palette::of(ui.ctx()));
@@ -2324,7 +3256,7 @@ pub fn show(
     }
     // a callout's box or a detail component being drawn, and Enter to
     // finish the component
-    if matches!(tool, Tool::Callout | Tool::Detail) {
+    if tool == Tool::Callout || crate::detailtool::drafts(tool) {
         crate::detailtool::preview(
             doc.model(),
             &painter,
@@ -2352,13 +3284,27 @@ pub fn show(
             state.status = Some("The membrane goes on the other side.".into());
         }
         let double = response.double_clicked() && crate::detailtool::finishable(state);
-        if tool == Tool::Detail && (enter || double) && state.details.view == Some(view) {
+        if crate::detailtool::drafts(tool)
+            && ((enter && !tracker_enter) || double)
+            && state.details.view == Some(view)
+        {
             if let Err(e) = crate::detailtool::finish(doc, state, selection) {
                 return Some(e.to_string());
             }
             // the double-click's second click is not a new path's first
             if double {
                 return None;
+            }
+        }
+    }
+    // a gutter traced: Enter hangs it
+    if let (Tool::Gutter, PaneKind::Plan { level }) = (tool, kind) {
+        let enter = response.hovered()
+            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+            && !ui.ctx().egui_wants_keyboard_input();
+        if enter && !state.members.flashing.trace.is_empty() {
+            if let Err(e) = crate::flashingui::finish_gutter(doc, level, state, selection) {
+                return Some(e.to_string());
             }
         }
     }
@@ -2452,7 +3398,9 @@ pub fn show(
             | Tool::Stair
             | Tool::Railing
             | Tool::Footing
-            | Tool::RoomSeparator => {
+            | Tool::Gutter
+            | Tool::RoomSeparator
+            | Tool::Tiling => {
                 let level = match kind {
                     PaneKind::Plan { level } => Some(level),
                     _ => None,
@@ -2639,7 +3587,7 @@ pub fn show(
     let right = response.secondary_clicked() && !shift;
     let esc = esc_once(ui.ctx());
     // a detail path that can be made is finished, never dropped
-    if tool == Tool::Detail
+    if crate::detailtool::drafts(tool)
         && (esc || right)
         && state.details.view == Some(view)
         && crate::detailtool::keep(doc, state, selection)
@@ -2711,7 +3659,12 @@ pub fn show(
         if hovered != Some(h) {
             draw_hover(&painter, &xf, &plan.items, h, mm);
         }
-        let mut text = crate::memberstool::host_preview(doc.model(), state, tool, h);
+        let mut text = crate::i18n::tr(&crate::memberstool::host_preview(
+            doc.model(),
+            state,
+            tool,
+            h,
+        ));
         if host_hits.len() > 1 {
             let i = state.host_cycle % host_hits.len();
             text += &format!("   {}/{} · Tab", i + 1, host_hits.len());
@@ -2736,7 +3689,13 @@ pub fn show(
     }
 
     let mut error = None;
-    if let (true, Some(p), PaneKind::Plan { level }) = (tracker_enter, hover_world, kind) {
+    // a typed length places the Line or Polyline tool's next point
+    if let (true, Some(p), true) = (tracker_enter, hover_world, detail_last.is_some()) {
+        state.tracker.clear();
+        if let Err(e) = crate::detailtool::detail_click(doc, view, p, p, 1e-6, state, selection) {
+            error = Some(e.to_string());
+        }
+    } else if let (true, Some(p), PaneKind::Plan { level }) = (tracker_enter, hover_world, kind) {
         state.tracker.clear();
         if let Err(e) = plan_tool(doc, level, tool, p, state, selection) {
             error = Some(e.to_string());
@@ -2986,8 +3945,18 @@ pub fn show(
                 // opens from Properties or with a double-click
                 crate::detailtool::callout_click(doc, view, p, state, selection).map(|_| ())
             }
-            (PaneKind::Plan { .. } | PaneKind::Section { .. }, Tool::Detail) => {
-                crate::detailtool::detail_click(doc, view, p, raw, state, selection)
+            (PaneKind::Plan { .. } | PaneKind::Section { .. }, t)
+                if crate::detailtool::drafts(t) =>
+            {
+                crate::detailtool::detail_click(
+                    doc,
+                    view,
+                    p,
+                    raw,
+                    4.0 / xf.scale as f64,
+                    state,
+                    selection,
+                )
             }
             (_, t) if crate::annotate::is_tool(t) => match &view_def {
                 Some(v) => crate::annotate::click(
@@ -3213,6 +4182,8 @@ pub fn new_wall(
         w = tw;
     }
     w.flip = state.wall_flip;
+    // its base and top as the bar says (George 2026-11-24)
+    state.members.place.wall(&mut w);
     creabim_core::walls::set_location_line(model, &mut w, a, b);
     w
 }
@@ -3338,7 +4309,8 @@ fn plan_click(
                 Ok(())
             }
             Some(a) if a.distance(p) > 0.2 => {
-                add_section_view(doc, a, p, tool == Tool::Section, selection)
+                let sta = structural_view(doc, state.in_view);
+                add_section_view(doc, a, p, tool == Tool::Section, sta, selection)
             }
             Some(_) => Ok(()),
         },
@@ -3454,10 +4426,16 @@ fn plan_click(
         | Tool::Diameter
         | Tool::ArcLength
         | Tool::Note
+        | Tool::Text
         | Tool::SpotLevel
         | Tool::Sketch
         | Tool::Callout
-        | Tool::Detail => Ok(()),
+        | Tool::Detail
+        | Tool::Line
+        | Tool::Polyline
+        | Tool::Arc
+        | Tool::Curve
+        | Tool::Slope => Ok(()),
         // a library profile placed at the click, pulled up (MU36)
         Tool::Extrusion if state.parts.extrusion_library.is_some() => {
             let name = state.parts.extrusion_library.clone().unwrap_or_default();
@@ -3491,16 +4469,25 @@ fn plan_click(
         | Tool::Terrain
         | Tool::Paving
         | Tool::Room
-        | Tool::Ceiling => crate::slabtool::click(doc, level, p, state, selection),
-        Tool::Sweep | Tool::Planting => {
+        | Tool::Ceiling
+        | Tool::UfhZone => crate::slabtool::click(doc, level, p, state, selection),
+        Tool::Sweep | Tool::Planting | Tool::Chimney => {
             crate::partstool::click(doc, level, tool, p, state, selection)
         }
-        Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing => {
-            crate::memberstool::click(doc, level, tool, p, state, selection)
-        }
+        Tool::Column
+        | Tool::Beam
+        | Tool::Stair
+        | Tool::Railing
+        | Tool::Footing
+        | Tool::Gutter
+        | Tool::Downpipe
+        | Tool::Capping
+        | Tool::ChimneyFlashing
+        | Tool::RoofOutlet => crate::memberstool::click(doc, level, tool, p, state, selection),
         Tool::Pipe => crate::pipesui::click(doc, level, p, state, selection),
         Tool::Object => crate::objecttool::click(doc, level, p, state, selection),
         Tool::RoomSeparator => crate::roomtool::separator_click(doc, level, p, state, selection),
+        Tool::Tiling => crate::roomtool::tiling_click(doc, level, p, state, selection),
         Tool::Guide => match state.pending.take() {
             None => {
                 state.pending = Some(p);
@@ -3825,6 +4812,7 @@ fn under_pointer(
         if let Some(c) = r.outline() {
             if (0..4).any(|i| segment_distance(p, c[i], c[(i + 1) % 4]) < tol) {
                 under.push(id);
+                continue;
             }
         }
     }
@@ -3834,6 +4822,48 @@ fn under_pointer(
         _ => HashSet::new(),
     };
     for id in ray_pick_all(doc.model(), &scene, view, kind, p, Some(&drawn)) {
+        if !under.contains(&id) {
+            under.push(id);
+        }
+    }
+    // clouds last: their points are everywhere, what is drawn goes first
+    let mut clouds = vec![];
+    // a cloud a section cuts, by any of its points it shows
+    for (id, r) in crate::trace::clouds_in_section(doc.model(), view) {
+        if r.locked || clouds.contains(&id) {
+            continue;
+        }
+        if let Some(slice) = state.ref_cache.section(doc.model(), id, r, view) {
+            if slice.nearest(p, tol).is_some() {
+                clouds.push(id);
+            }
+        }
+    }
+    for (id, r) in creabim_core::reference::in_view(doc.model(), view) {
+        if r.hidden || clouds.contains(&id) {
+            continue;
+        }
+        // a drawing (a DXF, a map's cadastre) by any of its lines, after
+        // what is drawn in the model
+        if !r.locked && !matches!(r.source, creabim_core::RefSource::Points { .. }) {
+            if let Some(ix) = state.ref_cache.index(doc.model(), id, r) {
+                if ix.touches(p, tol) {
+                    clouds.push(id);
+                }
+            }
+            continue;
+        }
+        // a cloud is picked by any of its points the plan shows
+        if matches!(r.source, creabim_core::RefSource::Points { .. }) && !r.locked {
+            if let Some(slice) = state.ref_cache.slice(doc.model(), id, r, view) {
+                let own = r.unplace(p);
+                if slice.nearest(own, tol / r.scale.max(1e-9)).is_some() {
+                    clouds.push(id);
+                }
+            }
+        }
+    }
+    for id in clouds {
         if !under.contains(&id) {
             under.push(id);
         }
@@ -3891,7 +4921,7 @@ fn section_tool(
                     })
                     .unwrap_or(3.0)
                     .max(0.5);
-                let name = creabim_core::levels::next_name(model);
+                let name = creabim_core::levels::storey_name(model, z);
                 let (mut tx, id, _) = creabim_core::levels::add(model, &name, z, height, true);
                 tx.label = "Draw level".into();
                 selection.only(id);
@@ -3943,6 +4973,10 @@ fn section_tool(
                         curtain: None,
                         layer_ends: vec![],
                         bulge: 0.0,
+                        bearing: None,
+                        fire_partial: false,
+                        no_fire_barriers: false,
+                        plinth_steps: Vec::new(),
                     }),
                 );
                 // its type's thickness, but its drawn height
@@ -3978,7 +5012,7 @@ fn section_tool(
             let base = doc.model().level(w.level).map_or(0.0, |l| l.elevation) + w.base_offset;
             let (kind, name) = match tool {
                 Tool::Door => (OpeningKind::Door, "Door"),
-                Tool::Opening => (OpeningKind::Hole, "Wall opening"),
+                Tool::Opening => (OpeningKind::Hole, "Penetration"),
                 _ => (OpeningKind::Window, "Window"),
             };
             let mut e = state.typed(
@@ -4000,6 +5034,21 @@ fn section_tool(
                         frame: Default::default(),
                         flip_hand: false,
                         flip_facing: false,
+                        no_outer_sill: false,
+                        no_inner_sill: false,
+                        threshold: false,
+                        threshold_material: None,
+                        penetration: None,
+                        setback: None,
+                        reveal: None,
+                        division: None,
+                        door: None,
+                        texts: None,
+                        performance: if kind == OpeningKind::Window {
+                            creabim_core::joinery::default_window_performance()
+                        } else {
+                            None
+                        },
                     }),
                 ),
             );
@@ -4014,6 +5063,9 @@ fn section_tool(
             if kind != OpeningKind::Door {
                 op.sill =
                     (p.y - base - op.height / 2.0).clamp(0.0, (w.height - op.height).max(0.0));
+            } else {
+                // a door stands on the storey's floor, not a sunk wall's base
+                op.sill = -w.base_offset;
             }
             selection.only(e.id);
             doc.commit(
@@ -4074,6 +5126,8 @@ fn section_tool(
                     "Slab",
                     ElementKind::Slab(Slab {
                         layer_edges: vec![],
+                        reinforcement: None,
+                        kind: None,
                         level,
                         boundary,
                         thickness,
@@ -4128,7 +5182,8 @@ fn section_tool(
                 } else {
                     (base + look * near, base + look * far)
                 };
-                add_section_view(doc, s, e, tool == Tool::Section, selection)
+                let sta = structural_view(doc, state.in_view);
+                add_section_view(doc, s, e, tool == Tool::Section, sta, selection)
             }
             Some(_) => Ok(()),
         },
@@ -4196,14 +5251,33 @@ fn model_depth(doc: &Document, start: DVec2, end: DVec2) -> (f64, f64) {
     }
 }
 
-/// Add a section or elevation view along `a` → `b`, named in sequence.
+/// Is `view` one of the structural drawings?
+/// What the view a section is drawn in is for: a new section is drawn as
+/// it is (a structural one, a trade's over the blind building, George
+/// 2026-11-27).
+fn structural_view(
+    doc: &Document,
+    view: Option<ElementId>,
+) -> Option<creabim_core::viewmodes::Purpose> {
+    match view.and_then(|v| doc.model().get(v)).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => Some(creabim_core::viewmodes::Purpose::of(v)),
+        _ => None,
+    }
+}
+
+/// Add a section or elevation view along `a` → `b`, named in sequence;
+/// drawn in a structural drawing, one of them (its mark shown only in
+/// their plans, George 2026-11-23).
 fn add_section_view(
     doc: &mut Document,
     a: DVec2,
     b: DVec2,
     cut: bool,
+    purpose: Option<creabim_core::viewmodes::Purpose>,
     selection: &mut Selection,
 ) -> Result<(), creabim_core::ModelError> {
+    use creabim_core::viewmodes::Purpose;
+    let structural = purpose == Some(Purpose::Structural);
     let n = doc
         .model()
         .iter()
@@ -4214,19 +5288,27 @@ fn add_section_view(
     } else {
         format!("Elevation {}", n + 1)
     };
-    let e = Element::new(
-        name.clone(),
-        ElementKind::View(View::section(a, b, 30.0, cut)),
-    );
+    let mut v = View::section(a, b, 30.0, cut);
+    if let Some(p) = purpose.filter(|p| *p != Purpose::Architecture) {
+        p.apply(&mut v);
+    }
+    let e = Element::new(name.clone(), ElementKind::View(v));
     selection.only(e.id);
-    doc.commit(Transaction::new(format!("Add {name}")).insert(e))
+    doc.commit(Transaction::new(format!("Add {name}")).insert(e))?;
+    // a structural one with its P/V marks and spot levels (George
+    // 2026-11-24)
+    if structural {
+        if let Some(tx) = creabim_geom::structural::section_marks(doc.model()) {
+            doc.commit(tx)?;
+        }
+    }
+    Ok(())
 }
 
 /// Preview of a section or elevation being placed in a section: a vertical
 /// line at the first click with an arrow to the side it will look.
 fn preview_cross_section(painter: &egui::Painter, xf: &Xf, a: DVec2, b: DVec2, accent: Color32) {
-    let lo = xf.to_world(xf.rect.left_bottom());
-    let hi = xf.to_world(xf.rect.right_top());
+    let (lo, hi) = xf.world_bounds();
     let stroke = Stroke::new(1.5, accent);
     painter.line_segment(
         [
@@ -4564,6 +5646,10 @@ pub fn start_modal(
     works_on: modal::Target,
     plane: Option<creabim_core::Workplane>,
 ) -> Result<(Modal, Vec<ElementId>), String> {
+    // Mirror copy previews its copies as Ctrl does, so Ctrl can still
+    // turn it back into a plain mirror
+    let mirror_copy = duplicate && mode == Mode::Mirror;
+    let duplicate = duplicate && !mirror_copy;
     let targets = if duplicate {
         modal::duplicate(doc, ids)?
     } else {
@@ -4577,6 +5663,9 @@ pub fn start_modal(
     ) {
         Ok(mut m) => {
             m.duplicated = duplicate;
+            if mirror_copy {
+                m.set_copy(doc, true);
+            }
             // a mass's picked vertices in Edit mode are what moves (MU39)
             if let ([one], false) = (targets.as_slice(), duplicate) {
                 if let Some(vs) = crate::handles::mesh_pick(*one) {
@@ -4684,8 +5773,16 @@ fn sketch_tool(
         }
         Some(d) => match d.click(on_plane?) {
             Some(Click::Closed) => finish(doc, state, selection, true),
+            // a site plan symbol: its point, then the way it faces
+            Some(Click::Added) if crate::sketch::mark().is_some() && d.points.len() >= 2 => {
+                finish(doc, state, selection, false)
+            }
             Some(Click::Added) => {
-                state.status = Some(crate::sketch::hint(d.shape, Some(d)));
+                state.status = Some(if crate::sketch::mark().is_some() {
+                    crate::i18n::tr("Now click the way it faces (an entrance: where it leads).")
+                } else {
+                    crate::sketch::hint(d.shape, Some(d))
+                });
                 Some(None)
             }
             None => Some(None),
@@ -4710,6 +5807,61 @@ pub fn joined_with(doc: &Document, id: ElementId) -> Vec<ElementId> {
         }
     }
     out
+}
+
+/// The line nearest `at` within `tol` in plan `view`: one drawn, or one
+/// of the drawings shown in it or in the plan traced under it (a map's
+/// parcel boundary, a DXF's line). Its ends give its direction.
+pub fn line_at(
+    state: &mut PlanState,
+    model: &creabim_core::Model,
+    view: ElementId,
+    plan: &Drawing,
+    at: DVec2,
+    tol: f64,
+) -> Option<(DVec2, DVec2)> {
+    let mut best: Option<(f64, DVec2, DVec2)> = None;
+    let mut consider = |a: DVec2, b: DVec2| {
+        let d = segment_distance(at, a, b);
+        if a.distance(b) > 1e-6 && d < tol && best.is_none_or(|(bd, ..)| d < bd) {
+            best = Some((d, a, b));
+        }
+    };
+    for it in &plan.items {
+        match it {
+            PlanItem::Line { a, b, .. } => consider(*a, *b),
+            PlanItem::Polygon { points, .. } => {
+                for k in 0..points.len() {
+                    consider(points[k], points[(k + 1) % points.len()]);
+                }
+            }
+            _ => {}
+        }
+    }
+    let shown_in: Vec<ElementId> = std::iter::once(view)
+        .chain(underlay_view(model, view))
+        .collect();
+    for v in shown_in {
+        for (id, r) in creabim_core::reference::in_view(model, v) {
+            if r.hidden {
+                continue;
+            }
+            if let Some(ix) = state.ref_cache.index(model, id, r) {
+                for [a, b] in ix.near(at, tol, usize::MAX).0 {
+                    consider(a, b);
+                }
+            }
+        }
+    }
+    best.map(|(_, a, b)| (a, b))
+}
+
+/// The plan view drawn under plan `view` (its underlay), if any.
+pub fn underlay_view(model: &creabim_core::Model, view: ElementId) -> Option<ElementId> {
+    match model.get(view).map(|e| &e.kind) {
+        Some(ElementKind::View(v)) => v.underlay.view(model, view),
+        _ => None,
+    }
 }
 
 /// Rebuild a view's snaps when the model changed, but not during a drag,
@@ -4737,7 +5889,12 @@ fn refresh_snaps(
         let _p = crate::app::Perf::new("plan snaps: build");
         let mut s = Snapper::from_drawing(&plan.items, &[]);
         s.add_underlay_centres(model, view);
+        s.add_column_centres(model, view);
+        s.add_pipe_ends(model, view);
         add_reference_snaps(&mut s, state, model, view);
+        if let Some(under) = underlay_view(model, view) {
+            add_reference_snaps(&mut s, state, model, under);
+        }
         state.snaps.insert(view, (revision, vec![], s));
     }
     if let Some((_, ex, s)) = state.snaps.get_mut(&view) {
@@ -4757,9 +5914,13 @@ fn add_reference_snaps(
     model: &creabim_core::Model,
     view: ElementId,
 ) {
-    // a huge drawing is cut short rather than slowing every snap
-    const MOST: usize = 20_000;
-    let mut n = 0;
+    // a cloud cut by a section, in the section's own coordinates
+    let same = creabim_core::Reference::new(creabim_core::RefSource::View(view), vec![]);
+    for (id, r) in crate::trace::clouds_in_section(model, view) {
+        if let Some(slice) = state.ref_cache.section(model, id, r, view) {
+            s.add_cloud(slice, &same, id);
+        }
+    }
     for e in model.iter() {
         let ElementKind::Reference(r) = &e.kind else {
             continue;
@@ -4767,30 +5928,19 @@ fn add_reference_snaps(
         if r.hidden || !r.shown_in.contains(&view) {
             continue;
         }
-        let crate::trace::Shown::Lines(lines) = state.ref_cache.get(model, e.id, r) else {
-            continue;
-        };
-        // a drawing's survey marks and blocks' insertion points
-        for p in lines.points.iter().take(MOST) {
-            s.add_point(
-                r.place(*p).extend(0.0),
-                crate::snaps::Source::Underlay,
-                Some(e.id),
-            );
-        }
-        for l in lines.iter() {
-            for w in l.windows(2) {
-                if n >= MOST {
-                    return;
-                }
-                s.add_segment(
-                    r.place(w[0]).extend(0.0),
-                    r.place(w[1]).extend(0.0),
-                    crate::snaps::Source::Underlay,
-                    Some(e.id),
-                );
-                n += 1;
+        let shown = state.ref_cache.get(model, e.id, r);
+        // a cloud's points, as the plan shows them
+        if let crate::trace::Shown::Cloud(_) = shown {
+            if let Some(slice) = state.ref_cache.slice(model, e.id, r, view) {
+                s.add_cloud(slice, r, e.id);
             }
+            continue;
+        }
+        // a drawing's lines and points, all of them, looked up near the
+        // pointer (a map's cadastre ran past the 20 000 lines snapped to
+        // before, and no other drawing in the plan snapped after it)
+        if let Some(ix) = state.ref_cache.index(model, e.id, r) {
+            s.add_drawing(ix, e.id);
         }
     }
 }
@@ -5503,6 +6653,19 @@ fn section_letter(n: usize) -> String {
 
 static PLAN_GRID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 static PLAN_AXES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// Thin lines (Revit's and PilonDesigner's TL): every line drawn one
+/// pixel wide on screen, whatever its pen, for close work. Sheets, prints
+/// and PDFs keep their weights.
+static THIN_LINES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Thin lines on screen, for this frame.
+pub fn set_thin_lines(on: bool) {
+    THIN_LINES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn thin_lines() -> bool {
+    THIN_LINES.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// The settings' grid behind drawings and X/Y lines in plans, for this
 /// frame.
@@ -5544,8 +6707,7 @@ fn draw_metric_grid(painter: &egui::Painter, xf: &Xf) {
     } else {
         25.0
     };
-    let lo = xf.to_world(xf.rect.left_bottom());
-    let hi = xf.to_world(xf.rect.right_top());
+    let (lo, hi) = xf.world_bounds();
     let stroke = Stroke::new(1.0, Color32::from_gray(236));
     let mut x = (lo.x / step).floor() * step;
     while x <= hi.x {
@@ -5585,6 +6747,9 @@ pub struct Ovr {
     pub proj: f32,
     pub cut: f32,
     pub dashed: bool,
+    /// Every line in one very thin pen, whatever its own: the building
+    /// and the other trades' objects under a trade's drawing.
+    pub thin: bool,
 }
 
 impl Default for Ovr {
@@ -5596,6 +6761,7 @@ impl Default for Ovr {
             proj: 1.0,
             cut: 1.0,
             dashed: false,
+            thin: false,
         }
     }
 }
@@ -5608,12 +6774,11 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
     let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
         return out;
     };
-    if v.look.overrides.is_empty() {
-        return out;
-    }
     let w = creabim_core::styles::view_weights(model, v);
     let cutters = creabim_core::visibility::cutters(model);
-    for e in model.iter() {
+    // (networks and pipes below get their colours whether or not the
+    // view sets overrides of its own)
+    for e in model.iter().filter(|_| !v.look.overrides.is_empty()) {
         let Some(cat) = creabim_core::visibility::Category::of(e, &cutters) else {
             continue;
         };
@@ -5663,7 +6828,126 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
         r.cut = r.cut.clamp(0.2, 6.0);
         out.insert(e.id, r);
     }
+    // a services drawing's pipes: lines in their system's colour, the
+    // dashed and dotted ones dashed here (paper has each its line type)
+    if creabim_core::viewmodes::DisplayMode::of(v) == creabim_core::viewmodes::DisplayMode::Services
+    {
+        for e in model.iter() {
+            let ElementKind::Pipe(p) = &e.kind else {
+                continue;
+            };
+            let r = out.entry(e.id).or_default();
+            if r.colour.is_none() {
+                let [a, b, d] = creabim_geom::mep::color(p);
+                r.colour = Some(Color32::from_rgb(
+                    (a * 255.0) as u8,
+                    (b * 255.0) as u8,
+                    (d * 255.0) as u8,
+                ));
+            }
+            r.dashed |= !p.kind().is_air() && p.system_def().and_then(|s| s.dashes()).is_some();
+            if r.proj == 1.0 {
+                let pen = if p.kind().is_air() {
+                    creabim_geom::looks::DUCT_LINE
+                } else {
+                    creabim_geom::looks::PIPE_LINE
+                };
+                r.proj = (pen / w.projection.max(1e-6)) as f32;
+            }
+        }
+        // a trade's own equipment in the medium pen, other objects very
+        // thin (George 2026-11-22), as on paper
+        if !v.coordination {
+            use creabim_core::viewmodes::{Trade, OWN_EQUIPMENT, THIN};
+            for e in model.iter() {
+                if !matches!(e.kind, ElementKind::Object(_)) {
+                    continue;
+                }
+                let own = match v.trade {
+                    Some(t) => t.owns(model, e),
+                    None => Trade::ALL.iter().any(|t| t.owns(model, e)),
+                };
+                let r = out.entry(e.id).or_default();
+                if r.proj == 1.0 {
+                    let mm = if own { OWN_EQUIPMENT } else { THIN };
+                    r.proj = (mm / w.projection.max(1e-6)) as f32;
+                }
+                if own {
+                    r.fade = 0.0;
+                } else {
+                    // as thin and light as the building (George 2026-11-23)
+                    r.thin = true;
+                    if r.fade < 0.5 {
+                        r.fade = 1.0 - (1.0 - r.fade) * 0.5;
+                    }
+                }
+            }
+            // the building: all its lines alike, door swings and lines
+            // over the cut too
+            let cutters = creabim_core::visibility::cutters(model);
+            for e in model.iter() {
+                if creabim_core::visibility::Category::of(e, &cutters)
+                    .is_some_and(|c| creabim_core::viewmodes::BUILDING.contains(&c))
+                {
+                    out.entry(e.id).or_default().thin = true;
+                }
+            }
+        }
+    }
+    // utility networks: their kind's colour (a little lighter, so a dark
+    // sewer reads on the screen; paper gets the exact one), dashed, heavy
+    // where proposed
+    // (dashed as pieces already, see creabim_geom::netlines); the site
+    // plan's symbols the same, thin
+    for e in model.iter() {
+        let (rgb, weight) = match &e.kind {
+            ElementKind::Sketch(creabim_core::Sketch { net: Some(n), .. }) => {
+                (n.kind.rgb(), n.weight())
+            }
+            ElementKind::Sketch(creabim_core::Sketch { mark: Some(m), .. }) => (m.rgb(), 0.25),
+            _ => continue,
+        };
+        let r = out.entry(e.id).or_default();
+        if r.colour.is_none() {
+            let [a, b, d] = rgb.map(|c| c + (1.0 - c) * 0.3);
+            r.colour = Some(Color32::from_rgb(
+                (a * 255.0) as u8,
+                (b * 255.0) as u8,
+                (d * 255.0) as u8,
+            ));
+        }
+        r.dashed = false;
+        if r.proj == 1.0 {
+            r.proj = (weight / w.projection.max(1e-6)) as f32;
+        }
+    }
     out
+}
+
+/// The fire-dangerous space of a selected opening, kept while the model
+/// stands as it is.
+fn selected_pnp(
+    model: &creabim_core::Model,
+    level: ElementId,
+    id: ElementId,
+    mm: f64,
+) -> Vec<PlanItem> {
+    type Key = (u64, ElementId, ElementId, u64);
+    thread_local! {
+        static CACHE: std::cell::RefCell<Vec<(Key, Vec<PlanItem>)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+    let key = (model.revision(), level, id, mm.to_bits());
+    CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        if let Some(hit) = c.iter().find(|(k, _)| *k == key) {
+            return hit.1.clone();
+        }
+        let items = creabim_geom::firedistance::items(model, level, Some(id), mm);
+        c.retain(|(k, _)| k.0 == key.0);
+        c.push((key, items.clone()));
+        items
+    })
 }
 
 pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bool, mm: f64) {
@@ -5671,6 +6955,86 @@ pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bo
 }
 
 /// [`draw_item`] with a view's overrides for the element.
+/// [`draw_item_with`] for an element drawn all in one thin pen (its
+/// lines, arcs and outlines, each in its own line type); none for items
+/// drawn as usual (fills, text).
+fn draw_thin(painter: &egui::Painter, xf: &Xf, item: &PlanItem, o: &Ovr) -> Option<()> {
+    const W: f32 = 0.6;
+    let ink = o.colour.unwrap_or(Color32::BLACK);
+    let stroke = Stroke::new(W, ink);
+    let dashes_of = |pen: &Pen| -> Option<Vec<f64>> {
+        match pen {
+            Pen::Overhead => Some(
+                creabim_geom::paper::OVERHEAD_DASHES
+                    .iter()
+                    .map(|d| d * 2.5)
+                    .collect(),
+            ),
+            Pen::Hidden | Pen::HiddenCut => Some(vec![6.0, 4.0]),
+            Pen::StairAbove { hidden } => Some(
+                creabim_geom::paper::stair_above_dashes(*hidden)
+                    .iter()
+                    .map(|d| d * 2.5)
+                    .collect(),
+            ),
+            Pen::Drafted(l) => l.kind.dashes().map(|d| d.iter().map(|x| x * 2.5).collect()),
+            Pen::Projection if o.dashed => Some(vec![6.0, 4.0]),
+            _ => None,
+        }
+    };
+    let line = |pts: &[Pos2], pen: &Pen| match dashes_of(pen) {
+        None => {
+            painter.add(egui::Shape::line(pts.to_vec(), stroke));
+        }
+        Some(d) => {
+            let v: Vec<DVec2> = pts
+                .iter()
+                .map(|p| DVec2::new(p.x as f64, p.y as f64))
+                .collect();
+            for piece in creabim_geom::looks::dash_polyline(&v, &d, W as f64) {
+                let q: Vec<Pos2> = piece
+                    .iter()
+                    .map(|p| egui::pos2(p.x as f32, p.y as f32))
+                    .collect();
+                painter.add(egui::Shape::line(q, stroke));
+            }
+        }
+    };
+    match item {
+        PlanItem::Line { pen, a, b, .. }
+            if !matches!(pen, Pen::Guide | Pen::Grid | Pen::Underlay) =>
+        {
+            line(&[xf.to_screen(*a), xf.to_screen(*b)], pen);
+        }
+        PlanItem::Arc {
+            center,
+            radius,
+            start,
+            end,
+            pen,
+            ..
+        } if *pen != Pen::Underlay => {
+            let n = 24;
+            let pts: Vec<Pos2> = (0..=n)
+                .map(|i| {
+                    let t = start + (end - start) * i as f64 / n as f64;
+                    xf.to_screen(*center + DVec2::from_angle(t) * *radius)
+                })
+                .collect();
+            line(&pts, pen);
+        }
+        PlanItem::Polygon { pen, points, .. } if *pen != Pen::Cut => {
+            let mut pts: Vec<Pos2> = points.iter().map(|p| xf.to_screen(*p)).collect();
+            if let Some(f) = pts.first().copied() {
+                pts.push(f);
+            }
+            line(&pts, pen);
+        }
+        _ => return None,
+    }
+    Some(())
+}
+
 pub fn draw_item_with(
     painter: &egui::Painter,
     xf: &Xf,
@@ -5679,6 +7043,26 @@ pub fn draw_item_with(
     mm: f64,
     o: &Ovr,
 ) {
+    // a turned site plan: the item turned as on paper, its text upright
+    if xf.turn != 0.0 {
+        let mut it = item.clone();
+        creabim_geom::turn::turn_item_by(&mut it, xf.turn);
+        return draw_item_with(painter, &xf.unturned(), &it, selected, mm, o);
+    }
+    // thin lines: cut and projection pens one pixel wide
+    let thin = Ovr {
+        cut: 1.0 / 1.8,
+        proj: 1.0,
+        ..*o
+    };
+    let o = if thin_lines() { &thin } else { o };
+    // the building under a trade's drawing: every line in one thin pen,
+    // its line type kept
+    if o.thin && !selected {
+        if let Some(done) = draw_thin(painter, xf, item, o) {
+            return done;
+        }
+    }
     let highlight = crate::theme::interaction();
     let ink = if selected {
         highlight
@@ -5735,6 +7119,25 @@ pub fn draw_item_with(
                             fill,
                             Stroke::new(1.6 * o.cut, ink),
                         ));
+                    }
+                }
+                // dashed pens edge by edge, as lines are (a wall cupboard
+                // over the cut drew solid, George 2026-11-22)
+                Pen::Overhead
+                | Pen::Hidden
+                | Pen::HiddenCut
+                | Pen::Drafted(_)
+                | Pen::Grid
+                | Pen::StairAbove { .. } => {
+                    let n = points.len();
+                    for i in 0..n {
+                        let line = PlanItem::Line {
+                            id: item.id(),
+                            pen: *pen,
+                            a: points[i],
+                            b: points[(i + 1) % n],
+                        };
+                        draw_item_with(painter, xf, &line, selected, mm, o);
                     }
                 }
                 _ => {
@@ -5809,6 +7212,94 @@ pub fn draw_item_with(
                     } else {
                         painter.line_segment([a, b], Stroke::new(1.8 * o.cut, ink));
                     }
+                }
+                Pen::Overhead => {
+                    let (w, c) = if selected {
+                        (2.0, highlight)
+                    } else {
+                        (1.0, ink)
+                    };
+                    let v = |p: egui::Pos2| DVec2::new(p.x as f64, p.y as f64);
+                    let dashes = creabim_geom::paper::OVERHEAD_DASHES.map(|d| d * 2.5);
+                    for piece in
+                        creabim_geom::looks::dash_polyline(&[v(a), v(b)], &dashes, w as f64)
+                    {
+                        if let [p, .., q] = piece[..] {
+                            painter.line_segment(
+                                [
+                                    egui::pos2(p.x as f32, p.y as f32),
+                                    egui::pos2(q.x as f32, q.y as f32),
+                                ],
+                                Stroke::new(w, c),
+                            );
+                        }
+                    }
+                }
+                Pen::StairAbove { hidden } => {
+                    // the projection's weight, dash-dot (STN 01 3420, 5.9.3 d)
+                    let (w, c) = if selected {
+                        (2.0, highlight)
+                    } else {
+                        (1.0 * o.proj, grey(120))
+                    };
+                    let v = |p: egui::Pos2| DVec2::new(p.x as f64, p.y as f64);
+                    let dashes: Vec<f64> = creabim_geom::paper::stair_above_dashes(*hidden)
+                        .iter()
+                        .map(|d| d * 2.5)
+                        .collect();
+                    for piece in
+                        creabim_geom::looks::dash_polyline(&[v(a), v(b)], &dashes, w as f64)
+                    {
+                        if let [p, .., q] = piece[..] {
+                            painter.line_segment(
+                                [
+                                    egui::pos2(p.x as f32, p.y as f32),
+                                    egui::pos2(q.x as f32, q.y as f32),
+                                ],
+                                Stroke::new(w, c),
+                            );
+                        }
+                    }
+                }
+                Pen::Drafted(look) => {
+                    // its pen's width on paper, in the steps the screen shows
+                    let w = if selected {
+                        2.0
+                    } else {
+                        (look.pen.mm() * 7.0).clamp(0.8, 3.5) as f32
+                    };
+                    let c = if selected { highlight } else { ink };
+                    match look.kind.dashes() {
+                        None => {
+                            painter.line_segment([a, b], Stroke::new(w, c));
+                        }
+                        Some(d) => {
+                            let v = |p: egui::Pos2| DVec2::new(p.x as f64, p.y as f64);
+                            let dashes: Vec<f64> = d.iter().map(|d| d * 2.5).collect();
+                            for piece in
+                                creabim_geom::looks::dash_polyline(&[v(a), v(b)], &dashes, w as f64)
+                            {
+                                if let [p, .., q] = piece[..] {
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(p.x as f32, p.y as f32),
+                                            egui::pos2(q.x as f32, q.y as f32),
+                                        ],
+                                        Stroke::new(w, c),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                Pen::HiddenCut => {
+                    let c = if selected { highlight } else { ink };
+                    painter.extend(egui::Shape::dashed_line(
+                        &[a, b],
+                        Stroke::new(1.8 * o.cut, c),
+                        9.0,
+                        5.0,
+                    ));
                 }
                 Pen::Hidden => {
                     let (w, c) = if selected {
@@ -5904,11 +7395,30 @@ pub fn draw_item_with(
             look,
             witness,
             breaks,
+            below,
+            place,
             ..
         } => {
             let ink = crate::annotate::ink(look, selected, highlight);
-            let d = (*a, *b, *offset, *witness);
+            let d = (*a, *b, *offset, *witness, *place);
             draw_dimension(painter, xf, d, breaks, text, look, mm, ink);
+            if let Some(t) = below {
+                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
+                let px = crate::annotate::text_px(look, mm, xf);
+                if g.back {
+                    text_patch(painter, xf, &g, g.below_at, t, look, mm);
+                }
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(g.below_at),
+                    t,
+                    px,
+                    ink,
+                    g.angle,
+                    paper::Anchor::Middle,
+                    look,
+                );
+            }
         }
         PlanItem::Annotation { item, .. } => {
             let ink = crate::annotate::ink(&item.look, selected, highlight);
@@ -5940,17 +7450,22 @@ pub fn draw_item_with(
             } else if pts.len() > 1 {
                 painter.add(egui::Shape::line(pts, Stroke::new(1.2, ink)));
             }
+            if let Some((p, q)) = g.divider {
+                painter.line_segment([xf.to_screen(p), xf.to_screen(q)], Stroke::new(1.0, ink));
+            }
             let px = crate::annotate::text_px(look, mm, xf);
-            crate::annotate::text(
-                painter,
-                xf.to_screen(*at),
-                text,
-                px,
-                ink,
-                0.0,
-                paper::Anchor::Middle,
-                look,
-            );
+            for (p, t) in &g.texts {
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(*p),
+                    t,
+                    px,
+                    ink,
+                    0.0,
+                    paper::Anchor::Middle,
+                    look,
+                );
+            }
         }
         PlanItem::Tint { points, rgb, .. } => {
             let c = if selected { [0.98, 0.70, 0.45] } else { *rgb };
@@ -5979,6 +7494,23 @@ pub fn draw_item_with(
             let c = if selected { [0.98, 0.85, 0.70] } else { *rgb };
             fill_polygon(painter, xf, points, crate::annotate::color32(c));
         }
+        PlanItem::Curve {
+            points,
+            rgb,
+            dashed,
+            ..
+        } => {
+            let pts: Vec<Pos2> = points.iter().map(|p| xf.to_screen(*p)).collect();
+            let stroke = Stroke::new(1.2, crate::annotate::color32(*rgb));
+            if *dashed {
+                // dashes of a fixed length on paper
+                let px = (mm * xf.scale as f64) as f32;
+                let (dash, gap) = ((2.0 * px).max(3.0), (1.2 * px).max(2.0));
+                painter.extend(egui::Shape::dashed_line(&pts, stroke, dash, gap));
+            } else {
+                painter.add(egui::Shape::line(pts, stroke));
+            }
+        }
         PlanItem::Image {
             raster,
             lo,
@@ -6004,6 +7536,11 @@ fn draw_item_xray(
     mm: f64,
     model: &creabim_core::Model,
 ) {
+    if xf.turn != 0.0 {
+        let mut it = item.clone();
+        creabim_geom::turn::turn_item_by(&mut it, xf.turn);
+        return draw_item_xray(painter, &xf.unturned(), &it, selected, mm, model);
+    }
     let host = || model.get(item.id()).is_some_and(|e| is_xray_host(&e.kind));
     match item {
         PlanItem::Fill { points, .. } if !selected && host() => {
@@ -6083,7 +7620,9 @@ pub fn draw_footings(
         }
         let outlines = match f.kind {
             creabim_core::FootingKind::Strip => strips.get(&e.id).cloned().unwrap_or_default(),
-            creabim_core::FootingKind::Pad => vec![f.pad_outline(model)],
+            creabim_core::FootingKind::Pad | creabim_core::FootingKind::Pile => {
+                vec![f.pad_outline(model)]
+            }
         };
         let tint = accent.gamma_multiply(if selected { 0.22 } else { 0.12 });
         let stroke = Stroke::new(if selected { 1.8 } else { 1.2 }, accent);
@@ -6108,6 +7647,18 @@ pub const TRACE: f32 = 1.5;
 /// its fills washed in the hover colour, over the drawing. Marks, text,
 /// tags and dimensions are traced themselves, never boxed.
 pub fn draw_hover(painter: &egui::Painter, xf: &Xf, items: &[PlanItem], id: ElementId, mm: f64) {
+    if xf.turn != 0.0 {
+        let turned: Vec<PlanItem> = items
+            .iter()
+            .filter(|it| it.id() == id)
+            .map(|it| {
+                let mut it = it.clone();
+                creabim_geom::turn::turn_item_by(&mut it, xf.turn);
+                it
+            })
+            .collect();
+        return draw_hover(painter, &xf.unturned(), &turned, id, mm);
+    }
     let line = Stroke::new(2.5, hoverpick::HOVER.gamma_multiply(0.75));
     let wash = hoverpick::HOVER.gamma_multiply(0.16);
     for it in items.iter().filter(|it| it.id() == id) {
@@ -6186,6 +7737,14 @@ fn arc_points(xf: &Xf, center: DVec2, radius: f64, start: f64, end: f64) -> Vec<
 /// One mark drawn over itself in `color`, its strokes [`TRACE`] times
 /// their weight: what hovering it or selecting it shows.
 pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, mm: f64) {
+    // a turned site plan: turned as it is drawn, its text upright, so the
+    // trace lies on the mark instead of beside it (George: a selected
+    // coordinate mark showed twice)
+    if xf.turn != 0.0 {
+        let mut it = item.clone();
+        creabim_geom::turn::turn_item_by(&mut it, xf.turn);
+        return trace(painter, &xf.unturned(), &it, color, mm);
+    }
     let stroke = Stroke::new(TRACE, color);
     match item {
         PlanItem::Line { a, b, .. } => {
@@ -6254,9 +7813,10 @@ pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, 
             look,
             witness,
             breaks,
+            place,
             ..
         } => {
-            let d = (*a, *b, *offset, *witness);
+            let d = (*a, *b, *offset, *witness, *place);
             draw_dimension_weighted(painter, xf, d, breaks, text, look, mm, color, TRACE);
         }
         PlanItem::Annotation { item, .. } => {
@@ -6285,16 +7845,18 @@ pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, 
                 painter.add(egui::Shape::line(pts, heavy));
             }
             let px = crate::annotate::text_px(look, mm, xf);
-            crate::annotate::text(
-                painter,
-                xf.to_screen(*at),
-                text,
-                px,
-                color,
-                0.0,
-                paper::Anchor::Middle,
-                look,
-            );
+            for (p, t) in &g.texts {
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(*p),
+                    t,
+                    px,
+                    color,
+                    0.0,
+                    paper::Anchor::Middle,
+                    look,
+                );
+            }
         }
         _ => {}
     }
@@ -6305,7 +7867,7 @@ pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, 
 fn draw_dimension(
     painter: &egui::Painter,
     xf: &Xf,
-    (a, b, offset, witness): (DVec2, DVec2, f64, Option<[DVec2; 2]>),
+    (a, b, offset, witness, place): DimSpan,
     breaks: &[[f64; 2]],
     text: &str,
     look: &TextLook,
@@ -6315,7 +7877,7 @@ fn draw_dimension(
     draw_dimension_weighted(
         painter,
         xf,
-        (a, b, offset, witness),
+        (a, b, offset, witness, place),
         breaks,
         text,
         look,
@@ -6325,12 +7887,43 @@ fn draw_dimension(
     );
 }
 
+/// A dimension's measured ends, offset, witness points and text placing.
+type DimSpan = (
+    DVec2,
+    DVec2,
+    f64,
+    Option<[DVec2; 2]>,
+    creabim_geom::plan::DimPlace,
+);
+
+/// The patch of paper behind a dimension's text.
+fn text_patch(
+    painter: &egui::Painter,
+    xf: &Xf,
+    g: &creabim_geom::annotate::DimensionGeometry,
+    at: DVec2,
+    text: &str,
+    look: &TextLook,
+    mm: f64,
+) {
+    let pts: Vec<Pos2> = g
+        .patch(at, text, look, mm)
+        .iter()
+        .map(|p| xf.to_screen(*p))
+        .collect();
+    painter.add(egui::Shape::convex_polygon(
+        pts,
+        Color32::WHITE,
+        Stroke::NONE,
+    ));
+}
+
 /// A dimension with its strokes `w` times their weight.
 #[allow(clippy::too_many_arguments)]
 fn draw_dimension_weighted(
     painter: &egui::Painter,
     xf: &Xf,
-    (a, b, offset, witness): (DVec2, DVec2, f64, Option<[DVec2; 2]>),
+    (a, b, offset, witness, place): DimSpan,
     breaks: &[[f64; 2]],
     text: &str,
     look: &TextLook,
@@ -6338,10 +7931,13 @@ fn draw_dimension_weighted(
     ink: Color32,
     w: f32,
 ) {
-    let mut g = dimension_geometry(a, b, offset, witness, look, mm);
+    let mut g = dimension_geometry(a, b, offset, witness, look, mm).placed(&place, mm);
     g.break_line(breaks);
-    for (p, q) in g.lines {
-        painter.line_segment([xf.to_screen(p), xf.to_screen(q)], Stroke::new(w, ink));
+    for (p, q) in &g.lines {
+        painter.line_segment([xf.to_screen(*p), xf.to_screen(*q)], Stroke::new(w, ink));
+    }
+    if g.back {
+        text_patch(painter, xf, &g, g.text_at, text, look, mm);
     }
     crate::annotate::paint_ends_weighted(painter, xf, &g.ends, ink, w);
     let px = crate::annotate::text_px(look, mm, xf);
@@ -6377,7 +7973,7 @@ fn preview_dimension(
     draw_dimension(
         painter,
         xf,
-        (a, b2, offset, witness),
+        (a, b2, offset, witness, Default::default()),
         &[],
         &text,
         look,
@@ -6471,6 +8067,27 @@ fn dim_snap_guided(
                 }
             }
         }
+        // the ends of a stair's nosings: a dimension to them follows the
+        // steps (George 2026-11-24)
+        for e in model.iter() {
+            let ElementKind::Stair(s) = &e.kind else {
+                continue;
+            };
+            if s.level != level {
+                continue;
+            }
+            for [a, b] in s.nosing_lines(s.rise(model)) {
+                consider(e.id, a);
+                consider(e.id, b);
+            }
+        }
+    }
+    // the centre of a penetration taken over into the plan: a dimension
+    // to it is kept on its pipe and follows it (George 2026-11-25)
+    if cfg.allows(SnapKind::Endpoint) {
+        for (pipe, q) in creabim_geom::tradepen::centres(model, view) {
+            consider(pipe, q);
+        }
     }
     let project = |q: DVec3| Some(xf.to_screen(q.truncate()));
     let hit = snapper.and_then(|s| {
@@ -6562,23 +8179,72 @@ fn dimension_tool(
     others: &[(DVec2, DVec2, f64)],
     tol: f64,
 ) -> Result<(), creabim_core::ModelError> {
-    // a chain: the next point, at once, on the chain's line
-    if let (Some((axis, on_line)), 1) = (state.chain_line, state.dim.len()) {
-        let (a, pa) = state.dim[0];
-        if hit.1.distance(pa) < 1e-3 {
-            return Ok(());
+    // a chain (PilonDesigner's reťazová kóta): each click adds a point to
+    // the one dimension, on its line
+    if let (Some(id), 1) = (state.chain_dim, state.dim.len()) {
+        if let Some(before) = doc.model().get(id).cloned() {
+            let ElementKind::Dimension(d) = before.kind.clone() else {
+                state.cancel();
+                return Ok(());
+            };
+            let d = &d;
+            let v = match doc.model().get(view).map(|e| &e.kind) {
+                Some(ElementKind::View(v)) => Some(v.clone()),
+                _ => None,
+            };
+            // the chain's line, to find a point by its tick on it
+            let line = v.as_ref().and_then(|v| {
+                let pa = annotate::resolve(doc.model(), v, &d.a)?;
+                let pb = annotate::resolve(doc.model(), v, &d.b)?;
+                let u = d
+                    .axis
+                    .direction(pa, pb)
+                    .unwrap_or((pb - pa).normalize_or_zero());
+                Some((pa + u.perp() * d.offset, u))
+            });
+            let reach = tol.max(1e-3);
+            let near = |p: &HostPoint| {
+                v.as_ref()
+                    .and_then(|v| annotate::resolve(doc.model(), v, p))
+                    .is_some_and(|q| {
+                        q.distance(hit.1) < reach
+                            || line.is_some_and(|(o, u)| {
+                                (o + u * (q - o).dot(u)).distance(raw) < reach
+                            })
+                    })
+            };
+            // a click on one of its points takes it out again
+            if let Some(i) = d.points().position(near) {
+                let Some(fewer) = v
+                    .as_ref()
+                    .and_then(|v| annotate::without_point(doc.model(), v, d, i))
+                else {
+                    state.status =
+                        Some("A dimension needs two points: delete it to remove it.".into());
+                    return Ok(());
+                };
+                let mut after = before.clone();
+                after.kind = ElementKind::Dimension(fewer);
+                selection.only(id);
+                return doc.commit(
+                    Transaction::new("Remove point from dimension").replace(before, after),
+                );
+            }
+            let mut after = before.clone();
+            if let ElementKind::Dimension(d) = &mut after.kind {
+                d.mids.push(hit.0);
+                // a held spacing is for two points only
+                d.held = None;
+                // on the walls its points stand on, to follow them
+                if let Some(v) = &v {
+                    *d = annotate::rehosted(doc.model(), v, d);
+                }
+            }
+            selection.only(id);
+            state.dim = vec![hit];
+            return doc.commit(Transaction::new("Add to dimension chain").replace(before, after));
         }
-        let (b, pb) = hit;
-        // the line stays where it is, whichever way the chain runs
-        let offset = dim_offset(axis, pa, pb, on_line);
-        let mut d = Dimension::linear(view, a, b, offset);
-        d.axis = axis;
-        let e = state
-            .anno
-            .styled(Element::new("Dimension", ElementKind::Dimension(d)));
-        selection.only(e.id);
-        state.dim = vec![hit];
-        return doc.commit(Transaction::new("Add dimension").insert(e));
+        state.cancel();
     }
     match state.dim.len() {
         0 => {
@@ -6635,6 +8301,11 @@ fn dimension_tool(
             }
             let mut d = Dimension::linear(view, a, b, offset);
             d.axis = axis;
+            d.short = state.dim_short;
+            // on the walls its points stand on, to follow them
+            if let Some(ElementKind::View(v)) = doc.model().get(view).map(|e| &e.kind) {
+                d = annotate::rehosted(doc.model(), v, &d);
+            }
             let e = state
                 .anno
                 .styled(Element::new("Dimension", ElementKind::Dimension(d)));
@@ -6642,9 +8313,10 @@ fn dimension_tool(
             if state.dim_chain {
                 // the chain goes on from the second point, on this line
                 state.chain_line = Some((axis, pa + n * offset));
+                state.chain_dim = Some(e.id);
                 state.dim = vec![(b, pb)];
                 state.status = Some(
-                    "Continuous: click the next point; Esc or right-click ends the chain.".into(),
+                    "Chain: click the next point to add it to this dimension line; Esc or right-click ends the chain.".into(),
                 );
             }
             doc.commit(Transaction::new("Add dimension").insert(e))
@@ -6736,7 +8408,7 @@ pub fn tag_fixtures(
     let tagged: Vec<ElementId> = model
         .iter()
         .filter_map(|e| match &e.kind {
-            ElementKind::Tag(t) if t.view == view => Some(t.host),
+            ElementKind::Tag(t) if t.view == view && !t.ufh => Some(t.host),
             _ => None,
         })
         .collect();
@@ -6781,36 +8453,85 @@ pub fn tag_openings(
     doc: &mut Document,
     view: ElementId,
 ) -> Result<usize, creabim_core::ModelError> {
-    let model = doc.model();
+    let tags = opening_tags(doc.model(), view, None);
+    let n = tags.len();
+    let mut tx = Transaction::new("Tag doors and windows");
+    for t in tags {
+        tx = tx.insert(t);
+    }
+    doc.commit(tx)?;
+    Ok(n)
+}
+
+/// Tags for the doors and windows in `view` that have none there (only
+/// those in `only` when given), each outside its wall.
+pub fn opening_tags(
+    model: &creabim_core::Model,
+    view: ElementId,
+    only: Option<&[ElementId]>,
+) -> Vec<Element> {
+    let mut out = vec![];
     let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
-        return Ok(0);
+        return out;
     };
     let level = match v.kind {
         ViewKind::Plan { level, .. } => Some(level),
         _ => None,
     };
     let Some(proj) = annotate::Projector::of(model, v) else {
-        return Ok(0);
+        return out;
     };
     let tagged: Vec<ElementId> = model
         .iter()
         .filter_map(|e| match &e.kind {
-            ElementKind::Tag(t) if t.view == view => Some(t.host),
+            ElementKind::Tag(t) if t.view == view && !t.ufh => Some(t.host),
             _ => None,
         })
         .collect();
-    // the drawing's middle, to tell outside from inside
-    let middle = creabim_geom::section::view_drawing(model, view)
-        .and_then(|d| d.bounds())
-        .map_or(DVec2::ZERO, |(lo, hi)| (lo + hi) / 2.0);
+    // nothing of this view to tag: done, before the view is drawn (each
+    // door or window placed ran this for every plan, ~250 ms a click and
+    // on every move of its ghost; George 2026-11-22)
+    let todo = model.iter().any(|e| {
+        let ElementKind::Opening(o) = &e.kind else {
+            return false;
+        };
+        !tagged.contains(&e.id)
+            && !only.is_some_and(|o| !o.contains(&e.id))
+            && matches!(model.get(o.host).map(|h| &h.kind),
+                Some(ElementKind::Wall(w)) if level.is_none_or(|l| l == w.level))
+    });
+    if !todo {
+        return out;
+    }
+    // the drawing's middle, to tell outside from inside: in a plan the
+    // middle of its level's walls, else of the view's drawing
+    let walls_box = level.and_then(|l| {
+        let pts: Vec<DVec2> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.level == l => Some([w.start, w.end]),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let first = *pts.first()?;
+        let (lo, hi) = pts
+            .iter()
+            .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+        let z = model.level(l).map_or(0.0, |l| l.elevation);
+        Some(proj.project(((lo + hi) / 2.0).extend(z)))
+    });
+    let middle = walls_box.unwrap_or_else(|| {
+        creabim_geom::section::view_drawing(model, view)
+            .and_then(|d| d.bounds())
+            .map_or(DVec2::ZERO, |(lo, hi)| (lo + hi) / 2.0)
+    });
     let scale = v.scale / 100.0;
-    let mut tx = Transaction::new("Tag doors and windows");
-    let mut n = 0;
     for e in model.iter() {
         let ElementKind::Opening(o) = &e.kind else {
             continue;
         };
-        if tagged.contains(&e.id) {
+        if tagged.contains(&e.id) || only.is_some_and(|o| !o.contains(&e.id)) {
             continue;
         }
         let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
@@ -6831,19 +8552,323 @@ pub fn tag_openings(
                 } else {
                     -n
                 };
-                out * 0.9 * scale
+                // a door's leader carries its clear passage, and its
+                // mark stands on the side its leaf swings to
+                let door = o.kind == creabim_core::OpeningKind::Door;
+                let out = match (door, o.faces_left(w)) {
+                    (true, true) => n,
+                    (true, false) => -n,
+                    _ => out,
+                };
+                let far = if door { 1.6 } else { 0.9 };
+                out * far * scale
             }
             // in sections and 3D views, above the opening
             None => DVec2::new(0.0, (o.height / 2.0 + 0.5) * scale.max(0.5)),
         };
-        tx = tx.insert(Element::new(
+        out.push(Element::new(
             "Tag",
             ElementKind::Tag(Tag::new(view, e.id, offset)),
         ));
-        n += 1;
     }
-    doc.commit(tx)?;
-    Ok(n)
+    out
+}
+
+/// Tags for new doors and windows `ids` in every plan of their level, as
+/// they are placed (as PilonDesigner labels them at once).
+pub fn tags_on_placement(model: &creabim_core::Model, ids: &[ElementId]) -> Vec<Element> {
+    let plans: Vec<ElementId> = model
+        .iter()
+        .filter(
+            |e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. })),
+        )
+        .map(|e| e.id)
+        .collect();
+    plans
+        .into_iter()
+        .flat_map(|v| opening_tags(model, v, Some(ids)))
+        .collect()
+}
+
+/// A roof timber's or steel member's tags in each plan of its level: its
+/// position mark in a circle to one side, a beam's underside in a box
+/// (`S.H.=+3,680`) to the other (George's sample krov 2026-11-26). Both
+/// are ordinary tags: dragged, their leaders stay on the member.
+pub fn framing_tags(model: &creabim_core::Model, ids: &[ElementId]) -> Vec<Element> {
+    use creabim_core::Tag;
+    let mut out = vec![];
+    for id in ids {
+        let Some(e) = model.get(*id) else { continue };
+        if creabim_core::framing::of(e).is_none() {
+            continue;
+        }
+        let (level, across, beam) = match &e.kind {
+            // the underside only by a level member: on a sloped one
+            // (a rafter) it says nothing (George 2026-11-26)
+            ElementKind::Beam(b) => (
+                b.level,
+                (b.end - b.start).normalize_or(DVec2::X).perp(),
+                (b.rise[1] - b.rise[0]).abs() < 1e-6,
+            ),
+            ElementKind::Column(c) => (c.level, DVec2::new(-0.7, 0.7), false),
+            _ => continue,
+        };
+        // the plans of its level, not a roof plan seen from above (no
+        // members on the architect's drawing); only the structural ones
+        // when the level has one
+        let plans: Vec<&Element> = model
+            .iter()
+            .filter(|v| match &v.kind {
+                ElementKind::View(view) => {
+                    matches!(view.kind, ViewKind::Plan { level: l, .. } if l == level)
+                        && !view.graphics.range.from_above
+                }
+                _ => false,
+            })
+            .collect();
+        let structural = plans
+            .iter()
+            .any(|v| matches!(&v.kind, ElementKind::View(view) if view.structural));
+        for v in plans {
+            let ElementKind::View(view) = &v.kind else {
+                continue;
+            };
+            if structural && !view.structural {
+                continue;
+            }
+            // 7 mm on paper off the member's middle
+            let reach = 0.007 * view.scale;
+            let mut t = Tag::new(v.id, *id, across * reach);
+            t.placed = true;
+            out.push(Element::new("Tag", ElementKind::Tag(t)));
+            if beam {
+                let mut t = Tag::new(v.id, *id, -across * reach);
+                t.underside = true;
+                t.placed = true;
+                out.push(Element::new("Tag", ElementKind::Tag(t)));
+            }
+        }
+    }
+    out
+}
+
+/// `model` with every door and window tagged in every plan: what a new
+/// project starts with.
+pub fn with_opening_tags(model: creabim_core::Model) -> creabim_core::Model {
+    let ids: Vec<ElementId> = model
+        .iter()
+        .filter(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind != OpeningKind::Hole))
+        .map(|e| e.id)
+        .collect();
+    let tags = tags_on_placement(&model, &ids);
+    let mut m = model;
+    let mut tx = Transaction::new("Tag doors and windows");
+    for t in tags {
+        tx = tx.insert(t);
+    }
+    let _ = tx.apply(&mut m);
+    m
+}
+
+/// A dimension's number being typed over (a double-click on it): the
+/// element at the stretch's end then moves to make it true.
+#[derive(Clone, Debug)]
+pub struct DimEdit {
+    pub view: ElementId,
+    pub id: ElementId,
+    /// Which stretch of a chain.
+    pub stretch: usize,
+    /// Where the number stands in the drawing.
+    pub at: DVec2,
+    pub text: String,
+    /// What was selected: of the two ends, that one moves.
+    pub prefer: Vec<ElementId>,
+    /// The field has yet to take the keyboard.
+    pub fresh: bool,
+}
+
+/// A double-click on a linear dimension's number in the Select tool opens
+/// it for typing; Enter moves what it measures (PilonDesigner's riadiaca
+/// kóta), Esc or a click elsewhere leaves it. Returns `Some` while the
+/// frame's input is its own.
+#[allow(clippy::too_many_arguments)]
+fn edit_dimension_value(
+    ui: &egui::Ui,
+    doc: &mut Document,
+    view: ElementId,
+    drawing: &Drawing,
+    xf: &Xf,
+    response: &egui::Response,
+    state: &mut PlanState,
+    mm: f64,
+) -> Option<Option<String>> {
+    if state.dim_edit.is_none() && response.double_clicked() {
+        let w = xf.to_world(response.interact_pointer_pos()?);
+        let mut nth: HashMap<ElementId, usize> = Default::default();
+        let found = drawing.items.iter().find_map(|it| {
+            let PlanItem::Dimension {
+                id,
+                a,
+                b,
+                offset,
+                text,
+                look,
+                witness,
+                place,
+                ..
+            } = it
+            else {
+                return None;
+            };
+            let k = nth.entry(*id).or_default();
+            let i = *k;
+            *k += 1;
+            let linear = matches!(
+                &doc.model().get(*id)?.kind,
+                ElementKind::Dimension(d)
+                    if d.view == view && d.kind == creabim_core::DimensionKind::Linear
+            );
+            if !linear {
+                return None;
+            }
+            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
+            let q = g.patch(g.text_at, text, look, mm);
+            let inside = (0..4).all(|j| (q[(j + 1) % 4] - q[j]).perp_dot(w - q[j]) >= 0.0);
+            inside.then(|| (*id, i, g.text_at, text.clone()))
+        });
+        let (id, stretch, at, text) = found?;
+        state.dim_edit = Some(DimEdit {
+            view,
+            id,
+            stretch,
+            at,
+            text: text.replace(['\u{a0}', ' '], ""),
+            prefer: state.dim_edit_prefer.clone(),
+            fresh: true,
+        });
+        state.status = Some(
+            "Type the distance, then Enter: the element at the end of the stretch moves. Esc leaves it.".into(),
+        );
+        return Some(None);
+    }
+    let edit = state.dim_edit.as_mut().filter(|e| e.view == view)?;
+    let pos = xf.to_screen(edit.at);
+    let mut done = None;
+    egui::Area::new(egui::Id::new(("dim_edit", view)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(pos - Vec2::new(40.0, 12.0))
+        .show(ui.ctx(), |ui| {
+            let r = ui.add(egui::TextEdit::singleline(&mut edit.text).desired_width(80.0));
+            if edit.fresh {
+                r.request_focus();
+                edit.fresh = false;
+            } else if r.lost_focus() {
+                done = Some(ui.input(|i| i.key_pressed(egui::Key::Enter)));
+            }
+        });
+    let enter = done?;
+    let edit = state.dim_edit.take()?;
+    if !enter {
+        state.status = Some("The dimension is left as it was.".into());
+        return Some(None);
+    }
+    let Some(value) = crate::units::parse(&edit.text) else {
+        state.status = Some("That is not a distance.".into());
+        return Some(None);
+    };
+    let tx = match (
+        doc.model().get(edit.id).map(|e| &e.kind),
+        doc.model().get(view).map(|e| &e.kind),
+    ) {
+        (Some(ElementKind::Dimension(d)), Some(ElementKind::View(v))) => {
+            annotate::driven(doc.model(), v, d, edit.stretch, value, &edit.prefer)
+        }
+        _ => return Some(None),
+    };
+    match tx {
+        Ok(tx) => {
+            if let Err(e) = doc.commit(tx) {
+                return Some(Some(e.to_string()));
+            }
+            state.status = Some("Moved to the typed distance. Ctrl+Z to undo.".into());
+        }
+        Err(e) => state.status = Some(e),
+    }
+    Some(None)
+}
+
+/// The boxes of the pipes' size labels and the fixtures' and devices'
+/// marks (S 16x2, WC, U), each with a little paper round it.
+fn mark_boxes(model: &creabim_core::Model, items: &[PlanItem], mm: f64) -> Vec<(DVec2, DVec2)> {
+    items
+        .iter()
+        .filter_map(|it| match it {
+            PlanItem::Annotation { id, item }
+                if matches!(
+                    model.get(*id).map(|e| &e.kind),
+                    Some(ElementKind::Pipe(_) | ElementKind::Object(_) | ElementKind::Room(_))
+                ) =>
+            {
+                let pts = item.extent();
+                let first = *pts.first()?;
+                let (lo, hi) = pts
+                    .iter()
+                    .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+                let pad = DVec2::splat(mm * 0.5);
+                Some((lo - pad, hi + pad))
+            }
+            // a column's position mark (S1) in a structural plan
+            PlanItem::Text { id, at, .. } if column_mark(model, *id) => {
+                let pad = DVec2::splat(mm * 4.0);
+                Some((*at - pad, *at + pad))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Is `id` a column, or a lintel, whose texts in a plan are its position
+/// mark (S1, P1 over SH=…)?
+fn column_mark(model: &creabim_core::Model, id: ElementId) -> bool {
+    match model.get(id).map(|e| &e.kind) {
+        Some(ElementKind::Column(_)) => true,
+        Some(ElementKind::Beam(b)) => b.lintel.is_some(),
+        _ => false,
+    }
+}
+
+/// A pipe's size label, a fixture's or device's mark or a tiling's
+/// mark at `w`.
+fn on_mark(model: &creabim_core::Model, items: &[PlanItem], w: DVec2, mm: f64) -> bool {
+    items.iter().any(|it| match it {
+        PlanItem::Annotation { id, item }
+            if matches!(
+                model.get(*id).map(|e| &e.kind),
+                Some(ElementKind::Pipe(_) | ElementKind::Object(_) | ElementKind::Room(_))
+            ) =>
+        {
+            let pts = item.extent();
+            let Some(first) = pts.first().copied() else {
+                return false;
+            };
+            let (lo, hi) = pts
+                .iter()
+                .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+            let pad = DVec2::splat(mm * 0.5);
+            w.cmpge(lo - pad).all() && w.cmple(hi + pad).all()
+        }
+        PlanItem::Text { id, at, .. } if column_mark(model, *id) => at.distance(w) < 4.0 * mm,
+        // a sheet-metal item's mark bubble (K-2)
+        PlanItem::Tag { id, at, .. }
+            if matches!(
+                model.get(*id).map(|e| &e.kind),
+                Some(ElementKind::Flashing(_))
+            ) =>
+        {
+            at.distance(w) < 3.0 * mm
+        }
+        _ => false,
+    })
 }
 
 /// Drag a tag (moves it) or a dimension (moves its line) in the Select
@@ -6859,6 +8884,13 @@ fn drag_annotation(
     selection: &mut Selection,
     mm: f64,
 ) -> Option<Option<String>> {
+    if let Some(r) = drag_witness(doc, view, xf, response, state, selection) {
+        return Some(r);
+    }
+    // the labels of the water axonometry and the drain sections
+    if creabim_geom::labels::movable(doc.model(), view) {
+        return drag_drawn_label(doc, view, drawing, xf, response, state, selection);
+    }
     if response.drag_started_by(egui::PointerButton::Primary) {
         let p = response
             .ctx
@@ -6877,12 +8909,25 @@ fn drag_annotation(
                 let n = (*b - *a).normalize_or_zero().perp() * *offset;
                 (segment_distance(w, *a + n, *b + n) < 6.0 / xf.scale as f64).then_some(*id)
             }
+            // a column's position mark in a structural plan (S1, HH, SH)
+            PlanItem::Text { id, at, .. }
+                if column_mark(doc.model(), *id) && at.distance(w) < 4.0 * mm =>
+            {
+                Some(*id)
+            }
             // a room's tag, drawn as its lines of text
+            // and the sizes written beside a stack's mark
             PlanItem::Annotation { id, item }
-                if matches!(
-                    doc.model().get(*id).map(|e| &e.kind),
-                    Some(ElementKind::Tag(_))
-                ) =>
+                if match doc.model().get(*id).map(|e| &e.kind) {
+                    Some(ElementKind::Tag(_)) => true,
+                    // a pipe's size label, or a stack's sizes
+                    Some(ElementKind::Pipe(_)) => true,
+                    // a fixture's or device's mark in a trade's plan
+                    Some(ElementKind::Object(_)) => true,
+                    // a tiling's mark "(600)(900)" (George 2026-11-24)
+                    Some(ElementKind::Room(_)) => true,
+                    _ => false,
+                } =>
             {
                 let pts = item.extent();
                 let first = *pts.first()?;
@@ -6894,34 +8939,250 @@ fn drag_annotation(
             }
             _ => None,
         });
-        state.anno_drag = hit.and_then(|id| {
-            let start = match &doc.model().get(id)?.kind {
-                ElementKind::Tag(t) if t.view == view => t.offset,
-                ElementKind::Dimension(d) if d.view == view => DVec2::new(d.offset, 0.0),
-                _ => return None,
+        // a dimension's text under the pointer: that text is dragged, as
+        // PilonDesigner's (ťahanie čísla kóty)
+        let mut nth: std::collections::HashMap<ElementId, usize> = Default::default();
+        let on_text = drawing.items.iter().find_map(|it| {
+            let PlanItem::Dimension {
+                id,
+                a,
+                b,
+                offset,
+                text,
+                look,
+                witness,
+                place,
+                ..
+            } = it
+            else {
+                return None;
             };
-            Some((id, w, start))
+            let k = nth.entry(*id).or_default();
+            let i = *k;
+            *k += 1;
+            let linear = matches!(
+                &doc.model().get(*id)?.kind,
+                ElementKind::Dimension(d)
+                    if d.view == view && d.kind == creabim_core::DimensionKind::Linear
+            );
+            if !linear {
+                return None;
+            }
+            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm).placed(place, mm);
+            let q = g.patch(g.text_at, text, look, mm);
+            let inside = (0..4).all(|j| (q[(j + 1) % 4] - q[j]).perp_dot(w - q[j]) >= 0.0);
+            inside.then_some((*id, i, place.shift))
         });
-        if let Some((id, ..)) = state.anno_drag {
-            selection.only(id);
+        let mut which = None;
+        state.anno_drag = match on_text {
+            Some((id, i, shift)) => Some((id, w, shift, Some(i))),
+            None => hit.and_then(|id| {
+                let start = match &doc.model().get(id)?.kind {
+                    // a tiling's mark: the one nearest, from where it sits
+                    // on its line
+                    ElementKind::Room(r) => {
+                        let s = creabim_core::room::shape_of(doc.model(), r)?;
+                        let (i, at) = r
+                            .tilings()
+                            .enumerate()
+                            .filter(|(_, t)| !t.no_mark)
+                            .filter_map(|(i, t)| {
+                                creabim_core::room::tiling_mark_at(doc.model(), &s, t)
+                                    .map(|(at, _)| (i, at))
+                            })
+                            .min_by(|x, y| x.1.distance(w).total_cmp(&y.1.distance(w)))?;
+                        which = Some(i);
+                        at
+                    }
+                    // a door's or window's mark from where it is drawn,
+                    // its leader kept clear of the leaf
+                    ElementKind::Tag(t) if t.view == view => drawing
+                        .items
+                        .iter()
+                        .rev()
+                        .find_map(|it| match it {
+                            PlanItem::Tag {
+                                id: i, anchor, at, ..
+                            } if *i == id && !t.material => Some(*at - *anchor),
+                            _ => None,
+                        })
+                        .filter(|_| {
+                            matches!(doc.model().get(view).map(|e| &e.kind),
+                                Some(ElementKind::View(v))
+                                    if creabim_geom::annotate::tag_normal(doc.model(), v, t)
+                                        .is_some())
+                        })
+                        .unwrap_or(t.offset),
+                    ElementKind::Dimension(d) if d.view == view => DVec2::new(d.offset, 0.0),
+                    // a sheet-metal item's mark (K-2): the bubble moves,
+                    // its leader stays on the item (George 2026-11-22)
+                    ElementKind::Flashing(_) => drawing.items.iter().find_map(|it| match it {
+                        PlanItem::Tag {
+                            id: i, anchor, at, ..
+                        } if *i == id => Some(*at - *anchor),
+                        _ => None,
+                    })?,
+                    // a fixture's mark moves, the fixture stays
+                    ElementKind::Object(o) => o.mark.unwrap_or(DVec2::ZERO),
+                    // a column's mark moves, its leader stays on it
+                    ElementKind::Column(c) => c.mark_at.unwrap_or(DVec2::ZERO),
+                    // a lintel's position mark moves, the lintel stays
+                    // (George 2026-11-24)
+                    ElementKind::Beam(b) => b.lintel.as_ref()?.mark_at.unwrap_or(DVec2::ZERO),
+                    // a stack's mark: the circle moves, its riser stays;
+                    // a run's size label moves, the pipe stays
+                    ElementKind::Pipe(p) => drawing
+                        .items
+                        .iter()
+                        .find_map(|it| match it {
+                            PlanItem::Tag {
+                                id: i, anchor, at, ..
+                            } if *i == id => Some(*at - *anchor),
+                            _ => None,
+                        })
+                        .unwrap_or(p.mark.unwrap_or(DVec2::ZERO)),
+                    // a VZT device's position mark: the circle moves, its
+                    // leader stays on the device (George 2026-11-25)
+                    ElementKind::Valve(v) => drawing
+                        .items
+                        .iter()
+                        .find_map(|it| match it {
+                            PlanItem::Tag {
+                                id: i, anchor, at, ..
+                            } if *i == id => Some(*at - *anchor),
+                            _ => None,
+                        })
+                        .unwrap_or(v.mark.unwrap_or(DVec2::ZERO)),
+                    _ => return None,
+                };
+                Some((id, w, start, which))
+            }),
+        };
+        state.anno_group.clear();
+        if let Some((id, _, _, stretch)) = state.anno_drag {
+            // several dimensions selected: their lines move together
+            let line = stretch.is_none()
+                && matches!(
+                    doc.model().get(id).map(|e| &e.kind),
+                    Some(ElementKind::Dimension(_))
+                );
+            if line && selection.contains(id) && selection.all().len() > 1 {
+                for other in selection.all() {
+                    if other == id {
+                        continue;
+                    }
+                    let Some(ElementKind::Dimension(d)) = doc.model().get(other).map(|e| &e.kind)
+                    else {
+                        continue;
+                    };
+                    if d.view != view || d.kind != creabim_core::DimensionKind::Linear {
+                        continue;
+                    }
+                    let n = drawing.items.iter().find_map(|it| match it {
+                        PlanItem::Dimension { id: i, a, b, .. } if *i == other => {
+                            Some((*b - *a).normalize_or_zero().perp())
+                        }
+                        _ => None,
+                    });
+                    if let Some(n) = n {
+                        state.anno_group.push((other, d.offset, n));
+                    }
+                }
+            } else {
+                selection.only(id);
+            }
             state.drag_owner = Some(response.id);
         }
     }
     if state.anno_drag.is_some() && state.drag_owner != Some(response.id) {
         return None;
     }
-    let (id, grab, start) = state.anno_drag?;
+    let (id, grab, start, stretch) = state.anno_drag?;
     if response.drag_stopped() || !response.dragged() {
         state.anno_drag = None;
         return Some(None);
     }
     let p = xf.to_world(response.interact_pointer_pos()?);
+    let square = match (
+        doc.model().get(id).map(|e| &e.kind),
+        doc.model().get(view).map(|e| &e.kind),
+    ) {
+        (Some(ElementKind::Tag(t)), Some(ElementKind::View(v))) if !t.material => {
+            creabim_geom::annotate::tag_normal(doc.model(), v, t)
+        }
+        _ => None,
+    };
     let r = match doc.model().get(id).map(|e| e.kind.clone()) {
         Some(ElementKind::Tag(_)) => doc.edit_merged(id, "Move tag", |e| {
             if let ElementKind::Tag(t) = &mut e.kind {
                 t.offset = start + p - grab;
+                // a door's or window's mark moves square to its wall only
+                // and its leader is as long as it is dragged
+                if let Some(n) = square {
+                    t.offset = n * t.offset.dot(n);
+                    t.elbow = None;
+                    t.end = None;
+                    t.placed = true;
+                }
             }
         }),
+        Some(ElementKind::Flashing(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Flashing(x) = &mut e.kind {
+                x.mark_at = Some(start + p - grab);
+            }
+        }),
+        Some(ElementKind::Object(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Object(x) = &mut e.kind {
+                x.mark = Some(start + p - grab);
+            }
+        }),
+        Some(ElementKind::Column(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Column(x) = &mut e.kind {
+                x.mark_at = Some(start + p - grab);
+            }
+        }),
+        Some(ElementKind::Beam(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Beam(x) = &mut e.kind {
+                if let Some(l) = &mut x.lintel {
+                    l.mark_at = Some(start + p - grab);
+                }
+            }
+        }),
+        Some(ElementKind::Pipe(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Pipe(x) = &mut e.kind {
+                x.mark = Some(start + p - grab);
+            }
+        }),
+        Some(ElementKind::Valve(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Valve(x) = &mut e.kind {
+                x.mark = Some(start + p - grab);
+            }
+        }),
+        // a tiling's mark slides along the tiling's line
+        Some(ElementKind::Room(_)) => doc.edit_merged(id, "Move mark", |e| {
+            if let ElementKind::Room(r) = &mut e.kind {
+                if let Some(t) = r.tiling_mut(stretch.unwrap_or(0)) {
+                    t.mark = Some(start + p - grab);
+                }
+            }
+        }),
+        Some(ElementKind::Dimension(_)) if stretch.is_some() => {
+            let i = stretch.unwrap_or(0);
+            let shift = start + p - grab;
+            // let go near where it falls by itself: back there
+            let home = shift.length() < 6.0 / xf.scale as f64;
+            doc.edit_merged(id, "Move dimension text", |e| {
+                if let ElementKind::Dimension(d) = &mut e.kind {
+                    if d.texts.len() <= i {
+                        d.texts.resize(i + 1, None);
+                    }
+                    d.texts[i] = (!home).then_some(shift);
+                    if d.texts.iter().all(|t| t.is_none()) {
+                        d.texts.clear();
+                    }
+                }
+            })
+        }
         Some(ElementKind::Dimension(_)) => {
             // move the line square to what it measures
             let item = drawing.items.iter().find_map(|it| match it {
@@ -6933,14 +9194,197 @@ fn drag_annotation(
             };
             let n = (b - a).normalize_or_zero().perp();
             let offset = start.x + (p - grab).dot(n);
-            doc.edit_merged(id, "Move dimension line", |e| {
-                if let ElementKind::Dimension(d) = &mut e.kind {
-                    d.offset = offset;
+            // with the others selected, in one step
+            let mut tx = Transaction::new("Move dimension line");
+            let mut changed = 0;
+            let moves = std::iter::once((id, offset)).chain(
+                state
+                    .anno_group
+                    .iter()
+                    .map(|(o, at, on)| (*o, at + (p - grab).dot(*on))),
+            );
+            for (i, to) in moves {
+                let Some(before) = doc.model().get(i).cloned() else {
+                    continue;
+                };
+                let mut after = before.clone();
+                if let ElementKind::Dimension(d) = &mut after.kind {
+                    d.offset = to;
                 }
-            })
+                if after != before {
+                    tx = tx.replace(before, after);
+                    changed += 1;
+                }
+            }
+            if changed == 0 {
+                return Some(None);
+            }
+            doc.commit_merged(tx)
         }
         _ => Ok(()),
     };
+    Some(r.err().map(|e| e.to_string()))
+}
+
+/// Drags a label of a drawn schedule (a pipe's size, a fixture's or a
+/// stack's mark in the water axonometry or the drain sections): it is
+/// kept in the view, what it labels stays (George 2026-11-26).
+fn drag_drawn_label(
+    doc: &mut Document,
+    view: ElementId,
+    drawing: &Drawing,
+    xf: &Xf,
+    response: &egui::Response,
+    state: &mut PlanState,
+    selection: &mut Selection,
+) -> Option<Option<String>> {
+    let moved = |doc: &Document, id: ElementId, n: u32| match doc.model().get(view).map(|e| &e.kind)
+    {
+        Some(ElementKind::View(v)) => v
+            .label_moves
+            .iter()
+            .find(|m| m.of == id && m.n == n)
+            .map_or(DVec2::ZERO, |m| m.by),
+        _ => DVec2::ZERO,
+    };
+    if response.drag_started_by(egui::PointerButton::Primary) {
+        let p = response
+            .ctx
+            .input(|i| i.pointer.press_origin())
+            .or(response.interact_pointer_pos())?;
+        let w = xf.to_world(p);
+        let pad = DVec2::splat(0.8);
+        let hit = creabim_geom::labels::found(view, &drawing.items)
+            .into_iter()
+            .rev()
+            .find(|(_, _, lo, hi)| w.cmpge(*lo - pad).all() && w.cmple(*hi + pad).all());
+        if let Some((id, n, _, _)) = hit {
+            state.anno_drag = Some((id, w, moved(doc, id, n), Some(n as usize)));
+            state.drag_owner = Some(response.id);
+            selection.only(id);
+        }
+    }
+    if state.anno_drag.is_some() && state.drag_owner != Some(response.id) {
+        return None;
+    }
+    let (id, grab, start, n) = state.anno_drag?;
+    if response.drag_stopped() || !response.dragged() {
+        state.anno_drag = None;
+        return Some(None);
+    }
+    let p = xf.to_world(response.interact_pointer_pos()?);
+    let n = n? as u32;
+    let by = start + p - grab;
+    let r = doc.edit_merged(view, "Move label", |e| {
+        if let ElementKind::View(v) = &mut e.kind {
+            match v.label_moves.iter_mut().find(|m| m.of == id && m.n == n) {
+                Some(m) => m.by = by,
+                None => v
+                    .label_moves
+                    .push(creabim_core::LabelMove { of: id, n, by }),
+            }
+        }
+    });
+    Some(r.err().map(|e| e.to_string()))
+}
+
+/// The far ends of the selected linear dimensions' witness lines in
+/// `view`: the dimension, the line's normal, and each witness line.
+pub(crate) fn selected_witness_ends(
+    model: &creabim_core::Model,
+    view: ElementId,
+    selection: &Selection,
+) -> Vec<(ElementId, DVec2, Vec<creabim_geom::annotate::WitnessEnd>)> {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return vec![];
+    };
+    selection
+        .all()
+        .into_iter()
+        .filter_map(|id| match model.get(id).map(|e| &e.kind) {
+            Some(ElementKind::Dimension(d))
+                if d.view == view && d.kind == creabim_core::DimensionKind::Linear =>
+            {
+                let (ends, n) = creabim_geom::annotate::witness_ends(model, v, d)?;
+                Some((id, n, ends))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Drag the far end of a selected dimension's witness line along it, as
+/// PilonDesigner's: it snaps to the other witness lines' ends of the same
+/// dimension (they line up) and back to its point. Returns `Some` while a
+/// drag is in progress.
+fn drag_witness(
+    doc: &mut Document,
+    view: ElementId,
+    xf: &Xf,
+    response: &egui::Response,
+    state: &mut PlanState,
+    selection: &Selection,
+) -> Option<Option<String>> {
+    let tol = 6.0 / xf.scale as f64;
+    if response.drag_started_by(egui::PointerButton::Primary) {
+        let p = response
+            .ctx
+            .input(|i| i.pointer.press_origin())
+            .or(response.interact_pointer_pos())?;
+        let w = xf.to_world(p);
+        state.witness_drag = selected_witness_ends(doc.model(), view, selection)
+            .into_iter()
+            .flat_map(|(id, _, ends)| ends.into_iter().map(move |e| (id, e)))
+            .filter(|(_, e)| e.start.distance(w) < tol)
+            .min_by(|x, y| x.1.start.distance(w).total_cmp(&y.1.start.distance(w)))
+            .map(|(id, e)| (id, e.index));
+        if state.witness_drag.is_some() {
+            state.drag_owner = Some(response.id);
+        }
+    }
+    let (id, index) = state.witness_drag?;
+    if state.drag_owner != Some(response.id) {
+        return None;
+    }
+    if response.drag_stopped() || !response.dragged() {
+        state.witness_drag = None;
+        return Some(None);
+    }
+    let p = xf.to_world(response.interact_pointer_pos()?);
+    let mut sel = Selection::default();
+    sel.only(id);
+    let (_, n, ends) = selected_witness_ends(doc.model(), view, &sel).pop()?;
+    let me = *ends.iter().find(|e| e.index == index)?;
+    let Some(ElementKind::Dimension(d)) = doc.model().get(id).map(|e| &e.kind) else {
+        return Some(None);
+    };
+    let out = me.out(-n * d.offset.signum());
+    let reach = (p - me.foot).dot(out).max(0.0);
+    // its own point, else lined up with another witness line's end
+    let natural = me.point.distance(me.foot);
+    let mut to = Some(reach);
+    if (reach - natural).abs() < tol {
+        to = None;
+    } else if let Some(r) = ends
+        .iter()
+        .filter(|e| e.index != index)
+        .map(|e| e.reach())
+        .filter(|r| (r - reach).abs() < tol)
+        .min_by(|x, y| (x - reach).abs().total_cmp(&(y - reach).abs()))
+    {
+        to = Some(r);
+    }
+    let r = doc.edit_merged(id, "Move witness line end", |e| {
+        if let ElementKind::Dimension(d) = &mut e.kind {
+            if d.reach.len() <= index {
+                d.reach.resize(index + 1, None);
+            }
+            d.reach[index] = to;
+            if d.reach.iter().all(|r| r.is_none()) {
+                d.reach.clear();
+            }
+        }
+    });
     Some(r.err().map(|e| e.to_string()))
 }
 
@@ -6992,8 +9436,7 @@ fn snap(
 }
 
 /// Fill a possibly concave polygon.
-/// A slab's fill in its level's plan, under the pointer, and selected.
-const SLAB_FILL: Color32 = Color32::from_rgba_unmultiplied_const(70, 110, 170, 30);
+/// A slab's fill in its level's plan, under the pointer and selected.
 const SLAB_HOVER: Color32 = Color32::from_rgba_unmultiplied_const(60, 110, 200, 70);
 const SLAB_SELECTED: Color32 = Color32::from_rgba_unmultiplied_const(240, 140, 50, 60);
 /// The edge of the slab under the pointer.
@@ -7307,7 +9750,7 @@ fn segment_distance(p: DVec2, a: DVec2, b: DVec2) -> f64 {
     p.distance(a + ab * t)
 }
 
-fn point_in_polygon(p: DVec2, poly: &[DVec2]) -> bool {
+pub(crate) fn point_in_polygon(p: DVec2, poly: &[DVec2]) -> bool {
     let mut inside = false;
     let n = poly.len();
     for i in 0..n {
@@ -7345,16 +9788,34 @@ fn place_opening(
             best = Some((d, e.id, u, w.length()));
         }
     }
+    if tool == Tool::Opening {
+        let host = state.members.hole_host;
+        if host >= 2 || (host == 0 && best.is_none()) {
+            return place_slab_penetration(doc, level, p, state, selection);
+        }
+    }
     let Some((_, host, u, len)) = best else {
         return Ok(());
     };
     // the sizes in the bar (a type, when picked, sets its own)
     let m = &state.members;
-    let (kind, [width, height, sill], name) = match tool {
+    let (kind, [mut width, mut height, sill], name) = match tool {
         Tool::Door => (OpeningKind::Door, m.door, "Door"),
-        Tool::Opening => (OpeningKind::Hole, m.hole, "Wall opening"),
+        Tool::Opening => (OpeningKind::Hole, m.hole, "Penetration"),
         _ => (OpeningKind::Window, m.window, "Window"),
     };
+    // a door's sizes in the bar are its leaf's: the opening follows
+    // from them and the frame
+    let leaf = (kind == OpeningKind::Door).then_some(creabim_core::joinery::DoorSpec {
+        frame: creabim_core::joinery::DoorFrame::Lining,
+        leaf: creabim_core::joinery::DoorMaterial::Timber,
+        nom_width: width,
+        nom_height: height,
+        fire: None,
+    });
+    if let Some(d) = &leaf {
+        (width, height) = d.opening();
+    }
     let mut e = state.typed(
         doc.model(),
         Element::new(
@@ -7370,20 +9831,113 @@ fn place_opening(
                 frame: Default::default(),
                 flip_hand: false,
                 flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
+                threshold: false,
+                threshold_material: None,
+                penetration: None,
+                setback: None,
+                reveal: None,
+                division: None,
+                door: None,
+                texts: None,
+                performance: if kind == OpeningKind::Window {
+                    creabim_core::joinery::default_window_performance()
+                } else {
+                    None
+                },
             }),
         ),
     );
     // centred on the click, as wide as its type makes it
+    let typed = e.of_type.is_some();
     if let ElementKind::Opening(o) = &mut e.kind {
+        if kind == OpeningKind::Hole && state.members.hole_round {
+            o.penetration = Some(creabim_core::Penetration {
+                round: true,
+                ..Default::default()
+            });
+            o.height = o.width;
+        }
+        if !typed {
+            o.door = leaf;
+        }
         if o.width > len {
             return Ok(());
         }
         o.offset = (u - o.width / 2.0).clamp(0.0, len - o.width);
+        // set from the storey's floor, whatever the wall's base
+        let from_floor = o.sill;
+        o.set_sill_from_floor(doc.model(), from_floor);
         // clear of a corner (MU23)
         creabim_core::walls::clamp_opening(doc.model(), o);
     }
     selection.only(e.id);
-    doc.commit(Transaction::new(format!("Place {}", name.to_lowercase())).insert(e))
+    let mut tx = Transaction::new(format!("Place {}", name.to_lowercase())).insert(e.clone());
+    // tagged at once in the plans of its level (holes take none)
+    if state.tag_new && kind != OpeningKind::Hole {
+        let mut m = doc.model().clone();
+        if tx.apply(&mut m).is_ok() {
+            for t in tags_on_placement(&m, &[e.id]) {
+                tx = tx.insert(t);
+            }
+        }
+    }
+    doc.commit(tx)
+}
+
+/// The Penetration tool off a wall: a penetration through the floor slab
+/// of `level` under `p`, else (or, set so, only) through the slab of the
+/// storey over it, the ceiling (PilonDesigner's host Auto, Floor, Ceiling).
+fn place_slab_penetration(
+    doc: &mut Document,
+    level: ElementId,
+    p: DVec2,
+    state: &PlanState,
+    selection: &mut Selection,
+) -> Result<(), creabim_core::ModelError> {
+    let m = doc.model();
+    let host = state.members.hole_host;
+    let here = m.level(level).map_or(0.0, |l| l.elevation);
+    let above = m
+        .levels()
+        .map(|(e, l)| (e.id, l.elevation))
+        .filter(|(_, z)| *z > here + 1e-6)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|x| x.0);
+    let slab_at = |lv: ElementId| {
+        m.iter().find_map(|e| match &e.kind {
+            ElementKind::Slab(s)
+                if s.level == lv && creabim_core::polygon::contains(&s.outline(), p) =>
+            {
+                Some(s.clone())
+            }
+            _ => None,
+        })
+    };
+    let slab = match host {
+        2 => slab_at(level),
+        3 => above.and_then(slab_at),
+        _ => slab_at(level).or_else(|| above.and_then(slab_at)),
+    };
+    let Some(slab) = slab else {
+        return Ok(());
+    };
+    let mm = &state.members;
+    let size = if mm.hole_round {
+        [mm.hole[0], mm.hole[0]]
+    } else {
+        [mm.hole[0], mm.hole[1]]
+    };
+    let pen = creabim_core::Penetration {
+        round: mm.hole_round,
+        size: Some(size),
+        ..Default::default()
+    };
+    let shaft = creabim_core::Shaft::through_slab(&slab, pen, p);
+    let e = Element::new("Penetration", ElementKind::Shaft(shaft));
+    selection.only(e.id);
+    doc.commit(Transaction::new("Place penetration").insert(e))
 }
 
 /// The pane behaviour for a view.
@@ -7421,6 +9975,12 @@ fn shape_points(
     }
     if level.is_some() && !state.members.path.is_empty() {
         return state.members.path.clone();
+    }
+    if level.is_some() && !state.members.flashing.trace.is_empty() {
+        return state.members.flashing.trace.clone();
+    }
+    if crate::detailtool::drafts(state.tool) && state.details.view == Some(view) {
+        return state.details.path.clone();
     }
     match (&state.chain, state.pending) {
         ((Some(l), pts), Some(_)) if Some(*l) == level => pts.clone(),
@@ -7567,6 +10127,7 @@ mod dimension_chain_tests {
             .id;
         let mut state = PlanState {
             dim_chain: true,
+            dim_short: false,
             ..Default::default()
         };
         let mut sel = Selection::default();
@@ -7581,24 +10142,32 @@ mod dimension_chain_tests {
         click(&mut doc, &mut state, 1.0, DVec2::new(1.0, 1.5)); // the line, 1.5 up
         click(&mut doc, &mut state, 5.0, DVec2::ZERO); // the chain goes on
         click(&mut doc, &mut state, 6.5, DVec2::ZERO);
-        let dims: Vec<(f64, f64)> = doc
+        // one dimension line through all four points (PilonDesigner's chain)
+        let chain = doc
             .model()
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Dimension(d) if d.view == view => Some((d.a.local.x, d.offset)),
+                ElementKind::Dimension(d) if d.view == view && d.is_chain() => Some(d.clone()),
                 _ => None,
             })
-            .collect();
-        // the three just made are the last ones
-        let made: Vec<&(f64, f64)> = dims.iter().rev().take(3).collect();
-        assert_eq!(
-            made.iter().map(|d| d.0).collect::<Vec<_>>(),
-            vec![5.0, 2.0, 0.0],
-            "{dims:?}"
-        );
-        for (_, off) in made {
-            assert!((off - 1.5).abs() < 1e-9, "on one line: {dims:?}");
-        }
+            .collect::<Vec<_>>();
+        assert_eq!(chain.len(), 1, "{chain:?}");
+        let d = &chain[0];
+        let mut xs: Vec<f64> = {
+            let ElementKind::View(v) = &doc.model().get(view).unwrap().kind else {
+                unreachable!()
+            };
+            // (points on a wall are kept on it: where they stand)
+            d.points()
+                .map(|p| {
+                    let x = annotate::resolve(doc.model(), v, p).unwrap().x;
+                    (x * 1e6).round() / 1e6
+                })
+                .collect()
+        };
+        xs.sort_by(f64::total_cmp);
+        assert_eq!(xs, vec![0.0, 2.0, 5.0, 6.5]);
+        assert!((d.offset - 1.5).abs() < 1e-9, "on one line: {d:?}");
         // a new row placed near another dimension's line lands on it
         state.cancel();
         state.dim_chain = false;
@@ -7643,16 +10212,174 @@ mod dimension_chain_tests {
             .model()
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Dimension(d)
-                    if d.view == view && (d.a.local.x - 10.0).abs() < 1e-9 =>
-                {
-                    Some(d.offset)
-                }
+                ElementKind::Dimension(d) if d.view == view && !d.is_chain() => Some(d.offset),
                 _ => None,
             })
             .last()
             .unwrap();
         assert!((last - 3.0).abs() < 1e-9, "{last}");
+    }
+
+    #[test]
+    fn a_click_on_a_chain_point_takes_it_out_and_the_line_stays() {
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let view = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. })))
+            .unwrap()
+            .id;
+        let mut state = PlanState::default();
+        let mut sel = Selection::default();
+        let h = |x: f64| (HostPoint::free(DVec2::new(x, 0.0)), DVec2::new(x, 0.0));
+        let ax = creabim_core::DimAxis::Horizontal;
+        for (x, raw) in [
+            (0.0, DVec2::ZERO),
+            (2.0, DVec2::ZERO),
+            (1.0, DVec2::new(1.0, 1.5)),
+            (5.0, DVec2::ZERO),
+        ] {
+            dimension_tool(
+                &mut doc,
+                view,
+                h(x),
+                raw,
+                ax,
+                &mut state,
+                &mut sel,
+                &[],
+                0.1,
+            )
+            .unwrap();
+        }
+        let id = state.chain_dim.unwrap();
+        let chain = |doc: &creabim_core::Document| match &doc.model().get(id).unwrap().kind {
+            ElementKind::Dimension(d) => (id, d.clone()),
+            _ => unreachable!(),
+        };
+        // take out its first point: the next one in becomes its end
+        state.continue_chain(id, h(5.0));
+        dimension_tool(
+            &mut doc,
+            view,
+            h(0.0),
+            DVec2::ZERO,
+            ax,
+            &mut state,
+            &mut sel,
+            &[],
+            0.1,
+        )
+        .unwrap();
+        let (_, d) = chain(&doc);
+        let mut xs: Vec<f64> = {
+            let ElementKind::View(v) = &doc.model().get(view).unwrap().kind else {
+                unreachable!()
+            };
+            // (points on a wall are kept on it: where they stand)
+            d.points()
+                .map(|p| {
+                    let x = annotate::resolve(doc.model(), v, p).unwrap().x;
+                    (x * 1e6).round() / 1e6
+                })
+                .collect()
+        };
+        xs.sort_by(f64::total_cmp);
+        assert_eq!(xs, vec![2.0, 5.0]);
+        assert!(!d.is_chain());
+        let ElementKind::View(v) = &doc.model().get(view).unwrap().kind else {
+            unreachable!()
+        };
+        let items = creabim_geom::annotate::linear_items(doc.model(), v, id, &d);
+        let PlanItem::Dimension { a, offset, .. } = &items[0] else {
+            panic!()
+        };
+        assert!(
+            (a.y + offset - 1.5).abs() < 1e-9,
+            "the line stays: {items:?}"
+        );
+        // a two-point one keeps its points
+        dimension_tool(
+            &mut doc,
+            view,
+            h(2.0),
+            DVec2::ZERO,
+            ax,
+            &mut state,
+            &mut sel,
+            &[],
+            0.1,
+        )
+        .unwrap();
+        assert_eq!(chain(&doc).1.points().count(), 2);
+    }
+
+    #[test]
+    fn new_doors_and_windows_are_tagged_in_their_plans() {
+        let m = creabim_core::starter::starter_house();
+        let openings = m
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind != OpeningKind::Hole))
+            .count();
+        let tags = |m: &creabim_core::Model| {
+            m.iter()
+                .filter(|e| matches!(&e.kind, ElementKind::Tag(_)))
+                .count()
+        };
+        let before = tags(&m);
+        let tagged = with_opening_tags(m);
+        assert!(
+            tags(&tagged) >= before + openings.min(1),
+            "{}",
+            tags(&tagged)
+        );
+        // every door and window has a tag in a plan
+        for e in tagged.iter() {
+            if matches!(&e.kind, ElementKind::Opening(o) if o.kind != OpeningKind::Hole) {
+                assert!(
+                    tagged
+                        .iter()
+                        .any(|t| matches!(&t.kind, ElementKind::Tag(t) if t.host == e.id)),
+                    "{} untagged",
+                    e.name
+                );
+            }
+        }
+        // running it again adds none
+        let again = with_opening_tags(tagged.clone());
+        assert_eq!(tags(&again), tags(&tagged));
+    }
+
+    #[test]
+    fn window_marks_stand_outside_the_house() {
+        // the middle is now the level's walls' (not the drawn plan's, which
+        // took ~250 ms a door or window): marks still go outside
+        let m = with_opening_tags(creabim_core::sample::sample_house());
+        let mut n = 0;
+        for e in m.iter() {
+            let ElementKind::Tag(t) = &e.kind else {
+                continue;
+            };
+            let Some(ElementKind::Opening(o)) = m.get(t.host).map(|h| &h.kind) else {
+                continue;
+            };
+            if o.kind != OpeningKind::Window
+                || !matches!(m.get(t.view).map(|v| &v.kind), Some(ElementKind::View(v)) if matches!(v.kind, ViewKind::Plan { .. }))
+            {
+                continue;
+            }
+            let c = creabim_geom::annotate::centre(&m, t.host)
+                .unwrap()
+                .truncate();
+            let at = c + t.offset;
+            // the sample house is 10 × 6 m from the origin
+            assert!(
+                at.x < 0.0 || at.x > 10.0 || at.y < 0.0 || at.y > 6.0,
+                "{at:?} inside"
+            );
+            n += 1;
+        }
+        assert!(n > 0);
     }
 }
 
@@ -7675,6 +10402,55 @@ mod tests {
             assert!(near < 0.25, "{t}: {near}");
         }
         assert!(bulge_through(a, DVec2::ZERO, b).is_none());
+    }
+
+    /// A section drawn in a VZT plan is a VZT section: its ducts over the
+    /// blind building, marked only in the VZT plans (George 2026-11-27).
+    #[test]
+    fn a_section_drawn_in_a_trade_plan_is_that_trades() {
+        use creabim_core::viewmodes::{DisplayMode, Purpose, Trade};
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let plan = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. })))
+            .unwrap()
+            .clone();
+        let mut vzt = plan.clone();
+        if let ElementKind::View(v) = &mut vzt.kind {
+            Purpose::Trade(Trade::Ventilation).apply(v);
+        }
+        doc.commit(Transaction::new("vzt").replace(plan.clone(), vzt))
+            .unwrap();
+        let mut sel = crate::selection::Selection::default();
+        let purpose = super::structural_view(&doc, Some(plan.id));
+        super::add_section_view(
+            &mut doc,
+            DVec2::ZERO,
+            DVec2::X * 5.0,
+            true,
+            purpose,
+            &mut sel,
+        )
+        .unwrap();
+        let id = sel.all()[0];
+        let Some(ElementKind::View(v)) = doc.model().get(id).map(|e| &e.kind) else {
+            panic!("no section");
+        };
+        assert_eq!(v.trade, Some(Trade::Ventilation));
+        assert_eq!(DisplayMode::of(v), DisplayMode::Services);
+        // its mark: in the VZT plan, not in the architecture one
+        let ElementKind::View(p) = &doc.model().get(plan.id).unwrap().kind else {
+            unreachable!()
+        };
+        assert!(creabim_geom::structural::shows_mark(doc.model(), id, p));
+        let mut arch = p.clone();
+        Purpose::Architecture.apply(&mut arch);
+        assert!(!creabim_geom::structural::shows_mark(
+            doc.model(),
+            id,
+            &arch
+        ));
     }
 
     /// Two areas showing the same plan, side by side, share the drag; a
@@ -7721,6 +10497,7 @@ mod tests {
             rect: left,
             center: DVec2::new(32.0, 1.5),
             scale: 100.0,
+            turn: 0.0,
         };
         let end = xf.to_screen(DVec2::new(34.0, 0.0));
         let mut t = 0.0;
@@ -7859,6 +10636,7 @@ mod tests {
             rect,
             center: DVec2::new(33.0, 0.5),
             scale: 100.0,
+            turn: 0.0,
         };
         let mut t = 0.0;
         let mut frame = |events: Vec<egui::Event>,
@@ -7990,6 +10768,70 @@ mod tests {
     }
 
     use super::*;
+
+    /// A map's parcel boundary (a DXF in S-JTSK, brought to the origin as
+    /// a map is) picked to turn north by: found among dense contours.
+    #[test]
+    fn a_line_of_a_maps_drawing_is_found_to_turn_north_by() {
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let view = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. })))
+            .unwrap()
+            .id;
+        // the boundary from (-547400, -1253330) to (-547380, -1253290),
+        // and 3000 short contour pieces round it
+        let mut dxf = String::from("0\nSECTION\n2\nENTITIES\n");
+        let mut line = |layer: &str, a: (f64, f64), b: (f64, f64)| {
+            dxf.push_str(&format!(
+                "0\nLINE\n8\n{layer}\n10\n{}\n20\n{}\n11\n{}\n21\n{}\n",
+                a.0, a.1, b.0, b.1
+            ));
+        };
+        line(
+            "KN_HRANICE",
+            (-547400.0, -1253330.0),
+            (-547380.0, -1253290.0),
+        );
+        for k in 0..3000 {
+            let x = -547420.5 + (k % 60) as f64;
+            let y = -1253340.0 + (k / 60) as f64;
+            line("VRSTEVNICE", (x, y), (x + 0.3, y + 0.1));
+        }
+        dxf.push_str("0\nENDSEC\n0\nEOF\n");
+        let path = std::env::temp_dir().join(format!("creabim-north-{}.dxf", std::process::id()));
+        std::fs::write(&path, dxf).unwrap();
+        let source = creabim_core::RefSource::Dxf {
+            path: path.to_string_lossy().into_owned(),
+            unit: Some(1.0),
+        };
+        let shown = crate::trace::read(doc.model(), &source);
+        let b = crate::trace::bounds_of(&source, &shown).unwrap();
+        let mut r = creabim_core::Reference::new(source, vec![view]);
+        r.in_place(b);
+        r.over = true;
+        let shift = DVec2::new(-547382.28, -1253318.85);
+        r.at -= shift;
+        doc.commit(
+            creabim_core::Transaction::new("Map").insert(creabim_core::Element::new(
+                "Site plan",
+                ElementKind::Reference(r),
+            )),
+        )
+        .unwrap();
+        let mut state = PlanState::default();
+        let plan = creabim_geom::PlanView { items: vec![] };
+        // halfway along the boundary, a little off it
+        let mid = DVec2::new(-547390.0, -1253310.0) - shift + DVec2::new(0.05, 0.0);
+        let (a, b) = line_at(&mut state, doc.model(), view, &plan, mid, 0.3).expect("the boundary");
+        let d = (b - a).normalize();
+        assert!(
+            (d.x.abs() - (20.0f64 / 44.72136).abs()).abs() < 1e-3,
+            "{a} {b}"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
 
     /// Drive a plan pane with pointer events, frame by frame.
     fn drive_box(kind_section: bool, decorations: bool, two: bool) -> usize {
@@ -8257,6 +11099,287 @@ mod tests {
         assert!(e.of_type.is_none());
     }
 
+    /// A ceiling shows in a floor plan, its outline over the cut, and a
+    /// click just inside it picks it (George 2026-11-21: "podhľad neviem
+    /// zachytiť v pôdoryse 1. NP").
+    #[test]
+    fn a_ceiling_is_drawn_and_picked_in_a_floor_plan() {
+        let m = creabim_core::starter::starter_house();
+        let (cid, outline, level) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Ceiling(c) => Some((e.id, c.outline(&m)?, c.level)),
+                _ => None,
+            })
+            .expect("a ceiling");
+        let view = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level) && !v.ceiling_plan)
+            })
+            .unwrap()
+            .id;
+        let items = creabim_geom::section::view_drawing(&m, view).unwrap().items;
+        assert!(items.iter().any(|i| matches!(i,
+            PlanItem::Line { id, pen: creabim_geom::plan::Pen::Overhead, .. } if *id == cid)));
+        // 2 cm in from the middle of its first edge
+        let c = outline.iter().copied().sum::<DVec2>() / outline.len() as f64;
+        let mid = (outline[0] + outline[1]) / 2.0;
+        let p = mid + (c - mid).normalize() * 0.02;
+        assert!(hit_all(&items, p, 0.05, 0.05).contains(&cid));
+    }
+
+    /// The Penetration tool's hole is drawn in plan as PilonDesigner's
+    /// prestup: outline, cross and a label "P 300×300 sp. 1 000".
+    #[test]
+    fn a_penetration_shows_its_cross_and_label_in_plan() {
+        let m = creabim_core::sample::sample_house();
+        let (wall, level) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.length() > 4.0 && w.curtain.is_none() => {
+                    Some((e.id, w.level))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let mut ids = vec![];
+        let mut tx = creabim_core::Transaction::new("t");
+        for (off, sill) in [(0.5, 1.0), (1.5, 2.2), (2.5, 0.3)] {
+            let e = creabim_core::Element::new(
+                "Penetration",
+                ElementKind::Opening(creabim_core::Opening {
+                    host: wall,
+                    kind: OpeningKind::Hole,
+                    offset: off,
+                    sill,
+                    width: 0.3,
+                    height: 0.3,
+                    material: None,
+                    frame: Default::default(),
+                    flip_hand: false,
+                    flip_facing: false,
+                    no_outer_sill: false,
+                    no_inner_sill: false,
+                    threshold: false,
+                    threshold_material: None,
+                    penetration: None,
+                    setback: None,
+                    reveal: None,
+                    division: None,
+                    door: None,
+                    texts: None,
+                    performance: None,
+                }),
+            );
+            ids.push(e.id);
+            tx = tx.insert(e);
+        }
+        let mut doc = Document::from_model(m);
+        doc.commit(tx).unwrap();
+        let m = doc.model();
+        let view = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level) && !v.ceiling_plan)
+            })
+            .unwrap()
+            .id;
+        let items = creabim_geom::section::view_drawing(m, view).unwrap().items;
+        use creabim_geom::plan::Pen;
+        // cut: solid; above the cut: dash and two dots; below: dashed
+        for (id, pen) in ids.iter().zip([Pen::Symbol, Pen::Overhead, Pen::Hidden]) {
+            let n = items
+                .iter()
+                .filter(
+                    |i| matches!(i, PlanItem::Line { id: x, pen: p, .. } if x == id && *p == pen),
+                )
+                .count();
+            assert!(n >= 2, "{pen:?}: its cross");
+            assert!(items
+                .iter()
+                .any(|i| matches!(i, PlanItem::Text { id: x, text, .. }
+                if x == id && text.starts_with("P 300×300 sp. "))));
+        }
+    }
+
+    /// The Penetration tool off a wall goes into the floor slab, or (set
+    /// so) the ceiling slab over the storey: PilonDesigner's marks, solid
+    /// in the floor, a dash and two dots and "(strop)" in the ceiling.
+    #[test]
+    fn a_penetration_goes_into_the_floor_or_the_ceiling_slab() {
+        let m = creabim_core::starter::starter_house();
+        let mut levels: Vec<(ElementId, f64)> =
+            m.levels().map(|(e, l)| (e.id, l.elevation)).collect();
+        levels.sort_by(|a, b| a.1.total_cmp(&b.1));
+        // the lowest level with a slab and a level over it with one too
+        let slab_on = |lv: ElementId| {
+            m.iter().find_map(|e| match &e.kind {
+                ElementKind::Slab(s) if s.level == lv => Some(s.clone()),
+                _ => None,
+            })
+        };
+        let (level, slab, up) = levels
+            .windows(2)
+            .find_map(|w| Some((w[0].0, slab_on(w[0].0)?, slab_on(w[1].0)?)))
+            .expect("two storeys with slabs");
+        // a point inside both slabs, away from walls
+        let o = slab.outline();
+        let c = o.iter().copied().sum::<DVec2>() / o.len() as f64;
+        assert!(creabim_core::polygon::contains(&up.outline(), c));
+        let mut doc = Document::from_model(m);
+        let mut state = PlanState::default();
+        state.members.hole_host = 2;
+        let mut sel = Selection::default();
+        place_slab_penetration(&mut doc, level, c, &state, &mut sel).unwrap();
+        let floor = sel.active.unwrap();
+        state.members.hole_host = 3;
+        state.members.hole_round = true;
+        place_slab_penetration(&mut doc, level, c + DVec2::new(0.6, 0.0), &state, &mut sel)
+            .unwrap();
+        let ceiling = sel.active.unwrap();
+        assert_ne!(floor, ceiling);
+        let m = doc.model();
+        let view = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, ViewKind::Plan { level: l, .. } if l == level) && !v.ceiling_plan)
+            })
+            .unwrap()
+            .id;
+        let items = creabim_geom::section::view_drawing(m, view).unwrap().items;
+        use creabim_geom::plan::Pen;
+        let lines = |id: ElementId, pen: Pen| {
+            items
+                .iter()
+                .filter(
+                    |i| matches!(i, PlanItem::Line { id: x, pen: p, .. } if *x == id && *p == pen),
+                )
+                .count()
+        };
+        // the floor's: 4 sides and the broken line's 2 pieces
+        assert_eq!(lines(floor, Pen::Symbol), 6);
+        // the ceiling's: a circle of 32 and the 2 pieces, over the cut
+        assert_eq!(lines(ceiling, Pen::Overhead), 34);
+        let text = |id: ElementId| {
+            items.iter().find_map(|i| match i {
+                PlanItem::Text { id: x, text, .. } if *x == id => Some(text.clone()),
+                _ => None,
+            })
+        };
+        assert_eq!(text(floor).as_deref(), Some("P 300×300"));
+        assert_eq!(text(ceiling).as_deref(), Some("P Ø300 (strop)"));
+        // and they cut their slabs
+        let cut = |id: ElementId| {
+            let ElementKind::Shaft(s) = &m.get(id).unwrap().kind else {
+                panic!()
+            };
+            creabim_core::slab::cut_by_shaft(m, s).len()
+        };
+        assert_eq!(cut(floor), 1);
+        assert_eq!(cut(ceiling), 1);
+    }
+
+    /// Alt+click picks up an element's parameters (George 2026-11-20):
+    /// its tool is taken up and the next one it draws is the same, all but
+    /// where it is; a setting changed in the bar since lets it go.
+    #[test]
+    fn alt_click_picks_up_an_element_and_its_tool_draws_the_next_the_same() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let wall = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Wall(_)))
+            .unwrap()
+            .id;
+        doc.edit(wall, "set", |e| {
+            if let ElementKind::Wall(w) = &mut e.kind {
+                w.thickness = 0.44;
+                w.height = 2.45;
+                w.base_offset = -0.3;
+                w.bearing = Some(true);
+                w.fire_partial = true;
+            }
+            e.reno = Some(creabim_core::reno::Reno::Existing);
+        })
+        .unwrap();
+        let mut state = PlanState::default();
+        let msg = crate::pickup::pick_up(&mut state, doc.model(), wall).unwrap();
+        assert!(msg.contains("Wall"), "{msg}");
+        assert_eq!(state.tool, Tool::Wall);
+        assert_eq!(state.wall_thickness, 0.44);
+        crate::pickup::sync(&mut doc, &mut state);
+        let mut sel = Selection::default();
+        let (a, b) = (DVec2::new(0.0, -3.0), DVec2::new(6.0, -3.0));
+        plan_click(&mut doc, level, Tool::Wall, a, &mut state, &mut sel).unwrap();
+        plan_click(&mut doc, level, Tool::Wall, b, &mut state, &mut sel).unwrap();
+        let e = doc.model().get(sel.active.unwrap()).unwrap();
+        assert_ne!(e.id, wall);
+        let ElementKind::Wall(w) = &e.kind else {
+            panic!()
+        };
+        assert_eq!((w.thickness, w.height, w.base_offset), (0.44, 2.45, -0.3));
+        assert!(w.bearing == Some(true) && w.fire_partial);
+        assert_eq!(e.reno, Some(creabim_core::reno::Reno::Existing));
+        // drawn where clicked, along its location line
+        let mid = (w.start + w.end) / 2.0;
+        assert!((mid.x - 3.0).abs() < 1e-6, "{mid}");
+
+        // a window: its size and sill, into another wall
+        let win = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Window))
+            .unwrap()
+            .id;
+        doc.edit(win, "set", |e| {
+            if let ElementKind::Opening(o) = &mut e.kind {
+                o.width = 1.37;
+                o.height = 1.11;
+                o.sill = 1.02;
+                o.no_inner_sill = true;
+            }
+        })
+        .unwrap();
+        crate::pickup::pick_up(&mut state, doc.model(), win).unwrap();
+        assert_eq!(state.tool, Tool::Window);
+        assert_eq!(state.members.window, [1.37, 1.11, 1.02]);
+        crate::pickup::sync(&mut doc, &mut state);
+        let mut sel = Selection::default();
+        plan_click(
+            &mut doc,
+            level,
+            Tool::Window,
+            DVec2::new(5.0, 6.0),
+            &mut state,
+            &mut sel,
+        )
+        .unwrap();
+        let e = doc.model().get(sel.active.unwrap()).unwrap();
+        assert_ne!(e.id, win);
+        let ElementKind::Opening(o) = &e.kind else {
+            panic!()
+        };
+        assert_eq!((o.width, o.height, o.sill), (1.37, 1.11, 1.02));
+        assert!(o.no_inner_sill);
+
+        // the bar set otherwise: the template goes, the bar rules
+        state.members.window[0] = 0.6;
+        crate::pickup::sync(&mut doc, &mut state);
+        assert!(state.picked.is_none() && doc.pickup().is_none());
+        // and another tool lets it go too
+        crate::pickup::pick_up(&mut state, doc.model(), wall).unwrap();
+        crate::pickup::sync(&mut doc, &mut state);
+        assert!(doc.pickup().is_some());
+        state.tool = Tool::Slab;
+        crate::pickup::sync(&mut doc, &mut state);
+        assert!(doc.pickup().is_none());
+    }
+
     /// A dimension's second point locks onto the first point's
     /// horizontal and vertical, as a wall's end does (A7-11).
     #[test]
@@ -8276,6 +11399,7 @@ mod tests {
             rect: Rect::from_min_size(Pos2::ZERO, Vec2::splat(1000.0)),
             center: first,
             scale: 100.0,
+            turn: 0.0,
         };
         let snapper = Snapper::from_drawing(&[], &[]);
         let cfg = snaps::SnapSettings::default();
@@ -8335,6 +11459,7 @@ mod tests {
             rect: Rect::from_min_size(Pos2::ZERO, Vec2::splat(1000.0)),
             center: DVec2::new(20.0, 5.0),
             scale: 100.0,
+            turn: 0.0,
         };
         let cursor = xf.to_screen(DVec2::new(21.03, 6.98));
         let cfg = snaps::SnapSettings::default();

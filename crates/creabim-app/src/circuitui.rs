@@ -34,7 +34,7 @@ impl CreaBimApp {
             .id(egui::Id::new("circuit.check"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(230.0, 240.0))
-            .default_size(Vec2::new(460.0, 480.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(460.0, 480.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 egui::Grid::new("circuit.in").num_columns(2).show(ui, |ui| {

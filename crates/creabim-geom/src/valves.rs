@@ -114,6 +114,31 @@ pub fn symbol(kind: &str, c: DVec2, u: DVec2, h: f64) -> Symbol {
             out.segs.push([p(0.0, 0.0), p(0.0, w * 1.5)]);
             out.circles.push((p(0.0, w * 2.0), w * 0.5));
         }
+        // a stem off the pipe to a small vent: "O"
+        "odvzdusnenie" => {
+            out.segs.push([p(0.0, 0.0), p(0.0, w * 1.4)]);
+            out.circles.push((p(0.0, w * 1.9), w * 0.5));
+            out.text = Some("O");
+        }
+        // a stem off the pipe to a drain cock
+        "vypustenie" => {
+            out.segs.extend([
+                [p(0.0, 0.0), p(0.0, -w * 1.4)],
+                [p(-h * 0.4, -w * 1.4), p(h * 0.4, -w * 1.4)],
+            ]);
+            bow(&mut out);
+            out.text = Some("V");
+        }
+        // a sleeve: two lines along the pipe on either side
+        "chranicka" => {
+            out.segs
+                .extend([[p(-h, w), p(h, w)], [p(-h, -w), p(h, -w)]]);
+        }
+        "ppUtesnenie" => {
+            out.segs
+                .extend([[p(-h, w), p(h, w)], [p(-h, -w), p(h, -w)]]);
+            cross(&mut out, w * 0.7);
+        }
         "tap" => {
             bow(&mut out);
             out.text = Some("T");
@@ -148,22 +173,25 @@ pub fn symbol(kind: &str, c: DVec2, u: DVec2, h: f64) -> Symbol {
                 p(-w * 0.5, w * 0.5),
             ]);
         }
-        // air: a circle with a solid arrow out (supply) or in (exhaust)
-        "vyustP" => {
-            out.circles.push((c, w * 1.3));
-            out.fills.push(vec![
-                p(-w * 0.2, -w * 0.6),
-                p(-w * 0.2, w * 0.6),
-                p(w * 0.9, 0.0),
-            ]);
-        }
-        "vyustO" => {
-            out.circles.push((c, w * 1.3));
-            out.fills.push(vec![
-                p(w * 0.2, -w * 0.6),
-                p(w * 0.2, w * 0.6),
-                p(-w * 0.9, 0.0),
-            ]);
+        // air: a circle with four arrows, out for supply, in for
+        // exhaust (George's sample VZT drawings)
+        "vyustP" | "vyustO" => {
+            let r = w * 1.3;
+            out.circles.push((c, r));
+            let supply = kind == "vyustP";
+            for d in [DVec2::X, DVec2::Y, -DVec2::X, -DVec2::Y] {
+                let (tip, base) = if supply {
+                    (d * (r + w * 0.9), d * (r + w * 0.15))
+                } else {
+                    (d * (r + w * 0.05), d * (r + w * 0.8))
+                };
+                let side = d.perp() * w * 0.35;
+                out.fills.push(vec![
+                    p(tip.x, tip.y),
+                    p(base.x + side.x, base.y + side.y),
+                    p(base.x - side.x, base.y - side.y),
+                ]);
+            }
         }
         "klapkaReg" => {
             out.segs.extend([
@@ -185,6 +213,25 @@ pub fn symbol(kind: &str, c: DVec2, u: DVec2, h: f64) -> Symbol {
                 [p(h * 0.8, -w * 1.6), p(h * 0.8, w * 1.6)],
             ]);
             out.text = Some("TH");
+        }
+        // a fan: a circle with the two lines of the blade to the outlet
+        // side (STN EN 12792), "V" beside
+        "ventilator" => {
+            out.circles.push((c, w * 1.4));
+            out.segs.extend([
+                [p(-w * 1.4, 0.0), p(w * 0.99, w * 0.99)],
+                [p(-w * 1.4, 0.0), p(w * 0.99, -w * 0.99)],
+            ]);
+            out.text = Some("V");
+        }
+        // an outlet to the outdoors: a hood over the duct's end
+        "vyfukVzt" => {
+            out.segs.extend([
+                [p(-h, w * 1.4), p(h, w * 1.4)],
+                [p(-h, -w * 1.4), p(h, -w * 1.4)],
+                [p(h, w * 1.4), p(h * 1.4, 0.0)],
+                [p(h, -w * 1.4), p(h * 1.4, 0.0)],
+            ]);
         }
         "filterVzt" => {
             diamond(&mut out);
@@ -216,8 +263,62 @@ pub fn valve_plan(model: &Model, e: &Element, v: &Valve) -> Vec<PlanItem> {
     let Some(pipe) = v.host(model) else {
         return vec![];
     };
+    valve_plan_sized(model, e, v, symbol_half(pipe))
+}
+
+/// A valve as it is in space, seen from above: its body, a piece of its
+/// pipe half as thick again and three diameters long, with the stem's
+/// circle in the middle.
+pub fn valve_plan_spatial(model: &Model, e: &Element, v: &Valve) -> Vec<PlanItem> {
+    let Some(pipe) = v.host(model) else {
+        return vec![];
+    };
     let c = v.at(pipe).truncate();
-    let h = symbol_half(pipe);
+    let u = along(pipe);
+    let n = u.perp();
+    let (w, _) = pipe.section_m();
+    let w = w.max(0.015);
+    let (half_l, half_w) = (w * 1.5, w * 0.75);
+    let corner = |a: f64, b: f64| c + u * a * half_l + n * b * half_w;
+    vec![
+        PlanItem::Shade {
+            id: e.id,
+            points: vec![
+                corner(-1.0, -1.0),
+                corner(1.0, -1.0),
+                corner(1.0, 1.0),
+                corner(-1.0, 1.0),
+            ],
+            rgb: [1.0, 1.0, 1.0],
+        },
+        PlanItem::Polygon {
+            id: e.id,
+            pen: Pen::Symbol,
+            points: vec![
+                corner(-1.0, -1.0),
+                corner(1.0, -1.0),
+                corner(1.0, 1.0),
+                corner(-1.0, 1.0),
+            ],
+        },
+        PlanItem::Arc {
+            id: e.id,
+            pen: Pen::Symbol,
+            center: c,
+            radius: half_w * 0.6,
+            start: 0.0,
+            end: std::f64::consts::TAU,
+        },
+    ]
+}
+
+/// The valve's symbol with half its length `h`, metres: a scheme draws
+/// it the same size on paper at every scale.
+pub fn valve_plan_sized(model: &Model, e: &Element, v: &Valve, h: f64) -> Vec<PlanItem> {
+    let Some(pipe) = v.host(model) else {
+        return vec![];
+    };
+    let c = v.at(pipe).truncate();
     let s = symbol(&v.kind, c, along(pipe), h);
     let mut items = vec![];
     // the pipe's own lines don't run through the symbol

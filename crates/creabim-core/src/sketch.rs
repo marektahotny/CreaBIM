@@ -129,6 +129,20 @@ pub struct Sketch {
     /// Dimensions and relations kept by [`Sketch::solve`].
     #[serde(default)]
     pub constraints: Vec<Constraint>,
+    /// Drawn as a utility network in plan (water main, sewer, gas...):
+    /// its line type, colour, layer and code (see [`crate::utility`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub net: Option<crate::utility::UtilityLine>,
+    /// A symbol of the site plan set at its first point, facing its
+    /// second (a hydrant, a manhole, the way into the building): drawn
+    /// in place of its line (see [`crate::utility::SiteMark`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<crate::utility::SiteMark>,
+    /// Drawn in a site plan: it belongs to the site plans alone, not to
+    /// the plans of its level (George: a rectangle drawn in the site plan
+    /// showed in the 1st floor plan instead).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<ElementId>,
 }
 
 impl Sketch {
@@ -147,6 +161,9 @@ impl Sketch {
             kinds: vec![],
             circle: None,
             constraints: vec![],
+            net: None,
+            mark: None,
+            view: None,
         }
     }
 

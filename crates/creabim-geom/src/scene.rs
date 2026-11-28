@@ -101,7 +101,7 @@ fn layer_items(
                 level.elevation,
                 plain,
             );
-            assembly::wall_bands(a, w)
+            let mut parts: Vec<(assembly::Band, TriMesh)> = assembly::wall_bands(a, w)
                 .into_iter()
                 .map(|b| {
                     let m = crate::wall::wall_layer_mesh_v(
@@ -117,7 +117,110 @@ fn layer_items(
                     );
                     (b, m)
                 })
-                .collect()
+                .collect();
+            // a round penetration: its square's corners filled back, each
+            // layer's a solid of its own beside the layer's (sections
+            // slice each solid on its own)
+            let fillers: Vec<(assembly::Band, TriMesh)> = parts
+                .iter()
+                .map(|(b, _)| {
+                    let mut m = TriMesh::default();
+                    for o in &owned {
+                        m.append(&crate::opening::round_fillers(
+                            o,
+                            w,
+                            level.elevation,
+                            b.s0,
+                            b.s1,
+                        ));
+                    }
+                    (*b, m)
+                })
+                .filter(|(_, m)| !m.is_empty())
+                .collect();
+            parts.extend(fillers);
+            // each layer's reveals are part of its solid: one solid a layer
+            for (b, m) in reveal_wrap_parts(w, a, &openings, level.elevation) {
+                if let Some((_, mesh)) = parts.iter_mut().find(|(p, _)| p.index == b.index) {
+                    mesh.append(&m);
+                }
+            }
+            // the ETICS fire barriers: bands of mineral wool cut out of its
+            // burning insulation, a part of their own in that layer
+            let barriers = crate::etics::barriers(model);
+            if let Some(wb) = barriers.walls.get(&e.id) {
+                if let Some(k) = parts.iter().position(|(p, _)| p.index == wb.layer) {
+                    let (band, eps) = parts[k].clone();
+                    let d = w.direction();
+                    let n = DVec2::new(-d.y, d.x);
+                    let mut cutter = TriMesh::default();
+                    for &[u0, u1, z0, z1] in &wb.boxes {
+                        let p = |j: usize| {
+                            let u = if j & 1 == 0 { u0 } else { u1 };
+                            let z = if j & 2 == 0 { z0 } else { z1 };
+                            let s = if j & 4 == 0 {
+                                band.s0 - 0.01
+                            } else {
+                                band.s1 + 0.01
+                            };
+                            (w.start + d * u + n * s).extend(z)
+                        };
+                        cuboid(
+                            &mut cutter,
+                            [p(0), p(1), p(2), p(3), p(4), p(5), p(6), p(7)],
+                        );
+                    }
+                    // a layer wholly in one box (a storey over 22.5 m) is
+                    // all wool: the boolean gives nothing when no faces meet
+                    let inside = |p: &[f32; 3]| {
+                        let q = DVec2::new(p[0] as f64, p[1] as f64) - w.start;
+                        let (u, z) = (q.dot(d), p[2] as f64);
+                        wb.boxes.iter().any(|b| {
+                            u >= b[0] - 1e-3
+                                && u <= b[1] + 1e-3
+                                && z >= b[2] - 1e-3
+                                && z <= b[3] + 1e-3
+                        })
+                    };
+                    if !eps.positions.is_empty() && eps.positions.iter().all(inside) {
+                        parts[k].0.material = barriers.material;
+                    } else {
+                        let wool = boolean_mesh(&eps, &cutter, BoolOp::Intersection);
+                        let rest = boolean_mesh(&eps, &cutter, BoolOp::Difference);
+                        // a boolean that came out broken (the pieces not
+                        // adding up to the layer, or reaching out of it)
+                        // leaves the layer whole rather than wrong
+                        let within = |m: &TriMesh| match (m.bounds(), eps.bounds()) {
+                            (Some((lo, hi)), Some((a, b))) => {
+                                (lo - a).min_element() > -0.01 && (b - hi).min_element() > -0.01
+                            }
+                            _ => true,
+                        };
+                        let whole = closed_volume(&eps);
+                        let sound = within(&wool)
+                            && within(&rest)
+                            && (closed_volume(&wool) + closed_volume(&rest) - whole).abs()
+                                <= 0.01 * whole.abs().max(1e-6);
+                        if !wool.indices.is_empty() && sound {
+                            parts[k].1 = rest;
+                            let mut b = band;
+                            b.material = barriers.material;
+                            parts.push((b, wool));
+                        }
+                    }
+                }
+            }
+            plinth_parts(
+                model,
+                e,
+                w,
+                &openings,
+                &ends,
+                top.as_ref(),
+                level.elevation,
+                &mut parts,
+            );
+            parts
         }
         ElementKind::Slab(s) => {
             let level = model.level(s.level)?;
@@ -130,6 +233,15 @@ fn layer_items(
                     let m = slab_mesh_with_holes(&outline, &holes, top - b.s0, b.s1 - b.s0);
                     (b, m)
                 })
+                .collect()
+        }
+        // a ceiling's build-up (podhľad), layers from the top down
+        ElementKind::Ceiling(c) => {
+            let outline = c.outline(model)?;
+            let (_, top) = c.span(model);
+            assembly::depth_bands(a, c.thickness)
+                .into_iter()
+                .map(|b| (b, slab_mesh(&outline, top - b.s0, b.s1 - b.s0)))
                 .collect()
         }
         ElementKind::Roof(r) => {
@@ -178,6 +290,148 @@ fn layer_items(
             .chain(linings)
             .collect(),
     )
+}
+
+/// How thick the plinth's membrane is drawn.
+pub const PLINTH_MEMBRANE: f64 = 0.002;
+
+/// A wall's plinth (sokel, [`creabim_core::plinth`]): below its top the
+/// facade insulation gives way to the plinth's XPS (flush, or set back
+/// when thinner) and the facade render to the plinth's, both run down
+/// past the wall's base when the plinth covers the slab's side; the
+/// membrane turned up the masonry behind them. Each a part of the
+/// facade insulation's layer, in its own material.
+#[allow(clippy::too_many_arguments)]
+fn plinth_parts(
+    model: &Model,
+    e: &Element,
+    w: &creabim_core::Wall,
+    openings: &[&Opening],
+    ends: &creabim_core::WallEnds,
+    top: Option<&creabim_core::walls::TopProfile>,
+    level_z: f64,
+    parts: &mut Vec<(assembly::Band, TriMesh)>,
+) {
+    use creabim_core::LayerFunction as F;
+    let Some(p) = creabim_core::plinth::of_wall(model, w) else {
+        return;
+    };
+    let bands: Vec<assembly::Band> = {
+        let mut seen: Vec<usize> = vec![];
+        parts
+            .iter()
+            .filter(|(b, _)| {
+                let first = !seen.contains(&b.index);
+                seen.push(b.index);
+                first
+            })
+            .map(|(b, _)| *b)
+            .collect()
+    };
+    let (Some(first), Some(last)) = (bands.first(), bands.last()) else {
+        return;
+    };
+    // which way across the wall is out
+    let out = if first.s0 + first.s1 < last.s0 + last.s1 {
+        -1.0
+    } else {
+        1.0
+    };
+    let Some(ins) = bands.iter().find(|b| b.function == F::Insulation).copied() else {
+        return;
+    };
+    let inner = if out < 0.0 { ins.s1 } else { ins.s0 };
+    let thick = p.thickness.clamp(0.005, ins.s1 - ins.s0 + 0.2);
+    let recess = (ins.s1 - ins.s0) - thick;
+    let span = |a: f64, b: f64| (a.min(b), a.max(b));
+    let below = creabim_core::plinth::below_base(model, e, w, p);
+    let base = level_z + w.base_offset;
+    let tops = creabim_core::plinth::tops(model, w, p);
+    let d = w.direction();
+    let n = DVec2::new(-d.y, d.x);
+    let len = w.length();
+    // boxes over the plinth's height, a metre past the wall's ends
+    let cutter = |lift: f64, s: (f64, f64)| {
+        let mut m = TriMesh::default();
+        let k = tops.len();
+        for (i, &(u0, u1, z)) in tops.iter().enumerate() {
+            let u0 = if i == 0 { -1.0 } else { u0 };
+            let u1 = if i + 1 == k { len + 1.0 } else { u1 };
+            let z1 = (z + lift).max(base - below);
+            let pt = |j: usize| {
+                let u = if j & 1 == 0 { u0 } else { u1 };
+                let z = if j & 2 == 0 { base - below - 1.0 } else { z1 };
+                let s = if j & 4 == 0 { s.0 - 0.05 } else { s.1 + 0.05 };
+                (w.start + d * u + n * s).extend(z)
+            };
+            cuboid(
+                &mut m,
+                [pt(0), pt(1), pt(2), pt(3), pt(4), pt(5), pt(6), pt(7)],
+            );
+        }
+        m
+    };
+    let whole = span(
+        bands.iter().map(|b| b.s0).fold(f64::MAX, f64::min),
+        bands.iter().map(|b| b.s1).fold(f64::MIN, f64::max),
+    );
+    let boxes = cutter(0.0, whole);
+    let layer = |b: (f64, f64), vext: [f64; 2], ext: [f64; 2]| {
+        crate::wall::wall_layer_mesh_v(w, level_z, openings, ends, top, b, false, ext, vext)
+    };
+    let mut add: Vec<(assembly::Band, TriMesh)> = vec![];
+    // the facade's insulation and render above it; the plinth's below
+    for (b, mesh) in parts.iter_mut() {
+        let outer = if out < 0.0 {
+            b.s1 <= inner + 1e-9
+        } else {
+            b.s0 >= inner - 1e-9
+        };
+        if !outer || !(b.function == F::Insulation || b.function == F::Finish) {
+            continue;
+        }
+        let first_of_layer = !add.iter().any(|(a, _)| a.index == b.index);
+        *mesh = boolean_mesh(mesh, &boxes, BoolOp::Difference);
+        if !first_of_layer {
+            continue;
+        }
+        let (band, material) = if b.index == ins.index {
+            (
+                span(inner, inner + out * thick),
+                p.insulation.or(b.material),
+            )
+        } else {
+            (
+                span(b.s0 - out * recess, b.s1 - out * recess),
+                p.render.or(b.material),
+            )
+        };
+        let piece = layer(band, [b.vext[0].max(0.0) + below, b.vext[1]], b.ext);
+        let piece = boolean_mesh(&piece, &boxes, BoolOp::Intersection);
+        if !piece.indices.is_empty() {
+            let mut nb = *b;
+            nb.s0 = band.0;
+            nb.s1 = band.1;
+            nb.material = material;
+            add.push((nb, piece));
+        }
+    }
+    // the membrane up the masonry to the plinth's top, never past it
+    // (George 2026-11-25: "len po výšku sokla, nesmie cez sokel presahovať")
+    if let Some(m) = p.membrane {
+        let band = span(inner, inner + out * PLINTH_MEMBRANE);
+        let piece = layer(band, [ins.vext[0].max(0.0) + below, ins.vext[1]], ins.ext);
+        let piece = boolean_mesh(&piece, &cutter(0.0, whole), BoolOp::Intersection);
+        if !piece.indices.is_empty() {
+            let mut nb = ins;
+            nb.s0 = band.0;
+            nb.s1 = band.1;
+            nb.material = Some(m);
+            nb.function = F::Membrane;
+            add.push((nb, piece));
+        }
+    }
+    parts.extend(add);
 }
 
 /// The [`SceneItem::finish`] of a reveal lining.
@@ -275,6 +529,95 @@ fn reveal_linings(
     }
     out
 }
+
+/// The layers of a wall turned into its windows' reveals
+/// ([`assembly::reveal_wraps`]) as solids, one per layer: rings round
+/// the opening, the jambs with the head and (above the floor) the sill
+/// between them. A section through a window shows the insulation and the
+/// render lapped onto the frame, as the plan does at the jambs.
+fn reveal_wrap_parts(
+    w: &creabim_core::Wall,
+    a: &assembly::Assembly,
+    openings: &[&Opening],
+    level_z: f64,
+) -> Vec<(assembly::Band, TriMesh)> {
+    if w.is_arc() {
+        return vec![];
+    }
+    let bands = assembly::wall_bands(a, w);
+    let d = w.direction();
+    let n = DVec2::new(-d.y, d.x);
+    let z0 = level_z + w.base_offset;
+    let at = |u: f64, v: f64, s: f64| (w.start + d * u + n * s).extend(z0 + v);
+    let mut out: Vec<(assembly::Band, TriMesh)> = vec![];
+    for o in openings {
+        if !creabim_core::joinery::wraps_reveal(o) {
+            continue;
+        }
+        let Some(c) = crate::wall::Cut::of(o, w) else {
+            continue;
+        };
+        let frame = o.frame.fitted(c.u1 - c.u0, c.v1 - c.v0, w.thickness);
+        let span = o.frame_span(w, Some(a), frame.depth);
+        let lap = o.reveal.unwrap_or(assembly::REVEAL_INSULATION);
+        let wraps = assembly::reveal_wraps(a, w, span, lap);
+        // how far the reveals come into the opening, all layers together
+        let total = wraps.iter().map(|l| l.under + l.width).fold(0.0, f64::max);
+        if total > (c.u1 - c.u0) / 2.0 || total > (c.v1 - c.v0) / 2.0 {
+            continue;
+        }
+        for l in &wraps {
+            let Some(band) = bands.get(l.index) else {
+                continue;
+            };
+            let s = |depth: f64| l.face + l.inward * depth;
+            // its outline as boxes: (from, to into the opening; from, to
+            // across the wall)
+            let mut boxes = vec![(0.0, l.under + l.width, s(l.d), s(l.d_in))];
+            if l.frame > l.d_in + 1e-6 {
+                boxes.push((l.under, l.under + l.width, s(l.d_in), s(l.frame)));
+            }
+            let mut mesh = TriMesh::default();
+            let mut slab = |u: (f64, f64), v: (f64, f64), s: (f64, f64)| {
+                let p = |i: usize| {
+                    at(
+                        if i & 1 == 0 { u.0 } else { u.1 },
+                        if i & 2 == 0 { v.0 } else { v.1 },
+                        if i & 4 == 0 { s.0 } else { s.1 },
+                    )
+                };
+                cuboid(&mut mesh, [p(0), p(1), p(2), p(3), p(4), p(5), p(6), p(7)]);
+            };
+            for &(x0, x1, s0, s1) in &boxes {
+                let across = (s0.min(s1), s0.max(s1));
+                if across.1 - across.0 < 1e-6 || x1 - x0 < 1e-6 {
+                    continue;
+                }
+                // a ring round the opening: its jambs as tall as the ring,
+                // its head and sill between them, so an elevation shows
+                // each layer's edge as one rectangle and no line of one
+                // runs on across another's
+                let sill = c.v0 > 1e-6;
+                let tall = (if sill { c.v0 + x0 } else { c.v0 }, c.v1 - x0);
+                slab((c.u0 + x0, c.u0 + x1), tall, across);
+                slab((c.u1 - x1, c.u1 - x0), tall, across);
+                let between = (c.u0 + x1, c.u1 - x1);
+                slab(between, (c.v1 - x1, c.v1 - x0), across);
+                if sill {
+                    slab(between, (c.v0 + x0, c.v0 + x1), across);
+                }
+            }
+            match out.iter_mut().find(|(b, _)| b.index == band.index) {
+                Some((_, m)) => m.append(&mesh),
+                None => out.push((*band, mesh)),
+            }
+        }
+    }
+    out
+}
+
+/// How thick a room's tiling is drawn in 3D, m.
+const TILING_THICKNESS: f64 = 0.01;
 
 /// A six-sided box from its corners, corner `i` having bit 0 for the far
 /// end along the first axis, bit 1 along the second and bit 2 along the
@@ -380,10 +723,25 @@ fn build_scene_unjoined(
                 let openings: Vec<&Opening> = owned.iter().collect();
                 let ends = joins.get(&e.id).cloned().unwrap_or_default();
                 let top = creabim_core::walls::top_profile(model, w);
-                (
-                    wall_mesh(w, level.elevation, &openings, &ends, top.as_ref()),
-                    [0.86, 0.84, 0.80],
-                )
+                let mesh = wall_mesh(w, level.elevation, &openings, &ends, top.as_ref());
+                // a round penetration: its square's corners filled back, a
+                // solid of its own (sections slice each solid on its own)
+                let t = w.thickness / 2.0;
+                for o in &owned {
+                    let fill = crate::opening::round_fillers(o, w, level.elevation, -t, t);
+                    if !fill.is_empty() {
+                        out.push(SceneItem {
+                            id: e.id,
+                            mesh: fill,
+                            color: [0.86, 0.84, 0.80],
+                            surface: PLAIN_SURFACE,
+                            ghost: false,
+                            layer: None,
+                            finish: None,
+                        });
+                    }
+                }
+                (mesh, [0.86, 0.84, 0.80])
             }
             ElementKind::Slab(s) => {
                 let Some(level) = model.level(s.level) else {
@@ -409,6 +767,57 @@ fn build_scene_unjoined(
                 });
                 continue;
             }
+            ElementKind::Room(r) => {
+                // its tiling: thin slabs on the walls' faces
+                if r.tilings().next().is_none() {
+                    continue;
+                }
+                let (Some(s), Some(level)) =
+                    (creabim_core::room::shape_of(model, r), model.level(r.level))
+                else {
+                    continue;
+                };
+                let mut mesh = TriMesh::default();
+                // the doors, windows and holes left out (George 2026-11-22)
+                for p in r
+                    .tilings()
+                    .flat_map(|t| creabim_core::room::tiling_panels_of(model, &s, t))
+                {
+                    let (a, b) = (p.a, p.b);
+                    let (z0, z1) = (level.elevation + p.z0, level.elevation + p.z1);
+                    let d = (b - a).normalize_or_zero();
+                    let n = glam::DVec2::new(-d.y, d.x) * TILING_THICKNESS;
+                    let c = |p: glam::DVec2, z: f64| DVec3::new(p.x, p.y, z);
+                    cuboid(
+                        &mut mesh,
+                        [
+                            c(a, z0),
+                            c(b, z0),
+                            c(a + n, z0),
+                            c(b + n, z0),
+                            c(a, z1),
+                            c(b, z1),
+                            c(a + n, z1),
+                            c(b + n, z1),
+                        ],
+                    );
+                }
+                // and in the reveals of the windows it runs across
+                for t in r.tilings() {
+                    for rt in creabim_core::room::tiling_reveals(model, &s, t) {
+                        let up = DVec3::new(0.0, 0.0, level.elevation);
+                        let [mut c0, mut c1, mut c2, mut c3] = rt.corners.map(|c| c + up);
+                        // kept right-handed, so the faces look out
+                        if (c1 - c0).cross(rt.normal).dot(c3 - c0) < 0.0 {
+                            std::mem::swap(&mut c0, &mut c1);
+                            std::mem::swap(&mut c3, &mut c2);
+                        }
+                        let n = rt.normal * TILING_THICKNESS;
+                        cuboid(&mut mesh, [c0, c1, c0 + n, c1 + n, c3, c2, c3 + n, c2 + n]);
+                    }
+                }
+                (mesh, [0.86, 0.9, 0.92])
+            }
             ElementKind::Ceiling(c) => {
                 let Some(outline) = c.outline(model) else {
                     continue;
@@ -427,7 +836,9 @@ fn build_scene_unjoined(
                 // a bare hole has nothing in it: a see-through box shows
                 // it in 3D and lets it be clicked (MU18)
                 if o.kind == creabim_core::OpeningKind::Hole {
-                    if let Some(mesh) = crate::opening::cut_box_mesh(o, w, level.elevation) {
+                    let shown = crate::opening::round_cutter(o, w, level.elevation)
+                        .or_else(|| crate::opening::cut_box_mesh(o, w, level.elevation));
+                    if let Some(mesh) = shown {
                         out.push(SceneItem {
                             id: e.id,
                             mesh,
@@ -492,6 +903,8 @@ fn build_scene_unjoined(
             | ElementKind::Reference(_)
             | ElementKind::PaperMark(_)
             | ElementKind::MarkRules(_)
+            | ElementKind::Results(_)
+            | ElementKind::Dss(_)
             | ElementKind::StylePack(_)
             | ElementKind::ElementType(_)
             | ElementKind::Sketch(_)
@@ -499,28 +912,106 @@ fn build_scene_unjoined(
             | ElementKind::Guide(_)
             | ElementKind::CropBox(_)
             | ElementKind::GridGroup(_)
-            | ElementKind::Room(_)
             | ElementKind::RoomSeparator(_)
             | ElementKind::Join(_)
             | ElementKind::Detail(_) => continue,
             ElementKind::Column(_)
             | ElementKind::Beam(_)
             | ElementKind::Roof(_)
-            | ElementKind::Stair(_)
-            | ElementKind::Railing(_)
             | ElementKind::Footing(_)
-            | ElementKind::Pipe(_) => match crate::members::member_mesh(model, e) {
-                Some(m) => m,
-                None => continue,
-            },
+            | ElementKind::Flashing(_)
+            | ElementKind::Pipe(_) => {
+                // a collar tie's bolts, steel, a piece of their own in a
+                // section (George 2026-11-27)
+                if let Some(mesh) = crate::members::collar_bolts_mesh(model, e) {
+                    out.push(SceneItem {
+                        id: e.id,
+                        mesh,
+                        color: [0.35, 0.37, 0.40],
+                        surface: METAL_SURFACE,
+                        ghost: false,
+                        layer: Some(LayerPart {
+                            index: usize::MAX,
+                            material: None,
+                            function: creabim_core::LayerFunction::Structure,
+                            core: false,
+                            priority: 0,
+                        }),
+                        finish: None,
+                    });
+                }
+                match crate::members::member_mesh(model, e) {
+                    Some(m) => m,
+                    None => continue,
+                }
+            }
             ElementKind::Valve(v) => match crate::valves::valve_mesh(model, v) {
                 Some(m) => m,
                 None => continue,
             },
+            // its carrier, treads and risers apart, each of its material
+            ElementKind::Stair(st) => {
+                let parts = crate::members::stair_parts(st, st.base(model), st.rise(model));
+                for (mesh, finish) in [
+                    (parts.treads, st.tread_finish),
+                    (parts.risers, st.riser_finish),
+                ] {
+                    if mesh.indices.is_empty() {
+                        continue;
+                    }
+                    let (color, surface) = finish
+                        .and_then(|f| f.material)
+                        .and_then(|m| match &model.get(m)?.kind {
+                            ElementKind::Material(m) => Some((m.color, m.surface())),
+                            _ => None,
+                        })
+                        .unwrap_or(([0.62, 0.48, 0.32], PLAIN_SURFACE));
+                    out.push(SceneItem {
+                        id: e.id,
+                        mesh,
+                        color,
+                        surface,
+                        ghost: false,
+                        layer: None,
+                        finish: None,
+                    });
+                }
+                let color = if st.carrier.is_concrete() || st.ramp.is_some() {
+                    [0.82, 0.80, 0.76]
+                } else {
+                    match st.stringer.as_ref().map(|x| x.kind) {
+                        Some(creabim_core::members::StringerKind::Timber) => [0.62, 0.48, 0.32],
+                        _ => [0.35, 0.37, 0.40],
+                    }
+                };
+                (parts.carrier, color)
+            }
+            // its metal and its glass apart, the glass see-through
+            ElementKind::Railing(r) => {
+                let (mesh, glass) = crate::members::railing_meshes(model, r);
+                if !glass.indices.is_empty() {
+                    out.push(SceneItem {
+                        id: e.id,
+                        mesh: glass,
+                        color: GLASS_COLOR,
+                        surface: GLASS_SURFACE,
+                        ghost: false,
+                        layer: None,
+                        finish: Some("Glass"),
+                    });
+                }
+                (mesh, crate::members::railing_color(r))
+            }
+            ElementKind::Circuit(_) => continue,
         };
-        // a material's look wins over the element type's default
+        // a material's look wins over the element type's default; a
+        // railing's stainless or aluminium shines
+        let plain = match &e.kind {
+            ElementKind::Railing(r) if r.metal.is_some() => METAL_SURFACE,
+            _ => PLAIN_SURFACE,
+        };
         let (color, surface) = creabim_core::material_of(model, e)
-            .map_or((color, PLAIN_SURFACE), |(_, m)| (m.color, m.surface()));
+            .map_or((color, plain), |(_, m)| (m.color, m.surface()));
         out.push(SceneItem {
             id: e.id,
             mesh,
@@ -530,6 +1021,43 @@ fn build_scene_unjoined(
             layer: None,
             finish: None,
         });
+        // a parapet's capping lies on XPS in a fall and an OSB board
+        if let ElementKind::Flashing(creabim_core::flashing::Flashing {
+            item: creabim_core::flashing::FlashingItem::Capping(c),
+            ..
+        }) = &e.kind
+        {
+            for (i, (mesh, color, material)) in crate::flashing::capping_substrate(model, c)
+                .into_iter()
+                .enumerate()
+            {
+                let (color, surface) = material
+                    .and_then(|m| match &model.get(m)?.kind {
+                        ElementKind::Material(m) => Some((m.color, m.surface())),
+                        _ => None,
+                    })
+                    .unwrap_or((color, PLAIN_SURFACE));
+                out.push(SceneItem {
+                    id: e.id,
+                    mesh,
+                    color,
+                    surface,
+                    ghost: false,
+                    layer: Some(LayerPart {
+                        index: i + 1,
+                        material,
+                        function: if i == 0 && c.xps + c.fall > 1e-6 {
+                            creabim_core::LayerFunction::Insulation
+                        } else {
+                            creabim_core::LayerFunction::Substrate
+                        },
+                        core: false,
+                        priority: 5,
+                    }),
+                    finish: None,
+                });
+            }
+        }
     }
     apply_cuts(model, &mut out);
     out
@@ -693,18 +1221,23 @@ fn apply_cuts(model: &Model, items: &mut [SceneItem]) {
     }
 }
 
-/// Where a wall and a slab overlap in 3D, the one the drawings let run
-/// through cuts the other (A4-6), so 3D, sections and plans agree: by the
-/// junction's own rule if it has one, else layer by layer (the lower join
-/// priority runs through: cores through finishes), then walls through
-/// slabs. As strong, they are left as they are. Each result is kept, keyed
-/// by the two shapes, so editing one wall redoes only its own joins.
+/// Where two built elements overlap in 3D, the one the drawings let run
+/// through cuts the other (A4-6), so 3D, sections, plans and the material
+/// take-off agree and no volume is counted twice: by the junction's own
+/// rule if it has one, else layer by layer (the lower join priority runs
+/// through: cores through finishes), then by kind (columns, beams, walls,
+/// slabs, footings, roofs, ceilings: see `joins::category_rank`), then
+/// the element drawn first. Walls, slabs, roofs, footings, columns, beams
+/// and ceilings all take part. Each result is kept, keyed by the two
+/// shapes, so editing one wall redoes only its own joins.
 fn apply_joins(model: &Model, items: &mut [SceneItem]) {
     let rules = creabim_core::joins::rules(model);
-    let is = |id: ElementId, wall: bool| match model.get(id).map(|e| &e.kind) {
-        Some(ElementKind::Wall(w)) => wall && w.curtain.is_none(),
-        Some(ElementKind::Slab(_)) => !wall,
-        _ => false,
+    let order: std::collections::HashMap<ElementId, usize> =
+        model.iter().enumerate().map(|(i, e)| (e.id, i)).collect();
+    let built = |id: ElementId| match model.get(id).map(|e| &e.kind) {
+        Some(ElementKind::Wall(w)) => w.curtain.is_none(),
+        Some(k) => creabim_core::joins::joinable(k),
+        None => false,
     };
     let strength = |i: &SceneItem| {
         (
@@ -716,45 +1249,81 @@ fn apply_joins(model: &Model, items: &mut [SceneItem]) {
     };
     let boxes: Vec<Option<(glam::Vec3, glam::Vec3)>> = items
         .iter()
-        .map(|i| if i.ghost { None } else { i.mesh.bounds() })
+        .map(|i| {
+            if i.ghost || i.is_lining() {
+                None
+            } else {
+                i.mesh.bounds()
+            }
+        })
         .collect();
     let overlap = |a: (glam::Vec3, glam::Vec3), b: (glam::Vec3, glam::Vec3)| {
         let lo = a.0.max(b.0);
         let hi = a.1.min(b.1);
         (hi - lo).min_element() > 1e-4
     };
-    let walls: Vec<usize> = (0..items.len())
-        .filter(|k| boxes[*k].is_some() && is(items[*k].id, true))
-        .collect();
-    let slabs: Vec<usize> = (0..items.len())
-        .filter(|k| boxes[*k].is_some() && is(items[*k].id, false))
+    let solids: Vec<usize> = (0..items.len())
+        .filter(|k| boxes[*k].is_some() && built(items[*k].id))
         .collect();
     // (target, cutter) pairs, in item indices
     let mut pairs: Vec<(usize, usize)> = vec![];
-    for &w in &walls {
-        for &sl in &slabs {
-            let (Some(bw), Some(bs)) = (boxes[w], boxes[sl]) else {
-                continue;
-            };
-            if !overlap(bw, bs) {
+    for (n, &i) in solids.iter().enumerate() {
+        for &j in &solids[n + 1..] {
+            let (a, b) = (&items[i], &items[j]);
+            if a.id == b.id {
                 continue;
             }
-            let (a, b) = (&items[w], &items[sl]);
+            let (Some(ba), Some(bb)) = (boxes[i], boxes[j]) else {
+                continue;
+            };
+            if !overlap(ba, bb) {
+                continue;
+            }
             let rule = rules.iter().find(|r| r.joins(a.id, b.id));
             if rule.is_some_and(|r| !r.cleanup) {
                 continue;
             }
-            let wall_wins = match rule.and_then(|r| r.wins(a.id, b.id)) {
+            // timber and steel members are cut as their ends and seats say,
+            // not by each other, except that a tenon sits in its mortise in
+            // the member it meets: the tenoned one cuts that one (George
+            // 2026-11-27)
+            let member = |id: ElementId| {
+                model
+                    .get(id)
+                    .filter(|e| creabim_core::framing::of(e).is_some())
+            };
+            let mortise = match (member(a.id), member(b.id)) {
+                (Some(ea), Some(eb)) => {
+                    let into = |t: &Element, o: (glam::Vec3, glam::Vec3)| {
+                        crate::members::tenon_boxes(model, t)
+                            .iter()
+                            .any(|(lo, hi)| overlap((lo.as_vec3(), hi.as_vec3()), o))
+                    };
+                    if into(ea, bb) {
+                        Some(true)
+                    } else if into(eb, ba) {
+                        Some(false)
+                    } else {
+                        continue;
+                    }
+                }
+                _ => None,
+            };
+            let a_wins = match rule.and_then(|r| r.wins(a.id, b.id)).or(mortise) {
                 Some(w) => w,
                 None => {
                     let (sa, sb) = (strength(a), strength(b));
-                    if sa == sb {
-                        continue;
+                    if sa != sb {
+                        sa > sb
+                    } else {
+                        // as strong: the one drawn first (the same
+                        // material reads as one mass either way)
+                        let at = |id| order.get(&id).copied().unwrap_or(usize::MAX);
+                        at(a.id) < at(b.id)
                     }
-                    sa > sb
                 }
             };
-            pairs.push(if wall_wins { (sl, w) } else { (w, sl) });
+            pairs.push(if a_wins { (j, i) } else { (i, j) });
         }
     }
     if pairs.is_empty() {
@@ -768,7 +1337,20 @@ fn apply_joins(model: &Model, items: &mut [SceneItem]) {
         let mesh = match done {
             Some(m) => m,
             None => {
-                let m = boolean_mesh(&items[t].mesh, &originals[c], BoolOp::Difference);
+                let before = &items[t].mesh;
+                let cut = boolean_mesh(before, &originals[c], BoolOp::Difference);
+                // where the boxes meet but the solids don't (a mitred
+                // corner), the shape stays as it was, not split up for
+                // nothing; a cut that came out broken (more than it was,
+                // or less than nothing) is left undone, and an element
+                // wholly inside the one that wins (a beam set to stay
+                // buried in its wall) stays as it is, for X-ray to show
+                let (v0, v1) = (closed_volume(before), closed_volume(&cut));
+                let m = if v1 >= v0 - 1e-7 || v1 < 1e-6 || v1 > v0 + 1e-7 {
+                    before.clone()
+                } else {
+                    cut
+                };
                 JOIN_CACHE.with(|cache| {
                     let mut cache = cache.borrow_mut();
                     if cache.len() > 4000 {
@@ -788,8 +1370,24 @@ thread_local! {
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
+/// The volume a closed mesh holds, measured about its first corner so
+/// that coordinates far from the origin lose no precision.
+pub fn closed_volume(m: &TriMesh) -> f64 {
+    let Some(o) = m.positions.first() else {
+        return 0.0;
+    };
+    let o = glam::Vec3::from(*o).as_dvec3();
+    m.indices
+        .chunks_exact(3)
+        .map(|t| {
+            let p = |i: u32| glam::Vec3::from(m.positions[i as usize]).as_dvec3() - o;
+            p(t[0]).dot(p(t[1]).cross(p(t[2]))) / 6.0
+        })
+        .sum()
+}
+
 /// A fingerprint of a mesh's shape.
-fn mesh_key(m: &TriMesh) -> u64 {
+pub(crate) fn mesh_key(m: &TriMesh) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     m.indices.hash(&mut h);
@@ -854,18 +1452,34 @@ fn opening_items(
     use crate::opening::Part;
     use creabim_core::OpeningKind;
     let material = creabim_core::material_of(model, e).map(|(_, m)| (m.color, m.surface()));
-    crate::opening::opening_meshes(o, w, level_z)
+    let asm = model
+        .get(o.host)
+        .and_then(|h| creabim_core::assembly_of(model, h))
+        .map(|x| x.1);
+    crate::opening::opening_meshes(o, w, asm, level_z)
         .into_iter()
         .map(|(part, mesh)| {
             let (color, surface) = match (part, o.kind, material) {
-                (Part::Glass, ..) => (GLASS_COLOR, GLASS_SURFACE),
+                (Part::Glass | Part::LeafGlass, ..) => (GLASS_COLOR, GLASS_SURFACE),
                 (Part::Handle, ..) => ([0.72, 0.73, 0.75], [0.3, 1.0, 1.0]),
+                (Part::Panel, _, None) => ([0.80, 0.80, 0.78], PLAIN_SURFACE),
+                // a door as joinery: its frame and leaf in their own colours
+                (Part::Frame, OpeningKind::Door, None) if o.door.is_some() => (
+                    o.door.as_ref().map_or([0.5; 3], |d| d.frame.color()),
+                    PLAIN_SURFACE,
+                ),
+                (Part::Leaf | Part::LeafRail | Part::LeafOutline, _, None) if o.door.is_some() => (
+                    o.door.as_ref().map_or([0.5; 3], |d| d.leaf.color()),
+                    PLAIN_SURFACE,
+                ),
                 (_, _, Some(m)) => m,
                 (Part::Frame, OpeningKind::Window | OpeningKind::Hole, None) => {
                     ([0.93, 0.93, 0.91], PLAIN_SURFACE)
                 }
                 (Part::Frame, OpeningKind::Door, None) => ([0.50, 0.35, 0.22], PLAIN_SURFACE),
-                (Part::Leaf, _, None) => ([0.62, 0.45, 0.30], PLAIN_SURFACE),
+                (Part::Leaf | Part::LeafRail | Part::LeafOutline, _, None) => {
+                    ([0.62, 0.45, 0.30], PLAIN_SURFACE)
+                }
             };
             SceneItem {
                 id: e.id,
@@ -875,14 +1489,19 @@ fn opening_items(
                 ghost: false,
                 layer: None,
                 finish: match part {
-                    Part::Glass => Some("Glass"),
+                    Part::Glass | Part::LeafGlass => Some("Glass"),
                     Part::Handle => Some("Metal"),
-                    Part::Frame | Part::Leaf => None,
+                    Part::Frame | Part::Leaf | Part::Panel | Part::LeafRail | Part::LeafOutline => {
+                        None
+                    }
                 },
             }
         })
         .collect()
 }
+
+/// Bare metal: a door handle, a stainless or aluminium railing.
+pub const METAL_SURFACE: [f32; 3] = [0.3, 1.0, 1.0];
 
 /// Glass in doors and windows: pale blue, smooth and mostly see-through.
 pub const GLASS_COLOR: [f32; 3] = [0.62, 0.78, 0.88];
@@ -1079,6 +1698,67 @@ pub fn edit_mesh_to_tri(mesh: &creabim_core::EditMesh, origin: DVec3) -> TriMesh
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn insulation_and_render_turn_into_a_windows_head_and_sill() {
+        use creabim_core::{AssemblyUse, Document, Layer, LayerFunction as F};
+        let mut doc = Document::from_model(creabim_core::sample::layered_house());
+        let ids: Vec<ElementId> = doc.model().iter().map(|e| e.id).collect();
+        for id in ids {
+            match doc.model().get(id).unwrap().kind.clone() {
+                ElementKind::Assembly(a) if a.usage == AssemblyUse::Wall => doc
+                    .edit(id, "layers", |e| {
+                        if let ElementKind::Assembly(a) = &mut e.kind {
+                            a.layers = vec![
+                                Layer::new(F::Finish, None, 0.005),
+                                Layer::new(F::Insulation, None, 0.15),
+                                Layer::new(F::Structure, None, 0.25),
+                                Layer::new(F::Finish, None, 0.015),
+                            ];
+                        }
+                    })
+                    .unwrap(),
+                ElementKind::Wall(_) => {
+                    let _ = doc.edit(id, "thickness", |e| {
+                        if let ElementKind::Wall(w) = &mut e.kind {
+                            w.thickness = 0.42;
+                        }
+                    });
+                }
+                _ => {}
+            }
+        }
+        let m = doc.model();
+        let (wall, w, o) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Opening(o) if o.kind == creabim_core::OpeningKind::Window => {
+                    let host = m.get(o.host)?;
+                    let ElementKind::Wall(w) = &host.kind else {
+                        return None;
+                    };
+                    assembly::assembly_of(m, host)?;
+                    Some((host.id, w.clone(), o.clone()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let z0 = m.level(w.level).unwrap().elevation + w.base_offset;
+        let scene = build_scene_of(m, None);
+        // the insulation: the wall's layer with its reveals
+        let parts: Vec<_> = scene
+            .iter()
+            .filter(|i| i.id == wall && i.layer.is_some_and(|l| l.index == 1))
+            .collect();
+        assert_eq!(parts.len(), 1, "one solid a layer");
+        // lapped 30 mm over the frame at the head and the sill
+        let lap = assembly::REVEAL_INSULATION;
+        let v = parts[0].mesh.positions.iter().map(|p| p[2] as f64);
+        assert!(v
+            .clone()
+            .any(|z| (z - (z0 + o.sill + o.height - lap)).abs() < 1e-4));
+        assert!(v.clone().any(|z| (z - (z0 + o.sill + lap)).abs() < 1e-4));
+    }
 
     #[test]
     fn a_partition_held_to_the_ceilings_has_no_sliver_at_its_ends() {
@@ -1328,5 +2008,94 @@ mod tests {
         let without: Vec<SceneItem> = scene.iter().filter(|i| !i.is_lining()).cloned().collect();
         let plain: f64 = element_meshes(&without).values().map(|m| m.volume()).sum();
         assert!((walls - plain).abs() < 1e-9);
+    }
+
+    /// George 2026-11-22: a plinth of XPS, set back from the facade, on a
+    /// membrane up the masonry, 300 mm over the ground (here the walls'
+    /// base, with no terrain); the facade insulation and render above it.
+    #[test]
+    fn a_plinth_swaps_the_facade_insulation_for_xps_below_its_top() {
+        use creabim_core::plinth::Plinth;
+        use creabim_core::{
+            AssemblyUse, Document, Layer, LayerFunction as F, Material, Transaction,
+        };
+        let mut doc = Document::from_model(creabim_core::sample::layered_house());
+        let mat = |n: &str| Element::new(n, ElementKind::Material(Material::default()));
+        let (xps, foil, sokel, eps) =
+            (mat("XPS"), mat("Fólia"), mat("Soklová omietka"), mat("EPS"));
+        let (xid, fid, sid, eid) = (xps.id, foil.id, sokel.id, eps.id);
+        doc.commit(
+            Transaction::new("m")
+                .insert(xps)
+                .insert(foil)
+                .insert(sokel)
+                .insert(eps),
+        )
+        .unwrap();
+        let ids: Vec<ElementId> = doc.model().iter().map(|e| e.id).collect();
+        for id in ids {
+            if let ElementKind::Assembly(a) = doc.model().get(id).unwrap().kind.clone() {
+                if a.usage != AssemblyUse::Wall {
+                    continue;
+                }
+                doc.edit(id, "plinth", |e| {
+                    if let ElementKind::Assembly(a) = &mut e.kind {
+                        a.layers = vec![
+                            Layer::new(F::Finish, None, 0.005),
+                            Layer::new(F::Insulation, Some(eid), 0.15),
+                            Layer::new(F::Structure, None, 0.25),
+                            Layer::new(F::Finish, None, 0.015),
+                        ];
+                        let mut p = Plinth::new(0.12);
+                        p.insulation = Some(xid);
+                        p.membrane = Some(fid);
+                        p.render = Some(sid);
+                        a.plinth = Some(p);
+                    }
+                })
+                .unwrap();
+            }
+        }
+        let m = doc.model();
+        let joins = creabim_core::wall_joins(m);
+        let (e, w) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.assembly.is_some() => Some((e, w)),
+                _ => None,
+            })
+            .unwrap();
+        let base = creabim_core::plinth::base_z(m, w);
+        let parts = layer_parts(m, e, &joins);
+        let zs = |mat: ElementId| -> Option<(f64, f64)> {
+            let ps: Vec<f64> = parts
+                .iter()
+                .filter(|(l, _)| l.material == Some(mat))
+                .flat_map(|(_, mesh)| mesh.positions.iter().map(|p| p[2] as f64))
+                .collect();
+            (!ps.is_empty()).then(|| {
+                (
+                    ps.iter().copied().fold(f64::MAX, f64::min),
+                    ps.iter().copied().fold(f64::MIN, f64::max),
+                )
+            })
+        };
+        let (x0, x1) = zs(xid).expect("XPS");
+        assert!(
+            (x0 - base).abs() < 1e-3 && (x1 - (base + 0.3)).abs() < 1e-3,
+            "{x0} {x1}"
+        );
+        let (e0, _) = zs(eid).expect("EPS above");
+        assert!(e0 > base + 0.3 - 1e-3, "{e0}");
+        let (f0, f1) = zs(fid).expect("membrane");
+        assert!((f0 - base).abs() < 1e-3 && (f1 - (base + 0.3)).abs() < 1e-3);
+        assert!(zs(sid).is_some(), "the plinth's render");
+        // the XPS is 120 thick, set back 30 behind the facade insulation
+        let xps_vol: f64 = parts
+            .iter()
+            .filter(|(l, _)| l.material == Some(xid))
+            .map(|(_, mesh)| closed_volume(mesh))
+            .sum();
+        assert!(xps_vol > 0.0);
     }
 }

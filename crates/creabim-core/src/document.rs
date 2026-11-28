@@ -38,6 +38,9 @@ pub struct Document {
     model: Model,
     undo: Vec<Step>,
     redo: Vec<Step>,
+    /// An element whose parameters new elements of its kind take (Alt+click
+    /// picks one up; see [`crate::pickup`]).
+    pickup: Option<Element>,
 }
 
 impl Document {
@@ -73,7 +76,39 @@ impl Document {
             model,
             undo: undo.into_iter().map(Step::new).collect(),
             redo: redo.into_iter().map(Step::new).collect(),
+            pickup: None,
         })
+    }
+
+    /// Like [`Document::from_parts`], but a history that doesn't fit the
+    /// model is cut rather than refused: the model is what the project is,
+    /// the history only how it got there. The undo steps kept are the
+    /// newest ones that still unwind cleanly; the redo steps go when they
+    /// don't fit. Returns how many undo and redo steps were dropped.
+    pub fn from_parts_mended(
+        model: Model,
+        undo: Vec<Transaction>,
+        redo: Vec<Transaction>,
+    ) -> (Self, usize, usize) {
+        if let Ok(doc) = Self::from_parts(model.clone(), undo.clone(), redo.clone()) {
+            return (doc, 0, 0);
+        }
+        // how far back the newest steps unwind (a step applies all or
+        // nothing, so the scratch copy stays whole where it stops)
+        let mut scratch = model.clone();
+        let mut keep_from = undo.len();
+        while keep_from > 0 && undo[keep_from - 1].inverse().apply(&mut scratch).is_ok() {
+            keep_from -= 1;
+        }
+        let (n_undo, n_redo) = (undo.len(), redo.len());
+        let kept: Vec<Transaction> = undo.into_iter().skip(keep_from).collect();
+        if let Ok(doc) = Self::from_parts(model.clone(), kept.clone(), redo) {
+            return (doc, keep_from, 0);
+        }
+        if let Ok(doc) = Self::from_parts(model.clone(), kept, vec![]) {
+            return (doc, keep_from, n_redo);
+        }
+        (Self::from_model(model), n_undo, n_redo)
     }
 
     /// Take the document apart into what [`Document::from_parts`] accepts.
@@ -96,11 +131,28 @@ impl Document {
         &self.redo
     }
 
+    /// New elements of the kind of `template` take its parameters until
+    /// it is set to none (see [`crate::pickup`]).
+    pub fn set_pickup(&mut self, template: Option<Element>) {
+        self.pickup = template;
+    }
+
+    pub fn pickup(&self) -> Option<&Element> {
+        self.pickup.as_ref()
+    }
+
     pub fn commit(&mut self, tx: Transaction) -> Result<(), ModelError> {
         if tx.ops.is_empty() {
             return Ok(());
         }
         let mut tx = tx;
+        if let Some(t) = &self.pickup {
+            for op in &mut tx.ops {
+                if let crate::Op::Insert(e) = op {
+                    crate::pickup::adopt(&self.model, t, e);
+                }
+            }
+        }
         self.apply_settled(&mut tx)?;
         self.undo.push(Step::new(tx));
         self.redo.clear();
@@ -111,6 +163,19 @@ impl Document {
     /// lines, heights tied to levels; see [`crate::walls`]), added to `tx`
     /// so it all undoes as one step.
     fn apply_settled(&mut self, tx: &mut Transaction) -> Result<(), ModelError> {
+        let locked = crate::lock::before(&self.model);
+        self.apply_settled_free(tx)?;
+        // nothing moves what is locked (crate::lock): the whole edit goes
+        if let Some(id) = crate::lock::moved(&self.model, &locked) {
+            tx.inverse()
+                .apply(&mut self.model)
+                .expect("an edit just applied undoes");
+            return Err(ModelError::Locked(id));
+        }
+        Ok(())
+    }
+
+    fn apply_settled_free(&mut self, tx: &mut Transaction) -> Result<(), ModelError> {
         let kept = crate::walls::lines_kept(&self.model, tx);
         tx.apply(&mut self.model)?;
         let levels = crate::walls::touches_walls(tx);
@@ -126,6 +191,32 @@ impl Document {
             if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
                 tx.ops.extend(extra.ops);
             }
+        }
+        // what came down from the map moves as one, S-JTSK with it
+        let extra = crate::mapgroup::settle(&self.model, tx);
+        if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
+            tx.ops.extend(extra.ops);
+        }
+        // doors and windows stay at their height over the floor when
+        // their wall's base is sunk or raised
+        let extra = crate::walls::keep_openings(&self.model, tx);
+        if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
+            tx.ops.extend(extra.ops);
+        }
+        // system lintels follow their doors and windows
+        let extra = crate::masonry::settle(&self.model, tx);
+        if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
+            tx.ops.extend(extra.ops);
+        }
+        // insulation and render follow the columns and beams they wrap
+        let extra = crate::wrap::settle(&self.model);
+        if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
+            tx.ops.extend(extra.ops);
+        }
+        // downpipes sized by their gutters follow them
+        let extra = crate::flashing::settle(&self.model, tx);
+        if !extra.ops.is_empty() && extra.apply(&mut self.model).is_ok() {
+            tx.ops.extend(extra.ops);
         }
         // held dimensions move the other end of what moved (the padlock)
         for round in crate::holds::settle(&self.model, tx) {
@@ -195,6 +286,15 @@ impl Document {
         }
         let mut tx = tx;
         self.apply_settled(&mut tx)?;
+        // what followed the edit added or removed elements (insulation
+        // round a column, a lintel over a door): a step of its own, or
+        // the merge below, which keeps only replaces, would lose them and
+        // the history would no longer fit the model
+        if !replaces(&tx) {
+            self.undo.push(Step::new(tx));
+            self.redo.clear();
+            return Ok(());
+        }
         let step = self.undo.last_mut().expect("a step to merge into");
         // what each element was before the first edit, and is now
         let mut befores: Vec<Element> = vec![];
@@ -233,6 +333,22 @@ impl Document {
 
     pub fn redo_label(&self) -> Option<&str> {
         self.redo.last().map(|s| s.tx.label.as_str())
+    }
+
+    /// Apply `tx` and fold it into the last undo step, as what that edit
+    /// brought with it (labels made for what it drew), so undo takes both
+    /// back at once. Without a step to fold into, or while there is
+    /// something to redo, nothing happens.
+    pub fn amend(&mut self, tx: Transaction) -> Result<(), ModelError> {
+        if tx.ops.is_empty() || self.undo.is_empty() || !self.redo.is_empty() {
+            return Ok(());
+        }
+        let mut tx = tx;
+        self.apply_settled(&mut tx)?;
+        let step = self.undo.last_mut().expect("a step to amend");
+        step.tx.ops.extend(tx.ops);
+        step.id = StepId::next();
+        Ok(())
     }
 
     pub fn undo(&mut self) -> bool {

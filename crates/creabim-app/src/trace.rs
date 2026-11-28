@@ -52,6 +52,19 @@ pub struct Linework {
     pub lines: Vec<Vec<DVec2>>,
     pub texts: Vec<RefText>,
     pub points: Vec<DVec2>,
+    /// Each line's layer, by its index in `layers` (a drawing's; none for
+    /// a view's linework).
+    pub layer_of: Vec<u32>,
+    pub layers: Vec<String>,
+}
+
+impl Linework {
+    /// The layer line `i` is on, if known.
+    pub fn layer(&self, i: usize) -> Option<&str> {
+        self.layers
+            .get(*self.layer_of.get(i)? as usize)
+            .map(|s| s.as_str())
+    }
 }
 
 impl std::ops::Deref for Linework {
@@ -75,6 +88,8 @@ impl From<Vec<Vec<DVec2>>> for Linework {
 pub enum Shown {
     Picture(Arc<Raster>),
     Lines(Arc<Linework>),
+    /// A point cloud; a plan shows a slice of it ([`RefCache::slice`]).
+    Cloud(Arc<creabim_exchange::cloud::Cloud>),
     /// It couldn't be read; why.
     Missing(String),
 }
@@ -89,20 +104,75 @@ pub struct RefCache {
     dxf: HashMap<String, Arc<creabim_exchange::dxf::DxfImport>>,
     /// PDF pages found to be scans, by source key.
     scans: std::collections::HashSet<String>,
+    /// Point clouds read, by source key.
+    clouds: HashMap<String, Arc<creabim_exchange::cloud::Cloud>>,
+    /// What a plan shows of a cloud, by reference and view, with what it
+    /// was cut by.
+    slices: HashMap<(ElementId, ElementId), (String, Arc<creabim_exchange::cloud::Slice>)>,
+    /// The points 3D shows of a cloud, by source key.
+    samples: HashMap<String, Arc<Vec<u32>>>,
+    /// A drawing's lines where the views show it, indexed to snap to and
+    /// pick by, with the reference as it was when they were put there.
+    indexes: HashMap<ElementId, (String, Arc<crate::snaps::LineIndex>)>,
 }
+
+/// Most points a plan shows of a cloud's slice, and 3D of a cloud.
+pub const SLICE_POINTS: usize = 150_000;
+pub const SAMPLE_POINTS: usize = 150_000;
 
 /// The cache key of a source: its file, or its view.
 fn key(source: &RefSource) -> String {
+    // by the file found from the project's folder, so a project opened
+    // from elsewhere reads its underlays again (George 2026-11-23)
+    let r = creabim_core::refpath::resolved;
     match source {
         RefSource::View(v) => format!("view:{v:?}"),
-        RefSource::Image { path, .. } => format!("image:{path}"),
-        RefSource::Dxf { path, unit: None } => format!("dxf:{path}"),
+        RefSource::Image { path, .. } => format!("image:{}", r(path)),
+        RefSource::Dxf { path, unit: None } => format!("dxf:{}", r(path)),
         RefSource::Dxf {
             path,
             unit: Some(u),
-        } => format!("dxf:{path}@{u}"),
-        RefSource::Pdf { path, page, scale } => format!("pdf:{path}#{page}@{scale}"),
+        } => format!("dxf:{}@{u}", r(path)),
+        RefSource::Pdf { path, page, scale } => format!("pdf:{}#{page}@{scale}", r(path)),
+        RefSource::Points { path, .. } => format!("points:{}", r(path)),
     }
+}
+
+/// What is added to a cloud's heights to stand it in the model: less the
+/// survey's ±0,000 (as a terrain's), and its own lift.
+pub fn cloud_lift(model: &Model, source: &RefSource, c: &creabim_exchange::cloud::Cloud) -> f64 {
+    let lift = match source {
+        RefSource::Points { lift, .. } => *lift,
+        _ => 0.0,
+    };
+    lift - crate::app::terrainimport::datum(model, c.lo.z)
+}
+
+/// The heights (the file's) between which `view` shows a cloud: its
+/// slice above the plan's level, or all of it; none in other views.
+pub fn cloud_range(
+    model: &Model,
+    source: &RefSource,
+    c: &creabim_exchange::cloud::Cloud,
+    view: ElementId,
+) -> Option<(f64, f64)> {
+    let RefSource::Points {
+        from, to, whole, ..
+    } = source
+    else {
+        return None;
+    };
+    let creabim_core::ElementKind::View(v) = &model.get(view)?.kind else {
+        return None;
+    };
+    let creabim_core::ViewKind::Plan { level, .. } = &v.kind else {
+        return None;
+    };
+    if *whole {
+        return Some((f64::NEG_INFINITY, f64::INFINITY));
+    }
+    let z = model.level(*level).map_or(0.0, |l| l.elevation) - cloud_lift(model, source, c);
+    Some((z + from.min(*to), z + from.max(*to)))
 }
 
 /// Where a scanned PDF page's picture lies on its page, by source key.
@@ -114,6 +184,7 @@ pub fn pdf_page(
     page: u32,
     scale: f64,
 ) -> Result<creabim_exchange::pdf::PdfPage, String> {
+    let path = &creabim_core::refpath::resolved(path);
     let bytes = std::fs::read(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
     let p = creabim_exchange::pdf::read(&bytes, page, scale).map_err(|e| format!("{path}: {e}"))?;
     if p.scan.is_none()
@@ -181,6 +252,10 @@ impl RefCache {
             }
         }
         let s = match &r.source {
+            RefSource::Points { path, .. } => match self.cloud(path) {
+                Ok(c) => Shown::Cloud(c),
+                Err(e) => Shown::Missing(e),
+            },
             RefSource::Dxf { .. } | RefSource::Pdf { .. } => match self.drawing(&r.source) {
                 Ok(Some(d)) => Shown::Lines(Arc::new(dxf_linework(&d, &r.layers_off, r.clip))),
                 Ok(None) => read(model, &r.source),
@@ -190,6 +265,161 @@ impl RefCache {
         };
         self.read.insert(id, (k, rev, s.clone()));
         s
+    }
+
+    /// The lines and points reference `id` shows (a DXF or PDF drawing,
+    /// another view's linework) where the views show them, indexed; none
+    /// for a picture or a cloud.
+    pub fn index(
+        &mut self,
+        model: &Model,
+        id: ElementId,
+        r: &Reference,
+    ) -> Option<Arc<crate::snaps::LineIndex>> {
+        let Shown::Lines(lines) = self.get(model, id, r) else {
+            self.indexes.remove(&id);
+            return None;
+        };
+        let k = format!(
+            "{}|{:?}|{}|{}|{:?}|{}",
+            ref_key(r),
+            r.at,
+            r.rotation,
+            r.scale,
+            r.bounds,
+            Arc::as_ptr(&lines) as usize
+        );
+        if let Some((kk, ix)) = self.indexes.get(&id) {
+            if *kk == k {
+                return Some(ix.clone());
+            }
+        }
+        let placed: Vec<Vec<DVec2>> = lines
+            .iter()
+            .map(|l| l.iter().map(|p| r.place(*p)).collect())
+            .collect();
+        let points: Vec<DVec2> = lines.points.iter().map(|p| r.place(*p)).collect();
+        let ix = Arc::new(crate::snaps::LineIndex::new(&placed, &points));
+        self.indexes.insert(id, (k, ix.clone()));
+        Some(ix)
+    }
+
+    /// A point cloud's file, read once.
+    pub fn cloud(&mut self, path: &str) -> Result<Arc<creabim_exchange::cloud::Cloud>, String> {
+        let path = &creabim_core::refpath::resolved(path);
+        let k = format!("points:{path}");
+        if let Some(c) = self.clouds.get(&k) {
+            return Ok(c.clone());
+        }
+        let c = Arc::new(creabim_exchange::cloud::read_file(path)?);
+        self.clouds.insert(k, c.clone());
+        Ok(c)
+    }
+
+    /// A point cloud's file, if read already.
+    pub fn cached_cloud(&self, path: &str) -> Option<Arc<creabim_exchange::cloud::Cloud>> {
+        let path = creabim_core::refpath::resolved(path);
+        self.clouds.get(&format!("points:{path}")).cloned()
+    }
+
+    /// A point cloud read elsewhere (in the background), kept as read.
+    pub fn put_cloud(&mut self, path: &str, c: Arc<creabim_exchange::cloud::Cloud>) {
+        let path = &creabim_core::refpath::resolved(path);
+        let k = format!("points:{path}");
+        self.samples.remove(&k);
+        self.clouds.insert(k, c);
+    }
+
+    /// What the plan `view` shows of the cloud reference `id`: its points
+    /// between the slice's heights, within its clip.
+    pub fn slice(
+        &mut self,
+        model: &Model,
+        id: ElementId,
+        r: &Reference,
+        view: ElementId,
+    ) -> Option<Arc<creabim_exchange::cloud::Slice>> {
+        let RefSource::Points { path, .. } = &r.source else {
+            return None;
+        };
+        let c = self.cloud(path).ok()?;
+        let (from, to) = cloud_range(model, &r.source, &c, view)?;
+        let k = format!("{}|{from}:{to}", ref_key(r));
+        if let Some((kk, s)) = self.slices.get(&(id, view)) {
+            if *kk == k {
+                return Some(s.clone());
+            }
+        }
+        let s = Arc::new(c.slice(from, to, r.clip, SLICE_POINTS));
+        self.slices.insert((id, view), (k, s.clone()));
+        Some(s)
+    }
+
+    /// What the section or elevation `view` shows of the cloud reference
+    /// `id`: its points in front of the view's line, within its depth,
+    /// in the view's own coordinates (along the line, height).
+    pub fn section(
+        &mut self,
+        model: &Model,
+        id: ElementId,
+        r: &Reference,
+        view: ElementId,
+    ) -> Option<Arc<creabim_exchange::cloud::Slice>> {
+        let RefSource::Points { path, .. } = &r.source else {
+            return None;
+        };
+        let creabim_core::ElementKind::View(v) = &model.get(view)?.kind else {
+            return None;
+        };
+        let creabim_core::ViewKind::Section {
+            start, end, depth, ..
+        } = v.kind
+        else {
+            return None;
+        };
+        let c = self.cloud(path).ok()?;
+        let off = cloud_lift(model, &r.source, &c);
+        let k = format!(
+            "{}|{start}:{end}:{depth}|{}:{}:{}:{off}",
+            ref_key(r),
+            r.at,
+            r.rotation,
+            r.scale
+        );
+        if let Some((kk, s)) = self.slices.get(&(id, view)) {
+            if *kk == k {
+                return Some(s.clone());
+            }
+        }
+        let along = (end - start).normalize_or_zero();
+        let look = along.perp();
+        let clip = r.clip;
+        let s = Arc::new(c.section(
+            &|q| {
+                let own = q.truncate();
+                if clip.is_some_and(|[a, b]| !(own.cmpge(a).all() && own.cmple(b).all())) {
+                    return None;
+                }
+                let w = r.place(own) - start;
+                let d = w.dot(look);
+                (d >= 0.0 && d <= depth.max(0.0)).then(|| DVec2::new(w.dot(along), q.z + off))
+            },
+            SLICE_POINTS,
+        ));
+        self.slices.insert((id, view), (k, s.clone()));
+        Some(s)
+    }
+
+    /// The points 3D shows of a cloud.
+    pub fn sample(&mut self, path: &str) -> Option<Arc<Vec<u32>>> {
+        let path = &creabim_core::refpath::resolved(path);
+        let k = format!("points:{path}");
+        if let Some(s) = self.samples.get(&k) {
+            return Some(s.clone());
+        }
+        let s = Arc::new(self.cloud(path).ok()?.sample(SAMPLE_POINTS));
+        self.samples.insert(k, s.clone());
+        Some(s)
     }
 
     /// A DXF file, read once.
@@ -247,7 +477,11 @@ impl RefCache {
             let k = k.split('|').next().unwrap_or(&k).to_string();
             self.dxf.remove(&k);
             self.scans.remove(&k);
+            self.clouds.remove(&k);
+            self.samples.remove(&k);
         }
+        self.slices.retain(|(r, _), _| *r != id);
+        self.indexes.remove(&id);
     }
 }
 
@@ -256,6 +490,7 @@ pub fn dxf_import(
     path: &str,
     unit: Option<f64>,
 ) -> Result<creabim_exchange::dxf::DxfImport, String> {
+    let path = &creabim_core::refpath::resolved(path);
     let bytes = std::fs::read(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
     let d = creabim_exchange::dxf::read(&creabim_exchange::dxf::decode(&bytes), unit);
     if d.polys.is_empty() && d.texts.is_empty() && d.points.is_empty() && d.faces.is_empty() {
@@ -273,27 +508,44 @@ pub fn dxf_linework(
     let on = |l: &str| !off.iter().any(|x| x == l);
     let inside = |p: DVec2| clip.is_none_or(|[a, b]| p.cmpge(a).all() && p.cmple(b).all());
     let mut lines = vec![];
+    let mut layer_of: Vec<u32> = vec![];
+    let mut layers: Vec<String> = vec![];
+    let mut put = |layer: &str, pts: &[DVec2]| {
+        let k = match layers.iter().position(|l| l == layer) {
+            Some(k) => k,
+            None => {
+                layers.push(layer.to_string());
+                layers.len() - 1
+            }
+        } as u32;
+        for l in clip_line(pts, clip) {
+            lines.push(l);
+            layer_of.push(k);
+        }
+    };
     for p in d.polys.iter().filter(|p| on(&p.layer)) {
         let mut pts = p.pts.clone();
         if p.closed {
             pts.push(pts[0]);
         }
-        lines.extend(clip_line(&pts, clip));
+        put(&p.layer, &pts);
     }
     for f in d.fills.iter().filter(|f| on(&f.layer)) {
         for r in &f.rings {
             let mut pts = r.clone();
             pts.push(r[0]);
-            lines.extend(clip_line(&pts, clip));
+            put(&f.layer, &pts);
         }
     }
     for f in d.faces.iter().filter(|f| on(&f.layer)) {
         let mut pts: Vec<DVec2> = f.pts.iter().map(|q| q.truncate()).collect();
         pts.push(pts[0]);
-        lines.extend(clip_line(&pts, clip));
+        put(&f.layer, &pts);
     }
     Linework {
         lines,
+        layer_of,
+        layers,
         texts: d
             .texts
             .iter()
@@ -321,6 +573,7 @@ fn clip_shown(s: Shown, clip: Option<[DVec2; 2]>) -> Shown {
     match (s, clip) {
         (Shown::Lines(l), Some(_)) => Shown::Lines(Arc::new(Linework {
             lines: l.lines.iter().flat_map(|p| clip_line(p, clip)).collect(),
+            layer_of: vec![],
             ..(*l).clone()
         })),
         (s, _) => s,
@@ -424,6 +677,12 @@ pub fn read(model: &Model, source: &RefSource) -> Shown {
             Ok(p) => pdf_shown(source, p).0,
             Err(e) => Shown::Missing(e),
         },
+        RefSource::Points { path, .. } => {
+            match creabim_exchange::cloud::read_file(&creabim_core::refpath::resolved(path)) {
+                Ok(c) => Shown::Cloud(Arc::new(c)),
+                Err(e) => Shown::Missing(e),
+            }
+        }
     }
 }
 
@@ -437,6 +696,7 @@ pub fn bounds_of(source: &RefSource, shown: &Shown) -> Option<[DVec2; 2]> {
         (RefSource::Pdf { .. }, Shown::Picture(_)) => {
             SCANS.lock().ok()?.as_ref()?.get(&key(source)).copied()
         }
+        (_, Shown::Cloud(c)) => Some(c.bounds()),
         (_, Shown::Lines(l)) => {
             let mut it = l.iter().flatten();
             let first = *it.next()?;
@@ -456,7 +716,9 @@ pub fn label(model: &Model, source: &RefSource) -> String {
     };
     match source {
         RefSource::View(v) => model.get(*v).map_or("a view".into(), |e| e.name.clone()),
-        RefSource::Image { path, .. } | RefSource::Dxf { path, .. } => file(path),
+        RefSource::Image { path, .. }
+        | RefSource::Dxf { path, .. }
+        | RefSource::Points { path, .. } => file(path),
         RefSource::Pdf { path, page, .. } => format!("{} ({page})", file(path)),
     }
 }
@@ -479,12 +741,125 @@ pub fn draw_view(
     over: bool,
     to_screen: &dyn Fn(DVec2) -> Pos2,
 ) {
+    // a cloud is in the model: a section or an elevation shows what of it
+    // stands in front of its line, within its depth
+    for (id, r) in clouds_in_section(model, view) {
+        if r.over != over || r.opacity <= 0.0 {
+            continue;
+        }
+        if let Some(s) = cache.section(model, id, r, view) {
+            let ink = colour(r).map(|c| c.gamma_multiply(r.opacity.clamp(0.0, 1.0)));
+            let mut dots = Dots::new(painter.clip_rect());
+            for (n, p) in s.points.iter().enumerate() {
+                dots.add(to_screen(*p), || {
+                    ink.unwrap_or_else(|| own_colour(s.rgb.get(n), r.opacity))
+                });
+            }
+            dots.paint(painter);
+        }
+    }
     for (id, r) in creabim_core::reference::in_view(model, view) {
         if r.hidden || r.over != over || r.opacity <= 0.0 {
             continue;
         }
         let shown = cache.get(model, id, r);
+        if let Shown::Cloud(_) = shown {
+            if let Some(s) = cache.slice(model, id, r, view) {
+                let ink = colour(r).map(|c| c.gamma_multiply(r.opacity.clamp(0.0, 1.0)));
+                let mut dots = Dots::new(painter.clip_rect());
+                for (n, p) in s.points.iter().enumerate() {
+                    dots.add(to_screen(r.place(*p)), || {
+                        ink.unwrap_or_else(|| own_colour(s.rgb.get(n), r.opacity))
+                    });
+                }
+                dots.paint(painter);
+            }
+            continue;
+        }
         draw(painter, r, &shown, to_screen);
+    }
+}
+
+/// The clouds a section or an elevation `view` shows: every cloud not
+/// hidden (a cloud is placed in plans; a section cuts it where it stands).
+pub fn clouds_in_section(model: &Model, view: ElementId) -> Vec<(ElementId, &Reference)> {
+    let is_section = matches!(
+        model.get(view).map(|e| &e.kind),
+        Some(creabim_core::ElementKind::View(v)) if matches!(v.kind, creabim_core::ViewKind::Section { .. })
+    );
+    if !is_section {
+        return vec![];
+    }
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            creabim_core::ElementKind::Reference(r)
+                if !r.hidden && matches!(r.source, RefSource::Points { .. }) =>
+            {
+                Some((e.id, r))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// A cloud point's own colour, or grey where its file has none.
+pub fn own_colour(rgb: Option<&[u8; 3]>, opacity: f32) -> Color32 {
+    rgb.map_or(Color32::from_gray(70), |c| {
+        Color32::from_rgb(c[0], c[1], c[2])
+    })
+    .gamma_multiply(opacity.clamp(0.0, 1.0))
+}
+
+/// Points drawn as dots of two pixels, one a place on the screen however
+/// many fall there, so a cloud costs what the pane's pixels do.
+pub struct Dots {
+    rect: egui::Rect,
+    w: usize,
+    seen: Vec<u64>,
+    mesh: egui::Mesh,
+}
+
+impl Dots {
+    const SIZE: f32 = 2.0;
+
+    pub fn new(rect: egui::Rect) -> Self {
+        let w = (rect.width() / Self::SIZE).ceil().max(1.0) as usize;
+        let h = (rect.height() / Self::SIZE).ceil().max(1.0) as usize;
+        Self {
+            rect,
+            w,
+            seen: vec![0; (w * h).div_ceil(64)],
+            mesh: egui::Mesh::default(),
+        }
+    }
+
+    /// A dot at `p`, of the colour `ink` gives, unless one is there.
+    pub fn add(&mut self, p: Pos2, ink: impl FnOnce() -> Color32) {
+        if !self.rect.contains(p) {
+            return;
+        }
+        let i = ((p.x - self.rect.left()) / Self::SIZE) as usize;
+        let j = ((p.y - self.rect.top()) / Self::SIZE) as usize;
+        let n = j * self.w + i.min(self.w - 1);
+        let Some(word) = self.seen.get_mut(n / 64) else {
+            return;
+        };
+        if *word & (1 << (n % 64)) != 0 {
+            return;
+        }
+        *word |= 1 << (n % 64);
+        let at = self.rect.left_top() + egui::vec2(i as f32 * Self::SIZE, j as f32 * Self::SIZE);
+        self.mesh.add_colored_rect(
+            egui::Rect::from_min_size(at, egui::Vec2::splat(Self::SIZE)),
+            ink(),
+        );
+    }
+
+    pub fn paint(self, painter: &egui::Painter) {
+        if !self.mesh.is_empty() {
+            painter.add(egui::Shape::mesh(self.mesh));
+        }
     }
 }
 
@@ -528,15 +903,41 @@ pub fn draw(
                 .unwrap_or(Color32::from_gray(70))
                 .gamma_multiply(a);
             let stroke = Stroke::new(1.0, ink);
-            for line in lines.iter() {
+            // each layer as its style has it (a map's boundaries black, its
+            // contours dashed brown), else in the drawing's ink
+            let styles: Vec<Option<&creabim_core::LayerStyle>> = lines
+                .layers
+                .iter()
+                .map(|l| r.layer_styles.iter().find(|s| s.layer == *l))
+                .collect();
+            for (i, line) in lines.iter().enumerate() {
                 let pts: Vec<Pos2> = line.iter().map(|p| to_screen(r.place(*p))).collect();
-                if pts.len() >= 2 {
-                    painter.add(egui::Shape::line(pts, stroke));
+                if pts.len() < 2 {
+                    continue;
+                }
+                let style = lines
+                    .layer_of
+                    .get(i)
+                    .and_then(|k| styles.get(*k as usize).copied().flatten());
+                match style {
+                    Some(st) => {
+                        let [cr, cg, cb] = st.rgb;
+                        let s =
+                            Stroke::new(st.width, Color32::from_rgb(cr, cg, cb).gamma_multiply(a));
+                        if st.dashed {
+                            painter.extend(egui::Shape::dashed_line(&pts, s, 6.0, 4.0));
+                        } else {
+                            painter.add(egui::Shape::line(pts, s));
+                        }
+                    }
+                    None => {
+                        painter.add(egui::Shape::line(pts, stroke));
+                    }
                 }
             }
             draw_texts(painter, r, &lines.texts, ink, to_screen);
         }
-        Shown::Missing(_) => {}
+        Shown::Missing(_) | Shown::Cloud(_) => {}
     }
 }
 
@@ -626,7 +1027,7 @@ pub const DEFAULT_DPI: f64 = 150.0;
 
 /// A picture's size in pixels.
 pub fn picture_px(path: &str) -> Option<(u32, u32)> {
-    image::image_dimensions(path).ok()
+    image::image_dimensions(creabim_core::refpath::resolve(path)).ok()
 }
 
 /// A picture as a reference: as wide as its pixels at its resolution
@@ -737,6 +1138,7 @@ pub fn file_dpi(b: &[u8]) -> Option<f64> {
 }
 
 pub fn picture(path: &str) -> Result<Raster, String> {
+    let path = &creabim_core::refpath::resolved(path);
     let img = image::open(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
     let rgba = img.to_rgba8();
     Ok(Raster {
@@ -752,6 +1154,157 @@ fn path_key(path: &str) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     path.hash(&mut h);
     h.finish() | 1 << 63
+}
+
+/// What sheets show of a view's references, read once per model change:
+/// the references themselves, and the items each view made of them.
+type Made = HashMap<(ElementId, bool), (u64, Arc<Vec<PlanItem>>)>;
+
+#[derive(Default)]
+struct SheetRefs {
+    cache: RefCache,
+    made: Made,
+}
+
+static SHEET_REFS: std::sync::Mutex<Option<SheetRefs>> = std::sync::Mutex::new(None);
+
+/// The references shown in `view` (under the model, or `over` it) as plan
+/// items in model metres, for sheets, their PDF and print: a map's or a
+/// plot plan's lines in their layers' styles and its texts upright, a
+/// picture where it lies square (registered with
+/// [`creabim_geom::refs::set_provider`]).
+pub fn sheet_items(model: &Model, view: ElementId, over: bool) -> Vec<PlanItem> {
+    let refs = creabim_core::reference::in_view(model, view);
+    if refs.iter().all(|(_, r)| r.hidden || r.over != over) {
+        return vec![];
+    }
+    let mut guard = SHEET_REFS.lock().unwrap_or_else(|e| e.into_inner());
+    let s = guard.get_or_insert_with(SheetRefs::default);
+    let rev = model.revision();
+    if let Some((r, items)) = s.made.get(&(view, over)) {
+        if *r == rev {
+            return items.as_ref().clone();
+        }
+    }
+    let (scale, turn) = match model.get(view).map(|e| &e.kind) {
+        Some(creabim_core::ElementKind::View(v)) => (
+            creabim_core::styles::resolved(model, v).paper_scale(),
+            v.turn,
+        ),
+        _ => (100.0, 0.0),
+    };
+    // drawing metres to a paper millimetre
+    let mm = scale / 1000.0;
+    let mut out = Vec::new();
+    for (id, r) in refs {
+        if r.hidden || r.over != over || r.opacity <= 0.0 {
+            continue;
+        }
+        let a = r.opacity.clamp(0.0, 1.0);
+        // faded towards the paper as the screen fades it
+        let fade = |c: [u8; 3]| c.map(|v| 1.0 - (1.0 - v as f32 / 255.0) * a);
+        let own = r
+            .colour
+            .map(|i| REFERENCE_COLOURS[(i as usize).min(REFERENCE_COLOURS.len() - 1)].1);
+        match s.cache.get(model, id, r) {
+            Shown::Lines(lines) => {
+                let ink = fade(own.unwrap_or([70, 70, 70]));
+                let styles: Vec<Option<&creabim_core::LayerStyle>> = lines
+                    .layers
+                    .iter()
+                    .map(|l| r.layer_styles.iter().find(|s| s.layer == *l))
+                    .collect();
+                for (i, line) in lines.iter().enumerate() {
+                    if line.len() < 2 {
+                        continue;
+                    }
+                    let style = lines
+                        .layer_of
+                        .get(i)
+                        .and_then(|k| styles.get(*k as usize).copied().flatten());
+                    out.push(PlanItem::Curve {
+                        id,
+                        points: line.iter().map(|p| r.place(*p)).collect(),
+                        rgb: style.map_or(ink, |st| fade(st.rgb)),
+                        dashed: style.is_some_and(|st| st.dashed),
+                    });
+                }
+                let x = r.place(DVec2::X) - r.place(DVec2::ZERO);
+                let (metre, turned) = (x.length(), x.y.atan2(x.x));
+                for t in &lines.texts {
+                    let size = t.h * metre / mm;
+                    if !(0.8..=40.0).contains(&size) || t.text.trim().is_empty() {
+                        continue;
+                    }
+                    // 1 2 3 top, 4 5 6 middle, 7 8 9 bottom; left, centre, right
+                    let (col, row) = ((t.align.max(1) - 1) % 3, (t.align.max(1) - 1) / 3);
+                    let along = t.angle.to_radians() + turned;
+                    let up = DVec2::from_angle(along).perp();
+                    let at = r.place(t.at) + up * (row as f64 - 1.0) * t.h * metre / 2.0;
+                    // text turned (by itself, with its drawing or with the
+                    // view) reads along its line on paper as on screen
+                    // (George 2026-11-22: the origin's label lay flat on
+                    // the sheet)
+                    let paper = (along + turn.to_radians()).rem_euclid(std::f64::consts::TAU);
+                    if paper.min(std::f64::consts::TAU - paper) > 1e-4 {
+                        let w = creabim_geom::paper::text_width(&t.text, size) * mm;
+                        let dir = DVec2::from_angle(along);
+                        out.push(PlanItem::Annotation {
+                            id,
+                            item: Box::new(creabim_geom::annotation::Annotation {
+                                shape: creabim_geom::annotation::Shape::Along {
+                                    at: at + dir * w * (0.5 - col as f64 * 0.5),
+                                    angle: along,
+                                },
+                                text: t.text.clone(),
+                                look: creabim_geom::annotation::TextLook {
+                                    size,
+                                    rgb: Some(ink),
+                                    ..Default::default()
+                                },
+                                mm,
+                            }),
+                        });
+                        continue;
+                    }
+                    out.push(PlanItem::Text {
+                        id,
+                        at,
+                        text: t.text.clone(),
+                        size,
+                        align: match col {
+                            0 => creabim_geom::paper::Anchor::Start,
+                            1 => creabim_geom::paper::Anchor::Middle,
+                            _ => creabim_geom::paper::Anchor::End,
+                        },
+                        mm,
+                        rgb: Some(ink),
+                        bold: false,
+                    });
+                }
+            }
+            // a picture lies square on paper: one turned with its view or
+            // by itself is left to the screen
+            Shown::Picture(raster)
+                if r.rotation.rem_euclid(360.0) < 1e-6 && turn.rem_euclid(360.0) < 1e-6 =>
+            {
+                let shown = Shown::Picture(raster.clone());
+                if let Some([lo, hi]) = r.bounds.or_else(|| bounds_of(&r.source, &shown)) {
+                    let (p, q) = (r.place(lo), r.place(hi));
+                    out.push(PlanItem::Image {
+                        id,
+                        raster,
+                        lo: p.min(q),
+                        hi: p.max(q),
+                        clip: None,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    s.made.insert((view, over), (rev, Arc::new(out.clone())));
+    out
 }
 
 #[cfg(test)]
@@ -809,6 +1362,68 @@ mod tests {
         assert!(!l.is_empty(), "a plan has linework");
         let [lo, hi] = bounds_of(&src, &shown).unwrap();
         assert!(hi.x > lo.x && hi.y > lo.y);
+    }
+
+    #[test]
+    fn a_cloud_reference_shows_a_plan_its_slice_and_snaps_to_it() {
+        let m = creabim_core::sample::sample_house();
+        let view = m
+            .iter()
+            .find(|e| matches!(&e.kind, creabim_core::ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. })))
+            .unwrap()
+            .id;
+        let creabim_core::ElementKind::View(v) = &m.get(view).unwrap().kind else {
+            panic!()
+        };
+        let creabim_core::ViewKind::Plan { level, .. } = &v.kind else {
+            panic!()
+        };
+        let z = m.level(*level).unwrap().elevation;
+        // a wall's face scanned at two heights above the plan's level
+        let path = std::env::temp_dir().join("creabim-trace-cloud.xyz");
+        let mut t = String::new();
+        for i in 0..100 {
+            t += &format!("{} 3.0 {}\n", i as f64 * 0.05, z + 1.2);
+            t += &format!("{} 4.0 {}\n", i as f64 * 0.05, z + 2.6);
+        }
+        std::fs::write(&path, t).unwrap();
+        let src = RefSource::points(path.to_string_lossy().into_owned());
+        let shown = read(&m, &src);
+        let Shown::Cloud(c) = &shown else { panic!() };
+        assert_eq!(c.points.len(), 200);
+        let mut r = Reference::new(src, vec![view]);
+        r.in_place(bounds_of(&r.source, &shown).unwrap());
+        let id = ElementId::new();
+        let mut cache = RefCache::default();
+        let s = cache.slice(&m, id, &r, view).unwrap();
+        assert_eq!(s.points.len(), 100, "only the points in the slice");
+        assert!(s.points.iter().all(|p| (p.y - 3.0).abs() < 1e-6));
+        // lifted 1,4 m, the other row is in the slice
+        if let RefSource::Points { lift, .. } = &mut r.source {
+            *lift = -1.4;
+        }
+        let s = cache.slice(&m, id, &r, view).unwrap();
+        assert!(s.points.iter().all(|p| (p.y - 4.0).abs() < 1e-6));
+        // the pointer near a point of it snaps there
+        let mut snapper = crate::snaps::Snapper::new();
+        snapper.add_cloud(s, &r, id);
+        let project = |p: glam::DVec3| Some(egui::pos2(p.x as f32 * 100.0, p.y as f32 * 100.0));
+        let free = glam::DVec3::new(1.012, 4.03, 0.0);
+        let snap = snapper
+            .snap(
+                &crate::snaps::SnapSettings::default(),
+                project(free).unwrap(),
+                &project,
+                None,
+                Some(free),
+            )
+            .unwrap();
+        assert!(
+            snap.p.distance(glam::DVec3::new(1.0, 4.0, 0.0)) < 1e-6,
+            "{:?}",
+            snap.p
+        );
+        assert_eq!(snap.host, Some(id));
     }
 
     #[test]

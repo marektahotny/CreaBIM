@@ -138,16 +138,24 @@ pub enum AssemblyUse {
     Wall,
     Floor,
     Roof,
+    /// A ceiling (podhľad) hung under a floor or a roof.
+    Ceiling,
 }
 
 impl AssemblyUse {
-    pub const ALL: [AssemblyUse; 3] = [AssemblyUse::Wall, AssemblyUse::Floor, AssemblyUse::Roof];
+    pub const ALL: [AssemblyUse; 4] = [
+        AssemblyUse::Wall,
+        AssemblyUse::Floor,
+        AssemblyUse::Roof,
+        AssemblyUse::Ceiling,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             AssemblyUse::Wall => "Walls",
             AssemblyUse::Floor => "Floors and slabs",
             AssemblyUse::Roof => "Roofs",
+            AssemblyUse::Ceiling => "Ceilings",
         }
     }
 
@@ -157,6 +165,7 @@ impl AssemblyUse {
             ElementKind::Wall(_) => Some(AssemblyUse::Wall),
             ElementKind::Slab(_) => Some(AssemblyUse::Floor),
             ElementKind::Roof(_) => Some(AssemblyUse::Roof),
+            ElementKind::Ceiling(_) => Some(AssemblyUse::Ceiling),
             _ => None,
         }
     }
@@ -165,14 +174,14 @@ impl AssemblyUse {
     pub fn first_face(self) -> &'static str {
         match self {
             AssemblyUse::Wall => "Exterior",
-            AssemblyUse::Floor | AssemblyUse::Roof => "Top",
+            AssemblyUse::Floor | AssemblyUse::Roof | AssemblyUse::Ceiling => "Top",
         }
     }
 
     pub fn last_face(self) -> &'static str {
         match self {
             AssemblyUse::Wall => "Interior",
-            AssemblyUse::Floor | AssemblyUse::Roof => "Underside",
+            AssemblyUse::Floor | AssemblyUse::Roof | AssemblyUse::Ceiling => "Underside",
         }
     }
 }
@@ -186,9 +195,22 @@ pub struct Assembly {
     pub layers: Vec<Layer>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
+    /// Its fire resistance as the designer states it ("REW 90/D1",
+    /// "REI 30"): what the fire checks (STN 92 0201-2 table 5, the
+    /// separation distances) compare; empty is not stated.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fire_resistance: String,
     /// Which of a wall's layers turn into its windows' reveals.
     #[serde(default, skip_serializing_if = "RevealWrap::is_default")]
     pub wrap: RevealWrap,
+    /// What its U is counted for ([`crate::thermal`]); none takes its
+    /// use's usual: an outside wall, a floor over outside air, a roof.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal: Option<crate::thermal::Boundary>,
+    /// A wall's plinth (sokel): XPS on a membrane below a line over the
+    /// finished ground ([`crate::plinth`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plinth: Option<crate::plinth::Plinth>,
 }
 
 /// Which layers of a wall turn round the core's edge into the reveal of
@@ -276,16 +298,17 @@ impl WrapLayer {
 }
 
 /// The layers of `a` that turn into the reveals of a window of `wall`
-/// whose frame, `frame_depth` deep, stands in the middle of the wall
+/// whose frame stands from `frame.0` to `frame.1` across the wall
 /// (PilonDesigner's `wrapStack`): on each side those before the frame,
-/// insulation thinned to [`REVEAL_INSULATION`].
-pub fn reveal_wraps(a: &Assembly, wall: &Wall, frame_depth: f64) -> Vec<WrapLayer> {
+/// insulation thinned to `lap`, what it laps over the frame
+/// ([`REVEAL_INSULATION`] unless the window says).
+pub fn reveal_wraps(a: &Assembly, wall: &Wall, frame: (f64, f64), lap: f64) -> Vec<WrapLayer> {
     if a.wrap == RevealWrap::None || a.layers.len() < 2 {
         return vec![];
     }
     let bands = wall_bands(a, wall);
     let (first, last) = a.core();
-    let hd = frame_depth / 2.0;
+    let span = frame;
     let mut sides: Vec<Vec<&Band>> = vec![];
     if matches!(a.wrap, RevealWrap::Both | RevealWrap::Exterior) {
         sides.push(bands[..first].iter().collect());
@@ -302,7 +325,12 @@ pub fn reveal_wraps(a: &Assembly, wall: &Wall, frame_depth: f64) -> Vec<WrapLaye
         } else {
             (b0.s1, -1.0)
         };
-        let frame = face.abs() - hd;
+        let frame = if inward > 0.0 {
+            span.0 - face
+        } else {
+            face - span.1
+        }
+        .max(0.0);
         let thick = |b: &Band| b.s1 - b.s0;
         // only those before the frame: with a frame set in the
         // insulation the layers behind it don't turn in
@@ -325,7 +353,7 @@ pub fn reveal_wraps(a: &Assembly, wall: &Wall, frame_depth: f64) -> Vec<WrapLaye
             .iter()
             .map(|(b, _)| {
                 if b.function == LayerFunction::Insulation {
-                    thick(b).min(REVEAL_INSULATION)
+                    thick(b).min(lap.max(0.0))
                 } else {
                     thick(b)
                 }
@@ -356,7 +384,10 @@ impl Assembly {
             usage,
             layers,
             description: String::new(),
+            fire_resistance: String::new(),
             wrap: RevealWrap::default(),
+            thermal: None,
+            plinth: None,
         }
     }
 
@@ -526,6 +557,7 @@ pub fn assembly_slot(e: &Element) -> Option<Option<ElementId>> {
         ElementKind::Wall(w) => Some(w.assembly),
         ElementKind::Slab(s) => Some(s.assembly),
         ElementKind::Roof(r) => Some(r.assembly),
+        ElementKind::Ceiling(c) => Some(c.assembly),
         _ => None,
     }
 }
@@ -550,6 +582,7 @@ fn set_thickness(e: &mut Element, t: f64) {
         ElementKind::Wall(w) => w.thickness = t,
         ElementKind::Slab(s) => s.set_thickness(t, false),
         ElementKind::Roof(r) => r.thickness = t,
+        ElementKind::Ceiling(c) => c.thickness = t,
         _ => {}
     }
 }
@@ -559,6 +592,7 @@ fn thickness(e: &Element) -> Option<f64> {
         ElementKind::Wall(w) => Some(w.thickness),
         ElementKind::Slab(s) => Some(s.thickness),
         ElementKind::Roof(r) => Some(r.thickness),
+        ElementKind::Ceiling(c) => Some(c.thickness),
         _ => None,
     }
 }
@@ -570,6 +604,7 @@ pub fn set_assembly(model: &Model, e: &mut Element, assembly: Option<ElementId>)
         ElementKind::Wall(w) => w.assembly = assembly,
         ElementKind::Slab(s) => s.assembly = assembly,
         ElementKind::Roof(r) => r.assembly = assembly,
+        ElementKind::Ceiling(c) => c.assembly = assembly,
         _ => return false,
     }
     let layers = assembly_of(model, e).map(|(_, a)| {
@@ -725,7 +760,8 @@ pub const STARTERS: &[(&str, AssemblyUse, &str, &[Starter])] = &[
         AssemblyUse::Floor,
         "Tiles on screed on insulation on a concrete slab",
         &[
-            (LayerFunction::Finish, Some("Ceramic tile"), 10.0),
+            (LayerFunction::Finish, Some("Ceramic tile"), 8.0),
+            (LayerFunction::Substrate, Some("Lepidlo na dlažbu"), 2.0),
             (LayerFunction::Substrate, Some("Screed, cement"), 65.0),
             (LayerFunction::Insulation, Some("Insulation, EPS"), 25.0),
             (
@@ -773,8 +809,14 @@ pub fn add_starters(model: &Model) -> (Transaction, Vec<ElementId>) {
         for (function, material, mm) in layers.iter() {
             let mut m = None;
             if let Some(name) = material {
-                if let Some((_, id)) = materials.iter().find(|(n, _)| n == name) {
+                // the Slovak base's material where it has the same one
+                let same = crate::samemat::canonical(name);
+                if let Some((_, id)) = materials.iter().find(|(n, _)| n == same) {
                     m = Some(*id);
+                } else if let Some(e) = crate::skbase::base_material(same) {
+                    m = Some(e.id);
+                    materials.push((same.to_string(), e.id));
+                    tx = tx.insert(e);
                 } else if let Some(entry) = crate::library::LIBRARY.iter().find(|e| e.name == *name)
                 {
                     let e = entry.element();
@@ -938,6 +980,10 @@ mod tests {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
+            no_fire_barriers: false,
+            plinth_steps: Vec::new(),
         };
         let b = wall_bands(a, &w);
         assert!((b[0].s0 + 0.1825).abs() < 1e-9 && (b[0].s1 + 0.0805).abs() < 1e-9);
@@ -1022,7 +1068,7 @@ mod tests {
             0.425,
             3.0,
         );
-        let w = reveal_wraps(&a, &wall, 0.08);
+        let w = reveal_wraps(&a, &wall, (-0.04, 0.04), REVEAL_INSULATION);
         assert_eq!(w.iter().map(|l| l.index).collect::<Vec<_>>(), vec![0, 1, 3]);
         // the frame 172.5 mm in from either face
         assert!(w.iter().all(|l| (l.frame - 0.1725).abs() < 1e-9));
@@ -1056,13 +1102,16 @@ mod tests {
                 Layer::new(LayerFunction::Finish, None, 0.015),
             ],
         );
-        let cw = reveal_wraps(&cavity, &wall, 0.08);
+        let cw = reveal_wraps(&cavity, &wall, (-0.04, 0.04), REVEAL_INSULATION);
         assert_eq!(cw.iter().map(|l| l.index).collect::<Vec<_>>(), vec![2, 4]);
         let mut none = a.clone();
         none.wrap = RevealWrap::None;
-        assert!(reveal_wraps(&none, &wall, 0.08).is_empty());
+        assert!(reveal_wraps(&none, &wall, (-0.04, 0.04), REVEAL_INSULATION).is_empty());
         let mut ext = a.clone();
         ext.wrap = RevealWrap::Exterior;
-        assert_eq!(reveal_wraps(&ext, &wall, 0.08).len(), 2);
+        assert_eq!(
+            reveal_wraps(&ext, &wall, (-0.04, 0.04), REVEAL_INSULATION).len(),
+            2
+        );
     }
 }

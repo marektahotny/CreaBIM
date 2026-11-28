@@ -3,6 +3,9 @@ use crate::params::{
     CURTAIN_PSET, FOOTING_PSET, ROOM_PSET, TYPE_PSET,
 };
 use crate::step::{list, point2, point3, real, string, Ref, StepWriter};
+
+mod dss;
+mod results;
 use creabim_core::{Element, ElementId, ElementKind, Model, OpeningKind};
 use glam::{DVec2, DVec3};
 use std::collections::HashMap;
@@ -142,13 +145,13 @@ impl Ctx {
     }
 
     /// A property set of single values.
-    fn pset(&mut self, name: &str, props: &[(&'static str, Prop)]) -> Ref {
+    fn pset<K: AsRef<str>>(&mut self, name: &str, props: &[(K, Prop)]) -> Ref {
         let refs: Vec<Ref> = props
             .iter()
             .map(|(k, v)| {
                 self.w.add(
                     "IFCPROPERTYSINGLEVALUE",
-                    format!("{},$,{},$", string(k), v.step()),
+                    format!("{},$,{},$", string(k.as_ref()), v.step()),
                 )
             })
             .collect();
@@ -160,7 +163,7 @@ impl Ctx {
     }
 
     /// A property set, given to `objects`.
-    fn pset_on(&mut self, objects: &[Ref], name: &str, props: &[(&'static str, Prop)]) {
+    fn pset_on<K: AsRef<str>>(&mut self, objects: &[Ref], name: &str, props: &[(K, Prop)]) {
         let set = self.pset(name, props);
         let g = self.guid();
         self.w.add(
@@ -264,6 +267,8 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
         c.w.add("IFCSIUNIT", "*,.VOLUMEUNIT.,$,.CUBIC_METRE."),
         c.w.add("IFCSIUNIT", "*,.PLANEANGLEUNIT.,$,.RADIAN."),
     ];
+    // what the calculations' results are measured in
+    let units: Vec<Ref> = units.into_iter().chain(results::units(&mut c)).collect();
     let unit_assignment = c.w.add("IFCUNITASSIGNMENT", list(units));
     let project = c.w.add(
         "IFCPROJECT",
@@ -296,7 +301,7 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
     // Storeys, one per level.
     let mut storeys: HashMap<ElementId, (Ref, Ref)> = HashMap::new();
     let mut storey_order = Vec::new();
-    for (e, l) in model.levels() {
+    for (e, l) in model.all_levels() {
         let pl = c.local_placement(Some(bldg_pl), DVec3::new(0.0, 0.0, l.elevation), None);
         let s = c.w.add(
             "IFCBUILDINGSTOREY",
@@ -316,6 +321,7 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                                                                         // how far each wall's axis (its location line) is from its centreline
     let mut wall_axes: HashMap<ElementId, f64> = HashMap::new();
     let joins = creabim_core::wall_joins(model);
+    let masonry_rules = creabim_core::masonry::rules(model);
     let mut by_material: HashMap<ElementId, Vec<Ref>> = HashMap::new();
     // layered elements, associated with their assembly's layer set instead
     let mut layered: Vec<(Ref, ElementId, LayerUse)> = Vec::new();
@@ -566,7 +572,14 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                     "IFCPRODUCTDEFINITIONSHAPE",
                     format!("$,$,({body_rep},{axis_rep})"),
                 );
-                let r = product(&mut c, "IFCWALL", e, pl, shape, ",$,.STANDARD.");
+                // a wall that carries nothing is a partition, as the data
+                // standard has it (DSS NAB003)
+                let tail = if creabim_core::masonry::is_bearing(model, wall, &masonry_rules) {
+                    ",$,.STANDARD."
+                } else {
+                    ",$,.PARTITIONING."
+                };
+                let r = product(&mut c, "IFCWALL", e, pl, shape, tail);
                 of_type(e, r);
                 wall_refs.insert(e.id, (r, pl));
                 contained.entry(Some(wall.level)).or_default().push(r);
@@ -629,7 +642,13 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                     }
                     None => c.shape("SweptSolid", &[solid]),
                 };
-                let r = product(&mut c, "IFCSLAB", e, pl, shape, ",$,.FLOOR.");
+                let tail = match creabim_core::slab::kind_of(model, slab) {
+                    creabim_core::SlabKind::Foundation | creabim_core::SlabKind::Base => {
+                        ",$,.BASESLAB."
+                    }
+                    creabim_core::SlabKind::Floor => ",$,.FLOOR.",
+                };
+                let r = product(&mut c, "IFCSLAB", e, pl, shape, tail);
                 of_type(e, r);
                 contained.entry(Some(slab.level)).or_default().push(r);
                 if cut.is_none() || layers_mode {
@@ -727,6 +746,43 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
             }
             // a void is an opening in what it cuts, written below
             ElementKind::Part(p) if p.void => {}
+            // a valve or a terminal on a pipe: its body, with the class
+            // and predefined type of its kind
+            ElementKind::Valve(v) => {
+                let Some(pipe) = v.host(model) else { continue };
+                let level = pipe.level;
+                let Some(&(_, spl)) = storeys.get(&level) else {
+                    continue;
+                };
+                let Some((mesh, _)) = creabim_geom::valves::valve_mesh(model, v) else {
+                    continue;
+                };
+                let pl = c.local_placement(Some(spl), DVec3::ZERO, None);
+                let z0 = elevation(Some(level));
+                let fs = tessellate(&mut c, &mesh, |p| p - DVec3::Z * z0);
+                let shape = c.shape("Tessellation", &[fs]);
+                let kind = v.kind_def();
+                let (class, tail) = match kind {
+                    Some(k) if crate::classes::ifc4_element_tail(k.ifc.0).is_some() => {
+                        (k.ifc.0.to_ascii_uppercase(), format!(",$,.{}.", k.ifc.1))
+                    }
+                    _ => free_mesh_entity("IfcValve"),
+                };
+                let r = product(&mut c, &class, e, pl, shape, &tail);
+                let mut props = vec![
+                    ("Kind", Prop::Label(v.kind.clone())),
+                    ("System", Prop::Label(pipe.system.clone())),
+                    ("NominalDiameter", Prop::Length(pipe.nominal_mm / 1000.0)),
+                ];
+                if let Some(k) = kind {
+                    props.push(("Description", Prop::Label(k.name.to_string())));
+                    if !k.norm.is_empty() {
+                        props.push(("Standard", Prop::Label(k.norm.to_string())));
+                    }
+                }
+                c.pset_on(&[r], "CreaBIM_Valve", &props);
+                contained.entry(Some(level)).or_default().push(r);
+            }
             k if creabim_core::members::is_member(k) => {
                 let level = creabim_core::members::level_of(k);
                 let Some(&(_, spl)) = level.and_then(|l| storeys.get(&l)) else {
@@ -877,7 +933,11 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
             c.local_placement(Some(pl), start, None)
         };
         let mut parts = Vec::new();
-        for b in creabim_geom::opening::opening_boxes(o, wall) {
+        let asm = model
+            .get(o.host)
+            .and_then(|h| creabim_core::assembly_of(model, h))
+            .map(|x| x.1);
+        for b in creabim_geom::opening::opening_boxes(o, wall, asm) {
             let size = b.hi - b.lo;
             let lo = if turned {
                 DVec3::new(width - b.hi.x, -b.hi.y, b.lo.z)
@@ -1137,6 +1197,7 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
             P::Footing(f) => match f.kind {
                 creabim_core::FootingKind::Strip => ("IFCFOOTINGTYPE", ",.STRIP_FOOTING."),
                 creabim_core::FootingKind::Pad => ("IFCFOOTINGTYPE", ",.PAD_FOOTING."),
+                creabim_core::FootingKind::Pile => ("IFCPILETYPE", ",.BORED."),
             },
             P::Object(_) => unreachable!("object types are written above"),
         };
@@ -1188,6 +1249,13 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
             format!("{g},$,$,$,{},{container}", list(items)),
         );
     }
+
+    // the services' systems and circuits, and what the calculations found
+    let systems = results::write(&mut c, model, building);
+    // the walls', slabs' and roofs' U
+    results::thermal(&mut c, model);
+    // the classes of the data standard and their values
+    dss::write(&mut c, model, building, &systems);
 
     let header = format!(
         "FILE_DESCRIPTION(('ViewDefinition [DesignTransferView]'),'2;1');\n\
@@ -1256,13 +1324,15 @@ fn object_type(
     let mut curves = vec![];
     for s in o.plan_symbol() {
         let pts: Vec<DVec2> = match s {
-            creabim_core::objects::SymbolItem::Loop(mut p) => {
+            creabim_core::objects::SymbolItem::Loop(mut p)
+            | creabim_core::objects::SymbolItem::Net { points: mut p, .. } => {
                 if let Some(first) = p.first().copied() {
                     p.push(first);
                 }
                 p
             }
             creabim_core::objects::SymbolItem::Line(a, b) => vec![a, b],
+            creabim_core::objects::SymbolItem::Text { .. } => continue,
         };
         if pts.len() < 2 {
             continue;
@@ -1381,6 +1451,7 @@ fn object_type(
                 kind.predefined
             ),
         );
+        c.products.insert(oe.id, r);
         out.push((ob.level, r));
     }
     if !out.is_empty() {
@@ -1736,6 +1807,7 @@ fn spaces(
             ),
         );
         by_storey.entry(r.level).or_default().push(space);
+        c.products.insert(e.id, space);
         let outdoor = [&r.occupancy, &r.department]
             .iter()
             .any(|s| s.eq_ignore_ascii_case("outdoor"));
@@ -1903,11 +1975,14 @@ fn member_entity(k: &ElementKind) -> (&'static str, &'static str) {
                 creabim_core::RoofShape::Hip => ",$,.HIP_ROOF.",
             },
         ),
+        ElementKind::Stair(s) if s.ramp.is_some() => ("IFCRAMP", ",$,.STRAIGHT_RUN_RAMP."),
         ElementKind::Stair(s) if s.landing.is_some() => ("IFCSTAIR", ",$,.QUARTER_TURN_STAIR."),
         ElementKind::Stair(_) => ("IFCSTAIR", ",$,.STRAIGHT_RUN_STAIR."),
         ElementKind::Footing(f) => match f.kind {
             creabim_core::FootingKind::Strip => ("IFCFOOTING", ",$,.STRIP_FOOTING."),
             creabim_core::FootingKind::Pad => ("IFCFOOTING", ",$,.PAD_FOOTING."),
+            // IFC4 IfcPile: Tag, PredefinedType, ConstructionType
+            creabim_core::FootingKind::Pile => ("IFCPILE", ",$,.BORED.,$"),
         },
         ElementKind::Pipe(p) if p.kind().is_air() => ("IFCDUCTSEGMENT", ",$,.RIGIDSEGMENT."),
         ElementKind::Pipe(_) => ("IFCPIPESEGMENT", ",$,.RIGIDSEGMENT."),

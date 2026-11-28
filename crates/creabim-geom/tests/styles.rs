@@ -105,15 +105,17 @@ fn two_packs_give_two_sets_with_their_own_line_weights_in_pdf() {
     let b = plan_pdf(&with_pack(&house, &packs[1]));
     assert_ne!(a, b);
     let (wa, wb) = (pdf_widths(&a), pdf_widths(&b));
-    // the plans at 1:50 cut with 0.70 mm in one, 0.50 mm in the other
-    assert!(wa.contains_key("0.700"), "{wa:?}");
-    assert!(!wb.contains_key("0.700"), "{wb:?}");
+    // the plans at 1:50 cut with 0.50 mm in the standard pack (the same
+    // pens at every scale), and hatch in its thinnest, 0.09 mm
+    assert!(wa.contains_key("0.500"), "{wa:?}");
+    assert!(!wa.contains_key("0.700"), "{wa:?}");
+    assert!(wa.contains_key("0.090"), "{wa:?}");
     assert!(wb.contains_key("0.500"));
     // the light pack's own fine pens are in its PDF, not the standard's
-    assert!(
-        wb.contains_key("0.100") && !wa.contains_key("0.100"),
-        "{wa:?} {wb:?}"
-    );
+    // (which has 0.10 mm only in its drafted very thin lines, as where two
+    // floors meet in a door)
+    let n = |w: &std::collections::BTreeMap<String, usize>| w.get("0.100").copied().unwrap_or(0);
+    assert!(n(&wb) > 10 * n(&wa).max(1), "{wa:?} {wb:?}");
     // and it draws in colour: furniture grey, doors blue-grey
     let rgb = |pdf: &[u8]| String::from_utf8_lossy(pdf).matches(" RG ").count();
     assert!(rgb(&b) > rgb(&a) + 50, "{} {}", rgb(&b), rgb(&a));

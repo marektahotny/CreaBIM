@@ -100,6 +100,38 @@ pub fn apply_to(before: &Element, after: &Element, other: &Element) -> Option<El
     (out != *other).then_some(out)
 }
 
+/// A wall's base or top set in Properties with several walls picked:
+/// that setting given to `other` as the edited wall has it, even where
+/// the edited one already had it (so nothing changed to spread), and the
+/// top's offset too (an offset is otherwise a place, never spread).
+pub fn wall_levels(label: &str, after: &Element, other: &Element) -> Option<Element> {
+    let (ElementKind::Wall(a), ElementKind::Wall(o)) = (&after.kind, &other.kind) else {
+        return None;
+    };
+    if other.id == after.id {
+        return None;
+    }
+    let mut w = o.clone();
+    match label {
+        "Wall base level" => w.level = a.level,
+        "Wall base offset" => w.base_offset = a.base_offset,
+        "Wall top constraint" => w.top = a.top,
+        "Wall top offset" => match (&a.top, &mut w.top) {
+            (
+                creabim_core::WallTop::UpToLevel { offset, .. },
+                creabim_core::WallTop::UpToLevel { offset: to, .. },
+            ) => *to = *offset,
+            _ => w.top = a.top,
+        },
+        _ => return None,
+    }
+    (w != *o).then(|| {
+        let mut out = other.clone();
+        out.kind = ElementKind::Wall(w);
+        out
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +236,77 @@ mod house_tests {
             .replace(other.clone(), out);
         doc.commit_merged(tx).unwrap();
         assert_eq!(joins(doc.model().get(e).unwrap()), joins(&other));
+    }
+}
+
+#[cfg(test)]
+mod wall_levels_tests {
+    use super::*;
+    use creabim_core::{Document, WallTop};
+    use glam::DVec2;
+
+    #[test]
+    fn base_and_top_set_on_one_of_several_walls_go_to_all() {
+        let mut doc = Document::new();
+        let lv = |n: &str, z: f64| {
+            Element::new(
+                n,
+                ElementKind::Level(creabim_core::Level {
+                    elevation: z,
+                    height: 3.0,
+                }),
+            )
+        };
+        let (l0, l1, l2) = (lv("L0", 0.0), lv("L1", 3.0), lv("L2", 6.0));
+        let (a, b, c) = (l0.id, l1.id, l2.id);
+        let mut tx = creabim_core::Transaction::new("s")
+            .insert(l0)
+            .insert(l1)
+            .insert(l2);
+        let mut ids = vec![];
+        for (y, base, top) in [(0.0, a, Some(b)), (3.0, b, None)] {
+            let mut w =
+                creabim_core::Wall::new(base, DVec2::new(0.0, y), DVec2::new(5.0, y), 0.2, 3.0);
+            w.base_offset = y / 10.0;
+            if let Some(level) = top {
+                w.top = WallTop::UpToLevel { level, offset: 0.0 };
+            }
+            let e = Element::new("W", ElementKind::Wall(w));
+            ids.push(e.id);
+            tx = tx.insert(e);
+        }
+        doc.commit(tx).unwrap();
+        let shown = doc.model().get(ids[0]).unwrap().clone();
+        let other = doc.model().get(ids[1]).unwrap().clone();
+        let wall = |e: Option<Element>| match e.map(|e| e.kind) {
+            Some(ElementKind::Wall(w)) => w,
+            _ => panic!("the other wall was left as it was"),
+        };
+        // the value the shown wall already has, picked again
+        assert_eq!(
+            wall(wall_levels("Wall base offset", &shown, &other)).base_offset,
+            0.0
+        );
+        assert_eq!(
+            wall(wall_levels("Wall base level", &shown, &other)).level,
+            a
+        );
+        assert!(matches!(
+            wall(wall_levels("Wall top constraint", &shown, &other)).top,
+            WallTop::UpToLevel { level, .. } if level == b
+        ));
+        let mut after = shown.clone();
+        if let ElementKind::Wall(w) = &mut after.kind {
+            w.top = WallTop::UpToLevel {
+                level: c,
+                offset: 0.25,
+            };
+        }
+        assert!(matches!(
+            wall(wall_levels("Wall top offset", &after, &other)).top,
+            WallTop::UpToLevel { offset, .. } if offset == 0.25
+        ));
+        // anything else is left to the field by field spread
+        assert!(wall_levels("Wall height", &after, &other).is_none());
     }
 }

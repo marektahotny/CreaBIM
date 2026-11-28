@@ -79,6 +79,8 @@ impl Builder {
 
     /// A library material by name, added to the model if it is not there.
     fn material(&mut self, name: &str) -> ElementId {
+        // the Slovak base's material where it has the same one
+        let name = crate::samemat::canonical(name);
         if let Some(e) = self
             .doc
             .model()
@@ -87,11 +89,13 @@ impl Builder {
         {
             return e.id;
         }
-        let entry = crate::library::LIBRARY
-            .iter()
-            .find(|e| e.name == name)
-            .unwrap_or_else(|| panic!("no library material {name}"));
-        let e = entry.element();
+        let e = crate::skbase::base_material(name).unwrap_or_else(|| {
+            crate::library::LIBRARY
+                .iter()
+                .find(|e| e.name == name)
+                .unwrap_or_else(|| panic!("no library material {name}"))
+                .element()
+        });
         let id = e.id;
         self.commit(Transaction::new("Add material").insert(e));
         id
@@ -141,6 +145,17 @@ fn opening(host: ElementId, kind: OpeningKind, offset: f64, width: f64) -> Openi
         frame: Default::default(),
         flip_hand: false,
         flip_facing: false,
+        no_outer_sill: false,
+        no_inner_sill: false,
+        threshold: false,
+        threshold_material: None,
+        penetration: None,
+        setback: None,
+        reveal: None,
+        division: None,
+        door: None,
+        texts: None,
+        performance: None,
     }
 }
 
@@ -374,9 +389,13 @@ fn materials_and_types(b: &mut Builder) {
                 panes_up: up,
             },
             material: frames,
+            door: None,
+            division: None,
+            threshold: false,
+            performance: crate::joinery::default_window_performance(),
         })
     };
-    let door = |w: f64, h: f64, material: Option<ElementId>, across: u32| {
+    let door = |w: f64, h: f64, material: Option<ElementId>, across: u32, maker: &str| {
         TypeParams::Door(OpeningType {
             width: w,
             height: h,
@@ -386,8 +405,16 @@ fn materials_and_types(b: &mut Builder) {
                 ..Default::default()
             },
             material,
+            door: None,
+            division: None,
+            threshold: false,
+            performance: crate::joinery::preset(maker),
         })
     };
+    // outside doors as their makers' data sheets give them (an inside door
+    // has no heat requirement)
+    const ENTRANCE: &str = "Slovaktual Heroal D 92, vchodové dvere, obojstranne prekrytá výplň";
+    const BALCONY: &str = "REHAU ARTEVO max, balkónové dvere, trojsklo";
     let p = wall_type(b, "Exterior wall 400, rendered");
     b.add_type(
         "Exterior wall 400, rendered",
@@ -455,19 +482,23 @@ fn materials_and_types(b: &mut Builder) {
     b.add_type(
         "Front door 1000 × 2300",
         "Oak, solid",
-        door(1.0, 2.3, oak, 1),
+        door(1.0, 2.3, oak, 1, ENTRANCE),
     );
     b.add_type(
         "Internal door 800 × 2100",
         "Painted",
-        door(0.8, 2.1, white, 1),
+        door(0.8, 2.1, white, 1, ""),
     );
     b.add_type(
         "Glazed door 900 × 2300",
         "To the loggia and terrace",
-        door(0.9, 2.3, frames, 1),
+        door(0.9, 2.3, frames, 1, BALCONY),
     );
-    b.add_type("External door 900 × 2100", "", door(0.9, 2.1, frames, 1));
+    b.add_type(
+        "External door 900 × 2100",
+        "",
+        door(0.9, 2.1, frames, 1, ENTRANCE),
+    );
     b.add_type(
         "Window 1800 × 1500, three panes",
         "",
@@ -1533,30 +1564,30 @@ fn rooms_and_ceilings(b: &mut Builder) {
     );
     #[rustfmt::skip]
     let list: Vec<Entry> = vec![
-        (g, "0.01", "Study", v(2.0, 3.5), vec![], "Study", "Oak boards"),
-        (g, "0.02", "Hall", v(5.0, 1.7), vec![], "Circulation", "Slate tiles"),
-        (g, "0.03", "WC", v(7.95, 0.75), vec![], "Sanitary", "Ceramic tiles"),
-        (g, "0.04", "Store", v(10.0, 1.2), vec![], "Storage", "Screed, sealed"),
-        (g, "0.05", "Utility", v(8.6, 4.4), vec![], "Utility", "Ceramic tiles"),
-        (g, "0.06", "Living / Dining", v(9.0, 6.3), vec![], "Living", "Oak boards"),
-        (g, "0.07", "Kitchen", v(13.4, 5.4), vec![], "Kitchen", "Slate tiles"),
-        (g, "0.08", "Loggia", v(1.9, 7.6), loggia.clone(), "Outdoor", "Slate paving"),
+        (g, "1.01", "Study", v(2.0, 3.5), vec![], "Study", "Oak boards"),
+        (g, "1.02", "Hall", v(5.0, 1.7), vec![], "Circulation", "Slate tiles"),
+        (g, "1.03", "WC", v(7.95, 0.75), vec![], "Sanitary", "Ceramic tiles"),
+        (g, "1.04", "Store", v(10.0, 1.2), vec![], "Storage", "Screed, sealed"),
+        (g, "1.05", "Utility", v(8.6, 4.4), vec![], "Utility", "Ceramic tiles"),
+        (g, "1.06", "Living / Dining", v(9.0, 6.3), vec![], "Living", "Oak boards"),
+        (g, "1.07", "Kitchen", v(13.4, 5.4), vec![], "Kitchen", "Slate tiles"),
+        (g, "1.08", "Loggia", v(1.9, 7.6), loggia.clone(), "Outdoor", "Slate paving"),
         (
             g,
-            "0.09",
+            "1.09",
             "Terrace",
             v(12.1, 10.75),
             polygon::rectangle(v(11.0 + H, 9.6 + H), v(15.6 + H + 0.2, 11.4)),
             "Outdoor",
             "Slate paving",
         ),
-        (f, "1.01", "Bedroom 2", v(3.35, 1.9), vec![], "Bedroom", "Carpet"),
-        (f, "1.02", "Bathroom", v(1.6, 3.95), vec![], "Sanitary", "Ceramic tiles"),
-        (f, "1.03", "Landing", v(5.3, 3.2), vec![], "Circulation", "Oak boards"),
-        (f, "1.04", "Bedroom 3", v(9.2, 1.5), vec![], "Bedroom", "Carpet"),
-        (f, "1.05", "Bedroom 1", v(6.5, 8.7), vec![], "Bedroom", "Carpet"),
-        (f, "1.06", "En-suite", v(9.4, 7.5), vec![], "Sanitary", "Ceramic tiles"),
-        (f, "1.07", "Balcony", v(1.9, 7.6), loggia, "Outdoor", "Timber decking"),
+        (f, "2.01", "Bedroom 2", v(3.35, 1.9), vec![], "Bedroom", "Carpet"),
+        (f, "2.02", "Bathroom", v(1.6, 3.95), vec![], "Sanitary", "Ceramic tiles"),
+        (f, "2.03", "Landing", v(5.3, 3.2), vec![], "Circulation", "Oak boards"),
+        (f, "2.04", "Bedroom 3", v(9.2, 1.5), vec![], "Bedroom", "Carpet"),
+        (f, "2.05", "Bedroom 1", v(6.5, 8.7), vec![], "Bedroom", "Carpet"),
+        (f, "2.06", "En-suite", v(9.4, 7.5), vec![], "Sanitary", "Ceramic tiles"),
+        (f, "2.07", "Balcony", v(1.9, 7.6), loggia, "Outdoor", "Timber decking"),
     ];
     let mut tx = Transaction::new("Starter house: rooms");
     for (level, number, name, at, outline, occupancy, floor) in list {
@@ -1586,7 +1617,7 @@ fn rooms_and_ceilings(b: &mut Builder) {
     let board = b.material("Plasterboard");
     let mut tx = Transaction::new("Starter house: ceilings");
     let mut upstairs = vec![];
-    for number in ["1.01", "1.02", "1.03", "1.04", "1.05", "1.06"] {
+    for number in ["2.01", "2.02", "2.03", "2.04", "2.05", "2.06"] {
         let room = b.id(&format!("Room {number}"));
         let mut c = Ceiling::in_room(f, room, 2.5);
         c.material = Some(board);
@@ -1594,7 +1625,7 @@ fn rooms_and_ceilings(b: &mut Builder) {
         upstairs.push(e.id);
         tx = tx.insert(e);
     }
-    for number in ["0.03", "0.04", "0.05"] {
+    for number in ["1.03", "1.04", "1.05"] {
         let room = b.id(&format!("Room {number}"));
         let mut c = Ceiling::in_room(g, room, 2.4);
         c.thickness = 0.02;
@@ -2077,8 +2108,8 @@ fn annotate(b: &mut Builder, views: &Views) {
             Some(v(11.8, 11.4)),
         ),
         // the slope arrows give the pitch and the fall
-        (views.roof, v(2.4, 3.3), "SLATE\nnatural slate on battens", None),
-        (views.roof, v(0.6, 8.8), "SLATE\nnatural slate on battens", None),
+        (views.roof, v(2.4, 3.3), "SLATE\non battens", None),
+        (views.roof, v(0.6, 8.8), "SLATE\non battens", None),
         (views.roof, v(12.4, 7.6), "GREEN ROOF\nsedum on EPDM\nfalls 1:60 to the east", None),
         (views.roof, v(4.4, -2.4), "ZINC CANOPY", Some(v(5.6, -0.9))),
     ];
@@ -2133,6 +2164,7 @@ fn annotate(b: &mut Builder, views: &Views) {
         local: DVec2::new(u, s),
         from_end,
         body: None,
+        step: None,
     };
     let dim = |view: ElementId, a: HostPoint, bb: HostPoint, offset: f64| {
         Element::new(
@@ -2253,6 +2285,7 @@ fn annotate(b: &mut Builder, views: &Views) {
             local: DVec2::new(0.8, h),
             from_end: false,
             body: None,
+            step: None,
         };
         for (a, ha, c, hc) in [
             ("Foundation", 0.0, "Ground Floor", 0.0),
@@ -2428,6 +2461,7 @@ fn sheets(b: &mut Builder, views: &Views) {
                     center,
                     target,
                     crop,
+                    ink: Default::default(),
                 }),
             ));
         }
@@ -2558,6 +2592,74 @@ fn title_block() -> SheetTemplate {
         guides: vec![],
         margins: None,
     }
+}
+
+/// The starter house raised to `storeys` storeys (at least 3): its ground
+/// floor, walls, doors, windows, stair, rooms and fittings, copied onto
+/// every storey between it and its first floor, which with the roofs goes
+/// to the top. A test building for timing drawings of a block of flats.
+pub fn starter_tower(storeys: usize) -> Model {
+    let model = starter_house();
+    let level = |name: &str| {
+        model
+            .iter()
+            .find(|e| e.name == name && matches!(e.kind, ElementKind::Level(_)))
+            .map(|e| e.id)
+            .expect("starter levels")
+    };
+    let (ground, first) = (level("Ground Floor"), level("First Floor"));
+    let mut doc = Document::from_model(model.clone());
+    let between = storeys.max(3) - 2;
+    // the first floor goes up over the storeys put in under it
+    let mut tx = Transaction::new("Tower: levels");
+    let before = model.get(first).cloned().expect("first floor");
+    let mut after = before.clone();
+    if let ElementKind::Level(l) = &mut after.kind {
+        l.elevation = 3.0 * (between + 1) as f64;
+    }
+    tx = tx.replace(before, after);
+    let mut new = vec![];
+    for k in 1..=between {
+        let e = Element::new(
+            format!("Floor {k}"),
+            ElementKind::Level(Level {
+                elevation: 3.0 * k as f64,
+                height: 3.0,
+            }),
+        );
+        new.push(e.id);
+        tx = tx.insert(e);
+    }
+    doc.commit(tx).expect("tower levels");
+    // what stood up to the first floor now stands up to the storey above
+    let mut tx = Transaction::new("Tower: tops");
+    for e in doc.model().iter() {
+        let mut after = e.clone();
+        let top = match &mut after.kind {
+            ElementKind::Wall(w) => &mut w.top,
+            ElementKind::Column(c) => &mut c.top,
+            _ => continue,
+        };
+        if let WallTop::UpToLevel { level, .. } = top {
+            if *level == first && crate::levels::level_of(&e.kind) == Some(ground) {
+                *level = new[0];
+                tx = tx.replace(e.clone(), after);
+            }
+        }
+    }
+    doc.commit(tx).expect("tower tops");
+    let m = doc.model().clone();
+    let ids: Vec<ElementId> = m
+        .iter()
+        .filter(|e| {
+            !matches!(e.kind, ElementKind::Footing(_) | ElementKind::Level(_))
+                && crate::levels::level_of(&e.kind) == Some(ground)
+        })
+        .map(|e| e.id)
+        .collect();
+    let (tx, _) = crate::levels::copy_to_levels(&m, &ids, &new);
+    doc.commit(tx).expect("tower storeys");
+    doc.model().clone()
 }
 
 #[cfg(test)]

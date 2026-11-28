@@ -4,7 +4,7 @@
 //! air handling unit is sized for.
 
 use super::CreaBimApp;
-use creabim_services::{airbalance, heatloss};
+use creabim_services::airbalance;
 use eframe::egui::{self, Vec2};
 
 impl CreaBimApp {
@@ -24,11 +24,11 @@ impl CreaBimApp {
         }
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
-        let o = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(heatloss::Opts::default, |x| x.0);
+        let o = self.heat_opts();
         let b = airbalance::balance(self.doc.model(), &o);
+        let found = creabim_services::calcresults::air(&b);
+        let written = self.is_written(&found);
+        let mut write_now = false;
         let mut open = true;
         let mut select = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
@@ -36,9 +36,12 @@ impl CreaBimApp {
             .id(egui::Id::new("air.balance"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(320.0, 240.0))
-            .default_size(Vec2::new(640.0, 480.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(640.0, 480.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
+                if super::calcresultsui::write_button(ui, written) {
+                    write_now = true;
+                }
                 if b.rooms.is_empty() {
                     ui.label(t("No rooms to calculate: place rooms first."));
                     return;
@@ -70,42 +73,49 @@ impl CreaBimApp {
                     );
                 }
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    egui::Grid::new("air.balance.rooms")
-                        .striped(true)
-                        .num_columns(7)
-                        .show(ui, |ui| {
-                            for h in [
-                                "Room", "V m³", "Air", "Needed m³/h", "Supply m³/h",
-                                "Exhaust m³/h", "Terminals",
-                            ] {
-                                ui.strong(t(h));
-                            }
-                            ui.end_row();
-                            for r in &b.rooms {
-                                let name = format!("{} {}", r.number, r.name);
-                                if ui.link(name.trim()).clicked() {
-                                    select = Some(r.id);
-                                }
-                                ui.label(num(r.volume, 1));
-                                ui.label(if r.exhaust_room {
-                                    t("exhaust")
-                                } else {
-                                    t("supply")
-                                });
-                                if r.ok {
-                                    ui.label(num(r.need, 0));
-                                } else {
-                                    ui.colored_label(ui.visuals().warn_fg_color, num(r.need, 0))
-                                        .on_hover_text(t(
-                                            "The room's terminals do not carry what it needs: place a diffuser (supply) or a grille (exhaust) in it, or raise their flow.",
-                                        ));
-                                }
-                                ui.label(num(r.supply, 0));
-                                ui.label(num(r.exhaust, 0));
-                                ui.label(r.terminals.to_string());
-                                ui.end_row();
+                    use crate::sheet::{self, Col};
+                    let cols = [
+                        Col::text("Room"),
+                        Col::num("V", "m³"),
+                        Col::text("Air"),
+                        Col::num("Needed", "m³/h"),
+                        Col::num("Supply", "m³/h"),
+                        Col::num("Exhaust", "m³/h"),
+                        Col::num("Terminals", "pcs"),
+                    ];
+                    let total = |row: &mut sheet::Row| {
+                        row.text(t("Total"));
+                        row.text(num(b.rooms.iter().map(|r| r.volume).sum::<f64>(), 1));
+                        row.empty();
+                        row.text(num(b.rooms.iter().map(|r| r.need).sum::<f64>(), 0));
+                        row.text(num(b.supply, 0));
+                        row.text(num(b.exhaust, 0));
+                        row.text(b.rooms.iter().map(|r| r.terminals).sum::<u32>().to_string());
+                    };
+                    sheet::show(ui, "air.balance.rooms", &cols, b.rooms.len(), 400.0, |row, i| {
+                        let r = &b.rooms[i];
+                        let name = format!("{} {}", r.number, r.name);
+                        row.cell(|ui| {
+                            if ui.link(name.trim()).clicked() {
+                                select = Some(r.id);
                             }
                         });
+                        row.text(num(r.volume, 1));
+                        row.text(if r.exhaust_room { t("exhaust") } else { t("supply") });
+                        if r.ok {
+                            row.text(num(r.need, 0));
+                        } else {
+                            row.cell(|ui| {
+                                ui.colored_label(ui.visuals().warn_fg_color, num(r.need, 0))
+                                    .on_hover_text(t(
+                                        "The room's terminals do not carry what it needs: place a diffuser (supply) or a grille (exhaust) in it, or raise their flow.",
+                                    ));
+                            });
+                        }
+                        row.text(num(r.supply, 0));
+                        row.text(num(r.exhaust, 0));
+                        row.text(r.terminals.to_string());
+                    }, Some(&total));
                     ui.add_space(6.0);
                     ui.weak(t("A room needs its air change × volume or the least flow of its kind. Living rooms and offices are supplied; bathrooms, WCs, kitchens and stores are exhausted. A terminal with no flow of its own shares the room's need with the others; the flow is set in a diffuser's or a grille's properties."));
                     ui.weak("STN EN 16798-1 · STN EN 16798-3 · STN EN 15665");
@@ -113,6 +123,9 @@ impl CreaBimApp {
             });
         if let Some(id) = select {
             self.selection.only(id);
+        }
+        if write_now {
+            self.write_results_said(found);
         }
         self.air_balance = open;
     }

@@ -162,6 +162,16 @@ spec_enum! {
         Brick = "brick",
         Concrete = "concrete",
         Timber = "timber",
+        MasonryOuter = "masonry-outer",
+        MasonryInner = "masonry-inner",
+        Reinforced = "reinforced",
+        Ground = "ground",
+        EarthFill = "earth-fill",
+        Gravel = "gravel",
+        Insulation = "insulation",
+        Membrane = "membrane",
+        FormBlock = "form-block",
+        Xps = "xps",
     }
 }
 
@@ -184,6 +194,7 @@ spec_enum! {
         Wall = "wall",
         Floor = "floor",
         Roof = "roof",
+        Ceiling = "ceiling",
     }
 }
 
@@ -439,6 +450,52 @@ spec_struct! {
         /// A door opening to the wall's exterior; a window facing its
         /// interior.
         flip_facing: bool = false,
+        /// A window without its outer sill of sheet metal.
+        no_outer_sill: bool = false,
+        /// A window without its inner sill board.
+        no_inner_sill: bool = false,
+        /// A door with a threshold between its jambs.
+        threshold: bool = false,
+        /// How far the frame's outer face stands in from the outer edge
+        /// of the wall's core. Left out: on that edge in a layered wall,
+        /// in the middle of a plain one.
+        setback: Option<f64>,
+        /// How far the reveal's insulation laps over the frame.
+        reveal: Option<f64>,
+        /// How it is divided into fields, seen from outside, and how
+        /// each opens. A field is "FIX", "O-L", "O-P" (turning, hinges
+        /// left or right), "S" (tilting), "OS-L", "OS-P" (tilt and
+        /// turn), "V" (top hung), "P-L", "P-P" (sliding), "ZP-L", "ZP-P"
+        /// (lift and slide), "D-L", "D-P" (a door's leaf), with `*`
+        /// after it for a solid panel; a split is "v(1:OS-L,1:FIX)"
+        /// side by side or "h(0.3:S,0.7:OS-L)" top to bottom, each part
+        /// after its share.
+        division: Option<String>,
+        /// A door as joinery: the opening's `width` and `height` left
+        /// out are what its leaf and frame need.
+        door: Option<Door>,
+    }
+}
+
+spec_struct! {
+    /// A door as joinery: its leaf's nominal size, its frame, its fire
+    /// rating.
+    pub struct Door {
+        /// The leaf's nominal width, without the frame.
+        leaf_width: f64 = 0.8,
+        /// The leaf's nominal height.
+        leaf_height: f64 = 1.97,
+        /// "steel", "aluminium", "timber" or "lining" (a timber lining
+        /// with architraves).
+        frame: String,
+        /// What the leaf is made of: "timber", "steel" or "aluminium".
+        leaf: Option<String>,
+        /// A fire door's rating, as "EW 30/D3".
+        fire_rating: Option<String>,
+        /// A fire door with a closer.
+        self_closing: bool = true,
+        /// A smoke tight fire door.
+        smoke_tight: bool = false,
     }
 }
 
@@ -913,6 +970,36 @@ spec_enum! {
         Rooms = "rooms",
         /// The take-off by material.
         Materials = "materials",
+        /// The drawn window list (výpis okien).
+        WindowList = "window_list",
+        /// The drawn door list (výpis dverí).
+        DoorList = "door_list",
+        /// The legend of a services drawing: pipes and sanitary fixtures.
+        ServicesLegend = "services_legend",
+        /// The list of the documentation: the sheets by part.
+        Documents = "documents",
+        MaterialLegend = "material_legend",
+        PipeList = "pipe_list",
+        ElectricalList = "electrical_list",
+        RoomLegend = "room_legend",
+        FireZones = "fire_zones",
+        FireFacades = "fire_facades",
+        Occupancy = "occupancy",
+        BoardDiagram = "board_diagram",
+        LintelList = "lintel_list",
+        VentilationHrv = "ventilation_hrv",
+        HeaterList = "heater_list",
+        BuildingFigures = "building_figures",
+        FireRisk = "fire_risk",
+        FlashingTable = "flashing_table",
+        Identification = "identification",
+        LintelPositions = "lintel_positions",
+        RingBeamList = "ring_beam_list",
+        DrainSections = "drain_sections",
+        WaterAxonometry = "water_axonometry",
+        TimberList = "timber_list",
+        SteelList = "steel_list",
+        KariList = "kari_list",
     }
 }
 

@@ -86,11 +86,27 @@ impl Model {
         self.elements.values()
     }
 
+    /// The storeys: every level but the site's ([`Model::site_level`]),
+    /// which no plan, section or elevation marks.
     pub fn levels(&self) -> impl Iterator<Item = (&Element, &Level)> {
+        let site = self.site_level();
+        self.all_levels().filter(move |(e, _)| Some(e.id) != site)
+    }
+
+    /// Every level, the site's too.
+    pub fn all_levels(&self) -> impl Iterator<Item = (&Element, &Level)> {
         self.iter().filter_map(|e| match &e.kind {
             ElementKind::Level(l) => Some((e, l)),
             _ => None,
         })
+    }
+
+    /// The level a terrain from the map is modelled on (its plan "3D
+    /// terén"): drawn in its own plan and the site plan only, marked on no
+    /// other plan, section or elevation.
+    pub fn site_level(&self) -> Option<ElementId> {
+        let id = self.project_info()?.1.site_level?;
+        self.level(id).map(|_| id)
     }
 
     pub fn level(&self, id: ElementId) -> Option<&Level> {
@@ -125,6 +141,24 @@ impl Model {
     pub fn retain(&mut self, mut keep: impl FnMut(&Element) -> bool) {
         self.elements.retain(|_, e| keep(e));
         self.bump(true);
+    }
+
+    /// [`Model::retain`] for a copy that is always the same for the same
+    /// model and `key` (what was left out): its revision is worked out from
+    /// both instead of handed out afresh, so caches keyed by revision (the
+    /// shared 3D scene) serve every such copy, as each view of a drawing
+    /// set that hides the same things makes one. Derived revisions have
+    /// the top bit set, so they never meet a handed-out one.
+    pub fn retain_derived(&mut self, key: u64, keep: impl FnMut(&Element) -> bool) {
+        let source = self.revision;
+        self.retain(keep);
+        if source != 0 {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (source, key).hash(&mut h);
+            self.revision = h.finish() | 1 << 63;
+            self.drawn = self.revision;
+        }
     }
 
     /// Elements that directly reference `id`.
@@ -214,6 +248,40 @@ impl Model {
         }
         m.bump(true);
         Ok(m)
+    }
+
+    /// Like [`Model::from_elements`], but never refuses: a second copy of
+    /// an id is left out, and so is an element whose references are
+    /// missing or which is invalid (and then what referenced it, in turn).
+    /// Returns the model and what was left out, with why.
+    pub fn from_elements_mended(
+        elements: impl IntoIterator<Item = Element>,
+    ) -> (Self, Vec<(ElementId, String)>) {
+        let mut dropped = vec![];
+        let mut m = Model::new();
+        for e in elements {
+            if m.elements.contains_key(&e.id) {
+                dropped.push((e.id, "a second copy of the same element".to_string()));
+                continue;
+            }
+            m.elements.insert(e.id, e);
+        }
+        loop {
+            let bad: Vec<(ElementId, String)> = m
+                .elements
+                .values()
+                .filter_map(|e| m.check_refs(e).err().map(|err| (e.id, err.to_string())))
+                .collect();
+            if bad.is_empty() {
+                break;
+            }
+            for (id, why) in bad {
+                m.elements.shift_remove(&id);
+                dropped.push((id, why));
+            }
+        }
+        m.bump(true);
+        (m, dropped)
     }
 
     pub fn to_json(&self) -> String {

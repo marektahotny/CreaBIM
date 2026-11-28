@@ -11,6 +11,11 @@ use creabim_core::{ElementId, ElementKind, LineWeights, Model, View, ViewKind};
 use glam::DVec2;
 use std::collections::{HashMap, HashSet};
 
+/// The line a services drawing draws a pipe with, paper mm.
+pub const PIPE_LINE: f64 = 0.35;
+/// The line a services drawing draws a duct's outline with, paper mm.
+pub const DUCT_LINE: f64 = 0.25;
+
 /// The look of one element in one view, where it differs from the pens.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Look {
@@ -29,6 +34,9 @@ struct Look {
     /// material, and the hatch of that material.
     material_pattern: Option<(Hatch, String)>,
     hatch_off: bool,
+    /// Every line of it in this one pen, mm, whatever its pen: the
+    /// building and the other trades' objects under a trade's drawing.
+    thin: Option<f64>,
     surface_fill: Option<[f32; 3]>,
     surface_pattern: Option<String>,
     order: i32,
@@ -71,10 +79,26 @@ impl Looks {
         let cutters = creabim_core::visibility::cutters(model);
         let beyond = crate::ranges::beyond(model, v);
         let fades = distance_fades(model, v);
+        let services = creabim_core::viewmodes::DisplayMode::of(v)
+            == creabim_core::viewmodes::DisplayMode::Services;
         let mut by_id = HashMap::new();
         let mut areas = vec![];
         for e in model.iter() {
             if e.id == view {
+                continue;
+            }
+            // a material's own pattern, for the patches of a legend of
+            // materials, which draw in the material's id
+            if let ElementKind::Material(m) = &e.kind {
+                if let Some(p) = &m.pattern {
+                    by_id.insert(
+                        e.id,
+                        Look {
+                            material_pattern: Some((m.hatch, p.clone())),
+                            ..Look::default()
+                        },
+                    );
+                }
                 continue;
             }
             let Some(cat) = Category::of(e, &cutters) else {
@@ -160,6 +184,109 @@ impl Looks {
                 }
                 if let Some(h) = o.hatch {
                     l.hatch_off = !h;
+                }
+            }
+            // a coordination drawing tells the trades apart: each in one
+            // colour, its pipes, what is on them and its devices
+            if services && v.coordination && l.colour.is_none() {
+                use creabim_core::viewmodes::Trade;
+                let of = |p: &creabim_core::mep::Pipe| Trade::of_system(p.kind());
+                let trade = match &e.kind {
+                    ElementKind::Pipe(p) => Some(of(p)),
+                    ElementKind::Valve(x) => x.host(model).map(of),
+                    ElementKind::Object(_) if crate::elplan::is_device(model, e.id) => {
+                        Some(Trade::Electrical)
+                    }
+                    // a trade's terminals and devices in its colour, the
+                    // plant in the colour of the trade it serves
+                    ElementKind::Object(_) => match creabim_core::viewmodes::belongs(model, e) {
+                        creabim_core::viewmodes::Belongs::Trade(t) => Some(t),
+                        creabim_core::viewmodes::Belongs::Plant => {
+                            Trade::ALL.into_iter().find(|t| t.owns(model, e))
+                        }
+                        creabim_core::viewmodes::Belongs::Building => None,
+                    },
+                    _ => None,
+                };
+                l.colour = trade.map(Trade::colour);
+            }
+            // a trade's drawing: its own equipment in the medium pen, the
+            // other objects (fixtures, furniture) very thin (George
+            // 2026-11-22)
+            if services && !v.coordination {
+                if let ElementKind::Object(_) = &e.kind {
+                    use creabim_core::viewmodes::{Trade, OWN_EQUIPMENT, THIN};
+                    let own = match v.trade {
+                        Some(t) => t.owns(model, e),
+                        None => Trade::ALL.iter().any(|t| t.owns(model, e)),
+                    };
+                    if own {
+                        l.projection = Some(OWN_EQUIPMENT);
+                        l.fade = 0.0;
+                    } else {
+                        // in the building's very thin pen and its halftone,
+                        // every line of it alike (George 2026-11-23)
+                        l.projection = Some(THIN);
+                        l.thin = Some(THIN);
+                        if l.fade < 0.5 {
+                            mix(&mut l.fade, 0.5);
+                        }
+                    }
+                }
+            }
+            // the building under a trade's drawing: all its lines very
+            // thin, door swings, lines over the cut and the drafted ones
+            // too (George 2026-11-23)
+            if services && !v.coordination && creabim_core::viewmodes::BUILDING.contains(&cat) {
+                l.thin = Some(creabim_core::viewmodes::THIN);
+            }
+            // a services drawing's pipes: lines in their system's colour
+            // and line type, unless the view says otherwise
+            if let (true, ElementKind::Pipe(p)) = (services, &e.kind) {
+                if l.colour.is_none() {
+                    l.colour = Some(crate::mep::color(p));
+                }
+                // a duct is drawn in outline: told apart by its colour,
+                // its lines solid
+                if l.dashes.is_none() {
+                    l.dashes = Some(
+                        p.system_def()
+                            .and_then(|s| s.dashes())
+                            .filter(|_| !p.kind().is_air()),
+                    );
+                }
+                if l.projection.is_none() {
+                    l.projection = Some(if p.kind().is_air() {
+                        DUCT_LINE
+                    } else {
+                        PIPE_LINE
+                    });
+                }
+            }
+            // a utility network: its kind's colour and line type, heavy
+            // where proposed (PilonDesigner's site plans)
+            // (its dashes are drawn as pieces, see crate::netlines)
+            if let ElementKind::Sketch(creabim_core::Sketch { net: Some(n), .. }) = &e.kind {
+                if l.colour.is_none() {
+                    l.colour = Some(n.kind.rgb());
+                }
+                if l.dashes.is_none() {
+                    l.dashes = Some(None);
+                }
+                if l.projection.is_none() {
+                    l.projection = Some(n.weight());
+                }
+            }
+            // a site plan's symbol: thin, in its network's colour
+            if let ElementKind::Sketch(creabim_core::Sketch { mark: Some(m), .. }) = &e.kind {
+                if l.colour.is_none() {
+                    l.colour = Some(m.rgb());
+                }
+                if l.dashes.is_none() {
+                    l.dashes = Some(None);
+                }
+                if l.projection.is_none() {
+                    l.projection = Some(0.25);
                 }
             }
             if beyond.contains(&e.id) {
@@ -293,10 +420,21 @@ impl Looks {
     /// The stroke of a pen for element `id`, with its colour if it has one.
     pub fn stroke(&self, id: ElementId, pen: Pen) -> (Stroke, Option<[f32; 3]>, Option<Vec<f64>>) {
         let mut s = pen_stroke_with(pen, &self.weights);
-        let Some(l) = self.look(id) else {
-            return (s, None, None);
+        let overhead = match pen {
+            Pen::Overhead => Some(crate::paper::OVERHEAD_DASHES.to_vec()),
+            Pen::StairAbove { hidden } => Some(crate::paper::stair_above_dashes(hidden).to_vec()),
+            // a dash-dot drafted line: longer than a dash and a gap
+            Pen::Drafted(l) => l.kind.dashes().filter(|d| d.len() > 2).map(<[f64]>::to_vec),
+            _ => None,
         };
+        let Some(l) = self.look(id) else {
+            return (s, None, overhead);
+        };
+        if let Some(x) = l.thin {
+            s.width = x;
+        }
         match pen {
+            _ if l.thin.is_some() => {}
             Pen::Cut => {
                 if let Some(x) = l.cut {
                     s.width = x;
@@ -309,8 +447,8 @@ impl Looks {
             }
             _ => {}
         }
-        let mut long = None;
-        if pen != Pen::Hidden {
+        let mut long = overhead;
+        if !matches!(pen, Pen::Hidden | Pen::Overhead | Pen::Drafted(_)) {
             match &l.dashes {
                 Some(None) => s.dash = None,
                 Some(Some(d)) if d.len() == 2 && d[0] > 0.0 => s.dash = Some([d[0], d[1]]),
@@ -508,28 +646,49 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
         PatternUnits::Model => 1.0,
     };
     let dot = 0.15 / k;
+    // a layer bent along its length (a roof's insulation cut across a
+    // ridge or a hip, a wall's round a corner): a pattern that runs
+    // along the layer runs along each straight piece of it
+    let strips = strip_pieces(polygon);
+    let pieces: Vec<(Vec<DVec2>, Option<DVec2>)> = match &strips {
+        Some(s) => s.iter().map(|(q, d)| (q.clone(), Some(*d))).collect(),
+        None => vec![(polygon.to_vec(), None)],
+    };
     for l in &p.lines {
-        let mut angle = l.angle.to_radians();
-        if l.along_longest {
-            let n = polygon.len();
-            angle += (0..n)
-                .map(|i| polygon[(i + 1) % n] - polygon[i])
-                .max_by(|a, b| a.length().total_cmp(&b.length()))
-                .map_or(0.0, |d| d.to_angle());
-        }
         let spacing = l.spacing * unit;
         let dashes: Vec<f64> = l.dashes.iter().map(|d| d * unit).collect();
-        if !family(
-            polygon,
-            angle,
-            spacing,
-            l.offset * unit,
-            l.shift * unit,
-            &dashes,
-            dot,
-            &mut out,
-        ) {
-            return vec![];
+        let whole = [(polygon.to_vec(), None)];
+        let over: &[(Vec<DVec2>, Option<DVec2>)] = if l.along_longest { &pieces } else { &whole };
+        for (piece, dir) in over {
+            let mut angle = l.angle.to_radians();
+            if l.along_longest {
+                angle += dir
+                    .or_else(|| longest_dir(piece))
+                    .map_or(0.0, |d| d.to_angle());
+            }
+            if !family(
+                piece,
+                angle,
+                spacing,
+                l.offset * unit,
+                l.shift * unit,
+                &dashes,
+                dot,
+                &mut out,
+            ) {
+                return vec![];
+            }
+        }
+    }
+    for (piece, dir) in &pieces {
+        if p.batt {
+            out.extend(batt_lines(piece, *dir, unit));
+        }
+        if p.membrane {
+            out.extend(membrane_lines(piece, *dir, unit));
+        }
+        if p.zigzag {
+            out.extend(zigzag_lines(piece, *dir, unit));
         }
     }
     if let Some(t) = &p.tile {
@@ -539,7 +698,9 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
         if cells.is_nan() || cells >= MAX_PATTERN_LINES as f64 {
             return out;
         }
-        let (i0, j0) = ((lo.x / w).floor() as i64, (lo.y / h).floor() as i64);
+        // one cell more below and to the left: a stroke may stand out of
+        // its cell (a pebble over the tile's edge)
+        let (i0, j0) = ((lo.x / w).floor() as i64 - 1, (lo.y / h).floor() as i64 - 1);
         let (i1, j1) = ((hi.x / w).ceil() as i64, (hi.y / h).ceil() as i64);
         for i in i0..i1 {
             for j in j0..j1 {
@@ -557,6 +718,432 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
         }
     }
     out
+}
+
+/// Extruded polystyrene's triangles along a fill's longest side: a
+/// zigzag from one face of the layer to the other, as wide as the fill
+/// is thick there; a thick fill takes several rows (George 2026-11-23).
+/// `unit` is drawing units per paper mm.
+fn zigzag_lines(polygon: &[DVec2], dir: Option<DVec2>, unit: f64) -> Vec<(DVec2, DVec2)> {
+    let n = polygon.len();
+    let Some(dir) = dir.or_else(|| longest_dir(polygon)) else {
+        return vec![];
+    };
+    if dir == DVec2::ZERO {
+        return vec![];
+    }
+    let nrm = dir.perp();
+    let local: Vec<DVec2> = polygon
+        .iter()
+        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
+        .collect();
+    let (lo, hi) = bounds(&local);
+    let longest = (0..n)
+        .map(|i| (polygon[(i + 1) % n] - polygon[i]).length())
+        .fold(0.0, f64::max)
+        .max(hi.x - lo.x);
+    let area = (0..n)
+        .map(|i| local[i].perp_dot(local[(i + 1) % n]))
+        .sum::<f64>()
+        .abs()
+        / 2.0;
+    let band = (hi.y - lo.y).min(area / longest.max(1e-12));
+    let t = band / (band / (25.0 * unit)).ceil().max(1.0);
+    if t < 0.3 * unit || (hi.x - lo.x) / t > 4000.0 {
+        return vec![];
+    }
+    // a triangle's base about as wide as the batt loops' pitch
+    let p = (t * 0.6).clamp(0.6 * unit, 3.0 * unit);
+    let at = |x: f64, y: f64| dir * x + nrm * y;
+    let mut out = vec![];
+    let mut push = |a: DVec2, b: DVec2| {
+        for (u0, u1) in inside(a, b, polygon) {
+            out.push((a.lerp(b, u0), a.lerp(b, u1)));
+        }
+    };
+    let mut y0 = lo.y;
+    while y0 < hi.y - t * 0.5 {
+        let top = y0 + t;
+        let mut k = ((lo.x - p) / p).floor() as i64;
+        while (k as f64) * p < hi.x + p {
+            let x = k as f64 * p;
+            push(at(x, y0), at(x + p / 2.0, top));
+            push(at(x + p / 2.0, top), at(x + p, y0));
+            k += 1;
+        }
+        y0 = top;
+    }
+    out
+}
+
+/// Batt insulation loops along a fill's longest side, as wide as the fill
+/// is thick there; a thick fill takes several rows. `unit` is drawing
+/// units per paper mm.
+fn batt_lines(polygon: &[DVec2], dir: Option<DVec2>, unit: f64) -> Vec<(DVec2, DVec2)> {
+    let Some(dir) = dir.or_else(|| longest_dir(polygon)) else {
+        return vec![];
+    };
+    if dir == DVec2::ZERO {
+        return vec![];
+    }
+    // a layer notched where something runs into it (a wall's top into a
+    // ceiling's wool): each stretch of its own thickness in loops as
+    // high as it is, so the wool over the wall is filled with whole
+    // loops, not the stubs of the full layer's (George 2026-11-25)
+    let pieces = notch_stretches(polygon, dir);
+    if pieces.len() > 1 {
+        return pieces
+            .iter()
+            .flat_map(|piece| batt_stretch(piece, dir, unit))
+            .collect();
+    }
+    batt_stretch(polygon, dir, unit)
+}
+
+/// A thin layer's fill cut across its run at every edge square to the
+/// run (a notch's sides), when its thickness steps there; the fill as it
+/// is otherwise. Only a band (much longer than thick) is cut, so an L of
+/// insulation round a corner keeps its one pattern.
+fn notch_stretches(polygon: &[DVec2], dir: DVec2) -> Vec<Vec<DVec2>> {
+    let n = polygon.len();
+    let nrm = dir.perp();
+    let local: Vec<DVec2> = polygon
+        .iter()
+        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
+        .collect();
+    let (lo, hi) = bounds(&local);
+    let (len, thick) = (hi.x - lo.x, hi.y - lo.y);
+    if n < 6 || len <= 0.0 || thick > 0.25 * len {
+        return vec![polygon.to_vec()];
+    }
+    let tol = 1e-6 * len.max(1.0);
+    let mut cuts: Vec<f64> = (0..n)
+        .filter_map(|i| {
+            let (a, b) = (local[i], local[(i + 1) % n]);
+            // a step of a tenth of the layer or more: not a sliver
+            ((a.x - b.x).abs() < tol
+                && (b.y - a.y).abs() > 0.1 * thick
+                && a.x > lo.x + tol
+                && a.x < hi.x - tol)
+                .then_some(a.x)
+        })
+        .collect();
+    cuts.sort_by(f64::total_cmp);
+    cuts.dedup_by(|a, b| (*a - *b).abs() < tol);
+    if cuts.is_empty() {
+        return vec![polygon.to_vec()];
+    }
+    let mut out = vec![];
+    let mut rest = polygon.to_vec();
+    for x in cuts {
+        let at = dir * x;
+        let left = clip_half(&rest, at, nrm, at - dir);
+        rest = clip_half(&rest, at, nrm, at + dir);
+        if left.len() >= 3 {
+            out.push(left);
+        }
+    }
+    if rest.len() >= 3 {
+        out.push(rest);
+    }
+    out
+}
+
+/// Batt loops over one stretch of a layer of one thickness.
+fn batt_stretch(polygon: &[DVec2], dir: DVec2, unit: f64) -> Vec<(DVec2, DVec2)> {
+    let n = polygon.len();
+    let nrm = dir.perp();
+    let local: Vec<DVec2> = polygon
+        .iter()
+        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
+        .collect();
+    let (lo, hi) = bounds(&local);
+    // along the run: its longest side, or the piece's length when the
+    // run is given (a bent layer's straight piece, its sides cut up)
+    let longest = (0..n)
+        .map(|i| (polygon[(i + 1) % n] - polygon[i]).length())
+        .fold(0.0, f64::max)
+        .max(hi.x - lo.x);
+    let area = (0..n)
+        .map(|i| local[i].perp_dot(local[(i + 1) % n]))
+        .sum::<f64>()
+        .abs()
+        / 2.0;
+    // a band's thickness: across the fill, or its mean width for an L
+    let band = (hi.y - lo.y).min(area / longest.max(1e-12));
+    // a very thick fill (a whole roof's insulation in a patch) in rows of
+    // at most 25 mm on paper
+    let t = band / (band / (25.0 * unit)).ceil().max(1.0);
+    if t < 0.3 * unit || (hi.x - lo.x) / t > 4000.0 {
+        return vec![];
+    }
+    // loops about as far apart as the sample's (EPS 140, MW 160, 220 mm)
+    let p = (t * 0.6).clamp(0.6 * unit, 3.0 * unit);
+    let r = p / 2.0;
+    let at = |x: f64, y: f64| dir * x + nrm * y;
+    let mut out = vec![];
+    let push = |a: DVec2, b: DVec2, out: &mut Vec<(DVec2, DVec2)>| {
+        for (u0, u1) in inside(a, b, polygon) {
+            out.push((a.lerp(b, u0), a.lerp(b, u1)));
+        }
+    };
+    let mut y0 = lo.y;
+    while y0 < hi.y - t * 0.5 {
+        let top = y0 + t;
+        let r = r.min(t / 2.0);
+        let mut k = ((lo.x - p) / p).floor() as i64;
+        while (k as f64) * p < hi.x + p {
+            let x = k as f64 * p;
+            // a half circle at the top round x, one at the bottom half a
+            // pitch on, and the two straights between them, crossing
+            let arc = |c: DVec2, from: f64| -> Vec<DVec2> {
+                (0..=8)
+                    .map(|i| {
+                        let a = from + std::f64::consts::PI * i as f64 / 8.0;
+                        c + DVec2::new(a.cos(), a.sin()) * r
+                    })
+                    .collect()
+            };
+            let ct = DVec2::new(x, top - r);
+            let cb = DVec2::new(x + p / 2.0, y0 + r);
+            for arcs in [arc(ct, 0.0), arc(cb, std::f64::consts::PI)] {
+                for w in arcs.windows(2) {
+                    push(at(w[0].x, w[0].y), at(w[1].x, w[1].y), &mut out);
+                }
+            }
+            push(at(x + r, top - r), at(x + p / 2.0 - r, y0 + r), &mut out);
+            push(
+                at(x + p / 2.0 + r, y0 + r),
+                at(x + p - r, top - r),
+                &mut out,
+            );
+            k += 1;
+        }
+        y0 = top;
+    }
+    out
+}
+
+/// A waterproofing strip along a fill's middle, as the ASR legend draws an
+/// asphalt strip: a thin line, and on it dashes 4 mm long and 0.45 mm (as thick as the sample's)
+/// thick on paper (close lines, so screen and paper show them alike).
+/// `unit` is drawing units per paper mm.
+fn membrane_lines(polygon: &[DVec2], dir: Option<DVec2>, unit: f64) -> Vec<(DVec2, DVec2)> {
+    let Some(dir) = dir.or_else(|| longest_dir(polygon)) else {
+        return vec![];
+    };
+    let nrm = dir.perp();
+    let local: Vec<DVec2> = polygon
+        .iter()
+        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm)))
+        .collect();
+    let (lo, hi) = bounds(&local);
+    let (dash, half) = (4.0 * unit, 0.225 * unit);
+    if (hi.x - lo.x) / dash > 4000.0 {
+        return vec![];
+    }
+    let mid = (lo.y + hi.y) / 2.0;
+    let at = |x: f64, y: f64| dir * x + nrm * y;
+    let mut out = vec![];
+    // the strip's line along its middle, cut to the fill; the dashes
+    // stand over it wider than a thin layer is on paper
+    let (a, b) = (at(lo.x, mid), at(hi.x, mid));
+    let runs: Vec<(f64, f64)> = inside(a, b, polygon)
+        .into_iter()
+        .map(|(u0, u1)| (lo.x + (hi.x - lo.x) * u0, lo.x + (hi.x - lo.x) * u1))
+        .collect();
+    for (x0, x1) in &runs {
+        out.push((at(*x0, mid), at(*x1, mid)));
+    }
+    let mut x = (lo.x / (2.0 * dash)).floor() * 2.0 * dash;
+    while x < hi.x {
+        for (x0, x1) in &runs {
+            let (d0, d1) = (x.max(*x0), (x + dash).min(*x1));
+            if d1 <= d0 {
+                continue;
+            }
+            for k in 0..10 {
+                let y = mid - half + 2.0 * half * k as f64 / 9.0;
+                out.push((at(d0, y), at(d1, y)));
+            }
+        }
+        x += 2.0 * dash;
+    }
+    out
+}
+
+/// The direction of a polygon's longest side, None for a degenerate one.
+fn longest_dir(polygon: &[DVec2]) -> Option<DVec2> {
+    let n = polygon.len();
+    (0..n)
+        .map(|i| polygon[(i + 1) % n] - polygon[i])
+        .max_by(|a, b| a.length().total_cmp(&b.length()))
+        .map(|d| d.normalize_or_zero())
+        .filter(|d| *d != DVec2::ZERO)
+}
+
+/// `poly` cut to the side of the line through `at` along `along` where
+/// `keep` lies.
+fn clip_half(poly: &[DVec2], at: DVec2, along: DVec2, keep: DVec2) -> Vec<DVec2> {
+    let side = |p: DVec2| (p - at).perp_dot(along);
+    let s = side(keep).signum();
+    let n = poly.len();
+    let mut out = vec![];
+    for i in 0..n {
+        let (p, q) = (poly[i], poly[(i + 1) % n]);
+        let (sp, sq) = (side(p) * s, side(q) * s);
+        if sp >= 0.0 {
+            out.push(p);
+        }
+        if (sp >= 0.0) != (sq >= 0.0) {
+            out.push(p.lerp(q, sp / (sp - sq)));
+        }
+    }
+    out
+}
+
+/// A fill that is a layer bent along its length (a roof's insulation
+/// cut across a ridge or hips, a wall's round a corner), in its straight
+/// pieces, each with its run: the fill cut at each bend along the
+/// bisector, so a pattern that follows the layer follows every piece.
+/// None for a fill with no bend, which keeps its one run.
+pub fn strip_pieces(polygon: &[DVec2]) -> Option<Vec<(Vec<DVec2>, DVec2)>> {
+    let mut ring: Vec<DVec2> = vec![];
+    for p in polygon {
+        if ring.last().is_none_or(|q: &DVec2| q.distance(*p) > 1e-9) {
+            ring.push(*p);
+        }
+    }
+    if ring.len() > 1 && ring[0].distance(ring[ring.len() - 1]) <= 1e-9 {
+        ring.pop();
+    }
+    let n = ring.len();
+    if n < 5 {
+        return None;
+    }
+    let area2: f64 = (0..n).map(|i| ring[i].perp_dot(ring[(i + 1) % n])).sum();
+    let perimeter: f64 = (0..n).map(|i| ring[i].distance(ring[(i + 1) % n])).sum();
+    if area2.abs() < 1e-12 || perimeter <= 0.0 {
+        return None;
+    }
+    // the layer's thickness, were it a long strip
+    let t = area2.abs() / perimeter;
+    // straighten: corners that hardly stand out of their neighbours' line go
+    let tol = 0.15 * t;
+    loop {
+        let m = ring.len();
+        if m <= 4 {
+            break;
+        }
+        let worst = (0..m)
+            .map(|i| {
+                let (a, p, b) = (ring[(i + m - 1) % m], ring[i], ring[(i + 1) % m]);
+                let ab = b - a;
+                let d = if ab.length() < 1e-12 {
+                    p.distance(a)
+                } else {
+                    (p - a).perp_dot(ab).abs() / ab.length()
+                };
+                (i, d)
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))?;
+        if worst.1 >= tol {
+            break;
+        }
+        ring.remove(worst.0);
+    }
+    let m = ring.len();
+    if m <= 4 {
+        return None;
+    }
+    // inward of a side: to its left round a counter-clockwise outline
+    let ccw = area2 > 0.0;
+    let edge = |i: usize| (ring[i % m], ring[(i + 1) % m]);
+    let dir = |i: usize| {
+        let (a, b) = edge(i);
+        (b - a).normalize_or_zero()
+    };
+    let inward = |i: usize| {
+        let d = dir(i);
+        if ccw {
+            d.perp()
+        } else {
+            -d.perp()
+        }
+    };
+    let long: Vec<bool> = (0..m)
+        .map(|i| edge(i).0.distance(edge(i).1) > 2.0 * t)
+        .collect();
+    let bent =
+        (0..m).any(|i| long[i] && (0..m).any(|j| long[j] && dir(i).perp_dot(dir(j)).abs() > 0.09));
+    if !bent {
+        return None;
+    }
+    // a side whose opposite side (the layer's other face) comes first
+    // is drawn with that one
+    let partner = |i: usize, j: usize| {
+        let (a, b) = edge(i);
+        let (c, d) = edge(j);
+        if dir(i).dot(dir(j)) > -0.98 {
+            return false;
+        }
+        let gap = (c - a).dot(inward(i));
+        let (u0, u1) = (0.0, (b - a).dot(dir(i)));
+        let (v0, v1) = ((c - a).dot(dir(i)), (d - a).dot(dir(i)));
+        gap > 0.3 * t && gap < 3.0 * t && v0.max(v1) > u0 + 1e-6 && v0.min(v1) < u1 - 1e-6
+    };
+    // the next long side round from `i`, `step` ±1, over short ones
+    let next_long = |i: usize, back: bool| -> Option<usize> {
+        let mut j = i;
+        let mut run = 0.0;
+        for _ in 0..4 {
+            j = if back { (j + m - 1) % m } else { (j + 1) % m };
+            if long[j] {
+                return Some(j);
+            }
+            run += edge(j).0.distance(edge(j).1);
+            if run > 2.0 * t {
+                return None;
+            }
+        }
+        None
+    };
+    let meet = |i: usize, j: usize| -> Option<DVec2> {
+        let (a, _) = edge(i);
+        let (c, _) = edge(j);
+        let (d, e) = (dir(i), dir(j));
+        let den = d.perp_dot(e);
+        (den.abs() > 1e-9).then(|| a + d * ((c - a).perp_dot(e) / den))
+    };
+    let mut out = vec![];
+    for i in 0..m {
+        if !long[i] || (0..i).any(|j| long[j] && partner(i, j)) {
+            continue;
+        }
+        let (a, b) = edge(i);
+        let mid = (a + b) / 2.0 + inward(i) * (0.5 * t);
+        let mut piece = polygon.to_vec();
+        for back in [true, false] {
+            let Some(j) = next_long(i, back) else {
+                continue;
+            };
+            if dir(i).perp_dot(dir(j)).abs() <= 0.09 {
+                continue;
+            }
+            let Some(x) = meet(i, j) else {
+                continue;
+            };
+            let bis = (inward(i) + inward(j)).normalize_or_zero();
+            if bis == DVec2::ZERO {
+                continue;
+            }
+            piece = clip_half(&piece, x, bis, mid);
+        }
+        if piece.len() >= 3 {
+            out.push((piece, dir(i)));
+        }
+    }
+    (!out.is_empty()).then_some(out)
 }
 
 fn bounds(poly: &[DVec2]) -> (DVec2, DVec2) {
@@ -798,8 +1385,59 @@ mod tests {
                 size: [0.5, 0.5],
                 strokes: vec![vec![[0.0, 0.25], [0.5, 0.25]]],
             }),
+            batt: false,
+            zigzag: false,
+            membrane: false,
         };
         let lines = pattern_lines(&p, &square(1.0), 10.0);
         assert_eq!(lines.len(), 4);
+    }
+
+    /// George: a roof's mineral wool cut across its hips ran one way over
+    /// the whole bent layer, rows crossing; each straight piece takes its
+    /// own run.
+    #[test]
+    fn a_bent_layer_is_hatched_piece_by_piece_along_each_run() {
+        let s = 0.5_f64; // slope rise per run
+        let t = 0.2;
+        // up a slope, along a flat, down a slope: the outer face, then
+        // the inner one back
+        let poly = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(4.0, 4.0 * s),
+            DVec2::new(8.0, 4.0 * s),
+            DVec2::new(12.0, 0.0),
+            DVec2::new(12.0, -t),
+            DVec2::new(8.0, 4.0 * s - t),
+            DVec2::new(4.0, 4.0 * s - t),
+            DVec2::new(0.0, -t),
+        ];
+        let pieces = strip_pieces(&poly).unwrap();
+        assert_eq!(pieces.len(), 3, "{pieces:?}");
+        let flat = pieces.iter().filter(|(_, d)| d.y.abs() < 1e-9).count();
+        assert_eq!(flat, 1);
+        // the pieces fill the layer, once
+        let area = |q: &[DVec2]| {
+            (0..q.len())
+                .map(|i| q[i].perp_dot(q[(i + 1) % q.len()]))
+                .sum::<f64>()
+                .abs()
+                / 2.0
+        };
+        let sum: f64 = pieces.iter().map(|(q, _)| area(q)).sum();
+        assert!((sum - area(&poly)).abs() < 1e-6, "{sum} {}", area(&poly));
+        // a plain strip keeps its one run
+        assert!(strip_pieces(&square(1.0)).is_none());
+        let p = HatchPattern {
+            name: "wool".into(),
+            units: PatternUnits::Paper,
+            fill: None,
+            lines: vec![],
+            tile: None,
+            batt: true,
+            zigzag: false,
+            membrane: false,
+        };
+        assert!(!pattern_lines(&p, &poly, 20.0).is_empty());
     }
 }

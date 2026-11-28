@@ -30,6 +30,8 @@ pub(super) enum AsmAsk {
     Edit(ElementId, &'static str, Assembly),
     SelectUsers(ElementId),
     Assign(Option<ElementId>),
+    /// A library material a build-up is about to use.
+    AddMaterial(Box<creabim_core::Element>),
 }
 
 /// The small drawn buttons of a layer row (the UI font has no arrows).
@@ -219,7 +221,7 @@ pub(super) fn layer_table(
     let n = a.layers.len();
     let (core0, core1) = a.core();
     ui.label(
-        egui::RichText::new(format!("{} face", a.usage.first_face()))
+        egui::RichText::new(crate::i18n::tr(&format!("{} face", a.usage.first_face())))
             .size(10.5)
             .color(weak),
     );
@@ -291,7 +293,7 @@ pub(super) fn layer_table(
                             .speed(0.001)
                             .range(assembly::MIN_LAYER..=2.0),
                     )
-                    .on_hover_text("Thickness; type any unit")
+                    .on_hover_text(crate::i18n::t("Thickness; type any unit"))
                     .changed()
                 {
                     l.thickness = t.max(assembly::MIN_LAYER);
@@ -301,21 +303,21 @@ pub(super) fn layer_table(
                     ui.spacing_mut().item_spacing.x = 2.0;
                     if ui
                         .add_enabled(i > 0, GlyphButton(Glyph::Up))
-                        .on_hover_text("Move the layer out")
+                        .on_hover_text(crate::i18n::t("Move the layer out"))
                         .clicked()
                     {
                         swap = Some((i - 1, i));
                     }
                     if ui
                         .add_enabled(i + 1 < n, GlyphButton(Glyph::Down))
-                        .on_hover_text("Move the layer in")
+                        .on_hover_text(crate::i18n::t("Move the layer in"))
                         .clicked()
                     {
                         swap = Some((i, i + 1));
                     }
                     if ui
                         .add_enabled(n > 1, GlyphButton(Glyph::Remove))
-                        .on_hover_text("Remove the layer")
+                        .on_hover_text(crate::i18n::t("Remove the layer"))
                         .clicked()
                     {
                         remove = Some(i);
@@ -325,7 +327,7 @@ pub(super) fn layer_table(
             }
         });
     ui.label(
-        egui::RichText::new(format!("{} face", a.usage.last_face()))
+        egui::RichText::new(crate::i18n::tr(&format!("{} face", a.usage.last_face())))
             .size(10.5)
             .color(weak),
     );
@@ -339,8 +341,8 @@ pub(super) fn layer_table(
     }
     crate::props::flow(ui, |ui| {
         if ui
-            .button("Add layer")
-            .on_hover_text("A new layer on the inner (or lower) side")
+            .button(crate::i18n::t("Add layer"))
+            .on_hover_text(crate::i18n::t("A new layer on the inner (or lower) side"))
             .clicked()
         {
             edited
@@ -348,12 +350,162 @@ pub(super) fn layer_table(
                 .push(Layer::new(LayerFunction::Finish, None, 0.013));
             label = "Add layer";
         }
-        ui.label(format!(
+        ui.label(crate::i18n::tr(&format!(
             "Total {}",
             crate::units::len(edited.layers.iter().map(|l| l.thickness).sum())
-        ));
+        )));
     });
     (!label.is_empty()).then_some((label, edited))
+}
+
+/// U of the assembly (STN EN ISO 6946): the boundary it is counted
+/// for, each layer's d, λ and R, the surface resistances and U. Returns
+/// an edit of the boundary: (undo label, new assembly).
+pub(super) fn thermal_panel(
+    ui: &mut egui::Ui,
+    model: &Model,
+    id: ElementId,
+    a: &Assembly,
+) -> Option<(&'static str, Assembly)> {
+    use creabim_core::thermal::{self, HeatFlow, Outside};
+    let t = thermal::of_assembly(model, a, None);
+    let mut b = t.boundary;
+    let weak = ui.visuals().weak_text_color();
+    ui.label(
+        egui::RichText::new(crate::i18n::t("Thermal transmittance U"))
+            .strong()
+            .size(13.0),
+    );
+    crate::props::flow(ui, |ui| {
+        egui::ComboBox::from_id_salt(("asm.flow", id))
+            .selected_text(crate::i18n::t(b.flow.label()))
+            .show_ui(ui, |ui| {
+                for f in HeatFlow::ALL {
+                    ui.selectable_value(&mut b.flow, f, crate::i18n::t(f.label()));
+                }
+            })
+            .response
+            .on_hover_text(crate::i18n::t(
+                "Sets Rsi: 0.10 upwards, 0.13 horizontal, 0.17 downwards (STN EN ISO 6946)",
+            ));
+        ui.label(crate::i18n::t("On the outer side"));
+        egui::ComboBox::from_id_salt(("asm.outside", id))
+            .selected_text(crate::i18n::t(b.outside.label()))
+            .show_ui(ui, |ui| {
+                for o in Outside::ALL {
+                    ui.selectable_value(&mut b.outside, o, crate::i18n::t(o.label()));
+                }
+            })
+            .response
+            .on_hover_text(crate::i18n::t(
+                "Sets Rse: 0.04 outside air, Rse = Rsi towards another room, 0 against the ground",
+            ));
+    });
+    let num = |v: f64| thermal::shown(v);
+    egui::Grid::new(("asm.u", id))
+        .num_columns(4)
+        .spacing([12.0, 2.0])
+        .striped(true)
+        .show(ui, |ui| {
+            for h in ["Layer", "d [m]", "λ [W/(m·K)]", "R [m²K/W]"] {
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(h))
+                        .size(11.0)
+                        .color(weak),
+                );
+            }
+            ui.end_row();
+            let row = |ui: &mut egui::Ui, name: &str, d: &str, l: &str, r: &str, dim: bool| {
+                let txt = |s: &str| {
+                    let r = egui::RichText::new(s.to_string());
+                    if dim {
+                        r.color(weak)
+                    } else {
+                        r
+                    }
+                };
+                ui.label(txt(name));
+                ui.label(txt(d));
+                ui.label(txt(l));
+                ui.label(txt(r));
+                ui.end_row();
+            };
+            row(ui, "Rsi", "", "", &num(t.rsi), false);
+            for l in &t.layers {
+                let name = crate::i18n::tr(&l.name);
+                let lambda = l.lambda.map_or("—".to_string(), num);
+                let r = if l.skipped {
+                    crate::i18n::tr("not counted")
+                } else {
+                    l.r.map_or("?".to_string(), num)
+                };
+                row(ui, &name, &num(l.thickness), &lambda, &r, l.skipped);
+            }
+            row(ui, "Rse", "", "", &num(t.rse), false);
+        });
+    ui.label(format!(
+        "R = {} m²K/W · RT = Rsi + R + Rse = {} m²K/W",
+        num(t.r),
+        num(t.r_total)
+    ));
+    match t.u {
+        Some(u) => {
+            ui.label(
+                egui::RichText::new(format!("U = {} W/(m²·K)", num(u)))
+                    .strong()
+                    .size(15.0),
+            );
+        }
+        None => {
+            let names: Vec<String> = t
+                .missing()
+                .iter()
+                .map(|l| format!("{}. {}", l.index + 1, crate::i18n::tr(&l.name)))
+                .collect();
+            ui.label(
+                egui::RichText::new(format!(
+                    "{} {}",
+                    crate::i18n::t(
+                        "U is not known yet. Give these layers a material with λ (Materials):"
+                    ),
+                    names.join(", ")
+                ))
+                .color(ui.visuals().warn_fg_color),
+            );
+        }
+    }
+    if t.layers.iter().any(|l| l.skipped && l.thickness > 0.0) {
+        ui.label(
+            egui::RichText::new(crate::i18n::t(
+                "A ventilated air gap: it and the layers outside it are not counted, Rse = Rsi.",
+            ))
+            .size(11.0)
+            .color(weak),
+        );
+    }
+    if b == t.boundary {
+        return None;
+    }
+    let mut new = a.clone();
+    new.thermal = Some(b);
+    Some(("Thermal boundary", new))
+}
+
+/// "U = 0,245 W/(m²·K)" of an assembly, for Properties.
+fn u_line(ui: &mut egui::Ui, model: &Model, a: &Assembly) {
+    let t = creabim_core::thermal::of_assembly(model, a, None);
+    let text = match t.u {
+        Some(u) => format!(
+            "U = {} W/(m²·K) · R = {} m²K/W",
+            creabim_core::thermal::shown(u),
+            creabim_core::thermal::shown(t.r)
+        ),
+        None => crate::i18n::tr("U: a layer has no λ"),
+    };
+    ui.label(egui::RichText::new(text).weak())
+        .on_hover_text(crate::i18n::t(
+            "Thermal transmittance by STN EN ISO 6946, counted from the layers; the assembly editor shows how",
+        ));
 }
 
 impl CreaBimApp {
@@ -464,7 +616,7 @@ impl CreaBimApp {
                             .changed();
                     }
                     ui.separator();
-                    create = ui.button("New assembly…").clicked();
+                    create = ui.button(crate::i18n::t("New assembly…")).clicked();
                 });
         });
         if let Some((_, a)) =
@@ -483,9 +635,12 @@ impl CreaBimApp {
                 26.0,
             );
             ui.label(egui::RichText::new(a.summary(self.doc.model())).weak());
+            u_line(ui, self.doc.model(), &a);
             edit = ui
-                .button("Edit layers…")
-                .on_hover_text("Change this assembly: every element built of it follows")
+                .button(crate::i18n::t("Edit layers…"))
+                .on_hover_text(crate::i18n::t(
+                    "Change this assembly: every element built of it follows",
+                ))
                 .clicked();
         }
         if create {
@@ -513,18 +668,29 @@ impl CreaBimApp {
             return;
         };
         let a = a.clone();
-        ui.label(egui::RichText::new(format!("For {}", a.usage.label().to_lowercase())).weak());
+        ui.label(
+            egui::RichText::new(crate::i18n::tr(&format!(
+                "For {}",
+                a.usage.label().to_lowercase()
+            )))
+            .weak(),
+        );
         strip(ui, model, &a, ui.available_width().min(240.0), 30.0);
         let edit = layer_table(ui, model, id, &a, true);
+        u_line(ui, model, &a);
         let users = assembly::users(model, id).len();
         ui.label(
             egui::RichText::new(match users {
-                0 => "Not used yet.".to_string(),
-                n => format!("Used by {n} element{}.", if n == 1 { "" } else { "s" }),
+                0 => crate::i18n::t("Not used yet.").to_string(),
+                n => crate::i18n::t("Used by {n} element{}.")
+                    .replace("{n}", &n.to_string())
+                    .replace("{}", if n == 1 { "" } else { "s" }),
             })
             .weak(),
         );
-        let open = ui.button("Open in the assembly editor").clicked();
+        let open = ui
+            .button(crate::i18n::t("Open in the assembly editor"))
+            .clicked();
         if let Some((label, new)) = edit {
             self.run_asm(AsmAsk::Edit(id, label, new));
         }
@@ -541,11 +707,16 @@ impl CreaBimApp {
         let mut open = true;
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Assemblies")
+        crate::app::shell::window(crate::i18n::tr("Assemblies"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(24.0, 24.0))
             .constrain_to(area)
-            .default_size([760.0, (area.height() - 40.0).clamp(360.0, 600.0)])
+            .default_size(crate::app::shell::at_least({
+                // as tall as the screen gives, so a wall's settings show
+                // whole on 1920×1080 (George 2026-11-23)
+                let (w, h) = crate::app::shell::window_max(area);
+                [w.min(860.0), h]
+            }))
             .min_width(620.0)
             .collapsible(false)
             .show(ctx, |ui| self.assemblies_body(ui, &mut asks));
@@ -578,7 +749,7 @@ impl CreaBimApp {
                             // easy to scan (MU18)
                             let head = egui::RichText::new(format!(
                                 "{}  ({})",
-                                usage.label(),
+                                crate::i18n::t(usage.label()),
                                 rows.len()
                             ))
                             .size(13.0)
@@ -608,7 +779,7 @@ impl CreaBimApp {
                                     asks.push(AsmAsk::Pick(*id));
                                 }
                             }
-                            if ui.small_button("+ New").clicked() {
+                            if ui.small_button(crate::i18n::t("+ New")).clicked() {
                                 asks.push(AsmAsk::New(usage));
                             }
                                 });
@@ -618,7 +789,7 @@ impl CreaBimApp {
                         if all.is_empty() {
                             ui.label(
                                 egui::RichText::new(
-                                    "No assemblies yet. Add the starters, or make a new one.",
+                                    crate::i18n::t("No assemblies yet. Add the starters, or make a new one."),
                                 )
                                 .weak(),
                             );
@@ -626,19 +797,19 @@ impl CreaBimApp {
                     });
                 crate::props::flow(ui, |ui| {
                     if ui
-                        .button("Add starters")
-                        .on_hover_text("A cavity wall, a partition, a floor and a pitched roof")
+                        .button(crate::i18n::t("Add starters"))
+                        .on_hover_text(crate::i18n::t("A cavity wall, a partition, a floor and a pitched roof"))
                         .clicked()
                     {
                         asks.push(AsmAsk::Starters);
                     }
                     if let Some(c) = current {
-                        if ui.button("Duplicate").clicked() {
+                        if ui.button(crate::i18n::t("Duplicate")).clicked() {
                             asks.push(AsmAsk::Duplicate(c));
                         }
                         if ui
-                            .button("Delete")
-                            .on_hover_text("What is built of it keeps its thickness, in one material. Ctrl+Z brings it back.")
+                            .button(crate::i18n::t("Delete"))
+                            .on_hover_text(crate::i18n::t("What is built of it keeps its thickness, in one material. Ctrl+Z brings it back."))
                             .clicked()
                         {
                             asks.push(AsmAsk::Delete(c));
@@ -647,6 +818,13 @@ impl CreaBimApp {
                 });
             });
             ui.separator();
+            // the assembly's settings scroll on their own, the list
+            // stays: the window fits any screen (George 2026-11-23)
+            egui::ScrollArea::both()
+                .id_salt("asm_detail")
+                .max_height(height)
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
             ui.vertical(|ui| {
                 let Some(id) = current else { return };
                 let Some(e) = model.get(id) else { return };
@@ -665,18 +843,21 @@ impl CreaBimApp {
                     asks.push(AsmAsk::Rename(id, name));
                 }
                 ui.label(
-                    egui::RichText::new(format!(
+                    egui::RichText::new(crate::i18n::tr(&format!(
                         "IfcMaterialLayerSet · {} · {} total",
                         a.usage.label(),
                         crate::units::len(a.total())
-                    ))
+                    )))
                     .weak(),
                 );
                 let mut description = a.description.clone();
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut description).vertical_align(egui::Align::Center)
-                            .hint_text("Description")
+                        // wrapped over lines: a maker's source with its
+                        // pages reads whole, not cut at the field's end
+                        egui::TextEdit::multiline(&mut description)
+                            .hint_text(crate::i18n::t("Description"))
+                            .desired_rows(1)
                             .desired_width(420.0),
                     )
                     .changed()
@@ -684,6 +865,28 @@ impl CreaBimApp {
                     let mut new = a.clone();
                     new.description = description;
                     asks.push(AsmAsk::Edit(id, "Assembly description", new));
+                }
+                // the fire resistance the fire checks compare (walls, roofs)
+                if matches!(a.usage, AssemblyUse::Wall | AssemblyUse::Roof) {
+                    let mut fire = a.fire_resistance.clone();
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::tr("Fire resistance"));
+                        if ui
+                            .add(
+                                egui::TextEdit::singleline(&mut fire)
+                                    .hint_text("REW 90/D1")
+                                    .desired_width(140.0),
+                            )
+                            .on_hover_text(crate::i18n::t(
+                                "As the assembly's test or the manufacturer states it (REW 90/D1, REI 30): the fire checks compare it with STN 92 0201-2 table 5; left empty, an outer wall counts as a wholly fire-open area",
+                            ))
+                            .changed()
+                        {
+                            let mut new = a.clone();
+                            new.fire_resistance = fire;
+                            asks.push(AsmAsk::Edit(id, "Assembly fire resistance", new));
+                        }
+                    });
                 }
                 // which layers turn into the windows' reveals
                 if a.usage == AssemblyUse::Wall {
@@ -708,42 +911,59 @@ impl CreaBimApp {
                         asks.push(AsmAsk::Edit(id, "Window reveals", new));
                     }
                 }
+                // the plinth: XPS on a membrane below a line over the ground
+                if a.usage == AssemblyUse::Wall {
+                    if let Some((new, add)) = plinth_panel(ui, model, id, a) {
+                        if let Some(m) = add {
+                            asks.push(AsmAsk::AddMaterial(Box::new(m)));
+                        }
+                        asks.push(AsmAsk::Edit(id, "Plinth", new));
+                    }
+                }
                 ui.add_space(6.0);
                 strip(ui, model, a, ui.available_width().min(460.0), 44.0);
                 ui.add_space(6.0);
                 if let Some((label, new)) = layer_table(ui, model, id, a, false) {
                     asks.push(AsmAsk::Edit(id, label, new));
                 }
+                ui.add_space(8.0);
+                ui.separator();
+                if let Some((label, new)) = thermal_panel(ui, model, id, a) {
+                    asks.push(AsmAsk::Edit(id, label, new));
+                }
                 ui.add_space(6.0);
                 let (c0, c1) = a.core();
+                // each sentence translated on its own (George 2026-11-20:
+                // the dialog showed them half in English)
+                let core = if c0 == c1 {
+                    format!("Core: layer {} (orange).", c0 + 1)
+                } else {
+                    format!("Core: layers {}–{} (orange).", c0 + 1, c1 + 1)
+                };
+                let run = format!(
+                    "Layers run from the {} face to the {}.",
+                    a.usage.first_face().to_lowercase(),
+                    a.usage.last_face().to_lowercase()
+                );
+                let mut text = format!("{} {}", crate::i18n::tr(&core), crate::i18n::tr(&run));
+                if a.usage == AssemblyUse::Wall {
+                    text.push(' ');
+                    text.push_str(crate::i18n::t("Where layered walls meet at a T, the core runs on to the other wall's core. A wall's exterior is on its right as drawn (Flip in Properties swaps it)."));
+                }
                 ui.label(
-                    egui::RichText::new(format!(
-                        "Core: layer{} {}{} (orange). Layers run from the {} face to the {}. {}",
-                        if c0 == c1 { "" } else { "s" },
-                        c0 + 1,
-                        if c0 == c1 {
-                            String::new()
-                        } else {
-                            format!("–{}", c1 + 1)
-                        },
-                        a.usage.first_face().to_lowercase(),
-                        a.usage.last_face().to_lowercase(),
-                        if a.usage == AssemblyUse::Wall {
-                            "Where layered walls meet at a T, the core runs on to the other wall's core. A wall's exterior is on its right as drawn (Flip in Properties swaps it)."
-                        } else {
-                            ""
-                        }
-                    ))
+                    egui::RichText::new(text)
                     .weak(),
                 );
                 ui.add_space(6.0);
                 let users = assembly::users(model, id);
                 crate::props::flow(ui, |ui| {
                     ui.label(match users.len() {
-                        0 => "Not used yet.".to_string(),
-                        n => format!("Used by {n} element{}.", if n == 1 { "" } else { "s" }),
+                        0 => crate::i18n::t("Not used yet.").to_string(),
+                        n => crate::i18n::t("Used by {n} element{}.")
+                            .replace("{n}", &n.to_string())
+                            .replace("{}", if n == 1 { "" } else { "s" }),
                     });
-                    if !users.is_empty() && ui.small_button("Select them").clicked() {
+                    if !users.is_empty() && ui.small_button(crate::i18n::t("Select them")).clicked() {
                         asks.push(AsmAsk::SelectUsers(id));
                     }
                 });
@@ -759,20 +979,22 @@ impl CreaBimApp {
                 let r = ui.add_enabled(
                     fits > 0,
                     egui::Button::new(match fits {
-                        0 => "Assign to the selection".to_string(),
-                        1 => "Assign to the selected element".to_string(),
-                        n => format!("Assign to the {n} selected elements"),
+                        0 => crate::i18n::t("Assign to the selection").to_string(),
+                        1 => crate::i18n::t("Assign to the selected element").to_string(),
+                        n => crate::i18n::t("Assign to the {n} selected elements")
+                            .replace("{n}", &n.to_string()),
                     }),
                 );
-                if r.on_disabled_hover_text(format!(
+                if r.on_disabled_hover_text(crate::i18n::tr(&format!(
                     "Select {} first",
                     a.usage.label().to_lowercase()
-                ))
+                )))
                 .clicked()
                 {
                     asks.push(AsmAsk::Assign(Some(id)));
                 }
             });
+                });
         });
     }
 
@@ -843,6 +1065,12 @@ impl CreaBimApp {
                     .edit_merged(id, "Rename assembly", |e| e.name = name.clone());
                 self.report(r, "Renamed.");
             }
+            AsmAsk::AddMaterial(m) => {
+                let r = self
+                    .doc
+                    .commit(Transaction::new("Material from the library").insert(*m));
+                self.report(r, "Material from the library");
+            }
             AsmAsk::Edit(id, label, a) => {
                 if let Err(e) = a.validate() {
                     self.status = format!("Can't: {e}.");
@@ -892,4 +1120,252 @@ impl CreaBimApp {
             }
         }
     }
+}
+
+/// The material named first of `names` the model has.
+fn material_named(model: &Model, names: &[&str]) -> Option<ElementId> {
+    names.iter().find_map(|n| {
+        creabim_core::library::materials(model)
+            .into_iter()
+            .find(|(_, m, _)| m == n)
+            .map(|(id, _, _)| id)
+    })
+}
+
+/// A material picker over the model's materials of `categories`, with
+/// `none` for no material.
+#[allow(clippy::too_many_arguments)]
+fn plinth_material(
+    ui: &mut egui::Ui,
+    model: &Model,
+    salt: (&str, ElementId),
+    label: &str,
+    none: &str,
+    categories: &[&str],
+    current: &mut Option<ElementId>,
+    add: Option<&mut Option<creabim_core::Element>>,
+) -> bool {
+    let mats: Vec<(ElementId, String)> = creabim_core::library::materials(model)
+        .into_iter()
+        .filter(|(id, _, m)| categories.contains(&m.category.as_str()) || *current == Some(*id))
+        .map(|(id, n, _)| (id, n.to_string()))
+        .collect();
+    // the Slovak base's materials of those kinds the project lacks yet
+    // (the mosaic render for a plinth, George 2026-11-22)
+    let base: Vec<String> = if add.is_some() {
+        creabim_core::skbase::base_material_names()
+            .into_iter()
+            .filter(|n| !mats.iter().any(|m| &m.1 == n))
+            .filter(|n| {
+                creabim_core::skbase::base_material(n).is_some_and(|e| {
+                    matches!(&e.kind, creabim_core::ElementKind::Material(m)
+                        if categories.contains(&m.category.as_str()))
+                })
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+    let mut take: Option<String> = None;
+    let shown = current
+        .and_then(|c| mats.iter().find(|m| m.0 == c))
+        .map_or_else(|| crate::i18n::tr(none), |m| m.1.clone());
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(crate::i18n::tr(label));
+        egui::ComboBox::from_id_salt(salt)
+            .selected_text(shown)
+            .width(260.0)
+            .truncate()
+            .show_ui(ui, |ui| {
+                changed |= ui
+                    .selectable_value(current, None, crate::i18n::tr(none))
+                    .changed();
+                for (id, n) in &mats {
+                    changed |= ui
+                        .selectable_value(current, Some(*id), n.as_str())
+                        .changed();
+                }
+                if !base.is_empty() {
+                    ui.separator();
+                    ui.label(egui::RichText::new(crate::i18n::tr("From the library")).weak());
+                    for n in &base {
+                        if ui.selectable_label(false, n.as_str()).clicked() {
+                            take = Some(n.clone());
+                        }
+                    }
+                }
+            });
+    });
+    if let (Some(n), Some(add)) = (take, add) {
+        if let Some(e) = creabim_core::skbase::base_material(&n) {
+            *current = Some(e.id);
+            *add = Some(e);
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// A length in millimetres; true when changed.
+fn mm_field(ui: &mut egui::Ui, label: &str, hint: &str, value: &mut f64, max: f64) -> bool {
+    let mut mm = (*value * 1000.0).round();
+    let r = ui
+        .horizontal(|ui| {
+            ui.label(crate::i18n::tr(label));
+            ui.add(
+                egui::DragValue::new(&mut mm)
+                    .range(0.0..=max)
+                    .speed(5.0)
+                    .suffix(" mm"),
+            )
+        })
+        .inner
+        .on_hover_text(crate::i18n::tr(hint));
+    if r.changed() {
+        *value = mm / 1000.0;
+        true
+    } else {
+        false
+    }
+}
+
+/// The build-up's plinth (sokel): on or off, its XPS, membrane, render,
+/// height over the ground and bottom. The changed build-up, if any.
+fn plinth_panel(
+    ui: &mut egui::Ui,
+    model: &Model,
+    id: ElementId,
+    a: &Assembly,
+) -> Option<(Assembly, Option<creabim_core::Element>)> {
+    use creabim_core::plinth::{Plinth, PlinthBottom};
+    let mut new = a.clone();
+    let mut add: Option<creabim_core::Element> = None;
+    let mut changed = false;
+    let mut on = a.plinth.is_some();
+    ui.add_space(4.0);
+    if ui
+        .checkbox(&mut on, crate::i18n::tr("Plinth (XPS and waterproofing)"))
+        .on_hover_text(crate::i18n::tr(
+            "Below its top the facade insulation gives way to XPS on a waterproofing membrane turned up the masonry; its top lies so far over the highest finished ground along each wall (a wall may set its own heights in steps in Properties).",
+        ))
+        .changed()
+    {
+        changed = true;
+        new.plinth = on.then(|| {
+            // as thick as the facade insulation (flush), XPS on PVC foil
+            let outer = a
+                .layers
+                .iter()
+                .find(|l| l.function == LayerFunction::Insulation)
+                .map_or(0.1, |l| l.thickness);
+            let mut p = Plinth::new(outer);
+            p.insulation = material_named(model, &["XPS – extrudovaný (sokel, pod základ)"]);
+            p.membrane = material_named(
+                model,
+                &["Hydroizolácia – fólia PVC", "Hydroizolácia – asfaltový pás"],
+            );
+            p
+        });
+    }
+    if let Some(p) = new.plinth.as_mut() {
+        ui.indent(("asm.plinth", id), |ui| {
+            changed |= plinth_material(
+                ui,
+                model,
+                ("asm.plinth.xps", id),
+                "Insulation",
+                "As the facade",
+                &["insulation"],
+                &mut p.insulation,
+                None,
+            );
+            let facade = a
+                .layers
+                .iter()
+                .find(|l| l.function == LayerFunction::Insulation)
+                .map_or(0.0, |l| l.thickness);
+            changed |= mm_field(
+                ui,
+                "Thickness",
+                "As thick as the facade insulation: flush with it; thinner: set back (recessed plinth)",
+                &mut p.thickness,
+                400.0,
+            );
+            if facade > 0.0 {
+                let back = facade - p.thickness;
+                ui.label(
+                    egui::RichText::new(if back > 1e-4 {
+                        crate::i18n::tr("Recessed plinth: {n} behind the facade")
+                            .replace("{n}", &crate::units::len(back))
+                    } else {
+                        crate::i18n::tr("Flush with the facade")
+                    })
+                    .weak(),
+                );
+            }
+            changed |= plinth_material(
+                ui,
+                model,
+                ("asm.plinth.membrane", id),
+                "Waterproofing",
+                "None",
+                &["membrane"],
+                &mut p.membrane,
+                None,
+            );
+            changed |= plinth_material(
+                ui,
+                model,
+                ("asm.plinth.render", id),
+                "Plinth render",
+                "As the facade",
+                &["plaster", "finish", "stone"],
+                &mut p.render,
+                Some(&mut add),
+            );
+            changed |= mm_field(
+                ui,
+                "Top over the finished ground",
+                "Over the highest finished terrain or paving along the wall; 300 mm as usual",
+                &mut p.above,
+                2000.0,
+            );
+            let mut kind = p.bottom.kind();
+            ui.horizontal(|ui| {
+                ui.label(crate::i18n::tr("Bottom"));
+                egui::ComboBox::from_id_salt(("asm.plinth.bottom", id))
+                    .selected_text(crate::i18n::tr(PlinthBottom::KINDS[kind]))
+                    .show_ui(ui, |ui| {
+                        for (i, k) in PlinthBottom::KINDS.iter().enumerate() {
+                            ui.selectable_value(&mut kind, i, crate::i18n::tr(k));
+                        }
+                    })
+                    .response
+                    .on_hover_text(crate::i18n::tr(
+                        "At the wall's base: the masonry under it (DT blocks) carries its own XPS and membrane down to the footing. Over the slab's side: down the foundation slab's edge.",
+                    ));
+            });
+            if kind != p.bottom.kind() {
+                p.bottom = match kind {
+                    0 => PlinthBottom::WallBase,
+                    _ => PlinthBottom::SlabSide(0.0),
+                };
+                changed = true;
+            }
+            if let PlinthBottom::SlabSide(mut d) = p.bottom {
+                if mm_field(
+                    ui,
+                    "Below the slab's underside",
+                    "How far it runs on down past the slab's underside",
+                    &mut d,
+                    1500.0,
+                ) {
+                    p.bottom = PlinthBottom::SlabSide(d);
+                    changed = true;
+                }
+            }
+        });
+    }
+    changed.then_some((new, add))
 }

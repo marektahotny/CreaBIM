@@ -34,6 +34,127 @@ pub fn colour_of(name: &str, r: &Room) -> [f32; 3] {
     PALETTE[h as usize % PALETTE.len()]
 }
 
+/// How far off a wall's face the line of its tiling is drawn, m.
+const TILING_OFF: f64 = 0.03;
+
+/// A tiling's mark in a plan: "(height)(bottom)" along its line, just
+/// inside the room, where it was dragged to on the line.
+pub fn tiling_mark(
+    model: &Model,
+    view: &View,
+    id: ElementId,
+    shape: &room::RoomShape,
+    t: &room::Tiling,
+) -> Option<PlanItem> {
+    use crate::annotation::{Annotation, Shape, TextLook};
+    let (at, d) = room::tiling_mark_at(model, shape, t)?;
+    let look = TextLook::default();
+    let mm = view.scale / 1000.0;
+    let inward = DVec2::new(-d.y, d.x);
+    let at = at + inward * (TILING_OFF + (1.0 + look.size / 2.0) * mm);
+    Some(PlanItem::Annotation {
+        id,
+        item: Box::new(Annotation {
+            shape: Shape::Along {
+                at,
+                angle: d.y.atan2(d.x),
+            },
+            text: t.mark_text(),
+            look,
+            mm,
+        }),
+    })
+}
+
+/// The tiling's runs moved off the wall faces into the room, each end
+/// that meets another run's (a corner, a window's reveal) carried to
+/// where their moved lines cross, so the line turns without a gap.
+fn joined_runs(runs: &[(DVec2, DVec2)]) -> Vec<(DVec2, DVec2)> {
+    let moved: Vec<(DVec2, DVec2, DVec2)> = runs
+        .iter()
+        .map(|&(a, b)| {
+            let d = (b - a).normalize_or_zero();
+            let off = DVec2::new(-d.y, d.x) * TILING_OFF;
+            (a + off, b + off, d)
+        })
+        .collect();
+    let cross = |p: DVec2, d: DVec2, q: DVec2, e: DVec2| {
+        let den = d.perp_dot(e);
+        (den.abs() > 1e-6).then(|| p + d * ((q - p).perp_dot(e) / den))
+    };
+    let mut out = vec![];
+    for (i, &(a, b)) in runs.iter().enumerate() {
+        let (mut ma, mut mb, d) = moved[i];
+        for (j, &(c, f)) in runs.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            let (mc, _, e) = moved[j];
+            if b.distance(c) < 1e-4 || b.distance(f) < 1e-4 {
+                if let Some(x) = cross(ma, d, mc, e) {
+                    if x.distance(mb) < 4.0 * TILING_OFF {
+                        mb = x;
+                    }
+                }
+            }
+            if a.distance(c) < 1e-4 || a.distance(f) < 1e-4 {
+                if let Some(x) = cross(ma, d, mc, e) {
+                    if x.distance(ma) < 4.0 * TILING_OFF {
+                        ma = x;
+                    }
+                }
+            }
+        }
+        if ma.distance(mb) > 1e-6 {
+            out.push((ma, mb));
+        }
+    }
+    out
+}
+
+/// What a plan of `level` draws of its rooms' tiling: a medium dash-dot
+/// line just off the walls' faces and its mark "(height)(bottom)", over
+/// the fixtures and cabinets in front of it, as in George's drawings
+/// (not in a ceiling plan or a trade's drawing, George 2026-11-22).
+pub fn tiling_items(model: &Model, view: &View, level: ElementId) -> Vec<PlanItem> {
+    let mut out = vec![];
+    let trade = creabim_core::viewmodes::DisplayMode::of(view)
+        == creabim_core::viewmodes::DisplayMode::Services;
+    if view.ceiling_plan || trade {
+        return out;
+    }
+    for e in model.iter() {
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        if r.level != level || r.tilings().next().is_none() {
+            continue;
+        }
+        let Some(s) = room::shape_of(model, r) else {
+            continue;
+        };
+        for t in r.tilings() {
+            for (a, b) in joined_runs(&room::tiling_plan_runs_of(model, &s, t)) {
+                // a medium dash-dot line (George 2026-11-22)
+                out.push(PlanItem::Line {
+                    id: e.id,
+                    pen: Pen::Drafted(creabim_core::LineLook {
+                        pen: creabim_core::LinePen::Thick,
+                        kind: creabim_core::LineType::DashDot,
+                    }),
+                    a,
+                    b,
+                });
+            }
+            // its mark along the line, inside the room (George 2026-11-24)
+            if !t.no_mark {
+                out.extend(tiling_mark(model, view, e.id, &s, t));
+            }
+        }
+    }
+    out
+}
+
 /// What a plan of `level` draws of its rooms, room separators and (in a
 /// ceiling plan) ceilings. Rooms go first, under everything.
 pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64) -> Vec<PlanItem> {
@@ -44,35 +165,60 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
         match &e.kind {
             ElementKind::Room(r) if r.level == level => {
                 if let Some(s) = room::shape_of(model, r) {
-                    // underfloor heating loops: the supply in full lines,
-                    // the return dashed beside it
-                    if let (Some(u), false) = (&r.ufh, view.ceiling_plan) {
-                        for sp in creabim_core::underfloor::loops(&s.outline, u) {
-                            for (pts, pen) in [(&sp.supply, Pen::Symbol), (&sp.ret, Pen::Hidden)] {
-                                for w in pts.windows(2) {
-                                    loops.push(PlanItem::Line {
-                                        id: e.id,
-                                        pen,
-                                        a: w[0],
-                                        b: w[1],
-                                    });
-                                }
-                            }
-                        }
+                    // underfloor heating loops are the heating plan's
+                    // (heatplan::items), drawn once there
+                    // a fire drawing: the zone's wash and its code
+                    let zone = r.fire_zone.trim();
+                    let fire = view.fire_zones && !zone.is_empty();
+                    if fire {
+                        loops.push(PlanItem::Text {
+                            id: e.id,
+                            at: r.at - DVec2::new(0.0, 0.9),
+                            text: zone.to_string(),
+                            size: 3.0,
+                            align: crate::paper::Anchor::Middle,
+                            mm: view.scale / 1000.0,
+                            rgb: Some([0.8, 0.1, 0.1]),
+                            bold: true,
+                        });
                     }
                     out.push(PlanItem::Room {
                         id: e.id,
                         points: s.outline,
-                        rgb: view.room_colours.then(|| colour_of(&e.name, r)),
+                        rgb: if fire {
+                            Some(crate::firezones::colour_of(zone))
+                        } else {
+                            view.room_colours.then(|| colour_of(&e.name, r))
+                        },
                     });
                 }
             }
             ElementKind::RoomSeparator(s) if s.level == level => out.push(PlanItem::Line {
                 id: e.id,
-                pen: Pen::Symbol,
+                pen: s.look.map_or(Pen::Symbol, Pen::Drafted),
                 a: s.a,
                 b: s.b,
             }),
+            // a floor plan: the ceiling's outline over the cut, a thin line
+            // of a dash and two dots, so it can be seen, picked and snapped
+            ElementKind::Ceiling(c) if c.level == level && !view.ceiling_plan => {
+                let Some(outline) = c.outline(model) else {
+                    continue;
+                };
+                let pen = if c.height < cut_height {
+                    Pen::Projection
+                } else {
+                    Pen::Overhead
+                };
+                for i in 0..outline.len() {
+                    out.push(PlanItem::Line {
+                        id: e.id,
+                        pen,
+                        a: outline[i],
+                        b: outline[(i + 1) % outline.len()],
+                    });
+                }
+            }
             ElementKind::Ceiling(c) if c.level == level && view.ceiling_plan => {
                 if c.height < cut_height {
                     continue;

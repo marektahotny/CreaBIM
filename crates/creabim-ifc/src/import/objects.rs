@@ -126,7 +126,9 @@ impl Importer<'_> {
             ty.description = e.arg(3).as_str().unwrap_or("").trim().to_string();
             let eid = self.new_id(e);
             self.type_elems.push(Element {
+                locked: false,
                 mark: None,
+                reno: None,
                 id: eid,
                 name: Self::name(e, "Object type"),
                 kind: ElementKind::ElementType(ty),
@@ -196,7 +198,9 @@ impl Importer<'_> {
             }
             let eid = self.new_id(e);
             self.other_elems.push(Element {
+                locked: false,
                 mark: None,
+                reno: None,
                 id: eid,
                 name: Self::name(e, "Object"),
                 kind: ElementKind::Object(o),

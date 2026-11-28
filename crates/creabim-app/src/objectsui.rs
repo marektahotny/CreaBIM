@@ -6,6 +6,7 @@
 //! Properties of objects and of their types.
 
 use super::*;
+use creabim_core::catalogue::heat::{self, HeatKind};
 use creabim_core::objects::{
     self, CatalogueObject, IfcKind, Mount, ObjectCategory, ObjectType, IFC_CLASSES,
 };
@@ -322,6 +323,7 @@ pub(super) fn from_selection(
             parts,
             symbol: vec![],
             catalogue: Some(key.to_string()),
+            supply: None,
         },
         materials,
     })
@@ -371,12 +373,12 @@ fn part_material(
 pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) -> &'static str {
     let mut label = "";
     let s = o.size();
-    ui.label(format!(
+    ui.label(crate::i18n::tr(&format!(
         "{} wide, {} deep, {} high",
         crate::units::len(s.x),
         crate::units::len(s.y),
         crate::units::len(s.z)
-    ));
+    )));
     // one setting a row, as the rest of Properties (MU23)
     crate::props::row(ui, "Category", |ui| {
         ui.spacing_mut().combo_width = ui.available_width();
@@ -410,10 +412,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
                 }
             })
             .response
-            .on_hover_text(
+            .on_hover_text(crate::i18n::t(
                 "Against a wall: the Object tool backs it onto the nearest wall face. \
                  From the ceiling: it hangs below the ceiling over it, centred where clicked",
-            );
+            ));
     });
     let new_at = if o.mount == Mount::Ceiling {
         "New ones below the ceiling"
@@ -422,10 +424,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
     };
     crate::props::row(ui, new_at, |ui| {
         if crate::props::fill(ui, crate::units::drag(&mut o.offset).range(-10.0..=100.0))
-            .on_hover_text(
+            .on_hover_text(crate::i18n::t(
                 "The height the Object tool places new ones at: to their underside, \
                  or from the ceiling down to their top",
-            )
+            ))
             .changed()
         {
             label = "Object mounting height";
@@ -464,7 +466,11 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         }
     });
     if let Some(k) = &o.catalogue {
-        ui.label(egui::RichText::new(format!("From the catalogue: {k}")).weak());
+        ui.label(egui::RichText::new(crate::i18n::tr(&format!("From the catalogue: {k}"))).weak());
+    }
+    let trades = trade_fields(ui, o);
+    if !trades.is_empty() {
+        label = trades;
     }
     if !o.parts.is_empty() {
         crate::props::subsection(ui, "object.parts", "Parts", true).then(|| {
@@ -484,6 +490,159 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         });
     }
     label
+}
+
+/// What an appliance or fixture takes from the trades: its water and
+/// waste (from its family, as the plumbing calculation takes them), its
+/// electricity and gas. Returns the undo label, or "".
+fn trade_fields(ui: &mut egui::Ui, o: &mut ObjectType) -> &'static str {
+    use creabim_core::fixture::{self, ConnKind};
+    use creabim_core::objects::Supply;
+    let mut label = "";
+    let family = fixture::family_of_type(o).filter(|f| fixture::is_sanitary(f));
+    let supply = Supply::of(o);
+    if family.is_none() && supply.is_none() {
+        return label;
+    }
+    if crate::props::subsection(ui, "object.trades", "Trades", true) {
+        if let Some(f) = family {
+            let conns = fixture::local_connectors(f, None);
+            let dn = |k: ConnKind| conns.iter().find(|c| c.kind == k).map(|c| c.dn);
+            let rules = creabim_services::fixtures::default_rules();
+            let unknown = creabim_services::fixtures::unknown_rule();
+            let r = creabim_services::fixtures::match_fixture(&rules, &unknown, f, "");
+            let num = crate::i18n::num;
+            if let Some(d) = dn(ConnKind::SV) {
+                crate::props::row(ui, "Cold water", |ui| {
+                    ui.label(format!("DN {d:.0}, {} l/s", num(r.qa_stn, 2)));
+                });
+            }
+            if let Some(d) = dn(ConnKind::TV) {
+                crate::props::row(ui, "Hot water", |ui| {
+                    ui.label(format!("DN {d:.0}"));
+                });
+            }
+            if dn(ConnKind::K).is_some() {
+                crate::props::row(ui, "Waste", |ui| {
+                    ui.label(format!("DN {:.0}, DU {} l/s", r.drain_dn, num(r.du, 1)));
+                });
+            }
+        }
+        let Some(mut s) = supply else {
+            return label;
+        };
+        let before = s;
+        if o.ifc.predefined.eq_ignore_ascii_case("ELECTRICCOOKER") {
+            crate::props::row(ui, "Cooker", |ui| {
+                ui.spacing_mut().combo_width = ui.available_width();
+                let gas = s.gas_kw.is_some();
+                let name = |g: bool| {
+                    crate::i18n::t(if g {
+                        "Gas hob, electric oven 230 V"
+                    } else {
+                        "Electric, 400 V"
+                    })
+                };
+                egui::ComboBox::from_id_salt("object_cooker")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(name(gas))
+                    .show_ui(ui, |ui| {
+                        for g in [false, true] {
+                            if ui.selectable_label(gas == g, name(g)).clicked() && gas != g {
+                                s = if g {
+                                    Supply::GAS_COOKER
+                                } else {
+                                    Supply::ELECTRIC_COOKER
+                                };
+                            }
+                        }
+                    });
+            });
+        }
+        if let Some(w) = s.power_w {
+            let mut kw = w / 1000.0;
+            crate::props::row(ui, "Rated power", |ui| {
+                if crate::props::fill(
+                    ui,
+                    egui::DragValue::new(&mut kw)
+                        .speed(0.05)
+                        .max_decimals(2)
+                        .suffix(" kW")
+                        .range(0.0..=100.0),
+                )
+                .changed()
+                {
+                    s.power_w = Some(kw * 1000.0);
+                }
+            });
+            crate::props::row(ui, "Voltage", |ui| {
+                ui.spacing_mut().combo_width = ui.available_width();
+                let name = |t: bool| if t { "400 V 3N" } else { "230 V" };
+                egui::ComboBox::from_id_salt("object_voltage")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(name(s.three_phase))
+                    .show_ui(ui, |ui| {
+                        for t in [false, true] {
+                            ui.selectable_value(&mut s.three_phase, t, name(t));
+                        }
+                    });
+            });
+            crate::props::row(ui, "Own circuit", |ui| {
+                ui.checkbox(&mut s.own_circuit, "");
+            });
+        }
+        if let Some(mut kw) = s.gas_kw {
+            crate::props::row(ui, "Gas heat input", |ui| {
+                if crate::props::fill(
+                    ui,
+                    egui::DragValue::new(&mut kw)
+                        .speed(0.1)
+                        .max_decimals(1)
+                        .suffix(" kW")
+                        .range(0.0..=100.0),
+                )
+                .changed()
+                {
+                    s.gas_kw = Some(kw);
+                }
+            });
+        }
+        if s != before {
+            o.supply = (Some(s) != Supply::usual(o)).then_some(s);
+            label = "Object supply";
+        }
+    }
+    label
+}
+
+/// The length of an object that is drawn out (a built-in wardrobe, a
+/// kitchen island); a new length stretches it, its left end staying.
+/// Returns the undo label when it changed.
+pub(super) fn length_field(
+    ui: &mut egui::Ui,
+    model: &Model,
+    e: &creabim_core::Element,
+    o: &mut objects::Object,
+) -> Option<&'static str> {
+    let (min, max) = objects::stretch_range(model, e)?;
+    let mut now = objects::type_of(model, e)?.size().x;
+    let mut changed = false;
+    // a kitchen cabinet is drawn out to its width (George 2026-11-23)
+    let cabinet = objects::base_type_of(model, e)
+        .and_then(|t| t.catalogue.as_deref())
+        .is_some_and(|k| k.ends_with("-cabinet"));
+    let label = if cabinet { "Width" } else { "Length" };
+    crate::props::row(ui, label, |ui| {
+        changed = crate::props::fill(ui, crate::units::drag(&mut now).range(min..=max)).changed();
+    });
+    if !changed {
+        return None;
+    }
+    let ElementKind::Object(s) = objects::stretch(model, e, now, true)?.kind else {
+        return None;
+    };
+    *o = s;
+    Some("Object length")
 }
 
 /// A placed object's own fields; `hung` when its type hangs from the
@@ -520,7 +679,9 @@ pub(super) fn object_fields(
         }
         if ui
             .small_button("↺ 90°")
-            .on_hover_text("A quarter turn anticlockwise about its back edge")
+            .on_hover_text(crate::i18n::t(
+                "A quarter turn anticlockwise about its back edge",
+            ))
             .clicked()
         {
             o.rotation = (o.rotation + 90.0).rem_euclid(360.0);
@@ -578,11 +739,13 @@ impl CreaBimApp {
             return;
         };
         ui.separator();
-        ui.label(egui::RichText::new(format!("Its type, {tname}")).strong());
+        ui.label(egui::RichText::new(crate::i18n::tr(&format!("Its type, {tname}"))).strong());
         let label = type_fields(ui, model, o);
         if ui
-            .small_button("Save to catalogue")
-            .on_hover_text("Keep this object in your own catalogue, for every project")
+            .small_button(crate::i18n::t("Save to catalogue"))
+            .on_hover_text(crate::i18n::t(
+                "Keep this object in your own catalogue, for every project",
+            ))
             .clicked()
         {
             self.catalogue.save_name = tname.clone();
@@ -617,8 +780,21 @@ impl CreaBimApp {
                     Some((c, Some(id), false))
                 })
                 .collect();
+        // Midea M thermal Arctic split as one block (George 2026-11-25):
+        // two tiles whose type follows the heat loss (or the heat source
+        // window), each with the range to pick another from
+        let (midea_kw, midea_auto) = self.midea_size();
+        let midea_kind = self.midea_indoor(midea_kw);
+        let (mut pick_out, mut pick_in) = (self.midea_out, self.midea_in);
+        let midea: Vec<(CatalogueObject, Option<ElementId>, bool)> = [
+            heat::unit(HeatKind::HpOutdoorMidea, midea_kw),
+            heat::unit(midea_kind, midea_kw),
+        ]
+        .into_iter()
+        .map(|c| (c, None, false))
+        .collect();
         let rev = self.doc.model().revision();
-        for (c, own, _) in shown.iter().chain(&project) {
+        for (c, own, _) in shown.iter().chain(&project).chain(&midea) {
             let key = match own {
                 Some(_) => format!("{}@{rev}", c.key),
                 None => c.key.clone(),
@@ -651,12 +827,11 @@ impl CreaBimApp {
                 (w, egui::pos2(area.max.x - w - 16.0, area.min.y + 64.0))
             }
         };
-        crate::app::shell::window("Catalogue")
-            .resizable(true)
+        crate::app::shell::window(crate::i18n::tr("Catalogue"))
             .open(&mut open)
             .default_pos(pos)
             .constrain_to(area)
-            .default_size([width, (area.height() - 90.0).clamp(360.0, 640.0)])
+            .default_size(crate::app::shell::at_least([width, (area.height() - 90.0).clamp(360.0, 640.0)]))
             .collapsible(false)
             .show(ctx, |ui| {
                 let cat = &mut self.catalogue;
@@ -668,15 +843,16 @@ impl CreaBimApp {
                 });
                 ui.add(
                     egui::TextEdit::singleline(&mut cat.filter).vertical_align(egui::Align::Center)
-                        .hint_text("Search")
+                        .hint_text(crate::i18n::t("Search"))
                         .desired_width(220.0),
                 );
                 ui.separator();
                 let filter = cat.filter.to_lowercase();
                 let wanted = |c: &CatalogueObject| {
-                    cat.category.is_none_or(|k| k == c.object.category)
+                    cat.category.is_none_or(|k| k.includes(c.object.category))
                         && (filter.is_empty()
                             || c.name.to_lowercase().contains(&filter)
+                            || crate::i18n::tr(&c.name).to_lowercase().contains(&filter)
                             || c.description.to_lowercase().contains(&filter))
                 };
                 let tile = |ui: &mut egui::Ui,
@@ -701,11 +877,11 @@ impl CreaBimApp {
                                 )
                                 .selected(picked),
                             ),
-                            None => ui.add(egui::Button::new(&c.name).selected(picked)),
+                            None => ui.add(egui::Button::new(crate::i18n::tr(&c.name)).selected(picked)),
                         };
-                        let r = r.on_hover_text(format!(
+                        let r = r.on_hover_text(crate::i18n::tr(&format!(
                             "{}\n{} × {} × {}\n{} {}\n{}",
-                            c.name,
+                            crate::i18n::tr(&c.name),
                             crate::units::len(s.x),
                             crate::units::len(s.y),
                             crate::units::len(s.z),
@@ -716,19 +892,19 @@ impl CreaBimApp {
                             } else {
                                 &c.description
                             }
-                        ));
+                        )));
                         if r.clicked() {
                             asks.push(CatAsk::Place(Box::new(c.clone()), own));
                         }
                         if user {
                             r.context_menu(|ui| {
-                                if ui.button("Delete from the catalogue").clicked() {
+                                if ui.button(crate::i18n::t("Delete from the catalogue")).clicked() {
                                     asks.push(CatAsk::Delete(c.key.clone()));
                                     ui.close();
                                 }
                             });
                         }
-                        ui.add(egui::Label::new(egui::RichText::new(&c.name).size(11.5)).wrap());
+                        ui.add(egui::Label::new(egui::RichText::new(crate::i18n::tr(&c.name)).size(11.5)).wrap());
                     });
                 };
                 let bottom = 118.0;
@@ -748,7 +924,7 @@ impl CreaBimApp {
                                 {
                                     ui.label(
                                         egui::RichText::new(
-                                            "YOURS: nothing yet. Import one from Blender, FreeCAD or glTF, or save a selection.",
+                                            crate::i18n::t("YOURS: nothing yet. Import one from Blender, FreeCAD or glTF, or save a selection."),
                                         )
                                         .size(10.5)
                                         .color(ui.visuals().weak_text_color()),
@@ -757,7 +933,7 @@ impl CreaBimApp {
                                 continue;
                             }
                             ui.label(
-                                egui::RichText::new(heading.to_uppercase())
+                                egui::RichText::new(crate::i18n::tr(heading).to_uppercase())
                                     .size(10.5)
                                     .strong()
                                     .color(ui.visuals().weak_text_color()),
@@ -773,19 +949,92 @@ impl CreaBimApp {
                             }
                             ui.add_space(6.0);
                         }
+                        if midea.iter().any(|r| wanted(&r.0)) {
+                            ui.label(
+                                egui::RichText::new("MIDEA M THERMAL ARCTIC SPLIT 4–16 KW")
+                                    .size(10.5)
+                                    .strong()
+                                    .color(ui.visuals().weak_text_color()),
+                            );
+                            let t = crate::i18n::t;
+                            ui.horizontal_top(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.weak(t("1. Outdoor unit"));
+                                    tile(ui, &midea[0].0, None, false, &mut asks);
+                                    let auto = format!(
+                                        "{} ({midea_kw} kW)",
+                                        t(if midea_auto { "By the heat loss" } else { "Not sized yet" })
+                                    );
+                                    egui::ComboBox::from_id_salt("catalogue.midea.out")
+                                        .width(THUMB as f32 + 10.0)
+                                        .selected_text(match pick_out {
+                                            Some(k) => format!("{k} kW"),
+                                            None => auto.clone(),
+                                        })
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(&mut pick_out, None, auto);
+                                            for k in HeatKind::HpOutdoorMidea.sizes() {
+                                                let a = creabim_core::catalogue::midea::arctic(*k);
+                                                ui.selectable_value(
+                                                    &mut pick_out,
+                                                    Some(*k),
+                                                    format!("{k} kW · {}", a.outdoor),
+                                                );
+                                            }
+                                        });
+                                });
+                                ui.add_space(12.0);
+                                ui.vertical(|ui| {
+                                    ui.weak(t("2. Indoor unit"));
+                                    tile(ui, &midea[1].0, None, false, &mut asks);
+                                    let label = |k: HeatKind| match k {
+                                        HeatKind::HpIndoorMideaTank190 => t("with a 190 l DHW tank"),
+                                        HeatKind::HpIndoorMideaTank240 => t("with a 240 l DHW tank"),
+                                        _ => t("hydronic box, no tank"),
+                                    };
+                                    egui::ComboBox::from_id_salt("catalogue.midea.in")
+                                        .width(THUMB as f32 + 10.0)
+                                        .selected_text(label(midea_kind))
+                                        .show_ui(ui, |ui| {
+                                            for k in [
+                                                HeatKind::HpIndoorMidea,
+                                                HeatKind::HpIndoorMideaTank190,
+                                                HeatKind::HpIndoorMideaTank240,
+                                            ] {
+                                                let fits = k != HeatKind::HpIndoorMideaTank190
+                                                    || midea_kw <= 10;
+                                                if ui
+                                                    .add_enabled(
+                                                        fits,
+                                                        egui::Button::selectable(
+                                                            midea_kind == k,
+                                                            label(k),
+                                                        ),
+                                                    )
+                                                    .on_disabled_hover_text(t("Goes with 4–10 kW only"))
+                                                    .clicked()
+                                                {
+                                                    pick_in = Some(k);
+                                                }
+                                            }
+                                        });
+                                });
+                            });
+                            ui.add_space(6.0);
+                        }
                     });
                 ui.separator();
                 crate::props::flow(ui, |ui| {
                     if ui
-                        .button("Import from Blender, FreeCAD or glTF…")
-                        .on_hover_text("A .blend, .FCStd, .gltf or .glb file becomes one object of your catalogue, each mesh a part in its material")
+                        .button(crate::i18n::t("Import from Blender, FreeCAD or glTF…"))
+                        .on_hover_text(crate::i18n::t("A .blend, .FCStd, .gltf or .glb file becomes one object of your catalogue, each mesh a part in its material"))
                         .clicked()
                     {
                         asks.push(CatAsk::Import);
                     }
                     if ui
-                        .small_button("Open folder")
-                        .on_hover_text("Where your catalogue is kept: one .json file per object")
+                        .small_button(crate::i18n::t("Open folder"))
+                        .on_hover_text(crate::i18n::t("Where your catalogue is kept: one .json file per object"))
                         .clicked()
                     {
                         asks.push(CatAsk::Reveal);
@@ -794,15 +1043,15 @@ impl CreaBimApp {
                 crate::props::flow(ui, |ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut cat.save_name).vertical_align(egui::Align::Center)
-                            .hint_text("Name")
+                            .hint_text(crate::i18n::t("Name"))
                             .desired_width(200.0),
                     );
                     let r = ui.add_enabled(
                         !selected.is_empty(),
-                        egui::Button::new("Save selection to catalogue"),
+                        egui::Button::new(crate::i18n::t("Save selection to catalogue")),
                     );
-                    if r.on_hover_text("An object's type, or masses and other elements as one new object, kept for every project")
-                        .on_disabled_hover_text("Select an object, masses or other elements first")
+                    if r.on_hover_text(crate::i18n::t("An object's type, or masses and other elements as one new object, kept for every project"))
+                        .on_disabled_hover_text(crate::i18n::t("Select an object, masses or other elements first"))
                         .clicked()
                     {
                         asks.push(CatAsk::SaveSelection);
@@ -810,12 +1059,14 @@ impl CreaBimApp {
                 });
                 ui.label(
                     egui::RichText::new(
-                        "Click an object, then click in a plan or the 3D view to place it. Space turns it.",
+                        crate::i18n::t("Click an object, then click in a plan or the 3D view to place it. Space turns it."),
                     )
                     .weak(),
                 );
             });
         self.catalogue.open = open;
+        self.midea_out = pick_out;
+        self.midea_in = pick_in;
         for a in asks {
             self.run_catalogue(a);
         }
@@ -824,6 +1075,8 @@ impl CreaBimApp {
     fn run_catalogue(&mut self, ask: CatAsk) {
         match ask {
             CatAsk::Place(c, own) => {
+                // a heat pump takes the size the heat loss asks for
+                let c = Box::new(self.sized_heat_unit(*c));
                 self.status = format!(
                     "{}: click in a plan or the 3D view to place it. Space turns it; Esc ends.",
                     c.name
@@ -835,8 +1088,8 @@ impl CreaBimApp {
                 self.plan.tool = Tool::Object;
             }
             CatAsk::Import => {
-                let Some(path) = rfd::FileDialog::new()
-                    .set_title("Import an object")
+                let Some(path) = crate::files::file_dialog()
+                    .set_title(crate::i18n::tr("Import an object"))
                     .add_filter(
                         "Objects (Blender, FreeCAD, glTF)",
                         &["blend", "FCStd", "fcstd", "gltf", "glb"],
@@ -955,12 +1208,12 @@ pub(super) fn connector_rows(
     for c in conns {
         let what = format!("{} – {}", c.kind.code(), crate::i18n::tr(c.kind.name()));
         crate::props::row(ui, &what, |ui| {
-            ui.label(format!(
+            ui.label(crate::i18n::tr(&format!(
                 "DN {:.0}, {} {}",
                 c.dn,
                 crate::i18n::tr("Height").to_lowercase(),
                 crate::units::len(c.at.z)
-            ));
+            )));
         });
     }
 }

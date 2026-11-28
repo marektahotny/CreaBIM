@@ -22,7 +22,10 @@ pub(super) fn markable(kind: &ElementKind) -> bool {
     MarkClass::of(kind).is_some()
         || matches!(
             kind,
-            ElementKind::Object(_) | ElementKind::FreeMesh(_) | ElementKind::Opening(_)
+            ElementKind::Object(_)
+                | ElementKind::FreeMesh(_)
+                | ElementKind::Opening(_)
+                | ElementKind::Ceiling(_)
         )
 }
 
@@ -48,11 +51,11 @@ impl CreaBimApp {
             .add_sized(
                 [width, ui.spacing().interact_size.y],
                 egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center)
-                    .hint_text(hint)
+                    .hint_text(crate::i18n::tr(&hint))
                     .vertical_align(egui::Align::Center),
             )
             .on_hover_text(
-                "Mark: what its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering).",
+                crate::i18n::t("Mark: what its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering)."),
             )
             .changed();
         if changed {
@@ -71,13 +74,13 @@ impl CreaBimApp {
         {
             let n = others.len() - 1;
             ui.label(
-                egui::RichText::new(format!(
+                egui::RichText::new(crate::i18n::tr(&format!(
                     "⚠ {m} is also the mark of {n} other element{}.",
                     if n == 1 { "" } else { "s" }
-                ))
+                )))
                 .color(ui.visuals().warn_fg_color),
             );
-            if ui.small_button("Select them").clicked() {
+            if ui.small_button(crate::i18n::t("Select them")).clicked() {
                 self.selection.extend(others.clone(), false);
             }
         }
@@ -98,9 +101,9 @@ impl CreaBimApp {
             _ => "None".into(),
         };
         let changed = crate::props::row(ui, "Mark", |ui| {
-            crate::props::fill(ui, egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center).hint_text(hint))
+            crate::props::fill(ui, egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center).hint_text(crate::i18n::tr(&hint)))
                 .on_hover_text(
-                    "What its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering).",
+                    crate::i18n::t("What its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering)."),
                 )
                 .changed()
         });
@@ -116,13 +119,13 @@ impl CreaBimApp {
         {
             let n = others.len() - 1;
             ui.label(
-                egui::RichText::new(format!(
+                egui::RichText::new(crate::i18n::tr(&format!(
                     "⚠ {m} is also the mark of {n} other element{}.",
                     if n == 1 { "" } else { "s" }
-                ))
+                )))
                 .color(ui.visuals().warn_fg_color),
             );
-            if ui.small_button("Select them").clicked() {
+            if ui.small_button(crate::i18n::t("Select them")).clicked() {
                 self.selection.extend(others.clone(), false);
             }
         }
@@ -138,7 +141,7 @@ impl CreaBimApp {
         let mut rules = before.clone();
         let mut action: Option<&'static str> = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        crate::app::shell::window("Mark numbering")
+        crate::app::shell::window(crate::i18n::tr("Mark numbering"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
             .constrain_to(area)
@@ -146,42 +149,42 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 ui.label(
                     egui::RichText::new(
-                        "How doors, windows and other elements are numbered when they have no mark of their own. Tags and schedules show these numbers. The rules belong to the project and can be saved for another one.",
+                        crate::i18n::t("How doors, windows and other elements are numbered when they have no mark of their own. Tags and schedules show these numbers. The rules belong to the project and can be saved for another one."),
                     )
                     .weak(),
                 );
                 ui.add_space(6.0);
                 rules_grid(ui, &mut rules);
                 crate::props::flow(ui, |ui| {
-                    ui.label("Ground level number").on_hover_text(
-                        "The number of the lowest level at or above ±0, for level-based marks; levels above count up, those below count down",
+                    ui.label(crate::i18n::t("Ground level number")).on_hover_text(
+                        crate::i18n::t("The number of the lowest level at or above ±0, for level-based marks; levels above count up, those below count down"),
                     );
                     ui.add(egui::DragValue::new(&mut rules.ground_number).range(-9..=99));
                 });
                 crate::props::flow(ui, |ui| {
                     if ui
                         .button("D01, W01")
-                        .on_hover_text("Doors and windows counted through the building, lowest level first")
+                        .on_hover_text(crate::i18n::t("Doors and windows counted through the building, lowest level first"))
                         .clicked()
                     {
                         rules = MarkRules::default();
                     }
                     if ui
                         .button("D-101, W-101")
-                        .on_hover_text("Level-based: the level's number, then the count on that level")
+                        .on_hover_text(crate::i18n::t("Level-based: the level's number, then the count on that level"))
                         .clicked()
                     {
                         rules = MarkRules::level_based();
                     }
-                    if ui.button("Save rules…").clicked() {
+                    if ui.button(crate::i18n::t("Save rules…")).clicked() {
                         action = Some("save");
                     }
-                    if ui.button("Load rules…").clicked() {
+                    if ui.button(crate::i18n::t("Load rules…")).clicked() {
                         action = Some("load");
                     }
                 });
                 ui.separator();
-                ui.label(egui::RichText::new("Apply").strong());
+                ui.label(egui::RichText::new(crate::i18n::t("Apply")).strong());
                 crate::props::flow(ui, |ui| {
                     egui::ComboBox::from_id_salt("renumber_only").icon(crate::props::combo_icon)
                         .selected_text(crate::i18n::tw(self.marks.only.map_or("Every kind", |c| c.label())))
@@ -195,18 +198,18 @@ impl CreaBimApp {
                 });
                 crate::props::flow(ui, |ui| {
                     if ui
-                        .button("Renumber")
+                        .button(crate::i18n::t("Renumber"))
                         .on_hover_text(
-                            "Write the rules' numbers onto the elements without a mark, so later changes to the model leave them as they are. With Replace, every element is numbered afresh.",
+                            crate::i18n::t("Write the rules' numbers onto the elements without a mark, so later changes to the model leave them as they are. With Replace, every element is numbered afresh."),
                         )
                         .clicked()
                     {
                         action = Some("renumber");
                     }
                     if ui
-                        .button("Marks from names")
+                        .button(crate::i18n::t("Marks from names"))
                         .on_hover_text(
-                            "Elements named like \"D-101 sliding doors\" take D-101 as their mark",
+                            crate::i18n::t("Elements named like \"D-101 sliding doors\" take D-101 as their mark"),
                         )
                         .clicked()
                     {
@@ -249,15 +252,15 @@ impl CreaBimApp {
     fn duplicates_list(&mut self, ui: &mut egui::Ui) {
         let dups = marks::duplicates(self.doc.model());
         if dups.is_empty() {
-            ui.label(egui::RichText::new("✔ No two elements share a mark.").weak());
+            ui.label(egui::RichText::new(crate::i18n::t("✔ No two elements share a mark.")).weak());
             return;
         }
         ui.label(
-            egui::RichText::new(format!(
+            egui::RichText::new(crate::i18n::tr(&format!(
                 "⚠ {} mark{} used more than once:",
                 dups.len(),
                 if dups.len() == 1 { " is" } else { "s are" }
-            ))
+            )))
             .color(ui.visuals().warn_fg_color),
         );
         egui::ScrollArea::vertical()
@@ -276,8 +279,8 @@ impl CreaBimApp {
                             shown += &format!(" and {} more", names.len() - 2);
                         }
                         ui.label(egui::RichText::new(&m).strong());
-                        ui.label(shown);
-                        if ui.small_button("Select").clicked() {
+                        ui.label(crate::i18n::tr(&shown));
+                        if ui.small_button(crate::i18n::t("Select")).clicked() {
                             self.selection.extend(ids.clone(), false);
                         }
                     });
@@ -286,8 +289,8 @@ impl CreaBimApp {
     }
 
     fn save_mark_rules(&mut self, rules: &MarkRules) {
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Save mark numbering")
+        let Some(path) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr("Save mark numbering"))
             .set_file_name("mark-numbering.json")
             .add_filter("Mark numbering", &["json"])
             .save_file()
@@ -299,8 +302,8 @@ impl CreaBimApp {
     }
 
     fn load_mark_rules(&mut self) {
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Load mark numbering")
+        let Some(path) = crate::files::file_dialog()
+            .set_title(crate::i18n::tr("Load mark numbering"))
             .add_filter("Mark numbering", &["json"])
             .pick_file()
         else {
@@ -324,19 +327,27 @@ impl CreaBimApp {
 /// order, first number, and what the first mark looks like.
 fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
     egui::Grid::new("mark_rules")
-        .num_columns(8)
+        .num_columns(9)
         .spacing([10.0, 4.0])
         .striped(true)
         .show(ui, |ui| {
             for h in [
-                "Number", "Prefix", "Sep.", "Digits", "By level", "Order", "From", "First",
+                "Number",
+                "Prefix",
+                "Sep.",
+                "Digits",
+                "By level",
+                "Alike share",
+                "Order",
+                "From",
+                "First",
             ] {
                 ui.label(egui::RichText::new(h).weak());
             }
             ui.end_row();
             for class in MarkClass::ALL {
                 let r = rules.rule_mut(class);
-                ui.checkbox(&mut r.auto, class.label());
+                ui.checkbox(&mut r.auto, crate::i18n::tr(class.label()));
                 ui.add(
                     egui::TextEdit::singleline(&mut r.prefix)
                         .vertical_align(egui::Align::Center)
@@ -349,6 +360,13 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
                 );
                 ui.add(egui::DragValue::new(&mut r.padding).range(1..=6));
                 ui.checkbox(&mut r.by_level, "");
+                if matches!(class, MarkClass::Door | MarkClass::Window) {
+                    ui.checkbox(&mut r.alike, "").on_hover_text(crate::i18n::t(
+                        "Doors and windows that are alike share one mark, as the door and window lists count them.",
+                    ));
+                } else {
+                    ui.label("");
+                }
                 egui::ComboBox::from_id_salt(("mark_order", class))
                     .icon(crate::props::combo_icon)
                     .selected_text(crate::i18n::tw(r.order.label()))
@@ -364,7 +382,7 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
                 ui.label(if r.auto {
                     egui::RichText::new(sample).monospace()
                 } else {
-                    egui::RichText::new("typed only").weak()
+                    egui::RichText::new(crate::i18n::t("typed only")).weak()
                 });
                 ui.end_row();
             }
@@ -392,17 +410,19 @@ impl CreaBimApp {
         ui.add_space(4.0);
         crate::props::flow(ui, |ui| {
             if crate::props::switch(ui, &mut shown, format!("Head in {name}"))
-                .on_hover_text(
+                .on_hover_text(crate::i18n::t(
                     "Show this level's name and elevation in this view; its line stays either way",
-                )
+                ))
                 .changed()
             {
                 edited.hidden = !shown;
             }
             if head.offset.is_some()
                 && ui
-                    .small_button("Put it back")
-                    .on_hover_text("Undo the drag: the automatic layout places it again")
+                    .small_button(crate::i18n::t("Put it back"))
+                    .on_hover_text(crate::i18n::t(
+                        "Undo the drag: the automatic layout places it again",
+                    ))
                     .clicked()
             {
                 edited.offset = None;

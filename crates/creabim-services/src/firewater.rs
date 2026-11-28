@@ -255,6 +255,8 @@ mod tests {
                     inner_mm: z.inner_mm,
                     height_mm: None,
                     insulation_mm: 0.0,
+                    insulation_set: false,
+                    mark: None,
                 }),
             )
         };

@@ -31,6 +31,10 @@ pub enum FootingKind {
     Strip,
     /// A rectangular pad under a column (IFC's PAD_FOOTING).
     Pad,
+    /// A bored pile: a round shaft `width` across, `thickness` long from
+    /// its head down to its toe (IfcPile BORED), under a column or on its
+    /// own, as PilonDesigner's `pilota`.
+    Pile,
 }
 
 impl FootingKind {
@@ -38,6 +42,7 @@ impl FootingKind {
         match self {
             FootingKind::Strip => "Strip footing",
             FootingKind::Pad => "Pad footing",
+            FootingKind::Pile => "Pile",
         }
     }
 
@@ -46,6 +51,42 @@ impl FootingKind {
         match self {
             FootingKind::Strip => "STRIP_FOOTING",
             FootingKind::Pad => "PAD_FOOTING",
+            FootingKind::Pile => "BORED",
+        }
+    }
+
+    /// Placed about a point (a pad or a pile), not along a line.
+    pub fn at_point(self) -> bool {
+        self != FootingKind::Strip
+    }
+}
+
+/// Where a strip under a wall lies across it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FootingAlign {
+    /// Centred on the wall's centreline.
+    #[default]
+    Line,
+    /// Its outer edge set by the outer face of the wall's load-bearing
+    /// layer, `align_offset` proud of it.
+    CoreExterior,
+    /// Its inner edge set by the inner face of the load-bearing layer,
+    /// `align_offset` proud of it.
+    CoreInterior,
+}
+
+impl FootingAlign {
+    pub const ALL: [FootingAlign; 3] = [
+        FootingAlign::Line,
+        FootingAlign::CoreExterior,
+        FootingAlign::CoreInterior,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            FootingAlign::Line => "Centred on the wall",
+            FootingAlign::CoreExterior => "To the core, outside",
+            FootingAlign::CoreInterior => "To the core, inside",
         }
     }
 }
@@ -80,6 +121,19 @@ pub struct Footing {
     /// The wall (for a strip) or column (for a pad) it is under.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<ElementId>,
+    /// Under a wall: where it lies across it.
+    #[serde(default)]
+    pub align: FootingAlign,
+    /// How far its edge stands proud of the core face it is set by
+    /// (negative: set back under the wall).
+    #[serde(default)]
+    pub align_offset: f64,
+    /// Set on the level it is modelled on (George 2026-11-20): its
+    /// underside this far above the level's floor (0: on it), moving with
+    /// the level; `below` is then not used, under a host too. None is the
+    /// old way: its top `below` under its level or its host's base.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_offset: Option<f64>,
 }
 
 /// Default sizes: a strip 600 wide and 300 thick, a pad 1200 square and
@@ -88,6 +142,13 @@ pub const STRIP_WIDTH: f64 = 0.6;
 pub const STRIP_THICKNESS: f64 = 0.3;
 pub const PAD_SIZE: f64 = 1.2;
 pub const PAD_THICKNESS: f64 = 0.4;
+/// The sides of the polygon a pile's circle is drawn with.
+pub const PILE_SIDES: usize = 32;
+/// A pile's default, as PilonDesigner's: Ø 600, its head 1.2 m under the
+/// level's floor and its toe 9.2 m (8 m long), reinforced concrete.
+pub const PILE_DIAMETER: f64 = 0.6;
+pub const PILE_LENGTH: f64 = 8.0;
+pub const PILE_HEAD_BELOW: f64 = 1.2;
 
 impl Footing {
     /// A strip footing on `level` along `start` → `end`.
@@ -104,6 +165,9 @@ impl Footing {
             below: 0.0,
             material: None,
             host: None,
+            align: FootingAlign::Line,
+            align_offset: 0.0,
+            base_offset: None,
         }
     }
 
@@ -121,7 +185,29 @@ impl Footing {
             below: 0.0,
             material: None,
             host: None,
+            align: FootingAlign::Line,
+            align_offset: 0.0,
+            base_offset: None,
         }
+    }
+
+    /// A bored pile on `level`, its head's centre at `center`.
+    pub fn pile(level: ElementId, center: DVec2) -> Self {
+        Self {
+            kind: FootingKind::Pile,
+            width: PILE_DIAMETER,
+            length: PILE_DIAMETER,
+            thickness: PILE_LENGTH,
+            below: PILE_HEAD_BELOW,
+            ..Self::pad(level, center)
+        }
+    }
+
+    /// A pile under column `id`, on the column's base level.
+    pub fn pile_under_column(id: ElementId, column: &crate::Column) -> Self {
+        let mut f = Self::pile(column.level, column.position);
+        f.host = Some(id);
+        f
     }
 
     /// A strip footing under wall `id`, on the wall's level.
@@ -151,13 +237,16 @@ impl Footing {
     /// The column it is under, when it is a pad under one that exists.
     pub fn host_column<'a>(&self, model: &'a Model) -> Option<&'a crate::Column> {
         match (self.kind, model.get(self.host?).map(|e| &e.kind)) {
-            (FootingKind::Pad, Some(ElementKind::Column(c))) => Some(c),
+            (FootingKind::Pad | FootingKind::Pile, Some(ElementKind::Column(c))) => Some(c),
             _ => None,
         }
     }
 
     /// The level whose plan it shows on: its host's, or its own.
     pub fn plan_level(&self, model: &Model) -> ElementId {
+        if self.base_offset.is_some() && model.level(self.level).is_some() {
+            return self.level;
+        }
         if let Some(w) = self.host_wall(model) {
             return w.level;
         }
@@ -170,8 +259,31 @@ impl Footing {
     /// A strip's line as built: along its wall's centreline, or its own.
     pub fn line(&self, model: &Model) -> (DVec2, DVec2) {
         match self.host_wall(model) {
-            Some(w) => (w.start, w.end),
+            Some(w) => {
+                let n = (w.end - w.start).normalize_or_zero().perp();
+                let d = self.shift(model, w);
+                (w.start + n * d, w.end + n * d)
+            }
             None => (self.start, self.end),
+        }
+    }
+
+    /// How far across its wall (left of start → end positive) a strip's
+    /// line lies from the wall's centreline.
+    pub fn shift(&self, model: &Model, w: &Wall) -> f64 {
+        // a curved wall keeps its strip on its own line
+        if w.is_arc() {
+            return 0.0;
+        }
+        // across the wall from its centreline, which `start` and `end` are
+        let (ext, int) = crate::walls::core_span(model, w);
+        let out = if ext < int { -1.0 } else { 1.0 };
+        let h = self.width / 2.0;
+        match self.align {
+            FootingAlign::Line => 0.0,
+            // the edge outside the core face by the offset, the strip in
+            FootingAlign::CoreExterior => ext + out * self.align_offset - out * h,
+            FootingAlign::CoreInterior => int - out * self.align_offset + out * h,
         }
     }
 
@@ -185,6 +297,9 @@ impl Footing {
 
     /// The absolute height of the top: below the host's base, or the level.
     pub fn top(&self, model: &Model) -> f64 {
+        if let Some(o) = self.base_offset {
+            return crate::members::elevation(model, self.level) + o + self.thickness;
+        }
         let base = if let Some(w) = self.host_wall(model) {
             crate::walls::base_z(model, w)
         } else if let Some(c) = self.host_column(model) {
@@ -195,9 +310,26 @@ impl Footing {
         base - self.below
     }
 
-    /// A pad's outline in plan, counter-clockwise.
+    /// Move it up by `dz`, whichever way it is set.
+    pub fn lift(&mut self, dz: f64) {
+        match &mut self.base_offset {
+            Some(o) => *o += dz,
+            None => self.below -= dz,
+        }
+    }
+
+    /// A pad's outline in plan, counter-clockwise; a pile's circle.
     pub fn pad_outline(&self, model: &Model) -> Vec<DVec2> {
         let (c, turn) = self.place(model);
+        if self.kind == FootingKind::Pile {
+            let r = self.width / 2.0;
+            return (0..PILE_SIDES)
+                .map(|i| {
+                    let a = std::f64::consts::TAU * i as f64 / PILE_SIDES as f64;
+                    c + DVec2::new(a.cos(), a.sin()) * r
+                })
+                .collect();
+        }
         let r = DVec2::from_angle(turn.to_radians());
         let (x, y) = (self.width / 2.0, self.length / 2.0);
         [(-x, -y), (x, -y), (x, y), (-x, y)]
@@ -224,7 +356,7 @@ impl Footing {
                 let (a, b) = self.line(model);
                 (a + b) / 2.0
             }
-            FootingKind::Pad => self.place(model).0,
+            FootingKind::Pad | FootingKind::Pile => self.place(model).0,
         };
         p.extend(self.top(model))
     }
@@ -246,7 +378,7 @@ impl Footing {
             return Err("footing position must be finite".into());
         }
         match self.kind {
-            FootingKind::Pad => positive(self.length, "footing length"),
+            FootingKind::Pad | FootingKind::Pile => positive(self.length, "footing length"),
             FootingKind::Strip if self.host.is_none() => {
                 positive(self.start.distance(self.end), "footing length")
             }
@@ -485,7 +617,7 @@ fn clip_half_plane(poly: &[DVec2], point: DVec2, normal: DVec2) -> Vec<DVec2> {
     out
 }
 
-pub(crate) fn segment_distance(p: DVec2, a: DVec2, b: DVec2) -> f64 {
+pub fn segment_distance(p: DVec2, a: DVec2, b: DVec2) -> f64 {
     let d = b - a;
     let t = ((p - a).dot(d) / d.length_squared().max(1e-12)).clamp(0.0, 1.0);
     p.distance(a + d * t)
@@ -502,12 +634,64 @@ pub fn outlines(
         return vec![];
     };
     match f.kind {
-        FootingKind::Pad => vec![f.pad_outline(model)],
+        FootingKind::Pad | FootingKind::Pile => vec![f.pad_outline(model)],
         FootingKind::Strip => match strips {
             Some(s) => s.get(&e.id).cloned().unwrap_or_default(),
             None => strip_outlines(model).remove(&e.id).unwrap_or_default(),
         },
     }
+}
+
+/// Where the underside of footings steps: the plan edges two footings
+/// share whose undersides lie at different heights, with the footing on
+/// the deeper side's id (drawn heavy and dashed in plan).
+pub fn steps(model: &Model) -> Vec<(ElementId, DVec2, DVec2)> {
+    let strips = strip_outlines(model);
+    let all: Vec<(ElementId, f64, Vec<Vec<DVec2>>)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Footing(f) => Some((
+                e.id,
+                f.top(model) - f.thickness,
+                outlines(model, e, Some(&strips)),
+            )),
+            _ => None,
+        })
+        .collect();
+    let edges = |pieces: &Vec<Vec<DVec2>>| -> Vec<(DVec2, DVec2)> {
+        pieces
+            .iter()
+            .flat_map(|p| (0..p.len()).map(move |i| (p[i], p[(i + 1) % p.len()])))
+            .collect()
+    };
+    let mut out = vec![];
+    for (i, (ia, za, pa)) in all.iter().enumerate() {
+        for (ib, zb, pb) in &all[i + 1..] {
+            if (za - zb).abs() < 1e-3 {
+                continue;
+            }
+            let deeper = if za < zb { *ia } else { *ib };
+            for (a0, a1) in edges(pa) {
+                let len = a0.distance(a1);
+                if len < 1e-6 {
+                    continue;
+                }
+                let d = (a1 - a0) / len;
+                for (b0, b1) in edges(pb) {
+                    let on = |p: DVec2| (p - a0).perp_dot(d).abs() < 1e-4;
+                    if !(on(b0) && on(b1)) {
+                        continue;
+                    }
+                    let (t0, t1) = ((b0 - a0).dot(d), (b1 - a0).dot(d));
+                    let (lo, hi) = (t0.min(t1).max(0.0), t0.max(t1).min(len));
+                    if hi - lo > 1e-4 {
+                        out.push((deeper, a0 + d * lo, a0 + d * hi));
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 /// The footings already under `host`.
@@ -539,9 +723,18 @@ pub fn under(
             ElementKind::Wall(w) if w.curtain.is_none() => {
                 let mut f = Footing::under_wall(*id, w);
                 // its top at the underside of a ground slab the wall stands in
+                // (or beside it: a floor between the walls stops at their
+                // faces, and a slab drawn to their centrelines has its edge
+                // right under the wall's middle)
                 let base = crate::walls::base_z(model, w);
-                if let Some(d) = crate::members::slab_depth_at(model, (w.start + w.end) / 2.0, base)
-                {
+                let mid = (w.start + w.end) / 2.0;
+                let n = (w.end - w.start).normalize_or_zero().perp();
+                let off = w.thickness / 2.0 + 0.05;
+                let depth = [mid, mid + n * off, mid - n * off]
+                    .into_iter()
+                    .filter_map(|p| crate::members::slab_depth_at(model, p, base))
+                    .fold(None, |m: Option<f64>, d| Some(m.map_or(d, |m| m.max(d))));
+                if let Some(d) = depth {
                     f.below = d;
                 }
                 ("Strip footing", f)
@@ -565,17 +758,17 @@ pub fn detached(model: &Model, f: &Footing) -> Footing {
             let (a, b) = f.line(model);
             out.start = a;
             out.end = b;
-            if let Some(w) = f.host_wall(model) {
+            if let Some(w) = f.host_wall(model).filter(|_| f.base_offset.is_none()) {
                 out.level = w.level;
                 out.below = f.below - w.base_offset;
             }
         }
-        FootingKind::Pad => {
+        FootingKind::Pad | FootingKind::Pile => {
             let (c, turn) = f.place(model);
             out.start = c;
             out.end = c;
             out.rotation = turn;
-            if let Some(col) = f.host_column(model) {
+            if let Some(col) = f.host_column(model).filter(|_| f.base_offset.is_none()) {
                 out.level = col.level;
                 out.below = f.below - col.base_offset;
             }
@@ -609,6 +802,88 @@ mod tests {
         }
         tx.apply(&mut m).unwrap();
         (m, lid, ids)
+    }
+
+    #[test]
+    fn a_pile_under_a_column_sits_on_its_axis_as_a_round_shaft() {
+        let (mut m, lid, _) = model_with(&[]);
+        let c = crate::Column::new(
+            lid,
+            DVec2::new(3.0, 2.0),
+            Profile::Rectangle {
+                width: 0.3,
+                depth: 0.3,
+            },
+        );
+        let ce = Element::new("C", ElementKind::Column(c.clone()));
+        let cid = ce.id;
+        Transaction::new("c").insert(ce).apply(&mut m).unwrap();
+        let f = Footing::pile_under_column(cid, &c);
+        assert_eq!(f.kind, FootingKind::Pile);
+        assert!(f.kind.at_point());
+        // George's PilonDesigner defaults: Ø 600, 8 m long, head 1.2 m down
+        assert_eq!((f.width, f.thickness, f.below), (0.6, 8.0, 1.2));
+        let ring = f.pad_outline(&m);
+        assert_eq!(ring.len(), PILE_SIDES);
+        for p in &ring {
+            assert!((p.distance(c.position) - 0.3).abs() < 1e-9);
+        }
+        let back: Footing = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert_eq!(back.kind, FootingKind::Pile);
+    }
+
+    #[test]
+    fn a_strip_set_by_the_core_stands_its_offset_proud_of_it() {
+        let (m, _, ids) = model_with(&[(DVec2::ZERO, DVec2::new(10.0, 0.0))]);
+        let ElementKind::Wall(w) = &m.get(ids[0]).unwrap().kind else {
+            unreachable!()
+        };
+        let mut f = Footing::under_wall(ids[0], w);
+        f.width = 0.6;
+        assert!(f.line(&m).0.y.abs() < 1e-9);
+        // the exterior is on the right (−y): the outer edge 50 mm out
+        f.align = FootingAlign::CoreExterior;
+        f.align_offset = 0.05;
+        let y = f.line(&m).0.y;
+        assert!((y - 0.1).abs() < 1e-9, "{y}");
+        f.align = FootingAlign::CoreInterior;
+        let y = f.line(&m).0.y;
+        assert!((y + f.width / 2.0 - 0.2).abs() < 1e-9, "{y}");
+    }
+
+    #[test]
+    fn a_strip_set_by_the_core_of_a_layered_wall_drawn_on_its_face() {
+        let (mut m, _, ids) = model_with(&[(DVec2::ZERO, DVec2::new(10.0, 0.0))]);
+        crate::skbase::add_base(&m).apply(&mut m).unwrap();
+        // insulation 140, membrane 5, formwork blocks 300, outside first
+        let asm = crate::assembly::assemblies(&m)
+            .iter()
+            .find(|(_, n, _)| n.starts_with("Nadzákladová stena"))
+            .unwrap()
+            .0;
+        let before = m.get(ids[0]).unwrap().clone();
+        let mut after = before.clone();
+        if let ElementKind::Wall(w) = &mut after.kind {
+            w.thickness = 0.445;
+            w.assembly = Some(asm);
+            // drawn on its outer face: start and end stay its centreline
+            w.location = crate::LocationLine::ExteriorFace;
+        }
+        Transaction::new("t")
+            .replace(before, after)
+            .apply(&mut m)
+            .unwrap();
+        let ElementKind::Wall(w) = &m.get(ids[0]).unwrap().kind else {
+            unreachable!()
+        };
+        let mut f = Footing::under_wall(ids[0], w);
+        f.width = 0.6;
+        f.align = FootingAlign::CoreExterior;
+        f.align_offset = 0.15;
+        // the outside (−y) face of the blocks lies 145 in from the wall's
+        let core = -0.2225 + 0.145;
+        let edge = f.line(&m).0.y - 0.3;
+        assert!((edge - (core - 0.15)).abs() < 1e-9, "{edge}");
     }
 
     fn area(p: &[DVec2]) -> f64 {

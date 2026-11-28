@@ -76,9 +76,11 @@ pub fn text(
         Font::Sans => crate::drawfont::family(),
         Font::Serif => egui::FontFamily::Proportional,
     };
+    // `px` is the capitals' height: the face is set at its em
+    let em = creabim_geom::font::em(px as f64, look.font) as f32;
     let mut job = egui::text::LayoutJob::simple_singleline(
         text.to_string(),
-        egui::FontId::new(px, family),
+        egui::FontId::new(em, family),
         color,
     );
     for s in &mut job.sections {
@@ -164,6 +166,14 @@ pub fn paint_weighted(
         painter.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
     }
     paint_ends_weighted(painter, xf, &m.ends, color, w);
+    for patch in item.back_patches(&m, mm) {
+        let pts: Vec<Pos2> = patch.iter().map(|p| xf.to_screen(*p)).collect();
+        painter.add(egui::Shape::convex_polygon(
+            pts,
+            Color32::WHITE,
+            Stroke::NONE,
+        ));
+    }
     let px = text_px(&item.look, mm, xf);
     for t in &m.texts {
         text(
@@ -201,15 +211,20 @@ pub fn paint_ends_weighted(painter: &egui::Painter, xf: &Xf, ends: &Ends, color:
 
 // ---- tools ------------------------------------------------------------------
 
+/// The letter heights the Text tool offers, paper mm; 0 is the style's.
+pub const TEXT_SIZES: [f64; 6] = [0.0, 2.5, 3.5, 5.0, 7.0, 10.0];
+
 /// Is this one of the tools here?
 pub fn is_tool(t: Tool) -> bool {
     matches!(
         t,
         Tool::Angle
+            | Tool::Slope
             | Tool::Radius
             | Tool::Diameter
             | Tool::ArcLength
             | Tool::Note
+            | Tool::Text
             | Tool::SpotLevel
     )
 }
@@ -238,10 +253,27 @@ enum Ready {
     Leader {
         target: Picked,
     },
+    /// The sloping line a slope dimension writes the slope of; the
+    /// format (an index into `SLOPE_FORMATS`) and, in a plan, the slope
+    /// typed.
+    Slope {
+        a: Picked,
+        b: Picked,
+        plan: bool,
+        fmt: usize,
+        value: f64,
+    },
     /// The point a spot level measures.
     Spot {
         point: Picked,
         plan: bool,
+        /// S-JTSK coordinates of the point, not its height
+        coords: bool,
+        /// its height above sea level (Bpv), not from ±0,000
+        bpv: bool,
+        /// the height it will read, for the preview: from ±0,000, or in
+        /// Bpv
+        z: Option<f64>,
     },
 }
 
@@ -294,6 +326,18 @@ fn grips(model: &Model, it: &PlanItem, mm: f64) -> Vec<(DVec2, Grab)> {
             Shape::Level { at, line_end, .. } => {
                 vec![(*at, Grab::LevelHead(*id, line_end.unwrap_or(*at)))]
             }
+            // a spot level's mark: in a section it slides along its height,
+            // still bound to what it stands on
+            Shape::Spot {
+                at, text_at, plan, ..
+            } => {
+                let g = if *plan {
+                    *text_at
+                } else {
+                    DVec2::new(text_at.x, at.y)
+                };
+                vec![(g, Grab::Shape(*id))]
+            }
             _ => vec![],
         },
         PlanItem::Tag {
@@ -306,6 +350,11 @@ fn grips(model: &Model, it: &PlanItem, mm: f64) -> Vec<(DVec2, Grab)> {
             let Some(ElementKind::Tag(t)) = model.get(*id).map(|e| &e.kind) else {
                 return vec![];
             };
+            // a penetration's label: its leader stays on the hole, only
+            // the text moves
+            if creabim_geom::tradepen::is_label_tag(model, t) {
+                return vec![];
+            }
             let centre = *anchor - t.end.unwrap_or(DVec2::ZERO);
             vec![
                 (*anchor, Grab::TagEnd(*id, centre)),
@@ -330,6 +379,9 @@ pub struct Draft {
     pub leader: bool,
     /// A note was just placed: Properties should put the cursor in its text.
     pub focus_text: bool,
+    /// The letter height new free texts get, paper mm; 0 is their
+    /// style's.
+    pub text_size: f64,
     pub grab: Option<Grab>,
     /// The area whose drag took `grab`: another area, not dragged, must
     /// not let it go (MU31: a sheet note moved one frame, then stopped).
@@ -340,6 +392,17 @@ pub struct Draft {
     pub tag_style: Option<ElementId>,
     /// New tags read their host's material build-up (Annotate step 5).
     pub tag_material: bool,
+    /// The spot level tool writes the point's S-JTSK coordinates instead,
+    /// as PilonDesigner's cadastre mark.
+    pub spot_coords: bool,
+    /// The spot level tool writes heights above sea level (Bpv), from the
+    /// project's ±0,000 in Bpv, instead of from ±0,000.
+    pub spot_bpv: bool,
+    /// How new slope dimensions read: an index into
+    /// [`creabim_core::annotation::SLOPE_FORMATS`].
+    pub slope_fmt: usize,
+    /// The slope a new slope dimension in a plan writes, in that format.
+    pub slope_value: f64,
 }
 
 impl Default for Draft {
@@ -350,12 +413,17 @@ impl Default for Draft {
             ready: None,
             leader: true,
             focus_text: false,
+            text_size: 0.0,
             grab: None,
             grab_by: None,
             dim_style: None,
             note_style: None,
             tag_style: None,
             tag_material: false,
+            spot_coords: false,
+            spot_bpv: false,
+            slope_fmt: 0,
+            slope_value: 2.0,
         }
     }
 }
@@ -383,6 +451,13 @@ impl Draft {
             set_style(&mut e.kind, id);
         }
         e
+    }
+
+    /// A free text at `at` in `view`: no leader, the size picked.
+    pub fn free_text(&self, view: ElementId, at: DVec2) -> Note {
+        let mut n = Note::new(view, at, creabim_core::words::tr("Text"));
+        n.size = (self.text_size > 0.0).then_some(self.text_size);
+        n
     }
 
     pub fn has_input(&self) -> bool {
@@ -493,21 +568,55 @@ pub fn click(
     };
     if let Some(ready) = d.ready.take() {
         d.clear();
+        // a slope's own pattern is set below, not the last spot level's
         let mut e = d.styled(place(model, view_id, view, ready, tool, raw));
         if let ElementKind::Dimension(dim) = &mut e.kind {
             if dim.kind == DimensionKind::Spot {
-                // a new spot level reads like the last one made
-                dim.pattern = model
+                // a new spot level reads like the last one of its sort
+                // made: heights like heights, S-JTSK coordinates like
+                // coordinates (a coordinate mark never loses its Y and X)
+                let coords = |p: &Option<String>| match p.as_deref() {
+                    Some(p) if creabim_core::annotation::writes_coordinates(p) => 2,
+                    Some(p) if p.contains("{Bpv}") => 1,
+                    _ => 0,
+                };
+                let own = coords(&dim.pattern);
+                let last = model
                     .iter()
                     .filter_map(|e| match &e.kind {
-                        ElementKind::Dimension(d) if d.kind == DimensionKind::Spot => {
+                        ElementKind::Dimension(d)
+                            if d.kind == DimensionKind::Spot && coords(&d.pattern) == own =>
+                        {
                             Some(d.pattern.clone())
                         }
                         _ => None,
                     })
+                    .last();
+                if let Some(p) = last {
+                    if p.is_some() || own == 0 {
+                        dim.pattern = p;
+                    }
+                }
+                // and its line long or short as the last spot level's
+                // (George 2026-11-23)
+                dim.short = model
+                    .iter()
+                    .filter_map(|e| match &e.kind {
+                        ElementKind::Dimension(d) if d.kind == DimensionKind::Spot => Some(d.short),
+                        _ => None,
+                    })
                     .last()
-                    .flatten();
+                    .unwrap_or(false);
             }
+        }
+        if let (
+            ElementKind::Dimension(dim),
+            Ready::Slope {
+                plan, fmt, value, ..
+            },
+        ) = (&mut e.kind, ready)
+        {
+            dim.pattern = slope_pattern(plan, fmt, value);
         }
         let id = e.id;
         let label = match &e.kind {
@@ -519,6 +628,15 @@ pub fn click(
         return Ok(added(tool, d));
     }
     match tool {
+        Tool::Text => {
+            let e = d.styled(Element::new(
+                "Text",
+                ElementKind::Note(d.free_text(view_id, raw)),
+            ));
+            selection.only(e.id);
+            doc.commit(Transaction::new("Add text").insert(e))?;
+            Ok(added(tool, d))
+        }
         Tool::Note if !d.leader => {
             let e = d.styled(Element::new(
                 "Note",
@@ -529,18 +647,100 @@ pub fn click(
             Ok(added(tool, d))
         }
         Tool::SpotLevel => {
+            let plan = matches!(view.kind, creabim_core::ViewKind::Plan { .. });
+            let coords = plan && d.spot_coords;
             let point = match view.kind {
-                // in a plan, the top of the slab under the click
+                // coordinates: the point snapped to (a plot's corner, a
+                // cadastre line's bend, the building's corner)
+                creabim_core::ViewKind::Plan { .. } if coords => (hp, p),
+                // in a plan, kept on what is under the point snapped to
+                // (a roof's face or edge, a slab, the terrain, a stair),
+                // whose height there it reads: the mark sits right where
+                // the pointer stuck, not where the pointer itself is
                 creabim_core::ViewKind::Plan { level, .. } => {
-                    (attach(model, view, slab_under(model, level, raw), raw), raw)
+                    (spot_point(model, view, level, p), p)
                 }
                 _ => (hp, p),
             };
-            let plan = matches!(view.kind, creabim_core::ViewKind::Plan { .. });
-            d.ready = Some(Ready::Spot { point, plan });
+            d.ready = Some(Ready::Spot {
+                point,
+                plan,
+                coords,
+                bpv: !coords && d.spot_bpv,
+                z: (!coords)
+                    .then(|| {
+                        let probe = Dimension::spot(view_id, point.0, point.0, None);
+                        creabim_geom::annotate::spot_height(model, view, &probe, point.1)
+                    })
+                    .flatten()
+                    .map(|z| {
+                        if d.spot_bpv {
+                            model.project_info().map_or(0.0, |(_, i)| i.elevation) + z
+                        } else {
+                            z
+                        }
+                    }),
+            });
             Ok("Now click where its text goes.".into())
         }
+        Tool::Slope => {
+            let plan = matches!(view.kind, creabim_core::ViewKind::Plan { .. });
+            let (fmt, value) = (d.slope_fmt, d.slope_value);
+            let ready = |a: Picked, b: Picked| Ready::Slope {
+                a,
+                b,
+                plan,
+                fmt,
+                value,
+            };
+            // in a section or elevation, a click on a sloping line takes it
+            if d.points.is_empty() && !snapped && !plan {
+                if let Some((id, a, b)) = segment_at(items, raw, tol) {
+                    let (a, b) = if a.x <= b.x { (a, b) } else { (b, a) };
+                    d.ready = Some(ready(
+                        (attach(model, view, Some(id), a), a),
+                        (attach(model, view, Some(id), b), b),
+                    ));
+                    return Ok("Now click the side the arrow goes.".into());
+                }
+            }
+            d.points.push((hp, p));
+            if let [a, b] = d.points[..] {
+                d.points.clear();
+                if a.1.distance(b.1) < 1e-6 {
+                    return Ok("Those points are the same: click two apart.".into());
+                }
+                d.ready = Some(ready(a, b));
+                return Ok("Now click the side the arrow goes.".into());
+            }
+            Ok(if plan {
+                "Now click the second point: the slope falls from the first towards it.".into()
+            } else {
+                "Now click a second point on the sloping line.".into()
+            })
+        }
         Tool::Note => {
+            // a click inside a cut (a ceiling's layers in a section) with
+            // nothing snapped points at what is cut there, so the note
+            // can read its mark (George 2026-11-23)
+            let hp = if hp.host.is_none() {
+                items
+                    .iter()
+                    .rev()
+                    .find_map(|it| match it {
+                        PlanItem::Fill { points, .. } | PlanItem::Polygon { points, .. }
+                            if points.len() > 2
+                                && model.get(it.id()).is_some()
+                                && creabim_core::polygon::contains(points, raw) =>
+                        {
+                            Some(it.id())
+                        }
+                        _ => None,
+                    })
+                    .map_or(hp, |id| attach(model, view, Some(id), p))
+            } else {
+                hp
+            };
             d.ready = Some(Ready::Leader { target: (hp, p) });
             Ok("Now click where the note's text goes.".into())
         }
@@ -649,6 +849,33 @@ pub fn click(
     }
 }
 
+/// A plan spot level's point at `p`, kept on the element whose surface is
+/// there: the first one under the plan's cut (seen from above, under the
+/// top of its range), else the topmost slab of `level` there. An element
+/// without its own axes (a roof, the terrain, a stair) keeps the point
+/// where it is, reading its height there as it changes.
+fn spot_point(model: &Model, view: &View, level: ElementId, p: DVec2) -> HostPoint {
+    let host = creabim_geom::annotate::spot_from(model, view)
+        .and_then(|(below, above)| creabim_geom::annotate::surface_under(model, p, below, above))
+        .map(|(id, _)| id)
+        .or_else(|| slab_under(model, level, p));
+    let Some(host) = host else {
+        return HostPoint::free(p);
+    };
+    let hp = attach(model, view, Some(host), p);
+    if hp.host.is_some() {
+        hp
+    } else {
+        HostPoint {
+            host: Some(host),
+            local: p,
+            from_end: false,
+            body: None,
+            step: None,
+        }
+    }
+}
+
 /// The topmost slab on `level` whose outline holds `p`.
 fn slab_under(model: &Model, level: ElementId, p: DVec2) -> Option<ElementId> {
     model
@@ -669,6 +896,9 @@ fn added(tool: Tool, d: &mut Draft) -> String {
     if tool == Tool::Note {
         d.focus_text = true;
         "Note added. Type its text in Properties; drag it to move it.".into()
+    } else if tool == Tool::Text {
+        d.focus_text = true;
+        "Text added. Type it in Properties, where its size and angle are too; drag it to move it, R turns it.".into()
     } else if tool == Tool::SpotLevel {
         "Spot level added. Its text pattern is in Properties; drag its text to move it.".into()
     } else {
@@ -686,6 +916,16 @@ fn place(
     at: DVec2,
 ) -> Element {
     match ready {
+        Ready::Slope { a, b, .. } => Element::new(
+            "Slope",
+            ElementKind::Dimension(Dimension::slope(
+                view_id,
+                a.0,
+                b.0,
+                slope_offset(a.1, b.1, at),
+                None,
+            )),
+        ),
         Ready::Angle { vertex, a, b } => {
             let (a, b) = if sweep(vertex.1, a.1, at) > sweep(vertex.1, a.1, b.1) {
                 (b, a)
@@ -724,13 +964,23 @@ fn place(
                 ElementKind::Dimension(Dimension::about(kind, view_id, center.0, on, on, extra)),
             )
         }
-        Ready::Spot { point, .. } => Element::new(
-            "Spot level",
+        Ready::Spot {
+            point, coords, bpv, ..
+        } => Element::new(
+            if coords {
+                "S-JTSK coordinates"
+            } else {
+                "Spot level"
+            },
             ElementKind::Dimension(Dimension::spot(
                 view_id,
                 point.0,
                 attach(model, view, point.0.host, at),
-                None,
+                if coords {
+                    Some(creabim_core::annotation::SJTSK_PATTERN.to_string())
+                } else {
+                    bpv.then(|| creabim_core::annotation::BPV_PATTERN.to_string())
+                },
             )),
         ),
         Ready::Arc { center, a, b } => {
@@ -749,23 +999,108 @@ fn place(
         }
         Ready::Leader { target } => {
             let _ = tool;
-            let mut n = Note::new(view_id, at, "Note");
+            // a leader to what has a mark typed on it (a ceiling's PDH1)
+            // reads its mark (George 2026-11-23)
+            let text = target
+                .0
+                .host
+                .and_then(|h| model.get(h))
+                .and_then(creabim_core::marks::manual)
+                .map_or("Note".to_string(), |m| m.to_string());
+            let mut n = Note::new(view_id, at, text);
             n.leader = Some(target.0);
             Element::new("Note", ElementKind::Note(n))
         }
     }
 }
 
+/// How far `at` is to the left of the line from `a` to `b`.
+/// A spot level's preview text: its height as it will read (`+2,700`,
+/// `±0,000`, `245,350 m n. m. Bpv`).
+fn spot_preview(z: Option<f64>, bpv: bool) -> String {
+    let Some(z) = z else {
+        return "Spot level".into();
+    };
+    let t = format!("{:.3}", z.abs()).replace('.', ",");
+    if bpv {
+        format!("{}{t} m n. m. Bpv", if z < 0.0 { "-" } else { "" })
+    } else if t == "0,000" {
+        format!("±{t}")
+    } else {
+        format!("{}{t}", if z < 0.0 { "-" } else { "+" })
+    }
+}
+
+fn slope_offset(a: DVec2, b: DVec2, at: DVec2) -> f64 {
+    (at - a).dot((b - a).normalize_or(DVec2::X).perp())
+}
+
+/// What a new slope dimension's pattern is: its format in a section (none
+/// for the default percentage), the slope typed in that format in a plan.
+pub fn slope_pattern(plan: bool, fmt: usize, value: f64) -> Option<String> {
+    let f = creabim_core::annotation::SLOPE_FORMATS
+        .get(fmt)
+        .copied()
+        .unwrap_or("%");
+    if !plan {
+        return (f != "%").then(|| f.to_string());
+    }
+    let v = {
+        let r = (value * 10.0).round() / 10.0;
+        if (r - r.round()).abs() < 1e-9 {
+            format!("{r:.0}")
+        } else {
+            format!("{r:.1}").replace('.', ",")
+        }
+    };
+    Some(match f {
+        "°" => format!("{v}°"),
+        "1:n" => format!("1:{v}"),
+        _ => format!("{v} %"),
+    })
+}
+
 /// The annotation a placing click at `at` would make, for the preview.
 fn shape_of(ready: Ready, at: DVec2) -> (Shape, String) {
     match ready {
-        Ready::Spot { point, plan } => (
+        Ready::Slope {
+            a,
+            b,
+            plan,
+            fmt,
+            value,
+        } => (
+            Shape::Slope {
+                a: a.1,
+                b: b.1,
+                offset: slope_offset(a.1, b.1, at),
+                plan,
+            },
+            creabim_geom::annotate::slope_reading(
+                slope_pattern(plan, fmt, value).as_deref(),
+                b.1 - a.1,
+                plan,
+            ),
+        ),
+        Ready::Spot {
+            point,
+            plan,
+            coords,
+            bpv,
+            z,
+        } => (
             Shape::Spot {
                 at: point.1,
                 text_at: at,
                 plan,
+                cross: coords,
+                short: false,
             },
-            "Spot level".into(),
+            if coords {
+                "Y = …\nX = …".into()
+            } else {
+                spot_preview(z, bpv)
+            },
         ),
         Ready::Angle { vertex, a, b } => {
             let (a, b) = if sweep(vertex.1, a.1, at) > sweep(vertex.1, a.1, b.1) {
@@ -826,6 +1161,7 @@ fn shape_of(ready: Ready, at: DVec2) -> (Shape, String) {
                 at,
                 leader: Some(target.1),
                 elbow: None,
+                angle: 0.0,
             },
             "Note".into(),
         ),
@@ -899,7 +1235,7 @@ pub fn preview(
                     painter.add(egui::Shape::line(pts, Stroke::new(3.0, interaction_ink())));
                 }
             }
-            Tool::Angle => {
+            Tool::Angle | Tool::Slope => {
                 if let Some((_, a, b)) = segment_at(items, p, tol) {
                     painter.line_segment(
                         [xf.to_screen(a), xf.to_screen(b)],
@@ -1027,9 +1363,10 @@ pub fn drag(
                     Shape::ArcLength { center, a, .. } => {
                         dim.offset = p.distance(center) - a.distance(center)
                     }
+                    Shape::Slope { a, b, .. } => dim.offset = slope_offset(a, b, p),
                     // a spot level's text moves, staying with what it is on
                     Shape::Spot { .. } => dim.b = attach(&model, view, dim.a.host, p),
-                    Shape::Note { .. } | Shape::Level { .. } => {}
+                    Shape::Note { .. } | Shape::Level { .. } | Shape::Along { .. } => {}
                 }
             })
         }
@@ -1168,13 +1505,23 @@ pub fn sheet_input(
     }
     draw_grips(painter, xf, doc.model(), &items, selection, 1.0);
     let pointer = response.hover_pos().or(response.interact_pointer_pos());
-    if tool == Tool::Note {
+    if tool == Tool::Note || tool == Tool::Text {
         let raw = pointer.map(to_paper);
         preview(painter, xf, tool, d, raw, raw, &[], 0.0, 1.0);
         if response.clicked() {
             if let Some(p) = raw {
                 let mut ghost = Selection::default();
-                let r = sheet_note_click(doc, sheet, p, d, &mut ghost);
+                let r = if tool == Tool::Text {
+                    let e = d.styled(Element::new(
+                        "Text",
+                        ElementKind::Note(d.free_text(sheet, p)),
+                    ));
+                    ghost.only(e.id);
+                    doc.commit(Transaction::new("Add text").insert(e))
+                        .map(|_| added(Tool::Text, d))
+                } else {
+                    sheet_note_click(doc, sheet, p, d, &mut ghost)
+                };
                 match r {
                     Ok(msg) => *status = Some(msg),
                     Err(e) => *error = Some(e.to_string()),
@@ -1310,7 +1657,7 @@ pub fn look_ui(
                 }
             }
             ui.separator();
-            if ui.button("New text style…").clicked() {
+            if ui.button(crate::i18n::t("New text style…")).clicked() {
                 out = LookEdit::NewStyle;
             }
         });
@@ -1318,7 +1665,7 @@ pub fn look_ui(
     // sat past the panel's edge)
     let mut own = color.is_some();
     if crate::props::switch(ui, &mut own, "Own colour")
-        .on_hover_text("Override the style's colour for this one")
+        .on_hover_text(crate::i18n::t("Override the style's colour for this one"))
         .changed()
     {
         *color = own.then_some([0.8, 0.1, 0.1]);
@@ -1381,7 +1728,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             egui::DragValue::new(&mut s.size)
                 .speed(0.05)
                 .range(0.5..=50.0)
-                .suffix(" mm"),
+                .suffix(crate::i18n::t(" mm")),
         )
         .changed()
         {
@@ -1391,7 +1738,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     crate::props::flow(ui, |ui| {
         let mut own = s.color.is_some();
         if crate::props::switch(ui, &mut own, "Colour")
-            .on_hover_text("Off: black on paper, blue on screen")
+            .on_hover_text(crate::i18n::t("Off: black on paper, blue on screen"))
             .changed()
         {
             s.color = own.then_some([0.0, 0.0, 0.0]);
@@ -1508,8 +1855,10 @@ pub fn leader_ui(
     });
     if elbow.is_some()
         && ui
-            .button("Straighten the leader")
-            .on_hover_text("Take its elbow out; drag the round grip on the leader to bend it again")
+            .button(crate::i18n::t("Straighten the leader"))
+            .on_hover_text(crate::i18n::t(
+                "Take its elbow out; drag the round grip on the leader to bend it again",
+            ))
             .clicked()
     {
         *elbow = None;
@@ -1550,7 +1899,7 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             egui::DragValue::new(&mut size)
                 .speed(0.05)
                 .range(0.5..=10.0)
-                .suffix(" mm"),
+                .suffix(crate::i18n::t(" mm")),
         )
         .changed()
         {
@@ -1571,12 +1920,20 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             }
         });
     if crate::props::switch(ui, &mut s.break_at_tags, "Break dimension lines at tags")
-        .on_hover_text(
+        .on_hover_text(crate::i18n::t(
             "Dimension lines in this style leave a gap where a tag or a note sits across them",
-        )
+        ))
         .changed()
     {
         label = Some("Dimension breaks");
+    }
+    if crate::props::switch(ui, &mut s.back, "Text background")
+        .on_hover_text(crate::i18n::t(
+            "Texts in this style cover what is drawn under them: dimension numbers, spot levels, notes",
+        ))
+        .changed()
+    {
+        label = Some("Text background");
     }
     crate::app::helpui::combo(ui, "Meant for")
         .selected_text(crate::i18n::tw(s.purpose.label()))
@@ -1632,7 +1989,12 @@ pub fn style_inline(
     }
     if shown {
         label = style_ui(ui, &mut s);
-        ui.label(egui::RichText::new(format!("Changes every one of its {users} users.")).weak());
+        ui.label(
+            egui::RichText::new(crate::i18n::tr(&format!(
+                "Changes every one of its {users} users."
+            )))
+            .weak(),
+        );
     }
     let label = label?;
     let r = doc.edit_merged(id, label, |e| e.kind = ElementKind::TextStyle(s));
@@ -1663,6 +2025,7 @@ pub fn offset_label(kind: DimensionKind) -> &'static str {
         DimensionKind::Radius | DimensionKind::Diameter => "Line past circle",
         DimensionKind::ArcLength => "Line offset",
         DimensionKind::Spot => "Offset",
+        DimensionKind::Slope => "Arrow offset",
     }
 }
 
@@ -1679,7 +2042,7 @@ pub fn note_ui(
     // the field keeps its size and scrolls inside; the small button at its
     // corner opens the large editor (MU27)
     crate::props::flow(ui, |ui| {
-        ui.label("Text");
+        ui.label(crate::i18n::t("Text"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if crate::props::icon_button(
                 ui,
@@ -1718,15 +2081,62 @@ pub fn note_ui(
     if r.changed() {
         label = Some("Note text");
     }
+    // its letters' height on paper (none: its style's) and its turn
+    crate::props::row(ui, "Text size", |ui| {
+        crate::props::flow(ui, |ui| {
+            let mut own = n.size.is_some();
+            if ui
+                .checkbox(&mut own, crate::i18n::t("Own"))
+                .on_hover_text(crate::i18n::t(
+                    "Its own letter height on paper; off, its style's",
+                ))
+                .changed()
+            {
+                n.size = own.then_some(3.5);
+                label = Some("Text size");
+            }
+            if let Some(h) = &mut n.size {
+                if ui
+                    .add(
+                        egui::DragValue::new(h)
+                            .speed(0.1)
+                            .range(0.5..=100.0)
+                            .max_decimals(1)
+                            .suffix(crate::i18n::t(" mm")),
+                    )
+                    .changed()
+                {
+                    label = Some("Text size");
+                }
+            }
+        });
+    });
+    crate::props::row(ui, "Angle", |ui| {
+        if ui
+            .add(
+                egui::DragValue::new(&mut n.angle)
+                    .speed(1.0)
+                    .range(-360.0..=360.0)
+                    .max_decimals(2)
+                    .suffix("°"),
+            )
+            .on_hover_text(crate::i18n::t(
+                "How far its lines turn on paper, anticlockwise (R turns it with the mouse)",
+            ))
+            .changed()
+        {
+            label = Some("Text angle");
+        }
+    });
     // a text box (MU26): wraps to a width, reads markdown
     let mut boxed = n.width.is_some();
     crate::props::row(ui, "Box", |ui| {
         crate::props::flow(ui, |ui| {
             if ui
-                .checkbox(&mut boxed, "Wrap at")
-                .on_hover_text(
+                .checkbox(&mut boxed, crate::i18n::t("Wrap at"))
+                .on_hover_text(crate::i18n::t(
                     "Lines wrap to this width on paper; off, each line runs as long as it is",
-                )
+                ))
                 .changed()
             {
                 n.width = boxed.then_some(60.0);
@@ -1738,7 +2148,7 @@ pub fn note_ui(
                         egui::DragValue::new(w)
                             .speed(0.5)
                             .range(5.0..=800.0)
-                            .suffix(" mm"),
+                            .suffix(crate::i18n::t(" mm")),
                     )
                     .changed()
                 {
@@ -1748,14 +2158,22 @@ pub fn note_ui(
         });
     });
     if crate::props::switch(ui, &mut n.markdown, "Markdown")
-        .on_hover_text("# heading (capitals, underlined), - bullet, 1. numbered, - [ ] and - [x] checkboxes; **bold** and *italic* marks are dropped on paper")
+        .on_hover_text(crate::i18n::t("# heading (capitals, underlined), - bullet, 1. numbered, - [ ] and - [x] checkboxes; **bold** and *italic* marks are dropped on paper"))
         .changed()
     {
         label = Some("Note markdown");
     }
+    if crate::props::switch(ui, &mut n.back, "Text background")
+        .on_hover_text(crate::i18n::t("The text covers what is drawn under it"))
+        .changed()
+    {
+        label = Some("Text background");
+    }
     let mut leader = n.leader.is_some();
     if crate::props::switch(ui, &mut leader, "Leader")
-        .on_hover_text("An arrow from the note to what it is about. Drag its square to move it.")
+        .on_hover_text(crate::i18n::t(
+            "An arrow from the note to what it is about. Drag its square to move it.",
+        ))
         .changed()
     {
         n.leader = leader.then(|| HostPoint::free(n.at + DVec2::new(-1.5, -1.0) * unit));
@@ -1763,7 +2181,10 @@ pub fn note_ui(
     }
     if n.leader.is_some_and(|l| l.host.is_some()) {
         ui.label(
-            egui::RichText::new("Its arrow is attached and follows what it points at.").weak(),
+            egui::RichText::new(crate::i18n::t(
+                "Its arrow is attached and follows what it points at.",
+            ))
+            .weak(),
         );
     }
     label
@@ -1855,6 +2276,61 @@ mod tests {
     }
 
     #[test]
+    fn a_coordinate_mark_writes_y_and_x_after_a_spot_level() {
+        // a spot level placed before used to hand its "±0,000" pattern
+        // to the coordinate mark made after it
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (vid, view) = plan_of(&doc);
+        let mut info = doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        info.sjtsk = Some([-547382.28, -1253318.85]);
+        let tx = creabim_core::project::set_project(doc.model(), info);
+        doc.commit(tx).unwrap();
+        let (mut sel, mut placed) = (Selection::default(), vec![]);
+        for coords in [false, true, true] {
+            let mut d = Draft {
+                spot_coords: coords,
+                ..Draft::default()
+            };
+            let before = ids(&doc);
+            for at in [DVec2::new(1.0, 1.0), DVec2::new(3.0, 2.0)] {
+                click(
+                    &mut doc,
+                    vid,
+                    &view,
+                    Tool::SpotLevel,
+                    None,
+                    at,
+                    &[],
+                    0.1,
+                    &mut d,
+                    &mut sel,
+                )
+                .unwrap();
+            }
+            placed.push(added_since(&doc, &before).id);
+        }
+        let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+        let text = |id: ElementId| {
+            drawing
+                .items
+                .iter()
+                .find_map(|i| match i {
+                    PlanItem::Annotation { id: j, item } if *j == id => Some(item.text.clone()),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        assert!(!text(placed[0]).contains("Y ="), "{}", text(placed[0]));
+        for id in &placed[1..] {
+            assert!(text(*id).contains("547"), "{}", text(*id));
+        }
+    }
+
+    #[test]
     fn an_arc_gives_its_radius_and_a_note_its_leader() {
         let mut doc = Document::from_model(creabim_core::sample::sample_house());
         let (vid, view) = plan_of(&doc);
@@ -1896,5 +2372,395 @@ mod tests {
         assert_eq!(note.leader.unwrap().local, DVec2::new(1.0, 1.0));
         assert!(d.focus_text);
         assert_eq!(sel.active, Some(e.id));
+    }
+
+    #[test]
+    fn a_spot_level_reads_the_roof_it_is_clicked_on_in_bpv_too() {
+        // George: on a roof it wrote the floor's level, not the roof's
+        // height where it was clicked
+        let mut doc = Document::from_model(creabim_core::sample::layered_house());
+        let ff = doc
+            .model()
+            .iter()
+            .find(|e| e.name == "First Floor")
+            .unwrap()
+            .id;
+        let roof = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Roof(_)))
+            .unwrap()
+            .id;
+        let mut v = View::plan(ff);
+        v.graphics.range.from_above = true;
+        let e = Element::new("Roof plan", ElementKind::View(v.clone()));
+        let vid = e.id;
+        doc.commit(Transaction::new("plan").insert(e)).unwrap();
+        let mut info = doc
+            .model()
+            .project_info()
+            .map(|(_, i)| i.clone())
+            .unwrap_or_default();
+        info.elevation = 245.35;
+        doc.commit(creabim_core::set_project(doc.model(), info))
+            .unwrap();
+        let (mut d, mut sel) = (Draft::default(), Selection::default());
+        let at = DVec2::new(5.0, 0.8);
+        let mut place = |doc: &mut Document, d: &mut Draft| {
+            let before = ids(doc);
+            for p in [at, at + DVec2::new(1.0, -1.5)] {
+                click(
+                    doc,
+                    vid,
+                    &v,
+                    Tool::SpotLevel,
+                    None,
+                    p,
+                    &[],
+                    0.1,
+                    d,
+                    &mut sel,
+                )
+                .unwrap();
+            }
+            let e = added_since(doc, &before);
+            let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+            let text = drawing.items.iter().find_map(|i| match i {
+                PlanItem::Annotation { id, item } if *id == e.id => Some(item.text.clone()),
+                _ => None,
+            });
+            (e, text.unwrap())
+        };
+        let (e, text) = place(&mut doc, &mut d);
+        let ElementKind::Dimension(dim) = &e.kind else {
+            panic!("not a dimension")
+        };
+        assert_eq!(dim.a.host, Some(roof));
+        let z = creabim_geom::annotate::surface_height(doc.model(), roof, at).unwrap();
+        let level = doc.model().level(ff).unwrap().elevation;
+        assert!(z > level + 3.0, "{z}");
+        let want = creabim_core::annotation::spot_text(
+            doc.model(),
+            creabim_core::annotation::SPOT_PATTERN,
+            z,
+        );
+        assert_eq!(text, want);
+        // read in Bpv: the project's ±0,000 in Bpv plus the height
+        d.spot_bpv = true;
+        let (_, text) = place(&mut doc, &mut d);
+        assert_eq!(
+            text,
+            format!(
+                "{} m n. m. Bpv",
+                format!("{:.3}", 245.35 + z).replace('.', ",")
+            )
+        );
+    }
+
+    /// George: with the pointer stuck to a roof's edge, the spot level
+    /// sat off the edge, where the pointer was, and read the height there.
+    /// It sits on the point snapped to and reads the ridge's height.
+    #[test]
+    fn a_spot_level_snapped_to_a_ridge_sits_on_it_and_reads_it() {
+        let mut doc = Document::from_model(creabim_core::sample::layered_house());
+        let ff = doc
+            .model()
+            .iter()
+            .find(|e| e.name == "First Floor")
+            .unwrap()
+            .id;
+        let roof = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Roof(_)))
+            .unwrap()
+            .id;
+        let top = creabim_geom::scene::shared_scene(doc.model())
+            .iter()
+            .filter(|i| i.id == roof)
+            .flat_map(|i| i.mesh.positions.clone())
+            .max_by(|a, b| a[2].total_cmp(&b[2]))
+            .unwrap();
+        let ridge = DVec2::new(top[0] as f64, top[1] as f64);
+        let mut v = View::plan(ff);
+        v.graphics.range.from_above = true;
+        let e = Element::new("Roof plan", ElementKind::View(v.clone()));
+        let vid = e.id;
+        doc.commit(Transaction::new("plan").insert(e)).unwrap();
+        let (mut d, mut sel) = (Draft::default(), Selection::default());
+        let before = ids(&doc);
+        // the pointer a little off the ridge, stuck to it
+        let raw = ridge + DVec2::new(0.2, 0.3);
+        let hit = Some((HostPoint::free(ridge), ridge, Some(SnapKind::Endpoint)));
+        click(
+            &mut doc,
+            vid,
+            &v,
+            Tool::SpotLevel,
+            hit,
+            raw,
+            &[],
+            0.1,
+            &mut d,
+            &mut sel,
+        )
+        .unwrap();
+        let text_at = ridge + DVec2::new(1.0, 1.0);
+        click(
+            &mut doc,
+            vid,
+            &v,
+            Tool::SpotLevel,
+            None,
+            text_at,
+            &[],
+            0.1,
+            &mut d,
+            &mut sel,
+        )
+        .unwrap();
+        let e = added_since(&doc, &before);
+        let ElementKind::Dimension(dim) = &e.kind else {
+            panic!("not a dimension")
+        };
+        assert_eq!(dim.a.host, Some(roof));
+        assert!(
+            dim.a.local.distance(ridge) < 1e-6,
+            "{:?} {ridge:?}",
+            dim.a.local
+        );
+        let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+        let text = drawing
+            .items
+            .iter()
+            .find_map(|i| match i {
+                PlanItem::Annotation { id, item } if *id == e.id => Some(item.text.clone()),
+                _ => None,
+            })
+            .unwrap();
+        let want = creabim_core::annotation::spot_text(
+            doc.model(),
+            creabim_core::annotation::SPOT_PATTERN,
+            top[2] as f64,
+        );
+        assert_eq!(text, want);
+    }
+
+    /// George: every annotation must work in plans, the site plan,
+    /// sections and elevations; each tool here placed in each and drawn
+    /// there, a turned free text too.
+    #[test]
+    fn every_annotation_tool_works_in_every_kind_of_drawing() {
+        let mut m = creabim_core::sample::sample_house();
+        let (plan, _) = {
+            let doc = Document::from_model(m.clone());
+            plan_of(&doc)
+        };
+        let ElementKind::View(pv) = m.get(plan).unwrap().kind.clone() else {
+            unreachable!()
+        };
+        let mut site = pv.clone();
+        site.graphics.range.from_above = true;
+        site.scale = 200.0;
+        let section = View::section(DVec2::new(-1.0, 3.0), DVec2::new(12.0, 3.0), 8.0, true);
+        let elevation = View::section(DVec2::new(-1.0, -4.0), DVec2::new(12.0, -4.0), 30.0, false);
+        let views: Vec<Element> = [
+            ("Site", site),
+            ("Section", section),
+            ("Elevation", elevation),
+        ]
+        .into_iter()
+        .map(|(n, v)| Element::new(n, ElementKind::View(v)))
+        .collect();
+        Transaction::new("views")
+            .insert(views[0].clone())
+            .insert(views[1].clone())
+            .insert(views[2].clone())
+            .apply(&mut m)
+            .unwrap();
+        let mut doc = Document::from_model(m);
+        let p = |x: f64, y: f64| DVec2::new(x, y);
+        let tools: [(Tool, Vec<DVec2>); 8] = [
+            (Tool::Text, vec![p(2.0, 1.0)]),
+            (Tool::Note, vec![p(1.0, 1.0), p(3.0, 2.0)]),
+            (
+                Tool::Angle,
+                vec![p(1.0, 1.0), p(3.0, 1.0), p(1.0, 3.0), p(2.0, 2.0)],
+            ),
+            (Tool::Slope, vec![p(1.0, 2.0), p(4.0, 1.0), p(2.0, 2.5)]),
+            (
+                Tool::Radius,
+                vec![p(3.0, 1.0), p(1.0, 3.0), p(-1.0, 1.0), p(4.0, 2.0)],
+            ),
+            (
+                Tool::Diameter,
+                vec![p(3.0, 1.0), p(1.0, 3.0), p(-1.0, 1.0), p(4.0, 2.0)],
+            ),
+            (
+                Tool::ArcLength,
+                vec![p(3.0, 1.0), p(1.0, 3.0), p(-1.0, 1.0), p(4.0, 2.0)],
+            ),
+            (Tool::SpotLevel, vec![p(2.0, 0.0), p(3.0, 1.0)]),
+        ];
+        let ids_of_views: Vec<ElementId> = std::iter::once(plan)
+            .chain(views.iter().map(|v| v.id))
+            .collect();
+        for vid in ids_of_views {
+            let Some(ElementKind::View(view)) = doc.model().get(vid).map(|e| e.kind.clone()) else {
+                unreachable!()
+            };
+            for (tool, clicks) in &tools {
+                let (mut d, mut sel) = (Draft::default(), Selection::default());
+                d.text_size = 5.0;
+                let before = ids(&doc);
+                for at in clicks {
+                    click(
+                        &mut doc,
+                        vid,
+                        &view,
+                        *tool,
+                        None,
+                        *at,
+                        &[],
+                        0.1,
+                        &mut d,
+                        &mut sel,
+                    )
+                    .unwrap();
+                }
+                let e = added_since(&doc, &before);
+                if *tool == Tool::Text {
+                    // turned by 30°, as R would
+                    let mut t = e.clone();
+                    let ElementKind::Note(n) = &mut t.kind else {
+                        panic!("a text is a note")
+                    };
+                    assert_eq!(n.size, Some(5.0));
+                    assert!(n.leader.is_none());
+                    n.angle = 30.0;
+                    doc.commit(Transaction::new("turn").replace(e.clone(), t))
+                        .unwrap();
+                }
+                let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+                let item = drawing.items.iter().find_map(|i| match i {
+                    PlanItem::Annotation { id, item } if *id == e.id => Some(item.clone()),
+                    _ => None,
+                });
+                let item = item.unwrap_or_else(|| {
+                    panic!(
+                        "{tool:?} not drawn in {}",
+                        doc.model().get(vid).unwrap().name
+                    )
+                });
+                if *tool == Tool::Text {
+                    let t = &item.marks(item.mm).texts[0];
+                    assert!((t.angle - 30f64.to_radians()).abs() < 1e-9);
+                    assert_eq!(item.look.size, 5.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_slope_in_a_section_reads_its_line_and_points_down_it() {
+        let mut doc = Document::new();
+        let v = Element::new(
+            "Section A",
+            ElementKind::View(View::section(DVec2::ZERO, DVec2::new(8.0, 0.0), 3.0, true)),
+        );
+        let (vid, view) = match &v.kind {
+            ElementKind::View(view) => (v.id, view.clone()),
+            _ => unreachable!(),
+        };
+        doc.commit(Transaction::new("setup").insert(v)).unwrap();
+        let (mut d, mut sel) = (Draft::default(), Selection::default());
+        let before = ids(&doc);
+        // a roof falling 1 m over 4 m, from left to right; arrow above it
+        for at in [
+            DVec2::new(0.0, 3.0),
+            DVec2::new(4.0, 2.0),
+            DVec2::new(2.0, 3.0),
+        ] {
+            click(
+                &mut doc,
+                vid,
+                &view,
+                Tool::Slope,
+                None,
+                at,
+                &[],
+                0.1,
+                &mut d,
+                &mut sel,
+            )
+            .unwrap();
+        }
+        let e = added_since(&doc, &before);
+        let ElementKind::Dimension(dim) = &e.kind else {
+            panic!("not a dimension")
+        };
+        assert_eq!(dim.kind, DimensionKind::Slope);
+        assert!(dim.offset > 0.0, "above the roof: {}", dim.offset);
+        let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+        let item = drawing
+            .items
+            .iter()
+            .find_map(|i| match i {
+                PlanItem::Annotation { id, item } if *id == e.id => Some(item.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(item.text, "25 %");
+        // the arrowhead is at the lower, right end
+        let m = item.marks(0.05);
+        let tip = m.arrows[0][0];
+        assert!(tip.x > 2.0 && tip.y < 2.5 + dim.offset, "{tip}");
+        // in degrees, from Properties
+        doc.edit(e.id, "fmt", |el| {
+            if let ElementKind::Dimension(d) = &mut el.kind {
+                d.pattern = Some("°".into());
+            }
+        })
+        .unwrap();
+        let drawing = creabim_geom::section::view_drawing(doc.model(), vid).unwrap();
+        assert!(drawing.items.iter().any(
+            |i| matches!(i, PlanItem::Annotation { id, item } if *id == e.id && item.text == "14°")
+        ));
+    }
+
+    #[test]
+    fn a_slope_in_a_plan_writes_the_slope_typed() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (vid, view) = plan_of(&doc);
+        let (mut d, mut sel) = (Draft::default(), Selection::default());
+        d.slope_value = 2.5;
+        let before = ids(&doc);
+        for at in [
+            DVec2::new(1.0, 1.0),
+            DVec2::new(3.0, 1.0),
+            DVec2::new(2.0, 0.5),
+        ] {
+            click(
+                &mut doc,
+                vid,
+                &view,
+                Tool::Slope,
+                None,
+                at,
+                &[],
+                0.1,
+                &mut d,
+                &mut sel,
+            )
+            .unwrap();
+        }
+        let e = added_since(&doc, &before);
+        let ElementKind::Dimension(dim) = &e.kind else {
+            panic!("not a dimension")
+        };
+        assert_eq!(dim.pattern.as_deref(), Some("2,5 %"));
+        assert!(dim.offset < 0.0);
+        assert_eq!(slope_pattern(true, 2, 50.0).as_deref(), Some("1:50"));
+        assert_eq!(slope_pattern(false, 0, 2.0), None);
     }
 }

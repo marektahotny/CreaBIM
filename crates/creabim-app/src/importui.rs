@@ -89,15 +89,19 @@ impl CreaBimApp {
         }
         let mut open = true;
         let mut copy = false;
-        crate::app::shell::window("Import report")
+        crate::app::shell::window(crate::i18n::tr("Import report"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(80.0, 70.0))
-            .default_size(Vec2::new(640.0, 460.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(640.0, 460.0)))
             .constrain_to(area)
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.label(
-                    egui::RichText::new(format!("{} ({})", report.file, report.schema)).strong(),
+                    egui::RichText::new(crate::i18n::tr(&format!(
+                        "{} ({})",
+                        report.file, report.schema
+                    )))
+                    .strong(),
                 );
                 ui.horizontal_wrapped(|ui| {
                     for (class, n, meshes) in &report.counts {
@@ -108,10 +112,10 @@ impl CreaBimApp {
                 });
                 ui.separator();
                 if report.summary.is_empty() {
-                    ui.label("Everything came in as it was written.");
+                    ui.label(crate::i18n::t("Everything came in as it was written."));
                 }
                 for s in &report.summary {
-                    ui.label(format!("• {s}"));
+                    ui.label(crate::i18n::tr(&format!("• {s}")));
                 }
                 if !report.details.is_empty() {
                     ui.add_space(6.0);
@@ -130,10 +134,13 @@ impl CreaBimApp {
                 ui.add_space(6.0);
                 crate::props::flow(ui, |ui| {
                     copy = ui
-                        .button("Copy report")
-                        .on_hover_text("Copy the whole report as text")
+                        .button(crate::i18n::t("Copy report"))
+                        .on_hover_text(crate::i18n::t("Copy the whole report as text"))
                         .clicked();
-                    ui.label(egui::RichText::new("File › Import report shows it again.").weak());
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("File › Import report shows it again."))
+                            .weak(),
+                    );
                 });
             });
         if copy {

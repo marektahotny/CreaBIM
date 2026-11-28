@@ -1,0 +1,525 @@
+{
+ "materials": [
+  {
+   "id": "herz-nop-10",
+   "category": "Systémové dosky podlahového kúrenia",
+   "name": "HERZ systémová doska nopová s izoláciou 10 mm, rozteč 65 (3FS3113)",
+   "lambda": 0.035,
+   "fire": "E",
+   "color": "#2b2b2b",
+   "maker": "HERZ",
+   "kind": "nopová systémová doska (EPS DEO + čierna PS fólia 0,6 mm)",
+   "note": "hrúbka vrstvy = izolácia 10 mm (λ 0,035, RD 0,285 m²K/W); výška vrátane nopov 32 mm; max. zaťaženie 45 kPa; potrubie 14–18 mm, raster 6,5 cm; doska 1300 × 780 mm; podľa: technický list HERZ 3FS3113 (herz.cz); polomer ohybu rúry 5 × d v oblúkoch 180° (HERZ Systémy podlahového topení – podklad pro návrh a montáž, s. 10); okrajový pás PE 8 mm (kompenzácia 5 mm), výška 150 mm (tamže, s. 15); odstup hada od steny výrobca neuvádza (STN EN 1264-4: viac ako 50 mm)",
+   "ufh": {
+    "pipe_mm": [
+     14,
+     18
+    ],
+    "raster_mm": 65,
+    "system": "A",
+    "bend_d": 5
+   }
+  },
+  {
+   "id": "herz-nop-30-65",
+   "category": "Systémové dosky podlahového kúrenia",
+   "name": "HERZ systémová doska nopová s izoláciou 30 mm, rozteč 65 (3FS3112)",
+   "lambda": 0.04,
+   "fire": "E",
+   "color": "#2b2b2b",
+   "maker": "HERZ",
+   "kind": "nopová systémová doska s kročajovou izoláciou (EPS DES sg + čierna PS fólia 0,6 mm)",
+   "note": "hrúbka vrstvy = izolácia 30 mm (λ 0,040, RD 0,75 m²K/W); výška vrátane nopov 52 mm; max. zaťaženie 5 kPa; útlm kročajového hluku 26 dB (izolácia kročajového hluku 28 dB); potrubie 14–16 mm, raster 6,5 cm; doska 1300 × 780 mm; podľa: technický list HERZ 3FS3112 (podlahove-topeni-herz.cz); polomer ohybu rúry 5 × d v oblúkoch 180° (HERZ Systémy podlahového topení – podklad pro návrh a montáž, s. 10); okrajový pás PE 8 mm (kompenzácia 5 mm), výška 150 mm (tamže, s. 15); odstup hada od steny výrobca neuvádza (STN EN 1264-4: viac ako 50 mm)",
+   "ufh": {
+    "pipe_mm": [
+     14,
+     16
+    ],
+    "raster_mm": 65,
+    "system": "A",
+    "bend_d": 5
+   }
+  },
+  {
+   "id": "herz-nop-30-50",
+   "category": "Systémové dosky podlahového kúrenia",
+   "name": "HERZ systémová doska nopová Combitop Star 30-2, rozteč 50 (3FS3109)",
+   "lambda": 0.04,
+   "fire": "E",
+   "color": "#2b2b2b",
+   "maker": "HERZ",
+   "kind": "nopová systémová doska s kročajovou izoláciou (EPS DES sg + čierna PS fólia 0,6 mm)",
+   "note": "hrúbka vrstvy = izolácia 30 mm (λ 0,040, RD 0,75 m²K/W); výška vrátane nopov 51 mm; max. zaťaženie 5 kPa; útlm kročajového hluku 26 dB (izolácia kročajového hluku 28 dB); potrubie 14–18 mm, raster 5 cm; doska 1400 × 800 mm; podľa: technický list HERZ Combitop Star 30-2, 3 FS31 09; polomer ohybu rúry 5 × d v oblúkoch 180° (HERZ Systémy podlahového topení – podklad pro návrh a montáž, s. 10); okrajový pás PE 8 mm (kompenzácia 5 mm), výška 150 mm (tamže, s. 15); odstup hada od steny výrobca neuvádza (STN EN 1264-4: viac ako 50 mm); rozteče 50 / 100 / 150 / 200 / 250 / 300 mm, dovolené aj diagonálne kladenie, dosky sa spájajú presahom radu nopov (technický list HERZ 3F03009, s. 2)",
+   "ufh": {
+    "pipe_mm": [
+     14,
+     18
+    ],
+    "raster_mm": 50,
+    "system": "A",
+    "bend_d": 5
+   }
+  },
+  {
+   "id": "herz-tacker-30",
+   "category": "Systémové dosky podlahového kúrenia",
+   "name": "HERZ systémová doska Tacker EPS 70, 30 mm (3F04003)",
+   "lambda": 0.039,
+   "fire": "",
+   "color": "#c7ccd3",
+   "maker": "HERZ",
+   "kind": "tacker – pás EPS 70 s kašírovanou PE fóliou a rastrom",
+   "note": "hrúbka 30 mm, λ 0,039; max. zaťaženie 5 kPa; potrubie 16×2 až 20×2, raster 50 mm; rolka 1000 × 10000 mm; reakcia na oheň neuvedená; podľa: HERZ Systémy podlahového topení – podklad pro návrh a montáž (2020-10), s. 17; polomer ohybu rúry 5 × d v oblúkoch 180° (HERZ Systémy podlahového topení – podklad pro návrh a montáž, s. 10); okrajový pás PE 8 mm (kompenzácia 5 mm), výška 150 mm (tamže, s. 15); odstup hada od steny výrobca neuvádza (STN EN 1264-4: viac ako 50 mm); potlačený kladací raster 50 mm, rozteče 50–300 mm (tamže, s. 17 a 19)",
+   "ufh": {
+    "pipe_mm": [
+     16,
+     20
+    ],
+    "raster_mm": 50,
+    "system": "A",
+    "bend_d": 5,
+    "guide_mm": 50
+   }
+  },
+  {
+   "id": "herz-sucha-25",
+   "category": "Systémové dosky podlahového kúrenia",
+   "name": "HERZ systémová suchá doska 25 mm (16500001)",
+   "lambda": 0.035,
+   "fire": "E",
+   "color": "#e9e9e4",
+   "maker": "HERZ",
+   "kind": "suchý systém – EPS doska s drážkami a hliníkovými lamelami",
+   "note": "izolácia 25 mm, λ 0,035; výrobca uvádza tepelný odpor 0,60 m²K/W; max. zaťaženie 35 kPa; DIN 4108-10 DEO; potrubie 16 mm, rozteč 167 / 250 / 333 mm; doska 1000 × 500 mm; podľa: HERZ Plošné systémy sálavého vytápění – Suchý systém podlahového topení (herz.cz); polomer ohybu rúry 5 × d (HERZ Systémy podlahového topení – podklad pro návrh a montáž, s. 10); kovové vodiace lamely s perforáciou po 25 cm; okrajový pás 3 F080 02",
+   "ufh": {
+    "pipe_mm": [
+     16,
+     16
+    ],
+    "spacings_mm": [
+     167,
+     250,
+     333
+    ],
+    "system": "B",
+    "bend_d": 5
+   }
+  },
+  {
+   "id": "wavin-simple-white-50",
+   "category": "Systémové dosky podlahového kúrenia",
+   "name": "Wavin SIMPLE WHITE 50 – nopová doska EPS 150 (10 16 83)",
+   "lambda": 0.034,
+   "fire": "E",
+   "color": "#f2f2ee",
+   "maker": "Wavin",
+   "kind": "nopová systémová doska (EPS 150 + tvrdá plastová fólia)",
+   "note": "hrúbka vrstvy = najmenšia izolácia 28 mm (λD 0,034); výška 50 mm; výrobca uvádza RD 0,95 m²K/W; CS(10) ≥ 150/200 kPa; rozteč rúr po 50 mm; doska 1400 × 800 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 41 (aj Wavin NL Noppenplaten 50 mm, kód 4855414080); polomer ohybu rúry 5 × Da (Wavin Technická příručka pro systémy plošného vytápění a chlazení, s. 37–39); najmenší odstup hada od steny 0,15 m (tamže, s. 42); okrajový pás 8 mm; dosky sa kladú od bočných stien (Wavin Underfloor Radiant Systems PAV00-D01-20A-ENG, s. 27); rúry DN16 a 17, rozteče v násobkoch 50 mm (PAV00-D01-20A-ENG, s. 41)",
+   "ufh": {
+    "raster_mm": 50,
+    "system": "A",
+    "pipe_mm": [
+     16,
+     17
+    ],
+    "bend_d": 5,
+    "wall_mm": 150
+   }
+  },
+  {
+   "id": "wavin-compact-basic-45",
+   "category": "Systémové dosky podlahového kúrenia",
+   "name": "Wavin COMPACT BASIC 45 – nopová doska EPS (11 12 45S)",
+   "lambda": 0.035,
+   "fire": "E",
+   "color": "#f2f2ee",
+   "maker": "Wavin",
+   "kind": "nopová systémová doska (tvarovaný EPS)",
+   "note": "hrúbka vrstvy = najmenšia izolácia 21 mm (λD 0,035); výška 45 mm; výrobca uvádza RD 0,75 m²K/W; CS(10) ≥ 200 kPa; doska 1200 × 700 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 47; polomer ohybu rúry 5 × Da (Wavin Technická příručka pro systémy plošného vytápění a chlazení, s. 37–39); najmenší odstup hada od steny 0,15 m (tamže, s. 42); okrajový pás 8 mm; dosky sa kladú od bočných stien (Wavin Underfloor Radiant Systems PAV00-D01-20A-ENG, s. 27); rúry DN16, 17 a 20 (20 s deformáciou nopov), rozteče v násobkoch 50 mm (PAV00-D01-20A-ENG, s. 47)",
+   "ufh": {
+    "system": "A",
+    "pipe_mm": [
+     16,
+     20
+    ],
+    "raster_mm": 50,
+    "bend_d": 5,
+    "wall_mm": 150
+   }
+  },
+  {
+   "id": "wavin-roller-30",
+   "category": "Systémové dosky podlahového kúrenia",
+   "name": "Wavin ROLLER 30 – tacker rolka EPS (10 17 30)",
+   "lambda": 0.035,
+   "fire": "E",
+   "color": "#c7ccd3",
+   "maker": "Wavin",
+   "kind": "tacker – rolovaná EPS doska s fóliou a rastrom",
+   "note": "hrúbka 30 mm, λD 0,035, RD 0,85 m²K/W; CS(10) ≥ 150 kPa; rolka 1000 × 10000 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 45; polomer ohybu rúry 5 × Da (Wavin Technická příručka pro systémy plošného vytápění a chlazení, s. 37–39); najmenší odstup hada od steny 0,15 m (tamže, s. 42); okrajový pás 8 mm; dosky sa kladú od bočných stien (Wavin Underfloor Radiant Systems PAV00-D01-20A-ENG, s. 27); rúra pripevnená sponami pri ľubovoľnej rozteči, vodiace čiary po 5 cm (PAV00-D01-20A-ENG, s. 44–45)",
+   "ufh": {
+    "system": "A",
+    "guide_mm": 50,
+    "bend_d": 5,
+    "wall_mm": 150
+   }
+  },
+  {
+   "id": "wavin-reflex-ultra-23",
+   "category": "Systémové dosky podlahového kúrenia",
+   "name": "Wavin REFLEX ULTRA 23 – rovná doska s reflexnou vrstvou (11 11 23)",
+   "lambda": 0.031,
+   "fire": "E",
+   "color": "#d9dde2",
+   "maker": "Wavin",
+   "kind": "rovná systémová doska (EPS s reflexnou fóliou a rastrom)",
+   "note": "hrúbka 23 mm, λD 0,031, RD 0,75 m²K/W; CS(10) ≥ 200 kPa; doska 1000 × 500 mm; podľa: Wavin Underfloor Radiant Systems, Product guide PAV00-D01-20A-ENG, s. 37; polomer ohybu rúry 5 × Da (Wavin Technická příručka pro systémy plošného vytápění a chlazení, s. 37–39); najmenší odstup hada od steny 0,15 m (tamže, s. 42); okrajový pás 8 mm; dosky sa kladú od bočných stien (Wavin Underfloor Radiant Systems PAV00-D01-20A-ENG, s. 27); rúra pripevnená sponami pri ľubovoľnej rozteči, vodiace čiary po 10 cm (PAV00-D01-20A-ENG, s. 37)",
+   "ufh": {
+    "system": "A",
+    "guide_mm": 100,
+    "bend_d": 5,
+    "wall_mm": 150
+   }
+  },
+  {
+   "id": "fermacell-2e22",
+   "category": "Sadrokartón a drevo",
+   "name": "Fermacell podlahový prvok 2E22 (25 mm)",
+   "lambda": 0.32,
+   "density": 1150,
+   "fire": "A2fl-s1",
+   "color": "#e8e4da",
+   "maker": "Fermacell",
+   "kind": "suchý poter zo sadrovláknitých dosiek 2 × 12,5 mm",
+   "note": "λ10,tr 0,32 W/(m·K), objemová hmotnosť 1150 kg/m³, tepelný odpor prvku 0,08 m²K/W; vhodný pre podlahové vykurovanie; podľa technického listu fermacell 2E11/2E22 (06/2016)"
+  }
+ ],
+ "walls": [],
+ "floors": [
+  {
+   "id": "POD-TEREN-UFH-herz-nop-10",
+   "name": "Podlaha na teréne – podlahové kúrenie HERZ nopová 10 mm (3FS3113)",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
+    },
+    {
+     "material": "poter-cem",
+     "mm": 60
+    },
+    {
+     "material": "herz-nop-10",
+     "mm": 10
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "POD-TEREN-UFH-herz-nop-30-65",
+   "name": "Podlaha na teréne – podlahové kúrenie HERZ nopová 30 mm, rozteč 65 (3FS3112)",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
+    },
+    {
+     "material": "poter-cem",
+     "mm": 60
+    },
+    {
+     "material": "herz-nop-30-65",
+     "mm": 30
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "POD-TEREN-UFH-herz-nop-30-50",
+   "name": "Podlaha na teréne – podlahové kúrenie HERZ Combitop Star 30-2, rozteč 50",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
+    },
+    {
+     "material": "poter-cem",
+     "mm": 60
+    },
+    {
+     "material": "herz-nop-30-50",
+     "mm": 30
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "POD-TEREN-UFH-herz-tacker-30",
+   "name": "Podlaha na teréne – podlahové kúrenie HERZ Tacker EPS 70 30 mm",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
+    },
+    {
+     "material": "poter-cem",
+     "mm": 61
+    },
+    {
+     "material": "herz-tacker-30",
+     "mm": 30
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "POD-TEREN-UFH-wavin-simple-white-50",
+   "name": "Podlaha na teréne – podlahové kúrenie Wavin SIMPLE WHITE 50",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
+    },
+    {
+     "material": "poter-cem",
+     "mm": 67
+    },
+    {
+     "material": "wavin-simple-white-50",
+     "mm": 28
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "POD-TEREN-UFH-wavin-compact-basic-45",
+   "name": "Podlaha na teréne – podlahové kúrenie Wavin COMPACT BASIC 45",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
+    },
+    {
+     "material": "poter-cem",
+     "mm": 69
+    },
+    {
+     "material": "wavin-compact-basic-45",
+     "mm": 21
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "POD-TEREN-UFH-wavin-roller-30",
+   "name": "Podlaha na teréne – podlahové kúrenie Wavin ROLLER 30 (tacker)",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
+    },
+    {
+     "material": "poter-cem",
+     "mm": 61
+    },
+    {
+     "material": "wavin-roller-30",
+     "mm": 30
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "POD-TEREN-UFH-wavin-reflex-ultra-23",
+   "name": "Podlaha na teréne – podlahové kúrenie Wavin REFLEX ULTRA 23",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "dlazba",
+     "mm": 8
+    },
+    {
+     "material": "lepidlo-dlazba",
+     "mm": 2
+    },
+    {
+     "material": "poter-cem",
+     "mm": 61
+    },
+    {
+     "material": "wavin-reflex-ultra-23",
+     "mm": 23
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  },
+  {
+   "id": "POD-TEREN-UFH-herz-sucha",
+   "name": "Podlaha na teréne – podlahové kúrenie HERZ suchý systém 25 mm",
+   "boundary": "teren",
+   "layers": [
+    {
+     "material": "laminat",
+     "mm": 8
+    },
+    {
+     "material": "podlozka-parkety",
+     "mm": 2
+    },
+    {
+     "material": "fermacell-2e22",
+     "mm": 25
+    },
+    {
+     "material": "herz-sucha-25",
+     "mm": 25
+    },
+    {
+     "material": "eps-150",
+     "mm": 120
+    },
+    {
+     "material": "hydroizolacia",
+     "mm": 4
+    },
+    {
+     "material": "beton",
+     "mm": 150,
+     "core": true
+    }
+   ]
+  }
+ ],
+ "roofs": []
+}

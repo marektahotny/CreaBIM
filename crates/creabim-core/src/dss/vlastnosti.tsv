@@ -1,0 +1,481 @@
+# Vlastnosti dátového štandardu stavieb (DSS, comBIMe, stiahnuté 2026-10-09), preložené do slovenčiny.
+# index	názov	typ (t = text, c = číslo, n = celé číslo, b = áno/nie, d = dátum)	jednotky
+0	farba	t
+1	farba kovania	t
+2	farba krídla	t
+3	farba zárubne	t
+4	betón	t
+5	bezpečnostná odolnosť	t
+6	charakter merania	t
+7	chladiaci výkon [kW]	c	kW
+8	chladenie	b
+9	dátum dokončenia	d
+10	dátum funkčnej skúšky	d
+11	dátum inštalácie	d
+12	dátum konca platnosti servisu	d
+13	dátum konca platnosti záruky	d
+14	dátum koordinačnej funkčnej skúšky	d
+15	dátum plánovanej revízie	d
+16	dátum poslednej kontroly prevádzkyschopnosti	d
+17	dátum posledného servisu	d
+18	dátum uvedenia do prevádzky	d
+19	dátum výroby	t
+20	dátum začatia prác	t
+21	diferenčný tlakomer	b
+22	doba trvania	t
+23	doklad o certifikácii	t
+24	doklad o funkčnej skúške	t
+25	doklad o montáži	t
+26	doklad potvrdzujúci požadované vlastnosti z PBRS	t
+27	druh armatúry	t
+28	druh bezpečnostného uzáveru	t
+29	druh filtračnej vložky	t
+30	druh filtra	t
+31	druh hasiva	t
+32	druh merania prietoku	t
+33	druh náteru	t
+34	druh prevádzky	t
+35	druh regulátora	t
+36	druh systému	t
+37	druh rúry	t
+38	druh uzatvárania filtra	t
+39	DS štandard	t
+40	diaľkový odpočet	b
+41	diaľkový prenos	b
+42	dĺžka	c	mm,cm,km,m
+43	dĺžka hadice [m]	c	m
+44	dĺžka zemnej súpravy [mm]	c	mm
+45	etapa životného cyklu	t
+46	evidenčné staničenie	t
+47	evidenčné číslo	t
+48	funkcia armatúry	t
+49	fáza	t
+50	fáza projektu	t
+51	hladina akustického tlaku	c	dB
+52	hĺbka	c	mm,cm,km,m
+53	hmotnosť	c	kg,g
+54	hmotnosť na jednotku dĺžky	c	kg/m
+55	index šírenia plameňa po povrchu	c	mm/min
+56	intenzita osvetlenia	c	lx
+57	interval kontroly prevádzkyschopnosti [mesiace]	t	mesiac
+58	jednotka	t
+59	jemnosť sita [μm]	c	µm
+60	menovitá svetlosť výstupu odkalenia	c	mm
+61	menovité napätie	c	kV
+62	menovitý prúd	c	A
+63	menovitý priemer	c	mm
+64	menovitý priemer hadice	c	mm
+65	menovitý priemer vstupu	c	mm
+66	menovitý priemer výstupu	c	mm
+67	menovitý prietok	c	m³/s
+68	menovitý príkon	c	W
+69	menovitý tlak	c	kPa,Pa,bar,MPa
+70	menovitý výkon	c	W
+71	kapacita – počet osôb	n
+72	kategória plynového zariadenia	t
+73	kategória stavebného výrobku	t
+74	koncový snímač	b
+75	konštrukčné vyhotovenie	t
+76	kotvenie	b
+77	kvalita vzduchu pre osoby	t
+78	manuál údržby	t
+79	materiál	t
+80	materiál izolácie	t
+81	materiál kovania	t
+82	materiál krídla	t
+83	materiál rámu	t
+84	materiál tesnenia gule	t
+85	materiál zárubne	t
+86	maximálny prietok	c	m³/s
+87	maximálna tlaková strata filtra	c	kPa,Pa,bar,MPa
+88	minimálny hydrodynamický tlak pri odbere požiarnej vody	c	MPa
+89	minimálny prietok	c	m³/s
+90	minimálne prietočné množstvo	c	l/s
+91	množstvo betonárskej výstuže	t
+92	množstvo betonárskej výstuže na m3	t
+93	množstvo hasiva [m³]	c	m³
+94	množstvo predpínacej výstuže	t
+95	namáhanie ohňom zo spodnej strany	b
+96	namáhanie ohňom z hornej strany	b
+97	namáhanie ohňom z vnútornej strany	b
+98	namáhanie ohňom z vonkajšej strany	b
+99	nočný uzáver	b
+100	nútené vetranie	b
+101	násobnosť výmeny vzduchu	t
+102	návod na obsluhu	t
+103	návrhová životnosť	t
+104	názov miestnosti	t
+105	názov stavebného objektu	t
+106	názov stavebného predmetu	t
+107	objem	c	m³,cm³,l
+108	objem [l]	c	l
+109	objem obsahu	c	m³,cm³,l
+110	obvod	c	mm
+111	odlučivosť filtra	c	µm
+112	odlučovač	b
+113	odolnosť proti zaťaženiu vetrom	t
+114	odvod ZOTT	b
+115	ostatné dverné prvky	t
+116	označenie	t
+117	označenie prvku	t
+118	označenie podobjektu	t
+119	označenie rozvádzača	t
+120	označenie stavebného objektu	t
+121	označenie systému	t
+122	označenie časti objektu	t
+123	označenie šablóny vlastností	t
+124	palivový príkon	c	W
+125	paniková hrazda	b
+126	panikové kovanie	b
+127	plocha	c	cm²,mm²,m²,km²
+128	plocha prierezu	c	cm²,mm²,m²,km²
+129	podlažie	t
+130	podrobná špecifikácia	t
+131	poistný ventil	b
+132	poloha hrdiel	t
+133	poloha montážneho umiestnenia	t
+134	polohová orientácia	t
+135	popis poklopu	t
+136	poskytovateľ servisu	t
+137	povrchová úprava	t
+138	povrchová úprava kovania	t
+139	povrchová úprava krídla	t
+140	povrchová úprava krídla – vnútorná	t
+141	povrchová úprava krídla – vonkajšia	t
+142	povrchová úprava rámu	t
+143	povrchová úprava rámu – vnútorná	t
+144	povrchová úprava rámu – vonkajšia	t
+145	povrchová úprava zárubne	t
+146	povrchová úprava – vnútorná	t
+147	povrchová úprava – vonkajšia	t
+148	počet	t
+149	počet hrdiel	n
+150	počet istiacich stupňov	n
+151	počet krídel	n
+152	počet nadzemných podlaží z požiarneho hľadiska	n
+153	počet podzemných podlaží z požiarneho hľadiska	n
+154	počet stupňov filtrácie	n
+155	počet vykurovacích patrón	n
+156	počet telies filtra	t
+157	počet uzatváracích armatúr	n
+158	počet výmenníkov	n
+159	požiadavky PBRS	t
+160	požadované istenie – SIL	t
+161	požiarna odolnosť ZOTT – navrhnutá podľa EN 13501-4	t
+162	požiarna odolnosť – deklarovaná – druh konštrukcie	t
+163	požiarna odolnosť – deklarovaná – kritérium	t
+164	požiarna odolnosť – deklarovaná – čas	t
+165	požiarna odolnosť – navrhnutá – druh konštrukcie	t
+166	požiarna odolnosť – navrhnutá – kritérium	t
+167	požiarna odolnosť – navrhnutá – čas	t
+168	požiarna odolnosť – požadovaná – druh konštrukcie	t
+169	požiarna odolnosť – požadovaná – kritérium	t
+170	požiarna odolnosť – požadovaná – čas	t
+171	požiarna výška objektu	c
+172	požiarny úsek	t
+173	percento primiešania penidla	t
+174	profesia	t
+175	vyhlásenie o zhode	t
+176	protikorózna ochrana	b
+177	vyhotovenie	t
+178	prevádzková hmotnosť	c	kg,g
+179	prevádzkový tlak	c	kPa,Pa,bar,MPa
+180	prah	t
+181	priechodná výška	c	mm
+182	priechodná šírka	c	mm,cm,km,m
+183	priemer	c	mm,cm,km,m
+184	priemerná strata tlaku	c	kPa,Pa,bar,MPa
+185	prietok	c	m³/h
+186	prietok chladenia	c	m³/h
+187	prietok vykurovania	c	m³/h
+188	prietok vzduchu	c	m³/h
+189	prietok vzduchu – odvod	c	m³/h
+190	prietok vzduchu – prívod	c	m³/h
+191	prietokový súčiniteľ kv	c
+192	presnosť	c	%
+193	prevodovka	b
+194	primiešavanie penidla	b
+195	pripojenie – ACS	b
+196	pripojenie – EPS	b
+197	pripojenie – EZS	b
+198	pripojenie – iný systém	t
+199	pripojenie – KAN	b
+200	pripojenie – MaR	b
+201	pripojenie – PZTS	b
+202	pripojenie – SIL	b
+203	pripojenie – SLA	b
+204	pripojenie – VZT	b
+205	priamočinnosť	b
+206	príslušenstvo	t
+207	prívod ZOTT	b
+208	pôdorysná dĺžka	c	mm,cm,km,m
+209	pôdorysná šírka	c	mm,cm,km,m
+210	referencia	t
+211	referencia materiálu	t
+212	referencia výrobku	t
+213	referencované výkresy	t
+214	referenčné číslo, názov	t
+215	rok výroby	t
+216	rozmery	t
+217	rozmery prierezu	t	mm
+218	rozmery šachty	t
+219	rozsah prietoku	t	m³/h
+220	rýchlosť uzatvárania	t	s
+221	sklon [°]	c	°
+222	skupina prvkov	t
+223	skupina presnosti	t
+224	smer hrdiel	t
+225	solárny faktor	c
+226	súčiniteľ prechodu tepla – deklarovaný	c	W/(m²·K)
+227	súčiniteľ prechodu tepla – navrhnutý	c	W/(m²·K)
+228	súčiniteľ prechodu tepla – požadovaný	c	W/(m²·K)
+229	súčiniteľ tepelnej vodivosti – navrhnutý	c	W/(m·K)
+230	súčasť chránenej únikovej cesty	b
+231	súčasť nechránenej únikovej cesty	b
+232	špecifikácia	t
+233	špecifikácia betónu	t
+234	staničenie	t
+235	staničenie do	t
+236	staničenie od	t
+237	stavebná dĺžka	c	mm,cm,km,m
+238	stavebný postup / etapa výstavby	t
+239	stavebný výrobok	t
+240	stupeň krytia IP	t
+241	svetelný okruh	t
+242	svetelný tok	c	lm
+# 243: DSS gives W/(m²·K), a slip: light transmittance τv has no unit (0 to 1)
+243	činiteľ prestupu svetla	c
+244	svetlá výška	c	mm,cm,km,m
+245	systém generálneho kľúča	t
+246	technický list	t
+247	technológia realizácie	t
+248	tepelná clona	b
+249	tepelná izolácia	b
+250	tepelná strata	c	kW
+251	tepelná záťaž	c	kW
+252	teplota média	c	°C
+253	teplota odvádzaného vzduchu	c	°C
+254	teplota priestorová	c	°C
+255	teplota prostredia	c	°C
+256	teplota privádzaného vzduchu	c	°C
+257	teplotný spád	t
+258	termostatická regulácia	b
+259	textúra / farba	t
+260	tlak prevádzkový maximálny	c	kPa,Pa,bar,MPa
+261	tlaková trieda	t
+262	tlaková strata	c	kPa,Pa,bar,MPa
+263	tlakové pomery	t
+264	tlakový stupeň	t
+265	hrúbka	c	mm,cm,km,m
+266	hrúbka izolácie	c	mm,cm,km,m
+267	hrúbka steny	c	mm
+268	hrúbka steny – nominálna	c	mm
+269	tlmič hluku	b
+270	vykurovacie patróny	b
+271	vykurovací výkon	c	W
+272	trvale tesná armatúra	b
+273	TUDU	t
+274	tvar poklopu	t
+275	typ armatúry	t
+276	typ batérie	t
+277	typ betonárskej výstuže	t
+278	typ betonárskej výstuže	t
+279	typ bezpečnostného uzáveru	t
+280	typ filtra	t
+281	typ izolácie	t
+282	typ kovania	t
+283	typ krídla	t
+284	typ média	t
+285	typ merania prietoku	t
+286	typ otvárania	t
+287	typ ovládania	t
+288	typ plynového zariadenia na prípravu jedál	t
+289	typ pohonu	t
+290	typ profilu	t
+291	typ prierezu	t
+292	typ predpínacej výstuže	t
+293	typ pripojenia uzatváracích armatúr	t
+294	typ regulátora	t
+295	typ samozatvárača	t
+296	typ spojenia	t
+297	typ stavebného výrobku	t
+298	typ teplonosného média	t
+299	typ teplovýmennej kvapaliny	t
+300	typ výplne	t
+301	typ zasklenia	t
+302	typ zámku	t
+303	typ zárubne	t
+304	typ závitu	t
+305	typ čistiacej komory	t
+306	typové označenie	t
+307	trieda správania sa pri vonkajšom pôsobení požiaru	t
+308	trieda filtrácie	t
+309	trieda prievzdušnosti	t
+310	trieda reakcie na oheň	t
+311	trieda vplyvu prostredia	t
+312	trieda vonkajších vplyvov	t
+313	trieda zaťaženia	t
+314	trieda čistoty podľa ISO	t
+315	ukazovateľ polohy	b
+316	umiestnenie prístupu	t
+317	veľkosť G	c
+318	veľkosť pripojenia	t
+319	vlastník a správca	t
+320	vlhkosť privádzaného vzduchu	c	%
+321	vlhkostné zisky	c	g/h
+322	vlhkostné úbytky	c	g/h
+323	vnútorné zdroje škodlivín a vlhkosti	t
+324	vonkajší priemer	c	mm
+325	vodotesnosť	t
+326	vybavenosť	t
+327	vybudovaný priestor	t
+328	vykurovanie	b
+329	vzduchová nepriezvučnosť – deklarovaná	c	dB
+330	vzduchová nepriezvučnosť – navrhnutá	c	dB
+331	vzduchová nepriezvučnosť – požadovaná	c	dB
+332	vážená nepriezvučnosť	c	dB
+333	výkon filtra	c	m³/h
+334	výrobca	t
+335	výrobné číslo	t
+336	výška	c	mm,cm,km,m
+337	výška nad podlahou	c	mm,cm,km,m
+338	výška parapetu	c	mm
+339	výška prierezu	c	mm
+340	zabezpečovací prvok regulátora	t
+341	zariadenie na výmenu vzduchu	t
+342	zariadenie/úprava na výmenu vzduchu	t
+343	zemná súprava	b
+344	správa o koordinačnej funkčnej skúške	t
+345	spôsob montáže	t
+346	spôsob napojenia hydroizolácie	t
+347	spôsob otvárania	t
+348	spôsob spojenia	t
+349	spôsob stanovenia	t
+350	spôsob výroby	t
+351	spôsob zachytenia	t
+352	záložné napájanie	b
+353	časť stavby	t
+354	číslo koľaje	t
+355	číslo okruhu	t
+356	šírka	c	mm,cm,km,m
+357	šírka aktívneho krídla	c	mm,cm,km,m
+358	bezbariérovosť	b
+359	botanický druh	t
+360	budova je kultúrnou pamiatkou	b
+361	celková kapacita osôb	n
+362	chladiaci výkon VZT jednotky	c
+363	doba trvania stavby do	t
+364	druh konštrukcie	t
+365	druh konštrukčného systému	t
+366	druh paliva pripojeného spotrebiča	t
+367	dĺžka hadice	c	m
+368	hĺbka stavby	c
+369	horľavé kvapaliny v stavbe	b
+370	horľavé alebo horenie podporujúce plyny	b
+371	menovitá svetlosť	c	mm
+372	menovitá svetlosť napojenia	t
+373	menovitá svetlosť vstupu	c	mm
+374	menovitá svetlosť výstupu	c	mm
+375	menovitý priemer plynovodu	c	mm
+376	menovitý priemer vodomeru	c	mm
+377	koniec fázy etapy	t
+378	dymotesnosť	b
+379	krytie IP	t
+380	minimálny tlak	c	kPa,Pa,bar,MPa
+381	množstvo horľavej kvapaliny v stavbe (m3)	c	m³
+382	množstvo látok s akútnou toxicitou (kg)	c	kg
+383	množstvo streliva v sklade (ks)	n
+384	miesto stavby	t
+385	napätie	c
+386	navrhovaný počet osôb	n
+387	nebezpečné látky a ekologická záťaž	b
+388	návrhový prietok	c
+389	názov stavby	t
+390	obstavaný priestor	c	m³
+391	objem horľavých alebo horenie podporujúcich plynov (l)	c	m³,l
+392	objem zásobníka horľavých alebo horenie podporujúcich plynov (m3)	c	m³
+393	obvod kmeňa	c	mm
+394	odôvodnenie výnimky z požiadavky na výstavbu	t
+395	plocha bytov	c
+396	pobytové miestnosti v podzemnom podlaží	b
+397	podlahová plocha	c
+398	poklop	t
+399	počet bytov	n
+400	počet bytov osobitného určenia	n
+401	počet nadzemných podlaží	n
+402	počet osôb vyžadujúcich asistenciu	n
+403	počet parkovacích státí – autobusy	n
+404	počet parkovacích státí – bicykle	n
+405	počet parkovacích státí – ľahké úžitkové vozidlá	n
+406	počet parkovacích státí – motocykle	n
+407	počet parkovacích státí – osobné vozidlá okrem ZŤP	n
+408	počet parkovacích státí – veľké nákladné vozidlá	n
+409	počet parkovacích státí – ZŤP	n
+410	počet podlaží – nadzemných	n
+411	počet podlaží – podzemných	n
+412	počet podzemných podlaží	n
+413	počet ubytovaných osôb	n
+414	začiatok fázy etapy	t
+415	požiarna odolnosť	t
+416	priestory pre osoby vyžadujúce asistenciu pri evakuácii	b
+417	priestory určené na spanie	b
+418	priestory určené pre verejnosť	b
+419	priemer hadice	c	m
+420	pripojenie VZT	b
+421	samozatvárač	b
+422	SIL menovité napätie	c	kV
+423	SIL menovitý príkon	c	W
+424	sklad streliva	b
+425	stavba určená výhradne na bývanie	b
+426	stavba určená na zaobchádzanie s výbušninami	b
+427	stavba, v ktorej sa nachádza stály úkryt	b
+428	stavba, v ktorej sa skladujú pyrotechnické výrobky	b
+429	stavba, v ktorej sa vyskytujú látky s akútnou toxicitou	b
+430	stupeň ochrany krytom – IP kód	t
+431	svetlá výška podlažia (m)	c	mm,cm,km,m
+432	systém	t
+433	tlakový stupeň plynovodu	t
+434	typ ochrany	t
+435	typ pripojenia	t
+436	typ systému	t
+437	trieda energetickej hospodárnosti budovy	t
+438	trieda následkov	t
+439	trieda spoľahlivosti	t
+440	ubytovacie jednotky	n
+441	výnimka z požiadavky na výstavbu	t
+442	výška stavby	c
+443	výška stavby – budova (m)	c	m
+444	zastavaná plocha	c
+445	zastavaná plocha (m2)	c	m²
+446	spôsob uzavretia	t
+447	spôsob využitia	t
+448	spôsob využitia stavby	t
+449	spôsob využitia územia	t
+450	zásobník horľavých alebo horenie podporujúcich plynov	b
+451	účinnosť [%]	c
+452	dopravná výška [m]	c	m
+453	faktor difúzneho odporu	c
+454	materiál výstuže	t
+455	objemová hmotnosť	c	kg/m³
+456	polomer	c	mm,cm,km,m
+457	pozícia	t
+458	počet vývodov	n
+459	rozsah teplôt	t	°C
+460	rozostup	c	mm
+461	rozvinutá dĺžka	c	mm,cm,km,m
+462	rozvinutá plocha	c	cm²,mm²,m²,km²
+463	rozvinutá šírka	c	mm,cm,km,m
+464	súčiniteľ tepelnej vodivosti – deklarovaný	c	W/(m·K)
+465	škára	t
+466	hrúbka opláštenia 1	t
+467	hrúbka opláštenia 2	t
+468	hrúbka plechu	c	mm
+469	typ opláštenia 1	t
+470	typ opláštenia 2	t
+471	vonkajšia vrstva	t
+472	výhrevnosť	c
+473	spôsob opláštenia	t
+474	kapacita	t
+475	rozsah tlaku	t
+476	typ siete	t
+477	vystuženosť prvku	c	kg/m³

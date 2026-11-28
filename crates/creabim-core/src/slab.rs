@@ -41,7 +41,100 @@ pub fn room_outline(model: &Model, level: ElementId, p: DVec2) -> Option<Vec<DVe
             segs.push((w.start - d * reach, w.end + d * reach));
         }
     }
+    // room separators set to bound slabs too, run on as far as the walls
+    // are so one drawn to a wall's face still meets its centre line
+    for e in model.iter() {
+        if let ElementKind::RoomSeparator(s) = &e.kind {
+            if s.bounds_slabs && s.level == level && s.a.distance(s.b) > 1e-6 {
+                let d = (s.b - s.a).normalize();
+                segs.push((s.a - d * reach.max(0.1), s.b + d * reach.max(0.1)));
+            }
+        }
+    }
     room_in_lines(&segs, p)
+}
+
+/// [`room_outline`] for a slab with its floor on it (George
+/// 2026-11-22): where a side runs along an outer wall (nothing closed
+/// beyond it), it goes out to the outer face of that wall's load-bearing
+/// core; inside the house it stays on the centre lines.
+pub fn room_outline_to_core(model: &Model, level: ElementId, p: DVec2) -> Option<Vec<DVec2>> {
+    let outline = room_outline(model, level, p)?;
+    let walls: Vec<&crate::Wall> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) if w.level == level && !w.is_arc() && w.length() > 1e-3 => Some(w),
+            _ => None,
+        })
+        .collect();
+    let n = outline.len();
+    let area: f64 = (0..n)
+        .map(|i| outline[i].perp_dot(outline[(i + 1) % n]))
+        .sum();
+    // outward of an edge a → b: its right when the outline runs
+    // anticlockwise
+    let ccw = area > 0.0;
+    let outward = |a: DVec2, b: DVec2| {
+        let d = (b - a).normalize_or_zero();
+        if ccw {
+            DVec2::new(d.y, -d.x)
+        } else {
+            DVec2::new(-d.y, d.x)
+        }
+    };
+    let shift: Vec<f64> = (0..n)
+        .map(|i| {
+            let (a, b) = (outline[i], outline[(i + 1) % n]);
+            let out = outward(a, b);
+            let mid = (a + b) / 2.0;
+            // the wall the side runs along, on its centre line
+            let Some(w) = walls.iter().find(|w| {
+                let d = (w.end - w.start).normalize();
+                let along = |q: DVec2| (q - w.start).dot(d);
+                (w.end - w.start).perp_dot(b - a).abs() < 1e-6 * (b - a).length().max(1.0)
+                    && (mid - w.start).perp_dot(d).abs() < 1e-4
+                    && along(mid) > -1e-6
+                    && along(mid) < w.length() + 1e-6
+            }) else {
+                return 0.0;
+            };
+            // an inner wall: another room beyond it
+            let beyond = mid + out * (w.thickness / 2.0 + 0.05);
+            if room_outline(model, level, beyond).is_some() {
+                return 0.0;
+            }
+            let (c0, c1) = crate::walls::core_span(model, w);
+            let left = (w.end - w.start).normalize().perp();
+            if out.dot(left) > 0.0 {
+                c0.max(c1)
+            } else {
+                -c0.min(c1)
+            }
+        })
+        .collect();
+    if shift.iter().all(|d| d.abs() < 1e-9) {
+        return Some(outline);
+    }
+    // every corner where its two sides, moved, meet
+    let line = |i: usize| {
+        let (a, b) = (outline[i], outline[(i + 1) % n]);
+        let o = outward(a, b) * shift[i];
+        (a + o, b - a)
+    };
+    let moved: Vec<DVec2> = (0..n)
+        .map(|i| {
+            let (p0, d0) = line((i + n - 1) % n);
+            let (p1, d1) = line(i);
+            let den = d0.perp_dot(d1);
+            if den.abs() < 1e-12 {
+                // straight on: the corner moves with the side after it
+                p1
+            } else {
+                p0 + d0 * ((p1 - p0).perp_dot(d1) / den)
+            }
+        })
+        .collect();
+    Some(moved)
 }
 
 /// The smallest closed face of the line arrangement `segs` around `p`.
@@ -155,8 +248,10 @@ pub(crate) fn loose_ends(segs: &[(DVec2, DVec2)], stub: f64) -> Vec<(DVec2, usiz
 pub(crate) fn room_in_lines(segs: &[(DVec2, DVec2)], p: DVec2) -> Option<Vec<DVec2>> {
     // split every segment where others cross it
     let (nodes, edges) = split(segs);
-    // loose ends bound nothing
-    let edges = prune(nodes.len(), edges);
+    // loose ends bound nothing; in a fixed order, so the outline starts
+    // at the same corner every time (drawings come out the same)
+    let mut edges: Vec<(usize, usize)> = prune(nodes.len(), edges).into_iter().collect();
+    edges.sort_unstable();
     let mut around: Vec<Vec<usize>> = vec![vec![]; nodes.len()];
     for &(u, v) in &edges {
         around[u].push(v);
@@ -298,6 +393,29 @@ pub fn slab_from_sketch(model: &Model, sk: &Sketch, thickness: f64) -> Result<Sl
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_room_outline_starts_at_the_same_corner_every_time() {
+        let sq = |x: f64| {
+            vec![
+                (DVec2::new(x, 0.0), DVec2::new(x + 4.0, 0.0)),
+                (DVec2::new(x + 4.0, 0.0), DVec2::new(x + 4.0, 3.0)),
+                (DVec2::new(x + 4.0, 3.0), DVec2::new(x, 3.0)),
+                (DVec2::new(x, 3.0), DVec2::new(x, 0.0)),
+            ]
+        };
+        let mut segs = sq(0.0);
+        segs.extend(sq(4.0));
+        let first = super::room_in_lines(&segs, DVec2::new(1.0, 1.0)).unwrap();
+        // each hash set is seeded anew: twenty tries would show a change
+        for _ in 0..20 {
+            assert_eq!(
+                super::room_in_lines(&segs, DVec2::new(1.0, 1.0)).unwrap(),
+                first
+            );
+        }
+    }
+
     use super::*;
     use crate::{sample, Element, Level, Transaction, Wall, Workplane};
     use glam::DVec3;
@@ -322,6 +440,10 @@ mod tests {
                 curtain: None,
                 layer_ends: vec![],
                 bulge: 0.0,
+                bearing: None,
+                fire_partial: false,
+                no_fire_barriers: false,
+                plinth_steps: Vec::new(),
             }),
         )
     }
@@ -367,6 +489,122 @@ mod tests {
         let left = room_outline(&m, l, DVec2::new(1.0, 1.0)).expect("enclosed");
         assert!((crate::polygon::signed_area2(&left) / 2.0 - 12.0).abs() < 1e-9);
         assert_eq!(left.len(), 4);
+    }
+
+    /// George: a slab filling a room did not stop at a room separator;
+    /// one set to bound slabs splits it, as a wall's centre line does.
+    #[test]
+    fn a_room_separator_set_to_bound_slabs_splits_the_fill() {
+        let (mut m, l) = level_model();
+        let mut tx = Transaction::new("walls");
+        for (a, b) in [
+            ((0.0, 0.0), (6.0, 0.0)),
+            ((6.0, 0.0), (6.0, 4.0)),
+            ((6.0, 4.0), (0.0, 4.0)),
+            ((0.0, 4.0), (0.0, 0.0)),
+        ] {
+            tx = tx.insert(wall(l, a, b));
+        }
+        // drawn between the inner faces
+        let mut sep = crate::room::Separator {
+            level: l,
+            a: DVec2::new(2.0, 0.1),
+            b: DVec2::new(2.0, 3.9),
+            look: None,
+            bounds_slabs: false,
+        };
+        let e = Element::new("Separator", ElementKind::RoomSeparator(sep));
+        let id = e.id;
+        tx.insert(e).apply(&mut m).unwrap();
+        let whole = room_outline(&m, l, DVec2::new(1.0, 1.0)).unwrap();
+        assert!((crate::polygon::signed_area2(&whole) / 2.0 - 24.0).abs() < 1e-9);
+        sep.bounds_slabs = true;
+        let mut e = m.get(id).unwrap().clone();
+        e.kind = ElementKind::RoomSeparator(sep);
+        Transaction::new("on")
+            .replace(m.get(id).unwrap().clone(), e)
+            .apply(&mut m)
+            .unwrap();
+        let left = room_outline(&m, l, DVec2::new(1.0, 1.0)).unwrap();
+        assert!((crate::polygon::signed_area2(&left) / 2.0 - 8.0).abs() < 1e-9);
+        let right = room_outline_to_core(&m, l, DVec2::new(4.0, 1.0)).unwrap();
+        assert!(right.iter().any(|q| (q.x - 2.0).abs() < 1e-9));
+    }
+
+    #[test]
+    fn a_floor_slab_reaches_the_outer_walls_cores_and_the_inner_walls_centres() {
+        let (mut m, l) = level_model();
+        let mut tx = Transaction::new("walls");
+        for (a, b) in [
+            ((0.0, 0.0), (6.0, 0.0)),
+            ((6.0, 0.0), (6.0, 4.0)),
+            ((6.0, 4.0), (0.0, 4.0)),
+            ((0.0, 4.0), (0.0, 0.0)),
+            ((3.0, 0.1), (3.0, 3.9)),
+        ] {
+            tx = tx.insert(wall(l, a, b));
+        }
+        tx.apply(&mut m).unwrap();
+        // walls of no layers are all core: out to their outer faces,
+        // 0.1 past the centre lines, and to the middle of the inner one
+        let left = room_outline_to_core(&m, l, DVec2::new(1.0, 1.0)).unwrap();
+        assert!(
+            (crate::polygon::signed_area2(&left).abs() / 2.0 - 3.1 * 4.2).abs() < 1e-9,
+            "{left:?}"
+        );
+        for c in [(-0.1, -0.1), (3.0, -0.1), (3.0, 4.1), (-0.1, 4.1)] {
+            assert!(
+                left.iter().any(|q| q.distance(DVec2::new(c.0, c.1)) < 1e-9),
+                "{left:?}"
+            );
+        }
+        // outer walls 450: 150 insulation outside, 300 masonry: out
+        // only to the masonry's outer face, 75 past the centre line
+        let asm = Element::new(
+            "Masonry + ETICS",
+            ElementKind::Assembly(crate::assembly::Assembly::new(
+                crate::AssemblyUse::Wall,
+                vec![
+                    crate::assembly::Layer::new(
+                        crate::assembly::LayerFunction::Insulation,
+                        None,
+                        0.15,
+                    ),
+                    crate::assembly::Layer::new(
+                        crate::assembly::LayerFunction::Structure,
+                        None,
+                        0.3,
+                    ),
+                ],
+            )),
+        );
+        let a = asm.id;
+        let mut tx = Transaction::new("layers").insert(asm);
+        for e in m.iter() {
+            if let ElementKind::Wall(w) = &e.kind {
+                if w.start.x != 3.0 {
+                    let mut e2 = e.clone();
+                    if let ElementKind::Wall(w2) = &mut e2.kind {
+                        w2.assembly = Some(a);
+                        w2.thickness = 0.45;
+                    }
+                    tx = tx.replace(e.clone(), e2);
+                }
+            }
+        }
+        tx.apply(&mut m).unwrap();
+        let left = room_outline_to_core(&m, l, DVec2::new(1.0, 1.0)).unwrap();
+        for c in [
+            (-0.075, -0.075),
+            (3.0, -0.075),
+            (3.0, 4.075),
+            (-0.075, 4.075),
+        ] {
+            assert!(
+                left.iter().any(|q| q.distance(DVec2::new(c.0, c.1)) < 1e-9),
+                "{left:?}"
+            );
+        }
     }
 
     #[test]
@@ -502,6 +740,40 @@ mod tests {
         sk.closed = false;
         assert!(slab_from_sketch(&m, &sk, 0.2).is_err());
     }
+
+    /// George 2026-11-27: a slab laid on strip footings is a base slab
+    /// (KARI mesh); the same slab with no strips under it is a raft.
+    #[test]
+    fn a_slab_on_strip_footings_is_a_base_slab() {
+        let (mut m, l) = level_model();
+        let slab = Slab::new(
+            l,
+            vec![
+                DVec2::ZERO,
+                DVec2::new(4.0, 0.0),
+                DVec2::new(4.0, 3.0),
+                DVec2::new(0.0, 3.0),
+            ],
+            0.15,
+        );
+        let e = Element::new("Slab", ElementKind::Slab(slab));
+        let id = e.id;
+        Transaction::new("slab").insert(e).apply(&mut m).unwrap();
+        let kind = |m: &Model| match &m.get(id).unwrap().kind {
+            ElementKind::Slab(s) => kind_of(m, s),
+            _ => unreachable!(),
+        };
+        assert_eq!(kind(&m), crate::SlabKind::Foundation);
+        // a strip under the wall along its edge, its top under the slab
+        let mut f =
+            crate::footing::Footing::strip(l, DVec2::new(-0.1, -0.1), DVec2::new(4.1, -0.1));
+        f.below = 0.15;
+        Transaction::new("strip")
+            .insert(Element::new("Footing", ElementKind::Footing(f)))
+            .apply(&mut m)
+            .unwrap();
+        assert_eq!(kind(&m), crate::SlabKind::Base);
+    }
 }
 
 /// A shaft: a vertical hole through every slab and roof between its base
@@ -522,9 +794,30 @@ pub struct Shaft {
     pub top_level: Option<ElementId>,
     #[serde(default)]
     pub top_offset: f64,
+    /// A penetration (prestup) through one slab, as PilonDesigner sets it
+    /// up: its outline follows its size, its plan shows its mark and label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub penetration: Option<crate::Penetration>,
 }
 
 impl Shaft {
+    /// A penetration through slab `slab` (on its own level), `p` its
+    /// size, centred on `centre`: from a little under the slab's bottom to
+    /// a little over its top.
+    pub fn through_slab(slab: &crate::Slab, p: crate::Penetration, centre: DVec2) -> Self {
+        let mut s = Self::new(slab.level, p.slab_outline(centre), Some(slab.level));
+        s.base_offset = slab.top_offset - slab.thickness - 0.01;
+        s.top_offset = slab.top_offset + 0.01;
+        s.penetration = Some(p);
+        s
+    }
+
+    /// Its centre: the middle of its outline.
+    pub fn centre(&self) -> DVec2 {
+        let n = self.boundary.len().max(1) as f64;
+        self.boundary.iter().copied().sum::<DVec2>() / n
+    }
+
     pub fn new(level: ElementId, boundary: Vec<DVec2>, top_level: Option<ElementId>) -> Self {
         let mut boundary = boundary;
         if crate::polygon::signed_area2(&boundary) < 0.0 {
@@ -536,6 +829,7 @@ impl Shaft {
             base_offset: 0.0,
             top_level,
             top_offset: 0.0,
+            penetration: None,
         }
     }
 
@@ -815,5 +1109,54 @@ mod shaft_tests {
                 .unwrap()
                 .contains("overlap")
         );
+    }
+}
+
+/// Whether `slab` is a floor/ceiling slab or a foundation slab: as set, or
+/// else a slab with no other slab under it (one on the ground, the
+/// lowest floor of a basement) is a foundation slab and any other a floor.
+pub fn kind_of(model: &Model, slab: &Slab) -> crate::SlabKind {
+    if let Some(k) = slab.kind {
+        return k;
+    }
+    let top = |s: &Slab| s.top(model.level(s.level).map_or(0.0, |l| l.elevation));
+    let bbox = |s: &Slab| {
+        s.boundary.iter().fold(
+            (DVec2::splat(f64::INFINITY), DVec2::splat(f64::NEG_INFINITY)),
+            |(lo, hi), p| (lo.min(*p), hi.max(*p)),
+        )
+    };
+    let bottom = top(slab) - slab.thickness;
+    let (lo, hi) = bbox(slab);
+    // plans overlapping by more than a few centimetres
+    let under = model.iter().any(|e| match &e.kind {
+        crate::ElementKind::Slab(o) if !std::ptr::eq(o, slab) && top(o) < bottom + 1e-3 => {
+            let (a, b) = bbox(o);
+            let over = hi.min(b) - lo.max(a);
+            over.x > 0.05 && over.y > 0.05
+        }
+        _ => false,
+    });
+    if under {
+        return crate::SlabKind::Floor;
+    }
+    // laid on strip footings (George 2026-11-27): a base slab, which takes
+    // a KARI mesh; a slab with no strips under it is a raft
+    // (a strip under a wall along the slab's edge counts: its line within
+    // half its width of the slab's box)
+    let on_strips = model.iter().any(|e| match &e.kind {
+        crate::ElementKind::Footing(f) if f.kind == crate::FootingKind::Strip => {
+            let (a, b) = f.line(model);
+            let m = f.width / 2.0 + 0.01;
+            let near =
+                |p: DVec2| p.x > lo.x - m && p.x < hi.x + m && p.y > lo.y - m && p.y < hi.y + m;
+            f.top(model) < bottom + 1e-3 && (0..=20).any(|i| near(a.lerp(b, i as f64 / 20.0)))
+        }
+        _ => false,
+    });
+    if on_strips {
+        crate::SlabKind::Base
+    } else {
+        crate::SlabKind::Foundation
     }
 }

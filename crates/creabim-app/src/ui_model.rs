@@ -148,7 +148,7 @@ pub fn show(ui: &mut egui::Ui, items: &[Item]) -> Option<String> {
                 let mut r =
                     ui.add_enabled(*enabled, egui::Button::new(text).shortcut_text(*shortcut));
                 if !hint.is_empty() {
-                    r = r.on_hover_text(hint);
+                    r = r.on_hover_text(crate::i18n::tr(hint));
                 }
                 if r.clicked() {
                     picked = Some(id.clone());

@@ -190,6 +190,110 @@ pub fn detail_items(id: ElementId, d: &DetailItem, mm: f64, look: MembraneLook) 
                 }
             }
         }
+        DetailKind::Line(look) => {
+            for &(a, b) in &segs {
+                line(&mut out, Pen::Drafted(look), a, b);
+            }
+        }
+        DetailKind::Arc(look) | DetailKind::Curve(look) => {
+            let path = drafted_path(d.kind, &d.points);
+            // a curve's dashes run on round it, not again from each of
+            // its short pieces: broken here, on paper's lengths
+            let solid = creabim_core::LineLook {
+                kind: creabim_core::LineType::Solid,
+                ..look
+            };
+            let pieces = match look.kind.dashes() {
+                Some(dashes) => {
+                    let d: Vec<f64> = dashes.iter().map(|x| x * mm).collect();
+                    crate::looks::dash_polyline(&path, &d, look.pen.mm() * mm)
+                }
+                None => vec![path],
+            };
+            for piece in pieces {
+                for w in piece.windows(2) {
+                    if w[0].distance(w[1]) > 1e-12 {
+                        line(&mut out, Pen::Drafted(solid), w[0], w[1]);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The path a drafted arc or curve runs along, as short straight pieces:
+/// an arc from its first point to its second through its third (a
+/// straight line while it has only two, or they are in a line); a curve
+/// smoothly through all its points (centripetal Catmull-Rom), round
+/// again when its last point is its first.
+pub fn drafted_path(kind: DetailKind, pts: &[DVec2]) -> Vec<DVec2> {
+    match kind {
+        DetailKind::Arc(_) => {
+            let [s, e, m, ..] = pts[..] else {
+                return pts.to_vec();
+            };
+            let Some((c, r)) = crate::annotation::circle_through(s, m, e) else {
+                return vec![s, e];
+            };
+            let tau = std::f64::consts::TAU;
+            let t0 = (s - c).to_angle();
+            let ccw = |p: DVec2| ((p - c).to_angle() - t0).rem_euclid(tau);
+            let (se, sm) = (ccw(e), ccw(m));
+            let sweep = if sm <= se { se } else { se - tau };
+            let n = ((sweep.abs() / tau * 96.0).ceil() as usize).clamp(4, 96);
+            (0..=n)
+                .map(|i| c + DVec2::from_angle(t0 + sweep * i as f64 / n as f64) * r)
+                .collect()
+        }
+        DetailKind::Curve(_) => smooth(pts),
+        _ => pts.to_vec(),
+    }
+}
+
+/// A centripetal Catmull-Rom curve through `pts`.
+fn smooth(pts: &[DVec2]) -> Vec<DVec2> {
+    let mut p: Vec<DVec2> = pts.to_vec();
+    p.dedup_by(|a, b| a.distance(*b) < 1e-9);
+    if p.len() < 3 {
+        return p;
+    }
+    let closed = p.len() > 3 && p[0].distance(p[p.len() - 1]) < 1e-9;
+    if closed {
+        p.pop();
+    }
+    let n = p.len();
+    let at = |i: isize| -> DVec2 {
+        if closed {
+            p[i.rem_euclid(n as isize) as usize]
+        } else if i < 0 {
+            // reflected past the ends, so the curve starts along its
+            // first stretch
+            p[0] * 2.0 - p[1]
+        } else if i as usize >= n {
+            p[n - 1] * 2.0 - p[n - 2]
+        } else {
+            p[i as usize]
+        }
+    };
+    let spans = if closed { n } else { n - 1 };
+    let steps = 16;
+    let mut out = vec![p[0]];
+    for k in 0..spans as isize {
+        let (p0, p1, p2, p3) = (at(k - 1), at(k), at(k + 1), at(k + 2));
+        let knot = |a: DVec2, b: DVec2| a.distance(b).sqrt().max(1e-9);
+        let t1 = knot(p0, p1);
+        let t2 = t1 + knot(p1, p2);
+        let t3 = t2 + knot(p2, p3);
+        for j in 1..=steps {
+            let t = t1 + (t2 - t1) * j as f64 / steps as f64;
+            let a1 = p0 * ((t1 - t) / t1) + p1 * (t / t1);
+            let a2 = p1 * ((t2 - t) / (t2 - t1)) + p2 * ((t - t1) / (t2 - t1));
+            let a3 = p2 * ((t3 - t) / (t3 - t2)) + p3 * ((t - t2) / (t3 - t2));
+            let b1 = a1 * ((t2 - t) / t2) + a2 * (t / t2);
+            let b2 = a2 * ((t3 - t) / (t3 - t1)) + a3 * ((t - t1) / (t3 - t1));
+            out.push(b1 * ((t2 - t) / (t2 - t1)) + b2 * ((t - t1) / (t2 - t1)));
+        }
     }
     out
 }
@@ -310,5 +414,67 @@ mod tests {
             .filter(|i| matches!(i, PlanItem::Polygon { .. }))
             .count();
         assert_eq!(units, 4);
+    }
+
+    #[test]
+    fn a_drafted_line_keeps_its_pen_and_line_type() {
+        let look = creabim_core::LineLook {
+            pen: creabim_core::LinePen::Thick,
+            kind: creabim_core::LineType::DashDotDot,
+        };
+        let d = item(
+            DetailKind::Line(look),
+            &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)],
+        );
+        let items = detail_items(ElementId::new(), &d, 0.01, MembraneLook::default());
+        assert_eq!(items.len(), 2);
+        assert!(items
+            .iter()
+            .all(|i| matches!(i, PlanItem::Line { pen: Pen::Drafted(l), .. } if *l == look)));
+        // on paper: 0.20 mm, broken into a dash and two dots
+        let s = crate::paper::pen_stroke(Pen::Drafted(look));
+        assert!((s.width - 0.2).abs() < 1e-9);
+        let (_, _, long) = crate::looks::Looks::plain(creabim_core::LineWeights::for_scale(100.0))
+            .stroke(ElementId::new(), Pen::Drafted(look));
+        assert_eq!(long.unwrap().len(), 6);
+    }
+
+    #[test]
+    fn an_arc_runs_through_its_three_points_and_a_curve_through_all() {
+        let look = creabim_core::LineLook::default();
+        let p = DVec2::new;
+        // start, end, a point on it: a half circle over the top
+        let arc = drafted_path(
+            DetailKind::Arc(look),
+            &[p(-1.0, 0.0), p(1.0, 0.0), p(0.0, 1.0)],
+        );
+        assert!(arc.first().unwrap().distance(p(-1.0, 0.0)) < 1e-9);
+        assert!(arc.last().unwrap().distance(p(1.0, 0.0)) < 1e-9);
+        assert!(arc
+            .iter()
+            .all(|q| (q.length() - 1.0).abs() < 1e-9 && q.y > -1e-9));
+        // the other way round when the point is underneath
+        let under = drafted_path(
+            DetailKind::Arc(look),
+            &[p(-1.0, 0.0), p(1.0, 0.0), p(0.0, -1.0)],
+        );
+        assert!(under.iter().all(|q| q.y < 1e-9));
+        let pts = [p(0.0, 0.0), p(1.0, 1.0), p(2.0, 0.0), p(3.0, 1.0)];
+        let curve = drafted_path(DetailKind::Curve(look), &pts);
+        for q in pts {
+            assert!(curve.iter().any(|c| c.distance(q) < 1e-9), "{q}");
+        }
+        assert!(curve.len() > 30);
+        // dashed: broken along the curve, in solid pieces
+        let dashed = creabim_core::LineLook {
+            kind: creabim_core::LineType::Dashed,
+            ..look
+        };
+        let d = item(
+            DetailKind::Curve(dashed),
+            &[(0.0, 0.0), (1.0, 1.0), (2.0, 0.0)],
+        );
+        let items = detail_items(ElementId::new(), &d, 0.05, MembraneLook::default());
+        assert!(items.iter().all(|i| matches!(i, PlanItem::Line { pen: Pen::Drafted(l), .. } if l.kind == creabim_core::LineType::Solid)));
     }
 }

@@ -5,7 +5,7 @@
 
 use glam::DVec3;
 
-const EPS: f64 = 1e-7;
+const EPS: f64 = 1e-5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BoolOp {
@@ -267,6 +267,46 @@ impl Node {
 
 /// `a op b`, both closed and outward-facing.
 pub fn boolean(a: Vec<Polygon>, b: Vec<Polygon>, op: BoolOp) -> Vec<Polygon> {
+    if op == BoolOp::Difference {
+        // only the faces of `a` about `b` take part: a slab cut by forty
+        // walls, one after another, otherwise splits every face of it on
+        // every cut, until a tower ran out of memory
+        let Some((lo, hi)) = bounds(&b) else {
+            return a;
+        };
+        let (lo, hi) = (lo - DVec3::splat(1e-3), hi + DVec3::splat(1e-3));
+        let (near, far): (Vec<Polygon>, Vec<Polygon>) = a.into_iter().partition(|p| {
+            p.points
+                .iter()
+                .fold(None, |acc: Option<(DVec3, DVec3)>, q| {
+                    Some(acc.map_or((*q, *q), |(l, h)| (l.min(*q), h.max(*q))))
+                })
+                .is_some_and(|(pl, ph)| pl.cmple(hi).all() && ph.cmpge(lo).all())
+        });
+        if near.is_empty() {
+            // no face of `a` about `b`: `b` is wholly outside it, or
+            // wholly inside (a beam buried in a wall), leaving a cavity
+            let inside =
+                bounds(&far).is_some_and(|(al, ah)| al.cmple(lo).all() && ah.cmpge(hi).all());
+            return if inside { whole(far, b, op) } else { far };
+        }
+        let mut out = whole(near, b, op);
+        out.extend(far);
+        return out;
+    }
+    whole(a, b, op)
+}
+
+/// The corners' box round a set of polygons.
+fn bounds(ps: &[Polygon]) -> Option<(DVec3, DVec3)> {
+    ps.iter()
+        .flat_map(|p| p.points.iter())
+        .fold(None, |acc: Option<(DVec3, DVec3)>, q| {
+            Some(acc.map_or((*q, *q), |(l, h)| (l.min(*q), h.max(*q))))
+        })
+}
+
+fn whole(a: Vec<Polygon>, b: Vec<Polygon>, op: BoolOp) -> Vec<Polygon> {
     let mut a = Node::new(a);
     let mut b = Node::new(b);
     match op {

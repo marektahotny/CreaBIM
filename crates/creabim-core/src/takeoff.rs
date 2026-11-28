@@ -67,6 +67,100 @@ pub struct Rate {
     pub per: RateUnit,
 }
 
+/// What a take-off's rows are grouped by, outermost first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GroupBy {
+    /// Walls, slabs, roofs...: the line's [`Line::category`].
+    Category,
+    /// The storey the element stands on.
+    Level,
+    /// The element's type, or its assembly, or its name.
+    Construction,
+    /// The material.
+    Material,
+}
+
+impl GroupBy {
+    pub const ALL: [GroupBy; 4] = [
+        GroupBy::Category,
+        GroupBy::Level,
+        GroupBy::Construction,
+        GroupBy::Material,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            GroupBy::Category => "Element type",
+            GroupBy::Level => "Level",
+            GroupBy::Construction => "Construction",
+            GroupBy::Material => "Material",
+        }
+    }
+}
+
+/// How a take-off table is laid out: its groups, whether it lists every
+/// element's layer on a row of its own, and the column its rows sort by.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Layout {
+    /// The groups, outermost first; `None` groups by element type (walls,
+    /// slabs...), an empty list not at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<Vec<GroupBy>>,
+    /// A row for each layer of each element, instead of a row for each
+    /// material (and thickness) in a group.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub detail: bool,
+    /// The heading of the column the rows in a group sort by; none keeps
+    /// the order they come in (layer by layer, element by element).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub descending: bool,
+}
+
+impl Layout {
+    pub fn is_default(&self) -> bool {
+        *self == Layout::default()
+    }
+
+    /// The groups in effect; `by_level` is the older switch that put each
+    /// level's materials under a heading.
+    pub fn groups(&self, by_level: bool) -> Vec<GroupBy> {
+        match &self.group {
+            Some(g) => g.clone(),
+            None if by_level => vec![GroupBy::Level, GroupBy::Category],
+            None => vec![GroupBy::Category],
+        }
+    }
+}
+
+/// The order element categories are listed in: as a house is built.
+pub const CATEGORY_ORDER: [&str; 23] = [
+    "Footings",
+    "Foundation slabs",
+    "Reinforcement",
+    "Walls",
+    "Plinths",
+    "Columns",
+    "Beams",
+    "Lintels",
+    "Slabs",
+    "Stairs",
+    "Chimneys",
+    "Roofs",
+    "Ceilings",
+    "Railings",
+    "Doors",
+    "Windows",
+    "Thresholds",
+    "Outer sills",
+    "Inner sills",
+    "Penetrations",
+    "Tiling",
+    "Objects",
+    "Masses",
+];
+
 /// Measured amounts, in metres, square metres and cubic metres.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Quantity {
@@ -90,7 +184,8 @@ impl Quantity {
 pub struct Line {
     pub element: ElementId,
     /// "Walls", "Slabs", "Roofs", "Ceilings", "Columns", "Beams", "Footings",
-    /// "Doors", "Windows", "Objects", "Stairs", "Railings", "Masses".
+    /// "Doors", "Windows", "Outer sills", "Inner sills", "Objects", "Stairs",
+    /// "Railings", "Masses", "Plinths", "Tiling" (measured only).
     pub category: &'static str,
     pub level: Option<ElementId>,
     pub material: Option<ElementId>,
@@ -101,6 +196,57 @@ pub struct Line {
     /// Thickness of the layer, or of the element, metres.
     pub thickness: f64,
     pub quantity: Quantity,
+    /// A door's or window's perimeter, m (0 for anything else).
+    pub perimeter: f64,
+    /// What the line is listed as when it is not by its material: a
+    /// window sill by its kind and size.
+    pub label: Option<String>,
+}
+
+/// A lintel's line as the take-off lists it (George 2026-11-25): its
+/// type, width × height × length and how many lintels (openings) of it
+/// there are, its pieces counted by the line: `PORFIX NP 1800/100 –
+/// 100 × 250 × 1800 mm (2 lintels)`; an RC lintel with the insulation in
+/// its formwork.
+fn lintel_label(model: &Model, e: &crate::Element) -> Option<String> {
+    let ElementKind::Beam(b) = &e.kind else {
+        return None;
+    };
+    let l = b.lintel.as_ref()?;
+    let size = format!(
+        "{:.0} × {:.0} × {:.0} mm",
+        b.width * 1000.0,
+        b.depth * 1000.0,
+        b.length() * 1000.0
+    );
+    if l.cast.is_some() {
+        return Some(format!(
+            "{} – {size}{}",
+            crate::masonry::RC_LINTEL,
+            crate::masonry::insulation_note(model, e.id)
+        ));
+    }
+    let p = crate::masonry::product(&l.product)?;
+    // the openings lintels of this product lie over
+    let mut openings: Vec<ElementId> = vec![];
+    for x in model.iter() {
+        if let ElementKind::Beam(o) = &x.kind {
+            if let Some(ol) = &o.lintel {
+                if ol.product == l.product {
+                    let key = ol.opening.unwrap_or(x.id);
+                    if !openings.contains(&key) {
+                        openings.push(key);
+                    }
+                }
+            }
+        }
+    }
+    Some(format!(
+        "{} {} – {size} ({})",
+        p.family.maker(),
+        p.name,
+        crate::words::tr("{} lintels").replace("{}", &openings.len().to_string())
+    ))
 }
 
 /// Every take-off line of the model, element by element in model order.
@@ -110,6 +256,10 @@ pub fn lines(model: &Model) -> Vec<Line> {
     let strips = crate::footing::strip_outlines(model);
     let joins = crate::wall_joins(model);
     for e in model.iter() {
+        // VELOX boards are listed as boards and clips (velox_lines)
+        if formwork_of(model, e).is_some() {
+            continue;
+        }
         // the measure of the whole element and its thickness
         let (category, level, whole, thickness) = match &e.kind {
             ElementKind::Wall(w) => {
@@ -144,7 +294,10 @@ pub fn lines(model: &Model) -> Vec<Line> {
             ElementKind::Slab(s) => {
                 let area = s.area();
                 (
-                    "Slabs",
+                    match crate::slab::kind_of(model, s) {
+                        crate::SlabKind::Foundation | crate::SlabKind::Base => "Foundation slabs",
+                        crate::SlabKind::Floor => "Slabs",
+                    },
                     s.level,
                     Quantity {
                         area,
@@ -194,11 +347,18 @@ pub fn lines(model: &Model) -> Vec<Line> {
             }
             ElementKind::Column(c) => {
                 let height = c.height_in(model);
+                // a board of insulation or render round a column: its face
+                let area = match (c.piece, c.profile) {
+                    (Some(p), crate::Profile::Rectangle { width, depth }) => {
+                        (if p.side % 2 == 0 { width } else { depth }) * height
+                    }
+                    _ => 0.0,
+                };
                 (
                     "Columns",
                     c.level,
                     Quantity {
-                        area: 0.0,
+                        area,
                         volume: c.profile.area() * height,
                         length: height,
                         count: 1,
@@ -207,10 +367,17 @@ pub fn lines(model: &Model) -> Vec<Line> {
                 )
             }
             ElementKind::Beam(b) => (
-                "Beams",
+                if b.lintel.is_some() {
+                    "Lintels"
+                } else {
+                    "Beams"
+                },
                 b.level,
                 Quantity {
-                    area: 0.0,
+                    // a board of insulation or render along a beam: its face
+                    area: b.piece.map_or(0.0, |p| {
+                        b.length() * if p.side < 2 { b.depth } else { b.width }
+                    }),
                     volume: b.width * b.depth * b.length(),
                     length: b.length(),
                     count: 1,
@@ -232,7 +399,7 @@ pub fn lines(model: &Model) -> Vec<Line> {
                             .unwrap_or(a.distance(b) * f.width);
                         (area, a.distance(b))
                     }
-                    FootingKind::Pad => (
+                    FootingKind::Pad | FootingKind::Pile => (
                         crate::polygon::signed_area2(&f.pad_outline(model)).abs() / 2.0,
                         0.0,
                     ),
@@ -316,6 +483,35 @@ pub fn lines(model: &Model) -> Vec<Line> {
                     0.0,
                 )
             }
+            // a Schiedel chimney: its height, as the maker prices it per
+            // running metre, and its solid between the flue and the outside
+            ElementKind::Part(p) if p.chimney.is_some() && !p.void => {
+                let crate::parts::Form::Extrusion {
+                    outline,
+                    holes,
+                    height,
+                    ..
+                } = &p.form
+                else {
+                    continue;
+                };
+                let area = (crate::polygon::signed_area2(outline).abs() / 2.0)
+                    - holes
+                        .iter()
+                        .map(|h| crate::polygon::signed_area2(h).abs() / 2.0)
+                        .sum::<f64>();
+                (
+                    "Chimneys",
+                    p.level,
+                    Quantity {
+                        length: *height,
+                        volume: area * height,
+                        count: 1,
+                        ..Default::default()
+                    },
+                    0.0,
+                )
+            }
             // a mass: its volume as modelled, modifiers and scale included
             ElementKind::FreeMesh(m) => {
                 let Some(level) = m.level else {
@@ -357,6 +553,8 @@ pub fn lines(model: &Model) -> Vec<Line> {
                         volume: whole.area * l.thickness,
                         ..whole
                     },
+                    perimeter: 0.0,
+                    label: None,
                 });
             }
         } else {
@@ -368,10 +566,335 @@ pub fn lines(model: &Model) -> Vec<Line> {
                 layer: None,
                 thickness,
                 quantity: whole,
+                perimeter: match &e.kind {
+                    ElementKind::Opening(o) => 2.0 * (o.width + o.height),
+                    _ => 0.0,
+                },
+                label: lintel_label(model, e).or_else(|| match &e.kind {
+                    ElementKind::Part(p) => p.chimney.map(|c| c.label()),
+                    _ => None,
+                }),
             });
         }
     }
+    // door thresholds: pieces of a material and size, as long as the
+    // clear width between the jambs and as deep as the frame
+    for e in model.iter() {
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        if o.kind != crate::OpeningKind::Door || !o.threshold {
+            continue;
+        }
+        let Some(host) = model.get(o.host) else {
+            continue;
+        };
+        let ElementKind::Wall(w) = &host.kind else {
+            continue;
+        };
+        let asm = assembly_of(model, host).map(|x| x.1);
+        let frame = o.frame.fitted(o.width, o.height, w.thickness);
+        let (a0, a1) = o.frame_span(w, asm, frame.depth);
+        let mm = |v: f64| (v * 1000.0).round();
+        let depth = mm(a1 - a0) / 1000.0;
+        let length = mm(o.width - 2.0 * crate::joinery::frame_width(o)) / 1000.0;
+        let kind = o
+            .threshold_material
+            .and_then(|m| model.get(m))
+            .map(|m| crate::words::tr(&m.name));
+        let label = format!(
+            "{}{} {} {} × {} {} mm",
+            crate::words::tr("Threshold"),
+            kind.map_or(String::new(), |k| format!(", {k}")),
+            crate::words::tr("w."),
+            mm(depth),
+            crate::words::tr("l."),
+            mm(length)
+        );
+        out.push(Line {
+            element: e.id,
+            category: "Thresholds",
+            level: Some(w.level),
+            material: o.threshold_material,
+            layer: None,
+            thickness: 0.0,
+            quantity: Quantity {
+                area: length * depth,
+                length,
+                count: 1,
+                ..Default::default()
+            },
+            perimeter: 0.0,
+            label: Some(label),
+        });
+    }
+    // window sills, outer (sheet metal) and inner (boards): pieces of a
+    // size, listed by kind and size
+    for (outer, category) in [(true, "Outer sills"), (false, "Inner sills")] {
+        let all = if outer {
+            crate::joinery::outer_sills(model)
+        } else {
+            crate::joinery::inner_sills(model)
+        };
+        for s in all {
+            let mm = |v: f64| (v * 1000.0).round() as i64;
+            // its size: width (across the wall) × length, mm
+            let label = format!(
+                "{} {} {} × {} {} mm",
+                crate::words::tr(if outer { "Outer sill" } else { "Inner sill" }),
+                crate::words::tr("w."),
+                mm(s.depth),
+                crate::words::tr("l."),
+                mm(s.length)
+            );
+            for w in &s.windows {
+                let level = match model.get(*w).map(|e| &e.kind) {
+                    Some(ElementKind::Opening(o)) => match model.get(o.host).map(|h| &h.kind) {
+                        Some(ElementKind::Wall(h)) => Some(h.level),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                out.push(Line {
+                    element: *w,
+                    category,
+                    level,
+                    material: None,
+                    layer: None,
+                    thickness: 0.0,
+                    quantity: Quantity {
+                        area: s.length * s.depth,
+                        length: s.length,
+                        count: 1,
+                        ..Default::default()
+                    },
+                    perimeter: 0.0,
+                    label: Some(label.clone()),
+                });
+            }
+        }
+    }
+    // the rooms' wall tiling, and apart from it the tiles on the window
+    // reveals it runs past (George 2026-11-24)
+    for e in model.iter() {
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        if r.tilings().next().is_none() {
+            continue;
+        }
+        let Some(shape) = crate::room::shape_of(model, r) else {
+            continue;
+        };
+        for t in r.tilings() {
+            let name = if t.name.trim().is_empty() {
+                crate::words::tr("Wall tiling")
+            } else {
+                t.name.trim().to_string()
+            };
+            let walls: f64 = crate::room::tiling_panels_of(model, &shape, t)
+                .iter()
+                .map(|p| p.a.distance(p.b) * (p.z1 - p.z0))
+                .sum();
+            let reveals: f64 = crate::room::tiling_reveals(model, &shape, t)
+                .iter()
+                .map(|v| v.area())
+                .sum();
+            let line = |label: String, area: f64| Line {
+                element: e.id,
+                category: "Tiling",
+                level: Some(r.level),
+                material: None,
+                layer: None,
+                thickness: 0.0,
+                quantity: Quantity {
+                    area,
+                    count: 1,
+                    ..Default::default()
+                },
+                perimeter: 0.0,
+                label: Some(label),
+            };
+            if walls > 1e-6 {
+                out.push(line(name.clone(), walls));
+            }
+            if reveals > 1e-6 {
+                out.push(line(
+                    format!("{name} – {}", crate::words::tr("window reveals")),
+                    reveals,
+                ));
+            }
+        }
+    }
+    out.extend(kari_lines(model));
+    out.extend(velox_lines(model));
     out
+}
+
+/// The VELOX formwork board `e` is part of, and its host.
+fn formwork_of<'a>(
+    model: &'a Model,
+    e: &crate::Element,
+) -> Option<(&'a crate::Element, &'a crate::wrap::Formwork)> {
+    let p = crate::wrap::piece_of(e)?;
+    let h = model.get(p.host)?;
+    match &h.kind {
+        ElementKind::Beam(b) => b.wrap.as_ref()?.formwork.as_ref().map(|f| (h, f)),
+        _ => None,
+    }
+}
+
+/// VELOX ring-beam formwork (George 2026-11-27) as the maker sells it,
+/// a line each for a storey's boards of one kind and its clips: boards
+/// 2 m long, rounded up, and sets of clips for 2 m each (HB of 5 pcs
+/// one-sided, AB + ES of 10 pcs two-sided), as long as the masonry is
+/// wide (brochure *Debnenie vencov*, SKBVA5/11.24/4.0).
+pub fn velox_lines(model: &Model) -> Vec<Line> {
+    use crate::velox;
+    // (category, level, label, clips) → (first element, length)
+    type Key = (&'static str, ElementId, String, bool);
+    let mut sums: Vec<(Key, ElementId, f64)> = vec![];
+    let mut put = |key: Key, id: ElementId, len: f64| match sums.iter_mut().find(|s| s.0 == key) {
+        Some(s) => s.2 += len,
+        None => sums.push((key, id, len)),
+    };
+    for e in model.iter() {
+        let ElementKind::Beam(b) = &e.kind else {
+            continue;
+        };
+        let Some(f) = b.wrap.as_ref().and_then(|w| w.formwork.as_ref()) else {
+            continue;
+        };
+        if b.piece.is_some() {
+            continue;
+        }
+        let category = if b.lintel.is_some() {
+            "Lintels"
+        } else {
+            "Beams"
+        };
+        // the board along the exterior side runs over the corners
+        let along = |side: usize| {
+            model
+                .iter()
+                .find_map(|x| match &x.kind {
+                    ElementKind::Beam(p)
+                        if p.piece.is_some_and(|q| {
+                            q.host == e.id && q.side as usize == side && !q.plaster
+                        }) =>
+                    {
+                        Some(p.length())
+                    }
+                    _ => None,
+                })
+                .unwrap_or(b.length())
+        };
+        let board = |p: &velox::Board| {
+            crate::words::tr("{maker} {name} – {t} × {h} × {l} mm")
+                .replace("{maker}", velox::MAKER)
+                .replace("{name}", p.short())
+                .replace("{t}", &format!("{:.0}", p.thickness() * 1000.0))
+                .replace("{h}", &format!("{:.0}", p.height * 1000.0))
+                .replace("{l}", &format!("{:.0}", p.length * 1000.0))
+        };
+        let ext = along(f.ext as usize);
+        put((category, b.level, board(f.product()), false), e.id, ext);
+        if f.two_sided {
+            put(
+                (category, b.level, board(&velox::WSC), false),
+                e.id,
+                along(f.inner()),
+            );
+        }
+        // the clips as long as the masonry is wide
+        let wall = match category {
+            "Beams" => crate::masonry::ring_core_width(model, b),
+            _ => crate::masonry::lintel_core_width(model, b),
+        };
+        let clips = crate::words::tr(if f.two_sided {
+            "{maker} clips AB + ES, masonry {w} mm (sets of {n} pcs)"
+        } else {
+            "{maker} clips HB, masonry {w} mm (sets of {n} pcs)"
+        })
+        .replace("{maker}", velox::MAKER)
+        .replace(
+            "{w}",
+            &wall.map_or("?".into(), |w| format!("{:.0}", w * 1000.0)),
+        )
+        .replace(
+            "{n}",
+            &(if f.two_sided {
+                velox::AB_ES_SET
+            } else {
+                velox::HB_SET
+            })
+            .to_string(),
+        );
+        put((category, b.level, clips, true), e.id, b.length());
+    }
+    sums.into_iter()
+        .map(|((category, level, label, clips), element, len)| {
+            let per = if clips {
+                velox::CLIP_SET_LENGTH
+            } else {
+                velox::WSC.length
+            };
+            let n = (len / per - 1e-6).ceil().max(0.0) as usize;
+            let unit = crate::words::tr(if clips { "{n} sets" } else { "{n} pcs" })
+                .replace("{n}", &n.to_string());
+            Line {
+                element,
+                category,
+                level: Some(level),
+                material: None,
+                layer: None,
+                thickness: 0.0,
+                quantity: Quantity {
+                    length: len,
+                    count: n,
+                    ..Default::default()
+                },
+                perimeter: 0.0,
+                label: Some(format!("{unit} – {label}")),
+            }
+        })
+        .collect()
+}
+
+/// The welded meshes laid in slabs (George 2026-11-27): a line for each
+/// mesh on a storey, its designation, sheets with their laps and weight
+/// in tonnes, its area the slabs' area reinforced.
+pub fn kari_lines(model: &Model) -> Vec<Line> {
+    crate::kari::laid(model)
+        .into_iter()
+        .map(|l| {
+            let t = format!("{:.3}", l.kg() / 1000.0).replace('.', ",");
+            let label = crate::words::tr(if l.top {
+                "KARI mesh {d}, top edge – {n} pcs, lap {lap} mm, {t} t"
+            } else {
+                "KARI mesh {d}, bottom edge – {n} pcs, lap {lap} mm, {t} t"
+            })
+            .replace("{d}", &l.mesh.designation())
+            .replace("{n}", &l.pieces.to_string())
+            .replace("{lap}", &format!("{:.0}", l.lap * 1000.0))
+            .replace("{t}", &t);
+            Line {
+                element: l.slabs[0],
+                category: "Reinforcement",
+                level: Some(l.level),
+                material: None,
+                layer: None,
+                thickness: l.mesh.wire / 1000.0,
+                quantity: Quantity {
+                    area: l.area,
+                    count: l.pieces,
+                    ..Default::default()
+                },
+                perimeter: 0.0,
+                label: Some(label),
+            }
+        })
+        .collect()
 }
 
 /// The quantities of one material, or of one level, added up.
@@ -485,6 +1008,44 @@ mod tests {
     use super::*;
     use crate::sample::{layered_house, sample_house};
     use crate::{Document, Element, Transaction};
+
+    #[test]
+    fn a_schiedel_chimney_is_listed_by_its_metres_and_weight() {
+        let mut model = sample_house();
+        let level = model
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let c = crate::chimney::Chimney {
+            system: crate::chimney::System::Absolut,
+            flue: 200,
+            ..Default::default()
+        };
+        let e = Element::new(
+            "Chimney",
+            ElementKind::Part(crate::parts::Part::chimney(
+                level,
+                c,
+                glam::DVec2::new(1.0, 1.0),
+                glam::DVec2::X,
+                0.0,
+                6.0,
+            )),
+        );
+        let id = e.id;
+        model = Model::from_elements(model.iter().cloned().chain([e])).unwrap();
+        let all = lines(&model);
+        let l = all.iter().find(|l| l.element == id).unwrap();
+        assert_eq!(l.category, "Chimneys");
+        assert!((l.quantity.length - 6.0).abs() < 1e-9);
+        let area = 0.38 * 0.38 - std::f64::consts::PI * 0.1 * 0.1;
+        assert!((l.quantity.volume - area * 6.0).abs() < 1e-3);
+        assert_eq!(
+            l.label.as_deref(),
+            Some("Schiedel ABSOLUT 20 – 380 × 380 mm (87,1 kg/m)")
+        );
+    }
 
     #[test]
     fn a_plain_wall_measures_its_face_less_openings_and_its_volume() {

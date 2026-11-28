@@ -123,42 +123,69 @@ pub fn section_view_in(
     scale: f64,
     reveal: bool,
 ) -> Drawing {
+    let whole = [(0.0, start.distance(end), 0.0)];
+    section_view_jogged(
+        model, scene, start, end, depth, cut, style, scale, reveal, &whole,
+    )
+}
+
+/// [`section_view_in`] along a line that steps aside (a jogged section,
+/// zalomený rez): each of `stretches` (from, to along the line, and how
+/// far its cut plane stands to the side the view looks to) is cut and seen
+/// from its own plane, and drawn side by side as one section.
+#[allow(clippy::too_many_arguments)]
+pub fn section_view_jogged<S: std::borrow::Borrow<SceneItem> + Sync>(
+    model: &Model,
+    scene: &[S],
+    start: DVec2,
+    end: DVec2,
+    depth: f64,
+    cut: bool,
+    style: ViewStyle,
+    scale: f64,
+    reveal: bool,
+    stretches: &[(f64, f64, f64)],
+) -> Drawing {
     let frame = SectionFrame::new(start, end, depth);
     let mut items = Vec::new();
-
-    let project = |p: DVec3| frame.project(p);
     let revealed = reveal.then(|| revealable(model));
-    let (lines, image) = hidden_lines(
-        scene,
-        &project,
-        frame.depth,
-        Some((0.0, frame.length)),
-        style,
-        revealed.as_ref(),
-    );
-    items.extend(image);
-    items.extend(lines);
-    items.extend(void_lines(
-        model,
-        &project,
-        frame.depth,
-        Some((0.0, frame.length)),
-    ));
-
     // Cut fill, drawn over the projection; layered elements layer by layer.
     let mut layers = vec![];
-    if cut {
+    let mut fills = vec![];
+    for &(from, to, aside) in stretches {
+        // this stretch's own cut plane
+        let frame = SectionFrame {
+            origin: frame.origin + frame.look * aside,
+            ..frame
+        };
+        let project = |p: DVec3| frame.project(p);
+        let (lines, image) = hidden_lines(
+            scene,
+            &project,
+            frame.depth,
+            Some((from, to)),
+            style,
+            revealed.as_ref(),
+        );
+        items.extend(image);
+        items.extend(lines);
+        items.extend(void_lines(model, &project, frame.depth, Some((from, to))));
+        if !cut {
+            continue;
+        }
         for s in scene {
+            let s: &SceneItem = s.borrow();
             for loop_ in cut_loops(s, &frame) {
                 let pts: Vec<DVec2> = loop_.iter().map(|p| DVec2::new(p.x, p.y)).collect();
-                let (x0, x1) = (-1e-6, frame.length + 1e-6);
+                let (x0, x1) = (from - 1e-6, to + 1e-6);
                 if pts.iter().all(|p| p.x < x0) || pts.iter().all(|p| p.x > x1) {
                     continue;
                 }
-                // what runs on past the section line's ends (the ground,
-                // a long slab) is cut off at them
+                // what runs on past the stretch's ends (the ground, a long
+                // slab, what the next stretch cuts elsewhere) is cut off
+                // at them
                 let pts = if pts.iter().any(|p| p.x < x0 || p.x > x1) {
-                    clip_x(&clip_x(&pts, 0.0, 1.0), frame.length, -1.0)
+                    clip_x(&clip_x(&pts, from, 1.0), to, -1.0)
                 } else {
                     pts
                 };
@@ -171,7 +198,7 @@ pub fn section_view_in(
                         points: pts,
                         layer: Some(layer),
                     }),
-                    None => items.push(PlanItem::Polygon {
+                    None => fills.push(PlanItem::Polygon {
                         id: s.id,
                         pen: Pen::Cut,
                         points: pts,
@@ -180,8 +207,9 @@ pub fn section_view_in(
             }
         }
     }
+    items.extend(fills);
 
-    crate::plan::clean_up_pieces(model, &mut items, layers);
+    crate::plan::clean_up_pieces_in(model, &mut items, layers, true);
     if reveal {
         crate::plan::reveal_covered(model, &mut items);
     }
@@ -233,6 +261,30 @@ pub fn section_view_in(
     .map_or((0.0, frame.length), |(lo, hi)| (lo.x, hi.x));
     items.extend(level_datums(model, span, scale));
     PlanView { items }
+}
+
+/// What a section or elevation puts on its sheets: without the level
+/// heads and their datum lines, unless the view asks for them there
+/// ([`View::levels_on_sheets`](creabim_core::View)). Plans are left alone.
+pub fn for_sheet(model: &Model, view: ElementId, mut d: Drawing) -> Drawing {
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return d;
+    };
+    if v.levels_on_sheets || !matches!(v.kind, creabim_core::ViewKind::Section { .. }) {
+        return d;
+    }
+    let level =
+        |id: &ElementId| matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Level(_)));
+    d.items.retain(|it| match it {
+        PlanItem::Line {
+            id, pen: Pen::Grid, ..
+        } => !level(id),
+        PlanItem::Annotation { id, item } => {
+            !(level(id) && matches!(item.shape, crate::annotation::Shape::Level { .. }))
+        }
+        _ => true,
+    });
+    d
 }
 
 /// Level lines across a section or elevation spanning `span` along it, a
@@ -445,12 +497,25 @@ pub fn axonometric_view_in(
     reveal: bool,
     crop: &[creabim_core::CropBox],
 ) -> Drawing {
-    let frame = AxoFrame::new(model, azimuth, altitude);
     crate::cropbox::crop_scene(model, &mut scene, crop);
+    axo_drawing(model, &scene, azimuth, altitude, style, reveal, crop)
+}
+
+/// [`axonometric_view_in`] of a scene already cropped.
+fn axo_drawing<S: std::borrow::Borrow<SceneItem> + Sync>(
+    model: &Model,
+    scene: &[S],
+    azimuth: f64,
+    altitude: f64,
+    style: ViewStyle,
+    reveal: bool,
+    crop: &[creabim_core::CropBox],
+) -> Drawing {
+    let frame = AxoFrame::new(model, azimuth, altitude);
     let project = |p: DVec3| frame.project(p);
     let revealed = reveal.then(|| revealable(model));
     let (lines, image) = hidden_lines(
-        &scene,
+        scene,
         &project,
         frame.radius * 2.0,
         None,
@@ -566,8 +631,8 @@ fn revealable(model: &Model) -> HashSet<ElementId> {
 /// `reveal` elements that are hidden because they are inside another
 /// element (behind its near face and in front of its far one) come back
 /// dashed, as [`Pen::Hidden`].
-pub(crate) fn hidden_lines(
-    scene: &[SceneItem],
+pub(crate) fn hidden_lines<S: std::borrow::Borrow<SceneItem> + Sync>(
+    scene: &[S],
     project: &(dyn Fn(DVec3) -> DVec3 + Sync),
     depth: f64,
     crop: Option<(f64, f64)>,
@@ -583,6 +648,11 @@ pub(crate) fn hidden_lines(
         zbuf.render_backs(&faces);
     }
     let image = zbuf.image();
+    if !wire {
+        // the 3 × 3 lookup pays for itself only with many edges to sample
+        let tris: usize = faces.iter().map(|f| f.2.len()).sum();
+        zbuf.prepare_sampling(tris > 100_000);
+    }
     let zbuf = &zbuf;
     // each element's edges on its own core; the lines kept in scene order
     // the direction depth grows in, in world terms: a curved wall's seams
@@ -594,8 +664,28 @@ pub(crate) fn hidden_lines(
         (project(DVec3::Z).z - o.z) as f32,
     );
     let per_item = par_map(scene, |index, s| {
+        let s: &SceneItem = s.borrow();
         let mut items = Vec::new();
         let revealed = reveal.is_some_and(|r| r.contains(&s.id));
+        // wholly behind what is drawn in front of it: no edge can show
+        if !wire && !revealed {
+            if let Some((lo, hi)) = s.mesh.bounds() {
+                let corners = (0..8).map(|k| {
+                    project(DVec3::new(
+                        if k & 1 == 0 { lo.x } else { hi.x } as f64,
+                        if k & 2 == 0 { lo.y } else { hi.y } as f64,
+                        if k & 4 == 0 { lo.z } else { hi.z } as f64,
+                    ))
+                });
+                let (a, b) = corners.fold(
+                    (DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY)),
+                    |(a, b), p| (a.min(p), b.max(p)),
+                );
+                if a.z > 1e-4 && zbuf.hides_box(a, b) {
+                    return items;
+                }
+            }
+        }
         for (a, b) in feature_edges_seen(s, view) {
             let Some((a, b)) = clip_segment(project(a), project(b), 1e-4, depth) else {
                 continue;
@@ -616,7 +706,11 @@ pub(crate) fn hidden_lines(
                 });
                 continue;
             }
-            for (p, q) in zbuf.visible_runs(a, b) {
+            if !revealed && zbuf.hidden_along(a, b) {
+                continue;
+            }
+            let across = (b - a).truncate().perp().normalize_or_zero();
+            for (p, q) in zbuf.runs(a, b, |p| zbuf.visible(p) && !zbuf.seam(p, across)) {
                 items.push(PlanItem::Line {
                     id: s.id,
                     pen: Pen::Projection,
@@ -642,6 +736,102 @@ pub(crate) fn hidden_lines(
 }
 
 /// The live drawing of a view element, annotations included.
+/// A renovation stage's colours: what is taken down washed yellow, what is
+/// built red, over their cut; in the demolition stage a new door's or
+/// window's hole in an existing wall is drawn as demolition instead of the
+/// door or window.
+fn reno_colours(model: &Model, stage: creabim_core::reno::RenoView, items: &mut Vec<PlanItem>) {
+    use creabim_core::reno;
+    // new doors and windows in walls that stand now: in the demolition
+    // stage a yellow hole in place of the door, in the new state the door
+    // with its part of the wall in red
+    let holes: std::collections::HashSet<ElementId> = match stage {
+        reno::RenoView::Existing => Default::default(),
+        _ => reno::new_holes(model).into_iter().collect(),
+    };
+    let demolition = stage == reno::RenoView::Demolition;
+    if !holes.is_empty() {
+        if demolition {
+            items.retain(|it| !holes.contains(&it.id()));
+        }
+        for &id in &holes {
+            let Some(ElementKind::Opening(o)) = model.get(id).map(|e| &e.kind) else {
+                continue;
+            };
+            let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+                continue;
+            };
+            let (d, n) = (w.direction(), w.direction().perp() * (w.thickness / 2.0));
+            let (a, b) = (w.start + d * o.offset, w.start + d * (o.offset + o.width));
+            let points = vec![a - n, b - n, b + n, a + n];
+            items.push(PlanItem::Tint {
+                id,
+                points: points.clone(),
+                rgb: if demolition {
+                    reno::DEMOLISHED
+                } else {
+                    reno::NEW
+                },
+            });
+            if demolition {
+                items.push(PlanItem::Polygon {
+                    id,
+                    pen: crate::plan::Pen::Projection,
+                    points,
+                });
+            }
+        }
+    }
+    let mut tints = vec![];
+    for it in items.iter() {
+        let (id, points) = match it {
+            PlanItem::Fill { id, points, .. } => (id, points),
+            PlanItem::Polygon {
+                id,
+                pen: crate::plan::Pen::Cut,
+                points,
+            } => (id, points),
+            _ => continue,
+        };
+        let Some(e) = model.get(*id) else { continue };
+        if !reno::has_state(&e.kind) {
+            continue;
+        }
+        if let Some(rgb) = stage.colour(reno::state(e)) {
+            tints.push(PlanItem::Tint {
+                id: *id,
+                points: points.clone(),
+                rgb,
+            });
+        }
+    }
+    items.extend(tints);
+}
+
+thread_local! {
+    /// Set while a plan drawn as another plan's underlay is drawn.
+    static UNDERLAID: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// What a trade's plan leaves out of the building (George 2026-11-25:
+/// "v pôdoryse ZTI, VYK, ELI, Medi plyny, VZT nechcem vidieť vence, ani
+/// podhľady, ani preklady"): beams (ring beams, lintels and the boards
+/// wrapped round them), suspended ceilings, and the wall carrying on over
+/// a door above the cut (its lintel, a dash and two dots).
+fn trade_plan_leaves_out(model: &Model, it: &PlanItem) -> bool {
+    match model.get(it.id()).map(|e| &e.kind) {
+        Some(ElementKind::Beam(_) | ElementKind::Ceiling(_)) => true,
+        Some(ElementKind::Opening(_)) => matches!(
+            it,
+            PlanItem::Line {
+                pen: crate::plan::Pen::Overhead,
+                ..
+            }
+        ),
+        _ => false,
+    }
+}
+
 pub fn view_drawing(model: &Model, view: ElementId) -> Option<Drawing> {
     view_drawing_with(model, view, false)
 }
@@ -664,6 +854,16 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     let mut hidden = v.hidden.hidden_set(model);
     // a section never hides its own drawing, even with section marks off
     hidden.remove(&view);
+    // a renovation stage: drawn from the model as it stands then, without
+    // what is not there (doors not yet cut leave no hole)
+    let staged;
+    let model = match v.reno {
+        Some(stage) => {
+            staged = creabim_core::reno::staged(model, stage);
+            &staged
+        }
+        None => model,
+    };
     // sections and 3D drawings start from the scene shared by every view
     // of this revision, less what the view hides
     let full = model;
@@ -693,7 +893,10 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     let mut d = match kind {
         // seen from above, nothing is cut: no rooms, no underlay
         creabim_core::ViewKind::Plan { level, cut_height } if v.graphics.range.from_above => {
-            crate::ranges::plan(model, v, *level, *cut_height)
+            let mut d = crate::ranges::plan(model, v, *level, *cut_height);
+            crate::members::size_slope_arrows(model, &mut d.items, v.scale / 1000.0);
+            crate::stairmarks::size_texts(model, &mut d.items, v.scale / 1000.0);
+            d
         }
         creabim_core::ViewKind::Plan { level, cut_height } => {
             // with the other levels its range reaches
@@ -703,17 +906,51 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             }
             if v.ceiling_plan {
                 crate::rooms::as_ceiling_plan(model, &mut d.items);
+            } else {
+                // the penetrations' labels, at the view's scale
+                d.items.extend(crate::plan::penetration_labels(
+                    model,
+                    *level,
+                    *cut_height,
+                    v.scale / 1000.0,
+                ));
             }
+            // the roofs' slope arrows and pitches at the view's scale
+            crate::members::size_slope_arrows(model, &mut d.items, v.scale / 1000.0);
+            crate::stairmarks::size_texts(model, &mut d.items, v.scale / 1000.0);
             // rooms under everything, separators and ceilings with them
             let mut rooms = crate::rooms::plan_items(model, v, *level, *cut_height);
             // with the pens the view's graphics give their categories
             crate::plan::category_pens(model, &mut rooms, &v.graphics);
             rooms.append(&mut d.items);
             d.items = rooms;
+            // the rooms' tiling over the fixtures and cabinets
+            let mut tiling = crate::rooms::tiling_items(model, v, *level);
+            crate::plan::category_pens(model, &mut tiling, &v.graphics);
+            d.items.append(&mut tiling);
+            // a trade's plan (ZTI, VYK, VZT, ELI, medical gases) shows no
+            // ring beams, lintels or suspended ceilings (George 2026-11-25)
+            if v.trade.is_some() && !v.coordination {
+                d.items.retain(|it| !trade_plan_leaves_out(model, it));
+            }
             // another level traced underneath, under the linework but
             // (over the fills, so a footing's or a slab's doesn't hide it)
-            if let Some(under) = v.underlay.level(model, *level) {
-                let items = crate::plan::underlay_items(model, under, *cut_height);
+            let under = match (
+                v.underlay.level(model, *level),
+                v.underlay.view(model, view),
+            ) {
+                (Some(under), _) => Some(crate::plan::underlay_items(model, under, *cut_height)),
+                // another plan as it is drawn: the site plan under a floor
+                // (one deep: an underlay's own underlay isn't drawn)
+                (None, Some(other)) if !UNDERLAID.with(|u| u.get()) => {
+                    UNDERLAID.with(|u| u.set(true));
+                    let d = view_drawing(model, other);
+                    UNDERLAID.with(|u| u.set(false));
+                    d.map(|d| crate::plan::as_underlay(model, d.items))
+                }
+                _ => None,
+            };
+            if let Some(items) = under {
                 let at = d
                     .items
                     .iter()
@@ -737,9 +974,36 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             depth,
             cut,
         } => {
-            let mut d = section_view_in(
+            // the shared scene itself, not a copy of it
+            let shared = crate::scene::shared_scene(full);
+            // a structural section: only what carries (George 2026-11-23)
+            let rules = creabim_core::masonry::rules(model);
+            let carries = |id: ElementId| {
+                !v.structural
+                    || model.get(id).is_none_or(|e| {
+                        let host = creabim_core::wrap::piece_of(e).and_then(|p| model.get(p.host));
+                        creabim_core::structural::draws(model, host.unwrap_or(e), &rules)
+                    })
+            };
+            // and of what carries only the load-bearing layers: no
+            // insulation, render, plaster or floor build-up, no boards
+            // wrapped round columns and lintels (George 2026-11-24, as
+            // his výkres tvaru STA_002 draws its sections)
+            let bearing =
+                |i: &SceneItem| !v.structural || crate::structural::bearing_part(model, i);
+            let items: Vec<&SceneItem> = shared
+                .iter()
+                .filter(|i| {
+                    !i.ghost
+                        && !i.is_lining()
+                        && !hidden.contains(&i.id)
+                        && carries(i.id)
+                        && bearing(i)
+                })
+                .collect();
+            let mut d = section_view_jogged(
                 model,
-                &scene(),
+                &items,
                 *start,
                 *end,
                 *depth,
@@ -747,9 +1011,41 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 style,
                 v.scale,
                 reveal,
+                &v.line.stretches(start.distance(*end)),
             );
+            // an elevation: the ETICS fire barriers under the render, their
+            // edges a thin dashed line (George 2026-11-20)
+            if !*cut {
+                d.items
+                    .extend(crate::etics::elevation_lines(model, *start, *end, *depth));
+            }
+            // the trades' penetrations the cut passes through, in the
+            // architect's and the structural sections (George 2026-11-27)
+            if *cut
+                && creabim_core::viewmodes::DisplayMode::of(v)
+                    != creabim_core::viewmodes::DisplayMode::Services
+            {
+                d.items.extend(crate::tradepen::section_items(
+                    full,
+                    *start,
+                    *end,
+                    v.scale / 1000.0,
+                    v.structural,
+                ));
+            }
+            // system lintels cut, each piece crossed: in the structural
+            // sections and the architect's too (George 2026-11-25)
+            if *cut {
+                crate::structural::cross_system_pieces(model, &mut d.items);
+            }
+            // a structural section: ±0,000 dashed across (STA_002)
+            if v.structural && *cut {
+                if let Some(l) = crate::structural::zero_line(model, view, &d.items) {
+                    d.items.push(l);
+                }
+            }
             // rooms washed behind the cut, from floor to ceiling
-            if v.room_colours && *cut {
+            if v.room_colours && *cut && !v.structural {
                 let mut rooms = crate::rooms::section_items(model, *start, *end);
                 rooms.append(&mut d.items);
                 d.items = rooms;
@@ -758,13 +1054,95 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         }
         creabim_core::ViewKind::Axonometric { azimuth, altitude } => {
             let crop = crate::cropbox::active(model, Some(view));
-            axonometric_view_in(model, scene(), *azimuth, *altitude, style, reveal, &crop)
+            if crop.is_empty() {
+                // nothing to crop: the shared scene itself, not a copy
+                let shared = crate::scene::shared_scene(full);
+                let items: Vec<&SceneItem> = shared
+                    .iter()
+                    .filter(|i| !i.ghost && !i.is_lining() && !hidden.contains(&i.id))
+                    .collect();
+                axo_drawing(model, &items, *azimuth, *altitude, style, reveal, &crop)
+            } else {
+                axonometric_view_in(model, scene(), *azimuth, *altitude, style, reveal, &crop)
+            }
         }
         creabim_core::ViewKind::Schedule { category, by_type } => {
-            let table = crate::schedule::schedule_by(model, *category, *by_type);
+            if let Some(kind) = category.joinery_list() {
+                return Some(crate::joinerylist::drawing(view, &e.name, model, kind));
+            }
+            if *category == creabim_core::ScheduleCategory::ServicesLegend {
+                return Some(crate::serviceslegend::drawing(view, &e.name, model));
+            }
+            if *category == creabim_core::ScheduleCategory::MaterialLegend {
+                return Some(crate::matlegend::drawing(view, &e.name, model));
+            }
+            if *category == creabim_core::ScheduleCategory::BuildingFigures {
+                return Some(crate::sitetables::area_drawing(view, model));
+            }
+            if *category == creabim_core::ScheduleCategory::Identification {
+                return Some(crate::sitetables::identification_drawing(view, model));
+            }
+            if *category == creabim_core::ScheduleCategory::FlashingTable {
+                return Some(crate::flashingtable::drawing(view, &e.name, model));
+            }
+            if *category == creabim_core::ScheduleCategory::WaterAxonometry {
+                return Some(crate::wateraxo::drawing(view, &e.name, model));
+            }
+            if *category == creabim_core::ScheduleCategory::DrainSections {
+                return Some(crate::drainsections::drawing(view, &e.name, model));
+            }
+            if *category == creabim_core::ScheduleCategory::BoardDiagram {
+                return Some(crate::boarddiagram::drawing(view, &e.name, model));
+            }
+            if *category == creabim_core::ScheduleCategory::Documents {
+                return Some(crate::doclist::drawing(view, &e.name, model));
+            }
+            let _ = by_type;
+            let table = crate::schedule::view_table(model, view)?;
             return Some(crate::schedule::schedule_drawing(view, &e.name, &table));
         }
     };
+    // system lintels belong to the masonry plan; sections show them cut
+    if let creabim_core::ViewKind::Plan { level, .. } = kind {
+        // with the boards round them
+        let lintel = |e: &creabim_core::Element| {
+            creabim_core::masonry::is_lintel(e)
+                || creabim_core::wrap::piece_of(e).is_some_and(|p| {
+                    model
+                        .get(p.host)
+                        .is_some_and(creabim_core::masonry::is_lintel)
+                })
+        };
+        d.items.retain(|it| !model.get(it.id()).is_some_and(lintel));
+        // the structural drawing: only what carries, lintels and ring
+        // beams by their positions, its own sections' marks
+        let ring = |e: &creabim_core::Element| {
+            creabim_core::structural::is_ring_beam(e)
+                || creabim_core::wrap::piece_of(e).is_some_and(|p| {
+                    model
+                        .get(p.host)
+                        .is_some_and(creabim_core::structural::is_ring_beam)
+                })
+        };
+        if v.structural {
+            crate::structural::keep_structure(model, &mut d.items);
+            d.items.retain(|it| !model.get(it.id()).is_some_and(ring));
+            crate::structural::outline_walls(model, &mut d.items);
+            let mm = v.scale / 1000.0;
+            d.items
+                .extend(crate::structural::plan_marks(model, *level, mm));
+            d.items
+                .extend(crate::structural::column_marks(model, *level, mm));
+            d.items.extend(crate::structural::chains(model, *level, mm));
+            d.items
+                .extend(crate::structural::opening_picks(model, *level));
+        } else if v.masonry {
+            d.items
+                .extend(crate::masonry::plan_marks(model, *level, v.scale / 1000.0));
+        }
+        d.items
+            .retain(|it| crate::structural::shows_mark(model, it.id(), v));
+    }
     if reveal && v.hidden_in_colour {
         tint_hidden(model, view, kind, &mut d.items);
     }
@@ -785,24 +1163,442 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         lay_out_level_heads(&mut d.items, &v.level_heads, v.scale);
     }
     // section and elevation marks in the project's family
+    // (a broken or jogged section line is drawn so in any family)
+    let own_lines = || {
+        model
+            .iter()
+            .any(|e| matches!(&e.kind, ElementKind::View(s) if !s.line.is_plain()))
+            .then(creabim_core::styles::MarkerParts::default)
+    };
     if let (creabim_core::ViewKind::Plan { .. }, Some(parts)) = (
         &kind,
-        creabim_core::styles::active_pack(model).marker_parts(),
+        creabim_core::styles::active_pack(model)
+            .marker_parts()
+            .or_else(own_lines),
     ) {
         crate::markers::restyle_sections(model, &mut d.items, &parts, v.scale / 1000.0);
     }
+    if let Some(stage) = v.reno {
+        reno_colours(model, stage, &mut d.items);
+    }
+    // a site plan: the building as its outer walls only, filled grey
+    if let creabim_core::ViewKind::Plan { level, cut_height } = kind {
+        if v.graphics.range.from_above && v.graphics.range.footprint {
+            d.items.retain(|it| !crate::sitefoot::hides(model, it.id()));
+            d.items
+                .extend(crate::sitefoot::footprint(model, *level, *cut_height));
+        } else if v.graphics.range.from_above {
+            // a roof plan: no terrain from the map under the roofs
+            d.items
+                .retain(|it| !crate::sitefoot::is_terrain(model, it.id()));
+            crate::roofplan::apply(model, &mut d.items, v.structural);
+            // the gutters and downpipes by their own outlines (their
+            // swept surfaces read as a black band at 1:100), their marks,
+            // and which way each gutter run falls
+            d.items.retain(|it| {
+                !matches!(
+                    model.get(it.id()).map(|e| &e.kind),
+                    Some(creabim_core::ElementKind::Flashing(_))
+                )
+            });
+            // their way to the facade from the whole model: a roof plan
+            // that hides the walls still draws a downpipe's offset to them
+            d.items.extend(crate::flashing::roof_plan(full, v.scale));
+        }
+    }
+    // utility networks and the site's symbols belong to the site plan
+    // alone (George: a network drawn there showed in the 1st floor plan);
+    // there, each network dashed with its symbols and code, each symbol
+    // in place of its sketch
+    if matches!(kind, creabim_core::ViewKind::Plan { .. }) && v.graphics.range.is_site() {
+        crate::netlines::net_lines(model, &mut d.items, v.scale / 1000.0);
+    } else {
+        d.items
+            .retain(|it| !crate::netlines::is_site_only(model, it.id()));
+    }
+    // pipes, ducts and wiring are the trades' to draw: the architect's
+    // plans, sections and elevations leave them out, whatever the view
+    // shows by category (the site plan keeps its connections)
+    let services = creabim_core::viewmodes::DisplayMode::of(v)
+        == creabim_core::viewmodes::DisplayMode::Services;
+    let site = v.graphics.range.is_site();
+    // what a trade draws belongs to its drawings alone: the architect's
+    // and the structural engineer's leave out every trade's pipes, ducts,
+    // terminals and devices, its underfloor heating and its marks, and
+    // keep the building, its sanitary ware and the plant (heat pumps,
+    // boilers, heat recovery units…) (George 2026-11-27)
+    if !services && !site {
+        d.items.retain(|it| {
+            !matches!(
+                creabim_core::viewmodes::belongs_id(model, it.id()),
+                creabim_core::viewmodes::Belongs::Trade(_)
+            )
+        });
+    }
+    // one trade's drawing, plan, section or 3D, leaves out the other
+    // trades' (only the coordination and all the trades' show them all)
+    if services && !v.coordination {
+        if let Some(trade) = v.trade {
+            d.items.retain(|it| trade.shows_element(model, it.id()));
+        }
+    }
+    if (!services && !site)
+        || v.hidden
+            .hides_category(creabim_core::visibility::Category::Pipes)
+    {
+        d.items.retain(|it| {
+            !matches!(
+                model.get(it.id()).map(|e| &e.kind),
+                Some(ElementKind::Pipe(_) | ElementKind::Valve(_))
+            ) && !crate::elplan::is_wiring_device(model, it.id())
+        });
+    }
+    // but the holes the trades' pipes make through walls, slabs, ceilings
+    // and roofs are taken over into the architect's and the structural
+    // engineer's plans, and the pipes' ends standing out of the roof into
+    // the roof plan (George 2026-11-25)
+    if !services && !site {
+        if let creabim_core::ViewKind::Plan { level, cut_height } = kind {
+            let mm = v.scale / 1000.0;
+            if v.graphics.range.from_above {
+                d.items.extend(crate::tradepen::roof_items(full, mm));
+            } else if v.ceiling_plan {
+                d.items
+                    .extend(crate::tradepen::ceiling_plan_items(full, *level, mm));
+            } else {
+                // from the whole model: the view hides the pipes
+                d.items.extend(crate::tradepen::plan_items(
+                    full,
+                    view,
+                    *level,
+                    *cut_height,
+                    mm,
+                    v.structural,
+                ));
+            }
+        }
+    }
+    // a services drawing shows its pipes as lines, each in its system's
+    // colour and line type
+    if matches!(kind, creabim_core::ViewKind::Plan { .. })
+        && creabim_core::viewmodes::DisplayMode::of(v)
+            == creabim_core::viewmodes::DisplayMode::Services
+    {
+        // one trade's drawing leaves the other trades' pipes out
+        if let Some(trade) = v.trade {
+            d.items.retain(|it| trade.shows_element(model, it.id()));
+            // and marks only the connectors of its own media: a heat
+            // pump in ZTI its water and waste, in VYK its heating
+            // (George 2026-11-23)
+            if !v.coordination {
+                d.items.retain(|it| {
+                    crate::objects::marked_connector(model, it)
+                        .is_none_or(|k| trade.shows(k.system()))
+                });
+            }
+        }
+        // nor does it draw where one floor meets another: the floors'
+        // edges seen under the cut (George 2026-11-22)
+        d.items.retain(|it| {
+            !(matches!(
+                it,
+                PlanItem::Line {
+                    pen: crate::plan::Pen::Projection,
+                    ..
+                } | PlanItem::Polygon {
+                    pen: crate::plan::Pen::Projection,
+                    ..
+                }
+            ) && matches!(
+                model.get(it.id()).map(|e| &e.kind),
+                Some(ElementKind::Slab(_))
+            ))
+        });
+        let heating = v
+            .trade
+            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Heating);
+        let plumbing = v
+            .trade
+            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Plumbing);
+        let mut seen = std::collections::HashSet::new();
+        let mut lines = vec![];
+        let mut pipes = vec![];
+        // the devices on the ducts, numbered as the legend lists them
+        let positions = crate::mep::air_positions(model);
+        let flows = crate::mep::air_flows(model);
+        // a scheme: a line a pipe, a symbol a valve, 2.5 mm on paper at
+        // every scale; in space: the pipes' true widths, the valves'
+        // bodies
+        let spatial = v.spatial;
+        let half = 2.5 * v.scale / 1000.0;
+        d.items.retain(|it| {
+            let Some(e) = model.get(it.id()) else {
+                return true;
+            };
+            match &e.kind {
+                ElementKind::Pipe(p) => {
+                    if seen.insert(e.id) {
+                        // ducts as VZT drawings show them, always: their
+                        // outline in true size, in their system's colour
+                        // (George 2026-11-25)
+                        if !spatial && p.kind().is_air() {
+                            lines.extend(crate::mep::duct_plan(
+                                model,
+                                e,
+                                p,
+                                flows.get(&e.id).copied(),
+                                v.scale / 1000.0,
+                            ));
+                        } else if !spatial {
+                            lines.extend(crate::mep::pipe_line(model, e, p));
+                        }
+                        pipes.push(e);
+                    }
+                    spatial
+                }
+                ElementKind::Valve(x) => {
+                    if seen.insert(e.id) {
+                        lines.extend(if spatial {
+                            crate::valves::valve_plan_spatial(model, e, x)
+                        } else {
+                            crate::valves::valve_plan_sized(model, e, x, half)
+                        });
+                        // drawn by its tag where it has one in this view
+                        let tagged = model.iter().any(|t| {
+                            matches!(&t.kind, ElementKind::Tag(t) if t.view == view && t.host == e.id && !t.ufh)
+                        });
+                        if let Some(n) = positions
+                            .iter()
+                            .find(|p| p.valves.contains(&e.id))
+                            .filter(|_| !tagged)
+                        {
+                            lines.extend(crate::mep::air_mark(
+                                model,
+                                e,
+                                x,
+                                &n.label(),
+                                v.scale / 1000.0,
+                            ));
+                        }
+                        // a terminal's air: "+90 m3/h" supply, "-90 m3/h"
+                        // extract, as George's sample VZT drawings write it
+                        if let (true, Some(q), Some(pipe)) =
+                            (x.is_air_terminal(), x.flow_m3h, x.host(model))
+                        {
+                            let mm = v.scale / 1000.0;
+                            let sign = if x.kind == "vyustP" { "+" } else { "-" };
+                            lines.push(PlanItem::Text {
+                                id: e.id,
+                                at: x.at(pipe).truncate() + DVec2::new(0.0, -4.5) * mm,
+                                text: format!("{sign}{} m3/h", q.round()),
+                                size: 2.5,
+                                align: crate::paper::Anchor::Middle,
+                                mm,
+                                rgb: Some(crate::mep::color(pipe)),
+                                bold: false,
+                            });
+                        }
+                    }
+                    false
+                }
+                _ => true,
+            }
+        });
+        d.items.extend(lines);
+        // and writes their sizes at them
+        d.items
+            .extend(crate::mep::pipe_labels(model, &pipes, v.scale / 1000.0));
+        // and the sanitary fixtures' marks beside them, as its legend
+        // lists them (WC, U, S...), unless a fixture is tagged already
+        let mm = v.scale / 1000.0;
+        let tagged: std::collections::HashSet<ElementId> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Tag(t) if t.view == view && !t.ufh => Some(t.host),
+                _ => None,
+            })
+            .collect();
+        let look = crate::annotation::TextLook {
+            size: 3.0,
+            rgb: Some(crate::mep::LABEL_GREEN),
+            ..Default::default()
+        };
+        let mut marks = vec![];
+        // a heat pump's indoor unit "T.Č." in the plumber's drawing and
+        // the heating one's (its cylinder and condensate are water's,
+        // George 2026-11-23)
+        if plumbing || heating {
+            for e in model.iter() {
+                let ElementKind::Object(o) = &e.kind else {
+                    continue;
+                };
+                if tagged.contains(&e.id)
+                    || !creabim_core::objects::type_of(model, e)
+                        .is_some_and(creabim_core::objects::is_heat_pump_indoor)
+                {
+                    continue;
+                }
+                let pts: Vec<DVec2> = d
+                    .items
+                    .iter()
+                    .filter(|it| it.id() == e.id)
+                    .flat_map(|it| it.extent())
+                    .collect();
+                let Some(first) = pts.first().copied() else {
+                    continue;
+                };
+                let (lo, hi) = pts
+                    .iter()
+                    .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+                let text = "T.Č.".to_string();
+                // in its outline, which is wide enough
+                let at = (lo + hi) / 2.0 + o.mark.unwrap_or(DVec2::ZERO);
+                marks.push(PlanItem::Annotation {
+                    id: e.id,
+                    item: Box::new(crate::annotation::Annotation {
+                        shape: crate::annotation::Shape::Along { at, angle: 0.0 },
+                        text,
+                        look,
+                        mm,
+                    }),
+                });
+            }
+        }
+        for row in creabim_services::fixturespec::legend(model, None) {
+            for id in row.fixtures {
+                // sanitary fixtures are marked in the plumber's drawing
+                if !plumbing || tagged.contains(&id) {
+                    continue;
+                }
+                let pts: Vec<DVec2> = d
+                    .items
+                    .iter()
+                    .filter(|it| it.id() == id)
+                    .flat_map(|it| it.extent())
+                    .collect();
+                let Some(first) = pts.first().copied() else {
+                    continue;
+                };
+                let (lo, hi) = pts
+                    .iter()
+                    .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+                let w = look.width(&row.spec.mark);
+                // beside it, or where it was dragged to from there
+                let moved = match model.get(id).map(|e| &e.kind) {
+                    Some(ElementKind::Object(o)) => o.mark.unwrap_or(DVec2::ZERO),
+                    _ => DVec2::ZERO,
+                };
+                // dragged away it stands alone, with no leader to its
+                // fixture (George 2026-11-23)
+                let at = DVec2::new(lo.x - (w / 2.0 + 1.5) * mm, (lo.y + hi.y) / 2.0) + moved;
+                marks.push(PlanItem::Annotation {
+                    id,
+                    item: Box::new(crate::annotation::Annotation {
+                        shape: crate::annotation::Shape::Along { at, angle: 0.0 },
+                        text: row.spec.mark.clone(),
+                        look,
+                        mm,
+                    }),
+                });
+            }
+        }
+        d.items.extend(marks);
+        // the electrician's: small devices readable, each with its
+        // circuit written at it
+        if v.trade == Some(creabim_core::viewmodes::Trade::Electrical) {
+            crate::elplan::enlarge(model, &mut d.items, mm);
+            let marks = crate::elplan::marks(model, &d.items, mm);
+            d.items.extend(marks);
+            if let (creabim_core::ViewKind::Plan { level, .. }, false) = (&kind, v.ceiling_plan) {
+                let mut wires = crate::elplan::wiring(model, *level, mm);
+                // under the symbols
+                wires.append(&mut d.items);
+                d.items = wires;
+            }
+        }
+        // underfloor heating: the loops' supply red, their return blue
+        // and dashed, each room's circuits written in it
+        if let (creabim_core::ViewKind::Plan { level, .. }, false, true) =
+            (&kind, v.ceiling_plan, heating)
+        {
+            let heated = |id: ElementId| {
+                matches!(model.get(id).map(|e| &e.kind),
+                    Some(ElementKind::Room(r)) if r.ufh.is_some())
+            };
+            d.items
+                .retain(|it| !(matches!(it, PlanItem::Line { .. }) && heated(it.id())));
+            d.items
+                .extend(crate::heatplan::items(model, *level, Some(view), mm));
+        }
+    }
+    // a plan that shows the fire zones shows the fire-dangerous space
+    // about the building too
+    if v.fire_zones && matches!(kind, creabim_core::ViewKind::Plan { .. }) {
+        d.items
+            .extend(crate::firezones::distance_items(model, v.scale / 1000.0));
+    }
+    // the fire-dangerous space in front of each opening of the level
+    if let (true, creabim_core::ViewKind::Plan { level, .. }) = (v.fire_distances, kind) {
+        d.items.extend(crate::firedistance::items(
+            model,
+            *level,
+            None,
+            v.scale / 1000.0,
+        ));
+    }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {
+        // a dimension to a penetration's centre is kept on its pipe, which
+        // the architect's plan hides: drawn from the whole model
+        let on_pipe = |p: &creabim_core::HostPoint| {
+            p.host.is_some_and(|h| {
+                hidden.contains(&h)
+                    && matches!(full.get(h).map(|e| &e.kind), Some(ElementKind::Pipe(_)))
+            })
+        };
+        for e in full.iter() {
+            if let ElementKind::Dimension(dim) = &e.kind {
+                if dim.view == view
+                    && dim.kind.is_linear()
+                    && !hidden.contains(&e.id)
+                    && (on_pipe(&dim.a) || on_pipe(&dim.b) || dim.mids.iter().any(on_pipe))
+                {
+                    d.items
+                        .extend(crate::annotate::linear_items(full, v, e.id, dim));
+                }
+            }
+        }
         d.items.retain(|it| !hidden.contains(&it.id()));
     }
     // a plan's names, notes and tags moved off lines and each other
     if matches!(kind, creabim_core::ViewKind::Plan { .. }) {
-        crate::declutter::place_labels(&mut d.items, v.scale / 1000.0);
+        // (and an object's name written in its symbol, "Práčka", "T.Č.
+        // vonkajšia", which stays inside its outline)
+        let square = |id| {
+            matches!(model.get(id).map(|e| &e.kind),
+                Some(ElementKind::Tag(t)) if !t.material
+                    && crate::annotate::tag_normal(model, v, t).is_some())
+                // a penetration's label stays where it was dragged
+                || matches!(full.get(id).map(|e| &e.kind),
+                    Some(ElementKind::Tag(t)) if crate::tradepen::is_label_tag(full, t))
+                || matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Object(_)))
+        };
+        crate::declutter::place_labels_but(&mut d.items, v.scale / 1000.0, &square);
     }
+    // the text of a stretch too short for it goes beside the stretch
+    crate::annotate::place_dimension_texts(&mut d.items, v.scale / 1000.0);
     // dimension lines whose style says so break where tags and notes
     // finally sit
     crate::annotate::break_dimensions(&mut d.items, v.scale / 1000.0);
     apply_drawing_style(model, &mut d.items, v.graphics.drawing_style);
+    // the ground under cut hatches; a renovation stage keeps its own
+    if v.reno.is_none() {
+        apply_hatch_ground(
+            &mut d.items,
+            v.graphics.drawing_style,
+            v.graphics.hatch_ground,
+        );
+    }
     // roofs seen from above, under a plan's cut: the colour styles wash
     // them in their material's colour too (MU33: a roof plan stayed white,
     // its roofs never being cut)
@@ -860,6 +1656,37 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         }
     }
     Some(d)
+}
+
+/// The ground under the hatches of what is cut (George 2026-11-20: very
+/// light grey or the paper's colour in an ordinary drawing): fills with a
+/// pattern and no colour of their own get `ground`'s, solid and empty ones
+/// stay as they are.
+pub fn apply_hatch_ground(
+    items: &mut [PlanItem],
+    style: creabim_core::graphics::DrawingStyle,
+    ground: creabim_core::graphics::HatchGround,
+) {
+    use creabim_core::graphics::DrawingStyle as S;
+    let Some(c) = ground.rgb() else { return };
+    if !matches!(style, S::Technical | S::ColourHatch) {
+        return;
+    }
+    for it in items.iter_mut() {
+        if let PlanItem::Fill {
+            hatch,
+            rgb: rgb @ None,
+            ..
+        } = it
+        {
+            if !matches!(
+                hatch,
+                creabim_core::Hatch::Solid | creabim_core::Hatch::Empty
+            ) {
+                *rgb = Some(c);
+            }
+        }
+    }
 }
 
 /// A view's drawing style over its cut fills (A4-11).
@@ -1092,6 +1919,17 @@ fn extents(faces: &Faces, crop: Option<(f64, f64)>) -> (DVec2, DVec2) {
 }
 
 /// Keep the part of a triangle with `0 <= d <= depth` (d = z component).
+/// [`clip_triangle`] onto the end of `out`, without the allocation for a
+/// triangle wholly inside the depth (as most are).
+fn clip_triangle_into(tri: [DVec3; 3], depth: f64, out: &mut Vec<[DVec3; 3]>) {
+    // the tests clip_triangle makes, so the same triangles come through
+    if tri.iter().all(|p| p.z >= 0.0 && -p.z >= -depth) {
+        out.push(tri);
+    } else {
+        out.extend(clip_triangle(tri, depth));
+    }
+}
+
 fn clip_triangle(tri: [DVec3; 3], depth: f64) -> Vec<[DVec3; 3]> {
     let mut poly: Vec<DVec3> = tri.to_vec();
     for (sign, limit) in [(1.0, 0.0), (-1.0, -depth)] {
@@ -1181,15 +2019,46 @@ pub fn feature_edges_over(item: &SceneItem, cos: f32) -> Vec<(DVec3, DVec3)> {
     })
 }
 
-/// The mesh's edges whose faces' normals pass `keep`.
-fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, DVec3)> {
+/// One edge of a mesh with the normals of the faces meeting on it.
+struct Edge {
+    a: DVec3,
+    b: DVec3,
+    normals: Box<[Vec3]>,
+}
+
+/// Every mesh's edges, by its shape: found once, then each view only
+/// picks those it draws (half a million edges for a 13-storey block,
+/// found again for every section and elevation, and in no fixed order).
+static EDGES: std::sync::Mutex<Option<HashMap<u64, std::sync::Arc<Vec<Edge>>>>> =
+    std::sync::Mutex::new(None);
+
+fn mesh_edges(item: &SceneItem) -> std::sync::Arc<Vec<Edge>> {
+    let key = crate::scene::mesh_key(&item.mesh);
+    if let Some(e) = EDGES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(HashMap::new)
+        .get(&key)
+    {
+        return e.clone();
+    }
+    let edges = std::sync::Arc::new(find_edges(&item.mesh));
+    let mut cache = EDGES.lock().unwrap_or_else(|e| e.into_inner());
+    let cache = cache.get_or_insert_with(HashMap::new);
+    if cache.len() > 20_000 {
+        cache.clear();
+    }
+    cache.insert(key, edges.clone());
+    edges
+}
+
+fn find_edges(m: &crate::mesh::TriMesh) -> Vec<Edge> {
     let key = |p: [f32; 3]| {
         let q = |v: f32| (v as f64 * 1e4).round() as i64;
         (q(p[0]), q(p[1]), q(p[2]))
     };
     type Key = (i64, i64, i64);
     let mut edges: HashMap<(Key, Key), (DVec3, DVec3, Vec<Vec3>)> = HashMap::new();
-    let m = &item.mesh;
     for t in m.indices.chunks(3) {
         let n = Vec3::from(m.normals[t[0] as usize]);
         for k in 0..3 {
@@ -1209,27 +2078,123 @@ fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, 
                 .push(n);
         }
     }
-    let mut out: Vec<(DVec3, DVec3)> = edges
-        .into_values()
-        .filter(|(_, _, ns)| keep(ns))
-        .map(|(a, b, _)| (a, b))
+    mend_t_junctions(&mut edges, key);
+    // in a fixed order, so drawings come out the same every time
+    let mut out: Vec<((Key, Key), Edge)> = edges
+        .into_iter()
+        .map(|(k, (a, b, ns))| {
+            (
+                k,
+                Edge {
+                    a,
+                    b,
+                    normals: ns.into_boxed_slice(),
+                },
+            )
+        })
         .collect();
-    out.sort_by(|x, y| {
-        (x.0.x, x.0.y, x.0.z)
-            .partial_cmp(&(y.0.x, y.0.y, y.0.z))
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    out
+    out.sort_by_key(|x| x.0);
+    out.into_iter().map(|(_, e)| e).collect()
 }
 
+/// Where a corner of one face lies on the edge of another (a T-junction:
+/// a hip roof's face triangulated to a valley's end on its neighbour's
+/// edge), the long edge has one face on each of its parts, and each part
+/// counted as an open boundary and drew a line across the flat roof
+/// (George 2026-11-24). The edges with one face are split at the corners
+/// of the others lying on them, and the parts met from both sides take
+/// both faces.
+fn mend_t_junctions<K: Copy + Ord + std::hash::Hash>(
+    edges: &mut HashMap<(K, K), (DVec3, DVec3, Vec<Vec3>)>,
+    key: impl Fn([f32; 3]) -> K,
+) {
+    let open: Vec<(K, K)> = edges
+        .iter()
+        .filter(|(_, e)| e.2.len() == 1)
+        .map(|(k, _)| *k)
+        .collect();
+    // a closed solid has none; an open surface (terrain) may have very
+    // many, and is left as it is
+    if open.len() < 3 || open.len() > 4000 {
+        return;
+    }
+    let ends: Vec<DVec3> = open
+        .iter()
+        .flat_map(|k| {
+            let e = &edges[k];
+            [e.0, e.1]
+        })
+        .collect();
+    let mut split = vec![];
+    for k in &open {
+        let (a, b, ns) = edges[k].clone();
+        let d = b - a;
+        let len2 = d.length_squared();
+        if len2 < 1e-12 {
+            continue;
+        }
+        let mut ts: Vec<f64> = ends
+            .iter()
+            .filter_map(|p| {
+                let t = (*p - a).dot(d) / len2;
+                (t > 1e-6 && t < 1.0 - 1e-6 && (a + d * t).distance(*p) < 1e-4).then_some(t)
+            })
+            .collect();
+        if ts.is_empty() {
+            continue;
+        }
+        ts.sort_by(|x, y| x.total_cmp(y));
+        ts.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
+        split.push((*k, a, b, ns, ts));
+    }
+    for (k, a, b, ns, ts) in split {
+        edges.remove(&k);
+        let mut prev = a;
+        for t in ts.into_iter().chain([1.0]) {
+            let q = if t >= 1.0 { b } else { a + (b - a) * t };
+            let as32 = |v: DVec3| [v.x as f32, v.y as f32, v.z as f32];
+            let (ka, kb) = (key(as32(prev)), key(as32(q)));
+            if ka != kb {
+                let id = if ka < kb { (ka, kb) } else { (kb, ka) };
+                edges
+                    .entry(id)
+                    .or_insert_with(|| (prev, q, vec![]))
+                    .2
+                    .extend(ns.iter().copied());
+            }
+            prev = q;
+        }
+    }
+}
+
+/// The mesh's edges whose faces' normals pass `keep`.
+fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, DVec3)> {
+    mesh_edges(item)
+        .iter()
+        .filter(|e| keep(&e.normals))
+        .map(|e| (e.a, e.b))
+        .collect()
+}
+
+/// Mesh corners nearer the section's plane than this lie on it: a face on
+/// the line (a section drawn snapped to a door's jamb) has its corners a
+/// float's rounding either side of it, and sliced as they came it showed
+/// as a wedge (George 2026-11-22). On the plane, a corner counts as before
+/// it, so what stands on the line from beyond is cut whole.
+const ON_PLANE: f64 = 1e-5;
+
 /// Closed outlines where the plane d = 0 slices an element's mesh, in drawing coordinates.
-fn cut_loops(item: &SceneItem, frame: &SectionFrame) -> Vec<Vec<DVec2>> {
+pub(crate) fn cut_loops(item: &SceneItem, frame: &SectionFrame) -> Vec<Vec<DVec2>> {
     let m = &item.mesh;
     let mut segs: Vec<(DVec2, DVec2)> = Vec::new();
     for t in m.indices.chunks(3) {
         let p: Vec<DVec3> = t
             .iter()
-            .map(|&i| frame.project(Vec3::from(m.positions[i as usize]).as_dvec3()))
+            .map(|&i| {
+                let q = frame.project(Vec3::from(m.positions[i as usize]).as_dvec3());
+                let z = if q.z.abs() < ON_PLANE { 0.0 } else { q.z };
+                DVec3::new(q.x, q.y, z)
+            })
             .collect();
         let mut hits = Vec::new();
         for k in 0..3 {
@@ -1265,30 +2230,107 @@ fn clip_x(poly: &[DVec2], at: f64, side: f64) -> Vec<DVec2> {
     out
 }
 
-/// Join segments that share endpoints into loops.
+/// Join segments that share endpoints into loops. A cut through a mesh
+/// that boolean cuts left with T-junctions and slivers (a ceiling's
+/// layers where the partitions and the other ceiling cut them) leaves
+/// gaps in its outline: the open runs are joined end to end, the
+/// shortest gap first, so a gap is bridged by the run that continues
+/// it, never closed by a slanted line across the layer (George
+/// 2026-11-25).
 fn chain(mut segs: Vec<(DVec2, DVec2)>) -> Vec<Vec<DVec2>> {
     let close = |a: DVec2, b: DVec2| a.distance(b) < 1e-6;
     let mut loops = Vec::new();
+    let mut open: Vec<Vec<DVec2>> = Vec::new();
     while let Some((a, b)) = segs.pop() {
         let mut pts = vec![a, b];
-        loop {
-            let end = *pts.last().expect("non-empty");
-            let Some(i) = segs
-                .iter()
-                .position(|(p, q)| close(*p, end) || close(*q, end))
-            else {
-                break;
-            };
-            let (p, q) = segs.swap_remove(i);
-            let next = if close(p, end) { q } else { p };
-            if close(next, pts[0]) {
+        let mut closed = false;
+        // on from the end, then back from the start
+        for _ in 0..2 {
+            loop {
+                let end = *pts.last().expect("non-empty");
+                let Some(i) = segs
+                    .iter()
+                    .position(|(p, q)| close(*p, end) || close(*q, end))
+                else {
+                    break;
+                };
+                let (p, q) = segs.swap_remove(i);
+                let next = if close(p, end) { q } else { p };
+                if close(next, pts[0]) {
+                    closed = true;
+                    break;
+                }
+                pts.push(next);
+            }
+            if closed {
                 break;
             }
-            pts.push(next);
+            pts.reverse();
         }
-        loops.push(simplify(pts));
+        if closed {
+            loops.push(pts);
+        } else {
+            open.push(pts);
+        }
     }
+    loops.extend(join_open(open));
+    let mut loops: Vec<Vec<DVec2>> = loops.into_iter().map(simplify).collect();
     loops.retain(|l| l.len() >= 3);
+    loops
+}
+
+/// Open runs joined into loops: always the shortest gap first, between
+/// two runs' ends or a run's own two ends (which closes it).
+fn join_open(mut open: Vec<Vec<DVec2>>) -> Vec<Vec<DVec2>> {
+    let mut loops = Vec::new();
+    while !open.is_empty() {
+        // (gap, run, its end (true) or start, other run, its end or start)
+        let mut best: Option<(f64, usize, bool, usize, bool)> = None;
+        let ends: Vec<[(bool, DVec2); 2]> = open
+            .iter()
+            .map(|r| [(false, r[0]), (true, *r.last().expect("run"))])
+            .collect();
+        for (i, &ends_i) in ends.iter().enumerate() {
+            let own = ends_i[0].1.distance(ends_i[1].1);
+            if best.is_none_or(|b| own < b.0) {
+                best = Some((own, i, true, i, false));
+            }
+            for (j, &ends_j) in ends.iter().enumerate().skip(i + 1) {
+                for (ei, pi) in ends_i {
+                    for (ej, pj) in ends_j {
+                        let d = pi.distance(pj);
+                        if best.is_none_or(|b| d < b.0) {
+                            best = Some((d, i, ei, j, ej));
+                        }
+                    }
+                }
+            }
+        }
+        let Some((_, i, ei, j, ej)) = best else {
+            break;
+        };
+        if i == j {
+            loops.push(open.swap_remove(i));
+            continue;
+        }
+        // run i ends where run j starts
+        let mut b = open.swap_remove(j.max(i));
+        let mut a = open.swap_remove(j.min(i));
+        if j < i {
+            std::mem::swap(&mut a, &mut b);
+        }
+        if !ei {
+            a.reverse();
+        }
+        if ej {
+            b.reverse();
+        }
+        if a.last().expect("run").distance(b[0]) < 1e-6 {
+            b.remove(0);
+        }
+        a.extend(b);
+        open.push(a);
+    }
     loops
 }
 
@@ -1309,17 +2351,20 @@ fn simplify(pts: Vec<DVec2>) -> Vec<DVec2> {
 
 /// Every scene item's triangles seen through `project`, clipped to the
 /// view's depth.
-fn project_faces(scene: &[SceneItem], project: &dyn Fn(DVec3) -> DVec3, depth: f64) -> Faces {
-    let mut faces: Faces = Vec::new();
-    for s in scene {
-        let mut tris = Vec::new();
+fn project_faces<S: std::borrow::Borrow<SceneItem> + Sync>(
+    scene: &[S],
+    project: &(dyn Fn(DVec3) -> DVec3 + Sync),
+    depth: f64,
+) -> Faces {
+    par_map(scene, |_, s| {
+        let s: &SceneItem = s.borrow();
+        let mut tris = Vec::with_capacity(s.mesh.indices.len() / 3);
         for t in s.mesh.indices.chunks(3) {
             let p = |i: u32| project(Vec3::from(s.mesh.positions[i as usize]).as_dvec3());
-            tris.extend(clip_triangle([p(t[0]), p(t[1]), p(t[2])], depth));
+            clip_triangle_into([p(t[0]), p(t[1]), p(t[2])], depth, &mut tris);
         }
-        faces.push((s.id, s.color, tris));
-    }
-    faces
+        (s.id, s.color, tris)
+    })
 }
 
 /// `f` over `items` on every core, the results in `items`' order.
@@ -1364,6 +2409,43 @@ fn band_rows(h: usize) -> usize {
     h.div_ceil(n).max(1)
 }
 
+/// `floor` and `ceil` without the library call they make on a processor
+/// with no rounding instruction (x86-64 before SSE 4.1, which the release
+/// builds target): ten per cent of a drawing went on them. The same value
+/// for every input whose result is cast to a whole number.
+trait Round {
+    fn ffloor(self) -> f64;
+    fn fceil(self) -> f64;
+}
+
+impl Round for f64 {
+    #[inline(always)]
+    fn ffloor(self) -> f64 {
+        if self.is_nan() || self.abs() >= 4.0e15 {
+            return self.floor(); // NaN, infinite or huge
+        }
+        let i = self as i64 as f64;
+        if i > self {
+            i - 1.0
+        } else {
+            i
+        }
+    }
+
+    #[inline(always)]
+    fn fceil(self) -> f64 {
+        if self.is_nan() || self.abs() >= 4.0e15 {
+            return self.ceil();
+        }
+        let i = self as i64 as f64;
+        if i < self {
+            i + 1.0
+        } else {
+            i
+        }
+    }
+}
+
 /// Call `f` with each cell (index into a `w` wide grid `h` high) of rows
 /// `rows` that triangle `t` (in cells, depth in z) covers, and its depth
 /// there. Each cell is tested exactly as a scan of the triangle's whole
@@ -1381,10 +2463,10 @@ fn cover_rows(
     if area.abs() < 1e-12 {
         return; // seen edge-on
     }
-    let x0 = a.x.min(b.x).min(c.x).floor().max(0.0) as usize;
-    let x1 = (a.x.max(b.x).max(c.x).ceil() as usize).min(w - 1);
-    let y0 = a.y.min(b.y).min(c.y).floor().max(0.0) as usize;
-    let y1 = (a.y.max(b.y).max(c.y).ceil() as usize).min(h - 1);
+    let x0 = a.x.min(b.x).min(c.x).ffloor().max(0.0) as usize;
+    let x1 = (a.x.max(b.x).max(c.x).fceil() as usize).min(w - 1);
+    let y0 = a.y.min(b.y).min(c.y).ffloor().max(0.0) as usize;
+    let y1 = (a.y.max(b.y).max(c.y).fceil() as usize).min(h - 1);
     let (ylo, yhi) = (y0.max(rows.start), y1.min(rows.end.saturating_sub(1)));
     if x0 > x1 || ylo > yhi || rows.is_empty() {
         return;
@@ -1403,8 +2485,8 @@ fn cover_rows(
                 hi = hi.min(-s0 / k);
             }
         }
-        let xs = ((lo - 0.5).floor() - 2.0).max(x0 as f64);
-        let xe = ((hi - 0.5).ceil() + 2.0).min(x1 as f64);
+        let xs = ((lo - 0.5).ffloor() - 2.0).max(x0 as f64);
+        let xe = ((hi - 0.5).fceil() + 2.0).min(x1 as f64);
         if xs.is_nan() || xe.is_nan() || xs > xe {
             continue;
         }
@@ -1422,6 +2504,89 @@ fn cover_rows(
     }
 }
 
+/// The furthest depth in each 8 × 8 block of a band of a depth buffer,
+/// worked out again only for blocks drawn in since: to tell at a glance
+/// that a triangle or an element lies wholly behind what is drawn.
+struct Tiles {
+    w: usize,
+    h: usize,
+    across: usize,
+    far: Vec<f32>,
+    stale: Vec<bool>,
+}
+
+const TILE: usize = 8;
+
+impl Tiles {
+    fn new(w: usize, h: usize) -> Self {
+        let across = w.div_ceil(TILE);
+        let n = across * h.div_ceil(TILE);
+        Self {
+            w,
+            h,
+            across,
+            far: vec![f32::INFINITY; n],
+            stale: vec![false; n],
+        }
+    }
+
+    /// Mark the blocks over cells `xs` × `ys` (rows of the band) as drawn in.
+    fn touch(&mut self, xs: std::ops::RangeInclusive<usize>, ys: std::ops::RangeInclusive<usize>) {
+        for ty in ys.start() / TILE..=ys.end() / TILE {
+            for tx in xs.start() / TILE..=xs.end() / TILE {
+                self.stale[ty * self.across + tx] = true;
+            }
+        }
+    }
+
+    /// Is every cell `xs` × `ys` of `depth` (the band's) nearer than `z`?
+    /// Whole blocks are judged by their furthest cell, blocks the box only
+    /// partly covers cell by cell, so the answer is the cell-by-cell one.
+    fn behind(
+        &mut self,
+        depth: &[f32],
+        xs: std::ops::RangeInclusive<usize>,
+        ys: std::ops::RangeInclusive<usize>,
+        z: f32,
+    ) -> bool {
+        let (x0, x1, y0, y1) = (*xs.start(), *xs.end(), *ys.start(), *ys.end());
+        for ty in y0 / TILE..=y1 / TILE {
+            let (r0, r1) = (ty * TILE, ((ty + 1) * TILE).min(self.h) - 1);
+            for tx in x0 / TILE..=x1 / TILE {
+                let (c0, c1) = (tx * TILE, ((tx + 1) * TILE).min(self.w) - 1);
+                let k = ty * self.across + tx;
+                if self.stale[k] {
+                    let mut far = f32::NEG_INFINITY;
+                    for y in r0..=r1 {
+                        for d in &depth[y * self.w + c0..=y * self.w + c1] {
+                            far = far.max(*d);
+                        }
+                    }
+                    self.far[k] = far;
+                    self.stale[k] = false;
+                }
+                if self.far[k] < z {
+                    continue;
+                }
+                // only part of the block in the box: its own cells decide
+                let (a0, a1, b0, b1) = (c0.max(x0), c1.min(x1), r0.max(y0), r1.min(y1));
+                if (a0, a1, b0, b1) == (c0, c1, r0, r1) {
+                    return false;
+                }
+                for y in b0..=b1 {
+                    if depth[y * self.w + a0..=y * self.w + a1]
+                        .iter()
+                        .any(|d| d.is_nan() || *d >= z)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+}
+
 struct DepthBuffer {
     lo: DVec2,
     px: f64,
@@ -1435,6 +2600,15 @@ struct DepthBuffer {
     /// How deep that element goes in each cell (its far side), once
     /// [`DepthBuffer::render_backs`] has run.
     back: Vec<f32>,
+    /// The furthest depth in the 3 × 3 cells around each cell (what
+    /// [`DepthBuffer::visible`] compares with), once
+    /// [`DepthBuffer::prepare_sampling`] has run; nothing for the cells on
+    /// the border.
+    around: Vec<f32>,
+    /// The furthest depth in each 8 × 8 block, rows of blocks from the
+    /// bottom: an edge whose cells (and their neighbours) all lie in blocks
+    /// nearer than it is hidden all along.
+    blocks: Vec<f32>,
 }
 
 /// No element in the cell.
@@ -1447,8 +2621,8 @@ impl DepthBuffer {
     fn render(faces: &Faces, lo: DVec2, hi: DVec2, shade: bool) -> Self {
         let size = hi - lo;
         let px = (size.x.max(size.y) / 2048.0).max(0.005);
-        let w = (size.x / px).ceil() as usize + 1;
-        let h = (size.y / px).ceil() as usize + 1;
+        let w = (size.x / px).fceil() as usize + 1;
+        let h = (size.y / px).fceil() as usize + 1;
         let mut buf = Self {
             lo,
             px,
@@ -1458,6 +2632,8 @@ impl DepthBuffer {
             rgba: shade.then(|| vec![0; w * h * 4]),
             nearest: vec![EMPTY; w * h],
             back: vec![f32::NEG_INFINITY; w * h],
+            around: Vec::new(),
+            blocks: Vec::new(),
         };
         let light = LIGHT.normalize();
         // every triangle in cells, with its shade and its element, in order
@@ -1474,36 +2650,114 @@ impl DepthBuffer {
                 })
             })
             .collect();
-        // bands of rows on every core; each band takes the triangles in
-        // the same order, so every cell ends as the one scan left it
-        let rows = band_rows(h);
+        // each element's triangles, its box in cells and its nearest depth;
+        // the nearest elements go first, so what stands wholly behind them
+        // can be passed over (the flats behind a tower's front walls)
+        let mut spans: Vec<(usize, usize, [f64; 4], f32)> = Vec::with_capacity(faces.len());
+        let mut at = 0;
+        for (_, _, ts) in faces {
+            let mut b = [
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ];
+            let mut z = f64::INFINITY;
+            for (t, _, _) in &tris[at..at + ts.len()] {
+                for p in t {
+                    b = [b[0].min(p.x), b[1].min(p.y), b[2].max(p.x), b[3].max(p.y)];
+                    z = z.min(p.z);
+                }
+            }
+            spans.push((at, at + ts.len(), b, z as f32));
+            at += ts.len();
+        }
+        let mut order: Vec<usize> = (0..spans.len()).collect();
+        order.sort_by(|&i, &j| spans[i].3.total_cmp(&spans[j].3));
+        // bands of rows on every core; an element's index settles a tie
+        // in depth, so every cell ends as a scan in scene order left it
+        // narrow bands, several a core, taken in turn: what is drawn is
+        // seldom spread evenly down the view (sky over a tower, ground
+        // under a house)
+        let cores = std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .clamp(1, 16);
+        let rows = h.div_ceil(cores * 4).max(TILE);
         let (depth, nearest) = (&mut buf.depth, &mut buf.nearest);
-        let mut rgba: Vec<Option<&mut [u8]>> = match &mut buf.rgba {
+        let rgba: Vec<Option<&mut [u8]>> = match &mut buf.rgba {
             Some(r) => r.chunks_mut(rows * w * 4).map(Some).collect(),
             None => (0..h.div_ceil(rows)).map(|_| None).collect(),
         };
-        std::thread::scope(|scope| {
-            for (k, ((dc, nc), rc)) in depth
+        let bands = std::sync::Mutex::new(
+            depth
                 .chunks_mut(rows * w)
                 .zip(nearest.chunks_mut(rows * w))
-                .zip(rgba.iter_mut())
-                .enumerate()
-            {
-                let tris = &tris;
-                scope.spawn(move || {
+                .zip(rgba)
+                .enumerate(),
+        );
+        std::thread::scope(|scope| {
+            for _ in 0..cores {
+                let (tris, spans, order, bands) = (&tris, &spans, &order, &bands);
+                scope.spawn(move || loop {
+                    let next = bands.lock().unwrap_or_else(|e| e.into_inner()).next();
+                    let Some((k, ((dc, nc), mut rc))) = next else {
+                        break;
+                    };
                     let y0 = k * rows;
+                    let y1 = (y0 + rows).min(h);
                     let base = y0 * w;
-                    for (t, c, index) in tris {
-                        cover_rows(t, w, h, y0..(y0 + rows).min(h), |i, d| {
-                            let j = i - base;
-                            if d < dc[j] {
-                                dc[j] = d;
-                                nc[j] = *index;
-                                if let Some(rc) = rc.as_deref_mut() {
-                                    rc[j * 4..j * 4 + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
-                                }
+                    let mut tiles = Tiles::new(w, y1 - y0);
+                    for &e in order {
+                        let (from, to, b, z) = spans[e];
+                        let ylo = (b[1].ffloor() - 1.0).max(y0 as f64) as usize;
+                        let yhi = ((b[3].fceil() + 1.0).max(0.0) as usize).min(y1 - 1);
+                        if b[1] > b[3] || ylo > yhi || b[3] + 1.0 < y0 as f64 {
+                            continue;
+                        }
+                        let xlo = (b[0].ffloor() - 1.0).max(0.0) as usize;
+                        let xhi = ((b[2].fceil() + 1.0).max(0.0) as usize).min(w - 1);
+                        // wholly behind what is drawn: every cell of its
+                        // box nearer than its nearest point
+                        if xlo <= xhi && tiles.behind(dc, xlo..=xhi, ylo - y0..=yhi - y0, z - 1e-3)
+                        {
+                            continue;
+                        }
+                        for (t, c, index) in &tris[from..to] {
+                            // the cells the triangle can reach, as cover_rows
+                            // works them out; skipped when every one of them
+                            // is nearer than the triangle's nearest corner
+                            // (it could change none of them)
+                            let tx0 = t[0].x.min(t[1].x).min(t[2].x).ffloor().max(0.0) as usize;
+                            let tx1 = (t[0].x.max(t[1].x).max(t[2].x).fceil() as usize).min(w - 1);
+                            let ty0 =
+                                (t[0].y.min(t[1].y).min(t[2].y).ffloor().max(0.0) as usize).max(y0);
+                            let ty1 = (t[0].y.max(t[1].y).max(t[2].y).fceil() as usize)
+                                .min(h - 1)
+                                .min(y1 - 1);
+                            if tx0 > tx1 || ty0 > ty1 {
+                                continue;
                             }
-                        });
+                            let tz = t[0].z.min(t[1].z).min(t[2].z) as f32;
+                            if tiles.behind(dc, tx0..=tx1, ty0 - y0..=ty1 - y0, tz - 1e-3) {
+                                continue;
+                            }
+                            let mut drew = false;
+                            cover_rows(t, w, h, y0..y1, |i, d| {
+                                let j = i - base;
+                                if d < dc[j] || (d == dc[j] && *index < nc[j]) {
+                                    dc[j] = d;
+                                    nc[j] = *index;
+                                    drew = true;
+                                    if let Some(rc) = rc.as_deref_mut() {
+                                        rc[j * 4..j * 4 + 4]
+                                            .copy_from_slice(&[c[0], c[1], c[2], 255]);
+                                    }
+                                }
+                            });
+                            if drew {
+                                tiles.touch(tx0..=tx1, ty0 - y0..=ty1 - y0);
+                            }
+                        }
                     }
                 });
             }
@@ -1544,11 +2798,110 @@ impl DepthBuffer {
         });
     }
 
+    /// Work out [`DepthBuffer::blocks`], and with `neighbours`
+    /// [`DepthBuffer::around`] (so sampling an edge looks up one cell
+    /// instead of nine), on every core.
+    fn prepare_sampling(&mut self, neighbours: bool) {
+        let (w, h) = (self.w, self.h);
+        if w < 3 || h < 3 {
+            return;
+        }
+        // in bands of whole blocks, on every core
+        let rows = band_rows(h).div_ceil(TILE) * TILE;
+        let across = w.div_ceil(TILE);
+        let mut blocks = vec![f32::NEG_INFINITY; across * h.div_ceil(TILE)];
+        let mut around = if neighbours {
+            vec![0.0f32; w * h]
+        } else {
+            Vec::new()
+        };
+        let mut pieces: Vec<Option<&mut [f32]>> = if neighbours {
+            around.chunks_mut(rows * w).map(Some).collect()
+        } else {
+            (0..h.div_ceil(rows)).map(|_| None).collect()
+        };
+        let depth = &self.depth;
+        std::thread::scope(|scope| {
+            for (k, (bl, piece)) in blocks
+                .chunks_mut(rows / TILE * across)
+                .zip(pieces.iter_mut())
+                .enumerate()
+            {
+                scope.spawn(move || {
+                    let y0 = k * rows;
+                    let mut tall = vec![0.0f32; w];
+                    for y in y0..(y0 + rows).min(h) {
+                        let line = &mut bl[((y - y0) / TILE) * across..][..across];
+                        for (t, cells) in depth[y * w..][..w].chunks(TILE).enumerate() {
+                            for d in cells {
+                                line[t] = line[t].max(*d);
+                            }
+                        }
+                        let Some(piece) = piece.as_deref_mut() else {
+                            continue;
+                        };
+                        // the furthest of the three cells above, at and
+                        // below each cell, then of three of those side by
+                        // side; nothing to compare on the border
+                        let row = &mut piece[(y - y0) * w..][..w];
+                        if y == 0 || y == h - 1 {
+                            row.fill(f32::INFINITY);
+                            continue;
+                        }
+                        let (a, b, c) = (
+                            &depth[(y - 1) * w..][..w],
+                            &depth[y * w..][..w],
+                            &depth[(y + 1) * w..][..w],
+                        );
+                        for x in 0..w {
+                            tall[x] = a[x].max(b[x]).max(c[x]);
+                        }
+                        row[0] = f32::INFINITY;
+                        row[w - 1] = f32::INFINITY;
+                        for x in 1..w - 1 {
+                            row[x] = tall[x - 1].max(tall[x]).max(tall[x + 1]);
+                        }
+                    }
+                });
+            }
+        });
+        drop(pieces);
+        self.around = around;
+        self.blocks = blocks;
+    }
+
+    /// Is `a`-`b` hidden all along, without sampling it: every cell its
+    /// samples look at (with their neighbours) nearer than its nearest
+    /// end by more than [`DepthBuffer::visible`]'s tolerance? Only says
+    /// yes when sampling would find no visible point.
+    fn hidden_along(&self, a: DVec3, b: DVec3) -> bool {
+        if self.blocks.is_empty() {
+            return false;
+        }
+        let (p, q) = (self.to_px(a), self.to_px(b));
+        // the cells around each sample's, and one more: a point along the
+        // edge may round past its end
+        let (x0, y0) = (p.x.min(q.x).ffloor() - 2.0, p.y.min(q.y).ffloor() - 2.0);
+        let (x1, y1) = (p.x.max(q.x).ffloor() + 2.0, p.y.max(q.y).ffloor() + 2.0);
+        // a sample by the border is always visible
+        if !(x0 >= 0.0 && y0 >= 0.0 && x1 <= (self.w - 1) as f64 && y1 <= (self.h - 1) as f64) {
+            return false;
+        }
+        let z = a.z.min(b.z) as f32 - 0.03;
+        let across = self.w.div_ceil(TILE);
+        let (tx0, tx1) = (x0 as usize / TILE, x1 as usize / TILE);
+        (y0 as usize / TILE..=y1 as usize / TILE).all(|ty| {
+            self.blocks[ty * across + tx0..=ty * across + tx1]
+                .iter()
+                .all(|f| *f < z)
+        })
+    }
+
     /// Is the point inside another element than `own`: behind the near
     /// face of the element nearest there and in front of its far one?
     fn inside_other(&self, p: DVec3, own: usize) -> bool {
         let q = self.to_px(p);
-        let (x, y) = (q.x.floor(), q.y.floor());
+        let (x, y) = (q.x.ffloor(), q.y.ffloor());
         if x < 0.0 || y < 0.0 || x as usize >= self.w || y as usize >= self.h {
             return false;
         }
@@ -1589,9 +2942,34 @@ impl DepthBuffer {
     }
 
     /// Is the point no further than the nearest face around it (with tolerance)?
+    /// Is everything in the view box `lo`–`hi` (x and y across the view,
+    /// z its depth) behind what is drawn there already? Then nothing of an
+    /// element inside it can show: the furniture of a tower's flats behind
+    /// its front walls.
+    fn hides_box(&self, lo: DVec3, hi: DVec3) -> bool {
+        let (a, b) = (self.to_px(lo), self.to_px(hi));
+        let (x0, y0) = (a.x.ffloor() as isize - 1, a.y.ffloor() as isize - 1);
+        let (x1, y1) = (b.x.fceil() as isize + 1, b.y.fceil() as isize + 1);
+        if x0 < 0 || y0 < 0 || x1 as usize >= self.w || y1 as usize >= self.h {
+            return false;
+        }
+        let z = lo.z as f32 - 0.05;
+        (y0..=y1).all(|y| {
+            let row = &self.depth[y as usize * self.w..][..self.w];
+            row[x0 as usize..=x1 as usize].iter().all(|d| *d < z)
+        })
+    }
+
     fn visible(&self, p: DVec3) -> bool {
         let q = self.to_px(p);
-        let (cx, cy) = (q.x.floor() as isize, q.y.floor() as isize);
+        let (cx, cy) = (q.x.ffloor() as isize, q.y.ffloor() as isize);
+        if !self.around.is_empty() {
+            // a neighbour off the buffer: visible
+            if cx < 1 || cy < 1 || cx as usize >= self.w - 1 || cy as usize >= self.h - 1 {
+                return true;
+            }
+            return p.z as f32 <= self.around[cy as usize * self.w + cx as usize] + 0.02;
+        }
         let mut far = f32::NEG_INFINITY;
         for dy in -1..=1 {
             for dx in -1..=1 {
@@ -1605,13 +2983,33 @@ impl DepthBuffer {
         p.z as f32 <= far + 0.02
     }
 
-    fn visible_runs(&self, a: DVec3, b: DVec3) -> Vec<(DVec2, DVec2)> {
-        self.runs(a, b, |p| self.visible(p))
+    /// Is `p`, on an edge running square to `across` (a unit direction
+    /// in the drawing), a seam in a flat face: the same solid nearest on
+    /// both sides of it, at one depth, and the edge on that face or just
+    /// behind it? Parts butted together (a frame's jambs and its head, a
+    /// layer's reveals) leave such seams; they are not drawn.
+    fn seam(&self, p: DVec3, across: DVec2) -> bool {
+        const FLUSH: f32 = 0.001;
+        let side = |k: f64| {
+            let q = self.to_px(p + (across * (k * self.px)).extend(0.0));
+            let (x, y) = (q.x.ffloor() as isize, q.y.ffloor() as isize);
+            if x < 0 || y < 0 || x as usize >= self.w || y as usize >= self.h {
+                return None;
+            }
+            let i = y as usize * self.w + x as usize;
+            (self.nearest[i] != EMPTY).then_some((self.nearest[i], self.depth[i]))
+        };
+        match (side(-2.5), side(2.5)) {
+            (Some((a, da)), Some((b, db))) => {
+                a == b && (da - db).abs() < FLUSH && p.z as f32 > da - FLUSH
+            }
+            _ => false,
+        }
     }
 
     /// The stretches of `a`-`b` where `keep` holds, in drawing coordinates.
     fn runs(&self, a: DVec3, b: DVec3, keep: impl Fn(DVec3) -> bool) -> Vec<(DVec2, DVec2)> {
-        let len_px = ((b - a).truncate().length() / self.px).ceil().max(1.0) as usize;
+        let len_px = ((b - a).truncate().length() / self.px).fceil().max(1.0) as usize;
         let steps = len_px * 2;
         let mut runs = Vec::new();
         let mut start: Option<f64> = None;
@@ -1750,6 +3148,50 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn cut_hatches_lie_on_a_very_light_ground_except_in_renovation() {
+        use creabim_core::graphics::HatchGround;
+        let m = creabim_core::starter::starter_house();
+        let plan = m.iter().find(|e| e.name == "Ground Floor plan").unwrap().id;
+        let grounds = |m: &Model| -> Vec<Option<[f32; 3]>> {
+            view_drawing(m, plan)
+                .unwrap()
+                .items
+                .iter()
+                .filter_map(|i| match i {
+                    PlanItem::Fill { hatch, rgb, .. }
+                        if !matches!(
+                            hatch,
+                            creabim_core::Hatch::Solid | creabim_core::Hatch::Empty
+                        ) =>
+                    {
+                        Some(*rgb)
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let base = grounds(&m);
+        assert!(!base.is_empty());
+        assert!(base.iter().all(|c| *c == Some([0.965; 3])), "{base:?}");
+        let with = |f: &dyn Fn(&mut creabim_core::View)| {
+            let mut doc = creabim_core::document::Document::from_model(m.clone());
+            doc.edit(plan, "g", |e| {
+                if let ElementKind::View(v) = &mut e.kind {
+                    f(v);
+                }
+            })
+            .unwrap();
+            grounds(doc.model())
+        };
+        let paper = with(&|v| v.graphics.hatch_ground = HatchGround::Paper);
+        assert!(paper.iter().all(|c| *c == Some([1.0; 3])));
+        let grey = with(&|v| v.graphics.hatch_ground = HatchGround::Grey);
+        assert!(grey.iter().all(|c| c.is_none()));
+        let reno = with(&|v| v.reno = Some(creabim_core::reno::RenoView::New));
+        assert!(reno.iter().all(|c| c.is_none()));
+    }
 
     #[test]
     fn a_views_drawing_style_changes_its_cut_fills_on_screen_and_paper() {
@@ -2075,5 +3517,145 @@ mod tests {
         let parts = clip_triangle(t, 10.0);
         assert!(!parts.is_empty());
         assert!(parts.iter().flatten().all(|p| p.z >= -1e-12));
+    }
+
+    #[test]
+    fn a_section_on_a_jambs_face_cuts_the_frame_whole() {
+        // a frame jamb 0.1 deep beyond the line, its face on the line,
+        // its corners there a float's rounding either side of it
+        let jitter = |y: f64, z: f64| if (y + z) > 1.0 { 4e-7 } else { -4e-7 };
+        let at = |x: f64, y: f64, z: f64| {
+            let x = if x == 0.0 { jitter(y, z) } else { x };
+            DVec3::new(x, y, z)
+        };
+        let mut mesh = crate::TriMesh::default();
+        let (xs, ys, zs) = ([-0.1, 0.0], [0.0, 0.5], [0.0, 2.0]);
+        for (i, x) in xs.iter().enumerate() {
+            let n = if i == 0 { -DVec3::X } else { DVec3::X };
+            mesh.add_quad(
+                [
+                    at(*x, ys[0], zs[0]),
+                    at(*x, ys[1], zs[0]),
+                    at(*x, ys[1], zs[1]),
+                    at(*x, ys[0], zs[1]),
+                ],
+                n,
+            );
+        }
+        for (i, y) in ys.iter().enumerate() {
+            let n = if i == 0 { -DVec3::Y } else { DVec3::Y };
+            mesh.add_quad(
+                [
+                    at(xs[0], *y, zs[0]),
+                    at(xs[1], *y, zs[0]),
+                    at(xs[1], *y, zs[1]),
+                    at(xs[0], *y, zs[1]),
+                ],
+                n,
+            );
+        }
+        for (i, z) in zs.iter().enumerate() {
+            let n = if i == 0 { -DVec3::Z } else { DVec3::Z };
+            mesh.add_quad(
+                [
+                    at(xs[0], ys[0], *z),
+                    at(xs[1], ys[0], *z),
+                    at(xs[1], ys[1], *z),
+                    at(xs[0], ys[1], *z),
+                ],
+                n,
+            );
+        }
+        let item = SceneItem {
+            id: ElementId::new(),
+            mesh,
+            color: [0.5; 3],
+            surface: [0.5, 0.0, 1.0],
+            ghost: false,
+            layer: None,
+            finish: None,
+        };
+        // along +y, looking to -x: the jamb is beyond the line
+        let frame = SectionFrame::new(DVec2::new(0.0, -1.0), DVec2::new(0.0, 2.0), 1.0);
+        let loops = cut_loops(&item, &frame);
+        assert_eq!(loops.len(), 1, "{loops:?}");
+        let l = &loops[0];
+        let area: f64 = (0..l.len())
+            .map(|i| l[i].perp_dot(l[(i + 1) % l.len()]))
+            .sum::<f64>()
+            / 2.0;
+        // the whole face, 0.5 wide and 2 high: no wedge
+        assert!((area.abs() - 1.0).abs() < 1e-4, "{area} {l:?}");
+    }
+
+    #[test]
+    fn a_cut_outline_with_a_gap_is_bridged_not_closed_across() {
+        // a thin layer 2 m long, 15 mm thick, its top broken by a 4 cm
+        // gap a boolean cut left in its mesh
+        let (y0, y1) = (0.0, 0.015);
+        let p = |x: f64, y: f64| DVec2::new(x, y);
+        let segs = vec![
+            (p(0.0, y0), p(2.0, y0)),
+            (p(2.0, y0), p(2.0, y1)),
+            (p(2.0, y1), p(1.04, y1)),
+            (p(1.0, y1), p(0.0, y1)),
+            (p(0.0, y1), p(0.0, y0)),
+        ];
+        let loops = chain(segs);
+        assert_eq!(loops.len(), 1, "{loops:?}");
+        let l = &loops[0];
+        let area: f64 = (0..l.len())
+            .map(|i| l[i].perp_dot(l[(i + 1) % l.len()]))
+            .sum::<f64>()
+            / 2.0;
+        // the whole layer, no wedge cut off by a slanted closing line
+        assert!((area.abs() - 0.03).abs() < 1e-9, "{area} {l:?}");
+        for i in 0..l.len() {
+            let d = l[(i + 1) % l.len()] - l[i];
+            assert!(d.x.abs() < 1e-9 || d.y.abs() < 1e-9, "slanted {l:?}");
+        }
+    }
+
+    #[test]
+    fn a_trades_plan_leaves_out_ring_beams_and_the_lintels_over_doors() {
+        let m = sample();
+        let mut doc = creabim_core::Document::from_model(m.clone());
+        // a ring beam on every straight wall of the ground floor
+        let plan = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) => match v.kind {
+                    creabim_core::ViewKind::Plan { level, .. } => Some((e.id, level)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("a plan");
+        let mut tx = creabim_core::Transaction::new("Ring beams");
+        for e in m.iter() {
+            if let ElementKind::Wall(w) = &e.kind {
+                if w.level == plan.1 {
+                    if let Some(b) = creabim_core::masonry::ring_beam(&m, e.id) {
+                        tx = tx.insert(b);
+                    }
+                }
+            }
+        }
+        doc.commit(tx).unwrap();
+        let m = doc.model().clone();
+        let left_out = |m: &Model| {
+            view_drawing(m, plan.0)
+                .unwrap()
+                .items
+                .iter()
+                .filter(|it| trade_plan_leaves_out(m, it))
+                .count()
+        };
+        // the architect's plan draws them, above the cut
+        assert!(left_out(&m) > 0);
+        let zti = set_view(&m, plan.0, |v| {
+            v.trade = Some(creabim_core::viewmodes::Trade::Plumbing)
+        });
+        assert_eq!(left_out(&zti), 0);
     }
 }

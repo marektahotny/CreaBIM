@@ -22,14 +22,38 @@ pub enum Pen {
     Guide,
     /// Above the cut plane (beams, the stair past its break): dashed.
     Hidden,
+    /// The wall carrying on over a door, above the cut plane: a thin
+    /// line of a dash and two dots.
+    Overhead,
+    /// A stair above the cut plane (STN 01 3420, 5.9.3 d): its seen edges
+    /// in the projection's weight, dash-dot; with `hidden`, the edges it
+    /// hides, dash and two dots.
+    StairAbove { hidden: bool },
+    /// Where a footing's underside steps down: a heavy dashed line.
+    HiddenCut,
     /// Another level traced under a plan: halftone, never printed, not
     /// picked, but snapped to.
     Underlay,
+    /// A drafted line in a pen and line type of its own (the Line and
+    /// Polyline tools).
+    Drafted(creabim_core::LineLook),
 }
 
 pub use creabim_core::Hatch;
 
 /// The hatch for an element's cut faces: its material's, or its type's default.
+fn is_footing(model: &Model, id: ElementId) -> bool {
+    matches!(
+        model.get(id).map(|e| &e.kind),
+        Some(ElementKind::Footing(_))
+    )
+}
+
+/// Ground, paving or a plant: what everything built cuts through.
+fn is_site(model: &Model, id: ElementId) -> bool {
+    matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Site(_)))
+}
+
 pub fn hatch_of(model: &Model, id: ElementId) -> Hatch {
     let Some(e) = model.get(id) else {
         return Hatch::Solid;
@@ -47,68 +71,15 @@ pub fn hatch_of(model: &Model, id: ElementId) -> Hatch {
 /// Hatch line segments clipped to `polygon`, with a base spacing of
 /// `spacing` drawing units. Stipple dots come back as very short segments.
 pub fn hatch_lines(hatch: Hatch, polygon: &[DVec2], spacing: f64) -> Vec<(DVec2, DVec2)> {
-    let s = spacing;
-    let deg = |d: f64| d.to_radians();
-    match hatch {
-        Hatch::Empty | Hatch::Solid => vec![],
-        Hatch::Diagonal => scan_lines(polygon, deg(45.0), s, 0.0),
-        Hatch::Cross => {
-            let mut v = scan_lines(polygon, deg(45.0), s * 1.4, 0.0);
-            v.extend(scan_lines(polygon, deg(-45.0), s * 1.4, 0.0));
-            v
-        }
-        Hatch::Brick => {
-            let mut v = scan_lines(polygon, deg(45.0), s * 2.0, 0.0);
-            v.extend(scan_lines(polygon, deg(45.0), s * 2.0, s * 0.5));
-            v
-        }
-        Hatch::Concrete => {
-            let mut v = scan_lines(polygon, deg(45.0), s * 4.0, 0.0);
-            v.extend(stipple(polygon, s * 1.3));
-            v
-        }
-        Hatch::Timber => {
-            // grain runs along the polygon's longest side
-            let n = polygon.len();
-            let angle = (0..n)
-                .map(|i| polygon[(i + 1) % n] - polygon[i])
-                .max_by(|a, b| a.length().total_cmp(&b.length()))
-                .map_or(0.0, |d| d.to_angle());
-            scan_lines(polygon, angle, s * 1.2, s * 0.3)
-        }
-    }
-}
-
-/// A staggered grid of dots inside a polygon.
-fn stipple(polygon: &[DVec2], spacing: f64) -> Vec<(DVec2, DVec2)> {
-    if polygon.len() < 3 || spacing <= 0.0 {
+    // the built-in pattern, so the screen draws what paper prints
+    if spacing <= 0.0 {
         return vec![];
     }
-    let (lo, hi) = polygon
-        .iter()
-        .fold((DVec2::MAX, DVec2::MIN), |(a, b), p| (a.min(*p), b.max(*p)));
-    let dot = DVec2::new(spacing * 0.12, 0.0);
-    let mut out = Vec::new();
-    let mut j = (lo.y / spacing).floor() as i64;
-    while (j as f64) * spacing <= hi.y {
-        let y = j as f64 * spacing;
-        // offset alternate rows, and jitter a little so it reads as stipple
-        let shift = if j % 2 == 0 { 0.0 } else { 0.5 };
-        let mut i = (lo.x / spacing).floor() as i64 - 1;
-        while (i as f64) * spacing <= hi.x {
-            let h = ((i * 73 + j * 151).rem_euclid(97)) as f64 / 97.0 - 0.5;
-            let p = DVec2::new(
-                (i as f64 + shift + h * 0.4) * spacing,
-                y + h * 0.3 * spacing,
-            );
-            if point_in(p, polygon) {
-                out.push((p, p + dot));
-            }
-            i += 1;
-        }
-        j += 1;
-    }
-    out
+    crate::looks::pattern_lines(
+        &creabim_core::styles::builtin_pattern(hatch),
+        polygon,
+        creabim_core::styles::BASE_SPACING / spacing,
+    )
 }
 
 fn point_in(p: DVec2, poly: &[DVec2]) -> bool {
@@ -121,45 +92,6 @@ fn point_in(p: DVec2, poly: &[DVec2]) -> bool {
         }
     }
     inside
-}
-
-/// Parallel lines at `angle`, `spacing` apart and shifted by `phase`,
-/// clipped to a polygon (even-odd).
-fn scan_lines(polygon: &[DVec2], angle: f64, spacing: f64, phase: f64) -> Vec<(DVec2, DVec2)> {
-    if polygon.len() < 3 || spacing <= 0.0 {
-        return vec![];
-    }
-    // rotate so the lines run along x; lines sit at y = k * spacing, so
-    // neighbouring polygons share one continuous pattern
-    let (dir, nrm) = (DVec2::from_angle(angle), DVec2::from_angle(angle).perp());
-    let local: Vec<DVec2> = polygon
-        .iter()
-        .map(|p| DVec2::new(p.dot(dir), p.dot(nrm) - phase))
-        .collect();
-    let (y0, y1) = local
-        .iter()
-        .fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p.y), b.max(p.y)));
-    let mut out = Vec::new();
-    let mut k = (y0 / spacing).ceil() as i64;
-    while (k as f64) * spacing < y1 {
-        let y = k as f64 * spacing;
-        let mut xs: Vec<f64> = Vec::new();
-        for i in 0..local.len() {
-            let (a, b) = (local[i], local[(i + 1) % local.len()]);
-            if (a.y > y) != (b.y > y) {
-                xs.push(a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x));
-            }
-        }
-        xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        for pair in xs.chunks(2) {
-            if let [xa, xb] = pair {
-                let y = y + phase;
-                out.push((dir * *xa + nrm * y, dir * *xb + nrm * y));
-            }
-        }
-        k += 1;
-    }
-    out
 }
 
 /// Which cut wins where two overlap: higher numbers cut through lower ones.
@@ -210,6 +142,22 @@ impl Joining {
     /// join priority runs through (cores join cores, finishes stop at the
     /// structure), then columns through walls through slabs, then the
     /// element drawn first. An element without layers is all structure.
+    /// `a` is a ceiling's cut and `b` a wall's plaster.
+    fn ceiling_over_plaster_kinds(model: &Model, a: &CutPiece, b: &CutPiece) -> bool {
+        matches!(
+            model.get(a.id).map(|e| &e.kind),
+            Some(ElementKind::Ceiling(_))
+        ) && matches!(model.get(b.id).map(|e| &e.kind), Some(ElementKind::Wall(_)))
+            && b.layer
+                .is_some_and(|l| l.function == creabim_core::LayerFunction::Finish)
+    }
+
+    /// The ceiling `a` cuts the wall's plaster `b` (no join rule says
+    /// otherwise).
+    fn ceiling_over_plaster(&self, model: &Model, a: &CutPiece, b: &CutPiece) -> bool {
+        Self::ceiling_over_plaster_kinds(model, a, b) && self.cuts(model, a, b)
+    }
+
     fn cuts(&self, model: &Model, a: &CutPiece, b: &CutPiece) -> bool {
         if a.id == b.id {
             return false;
@@ -221,6 +169,31 @@ impl Joining {
             if let Some(w) = r.wins(a.id, b.id) {
                 return w;
             }
+        }
+        // a ceiling stops the wall's plaster: it ends at the boards, never
+        // runs on above them (George 2026-11-25)
+        if Self::ceiling_over_plaster_kinds(model, a, b) {
+            return true;
+        }
+        if Self::ceiling_over_plaster_kinds(model, b, a) {
+            return false;
+        }
+        // a member's tenon sits in its mortise in the member it meets:
+        // the tenoned one cuts the other (George 2026-11-27)
+        let tenoned = |p: &CutPiece| {
+            model
+                .get(p.id)
+                .and_then(creabim_core::framing::of)
+                .is_some_and(|f| f.tenons.iter().any(|t| *t > 0.0))
+        };
+        let member = |p: &CutPiece| {
+            model
+                .get(p.id)
+                .and_then(creabim_core::framing::of)
+                .is_some()
+        };
+        if member(a) && member(b) && tenoned(a) != tenoned(b) {
+            return tenoned(a);
         }
         let strength = |p: &CutPiece| {
             (
@@ -251,7 +224,7 @@ impl CutPiece {
             None => material_key(model, self.id),
             Some(l) => match l.material {
                 Some(m) if model.get(m).is_some() => (Some(m), 0),
-                _ if l.function == creabim_core::LayerFunction::AirGap => (None, 250),
+                _ if l.function == creabim_core::LayerFunction::AirGap => AIR,
                 _ => (None, 1 + cut_priority(model, self.id)),
             },
         }
@@ -259,7 +232,10 @@ impl CutPiece {
 
     /// The colour of the material this piece cuts: its layer's, else the
     /// element's own (or its core layer's); none for an air gap.
-    fn colour(&self, model: &Model) -> Option<[f32; 3]> {
+    fn colour(&self, model: &Model, section: bool) -> Option<[f32; 3]> {
+        if is_footing(model, self.id) && !section {
+            return None;
+        }
         let mat = |id: ElementId| match &model.get(id)?.kind {
             ElementKind::Material(m) => Some(m.color),
             _ => None,
@@ -279,7 +255,22 @@ impl CutPiece {
         }
     }
 
-    fn hatch(&self, model: &Model) -> Hatch {
+    fn hatch(&self, model: &Model, section: bool) -> Hatch {
+        // footings are drawn in outline only in plans (STN practice); a
+        // section fills them with their material like any cut, concrete
+        // when none is chosen
+        if is_footing(model, self.id) {
+            if !section {
+                return Hatch::Empty;
+            }
+            if self.layer.is_none() {
+                return match model.get(self.id) {
+                    Some(e) => creabim_core::material_of(model, e)
+                        .map_or(Hatch::Concrete, |(_, m)| m.hatch),
+                    None => Hatch::Concrete,
+                };
+            }
+        }
         match self.layer {
             None => hatch_of(model, self.id),
             Some(l) => match l.material.and_then(|m| model.get(m)).map(|e| &e.kind) {
@@ -293,6 +284,76 @@ impl CutPiece {
             },
         }
     }
+}
+
+/// `poly` without points repeated (within 1e-6) or lying on the line
+/// between their neighbours.
+fn tidied(poly: &[DVec2]) -> Vec<DVec2> {
+    let mut out: Vec<DVec2> = vec![];
+    for &p in poly {
+        if out.last().is_none_or(|q| q.distance(p) > 1e-6) {
+            out.push(p);
+        }
+    }
+    while out.len() > 1 && out[0].distance(out[out.len() - 1]) <= 1e-6 {
+        out.pop();
+    }
+    let mut changed = true;
+    while changed && out.len() > 3 {
+        changed = false;
+        for i in 0..out.len() {
+            let n = out.len();
+            let (a, b, c) = (out[(i + n - 1) % n], out[i], out[(i + 1) % n]);
+            let ab = b - a;
+            let bc = c - b;
+            if ab.perp_dot(bc).abs() <= 1e-9 * (ab.length() * bc.length()).max(1e-12)
+                && ab.dot(bc) >= 0.0
+            {
+                out.remove(i);
+                changed = true;
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// A simple polygon cut into triangles (ear clipping): convex parts for
+/// [`subtract_convex`].
+fn ear_clipped(poly: &[DVec2]) -> Vec<Vec<DVec2>> {
+    let mut v: Vec<DVec2> = poly.to_vec();
+    if signed_area(&v) < 0.0 {
+        v.reverse();
+    }
+    let mut out = vec![];
+    let inside = |p: DVec2, a: DVec2, b: DVec2, c: DVec2| {
+        (b - a).perp_dot(p - a) > 1e-12
+            && (c - b).perp_dot(p - b) > 1e-12
+            && (a - c).perp_dot(p - c) > 1e-12
+    };
+    let mut guard = 0;
+    while v.len() > 3 && guard < 10_000 {
+        guard += 1;
+        let n = v.len();
+        let ear = (0..n).find(|&i| {
+            let (a, b, c) = (v[(i + n - 1) % n], v[i], v[(i + 1) % n]);
+            (b - a).perp_dot(c - b) > 1e-12
+                && !v
+                    .iter()
+                    .any(|&p| p != a && p != b && p != c && inside(p, a, b, c))
+        });
+        match ear {
+            Some(i) => {
+                out.push(vec![v[(i + n - 1) % n], v[i], v[(i + 1) % n]]);
+                v.remove(i);
+            }
+            None => break,
+        }
+    }
+    if v.len() == 3 && (v[1] - v[0]).perp_dot(v[2] - v[1]).abs() > 1e-12 {
+        out.push(v);
+    }
+    out
 }
 
 fn is_convex(poly: &[DVec2]) -> bool {
@@ -371,6 +432,34 @@ pub fn subtract_convex(subject: &[DVec2], hole: &[DVec2]) -> Vec<Vec<DVec2>> {
     pieces
 }
 
+/// [`subtract_convex`] for a long, not convex subject such as the ground
+/// in a section: it is first cut into the part left of the hole, the part
+/// right of it and the band across it, so that the hole's top and bottom
+/// edges only clip that band (cut along the whole ground, a dip in its
+/// surface would leave a sliver joining its two sides).
+pub fn subtract_convex_banded(subject: &[DVec2], hole: &[DVec2]) -> Vec<Vec<DVec2>> {
+    let (lo, hi) = hole.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+        (lo.min(p.x), hi.max(p.x))
+    });
+    let up = DVec2::Y;
+    let (l0, l1) = (DVec2::new(lo, 0.0), DVec2::new(hi, 0.0));
+    // left of the line going up is x < lo
+    let left = clip_half(subject, l0, l0 + up, true);
+    let rest = clip_half(subject, l0, l0 + up, false);
+    let right = clip_half(&rest, l1, l1 + up, false);
+    let band = clip_half(&rest, l1, l1 + up, true);
+    let mut out = vec![];
+    for p in [left, right] {
+        if p.len() >= 3 && signed_area(&p).abs() > 1e-9 {
+            out.push(p);
+        }
+    }
+    if band.len() >= 3 && signed_area(&band).abs() > 1e-9 {
+        out.extend(subtract_convex(&band, hole));
+    }
+    out
+}
+
 /// Do two polygons' bounding boxes overlap by more than a sliver?
 fn boxes_overlap(a: &[DVec2], b: &[DVec2]) -> bool {
     let bb = |p: &[DVec2]| {
@@ -419,6 +508,83 @@ fn inside_spans(a: DVec2, b: DVec2, poly: &[DVec2], eps: f64) -> Vec<(f64, f64)>
         .collect()
 }
 
+/// The cut pieces as drawn: where two overlap the stronger cuts through
+/// the other (see `Joining::cuts`), and in a section the ground gives way
+/// to everything built in it.
+pub fn resolve_cuts(model: &Model, cuts: Vec<CutPiece>, section: bool) -> Vec<CutPiece> {
+    // where cuts overlap, the stronger cuts through the other (see
+    // `Joining::cuts`): a wall runs through the end of the slab that sits
+    // in it, and the slab's structure through the wall's plaster
+    let joining = Joining::of(model);
+    // (only cuts whose boxes meet can touch: a tower's floors have
+    // thousands of pieces)
+    let bb = |p: &[DVec2]| {
+        p.iter().fold((DVec2::MAX, DVec2::MIN), |(lo, hi), q| {
+            (lo.min(*q), hi.max(*q))
+        })
+    };
+    let near = |a: (DVec2, DVec2), b: (DVec2, DVec2), eps: f64| {
+        a.0.x <= b.1.x + eps && b.0.x <= a.1.x + eps && a.0.y <= b.1.y + eps && b.0.y <= a.1.y + eps
+    };
+    let cut_boxes: Vec<_> = cuts.iter().map(|c| bb(&c.points)).collect();
+    let mut polys: Vec<CutPiece> = Vec::new();
+    for (ci, c) in cuts.iter().enumerate() {
+        let mut pieces = vec![c.points.clone()];
+        // the ground is cut by everything built in it (footings, walls,
+        // slabs), never the other way round, so the line where they meet
+        // is a thin one and its thick line stays only where it meets air
+        // (in sections: plans keep their own rules)
+        let ground = section && is_site(model, c.id);
+        for (oi, other) in cuts.iter().enumerate() {
+            let built = !is_site(model, other.id);
+            let cuts_it = if ground && built {
+                true
+            } else if section && !ground && !built {
+                false
+            } else {
+                joining.cuts(model, other, c)
+            };
+            if !near(cut_boxes[ci], cut_boxes[oi], 1e-6) || !cuts_it {
+                continue;
+            }
+            // a slice's loop may repeat a point or run on along a line
+            // (a ceiling's layers): convex all the same once tidied
+            let tidy = tidied(&other.points);
+            let holes = if is_convex(&tidy) {
+                vec![tidy]
+            } else if joining.ceiling_over_plaster(model, other, c) {
+                // a ceiling's layer steps where it meets the wall: cut the
+                // plaster by each convex part of it
+                ear_clipped(&tidy)
+            } else {
+                continue;
+            };
+            for hole in &holes {
+                pieces = pieces
+                    .into_iter()
+                    .flat_map(|p| {
+                        if !boxes_overlap(&p, hole) {
+                            vec![p]
+                        } else if ground {
+                            subtract_convex_banded(&p, hole)
+                        } else {
+                            subtract_convex(&p, hole)
+                        }
+                    })
+                    .collect();
+            }
+        }
+        polys.extend(pieces.into_iter().map(|p| CutPiece {
+            points: p,
+            ..c.clone()
+        }));
+    }
+    polys
+}
+
+/// The key of an air gap layer: air, for where the thick line goes.
+const AIR: (Option<ElementId>, u8) = (None, 250);
+
 /// Turn cut polygons into fills plus outlines, leaving out outline segments
 /// shared with a neighbouring cut so joined elements read as one mass.
 pub fn clean_up_cuts(model: &Model, items: &mut Vec<PlanItem>) {
@@ -430,6 +596,143 @@ pub fn clean_up_cuts(model: &Model, items: &mut Vec<PlanItem>) {
 /// material's hatch; the line between two layers of one element is a thin
 /// one, and layers of the same material merge across joined walls.
 pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<CutPiece>) {
+    clean_up_pieces_in(model, items, layers, false)
+}
+
+/// [`clean_up_pieces`] for a plan, or with `section` for a section: there
+/// footings are filled with their material.
+fn boxes_of(p: &[DVec2]) -> (DVec2, DVec2) {
+    p.iter().fold((DVec2::MAX, DVec2::MIN), |(lo, hi), q| {
+        (lo.min(*q), hi.max(*q))
+    })
+}
+
+/// Do polygons `a` and `b` share a stretch of their outlines?
+fn shares_edge(a: &[DVec2], b: &[DVec2], eps: f64) -> bool {
+    let edges = |p: &[DVec2]| -> Vec<(DVec2, DVec2)> {
+        (0..p.len()).map(|i| (p[i], p[(i + 1) % p.len()])).collect()
+    };
+    for (p, q) in edges(a) {
+        let len = p.distance(q);
+        if len < eps {
+            continue;
+        }
+        let d = (q - p) / len;
+        for (r, t) in edges(b) {
+            if (r - p).perp_dot(d).abs() < eps && (t - p).perp_dot(d).abs() < eps {
+                let (u, v) = ((r - p).dot(d), (t - p).dot(d));
+                if u.max(v).min(len) - u.min(v).max(0.0) > eps {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// A point snapped to a grid.
+type Grid = (i64, i64);
+
+/// The outline round polygons that touch along their edges and do not
+/// overlap, when it is one loop: each edge split where another's corner
+/// lies on it, and the edges two of them share (run opposite ways)
+/// dropped. None when the parts do not make one simple outline.
+pub(crate) fn union_touching(parts: &[&[DVec2]], eps: f64) -> Option<Vec<DVec2>> {
+    let area = |p: &[DVec2]| -> f64 {
+        (0..p.len())
+            .map(|i| p[i].perp_dot(p[(i + 1) % p.len()]))
+            .sum::<f64>()
+            / 2.0
+    };
+    let rings: Vec<Vec<DVec2>> = parts
+        .iter()
+        .map(|p| {
+            let mut r = p.to_vec();
+            if area(&r) < 0.0 {
+                r.reverse();
+            }
+            r
+        })
+        .collect();
+    let corners: Vec<DVec2> = rings.iter().flatten().copied().collect();
+    let key = |p: DVec2| ((p.x / eps).round() as i64, (p.y / eps).round() as i64);
+    let mut edges: Vec<(DVec2, DVec2)> = vec![];
+    for r in &rings {
+        for i in 0..r.len() {
+            let (a, b) = (r[i], r[(i + 1) % r.len()]);
+            let len = a.distance(b);
+            if len < eps {
+                continue;
+            }
+            let d = (b - a) / len;
+            let mut cuts: Vec<f64> = corners
+                .iter()
+                .filter(|c| (**c - a).perp_dot(d).abs() < eps)
+                .map(|c| (*c - a).dot(d))
+                .filter(|t| *t > eps && *t < len - eps)
+                .collect();
+            cuts.sort_by(f64::total_cmp);
+            let mut from = a;
+            for t in cuts {
+                let p = a + d * t;
+                if p.distance(from) > eps {
+                    edges.push((from, p));
+                    from = p;
+                }
+            }
+            edges.push((from, b));
+        }
+    }
+    // shared edges run both ways: both go
+    let mut count: std::collections::HashMap<(Grid, Grid), i32> = std::collections::HashMap::new();
+    for (a, b) in &edges {
+        *count.entry((key(*a), key(*b))).or_default() += 1;
+    }
+    let outer: Vec<(DVec2, DVec2)> = edges
+        .into_iter()
+        .filter(|(a, b)| !count.contains_key(&(key(*b), key(*a))))
+        .collect();
+    if outer.is_empty() {
+        return None;
+    }
+    let mut next: std::collections::HashMap<(i64, i64), DVec2> = std::collections::HashMap::new();
+    for (a, b) in &outer {
+        if next.insert(key(*a), *b).is_some() {
+            return None;
+        }
+    }
+    let start = outer[0].0;
+    let mut ring = vec![start];
+    let mut at = outer[0].1;
+    while key(at) != key(start) {
+        if ring.len() > outer.len() {
+            return None;
+        }
+        ring.push(at);
+        at = *next.get(&key(at))?;
+    }
+    (ring.len() == outer.len()).then_some(ring)
+}
+
+pub fn clean_up_pieces_in(
+    model: &Model,
+    items: &mut Vec<PlanItem>,
+    layers: Vec<CutPiece>,
+    section: bool,
+) {
+    clean_up_pieces_with(model, items, layers, section, false)
+}
+
+/// [`clean_up_pieces_in`], with `one_wall` for a structural plan: every
+/// wall's cut is one material there, so joined walls merge into one
+/// outline with no line across where they meet.
+fn clean_up_pieces_with(
+    model: &Model,
+    items: &mut Vec<PlanItem>,
+    layers: Vec<CutPiece>,
+    section: bool,
+    one_wall: bool,
+) {
     let mut cuts: Vec<CutPiece> = Vec::new();
     items.retain(|it| match it {
         PlanItem::Polygon {
@@ -447,41 +750,86 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
         _ => true,
     });
     cuts.extend(layers);
-    // where cuts overlap, the stronger cuts through the other (see
-    // `Joining::cuts`): a wall runs through the end of the slab that sits
-    // in it, and the slab's structure through the wall's plaster
-    let joining = Joining::of(model);
-    let mut polys: Vec<CutPiece> = Vec::new();
-    for c in &cuts {
-        let mut pieces = vec![c.points.clone()];
-        for other in &cuts {
-            if !joining.cuts(model, other, c) || !is_convex(&other.points) {
-                continue;
+    let polys = resolve_cuts(model, cuts, section);
+    let bb = |p: &[DVec2]| {
+        p.iter().fold((DVec2::MAX, DVec2::MIN), |(lo, hi), q| {
+            (lo.min(*q), hi.max(*q))
+        })
+    };
+    let near = |a: (DVec2, DVec2), b: (DVec2, DVec2), eps: f64| {
+        a.0.x <= b.1.x + eps && b.0.x <= a.1.x + eps && a.0.y <= b.1.y + eps && b.0.y <= a.1.y + eps
+    };
+    let keys: Vec<(Option<ElementId>, u8)> = polys
+        .iter()
+        .map(|p| {
+            let k = p.key(model);
+            let wall = matches!(
+                model.get(p.id).map(|e| &e.kind),
+                Some(creabim_core::ElementKind::Wall(_))
+            );
+            // every member of a roof's timber or a steel frame its own
+            // piece: a line between two, a rafter's seat on its plate
+            // showing (George 2026-11-27)
+            let member = model
+                .get(p.id)
+                .is_some_and(|e| creabim_core::framing::of(e).is_some());
+            if one_wall && wall && k != AIR {
+                (None, u8::MAX)
+            } else if member {
+                (Some(p.id), u8::MAX - 1)
+            } else {
+                k
             }
-            let hole = &other.points;
-            pieces = pieces
-                .into_iter()
-                .flat_map(|p| {
-                    if boxes_overlap(&p, hole) {
-                        subtract_convex(&p, hole)
-                    } else {
-                        vec![p]
-                    }
-                })
-                .collect();
+        })
+        .collect();
+    // batt insulation of one layer cut in pieces (two ceilings meeting
+    // over a wall, the wall's top running into the wool) filled as one,
+    // so its loops run on over the joints (George 2026-11-25)
+    let mut filled = vec![false; polys.len()];
+    for (i, p) in polys.iter().enumerate() {
+        if filled[i] {
+            continue;
         }
-        polys.extend(pieces.into_iter().map(|p| CutPiece {
-            points: p,
-            ..c.clone()
-        }));
-    }
-    let keys: Vec<(Option<ElementId>, u8)> = polys.iter().map(|p| p.key(model)).collect();
-    for p in &polys {
+        let hatch = p.hatch(model, section);
+        let mut points = p.points.clone();
+        if hatch == Hatch::Insulation {
+            let layer = |q: &CutPiece| q.layer.map(|l| l.index);
+            let mut group = vec![i];
+            let mut k = 0;
+            while k < group.len() {
+                let g = group[k];
+                for j in i + 1..polys.len() {
+                    if filled[j]
+                        || group.contains(&j)
+                        || keys[j] != keys[i]
+                        || layer(&polys[j]) != layer(p)
+                        || polys[j].hatch(model, section) != hatch
+                        || !near(boxes_of(&polys[g].points), boxes_of(&polys[j].points), 1e-4)
+                    {
+                        continue;
+                    }
+                    if shares_edge(&polys[g].points, &polys[j].points, 1e-4) {
+                        group.push(j);
+                    }
+                }
+                k += 1;
+            }
+            if group.len() > 1 {
+                let parts: Vec<&[DVec2]> = group.iter().map(|&g| &polys[g].points[..]).collect();
+                if let Some(one) = union_touching(&parts, 1e-5) {
+                    points = one;
+                    for &g in &group {
+                        filled[g] = true;
+                    }
+                }
+            }
+        }
+        filled[i] = true;
         items.push(PlanItem::Fill {
             id: p.id,
-            points: p.points.clone(),
-            hatch: p.hatch(model),
-            rgb: p.colour(model),
+            points,
+            hatch,
+            rgb: p.colour(model, section),
         });
     }
     let edges = |pts: &Vec<DVec2>| -> Vec<(DVec2, DVec2)> {
@@ -490,8 +838,13 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
             .collect()
     };
     let eps = 1e-4;
+    let boxes: Vec<_> = polys.iter().map(|p| bb(&p.points)).collect();
     for (i, piece) in polys.iter().enumerate() {
-        for (a, b) in edges(&piece.points) {
+        let touching: Vec<usize> = (0..polys.len())
+            .filter(|&j| near(boxes[i], boxes[j], 2.0 * eps))
+            .collect();
+        let own = edges(&piece.points);
+        for (k, &(a, b)) in own.iter().enumerate() {
             let len = a.distance(b);
             if len < eps {
                 continue;
@@ -502,18 +855,37 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
             // where it is the same material, a thin line between two layers
             // of one element (drawn by the first of the two)
             let mut covered: Vec<(f64, f64)> = Vec::new();
+            // a seam of the outline itself: a loop that runs out along an
+            // edge and back (a layer and the piece of it turned into a
+            // window's reveal, cut as one) has no line there (George
+            // 2026-11-25)
+            for (kk, &(p, q)) in own.iter().enumerate() {
+                if kk != k && on_line(p) && on_line(q) {
+                    let (tp, tq) = ((p - a).dot(d), (q - a).dot(d));
+                    let (lo, hi) = (tp.min(tq).max(0.0), tp.max(tq).min(len));
+                    if hi > lo + eps {
+                        covered.push((lo, hi));
+                    }
+                }
+            }
             let mut thin: Vec<(f64, f64, bool)> = Vec::new();
-            for (j, other) in polys.iter().enumerate() {
+            for &j in &touching {
+                let other = &polys[j];
                 let same = keys[i] == keys[j];
-                if i == j || (!same && other.id != piece.id) {
+                // a thick line only where cut material meets air
+                // (PilonDesigner): an air gap counts as air, and where two
+                // different materials meet, of one element or of two, the
+                // line between them is thin
+                if i == j || (!same && keys[j] == AIR) {
                     continue;
                 }
+                let merge = same || keys[i] == AIR;
                 for (p, q) in edges(&other.points) {
                     if on_line(p) && on_line(q) {
                         let (tp, tq) = ((p - a).dot(d), (q - a).dot(d));
                         let (lo, hi) = (tp.min(tq).max(0.0), tp.max(tq).min(len));
                         if hi > lo + eps {
-                            if same {
+                            if merge {
                                 covered.push((lo, hi));
                             } else {
                                 thin.push((lo, hi, i < j));
@@ -585,6 +957,23 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
     }
 }
 
+/// Where a dimension's text sits and how its witness lines are drawn.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct DimPlace {
+    /// The text moved from over the middle of its line, drawing units.
+    pub shift: DVec2,
+    /// Moved by hand (a dragged text): the automatic placing of short
+    /// stretches leaves it alone.
+    pub manual: bool,
+    /// A thin leader from the middle of the line to the moved text.
+    pub leader: bool,
+    /// Witness lines only by the dimension line, not back to what is
+    /// measured.
+    pub short: bool,
+    /// The text on a patch of paper, covering what is drawn under it.
+    pub back: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum PlanItem {
     Polygon {
@@ -650,6 +1039,12 @@ pub enum PlanItem {
         /// Stretches of the dimension line left out where tags and notes
         /// sit across it, as fractions of the way from `a` to `b`.
         breaks: Vec<[f64; 2]>,
+        /// Text under the line (STN 01 3420: a dimension across a whole
+        /// door or window has its width above and its height, and a
+        /// window's sill in brackets, below).
+        below: Option<String>,
+        /// Where its text sits and how its witness lines are drawn.
+        place: DimPlace,
     },
     /// A tag: `text` in a bubble at `at`, with a leader back to `anchor`.
     Tag {
@@ -689,6 +1084,14 @@ pub enum PlanItem {
         points: Vec<DVec2>,
         rgb: [f32; 3],
     },
+    /// A polyline in a colour of its own, dashed or solid, over what it
+    /// lies on: the fire-dangerous space in front of an opening.
+    Curve {
+        id: ElementId,
+        points: Vec<DVec2>,
+        rgb: [f32; 3],
+        dashed: bool,
+    },
     /// Shaded surfaces as an image spanning `lo`..`hi`, drawn only inside `clip`.
     Image {
         id: ElementId,
@@ -727,6 +1130,7 @@ impl PlanItem {
             | PlanItem::Tint { id, .. }
             | PlanItem::Room { id, .. }
             | PlanItem::Shade { id, .. }
+            | PlanItem::Curve { id, .. }
             | PlanItem::Image { id, .. } => *id,
         }
     }
@@ -740,7 +1144,8 @@ impl PlanItem {
             | PlanItem::Fill { points, .. }
             | PlanItem::Tint { points, .. }
             | PlanItem::Room { points, .. }
-            | PlanItem::Shade { points, .. } => pts.extend(points.iter().copied()),
+            | PlanItem::Shade { points, .. }
+            | PlanItem::Curve { points, .. } => pts.extend(points.iter().copied()),
             PlanItem::Line {
                 pen: Pen::Guide, ..
             } => {}
@@ -833,6 +1238,22 @@ impl PlanView {
         crate::paper::draw(&mut svg, self, &map);
         svg.finish()
     }
+
+    /// [`PlanView::to_svg`] with a view's looks: its pens, styles and
+    /// overrides, as a sheet prints it.
+    pub fn to_svg_looks(&self, scale: f64, looks: &crate::looks::Looks) -> String {
+        let (lo, hi) = self.bounds().unwrap_or((DVec2::ZERO, DVec2::ONE));
+        let margin = DVec2::splat(1.0);
+        let (lo, hi) = (lo - margin, hi + margin);
+        let map = crate::paper::PaperMap {
+            model: lo,
+            paper: DVec2::ZERO,
+            scale,
+        };
+        let mut svg = crate::paper::SvgCanvas::new((hi - lo) * map.k());
+        crate::paper::draw_looks(&mut svg, self, &map, looks);
+        svg.finish()
+    }
 }
 
 /// Generate the plan of one level, cut `cut_height` metres above it.
@@ -853,7 +1274,11 @@ pub fn sketch_items(
     let mut out = Vec::new();
     // a closed sketch is a face: a light wash inside it (A7-1)
     let outline = sk.outline();
-    if sk.closed && outline.len() >= 3 && !creabim_core::polygon::self_intersects(&outline, true) {
+    if sk.closed
+        && sk.net.is_none()
+        && outline.len() >= 3
+        && !creabim_core::polygon::self_intersects(&outline, true)
+    {
         out.push(PlanItem::Tint {
             id,
             points: outline.iter().map(|p| at(*p)).collect(),
@@ -911,7 +1336,7 @@ pub fn sketch_items(
 /// Does the plan of `level`, cut `cut_height` above it, pass through
 /// footing `f`? A foundation level under the ground floor shows the
 /// footings its plane cuts, whatever level their walls stand on.
-fn footing_cut_at(
+pub(crate) fn footing_cut_at(
     model: &Model,
     f: &creabim_core::Footing,
     level: ElementId,
@@ -923,6 +1348,290 @@ fn footing_cut_at(
     let z = l.elevation + cut_height;
     let top = f.top(model);
     top - f.thickness < z && z < top
+}
+
+/// Is the plan of `level` cut `cut_height` above it a foundation plan:
+/// does its plane pass through a footing?
+pub fn is_foundation_plan(model: &Model, level: ElementId, cut_height: f64) -> bool {
+    model.iter().any(|e| match &e.kind {
+        ElementKind::Footing(f) => footing_cut_at(model, f, level, cut_height),
+        _ => false,
+    })
+}
+
+/// What a foundation plan adds over the footings its plane cuts: a heavy
+/// dashed line where their undersides step. The masonry standing on them
+/// is drawn by [`above_cut_walls`], as all above the cut.
+fn foundation_lines(model: &Model, level: ElementId, cut_height: f64) -> Vec<PlanItem> {
+    let mut out = vec![];
+    let cut: Vec<(ElementId, &creabim_core::Footing)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Footing(f) if footing_cut_at(model, f, level, cut_height) => {
+                Some((e.id, f))
+            }
+            _ => None,
+        })
+        .collect();
+    if cut.is_empty() {
+        return out;
+    }
+    for (id, a, b) in creabim_core::footing::steps(model) {
+        if cut.iter().any(|(c, _)| *c == id) {
+            out.push(PlanItem::Line {
+                id,
+                pen: Pen::HiddenCut,
+                a,
+                b,
+            });
+        }
+    }
+    out
+}
+
+/// The elevation of the first level over `z`; none above is infinitely high.
+pub fn next_level_above(model: &Model, z: f64) -> f64 {
+    model
+        .levels()
+        .map(|(_, l)| l.elevation)
+        .filter(|e| *e > z + 1e-6)
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// The roofs of other levels whose eaves lie between the cut and the top
+/// of the range (George 2026-11-21: a storey's plan with its top raised
+/// to the roof shows its outline): eaves, ridges and hips as a thin line
+/// of a dash and two dots, as all above the cut. A roof of the plan's own
+/// level is drawn with its other members.
+fn above_cut_roofs(model: &Model, level: ElementId, cut_z: f64, top_z: f64) -> Vec<PlanItem> {
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Roof(r) = &e.kind else {
+            continue;
+        };
+        if r.level == level {
+            continue;
+        }
+        let low = crate::members::roof_low(model, r);
+        if !(low > cut_z + 1e-3 && low < top_z - 1e-3) {
+            continue;
+        }
+        for it in crate::members::member_plan(model, e, -1e4) {
+            match it {
+                PlanItem::Line { id, a, b, .. } => out.push(PlanItem::Line {
+                    id,
+                    pen: Pen::Overhead,
+                    a,
+                    b,
+                }),
+                PlanItem::Polygon { id, points, .. } => out.push(PlanItem::Polygon {
+                    id,
+                    pen: Pen::Overhead,
+                    points,
+                }),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// The columns of other levels reaching into the plan's range (George
+/// 2026-11-24: a column of the ground storey running down into the
+/// footings): one standing above the cut with its foot under the top of
+/// the range as all above the cut, a thin line of a dash and two dots;
+/// one the plane passes through cut, as the plan's own. A foundation
+/// plan draws them all as above its cut, and only their load-bearing
+/// part (not the insulation boards of a wrap).
+fn other_level_columns(
+    model: &Model,
+    level: ElementId,
+    cut_z: f64,
+    top_z: f64,
+    core_only: bool,
+) -> Vec<PlanItem> {
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Column(c) = &e.kind else {
+            continue;
+        };
+        if core_only && c.piece.is_some() {
+            continue;
+        }
+        let (z0, z1) = c.span(model);
+        if z0 >= top_z - 1e-3 || z1 <= cut_z + 1e-3 {
+            continue;
+        }
+        // one the plane cuts is drawn cut with the plan's own (its pieces
+        // of insulation and plaster joined, hatched); drawing it again
+        // here put a grey box with the pieces' edges over it (George
+        // 2026-11-24). Only a foundation plan draws another storey's
+        // column through its cut as above it, its core.
+        if z0 < cut_z && (!core_only || c.level == level) {
+            continue;
+        }
+        // its own level's columns standing above the cut (porch posts on
+        // the foundation level, their base over the footings) are seen
+        // from above too
+        let points = c.outline();
+        for i in 0..points.len() {
+            out.push(PlanItem::Line {
+                id: e.id,
+                pen: Pen::Overhead,
+                a: points[i],
+                b: points[(i + 1) % points.len()],
+            });
+        }
+    }
+    out
+}
+
+/// Every wall standing above the cut whose base is under the top of the
+/// range (a plan's "Horná hrana rezu"), of whatever level: its outline as
+/// a thin line of a dash and two dots, as all above the cut (George
+/// 2026-11-20). A foundation plan draws only the load-bearing layer of
+/// each (the DT blocks of the masonry on the footings, without its
+/// membrane and insulation); an end meeting no other such wall is closed.
+fn above_cut_walls(
+    model: &Model,
+    cut_z: f64,
+    top_z: f64,
+    core_only: bool,
+    joins: &std::collections::HashMap<ElementId, creabim_core::joins::WallEnds>,
+) -> Vec<PlanItem> {
+    let mut out = vec![];
+    let walls: Vec<(ElementId, &creabim_core::Wall)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) => {
+                let base = creabim_core::walls::base_z(model, w);
+                (base > cut_z + 1e-3 && base < top_z - 1e-3 && w.length() > 1e-6)
+                    .then_some((e.id, w))
+            }
+            _ => None,
+        })
+        .collect();
+    for (wid, w) in &walls {
+        let ends = joins.get(wid).cloned().unwrap_or_default();
+        let (s0, s1) = if core_only {
+            creabim_core::walls::core_span(model, w)
+        } else {
+            (-w.thickness / 2.0, w.thickness / 2.0)
+        };
+        if w.is_arc() {
+            let len = w.length();
+            let at = |u: f64, s: f64| {
+                if u <= 1e-9 || u >= len - 1e-9 {
+                    w.place_end(u > 1e-9, ends.place(w, u, s, false), s)
+                } else {
+                    w.place(u, s)
+                }
+            };
+            out.push(PlanItem::Polygon {
+                id: *wid,
+                pen: Pen::Overhead,
+                points: wall_band(w, &at, 0.0, len, s0.min(s1), s0.max(s1)),
+            });
+            continue;
+        }
+        let len = w.length();
+        let d = (w.end - w.start) / len;
+        let n = d.perp();
+        let at = |u: f64, s: f64| w.start + d * ends.place(w, u, s, true) + n * s;
+        let (p0, p1, q0, q1) = (at(0.0, s0), at(len, s0), at(0.0, s1), at(len, s1));
+        // where another wall ends against this one's side (a T), that
+        // side's line stops for it, so the two join as one outline
+        // (George 2026-11-23: masonry of DT blocks only against the
+        // masonry with its insulation)
+        let gaps = |side: f64| -> Vec<(f64, f64)> {
+            let a0 = w.start + n * side;
+            let mut g = vec![];
+            for (o, ow) in &walls {
+                if o == wid || ow.is_arc() {
+                    continue;
+                }
+                let ol = ow.length();
+                let d2 = (ow.end - ow.start) / ol;
+                if d.perp_dot(d2).abs() < 0.2 {
+                    continue;
+                }
+                for (end, away) in [(ow.start, d2), (ow.end, -d2)] {
+                    let rel = end - w.start;
+                    let (u, v) = (rel.dot(d), rel.dot(n));
+                    if u < 1e-3 || u > len - 1e-3 || v.abs() > w.thickness / 2.0 + 0.02 {
+                        continue;
+                    }
+                    // only the side the other wall stands on
+                    if away.dot(n) * (side - (s0 + s1) / 2.0) <= 0.0 {
+                        continue;
+                    }
+                    let (c0, c1) = if core_only {
+                        creabim_core::walls::core_span(model, ow)
+                    } else {
+                        (-ow.thickness / 2.0, ow.thickness / 2.0)
+                    };
+                    let n2 = d2.perp();
+                    let cut = |c: f64| {
+                        let p = ow.start + n2 * c;
+                        (p - a0).perp_dot(d2) / d.perp_dot(d2)
+                    };
+                    let (x0, x1) = (cut(c0), cut(c1));
+                    g.push((x0.min(x1), x0.max(x1)));
+                }
+            }
+            g
+        };
+        let mut line = |a: DVec2, b: DVec2, side: f64| {
+            let (ua, ub) = ((a - w.start).dot(d), (b - w.start).dot(d));
+            let mut from = ua;
+            let mut gs = gaps(side);
+            gs.sort_by(|x, y| x.0.total_cmp(&y.0));
+            let on = |u: f64| a + (b - a) * ((u - ua) / (ub - ua));
+            for (g0, g1) in gs {
+                if g1 <= from || g0 >= ub {
+                    continue;
+                }
+                if g0 > from + 1e-6 {
+                    out.push(PlanItem::Line {
+                        id: *wid,
+                        pen: Pen::Overhead,
+                        a: on(from),
+                        b: on(g0),
+                    });
+                }
+                from = from.max(g1);
+            }
+            if ub > from + 1e-6 {
+                out.push(PlanItem::Line {
+                    id: *wid,
+                    pen: Pen::Overhead,
+                    a: on(from),
+                    b: on(ub),
+                });
+            }
+        };
+        line(p0, p1, s0);
+        line(q0, q1, s1);
+        let mut line = |a: DVec2, b: DVec2| {
+            out.push(PlanItem::Line {
+                id: *wid,
+                pen: Pen::Overhead,
+                a,
+                b,
+            })
+        };
+        for (p, a, b) in [(w.start, p0, q0), (w.end, p1, q1)] {
+            let joined = walls.iter().any(|(o, ow)| {
+                o != wid
+                    && creabim_core::footing::segment_distance(p, ow.start, ow.end)
+                        <= (ow.thickness + w.thickness) / 2.0
+            });
+            if !joined {
+                line(a, b);
+            }
+        }
+    }
+    out
 }
 
 pub fn plan_view(model: &Model, level: ElementId, cut_height: f64) -> PlanView {
@@ -943,25 +1652,45 @@ pub fn plan_view_with(
     cut_height: f64,
     graphics: &creabim_core::PlanGraphics,
 ) -> PlanView {
+    let own = level;
+    let (level, cut_height) = storey_cut(model, level, cut_height);
+    // an empty storey drawn as the one under it, cut higher: the ground
+    // (terrain, paving, plants) stays on its own level's plan and the
+    // site plan (a downloaded terrain showed on 2. NP)
+    let borrowed = level != own;
     let mut items = Vec::new();
     // tinted footprints, drawn under everything else
     let mut shades: Vec<PlanItem> = Vec::new();
     // dashed over the cut fills: openings above the cut
     let mut overhead: Vec<PlanItem> = Vec::new();
     let joins = creabim_core::wall_joins(model);
+    // the top of the range: what starts above it is not drawn
+    let range_top = {
+        let own_z = model.level(own).map_or(0.0, |l| l.elevation);
+        graphics
+            .range
+            .top
+            .map_or_else(|| next_level_above(model, own_z), |t| t.z(model, own_z))
+    };
     let cuts = crate::scene::all_cuts(model);
     let cutters: std::collections::HashSet<ElementId> = cuts.iter().map(|c| c.1).collect();
     let targets: std::collections::HashSet<ElementId> = cuts.iter().map(|c| c.0).collect();
     // elements whose plan comes from slicing their final 3D shape
     let mut sliced: Vec<ElementId> = Vec::new();
+    // windows and doors drawn as cut off the cut plane: the wall, its
+    // start, direction and the opening's span along it and the wall's
+    // half thickness (a sliced wall's outline is cut back there too)
+    let mut forced: Vec<(ElementId, DVec2, DVec2, f64, f64, f64)> = Vec::new();
+    // the door openings cut: where two floors meet under a door
+    let mut doors: Vec<Vec<DVec2>> = Vec::new();
     // the layers of layered walls, cut
     let mut layers: Vec<CutPiece> = Vec::new();
     for e in model.iter() {
-        if cutters.contains(&e.id) {
+        if cutters.contains(&e.id) || (borrowed && matches!(e.kind, ElementKind::Site(_))) {
             continue;
         }
         let on_level = match &e.kind {
-            ElementKind::Wall(w) => w.level == level,
+            ElementKind::Wall(w) => wall_rise(model, w, level, cut_height).is_some(),
             ElementKind::Slab(s) => s.level == level,
             // an imported mesh with no level of its own is on the level its
             // base stands on (MU33: a Blender import showed in no plan)
@@ -1005,7 +1734,9 @@ pub fn plan_view_with(
                     text: creabim_core::grids::display_label(model, g),
                 });
             }
-            ElementKind::Wall(w) if w.level == level => {
+            ElementKind::Wall(w) if wall_rise(model, w, level, cut_height).is_some() => {
+                // how far above the wall's own level this plan's lies
+                let rise = wall_rise(model, w, level, cut_height).unwrap_or(0.0);
                 let d = w.direction();
                 let n = DVec2::new(-d.y, d.x);
                 let t = w.thickness / 2.0;
@@ -1025,8 +1756,9 @@ pub fn plan_view_with(
                         w.start + d * ends.place(w, u, s, false) + n * s
                     }
                 };
-                let cut_v = cut_height - w.base_offset;
+                let cut_v = cut_height + rise - w.base_offset;
                 let top_v = wall_top_height(model, w);
+                let asm_of = creabim_core::assembly_of(model, e).map(|x| x.1);
                 if cut_v <= 0.0 || cut_v >= top_v {
                     // wall entirely below or above the cut: show its outline in projection
                     if cut_v >= top_v {
@@ -1059,7 +1791,7 @@ pub fn plan_view_with(
                     for (oid, o) in hosted {
                         if let Some(c) = Cut::of(o, w) {
                             if cut_v > c.v0 && cut_v < c.v1 {
-                                items.extend(opening_symbol(oid, o, w, &c, cut_v, &plain));
+                                items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &plain));
                             }
                         }
                     }
@@ -1067,31 +1799,68 @@ pub fn plan_view_with(
                 }
                 let mut gaps: Vec<(f64, f64)> = Vec::new();
                 // the windows cut: their edges and their frames' depths
-                let mut windows: Vec<(f64, f64, f64)> = Vec::new();
+                let mut windows: Vec<(f64, f64, (f64, f64), f64)> = Vec::new();
                 for oid in model.dependents(e.id) {
                     let Some(oe) = model.get(oid) else { continue };
                     let ElementKind::Opening(o) = &oe.kind else {
                         continue;
                     };
                     let Some(c) = Cut::of(o, w) else { continue };
+                    // a window or door is always drawn as cut, its sill
+                    // over the cut plane or its head under it (George
+                    // 2026-11-21): through its middle then
+                    let joinery = matches!(o.kind, OpeningKind::Window | OpeningKind::Door);
+                    let cut_v = if joinery && !(cut_v > c.v0 && cut_v < c.v1) && c.v1 > c.v0 {
+                        forced.push((e.id, w.start, w.direction(), c.u0, c.u1, t));
+                        (c.v0 + c.v1) / 2.0
+                    } else {
+                        cut_v
+                    };
                     if cut_v > c.v0 && cut_v < c.v1 {
                         gaps.push((c.u0, c.u1));
-                        if o.kind == creabim_core::OpeningKind::Window {
-                            let frame = o.frame.fitted(c.u1 - c.u0, c.v1 - c.v0, w.thickness);
-                            windows.push((c.u0, c.u1, frame.depth));
+                        if o.kind == OpeningKind::Door {
+                            doors.push(vec![at(c.u0, -t), at(c.u1, -t), at(c.u1, t), at(c.u0, t)]);
                         }
-                        items.extend(opening_symbol(oid, o, w, &c, cut_v, &at));
-                    } else if c.v0 >= cut_v {
+                        if creabim_core::joinery::wraps_reveal(o) {
+                            let frame = o.frame.fitted(c.u1 - c.u0, c.v1 - c.v0, w.thickness);
+                            windows.push((
+                                c.u0,
+                                c.u1,
+                                o.frame_span(w, asm_of, frame.depth),
+                                o.reveal
+                                    .unwrap_or(creabim_core::assembly::REVEAL_INSULATION),
+                            ));
+                        }
+                        items.extend(opening_symbol(oid, o, w, asm_of, &c, cut_v, &at));
+                    } else if c.v0 >= cut_v || o.kind == OpeningKind::Hole {
                         // wholly above the cut (a duct hole, a high
-                        // window): its outline in the wall, dashed
+                        // window): its outline in the wall, a thin line of
+                        // a dash and two dots, as all above the cut; a
+                        // penetration wholly below it, thin dashed, as all
+                        // hidden under the cut; a penetration's cross with it
+                        let pen = if c.v0 >= cut_v {
+                            Pen::Overhead
+                        } else {
+                            Pen::Hidden
+                        };
                         let corners = [at(c.u0, -t), at(c.u1, -t), at(c.u1, t), at(c.u0, t)];
                         for i in 0..4 {
                             overhead.push(PlanItem::Line {
                                 id: oid,
-                                pen: Pen::Hidden,
+                                pen,
                                 a: corners[i],
                                 b: corners[(i + 1) % 4],
                             });
+                        }
+                        if o.is_penetration() {
+                            for (a, b) in [(0, 2), (1, 3)] {
+                                overhead.push(PlanItem::Line {
+                                    id: oid,
+                                    pen,
+                                    a: corners[a],
+                                    b: corners[b],
+                                });
+                            }
                         }
                     }
                 }
@@ -1127,6 +1896,14 @@ pub fn plan_view_with(
                 if let Some((_, asm)) = creabim_core::assembly_of(model, e) {
                     // each layer between its own ends: a core runs on at a T
                     for band in creabim_core::assembly::wall_bands(asm, w) {
+                        // a structural plan: the masonry or concrete only,
+                        // no insulation, render or plaster (George
+                        // 2026-11-24)
+                        if graphics.structure_only
+                            && band.function != creabim_core::LayerFunction::Structure
+                        {
+                            continue;
+                        }
                         let at = |u: f64, s: f64| {
                             if w.is_arc() {
                                 w.place(u, s)
@@ -1144,8 +1921,11 @@ pub fn plan_view_with(
                     }
                     // the layers turned into the windows' reveals
                     let bands = creabim_core::assembly::wall_bands(asm, w);
-                    for &(u0, u1, depth) in &windows {
-                        for l in creabim_core::assembly::reveal_wraps(asm, w, depth) {
+                    for &(u0, u1, span, lap) in &windows {
+                        if graphics.structure_only {
+                            break;
+                        }
+                        for l in creabim_core::assembly::reveal_wraps(asm, w, span, lap) {
                             let Some(band) = bands.get(l.index) else {
                                 continue;
                             };
@@ -1239,7 +2019,20 @@ pub fn plan_view_with(
                         );
                     }
                     let here = model.level(level).map_or(0.0, |l| l.elevation);
+                    // a penetration draws its own mark
+                    let pens: Vec<&Vec<DVec2>> = model
+                        .iter()
+                        .filter_map(|x| match &x.kind {
+                            ElementKind::Shaft(sh) if sh.penetration.is_some() => {
+                                Some(&sh.boundary)
+                            }
+                            _ => None,
+                        })
+                        .collect();
                     for h in &holes {
+                        if pens.contains(&h) {
+                            continue;
+                        }
                         if stair_arrives_in(model, here, h) {
                             items.push(PlanItem::Polygon {
                                 id: e.id,
@@ -1259,8 +2052,24 @@ pub fn plan_view_with(
             ElementKind::Valve(v) if v.host(model).is_some_and(|p| p.level == level) => {
                 items.extend(crate::valves::valve_plan(model, e, v));
             }
+            // gutters and downpipes, from whatever level: a downpipe runs
+            // down past the storeys under its roof
+            ElementKind::Flashing(f) => {
+                let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
+                items.extend(crate::flashing::plan_items(model, e, f, z));
+            }
+            // a roof over the top of the range is not seen (George
+            // 2026-11-21: the plan's "Horná hrana rezu" decides)
+            ElementKind::Roof(r)
+                if on_level && crate::members::roof_low(model, r) >= range_top - 1e-3 => {}
             k if on_level && creabim_core::members::is_member(k) => {
-                items.extend(crate::members::member_plan(model, e, cut_height));
+                items.extend(crate::framing::plan_items(
+                    model,
+                    e,
+                    crate::members::member_plan(model, e, cut_height),
+                ));
+                // a rafter drawn as its axis only, no fill (the krov plan)
+                let schematic = creabim_core::framing::of(e).is_some_and(|f| f.role.schematic());
                 // a mass or sweep below the cut: its top seen tinted, in
                 // its material under the colour styles (MU36: they read as
                 // wireframe)
@@ -1273,6 +2082,7 @@ pub fn plan_view_with(
                         crate::parts::part_mesh(model, p).map(|m| (m, [0.78, 0.76, 0.72]))
                     }
                     ElementKind::Part(_) => None,
+                    _ if schematic => None,
                     _ => crate::members::member_mesh(model, e),
                 };
                 if let Some((mesh, base)) = solid {
@@ -1333,6 +2143,35 @@ pub fn plan_view_with(
                     });
                 }
             }
+            ElementKind::Shaft(sh) if sh.penetration.is_some() => {
+                // a penetration through a slab (PilonDesigner's prestup):
+                // in its own floor, thin solid; in the slab over this
+                // storey (the ceiling), over the cut: dash and two dots
+                let Some(pen) = slab_penetration_pen(model, sh, level) else {
+                    continue;
+                };
+                let p = sh.penetration.as_ref().unwrap();
+                let n = sh.boundary.len();
+                for i in 0..n {
+                    items.push(PlanItem::Line {
+                        id: e.id,
+                        pen,
+                        a: sh.boundary[i],
+                        b: sh.boundary[(i + 1) % n],
+                    });
+                }
+                if !p.hole_only && !p.secondary {
+                    let m = p.slab_mark(sh.centre());
+                    for w in m.windows(2) {
+                        items.push(PlanItem::Line {
+                            id: e.id,
+                            pen,
+                            a: w[0],
+                            b: w[1],
+                        });
+                    }
+                }
+            }
             ElementKind::Shaft(sh) => {
                 // on every plan it passes through, crossed, to pick it by:
                 // the level its top reaches too, whose floor it cuts
@@ -1364,7 +2203,7 @@ pub fn plan_view_with(
                     }
                 }
             }
-            ElementKind::Sketch(sk) if sk.level == Some(level) => {
+            ElementKind::Sketch(sk) if sk.level == Some(level) && sk.view.is_none() => {
                 items.extend(sketch_items(e.id, sk, &|p| p));
             }
             // guides lying flat; one standing on a wall face shows in sections
@@ -1395,8 +2234,26 @@ pub fn plan_view_with(
     // a cut wall keeps its opening symbols but takes its outline from the slice
     items.retain(|it| !sliced.contains(&it.id()) || matches!(it, PlanItem::Label { .. }));
     layers.retain(|p| !sliced.contains(&p.id));
-    clean_up_pieces(model, &mut items, layers);
+    // a structural plan: the walls one outline where they join, whatever
+    // they are built of (George 2026-11-24)
+    clean_up_pieces_with(model, &mut items, layers, false, graphics.structure_only);
     items.append(&mut overhead);
+    items.extend(foundation_lines(model, level, cut_height));
+    {
+        // the walls standing between the cut and the top of the range
+        let own_z = model.level(own).map_or(0.0, |l| l.elevation);
+        let top_z = graphics
+            .range
+            .top
+            .map_or_else(|| next_level_above(model, own_z), |t| t.z(model, own_z));
+        let cut_z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
+        let core_only = is_foundation_plan(model, level, cut_height);
+        items.extend(above_cut_walls(model, cut_z, top_z, core_only, &joins));
+        items.extend(other_level_columns(model, level, cut_z, top_z, core_only));
+        if !core_only {
+            items.extend(above_cut_roofs(model, level, cut_z, top_z));
+        }
+    }
     if !sliced.is_empty() {
         let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
         // only what is sliced, and what cuts it
@@ -1404,7 +2261,17 @@ pub fn plan_view_with(
         needed.extend(cuts.iter().filter(|c| sliced.contains(&c.0)).map(|c| c.1));
         let scene = crate::scene::build_scene_of(model, Some(&needed));
         for item in scene.iter().filter(|i| sliced.contains(&i.id)) {
-            sliced_plan(model, item, z, &mut items);
+            let mine: Vec<_> = forced.iter().filter(|f| f.0 == item.id).collect();
+            if mine.is_empty() {
+                sliced_plan(model, item, z, &mut items);
+            } else {
+                let mut got = Vec::new();
+                sliced_plan(model, item, z, &mut got);
+                for f in mine {
+                    got = gap_out(got, item.id, f.1, f.2, f.3, f.4, f.5);
+                }
+                items.extend(got);
+            }
             // an imported mesh wholly below the cut: its footprint tinted
             if matches!(
                 model.get(item.id).map(|e| &e.kind),
@@ -1416,8 +2283,96 @@ pub fn plan_view_with(
     }
     items.extend(stairs_beyond(model, level, graphics));
     category_pens(model, &mut items, graphics);
+    floor_change_lines(model, &mut items, &doors);
     shades.append(&mut items);
     PlanView { items: shades }
+}
+
+/// Where two floors meet in a door: a very thin dashed line (George
+/// 2026-11-23), the slabs' edges in projection crossing a door opening
+/// drawn so; elsewhere they stay as they were.
+pub const FLOOR_CHANGE: creabim_core::LineLook = creabim_core::LineLook {
+    pen: creabim_core::LinePen::VeryThin,
+    kind: creabim_core::LineType::Dashed,
+};
+
+fn floor_change_lines(model: &Model, items: &mut Vec<PlanItem>, doors: &[Vec<DVec2>]) {
+    if doors.is_empty() {
+        return;
+    }
+    let mut out = Vec::with_capacity(items.len());
+    // two floors meeting share the edge: one line, laid one way (two
+    // dashed lines run opposite ways read as one solid)
+    let mut drawn: Vec<(DVec2, DVec2)> = Vec::new();
+    for it in items.drain(..) {
+        let PlanItem::Polygon {
+            id,
+            pen: Pen::Projection,
+            points,
+        } = &it
+        else {
+            out.push(it);
+            continue;
+        };
+        if !matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Slab(_))) {
+            out.push(it);
+            continue;
+        }
+        let n = points.len();
+        type Edge = (DVec2, DVec2, Vec<(DVec2, DVec2)>);
+        let edges: Vec<Edge> = (0..n)
+            .map(|i| {
+                let (a, b) = (points[i], points[(i + 1) % n]);
+                (a, b, clip_to_holes(a, b, doors))
+            })
+            .collect();
+        if edges.iter().all(|e| e.2.is_empty()) {
+            out.push(it);
+            continue;
+        }
+        let id = *id;
+        for (a, b, inside) in edges {
+            // the edge's pieces outside the doors as before, inside dashed
+            let mut from = a;
+            for (p, q) in inside {
+                if from.distance(p) > 1e-9 {
+                    out.push(PlanItem::Line {
+                        id,
+                        pen: Pen::Projection,
+                        a: from,
+                        b: p,
+                    });
+                }
+                let (p0, q0) = if (p.x, p.y) <= (q.x, q.y) {
+                    (p, q)
+                } else {
+                    (q, p)
+                };
+                let twin = drawn
+                    .iter()
+                    .any(|(x, y)| x.distance(p0) < 1e-6 && y.distance(q0) < 1e-6);
+                if !twin {
+                    drawn.push((p0, q0));
+                    out.push(PlanItem::Line {
+                        id,
+                        pen: Pen::Drafted(FLOOR_CHANGE),
+                        a: p0,
+                        b: q0,
+                    });
+                }
+                from = q;
+            }
+            if from.distance(b) > 1e-9 {
+                out.push(PlanItem::Line {
+                    id,
+                    pen: Pen::Projection,
+                    a: from,
+                    b,
+                });
+            }
+        }
+    }
+    *items = out;
 }
 
 /// The lines a category draws in projection given the pen its view's
@@ -1572,7 +2527,163 @@ fn wall_band(
 /// The height of a wall's top above its base where it is highest. A top
 /// attached to a roof or slab follows their undersides where they are
 /// over it, and keeps the wall's own height elsewhere.
-fn wall_top_height(model: &Model, w: &creabim_core::Wall) -> f64 {
+/// Is wall `w` in the plan of `level` cut `cut_height` above it? A wall of
+/// the level itself is; so is a wall of another level that stands in
+/// this storey: its base under the cut and its top above this level's
+/// floor (a level put half way up a storey cuts the walls there, MU: a
+/// plan of a level added at +2.584 was empty). Gives how far this level
+/// lies above the wall's own.
+/// The level and cut a plan is drawn from. A level put inside a storey
+/// (to cut it there) has nothing built on it: its plan is the plan of the
+/// storey it lies in, cut that much higher, so the floor, the stairs, the
+/// furniture and what else stands below show as in any plan.
+pub fn storey_cut(model: &Model, level: ElementId, cut_height: f64) -> (ElementId, f64) {
+    let hosts = |l: ElementId| {
+        model.iter().any(|e| {
+            !matches!(e.kind, ElementKind::View(_))
+                && creabim_core::levels::level_of(&e.kind) == Some(l)
+        })
+    };
+    let Some(z) = model.level(level).map(|l| l.elevation) else {
+        return (level, cut_height);
+    };
+    if hosts(level) {
+        return (level, cut_height);
+    }
+    model
+        .levels()
+        .filter(|(e, l)| l.elevation < z - 1e-6 && hosts(e.id))
+        .max_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+        .map_or((level, cut_height), |(e, l)| {
+            (e.id, cut_height + z - l.elevation)
+        })
+}
+
+/// How a plan of `level` draws a penetration through a slab: thin solid
+/// in its own level's floor, a dash and two dots in the slab of the level
+/// over it (the ceiling, above the cut); none in the other plans.
+pub fn slab_penetration_pen(
+    model: &Model,
+    sh: &creabim_core::Shaft,
+    level: ElementId,
+) -> Option<Pen> {
+    if sh.level == level {
+        return Some(Pen::Symbol);
+    }
+    let here = model.level(level)?.elevation;
+    let above = model
+        .levels()
+        .map(|(e, l)| (e.id, l.elevation))
+        .filter(|(_, z)| *z > here + 1e-6)
+        .min_by(|a, b| a.1.total_cmp(&b.1))?;
+    (above.0 == sh.level).then_some(Pen::Overhead)
+}
+
+/// The labels of the penetrations through the walls a plan of `level`
+/// cuts ("P 300×200 sp. 900"), beside the wall's left face, at the
+/// paper size of a drawing of `mm` metres per paper millimetre.
+pub fn penetration_labels(
+    model: &Model,
+    level: ElementId,
+    cut_height: f64,
+    mm: f64,
+) -> Vec<PlanItem> {
+    use crate::paper::Anchor;
+    const SIZE: f64 = 2.0;
+    let mut out = vec![];
+    for e in model.iter() {
+        // through a slab: under its outline, "(strop)" when in the ceiling
+        if let ElementKind::Shaft(sh) = &e.kind {
+            let Some(p) = sh.penetration.as_ref().filter(|p| !p.hole_only) else {
+                continue;
+            };
+            let Some(pen) = slab_penetration_pen(model, sh, level) else {
+                continue;
+            };
+            let mut text = p.slab_label();
+            if pen == Pen::Overhead {
+                text = format!("{text} (strop)").trim().to_string();
+            }
+            if text.is_empty() {
+                continue;
+            }
+            let c = sh.centre();
+            let low = sh.boundary.iter().map(|q| q.y).fold(f64::MAX, f64::min);
+            out.push(PlanItem::Text {
+                id: e.id,
+                at: DVec2::new(c.x, low - 1.5 * mm - SIZE * 0.6 * mm),
+                text,
+                size: SIZE,
+                align: Anchor::Middle,
+                mm,
+                rgb: None,
+                bold: false,
+            });
+            continue;
+        }
+        let ElementKind::Opening(o) = &e.kind else {
+            continue;
+        };
+        if !o.is_penetration() {
+            continue;
+        }
+        let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+            continue;
+        };
+        if w.curtain.is_some() || wall_rise(model, w, level, cut_height).is_none() {
+            continue;
+        }
+        let text = o.penetration_label(o.sill + w.base_offset);
+        if text.is_empty() {
+            continue;
+        }
+        let mid = o.offset + o.width / 2.0;
+        let n = w.tangent_at(mid).normalize_or_zero().perp();
+        let gap = 1.5 * mm;
+        let reach = w.thickness / 2.0 + gap;
+        let (at, align) = if n.x.abs() > 0.7 {
+            // beside a wall running up the sheet: from its face outwards
+            let a = if n.x > 0.0 {
+                Anchor::Start
+            } else {
+                Anchor::End
+            };
+            (w.place(mid, reach), a)
+        } else {
+            (w.place(mid, reach + SIZE * 0.6 * mm), Anchor::Middle)
+        };
+        out.push(PlanItem::Text {
+            id: e.id,
+            at,
+            text,
+            size: SIZE,
+            align,
+            mm,
+            rgb: None,
+            bold: false,
+        });
+    }
+    out
+}
+
+/// Whether a plan of `level` cut at `cut_height` cuts wall `w`, and how
+/// far below the level its own level is.
+pub(crate) fn wall_rise(
+    model: &Model,
+    w: &creabim_core::Wall,
+    level: ElementId,
+    cut_height: f64,
+) -> Option<f64> {
+    if w.level == level {
+        return Some(0.0);
+    }
+    let z = |l| model.level(l).map(|x| x.elevation);
+    let rise = z(level)? - z(w.level)?;
+    let floor = rise - w.base_offset;
+    (cut_height + floor > 1e-3 && wall_top_height(model, w) > floor + 1e-3).then_some(rise)
+}
+
+pub(crate) fn wall_top_height(model: &Model, w: &creabim_core::Wall) -> f64 {
     let Some(top) = creabim_core::walls::top_profile(model, w) else {
         return w.height;
     };
@@ -1721,6 +2832,12 @@ fn clip_to_holes(a: DVec2, b: DVec2, holes: &[Vec<DVec2>]) -> Vec<(DVec2, DVec2)
 /// projection, symbols) as halftone lines and arcs, without fills, text,
 /// grids, guides or view marks.
 pub fn underlay_items(model: &Model, level: ElementId, cut_height: f64) -> Vec<PlanItem> {
+    as_underlay(model, plan_view(model, level, cut_height).items)
+}
+
+/// A drawing's `items` as an underlay: halftone lines and arcs, without
+/// fills, text, grids, guides or view marks.
+pub fn as_underlay(model: &Model, items: Vec<PlanItem>) -> Vec<PlanItem> {
     let skip = |id: ElementId| {
         matches!(
             model.get(id).map(|e| &e.kind),
@@ -1728,7 +2845,7 @@ pub fn underlay_items(model: &Model, level: ElementId, cut_height: f64) -> Vec<P
         )
     };
     let mut out = Vec::new();
-    for it in plan_view(model, level, cut_height).items {
+    for it in items {
         match it {
             PlanItem::Line { id, pen, a, b } if pen != Pen::Guide && pen != Pen::Grid => {
                 if !skip(id) {
@@ -2100,19 +3217,57 @@ pub fn guide_span(a: DVec2, b: DVec2) -> Option<(DVec2, DVec2)> {
 /// the sill member below, the wall faces and the glass line; for a door
 /// its leaf drawn open and the swing it sweeps. `at(u, s)` is a point
 /// `u` along the wall and `s` across it.
+#[allow(clippy::too_many_arguments)]
+/// A lift-and-slide leaf's mark in plan: a dashed arrow inside the
+/// frame, along the leaf the way it slides, a foot towards the frame
+/// where it starts (the lift) and a half head where it ends.
+fn lift_slide_marks(
+    out: &mut Vec<PlanItem>,
+    id: ElementId,
+    o: &creabim_core::Opening,
+    w: &creabim_core::Wall,
+    asm: Option<&creabim_core::assembly::Assembly>,
+    c: &Cut,
+    at: &dyn Fn(f64, f64) -> DVec2,
+) {
+    for m in crate::opening::lift_slides(o, w, asm) {
+        let len = m.x1 - m.x0;
+        if len < 0.2 {
+            continue;
+        }
+        let mid = c.u0 + (m.x0 + m.x1) / 2.0;
+        let dir = if m.to_high { 1.0 } else { -1.0 };
+        let (u0, u1) = (mid + dir * len * 0.1, mid + dir * len * 0.42);
+        let s = m.y_in + m.inward * 0.06;
+        let tick = 0.035;
+        let mut seg = |a: DVec2, b: DVec2| {
+            out.push(PlanItem::Line {
+                id,
+                pen: Pen::Hidden,
+                a,
+                b,
+            })
+        };
+        seg(at(u0, s), at(u1, s));
+        seg(at(u0, s), at(u0, s - m.inward * tick));
+        seg(at(u1, s), at(u1 - dir * tick * 0.7, s + m.inward * tick));
+    }
+}
+
 fn opening_symbol(
     id: ElementId,
     o: &creabim_core::Opening,
     w: &creabim_core::Wall,
+    asm: Option<&creabim_core::assembly::Assembly>,
     c: &Cut,
     cut_v: f64,
     at: &dyn Fn(f64, f64) -> DVec2,
 ) -> Vec<PlanItem> {
     use crate::opening::{opening_boxes, Fitted, Part};
     let mut out = Vec::new();
-    let Some(f) = Fitted::of(o, w) else {
+    if Fitted::of(o, w).is_none() {
         return out;
-    };
+    }
     let z = cut_v - c.v0;
     let line = |out: &mut Vec<PlanItem>, a: DVec2, b: DVec2| {
         out.push(PlanItem::Line {
@@ -2129,13 +3284,14 @@ fn opening_symbol(
             points: vec![at(u0, s0), at(u1, s0), at(u1, s1), at(u0, s1)],
         })
     };
-    let boxes = opening_boxes(o, w);
+    let boxes = opening_boxes(o, w, asm);
     for b in &boxes {
         let (u0, u1) = (c.u0 + b.lo.x, c.u0 + b.hi.x);
         let cut = b.lo.z < z && z < b.hi.z;
         match b.part {
             // the sill member shows below the cut
-            Part::Frame if cut || (o.kind == OpeningKind::Window && b.lo.z <= 1e-9) => {
+            // and so does a door's threshold
+            Part::Frame if cut || (o.kind != OpeningKind::Hole && b.lo.z <= 1e-9) => {
                 rect(&mut out, u0, u1, b.lo.y, b.hi.y)
             }
             Part::Glass if cut => {
@@ -2149,6 +3305,22 @@ fn opening_symbol(
         // a hole that starts above the floor shows the wall's faces across,
         // over its sill, as a window does; one down to the floor is just
         // the gap (MU18)
+        // a penetration cut by the plane: its outline across the wall and
+        // a cross (PilonDesigner's prestup); one set to show just the
+        // hole, its outline
+        OpeningKind::Hole if o.penetration.is_some() || o.is_penetration() => {
+            let t = w.thickness / 2.0;
+            let corners = [at(c.u0, -t), at(c.u1, -t), at(c.u1, t), at(c.u0, t)];
+            out.push(PlanItem::Polygon {
+                id,
+                pen: Pen::Symbol,
+                points: corners.to_vec(),
+            });
+            if o.is_penetration() {
+                line(&mut out, corners[0], corners[2]);
+                line(&mut out, corners[1], corners[3]);
+            }
+        }
         OpeningKind::Hole => {
             if c.v0 > 1e-9 {
                 let t = w.thickness / 2.0;
@@ -2164,39 +3336,147 @@ fn opening_symbol(
                 line(&mut out, at(c.u0, s), at(c.u1, s));
             }
         }
-        OpeningKind::Door => {
-            let Some(leaf) = boxes.iter().find(|b| b.part == Part::Leaf) else {
-                return out;
-            };
-            // the leaf turned open about its hinge on the face of the frame
-            // on the side it opens to, and the quarter circle it sweeps
+        OpeningKind::Door => {}
+    }
+    if matches!(o.kind, OpeningKind::Window | OpeningKind::Door) {
+        lift_slide_marks(&mut out, id, o, w, asm, c, at);
+    }
+    if o.kind == OpeningKind::Door {
+        {
+            // each leaf turned open about its hinge on the face of the
+            // frame on the side it opens to, and the quarter circle it
+            // sweeps
+            // the wall carries on over the door, above the cut: its
+            // faces across the opening, a dash and two dots
+            let t = w.thickness / 2.0;
+            for s in [-t, t] {
+                out.push(PlanItem::Line {
+                    id,
+                    pen: Pen::Overhead,
+                    a: at(c.u0, s),
+                    b: at(c.u1, s),
+                });
+            }
             let left = o.faces_left(w);
             let side = if left { 1.0 } else { -1.0 };
-            let s = if left { leaf.hi.y } else { leaf.lo.y };
-            let r = leaf.hi.x - leaf.lo.x;
-            let (u, towards) = if o.flip_hand {
-                (c.u0 + leaf.hi.x, -1.0)
-            } else {
-                (c.u0 + leaf.lo.x, 1.0)
-            };
-            rect(&mut out, u, u + towards * f.leaf(), s, s + side * r);
-            let hinge = at(u, s);
-            let closed = at(u + towards, s) - hinge;
-            let open = at(u, s + side) - hinge;
-            // arcs run anticlockwise: from whichever of the two comes first
-            let a0 = if closed.perp_dot(open) > 0.0 {
-                closed.to_angle()
-            } else {
-                open.to_angle()
-            };
-            out.push(PlanItem::Arc {
+            let leaves = crate::opening::leaf_boxes(o, w, asm);
+            for leaf in &leaves {
+                let s = if left { leaf.hi.y } else { leaf.lo.y };
+                let r = leaf.hi.x - leaf.lo.x;
+                // hinged on the side away from its handle
+                let mid = (leaf.lo.x + leaf.hi.x) / 2.0;
+                let at_end = boxes
+                    .iter()
+                    .find(|b| b.part == Part::Handle && b.lo.x >= leaf.lo.x && b.hi.x <= leaf.hi.x)
+                    .map_or(o.flip_hand, |h| (h.lo.x + h.hi.x) / 2.0 < mid);
+                let (u, towards) = if at_end {
+                    (c.u0 + leaf.hi.x, -1.0)
+                } else {
+                    (c.u0 + leaf.lo.x, 1.0)
+                };
+                let lt = (leaf.hi.y - leaf.lo.y).max(0.02);
+                rect(&mut out, u, u + towards * lt, s, s + side * r);
+                let hinge = at(u, s);
+                let closed = at(u + towards, s) - hinge;
+                let open = at(u, s + side) - hinge;
+                // arcs run anticlockwise: from whichever of the two comes first
+                let a0 = if closed.perp_dot(open) > 0.0 {
+                    closed.to_angle()
+                } else {
+                    open.to_angle()
+                };
+                out.push(PlanItem::Arc {
+                    id,
+                    pen: Pen::Symbol,
+                    center: hinge,
+                    radius: r,
+                    start: a0,
+                    end: a0 + std::f64::consts::FRAC_PI_2,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// A sliced wall's drawing with a window or door drawn as cut off the
+/// cut plane: its fills and outline cut back from the opening's span
+/// `u0..u1` along the wall (from `start`, along `d`), the jambs closed.
+fn gap_out(
+    got: Vec<PlanItem>,
+    wall: ElementId,
+    start: DVec2,
+    d: DVec2,
+    u0: f64,
+    u1: f64,
+    t: f64,
+) -> Vec<PlanItem> {
+    let n = d.perp();
+    let local = |p: DVec2| DVec2::new((p - start).dot(d), (p - start).dot(n));
+    let world = |q: DVec2| start + d * q.x + n * q.y;
+    let s = t + 0.05;
+    let (lo, hi) = (DVec2::new(u0, -s), DVec2::new(u1, s));
+    let rect = [
+        world(lo),
+        world(DVec2::new(u1, -s)),
+        world(hi),
+        world(DVec2::new(u0, s)),
+    ];
+    let on_jamb = |a: DVec2, b: DVec2| {
+        let (a, b) = (local(a), local(b));
+        [u0, u1]
+            .iter()
+            .any(|u| (a.x - u).abs() < 1e-6 && (b.x - u).abs() < 1e-6)
+    };
+    let mut out = Vec::new();
+    for it in got {
+        match it {
+            PlanItem::Fill {
                 id,
-                pen: Pen::Symbol,
-                center: hinge,
-                radius: r,
-                start: a0,
-                end: a0 + std::f64::consts::FRAC_PI_2,
-            });
+                points,
+                hatch,
+                rgb,
+            } if id == wall => {
+                for piece in subtract_convex(&points, &rect) {
+                    let k = piece.len();
+                    for i in 0..k {
+                        let (a, b) = (piece[i], piece[(i + 1) % k]);
+                        if on_jamb(a, b) {
+                            out.push(PlanItem::Line {
+                                id,
+                                pen: Pen::Cut,
+                                a,
+                                b,
+                            });
+                        }
+                    }
+                    out.push(PlanItem::Fill {
+                        id,
+                        points: piece,
+                        hatch,
+                        rgb,
+                    });
+                }
+            }
+            PlanItem::Line { id, pen, a, b } if id == wall => {
+                let (la, lb) = (local(a), local(b));
+                match crate::crop::clip_segment(la, lb, lo, hi) {
+                    None => out.push(PlanItem::Line { id, pen, a, b }),
+                    Some((p, q)) => {
+                        for (x, y) in [(la, p), (q, lb)] {
+                            if x.distance(y) > 1e-6 {
+                                out.push(PlanItem::Line {
+                                    id,
+                                    pen,
+                                    a: world(x),
+                                    b: world(y),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            other => out.push(other),
         }
     }
     out
@@ -2240,8 +3520,8 @@ pub(crate) fn sliced_plan_creased(
         items.push(PlanItem::Fill {
             id: item.id,
             points: lp,
-            hatch: piece.hatch(model),
-            rgb: piece.colour(model),
+            hatch: piece.hatch(model, false),
+            rgb: piece.colour(model, false),
         });
     }
     for (a, b) in crate::section::feature_edges_over(item, crease) {
@@ -2340,6 +3620,71 @@ pub fn level_under(model: &Model, z: f64) -> Option<ElementId> {
 
 #[cfg(test)]
 mod tests {
+    /// George 2026-11-23: in a foundation plan a wall of DT blocks only
+    /// ending against the masonry with its insulation joins it: the
+    /// latter's line on that side stops for it.
+    #[test]
+    fn a_wall_ending_against_another_above_the_cut_opens_its_line() {
+        use creabim_core::{Element, Level, Transaction, Wall};
+        let mut m = Model::new();
+        let lv = Element::new(
+            "L",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let l = lv.id;
+        let main = Element::new(
+            "main",
+            ElementKind::Wall(Wall::new(l, DVec2::ZERO, DVec2::new(10.0, 0.0), 0.445, 1.0)),
+        );
+        let mid = main.id;
+        let branch = Element::new(
+            "branch",
+            ElementKind::Wall(Wall::new(
+                l,
+                DVec2::new(5.0, -4.0),
+                DVec2::new(5.0, 0.0),
+                0.3,
+                1.0,
+            )),
+        );
+        Transaction::new("t")
+            .insert(lv)
+            .insert(main)
+            .insert(branch)
+            .apply(&mut m)
+            .unwrap();
+        let joins = creabim_core::wall_joins(&m);
+        let items = above_cut_walls(&m, -1.0, 1.0, true, &joins);
+        let low: Vec<(DVec2, DVec2)> = items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Line { id, a, b, .. } if *id == mid && a.y < -0.1 && b.y < -0.1 => {
+                    Some((*a, *b))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(low.len(), 2, "{low:?}");
+        assert!(
+            low.iter().all(|(a, b)| {
+                let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
+                x1 <= 4.86 || x0 >= 5.14
+            }),
+            "{low:?}"
+        );
+        // the far side runs on whole
+        assert_eq!(
+            items
+                .iter()
+                .filter(|it| matches!(it, PlanItem::Line { id, a, .. } if *id == mid && a.y > 0.1))
+                .count(),
+            1
+        );
+    }
+
     use super::*;
 
     fn cut_footings(model: &Model, level: &str, cut: f64) -> usize {
@@ -2360,6 +3705,87 @@ mod tests {
             })
             .collect();
         footings.len()
+    }
+
+    #[test]
+    fn where_two_floors_meet_in_a_door_the_line_is_very_thin_dashed() {
+        use creabim_core::{Element, OpeningKind, Transaction};
+        let mut m = creabim_core::sample::sample_house();
+        // the inner wall with a door in it, running along y
+        let (w, door) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.curtain.is_none() => m
+                    .dependents(e.id)
+                    .into_iter()
+                    .find(|o| {
+                        matches!(m.get(*o).map(|x| &x.kind),
+                            Some(ElementKind::Opening(o)) if o.kind == OpeningKind::Door)
+                    })
+                    .filter(|_| {
+                        (w.start.x - w.end.x).abs() < 1e-9 && w.start.x > 0.5 && w.start.x < 9.5
+                    })
+                    .map(|d| (w.clone(), d)),
+                _ => None,
+            })
+            .expect("the sample's inner wall has a door");
+        let x = w.start.x;
+        let floor = |x0: f64, x1: f64| {
+            let mut s = creabim_core::Slab::new(
+                w.level,
+                vec![
+                    DVec2::new(x0, 0.0),
+                    DVec2::new(x1, 0.0),
+                    DVec2::new(x1, 6.0),
+                    DVec2::new(x0, 6.0),
+                ],
+                0.1,
+            );
+            s.top_offset = 0.0;
+            Element::new("Floor", ElementKind::Slab(s))
+        };
+        Transaction::new("floors")
+            .insert(floor(0.0, x))
+            .insert(floor(x, 10.0))
+            .apply(&mut m)
+            .unwrap();
+        let items = plan_view(&m, w.level, 1.2).items;
+        let dashed: Vec<_> = items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Line {
+                    pen: Pen::Drafted(l),
+                    a,
+                    b,
+                    ..
+                } if *l == FLOOR_CHANGE => Some((*a, *b)),
+                _ => None,
+            })
+            .collect();
+        // (the entrance door's own, on the outer wall's axis, aside)
+        let dashed: Vec<_> = dashed
+            .into_iter()
+            .filter(|(a, b)| (a.x - x).abs() < 1e-6 && (b.x - x).abs() < 1e-6)
+            .collect();
+        assert_eq!(dashed.len(), 1, "one floor change line at {door:?}");
+        // nothing solid left along the axis inside the door
+        let solid = items.iter().any(|it| match it {
+            PlanItem::Line {
+                pen: Pen::Projection,
+                a,
+                b,
+                ..
+            } => {
+                let m = (*a + *b) / 2.0;
+                (a.x - x).abs() < 1e-6
+                    && (b.x - x).abs() < 1e-6
+                    && dashed
+                        .iter()
+                        .any(|(p, q)| m.y > p.y.min(q.y) + 1e-6 && m.y < p.y.max(q.y) - 1e-6)
+            }
+            _ => false,
+        });
+        assert!(!solid);
     }
 
     #[test]
@@ -2422,6 +3848,55 @@ mod tests {
     }
 
     #[test]
+    fn a_level_put_in_a_storey_cuts_the_walls_standing_there() {
+        use creabim_core::{Document, Element, Level, Transaction};
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let mid = Element::new(
+            "Level 2",
+            ElementKind::Level(Level {
+                elevation: 2.584,
+                height: 3.0,
+            }),
+        );
+        let id = mid.id;
+        doc.commit(Transaction::new("level").insert(mid)).unwrap();
+        let m = doc.model();
+        let ground: Vec<ElementId> = m
+            .iter()
+            .filter(|e| {
+                matches!(&e.kind, ElementKind::Wall(w)
+                    if m.level(w.level).is_some_and(|l| l.elevation == 0.0))
+            })
+            .map(|e| e.id)
+            .collect();
+        assert!(!ground.is_empty());
+        let cut = |v: &PlanView| {
+            v.items
+                .iter()
+                .any(|i| ground.contains(&i.id()) && matches!(i, PlanItem::Fill { .. }))
+        };
+        // 200 mm above it the ground floor's walls (3 m tall) are cut
+        assert!(cut(&plan_view(m, id, 0.2)));
+        // 1.2 m above it the cut passes over them: seen from above
+        let high = plan_view(m, id, 1.2);
+        assert!(!cut(&high));
+        assert!(high.items.iter().any(|i| ground.contains(&i.id())
+            && matches!(
+                i,
+                PlanItem::Polygon {
+                    pen: Pen::Projection,
+                    ..
+                }
+            )));
+        // the level above keeps its own walls only: those below end at it
+        let top = m.levels().find(|l| l.1.elevation == 3.0).unwrap().0.id;
+        assert!(!plan_view(m, top, 1.2)
+            .items
+            .iter()
+            .any(|i| ground.contains(&i.id())));
+    }
+
+    #[test]
     fn a_foundation_level_plan_cuts_the_footings_under_the_floor_above() {
         let m = creabim_core::starter::starter_house();
         // 0.25 above the foundation level is 0.55 below the ground floor:
@@ -2429,6 +3904,150 @@ mod tests {
         assert_eq!(cut_footings(&m, "Foundation", 0.25), 16);
         // a cut above their tops passes none of them
         assert_eq!(cut_footings(&m, "Foundation", 0.6), 0);
+    }
+
+    #[test]
+    fn a_ground_storey_column_reaching_into_the_footings_shows_above_the_cut() {
+        let mut m = creabim_core::starter::starter_house();
+        let found = m
+            .iter()
+            .find(|e| e.name == "Foundation" && matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let fz = m.level(found).unwrap().elevation;
+        let ground = m
+            .levels()
+            .filter(|(_, l)| l.elevation > fz + 1e-6)
+            .min_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+            .unwrap()
+            .0
+            .id;
+        let gz = m.level(ground).unwrap().elevation;
+        // its foot down at the foundation level, through the plan's cut
+        let mut c = creabim_core::Column::new(
+            ground,
+            DVec2::new(-3.0, -3.0),
+            creabim_core::Profile::Rectangle {
+                width: 0.25,
+                depth: 0.25,
+            },
+        );
+        c.base_offset = fz - gz;
+        let ce = creabim_core::Element::new("C", ElementKind::Column(c));
+        let cid = ce.id;
+        creabim_core::Transaction::new("c")
+            .insert(ce)
+            .apply(&mut m)
+            .unwrap();
+        let items = plan_view(&m, found, 0.25).items;
+        let lines = items
+            .iter()
+            .filter(|it| matches!(it, PlanItem::Line { pen: Pen::Overhead, id, .. } if *id == cid))
+            .count();
+        assert_eq!(lines, 4);
+        assert!(!items.iter().any(|it| matches!(it,
+            PlanItem::Polygon { pen: Pen::Cut, id, .. } if *id == cid)));
+    }
+
+    #[test]
+    fn a_foundation_plan_draws_footings_bare_their_steps_and_the_wall_cores() {
+        let mut m = creabim_core::starter::starter_house();
+        let level = m
+            .iter()
+            .find(|e| e.name == "Foundation" && matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let footing = |m: &Model, id: ElementId| {
+            matches!(m.get(id).map(|e| &e.kind), Some(ElementKind::Footing(_)))
+        };
+        let items = plan_view(&m, level, 0.25).items;
+        // in outline only: no hatch, no colour
+        assert!(items.iter().all(|it| !matches!(it,
+            PlanItem::Fill { id, hatch, rgb, .. }
+                if footing(&m, *id) && (*hatch != Hatch::Empty || rgb.is_some()))));
+        // the walls on them, their cores a dash and two dots
+        let cores = items
+            .iter()
+            .filter(|it| {
+                matches!(it, PlanItem::Line { pen: Pen::Overhead, id, .. }
+                if matches!(m.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_))))
+            })
+            .count();
+        // none drawn by itself (George 2026-11-20)
+        assert_eq!(cores, 0);
+        // the masonry drawn on the footings with the Wall tool, standing
+        // above the cut under the floor: its cores a dash and two dots
+        let fz = m.level(level).unwrap().elevation;
+        let on: Vec<(f64, DVec2, DVec2)> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Footing(f)
+                    if f.host.is_some() && f.kind == creabim_core::FootingKind::Strip =>
+                {
+                    let (a, b) = f.line(&m);
+                    Some((f.top(&m), a, b))
+                }
+                _ => None,
+            })
+            .collect();
+        let mut tx = creabim_core::Transaction::new("dt");
+        for (top, a, b) in on {
+            let mut w = creabim_core::Wall::new(level, a, b, 0.3, 0.3);
+            w.base_offset = top - fz;
+            w.height = -top;
+            tx = tx.insert(creabim_core::Element::new("DT", ElementKind::Wall(w)));
+        }
+        tx.apply(&mut m).unwrap();
+        let items = plan_view(&m, level, 0.25).items;
+        let cores = items
+            .iter()
+            .filter(|it| {
+                matches!(it, PlanItem::Line { pen: Pen::Overhead, id, .. }
+                if matches!(m.get(*id).map(|e| &e.kind), Some(ElementKind::Wall(_))))
+            })
+            .count();
+        assert!(cores >= 8, "{cores}");
+        assert!(!items.iter().any(|it| matches!(
+            it,
+            PlanItem::Line {
+                pen: Pen::HiddenCut,
+                ..
+            }
+        )));
+        // one footing set deeper: a heavy dashed line where it steps
+        let one = m
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::Footing(f) if f.host.is_some()
+                && f.kind == creabim_core::FootingKind::Strip)
+            })
+            .unwrap()
+            .clone();
+        let mut deeper = one.clone();
+        if let ElementKind::Footing(f) = &mut deeper.kind {
+            f.thickness += 0.2;
+        }
+        creabim_core::Transaction::new("deeper")
+            .replace(one, deeper)
+            .apply(&mut m)
+            .unwrap();
+        let steps = plan_view(&m, level, 0.25)
+            .items
+            .iter()
+            .filter(|it| {
+                matches!(
+                    it,
+                    PlanItem::Line {
+                        pen: Pen::HiddenCut,
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert!(steps >= 1, "{steps}");
+        if let Ok(f) = std::env::var("CREABIM_FOUNDATION_SVG") {
+            std::fs::write(f, plan_view(&m, level, 0.25).to_svg(40.0)).unwrap();
+        }
     }
 
     fn named(m: &Model, name: &str) -> ElementId {
@@ -2470,6 +4089,86 @@ mod tests {
         let roots: std::collections::HashSet<Key> =
             keys.into_iter().map(|k| find(&mut parent, k)).collect();
         roots.len()
+    }
+
+    #[test]
+    fn a_thick_line_only_where_the_cut_meets_air() {
+        use creabim_core::{Element, Level, Material, Transaction, Wall};
+        let mut m = Model::new();
+        let lvl = Element::new(
+            "L",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let brick = Element::new(
+            "Brick",
+            ElementKind::Material(Material::new(Default::default(), [0.8, 0.4, 0.3])),
+        );
+        let concrete = Element::new(
+            "Concrete",
+            ElementKind::Material(Material::new(Default::default(), [0.6, 0.6, 0.6])),
+        );
+        let mut w1 = Wall::new(lvl.id, DVec2::ZERO, DVec2::new(2.0, 0.0), 0.3, 2.7);
+        w1.material = Some(brick.id);
+        let mut w2 = Wall::new(lvl.id, DVec2::new(2.0, 0.0), DVec2::new(4.0, 0.0), 0.3, 2.7);
+        w2.material = Some(concrete.id);
+        let (e1, e2) = (
+            Element::new("W1", ElementKind::Wall(w1)),
+            Element::new("W2", ElementKind::Wall(w2)),
+        );
+        let (i1, i2) = (e1.id, e2.id);
+        Transaction::new("set up")
+            .insert(lvl)
+            .insert(brick)
+            .insert(concrete)
+            .insert(e1)
+            .insert(e2)
+            .apply(&mut m)
+            .unwrap();
+        let rect = |x0: f64, x1: f64| {
+            vec![
+                DVec2::new(x0, -0.15),
+                DVec2::new(x1, -0.15),
+                DVec2::new(x1, 0.15),
+                DVec2::new(x0, 0.15),
+            ]
+        };
+        let mut items = vec![
+            PlanItem::Polygon {
+                id: i1,
+                pen: Pen::Cut,
+                points: rect(0.0, 2.0),
+            },
+            PlanItem::Polygon {
+                id: i2,
+                pen: Pen::Cut,
+                points: rect(2.0, 4.0),
+            },
+        ];
+        clean_up_cuts(&m, &mut items);
+        // the joint between brick and concrete at x = 2: one thin line
+        let at_joint = |pen: Pen| {
+            items
+                .iter()
+                .filter(|it| {
+                    matches!(it, PlanItem::Line { pen: p, a, b, .. }
+                        if *p == pen && (a.x - 2.0).abs() < 1e-9 && (b.x - 2.0).abs() < 1e-9)
+                })
+                .count()
+        };
+        assert_eq!(at_joint(Pen::Cut), 0, "no thick line inside the cut");
+        assert_eq!(
+            at_joint(Pen::Projection),
+            1,
+            "a thin line between materials"
+        );
+        // the faces against air stay thick
+        assert!(items
+            .iter()
+            .any(|it| matches!(it, PlanItem::Line { pen: Pen::Cut, a, b, .. }
+            if (a.y + 0.15).abs() < 1e-9 && (b.y + 0.15).abs() < 1e-9)));
     }
 
     #[test]
@@ -2729,6 +4428,17 @@ mod tests {
                 frame: Default::default(),
                 flip_hand: false,
                 flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
+                threshold: false,
+                threshold_material: None,
+                penetration: None,
+                setback: None,
+                reveal: None,
+                division: None,
+                door: None,
+                texts: None,
+                performance: None,
             }),
         );
         let hole = duct.id;
@@ -2741,9 +4451,10 @@ mod tests {
         let items = plan_view(&m, level, 1.2).items;
         let dashed: Vec<&PlanItem> = items
             .iter()
-            .filter(|it| matches!(it, PlanItem::Line { id, pen: Pen::Hidden, .. } if *id == hole))
+            .filter(|it| matches!(it, PlanItem::Line { id, pen: Pen::Overhead, .. } if *id == hole))
             .collect();
-        assert_eq!(dashed.len(), 4);
+        // its outline and, as a penetration, its cross
+        assert_eq!(dashed.len(), 6);
         // drawn over the wall's fill, so it shows
         let fill = items
             .iter()
@@ -2755,6 +4466,189 @@ mod tests {
         assert!(!items
             .iter()
             .any(|it| matches!(it, PlanItem::Line { id, pen: Pen::Symbol, .. } if *id == hole)));
+    }
+
+    /// George 2026-11-21: a window whose sill is over the cut plane is
+    /// still drawn as cut: a gap in the wall and its frame and glass.
+    #[test]
+    fn a_lift_and_slide_leaf_is_marked_with_a_dashed_arrow() {
+        use creabim_core::joinery::FrameNode;
+        use creabim_core::{Element, LeafOp, Level, Opening, Transaction, Wall};
+        let marks = |op: LeafOp| {
+            let mut m = Model::new();
+            let l = Element::new(
+                "Ground",
+                ElementKind::Level(Level {
+                    elevation: 0.0,
+                    height: 3.0,
+                }),
+            );
+            let level = l.id;
+            let w = Element::new(
+                "W",
+                ElementKind::Wall(Wall::new(
+                    level,
+                    DVec2::ZERO,
+                    DVec2::new(5.0, 0.0),
+                    0.3,
+                    3.0,
+                )),
+            );
+            let win = Element::new(
+                "Win",
+                ElementKind::Opening(Opening {
+                    host: w.id,
+                    kind: OpeningKind::Window,
+                    offset: 1.0,
+                    sill: 0.0,
+                    width: 2.4,
+                    height: 2.2,
+                    material: None,
+                    frame: Default::default(),
+                    flip_hand: false,
+                    flip_facing: false,
+                    no_outer_sill: false,
+                    no_inner_sill: false,
+                    threshold: false,
+                    threshold_material: None,
+                    penetration: None,
+                    setback: None,
+                    reveal: None,
+                    division: Some(FrameNode::Split {
+                        across: true,
+                        sizes: vec![1.0, 1.0],
+                        parts: vec![FrameNode::leaf(op), FrameNode::leaf(LeafOp::Fixed)],
+                    }),
+                    door: None,
+                    texts: None,
+                    performance: None,
+                }),
+            );
+            let wid = win.id;
+            Transaction::new("t")
+                .insert(l)
+                .insert(w)
+                .insert(win)
+                .apply(&mut m)
+                .unwrap();
+            plan_view(&m, level, 1.0)
+                .items
+                .into_iter()
+                .filter_map(|it| match it {
+                    PlanItem::Line {
+                        id,
+                        pen: Pen::Hidden,
+                        a,
+                        b,
+                    } if id == wid => Some((a, b)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(marks(LeafOp::TurnLeft).is_empty());
+        let left = marks(LeafOp::LiftSlideLeft);
+        assert_eq!(left.len(), 3, "{left:?}");
+        // the arrow along the wall, over one half of the window, off
+        // the wall's middle
+        let (a, b) = left[0];
+        assert!((a.y - b.y).abs() < 1e-9 && a.y.abs() > 0.05, "{a} {b}");
+        assert!((b.x - a.x).abs() > 0.3);
+        // the other hand slides the other way
+        let (c, d) = marks(LeafOp::LiftSlideRight)[0];
+        assert!((b.x - a.x).signum() != (d.x - c.x).signum());
+    }
+
+    #[test]
+    fn a_high_window_is_drawn_as_cut() {
+        use creabim_core::{Element, Level, Opening, Transaction, Wall};
+        let mut m = Model::new();
+        let l = Element::new(
+            "Ground",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let level = l.id;
+        let w = Element::new(
+            "W",
+            ElementKind::Wall(Wall::new(
+                level,
+                DVec2::ZERO,
+                DVec2::new(4.0, 0.0),
+                0.3,
+                3.0,
+            )),
+        );
+        let wall = w.id;
+        let win = Element::new(
+            "Win",
+            ElementKind::Opening(Opening {
+                host: wall,
+                kind: OpeningKind::Window,
+                offset: 1.0,
+                sill: 1.5,
+                width: 1.2,
+                height: 0.9,
+                material: None,
+                frame: Default::default(),
+                flip_hand: false,
+                flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
+                threshold: false,
+                threshold_material: None,
+                penetration: None,
+                setback: None,
+                reveal: None,
+                division: None,
+                door: None,
+                texts: None,
+                performance: None,
+            }),
+        );
+        let wid = win.id;
+        Transaction::new("t")
+            .insert(l)
+            .insert(w)
+            .insert(win)
+            .apply(&mut m)
+            .unwrap();
+        let items = plan_view(&m, level, 1.2).items;
+        // its frame and glass, not a dashed outline
+        assert!(items.iter().any(|it| it.id() == wid
+            && !matches!(
+                it,
+                PlanItem::Line {
+                    pen: Pen::Overhead,
+                    ..
+                }
+            )));
+        assert!(!items
+            .iter()
+            .any(|it| matches!(it, PlanItem::Line { id, pen: Pen::Overhead, .. } if *id == wid)));
+        // the wall's cut fill stops at the window
+        let span = |pts: &[DVec2]| {
+            let xs = pts.iter().map(|p| p.x);
+            (
+                xs.clone().fold(f64::MAX, f64::min),
+                xs.fold(f64::MIN, f64::max),
+            )
+        };
+        let fills: Vec<(f64, f64)> = items
+            .iter()
+            .filter_map(|it| match it {
+                PlanItem::Fill { id, points, .. } if *id == wall => Some(span(points)),
+                _ => None,
+            })
+            .collect();
+        assert!(!fills.is_empty());
+        assert!(
+            fills
+                .iter()
+                .all(|(a, b)| *b <= 1.0 + 1e-6 || *a >= 2.2 - 1e-6),
+            "{fills:?}"
+        );
     }
 
     /// A slab layer's edges moved by hand show in plan (A7-10): the top
@@ -2781,6 +4675,8 @@ mod tests {
                     PlanItem::Polygon { points, .. } => {
                         Some(points.iter().map(|p| p.x).fold(f64::MIN, f64::max))
                     }
+                    // edges crossing a door come as lines
+                    PlanItem::Line { a, b, .. } => Some(a.x.max(b.x)),
                     _ => None,
                 })
                 .fold(f64::MIN, f64::max)
@@ -2845,7 +4741,26 @@ mod tests {
                 .retain(|c| *c != creabim_core::visibility::Category::Footings);
         }
         let mut doc = creabim_core::Document::from_model(m.clone());
-        doc.commit(creabim_core::Transaction::new("show").replace(plan.clone(), shown))
+        doc.commit(creabim_core::Transaction::new("show").replace(plan.clone(), shown.clone()))
+            .unwrap();
+        // under the bottom of the plan's range (its floor): still left out
+        // (George 2026-11-20)
+        assert_eq!(dashed(doc.model()), 0, "under the range's bottom");
+        // the bottom lowered under them: dashed under the floor
+        let mut deeper = shown.clone();
+        if let ElementKind::View(v) = &mut deeper.kind {
+            let ElementKind::View(p) = &plan.kind else {
+                unreachable!()
+            };
+            let creabim_core::ViewKind::Plan { level, .. } = p.kind else {
+                unreachable!()
+            };
+            v.graphics.range.bottom = Some(creabim_core::graphics::RangeLimit {
+                level,
+                offset: -2.0,
+            });
+        }
+        doc.commit(creabim_core::Transaction::new("deeper").replace(shown, deeper))
             .unwrap();
         assert!(dashed(doc.model()) > 20, "shown, dashed under the floor");
     }
@@ -2906,5 +4821,35 @@ mod tests {
                 .any(|it| matches!(it, PlanItem::Shade { id: i, .. } if *i == id)),
             "the beam has its fill"
         );
+    }
+
+    #[test]
+    fn pieces_of_one_batt_layer_fill_as_one_outline() {
+        let p = |x: f64, y: f64| DVec2::new(x, y);
+        // a layer either side of a wall's top, and the two bits over it
+        let left = vec![
+            p(0.0, 0.0),
+            p(1.0, 0.0),
+            p(1.0, 0.02),
+            p(1.0, 0.05),
+            p(0.0, 0.05),
+        ];
+        let over = vec![p(1.0, 0.02), p(1.2, 0.02), p(1.2, 0.05), p(1.0, 0.05)];
+        let right = vec![
+            p(1.2, 0.0),
+            p(2.0, 0.0),
+            p(2.0, 0.05),
+            p(1.2, 0.05),
+            p(1.2, 0.02),
+        ];
+        let one = super::union_touching(&[&left, &over, &right], 1e-5).expect("one outline");
+        let area: f64 = (0..one.len())
+            .map(|i| one[i].perp_dot(one[(i + 1) % one.len()]))
+            .sum::<f64>()
+            / 2.0;
+        assert!((area - (0.1 - 0.2 * 0.02)).abs() < 1e-9, "{area} {one:?}");
+        // two apart make no one outline
+        let far = vec![p(5.0, 0.0), p(6.0, 0.0), p(6.0, 0.05), p(5.0, 0.05)];
+        assert!(super::union_touching(&[&left, &far], 1e-5).is_none());
     }
 }

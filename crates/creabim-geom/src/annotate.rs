@@ -6,7 +6,7 @@ use crate::annotation::{end_marks, measure, runs_past, Annotation, Ends, Shape, 
 use crate::plan::PlanItem;
 use crate::section::{AxoFrame, SectionFrame};
 use creabim_core::{
-    DimensionKind, ElementId, ElementKind, HostPoint, Model, Note, OpeningKind, RoomField,
+    DimensionKind, Element, ElementId, ElementKind, HostPoint, Model, Note, OpeningKind, RoomField,
     TagShape, Terminator, View, ViewKind, Wall,
 };
 use glam::{DAffine3, DMat3, DVec2, DVec3};
@@ -66,15 +66,33 @@ pub fn resolve(model: &Model, view: &View, p: &HostPoint) -> Option<DVec2> {
         (ElementKind::Level(l), ViewKind::Section { .. }) => {
             Some(DVec2::new(p.local.x, l.elevation + p.local.y))
         }
+        // on a stair's nosing: it follows the steps
+        (ElementKind::Stair(s), ViewKind::Plan { .. }) if p.step.is_some() => {
+            let k = p.step?;
+            let lines = s.nosing_lines(s.rise(model));
+            let n = lines.len() as u32;
+            let i = if p.from_end {
+                n.checked_sub(1 + k)?
+            } else {
+                k.min(n.checked_sub(1)?)
+            };
+            let [a, b] = lines.get(i as usize)?;
+            Some(a.lerp(*b, p.local.x))
+        }
         (ElementKind::Wall(_) | ElementKind::Opening(_), ViewKind::Plan { .. }) => {
             let (w, base) = host_wall(model, host)?;
-            let u = if p.from_end {
-                w.length() + p.local.x
-            } else {
-                base + p.local.x
+            // a door's or window's far jamb is kept from that jamb, so a
+            // dimension to it follows when it is made wider
+            let u = match (&model.get(host)?.kind, p.from_end) {
+                (ElementKind::Opening(o), true) => base + o.width + p.local.x,
+                (_, true) => w.length() + p.local.x,
+                (_, false) => base + p.local.x,
             };
             Some(on_wall(w, u, p.local.y))
         }
+        // a plan's spot level on an element without its own axes (a roof,
+        // the terrain, a stair) stays where it was put
+        (_, ViewKind::Plan { .. }) if p.body.is_none() => Some(p.local),
         _ => {
             let body = p.body?;
             Some(
@@ -116,13 +134,60 @@ pub fn host_frame(model: &Model, id: ElementId) -> Option<DAffine3> {
                 (w.end - w.start).extend(0.0),
             )
         }
+        // a beam's top along its axis, so a spot level on it follows it
+        // up or down (a ring beam with its wall's top, George 2026-11-24)
+        ElementKind::Beam(b) => along(b.start.extend(b.top(model)), (b.end - b.start).extend(0.0)),
         ElementKind::Slab(s) => {
             let a = *s.boundary.first()?;
             let b = s.boundary.get(1).copied().unwrap_or(a + DVec2::X);
-            along(a.extend(elevation(Some(s.level))), (b - a).extend(0.0))
+            // with its top's offset, so a dimension follows it up or down
+            along(
+                a.extend(elevation(Some(s.level)) + s.top_offset),
+                (b - a).extend(0.0),
+            )
+        }
+        // a footing's top along its line (a pad's along its turn), so a
+        // dimension to it in a section follows it when it is moved or set
+        // deeper
+        ElementKind::Footing(f) => match f.kind {
+            creabim_core::footing::FootingKind::Strip => {
+                let (a, b) = f.line(model);
+                along(a.extend(f.top(model)), (b - a).extend(0.0))
+            }
+            _ => {
+                let (c, turn) = f.place(model);
+                along(
+                    c.extend(f.top(model)),
+                    DVec2::from_angle(turn.to_radians()).extend(0.0),
+                )
+            }
+        },
+        // a ceiling's underside along its outline's first edge, so a note
+        // to it in a section follows it (George 2026-11-23)
+        ElementKind::Ceiling(c) => {
+            let o = c.outline(model)?;
+            let a = *o.first()?;
+            let b = o.get(1).copied().unwrap_or(a + DVec2::X);
+            along(a.extend(c.span(model).0), (b - a).extend(0.0))
         }
         ElementKind::Grid(g) => along(g.start.extend(0.0), (g.end - g.start).extend(0.0)),
+        // a column or an object (furniture, a fixture, equipment): its
+        // position and turn, so dimensions to it follow it (PilonDesigner's
+        // dimensions bound to every element)
+        ElementKind::Column(c) => DAffine3::from_mat3_translation(
+            DMat3::from_rotation_z(c.rotation.to_radians()),
+            c.position.extend(elevation(Some(c.level)) + c.base_offset),
+        ),
+        ElementKind::Object(o) => DAffine3::from_mat3_translation(
+            DMat3::from_rotation_z(o.rotation.to_radians()),
+            o.position.extend(elevation(Some(o.level))),
+        ),
         ElementKind::Guide(g) => along(g.a + DVec3::Z * elevation(g.level), g.b - g.a),
+        // a pipe's axis: a dimension to it follows the pipe
+        ElementKind::Pipe(p) => along(
+            p.start + DVec3::Z * elevation(Some(p.level)),
+            p.end - p.start,
+        ),
         ElementKind::FreeMesh(m) => DAffine3::from_mat3_translation(
             DMat3::from_rotation_z(m.rotation.to_radians()) * m.scale,
             m.origin + DVec3::Z * elevation(m.level),
@@ -162,24 +227,33 @@ pub fn attach(model: &Model, view: &View, host: Option<ElementId>, at: DVec2) ->
             local: DVec2::new(at.x, at.y - l.elevation),
             from_end: false,
             body: None,
+            step: None,
         }),
         (ElementKind::Wall(_) | ElementKind::Opening(_), ViewKind::Plan { .. }) => {
             let (w, base) = host_wall(model, h)?;
             let d = w.direction();
             let u = (at - w.start).dot(d);
             let s = (at - w.start).dot(d.perp());
-            let is_wall = matches!(model.get(h)?.kind, ElementKind::Wall(_));
             // points nearer a wall's end are kept relative to the end, so
-            // they follow it when the wall is lengthened
-            let from_end = is_wall && u > w.length() / 2.0;
+            // they follow it when the wall is lengthened; points nearer a
+            // door's or window's far jamb, from that jamb
+            let (from_end, end) = match &model.get(h)?.kind {
+                ElementKind::Opening(o) => {
+                    let far = u - base > o.width / 2.0;
+                    (far, base + o.width)
+                }
+                _ => (u > w.length() / 2.0, w.length()),
+            };
             Some(HostPoint {
                 host: Some(h),
-                local: DVec2::new(if from_end { u - w.length() } else { u - base }, s),
+                local: DVec2::new(if from_end { u - end } else { u - base }, s),
                 from_end,
                 body: None,
+                step: None,
             })
         }
         (ElementKind::Level(_), _) => None,
+        (ElementKind::Stair(s), ViewKind::Plan { .. }) => stair_point(model, h, s, at),
         _ => {
             let frame = host_frame(model, h)?;
             let world = unproject(model, view, at)?;
@@ -188,10 +262,100 @@ pub fn attach(model: &Model, view: &View, host: Option<ElementId>, at: DVec2) ->
                 local: at,
                 from_end: false,
                 body: Some(frame.inverse().transform_point3(world)),
+                step: None,
             })
         }
     });
     attached.unwrap_or(HostPoint::free(at))
+}
+
+/// A plan point on one of a stair's nosings, kept on that nosing (from the
+/// last when it is in the upper half), so a dimension to it follows the
+/// steps (George 2026-11-24); none off every nosing.
+fn stair_point(
+    model: &Model,
+    id: ElementId,
+    s: &creabim_core::Stair,
+    at: DVec2,
+) -> Option<HostPoint> {
+    let lines = s.nosing_lines(s.rise(model));
+    let n = lines.len();
+    let (i, t, d) = lines
+        .iter()
+        .enumerate()
+        .map(|(i, [a, b])| {
+            let ab = *b - *a;
+            let t = ((at - *a).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+            (i, t, a.lerp(*b, t).distance(at))
+        })
+        .min_by(|x, y| x.2.total_cmp(&y.2))?;
+    if d > 2e-3 {
+        return None;
+    }
+    let from_end = n > 1 && i >= n / 2 + n % 2;
+    Some(HostPoint {
+        host: Some(id),
+        local: DVec2::new(t, 0.0),
+        from_end,
+        body: None,
+        step: Some(if from_end {
+            (n - 1 - i) as u32
+        } else {
+            i as u32
+        }),
+    })
+}
+
+/// A dimension between two of a stair's nosing points set to `value`
+/// (George 2026-11-24): across one nosing it sets the flight's width;
+/// between two nosings, the going, which the norm then keeps its risers
+/// to. None when the points are not on its nosings.
+fn stair_driven(
+    model: &Model,
+    id: ElementId,
+    ha: &HostPoint,
+    hb: &HostPoint,
+    now: f64,
+    value: f64,
+) -> Option<Result<creabim_core::Transaction, String>> {
+    let e = model.get(id)?;
+    let ElementKind::Stair(s) = &e.kind else {
+        return None;
+    };
+    let n = s.nosing_lines(s.rise(model)).len() as u32;
+    let index = |h: &HostPoint| {
+        let k = h.step?;
+        Some(if h.from_end { n.checked_sub(1 + k)? } else { k })
+    };
+    let (ia, ib) = (index(ha)?, index(hb)?);
+    let mut st = s.clone();
+    if ia == ib {
+        let across = (ha.local.x - hb.local.x).abs();
+        if across < 1e-3 {
+            return Some(Err("Both ends are at one point of the stair.".into()));
+        }
+        st.width = (value / across).max(0.3);
+        creabim_core::staircheck::keep_to_norm(
+            model,
+            &mut st,
+            creabim_core::staircheck::Fit::Width,
+        );
+    } else {
+        if now < 1e-6 {
+            return None;
+        }
+        st.tread = (s.tread * value / now).clamp(0.1, 1.0);
+        creabim_core::staircheck::keep_to_norm(
+            model,
+            &mut st,
+            creabim_core::staircheck::Fit::Going,
+        );
+    }
+    let mut after = e.clone();
+    after.kind = ElementKind::Stair(st);
+    Some(Ok(
+        creabim_core::Transaction::new("Set dimension").replace(e.clone(), after)
+    ))
 }
 
 /// The centre of an element's body, in world coordinates.
@@ -229,6 +393,13 @@ pub fn centre(model: &Model, id: ElementId) -> Option<DVec3> {
         }
         // a room: its point on its floor
         ElementKind::Room(r) => r.at.extend(elevation(r.level)),
+        // a device on a pipe or duct: where it sits on its axis
+        ElementKind::Valve(v) => {
+            let ElementKind::Pipe(p) = &model.get(v.pipe)?.kind else {
+                return None;
+            };
+            v.at(p) + DVec3::Z * elevation(p.level)
+        }
         // a ceiling: the middle of its outline, on its underside
         ElementKind::Ceiling(c) => {
             let o = c.outline(model)?;
@@ -272,6 +443,74 @@ pub fn material_text(model: &Model, id: ElementId) -> String {
 }
 
 /// What a tag on `id` reads, and whether it sits in a circle (doors) or a box.
+/// A door's hand as STN 01 3420 names it: "L" when its hinges are on the
+/// left seen from the side it opens to, else "P" (pravé); none for
+/// anything but a door with a leaf.
+pub fn door_hand(model: &Model, id: ElementId) -> Option<&'static str> {
+    let ElementKind::Opening(o) = &model.get(id)?.kind else {
+        return None;
+    };
+    if o.kind != OpeningKind::Door {
+        return None;
+    }
+    let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+        return None;
+    };
+    let u = w.direction();
+    // the side it swings to, and the jamb its hinges are on
+    let swing = if o.faces_left(w) { u.perp() } else { -u.perp() };
+    let hinge = if o.flip_hand { u } else { -u };
+    // seen from the swing side, looking at the wall, right is swing.perp()
+    Some(if hinge.dot(swing.perp()) < 0.0 {
+        "L"
+    } else {
+        "P"
+    })
+}
+
+/// The way a door's or window's tag may stand off its wall in a plan (a
+/// unit vector square to the wall, in the view); none for other tags.
+pub fn tag_normal(model: &Model, view: &View, tag: &creabim_core::Tag) -> Option<DVec2> {
+    if !matches!(view.kind, ViewKind::Plan { .. }) {
+        return None;
+    }
+    let ElementKind::Opening(o) = &model.get(tag.host)?.kind else {
+        return None;
+    };
+    if !matches!(o.kind, OpeningKind::Door | OpeningKind::Window) {
+        return None;
+    }
+    let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+        return None;
+    };
+    let project = Projector::of(model, view)?;
+    let n = w.direction().perp().extend(0.0);
+    let d = project.project(n) - project.project(DVec3::ZERO);
+    (d.length() > 0.5).then(|| d.normalize())
+}
+
+/// A door's widest leaf, and how far from its wall's middle the arcs its
+/// leaves sweep reach, as the plan draws them; none without a leaf.
+fn leaf_reach(
+    model: &Model,
+    o: &creabim_core::Opening,
+    w: &creabim_core::Wall,
+) -> Option<(f64, f64)> {
+    let asm = model
+        .get(o.host)
+        .and_then(|h| creabim_core::assembly_of(model, h))
+        .map(|x| x.1);
+    let left = o.faces_left(w);
+    crate::opening::leaf_boxes(o, w, asm)
+        .iter()
+        .map(|b| {
+            let r = b.hi.x - b.lo.x;
+            let s = if left { b.hi.y } else { -b.lo.y };
+            (r, s + r)
+        })
+        .reduce(|a, b| (a.0.max(b.0), a.1.max(b.1)))
+}
+
 pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
     let Some(e) = model.get(id) else {
         return (String::new(), false);
@@ -284,11 +523,43 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         Some(m) => format!("{m} {}", tag(t)),
         None => tag(t),
     };
+    // a roof's timber or a steel member: its position, D-01, in a circle
+    // (George's sample krov 2026-11-26)
+    if creabim_core::framing::of(e).is_some() {
+        if let Some((m, _)) = creabim_core::framing::mark_of(model, id) {
+            return (m, true);
+        }
+    }
+    // a lintel or ring beam: its position, P1 or V1, in a circle, as the
+    // office's výkres tvaru marks them (George 2026-11-24)
+    if matches!(e.kind, ElementKind::Beam(_)) {
+        if let Some(m) = crate::structural::beam_mark(model, id) {
+            return (m, true);
+        }
+    }
     // a mark, typed or numbered by the project's rules, is what it reads
     if !matches!(e.kind, ElementKind::Object(_)) {
         if let Some(m) = creabim_core::marks::mark_of(model, id) {
-            let round = matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Door);
+            // doors and windows in a circle, as the office marks them
+            let round = matches!(&e.kind, ElementKind::Opening(o)
+                if matches!(o.kind, OpeningKind::Door | OpeningKind::Window));
+            // a door's mark (STN 01 3420): left or right over its number
+            if let Some(hand) = door_hand(model, id) {
+                return (format!("{hand}\n{m}"), true);
+            }
             return (m, round);
+        }
+    }
+    if let Some(hand) = door_hand(model, id) {
+        return (format!("{hand}\n{}", e.name), true);
+    }
+    // a device on the ducts: its position in a circle (George 2026-11-25)
+    if matches!(e.kind, ElementKind::Valve(_)) {
+        if let Some(p) = crate::mep::air_positions(model)
+            .iter()
+            .find(|p| p.valves.contains(&id))
+        {
+            return (p.label(), true);
         }
     }
     match &e.kind {
@@ -317,6 +588,9 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
                     tag(f.length),
                     tag(f.thickness)
                 ),
+                creabim_core::FootingKind::Pile => {
+                    format!("Ø {} L {}", tag(f.width), tag(f.thickness))
+                }
             },
             false,
         ),
@@ -387,6 +661,7 @@ pub fn room_tag_item(id: ElementId, text: String, at: DVec2, look: TextLook, mm:
                 at: start,
                 leader: None,
                 elbow: None,
+                angle: 0.0,
             },
             text,
             look,
@@ -633,6 +908,922 @@ pub fn room_tag_items(
     out
 }
 
+/// A linear dimension's items, one per stretch: a chain (PilonDesigner's
+/// reťazová kóta) is one dimension line through all its points, each
+/// stretch between neighbours along it measured. A stretch across a whole
+/// door or window reads its width over the line and its height (and a
+/// window's sill) under it, STN 01 3420.
+/// One witness line of a linear dimension (see [`witness_ends`]).
+#[derive(Clone, Copy, Debug)]
+pub struct WitnessEnd {
+    /// The point's place in [`creabim_core::Dimension::points`].
+    pub index: usize,
+    /// The point measured, in the view's drawing.
+    pub point: DVec2,
+    /// Where its witness line meets the dimension line.
+    pub foot: DVec2,
+    /// Where its witness line starts: dragged, or at the point.
+    pub start: DVec2,
+}
+
+impl WitnessEnd {
+    /// The way from the dimension line out to the point (along the
+    /// witness line); square to the line when the point is on it.
+    pub fn out(&self, normal: DVec2) -> DVec2 {
+        let d = self.point - self.foot;
+        if d.length() > 1e-9 {
+            d.normalize()
+        } else {
+            normal
+        }
+    }
+
+    /// How far it starts from the dimension line.
+    pub fn reach(&self) -> f64 {
+        self.start.distance(self.foot)
+    }
+}
+
+/// The witness lines of a linear dimension, each with where it starts:
+/// its own reach where it was dragged, else the measured point. With the
+/// dimension line's normal (to the left of its run).
+pub fn witness_ends(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+) -> Option<(Vec<WitnessEnd>, DVec2)> {
+    let a = resolve(model, view, &d.a)?;
+    let b = resolve(model, view, &d.b)?;
+    let (b2, _) = squared(d.axis, a, b)?;
+    let u = (b2 - a).normalize_or_zero();
+    let n = u.perp();
+    let ends = d
+        .points()
+        .enumerate()
+        .filter_map(|(index, p)| {
+            let point = resolve(model, view, p)?;
+            let foot = a + u * (point - a).dot(u) + n * d.offset;
+            let mut w = WitnessEnd {
+                index,
+                point,
+                foot,
+                start: point,
+            };
+            if let Some(r) = d.reach.get(index).copied().flatten() {
+                w.start = foot + w.out(-n * d.offset.signum()) * r.max(0.0);
+            }
+            Some(w)
+        })
+        .collect();
+    Some((ends, n))
+}
+
+pub fn linear_items(
+    model: &Model,
+    view: &View,
+    id: ElementId,
+    d: &creabim_core::Dimension,
+) -> Vec<PlanItem> {
+    let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b)) else {
+        return vec![];
+    };
+    let Some((b2, witness)) = squared(d.axis, a, b) else {
+        return vec![];
+    };
+    let num = |v: f64| {
+        spaced(&creabim_core::write_number(
+            model,
+            creabim_core::NumberKind::Dimensions,
+            d.format,
+            v,
+        ))
+    };
+    let below_text = |h: f64, sill: Option<f64>| match sill {
+        Some(s) => format!("{} ({})", num(h), num(s)),
+        None => num(h),
+    };
+    let look = look_of(model, d.style, d.color);
+    // where each witness line starts, by the point's place
+    let ends = if d.reach.iter().any(|r| r.is_some()) {
+        witness_ends(model, view, d)
+            .map(|e| e.0)
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+    let start = |i: usize, q: DVec2| ends.iter().find(|e| e.index == i).map_or(q, |e| e.start);
+    let place = |i: usize| {
+        let shift = d.texts.get(i).copied().flatten();
+        crate::plan::DimPlace {
+            shift: shift.unwrap_or_default(),
+            manual: shift.is_some(),
+            leader: shift.is_some(),
+            short: d.short,
+            back: d.back || look.back,
+        }
+    };
+    if !d.is_chain() {
+        let len = a.distance(b2);
+        let below = opening_below(model, d, len)
+            .or_else(|| opening_of_span(model, view, a, b))
+            .map(|(h, s)| below_text(h, s));
+        let witness = if ends.is_empty() {
+            witness
+        } else {
+            Some([start(0, a), start(1, b)])
+        };
+        return vec![PlanItem::Dimension {
+            id,
+            a,
+            b: b2,
+            offset: d.offset,
+            text: num(len),
+            look,
+            witness,
+            breaks: vec![],
+            below,
+            place: place(0),
+        }];
+    }
+    let u = (b2 - a).normalize_or_zero();
+    let mut marks: Vec<(f64, DVec2, &HostPoint, usize)> = d
+        .points()
+        .enumerate()
+        .filter_map(|(k, p)| {
+            let q = resolve(model, view, p)?;
+            Some(((q - a).dot(u), q, p, k))
+        })
+        .collect();
+    marks.sort_by(|x, y| x.0.total_cmp(&y.0));
+    marks.dedup_by(|y, x| (y.0 - x.0).abs() < 1e-4);
+    marks
+        .windows(2)
+        .enumerate()
+        .map(|(i, w)| {
+            let ((sa, pa, ha, ka), (sb, pb, hb, kb)) = (w[0], w[1]);
+            let len = sb - sa;
+            let below = opening_between(model, ha, hb, len)
+                .or_else(|| opening_of_span(model, view, pa, pb))
+                .map(|(h, s)| below_text(h, s));
+            PlanItem::Dimension {
+                id,
+                a: a + u * sa,
+                b: a + u * sb,
+                offset: d.offset,
+                text: if d.eq { "EQ".to_string() } else { num(len) },
+                look,
+                witness: Some([start(ka, pa), start(kb, pb)]),
+                breaks: vec![],
+                below,
+                place: place(i),
+            }
+        })
+        .collect()
+}
+
+/// A number with its thousands apart, as the drawings write millimetres:
+/// `1 970`. Text that is not a whole number stays as it is.
+pub fn spaced(text: &str) -> String {
+    if text.len() < 4 || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len() + text.len() / 3);
+    for (i, c) in text.chars().enumerate() {
+        if i > 0 && (text.len() - i) % 3 == 0 {
+            out.push('\u{a0}');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Put the text of each stretch too short for it beside the stretch, as
+/// PilonDesigner does: a chain's first stretch before its start, its last
+/// past its end, one inside past the mark towards the neighbour with room
+/// beside its own text, and where neither has room a row higher with a
+/// leader. Texts moved by hand stay. `mm` is drawing units per paper mm.
+pub fn place_dimension_texts(items: &mut [PlanItem], mm: f64) {
+    // what each dimension item needs along its line, and its length
+    struct Run {
+        k: usize,
+        a: DVec2,
+        b: DVec2,
+        w: f64,
+        up: DVec2,
+        lm: f64,
+        manual: bool,
+        below: bool,
+    }
+    let runs: Vec<Run> = items
+        .iter()
+        .enumerate()
+        .filter_map(|(k, it)| {
+            let PlanItem::Dimension {
+                a,
+                b,
+                offset,
+                text,
+                look,
+                witness,
+                below,
+                place,
+                ..
+            } = it
+            else {
+                return None;
+            };
+            let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+            let (pa, pb) = g.ends_at;
+            let w = below
+                .iter()
+                .map(|t| look.width(t))
+                .fold(look.width(text), f64::max)
+                * mm;
+            Some(Run {
+                k,
+                a: pa,
+                b: pb,
+                w,
+                up: (g.text_at - (pa + pb) / 2.0).normalize_or_zero(),
+                lm: look.size * mm,
+                manual: place.manual,
+                below: below.is_some(),
+            })
+        })
+        .collect();
+    for (i, r) in runs.iter().enumerate() {
+        let len = r.a.distance(r.b);
+        if r.manual || len < 1e-9 || len >= r.w + 0.4 * r.lm {
+            continue;
+        }
+        let u = (r.b - r.a) / len;
+        // the stretch that carries on along the line from `p`, be it of
+        // this dimension or of another: how much room it has beside its
+        // own text
+        let room = |p: DVec2| {
+            runs.iter()
+                .enumerate()
+                .filter(|(j, o)| {
+                    *j != i
+                        && (o.a.distance(p) < 1e-6 || o.b.distance(p) < 1e-6)
+                        && (o.b - o.a).perp_dot(u).abs() < 1e-6 * o.a.distance(o.b).max(1.0)
+                })
+                .map(|(_, o)| o.a.distance(o.b) / 2.0 - o.w / 2.0)
+                .reduce(f64::min)
+        };
+        let gap = 0.5 * r.lm;
+        // from the middle of the stretch to beside it
+        let before = -u * (len / 2.0 + r.w / 2.0 + gap);
+        let after = u * (len / 2.0 + r.w / 2.0 + gap);
+        let need = r.w + 2.0 * gap;
+        let (shift, leader) = match (room(r.a), room(r.b)) {
+            // the line ends here: past its end
+            (_, None) => (after, false),
+            (None, _) => (before, false),
+            (Some(left), Some(right)) if left.max(right) >= need => {
+                (if left >= right { before } else { after }, false)
+            }
+            // nowhere beside: a row higher, every other one higher still
+            _ => {
+                let rows = if r.below { 2.6 } else { 1.5 } + if i % 2 == 1 { 0.0 } else { 1.4 };
+                (r.up * r.lm * rows, true)
+            }
+        };
+        if let PlanItem::Dimension { place, .. } = &mut items[r.k] {
+            place.shift = shift;
+            place.leader = leader;
+        }
+    }
+}
+
+/// A chain without its point `i` (0 is `a`, then the further points, then
+/// `b`), keeping its line where it is: an end taken out is replaced by the
+/// next point in along the line. None when only two points are left.
+pub fn without_point(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+    i: usize,
+) -> Option<creabim_core::Dimension> {
+    if !d.is_chain() || i > d.mids.len() + 1 {
+        return None;
+    }
+    let (a, b) = (resolve(model, view, &d.a)?, resolve(model, view, &d.b)?);
+    let (b2, _) = squared(d.axis, a, b)?;
+    let u = (b2 - a).normalize_or_zero();
+    let mut out = d.clone();
+    let along = |p: &HostPoint| resolve(model, view, p).map_or(0.0, |q| (q - a).dot(u));
+    // what is left, in order along the line: its ends are the outermost,
+    // so the line keeps its direction and its side
+    let mut left: Vec<HostPoint> = d
+        .points()
+        .enumerate()
+        .filter(|(k, _)| *k != i)
+        .map(|(_, p)| *p)
+        .collect();
+    left.sort_by(|x, y| along(x).total_cmp(&along(y)));
+    out.b = left.pop()?;
+    out.a = left.remove(0);
+    out.mids = left;
+    // the line keeps its place: offset is measured from `a`
+    let q = resolve(model, view, &out.a)?;
+    out.offset += (a - q).dot(u.perp());
+    // the numbers dragged aside belonged to the old stretches
+    out.texts.clear();
+    Some(out)
+}
+
+/// The dimension `d` with its points kept on the walls they stand on, so
+/// that it follows them when they move (PilonDesigner's kóty zviazané s
+/// prvkami): a point clicked where lines cross, on a layer's face or on a
+/// corner belongs to no element by itself. Of the walls a point is on, it
+/// goes to the one whose face the dimension measures to, else to one
+/// whose end it is at, else to any. Points on doors and windows stay.
+pub fn rehosted(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+) -> creabim_core::Dimension {
+    let mut out = d.clone();
+    let ViewKind::Plan { level, .. } = view.kind else {
+        return out;
+    };
+    let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b)) else {
+        return out;
+    };
+    let Some((b2, _)) = squared(d.axis, a, b) else {
+        return out;
+    };
+    let u = (b2 - a).normalize_or_zero();
+    const NEAR: f64 = 2e-3;
+    for p in out.points_mut() {
+        let on_opening = p.host.is_some_and(|h| {
+            matches!(
+                model.get(h).map(|e| &e.kind),
+                Some(ElementKind::Opening(_) | ElementKind::Pipe(_))
+            )
+        });
+        if on_opening {
+            continue;
+        }
+        let Some(q) = resolve(model, view, p) else {
+            continue;
+        };
+        // a point at a door's or window's jamb is the opening's, as
+        // PilonDesigner binds it: the dimension goes with the opening
+        if let Some(o) = jamb_at(model, level, q, NEAR) {
+            *p = attach(model, view, Some(o), q);
+            continue;
+        }
+        // a point on a pipe (its axis or its outline) is the pipe's: the
+        // dimension then goes with the pipe and moves it when typed
+        let on_pipe = model.iter().find_map(|e| {
+            let ElementKind::Pipe(pp) = &e.kind else {
+                return None;
+            };
+            if pp.level != level {
+                return None;
+            }
+            let (a, b) = (pp.start.truncate(), pp.end.truncate());
+            let ab = b - a;
+            let t = if ab.length_squared() < 1e-12 {
+                0.0
+            } else {
+                ((q - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0)
+            };
+            let r = (pp.outer_mm / 2.0 + pp.insulation_mm) / 1000.0;
+            (q.distance(a + ab * t) <= r + NEAR).then_some(e.id)
+        });
+        if let Some(pipe) = on_pipe {
+            *p = attach(model, view, Some(pipe), q);
+            continue;
+        }
+        let mut best: Option<(u8, ElementId)> = None;
+        for e in model.iter() {
+            let ElementKind::Wall(w) = &e.kind else {
+                continue;
+            };
+            if w.level != level || w.is_arc() {
+                continue;
+            }
+            let dir = w.direction();
+            let (x, s) = ((q - w.start).dot(dir), (q - w.start).dot(dir.perp()));
+            // its body, and where a joined corner carries it on
+            let reach = w.thickness;
+            if s.abs() > w.thickness / 2.0 + NEAR || x < -reach || x > w.length() + reach {
+                continue;
+            }
+            let at_end = x.abs() < NEAR || (x - w.length()).abs() < NEAR;
+            let inside = x > -NEAR && x < w.length() + NEAR;
+            let score = if dir.perp().dot(u).abs() > 0.7 {
+                3
+            } else if at_end {
+                2
+            } else if inside {
+                1
+            } else {
+                0
+            };
+            // what it was on already wins a tie
+            let better = match best {
+                None => true,
+                Some((b, _)) => score > b || (score == b && p.host == Some(e.id)),
+            };
+            if better {
+                best = Some((score, e.id));
+            }
+        }
+        if let Some((_, wall)) = best {
+            *p = attach(model, view, Some(wall), q);
+        }
+    }
+    out
+}
+
+/// The door or window on `level` whose jamb plan point `q` stands at:
+/// within its wall's thickness, at one of its sides to `near`.
+pub fn jamb_at(model: &Model, level: ElementId, q: DVec2, near: f64) -> Option<ElementId> {
+    model.iter().find_map(|e| {
+        let ElementKind::Opening(o) = &e.kind else {
+            return None;
+        };
+        let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+            return None;
+        };
+        if w.level != level || w.is_arc() {
+            return None;
+        }
+        let d = w.direction();
+        let (x, s) = ((q - w.start).dot(d), (q - w.start).dot(d.perp()));
+        let at_jamb = (x - o.offset).abs() < near || (x - o.offset - o.width).abs() < near;
+        (at_jamb && s.abs() <= w.thickness / 2.0 + near).then_some(e.id)
+    })
+}
+
+/// Every linear dimension on a plan with points at a door's or window's
+/// jamb bound to the wall (or to nothing), bound to the opening instead:
+/// older drawings, so their dimensions follow the opening when it moves.
+pub fn bind_jambs(model: &Model) -> Vec<(Element, Element)> {
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Dimension(d) = &e.kind else {
+            continue;
+        };
+        if d.kind != DimensionKind::Linear {
+            continue;
+        }
+        let Some(ElementKind::View(v)) = model.get(d.view).map(|e| &e.kind) else {
+            continue;
+        };
+        let ViewKind::Plan { level, .. } = v.kind else {
+            continue;
+        };
+        let mut now = d.clone();
+        for p in now.points_mut() {
+            let on_wall = p.host.is_none_or(|h| {
+                matches!(model.get(h).map(|e| &e.kind), Some(ElementKind::Wall(_)))
+            });
+            if !on_wall {
+                continue;
+            }
+            let Some(q) = resolve(model, v, p) else {
+                continue;
+            };
+            if let Some(o) = jamb_at(model, level, q, 2e-3) {
+                *p = attach(model, v, Some(o), q);
+            } else if p.host.is_none() {
+                // drawn to a stair's nosing before they bound to it
+                let on_stair = model.iter().find_map(|e| match &e.kind {
+                    ElementKind::Stair(s) if s.level == level => stair_point(model, e.id, s, q),
+                    _ => None,
+                });
+                if let Some(h) = on_stair {
+                    *p = h;
+                }
+            }
+        }
+        if now != *d {
+            let mut after = e.clone();
+            after.kind = ElementKind::Dimension(now);
+            out.push((e.clone(), after));
+        }
+    }
+    out
+}
+
+/// A linear dimension's stretches in order along its line: the two points
+/// each measures between and where they stand on the measured line.
+pub fn stretches(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+) -> Vec<(HostPoint, HostPoint, DVec2, DVec2)> {
+    let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b)) else {
+        return vec![];
+    };
+    let Some((b2, _)) = squared(d.axis, a, b) else {
+        return vec![];
+    };
+    if !d.is_chain() {
+        return vec![(d.a, d.b, a, b2)];
+    }
+    let u = (b2 - a).normalize_or_zero();
+    let mut marks: Vec<(f64, HostPoint)> = d
+        .points()
+        .filter_map(|p| Some(((resolve(model, view, p)? - a).dot(u), *p)))
+        .collect();
+    marks.sort_by(|x, y| x.0.total_cmp(&y.0));
+    marks.dedup_by(|y, x| (y.0 - x.0).abs() < 1e-4);
+    marks
+        .windows(2)
+        .map(|w| (w[0].1, w[1].1, a + u * w[0].0, a + u * w[1].0))
+        .collect()
+}
+
+/// The stretches of chain `d` made equal (an EQ dimension): its two ends
+/// stay, every point between moves what it stands on to an even share of
+/// the whole. One transaction; an error where a point between stands on
+/// nothing that can move.
+pub fn equalised(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+) -> Result<creabim_core::Transaction, String> {
+    let all = stretches(model, view, d);
+    let n = all.len();
+    if n < 2 {
+        return Err("An EQ dimension is a chain of two stretches or more.".into());
+    }
+    let total: f64 = all.iter().map(|s| s.2.distance(s.3)).sum();
+    let each = total / n as f64;
+    let mut now = model.clone();
+    let mut tx = creabim_core::Transaction::new("Equal stretches");
+    for i in 0..n - 1 {
+        let s = stretches(&now, view, d);
+        let Some(&(_, hb, pa, pb)) = s.get(i) else {
+            break;
+        };
+        if (pa.distance(pb) - each).abs() < 1e-6 {
+            continue;
+        }
+        let prefer: Vec<ElementId> = hb.host.into_iter().collect();
+        if prefer.is_empty() {
+            return Err("A point between the ends stands on no element: nothing to move.".into());
+        }
+        let step = driven(&now, view, d, i, each, &prefer)?;
+        step.apply(&mut now).map_err(|e| e.to_string())?;
+        tx.ops.extend(step.ops);
+    }
+    Ok(tx)
+}
+
+/// Stretch `i` of the dimension `d` made `value` long (PilonDesigner's
+/// riadiaca kóta): the element one of its ends is on moves, the one in
+/// `prefer` (what is selected) if either is, else the one at its far end.
+/// A door or window slides in its wall; a wall measured along itself is
+/// made longer or shorter at that end; anything else moves bodily, with
+/// what is joined to it.
+/// The pipes in one straight line with pipe `id`, joined end to end, on
+/// its level and in its system: what moves when it is dimensioned.
+pub fn straight_run(model: &Model, id: ElementId) -> Vec<ElementId> {
+    let pipes: Vec<(ElementId, &creabim_core::mep::Pipe)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Pipe(p) => Some((e.id, p)),
+            _ => None,
+        })
+        .collect();
+    let Some(first) = pipes.iter().find(|(i, _)| *i == id).map(|x| x.1) else {
+        return vec![];
+    };
+    let dir = (first.end - first.start).normalize_or_zero();
+    let mut run = vec![id];
+    let mut i = 0;
+    while i < run.len() {
+        let Some(p) = pipes.iter().find(|(x, _)| *x == run[i]).map(|x| x.1) else {
+            break;
+        };
+        for (oid, o) in &pipes {
+            if run.contains(oid) || o.level != first.level || o.system != first.system {
+                continue;
+            }
+            let od = (o.end - o.start).normalize_or_zero();
+            if od.cross(dir).length() > 1e-3 {
+                continue;
+            }
+            let touches = [p.start, p.end]
+                .iter()
+                .any(|a| a.distance(o.start) < 0.002 || a.distance(o.end) < 0.002);
+            if touches {
+                run.push(*oid);
+            }
+        }
+        i += 1;
+    }
+    run
+}
+
+pub fn driven(
+    model: &Model,
+    view: &View,
+    d: &creabim_core::Dimension,
+    i: usize,
+    value: f64,
+    prefer: &[ElementId],
+) -> Result<creabim_core::Transaction, String> {
+    if !matches!(view.kind, ViewKind::Plan { .. } | ViewKind::Section { .. }) {
+        return Err("A dimension moves what it measures in plans and sections only.".into());
+    }
+    if value <= 0.0 {
+        return Err("Type a distance more than zero.".into());
+    }
+    let all = stretches(model, view, d);
+    let (ha, hb, pa, pb) = *all.get(i).ok_or("It is gone.")?;
+    let u = (pb - pa).normalize_or_zero();
+    let delta = value - pa.distance(pb);
+    if delta.abs() < 1e-7 {
+        return Err("Already that far.".into());
+    }
+    if let (Some(id), true) = (ha.host, ha.host == hb.host) {
+        if let Some(tx) = stair_driven(model, id, &ha, &hb, pa.distance(pb), value) {
+            return tx;
+        }
+        return Err("Both ends are on the same element: change its size instead.".into());
+    }
+    let chosen = |h: &HostPoint| h.host.is_some_and(|id| prefer.contains(&id));
+    // a pipe dimensioned from the building moves, never the wall
+    let is_pipe = |h: &HostPoint| {
+        h.host
+            .and_then(|id| model.get(id))
+            .is_some_and(|e| matches!(e.kind, ElementKind::Pipe(_)))
+    };
+    let (ha_pipe, hb_pipe) = (is_pipe(&ha), is_pipe(&hb));
+    let take_b = if ha_pipe != hb_pipe {
+        hb_pipe
+    } else {
+        chosen(&hb) || (!chosen(&ha) && hb.host.is_some())
+    };
+    let (p, other, by) = if take_b {
+        (hb, ha, u * delta)
+    } else if ha.host.is_some() {
+        (ha, hb, -u * delta)
+    } else {
+        return Err("Neither end is on an element: nothing to move.".into());
+    };
+    let id = p.host.ok_or("It is gone.")?;
+    let e = model.get(id).ok_or("It is gone.")?;
+    let mut tx = creabim_core::Transaction::new("Set dimension");
+    if let ViewKind::Section {
+        start, end, depth, ..
+    } = view.kind
+    {
+        return section_driven(
+            model,
+            e,
+            other.host,
+            by,
+            SectionFrame::new(start, end, depth),
+        );
+    }
+    match &e.kind {
+        ElementKind::Opening(o) => {
+            let ElementKind::Wall(w) = &model.get(o.host).ok_or("It is not in a wall.")?.kind
+            else {
+                return Err("It is not in a wall.".into());
+            };
+            let offset = o.offset + by.dot(w.direction());
+            if offset < -1e-9 || offset + o.width > w.length() + 1e-9 {
+                return Err(format!("{} would run past the end of its wall.", e.name));
+            }
+            let mut now = e.clone();
+            if let ElementKind::Opening(o) = &mut now.kind {
+                o.offset = offset.max(0.0);
+            }
+            tx = tx.replace(e.clone(), now);
+        }
+        ElementKind::Wall(w) if w.direction().dot(u).abs() > 0.7 => {
+            // measured along the wall: that end of it moves
+            let dir = w.direction();
+            let end = p.from_end || p.local.x > w.length() / 2.0;
+            let mut now = e.clone();
+            if let ElementKind::Wall(w) = &mut now.kind {
+                if end {
+                    w.end += dir * by.dot(dir);
+                } else {
+                    w.start += dir * by.dot(dir);
+                }
+                if w.start.distance(w.end) < 0.05 {
+                    return Err(format!("{} would be left with no length.", e.name));
+                }
+            }
+            let mut moved = vec![now];
+            let follow = creabim_core::joins::follow(model, &mut moved);
+            for n in moved {
+                tx = tx.replace(e.clone(), n);
+            }
+            for (o, n) in follow {
+                if Some(o.id) != other.host && o != n {
+                    tx = tx.replace(o, n);
+                }
+            }
+        }
+        ElementKind::Pipe(_) => {
+            // the pipe's straight run moves; what joins it stretches to
+            // stay joined
+            let run = straight_run(model, id);
+            let shift = by.extend(0.0);
+            let mut moved: Vec<creabim_core::Element> = run
+                .iter()
+                .filter_map(|r| {
+                    let mut n = model.get(*r)?.clone();
+                    if let ElementKind::Pipe(p) = &mut n.kind {
+                        p.start += shift;
+                        p.end += shift;
+                    }
+                    Some(n)
+                })
+                .collect();
+            let follow = creabim_core::joins::follow(model, &mut moved);
+            for n in moved {
+                if let Some(o) = model.get(n.id) {
+                    tx = tx.replace(o.clone(), n);
+                }
+            }
+            for (o, n) in follow {
+                if !run.contains(&o.id) && o != n {
+                    tx = tx.replace(o, n);
+                }
+            }
+        }
+        _ => {
+            let keep: std::collections::HashSet<ElementId> = other.host.into_iter().collect();
+            let moved = creabim_core::holds::shift(model, id, by, &keep);
+            if moved.is_empty() {
+                return Err(format!("{} can not be moved by a dimension.", e.name));
+            }
+            for (o, n) in moved {
+                tx = tx.replace(o, n);
+            }
+        }
+    }
+    Ok(tx)
+}
+
+/// [`driven`] in a section: `by` in the drawing, x along the section and
+/// y up. A height moves the element up or down (a footing deeper, a
+/// slab's top, an object, a column's base, a pipe's run); a distance
+/// across moves it along the section line.
+fn section_driven(
+    model: &Model,
+    e: &creabim_core::Element,
+    other: Option<ElementId>,
+    by: DVec2,
+    f: SectionFrame,
+) -> Result<creabim_core::Transaction, String> {
+    let mut tx = creabim_core::Transaction::new("Set dimension");
+    let mut now = e.clone();
+    if by.y.abs() >= by.x.abs() {
+        let dz = by.y;
+        match &mut now.kind {
+            ElementKind::Footing(x) => x.lift(dz),
+            ElementKind::Slab(x) => x.top_offset += dz,
+            ElementKind::Object(x) => x.offset += dz,
+            ElementKind::Column(x) => x.base_offset += dz,
+            ElementKind::Wall(x) => x.base_offset += dz,
+            ElementKind::Pipe(_) => {
+                let run = straight_run(model, e.id);
+                let mut moved: Vec<creabim_core::Element> = run
+                    .iter()
+                    .filter_map(|r| {
+                        let mut n = model.get(*r)?.clone();
+                        if let ElementKind::Pipe(p) = &mut n.kind {
+                            p.start.z += dz;
+                            p.end.z += dz;
+                        }
+                        Some(n)
+                    })
+                    .collect();
+                let follow = creabim_core::joins::follow(model, &mut moved);
+                for n in moved {
+                    if let Some(o) = model.get(n.id) {
+                        tx = tx.replace(o.clone(), n);
+                    }
+                }
+                for (o, n) in follow {
+                    if !run.contains(&o.id) && o != n {
+                        tx = tx.replace(o, n);
+                    }
+                }
+                return Ok(tx);
+            }
+            _ => {
+                return Err(format!(
+                    "{} can not be moved up or down by a dimension.",
+                    e.name
+                ))
+            }
+        }
+        return Ok(tx.replace(e.clone(), now));
+    }
+    let world = f.along * by.x;
+    let keep: std::collections::HashSet<ElementId> = other.into_iter().collect();
+    let moved = creabim_core::holds::shift(model, e.id, world, &keep);
+    if moved.is_empty() {
+        return Err(format!("{} can not be moved by a dimension.", e.name));
+    }
+    for (o, n) in moved {
+        tx = tx.replace(o, n);
+    }
+    Ok(tx)
+}
+
+/// The door or window a stretch between two points on its jambs spans.
+fn opening_between(
+    model: &Model,
+    a: &HostPoint,
+    b: &HostPoint,
+    len: f64,
+) -> Option<(f64, Option<f64>)> {
+    let h = a.host?;
+    if b.host != Some(h) {
+        return None;
+    }
+    let ElementKind::Opening(o) = &model.get(h)?.kind else {
+        return None;
+    };
+    if (len - o.width).abs() > 1e-3 || o.kind == OpeningKind::Hole {
+        return None;
+    }
+    Some((
+        o.height,
+        (o.kind == OpeningKind::Window).then_some(o.sill_from_floor(model)),
+    ))
+}
+
+/// The door or window in a plan whose jambs a stretch from `a` to `b`
+/// runs between, whatever the points are bound to (a wall's face, the
+/// opening, nothing), as PilonDesigner finds it: both ends within the
+/// wall's thickness, at its jambs to 15 mm.
+pub fn opening_of_span(
+    model: &Model,
+    view: &View,
+    a: DVec2,
+    b: DVec2,
+) -> Option<(f64, Option<f64>)> {
+    let ViewKind::Plan { level, .. } = view.kind else {
+        return None;
+    };
+    model.iter().find_map(|e| {
+        let ElementKind::Opening(o) = &e.kind else {
+            return None;
+        };
+        if o.kind == OpeningKind::Hole {
+            return None;
+        }
+        let ElementKind::Wall(w) = &model.get(o.host)?.kind else {
+            return None;
+        };
+        if w.level != level {
+            return None;
+        }
+        let u = (w.end - w.start).normalize_or_zero();
+        let reach = w.thickness / 2.0 + 0.06;
+        let (sa, sb) = ((a - w.start).dot(u), (b - w.start).dot(u));
+        if (a - w.start).perp_dot(u).abs() > reach || (b - w.start).perp_dot(u).abs() > reach {
+            return None;
+        }
+        let (lo, hi) = (sa.min(sb), sa.max(sb));
+        ((lo - o.offset).abs() < 0.015 && (hi - o.offset - o.width).abs() < 0.015).then_some((
+            o.height,
+            (o.kind == OpeningKind::Window).then_some(o.sill_from_floor(model)),
+        ))
+    })
+}
+
+/// A plan dimension from jamb to jamb of one door or window (both ends on
+/// it, as long as it is wide): its height, and a window's sill, to write
+/// under the line (STN 01 3420).
+pub fn opening_below(
+    model: &Model,
+    d: &creabim_core::Dimension,
+    len: f64,
+) -> Option<(f64, Option<f64>)> {
+    let h = d.a.host?;
+    if d.b.host != Some(h) {
+        return None;
+    }
+    let ElementKind::Opening(o) = &model.get(h)?.kind else {
+        return None;
+    };
+    if (len - o.width).abs() > 1e-3 || o.kind == OpeningKind::Hole {
+        return None;
+    }
+    Some((
+        o.height,
+        (o.kind == OpeningKind::Window).then_some(o.sill_from_floor(model)),
+    ))
+}
+
 /// A dimension's value as it is written in `units`.
 pub fn dimension_text(units: &creabim_core::Units, a: DVec2, b: DVec2) -> String {
     units.dimension(a.distance(b))
@@ -660,6 +1851,13 @@ pub fn look_of(model: &Model, style: Option<ElementId>, color: Option<[f32; 3]>)
     creabim_core::text_style(model, style, color).into()
 }
 
+/// A dimension's look: its style's, its colour, and its own background.
+fn dim_look(model: &Model, d: &creabim_core::Dimension) -> TextLook {
+    let mut look = look_of(model, d.style, d.color);
+    look.back |= d.back;
+    look
+}
+
 /// A dimension about a centre (angle, radius, diameter, arc length) as a
 /// drawing item, if its points can be drawn in the view.
 fn measured(
@@ -675,7 +1873,7 @@ fn measured(
         return None;
     }
     let shape = match d.kind {
-        DimensionKind::Linear | DimensionKind::Spot => return None,
+        DimensionKind::Linear | DimensionKind::Spot | DimensionKind::Slope => return None,
         DimensionKind::Angular => {
             if c.distance(b) < 1e-6 {
                 return None;
@@ -716,15 +1914,56 @@ fn measured(
                 a,
                 b,
             ),
-            look: look_of(model, d.style, d.color),
+            look: dim_look(model, d),
             mm: view.scale / 1000.0,
         }),
     })
 }
 
+/// A slope dimension as a drawing item, if its line can be drawn in the
+/// view.
+fn slope(
+    model: &Model,
+    view: &View,
+    id: ElementId,
+    d: &creabim_core::Dimension,
+) -> Option<PlanItem> {
+    let a = resolve(model, view, &d.a)?;
+    let b = resolve(model, view, &d.b)?;
+    if a.distance(b) < 1e-6 {
+        return None;
+    }
+    let plan = matches!(view.kind, ViewKind::Plan { .. });
+    Some(PlanItem::Annotation {
+        id,
+        item: Box::new(Annotation {
+            shape: Shape::Slope {
+                a,
+                b,
+                offset: d.offset,
+                plan,
+            },
+            text: slope_reading(d.pattern.as_deref(), b - a, plan),
+            look: dim_look(model, d),
+            mm: view.scale / 1000.0,
+        }),
+    })
+}
+
+/// What a slope over the run `d` reads with `pattern`: in a plan, where
+/// lines are level, only typed text (a format there reads `? %`).
+pub fn slope_reading(pattern: Option<&str>, d: DVec2, plan: bool) -> String {
+    let p = pattern.map(str::trim).unwrap_or("%");
+    if plan && (p.is_empty() || creabim_core::annotation::SLOPE_FORMATS.contains(&p)) {
+        return "? %".into();
+    }
+    creabim_core::annotation::slope_text(d, Some(p))
+}
+
 /// The height a spot level reads at `at`: in a section or elevation the
-/// point's own height; in a plan the top of the slab it was put on, or
-/// else the plan's level (a level marker).
+/// point's own height; in a plan the height of what it was put on (a
+/// roof's face, a slab's top, the terrain, a stair's tread) at that very
+/// point, or else the plan's level (a level marker).
 pub fn spot_height(
     model: &Model,
     view: &View,
@@ -735,13 +1974,132 @@ pub fn spot_height(
         ViewKind::Section { .. } => Some(at.y),
         ViewKind::Plan { level, .. } => {
             let elevation = |l: ElementId| model.level(l).map(|l| l.elevation);
-            match d.a.host.and_then(|h| model.get(h)).map(|e| &e.kind) {
+            let host = d.a.host.filter(|h| model.get(*h).is_some());
+            if let Some(z) = host.and_then(|h| surface_height(model, h, at)) {
+                return Some(z);
+            }
+            match host.and_then(|h| model.get(h)).map(|e| &e.kind) {
                 Some(ElementKind::Slab(s)) => Some(s.top(elevation(s.level)?)),
                 _ => elevation(level),
             }
         }
         _ => None,
     }
+}
+
+/// Whether a spot level in a plan reads the surface of an element of this
+/// kind: what is walked or built on, and seen from above also the tops
+/// of walls, columns and the like. A floor plan's cut walls, columns,
+/// doors and furniture are looked past, to the floor.
+pub fn spot_reads(kind: &ElementKind, from_above: bool) -> bool {
+    match kind {
+        ElementKind::Slab(_)
+        | ElementKind::Roof(_)
+        | ElementKind::Stair(_)
+        | ElementKind::Site(_)
+        | ElementKind::Footing(_)
+        | ElementKind::FreeMesh(_)
+        | ElementKind::Beam(_) => true,
+        ElementKind::Wall(_)
+        | ElementKind::Column(_)
+        | ElementKind::Object(_)
+        | ElementKind::Railing(_)
+        | ElementKind::Shaft(_) => from_above,
+        _ => false,
+    }
+}
+
+/// The height of `host`'s upper surface at plan point `p`: where a line
+/// straight down from above it first meets it. None off its outline.
+pub fn surface_height(model: &Model, host: ElementId, p: DVec2) -> Option<f64> {
+    let scene = crate::scene::shared_scene(model);
+    let top = scene
+        .iter()
+        .filter(|i| i.id == host)
+        .filter_map(|i| i.mesh.bounds())
+        .map(|(_, b)| b.z as f64)
+        .reduce(f64::max)?;
+    around(p)
+        .filter_map(|q| hit_down(&scene, q, top + 1.0, &|i| i.id == host))
+        .map(|(_, z)| z)
+        .reduce(f64::max)
+}
+
+/// `p` and four points half a millimetre about it: a point snapped right
+/// onto an edge (a ridge, an eave, a slab's rim) reads the top surface
+/// there, though a line straight down its edge may slip past the faces.
+fn around(p: DVec2) -> impl Iterator<Item = DVec2> {
+    const R: f64 = 5e-4;
+    [(0.0, 0.0), (R, 0.0), (-R, 0.0), (0.0, R), (0.0, -R)]
+        .into_iter()
+        .map(move |(x, y)| p + DVec2::new(x, y))
+}
+
+/// The element a plan's spot level clicked at `p` stands on, and its
+/// height there: the first surface under `below` that a line down from
+/// above meets, of the elements [`spot_reads`] takes. `below` is a floor
+/// plan's cut, so it reads the floor, not a roof or the floor over it;
+/// or the top of a roof or site plan's range.
+pub fn surface_under(
+    model: &Model,
+    p: DVec2,
+    below: f64,
+    from_above: bool,
+) -> Option<(ElementId, f64)> {
+    let scene = crate::scene::shared_scene(model);
+    let keep = |i: &crate::SceneItem| {
+        !i.ghost
+            && !i.is_lining()
+            && model
+                .get(i.id)
+                .is_some_and(|e| spot_reads(&e.kind, from_above))
+    };
+    let top = scene
+        .iter()
+        .filter(|i| keep(i))
+        .filter_map(|i| i.mesh.bounds())
+        .map(|(_, b)| b.z as f64)
+        .reduce(f64::max)?
+        .max(below)
+        + 1.0;
+    around(p)
+        .filter_map(|q| {
+            let origin = glam::Vec3::new(q.x as f32, q.y as f32, top as f32);
+            crate::pick::pick_all_items(&scene, origin, -glam::Vec3::Z, &keep)
+                .into_iter()
+                .map(|h| (h.id, top - h.t as f64))
+                .find(|(_, z)| *z < below + 1e-4)
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+}
+
+/// Where a line down from height `from` at `p` first meets a drawn item
+/// that `keep` takes (cutters and reveal linings are not drawn).
+fn hit_down(
+    scene: &[crate::SceneItem],
+    p: DVec2,
+    from: f64,
+    keep: &dyn Fn(&crate::SceneItem) -> bool,
+) -> Option<(ElementId, f64)> {
+    let origin = glam::Vec3::new(p.x as f32, p.y as f32, from as f32);
+    let hit = crate::pick::pick_items(scene, origin, -glam::Vec3::Z, &|i| {
+        !i.ghost && !i.is_lining() && keep(i)
+    })?;
+    Some((hit.id, from - hit.t as f64))
+}
+
+/// What a plan's spot levels read under: the top of its range seen from
+/// above (a roof or site plan, and whether it is one), else its cut plane,
+/// so a roof over a floor plan is not what its spot levels read.
+pub fn spot_from(model: &Model, view: &View) -> Option<(f64, bool)> {
+    let ViewKind::Plan { level, cut_height } = view.kind else {
+        return None;
+    };
+    if view.graphics.range.from_above {
+        let (top, _) = crate::ranges::from_above_span(model, view, level, cut_height);
+        return Some((top, true));
+    }
+    Some((model.level(level)?.elevation + cut_height, false))
 }
 
 /// A spot level as a drawing item, if it can be drawn in the view.
@@ -758,16 +2116,27 @@ fn spot(
         .pattern
         .as_deref()
         .unwrap_or(creabim_core::annotation::SPOT_PATTERN);
+    let plan = matches!(view.kind, ViewKind::Plan { .. });
+    // a coordinate mark: the point's S-JTSK Y and X, with a cross on it
+    let cross = plan && creabim_core::annotation::writes_coordinates(pattern);
+    let text = creabim_core::annotation::spot_text(model, pattern, z);
+    let text = if cross {
+        creabim_core::annotation::coordinate_text(model, &text, at, z)
+    } else {
+        text
+    };
     Some(PlanItem::Annotation {
         id,
         item: Box::new(Annotation {
             shape: Shape::Spot {
                 at,
                 text_at,
-                plan: matches!(view.kind, ViewKind::Plan { .. }),
+                plan,
+                cross,
+                short: d.short,
             },
-            text: creabim_core::annotation::spot_text(model, pattern, z),
-            look: look_of(model, d.style, d.color),
+            text,
+            look: dim_look(model, d),
             mm: view.scale / 1000.0,
         }),
     })
@@ -782,7 +2151,11 @@ pub fn note_item(
     mm: f64,
 ) -> PlanItem {
     let mut look = look_of(model, n.style, n.color);
+    look.back |= n.back;
     look.leader_end = n.leader_end.or(look.leader_end);
+    if let Some(size) = n.size.filter(|s| *s > 0.0) {
+        look.size = size;
+    }
     PlanItem::Annotation {
         id,
         item: Box::new(Annotation {
@@ -790,6 +2163,7 @@ pub fn note_item(
                 at: n.at,
                 leader,
                 elbow: leader.and(n.elbow),
+                angle: n.angle.to_radians(),
             },
             text: crate::annotation::lay_out_note(&n.text, &look, n.width, n.markdown),
             look,
@@ -856,6 +2230,9 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
             ElementKind::Dimension(d) if d.view == view_id && d.kind == DimensionKind::Spot => {
                 out.extend(spot(model, view, e.id, d));
             }
+            ElementKind::Dimension(d) if d.view == view_id && d.kind == DimensionKind::Slope => {
+                out.extend(slope(model, view, e.id, d));
+            }
             ElementKind::Dimension(d) if d.view == view_id && !d.kind.is_linear() => {
                 out.extend(measured(model, view, e.id, d));
             }
@@ -864,30 +2241,14 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                 out.push(note_item(model, e.id, n, leader, view.scale / 1000.0));
             }
             ElementKind::Dimension(d) if d.view == view_id => {
-                let (Some(a), Some(b)) = (resolve(model, view, &d.a), resolve(model, view, &d.b))
-                else {
-                    continue;
-                };
-                let Some((b2, witness)) = squared(d.axis, a, b) else {
-                    continue;
-                };
-                out.push(PlanItem::Dimension {
-                    id: e.id,
-                    a,
-                    b: b2,
-                    offset: d.offset,
-                    text: creabim_core::write_number(
-                        model,
-                        creabim_core::NumberKind::Dimensions,
-                        d.format,
-                        a.distance(b2),
-                    ),
-                    look: look_of(model, d.style, d.color),
-                    witness,
-                    breaks: vec![],
-                });
+                out.extend(linear_items(model, view, e.id, d));
             }
             ElementKind::Tag(t) if t.view == view_id => {
+                // a penetration's label is drawn with its penetration, a
+                // room's underfloor heating table by the heating plan
+                if t.ufh || crate::tradepen::is_label_tag(model, t) {
+                    continue;
+                }
                 let Some(c) = centre(model, t.host) else {
                     continue;
                 };
@@ -897,7 +2258,8 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     model.get(t.host).map(|h| &h.kind),
                     Some(ElementKind::Room(_))
                 ) {
-                    if !view.shows_room_tags() {
+                    // nor in a site or roof plan, which shows no rooms
+                    if !view.shows_room_tags() || view.graphics.range.from_above {
                         continue;
                     }
                     let outline = match model.get(t.host).map(|h| &h.kind) {
@@ -911,6 +2273,8 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                         }
                         _ => None,
                     };
+                    // a trade's drawing tags its rooms as the
+                    // architecture does (George 2026-11-23)
                     out.extend(room_tag_items(
                         model,
                         e.id,
@@ -919,25 +2283,208 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                         centre + t.offset,
                         centre,
                         outline.as_deref(),
-                        look_of(model, t.style, t.color),
+                        {
+                            let mut look = look_of(model, t.style, t.color);
+                            look.back |= t.back;
+                            look
+                        },
                         view.scale / 1000.0,
                         creabim_core::styles::active_pack(model).room_tags,
                     ));
                     continue;
                 }
+                // no underside by a sloped member, though it was tagged
+                // level (George 2026-11-26: on a rafter it says nothing)
+                if t.underside && crate::framing::sloped(model, t.host) {
+                    continue;
+                }
                 // a material tag reads the build-up (Annotate step 5)
                 let (text, round) = if t.material {
                     (material_text(model, t.host), false)
+                } else if t.underside {
+                    (crate::framing::underside_text(model, t.host), false)
                 } else {
                     tag_text(model, t.host)
                 };
                 let mut look = look_of(model, t.style, t.color);
                 look.leader_end = t.leader_end.or(look.leader_end);
+                let mm = view.scale / 1000.0;
+                // a door's or window's mark stands square to its wall, on
+                // a straight leader
+                let square = if t.material {
+                    None
+                } else {
+                    tag_normal(model, view, t)
+                };
+                let (mut offset, elbow) = match square {
+                    Some(n) => (n * t.offset.dot(n), None),
+                    None => (t.offset, t.elbow.map(|p| centre + p)),
+                };
+                // a door's clear passage, written along its leader
+                let passage = square.and_then(|_| match &model.get(t.host)?.kind {
+                    ElementKind::Opening(o) => {
+                        let (w, h) = creabim_core::joinery::clear_passage(o)?;
+                        let ElementKind::Wall(wall) = &model.get(o.host)?.kind else {
+                            return None;
+                        };
+                        let write = |m: f64| spaced(&format!("{:.0}", m * 1000.0));
+                        // a fire door's rating goes under its height
+                        let fire = o.door.as_ref().and_then(|d| d.fire.as_ref());
+                        let under = match fire {
+                            Some(f) => format!("{}\n{}", write(h), f.label()),
+                            None => write(h),
+                        };
+                        // the way its leaf swings, and how far
+                        let left = if o.faces_left(wall) { 1.0 } else { -1.0 };
+                        // its widest leaf, and how far from the wall's
+                        // middle the arcs reach, as the plan draws them
+                        let (leaf, reach) =
+                            leaf_reach(model, o, wall).unwrap_or((w, wall.thickness / 2.0 + w));
+                        Some((write(w), under, wall.thickness / 2.0, left, leaf, reach))
+                    }
+                    _ => None,
+                });
+                let at = centre + offset;
+                let radius = |text: &str| {
+                    let o = tag_geometry(at, at, None, text, true, &look, mm).outline;
+                    let (lo, hi) = o.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+                        (lo.min(p.x), hi.max(p.x))
+                    });
+                    (hi - lo).max(0.0) / 2.0
+                };
+                // do numbers `long` on the leader fit between the wall
+                // and the arc a leaf `leaf` wide sweeps, at its middle?
+                let fits = |long: f64, leaf: f64| long + 3.0 * mm <= leaf * 0.85;
+                // the leader is as long as the numbers on it need
+                // and on the side the leaf swings to, the bubble stands
+                // clear of the leaf and the arc it sweeps
+                // unless it was dragged where it stands
+                if let (Some(n), Some((tw, th, face, left, leaf, reach)), false) =
+                    (square, &passage, t.placed)
+                {
+                    let long = th
+                        .split('\n')
+                        .chain([tw.as_str()])
+                        .map(|t| look.width(t))
+                        .fold(0.0, f64::max)
+                        * mm;
+                    let side = if t.offset.dot(n) < 0.0 { -n } else { n };
+                    let mut need = face + long + 3.0 * mm + radius(&text);
+                    if side.dot(n * *left) > 0.0 {
+                        // the numbers inside the arc where they fit,
+                        // else past the leaf
+                        need = if fits(long, *leaf) {
+                            need.max(reach + 1.5 * mm + radius(&text))
+                        } else {
+                            need + reach - face
+                        };
+                    }
+                    if offset.length() < need {
+                        offset = side * need;
+                    }
+                }
+                let at = centre + offset;
+                let anchor = match square {
+                    Some(_) => centre,
+                    None => centre + t.end.unwrap_or(DVec2::ZERO),
+                };
+                let radius = |text: &str| {
+                    let o = tag_geometry(at, at, None, text, true, &look, mm).outline;
+                    let (lo, hi) = o.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+                        (lo.min(p.x), hi.max(p.x))
+                    });
+                    (hi - lo).max(0.0) / 2.0
+                };
+                // beside a window's mark and touching it, its outer sill's
+                // for the list of sheet-metal work: K over its number in a
+                // split circle
+                if let (Some(n), Some(sill)) =
+                    (square, creabim_core::joinery::outer_sill_of(model, t.host))
+                {
+                    let mark = format!("{}\n{}", creabim_core::joinery::SILL_LETTER, sill.number);
+                    let mut u = n.perp();
+                    if u.x < -1e-6 || (u.x.abs() <= 1e-6 && u.y < 0.0) {
+                        u = -u;
+                    }
+                    let beside = at + u * (radius(&text) + radius(&mark));
+                    out.push(PlanItem::Tag {
+                        id: e.id,
+                        anchor: beside,
+                        at: beside,
+                        elbow: None,
+                        text: mark,
+                        round: true,
+                        look,
+                    });
+                }
+                // the width over the line, the height under it, midway
+                // from the bubble to the wall's face
+                if let Some((tw, th, face, left, leaf, reach)) = passage {
+                    let d = anchor - at;
+                    // a bubble dragged onto the door still points off
+                    // its wall the side it was dragged to
+                    let dir = match square {
+                        Some(n) if d.length() < 1e-6 => {
+                            if t.offset.dot(n) < 0.0 {
+                                n
+                            } else {
+                                -n
+                            }
+                        }
+                        _ => d.normalize_or_zero(),
+                    };
+                    let (angle, up) = crate::annotation::upright(dir.to_angle());
+                    // beside the wall's face, as the office writes them
+                    let long = th
+                        .split('\n')
+                        .chain([tw.as_str()])
+                        .map(|t| look.width(t))
+                        .fold(0.0, f64::max)
+                        * mm;
+                    // past the leaf where it swings to this side
+                    let swung = square.is_some_and(|n| dir.dot(n * left) < 0.0);
+                    let mut clear = if swung && !fits(long, leaf) {
+                        reach - face
+                    } else {
+                        0.0
+                    };
+                    // a leader dragged short: the numbers between the wall
+                    // and the bubble where they fit, else past the bubble
+                    let gap = d.length() - radius(&text) - face;
+                    if gap < clear + long + 3.0 * mm {
+                        clear = 0.0;
+                    }
+                    let mid = if gap < long + 3.0 * mm {
+                        at - dir * (radius(&text) + 1.5 * mm + long / 2.0)
+                    } else {
+                        anchor - dir * (face + clear + 1.5 * mm + long / 2.0)
+                    };
+                    let mut rows = vec![(tw, 1.0)];
+                    rows.extend(
+                        th.split('\n')
+                            .enumerate()
+                            .map(|(k, t)| (t.to_string(), -1.0 - 1.4 * k as f64)),
+                    );
+                    for (text, side) in rows {
+                        out.push(PlanItem::Annotation {
+                            id: e.id,
+                            item: Box::new(Annotation {
+                                shape: Shape::Along {
+                                    at: mid + up * side * look.size * 0.75 * mm,
+                                    angle,
+                                },
+                                text,
+                                look,
+                                mm,
+                            }),
+                        });
+                    }
+                }
                 out.push(PlanItem::Tag {
                     id: e.id,
-                    anchor: centre + t.end.unwrap_or(DVec2::ZERO),
-                    at: centre + t.offset,
-                    elbow: t.elbow.map(|p| centre + p),
+                    anchor,
+                    at,
+                    elbow,
                     text,
                     round,
                     look,
@@ -1072,6 +2619,58 @@ pub struct DimensionGeometry {
     pub angle: f64,
     /// Where the dimension line meets its witness lines.
     pub ends_at: (DVec2, DVec2),
+    /// Where text under the line goes, mirroring `text_at`.
+    pub below_at: DVec2,
+    /// The text covers what is under it.
+    pub back: bool,
+}
+
+impl DimensionGeometry {
+    /// The geometry with its text where `place` says and its witness
+    /// lines as it says. Call before [`DimensionGeometry::break_line`].
+    pub fn placed(mut self, place: &crate::plan::DimPlace, mm: f64) -> Self {
+        if place.short {
+            // 4.5 mm of witness line before the dimension line
+            for (from, to) in self.lines.iter_mut().skip(1) {
+                let d = *to - *from;
+                let len = d.length();
+                let keep = 6.0 * mm;
+                if len > keep {
+                    *from = *to - d / len * keep;
+                }
+            }
+        }
+        if place.shift != DVec2::ZERO {
+            let (pa, pb) = self.ends_at;
+            let mid = (pa + pb) / 2.0;
+            let up = (self.text_at - mid).normalize_or_zero();
+            let off = place.shift.dot(up);
+            if place.leader && off.abs() > 1.0 * mm {
+                // from the line to under the text
+                let foot = self.text_at + place.shift - up * off.signum() * 1.2 * mm;
+                self.lines.push((mid, foot));
+            }
+            self.text_at += place.shift;
+            self.below_at += place.shift;
+        }
+        self.back = place.back;
+        self
+    }
+
+    /// Corners of the patch behind `text` at `at` (see
+    /// [`crate::plan::DimPlace::back`]).
+    pub fn patch(&self, at: DVec2, text: &str, look: &TextLook, mm: f64) -> [DVec2; 4] {
+        let dir = DVec2::from_angle(self.angle);
+        let up = dir.perp();
+        let w = (look.width(text) / 2.0 + 0.4) * mm;
+        let h = (look.size * 0.5 + 0.25) * mm;
+        [
+            at - dir * w - up * h,
+            at + dir * w - up * h,
+            at + dir * w + up * h,
+            at - dir * w + up * h,
+        ]
+    }
 }
 
 /// A linear dimension's linework: its line `offset` to the left of `a` →
@@ -1117,8 +2716,10 @@ pub fn dimension_geometry(
         ends,
         // 1.8 mm off the line for the default 2.5 mm text
         text_at: (pa + pb) / 2.0 + up * (0.55 + look.size / 2.0) * mm,
+        below_at: (pa + pb) / 2.0 - up * (0.55 + look.size / 2.0) * mm,
         angle,
         ends_at: (pa, pb),
+        back: false,
     }
 }
 
@@ -1133,6 +2734,10 @@ pub struct TagGeometry {
     pub leader: Vec<DVec2>,
     /// The mark at the leader's end: an arrow, a dot, or nothing.
     pub ends: Ends,
+    /// Its text, a line at a time, where each is centred.
+    pub texts: Vec<(DVec2, String)>,
+    /// The line across a split circle, between its two lines of text.
+    pub divider: Option<(DVec2, DVec2)>,
 }
 
 /// Text height of tags and dimensions, paper mm.
@@ -1237,10 +2842,33 @@ pub fn tag_geometry(
 ) -> TagGeometry {
     // the default 2.5 mm text sits in a bubble 4.4 mm tall
     let k = look.size / TEXT;
-    let half = DVec2::new((look.width(text) / 2.0 + 1.2 * k).max(2.2 * k), 2.2 * k) * mm;
     let shape = match (look.shape, round) {
         (TagShape::Auto, true) => TagShape::Circle,
         (s, _) => s,
+    };
+    // two lines in a circle (STN 01 3420's door mark: L or P over the
+    // number) split by a line across its middle
+    let rows: Vec<&str> = text.split('\n').collect();
+    let split = rows.len() == 2 && shape == TagShape::Circle;
+    let (half, texts, divider) = if split {
+        let w = rows.iter().map(|r| look.width(r)).fold(0.0, f64::max);
+        // the text rows sit where the circle is 0.88 of its width
+        let r = ((w / 2.0 + 0.6 * k) / 0.88).max(3.4 * k) * mm;
+        let dy = DVec2::new(0.0, 0.48 * r);
+        (
+            DVec2::splat(r),
+            vec![
+                (at + dy, rows[0].to_string()),
+                (at - dy, rows[1].to_string()),
+            ],
+            Some((at - DVec2::new(r, 0.0), at + DVec2::new(r, 0.0))),
+        )
+    } else {
+        (
+            DVec2::new((look.width(text) / 2.0 + 1.2 * k).max(2.2 * k), 2.2 * k) * mm,
+            vec![(at, text.to_string())],
+            None,
+        )
     };
     let (outline, closed) = tag_outline(shape, at, half);
     // a leader back to the host, from the edge of the bubble (or of the
@@ -1288,12 +2916,102 @@ pub fn tag_geometry(
         closed,
         leader,
         ends,
+        texts,
+        divider,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn thousands_stand_apart() {
+        assert_eq!(spaced("900"), "900");
+        assert_eq!(spaced("1970"), "1\u{a0}970");
+        assert_eq!(spaced("12500"), "12\u{a0}500");
+        assert_eq!(spaced("1.25"), "1.25");
+        assert_eq!(spaced("+3.000"), "+3.000");
+    }
+
+    #[test]
+    fn a_short_stretch_has_its_text_beside_it() {
+        // a chain at 1:50 (0.05 m per paper mm): 2 m, 0.1 m, 2 m, 0.1 m
+        let mm = 0.05;
+        let id = ElementId::new();
+        let stops = [0.0, 2.0, 2.1, 4.1, 4.2];
+        let mut items: Vec<PlanItem> = stops
+            .windows(2)
+            .map(|w| PlanItem::Dimension {
+                id,
+                a: DVec2::new(w[0], 0.0),
+                b: DVec2::new(w[1], 0.0),
+                offset: 1.0,
+                text: format!("{:.0}", (w[1] - w[0]) * 1000.0),
+                look: TextLook::default(),
+                witness: None,
+                breaks: vec![],
+                below: None,
+                place: Default::default(),
+            })
+            .collect();
+        place_dimension_texts(&mut items, mm);
+        let place = |i: usize| match &items[i] {
+            PlanItem::Dimension { place, .. } => *place,
+            _ => unreachable!(),
+        };
+        // the long ones stay over their middle
+        assert_eq!(place(0).shift, DVec2::ZERO);
+        assert_eq!(place(2).shift, DVec2::ZERO);
+        // the one inside goes beside it, over a neighbour with room
+        let inner = place(1);
+        assert!(inner.shift.x.abs() > 0.05 && inner.shift.y == 0.0 && !inner.leader);
+        // the last past the chain's end
+        assert!(place(3).shift.x > 0.05);
+        // a text dragged by hand stays where it was put
+        if let PlanItem::Dimension { place, .. } = &mut items[1] {
+            *place = crate::plan::DimPlace {
+                shift: DVec2::new(0.0, 0.3),
+                manual: true,
+                ..Default::default()
+            };
+        }
+        place_dimension_texts(&mut items, mm);
+        assert_eq!(place_of(&items[1]).shift, DVec2::new(0.0, 0.3));
+        // three short ones in a row: the middle one has no room beside
+        let stops = [0.0, 2.0, 2.1, 2.2, 2.3, 4.3];
+        let mut items: Vec<PlanItem> = stops
+            .windows(2)
+            .map(|w| PlanItem::Dimension {
+                id,
+                a: DVec2::new(w[0], 0.0),
+                b: DVec2::new(w[1], 0.0),
+                offset: 1.0,
+                text: "100".into(),
+                look: TextLook::default(),
+                witness: None,
+                breaks: vec![],
+                below: None,
+                place: Default::default(),
+            })
+            .collect();
+        place_dimension_texts(&mut items, mm);
+        let mid = place_of(&items[2]);
+        assert!(mid.leader && mid.shift.y > 0.0 && mid.shift.x == 0.0);
+        // moved texts move with the geometry
+        let g = dimension_geometry(DVec2::ZERO, DVec2::X, 1.0, None, &TextLook::default(), mm);
+        let at = g.text_at;
+        let g = g.placed(&mid, mm);
+        assert_eq!(g.text_at, at + mid.shift);
+        assert_eq!(g.lines.len(), 4, "the line, two witness lines, the leader");
+    }
+
+    fn place_of(it: &PlanItem) -> crate::plan::DimPlace {
+        match it {
+            PlanItem::Dimension { place, .. } => *place,
+            _ => unreachable!(),
+        }
+    }
     use crate::section::view_drawing;
     use creabim_core::sample::sample_house;
 
@@ -1323,7 +3041,7 @@ mod tests {
         let study = named(&m, "Study");
         let text = |f: &[RoomField]| room_tag_text(&m, study, f);
         let area = RoomField::Area.value(&m, study);
-        assert_eq!(text(&[]), format!("STUDY\n0.01  {area}"));
+        assert_eq!(text(&[]), format!("STUDY\n1.01  {area}"));
         assert_eq!(
             text(&[
                 RoomField::Name,
@@ -1334,7 +3052,7 @@ mod tests {
             format!("STUDY\n{area}\nOak boards\nGround Floor")
         );
         // a field the room has nothing for is left out
-        assert_eq!(text(&[RoomField::Department, RoomField::Number]), "0.01");
+        assert_eq!(text(&[RoomField::Department, RoomField::Number]), "1.01");
         // and the tag's own list is what its drawing writes
         let mut doc = creabim_core::Document::from_model(m.clone());
         let tag = m
@@ -1389,7 +3107,7 @@ mod tests {
         assert_eq!(lines[0].0, "STUDY");
         assert!(lines[0].2);
         assert_eq!(lines[1].0, area);
-        assert_eq!(lines[2].0, "0.01");
+        assert_eq!(lines[2].0, "1.01");
         assert!(lines[2].1 < lines[1].1 && lines[1].1 < lines[0].1);
     }
 
@@ -1403,7 +3121,9 @@ mod tests {
                 .items
                 .into_iter()
                 .filter_map(|i| match i {
-                    PlanItem::Dimension { text, .. } => text.parse::<f64>().ok(),
+                    PlanItem::Dimension { text, .. } => {
+                        text.replace('\u{a0}', "").parse::<f64>().ok()
+                    }
                     _ => None,
                 })
                 .fold(0.0, f64::max)
@@ -1499,7 +3219,7 @@ mod tests {
                 .find_map(|i| match i {
                     // its leader's end, which follows the door (the text
                     // may be nudged clear of other lines)
-                    PlanItem::Tag { anchor, text, .. } if text == "D01" => Some(anchor),
+                    PlanItem::Tag { anchor, text, .. } if text.ends_with("\nD01") => Some(anchor),
                     _ => None,
                 })
                 .expect("front door is tagged D01")

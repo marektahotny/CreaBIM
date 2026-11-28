@@ -126,6 +126,12 @@ pub enum HandleKind {
     },
     /// How far a section or elevation sees, from its line.
     ViewDepth,
+    /// Jog `i` of a section line: where along the line it steps, and how
+    /// far aside.
+    ViewJog(usize),
+    /// The icon beside a section or elevation line: a click turns it to
+    /// look the other way (as Space does).
+    ViewFlip,
     /// Face `i` of a crop box (see [`creabim_core::CropBox::face`]).
     CropFace(usize),
     /// A crop box as a whole, across the plan.
@@ -166,6 +172,11 @@ pub enum HandleKind {
     /// one's diameter.
     ColumnSize {
         depth: bool,
+    },
+    /// An end of an object that is drawn out (a built-in wardrobe, a
+    /// kitchen island): its other end stays.
+    ObjectEnd {
+        right: bool,
     },
     /// Slide a whole wall square to itself; the walls joined to it stretch.
     WallSlide,
@@ -219,6 +230,7 @@ impl HandleKind {
                 | HandleKind::GridEnd { .. }
                 | HandleKind::Member { free: true, .. }
                 | HandleKind::ViewEnd { .. }
+                | HandleKind::ViewJog(_)
                 | HandleKind::CropMove
                 | HandleKind::RefMove
                 | HandleKind::RefScale(_)
@@ -242,7 +254,7 @@ impl HandleKind {
             | HandleKind::AddVertex { .. }
             | HandleKind::Ring { .. } => "Reshape",
             HandleKind::Rotate => "Rotate",
-            HandleKind::ColumnSize { .. } => "Resize",
+            HandleKind::ColumnSize { .. } | HandleKind::ObjectEnd { .. } => "Resize",
             HandleKind::WallSlide | HandleKind::OpeningSlide => "Slide",
             HandleKind::WallBend => "Bend",
             HandleKind::BeamWidth | HandleKind::DetailWidth => "Change width of",
@@ -260,6 +272,7 @@ impl HandleKind {
             HandleKind::OpeningSill => "Change sill of",
             HandleKind::Face(_) => "Push/pull",
             HandleKind::ViewDepth => "Change depth of",
+            HandleKind::ViewJog(_) => "Move a jog of",
             HandleKind::CropFace(_) => "Resize",
             HandleKind::CropMove
             | HandleKind::RefMove
@@ -301,6 +314,8 @@ impl HandleKind {
             HandleKind::Member { .. } => "Point",
             HandleKind::ViewEnd { .. } => "Line end",
             HandleKind::ViewDepth => "Depth",
+            HandleKind::ViewJog(_) => "Jog",
+            HandleKind::ViewFlip => "Look the other way",
             HandleKind::CropFace(_) => "Crop face",
             HandleKind::CropMove => "Crop box: move",
             HandleKind::RefMove => "Reference: move",
@@ -314,6 +329,7 @@ impl HandleKind {
             HandleKind::Rotate => "Turn",
             HandleKind::ColumnSize { depth: false } => "Width",
             HandleKind::ColumnSize { depth: true } => "Depth",
+            HandleKind::ObjectEnd { .. } => "Length",
             HandleKind::WallSlide => "Wall: slide",
             HandleKind::WallBend => "Wall: bend",
             HandleKind::OpeningSlide => "Slide along the wall",
@@ -361,12 +377,15 @@ impl HandleKind {
             HandleKind::MeshMove => "Drag: move the mass across the plan",
             HandleKind::MeshLift => "Drag: move the mass up or down",
             HandleKind::ViewDepth => "Drag: change how deep it sees",
+            HandleKind::ViewJog(_) => "Drag: move where the line steps, and how far aside",
+            HandleKind::ViewFlip => "Click: turn the section to look the other way (Space)",
             HandleKind::CropFace(_) => "Drag: move the crop face",
             HandleKind::RefMove => "Drag: move the reference",
             HandleKind::RefScale(_) => "Drag: scale it about its middle (Calibrate in Properties sets an exact size)",
             HandleKind::Rotate => "Drag: turn it about its middle (steps of 5°; Alt for any angle)",
             HandleKind::ColumnSize { depth: false } => "Drag: change the width",
             HandleKind::ColumnSize { depth: true } => "Drag: change the depth",
+            HandleKind::ObjectEnd { .. } => "Drag: draw it out or in, its other end staying",
             HandleKind::WallSlide => "Drag: slide the wall square to itself (joined walls follow)",
             HandleKind::WallBend => "Drag: bend the wall through this point; its ends stay (its radius is in Properties)",
             HandleKind::OpeningSlide => "Drag: slide it along the wall · Tab: type how far",
@@ -844,6 +863,10 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
     let Some(e) = model.get(id) else {
         return vec![];
     };
+    // a locked element has nothing to drag (see creabim_core::lock)
+    if e.locked {
+        return vec![];
+    }
     let line = |kind, at: DVec3, dir: DVec3| Handle {
         kind,
         at,
@@ -974,8 +997,9 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             ViewKind::Section {
                 start, end, depth, ..
             } => {
-                let look = (end - start).normalize_or_zero().perp();
-                vec![
+                let along = (end - start).normalize_or_zero();
+                let look = along.perp();
+                let mut out = vec![
                     flat(HandleKind::ViewEnd { end: false }, start.extend(0.0)),
                     flat(HandleKind::ViewEnd { end: true }, end.extend(0.0)),
                     line(
@@ -983,7 +1007,24 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
                         ((start + end) / 2.0 + look * depth).extend(0.0),
                         look.extend(0.0),
                     ),
-                ]
+                ];
+                // a jogged line: a grip at each step's outer corner
+                for (i, j) in v.line.jogs.iter().enumerate() {
+                    out.push(flat(
+                        HandleKind::ViewJog(i),
+                        (start + along * j.at + look * j.offset).extend(0.0),
+                    ));
+                }
+                // by the middle of the line: the flip icon behind it, the
+                // turn grip in front of it
+                let mid = (start + end) / 2.0;
+                let aside = (start.distance(end) * 0.08).clamp(0.4, 1.2);
+                out.push(flat(HandleKind::ViewFlip, (mid - look * aside).extend(0.0)));
+                out.push(flat(
+                    HandleKind::Rotate,
+                    (mid + look * aside.min(depth / 2.0)).extend(0.0),
+                ));
+                out
             }
             _ => vec![],
         },
@@ -1088,7 +1129,17 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
                 .map(|t| t.bounds())
                 .unwrap_or((DVec3::new(-0.3, -0.6, 0.0), DVec3::new(0.3, 0.0, 1.0)));
             let front = DVec2::new((lo.x + hi.x) / 2.0, lo.y - 0.25);
-            vec![flat(HandleKind::Rotate, o.to_plan(front).extend(z))]
+            let mut out = vec![flat(HandleKind::Rotate, o.to_plan(front).extend(z))];
+            // one drawn out to its length: its two ends
+            if creabim_core::objects::stretch_range(model, e).is_some() {
+                let axis = (o.to_plan(DVec2::X) - o.to_plan(DVec2::ZERO)).extend(0.0);
+                let mid = (lo.y + hi.y) / 2.0;
+                for (right, x) in [(false, lo.x), (true, hi.x)] {
+                    let at = o.to_plan(DVec2::new(x, mid)).extend(z);
+                    out.push(line(HandleKind::ObjectEnd { right }, at, axis));
+                }
+            }
+            out
         }
         _ => creabim_core::members::grips(model, e)
             .into_iter()
@@ -1293,6 +1344,12 @@ fn pivot_of(model: &Model, e: &Element) -> Option<DVec2> {
         ElementKind::Stair(s) => Some(s.start),
         ElementKind::FreeMesh(m) => Some(m.origin.truncate()),
         ElementKind::Reference(r) => Some(r.at),
+        ElementKind::View(v) => match v.kind {
+            ViewKind::Section { start, end, .. } if v.callout.is_none() => {
+                Some((start + end) / 2.0)
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -1453,7 +1510,127 @@ pub fn originals(
             }
         }
     }
+    // a pipe's end takes along the pipes joined to it, and what a riser
+    // among them is joined to at its other end
+    if let ElementKind::Pipe(_) = &e.kind {
+        let world = |p: &creabim_core::mep::Pipe| {
+            let z = DVec3::Z * model.level(p.level).map_or(0.0, |l| l.elevation);
+            [p.start + z, p.end + z]
+        };
+        let mut at = 0;
+        while at < out.len() {
+            let ElementKind::Pipe(p) = &out[at].kind else {
+                break;
+            };
+            let upright = p.start.truncate().distance(p.end.truncate()) < 1e-6;
+            let ends = world(p);
+            at += 1;
+            if at > 1 && !upright {
+                continue;
+            }
+            for other in model.iter() {
+                let ElementKind::Pipe(o) = &other.kind else {
+                    continue;
+                };
+                if out.iter().any(|x| x.id == other.id) {
+                    continue;
+                }
+                let theirs = world(o);
+                if ends
+                    .iter()
+                    .any(|q| theirs.iter().any(|t| t.distance(*q) < 0.002))
+                {
+                    out.push(other.clone());
+                }
+            }
+        }
+    }
     (out, joined)
+}
+
+/// How near a face a drawn-out object's end has to come to stop on it, m.
+const END_MAGNET: f64 = 0.15;
+
+/// The length object `e` drawn out by its right (or left) end to `raw`
+/// would have to stop with that end on the nearest face across its path
+/// within `tol`: a wall's layer faces (plaster and insulation too), a
+/// column's sides, another object's box on the same level.
+pub fn end_magnet(model: &Model, e: &Element, raw: f64, right: bool, tol: f64) -> Option<f64> {
+    let ElementKind::Object(o) = &e.kind else {
+        return None;
+    };
+    let (lo, hi) = creabim_core::objects::type_of(model, e)?.bounds();
+    let (min, max) = creabim_core::objects::stretch_range(model, e)?;
+    let fixed = if right { lo.x } else { hi.x };
+    let sign = if right { 1.0 } else { -1.0 };
+    // the edges of what stands on its level, in plan
+    let mut edges: Vec<(DVec2, DVec2)> = vec![];
+    let ring = |edges: &mut Vec<(DVec2, DVec2)>, pts: &[DVec2]| {
+        for i in 0..pts.len() {
+            edges.push((pts[i], pts[(i + 1) % pts.len()]));
+        }
+    };
+    for x in model.iter().filter(|x| x.id != e.id) {
+        match &x.kind {
+            ElementKind::Wall(w) if w.level == o.level && w.length() > 1e-6 => {
+                let n = w.direction().perp();
+                let mut offs: Vec<f64> = (0..64)
+                    .map_while(|k| walls::boundary_offset(model, w, k))
+                    .collect();
+                if offs.is_empty() {
+                    offs = vec![w.thickness / 2.0, -w.thickness / 2.0];
+                }
+                let t = w.direction() * (w.thickness / 2.0);
+                for k in offs {
+                    edges.push((w.start - t + n * k, w.end + t + n * k));
+                }
+            }
+            ElementKind::Column(c) if c.level == o.level => ring(&mut edges, &c.outline()),
+            ElementKind::Object(other) if other.level == o.level => {
+                let Some(t) = creabim_core::objects::type_of(model, x) else {
+                    continue;
+                };
+                let (a, b) = t.bounds();
+                ring(
+                    &mut edges,
+                    &[
+                        other.to_plan(DVec2::new(a.x, a.y)),
+                        other.to_plan(DVec2::new(b.x, a.y)),
+                        other.to_plan(DVec2::new(b.x, b.y)),
+                        other.to_plan(DVec2::new(a.x, b.y)),
+                    ],
+                );
+            }
+            _ => {}
+        }
+    }
+    // where each edge crosses its back, middle and front lines, as lengths
+    // from the end that stays
+    let from = |y: f64| o.to_plan(DVec2::new(fixed, y));
+    let dir = (o.to_plan(DVec2::X) - o.to_plan(DVec2::ZERO)) * sign;
+    let inset = ((hi.y - lo.y) * 0.05).min(0.02);
+    let mut best: Option<f64> = None;
+    for y in [lo.y + inset, (lo.y + hi.y) / 2.0, hi.y - inset] {
+        let p = from(y);
+        for (a, b) in &edges {
+            let e = *b - *a;
+            let den = dir.perp_dot(e);
+            if den.abs() < 1e-9 {
+                continue;
+            }
+            let w = *a - p;
+            let len = w.perp_dot(e) / den;
+            let s = w.perp_dot(dir) / den;
+            if !(-1e-6..=1.0 + 1e-6).contains(&s) || len < min - 1e-9 || len > max + 1e-9 {
+                continue;
+            }
+            if (len - raw).abs() <= tol && best.is_none_or(|b| (len - raw).abs() < (b - raw).abs())
+            {
+                best = Some(len);
+            }
+        }
+    }
+    best
 }
 
 fn round(v: f64, step: f64) -> f64 {
@@ -1616,6 +1793,17 @@ pub fn apply(
                 }
                 if start.distance(*end) < 0.2 {
                     return Err("a view line needs some length".into());
+                }
+            }
+        }
+        (ElementKind::View(v), HandleKind::ViewJog(i)) => {
+            if let ViewKind::Section { start, end, .. } = v.kind {
+                let along = (end - start).normalize_or_zero();
+                let p = now.truncate() - start;
+                let length = start.distance(end);
+                if let Some(j) = v.line.jogs.get_mut(i) {
+                    j.at = round(p.dot(along), step).clamp(0.1, (length - 0.1).max(0.1));
+                    j.offset = round(p.dot(along.perp()), step);
                 }
             }
         }
@@ -1803,6 +1991,26 @@ pub fn apply(
                 }
             }
         }
+        (ElementKind::Object(o), HandleKind::ObjectEnd { right }) => {
+            let original = originals.first().ok_or("nothing to draw out")?;
+            let axis = o.to_plan(DVec2::X) - o.to_plan(DVec2::ZERO);
+            let along = d.truncate().dot(axis);
+            let now = creabim_core::objects::type_of(model, original)
+                .ok_or("it has no type")?
+                .size()
+                .x;
+            let raw = now + if right { along } else { -along };
+            // its end catches the nearest wall face (plaster too), column
+            // or other piece of furniture across its path (George
+            // 2026-11-22); an exact length is typed in Properties
+            let len = match end_magnet(model, original, raw, right, END_MAGNET) {
+                Some(l) => l,
+                None => round(raw, step / 5.0),
+            };
+            let out_e = creabim_core::objects::stretch(model, original, len, right)
+                .ok_or("this doesn't draw out")?;
+            *first = out_e;
+        }
         (_, HandleKind::Rotate) => {
             let original = originals.first().ok_or("nothing to turn")?;
             let c = pivot_of(model, original).ok_or("this doesn't turn")?;
@@ -1819,6 +2027,24 @@ pub fn apply(
                 ElementKind::Stair(s) => s.direction = (s.direction + by).rem_euclid(360.0),
                 ElementKind::FreeMesh(m) => m.rotation = (m.rotation + by).rem_euclid(360.0),
                 ElementKind::Reference(r) => r.rotation = (r.rotation + by).rem_euclid(360.0),
+                ElementKind::View(v) => {
+                    // the line holds level, plumb, or along or square to
+                    // a wall when it comes within 2° of one
+                    let by = match creabim_core::transform::view_angle(v).filter(|_| step > 0.0) {
+                        Some(was) => match align_bearing(model, was + raw, 2.0) {
+                            Some((t, _)) => {
+                                let d = (t - (was + raw)).rem_euclid(180.0);
+                                let d = if d > 90.0 { d - 180.0 } else { d };
+                                raw + d
+                            }
+                            None => by,
+                        },
+                        None => by,
+                    };
+                    if !creabim_core::transform::turn_view(v, by) {
+                        return Err("this doesn't turn".into());
+                    }
+                }
                 _ => return Err("this doesn't turn".into()),
             }
         }
@@ -1834,6 +2060,7 @@ pub fn apply(
             | HandleKind::ShaftBase
             | HandleKind::ShaftTop,
         ) => crate::editmode::reshape(model, first, kind, grab, now, step)?,
+        (_, HandleKind::ViewFlip) => return Err("click it to turn the view round".into()),
         _ => return Err("this handle doesn't fit this element".into()),
     }
     let opening_ok = match &first.kind {
@@ -1854,6 +2081,15 @@ pub fn apply(
                 } else {
                     o.start = p;
                 }
+            }
+        }
+    }
+    // the pipes joined to a pipe's end stay joined
+    if matches!(kind, HandleKind::Member { .. }) && matches!(out[0].kind, ElementKind::Pipe(_)) {
+        let mut moved = [out[0].clone()];
+        for (_, after) in creabim_core::joins::follow(model, &mut moved) {
+            if let Some(o) = out.iter_mut().skip(1).find(|o| o.id == after.id) {
+                *o = after;
             }
         }
     }
@@ -2519,6 +2755,42 @@ pub fn grip_style() -> GripStyle {
 
 /// An object's turn grip: a round handle with a curved arrow, on a thin
 /// leader from `front` (its front edge on screen).
+/// The flip icon of a section line: a round button with a double arrow
+/// across the line (`across`, on screen).
+fn draw_flip_icon(painter: &Painter, c: Pos2, across: Vec2, state: GripState, look: &GripLook) {
+    let accent = if state == GripState::Faded {
+        look.accent.gamma_multiply(0.4)
+    } else {
+        look.accent
+    };
+    let r = match state {
+        GripState::Hover | GripState::Held => 9.5,
+        _ => 8.0,
+    };
+    let (fill, ink) = if matches!(state, GripState::Held | GripState::Hover) {
+        (accent, Color32::WHITE)
+    } else {
+        (Color32::WHITE, accent)
+    };
+    painter.circle(c, r, fill, Stroke::new(1.5, accent));
+    let a = r * 0.62;
+    let side = across.rot90();
+    painter.line_segment([c - across * a, c + across * a], Stroke::new(1.5, ink));
+    for d in [across, -across] {
+        let tip = c + d * a;
+        let head = 2.8;
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                tip + d * 1.0,
+                tip - d * head + side * head,
+                tip - d * head - side * head,
+            ],
+            ink,
+            Stroke::NONE,
+        ));
+    }
+}
+
 fn draw_turn_grip(
     painter: &Painter,
     c: Pos2,
@@ -2906,8 +3178,8 @@ fn edge_palette(
                     let mut item = |ui: &mut egui::Ui, on: bool, text: &str, tip: &str, r| {
                         let b = ui
                             .add_enabled(on, egui::Button::new(text).small())
-                            .on_hover_text(tip)
-                            .on_disabled_hover_text(tip);
+                            .on_hover_text(crate::i18n::tr(tip))
+                            .on_disabled_hover_text(crate::i18n::tr(tip));
                         if b.clicked() {
                             asked = Some(r);
                         }
@@ -3090,7 +3362,7 @@ fn grip_menu(
                 ui.set_min_width(170.0);
                 let mut item = |ui: &mut egui::Ui, on: bool, text: &str, a: Act| {
                     if ui
-                        .add_enabled(on, egui::Button::new(text).frame(false))
+                        .add_enabled(on, egui::Button::new(crate::i18n::tr(text)).frame(false))
                         .clicked()
                     {
                         act = Some(a);
@@ -3120,7 +3392,8 @@ fn grip_menu(
                             None => {
                                 ui.add_enabled(
                                     false,
-                                    egui::Button::new("Make arc (slab outlines)").frame(false),
+                                    egui::Button::new(crate::i18n::t("Make arc (slab outlines)"))
+                                        .frame(false),
                                 );
                             }
                         }
@@ -3673,6 +3946,13 @@ pub fn interact(
             // an object's turn grip: a curved arrow on a short leader from
             // its front edge, so it reads as part of the object (A7-7)
             let front = element.as_ref().and_then(|e| {
+                // a section's: from the middle of its line
+                if let ElementKind::View(v) = &e.kind {
+                    let ViewKind::Section { start, end, .. } = v.kind else {
+                        return None;
+                    };
+                    return (input.project)(((start + end) / 2.0).extend(0.0));
+                }
                 let ElementKind::Object(o) = &e.kind else {
                     return None;
                 };
@@ -3683,6 +3963,27 @@ pub fn interact(
             draw_turn_grip(painter, c, front, state, &look);
             if state == GripState::Hover {
                 ctx.set_cursor_icon(egui::CursorIcon::Grab);
+            }
+            continue;
+        }
+        if h.kind == HandleKind::ViewFlip {
+            // two arrows across the line: the way it looks, and the other
+            let across = element.as_ref().and_then(|e| {
+                let ElementKind::View(v) = &e.kind else {
+                    return None;
+                };
+                let ViewKind::Section { start, end, .. } = v.kind else {
+                    return None;
+                };
+                let mid = (start + end) / 2.0;
+                let look = (end - start).normalize_or_zero().perp();
+                let a = (input.project)(mid.extend(0.0))?;
+                let b = (input.project)((mid + look).extend(0.0))?;
+                Some((b - a).normalized()).filter(|v| v.is_finite())
+            });
+            draw_flip_icon(painter, c, across.unwrap_or(Vec2::Y), state, &look);
+            if state == GripState::Hover {
+                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
             }
             continue;
         }
@@ -3739,7 +4040,7 @@ pub fn interact(
         pill(
             painter,
             at + Vec2::new(0.0, -34.0),
-            name.as_deref().unwrap_or(k.name()),
+            crate::i18n::t(name.as_deref().unwrap_or(k.name())),
             &look,
             1.0,
         );
@@ -3752,7 +4053,7 @@ pub fn interact(
             note(
                 painter,
                 p + Vec2::new(0.0, 22.0),
-                tip,
+                crate::i18n::t(tip),
                 Color32::from_gray(40),
             );
         }
@@ -4199,6 +4500,14 @@ pub fn interact(
             let (a, b) = walls::location_line(doc.model(), w);
             Some(if end { a } else { b }.extend(free.z))
         }
+        // a section line's end: from its other end, so it snaps level,
+        // plumb and square to walls
+        (Some(HandleKind::ViewEnd { end }), Some(ElementKind::View(v))) => match v.kind {
+            ViewKind::Section { start, end: e, .. } => {
+                Some(if end { start } else { e }.extend(free.z))
+            }
+            _ => None,
+        },
         (None, _) => Some(d.grab),
         _ => None,
     };
@@ -4279,11 +4588,357 @@ pub fn interact(
         crate::actlog::mm(crate::snaps::current_step()),
         painter.ctx().input(|i| i.unstable_dt) * 1000.0,
     ));
+    // a dragged corner or end not caught by a point holds first the way
+    // its own line runs, then level and plumb from its neighbours
+    // (George 2026-11-27)
+    let point_snap = snapped.as_ref().is_some_and(|(_, sn)| {
+        matches!(
+            sn.kind,
+            SnapKind::Endpoint
+                | SnapKind::Midpoint
+                | SnapKind::Center
+                | SnapKind::Intersection
+                | SnapKind::Quadrant
+        )
+    });
+    // a pipe's end gives way only to another pipe's end (its axis end):
+    // the corners and crossings of the linework round it would otherwise
+    // always catch it in a busy plan (George 2026-11-27)
+    let any_point = point_snap;
+    let point_snap = match (d.edit.originals().first().map(|e| &e.kind), &snapped) {
+        (Some(ElementKind::Pipe(p)), Some((_, sn))) if point_snap => {
+            let moved: Vec<ElementId> = d.edit.originals().iter().map(|e| e.id).collect();
+            sn.kind == SnapKind::Endpoint
+                && doc.model().iter().any(|x| match &x.kind {
+                    ElementKind::Pipe(o) if o.level == p.level && !moved.contains(&x.id) => {
+                        [o.start, o.end]
+                            .iter()
+                            .any(|q| q.truncate().distance(sn.p.truncate()) < 0.002)
+                    }
+                    _ => false,
+                })
+        }
+        _ => point_snap,
+    };
+    let held = match (d.kind, d.edit.originals().first(), d.constraint) {
+        (Some(k), Some(orig), Constraint::Plane { .. }) if !point_snap => {
+            // from the pointer itself when a point it gave way to caught it
+            let from = if any_point { free } else { now };
+            hold_lines(doc.model(), input, orig, k, from)
+        }
+        _ => None,
+    };
+    let was_held = held.is_some();
+    let now = match held {
+        Some((on, guides, what)) => {
+            let ink = Color32::from_rgb(60, 140, 220);
+            for (a, b) in guides {
+                if let (Some(a), Some(b)) = ((input.project)(a), (input.project)(b)) {
+                    let v = (b - a).normalized();
+                    painter.add(egui::Shape::dashed_line(
+                        &[a - v * 2000.0, a + v * 2000.0],
+                        Stroke::new(1.0, ink),
+                        6.0,
+                        4.0,
+                    ));
+                }
+            }
+            // above the grip: the length's pill is below it
+            if let Some(b) = (input.project)(on) {
+                painter.text(
+                    b + Vec2::new(14.0, -14.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    crate::i18n::t(what),
+                    egui::FontId::proportional(12.0),
+                    ink,
+                );
+            }
+            on
+        }
+        None => now,
+    };
+    // a section line's end not caught by a point: the line holds level,
+    // plumb, or along or square to a wall when it comes within a few
+    // pixels of one
+    let now = match (d.kind, fixed) {
+        (Some(HandleKind::ViewEnd { .. }), Some(f))
+            if !was_held
+                && snapped.as_ref().is_none_or(|(_, sn)| {
+                    !matches!(
+                        sn.kind,
+                        SnapKind::Endpoint
+                            | SnapKind::Midpoint
+                            | SnapKind::Center
+                            | SnapKind::Intersection
+                            | SnapKind::Quadrant
+                    )
+                }) =>
+        {
+            match align_line_end(doc.model(), input, f, now) {
+                Some((on, what)) => {
+                    if let (Some(a), Some(b)) = ((input.project)(f), (input.project)(on)) {
+                        let ink = Color32::from_rgb(60, 140, 220);
+                        let far = a + (b - a) * 1.5;
+                        painter.add(egui::Shape::dashed_line(
+                            &[a - (b - a) * 0.5, far],
+                            Stroke::new(1.0, ink),
+                            6.0,
+                            4.0,
+                        ));
+                        painter.text(
+                            b + Vec2::new(12.0, 12.0),
+                            egui::Align2::LEFT_TOP,
+                            crate::i18n::t(what),
+                            egui::FontId::proportional(12.0),
+                            ink,
+                        );
+                    }
+                    on
+                }
+                None => now,
+            }
+        }
+        _ => now,
+    };
     d.last = now;
     let grid = snapped.is_none_or(|(_, s)| s.kind == SnapKind::Grid);
     follow(doc, painter, d, input, now, grid, Some(pos), status);
     painter.ctx().request_repaint();
     true
+}
+
+/// Where a held grip goes, the guide lines (two points each) to draw, and
+/// what it holds to.
+type Held = (DVec3, Vec<(DVec3, DVec3)>, &'static str);
+
+/// The lines a dragged grip holds to near the pointer (8 px on screen),
+/// with the guide lines to draw and what it holds to. First the grip's
+/// own line, as it ran before the drag: a line's or a polyline's end goes
+/// on along its segment, a wall's end along the wall, a section line's
+/// along the section. Only then level and plumb through its neighbours
+/// (in plans and sections), where two of those cross, that crossing.
+fn hold_lines(
+    model: &Model,
+    input: &PaneInput,
+    orig: &Element,
+    kind: HandleKind,
+    now: DVec3,
+) -> Option<Held> {
+    const TOL: f32 = 8.0;
+    // (through, along): the grip's own lines, and the points level and
+    // plumb lines go through
+    let mut own: Vec<(DVec3, DVec3)> = vec![];
+    let mut anchors: Vec<DVec3> = vec![];
+    match (kind, &orig.kind) {
+        (HandleKind::Vertex { ring, i }, _) => {
+            let r = crate::editmode::rings(model, orig)
+                .into_iter()
+                .find(|r| r.ring == ring)?;
+            let n = r.corners.len();
+            if i >= n || n < 2 {
+                return None;
+            }
+            // an arc's or a curve's points have no straight line of their own
+            let straight = !matches!(
+                &orig.kind,
+                ElementKind::Detail(dt) if matches!(dt.kind, DetailKind::Arc(_) | DetailKind::Curve(_))
+            );
+            let prev = if i > 0 {
+                Some(i - 1)
+            } else if r.closed {
+                Some(n - 1)
+            } else {
+                None
+            };
+            let next = if i + 1 < n {
+                Some(i + 1)
+            } else if r.closed {
+                Some(0)
+            } else {
+                None
+            };
+            for j in [prev, next].into_iter().flatten() {
+                if j == i {
+                    continue;
+                }
+                let a = r.corners[j];
+                anchors.push(a);
+                let v = r.corners[i] - a;
+                if straight && v.length() > 1e-9 {
+                    own.push((a, v.normalize()));
+                }
+            }
+        }
+        (HandleKind::WallEnd { end }, ElementKind::Wall(w)) => {
+            let (a, b) = walls::location_line(model, w);
+            let z = now.z;
+            let (from, to) = if end { (a, b) } else { (b, a) };
+            let v = to - from;
+            if v.length() > 1e-9 {
+                own.push((from.extend(z), v.normalize().extend(0.0)));
+            }
+        }
+        // a pipe's or duct's end: on along the pipe, and on along the
+        // pipes joined at that end (their other ends stay)
+        (HandleKind::Member { i, .. }, ElementKind::Pipe(p)) if i < 2 => {
+            let z = DVec3::Z * model.level(p.level).map_or(0.0, |l| l.elevation);
+            let (here, other) = if i == 0 {
+                (p.start, p.end)
+            } else {
+                (p.end, p.start)
+            };
+            let flat = |q: DVec3| q.truncate().extend(now.z);
+            let v = (here - other).truncate();
+            if v.length() > 1e-9 {
+                own.push((flat(other + z), v.normalize().extend(0.0)));
+                anchors.push(flat(other + z));
+            }
+            for x in model.iter() {
+                let ElementKind::Pipe(o) = &x.kind else {
+                    continue;
+                };
+                if x.id == orig.id || o.level != p.level {
+                    continue;
+                }
+                for (a, b) in [(o.start, o.end), (o.end, o.start)] {
+                    let w = (b - a).truncate();
+                    if a.distance(here) < 0.002 && w.length() > 1e-9 {
+                        own.push((flat(b + z), w.normalize().extend(0.0)));
+                        anchors.push(flat(b + z));
+                    }
+                }
+            }
+        }
+        (HandleKind::ViewEnd { end }, ElementKind::View(v)) => {
+            if let ViewKind::Section { start, end: e, .. } = v.kind {
+                let (from, to) = if end { (start, e) } else { (e, start) };
+                let d = to - from;
+                if d.length() > 1e-9 {
+                    own.push((from.extend(now.z), d.normalize().extend(0.0)));
+                }
+            }
+        }
+        _ => return None,
+    }
+    let at = (input.project)(now)?;
+    // the foot of `now` on a line, and how far it is on screen
+    let foot = |p: DVec3, dir: DVec3| -> Option<(f32, DVec3)> {
+        let f = p + dir * (now - p).dot(dir);
+        // not at the anchor itself, where any line goes through
+        let (sa, sf) = ((input.project)(p)?, (input.project)(f)?);
+        if sa.distance(sf) < 2.0 * TOL {
+            return None;
+        }
+        Some((sf.distance(at), f))
+    };
+    let mut best: Option<(f32, DVec3, (DVec3, DVec3))> = None;
+    for (p, dir) in &own {
+        if let Some((dist, f)) = foot(*p, *dir) {
+            if dist < TOL && best.is_none_or(|b| dist < b.0) {
+                best = Some((dist, f, (*p, *p + *dir)));
+            }
+        }
+    }
+    if let Some((_, f, g)) = best {
+        return Some((f, vec![g], "Along its own line"));
+    }
+    // level and plumb on screen: in plans X and Y, in sections along the
+    // section and up
+    if input.view.is_none() || anchors.is_empty() {
+        return None;
+    }
+    let (h, v) = if input.look.z.abs() > 0.99 {
+        (DVec3::X, DVec3::Y)
+    } else {
+        (DVec3::Z.cross(input.look).normalize_or_zero(), DVec3::Z)
+    };
+    let mut hs: Vec<(f32, DVec3, DVec3)> = vec![];
+    let mut vs: Vec<(f32, DVec3, DVec3)> = vec![];
+    for a in &anchors {
+        if let Some((dist, f)) = foot(*a, h) {
+            if dist < TOL {
+                hs.push((dist, f, *a));
+            }
+        }
+        if let Some((dist, f)) = foot(*a, v) {
+            if dist < TOL {
+                vs.push((dist, f, *a));
+            }
+        }
+    }
+    let nearest = |l: &[(f32, DVec3, DVec3)]| l.iter().copied().min_by(|x, y| x.0.total_cmp(&y.0));
+    match (nearest(&hs), nearest(&vs)) {
+        // level from one neighbour and plumb from the other
+        (Some((_, _, ah)), Some((_, _, av))) if ah.distance(av) > 1e-9 => {
+            let p = ah + h * (av - ah).dot(h);
+            Some((p, vec![(ah, ah + h), (av, av + v)], "Level and plumb"))
+        }
+        (Some(x), Some(y)) => {
+            if x.0 <= y.0 {
+                Some((x.1, vec![(x.2, x.2 + h)], "Horizontal"))
+            } else {
+                Some((y.1, vec![(y.2, y.2 + v)], "Vertical"))
+            }
+        }
+        (Some(x), None) => Some((x.1, vec![(x.2, x.2 + h)], "Horizontal")),
+        (None, Some(y)) => Some((y.1, vec![(y.2, y.2 + v)], "Vertical")),
+        (None, None) => None,
+    }
+}
+
+/// The bearings (degrees, 0..180) a line can hold to: level, plumb, and
+/// along and square to every wall of the model.
+fn line_bearings(model: &Model) -> Vec<(f64, &'static str)> {
+    let mut out = vec![(0.0, "Horizontal"), (90.0, "Vertical")];
+    for e in model.iter() {
+        if let ElementKind::Wall(w) = &e.kind {
+            let d = w.end - w.start;
+            if d.length() < 1e-6 {
+                continue;
+            }
+            let a = d.y.atan2(d.x).to_degrees().rem_euclid(180.0);
+            out.push((a, "Parallel to a wall"));
+            out.push(((a + 90.0).rem_euclid(180.0), "Square to a wall"));
+        }
+    }
+    out
+}
+
+/// `now` turned about `from` onto the nearest bearing of
+/// [`line_bearings`] within 8 pixels on screen, with what it holds to.
+fn align_line_end(
+    model: &Model,
+    input: &PaneInput,
+    from: DVec3,
+    now: DVec3,
+) -> Option<(DVec3, &'static str)> {
+    let v = (now - from).truncate();
+    let len = v.length();
+    let (a, b) = ((input.project)(from)?, (input.project)(now)?);
+    let px = a.distance(b) as f64;
+    if len < 1e-6 || px < 20.0 {
+        return None;
+    }
+    let tol = (8.0 / px).atan().to_degrees();
+    let (t, what) = align_bearing(model, v.y.atan2(v.x).to_degrees(), tol)?;
+    let dir = DVec2::from_angle(t.to_radians());
+    let dir = if dir.dot(v) < 0.0 { -dir } else { dir };
+    Some((from + (dir * v.dot(dir)).extend(0.0), what))
+}
+
+/// The bearing among [`line_bearings`] nearest `deg` (mod 180), within
+/// `tol` degrees: level and plumb first when equally near.
+fn align_bearing(model: &Model, deg: f64, tol: f64) -> Option<(f64, &'static str)> {
+    let here = deg.rem_euclid(180.0);
+    let off = |t: f64| {
+        let d = (here - t).rem_euclid(180.0);
+        d.min(180.0 - d)
+    };
+    // level and plumb come first in the list, so they win a tie
+    line_bearings(model)
+        .into_iter()
+        .filter(|(t, _)| off(*t) <= tol)
+        .min_by(|x, y| off(x.0).total_cmp(&off(y.0)))
 }
 
 /// Distance marks (the Grid snap menu): faint marks every `every` metres
@@ -4420,6 +5075,14 @@ fn tap_grip(
             "Drag the ◇ to pull out a new corner, or right-click the edge › Add corner here."
                 .into(),
         ),
+        // the section looks the other way, its notes mirrored, one undo step
+        HandleKind::ViewFlip => {
+            let tx = creabim_core::transform::flip_view(doc.model(), id)?;
+            Some(match doc.commit(tx) {
+                Ok(_) => "The section looks the other way.".into(),
+                Err(e) => e.to_string(),
+            })
+        }
         _ => None,
     }
 }
@@ -5090,6 +5753,154 @@ mod tests {
         assert!(hs.iter().any(|h| h.kind == HandleKind::PlantHeight));
     }
 
+    /// A section line turned by its grip, or drawn by its end, holds
+    /// level, plumb, and along or square to a wall when near one.
+    #[test]
+    fn a_section_line_holds_to_walls_level_and_plumb() {
+        use creabim_core::View;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let lvl = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let dir = DVec2::from_angle(30f64.to_radians());
+        let w = Element::new(
+            "Wall",
+            ElementKind::Wall(creabim_core::Wall::new(
+                lvl,
+                DVec2::ZERO,
+                dir * 5.0,
+                0.3,
+                3.0,
+            )),
+        );
+        let s = Element::new(
+            "Section",
+            ElementKind::View(View::section(DVec2::ZERO, DVec2::new(8.0, 0.0), 3.0, true)),
+        );
+        let sid = s.id;
+        doc.commit(creabim_core::Transaction::new("setup").insert(w).insert(s))
+            .unwrap();
+        let m = doc.model().clone();
+        assert_eq!(
+            align_bearing(&m, 31.5, 2.0).unwrap().1,
+            "Parallel to a wall"
+        );
+        assert_eq!(align_bearing(&m, 119.0, 2.0).unwrap().1, "Square to a wall");
+        assert_eq!(align_bearing(&m, 181.0, 2.0).unwrap().1, "Horizontal");
+        assert!(align_bearing(&m, 50.0, 2.0).is_none());
+        // turned about 29°: it holds along the wall, at 30°
+        let out = drag_to(&m, sid, HandleKind::Rotate, |h| {
+            let c = DVec2::new(4.0, 0.0);
+            let r = h.at.truncate() - c;
+            (c + DVec2::from_angle(29f64.to_radians()).rotate(r)).extend(0.0)
+        });
+        let ElementKind::View(v) = &out.kind else {
+            panic!()
+        };
+        let a = creabim_core::transform::view_angle(v).unwrap();
+        assert!((a - 30.0).abs() < 1e-6, "{a}");
+    }
+
+    /// A section line has a flip icon beside it (a click looks the other
+    /// way) and a turn grip (a drag turns the line about its middle).
+    #[test]
+    fn a_section_line_flips_by_its_icon_and_turns_by_its_grip() {
+        use creabim_core::View;
+        let mut doc = Document::new();
+        let s = Element::new(
+            "Section",
+            ElementKind::View(View::section(DVec2::ZERO, DVec2::new(8.0, 0.0), 3.0, true)),
+        );
+        let sid = s.id;
+        doc.commit(creabim_core::Transaction::new("setup").insert(s))
+            .unwrap();
+        let m = doc.model().clone();
+        let hs = handles(&m, sid, None);
+        let flip = hs
+            .iter()
+            .find(|h| h.kind == HandleKind::ViewFlip)
+            .expect("a flip icon");
+        // behind the line (it looks to +y), by its middle
+        assert!(flip.at.y < 0.0 && (flip.at.x - 4.0).abs() < 1e-9);
+        let turn = hs
+            .iter()
+            .find(|h| h.kind == HandleKind::Rotate)
+            .expect("a turn grip");
+        assert!(turn.at.y > 0.0);
+        // a quarter turn about the middle (4, 0)
+        let out = drag_to(&m, sid, HandleKind::Rotate, |h| {
+            let r = h.at.truncate() - DVec2::new(4.0, 0.0);
+            (DVec2::new(4.0, 0.0) + r.perp()).extend(0.0)
+        });
+        let ElementKind::View(v) = &out.kind else {
+            panic!()
+        };
+        let ViewKind::Section { start, end, .. } = v.kind else {
+            panic!()
+        };
+        assert!(start.distance(DVec2::new(4.0, -4.0)) < 1e-6, "{start:?}");
+        assert!(end.distance(DVec2::new(4.0, 4.0)) < 1e-6, "{end:?}");
+        // a click on the icon: it looks the other way, one undo step
+        let mut grips = GripSel::default();
+        tap_grip(
+            &mut doc,
+            sid,
+            HandleKind::ViewFlip,
+            false,
+            false,
+            0.0,
+            Pos2::ZERO,
+            &mut grips,
+        );
+        let ElementKind::View(v) = &doc.model().get(sid).unwrap().kind else {
+            panic!()
+        };
+        assert!(matches!(v.kind, ViewKind::Section { start, .. } if start == DVec2::new(8.0, 0.0)));
+        assert_eq!(doc.undo_label(), Some("Flip section"));
+    }
+
+    /// A jogged section line has a grip at each step: dragging it moves
+    /// where the line steps and how far aside.
+    #[test]
+    fn a_section_lines_jog_is_dragged_by_its_grip() {
+        use creabim_core::{SectionJog, View};
+        let mut doc = Document::new();
+        let mut section = View::section(DVec2::ZERO, DVec2::new(8.0, 0.0), 3.0, true);
+        section.line.jogs.push(SectionJog {
+            at: 3.0,
+            offset: 1.0,
+        });
+        let s = Element::new("Section", ElementKind::View(section));
+        let sid = s.id;
+        doc.commit(creabim_core::Transaction::new("setup").insert(s))
+            .unwrap();
+        let m = doc.model().clone();
+        let hs = handles(&m, sid, None);
+        let h = *hs
+            .iter()
+            .find(|h| h.kind == HandleKind::ViewJog(0))
+            .expect("a grip at the jog");
+        assert!((h.at.truncate() - DVec2::new(3.0, 1.0)).length() < 1e-9);
+        let (orig, joined) = originals(&m, sid, h.kind);
+        let to = h.at + DVec3::new(1.5, 0.5, 0.0);
+        let out = apply(&m, &orig, &joined, h.kind, h.at, to, 0.0).unwrap();
+        let ElementKind::View(v) = &out[0].kind else {
+            panic!()
+        };
+        assert!((v.line.jogs[0].at - 4.5).abs() < 1e-9);
+        assert!((v.line.jogs[0].offset - 1.5).abs() < 1e-9);
+        // never past the line's ends
+        let far = h.at + DVec3::new(20.0, 0.0, 0.0);
+        let out = apply(&m, &orig, &joined, h.kind, h.at, far, 0.0).unwrap();
+        let ElementKind::View(v) = &out[0].kind else {
+            panic!()
+        };
+        assert!(v.line.jogs[0].at < 8.0);
+    }
+
     #[test]
     fn a_callouts_box_resizes_with_its_grips_and_moves_with_its_body() {
         use creabim_core::View;
@@ -5565,6 +6376,98 @@ mod tests {
             .unwrap_or_else(|| panic!("no {kind:?}"));
         let (orig, joined) = originals(m, id, kind);
         apply(m, &orig, &joined, kind, h.at, to(&h), 0.05).unwrap()[0].clone()
+    }
+
+    /// George: a built-in wardrobe drawn out by its end, its other end
+    /// staying and its sliding doors following its length.
+    #[test]
+    fn a_built_in_wardrobe_draws_out_by_its_end() {
+        let mut m = creabim_core::starter::starter_house();
+        let level = m.levels().next().unwrap().0.id;
+        let c = creabim_core::catalogue::starter("starter/built-in-wardrobe").unwrap();
+        let (tx, id) = creabim_core::objects::place(&m, &c, level, DVec2::new(30.0, 0.0), 90.0);
+        tx.apply(&mut m).unwrap();
+        let ends = |m: &Model, e: &Element| {
+            let ElementKind::Object(o) = &e.kind else {
+                unreachable!()
+            };
+            let (lo, hi) = creabim_core::objects::type_of(m, e).unwrap().bounds();
+            (
+                o.to_plan(DVec2::new(lo.x, 0.0)),
+                o.to_plan(DVec2::new(hi.x, 0.0)),
+            )
+        };
+        let (l0, r0) = ends(&m, m.get(id).unwrap());
+        assert!((l0.distance(r0) - 2.4).abs() < 1e-9);
+        // the right end out by 1.2 m along the wardrobe
+        let axis = (r0 - l0).normalize();
+        let out = drag_to(&m, id, HandleKind::ObjectEnd { right: true }, |h| {
+            h.at + (axis * 1.2).extend(0.0)
+        });
+        let (l1, r1) = ends(&m, &out);
+        assert!(l1.distance(l0) < 1e-6, "{l0} {l1}");
+        assert!((l1.distance(r1) - 3.6).abs() < 1e-6);
+        let t = creabim_core::objects::type_of(&m, &out).unwrap();
+        let doors = t.parts.iter().filter(|p| p.name == "Sliding door").count();
+        assert_eq!(doors, 4);
+        // its parts keep the type's materials
+        assert!(t.parts.iter().all(|p| p.material.is_some()));
+    }
+
+    /// George: a wardrobe drawn out stops on the nearest wall face,
+    /// the plaster's too, and is free off it.
+    #[test]
+    fn a_wardrobe_drawn_out_stops_on_the_plaster_face() {
+        let mut m = creabim_core::starter::starter_house();
+        let (wall, w) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.assembly.is_some() && w.length() > 4.0 => {
+                    Some((e.id, w.clone()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let offs: Vec<f64> = (0..64)
+            .map_while(|k| walls::boundary_offset(&m, &w, k))
+            .collect();
+        assert!(offs.len() > 2, "a layered wall");
+        let n = w.direction().perp();
+        let face = offs.iter().cloned().fold(f64::MIN, f64::max);
+        let mid = (w.start + w.end) / 2.0;
+        // the wardrobe's x towards the wall, its right end 8 cm short
+        let turn = (-n).to_angle().to_degrees();
+        let c = creabim_core::catalogue::starter("starter/built-in-wardrobe").unwrap();
+        let at = mid + n * (face + 0.08 + 1.2);
+        let (tx, id) = creabim_core::objects::place(&m, &c, w.level, at, turn);
+        tx.apply(&mut m).unwrap();
+        let right_end = |m: &Model, e: &Element| {
+            let ElementKind::Object(o) = &e.kind else {
+                unreachable!()
+            };
+            let (_, hi) = creabim_core::objects::type_of(m, e).unwrap().bounds();
+            o.to_plan(DVec2::new(hi.x, 0.0))
+        };
+        let gap = |p: DVec2| (p - mid).dot(n) - face;
+        let e0 = m.get(id).unwrap().clone();
+        assert!(
+            (gap(right_end(&m, &e0)) - 0.08).abs() < 0.02,
+            "{}",
+            gap(right_end(&m, &e0))
+        );
+        let axis = -n;
+        // dragged 5 cm: 3 cm short of the face, it lands on it
+        let out = drag_to(&m, id, HandleKind::ObjectEnd { right: true }, |h| {
+            h.at + (axis * 0.05).extend(0.0)
+        });
+        let g = gap(right_end(&m, &out));
+        assert!(g.abs() < 1e-6, "{g}");
+        // far from any face: rounded as before
+        let out = drag_to(&m, id, HandleKind::ObjectEnd { right: true }, |h| {
+            h.at - (axis * 0.5).extend(0.0)
+        });
+        let _ = wall;
+        assert!(gap(right_end(&m, &out)) > 0.4);
     }
 
     #[test]

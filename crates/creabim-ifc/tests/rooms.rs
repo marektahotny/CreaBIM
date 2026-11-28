@@ -52,7 +52,7 @@ fn rooms_export_as_spaces_with_boundaries_and_ceilings_as_coverings() {
     assert!(text.contains("'Pset_SpaceCoveringRequirements'"));
     // the living room's LongName, its number as Name
     assert!(text.lines().any(|l| l.contains("IFCSPACE(")
-        && l.contains("'0.06'")
+        && l.contains("'1.06'")
         && l.contains("'Living / Dining'")));
 }
 

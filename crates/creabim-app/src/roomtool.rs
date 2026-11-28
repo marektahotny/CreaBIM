@@ -19,13 +19,47 @@ use glam::DVec2;
 pub enum Space {
     Room,
     Ceiling,
+    /// An underfloor heating zone of the kind picked.
+    UfhZone(UfhZone),
+}
+
+/// The kind of underfloor heating zone the tool draws.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UfhZone {
+    #[default]
+    Edge,
+    Reduced,
+    Hole,
+    /// A manifold's main route of the connecting pipes (George
+    /// 2026-11-28), an open line like an edge zone's.
+    Route,
+}
+
+impl UfhZone {
+    pub fn label(self) -> &'static str {
+        match self {
+            UfhZone::Edge => "Edge zone",
+            UfhZone::Reduced => "Place of reduced output",
+            UfhZone::Hole => "Hole with no pipe",
+            UfhZone::Route => "Main route",
+        }
+    }
 }
 
 impl Space {
+    /// The space the tool draws, the zone tool's kind as picked.
+    pub fn of_state(state: &crate::planview::PlanState) -> Option<Space> {
+        match state.tool {
+            Tool::UfhZone => Some(Space::UfhZone(state.ufh_zone)),
+            t => Space::of(t),
+        }
+    }
+
     pub fn of(tool: Tool) -> Option<Space> {
         match tool {
             Tool::Room => Some(Space::Room),
             Tool::Ceiling => Some(Space::Ceiling),
+            Tool::UfhZone => Some(Space::UfhZone(UfhZone::Edge)),
             _ => None,
         }
     }
@@ -45,9 +79,24 @@ fn inside_point(poly: &[DVec2]) -> DVec2 {
 
 /// The height a new ceiling hangs at on `level`: the usual one, or lower
 /// in a storey too low for it.
-fn ceiling_height(model: &Model, level: ElementId) -> f64 {
+pub fn ceiling_height(model: &Model, level: ElementId) -> f64 {
     let storey = model.level(level).map_or(3.0, |l| l.height);
     CEILING_HEIGHT.min(storey - 0.1).max(0.5)
+}
+
+/// A new ceiling built as the last ceiling with a build-up is (its
+/// build-up, thickness and roof space), so a storey's ceilings are placed
+/// alike.
+fn like_last(model: &Model, c: &mut Ceiling) {
+    let last = model.iter().filter_map(|e| match &e.kind {
+        ElementKind::Ceiling(x) if x.assembly.is_some() => Some(x),
+        _ => None,
+    });
+    if let Some(x) = last.last() {
+        c.assembly = x.assembly;
+        c.thickness = x.thickness;
+        c.roof_space = x.roof_space.clone();
+    }
 }
 
 /// A room on `level` whose outline holds `p`.
@@ -110,6 +159,7 @@ pub fn drawn(
     space: Space,
     level: ElementId,
     outline: Vec<DVec2>,
+    place: &crate::placement::Placement,
     selection: &mut Selection,
 ) -> Result<String, ModelError> {
     match space {
@@ -128,17 +178,84 @@ pub fn drawn(
             ))
         }
         Space::Ceiling => {
-            let c = Ceiling::drawn(level, outline, ceiling_height(doc.model(), level));
+            let height = place.ceiling_height(ceiling_height(doc.model(), level));
+            let mut c = Ceiling::drawn(level, outline, height);
+            place.ceiling(doc.model(), &mut c, like_last);
             let e = Element::new("Ceiling", ElementKind::Ceiling(c));
             let id = e.id;
             doc.commit(Transaction::new("Draw ceiling").insert(e))?;
             selection.only(id);
             Ok(format!(
                 "Ceiling added {} above the floor. Set its height, thickness and grid in Properties. Ctrl+Z to undo.",
-                crate::units::len(ceiling_height(doc.model(), level))
+                crate::units::len(height)
             ))
         }
+        Space::UfhZone(kind) => ufh_zone(doc, kind, level, outline, selection),
     }
+}
+
+/// An underfloor heating zone drawn in a room (George 2026-11-27): added
+/// to the room it lies in, which must have underfloor heating.
+fn ufh_zone(
+    doc: &mut Document,
+    kind: UfhZone,
+    level: ElementId,
+    mut outline: Vec<DVec2>,
+    selection: &mut Selection,
+) -> Result<String, ModelError> {
+    use creabim_core::underfloor::{Zone, ZoneKind};
+    let model = doc.model();
+    let p = inside_point(&outline);
+    let Some(id) = room_at(model, level, p) else {
+        return Ok("Draw the zone inside a room.".into());
+    };
+    let Some(before) = model.get(id).cloned() else {
+        return Ok(String::new());
+    };
+    let ElementKind::Room(r) = &before.kind else {
+        return Ok(String::new());
+    };
+    let Some(u) = r.ufh.clone() else {
+        return Ok("The room has no underfloor heating: switch it on in the Underfloor heating window first.".into());
+    };
+    if creabim_core::polygon::signed_area2(&outline) < 0.0 {
+        outline.reverse();
+    }
+    let kind = match kind {
+        // the closest spacing the board allows, else half the room's
+        UfhZone::Edge => {
+            let spacing = creabim_services::floorheat::floor_build(model, r.level, r.at)
+                .map(|f| f.spec.spacings())
+                .and_then(|v| v.first().copied())
+                .filter(|t| *t < u.spacing - 1e-6)
+                .unwrap_or((u.spacing / 2.0).max(0.05));
+            ZoneKind::Edge { spacing }
+        }
+        UfhZone::Reduced => ZoneKind::Reduced { percent: 50.0 },
+        UfhZone::Hole => ZoneKind::Hole,
+        UfhZone::Route => return Ok(String::new()),
+    };
+    let mut after = before.clone();
+    if let ElementKind::Room(r) = &mut after.kind {
+        let mut u = u;
+        u.zones.push(Zone {
+            kind,
+            outline,
+            on: true,
+            mark: None,
+        });
+        r.ufh = Some(u);
+    }
+    doc.commit(Transaction::new("Underfloor heating zone").replace(before, after))?;
+    selection.only(id);
+    Ok(match kind {
+        ZoneKind::Edge { spacing } => format!(
+            "Edge zone added, its pipes {} apart. Change it or switch it off in the Underfloor heating window. Ctrl+Z to undo.",
+            crate::units::len(spacing)
+        ),
+        ZoneKind::Reduced { .. } => "Place of reduced output added, giving 50 % less. Set how much less in the Underfloor heating window. Ctrl+Z to undo.".into(),
+        ZoneKind::Hole => "Hole added: the system board, but no pipe. Ctrl+Z to undo.".into(),
+    })
 }
 
 fn number_of(model: &Model, id: ElementId) -> String {
@@ -154,10 +271,15 @@ pub fn fill(
     space: Space,
     level: ElementId,
     p: DVec2,
+    place: &crate::placement::Placement,
     selection: &mut Selection,
 ) -> Result<String, ModelError> {
     let model = doc.model();
     match space {
+        Space::UfhZone(_) => {
+            let _ = (place, selection);
+            Ok("Draw the zone as a polygon (1) or a rectangle (2).".into())
+        }
         Space::Room => {
             if let Some(there) = room_at(model, level, p) {
                 selection.only(there);
@@ -177,7 +299,7 @@ pub fn fill(
             ))
         }
         Space::Ceiling => {
-            let height = ceiling_height(model, level);
+            let height = place.ceiling_height(ceiling_height(model, level));
             let c = match room_at(model, level, p) {
                 Some(r) => {
                     let covered = model.iter().any(
@@ -196,6 +318,8 @@ pub fn fill(
                 },
             };
             let follows = c.room.is_some();
+            let mut c = c;
+            place.ceiling(model, &mut c, like_last);
             let e = Element::new("Ceiling", ElementKind::Ceiling(c));
             let id = e.id;
             doc.commit(Transaction::new("Place ceiling").insert(e))?;
@@ -228,11 +352,96 @@ pub fn separator_click(
     }
     let e = Element::new(
         "Room separator",
-        ElementKind::RoomSeparator(Separator { level, a, b: p }),
+        ElementKind::RoomSeparator(Separator {
+            level,
+            a,
+            b: p,
+            look: state.details.separator,
+            bounds_slabs: false,
+        }),
     );
     selection.only(e.id);
     state.status = Some("Room separator added: rooms on either side of it are now apart.".into());
     doc.commit(Transaction::new("Draw room separator").insert(e))
+}
+
+/// The room on `level` whose walls the points `a` and `p` run along.
+pub fn tiling_room(
+    model: &Model,
+    level: ElementId,
+    a: DVec2,
+    p: DVec2,
+) -> Option<(ElementId, room::RoomShape)> {
+    let near = |s: &room::RoomShape, q: DVec2| {
+        let n = s.outline.len();
+        (0..n)
+            .map(|i| {
+                let (x, y) = (s.outline[i], s.outline[(i + 1) % n]);
+                let l2 = x.distance_squared(y).max(1e-12);
+                let t = ((q - x).dot(y - x) / l2).clamp(0.0, 1.0);
+                q.distance(x + (y - x) * t)
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Room(r) if r.level == level => {
+                let s = room::shape_of(model, r)?;
+                let inside = [(a + p) / 2.0, a, p]
+                    .iter()
+                    .any(|q| crate::planview::point_in_polygon(*q, &s.outline));
+                let d = near(&s, a) + near(&s, p);
+                (inside || d < 0.6).then_some((e.id, s, d))
+            }
+            _ => None,
+        })
+        .min_by(|x, y| x.2.total_cmp(&y.2))
+        .map(|(id, s, _)| (id, s))
+}
+
+/// A click with the Tiling tool: where the tiling starts on a room's
+/// walls, then where it ends; it runs along the walls between, the
+/// shorter way round, `state.details.tiling` high from the floor up.
+pub fn tiling_click(
+    doc: &mut Document,
+    level: ElementId,
+    p: DVec2,
+    state: &mut PlanState,
+    selection: &mut Selection,
+) -> Result<(), ModelError> {
+    let Some(a) = state.pending.take() else {
+        state.pending = Some(p);
+        state.status = Some("Click where the tiling ends, along the room's walls.".into());
+        return Ok(());
+    };
+    if a.distance(p) < 0.05 {
+        state.pending = Some(a);
+        return Ok(());
+    }
+    let Some((id, _)) = tiling_room(doc.model(), level, a, p) else {
+        state.status = Some("No room here: place a room first, then click along its walls.".into());
+        return Ok(());
+    };
+    let (height, bottom) = state.details.tiling;
+    let t = room::Tiling {
+        height,
+        bottom,
+        span: Some([a, p]),
+        ..room::Tiling::default()
+    };
+    let mark = t.mark_text();
+    let r = doc.edit(id, "Draw tiling", |e| {
+        if let ElementKind::Room(r) = &mut e.kind {
+            r.tiling_parts.push(t);
+        }
+    });
+    selection.only(id);
+    state.status = Some(format!(
+        "{} {mark}",
+        crate::i18n::t("Tiling added along the room's walls; its mark can be dragged along it.")
+    ));
+    r
 }
 
 /// Tag every room on plan `view`'s level that has no tag in it yet, at the
@@ -252,7 +461,7 @@ pub fn tag_rooms(doc: &mut Document, view: ElementId) -> Result<usize, ModelErro
     let tagged: std::collections::HashSet<ElementId> = model
         .iter()
         .filter_map(|e| match &e.kind {
-            ElementKind::Tag(t) if t.view == view => Some(t.host),
+            ElementKind::Tag(t) if t.view == view && !t.ufh => Some(t.host),
             _ => None,
         })
         .collect();
@@ -353,7 +562,7 @@ pub fn check_layers(model: &Model) -> (Vec<ElementId>, String) {
 /// A text field with its label; true when it changed.
 fn text(ui: &mut egui::Ui, label: &str, v: &mut String) -> bool {
     crate::props::flow(ui, |ui| {
-        ui.label(label);
+        ui.label(crate::i18n::tr(label));
         ui.text_edit_singleline(v).changed()
     })
     .inner
@@ -368,15 +577,15 @@ fn length(ui: &mut egui::Ui, label: &str, v: &mut f64, lo: f64, hi: f64) -> bool
 
 /// A room's properties: what it measures, then its number, finishes,
 /// occupancy, department and height. Returns the edit's label, or "".
-pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static str {
+pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room, name: &str) -> &'static str {
     let mut label = "";
     match room::shape_of(model, r) {
         Some(s) => {
-            ui.label(format!(
+            ui.label(crate::i18n::tr(&format!(
                 "Area {}   Perimeter {}",
                 crate::units::area(room::net_area(model, r, &s)),
                 crate::units::len(s.perimeter())
-            ));
+            )));
             ui.label(
                 egui::RichText::new(if r.is_drawn() {
                     "Its outline is drawn; it doesn't follow the walls."
@@ -402,10 +611,427 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
         ("Ceiling finish", &mut r.ceiling_finish),
         ("Occupancy", &mut r.occupancy),
         ("Department", &mut r.department),
+        ("Fire zone", &mut r.fire_zone),
     ] {
         if text(ui, name, v) {
             label = "Room data";
         }
+    }
+    // its type for heat loss, cooling, air and floor heating: picking one
+    // writes the occupancy
+    {
+        use creabim_core::roomtype::{Gains, RoomType};
+        let tr = crate::i18n::tr;
+        let found = RoomType::find(&r.occupancy);
+        crate::props::row(ui, "Room type", |ui| {
+            ui.spacing_mut().combo_width = ui.available_width();
+            egui::ComboBox::from_id_salt("room_type")
+                .icon(crate::props::combo_icon)
+                .selected_text(found.map_or_else(|| tr("by its name"), |t| tr(t.label())))
+                .show_ui(ui, |ui| {
+                    for t in RoomType::ALL {
+                        if ui
+                            .selectable_label(found == Some(t), tr(t.label()))
+                            .clicked()
+                        {
+                            r.occupancy = tr(t.label());
+                            label = "Room data";
+                        }
+                    }
+                });
+        });
+        let mut n = found.unwrap_or(RoomType::Other).needs();
+        // the temperature it is heated to: by its type, or set here
+        crate::props::row(ui, "Heated to", |ui| {
+            let mut own = r.heated_to.is_some();
+            if ui
+                .checkbox(&mut own, tr("own"))
+                .on_hover_text(tr("Off: the temperature of its room type. On: the temperature set here (a corridor inside the house heated as the rooms)."))
+                .changed()
+            {
+                r.heated_to = own.then_some(n.temp);
+                label = "Room data";
+            }
+            let mut t = r.heated_to.unwrap_or(n.temp);
+            if ui
+                .add_enabled(
+                    own,
+                    egui::DragValue::new(&mut t)
+                        .range(0.0..=30.0)
+                        .speed(0.5)
+                        .suffix(" °C"),
+                )
+                .changed()
+            {
+                r.heated_to = Some(t);
+                label = "Room data";
+            }
+        });
+        if let Some(t) = r.heated_to {
+            n.temp = t;
+        }
+        let mut air = vec![];
+        if let Some(a) = n.ach {
+            air.push(format!("{} {a} 1/h", tr("air change")));
+        }
+        if let Some(f) = n.flow {
+            air.push(format!("{} {f:.0} m³/h", tr("extract")));
+        }
+        ui.label(
+            egui::RichText::new(format!(
+                "θint {:.0} °C · {} · {} · {}",
+                n.temp,
+                if air.is_empty() {
+                    tr("no least air flow")
+                } else {
+                    air.join(", ")
+                },
+                if n.exhaust {
+                    tr("air taken out")
+                } else {
+                    tr("air supplied")
+                },
+                match n.gains {
+                    Gains::Service => tr("not cooled"),
+                    Gains::Kitchen => tr("cooled, kitchen gains"),
+                    Gains::Office => tr("cooled, office gains"),
+                    Gains::Home => tr("cooled, dwelling gains"),
+                }
+            ))
+            .weak(),
+        );
+    }
+    // in the living area or not: by its type and area, or by the
+    // designer's word
+    {
+        let tr = crate::i18n::tr;
+        let area = room::shape_of(model, r).map_or(0.0, |s| room::net_area(model, r, &s));
+        let by_type = room::counts_as_living(
+            name,
+            &Room {
+                living: None,
+                ..r.clone()
+            },
+            area,
+        );
+        let shown = |v: Option<bool>| match v {
+            None => format!(
+                "{} ({})",
+                tr("by its type"),
+                if by_type { tr("yes") } else { tr("no") }
+            ),
+            Some(true) => tr("Counted in"),
+            Some(false) => tr("Left out"),
+        };
+        crate::props::row(ui, "Living area", |ui| {
+            ui.spacing_mut().combo_width = ui.available_width();
+            egui::ComboBox::from_id_salt("room_living")
+                .icon(crate::props::combo_icon)
+                .selected_text(shown(r.living))
+                .show_ui(ui, |ui| {
+                    for v in [None, Some(true), Some(false)] {
+                        if ui.selectable_label(r.living == v, shown(v)).clicked() {
+                            r.living = v;
+                            label = "Room data";
+                        }
+                    }
+                })
+        })
+        .response
+        .on_hover_text(tr("Living rooms (also with a kitchen in them), bedrooms, children's rooms, dining rooms and studies of at least 8 m² count in the living area; a kitchen on its own does not (STN 73 4301/Z1). Set otherwise for this room here."));
+    }
+    // what it counts as for its persons, and the designed count
+    let table = creabim_geom::occupancy::table(model);
+    // with none given, the item its type gives (Fire calculation
+    // parameters, table of room types)
+    let auto = creabim_geom::firerisk::AutoUses::new(model);
+    let by_type = |own: &str, item: String, t: Option<&creabim_core::fireparams::ParamTable>| {
+        let text = |item: &str| match t.and_then(|t| t.row(item)) {
+            Some(row) => format!("{} {}", row[0], row.get(1).map_or("", |s| s.as_str())),
+            None => item.to_string(),
+        };
+        if own.trim().is_empty() && !item.is_empty() {
+            format!("{} ({})", text(&item), crate::i18n::t("by the room type"))
+        } else {
+            text(own.trim())
+        }
+    };
+    let shown = by_type(&r.fire_use, auto.occupancy(r, name), table);
+    let mut picked: Option<String> = None;
+    crate::props::row(ui, "Use for the persons", |ui| {
+        egui::ComboBox::from_id_salt("room.fire_use")
+            .selected_text(shown)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(r.fire_use.is_empty(), "-").clicked() {
+                    picked = Some(String::new());
+                }
+                match table {
+                    Some(t) => {
+                        for row in &t.rows {
+                            let name = row.get(1).map_or("", |s| s.as_str());
+                            let text = format!("{} {name}", row[0]);
+                            if ui.selectable_label(r.fire_use == row[0], text).clicked() {
+                                picked = Some(row[0].clone());
+                            }
+                        }
+                    }
+                    None => {
+                        ui.label(crate::i18n::t(
+                            "No occupancy table in the project: read it in Project information, Fire calculation parameters.",
+                        ));
+                    }
+                }
+            });
+    });
+    if let Some(p) = picked {
+        r.fire_use = p;
+        label = "Room data";
+    }
+    let mut counted = r.design_count.is_some();
+    if crate::props::switch(ui, &mut counted, "Designed count")
+        .on_hover_text(crate::i18n::t(
+            "The persons, beds, seats or parking places the norm's factor multiplies",
+        ))
+        .changed()
+    {
+        r.design_count = counted.then_some(1.0);
+        label = "Room data";
+    }
+    if let Some(n) = r.design_count.as_mut() {
+        let changed = crate::props::row(ui, "Count", |ui| {
+            ui.add(egui::DragValue::new(n).range(0.0..=100_000.0).speed(0.1))
+                .changed()
+        });
+        if changed {
+            label = "Room data";
+        }
+    }
+    // what it is for its fire load, and its fixed load where given
+    let loads = creabim_geom::firerisk::table(model, creabim_core::fireparams::FIRE_LOAD);
+    let shown = by_type(&r.fire_load, auto.fire_load(r, name), loads);
+    let mut picked: Option<String> = None;
+    crate::props::row(ui, "Use for the fire load", |ui| {
+        egui::ComboBox::from_id_salt("room.fire_load")
+            .selected_text(shown)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(r.fire_load.is_empty(), "-").clicked() {
+                    picked = Some(String::new());
+                }
+                match loads {
+                    Some(t) => {
+                        for row in &t.rows {
+                            let name = row.get(1).map_or("", |s| s.as_str());
+                            let text = format!("{} {name}", row[0]);
+                            if ui.selectable_label(r.fire_load == row[0], text).clicked() {
+                                picked = Some(row[0].clone());
+                            }
+                        }
+                    }
+                    None => {
+                        ui.label(crate::i18n::t(
+                            "No fire load table in the project: read it in Project information, Fire calculation parameters.",
+                        ));
+                    }
+                }
+            });
+    });
+    if let Some(p) = picked {
+        r.fire_load = p;
+        label = "Room data";
+    }
+    let mut own_ps = r.fire_ps.is_some();
+    if crate::props::switch(ui, &mut own_ps, "Own fixed fire load")
+        .on_hover_text(crate::i18n::t(
+            "Without it the fixed load of windows, doors and floors is taken from the table by the room's area",
+        ))
+        .changed()
+    {
+        r.fire_ps = own_ps.then_some(0.0);
+        label = "Room data";
+    }
+    if let Some(ps) = r.fire_ps.as_mut() {
+        let changed = crate::props::row(ui, "ps", |ui| {
+            ui.add(
+                egui::DragValue::new(ps)
+                    .range(0.0..=10_000.0)
+                    .speed(0.1)
+                    .suffix(" kg/m²"),
+            )
+            .changed()
+        });
+        if changed {
+            label = "Room data";
+        }
+    }
+    // 4.4.5 of STN 92 0201-4: a concentrated fire load, its openings
+    // with their own heat flux in the separation distance
+    let mut has_pvm = r.fire_pvm.is_some();
+    if crate::props::switch(ui, &mut has_pvm, "Concentrated fire load")
+        .on_hover_text(crate::i18n::t(
+            "A concentrated fire load in the room: its openings count with their own heat flux in the separation distance (STN 92 0201-4, 4.4.5)",
+        ))
+        .changed()
+    {
+        r.fire_pvm = has_pvm.then_some(0.0);
+        label = "Room data";
+    }
+    if let Some(pvm) = r.fire_pvm.as_mut() {
+        let changed = crate::props::row(ui, "pvm", |ui| {
+            ui.add(
+                egui::DragValue::new(pvm)
+                    .range(0.0..=10_000.0)
+                    .speed(0.1)
+                    .suffix(" kg/m²"),
+            )
+            .changed()
+        });
+        if changed {
+            label = "Room data";
+        }
+    }
+    let use_item = auto.occupancy(r, name);
+    if !use_item.is_empty() || r.design_count.is_some() {
+        let area = room::shape_of(model, r).map_or(0.0, |s| room::net_area(model, r, &s));
+        let cell = |c: &str| table.map_or("", |t| t.cell(&use_item, c));
+        let p = creabim_geom::occupancy::persons(
+            cell(creabim_geom::occupancy::AREA),
+            cell(creabim_geom::occupancy::FACTOR),
+            area,
+            r.design_count,
+        );
+        ui.label(match p {
+            Some(p) => format!("{}: {p}", crate::i18n::t("Persons")),
+            None => crate::i18n::t("Persons: the item gives no value to count by here").to_string(),
+        });
+    }
+    // tiling of the walls: what it is and how high it reaches
+    let mut tiled = r.tiling.is_some();
+    if crate::props::switch(ui, &mut tiled, "Wall tiling")
+        .on_hover_text(crate::i18n::t(
+            "A thin line along the room's walls in the plan, the doors left out; its area goes to the legend of rooms",
+        ))
+        .changed()
+    {
+        r.tiling = tiled.then(room::Tiling::default);
+        label = "Wall tiling";
+    }
+    let tiled_shape = r.tiling.as_ref().and_then(|_| room::shape_of(model, r));
+    if let Some(t) = r.tiling.as_mut() {
+        if text(ui, "Tiling", &mut t.name) {
+            label = "Wall tiling";
+        }
+        if length(ui, "Tiling height", &mut t.height, 0.1, 10.0) {
+            label = "Wall tiling";
+        }
+        if length(ui, "Above the floor", &mut t.bottom, 0.0, 10.0) {
+            label = "Wall tiling";
+        }
+        let mut shown = !t.no_mark;
+        if ui
+            .checkbox(&mut shown, crate::i18n::t("Mark (height)(above the floor)"))
+            .changed()
+        {
+            t.no_mark = !shown;
+            label = "Wall tiling";
+        }
+        if let Some(s) = &tiled_shape {
+            // which of its walls carry tiles
+            for (i, wall) in room::bounding_walls(model, s).into_iter().enumerate() {
+                let len: f64 = room::tiling_runs(
+                    model,
+                    s,
+                    &room::bounding_walls(model, s)
+                        .into_iter()
+                        .filter(|w| *w != wall)
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .map(|(a, b)| a.distance(*b))
+                .sum();
+                let mut on = !t.skip.contains(&wall);
+                let name = format!(
+                    "{} {} ({})",
+                    crate::i18n::t("Wall"),
+                    i + 1,
+                    crate::units::len(len)
+                );
+                if ui.checkbox(&mut on, name).changed() {
+                    if on {
+                        t.skip.retain(|w| *w != wall);
+                    } else {
+                        t.skip.push(wall);
+                    }
+                    label = "Wall tiling";
+                }
+            }
+        }
+    }
+    // tiling on part of the walls, drawn with the Tiling tool: a
+    // kitchen's splashback (George 2026-11-24)
+    let mut gone = None;
+    for (i, t) in r.tiling_parts.iter_mut().enumerate() {
+        ui.push_id(("tiling part", i), |ui| {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} {} {}",
+                        crate::i18n::t("Partial tiling"),
+                        i + 1,
+                        t.mark_text()
+                    ))
+                    .strong(),
+                );
+                if ui
+                    .small_button("🗑")
+                    .on_hover_text(crate::i18n::t("Remove this tiling"))
+                    .clicked()
+                {
+                    gone = Some(i);
+                }
+            });
+            if text(ui, "Tiling", &mut t.name) {
+                label = "Wall tiling";
+            }
+            if length(ui, "Tiling height", &mut t.height, 0.05, 10.0) {
+                label = "Wall tiling";
+            }
+            if length(ui, "Above the floor", &mut t.bottom, 0.0, 10.0) {
+                label = "Wall tiling";
+            }
+            let mut shown = !t.no_mark;
+            if ui
+                .checkbox(&mut shown, crate::i18n::t("Mark (height)(above the floor)"))
+                .changed()
+            {
+                t.no_mark = !shown;
+                label = "Wall tiling";
+            }
+        });
+    }
+    if let Some(i) = gone {
+        r.tiling_parts.remove(i);
+        label = "Wall tiling";
+    }
+    ui.label(
+        egui::RichText::new(crate::i18n::t(
+            "Tiling on part of the walls (over the kitchen's base cabinets): the Tiling tool, two clicks along the walls.",
+        ))
+        .weak(),
+    );
+    let tiled_shape = tiled_shape.or_else(|| {
+        (!r.tiling_parts.is_empty())
+            .then(|| room::shape_of(model, r))
+            .flatten()
+    });
+    if let Some(s) = &tiled_shape {
+        ui.label(format!(
+            "{} {}",
+            crate::i18n::t("Tiled area"),
+            model.units().area(room::tiling_area(model, r, s))
+        ));
     }
     let mut own = r.height.is_some();
     let found = room::height(
@@ -416,7 +1042,9 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
         },
     );
     if crate::props::switch(ui, &mut own, "Own height")
-        .on_hover_text("Otherwise it is as high as its ceiling, or its storey")
+        .on_hover_text(crate::i18n::t(
+            "Otherwise it is as high as its ceiling, or its storey",
+        ))
         .changed()
     {
         r.height = own.then_some(found);
@@ -429,16 +1057,18 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
             }
         }
         None => {
-            ui.label(format!(
+            ui.label(crate::i18n::tr(&format!(
                 "Height {} (to its ceiling or the storey above)",
                 crate::units::len(found)
-            ));
+            )));
         }
     }
     if r.is_drawn()
         && ui
-            .button("Follow the walls instead")
-            .on_hover_text("Forget the drawn outline: measure it to the walls round its point")
+            .button(crate::i18n::t("Follow the walls instead"))
+            .on_hover_text(crate::i18n::t(
+                "Forget the drawn outline: measure it to the walls round its point",
+            ))
             .clicked()
     {
         r.boundary.clear();
@@ -449,29 +1079,85 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
 
 /// A ceiling's properties: its height, thickness and grid. Returns the
 /// edit's label, or "".
-pub fn ceiling_fields(ui: &mut egui::Ui, model: &Model, c: &mut Ceiling) -> &'static str {
+pub fn ceiling_fields(
+    ui: &mut egui::Ui,
+    model: &Model,
+    c: &mut Ceiling,
+    layered: bool,
+) -> &'static str {
     let mut label = "";
     match c.room.and_then(|r| model.get(r)) {
         Some(r) if c.boundary.is_empty() => {
-            ui.label(format!(
+            ui.label(crate::i18n::tr(&format!(
                 "Over {} {}: it follows the room's walls.",
                 number_of(model, r.id),
                 r.name
-            ));
+            )));
         }
         _ => {
-            ui.label(egui::RichText::new("Its outline is drawn.").weak());
+            ui.label(egui::RichText::new(crate::i18n::t("Its outline is drawn.")).weak());
         }
     }
     if length(ui, "Height", &mut c.height, 0.1, 50.0) {
         label = "Ceiling height";
     }
-    if length(ui, "Thickness", &mut c.thickness, 0.001, 1.0) {
+    if layered {
+        ui.label(crate::i18n::tr(&format!(
+            "Thickness {}, from its layers",
+            crate::units::len(c.thickness)
+        )));
+        // the roof space over it: STN EN ISO 6946 table 9 (George
+        // 2026-11-23)
+        let tables = creabim_core::room::project_tables(model);
+        let rows = creabim_core::room::roof_spaces(&tables);
+        if rows.is_empty() {
+            ui.label(
+                egui::RichText::new(crate::i18n::t(
+                    "Roof space over it: read table 9 of STN EN ISO 6946 (Heat loss, Read table…) to pick one.",
+                ))
+                .weak(),
+            );
+        } else {
+            let shown = c
+                .roof_space
+                .as_ref()
+                .and_then(|k| rows.iter().find(|r| &r.0 == k))
+                .map_or(crate::i18n::t("None").to_string(), |r| {
+                    format!("{} · Ru {}", r.0, format!("{}", r.1).replace('.', ","))
+                });
+            crate::props::row(ui, "Roof space", |ui| {
+                egui::ComboBox::from_id_salt("ceiling-roof-space")
+                    .selected_text(shown)
+                    .width(ui.available_width().min(160.0))
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(c.roof_space.is_none(), crate::i18n::t("None"))
+                            .clicked()
+                        {
+                            c.roof_space = None;
+                            label = "Roof space";
+                        }
+                        for (k, ru, text) in &rows {
+                            let on = c.roof_space.as_deref() == Some(k.as_str());
+                            let t = format!("{k} · Ru {} · {text}", format!("{ru}").replace('.', ","));
+                            if ui.selectable_label(on, t).clicked() {
+                                c.roof_space = Some(k.clone());
+                                label = "Roof space";
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text(crate::i18n::t(
+                        "STN EN ISO 6946, table 9: the ventilated roof space over the ceiling counts as a layer of resistance Ru in the heat loss.",
+                    ))
+            });
+        }
+    } else if length(ui, "Thickness", &mut c.thickness, 0.001, 1.0) {
         label = "Ceiling thickness";
     }
     let mut grid = c.grid > 0.0;
     if crate::props::switch(ui, &mut grid, "Suspended grid")
-        .on_hover_text("Tiles drawn in ceiling plans")
+        .on_hover_text(crate::i18n::t("Tiles drawn in ceiling plans"))
         .changed()
     {
         c.grid = if grid { 0.6 } else { 0.0 };
@@ -492,10 +1178,10 @@ pub fn tag_fields(ui: &mut egui::Ui, fields: &mut Vec<RoomField>) -> &'static st
     } else {
         fields.clone()
     };
-    ui.label("Shows");
+    ui.label(crate::i18n::t("Shows"));
     for f in RoomField::ALL {
         let mut on = shown.contains(&f);
-        if ui.checkbox(&mut on, f.label()).changed() {
+        if ui.checkbox(&mut on, crate::i18n::tr(f.label())).changed() {
             if on {
                 // keep the order fields are listed in
                 shown.push(f);
@@ -538,8 +1224,16 @@ mod tests {
         let mut doc = Document::from_model(m.clone());
         doc.commit(tx).unwrap();
         let mut sel = Selection::default();
-        let msg = fill(&mut doc, Space::Room, level, DVec2::new(2.0, 3.5), &mut sel).unwrap();
-        assert!(msg.starts_with("Room 0.10 added"), "{msg}");
+        let msg = fill(
+            &mut doc,
+            Space::Room,
+            level,
+            DVec2::new(2.0, 3.5),
+            &Default::default(),
+            &mut sel,
+        )
+        .unwrap();
+        assert!(msg.starts_with("Room 1.10 added"), "{msg}");
         let id = sel.active.unwrap();
         assert!(room::area(doc.model(), id) > 15.0);
         let tags = doc
@@ -549,7 +1243,15 @@ mod tests {
             .count();
         assert!(tags >= 1);
         // clicking there again finds it
-        let again = fill(&mut doc, Space::Room, level, DVec2::new(2.0, 3.5), &mut sel).unwrap();
+        let again = fill(
+            &mut doc,
+            Space::Room,
+            level,
+            DVec2::new(2.0, 3.5),
+            &Default::default(),
+            &mut sel,
+        )
+        .unwrap();
         assert!(again.contains("already"), "{again}");
         // and a ceiling over it follows it
         fill(
@@ -557,6 +1259,7 @@ mod tests {
             Space::Ceiling,
             level,
             DVec2::new(2.0, 3.5),
+            &Default::default(),
             &mut sel,
         )
         .unwrap();

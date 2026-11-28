@@ -73,7 +73,9 @@ impl Importer<'_> {
             self.done.insert(id);
             let eid = self.new_id(e);
             self.other_elems.push(Element {
+                locked: false,
                 mark: None,
+                reno: None,
                 source: None,
                 of_type: None,
                 id: eid,
@@ -98,12 +100,20 @@ impl Importer<'_> {
             self.done.insert(id);
             let eid = self.new_id(e);
             self.other_elems.push(Element {
+                locked: false,
                 mark: None,
+                reno: None,
                 source: None,
                 of_type: None,
                 id: eid,
                 name: Self::name(e, "Room separator"),
-                kind: ElementKind::RoomSeparator(Separator { level, a, b }),
+                kind: ElementKind::RoomSeparator(Separator {
+                    level,
+                    a,
+                    b,
+                    look: None,
+                    bounds_slabs: false,
+                }),
             });
         }
         let mut coverings: Vec<u64> = self.ids("IFCCOVERING").to_vec();
@@ -137,7 +147,9 @@ impl Importer<'_> {
             self.done.insert(id);
             let eid = self.new_id(e);
             self.other_elems.push(Element {
+                locked: false,
                 mark: None,
+                reno: None,
                 source: None,
                 of_type: None,
                 id: eid,

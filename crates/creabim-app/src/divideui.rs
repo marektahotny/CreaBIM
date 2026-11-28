@@ -313,16 +313,17 @@ impl CreaBimApp {
                             if grip.double_clicked() {
                                 *moved = -self_offset;
                             }
-                            grip.on_hover_cursor(egui::CursorIcon::Grab)
-                                .on_hover_text("Drag to move the bar; double-click puts it back");
+                            grip.on_hover_cursor(egui::CursorIcon::Grab).on_hover_text(
+                                crate::i18n::t("Drag to move the bar; double-click puts it back"),
+                            );
                             let (ir, _) = ui
                                 .allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
                             crate::svgicon::paint(ui.painter(), ir, "mod-array", p.accent);
-                            ui.label(egui::RichText::new("Divide").strong());
+                            ui.label(egui::RichText::new(crate::i18n::t("Divide")).strong());
                             ui.add(egui::Label::new(egui::RichText::new(&name).weak()).truncate())
-                                .on_hover_text(
+                                .on_hover_text(crate::i18n::t(
                                     "What is divided: the element selected when Divide opened",
-                                );
+                                ));
                             ui.separator();
                             for (w, t, tip) in [
                                 (Way::Along, "Along", "Along its length"),
@@ -330,19 +331,24 @@ impl CreaBimApp {
                                 (Way::Grid, "Grid", "Both: panels"),
                             ] {
                                 ui.selectable_value(&mut d.way, w, crate::i18n::tw(t))
-                                    .on_hover_text(tip);
+                                    .on_hover_text(crate::i18n::tr(tip));
                             }
                             ui.separator();
                             ui.selectable_value(&mut d.by_size, false, crate::i18n::tw("Count"))
-                                .on_hover_text("A number of equal parts");
+                                .on_hover_text(crate::i18n::t("A number of equal parts"));
                             ui.selectable_value(&mut d.by_size, true, crate::i18n::tw("Size"))
-                                .on_hover_text("Parts of a size; the rest goes where you say");
+                                .on_hover_text(crate::i18n::t(
+                                    "Parts of a size; the rest goes where you say",
+                                ));
                             let number =
                                 |ui: &mut egui::Ui, d: &mut Settings, up: bool, tag: &str| {
                                     if !tag.is_empty() {
                                         ui.label(egui::RichText::new(tag).weak());
                                     }
-                                    if ui.small_button("−").on_hover_text("Fewer (−)").clicked()
+                                    if ui
+                                        .small_button("−")
+                                        .on_hover_text(crate::i18n::t("Fewer (−)"))
+                                        .clicked()
                                     {
                                         step(d, up, -1);
                                     }
@@ -382,8 +388,14 @@ impl CreaBimApp {
                                             step(d, up, wheel.signum() as i32);
                                         }
                                     }
-                                    r.on_hover_text("Type a number, drag, or scroll over it");
-                                    if ui.small_button("+").on_hover_text("More (+)").clicked() {
+                                    r.on_hover_text(crate::i18n::t(
+                                        "Type a number, drag, or scroll over it",
+                                    ));
+                                    if ui
+                                        .small_button("+")
+                                        .on_hover_text(crate::i18n::t("More (+)"))
+                                        .clicked()
+                                    {
                                         step(d, up, 1);
                                     }
                                 };
@@ -411,7 +423,9 @@ impl CreaBimApp {
                                             crate::i18n::tw("Rest at both ends"),
                                         )
                                         .on_hover_text(
-                                            "Full parts centred, a short one at each end",
+                                            crate::i18n::t(
+                                                "Full parts centred, a short one at each end",
+                                            ),
                                         );
                                         ui.selectable_value(
                                             &mut d.rest,
@@ -429,7 +443,9 @@ impl CreaBimApp {
                                             crate::i18n::tw("Spread evenly"),
                                         )
                                         .on_hover_text(
-                                            "As many parts as are nearest the size, all equal",
+                                            crate::i18n::t(
+                                                "As many parts as are nearest the size, all equal",
+                                            ),
                                         );
                                     });
                             }
@@ -440,24 +456,28 @@ impl CreaBimApp {
                                     Make::Cuts,
                                     crate::i18n::tw("Cuts"),
                                 )
-                                .on_hover_text("Cut it into separate elements");
+                                .on_hover_text(crate::i18n::t("Cut it into separate elements"));
                             }
                             ui.selectable_value(
                                 &mut d.make,
                                 Make::Guides,
                                 crate::i18n::tw("Guides"),
                             )
-                            .on_hover_text("Guides at the divisions, to snap to");
+                            .on_hover_text(crate::i18n::t("Guides at the divisions, to snap to"));
                             ui.selectable_value(
                                 &mut d.make,
                                 Make::Copies,
                                 crate::i18n::tw("Copies"),
                             )
-                            .on_hover_text("What you Shift+click, one in each part");
+                            .on_hover_text(crate::i18n::t(
+                                "What you Shift+click, one in each part",
+                            ));
                             if d.make == Make::Cuts {
-                                ui.label(egui::RichText::new("gap").weak());
+                                ui.label(egui::RichText::new(crate::i18n::t("gap")).weak());
                                 ui.add(crate::units::drag(&mut d.gap).range(0.0..=1.0))
-                                    .on_hover_text("Left between the parts: a joint");
+                                    .on_hover_text(crate::i18n::t(
+                                        "Left between the parts: a joint",
+                                    ));
                             }
                             ui.separator();
                             let (along, up) = d.split(&span);
@@ -468,12 +488,15 @@ impl CreaBimApp {
                                 .add_enabled(
                                     ready,
                                     egui::Button::new(
-                                        egui::RichText::new(format!("Divide · {count}")).strong(),
+                                        egui::RichText::new(crate::i18n::tr(&format!(
+                                            "Divide · {count}"
+                                        )))
+                                        .strong(),
                                     ),
                                 )
-                                .on_hover_text(format!(
+                                .on_hover_text(crate::i18n::tr(&format!(
                                     "Divide into {count}, one undo step (Enter)"
-                                ))
+                                )))
                                 .on_disabled_hover_text(if count < 2 {
                                     "Two parts or more"
                                 } else {

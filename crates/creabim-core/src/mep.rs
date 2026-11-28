@@ -30,6 +30,26 @@ pub enum SystemKind {
     Other,
 }
 
+impl SystemDef {
+    /// The line a services drawing draws its pipes with, as the office's
+    /// drawings do: dashes and gaps in paper mm (a dash of 0 is a dot);
+    /// none is a solid line. Cold water dash-dot, hot water dash and two
+    /// dots, circulation dash and two dots too (in its own orange; George
+    /// 2026-11-26), drains dashed; of the
+    /// rest the returns dashed.
+    pub fn dashes(&self) -> Option<Vec<f64>> {
+        match self.kind {
+            SystemKind::ColdWater => Some(vec![5.0, 1.2, 0.0, 1.2]),
+            SystemKind::HotWater => Some(vec![5.0, 1.2, 0.0, 1.2, 0.0, 1.2]),
+            SystemKind::Circulation => Some(vec![5.0, 1.2, 0.0, 1.2, 0.0, 1.2]),
+            SystemKind::Sanitary => Some(vec![4.0, 1.5]),
+            SystemKind::Storm => Some(vec![6.0, 1.5, 1.5, 1.5, 1.5, 1.5]),
+            _ if self.dashed => Some(vec![3.0, 1.5]),
+            _ => None,
+        }
+    }
+}
+
 impl SystemKind {
     /// IFC's predefined type of a distribution system.
     pub fn ifc_system(self) -> &'static str {
@@ -291,6 +311,24 @@ pub const SYSTEMS: &[SystemDef] = &[
         160.0,
         2.7,
     )),
+    sys(
+        "VZC",
+        "Ventilation – outdoor (fresh) air",
+        SystemKind::AirSupply,
+        0x16a34a,
+        "VZK",
+        160.0,
+        2.7,
+    ),
+    dashed(sys(
+        "VZE",
+        "Ventilation – exhaust to outdoors",
+        SystemKind::AirExhaust,
+        0x7c3aed,
+        "VZK",
+        160.0,
+        2.7,
+    )),
 ];
 
 /// The system with this code.
@@ -317,9 +355,20 @@ pub struct Pipe {
     /// A rectangular duct's height, mm (its width is `nominal_mm`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height_mm: Option<f64>,
-    /// Insulation, mm; 0 for none.
+    /// Insulation, mm; 0 for none. Unless [`Pipe::insulation_set`], what
+    /// its system wants is taken where this is 0 ([`Pipe::insulation`]).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub insulation_mm: f64,
+    /// The insulation was typed (0 too: none wanted), not left to its
+    /// system.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub insulation_set: bool,
+    /// Where a riser's mark (its stack's circle with the sizes beside
+    /// it) was dragged to in plan, from the riser, m; for a run, how far
+    /// its size label was dragged from where it falls by itself. None
+    /// where the drawing sets it by itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<glam::DVec2>,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -338,6 +387,23 @@ impl Pipe {
 
     pub fn kind(&self) -> SystemKind {
         self.system_def().map_or(SystemKind::Other, |s| s.kind)
+    }
+
+    /// Its insulation, mm: as typed, else what its system wants
+    /// ([`default_insulation_mm`]).
+    pub fn insulation(&self) -> f64 {
+        if self.insulation_set || self.insulation_mm > 0.0 {
+            self.insulation_mm
+        } else if self.height_mm.is_some() {
+            0.0
+        } else {
+            default_insulation_mm(self.kind(), &self.pipe_type, self.outer_mm, self.inner_mm)
+        }
+    }
+
+    /// Its insulation is its system's, not typed.
+    pub fn insulation_is_auto(&self) -> bool {
+        !(self.insulation_set || self.insulation_mm > 0.0)
     }
 
     /// Rises or falls more than it runs: a riser or a drop.
@@ -385,6 +451,73 @@ impl Pipe {
             return Err("insulation must not be negative".into());
         }
         Ok(())
+    }
+}
+
+/// The thicknesses insulation comes in, mm.
+pub const INSULATION_CHOICES: [f64; 13] = [
+    0.0, 6.0, 9.0, 13.0, 19.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0, 100.0,
+];
+
+/// The least heat insulation of a heating or hot water pipe of
+/// `inner_mm` inside, mm, at λ = 0,035 W/(m·K) at 0 °C (vyhláška MH SR
+/// č. 14/2016 Z. z., príloha č. 1): up to 22 mm 20 mm, to 35 mm 30 mm,
+/// to 100 mm as thick as the pipe is inside, above it 100 mm. Other
+/// insulation than λ 0,035 is reckoned by its príloha č. 2
+/// (`creabim_services::pipeinsul`).
+pub fn heat_insulation_mm(inner_mm: f64) -> f64 {
+    if inner_mm <= 22.0 {
+        20.0
+    } else if inner_mm <= 35.0 {
+        30.0
+    } else if inner_mm <= 100.0 {
+        inner_mm
+    } else {
+        100.0
+    }
+}
+
+/// The insulation a pipe of `outer_mm` (`inner_mm` inside, 0 when not
+/// known) of a system wants, mm (PilonDesigner's `defaultInsulMm`): heat
+/// insulation on hot water, circulation and heating
+/// ([`heat_insulation_mm`]); against condensation on cold water (9 mm) and cooling (13,
+/// from 42 mm 19); none on underfloor heating pipe, drainage, gas, flue
+/// and air.
+pub fn default_insulation_mm(
+    kind: SystemKind,
+    pipe_type: &str,
+    outer_mm: f64,
+    inner_mm: f64,
+) -> f64 {
+    if pipe_type == "HERZFH" || pipe_type == "PEX" {
+        return 0.0;
+    }
+    match kind {
+        SystemKind::HotWater
+        | SystemKind::Circulation
+        | SystemKind::HeatingSupply
+        | SystemKind::HeatingReturn => {
+            heat_insulation_mm(if inner_mm > 0.0 { inner_mm } else { outer_mm })
+        }
+        SystemKind::ColdWater => 9.0,
+        SystemKind::CoolingSupply | SystemKind::CoolingReturn => {
+            if outer_mm >= 42.0 {
+                19.0
+            } else {
+                13.0
+            }
+        }
+        _ => 0.0,
+    }
+}
+
+/// What insulation is for: keeping heat, or condensation off.
+pub fn insulation_purpose(kind: SystemKind) -> &'static str {
+    match kind {
+        SystemKind::ColdWater | SystemKind::CoolingSupply | SystemKind::CoolingReturn => {
+            "against condensation"
+        }
+        _ => "heat",
     }
 }
 
@@ -563,6 +696,24 @@ pub const VALVE_KINDS: &[ValveKind] = &[
         "",
     ),
     vk(
+        "odvzdusnenie",
+        "Automatický odvzdušňovací ventil (horný bod trasy)",
+        None,
+        None,
+        &[M::Water, M::Heating, M::Cooling, M::Fire],
+        ("IfcValve", "AIRRELEASE"),
+        "STN EN 12828, STN EN 806-2",
+    ),
+    vk(
+        "vypustenie",
+        "Vypúšťací ventil (dolný bod trasy)",
+        None,
+        None,
+        &[M::Water, M::Heating, M::Cooling, M::Fire],
+        ("IfcValve", "DRAWOFFCOCK"),
+        "STN EN 12828, STN EN 806-2",
+    ),
+    vk(
         "vodomer",
         "Vodomer",
         None,
@@ -625,6 +776,24 @@ pub const VALVE_KINDS: &[ValveKind] = &[
         ("IfcValve", "ISOLATING"),
         "STN EN ISO 7396-1",
     ),
+    nocalc(vk(
+        "chranicka",
+        "Chránička / ochranná rúrka prestupu",
+        None,
+        None,
+        &[M::Gas],
+        ("IfcPipeFitting", "USERDEFINED"),
+        "TPH 03 2012 F.4.1, F.7.4, F.7.5",
+    )),
+    nocalc(vk(
+        "ppUtesnenie",
+        "Protipožiarne utesnenie prestupu",
+        None,
+        None,
+        &[M::Gas],
+        ("IfcPipeFitting", "USERDEFINED"),
+        "TPH 03 2012 F.4.3, F.7.6",
+    )),
     terminal(vk(
         "spotrebic",
         "Plynový spotrebič",
@@ -724,6 +893,24 @@ pub const VALVE_KINDS: &[ValveKind] = &[
         ("IfcFilter", "AIRPARTICLEFILTER"),
         "STN EN ISO 16890",
     ),
+    vk(
+        "ventilator",
+        "Ventilátor (potrubný / stropný)",
+        None,
+        None,
+        &[M::Air],
+        ("IfcFan", "NOTDEFINED"),
+        "STN EN 13141-4, STN EN ISO 5801",
+    ),
+    vk(
+        "vyfukVzt",
+        "Výfuková hlavica (strecha / fasáda)",
+        None,
+        None,
+        &[M::Air],
+        ("IfcAirTerminal", "NOTDEFINED"),
+        "STN EN 16798-3",
+    ),
     terminal(vk(
         "vyvod",
         "Vývod med. plynu (koncová jednotka)",
@@ -776,6 +963,31 @@ pub struct Valve {
     /// the room's other terminals.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow_m3h: Option<f64>,
+    /// A gas appliance's heat input, kW; none takes it from its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power_kw: Option<f64>,
+    /// A gas appliance's category for diversity (TPP 704 01): 1 cooking
+    /// and instantaneous water heaters, 2 local heaters and storage water
+    /// heaters, 3 boilers, 4 industrial; none takes it from its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gas_cat: Option<u8>,
+    /// The maker's product it is (a HERZ id, "HZ-TS98V"); none takes the
+    /// maker's default on the maker's pipes, "" a generic valve.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product: Option<String>,
+    /// Its presetting, as the maker numbers it ("3,5").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
+    /// Where its position mark was dragged to in a services plan, from
+    /// the valve (m); none: up and to the right of it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<glam::DVec2>,
+    /// An air terminal held under the ceiling (or the suspended ceiling)
+    /// over it: its duct rises or drops to the ceiling's underside and
+    /// follows it, while the run goes at its own height (George
+    /// 2026-11-25); see [`settle_under_ceiling`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub under_ceiling: bool,
 }
 
 /// A hose system of a fire main (STN EN 671-1, STN EN 671-2, STN 92 0400).
@@ -827,6 +1039,12 @@ impl Valve {
             hydrant: None,
             flow_lmin: None,
             flow_m3h: None,
+            power_kw: None,
+            gas_cat: None,
+            product: None,
+            preset: None,
+            mark: None,
+            under_ceiling: false,
         }
     }
 
@@ -871,9 +1089,100 @@ impl Valve {
     }
 }
 
+/// The air terminals held under the ceiling put there: the duct a
+/// terminal sits on, when it rises or drops to it, has that end at the
+/// underside of the ceiling (the suspended ceiling, else the slab) over
+/// it; a terminal at the end of a level run gets a riser of its own up
+/// or down to the ceiling and moves onto its top. None when all are
+/// there already.
+pub fn settle_under_ceiling(model: &crate::Model) -> Option<crate::Transaction> {
+    use crate::{Element, ElementKind};
+    let mut tx = crate::Transaction::new("Terminals under the ceiling");
+    for e in model.iter() {
+        let ElementKind::Valve(v) = &e.kind else {
+            continue;
+        };
+        if !v.under_ceiling {
+            continue;
+        }
+        let Some(pe) = model.get(v.pipe) else {
+            continue;
+        };
+        let ElementKind::Pipe(p) = &pe.kind else {
+            continue;
+        };
+        let at_end = v.t >= 0.5;
+        let end = if at_end { p.end } else { p.start };
+        let floor = model.level(p.level).map_or(0.0, |l| l.elevation);
+        let z = crate::objects::ceiling_at(model, p.level, end.truncate()) - floor;
+        if p.is_vertical() {
+            if (end.z - z).abs() < 1e-3 && (v.t - if at_end { 1.0 } else { 0.0 }).abs() < 1e-9 {
+                continue;
+            }
+            let mut after = pe.clone();
+            if let ElementKind::Pipe(q) = &mut after.kind {
+                if at_end {
+                    q.end.z = z;
+                } else {
+                    q.start.z = z;
+                }
+            }
+            tx = tx.replace(pe.clone(), after);
+            if (v.t - if at_end { 1.0 } else { 0.0 }).abs() > 1e-9 {
+                let mut moved = e.clone();
+                if let ElementKind::Valve(w) = &mut moved.kind {
+                    w.t = if at_end { 1.0 } else { 0.0 };
+                }
+                tx = tx.replace(e.clone(), moved);
+            }
+        } else {
+            if (end.z - z).abs() < 1e-3 {
+                continue;
+            }
+            // the level run stays: a riser of its own to the ceiling
+            let mut riser = p.clone();
+            riser.start = end;
+            riser.end = DVec3::new(end.x, end.y, z);
+            riser.mark = None;
+            let r = Element::new(pe.name.clone(), ElementKind::Pipe(riser));
+            let mut moved = e.clone();
+            if let ElementKind::Valve(w) = &mut moved.kind {
+                w.pipe = r.id;
+                w.t = 1.0;
+            }
+            tx = tx.insert(r).replace(e.clone(), moved);
+        }
+    }
+    (!tx.ops.is_empty()).then_some(tx)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pipe_takes_its_systems_insulation_unless_one_is_typed() {
+        assert_eq!(heat_insulation_mm(16.0), 20.0);
+        assert_eq!(heat_insulation_mm(32.0), 30.0);
+        assert_eq!(heat_insulation_mm(54.0), 54.0);
+        assert_eq!(heat_insulation_mm(160.0), 100.0);
+        assert_eq!(
+            default_insulation_mm(SystemKind::ColdWater, "Cu", 22.0, 0.0),
+            9.0
+        );
+        assert_eq!(
+            default_insulation_mm(SystemKind::CoolingSupply, "Cu", 42.0, 0.0),
+            19.0
+        );
+        assert_eq!(
+            default_insulation_mm(SystemKind::Sanitary, "PPHT", 110.0, 0.0),
+            0.0
+        );
+        assert_eq!(
+            default_insulation_mm(SystemKind::HeatingSupply, "HERZFH", 16.0, 0.0),
+            0.0
+        );
+    }
 
     fn pipe(a: DVec3, b: DVec3) -> Pipe {
         Pipe {
@@ -887,12 +1196,86 @@ mod tests {
             inner_mm: 104.6,
             height_mm: None,
             insulation_mm: 0.0,
+            insulation_set: false,
+            mark: None,
         }
     }
 
     #[test]
+    fn a_terminal_under_the_ceiling_gets_its_riser_and_follows_the_ceiling() {
+        use crate::{Ceiling, Element, ElementKind, Level, Model, Transaction};
+        let mut m = Model::new();
+        let lv = Element::new(
+            "1. NP",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let l = lv.id;
+        let mut p = pipe(DVec3::new(0.0, 0.0, 2.7), DVec3::new(2.0, 0.0, 2.7));
+        p.level = l;
+        p.system = "VZP".into();
+        let duct = Element::new("d", ElementKind::Pipe(p));
+        let mut v = Valve::new(duct.id, 1.0, "vyustP");
+        v.under_ceiling = true;
+        let valve = Element::new("v", ElementKind::Valve(v));
+        let vid = valve.id;
+        Transaction::new("t")
+            .insert(lv)
+            .insert(duct)
+            .insert(valve)
+            .apply(&mut m)
+            .unwrap();
+        let riser_of = |m: &Model| {
+            let Some(ElementKind::Valve(v)) = m.get(vid).map(|e| &e.kind) else {
+                panic!()
+            };
+            let Some(ElementKind::Pipe(r)) = m.get(v.pipe).map(|e| &e.kind) else {
+                panic!()
+            };
+            (r.clone(), v.t)
+        };
+        // no ceiling drawn: the level's top, 3.0 m
+        settle_under_ceiling(&m).unwrap().apply(&mut m).unwrap();
+        let (r, t) = riser_of(&m);
+        assert_eq!(
+            (r.start, r.end, t),
+            (DVec3::new(2.0, 0.0, 2.7), DVec3::new(2.0, 0.0, 3.0), 1.0)
+        );
+        assert!(settle_under_ceiling(&m).is_none());
+        // a suspended ceiling at 2.4 m: the terminal drops to it
+        Transaction::new("c")
+            .insert(Element::new(
+                "c",
+                ElementKind::Ceiling(Ceiling {
+                    level: l,
+                    boundary: vec![
+                        glam::DVec2::new(-5.0, -5.0),
+                        glam::DVec2::new(5.0, -5.0),
+                        glam::DVec2::new(5.0, 5.0),
+                        glam::DVec2::new(-5.0, 5.0),
+                    ],
+                    room: None,
+                    height: 2.4,
+                    thickness: 0.1,
+                    material: None,
+                    grid: 0.0,
+                    assembly: None,
+                    roof_space: None,
+                }),
+            ))
+            .apply(&mut m)
+            .unwrap();
+        settle_under_ceiling(&m).unwrap().apply(&mut m).unwrap();
+        let (r, _) = riser_of(&m);
+        assert!((r.end.z - 2.4).abs() < 1e-9, "{}", r.end.z);
+        assert_eq!(r.start.z, 2.7);
+    }
+
+    #[test]
     fn systems_are_pilon_designers() {
-        assert_eq!(SYSTEMS.len(), 19);
+        assert_eq!(SYSTEMS.len(), 21);
         let k = system("K").unwrap();
         assert!(k.kind.is_gravity() && k.slope_pct == 2.0 && k.pipe_type == "PPHT");
         assert!(system("UKS").unwrap().dashed);
@@ -924,8 +1307,8 @@ mod tests {
     }
 
     #[test]
-    fn valves_are_pilon_designers_and_sit_on_their_pipe() {
-        assert_eq!(VALVE_KINDS.len(), 28);
+    fn valves_are_pilon_designers_and_ours_and_sit_on_their_pipe() {
+        assert_eq!(VALVE_KINDS.len(), 34);
         let mut codes: Vec<_> = VALVE_KINDS.iter().map(|k| k.code).collect();
         codes.sort();
         codes.dedup();

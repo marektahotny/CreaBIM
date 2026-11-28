@@ -118,6 +118,11 @@ pub struct MarkRule {
     /// each level: D-101 is level 1, door 01.
     #[serde(default)]
     pub by_level: bool,
+    /// Doors and windows that are alike (in size, division, joinery,
+    /// material and texts) share one mark, as window and door lists
+    /// count them.
+    #[serde(default)]
+    pub alike: bool,
     #[serde(default)]
     pub order: MarkOrder,
     /// The first number of a count.
@@ -142,6 +147,7 @@ impl MarkRule {
             separator: String::new(),
             padding: 2,
             by_level: false,
+            alike: matches!(class, MarkClass::Door | MarkClass::Window),
             order: MarkOrder::Model,
             start: 1,
         }
@@ -359,6 +365,7 @@ pub fn auto_marks(
     let mut out = HashMap::new();
     for rule in rules.rules.iter().filter(|r| r.auto) {
         let mut taken: HashSet<String> = HashSet::new();
+        let mut shared: HashMap<String, String> = HashMap::new();
         // (level, its elevation, model index, id, plan position)
         type Item = (Option<ElementId>, f64, usize, ElementId, Option<DVec2>);
         let mut list: Vec<Item> = Vec::new();
@@ -393,12 +400,26 @@ pub fn auto_marks(
                 n = rule.start;
             }
             for item in group {
+                // one like an earlier one takes its mark
+                let key = match model.get(item.3).map(|e| &e.kind) {
+                    Some(ElementKind::Opening(o)) if rule.alike => {
+                        Some(crate::joinery::kind_key(o))
+                    }
+                    _ => None,
+                };
+                if let Some(m) = key.as_ref().and_then(|k| shared.get(k)) {
+                    out.insert(item.3, m.clone());
+                    continue;
+                }
                 let mut mark = rule.format(level.unwrap_or(0), n);
                 while taken.contains(&mark) {
                     n += 1;
                     mark = rule.format(level.unwrap_or(0), n);
                 }
                 n += 1;
+                if let Some(k) = key {
+                    shared.insert(k, mark.clone());
+                }
                 out.insert(item.3, mark);
             }
         }
@@ -510,6 +531,8 @@ pub fn duplicates(model: &Model) -> Vec<(String, Vec<ElementId>)> {
     let marks = marks(model);
     let object_types = object_marks(model);
     let mut seen_types = HashSet::new();
+    let rules = rules(model);
+    let mut seen_alike: HashSet<(String, String)> = HashSet::new();
     for e in model.iter() {
         let mark = if matches!(e.kind, ElementKind::Object(_)) {
             match manual(e) {
@@ -523,9 +546,24 @@ pub fn duplicates(model: &Model) -> Vec<(String, Vec<ElementId>)> {
                     }
                 }
             }
-        } else if matches!(e.kind, ElementKind::ElementType(_)) {
-            // types are counted through their objects
+        } else if matches!(
+            e.kind,
+            ElementKind::ElementType(_) | ElementKind::Ceiling(_)
+        ) {
+            // types are counted through their objects; ceilings of one
+            // build-up share their mark (PDH1, George 2026-11-23)
             None
+        } else if let (ElementKind::Opening(o), true) = (
+            &e.kind,
+            MarkClass::of(&e.kind)
+                .and_then(|c| rules.rule(c))
+                .is_some_and(|r| r.alike),
+        ) {
+            // those alike share a mark on purpose: they count once
+            marks
+                .get(&e.id)
+                .cloned()
+                .filter(|m| seen_alike.insert((m.clone(), crate::joinery::kind_key(o))))
         } else {
             marks.get(&e.id).cloned()
         };
@@ -669,8 +707,14 @@ mod tests {
         let windows = openings(doc.model(), OpeningKind::Window);
         doc.edit(windows[0], "Mark", |e| e.mark = Some("X1".into()))
             .unwrap();
-        doc.edit(windows[1], "Mark", |e| e.mark = Some("X1".into()))
-            .unwrap();
+        // two alike may share a mark; these two are not
+        doc.edit(windows[1], "Mark", |e| {
+            e.mark = Some("X1".into());
+            if let ElementKind::Opening(o) = &mut e.kind {
+                o.height += 0.1;
+            }
+        })
+        .unwrap();
         let d = duplicates(doc.model());
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].0, "X1");

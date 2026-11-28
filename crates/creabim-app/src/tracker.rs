@@ -105,6 +105,16 @@ impl Tracker {
             .filter(|l| *l > 0.0)
     }
 
+    /// The typed distance: like [`Tracker::length`], but 0 too (a
+    /// temporary dimension typed 0 sets its element flush).
+    pub fn distance(&self) -> Option<f64> {
+        let t = self.fields[0].trim();
+        (!t.is_empty())
+            .then(|| crate::units::parse(t))
+            .flatten()
+            .filter(|l| *l >= 0.0)
+    }
+
     /// The typed angle, degrees counter-clockwise from +X.
     pub fn angle(&self) -> Option<f64> {
         let t = self.fields[1].trim();

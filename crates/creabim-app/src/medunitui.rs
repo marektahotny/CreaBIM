@@ -33,7 +33,7 @@ impl CreaBimApp {
             .id(egui::Id::new("med.unit"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(210.0, 240.0))
-            .default_size(Vec2::new(420.0, 480.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(420.0, 480.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
@@ -44,9 +44,16 @@ impl CreaBimApp {
                     }
                 });
                 let bridge = c.kind == MedUnitKind::Bridge;
-                let count = |ui: &mut egui::Ui, text: &str, v: &mut u32, hi: u32| {
-                    ui.label(text);
-                    ui.add(egui::DragValue::new(v).range(0..=hi));
+                let cat = c.kind.catalogue();
+                // a part: switched on or off, and how many while it's on
+                let part = |ui: &mut egui::Ui, text: &str, on: &mut bool, v: &mut u32, hi: u32| {
+                    ui.checkbox(on, text);
+                    ui.add_enabled(*on, egui::DragValue::new(v).range(0..=hi));
+                    ui.end_row();
+                };
+                let switch = |ui: &mut egui::Ui, text: &str, on: &mut bool| {
+                    ui.checkbox(on, text);
+                    ui.label("");
                     ui.end_row();
                 };
                 egui::Grid::new("med.unit.grid")
@@ -61,18 +68,58 @@ impl CreaBimApp {
                                 .suffix(" mm"),
                         );
                         ui.end_row();
-                        for (i, gas) in MED_GASES.iter().enumerate() {
-                            count(ui, &format!("{} {gas}", t("Outlets")), &mut c.gases[i], 12);
-                        }
-                        count(ui, &t("Sockets 230 V"), &mut c.sockets, 24);
-                        count(ui, &t("Sockets 230 V, backed up"), &mut c.sockets_backed, 24);
-                        count(ui, &t("Data sockets RJ45"), &mut c.data, 12);
-                        count(ui, &t("USB charging"), &mut c.usb, 12);
-                        ui.label(t("Nurse call"));
-                        ui.checkbox(&mut c.nurse, "");
+                        ui.strong(t("Parts (switch off what the room doesn't need)"));
                         ui.end_row();
-                        ui.label(t("Light switch"));
-                        ui.checkbox(&mut c.light, "");
+                        for (i, gas) in MED_GASES.iter().enumerate() {
+                            if !c.kind.carries(i) {
+                                continue;
+                            }
+                            part(
+                                ui,
+                                &format!("{} {gas}", t("Outlets")),
+                                &mut c.on.gases[i],
+                                &mut c.gases[i],
+                                12,
+                            );
+                        }
+                        part(ui, &t("Sockets 230 V"), &mut c.on.sockets, &mut c.sockets, 24);
+                        part(
+                            ui,
+                            &t("Sockets 230 V, backed up"),
+                            &mut c.on.sockets_backed,
+                            &mut c.sockets_backed,
+                            24,
+                        );
+                        part(ui, &t("Data sockets RJ45"), &mut c.on.data, &mut c.data, 12);
+                        part(ui, &t("USB charging"), &mut c.on.usb, &mut c.usb, 12);
+                        switch(ui, &t("Nurse call"), &mut c.nurse);
+                        switch(ui, &t("Light switch"), &mut c.light);
+                        let w = cat.light_w;
+                        switch(
+                            ui,
+                            &format!("{} {:.0} W LED", t("Indirect light"), w[0]),
+                            &mut c.on.light_indirect,
+                        );
+                        switch(
+                            ui,
+                            &format!("{} {:.0} W LED", t("Direct light"), w[1]),
+                            &mut c.on.light_direct,
+                        );
+                        switch(
+                            ui,
+                            &format!("{} {:.0} W LED", t("Night light"), w[2]),
+                            &mut c.on.light_night,
+                        );
+                        switch(
+                            ui,
+                            &format!(
+                                "{} ({:.0} kg)",
+                                t("Medical rail 25 × 10, stainless"),
+                                cat.rail_load_kg
+                            ),
+                            &mut c.on.med_rail,
+                        );
+                        ui.separator();
                         ui.end_row();
                         ui.label(t("Gases on the left"));
                         ui.checkbox(&mut c.gases_left, "");
@@ -108,6 +155,7 @@ impl CreaBimApp {
                 c.ceiling = c.ceiling.max(c.height + 0.4);
                 ui.separator();
                 let l = medical::layout(&c);
+                let cat_set = c.kind.catalogue();
                 ui.label(egui::RichText::new(c.code()).strong());
                 if l.lengthened {
                     ui.weak(format!(
@@ -116,12 +164,34 @@ impl CreaBimApp {
                         l.length
                     ));
                 }
-                let sockets = (c.sockets + c.sockets_backed) as f64;
+                let f = c.fitted();
+                let sockets = (f.sockets + f.sockets_backed) as f64;
                 ui.weak(format!(
                     "{}: {} kVA · Cu 12 × 1 · STN EN ISO 11197, STN EN ISO 9170-1, STN EN ISO 7396-1",
                     t("Sockets' load (200 VA each)"),
                     crate::i18n::num(sockets * 0.2, 1)
                 ));
+                ui.weak(format!(
+                    "{} {}: {:.0} mm, {} {}{}, {} {}, {} {}, USB {}",
+                    t("Flídr medical catalogue set"),
+                    c.kind.short(),
+                    cat_set.length_mm,
+                    cat_set.gas_outlets,
+                    t("gas outlets"),
+                    if cat_set.agss > 0 {
+                        format!(" + AGSS {}", cat_set.agss)
+                    } else {
+                        String::new()
+                    },
+                    cat_set.sockets,
+                    t("sockets 230 V"),
+                    cat_set.weak,
+                    t("weak current"),
+                    cat_set.usb
+                ));
+                if ui.button(t("Catalogue set")).clicked() {
+                    c = MedUnitConfig::usual(c.kind);
+                }
                 ui.weak(t(
                     "The profile's depth (rail) and height (bridge) are estimates: check them with the maker.",
                 ));
@@ -137,11 +207,13 @@ impl CreaBimApp {
                 unit.name,
                 t("click in a plan or the 3D view to place it. Space turns it; Esc ends.")
             );
+            let what = unit.name.clone();
             self.plan.objects.current = Some(unit);
             self.plan.objects.offset = None;
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = Tool::Object;
+            self.park(what);
         }
         self.med_unit = if open { Some(c) } else { None };
     }

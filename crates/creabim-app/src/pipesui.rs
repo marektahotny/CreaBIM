@@ -195,6 +195,257 @@ pub fn valve_fields(
             v.flow_m3h = (q > 0.0).then_some(q);
             label = "Air flow";
         }
+        // a ceiling diffuser or valve: its duct goes up or down to the
+        // ceiling's underside and follows it (George 2026-11-25)
+        let mut under = v.under_ceiling;
+        let changed = crate::props::row(ui, "Under the ceiling", |ui| {
+            ui.checkbox(&mut under, "")
+                .on_hover_text(crate::i18n::tr(
+                    "The terminal sits at the underside of the ceiling over it (the suspended ceiling, else the slab) and follows it; its duct rises or drops to it, the run keeps its own height",
+                ))
+                .changed()
+        });
+        if changed {
+            v.under_ceiling = under;
+            label = "Under the ceiling";
+        }
+    }
+    if matches!(v.kind.as_str(), "ventilator" | "vyustO" | "vyfukVzt") {
+        use creabim_services::extractfans as xf;
+        let tr = crate::i18n::tr;
+        let list: Vec<(&str, String, &str)> = if v.kind == "ventilator" {
+            xf::FANS
+                .iter()
+                .map(|f| (f.id, format!("{} {}", f.maker, f.name), f.about))
+                .collect()
+        } else {
+            let of = if v.kind == "vyustO" {
+                xf::VALVES
+            } else {
+                xf::OUTLETS
+            };
+            // a product sold in sizes listed once, its size picked below
+            // (George 2026-11-25)
+            let mut seen: Vec<(&str, &str)> = vec![];
+            of.iter()
+                .filter(|a| {
+                    let key = (a.maker, a.name);
+                    let first = !seen.contains(&key);
+                    seen.push(key);
+                    first
+                })
+                .map(|a| (a.id, format!("{} {}", a.maker, a.name), a.about))
+                .collect()
+        };
+        let chosen = v.product.as_deref().and_then(xf::valve);
+        let family = |id: &str| {
+            xf::valve(id).map(|a| (a.maker, a.name)) == chosen.map(|c| (c.maker, c.name))
+        };
+        let shown = list
+            .iter()
+            .find(|x| Some(x.0) == v.product.as_deref() || (chosen.is_some() && family(x.0)))
+            .map_or(tr("Generic"), |x| x.1.clone());
+        crate::app::helpui::combo(ui, "Product")
+            .selected_text(shown)
+            .width(width)
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(v.product.is_none(), tr("Generic"))
+                    .clicked()
+                    && v.product.is_some()
+                {
+                    v.product = None;
+                    v.preset = None;
+                    label = "Product";
+                }
+                for (id, name, about) in &list {
+                    let on = v.product.as_deref() == Some(*id)
+                        || (v.kind != "ventilator" && chosen.is_some() && family(id));
+                    if ui
+                        .selectable_label(on, name)
+                        .on_hover_text(*about)
+                        .clicked()
+                        && !on
+                    {
+                        v.product = Some(id.to_string());
+                        v.preset = None;
+                        label = "Product";
+                    }
+                }
+            });
+        // the size of a product sold in several
+        if let Some(a) = chosen.filter(|a| v.kind != "ventilator" && a.sizes().len() > 1) {
+            crate::app::helpui::combo(ui, "Size")
+                .selected_text(format!("Ø{:.0}", a.dn))
+                .width(width)
+                .show_ui(ui, |ui| {
+                    for s in a.sizes() {
+                        let on = s.id == a.id;
+                        if ui
+                            .selectable_label(on, format!("Ø{:.0}", s.dn))
+                            .on_hover_text(s.about)
+                            .clicked()
+                            && !on
+                        {
+                            v.product = Some(s.id.to_string());
+                            label = "Product";
+                        }
+                    }
+                });
+        }
+        if let Some(f) = v
+            .product
+            .as_deref()
+            .and_then(xf::fan)
+            .filter(|f| f.speeds.len() > 1)
+        {
+            let now = f.speed(v.preset.as_deref()).name;
+            crate::app::helpui::combo(ui, "Speed")
+                .selected_text(now)
+                .width(width)
+                .show_ui(ui, |ui| {
+                    for sp in f.speeds {
+                        let text = format!("{} ({} m³/h, {} W)", sp.name, sp.q_free, sp.watts);
+                        if ui.selectable_label(now == sp.name, text).clicked() && now != sp.name {
+                            v.preset = Some(sp.name.to_string());
+                            label = "Speed";
+                        }
+                    }
+                });
+        }
+    }
+    let products: Vec<&creabim_services::herzvalves::HerzValve> =
+        creabim_services::herzvalves::HERZ_VALVES
+            .iter()
+            .filter(|h| h.kind == v.kind)
+            .collect();
+    if !products.is_empty() {
+        use creabim_services::herzvalves;
+        let tr = crate::i18n::tr;
+        let dn = herzvalves::dn_for(pipe.outer_mm, pipe.inner_mm);
+        let shown = match v.product.as_deref() {
+            None => tr("HERZ default on HERZ pipes"),
+            Some("") => tr("Generic valve"),
+            Some(id) => herzvalves::by_id(id).map_or(id.to_string(), |h| h.name.to_string()),
+        };
+        crate::app::helpui::combo(ui, "Product")
+            .selected_text(shown)
+            .width(width)
+            .show_ui(ui, |ui| {
+                let mut set = |ui: &mut egui::Ui, p: Option<String>, text: String| {
+                    if ui.selectable_label(v.product == p, text).clicked() && v.product != p {
+                        v.product = p;
+                        v.preset = None;
+                        label = "Product";
+                    }
+                };
+                set(ui, None, tr("HERZ default on HERZ pipes"));
+                set(ui, Some(String::new()), tr("Generic valve"));
+                for h in &products {
+                    let z = h.size_for(dn);
+                    set(
+                        ui,
+                        Some(h.id.to_string()),
+                        format!("{} DN {} ({})", h.name, z.dn, z.code),
+                    );
+                }
+            });
+        let chosen = match v.product.as_deref() {
+            Some("") => None,
+            Some(id) => herzvalves::by_id(id),
+            None => products.first().copied().filter(|_| {
+                creabim_services::pipe_types::by_id(&pipe.pipe_type)
+                    .and_then(|t| t.manufacturer.as_deref())
+                    .is_some_and(|m| m.starts_with("HERZ"))
+            }),
+        };
+        let chosen = match (v.product.as_deref(), chosen) {
+            (None, Some(_)) => {
+                let medium = match pipe.kind() {
+                    creabim_core::mep::SystemKind::CoolingSupply
+                    | creabim_core::mep::SystemKind::CoolingReturn => "chlad",
+                    creabim_core::mep::SystemKind::HeatingSupply
+                    | creabim_core::mep::SystemKind::HeatingReturn => "ukur",
+                    _ => "voda",
+                };
+                herzvalves::default_for(&v.kind, medium, dn)
+            }
+            (_, c) => c,
+        };
+        if let Some(h) = chosen {
+            let z = h.size_for(dn);
+            let pre = h.presets_of(z);
+            if !pre.is_empty() {
+                let now = v.preset.clone().unwrap_or_default();
+                crate::app::helpui::combo(ui, "Presetting")
+                    .selected_text(if now.is_empty() {
+                        tr("wide open")
+                    } else {
+                        now.clone()
+                    })
+                    .width(width)
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(now.is_empty(), tr("wide open"))
+                            .clicked()
+                            && !now.is_empty()
+                        {
+                            v.preset = None;
+                            label = "Presetting";
+                        }
+                        for (p, kv) in pre {
+                            let text = format!("{p} (kv {})", crate::i18n::num(*kv, 3));
+                            if ui.selectable_label(now == *p, text).clicked() && now != *p {
+                                v.preset = Some(p.to_string());
+                                label = "Presetting";
+                            }
+                        }
+                    });
+            } else if z.kvs > 0.0 {
+                crate::props::row(ui, "kvs", |ui| {
+                    ui.label(format!("{} m³/h", crate::i18n::num(z.kvs, 2)))
+                });
+            }
+        }
+    }
+    if v.kind == "spotrebic" {
+        let mut q = v.power_kw.unwrap_or(0.0);
+        let changed = crate::props::row(ui, "Heat input", |ui| {
+            crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut q)
+                    .range(0.0..=2000.0)
+                    .speed(0.5)
+                    .suffix(" kW"),
+            )
+            .on_hover_text(crate::i18n::tr(
+                "0 takes it from the appliance's name: a boiler 25 kW, a cooker 8 kW...",
+            ))
+            .changed()
+        });
+        if changed {
+            v.power_kw = (q > 0.0).then_some(q);
+            label = "Heat input";
+        }
+        const CATS: [&str; 5] = [
+            "by its name",
+            "K1 cooking, instantaneous water heater",
+            "K2 local heater, storage water heater",
+            "K3 boiler",
+            "K4 industrial",
+        ];
+        let now = v.gas_cat.unwrap_or(0).min(4) as usize;
+        crate::app::helpui::combo(ui, "Diversity category")
+            .selected_text(crate::i18n::tr(CATS[now]))
+            .width(width)
+            .show_ui(ui, |ui| {
+                for (i, c) in CATS.iter().enumerate() {
+                    if ui.selectable_label(now == i, crate::i18n::tr(c)).clicked() && now != i {
+                        v.gas_cat = (i > 0).then_some(i as u8);
+                        label = "Diversity category";
+                    }
+                }
+            });
     }
     if v.kind == "hydrant" {
         let now = v.hydrant_def();
@@ -265,7 +516,7 @@ pub fn pipe_fields(ui: &mut egui::Ui, p: &mut Pipe) -> &'static str {
         .show_ui(ui, |ui| {
             for t in &types {
                 let r = ui.selectable_label(p.pipe_type == t.id, crate::i18n::tw(t.name.clone()));
-                let r = r.on_hover_text(format!("{}\n{}", t.joint, t.standards));
+                let r = r.on_hover_text(crate::i18n::tr(&format!("{}\n{}", t.joint, t.standards)));
                 if r.clicked() && p.pipe_type != t.id {
                     set_type(p, t);
                     label = "Pipe type";
@@ -296,32 +547,90 @@ pub fn pipe_fields(ui: &mut egui::Ui, p: &mut Pipe) -> &'static str {
             }
         }
     }
-    let mut ins = p.insulation_mm / 1000.0;
-    if num(ui, "Insulation", &mut ins, 0.0, 0.2) {
-        p.insulation_mm = (ins * 1000.0).round();
-        label = "Pipe insulation";
+    // insulation: its system's (for the schedule), or a thickness picked
+    if p.height_mm.is_none() {
+        let auto = creabim_core::mep::default_insulation_mm(
+            p.kind(),
+            &p.pipe_type,
+            p.outer_mm,
+            p.inner_mm,
+        );
+        let mm = |v: f64| {
+            if v > 0.0 {
+                format!("{v:.0} mm")
+            } else {
+                crate::i18n::tr("none")
+            }
+        };
+        let shown = if p.insulation_is_auto() {
+            format!("{} ({})", crate::i18n::tr("by its system"), mm(auto))
+        } else {
+            mm(p.insulation_mm)
+        };
+        crate::props::row(ui, "Insulation", |ui| {
+            crate::app::helpui::combo(ui, "pipe.insulation")
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(
+                            p.insulation_is_auto(),
+                            format!("{} ({})", crate::i18n::tr("by its system"), mm(auto)),
+                        )
+                        .on_hover_text(crate::i18n::tr("Hot water, circulation and heating: heat insulation; cold water and cooling: against condensation; drainage, gas and underfloor heating: none. Counted in the fittings schedule."))
+                        .clicked()
+                    {
+                        p.insulation_mm = 0.0;
+                        p.insulation_set = false;
+                        label = "Pipe insulation";
+                    }
+                    for v in creabim_core::mep::INSULATION_CHOICES {
+                        let on = !p.insulation_is_auto() && p.insulation_mm == v;
+                        if ui.selectable_label(on, mm(v)).clicked() {
+                            p.insulation_mm = v;
+                            p.insulation_set = true;
+                            label = "Pipe insulation";
+                        }
+                    }
+                });
+        });
+    } else {
+        let mut ins = p.insulation_mm / 1000.0;
+        if num(ui, "Insulation", &mut ins, 0.0, 0.2) {
+            p.insulation_mm = (ins * 1000.0).round();
+            p.insulation_set = true;
+            label = "Pipe insulation";
+        }
     }
     if num(ui, "Start height", &mut p.start.z, -20.0, 50.0)
         | num(ui, "End height", &mut p.end.z, -20.0, 50.0)
     {
         label = "Pipe height";
     }
-    if p.kind().is_gravity() {
-        ui.label(
-            egui::RichText::new(format!(
-                "{}: {} %",
-                crate::i18n::tr("Fall"),
-                crate::i18n::num(p.fall_pct(), 1)
-            ))
-            .weak(),
-        );
+    // a drain's fall in per cent: typed, its end drops or rises to it
+    let run = p.start.truncate().distance(p.end.truncate());
+    if p.kind().is_gravity() && run > 1e-6 {
+        let mut pct = (p.fall_pct() * 100.0).round() / 100.0;
+        crate::props::row(ui, "Slope", |ui| {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut pct)
+                        .speed(0.1)
+                        .range(-100.0..=100.0)
+                        .suffix(" %"),
+                )
+                .changed()
+            {
+                p.end.z = p.start.z - run * pct / 100.0;
+                label = "Pipe slope";
+            }
+        });
     }
     ui.label(
-        egui::RichText::new(format!(
+        egui::RichText::new(crate::i18n::tr(&format!(
             "{}: {:.2} m",
             crate::i18n::tr("Length"),
             p.length()
-        ))
+        )))
         .weak(),
     );
     label
@@ -344,6 +653,8 @@ mod tests {
             inner_mm: 16.0,
             height_mm: None,
             insulation_mm: 0.0,
+            insulation_set: false,
+            mark: None,
         }
     }
 
@@ -383,6 +694,15 @@ pub struct PipeDraft {
     /// The height was changed while a run is being drawn: the next click
     /// first rises or drops to it where the run is.
     pub height_set: bool,
+    /// A duct's run started on nothing begins at an air terminal under
+    /// the ceiling there: the run rises or drops from it to the height
+    /// set (George 2026-11-25).
+    pub terminal_start: bool,
+    /// Where the run being drawn began at such a terminal.
+    pub terminal_at: Option<DVec2>,
+    /// How much a drain falls along its run, per cent; nothing for the
+    /// systems under pressure.
+    pub slope_pct: f64,
 }
 
 impl Default for PipeDraft {
@@ -401,7 +721,19 @@ impl PipeDraft {
             height: s.height,
             last_z: None,
             height_set: false,
+            terminal_start: true,
+            terminal_at: None,
+            slope_pct: s.slope_pct,
         }
+    }
+
+    /// Does the system run by gravity, so its pipes are drawn falling?
+    pub fn is_air(&self) -> bool {
+        matches!(self.kind(), SystemKind::AirSupply | SystemKind::AirExhaust)
+    }
+
+    pub fn falls(&self) -> bool {
+        self.system_def().is_some_and(|s| s.slope_pct > 0.0)
     }
 
     pub fn system_def(&self) -> Option<&'static creabim_core::mep::SystemDef> {
@@ -454,7 +786,7 @@ impl PipeDraft {
     /// drain falling by its system's slope from where the run is.
     pub fn pipe(&self, level: ElementId, a: DVec2, b: DVec2) -> Pipe {
         let z0 = self.z_next();
-        let fall = self.system_def().map_or(0.0, |s| s.slope_pct) / 100.0;
+        let fall = if self.falls() { self.slope_pct } else { 0.0 } / 100.0;
         let z1 = z0 - fall * a.distance(b);
         let mut p = Pipe {
             level,
@@ -467,6 +799,8 @@ impl PipeDraft {
             inner_mm: self.nominal_mm,
             height_mm: None,
             insulation_mm: 0.0,
+            insulation_set: false,
+            mark: None,
         };
         if let Some(t) = self.pipe_type() {
             set_size(&mut p, t, self.nominal_mm);
@@ -481,20 +815,67 @@ use glam::{DVec2, DVec3};
 /// How near a click must be to a fixture's connector to join it, m.
 const CONNECTOR_REACH: f64 = 0.05;
 
-/// The fixture connector on `level` nearest `p`, within reach.
+/// The fixture connector on `level` a click at `p` joins: one of the
+/// `system` the tool draws within reach first, then that system's on the
+/// object clicked anywhere on (a click on a basin with cold water set
+/// takes its cold water, at its height, George 2026-11-23), then any
+/// other within reach.
 pub fn connector_at(
     model: &creabim_core::Model,
     level: ElementId,
     p: DVec2,
+    system: Option<&str>,
 ) -> Option<creabim_core::fixture::Connector> {
-    model
-        .iter()
-        .filter(|e| matches!(&e.kind, ElementKind::Object(o) if o.level == level))
-        .flat_map(|e| creabim_core::fixture::connectors(model, e))
-        .map(|c| (c.at.truncate().distance(p), c))
-        .filter(|(d, _)| *d <= CONNECTOR_REACH)
-        .min_by(|a, b| a.0.total_cmp(&b.0))
-        .map(|(_, c)| c)
+    let mut best: Option<(f64, creabim_core::fixture::Connector)> = None;
+    for e in model.iter() {
+        let ElementKind::Object(o) = &e.kind else {
+            continue;
+        };
+        if o.level != level {
+            continue;
+        }
+        let conns = creabim_core::fixture::connectors(model, e);
+        if conns.is_empty() {
+            continue;
+        }
+        // on the object: inside its outline in plan
+        let on = creabim_core::objects::type_of(model, e).is_some_and(|t| {
+            let (lo, hi) = t.bounds();
+            let d = p - o.position;
+            let (s, c) = (-o.rotation.to_radians()).sin_cos();
+            let q = DVec2::new(d.x * c - d.y * s, d.x * s + d.y * c);
+            q.x >= lo.x && q.x <= hi.x && q.y >= lo.y && q.y <= hi.y
+        });
+        for c in conns {
+            let d = c.at.truncate().distance(p);
+            let fits = system.is_none_or(|s| c.kind.code() == s);
+            let key = match (d <= CONNECTOR_REACH, fits, on) {
+                (true, true, _) => d,
+                (false, true, true) if system.is_some() => 1.0 + d,
+                (true, false, _) => 2.0 + d,
+                _ => continue,
+            };
+            if best.as_ref().is_none_or(|b| key < b.0) {
+                best = Some((key, c));
+            }
+        }
+    }
+    best.map(|b| b.1)
+}
+
+/// Does an air terminal sit at the duct end `at` (heights above its
+/// level)?
+fn terminal_end(model: &creabim_core::Model, at: DVec3) -> bool {
+    model.iter().any(|e| match &e.kind {
+        ElementKind::Valve(v) if v.is_air_terminal() => match model.get(v.pipe).map(|x| &x.kind) {
+            Some(ElementKind::Pipe(p)) => {
+                let end = if v.t < 0.5 { p.start } else { p.end };
+                end.distance(at) < 0.01
+            }
+            _ => false,
+        },
+        _ => false,
+    })
 }
 
 /// How near a click must be to a pipe's end or axis to join it, m.
@@ -564,6 +945,68 @@ pub fn pipe_node_at(
     best.map(|b| b.2)
 }
 
+/// Splits the pipe of `level` whose axis passes through `at` (not at its
+/// ends) into two there, so that a run joined to its middle meets it at
+/// a node and the tee or branch is found and drawn. Valves keep their
+/// place, on whichever part they fall.
+pub fn split_at(
+    model: &creabim_core::Model,
+    mut tx: Transaction,
+    level: ElementId,
+    at: DVec3,
+) -> Transaction {
+    for e in model.iter() {
+        let ElementKind::Pipe(q) = &e.kind else {
+            continue;
+        };
+        if q.level != level {
+            continue;
+        }
+        let run = q.end - q.start;
+        let len2 = run.length_squared();
+        if len2 < 1e-9 {
+            continue;
+        }
+        let s = (at - q.start).dot(run) / len2;
+        let len = len2.sqrt();
+        // well inside it: not within 1 cm of an end
+        if s * len < 0.01 || (1.0 - s) * len < 0.01 {
+            continue;
+        }
+        if (q.start + run * s).distance(at) > 0.003 {
+            continue;
+        }
+        let mut first = e.clone();
+        let mut second = Element::new(e.name.clone(), ElementKind::Pipe(q.clone()));
+        if let (ElementKind::Pipe(a), ElementKind::Pipe(b)) = (&mut first.kind, &mut second.kind) {
+            a.end = at;
+            b.start = at;
+        }
+        let second_id = second.id;
+        tx = tx.replace(e.clone(), first).insert(second);
+        for v in model.iter() {
+            let ElementKind::Valve(x) = &v.kind else {
+                continue;
+            };
+            if x.pipe != e.id {
+                continue;
+            }
+            let mut n = v.clone();
+            if let ElementKind::Valve(y) = &mut n.kind {
+                if x.t <= s {
+                    y.t = x.t / s;
+                } else {
+                    y.pipe = second_id;
+                    y.t = (x.t - s) / (1.0 - s);
+                }
+            }
+            tx = tx.replace(v.clone(), n);
+        }
+        return tx;
+    }
+    tx
+}
+
 fn insert(tx: Transaction, pipe: Pipe) -> (Transaction, ElementId) {
     let name = format!("{} {}", pipe.system, size_label(&pipe));
     let e = Element::new(name, ElementKind::Pipe(pipe));
@@ -585,12 +1028,14 @@ pub fn click(
     state: &mut crate::planview::PlanState,
     selection: &mut crate::selection::Selection,
 ) -> Result<(), ModelError> {
-    let conn = connector_at(doc.model(), level, p);
+    let system = state.members.pipe.system.clone();
+    let conn = connector_at(doc.model(), level, p, Some(&system));
     let draft = &mut state.members.pipe;
     match state.pending {
         None => {
             draft.last_z = None;
             draft.height_set = false;
+            draft.terminal_at = None;
             let mut p = p;
             if let Some(c) = conn {
                 if let Some(def) = creabim_core::mep::system(c.kind.code()) {
@@ -599,6 +1044,10 @@ pub fn click(
                     }
                 }
                 draft.last_z = Some(c.at.z);
+                // the pipe as big as the fixture's connection
+                if c.dn > 0.0 {
+                    draft.nominal_mm = c.dn;
+                }
                 p = c.at.truncate();
             } else if let Some(n) = pipe_node_at(doc.model(), level, p, draft.height, None) {
                 // going on from a pipe: as it is, at its height
@@ -610,7 +1059,17 @@ pub fn click(
                 draft.pipe_type = n.pipe_type.clone();
                 draft.nominal_mm = n.nominal_mm;
                 draft.last_z = Some(n.at.z);
+                // from a terminal's duct end: on at the height set
+                draft.height_set = draft.is_air() && terminal_end(doc.model(), n.at);
                 p = n.at.truncate();
+            } else if draft.is_air() && draft.terminal_start {
+                // on nothing: a terminal under the ceiling there, the
+                // run then rising or dropping to the height set
+                let floor = doc.model().level(level).map_or(0.0, |l| l.elevation);
+                let z = creabim_core::objects::ceiling_at(doc.model(), level, p) - floor;
+                draft.last_z = Some(z);
+                draft.height_set = true;
+                draft.terminal_at = Some(p);
             }
             state.pending = Some(p);
             state.status = Some(format!(
@@ -626,18 +1085,36 @@ pub fn click(
             let mut tx = Transaction::new("Draw pipe");
             let mut last = None;
             // the height was changed: rise or drop to it where the run is
+            let mut first = None;
             if let Some((z0, z1)) = draft.rise() {
                 let (t, id) = insert(tx, draft.riser(level, a, z0, z1));
                 tx = t;
                 last = Some(id);
+                first = Some(id);
                 draft.last_z = Some(z1);
             }
             draft.height_set = false;
+            // the run began at a terminal under the ceiling: it sits on
+            // the start of the first duct, held there
+            let terminal = draft.terminal_at.take().map(|_| {
+                let code = if draft.kind() == SystemKind::AirSupply {
+                    "vyustP"
+                } else {
+                    "vyustO"
+                };
+                let name = creabim_core::mep::valve_kind(code).map_or(code, |k| k.name);
+                (code, crate::i18n::tr(name))
+            });
             if a.distance(p) <= 0.01 {
                 // on the run's own point: the riser alone
                 let Some(id) = last else {
                     return Ok(());
                 };
+                if let Some((code, name)) = terminal {
+                    let mut v = creabim_core::mep::Valve::new(id, 0.0, code);
+                    v.under_ceiling = true;
+                    tx = tx.insert(Element::new(name, ElementKind::Valve(v)));
+                }
                 selection.only(id);
                 state.status = Some(format!("Z {} m", crate::i18n::num(draft.z_now(), 3)));
                 return doc.commit(tx);
@@ -652,10 +1129,21 @@ pub fn click(
             });
             let b = join.map_or(p, |at| at.truncate());
             let pipe = draft.pipe(level, a, b);
+            // started or ended on the middle of a pipe: that pipe is
+            // split there, so the branch meets it at a fitting
+            tx = split_at(doc.model(), tx, level, pipe.start);
+            if let Some(at) = join {
+                tx = split_at(doc.model(), tx, level, at);
+            }
             let end = pipe.end;
             let (t, id) = insert(tx, pipe);
             tx = t;
             last = Some(id);
+            if let Some((code, name)) = terminal {
+                let mut v = creabim_core::mep::Valve::new(first.unwrap_or(id), 0.0, code);
+                v.under_ceiling = true;
+                tx = tx.insert(Element::new(name, ElementKind::Valve(v)));
+            }
             draft.last_z = Some(end.z);
             if let Some(at) = join {
                 if (at.z - end.z).abs() > 0.01 {
@@ -714,14 +1202,22 @@ pub fn preview(
         text = format!("↕ {} → {}   ", num(z0), num(z1));
     }
     if (p.start.z - p.end.z).abs() > 5e-4 {
-        text += &format!("Z {} → {} m", num(p.start.z), num(p.end.z));
+        text += &format!(
+            "Z {} → {} m   {} %",
+            num(p.start.z),
+            num(p.end.z),
+            crate::i18n::num(draft.slope_pct, 2)
+        );
     } else {
         text += &format!("Z {} m", num(p.start.z));
     }
     if let Some(at) = project(b.truncate().extend(a.z)) {
         let font = egui::FontId::proportional(12.0);
         let galley = painter.layout_no_wrap(text, font, egui::Color32::BLACK);
-        let pos = at + egui::vec2(14.0, 10.0);
+        // left of the cursor and under it: the snap's name, the length
+        // along the run and the readout of length and angle are on its
+        // right, and wrote over it there
+        let pos = at + egui::vec2(-14.0 - galley.size().x, 30.0);
         let back = egui::Rect::from_min_size(pos, galley.size()).expand(3.0);
         painter.rect_filled(back, 3.0, egui::Color32::from_white_alpha(230));
         painter.galley(pos, galley, egui::Color32::BLACK);
@@ -734,7 +1230,7 @@ pub fn tool_options(draft: &PipeDraft) -> Vec<serde_json::Value> {
     let sys = draft.system_def().map_or(draft.system.clone(), |s| {
         format!("{} – {}", s.code, crate::i18n::tr(s.name))
     });
-    vec![
+    let mut out = vec![
         json!({
             "kind": "menu", "key": "pipe.system", "label": "System", "value": sys, "icon": "pipe",
             "hint": "The system new pipes are in: cold and hot water, drainage, gas, heating, medical gases, ventilation",
@@ -749,11 +1245,26 @@ pub fn tool_options(draft: &PipeDraft) -> Vec<serde_json::Value> {
             "hint": "Size of new pipes",
         }),
         json!({
-            "kind": "number", "key": "member.pipe_height", "label": "Height", "value": draft.height,
+            "kind": "number", "key": "member.pipe_height", "label": "Height", "value": draft.rise().map_or(draft.z_now(), |r| r.1),
             "unit": "m", "step": 0.05, "min": -5.0, "max": 20.0,
-            "hint": "Height of the pipe's axis above the floor (Z). Changed while a run is drawn, the next click rises or drops to it where the run is; a click on the same point draws the riser alone",
+            "hint": "Height of the pipe's axis above the floor (Z): where the run is now, also after it caught a connection's height. Changed while a run is drawn, the next click rises or drops to it where the run is; a click on the same point draws the riser alone",
         }),
-    ]
+    ];
+    if draft.is_air() {
+        out.push(json!({
+            "kind": "toggle", "id": "reach:pipe_terminal", "label": "Terminal at the start", "on": draft.terminal_start,
+            "icon": "fan",
+            "hint": "A run started on nothing begins at a diffuser or valve under the ceiling there; the duct rises or drops from it to the Height set",
+        }));
+    }
+    if draft.falls() {
+        out.push(json!({
+            "kind": "number", "key": "member.pipe_slope", "label": "Slope", "value": draft.slope_pct,
+            "unit": "%", "step": 0.5, "min": 0.0, "max": 100.0,
+            "hint": "How much the drain falls along its run, in per cent: each pipe starts where the last one ended and falls on from there",
+        }));
+    }
+    out
 }
 
 /// The items of the Pipe tool's menus, as (action, text, checked).
@@ -803,11 +1314,16 @@ pub fn action(draft: &mut PipeDraft, head: &str, arg: &str) -> bool {
     match head {
         "pipe" | "pipe.system" => {
             if let Some(s) = creabim_core::mep::system(arg) {
-                let height = draft.height;
+                let (height, slope) = (draft.height, draft.slope_pct);
+                let same = draft.system == s.code;
                 let keep_height = head == "pipe.system" && s.kind == draft.kind();
                 *draft = PipeDraft::for_system(s);
                 if keep_height {
                     draft.height = height;
+                }
+                // the slope typed stays while the system does
+                if same {
+                    draft.slope_pct = slope;
                 }
             }
         }
@@ -838,6 +1354,26 @@ pub fn action(draft: &mut PipeDraft, head: &str, arg: &str) -> bool {
 #[cfg(test)]
 mod tool_tests {
     use super::*;
+
+    #[test]
+    fn a_drain_falls_by_the_slope_set_for_it() {
+        let mut d = PipeDraft::for_system(creabim_core::mep::system("K").unwrap());
+        assert!(d.falls() && d.slope_pct == 2.0);
+        d.slope_pct = 3.5;
+        let p = d.pipe(ElementId::new(), DVec2::ZERO, DVec2::new(4.0, 0.0));
+        assert!((p.start.z - p.end.z - 0.14).abs() < 1e-9);
+        // the bar offers the slope for drains only
+        let has = |d: &PipeDraft| {
+            tool_options(d)
+                .iter()
+                .any(|o| o["key"] == "member.pipe_slope")
+        };
+        assert!(has(&d));
+        let w = PipeDraft::for_system(creabim_core::mep::system("SV").unwrap());
+        assert!(!w.falls() && !has(&w));
+        let p = w.pipe(ElementId::new(), DVec2::ZERO, DVec2::new(4.0, 0.0));
+        assert_eq!(p.start.z, p.end.z);
+    }
 
     #[test]
     fn a_drain_falls_along_its_run_and_goes_on_from_its_end() {
@@ -884,13 +1420,18 @@ mod tool_tests {
         place(4.0);
         let model = doc.model();
         let hot = |x: f64| {
-            let c = connector_at(model, level, DVec2::new(x - 0.08, 2.98)).unwrap();
+            let c = connector_at(model, level, DVec2::new(x - 0.08, 2.98), None).unwrap();
             assert_eq!(c.kind, creabim_core::fixture::ConnKind::TV);
             c
         };
         let (a, b) = (hot(1.0), hot(4.0));
+        // the tool on cold water, a click on the basin by its hot tap
+        // takes its cold one (George 2026-11-23)
+        let cold = connector_at(model, level, DVec2::new(1.0 - 0.08, 2.98), Some("SV")).unwrap();
+        assert_eq!(cold.kind, creabim_core::fixture::ConnKind::SV);
         let mut state = crate::planview::PlanState::default();
         let mut sel = crate::selection::Selection::default();
+        assert!(action(&mut state.members.pipe, "pipe", "TV"));
         click(
             &mut doc,
             level,
@@ -918,6 +1459,40 @@ mod tool_tests {
             .next()
             .unwrap();
         assert!((rise.end - b.at).length() < 1e-9);
+    }
+
+    #[test]
+    fn a_duct_run_begins_at_a_terminal_under_the_ceiling_then_goes_at_its_height() {
+        use creabim_core::Document;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let mut state = crate::planview::PlanState::default();
+        let mut sel = crate::selection::Selection::default();
+        assert!(action(&mut state.members.pipe, "pipe", "VZP"));
+        state.members.pipe.height = 2.0;
+        let at = DVec2::new(3.0, 3.0);
+        let floor = doc.model().level(level).unwrap().elevation;
+        let ceiling = creabim_core::objects::ceiling_at(doc.model(), level, at) - floor;
+        click(&mut doc, level, at, &mut state, &mut sel).unwrap();
+        click(&mut doc, level, DVec2::new(5.0, 3.0), &mut state, &mut sel).unwrap();
+        let model = doc.model();
+        let (v, riser) = model
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Valve(v) if v.is_air_terminal() => match model.get(v.pipe)?.kind {
+                    ElementKind::Pipe(ref p) => Some((v.clone(), p.clone())),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        assert!(v.under_ceiling && v.kind == "vyustP" && v.t == 0.0);
+        // from the terminal at the ceiling down to the run's 2.0 m
+        assert_eq!(riser.start, at.extend(ceiling));
+        assert_eq!(riser.end, at.extend(2.0));
+        assert!(model.iter().any(|e| matches!(&e.kind,
+            ElementKind::Pipe(p) if p.end == DVec3::new(5.0, 3.0, 2.0) && p.start == at.extend(2.0))));
+        assert!(creabim_core::mep::settle_under_ceiling(model).is_none());
     }
 
     #[test]
@@ -1024,7 +1599,11 @@ mod tool_tests {
             &mut sel,
         )
         .unwrap();
-        assert_eq!(doc.model().len(), before + 2, "the pipe and its rise");
+        assert_eq!(
+            doc.model().len(),
+            before + 3,
+            "the pipe, its rise and the high pipe split where it joins"
+        );
         assert!(state.pending.is_none());
         let rise = doc
             .model()

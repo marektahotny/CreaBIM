@@ -57,6 +57,7 @@ impl SlabMode {
             (Tool::Room, SlabMode::FillRoom) => "Click inside walls: the room fills the space to their inner faces and follows them when they move.",
             (Tool::Room, SlabMode::FromSketch) => "Click inside a closed sketch lying flat: it becomes a room with its outline, and the sketch is used up.",
             (Tool::Ceiling, SlabMode::FillRoom) => "Click inside a room: the ceiling goes over it and follows it.",
+            (Tool::Slab, SlabMode::FillRoom) => "Click inside a room: the slab fills it to the outer face of the outer walls' load-bearing layer and to the centre lines of the inner walls.",
             (Tool::Ceiling, SlabMode::FromSketch) => "Click inside a closed sketch lying flat: it becomes a ceiling with its outline, and the sketch is used up.",
             _ => self.hint(),
         }
@@ -172,8 +173,10 @@ pub fn controls(
                             // A5-3: a sure way to close, whatever the pointer is on
                             let can = state.outline.as_ref().is_some_and(|o| o.points.len() >= 3);
                             if ui
-                                .add_enabled(can, egui::Button::new("Close (C)"))
-                                .on_hover_text("Close the outline back to its first point")
+                                .add_enabled(can, egui::Button::new(crate::i18n::t("Close (C)")))
+                                .on_hover_text(crate::i18n::t(
+                                    "Close the outline back to its first point",
+                                ))
                                 .clicked()
                             {
                                 state.close_outline = true;
@@ -299,6 +302,16 @@ pub fn click(
     state: &mut PlanState,
     selection: &mut Selection,
 ) -> Result<(), creabim_core::ModelError> {
+    // an edge zone is only a line or a polyline (George 2026-11-28)
+    if state.tool == crate::planview::Tool::UfhZone
+        && matches!(
+            state.ufh_zone,
+            crate::roomtool::UfhZone::Edge | crate::roomtool::UfhZone::Route
+        )
+    {
+        state.slab_mode = SlabMode::Polygon;
+        state.pending = None;
+    }
     match state.slab_mode {
         SlabMode::Polygon => {
             let mut o = crate::outline::Outline::new_slab(doc.model(), level, p);
@@ -306,7 +319,8 @@ pub fn click(
                 o.roof = Some((state.members.roof_shape, state.members.roof_pitch));
             }
             o.shaft = state.tool == crate::planview::Tool::Shaft;
-            o.space = crate::roomtool::Space::of(state.tool);
+            o.space = crate::roomtool::Space::of_state(state);
+            o.place = state.members.place;
             let cat = if o.roof.is_some() {
                 creabim_core::TypeCategory::Roof
             } else {
@@ -341,12 +355,18 @@ pub fn click(
                     return Ok(());
                 }
                 let rect = vec![lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
-                if let Some(space) = crate::roomtool::Space::of(state.tool) {
-                    state.status =
-                        Some(crate::roomtool::drawn(doc, space, level, rect, selection)?);
+                if let Some(space) = crate::roomtool::Space::of_state(state) {
+                    state.status = Some(crate::roomtool::drawn(
+                        doc,
+                        space,
+                        level,
+                        rect,
+                        &{ state.members.place },
+                        selection,
+                    )?);
                     return Ok(());
                 }
-                let (e, label) = crate::memberstool::outline_element(
+                let (e, label) = crate::memberstool::placed_outline_element(
                     doc.model(),
                     state,
                     Slab::new(
@@ -361,11 +381,25 @@ pub fn click(
             }
         },
         SlabMode::FillRoom => {
-            if let Some(space) = crate::roomtool::Space::of(state.tool) {
-                state.status = Some(crate::roomtool::fill(doc, space, level, p, selection)?);
+            if let Some(space) = crate::roomtool::Space::of_state(state) {
+                state.status = Some(crate::roomtool::fill(
+                    doc,
+                    space,
+                    level,
+                    p,
+                    &{ state.members.place },
+                    selection,
+                )?);
                 return Ok(());
             }
-            let Some(outline) = creabim_core::room_outline(doc.model(), level, p) else {
+            // a slab with its floor on it reaches the outer walls' cores
+            let slab = state.tool == crate::planview::Tool::Slab;
+            let found = if slab {
+                creabim_core::room_outline_to_core(doc.model(), level, p)
+            } else {
+                creabim_core::room_outline(doc.model(), level, p)
+            };
+            let Some(outline) = found else {
                 state.status = Some(
                     "Not closed: the walls here leave a gap (shown in red), so there's no room to fill. Close it, or draw the outline (1 Polygon, 2 Rectangle, 4 From sketch).".into(),
                 );
@@ -377,16 +411,23 @@ pub fn click(
                 state.status = Some(msg);
                 return Ok(());
             }
-            let (e, label) = crate::memberstool::outline_element(
+            let (e, label) = crate::memberstool::placed_outline_element(
                 doc.model(),
                 state,
                 Slab::new(level, outline, NEW_SLAB_THICKNESS),
             );
             selection.only(e.id);
-            state.status = Some(format!(
-                "{} added over the room, to the walls' centre lines.",
-                e.name
-            ));
+            state.status = Some(if slab {
+                format!(
+                    "{} added over the room: to the outer face of the outer walls' load-bearing layer, to the centre lines of the inner walls.",
+                    e.name
+                )
+            } else {
+                format!(
+                    "{} added over the room, to the walls' centre lines.",
+                    e.name
+                )
+            });
             doc.commit(Transaction::new(label).insert(e))
         }
         SlabMode::FromSketch => {
@@ -419,7 +460,7 @@ pub fn click(
                 }
                 return doc.commit(tx);
             }
-            if let Some(space) = crate::roomtool::Space::of(state.tool) {
+            if let Some(space) = crate::roomtool::Space::of_state(state) {
                 let Some(ElementKind::Sketch(sk)) = doc.model().get(id).map(|e| &e.kind) else {
                     return Ok(());
                 };
@@ -430,6 +471,7 @@ pub fn click(
                             space,
                             slab.level,
                             slab.outline(),
+                            &{ state.members.place },
                             selection,
                         )?);
                     }

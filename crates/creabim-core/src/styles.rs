@@ -300,6 +300,18 @@ pub struct HatchPattern {
     pub lines: Vec<HatchLine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tile: Option<Tile>,
+    /// Draw batt insulation loops along the fill's longest side, as wide
+    /// as the fill is thick (a layer of insulation), on top of the lines.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub batt: bool,
+    /// Draw a waterproofing strip along the fill's middle: a thin line
+    /// with heavy dashes on it, whatever the fill's thickness.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub membrane: bool,
+    /// Draw a zigzag (triangles) along the fill's longest side, as wide as
+    /// the fill is thick: extruded polystyrene (George 2026-11-23).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub zigzag: bool,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -325,7 +337,8 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
     let (fill, lines) = match h {
         Hatch::Empty => (None, vec![]),
         Hatch::Solid => (grey(0.6), vec![]),
-        Hatch::Diagonal => (grey(0.88), vec![line(45.0, s, 0.0)]),
+        // partitions in the ASR legend: plain 45° lines 1.6 mm apart
+        Hatch::Diagonal => (grey(0.88), vec![line(45.0, 1.6, 0.0)]),
         Hatch::Cross => (
             grey(0.88),
             vec![line(45.0, s * 1.4, 0.0), line(-45.0, s * 1.4, 0.0)],
@@ -334,31 +347,245 @@ pub fn builtin_pattern(h: Hatch) -> HatchPattern {
             grey(0.88),
             vec![line(45.0, s * 2.0, 0.0), line(45.0, s * 2.0, s * 0.5)],
         ),
+        // plain concrete as the ASR legend draws it: broken 45° lines
+        // with a few dots
         Hatch::Concrete => (
             grey(0.88),
             vec![
-                line(45.0, s * 4.0, 0.0),
                 HatchLine {
-                    dashes: vec![0.0, s * 1.3],
-                    shift: s * 0.65,
-                    ..line(0.0, s * 1.3, 0.0)
+                    dashes: vec![3.6, 1.1, 0.9, 1.1],
+                    shift: 2.3,
+                    ..line(45.0, 1.65, 0.0)
+                },
+                HatchLine {
+                    dashes: vec![0.0, 3.9],
+                    shift: 1.5,
+                    ..line(0.0, 2.6, 0.9)
                 },
             ],
         ),
-        Hatch::Timber => (
+        // timber cut across as George's sample: close, gently waving
+        // grain lines at 60°, drawn as a tile
+        Hatch::Timber => (grey(0.88), vec![]),
+        // the patterns of the office's ASR legend of materials (George's
+        // sample section ASR_006), sizes measured off it in paper mm
+        Hatch::MasonryOuter => (grey(0.88), vec![line(45.0, 1.5, 0.0)]),
+        Hatch::MasonryInner => (
             grey(0.88),
-            vec![HatchLine {
-                along_longest: true,
-                ..line(0.0, s * 1.2, s * 0.3)
-            }],
+            vec![
+                line(45.0, 2.85, 0.0),
+                line(45.0, 2.85, 0.45),
+                line(-45.0, 2.85, 0.0),
+                line(-45.0, 2.85, 0.45),
+            ],
         ),
+        // reinforced concrete as George asked (2026-11-23): two solid 45°
+        // lines close together, a slightly wider gap, a dash-dot line,
+        // the same gap again, repeated
+        Hatch::Reinforced => {
+            let (pair, gap) = (0.45, 0.9);
+            let period = pair + 2.0 * gap;
+            (
+                grey(0.88),
+                vec![
+                    line(45.0, period, 0.0),
+                    line(45.0, period, pair),
+                    HatchLine {
+                        dashes: vec![2.4, 0.5, 0.0, 0.5],
+                        ..line(45.0, period, pair + gap)
+                    },
+                ],
+            )
+        }
+        // natural ground as George's sample: 45° lines in threes, the
+        // groups five line spacings apart
+        Hatch::Ground => (
+            grey(0.88),
+            vec![
+                line(45.0, 3.0, 0.0),
+                line(45.0, 3.0, 0.6),
+                line(45.0, 3.0, 1.2),
+            ],
+        ),
+        // compacted earth fill as George's sample: 45° strips, a wide one
+        // with rungs across it, a narrow empty one (the rungs' dashes run
+        // across the strips, so they start on the strip's far line)
+        Hatch::EarthFill => {
+            let (wide, narrow, rung) = (2.0, 1.2, 1.0);
+            (
+                grey(0.88),
+                vec![
+                    line(45.0, wide + narrow, 0.0),
+                    line(45.0, wide + narrow, narrow),
+                    HatchLine {
+                        dashes: vec![wide, narrow],
+                        ..line(-45.0, rung, 0.0)
+                    },
+                ],
+            )
+        }
+        // concrete-filled formwork blocks as George's sample: a sparse
+        // 45° grid
+        Hatch::FormBlock => (
+            grey(0.88),
+            vec![line(45.0, 3.2, 0.0), line(-45.0, 3.2, 0.0)],
+        ),
+        Hatch::Gravel | Hatch::Insulation | Hatch::Membrane | Hatch::Xps => (grey(0.88), vec![]),
+    };
+    let tile = match h {
+        Hatch::MasonryOuter => Some(rings_tile(
+            [4.8, 5.1],
+            &[([0.0, 0.0], 0.14), ([2.95, 1.7], 0.14), ([1.45, 3.4], 0.14)],
+        )),
+        Hatch::Gravel => Some(rings_tile([6.0, 6.0], GRAVEL)),
+        Hatch::Timber => Some(grain_tile()),
+        _ => None,
     };
     HatchPattern {
         name: h.label().to_string(),
         units: PatternUnits::Paper,
         fill,
         lines,
-        tile: None,
+        tile,
+        batt: h == Hatch::Insulation,
+        membrane: h == Hatch::Membrane,
+        zigzag: h == Hatch::Xps,
+    }
+}
+
+/// The pebbles of a gravel fill in a 6 mm tile: centre and radius, mm,
+/// packed densely as George's sample, apart across the tile's edges too
+/// so the tiles join without a seam.
+const GRAVEL: &[([f64; 2], f64)] = &[
+    ([1.9, 0.91], 0.55),
+    ([3.9, 0.43], 0.55),
+    ([3.2, 2.2], 0.55),
+    ([0.35, 3.0], 0.55),
+    ([0.42, 0.54], 0.55),
+    ([2.5, 5.0], 0.55),
+    ([5.2, 1.7], 0.55),
+    ([1.9, 3.5], 0.55),
+    ([4.8, 4.2], 0.55),
+    ([5.0, 5.7], 0.55),
+    ([0.35, 4.6], 0.55),
+    ([3.1, 3.7], 0.55),
+    ([1.5, 2.1], 0.55),
+    ([4.5, 2.9], 0.55),
+    ([1.3, 5.7], 0.55),
+    ([3.8, 5.0], 0.55),
+    ([1.5, 4.6], 0.42),
+    ([0.33, 1.6], 0.42),
+    ([2.8, 0.073], 0.42),
+    ([4.1, 1.6], 0.42),
+    ([3.0, 1.0], 0.42),
+    ([5.4, 0.58], 0.32),
+    ([0.011, 5.6], 0.32),
+    ([5.4, 3.3], 0.32),
+    ([0.96, 3.8], 0.32),
+    ([2.3, 2.6], 0.24),
+    ([2.3, 1.7], 0.24),
+    ([5.4, 2.6], 0.24),
+    ([1.0, 1.2], 0.24),
+    ([5.8, 2.3], 0.24),
+    ([5.7, 4.0], 0.24),
+    ([4.7, 0.8], 0.24),
+    ([4.0, 3.6], 0.24),
+    ([5.5, 4.9], 0.24),
+    ([3.6, 3.1], 0.17),
+    ([2.2, 5.7], 0.17),
+    ([1.2, 2.8], 0.17),
+    ([3.3, 5.6], 0.17),
+    ([2.6, 3.0], 0.17),
+    ([0.57, 5.4], 0.17),
+    ([0.7, 2.3], 0.17),
+    ([5.8, 1.1], 0.17),
+    ([3.9, 4.1], 0.17),
+    ([0.52, 5.8], 0.12),
+    ([5.8, 0.12], 0.12),
+    ([3.2, 4.5], 0.12),
+    ([4.2, 5.7], 0.12),
+    ([4.6, 4.9], 0.12),
+    ([0.11, 3.9], 0.12),
+    ([4.5, 2.1], 0.12),
+    ([2.0, 0.083], 0.12),
+    ([2.2, 4.2], 0.12),
+    ([1.2, 0.59], 0.12),
+    ([4.0, 2.2], 0.12),
+    ([1.1, 3.2], 0.12),
+    ([5.5, 4.4], 0.12),
+];
+
+/// A tile of small circles, as polylines.
+fn rings_tile(size: [f64; 2], rings: &[([f64; 2], f64)]) -> Tile {
+    let strokes = rings
+        .iter()
+        .map(|(c, r)| {
+            let n = if *r < 0.2 { 12 } else { 18 };
+            (0..=n)
+                .map(|i| {
+                    let a = std::f64::consts::TAU * i as f64 / n as f64;
+                    [c[0] + r * a.cos(), c[1] + r * a.sin()]
+                })
+                .collect()
+        })
+        .collect();
+    Tile { size, strokes }
+}
+
+/// Timber's grain: lines rising at 60° at uneven distances, each waving
+/// a little, wrapped round a tile whose height carries a line exactly
+/// one tile width along, so a line leaving the top goes on in the tile
+/// above and the tiles join without a seam.
+fn grain_tile() -> Tile {
+    const H: f64 = 12.0;
+    // where each line crosses the tile's foot, its wave's size and phase
+    const LINES: [(f64, f64, f64); 10] = [
+        (0.0, 0.10, 0.0),
+        (0.55, 0.14, 1.3),
+        (1.35, 0.08, 2.9),
+        (2.05, 0.12, 0.7),
+        (2.6, 0.10, 4.1),
+        (3.45, 0.15, 2.2),
+        (4.1, 0.09, 5.0),
+        (4.95, 0.13, 3.4),
+        (5.6, 0.08, 1.9),
+        (6.3, 0.11, 5.6),
+    ];
+    let w = H / 60f64.to_radians().tan();
+    let tau = std::f64::consts::TAU;
+    let mut strokes: Vec<Vec<[f64; 2]>> = vec![];
+    for (x0, amp, phase) in LINES {
+        let x0 = x0 * w / 6.93;
+        // the wave closes over the tile's height, so the line's ends meet
+        let at = |y: f64| x0 + y * w / H + amp * ((tau * y / H * 2.0) + phase).sin();
+        let mut run: Vec<[f64; 2]> = vec![];
+        let n = 120;
+        let mut last: Option<(f64, f64)> = None;
+        for i in 0..=n {
+            let y = H * i as f64 / n as f64;
+            let x = at(y);
+            let k = (x / w).floor();
+            let x = x - k * w;
+            if let Some((px, py)) = last {
+                // wrapped round the tile's side: end the run on the side,
+                // start the next on the other
+                if (x - px).abs() > w / 2.0 {
+                    let (edge, back) = if x < px { (w, 0.0) } else { (0.0, w) };
+                    let t = (edge - px) / (x + (edge - back) - px);
+                    let ym = py + (y - py) * t;
+                    run.push([edge, ym]);
+                    strokes.push(std::mem::take(&mut run));
+                    run.push([back, ym]);
+                }
+            }
+            run.push([x, y]);
+            last = Some((x, y));
+        }
+        strokes.push(run);
+    }
+    Tile {
+        size: [w, H],
+        strokes,
     }
 }
 
@@ -467,6 +694,9 @@ pub struct ViewTemplate {
     pub weights: Option<LineWeights>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub below_fill: Option<bool>,
+    /// The ground under cut hatches, for views that keep the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hatch_ground: Option<crate::graphics::HatchGround>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cues: Option<DepthCues>,
 }
@@ -481,6 +711,7 @@ impl ViewTemplate {
             overrides: vec![],
             weights: None,
             below_fill: None,
+            hatch_ground: None,
             cues: None,
         }
     }
@@ -822,6 +1053,69 @@ impl KindTemplates {
     }
 }
 
+/// The Standard pack's heavier pens at 1:75 and larger, as packs before
+/// 2026-11-23 had them, and the Light linework pack's hatch there.
+const OLD_STANDARD_LARGE: LineWeights = LineWeights {
+    cut: 0.7,
+    projection: 0.35,
+    symbol: 0.25,
+    fine: 0.18,
+    hatch: 0.13,
+    hidden: 0.18,
+};
+
+/// A project's packs and views brought to the pens of now (George
+/// 2026-11-22: sections on sheets printed heavier than the view, and
+/// hatching takes the thinnest pen): the Standard pack's old heavier pens
+/// at 1:75 and larger, and a view's own pens left at them, become the
+/// 1:100 ones; the hatching of a pack's every table becomes the thinnest
+/// pen of the pack. None when nothing is left to change.
+pub fn mend_pens(model: &Model) -> Option<Transaction> {
+    let now = LineWeights::for_scale(100.0);
+    let mut tx = Transaction::new("Line weights");
+    let mut any = false;
+    for e in model.iter() {
+        let mut after = e.clone();
+        let changed = match &mut after.kind {
+            ElementKind::StylePack(p) => {
+                let mut c = false;
+                for t in &mut p.pens {
+                    if t.weights == OLD_STANDARD_LARGE {
+                        t.weights = now;
+                        c = true;
+                    }
+                }
+                // the thinnest pen of all the pack's tables
+                let thinnest = p
+                    .pens
+                    .iter()
+                    .flat_map(|t| {
+                        let w = &t.weights;
+                        [w.cut, w.projection, w.symbol, w.fine, w.hatch, w.hidden]
+                    })
+                    .fold(f64::MAX, f64::min);
+                for t in &mut p.pens {
+                    if t.weights.hatch > thinnest + 1e-9 {
+                        t.weights.hatch = thinnest;
+                        c = true;
+                    }
+                }
+                c
+            }
+            ElementKind::View(v) if v.graphics.weights == Some(OLD_STANDARD_LARGE) => {
+                v.graphics.weights = Some(now);
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            tx = tx.replace(e.clone(), after);
+            any = true;
+        }
+    }
+    any.then_some(tx)
+}
+
 /// The two packs that ship with CreaBIM, as data.
 pub const STANDARD_PACK: &str = include_str!("../packs/standard.json");
 pub const LIGHT_PACK: &str = include_str!("../packs/light-linework.json");
@@ -1154,6 +1448,9 @@ pub fn resolved<'a>(model: &Model, v: &'a View) -> Cow<'a, View> {
     if let Some(b) = t.below_fill {
         out.graphics.below_fill = b;
     }
+    if let (Some(h), true) = (t.hatch_ground, v.graphics.hatch_ground.is_default()) {
+        out.graphics.hatch_ground = h;
+    }
     if let (Some(c), true) = (t.cues, v.look.cues.is_default()) {
         out.look.cues = c;
     }
@@ -1388,5 +1685,31 @@ mod tests {
             serde_json::from_str(r#"{"hatch":"Brick","color":[1,0,0]}"#).unwrap();
         assert_eq!(m.pattern, None);
         assert!(!serde_json::to_string(&m).unwrap().contains("pattern"));
+    }
+
+    #[test]
+    fn old_heavy_pens_and_thick_hatching_are_mended() {
+        let mut doc = Document::new();
+        let mut p = StylePack::standard();
+        p.pens[0].weights = OLD_STANDARD_LARGE;
+        p.pens[1].weights.hatch = 0.13;
+        doc.commit(Transaction::new("p").insert(Element::new(
+            "Standard",
+            ElementKind::StylePack(Box::new(p)),
+        )))
+        .unwrap();
+        let tx = mend_pens(doc.model()).expect("something to mend");
+        doc.commit(tx).unwrap();
+        let p = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::StylePack(p) => Some((**p).clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(p.pens[0].weights, LineWeights::for_scale(50.0));
+        assert_eq!(p.pens[1].weights.hatch, crate::graphics::THINNEST_PEN);
+        assert!(mend_pens(doc.model()).is_none());
     }
 }

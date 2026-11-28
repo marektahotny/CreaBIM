@@ -5,15 +5,19 @@
 //! under each of its windows, the slimmest type that covers its share
 //! within the longest length allowed; what underfloor heating already
 //! gives the room is taken off first. Radiators already standing in a
-//! room are counted against its loss.
+//! room are counted against its loss: a towel radiator on the floor's
+//! water is taken off what is needed first, and [`resize`] makes each
+//! panel radiator standing in a room, unless it is locked, the size the
+//! room needs.
 
 use crate::floorheat;
 use crate::heatloss::{self, RoomLoss};
-use creabim_core::catalogue::radiators::{lengths, Panel, PanelKind};
-use creabim_core::{ElementId, ElementKind, Model};
+use creabim_core::catalogue::radiators::{lengths, Heater, Panel, PanelKind};
+use creabim_core::{ElementId, ElementKind, Model, Transaction};
 
 /// What the system is designed with.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub supply_c: f64,
     pub return_c: f64,
@@ -78,6 +82,8 @@ pub struct RoomDesign {
     pub phi: f64,
     /// What the room's underfloor heating gives, W.
     pub floor_w: f64,
+    /// What towel radiators standing in the room give, W.
+    pub towels_w: f64,
     /// Left for radiators, W.
     pub need: f64,
     /// Windows in the room's outside walls.
@@ -91,7 +97,7 @@ pub struct RoomDesign {
     /// Its flow, kg/h.
     pub flow: f64,
     /// Radiators standing in the room, and their output, W.
-    pub installed: Vec<Panel>,
+    pub installed: Vec<Heater>,
     pub installed_w: f64,
     /// The proposal covers what is needed.
     pub ok: bool,
@@ -108,8 +114,19 @@ pub struct Design {
     pub installed_kw: f64,
 }
 
-/// The panel radiators standing in the model: level and place in plan.
-fn standing(model: &Model) -> Vec<(ElementId, glam::DVec2, Panel)> {
+/// A heater standing in the model.
+#[derive(Clone, Debug)]
+pub struct Standing {
+    pub id: ElementId,
+    pub level: ElementId,
+    /// A point in front of the wall it hangs on.
+    pub at: glam::DVec2,
+    pub heater: Heater,
+    pub locked: bool,
+}
+
+/// The heaters standing in the model.
+pub fn standing(model: &Model) -> Vec<Standing> {
     model
         .iter()
         .filter_map(|e| {
@@ -117,9 +134,27 @@ fn standing(model: &Model) -> Vec<(ElementId, glam::DVec2, Panel)> {
                 return None;
             };
             let t = creabim_core::objects::type_of(model, e)?;
-            let p = Panel::of_key(t.catalogue.as_deref()?)?;
-            // a point in front of the wall it hangs on
-            Some((ob.level, ob.to_plan(glam::DVec2::new(0.0, -0.15)), p))
+            let heater = Heater::of_key(t.catalogue.as_deref()?)?;
+            Some(Standing {
+                id: e.id,
+                level: ob.level,
+                at: ob.to_plan(glam::DVec2::new(0.0, -0.15)),
+                heater,
+                locked: e.locked,
+            })
+        })
+        .collect()
+}
+
+/// The heaters standing in room `r`.
+fn in_room<'a>(model: &Model, r: &creabim_core::Room, all: &'a [Standing]) -> Vec<&'a Standing> {
+    let outline = creabim_core::room::shape_of(model, r).map(|x| x.outline);
+    all.iter()
+        .filter(|x| {
+            x.level == r.level
+                && outline
+                    .as_ref()
+                    .is_some_and(|o| creabim_core::polygon::contains(o, x.at))
         })
         .collect()
 }
@@ -129,7 +164,7 @@ fn one(
     s: &Settings,
     hl: &RoomLoss,
     floor: Option<&floorheat::RoomDesign>,
-    standing: &[(ElementId, glam::DVec2, Panel)],
+    standing: &[Standing],
 ) -> Option<RoomDesign> {
     let e = model.get(hl.id)?;
     let ElementKind::Room(r) = &e.kind else {
@@ -137,7 +172,13 @@ fn one(
     };
     let dt = delta_t(s.supply_c, s.return_c, hl.ti);
     let floor_w = floor.filter(|f| f.on).map_or(0.0, |f| f.covered);
-    let need = (hl.phi - floor_w).max(0.0);
+    let here = in_room(model, r, standing);
+    let towels_w: f64 = here
+        .iter()
+        .filter(|x| matches!(x.heater, Heater::Towel(_)))
+        .map(|x| x.heater.output_w(dt))
+        .sum();
+    let need = (hl.phi - floor_w - towels_w).max(0.0);
     let windows = hl.items.iter().filter(|i| i.kind == "Window").count() as u32;
     let (mut count, mut panel) = (0, None);
     if need > hl.phi * 0.02 && need > 1.0 {
@@ -155,22 +196,24 @@ fn one(
             height: s.height,
             length: lengths()
                 .into_iter()
-                .rfind(|l| *l <= s.max_len)
+                .filter(|l| *l <= s.max_len)
+                .rfind(|l| {
+                    Panel {
+                        kind: PanelKind::K33,
+                        height: s.height,
+                        length: *l,
+                    }
+                    .made()
+                })
                 .unwrap_or(400),
         }));
     }
     let output = panel.map_or(0.0, |p| p.output_w(dt) * count as f64);
     let drop = (s.supply_c - s.return_c).max(1.0);
-    let outline = creabim_core::room::shape_of(model, r).map(|x| x.outline);
-    let installed: Vec<Panel> = standing
+    let installed: Vec<Heater> = here
         .iter()
-        .filter(|(level, at, _)| {
-            *level == r.level
-                && outline
-                    .as_ref()
-                    .is_some_and(|o| creabim_core::polygon::contains(o, *at))
-        })
-        .map(|x| x.2)
+        .filter(|x| matches!(x.heater, Heater::Panel(_)))
+        .map(|x| x.heater)
         .collect();
     let installed_w = installed.iter().map(|p| p.output_w(dt)).sum();
     Some(RoomDesign {
@@ -180,6 +223,7 @@ fn one(
         ti: hl.ti,
         phi: hl.phi,
         floor_w,
+        towels_w,
         need,
         windows,
         count,
@@ -221,6 +265,65 @@ pub fn design(
         out.installed_kw += x.installed_w / 1000.0;
     }
     out
+}
+
+/// Each panel radiator standing in a room the size the room needs at
+/// the design temperatures: what the floor and the towel radiators do
+/// not give, shared among those not locked; a locked one keeps its size
+/// and its output is counted. The slimmest type that covers its share
+/// within the longest length allowed, at the settings' height.
+pub fn resize(model: &Model, d: &Design, s: &Settings) -> Transaction {
+    let mut tx = Transaction::new("Radiators sized to the rooms");
+    let all = standing(model);
+    let mut work = model.clone();
+    for x in &d.rooms {
+        let Some(e) = model.get(x.id) else { continue };
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        let dt = delta_t(s.supply_c, s.return_c, x.ti);
+        let here = in_room(model, r, &all);
+        let panels: Vec<&&Standing> = here
+            .iter()
+            .filter(|h| matches!(h.heater, Heater::Panel(_)))
+            .collect();
+        let locked_w: f64 = panels
+            .iter()
+            .filter(|h| h.locked)
+            .map(|h| h.heater.output_w(dt))
+            .sum();
+        let free: Vec<&&&Standing> = panels.iter().filter(|h| !h.locked).collect();
+        if free.is_empty() || x.need <= 1.0 {
+            continue;
+        }
+        let share = (x.need - locked_w).max(0.0) / free.len() as f64;
+        let Some(p) = pick(share, dt, s).or(x.panel) else {
+            continue;
+        };
+        let c = p.object();
+        for h in free {
+            if h.heater == Heater::Panel(p) {
+                continue;
+            }
+            let (add, type_id) = creabim_core::objects::add_to_model(&work, &c);
+            for op in &add.ops {
+                tx.ops.push(op.clone());
+            }
+            let _ = add.apply(&mut work);
+            let Some(before) = work.get(h.id).cloned() else {
+                continue;
+            };
+            let mut after = before.clone();
+            if let Some(t) = after.of_type.as_mut() {
+                t.id = type_id;
+            }
+            after.name = c.name.clone();
+            let step = Transaction::new("").replace(before, after);
+            tx.ops.extend(step.ops.iter().cloned());
+            let _ = step.apply(&mut work);
+        }
+    }
+    tx
 }
 
 #[cfg(test)]
@@ -273,6 +376,7 @@ mod tests {
                     spacing: 0.1,
                     loops: 3,
                     finish_r: None,
+                    ..Underfloor::default()
                 });
             }
             tx = tx.insert(Element::new(name, ElementKind::Room(r)));
@@ -302,5 +406,78 @@ mod tests {
         }
         assert!((d.output_kw - (bath.output + living.output) / 1000.0).abs() < 1e-9);
         assert_eq!(d.count, bath.count + living.count);
+    }
+
+    #[test]
+    fn standing_radiators_take_the_size_the_room_needs_unless_locked() {
+        use creabim_core::catalogue::towels::TowelRail;
+        use creabim_core::{Document, Element, Room, Transaction};
+        use glam::DVec2;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let mut r = Room::new(level, DVec2::new(8.0, 3.0));
+        r.number = "1.02".into();
+        doc.commit(Transaction::new("room").insert(Element::new("Izba", ElementKind::Room(r))))
+            .unwrap();
+        let small = Panel {
+            kind: PanelKind::K10,
+            height: 600,
+            length: 400,
+        };
+        let mut ids = vec![];
+        for x in [7.0, 9.0] {
+            let (tx, id) = creabim_core::objects::place(
+                doc.model(),
+                &small.object(),
+                level,
+                DVec2::new(x, 2.0),
+                0.0,
+            );
+            doc.commit(tx).unwrap();
+            ids.push(id);
+        }
+        let towel = TowelRail {
+            height: 700,
+            length: 450,
+        };
+        let (tx, _) = creabim_core::objects::place(
+            doc.model(),
+            &towel.object(),
+            level,
+            DVec2::new(8.0, 2.0),
+            0.0,
+        );
+        doc.commit(tx).unwrap();
+        // the second keeps its size
+        let mut locked = doc.model().get(ids[1]).unwrap().clone();
+        let before = locked.clone();
+        locked.locked = true;
+        doc.commit(Transaction::new("lock").replace(before, locked))
+            .unwrap();
+        let s = Settings::default();
+        let o = heatloss::Opts::default();
+        let fl = floorheat::Settings::default();
+        let d = design(doc.model(), &o, &s, &fl);
+        let x = d.rooms.iter().find(|x| x.number == "1.02").unwrap();
+        let dt = delta_t(s.supply_c, s.return_c, x.ti);
+        assert!((x.towels_w - towel.output_w(dt)).abs() < 1e-9);
+        assert!(x.need > small.output_w(dt) * 2.0, "{}", x.need);
+        assert!((x.need - (x.phi - x.towels_w).max(0.0)).abs() < 1e-9);
+        let tx = resize(doc.model(), &d, &s);
+        doc.commit(tx).unwrap();
+        let after = standing(doc.model());
+        let of = |id| after.iter().find(|h| h.id == id).unwrap().heater;
+        assert_eq!(of(ids[1]), Heater::Panel(small));
+        let Heater::Panel(p) = of(ids[0]) else {
+            panic!()
+        };
+        assert!(p.output_w(dt) + small.output_w(dt) >= x.need - 1e-6);
+        assert!(p.length <= s.max_len && p.height == s.height);
+        // a slimmer type or a shorter one would not do
+        let shorter = Panel {
+            length: p.length - 100,
+            ..p
+        };
+        assert!(shorter.output_w(dt) + small.output_w(dt) < x.need || p.length == 400);
     }
 }

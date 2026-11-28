@@ -2,7 +2,8 @@
 //! as it is, a "blind" drawing (outlines only: no dimensions, tags, notes,
 //! section marks or wall fills) to hand to the other professions, and a services
 //! drawing, where the building is that blind drawing in halftone and the
-//! pipes, ducts and fixtures stand out over it.
+//! pipes, ducts and fixtures stand out over it. Pipes, ducts and wiring
+//! show in the services drawing only.
 //!
 //! A mode is a set of a view's own settings (its drawing style, hidden
 //! categories and category overrides), so everything it sets can still
@@ -50,8 +51,14 @@ pub const BUILDING: [Category; 15] = [
     Category::Planting,
 ];
 
-/// The line a blind drawing draws the building with, mm.
-pub const THIN: f64 = 0.18;
+/// The line a blind drawing draws the building with, mm: the very thin
+/// pen (George 2026-11-22: in a trade's drawing walls, windows and
+/// fixtures very thin, in their architecture line types).
+pub const THIN: f64 = 0.10;
+
+/// The line a trade's drawing draws its own equipment with, mm: the
+/// medium pen (LinePen::Thick).
+pub const OWN_EQUIPMENT: f64 = 0.20;
 
 impl DisplayMode {
     pub const ALL: [DisplayMode; 3] = [
@@ -96,9 +103,7 @@ impl DisplayMode {
 
     /// The mode `view` is in, by what it shows.
     pub fn of(view: &View) -> DisplayMode {
-        let blind = view.graphics.drawing_style == DrawingStyle::Clean
-            && ANNOTATION.iter().all(|c| view.hidden.hides_category(*c));
-        if !blind {
+        if view.graphics.drawing_style != DrawingStyle::Clean {
             return DisplayMode::Architecture;
         }
         let halftone = view
@@ -108,36 +113,258 @@ impl DisplayMode {
             .any(|o| o.target == Target::Category(Category::Walls) && o.halftone);
         if halftone {
             DisplayMode::Services
-        } else {
+        } else if ANNOTATION.iter().all(|c| view.hidden.hides_category(*c)) {
             DisplayMode::Blind
+        } else {
+            DisplayMode::Architecture
         }
+    }
+
+    /// A services drawing kept its dimensions, tags and notes hidden
+    /// before the trades dimensioned their own drawings: shows them
+    /// again. True when `view` changed.
+    pub fn show_own_annotation(view: &mut View) -> bool {
+        let own = [Category::Dimensions, Category::Tags, Category::Notes];
+        if DisplayMode::of(view) != DisplayMode::Services
+            || !own.iter().all(|c| view.hidden.hides_category(*c))
+        {
+            return false;
+        }
+        for c in own {
+            view.hidden.set_category(c, false);
+        }
+        true
+    }
+
+    /// A services drawing named for a trade ("Pôdorys 1. NP ZTI") from
+    /// before its trade was set: that trade's. True when `view` changed.
+    pub fn trade_by_name(view: &mut View, name: &str) -> bool {
+        if view.trade.is_some()
+            || view.coordination
+            || DisplayMode::of(view) != DisplayMode::Services
+        {
+            return false;
+        }
+        let t = match name.rsplit(' ').next() {
+            Some("ZTI") => Trade::Plumbing,
+            Some("VYK") => Trade::Heating,
+            Some("VZT") => Trade::Ventilation,
+            Some("ELI") => Trade::Electrical,
+            Some("MPL") => Trade::MedGas,
+            _ => return false,
+        };
+        view.trade = Some(t);
+        true
+    }
+
+    /// A blind or services drawing from before its building was drawn in
+    /// the very thin pen (cut and seen, George 2026-11-22): brought to it.
+    /// True when `view` changed.
+    pub fn thin_building(view: &mut View) -> bool {
+        if DisplayMode::of(view) == DisplayMode::Architecture {
+            return false;
+        }
+        let thin = Some(crate::styles::Weight::Mm(THIN));
+        let mut changed = false;
+        for c in BUILDING {
+            let o = view.look.override_mut(Target::Category(c));
+            if o.cut_weight != thin || o.weight != thin {
+                o.cut_weight = thin;
+                o.weight = thin;
+                changed = true;
+            }
+        }
+        view.look.tidy();
+        // a trade's drawing numbers its rooms
+        if DisplayMode::of(view) == DisplayMode::Services && view.room_tags == Some(false) {
+            view.room_tags = None;
+            changed = true;
+        }
+        changed
     }
 
     /// Put `view` in this mode.
     pub fn apply(self, view: &mut View) {
         let blind = self != DisplayMode::Architecture;
+        view.coordination = false;
         view.graphics.drawing_style = if blind {
             DrawingStyle::Clean
         } else {
             DrawingStyle::Technical
         };
         view.graphics.below_fill = !blind;
+        // what is written on a drawing belongs to its view: the trade's
+        // drawing shows its own dimensions, tags and notes, never the
+        // architect's
         for c in ANNOTATION {
-            view.hidden.set_category(c, blind);
+            let hide = match self {
+                DisplayMode::Architecture => false,
+                DisplayMode::Blind => true,
+                DisplayMode::Services => c == Category::SectionMarks,
+            };
+            view.hidden.set_category(c, hide);
         }
-        // rooms stay to be picked; their names go
-        view.room_tags = blind.then_some(false);
+        // pipes, ducts and wiring are the trades' to draw
+        view.hidden
+            .set_category(Category::Pipes, self != DisplayMode::Services);
+        // rooms stay to be picked; their names go (a trade's drawing
+        // keeps their numbers, George 2026-11-22)
+        view.room_tags = (self == DisplayMode::Blind).then_some(false);
         if blind {
             view.room_colours = false;
         }
-        // the building in one thin line, cut or seen; under services lighter
+        // the building in one very thin line, cut or seen; under services
+        // lighter
         for c in BUILDING {
             let o = view.look.override_mut(Target::Category(c));
             o.cut_weight = blind.then_some(crate::styles::Weight::Mm(THIN));
+            o.weight = blind.then_some(crate::styles::Weight::Mm(THIN));
             o.halftone = self == DisplayMode::Services;
         }
         view.look.tidy();
     }
+}
+
+/// What a drawing is for, as its view's settings pick it: the
+/// architect's, a blind one, one trade's, all the trades', or the
+/// coordination of them all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Purpose {
+    Architecture,
+    Blind,
+    Trade(Trade),
+    /// Every trade's pipes, each system in its own colour.
+    Services,
+    /// Everything, each trade in one colour of its own.
+    Coordination,
+    /// The structural engineer's (Statika): only what carries, its
+    /// lintels and ring beams marked by position.
+    Structural,
+}
+
+impl Purpose {
+    pub fn all() -> Vec<Purpose> {
+        let mut v = vec![Purpose::Architecture, Purpose::Blind];
+        v.extend(Trade::ALL.map(Purpose::Trade));
+        v.extend([
+            Purpose::Services,
+            Purpose::Coordination,
+            Purpose::Structural,
+        ]);
+        v
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Purpose::Architecture => "Architecture",
+            Purpose::Blind => "Blind drawing",
+            Purpose::Trade(t) => t.label(),
+            Purpose::Services => "All trades",
+            Purpose::Coordination => "Coordination",
+            Purpose::Structural => "Structural (STA)",
+        }
+    }
+
+    pub fn of(view: &View) -> Purpose {
+        if view.structural {
+            return Purpose::Structural;
+        }
+        match (DisplayMode::of(view), view.trade) {
+            (DisplayMode::Architecture, _) => Purpose::Architecture,
+            (DisplayMode::Blind, _) => Purpose::Blind,
+            (DisplayMode::Services, _) if view.coordination => Purpose::Coordination,
+            (DisplayMode::Services, Some(t)) => Purpose::Trade(t),
+            (DisplayMode::Services, None) => Purpose::Services,
+        }
+    }
+
+    pub fn apply(self, view: &mut View) {
+        match self {
+            Purpose::Architecture | Purpose::Structural => DisplayMode::Architecture.apply(view),
+            Purpose::Blind => DisplayMode::Blind.apply(view),
+            _ => DisplayMode::Services.apply(view),
+        }
+        view.structural = self == Purpose::Structural;
+        // the structural drawing: no rooms, furniture, doors' and
+        // windows' symbols (their openings stay as gaps)
+        if view.structural {
+            view.room_tags = Some(false);
+            view.room_colours = false;
+        } else if view.room_tags == Some(false)
+            && DisplayMode::of(view) == DisplayMode::Architecture
+        {
+            view.room_tags = None;
+        }
+        view.trade = match self {
+            Purpose::Trade(t) => Some(t),
+            _ => None,
+        };
+        view.coordination = self == Purpose::Coordination;
+    }
+}
+
+/// The room tags a trade's floor plans lack: each room tagged in the
+/// architecture plan of its storey is tagged in every trade's plan of
+/// that storey as there, at the same place and with the same fields
+/// (George 2026-11-23: a trade's drawing keeps the rooms and their
+/// tags as the architecture shows them). A room the architecture plan
+/// leaves untagged stays so.
+pub fn trade_room_tags(model: &crate::Model) -> Vec<crate::Element> {
+    use crate::{ElementKind, ViewKind};
+    let plan_of = |v: &View| match v.kind {
+        ViewKind::Plan { level, .. } if v.callout.is_none() && !v.graphics.range.from_above => {
+            Some(level)
+        }
+        _ => None,
+    };
+    let room =
+        |id: crate::ElementId| matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Room(_)));
+    // the tags of rooms by view
+    let mut tags: std::collections::HashMap<crate::ElementId, Vec<&crate::Tag>> =
+        std::collections::HashMap::new();
+    for e in model.iter() {
+        if let ElementKind::Tag(t) = &e.kind {
+            if room(t.host) {
+                tags.entry(t.view).or_default().push(t);
+            }
+        }
+    }
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::View(v) = &e.kind else {
+            continue;
+        };
+        let Some(level) = plan_of(v).filter(|_| DisplayMode::of(v) == DisplayMode::Services) else {
+            continue;
+        };
+        // the storey's architecture plan with the most rooms tagged
+        let source = model
+            .iter()
+            .filter(|a| match &a.kind {
+                ElementKind::View(av) => {
+                    plan_of(av) == Some(level) && DisplayMode::of(av) == DisplayMode::Architecture
+                }
+                _ => false,
+            })
+            .max_by_key(|a| tags.get(&a.id).map_or(0, Vec::len));
+        let Some(source) = source.and_then(|a| tags.get(&a.id)) else {
+            continue;
+        };
+        let have: std::collections::HashSet<crate::ElementId> = tags
+            .get(&e.id)
+            .map(|ts| ts.iter().map(|t| t.host).collect())
+            .unwrap_or_default();
+        let mut done = std::collections::HashSet::new();
+        for t in source {
+            if have.contains(&t.host) || !done.insert(t.host) {
+                continue;
+            }
+            let mut copy = (*t).clone();
+            copy.view = e.id;
+            out.push(crate::Element::new("Room tag", ElementKind::Tag(copy)));
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -165,7 +392,7 @@ mod tests {
         assert_eq!(DisplayMode::of(&v), DisplayMode::Blind);
         assert_eq!(v.graphics.drawing_style, DrawingStyle::Clean);
         assert!(v.hidden.hides_category(Category::Dimensions));
-        assert!(!v.hidden.hides_category(Category::Pipes));
+        assert!(v.hidden.hides_category(Category::Pipes));
         // walls in one thin line, not halftone
         let walls = v
             .look
@@ -180,9 +407,24 @@ mod tests {
     #[test]
     fn services_stand_out_over_the_building_in_halftone_and_it_comes_back() {
         let mut v = plan();
+        // the architect's drawing leaves the trades' pipes out
+        DisplayMode::Architecture.apply(&mut v);
+        assert!(v.hidden.hides_category(Category::Pipes));
         let was = v.clone();
         DisplayMode::Services.apply(&mut v);
         assert_eq!(DisplayMode::of(&v), DisplayMode::Services);
+        assert!(!v.hidden.hides_category(Category::Pipes));
+        // the trade dimensions its own drawing
+        assert!(!v.hidden.hides_category(Category::Dimensions));
+        assert!(v.hidden.hides_category(Category::SectionMarks));
+        // one from before, with all of it hidden, shows it again once
+        let mut old = v.clone();
+        for c in ANNOTATION {
+            old.hidden.set_category(c, true);
+        }
+        assert!(DisplayMode::show_own_annotation(&mut old));
+        assert!(!DisplayMode::show_own_annotation(&mut old));
+        assert_eq!(old, v);
         let half = |c: Category| {
             v.look
                 .overrides
@@ -193,5 +435,261 @@ mod tests {
         assert!(!half(Category::Pipes) && !half(Category::Objects));
         DisplayMode::Architecture.apply(&mut v);
         assert_eq!(v, was);
+    }
+
+    #[test]
+    fn a_drawing_is_for_the_architect_a_trade_or_the_coordination() {
+        let mut v = plan();
+        for p in Purpose::all() {
+            p.apply(&mut v);
+            assert_eq!(Purpose::of(&v), p);
+        }
+        // coordination: every trade, none left out
+        Purpose::Coordination.apply(&mut v);
+        assert!(v.coordination && v.trade.is_none());
+        assert_eq!(DisplayMode::of(&v), DisplayMode::Services);
+        Purpose::Architecture.apply(&mut v);
+        assert!(!v.coordination);
+    }
+}
+
+/// The trade a services drawing is for: it shows that trade's pipes and
+/// equipment only (ZTI and VYK plans of one storey differ by it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Trade {
+    /// Water, drainage, fire water and gas (ZTI, PLY).
+    Plumbing,
+    /// Heating and cooling (VYK).
+    Heating,
+    /// Ventilation (VZT).
+    Ventilation,
+    /// Medical gases.
+    MedGas,
+    /// Wiring: sockets, lights, boards (ELI).
+    Electrical,
+}
+
+impl Trade {
+    pub const ALL: [Trade; 5] = [
+        Trade::Plumbing,
+        Trade::Heating,
+        Trade::Ventilation,
+        Trade::MedGas,
+        Trade::Electrical,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Trade::Plumbing => "Plumbing and gas (ZTI)",
+            Trade::Heating => "Heating and cooling (VYK)",
+            Trade::Ventilation => "Ventilation (VZT)",
+            Trade::MedGas => "Medical gases",
+            Trade::Electrical => "Electrical (ELI)",
+        }
+    }
+
+    /// The trade's colour in a coordination drawing.
+    pub fn colour(self) -> [f32; 3] {
+        match self {
+            Trade::Plumbing => [0.10, 0.40, 0.90],
+            Trade::Heating => [0.85, 0.15, 0.10],
+            Trade::Ventilation => [0.10, 0.60, 0.25],
+            Trade::MedGas => [0.60, 0.20, 0.75],
+            Trade::Electrical => [0.95, 0.55, 0.0],
+        }
+    }
+
+    /// The trade that draws pipes of the system `kind`.
+    pub fn of_system(kind: crate::mep::SystemKind) -> Trade {
+        Trade::ALL
+            .into_iter()
+            .find(|t| t.shows(kind))
+            .unwrap_or(Trade::Plumbing)
+    }
+
+    /// Does its drawing show pipes of the system `kind`?
+    pub fn shows(self, kind: crate::mep::SystemKind) -> bool {
+        use crate::mep::SystemKind as K;
+        match kind {
+            K::ColdWater
+            | K::HotWater
+            | K::Circulation
+            | K::Sanitary
+            | K::Storm
+            | K::FireWater
+            | K::Gas => self == Trade::Plumbing,
+            K::HeatingSupply | K::HeatingReturn | K::CoolingSupply | K::CoolingReturn | K::Flue => {
+                self == Trade::Heating
+            }
+            K::AirSupply | K::AirExhaust => self == Trade::Ventilation,
+            K::MedGas => self == Trade::MedGas,
+            K::Other => true,
+        }
+    }
+
+    /// Is the object `e` this trade's equipment, drawn in its drawing in
+    /// the medium pen: sanitary ware and drains for plumbing, heaters and
+    /// heat sources for heating, air terminals and units for ventilation,
+    /// devices and lights for electrical, supply units for medical gases.
+    pub fn owns(self, model: &crate::Model, e: &crate::Element) -> bool {
+        use crate::objects::ObjectCategory as C;
+        let Some(t) = crate::objects::type_of(model, e) else {
+            return false;
+        };
+        let class = t.ifc.class.to_ascii_lowercase();
+        let family = crate::fixture::family_of_type(t);
+        let heat = family.is_some_and(|f| {
+            crate::fixture::is_heating(f)
+                || crate::fixture::is_cooling(f)
+                || crate::fixture::is_manifold(f)
+        }) || matches!(
+            class.as_str(),
+            "ifcspaceheater" | "ifcboiler" | "ifcunitaryequipment" | "ifccoil" | "ifcpump"
+        );
+        let air = matches!(
+            class.as_str(),
+            "ifcairterminal" | "ifcfan" | "ifcairtoairheatrecovery" | "ifcductsilencer"
+        );
+        match self {
+            Trade::Plumbing => {
+                (family.is_some() && !heat)
+                    || matches!(t.category, C::Plumbing | C::Toilet)
+                    || matches!(class.as_str(), "ifcsanitaryterminal" | "ifcwasteterminal")
+            }
+            Trade::Heating => heat,
+            Trade::Ventilation => air,
+            Trade::Electrical => matches!(t.category, C::Electrical | C::Lighting),
+            Trade::MedGas => t.category == C::Medical,
+        }
+    }
+
+    /// Does its drawing show the element `id`: what belongs to this trade,
+    /// the building all trades draw over and the plant every trade shows
+    /// ([`belongs`]); not another trade's pipes, devices and marks.
+    pub fn shows_element(self, model: &crate::Model, id: crate::ElementId) -> bool {
+        match belongs_id(model, id) {
+            Belongs::Trade(t) => t == self,
+            Belongs::Building | Belongs::Plant => true,
+        }
+    }
+}
+
+/// Whose drawings an element is drawn in (George 2026-11-27: "väčšina
+/// nakresleného patrí iba pre tú profesiu, v ktorej je to kreslené; iba
+/// koordinačný výkres zobrazí všetky profesie pokope; technologické
+/// zariadenia s viacerými vstupmi a výstupmi musia byť zobrazené aj v iných
+/// profesiách").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Belongs {
+    /// The building, its furniture and its sanitary ware: every drawing.
+    Building,
+    /// One trade's alone: its pipes, ducts, what is on them, its terminals
+    /// and devices (radiators, vents, sockets, drains, medical rails…).
+    /// Only that trade's drawings and the coordination show it.
+    Trade(Trade),
+    /// A piece of plant with several inputs and outputs (a heat pump's
+    /// units, a boiler, a cylinder or tank, a water heater, a heat
+    /// recovery unit, a manifold, a pump, the electrical distribution
+    /// board): every drawing, the architect's too.
+    Plant,
+}
+
+/// Is the object type `t` a piece of plant ([`Belongs::Plant`])?
+pub fn is_plant(t: &crate::objects::ObjectType) -> bool {
+    let class = t.ifc.class.to_ascii_lowercase();
+    let family = crate::fixture::family_of_type(t);
+    if family.is_some_and(crate::fixture::is_manifold) {
+        return true;
+    }
+    // a fan-coil is a terminal on the chilled water, as a radiator is
+    if family.is_some_and(crate::fixture::is_cooling) {
+        return false;
+    }
+    matches!(
+        class.as_str(),
+        "ifcboiler"
+            | "ifctank"
+            | "ifcunitaryequipment"
+            | "ifcairtoairheatrecovery"
+            | "ifcpump"
+            | "ifcchiller"
+            | "ifcheatexchanger"
+            | "ifcelectricwaterheater"
+    )
+}
+
+/// Whose drawings the element `id` is drawn in; a tag goes with what it
+/// marks.
+pub fn belongs_id(model: &crate::Model, id: crate::ElementId) -> Belongs {
+    match model.get(id) {
+        Some(e) => match &e.kind {
+            crate::ElementKind::Tag(t) if t.host != id => match model.get(t.host) {
+                Some(h) if !matches!(h.kind, crate::ElementKind::Tag(_)) => belongs(model, h),
+                _ => Belongs::Building,
+            },
+            _ => belongs(model, e),
+        },
+        None => Belongs::Building,
+    }
+}
+
+/// Whose drawings the element `e` is drawn in.
+pub fn belongs(model: &crate::Model, e: &crate::Element) -> Belongs {
+    use crate::objects::ObjectCategory as C;
+    use crate::ElementKind;
+    let of_pipe = |id: crate::ElementId| match model.get(id).map(|e| &e.kind) {
+        Some(ElementKind::Pipe(p)) => Some(Belongs::Trade(Trade::of_system(p.kind()))),
+        _ => None,
+    };
+    match &e.kind {
+        ElementKind::Pipe(p) => Belongs::Trade(Trade::of_system(p.kind())),
+        ElementKind::Valve(v) => of_pipe(v.pipe).unwrap_or(Belongs::Building),
+        ElementKind::Circuit(_) => Belongs::Trade(Trade::Electrical),
+        ElementKind::Object(_) => {
+            let Some(t) = crate::objects::type_of(model, e) else {
+                return Belongs::Building;
+            };
+            if is_plant(t) {
+                return Belongs::Plant;
+            }
+            let class = t.ifc.class.to_ascii_lowercase();
+            let family = crate::fixture::family_of_type(t);
+            // sanitary ware and appliances are the architect's fixtures;
+            // a floor drain and an outside tap are the plumber's
+            if let Some(f) = family {
+                if crate::fixture::is_sanitary(f) {
+                    return if matches!(f, "Podlahová vpusť" | "Výtokový ventil") {
+                        Belongs::Trade(Trade::Plumbing)
+                    } else {
+                        Belongs::Building
+                    };
+                }
+            }
+            if class == "ifcsanitaryterminal" || matches!(t.category, C::Toilet) {
+                return Belongs::Building;
+            }
+            // the distribution board: in the architect's drawings too
+            // (George 2026-11-27)
+            let device = crate::electrical::device_kind(model, e);
+            if device == Some(crate::electrical::DeviceKind::Board) {
+                return Belongs::Plant;
+            }
+            // sockets, switches, lights, low current; not the appliances
+            // (a fridge, a cooker), which are furniture
+            if device.is_some_and(|k| k != crate::electrical::DeviceKind::Appliance) {
+                return Belongs::Trade(Trade::Electrical);
+            }
+            for trade in [Trade::Heating, Trade::Ventilation, Trade::MedGas] {
+                if trade.owns(model, e) {
+                    return Belongs::Trade(trade);
+                }
+            }
+            if class == "ifcwasteterminal" || class == "ifcvalve" || t.category == C::Plumbing {
+                return Belongs::Trade(Trade::Plumbing);
+            }
+            Belongs::Building
+        }
+        _ => Belongs::Building,
     }
 }

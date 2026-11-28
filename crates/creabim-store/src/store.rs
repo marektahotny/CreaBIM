@@ -40,7 +40,7 @@ impl Store {
     /// follows.
     pub fn open(path: impl AsRef<Path>) -> Result<(Store, Document)> {
         let path = path.as_ref();
-        let (doc, seqs) = {
+        let (doc, seqs, _) = {
             let mut conn = schema::open_existing(path)?;
             let tx = conn.transaction()?;
             read_document(&tx)?

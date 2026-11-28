@@ -115,6 +115,7 @@ pub fn object(
             parts,
             symbol: vec![],
             catalogue: Some(key.to_string()),
+            supply: None,
         },
         materials,
     })
@@ -148,7 +149,7 @@ pub fn guess(words: &str) -> (ObjectCategory, IfcKind, Mount) {
             Mount::Wall,
         )
     } else if has(&["toilet", "wc", "loo"]) {
-        (C::Bathroom, "IfcSanitaryTerminal", "TOILETPAN", Mount::Wall)
+        (C::Toilet, "IfcSanitaryTerminal", "TOILETPAN", Mount::Wall)
     } else if has(&["bathtub", "bath tub", "tub", "bath"]) {
         (C::Bathroom, "IfcSanitaryTerminal", "BATH", Mount::Wall)
     } else if has(&["shower"]) {

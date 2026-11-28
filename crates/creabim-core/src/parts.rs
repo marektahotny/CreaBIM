@@ -41,6 +41,10 @@ pub struct Part {
     /// updates it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
+    /// A Schiedel chimney (George 2026-11-27): its outline and flue come
+    /// from the system and type picked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chimney: Option<crate::chimney::Chimney>,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -147,6 +151,7 @@ impl Part {
             material: None,
             ifc_class: proxy(),
             profile: None,
+            chimney: None,
         }
     }
 
@@ -159,6 +164,39 @@ impl Part {
             material: None,
             ifc_class: proxy(),
             profile: None,
+            chimney: None,
+        }
+    }
+
+    /// A Schiedel chimney `c` centred on `at`, its block's sides along
+    /// `dir`, from `base` above `level` up `height`.
+    pub fn chimney(
+        level: ElementId,
+        c: crate::chimney::Chimney,
+        at: DVec2,
+        dir: DVec2,
+        base: f64,
+        height: f64,
+    ) -> Self {
+        let (outline, holes) = c.shape(at, dir);
+        let mut p = Self::extrusion(level, outline, base, height);
+        if let Form::Extrusion { holes: h, .. } = &mut p.form {
+            *h = holes;
+        }
+        p.ifc_class = "IfcChimney".into();
+        p.chimney = Some(c);
+        p
+    }
+
+    /// Redraws a chimney's outline and flue after its system or type
+    /// changed, where it stood.
+    pub fn reshape_chimney(&mut self) {
+        let Some(c) = self.chimney else {
+            return;
+        };
+        if let Form::Extrusion { outline, holes, .. } = &mut self.form {
+            let (at, dir) = crate::chimney::Chimney::placement(outline);
+            (*outline, *holes) = c.shape(at, dir);
         }
     }
 
@@ -170,6 +208,9 @@ impl Part {
 
     /// "Extrusion", "Sweep", "Void"...: what it is called by default.
     pub fn label(&self) -> &'static str {
+        if self.chimney.is_some() && !self.void {
+            return "Chimney";
+        }
         match (&self.form, self.void) {
             (Form::Extrusion { .. }, false) => "Extrusion",
             (Form::Sweep { .. }, false) => "Sweep",

@@ -33,6 +33,9 @@ pub(crate) enum Prop {
     Bool(bool),
     /// Text of any length (a label is at most 255 characters).
     Text(String),
+    /// A value of an IFC measure type ("IFCPOWERMEASURE"), in the
+    /// project's units.
+    Measure(&'static str, f64),
 }
 
 impl Prop {
@@ -45,6 +48,7 @@ impl Prop {
             Prop::Label(s) => format!("IFCLABEL({})", string(s)),
             Prop::Bool(b) => format!("IFCBOOLEAN({})", if *b { ".T." } else { ".F." }),
             Prop::Text(s) => format!("IFCTEXT({})", string(s)),
+            Prop::Measure(t, v) => format!("{t}({})", real(*v)),
         }
     }
 }
@@ -211,6 +215,21 @@ pub(crate) fn type_props(t: &ElementType) -> Vec<(&'static str, Prop)> {
             out.push(("FrameDepth", Prop::Length(o.frame.depth)));
             out.push(("PanesAcross", Prop::Count(o.frame.panes_across as i64)));
             out.push(("PanesUp", Prop::Count(o.frame.panes_up as i64)));
+            if let Some(p) = &o.performance {
+                if !p.product.is_empty() {
+                    out.push(("Product", Prop::Label(p.product.clone())));
+                }
+                for (k, v) in [
+                    ("ThermalTransmittance", p.uw),
+                    ("SolarFactor", p.g),
+                    ("LightTransmittance", p.tv),
+                    ("SoundReduction", p.rw),
+                ] {
+                    if let Some(v) = v {
+                        out.push((k, Prop::Real(v)));
+                    }
+                }
+            }
         }
         TypeParams::Slab(s) | TypeParams::Roof(s) => {
             out.push(("Thickness", Prop::Length(s.thickness)));
@@ -263,7 +282,7 @@ pub(crate) fn category_of(class: &str) -> Option<(TypeCategory, bool)> {
         "IFCROOFTYPE" => (TypeCategory::Roof, false),
         "IFCCOLUMNTYPE" => (TypeCategory::Column, false),
         "IFCBEAMTYPE" => (TypeCategory::Beam, false),
-        "IFCFOOTINGTYPE" => (TypeCategory::Footing, false),
+        "IFCFOOTINGTYPE" | "IFCPILETYPE" => (TypeCategory::Footing, false),
         _ => return None,
     })
 }
@@ -311,6 +330,20 @@ pub(crate) fn type_from(category: TypeCategory, curtain: bool, p: &Props) -> Typ
                     panes_up: count("PanesUp"),
                 },
                 material: None,
+                door: None,
+                division: None,
+                threshold: false,
+                performance: {
+                    let num = |k: &str| p.get(k).and_then(|v| v.0).filter(|v| v.is_finite());
+                    let perf = creabim_core::joinery::Performance {
+                        product: label(p, "Product").unwrap_or("").to_string(),
+                        uw: num("ThermalTransmittance"),
+                        g: num("SolarFactor"),
+                        tv: num("LightTransmittance"),
+                        rw: num("SoundReduction"),
+                    };
+                    (perf != Default::default()).then_some(perf)
+                },
             };
             if door {
                 TypeParams::Door(o)
@@ -359,6 +392,7 @@ pub(crate) fn type_from(category: TypeCategory, curtain: bool, p: &Props) -> Typ
                 width: l("Width", 0.6),
                 length: match kind {
                     FootingKind::Pad => l("Length", 1.2),
+                    FootingKind::Pile => l("Width", creabim_core::footing::PILE_DIAMETER),
                     FootingKind::Strip => 0.0,
                 },
                 thickness: l("Thickness", 0.3),
@@ -378,6 +412,7 @@ pub(crate) fn type_from(category: TypeCategory, curtain: bool, p: &Props) -> Typ
             parts: vec![],
             symbol: vec![],
             catalogue: label(p, "CatalogueKey").map(str::to_string),
+            supply: None,
         }),
     }
 }
@@ -386,12 +421,14 @@ fn kind_label(k: FootingKind) -> &'static str {
     match k {
         FootingKind::Strip => "Strip",
         FootingKind::Pad => "Pad",
+        FootingKind::Pile => "Pile",
     }
 }
 
 fn kind_from(p: &Props) -> FootingKind {
     match label(p, "Kind") {
         Some(s) if s.eq_ignore_ascii_case("pad") => FootingKind::Pad,
+        Some(s) if s.eq_ignore_ascii_case("pile") => FootingKind::Pile,
         _ => FootingKind::Strip,
     }
 }
@@ -417,6 +454,7 @@ pub(crate) fn footing_props(f: &Footing, host: Option<String>) -> Vec<(&'static 
             out.push(("Length", Prop::Length(f.length)));
             out.push(("Rotation", Prop::Real(f.rotation)));
         }
+        FootingKind::Pile => {}
     }
     if let Some(h) = host {
         out.push(("Host", Prop::Label(h)));
@@ -439,6 +477,11 @@ pub(crate) fn footing_from(
             let mut f = Footing::pad(level, start);
             f.length = len(p, "Length")?;
             f.rotation = p.get("Rotation").and_then(|v| v.0).unwrap_or(0.0);
+            f
+        }
+        FootingKind::Pile => {
+            let mut f = Footing::pile(level, start);
+            f.length = width;
             f
         }
     };
@@ -511,7 +554,7 @@ mod tests {
                 let r = match v {
                     Prop::Length(x) => (Some(*x), None),
                     Prop::Count(n) => (Some(*n as f64), None),
-                    Prop::Real(x) => (Some(*x), None),
+                    Prop::Real(x) | Prop::Measure(_, x) => (Some(*x), None),
                     Prop::Label(s) | Prop::Text(s) => (None, Some(s.clone())),
                     Prop::Bool(b) => (Some(*b as i64 as f64), None),
                 };

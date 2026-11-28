@@ -5,8 +5,7 @@
 
 use super::{CreaBimApp, Tool};
 use creabim_core::catalogue::radiators::{Panel, HEIGHTS};
-use creabim_services::heatloss;
-use creabim_services::radiators::{self, Settings};
+use creabim_services::radiators::{self};
 use eframe::egui::{self, Vec2};
 
 impl CreaBimApp {
@@ -16,7 +15,8 @@ impl CreaBimApp {
             return false;
         }
         if self.radiators.is_none() {
-            self.radiators = Some(Settings::default());
+            // reopened: as it was last written (George 2026-11-27)
+            self.radiators = Some(self.saved_settings("radiators").unwrap_or_default());
         }
         true
     }
@@ -28,23 +28,40 @@ impl CreaBimApp {
         };
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
-        let o = self
-            .heat_loss
-            .as_ref()
-            .map_or_else(heatloss::Opts::default, |x| x.0);
-        let floor = self.floor_heat.unwrap_or_default();
+        let o = self.heat_opts();
+        let floor = self
+            .floor_heat
+            .clone()
+            .or_else(|| self.saved_settings("floorheat"))
+            .unwrap_or_default();
         let d = radiators::design(self.doc.model(), &o, &s, &floor);
+        let found = creabim_services::calcresults::radiators(&d).with_settings(&s);
+        let written = self.is_written(&found);
+        let mut write_now = false;
         let mut open = true;
         let mut select = None;
         let mut place: Option<Panel> = None;
+        let mut resize = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         super::shell::window(t("Radiators"))
             .id(egui::Id::new("radiators"))
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(360.0, 240.0))
-            .default_size(Vec2::new(720.0, 480.0))
+            .default_size(crate::app::shell::at_least(Vec2::new(720.0, 480.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if super::calcresultsui::write_button(ui, written) {
+                        write_now = true;
+                    }
+                    if ui
+                        .button(t("Size the standing radiators"))
+                        .on_hover_text(t("Makes every panel radiator standing in a room the size the room needs: what the floor and the towel radiators leave, shared among them. A locked radiator keeps its size and its output is counted."))
+                        .clicked()
+                    {
+                        resize = true;
+                    }
+                });
                 ui.horizontal(|ui| {
                     ui.label(t("Supply temperature"));
                     ui.add(
@@ -97,83 +114,106 @@ impl CreaBimApp {
                     .strong(),
                 );
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    egui::Grid::new("radiators.rooms")
-                        .striped(true)
-                        .num_columns(9)
-                        .show(ui, |ui| {
-                            for h in [
-                                "Room", "θi °C", "Φ W", "Floor W", "Needed W", "Proposal",
-                                "Output W", "kg/h", "Standing W", "",
-                            ] {
-                                ui.strong(t(h));
-                            }
-                            ui.end_row();
-                            for x in &d.rooms {
-                                let name = format!("{} {}", x.number, x.name);
-                                if ui.link(name.trim()).clicked() {
-                                    select = Some(x.id);
-                                }
-                                ui.label(num(x.ti, 0));
-                                ui.label(num(x.phi, 0));
-                                ui.label(if x.floor_w > 0.0 {
-                                    num(x.floor_w, 0)
-                                } else {
-                                    String::new()
-                                });
-                                ui.label(num(x.need, 0));
-                                match x.panel {
-                                    Some(p) => {
-                                        let text = format!("{} × {}", x.count, p.label());
-                                        if x.ok {
-                                            ui.label(text);
-                                        } else {
-                                            ui.colored_label(ui.visuals().warn_fg_color, text)
-                                                .on_hover_text(t(
-                                                    "The radiators allowed do not cover the room's loss: raise the supply temperature, the height or the longest length.",
-                                                ));
-                                        }
-                                    }
-                                    None => {
-                                        ui.weak(t("covered by the floor"));
-                                    }
-                                }
-                                ui.label(num(x.output, 0));
-                                ui.label(num(x.flow, 0));
-                                if x.installed.is_empty() {
-                                    ui.label("");
-                                } else {
-                                    let text = num(x.installed_w, 0);
-                                    let list = x
-                                        .installed
-                                        .iter()
-                                        .map(Panel::label)
-                                        .collect::<Vec<_>>()
-                                        .join(", ");
-                                    if x.installed_w >= x.need * 0.98 {
-                                        ui.label(text).on_hover_text(list);
-                                    } else {
-                                        ui.colored_label(ui.visuals().warn_fg_color, text)
-                                            .on_hover_text(list);
-                                    }
-                                }
-                                match x.panel {
-                                    Some(p) => {
-                                        if ui.small_button(t("Place it")).clicked() {
-                                            place = Some(p);
-                                        }
-                                    }
-                                    None => {
-                                        ui.label("");
-                                    }
-                                }
-                                ui.end_row();
+                    use crate::sheet::{self, Col};
+                    let cols = [
+                        Col::text("Room"),
+                        Col::num("θi", "°C"),
+                        Col::num("Φ", "W"),
+                        Col::num("Floor", "W"),
+                        Col::num("Towel radiators", "W"),
+                        Col::num("Needed", "W"),
+                        Col::text("Proposal"),
+                        Col::num("Output", "W"),
+                        Col::num("Flow", "kg/h"),
+                        Col::num("Standing", "W"),
+                        Col::text(""),
+                    ];
+                    let sum = |f: fn(&radiators::RoomDesign) -> f64| d.rooms.iter().map(f).sum::<f64>();
+                    let total = |row: &mut sheet::Row| {
+                        row.text(t("Total"));
+                        row.empty();
+                        row.text(num(sum(|x| x.phi), 0));
+                        row.text(num(sum(|x| x.floor_w), 0));
+                        row.text(num(sum(|x| x.towels_w), 0));
+                        row.text(num(sum(|x| x.need), 0));
+                        row.text(format!("{} {}", d.count, t("radiators")));
+                        row.text(num(d.output_kw * 1000.0, 0));
+                        row.text(num(d.flow, 0));
+                        row.text(num(d.installed_kw * 1000.0, 0));
+                    };
+                    sheet::show(ui, "radiators.rooms", &cols, d.rooms.len(), 400.0, |row, i| {
+                        let x = &d.rooms[i];
+                        let name = format!("{} {}", x.number, x.name);
+                        row.cell(|ui| {
+                            if ui.link(name.trim()).clicked() {
+                                select = Some(x.id);
                             }
                         });
+                        row.text(num(x.ti, 0));
+                        row.text(num(x.phi, 0));
+                        row.text(if x.floor_w > 0.0 { num(x.floor_w, 0) } else { String::new() });
+                        row.text(if x.towels_w > 0.0 { num(x.towels_w, 0) } else { String::new() });
+                        row.text(num(x.need, 0));
+                        row.cell(|ui| match x.panel {
+                            Some(p) => {
+                                let text = format!("{} × {}", x.count, p.label());
+                                if x.ok {
+                                    ui.label(text);
+                                } else {
+                                    ui.colored_label(ui.visuals().warn_fg_color, text)
+                                        .on_hover_text(t(
+                                            "The radiators allowed do not cover the room's loss: raise the supply temperature, the height or the longest length.",
+                                        ));
+                                }
+                            }
+                            None => {
+                                ui.weak(t("covered by the floor"));
+                            }
+                        });
+                        row.text(num(x.output, 0));
+                        row.text(num(x.flow, 0));
+                        row.cell(|ui| {
+                            if !x.installed.is_empty() {
+                                let text = num(x.installed_w, 0);
+                                let list = x
+                                    .installed
+                                    .iter()
+                                    .map(creabim_core::catalogue::radiators::Heater::label)
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                if x.installed_w >= x.need * 0.98 {
+                                    ui.label(text).on_hover_text(list);
+                                } else {
+                                    ui.colored_label(ui.visuals().warn_fg_color, text)
+                                        .on_hover_text(list);
+                                }
+                            }
+                        });
+                        row.cell(|ui| {
+                            if let Some(p) = x.panel {
+                                if ui.small_button(t("Place it")).clicked() {
+                                    place = Some(p);
+                                }
+                            }
+                        });
+                    }, Some(&total));
                     ui.add_space(6.0);
-                    ui.weak(t("Steel panel radiators, one under each window of the room, the slimmest type that covers its share. The outputs are the usual ones of such radiators at 75/65/20 °C: replace them with the maker's once the product is chosen."));
+                    ui.weak(t("KORADO RADIK VK panel radiators, one under each window of the room, the slimmest type that covers its share; outputs and exponents from KORADO's tables. Towel radiators KORADO KORALUX LINEAR CLASSIC-M on the same water are counted first."));
                     ui.weak("STN EN 442-1 · STN EN 442-2 · STN EN 12831-1 · STN EN 12828");
                 });
             });
+        if resize {
+            let tx = radiators::resize(self.doc.model(), &d, &s);
+            if tx.ops.is_empty() {
+                self.status = t("The standing radiators already have the size the rooms need.");
+            } else {
+                let r = self.doc.commit(tx);
+                self.report(
+                    r,
+                    t("Radiators sized to the rooms; locked ones kept their size."),
+                );
+            }
+        }
         if let Some(id) = select {
             self.selection.only(id);
         }
@@ -184,11 +224,16 @@ impl CreaBimApp {
                 unit.name,
                 t("click in a plan or the 3D view to place it. Space turns it; Esc ends.")
             );
+            let what = unit.name.clone();
             self.plan.objects.current = Some(unit);
             self.plan.objects.offset = None;
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = Tool::Object;
+            self.park(what);
+        }
+        if write_now {
+            self.write_results_said(found);
         }
         self.radiators = if open { Some(s) } else { None };
     }

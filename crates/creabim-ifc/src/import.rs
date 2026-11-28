@@ -397,7 +397,8 @@ impl<'a> Importer<'a> {
         self.import_bare_openings();
         self.import_wall_voids();
         self.import_objects();
-        for &id in self.ids("IFCFOOTING") {
+        let piles: Vec<u64> = self.ids("IFCPILE").to_vec();
+        for &id in self.ids("IFCFOOTING").to_vec().iter().chain(&piles) {
             self.import_footing(id);
         }
         self.import_spaces();
@@ -471,13 +472,15 @@ impl<'a> Importer<'a> {
         for e in &mut self.out {
             if let Some(r) = &mut e.of_type {
                 if let Some(p) = params.get(&r.id) {
-                    // a door's or window's frame is only written on its type
+                    // a door's or window's frame is only written on its type,
                     if let (
                         creabim_core::TypeParams::Door(t) | creabim_core::TypeParams::Window(t),
                         ElementKind::Opening(o),
                     ) = (p, &mut e.kind)
                     {
                         o.frame = t.frame;
+                        // and so are its maker's values (Uw, g, τv, Rw)
+                        o.performance = t.performance.clone();
                     }
                     r.overrides = creabim_core::types::differences(p, &e.kind);
                 }
@@ -560,7 +563,9 @@ impl<'a> Importer<'a> {
             let eid = self.new_id(e);
             let name = Self::name(e, "Type");
             self.type_elems.push(Element {
+                locked: false,
                 mark: None,
+                reno: None,
                 id: eid,
                 name,
                 kind: ElementKind::ElementType(t),
@@ -626,7 +631,9 @@ impl<'a> Importer<'a> {
             top_z: z + height,
         });
         self.wall_elems.push(Element {
+            locked: false,
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
@@ -651,7 +658,9 @@ impl<'a> Importer<'a> {
         let eid = self.new_id(e);
         let name = Self::name(e, f.kind.label());
         self.opening_elems.push(Element {
+            locked: false,
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
@@ -689,7 +698,9 @@ impl<'a> Importer<'a> {
                 let (offset, sill, width, height) = self.snap_to_void(&wall, r);
                 let eid = self.new_id(o);
                 self.opening_elems.push(Element {
+                    locked: false,
                     mark: None,
+                    reno: None,
                     source: None,
                     of_type: None,
                     id: eid,
@@ -705,6 +716,17 @@ impl<'a> Importer<'a> {
                         frame: Default::default(),
                         flip_hand: false,
                         flip_facing: false,
+                        no_outer_sill: false,
+                        no_inner_sill: false,
+                        threshold: false,
+                        threshold_material: None,
+                        penetration: None,
+                        setback: None,
+                        reveal: None,
+                        division: None,
+                        door: None,
+                        texts: None,
+                        performance: None,
                     }),
                 });
             } else if let Some(&i) = self.slabs.get(&host) {
@@ -872,7 +894,9 @@ impl<'a> Importer<'a> {
                     .unwrap_or_else(|| format!("Level {i}"));
             }
             self.level_elems.push(Element {
+                locked: false,
                 mark: None,
+                reno: None,
                 source: None,
                 id: lid,
                 name,
@@ -1450,7 +1474,9 @@ impl<'a> Importer<'a> {
                 .insert(eid, voids.into_iter().map(|v| (v, false)).collect());
         }
         self.wall_elems.push(Element {
+            locked: false,
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
@@ -1576,6 +1602,10 @@ impl<'a> Importer<'a> {
             curtain: None,
             layer_ends: vec![],
             bulge: 0.0,
+            bearing: None,
+            fire_partial: false,
+            no_fire_barriers: false,
+            plinth_steps: Vec::new(),
         };
         Ok((wall, voids))
     }
@@ -1657,13 +1687,17 @@ impl<'a> Importer<'a> {
         let eid = self.new_id(e);
         self.slabs.insert(id, self.wall_elems.len());
         self.wall_elems.push(Element {
+            locked: false,
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
             name: Self::name(e, "Slab"),
             kind: ElementKind::Slab(Slab {
                 layer_edges: vec![],
+                reinforcement: None,
+                kind: None,
                 level: lid,
                 boundary: p.outline,
                 thickness: p.z1 - p.z0,
@@ -1734,6 +1768,17 @@ impl<'a> Importer<'a> {
                         frame: Default::default(),
                         flip_hand: false,
                         flip_facing: false,
+                        no_outer_sill: false,
+                        no_inner_sill: false,
+                        threshold: false,
+                        threshold_material: None,
+                        penetration: None,
+                        setback: None,
+                        reveal: None,
+                        division: None,
+                        door: None,
+                        texts: None,
+                        performance: None,
                     }),
                 ));
             }
@@ -1850,7 +1895,9 @@ impl<'a> Importer<'a> {
             "Window"
         };
         self.opening_elems.push(Element {
+            locked: false,
             mark: None,
+            reno: None,
             source: None,
             of_type: self.type_ref(id),
             id: eid,
@@ -1866,6 +1913,17 @@ impl<'a> Importer<'a> {
                 frame: Default::default(),
                 flip_hand: false,
                 flip_facing: false,
+                no_outer_sill: false,
+                no_inner_sill: false,
+                threshold: false,
+                threshold_material: None,
+                penetration: None,
+                setback: None,
+                reveal: None,
+                division: None,
+                door: None,
+                texts: None,
+                performance: None,
             }),
         });
     }
@@ -1918,7 +1976,9 @@ impl<'a> Importer<'a> {
         let material = self.material_for(id);
         let eid = self.new_id(e);
         self.other_elems.push(Element {
+            locked: false,
             mark: None,
+            reno: None,
             source: None,
             id: eid,
             name: Self::name(e, class),
