@@ -1,4 +1,11 @@
 {
+ "Penetrations": "Prostupy",
+ "Penetration through a wall th. {t} mm – {s}": "Prostup stěnou tl. {t} mm – {s}",
+ "Penetration through a load-bearing wall th. {t} mm – {s}": "Prostup nosnou stěnou tl. {t} mm – {s}",
+ "Penetration through a slab th. {t} mm – {s}": "Prostup stropní deskou tl. {t} mm – {s}",
+ "Penetration through a slab – {s}": "Prostup stropní deskou – {s}",
+ "Penetration through a suspended ceiling th. {t} mm – {s}": "Prostup podhledem tl. {t} mm – {s}",
+ "Penetration through the roof th. {t} mm – {s}": "Prostup střechou tl. {t} mm – {s}",
  "{m} – strip footing w. {w} mm": "{m} – základový pás š. {w} mm",
  "{m} – pad footing {a} × {b} mm": "{m} – patka {a} × {b} mm",
  "{m} – pile Ø {d} mm, length {h} mm": "{m} – pilota Ø {d} mm, hloubka {h} mm",
