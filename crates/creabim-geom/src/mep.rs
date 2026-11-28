@@ -233,6 +233,10 @@ pub fn socket(p: &Pipe) -> Option<(f64, f64)> {
     if p.height_mm.is_some() || p.insulation_mm > 0.0 {
         return None;
     }
+    // a flexible hose (ATREA GP) is laid in one piece: no fitting
+    if creabim_services::pipe_types::by_id(&p.pipe_type).is_some_and(|t| t.flex) {
+        return None;
+    }
     let d = p.outer_mm;
     let drain = creabim_services::pipe_types::by_id(&p.pipe_type).map_or_else(
         || p.system == "K" || p.system.starts_with('K'),
@@ -803,9 +807,22 @@ pub fn pipe_labels(model: &Model, pipes: &[&Element], mm: f64) -> Vec<PlanItem> 
 /// size once, numbered as the legend lists them (George 2026-11-25).
 #[derive(Clone, Debug, PartialEq)]
 pub struct AirPosition {
+    /// Its device (zariadenie) and its number in it, as George's sample
+    /// VZT drawings number positions: "1.12".
+    pub device: usize,
     pub number: usize,
+    /// What the device is: "Rekuperácia", "Odvetranie 1.07+1.08", or empty
+    /// for the devices drawn by hand.
+    pub device_name: String,
     pub name: String,
     pub valves: Vec<creabim_core::ElementId>,
+}
+
+impl AirPosition {
+    /// "1.12"
+    pub fn label(&self) -> String {
+        format!("{}.{}", self.device, self.number)
+    }
 }
 
 /// The devices on the model's ducts, as positions: in the order of the
@@ -819,6 +836,12 @@ pub fn air_positions(model: &Model) -> Vec<AirPosition> {
             continue;
         };
         let Some(p) = v.host(model) else { continue };
+        // its device: what its duct's name starts with ("Rekuperácia –
+        // …", "Odvetranie 1.07 – …"), as the designs name them
+        let device_name = model
+            .get(v.pipe)
+            .and_then(|d| d.name.split_once(" – ").map(|x| x.0.to_string()))
+            .unwrap_or_default();
         if !p.kind().is_air() {
             continue;
         }
@@ -840,23 +863,46 @@ pub fn air_positions(model: &Model) -> Vec<AirPosition> {
             .iter()
             .position(|k| k.code == v.kind)
             .unwrap_or(usize::MAX);
-        match out.iter_mut().find(|x| x.1.name == name) {
+        match out
+            .iter_mut()
+            .find(|x| x.1.name == name && x.1.device_name == device_name)
+        {
             Some(x) => x.1.valves.push(e.id),
             None => out.push((
                 order,
                 AirPosition {
+                    device: 0,
                     number: 0,
+                    device_name,
                     name,
                     valves: vec![e.id],
                 },
             )),
         }
     }
-    out.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.name.cmp(&b.1.name)));
+    // the devices: heat recovery first, then by name, the hand-drawn last
+    let rank = |d: &str| (d.is_empty(), !d.starts_with("Rekuper"), d.to_string());
+    out.sort_by(|a, b| {
+        rank(&a.1.device_name)
+            .cmp(&rank(&b.1.device_name))
+            .then(a.0.cmp(&b.0))
+            .then_with(|| a.1.name.cmp(&b.1.name))
+    });
+    let mut devices: Vec<String> = vec![];
+    let mut counts: Vec<usize> = vec![];
     out.into_iter()
-        .enumerate()
-        .map(|(i, (_, mut x))| {
-            x.number = i + 1;
+        .map(|(_, mut x)| {
+            let d = match devices.iter().position(|d| *d == x.device_name) {
+                Some(d) => d,
+                None => {
+                    devices.push(x.device_name.clone());
+                    counts.push(0);
+                    devices.len() - 1
+                }
+            };
+            counts[d] += 1;
+            x.device = d + 1;
+            x.number = counts[d];
             x
         })
         .collect()
@@ -922,7 +968,7 @@ pub fn air_mark(
     model: &Model,
     e: &Element,
     v: &creabim_core::mep::Valve,
-    number: usize,
+    number: &str,
     mm: f64,
 ) -> Option<PlanItem> {
     let pipe = v.host(model)?;
@@ -943,11 +989,153 @@ pub fn air_mark(
     })
 }
 
+/// Which way the air runs in each duct: `true` from its start to its end.
+/// The ducts of one system joined end to end are walked from their root:
+/// the end at a ventilation unit (an object within 1 m in plan of a loose
+/// end), else every loose end without an air terminal on it (a fan's
+/// roof outlet). Supply and exhaust to outdoors run away from it, extract
+/// and outdoor air towards it. A duct the walk doesn't reach is left out.
+pub fn air_flows(model: &Model) -> std::collections::HashMap<creabim_core::ElementId, bool> {
+    use creabim_core::mep::SystemKind;
+    use creabim_core::ElementKind;
+    use std::collections::{HashMap, VecDeque};
+    let key = |p: DVec3| {
+        (
+            (p.x * 500.0).round() as i64,
+            (p.y * 500.0).round() as i64,
+            (p.z * 500.0).round() as i64,
+        )
+    };
+    let world = |p: &Pipe| {
+        let z = DVec3::Z * model.level(p.level).map_or(0.0, |l| l.elevation);
+        [p.start + z, p.end + z]
+    };
+    // ducts per system, and the ends they share
+    let ducts: Vec<(&Element, &Pipe)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Pipe(p) if p.kind().is_air() => Some((e, p)),
+            _ => None,
+        })
+        .collect();
+    // (system, end) to the ducts' ends there
+    type Ends = HashMap<(String, (i64, i64, i64)), Vec<(usize, usize)>>;
+    let mut at: Ends = HashMap::new();
+    for (i, (_, p)) in ducts.iter().enumerate() {
+        for (k, q) in world(p).into_iter().enumerate() {
+            at.entry((p.system.clone(), key(q)))
+                .or_default()
+                .push((i, k));
+        }
+    }
+    // the air terminals' ends, and the units
+    let mut terminal = vec![[false; 2]; ducts.len()];
+    for e in model.iter() {
+        if let ElementKind::Valve(v) = &e.kind {
+            if v.is_air_terminal() {
+                if let Some(i) = ducts.iter().position(|(d, _)| d.id == v.pipe) {
+                    terminal[i][usize::from(v.t > 0.5)] = true;
+                }
+            }
+        }
+    }
+    let units: Vec<DVec2> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            // an air handling or heat recovery unit (the catalogue's
+            // vzt/duplex/…, a room unit vzt/dec/…)
+            ElementKind::Object(o)
+                if creabim_core::objects::type_of(model, e)
+                    .and_then(|t| t.catalogue.as_deref())
+                    .is_some_and(|c| c.starts_with("vzt/duplex/") || c.starts_with("vzt/dec/")) =>
+            {
+                Some(o.position)
+            }
+            _ => None,
+        })
+        .collect();
+    let loose = |i: usize, k: usize| {
+        let p = ducts[i].1;
+        at.get(&(p.system.clone(), key(world(p)[k])))
+            .is_none_or(|v| v.len() == 1)
+    };
+    // the roots of each system's ducts
+    let mut seen = vec![[None::<usize>; 2]; ducts.len()];
+    let mut queue = VecDeque::new();
+    let mut systems: Vec<&str> = ducts.iter().map(|(_, p)| p.system.as_str()).collect();
+    systems.sort_unstable();
+    systems.dedup();
+    for sys in systems {
+        let ends: Vec<(usize, usize)> = (0..ducts.len())
+            .filter(|&i| ducts[i].1.system == sys)
+            .flat_map(|i| [(i, 0), (i, 1)])
+            .filter(|&(i, k)| loose(i, k))
+            .collect();
+        let at_unit: Vec<(usize, usize)> = ends
+            .iter()
+            .copied()
+            .filter(|&(i, k)| {
+                let q = world(ducts[i].1)[k].truncate();
+                units.iter().any(|u| u.distance(q) < 1.0)
+            })
+            .collect();
+        let roots = if at_unit.is_empty() {
+            ends.into_iter().filter(|&(i, k)| !terminal[i][k]).collect()
+        } else {
+            at_unit
+        };
+        for (i, k) in roots {
+            seen[i][k] = Some(0);
+            queue.push_back((i, k));
+        }
+    }
+    // walk out: through a duct to its other end, then to the ducts there
+    while let Some((i, k)) = queue.pop_front() {
+        let d = seen[i][k].unwrap_or(0);
+        let o = 1 - k;
+        if seen[i][o].is_none() {
+            seen[i][o] = Some(d + 1);
+            let p = ducts[i].1;
+            for &(j, m) in at
+                .get(&(p.system.clone(), key(world(p)[o])))
+                .into_iter()
+                .flatten()
+            {
+                if seen[j][m].is_none() {
+                    seen[j][m] = Some(d + 1);
+                    queue.push_back((j, m));
+                }
+            }
+        }
+    }
+    let mut out = HashMap::new();
+    for (i, (e, p)) in ducts.iter().enumerate() {
+        let (Some(a), Some(b)) = (seen[i][0], seen[i][1]) else {
+            continue;
+        };
+        if a == b {
+            continue;
+        }
+        // away from the root: from the start when the start is nearer
+        let away = a < b;
+        let outward = matches!(p.system.as_str(), "VZP" | "VZE")
+            || (p.system_def().map(|s| s.kind) == Some(SystemKind::AirSupply) && p.system != "VZC");
+        out.insert(e.id, away == outward);
+    }
+    out
+}
+
 /// A duct as a VZT drawing shows it (George 2026-11-25): its outline in
 /// true size in its system's colour (the view colours the lines), washed
 /// lightly in that colour, and where it is insulated the insulation's
 /// outline round it, thin and dashed in the same colour.
-pub fn duct_plan(model: &Model, e: &Element, p: &Pipe) -> Vec<PlanItem> {
+pub fn duct_plan(
+    model: &Model,
+    e: &Element,
+    p: &Pipe,
+    flow: Option<bool>,
+    mm: f64,
+) -> Vec<PlanItem> {
     let rgb = color(p);
     let mut bare = p.clone();
     bare.insulation_mm = 0.0;
@@ -972,6 +1160,42 @@ pub fn duct_plan(model: &Model, e: &Element, p: &Pipe) -> Vec<PlanItem> {
                     rgb,
                     dashed: true,
                 });
+            }
+        }
+    }
+    // its axis, thin dash-dot, with an arrow the way the air runs
+    // (George's sample VZT drawings)
+    let (a, b) = (p.start.truncate(), p.end.truncate());
+    if a.distance(b) > 1e-6 {
+        let look = creabim_core::LineLook {
+            pen: creabim_core::LinePen::Thin,
+            kind: creabim_core::LineType::DashDot,
+        };
+        items.push(PlanItem::Line {
+            id: e.id,
+            pen: Pen::Drafted(look),
+            a,
+            b,
+        });
+        if let Some(fwd) = flow {
+            let d = if fwd { b - a } else { a - b }.normalize();
+            let len = 2.0 * mm;
+            // on longer runs only: a short piece between fittings would
+            // be all arrow
+            if a.distance(b) > 4.0 * len {
+                let tip = (a + b) / 2.0 + d * len / 2.0;
+                let solid = creabim_core::LineLook {
+                    pen: creabim_core::LinePen::Thin,
+                    kind: creabim_core::LineType::Solid,
+                };
+                for side in [1.0, -1.0] {
+                    items.push(PlanItem::Line {
+                        id: e.id,
+                        pen: Pen::Drafted(solid),
+                        a: tip,
+                        b: tip - d * len + d.perp() * side * len * 0.4,
+                    });
+                }
             }
         }
     }

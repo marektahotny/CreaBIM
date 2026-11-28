@@ -53,8 +53,23 @@ pub const STRUCTURAL: usize = 7;
 /// On every tab, before it.
 pub const ALWAYS: [Tool; 2] = [Tool::Select, Tool::Align];
 
-/// What tab `tab` holds.
+/// What tab `tab` holds. Every building services tab can cut its own
+/// sections and elevations (George 2026-11-27: "vo VZT rezy"), drawn as
+/// the plan they start from is (the trade's ducts over the blind
+/// building).
 pub fn entries(tab: usize) -> Vec<Entry> {
+    let mut v = tab_entries(tab);
+    if (2..=6).contains(&tab) {
+        v.extend([
+            Entry::Sep,
+            Entry::Tool(Tool::Section),
+            Entry::Tool(Tool::Elevation),
+        ]);
+    }
+    v
+}
+
+fn tab_entries(tab: usize) -> Vec<Entry> {
     use Entry::{Sep, Tool as T};
     let act = |id, label, icon, hint| Entry::Act {
         id,
@@ -950,12 +965,24 @@ pub fn holds(tab: usize, tool: Tool) -> bool {
 
 /// The first tab that shows `tool`.
 pub fn home_of(tool: Tool) -> usize {
+    // the services tabs only borrow them
+    if matches!(tool, Tool::Section | Tool::Elevation) {
+        return ANNOTATE + 1;
+    }
     (0..TABS.len()).find(|t| holds(*t, tool)).unwrap_or(0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn services_tabs_cut_sections() {
+        for tab in 2..=6 {
+            assert!(holds(tab, Tool::Section) && holds(tab, Tool::Elevation));
+        }
+        assert_eq!(home_of(Tool::Elevation), ANNOTATE + 1);
+    }
 
     #[test]
     fn no_two_buttons_on_a_tab_share_an_icon() {

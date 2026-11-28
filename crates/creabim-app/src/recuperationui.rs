@@ -48,6 +48,7 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(t("Ducts laid"));
+                    ui.selectable_value(&mut o.route, Route::Split, t("supply in the floor, extract above the ceiling"));
                     ui.selectable_value(&mut o.route, Route::Floor, t("in the floor"));
                     ui.selectable_value(&mut o.route, Route::Ceiling, t("above the ceiling"));
                     ui.separator();
@@ -65,6 +66,8 @@ impl CreaBimApp {
                             .speed(1.0)
                             .suffix(" m³/h"),
                     );
+                    ui.label(t("runs into one valve"));
+                    ui.add(egui::DragValue::new(&mut o.runs_per_valve).range(1..=2));
                     ui.label(t("unit run at most at"));
                     let mut pc = o.use_of_unit * 100.0;
                     if ui
