@@ -164,6 +164,8 @@ pub fn catalogue() -> &'static Catalogue {
 pub const UNIT_KEY: &str = "vzt/duplex/";
 pub const BOX_KEY: &str = "vzt/box/";
 pub const ROOM_UNIT_KEY: &str = "vzt/dec/";
+/// How far apart the GP runs branch off a manifold (OBJ-T Ø100 GP), m.
+const MANIFOLD_STEP: f64 = 0.15;
 /// The names the design gives what it places, so designing again
 /// replaces them and nothing drawn by hand.
 pub const TAG: &str = "Rekuperácia";
@@ -178,6 +180,10 @@ pub enum Route {
     /// Above the ceiling (attic insulation, a suspended ceiling, the
     /// slab).
     Ceiling,
+    /// Supply in the floor, extract above the ceiling: the two never
+    /// cross (George 2026-11-27: "nekrížiť sa v 3D"), and the air is
+    /// taken out high in the room.
+    Split,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -188,6 +194,10 @@ pub struct Opts {
     /// The most air one duct Ø75 carries, m³/h (GP: 15–50 recommended
     /// by ATREA; quieter the less).
     pub per_duct: f64,
+    /// GP runs into one plate valve: 1 (PKS Ø100/Ø100 GP, valve Ø100) or
+    /// 2 (PKS 2×Ø100/Ø125 GP, valve Ø125). George 2026-11-27: one, at
+    /// 45 m³/h a run.
+    pub runs_per_valve: u32,
     /// The share of the unit's largest flow it is designed to run at.
     pub use_of_unit: f64,
     /// Air velocity through a door's undercut, m/s (the transfer).
@@ -202,9 +212,10 @@ pub struct Opts {
 impl Default for Opts {
     fn default() -> Self {
         Self {
-            route: Route::Floor,
+            route: Route::Split,
             series: "Pro-V".into(),
-            per_duct: 25.0,
+            per_duct: 45.0,
+            runs_per_valve: 1,
             use_of_unit: 0.7,
             transfer_v: 1.0,
             zeta_bend: 0.5,
@@ -331,6 +342,14 @@ pub struct Design {
     /// The unit's place and turn (back to the wall), and the boxes'.
     pub unit_at: Option<(DVec2, f64)>,
     pub boxes: [(DVec2, f64); 2],
+    /// The direction the manifolds' branches line up along (the wall).
+    pub box_along: DVec2,
+    /// No outer wall at the unit: outdoor air and exhaust go straight up
+    /// through the ceiling and roof to this height, m above the floor.
+    pub through_roof: Option<f64>,
+    /// The points the unit's mains pass on their way to the manifolds
+    /// (a door, when the manifolds sit outside the unit's room).
+    pub main_via: Vec<DVec2>,
     /// Air velocity in the unit's mains, m/s.
     pub main_velocity: f64,
     /// Length of the mains on the supply and the extract side, m.
@@ -348,6 +367,8 @@ pub struct Design {
     pub noise: Vec<Noise>,
     /// Height of the flexible ducts above the level, m.
     pub z: f64,
+    /// The height the extract side runs at, m (`z` unless split).
+    pub z_extract: f64,
 }
 
 struct RoomGeo {
@@ -374,6 +395,8 @@ struct Door {
     b: Option<usize>,
     /// An open passage (a room separator, a hole), not a door leaf.
     open: bool,
+    /// Under or through a partition, not a door: needs a penetration.
+    partition: bool,
 }
 
 fn room_at(rooms: &[RoomGeo], p: DVec2) -> Option<usize> {
@@ -425,7 +448,60 @@ fn doors(model: &Model, level: ElementId, rooms: &[RoomGeo]) -> Vec<Door> {
             a: room_at(rooms, mid + n * d),
             b: room_at(rooms, mid - n * d),
             open: o.kind == OpeningKind::Hole,
+            partition: false,
         });
+    }
+    // through a partition (not load-bearing, at most 0.2 m thick) the
+    // rooms share: a passage under it, as wide as their common edge less
+    // 0.2 m at each corner (needs a penetration in the partition)
+    for (i, r) in rooms.iter().enumerate() {
+        let n = r.outline.len();
+        for k in 0..n {
+            let Some(wid) = r.bounded_by.get(k).copied().flatten() else {
+                continue;
+            };
+            let Some(ElementKind::Wall(w)) = model.get(wid).map(|e| &e.kind) else {
+                continue;
+            };
+            if w.bearing == Some(true) || w.thickness > 0.2 + 1e-6 {
+                continue;
+            }
+            let (a, b) = (r.outline[k], r.outline[(k + 1) % n]);
+            let out_n = outward(&r.outline, a, b);
+            let dir = (b - a).normalize_or_zero();
+            // the stretch of this edge the other room also lies along
+            let probe = |t: f64| room_at(rooms, a + dir * t + out_n * (w.thickness + 0.15));
+            let len = a.distance(b);
+            let Some(j) = probe(len / 2.0) else {
+                continue;
+            };
+            if j <= i {
+                continue;
+            }
+            let step = 0.05;
+            let ts: Vec<f64> = (0..=((len / step) as usize))
+                .map(|q| q as f64 * step)
+                .filter(|t| probe(*t) == Some(j))
+                .collect();
+            let (Some(&t0), Some(&t1)) = (ts.first(), ts.last()) else {
+                continue;
+            };
+            let width = t1 - t0 - 0.4;
+            if width < 0.3 {
+                continue;
+            }
+            out.push(Door {
+                id: wid,
+                mid: a + dir * ((t0 + t1) / 2.0) + out_n * (w.thickness / 2.0),
+                n: out_n,
+                width,
+                thick: w.thickness,
+                a: Some(j),
+                b: Some(i),
+                open: false,
+                partition: true,
+            });
+        }
     }
     // rooms open to each other: an edge with no wall along it
     for (i, r) in rooms.iter().enumerate() {
@@ -439,7 +515,7 @@ fn doors(model: &Model, level: ElementId, rooms: &[RoomGeo]) -> Vec<Door> {
                 continue;
             }
             let mid = (a + b) / 2.0;
-            let out_n = (b - a).normalize().perp() * -1.0;
+            let out_n = outward(&r.outline, a, b);
             let Some(j) = room_at(rooms, mid + out_n * 0.3) else {
                 continue;
             };
@@ -455,6 +531,7 @@ fn doors(model: &Model, level: ElementId, rooms: &[RoomGeo]) -> Vec<Door> {
                 a: Some(j),
                 b: Some(i),
                 open: true,
+                partition: false,
             });
         }
     }
@@ -463,6 +540,18 @@ fn doors(model: &Model, level: ElementId, rooms: &[RoomGeo]) -> Vec<Door> {
 
 /// The room's edges with no room beyond them (its outer walls), with
 /// the wall's thickness.
+/// The normal of the edge `a`–`b` of `outline` pointing out of it,
+/// whichever way the outline runs.
+fn outward(outline: &[DVec2], a: DVec2, b: DVec2) -> DVec2 {
+    let n = (b - a).normalize_or_zero().perp();
+    let mid = (a + b) / 2.0;
+    if creabim_core::polygon::contains(outline, mid + n * 0.05) {
+        -n
+    } else {
+        n
+    }
+}
+
 fn outer_edges(model: &Model, rooms: &[RoomGeo], i: usize) -> Vec<(DVec2, DVec2, f64, ElementId)> {
     let r = &rooms[i];
     let Some(ElementKind::Room(room)) = model.get(r.id).map(|e| &e.kind) else {
@@ -484,8 +573,7 @@ fn outer_edges(model: &Model, rooms: &[RoomGeo], i: usize) -> Vec<(DVec2, DVec2,
         if a.distance(b) < 0.8 {
             continue;
         }
-        // outward: the outline runs counter-clockwise
-        let out_n = (b - a).normalize().perp() * -1.0;
+        let out_n = outward(&shape.outline, a, b);
         let probe = (a + b) / 2.0 + out_n * (w.thickness + 0.3);
         if room_at(rooms, probe).is_none() {
             out.push((a, b, w.thickness, *wid));
@@ -539,11 +627,16 @@ fn terminal_places(r: &RoomGeo, doors: &[DVec2], count: usize) -> Vec<DVec2> {
 }
 
 /// An L between `a` and `b` that stays in the room, else straight.
-fn ell(a: DVec2, b: DVec2, outline: Option<&[DVec2]>) -> Option<DVec2> {
-    if (a.x - b.x).abs() < 0.05 || (a.y - b.y).abs() < 0.05 {
+fn ell(a: DVec2, b: DVec2, outline: Option<&[DVec2]>, vertical_first: bool) -> Option<DVec2> {
+    if (a.x - b.x).abs() < 1e-4 || (a.y - b.y).abs() < 1e-4 {
         return None;
     }
-    for c in [DVec2::new(b.x, a.y), DVec2::new(a.x, b.y)] {
+    let cs = if vertical_first {
+        [DVec2::new(a.x, b.y), DVec2::new(b.x, a.y)]
+    } else {
+        [DVec2::new(b.x, a.y), DVec2::new(a.x, b.y)]
+    };
+    for c in cs {
         let inside = outline.is_none_or(|o| {
             creabim_core::polygon::contains(o, c)
                 && creabim_core::polygon::contains(o, (a + c) / 2.0)
@@ -554,6 +647,108 @@ fn ell(a: DVec2, b: DVec2, outline: Option<&[DVec2]>) -> Option<DVec2> {
         }
     }
     None
+}
+
+/// The corner of an L from the path's last point to `b`, going on the
+/// way the path last went first (so runs side by side stay apart).
+fn ell_from(pts: &[DVec2], b: DVec2, outline: Option<&[DVec2]>) -> Option<DVec2> {
+    let a = *pts.last()?;
+    let vertical = pts.len() >= 2 && {
+        let d = a - pts[pts.len() - 2];
+        d.y.abs() > d.x.abs()
+    };
+    if vertical {
+        ell(a, b, outline, true)
+    } else {
+        ell(a, b, outline, false)
+    }
+}
+
+/// The path without the points it runs straight through.
+/// A jog narrower than a GP (the valve's run stepping over by a few
+/// centimetres to its lane) at the valve's end: the first piece shifted
+/// onto the lane instead.
+fn no_jog(mut pts: Vec<DVec2>) -> Vec<DVec2> {
+    if pts.len() >= 4 {
+        let (a, b, c, e) = (pts[0], pts[1], pts[2], pts[3]);
+        let jog = c - b;
+        if jog.length() < 0.1 && (b - a).perp_dot(e - c).abs() < 1e-9 && (b - a).dot(e - c) > 0.0 {
+            pts[0] = a + jog;
+            pts.remove(1);
+        }
+    }
+    straighten(pts)
+}
+
+fn straighten(pts: Vec<DVec2>) -> Vec<DVec2> {
+    let mut out: Vec<DVec2> = vec![];
+    for p in pts {
+        // a point on the line on, or where it turns back on itself (a
+        // stub), goes
+        while out.len() >= 2 {
+            let (a, b) = (out[out.len() - 2], out[out.len() - 1]);
+            if (b - a).perp_dot(p - b).abs() < 1e-6 {
+                out.pop();
+            } else {
+                break;
+            }
+        }
+        out.push(p);
+    }
+    out
+}
+
+/// How many pieces of `path` cross or run within a GP's width (0.09 m)
+/// of the pieces of `laid`, the last piece into the manifold aside.
+fn crossings(path: &[DVec2], laid: &[&Vec<DVec2>]) -> usize {
+    let near = |a: DVec2, b: DVec2, c: DVec2, e: DVec2| {
+        let d = |p: DVec2, a: DVec2, b: DVec2| {
+            let ab = b - a;
+            let t = if ab.length_squared() < 1e-12 {
+                0.0
+            } else {
+                ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0)
+            };
+            p.distance(a + ab * t)
+        };
+        let cross = |o: DVec2, p: DVec2, q: DVec2| (p - o).perp_dot(q - o);
+        let proper = cross(a, b, c) * cross(a, b, e) < 0.0 && cross(c, e, a) * cross(c, e, b) < 0.0;
+        proper || d(a, c, e).min(d(b, c, e)).min(d(c, a, b)).min(d(e, a, b)) < 0.09
+    };
+    let pieces = |p: &[DVec2]| -> Vec<(DVec2, DVec2)> {
+        let n = p.len();
+        p.windows(2)
+            .enumerate()
+            .filter(|(i, _)| i + 2 < n)
+            .map(|(_, w)| (w[0], w[1]))
+            .collect()
+    };
+    let mine = pieces(path);
+    laid.iter()
+        .flat_map(|o| pieces(o))
+        .filter(|(c, e)| mine.iter().any(|(a, b)| near(*a, *b, *c, *e)))
+        .count()
+}
+
+/// How many pieces of `path` cross a piece of `laid` outright (the last
+/// pieces, into the manifold, aside).
+fn crossings_proper(path: &[DVec2], laid: &[&Branch]) -> usize {
+    let cr = |o: DVec2, p: DVec2, q: DVec2| (p - o).perp_dot(q - o);
+    let cut = |p: &[DVec2]| p.len().saturating_sub(2);
+    let mine = &path.windows(2).collect::<Vec<_>>()[..cut(path)];
+    let mut n = 0;
+    for o in laid {
+        let theirs = o.path.windows(2).collect::<Vec<_>>();
+        for w in &theirs[..cut(&o.path)] {
+            for m in mine {
+                let (a, b, c, e) = (m[0], m[1], w[0], w[1]);
+                if cr(a, b, c) * cr(a, b, e) < -1e-9 && cr(c, e, a) * cr(c, e, b) < -1e-9 {
+                    n += 1;
+                }
+            }
+        }
+    }
+    n
 }
 
 fn path_length(p: &[DVec2]) -> f64 {
@@ -890,11 +1085,13 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 .then_some(i)
         })
     });
+    let ceiling = unit_room.map_or(2.6, |i| geo[i].height) + 0.08;
     let z = match o.route {
-        Route::Floor => -0.06,
-        Route::Ceiling => unit_room.map_or(2.6, |i| geo[i].height) + 0.08,
+        Route::Floor | Route::Split => -0.06,
+        Route::Ceiling => ceiling,
     };
     d.z = z;
+    d.z_extract = if o.route == Route::Split { ceiling } else { z };
     if central {
         match unit_room {
             None => d.warnings.push(
@@ -909,15 +1106,16 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 {
                     Some(&(a, b, th, wid)) => {
                         d.unit_wall = Some(wid);
-                        (a, b, (b - a).normalize().perp() * -1.0, th)
+                        (a, b, outward(&g.outline, a, b), th)
                     }
                     None => {
                         d.warnings.push(format!(
-                            "Miestnosť {} nemá obvodovú stenu: nasávanie a výfuk treba viesť ručne.",
+                            "Miestnosť {} nemá obvodovú stenu: nasávanie a výfuk idú zvislo cez strop a strechu, doplniť strešné prestupy a hlavice.",
                             g.name
                         ));
+                        d.through_roof = Some(g.height + 0.6);
                         let (a, b) = (g.outline[0], g.outline[1 % g.outline.len()]);
-                        (a, b, (b - a).normalize().perp() * -1.0, 0.4)
+                        (a, b, outward(&g.outline, a, b), 0.4)
                     }
                 };
                 let along = (b - a).normalize();
@@ -936,6 +1134,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                     at - n * 1.0
                 };
                 d.boxes = [(s, turn_to(n)), (e, turn_to(n))];
+                d.box_along = along;
             }
         }
     }
@@ -952,14 +1151,16 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             continue;
         }
         let ducts = (r.design / o.per_duct).ceil().max(1.0) as u32;
-        // ATREA: each GP run ends at its own plate valve Ø100 (through
-        // the GP connection set on its DN100 collar)
-        let terms = ducts as usize;
+        // ATREA: a plate valve takes one GP run (transition chamber PKS
+        // Ø100/Ø100 GP, valve Ø100) or two (PKS 2×Ø100/Ø125 GP, valve
+        // Ø125), each run by the GP connection set
+        let per_valve = o.runs_per_valve.clamp(1, 2);
+        let terms = ducts.div_ceil(per_valve) as usize;
         r.ducts = ducts;
         let places = terminal_places(&geo[i], &door_pts(i), terms);
         let mut left = ducts;
         for p in places {
-            let k = left.min(1);
+            let k = left.min(per_valve);
             left -= k;
             r.terminals.push(Terminal {
                 at: p,
@@ -994,12 +1195,20 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 }
             }
         }
+        // every GP run: its room, terminal, and the doors back to the
+        // unit's room
+        struct Run {
+            room: usize,
+            terminal: usize,
+            /// Which of the terminal's runs (its PKS spigot).
+            dn: u32,
+            chain: Vec<usize>,
+        }
+        let mut runs: Vec<Run> = vec![];
         for (ri, r) in d.rooms.iter().enumerate() {
             if !matches!(r.role, Role::Supply | Role::Extract) {
                 continue;
             }
-            let supply = r.role == Role::Supply;
-            let target = d.boxes[if supply { 0 } else { 1 }].0;
             if !seen[ri] {
                 d.warnings.push(format!(
                     "{} {}: nevedie k nej žiadne dvere z miestnosti jednotky, potrubie treba viesť ručne.",
@@ -1007,67 +1216,301 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                 ));
                 continue;
             }
-            // the doors from this room back to the unit's room
-            let mut chain: Vec<(usize, usize)> = vec![]; // (room left, door)
+            let mut chain = vec![];
             let mut at = ri;
             while let Some((p, k)) = prev[at] {
-                chain.push((at, k));
+                chain.push(k);
                 at = p;
             }
             for (ti, t) in r.terminals.iter().enumerate() {
                 for dn in 0..t.ducts {
-                    // a duct of its own, a little aside of its neighbours
-                    let k = r.terminals[..ti].iter().map(|x| x.ducts).sum::<u32>() + dn;
-                    let off = (k as f64 - (r.ducts as f64 - 1.0) / 2.0) * 0.1;
-                    let mut pts = vec![t.at];
-                    let mut room = ri;
-                    for &(_, k) in &chain {
-                        let dr = &ds[k];
-                        let side = if room_at(&geo, dr.mid + dr.n * (dr.thick / 2.0 + 0.15))
-                            == Some(room)
-                        {
+                    runs.push(Run {
+                        room: ri,
+                        terminal: ti,
+                        dn,
+                        chain: chain.clone(),
+                    });
+                }
+            }
+        }
+        // too many runs for the door into the unit's room: the manifolds
+        // go just past that door, the unit's Spiro mains through it
+        let mut via_door: std::collections::HashMap<usize, usize> = Default::default();
+        for r in &runs {
+            if let Some(&k) = r.chain.last() {
+                *via_door.entry(k).or_default() += 1;
+            }
+        }
+        if let Some((&k0, &n0)) = via_door.iter().max_by_key(|(_, n)| **n) {
+            let dr = &ds[k0];
+            if !dr.open && n0 as f64 * 0.095 > dr.width - 0.2 {
+                let into = if dr.a == Some(ui) { dr.b } else { dr.a };
+                if let Some(x) = into {
+                    // the side of the door the room past it is on
+                    let side = if room_at(&geo, dr.mid + dr.n * (dr.thick / 2.0 + 0.15)) == Some(x)
+                    {
+                        1.0
+                    } else {
+                        -1.0
+                    };
+                    let out = dr.n * side;
+                    let along = dr.n.perp();
+                    let line = dr.mid + out * (dr.thick / 2.0 + 0.5);
+                    let count = |sup: bool| {
+                        runs.iter()
+                            .filter(|r| (d.rooms[r.room].role == Role::Supply) == sup)
+                            .count() as f64
+                    };
+                    let (ns, ne) = (count(true), count(false));
+                    // supply on one side of the door, extract on the other
+                    let s = line - along * (0.35 + ns * MANIFOLD_STEP / 2.0);
+                    let e = line + along * (0.35 + ne * MANIFOLD_STEP / 2.0);
+                    if creabim_core::polygon::contains(&geo[x].outline, s)
+                        && creabim_core::polygon::contains(&geo[x].outline, e)
+                    {
+                        d.boxes = [(s, turn_to(out)), (e, turn_to(out))];
+                        d.box_along = along;
+                        d.main_via = vec![
+                            dr.mid - out * (dr.thick / 2.0 + 0.3),
+                            dr.mid + out * (dr.thick / 2.0 + 0.3),
+                        ];
+                        for r in runs.iter_mut() {
+                            // the rest reach the unit's room some other
+                            // way (a partition) and leave it by that door
+                            if r.chain.last() == Some(&k0) {
+                                r.chain.pop();
+                            } else {
+                                r.chain.push(k0);
+                            }
+                        }
+                        d.warnings.push(format!(
+                            "Dverami {:.2} m do miestnosti jednotky by išlo {} potrubí GP: rozdeľovače sú za dverami, k jednotke vedú potrubia Spiro.",
+                            dr.width, n0
+                        ));
+                    }
+                }
+            }
+        }
+        // each door's runs side by side, 0.1 m apart (GP is Ø90), packed
+        // closer where the door is too narrow, which is warned
+        let mut lane: Vec<std::collections::HashMap<usize, f64>> =
+            vec![Default::default(); runs.len()];
+        for (k, dr) in ds.iter().enumerate() {
+            let mut through: Vec<usize> = (0..runs.len())
+                .filter(|&j| runs[j].chain.contains(&k))
+                .collect();
+            // side by side as they fan out on the terminals' side: each
+            // by where it comes from (its valve, or the door before),
+            // so none crosses another leaving the door
+            let from = |j: usize| -> DVec2 {
+                let r = &runs[j];
+                let at = r.chain.iter().position(|x| *x == k).unwrap_or(0);
+                if at == 0 {
+                    d.rooms[r.room].terminals[r.terminal].at
+                } else {
+                    ds[r.chain[at - 1]].mid
+                }
+            };
+            // nested: of those turning off to one side, the one turning
+            // first (the nearest the door) runs outermost on that side
+            let axis = dr.n.perp();
+            let key = |j: usize| {
+                let v = from(j) - dr.mid;
+                let (across, deep) = (v.dot(axis), v.dot(dr.n).abs());
+                if across > 0.15 {
+                    1e3 - deep
+                } else if across < -0.15 {
+                    -1e3 + deep
+                } else {
+                    across
+                }
+            };
+            through.sort_by(|a, b| key(*a).total_cmp(&key(*b)));
+            let n = through.len();
+            if n == 0 {
+                continue;
+            }
+            let room = dr.width - 0.2;
+            let step = if n > 1 {
+                (room / (n - 1) as f64).min(0.1)
+            } else {
+                0.0
+            };
+            if dr.partition {
+                d.warnings.push(format!(
+                    "Prestup cez priečku pre {} potrubí GP Ø90 (šírka zväzku {:.2} m): zakresliť prestup v priečke.",
+                    n,
+                    (n as f64 * 0.1).min(dr.width + 0.1)
+                ));
+            }
+            if !dr.open && n as f64 * 0.095 > dr.width {
+                d.warnings.push(format!(
+                    "Dverami {:.2} m ide {} potrubí GP Ø90, vedľa seba sa zmestí {}: viesť časť pod priečkou, alebo zvýšiť prietok na potrubie.",
+                    dr.width,
+                    n,
+                    (dr.width / 0.095).floor()
+                ));
+            }
+            for (pos, &j) in through.iter().enumerate() {
+                lane[j].insert(k, (pos as f64 - (n as f64 - 1.0) / 2.0) * step);
+            }
+        }
+        // each run through its doors, up to the room of the manifolds
+        // two ways out of its valve: first one way or the other; the one
+        // crossing the runs already laid the least is taken below
+        let mut heads: Vec<[(Vec<DVec2>, usize); 2]> = vec![];
+        for (j, run) in runs.iter().enumerate() {
+            let mut both = vec![];
+            for vertical_first in [false, true] {
+                let t = &d.rooms[run.room].terminals[run.terminal];
+                // the PKS's spigots 0.1 m apart
+                let spig = (run.dn as f64 - (t.ducts as f64 - 1.0) / 2.0) * 0.1;
+                let mut pts = vec![t.at + DVec2::new(spig, spig)];
+                let mut room = run.room;
+                for &k in &run.chain {
+                    let dr = &ds[k];
+                    let side =
+                        if room_at(&geo, dr.mid + dr.n * (dr.thick / 2.0 + 0.15)) == Some(room) {
                             1.0
                         } else {
                             -1.0
                         };
-                        let along = dr.n.perp();
-                        let lane = along * off.clamp(-dr.width / 2.0 + 0.1, dr.width / 2.0 - 0.1);
-                        let here = dr.mid + lane + dr.n * side * (dr.thick / 2.0 + 0.3);
-                        let there = dr.mid + lane - dr.n * side * (dr.thick / 2.0 + 0.3);
-                        let last = *pts.last().unwrap();
-                        if let Some(c) = ell(last, here, Some(&geo[room].outline)) {
-                            pts.push(c);
-                        }
-                        pts.push(here);
-                        pts.push(there);
-                        room = room_at(&geo, there).unwrap_or(room);
-                    }
-                    let last = *pts.last().unwrap();
-                    let end = target + DVec2::new(off, 0.0);
-                    if let Some(c) = ell(last, end, Some(&geo[room].outline)) {
+                    let along = dr.n.perp();
+                    let lane = along * lane[j].get(&k).copied().unwrap_or(0.0);
+                    let here = dr.mid + lane + dr.n * side * (dr.thick / 2.0 + 0.3);
+                    let there = dr.mid + lane - dr.n * side * (dr.thick / 2.0 + 0.3);
+                    let c = if pts.len() == 1 {
+                        ell(pts[0], here, Some(&geo[room].outline), vertical_first)
+                    } else {
+                        ell_from(&pts, here, Some(&geo[room].outline))
+                    };
+                    if let Some(c) = c {
                         pts.push(c);
                     }
-                    pts.push(end);
-                    pts.dedup_by(|a, b| a.distance(*b) < 0.02);
-                    let length = path_length(&pts) + 2.0 * 0.3;
-                    let flow = t.flow / t.ducts as f64;
-                    let (v, rpm) = gp_friction(flow);
-                    let bends = pts.len().saturating_sub(2) as u32 + 2;
-                    let dyn_p = 1.2 * v * v / 2.0;
-                    let dp = rpm * length + o.zeta_bend * bends as f64 * dyn_p;
-                    d.branches.push(Branch {
-                        room: ri,
-                        terminal: ti,
-                        supply,
-                        path: pts,
-                        length,
-                        flow,
-                        velocity: v,
-                        bends,
-                        dp,
-                        throttle: 0.0,
-                    });
+                    pts.push(here);
+                    pts.push(there);
+                    room = room_at(&geo, there).unwrap_or(room);
                 }
+                both.push((pts, room));
+            }
+            let second = both.pop().unwrap();
+            let first = both.pop().unwrap();
+            heads.push([first, second]);
+        }
+        // the runs on each side branch off the manifold MANIFOLD_STEP
+        // apart, square to it, and never along it: the ones heading on
+        // towards an end of the manifold take the places nearest that
+        // end, nested (the nearest the end the closest to the manifold),
+        // so none crosses another (George 2026-11-27: "nekrížiť sa")
+        let along = if d.box_along.length() > 0.5 {
+            d.box_along
+        } else {
+            DVec2::X
+        };
+        let across = along.perp();
+        let mut place: Vec<(DVec2, f64)> = vec![(DVec2::ZERO, 0.0); runs.len()];
+        for s in 0..2 {
+            let box_at = d.boxes[s].0;
+            let mine: Vec<usize> = (0..runs.len())
+                .filter(|&j| (d.rooms[runs[j].room].role == Role::Supply) == (s == 0))
+                .collect();
+            let n = mine.len();
+            // where each comes from along the manifold
+            let mut order = mine.clone();
+            let key =
+                |j: usize| (heads[j][0].0.last().copied().unwrap_or(box_at) - box_at).dot(along);
+            order.sort_by(|a, b| key(*a).total_cmp(&key(*b)));
+            for (slot, &j) in order.iter().enumerate() {
+                let at = box_at + along * ((slot as f64 - (n as f64 - 1.0) / 2.0) * MANIFOLD_STEP);
+                // how many places lie between it and the end it heads to
+                let k = key(j) - (at - box_at).dot(along);
+                let rank = if k < 0.0 { slot } else { n - 1 - slot };
+                place[j] = (at, 0.25 + 0.1 * rank as f64);
+            }
+        }
+        for (j, run) in runs.iter().enumerate() {
+            let ri = run.room;
+            let ti = run.terminal;
+            let t = d.rooms[ri].terminals[ti].clone();
+            let supply = d.rooms[ri].role == Role::Supply;
+            let (target, off) = place[j];
+            let finish = |(mut pts, room): (Vec<DVec2>, usize)| -> Vec<DVec2> {
+                let last = *pts.last().unwrap();
+                // over to its own line beside the manifold, along it, and in
+                let side = if (last - target).dot(across) >= 0.0 {
+                    1.0
+                } else {
+                    -1.0
+                };
+                let lane_at =
+                    |p: DVec2| target + across * side * off + along * (p - target).dot(along);
+                let near = (last - target).dot(across).abs() <= off + 0.05;
+                if !near {
+                    let c = lane_at(last);
+                    if creabim_core::polygon::contains(&geo[room].outline, c) {
+                        pts.push(c);
+                    } else if let Some(c) =
+                        ell_from(&pts, lane_at(target), Some(&geo[room].outline))
+                    {
+                        pts.push(c);
+                    }
+                } else {
+                    // beside it already: out to its line first
+                    pts.push(lane_at(last));
+                }
+                pts.push(lane_at(target));
+                pts.push(target);
+                pts.dedup_by(|a, b| a.distance(*b) < 0.02);
+                no_jog(straighten(pts))
+            };
+            let laid: Vec<&Vec<DVec2>> = d
+                .branches
+                .iter()
+                .filter(|b| b.supply == supply)
+                .map(|b| &b.path)
+                .collect();
+            let [a, b] = heads[j].clone();
+            let (pa, pb) = (finish(a), finish(b));
+            let pts = if crossings(&pb, &laid) < crossings(&pa, &laid) {
+                pb
+            } else {
+                pa
+            };
+            let length = path_length(&pts) + 2.0 * 0.3;
+            let flow = t.flow / t.ducts as f64;
+            let (v, rpm) = gp_friction(flow);
+            let bends = pts.len().saturating_sub(2) as u32 + 2;
+            let dyn_p = 1.2 * v * v / 2.0;
+            let dp = rpm * length + o.zeta_bend * bends as f64 * dyn_p;
+            d.branches.push(Branch {
+                room: ri,
+                terminal: ti,
+                supply,
+                path: pts,
+                length,
+                flow,
+                velocity: v,
+                bends,
+                dp,
+                throttle: 0.0,
+            });
+        }
+        // runs crossing in the floor: GP can't step over another there
+        for supply in [true, false] {
+            let z_side = if supply { d.z } else { d.z_extract };
+            if z_side > 0.5 {
+                continue;
+            }
+            let mut n = 0;
+            let bs: Vec<&Branch> = d.branches.iter().filter(|b| b.supply == supply).collect();
+            for (i, b) in bs.iter().enumerate() {
+                n += crossings_proper(&b.path, &bs[..i]);
+            }
+            if n > 0 {
+                d.warnings.push(format!(
+                    "{n} križovaní hadíc GP v podlahe ({}): v podlahe sa hadica nemôže preložiť cez inú, upraviť trasy ručne alebo viesť nad stropom.",
+                    if supply { "prívod" } else { "odvod" }
+                ));
             }
         }
         for supply in [true, false] {
@@ -1091,9 +1534,19 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             let (vm, rpm) = friction(main_q, dm, 1.5e-4);
             let main_len = match d.unit_at {
                 Some((at, _)) => {
-                    let to_box =
-                        at.distance(d.boxes[if supply { 0 } else { 1 }].0) + (uh - z).abs();
-                    let out = d.outside.first().map_or(0.5, |o| at.distance(*o));
+                    // square in plan: through the door when past it
+                    let mut stops = vec![at];
+                    stops.extend(d.main_via.iter().copied());
+                    stops.push(d.boxes[if supply { 0 } else { 1 }].0);
+                    let to_box = stops
+                        .windows(2)
+                        .map(|w| (w[1] - w[0]).abs().element_sum())
+                        .sum::<f64>()
+                        + (uh - if supply { z } else { d.z_extract }).abs();
+                    let out = match d.through_roof {
+                        Some(top) => top - uh,
+                        None => d.outside.first().map_or(0.5, |o| at.distance(*o)),
+                    };
                     to_box + out
                 }
                 None => 3.0,
@@ -1143,7 +1596,11 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
         let mine: Vec<&Door> = ds
             .iter()
             .filter(|x| {
-                !x.open && x.a.is_some() && x.b.is_some() && (x.a == Some(i) || x.b == Some(i))
+                !x.open
+                    && !x.partition
+                    && x.a.is_some()
+                    && x.b.is_some()
+                    && (x.a == Some(i) || x.b == Some(i))
             })
             .collect();
         if mine.is_empty() {
@@ -1195,7 +1652,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
                     ru.wall_max * 1000.0
                 ));
             }
-            let n = (b - a).normalize().perp() * -1.0;
+            let n = outward(&geo[i].outline, a, b);
             let windows = window_spans(model, a, b);
             let len = a.distance(b);
             let mut places = vec![];
@@ -1468,38 +1925,80 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
         ) {
             tx = tx.insert(e);
         }
-        if let Some(b) = box_item(d) {
-            for (k, (p, r)) in d.boxes.iter().enumerate() {
-                let what = if k == 0 { "prívod" } else { "odvod" };
-                if let Some(mut e) = place(
-                    &format!("{BOX_KEY}{}", b.code),
-                    &format!("{TAG} – box {what}"),
-                    *p,
-                    *r,
-                ) {
-                    if let ElementKind::Object(ob) = &mut e.kind {
-                        ob.offset = if o.route == Route::Floor {
-                            -0.12
-                        } else {
-                            z - 0.06
-                        };
-                    }
-                    tx = tx.insert(e);
-                }
+        // the manifolds: a Spiro of the unit's spigot along the wall, the
+        // GP runs branching off it (OBJ-T) where they end, so every run is
+        // one joined route from the unit to its valve
+        let mut near = [d.boxes[0].0, d.boxes[1].0];
+        for (k, sys) in [(0usize, "VZP"), (1, "VZO")] {
+            let along = if d.box_along.length() > 0.5 {
+                d.box_along
+            } else {
+                DVec2::X
+            };
+            let mut ends: Vec<DVec2> = d
+                .branches
+                .iter()
+                .filter(|b| b.supply == (k == 0))
+                .filter_map(|b| b.path.last().copied())
+                .collect();
+            if ends.is_empty() {
+                continue;
+            }
+            ends.sort_by(|p, q| p.dot(along).total_cmp(&q.dot(along)));
+            ends.dedup_by(|p, q| p.distance(*q) < 0.02);
+            let first = ends[0] - along * 0.15;
+            let last = ends[ends.len() - 1] + along * 0.15;
+            near[k] = if first.distance(at) <= last.distance(at) {
+                first
+            } else {
+                last
+            };
+            let mut line = vec![first];
+            line.extend(ends.iter().copied());
+            line.push(last);
+            for w in line.windows(2) {
+                tx = tx.insert(Element::new(
+                    format!("{TAG} – {sys} rozdeľovač"),
+                    ElementKind::Pipe(spiro(
+                        level,
+                        sys,
+                        w[0].extend(if k == 0 { z } else { d.z_extract }),
+                        w[1].extend(if k == 0 { z } else { d.z_extract }),
+                        0.0,
+                        u.spigot,
+                    )),
+                ));
             }
         }
-        // mains: unit to boxes (with a silencer), outdoor air and exhaust
+        // mains: unit to the manifolds (with a silencer), outdoor air and
+        // exhaust
         let uh = if u.on_ceiling() { z } else { u.size[2] + 0.15 };
         let n = DVec2::from_angle((rot + 90.0).to_radians());
         let out = d.outside.first().copied().unwrap_or(at + n * 0.5);
         for (sys, to, sil) in [
-            ("VZP", Some(d.boxes[0].0), true),
-            ("VZO", Some(d.boxes[1].0), true),
+            ("VZP", Some(near[0]), true),
+            ("VZO", Some(near[1]), true),
             ("VZC", None, false),
             ("VZE", None, false),
         ] {
             let (a, b, ins) = match to {
-                Some(p) => (at.extend(uh), p.extend(z), 0.0),
+                Some(p) => (
+                    at.extend(uh),
+                    p.extend(if sys == "VZP" { z } else { d.z_extract }),
+                    0.0,
+                ),
+                None if d.through_roof.is_some() => {
+                    // apart, so the intake doesn't draw in the exhaust
+                    let side = if sys == "VZC" { -0.3 } else { 0.3 };
+                    let s = at + n.perp() * side;
+                    // 0.5 m over the roof where one is modelled over it
+                    let elev = model.level(level).map_or(0.0, |l| l.elevation);
+                    let top = crate::extractfans::roof_top(model, s)
+                        .map(|z| z - elev + 0.5)
+                        .or(d.through_roof)
+                        .unwrap_or(3.0);
+                    (s.extend(uh), s.extend(top), 0.03)
+                }
                 None => {
                     let side = if sys == "VZC" { -0.2 } else { 0.2 };
                     let s = at + n.perp() * side;
@@ -1514,19 +2013,61 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
                     (s.extend(uh), (out + n.perp() * side).extend(uh), 0.03)
                 }
             };
-            // up and over, then down to the box
-            let mid = DVec3::new(b.x, b.y, a.z);
-            let pe = Element::new(
-                format!("{TAG} – {sys}"),
-                ElementKind::Pipe(spiro(level, sys, a, mid, ins, u.spigot)),
-            );
-            let pid = pe.id;
-            tx = tx.insert(pe);
-            if (mid.z - b.z).abs() > 0.01 {
-                tx = tx.insert(Element::new(
+            // at the unit's height, square in plan (through the door when
+            // the manifolds are past it), then down to the manifold
+            let mut plan = vec![a.truncate()];
+            if to.is_some() {
+                for &v in &d.main_via {
+                    if let Some(c) = ell_from(&plan, v, None) {
+                        plan.push(c);
+                    }
+                    plan.push(v);
+                }
+            }
+            if let Some(c) = ell_from(&plan, b.truncate(), None) {
+                plan.push(c);
+            }
+            plan.push(b.truncate());
+            plan.dedup_by(|p, q| p.distance(*q) < 0.01);
+            let plan = straighten(plan);
+            let mut pid = None;
+            let mut last_id = None;
+            for w in plan.windows(2) {
+                let pe = Element::new(
                     format!("{TAG} – {sys}"),
-                    ElementKind::Pipe(spiro(level, sys, mid, b, ins, u.spigot)),
-                ));
+                    ElementKind::Pipe(spiro(
+                        level,
+                        sys,
+                        w[0].extend(a.z),
+                        w[1].extend(a.z),
+                        ins,
+                        u.spigot,
+                    )),
+                );
+                pid.get_or_insert(pe.id);
+                last_id = Some(pe.id);
+                tx = tx.insert(pe);
+            }
+            let end = plan.last().copied().unwrap_or(b.truncate()).extend(a.z);
+            if (end.z - b.z).abs() > 0.01 {
+                let pe = Element::new(
+                    format!("{TAG} – {sys}"),
+                    ElementKind::Pipe(spiro(level, sys, end, b, ins, u.spigot)),
+                );
+                pid.get_or_insert(pe.id);
+                last_id = Some(pe.id);
+                tx = tx.insert(pe);
+            }
+            let Some(pid) = pid else { continue };
+            // through the roof: its head on top (ATREA VHO exhaust head,
+            // RH rain cap over the intake) and the roof passage VILPE
+            if to.is_none() && d.through_roof.is_some() {
+                if let Some(top) = last_id {
+                    tx = tx.insert(Element::new(
+                        format!("{TAG} – strešná hlavica {sys}"),
+                        ElementKind::Valve(Valve::new(top, 1.0, "vyfukVzt")),
+                    ));
+                }
             }
             if sil {
                 tx = tx.insert(Element::new(
@@ -1536,22 +2077,55 @@ pub fn apply(model: &Model, d: &Design, o: &Opts) -> Transaction {
             }
         }
     }
-    // flexible ducts and their plate valves
+    // flexible ducts and their plate valves; above the ceiling one that
+    // would cross a run laid before steps over it, 0.1 m higher (GP Ø90),
+    // in the floor a crossing is warned of (George 2026-11-27: "aby sa
+    // nekrížili v 3D")
+    let mut laid: Vec<(DVec2, DVec2, bool)> = vec![];
+    let crosses = |a: DVec2, b: DVec2, c: DVec2, e: DVec2| {
+        let cr = |o: DVec2, p: DVec2, q: DVec2| (p - o).perp_dot(q - o);
+        cr(a, b, c) * cr(a, b, e) < -1e-9 && cr(c, e, a) * cr(c, e, b) < -1e-9
+    };
     for (bi, b) in d.branches.iter().enumerate() {
         let r = &d.rooms[b.room];
         let t = &r.terminals[b.terminal];
         let sys = if b.supply { "VZP" } else { "VZO" };
+        let base = if b.supply { z } else { d.z_extract };
+        let above = base > 0.5;
         let mut first = None;
-        for w in b.path.windows(2) {
+        let n = b.path.len();
+        let mut lifted_before = false;
+        for (i, w) in b.path.windows(2).enumerate() {
+            // the last piece, into the manifold, meets the others there
+            let over = i + 2 < n
+                && laid
+                    .iter()
+                    .any(|(c, e, s)| *s == b.supply && crosses(w[0], w[1], *c, *e));
+            let lift = over && above;
+            let zz = if lift { base + 0.1 } else { base };
+            let mut duct = gp_duct(level, sys, w[1], w[0], zz);
+            duct.start.z = zz;
+            duct.end.z = zz;
             let e = Element::new(
                 format!("{TAG} – {sys} {}", r.number),
-                ElementKind::Pipe(gp_duct(level, sys, w[1], w[0], z)),
+                ElementKind::Pipe(duct),
             );
             if first.is_none() {
                 first = Some(e.id);
             }
             tx = tx.insert(e);
+            // up at its start, unless the piece before was up too
+            if lift != lifted_before {
+                let mut up = gp_duct(level, sys, w[0], w[0], base);
+                up.end.z = base + 0.1;
+                tx = tx.insert(Element::new(
+                    format!("{TAG} – {sys} {}", r.number),
+                    ElementKind::Pipe(up),
+                ));
+            }
+            lifted_before = lift;
         }
+        laid.extend(b.path.windows(2).map(|w| (w[0], w[1], b.supply)));
         // the valve once a terminal, on its first duct's room end
         let lead = d.branches[..bi]
             .iter()
@@ -1721,8 +2295,11 @@ pub fn bill(model: &Model) -> Bill {
         let len = p.start.distance(p.end);
         if p.pipe_type == "GP" {
             gp += len;
-            gp_ends.push(p.start.truncate());
-            gp_ends.push(p.end.truncate());
+            // a step up over another run has no end of its own in plan
+            if p.start.truncate().distance(p.end.truncate()) > 1e-6 {
+                gp_ends.push(p.start.truncate());
+                gp_ends.push(p.end.truncate());
+            }
         } else if p.pipe_type == "VZK" && (units.len() + boxes.len()) > 0 {
             spiro += len;
             if matches!(p.system.as_str(), "VZC" | "VZE") {
@@ -1743,26 +2320,41 @@ pub fn bill(model: &Model) -> Bill {
     }
     let _ = outdoor;
     lines.extend(line("Rozvody", cat.item("gp75"), (gp * 1.05).ceil()));
-    // terminals: a plate valve Ø100 at the end of every GP run, the run
-    // joined at both ends by the GP connection set
-    let (mut vp, mut vo, mut sil) = (0.0, 0.0, 0.0);
+    // terminals: a plate valve on one GP run (PKS Ø100/Ø100 GP, valve
+    // Ø100) or two (PKS 2×Ø100/Ø125 GP, valve Ø125); every run joined at
+    // both ends by the GP connection set and leaving the manifold by a
+    // branch OBJ-T
+    let (mut sil, mut runs) = (0.0, 0.0);
+    let mut v = [[0.0; 2]; 2]; // [supply, extract][one run, two]
     for e in model.iter() {
-        let ElementKind::Valve(v) = &e.kind else {
+        let ElementKind::Valve(x) = &e.kind else {
             continue;
         };
-        let Some(ElementKind::Pipe(p)) = model.get(v.pipe).map(|x| &x.kind) else {
+        let Some(ElementKind::Pipe(p)) = model.get(x.pipe).map(|y| &y.kind) else {
             continue;
         };
-        match v.kind.as_str() {
-            "vyustP" if p.pipe_type == "GP" => vp += 1.0,
-            "vyustO" if p.pipe_type == "GP" => vo += 1.0,
+        match x.kind.as_str() {
+            "vyustP" | "vyustO" if p.pipe_type == "GP" => {
+                let end = if x.t < 0.5 { p.start } else { p.end }.truncate();
+                let n = gp_ends.iter().filter(|g| g.distance(end) < 0.08).count();
+                let two = usize::from(n >= 2);
+                let side = usize::from(x.kind == "vyustO");
+                v[side][two] += 1.0;
+                runs += if n >= 2 { 2.0 } else { 1.0 };
+            }
             "tlmic" => sil += 1.0,
             _ => {}
         }
     }
-    // the GP runs leaving the manifolds: one branch OBJ-T each, one
-    // run to every plate valve
-    let runs = if boxes.is_empty() { 0.0 } else { vp + vo };
+    let manifolds = model
+        .iter()
+        .filter(|e| e.name.starts_with(TAG) && e.name.ends_with("rozdeľovač"))
+        .filter_map(|e| match &e.kind {
+            ElementKind::Pipe(p) => Some(p.system.clone()),
+            _ => None,
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
     let spigot = units
         .first()
         .and_then(|(_, c)| cat.units.iter().find(|u| u.code == *c))
@@ -1773,10 +2365,14 @@ pub fn bill(model: &Model) -> Bill {
         _ => "odbocka160",
     };
     lines.extend(line("Rozvody", cat.item(branch), runs));
-    lines.extend(line("Rozvody", cat.item("kryt"), boxes.len() as f64));
-    lines.extend(line("Rozvody", cat.item("sadaGP"), 2.0 * (vp + vo)));
-    lines.extend(line("Koncové prvky", cat.item("ventilKI"), vp));
-    lines.extend(line("Koncové prvky", cat.item("ventilKO"), vo));
+    lines.extend(line("Rozvody", cat.item("kryt"), 2.0 * manifolds as f64));
+    lines.extend(line("Rozvody", cat.item("sadaGP"), 2.0 * runs));
+    lines.extend(line("Koncové prvky", cat.item("pks1"), v[0][0] + v[1][0]));
+    lines.extend(line("Koncové prvky", cat.item("pks2"), v[0][1] + v[1][1]));
+    lines.extend(line("Koncové prvky", cat.item("ventilKI"), v[0][0]));
+    lines.extend(line("Koncové prvky", cat.item("ventilKI125"), v[0][1]));
+    lines.extend(line("Koncové prvky", cat.item("ventilKO"), v[1][0]));
+    lines.extend(line("Koncové prvky", cat.item("ventilKO125"), v[1][1]));
     lines.extend(line("Rozvody", cat.item("spiro160"), (spiro * 1.05).ceil()));
     lines.extend(line(
         "Rozvody",
@@ -1784,10 +2380,35 @@ pub fn bill(model: &Model) -> Bill {
         (insul * 10.0).ceil() / 10.0,
     ));
     lines.extend(line("Rozvody", cat.item("tlmic"), sil));
+    // outdoor air and exhaust: through the roof (a head on top, the roof
+    // passage), else louvres in the outer wall
+    let heads: Vec<&str> = model
+        .iter()
+        .filter(|e| e.name.starts_with(TAG))
+        .filter_map(|e| match &e.kind {
+            ElementKind::Valve(x) if x.kind == "vyfukVzt" => {
+                match model.get(x.pipe).map(|y| &y.kind) {
+                    Some(ElementKind::Pipe(p)) => Some(p.system.as_str()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .collect();
+    let size = match spigot.round() as i64 {
+        250 => "250",
+        200 => "200",
+        _ => "160",
+    };
+    let vho = heads.iter().filter(|s| **s == "VZE").count() as f64;
+    let rh = heads.iter().filter(|s| **s == "VZC").count() as f64;
+    lines.extend(line("Rozvody", cat.item(&format!("vho{size}")), vho));
+    lines.extend(line("Rozvody", cat.item(&format!("rh{size}")), rh));
+    lines.extend(line("Rozvody", cat.item("vilpe"), vho + rh));
     lines.extend(line(
         "Rozvody",
         cat.item("zaluzia"),
-        2.0 * units.len() as f64,
+        (2.0 * units.len() as f64 - vho - rh).max(0.0),
     ));
     lines.extend(line("Rozvody", cat.item("paska"), units.len() as f64));
 

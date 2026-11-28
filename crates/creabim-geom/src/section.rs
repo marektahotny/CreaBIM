@@ -1141,7 +1141,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                 .extend(crate::masonry::plan_marks(model, *level, v.scale / 1000.0));
         }
         d.items
-            .retain(|it| crate::structural::shows_mark(model, it.id(), v.structural));
+            .retain(|it| crate::structural::shows_mark(model, it.id(), v));
     }
     if reveal && v.hidden_in_colour {
         tint_hidden(model, view, kind, &mut d.items);
@@ -1325,6 +1325,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         let mut pipes = vec![];
         // the devices on the ducts, numbered as the legend lists them
         let positions = crate::mep::air_positions(model);
+        let flows = crate::mep::air_flows(model);
         // a scheme: a line a pipe, a symbol a valve, 2.5 mm on paper at
         // every scale; in space: the pipes' true widths, the valves'
         // bodies
@@ -1341,7 +1342,13 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                         // outline in true size, in their system's colour
                         // (George 2026-11-25)
                         if !spatial && p.kind().is_air() {
-                            lines.extend(crate::mep::duct_plan(model, e, p));
+                            lines.extend(crate::mep::duct_plan(
+                                model,
+                                e,
+                                p,
+                                flows.get(&e.id).copied(),
+                                v.scale / 1000.0,
+                            ));
                         } else if !spatial {
                             lines.extend(crate::mep::pipe_line(model, e, p));
                         }
@@ -1369,9 +1376,27 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                                 model,
                                 e,
                                 x,
-                                n.number,
+                                &n.label(),
                                 v.scale / 1000.0,
                             ));
+                        }
+                        // a terminal's air: "+90 m3/h" supply, "-90 m3/h"
+                        // extract, as George's sample VZT drawings write it
+                        if let (true, Some(q), Some(pipe)) =
+                            (x.is_air_terminal(), x.flow_m3h, x.host(model))
+                        {
+                            let mm = v.scale / 1000.0;
+                            let sign = if x.kind == "vyustP" { "+" } else { "-" };
+                            lines.push(PlanItem::Text {
+                                id: e.id,
+                                at: x.at(pipe).truncate() + DVec2::new(0.0, -4.5) * mm,
+                                text: format!("{sign}{} m3/h", q.round()),
+                                size: 2.5,
+                                align: crate::paper::Anchor::Middle,
+                                mm,
+                                rgb: Some(crate::mep::color(pipe)),
+                                bold: false,
+                            });
                         }
                     }
                     false

@@ -21777,8 +21777,13 @@
   ],
   "joint": "tesniaci krúžok, poistná spona",
   "standards": "STN EN 13180",
-  "note": "Drsnosť 0,05 mm je predpoklad pre hladký vnútorný povrch; výrobca ju neuvádza.",
+  "note": "Drsnosť 0,05 mm je predpoklad pre hladký vnútorný povrch; výrobca ju neuvádza. Polomer ohybu 2·D len na kreslenie (ATREA ho v katalógu prvkov neudáva).",
   "shape": "round",
-  "flex": true
+  "flex": true,
+  "bend": {
+   "maxOuterMm": 90,
+   "rTool": 2,
+   "rHand": 2
+  }
  }
 ]

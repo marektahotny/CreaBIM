@@ -340,7 +340,10 @@ fn pt(ax: usize, x: f64, y: f64) -> DVec2 {
 
 /// The lines across the inset outline at `t` apart, along its longer
 /// side: (y, x from, x to), and the axis they run along.
-fn rows(outline: &[DVec2], t: f64, edge: f64, first: f64) -> Option<(usize, Vec<(f64, f64, f64)>)> {
+/// The rows' count and their (position, start, end).
+type Rows = (usize, Vec<(f64, f64, f64)>);
+
+fn rows(outline: &[DVec2], t: f64, edge: f64, first: f64) -> Option<Rows> {
     let o = inset_ring(outline, edge)?;
     let (lo, hi) = o.iter().fold(
         (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),

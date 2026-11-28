@@ -32,7 +32,10 @@ fn today() -> String {
 /// to write).
 pub(super) fn write_button(ui: &mut egui::Ui, written: bool) -> bool {
     let t = crate::i18n::tr;
-    let b = ui.add_enabled(!written, egui::Button::new(t("Write the results to the model")));
+    let b = ui.add_enabled(
+        !written,
+        egui::Button::new(t("Write the results to the model")),
+    );
     if written {
         b.on_disabled_hover_text(t(
             "These results, with these settings, are already written in the project; \

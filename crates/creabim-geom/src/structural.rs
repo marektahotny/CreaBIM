@@ -706,10 +706,14 @@ pub fn bearing_part(model: &Model, i: &crate::scene::SceneItem) -> bool {
 
 /// Is the section mark `id` one a plan of this kind shows: a structural
 /// plan the structural sections' marks, every other plan the others.
-pub fn shows_mark(model: &Model, id: ElementId, structural_plan: bool) -> bool {
+/// A trade's sections are marked only in that trade's plans and the
+/// coordination plans.
+pub fn shows_mark(model: &Model, id: ElementId, plan: &creabim_core::View) -> bool {
     match model.get(id).map(|e| &e.kind) {
         Some(ElementKind::View(v)) if matches!(v.kind, creabim_core::ViewKind::Section { .. }) => {
-            v.structural == structural_plan
+            v.structural == plan.structural
+                && v.trade
+                    .is_none_or(|t| plan.trade == Some(t) || plan.coordination)
         }
         _ => true,
     }

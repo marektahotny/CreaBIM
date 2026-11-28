@@ -559,7 +559,7 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
             .iter()
             .find(|p| p.valves.contains(&id))
         {
-            return (p.number.to_string(), true);
+            return (p.label(), true);
         }
     }
     match &e.kind {

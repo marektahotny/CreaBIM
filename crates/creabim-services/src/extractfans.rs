@@ -1296,7 +1296,7 @@ pub fn candidates(model: &Model) -> Vec<(ElementId, String, String)> {
 }
 
 /// The top of the roof over `p`, absolute, m.
-fn roof_top(model: &Model, p: DVec2) -> Option<f64> {
+pub(crate) fn roof_top(model: &Model, p: DVec2) -> Option<f64> {
     model
         .iter()
         .filter_map(|e| match &e.kind {
