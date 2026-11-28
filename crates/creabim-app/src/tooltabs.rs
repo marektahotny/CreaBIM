@@ -382,18 +382,20 @@ fn tab_entries(tab: usize) -> Vec<Entry> {
             ),
         ],
         3 => vec![
-            act(
-                "discipline:heating.radiators",
-                "Radiator heating",
-                "heater",
-                "Heat loss, radiators, pipes and balancing: the standards (STN EN 12831-1, STN EN 12828) and the tools coming",
-            ),
-            act(
-                "discipline:heating.floor",
-                "Underfloor heating",
-                "layout-grid",
-                "Loops, spacing and manifolds: the standards (STN EN 1264) and the tools coming",
-            ),
+            // each heating system's tools behind its own icon (George
+            // 2026-11-28: "daj to pod ikony toho systému")
+            Entry::Menu {
+                key: "tab:heating.radiators",
+                label: "Radiator heating",
+                icon: "heater",
+                hint: "Radiator heating: heating pipes, their sizing and balancing, valves, the HERZ differential pressure regulator and the radiators (STN EN 12828, STN EN 442)",
+            },
+            Entry::Menu {
+                key: "tab:heating.floor",
+                label: "Underfloor heating",
+                icon: "layout-grid",
+                hint: "Underfloor heating: the design of the loops, manifolds and pipes from the rooms' heat loss, edge zones, places of reduced output and holes (STN EN 1264)",
+            },
             act(
                 "discipline:heating.wall",
                 "Wall heating",
@@ -408,22 +410,22 @@ fn tab_entries(tab: usize) -> Vec<Entry> {
             ),
             Sep,
             act(
-                "pipe:UKP",
-                "Heating pipe",
-                "pipe",
-                "The Pipe tool in heating supply; the return is in the bar's systems",
+                "calc:heatloss",
+                "Heat loss",
+                "gauge",
+                "The design heat loss of every room (STN EN 12831-1): through walls, windows, floor and roof and by ventilation, and the building's total",
             ),
             act(
-                "calc:heating",
-                "Calculate heating pipes",
-                "calc-heating",
-                "Size the supply and return to the radiators, find the critical circuit and the pump, and preset the HERZ valves (TS-98-V, STRÖMAX) to balance the circuits",
+                "heat:source",
+                "Heat source",
+                "flame",
+                "A hot water cylinder, a gas condensing boiler or a heat pump from the range: sized by the heat load, a heat pump by its bivalence point, then placed",
             ),
             act(
-                "valves:auto",
-                "Propose valves",
-                "wrench",
-                "Radiator valves, shut-offs and a strainer, air vents at the high points and drain cocks at the low points of the heating and cooling pipes (STN EN 12828)",
+                "heat:bill",
+                "Bill of materials",
+                "sheet",
+                "The heating's bill of materials: heat sources, manifolds and radiators, pipes by type and size with their valves and insulation (Tubolit, MIRELON), the underfloor heating's system boards, pipe and coils",
             ),
             act(
                 "routes:check",
@@ -431,19 +433,7 @@ fn tab_entries(tab: usize) -> Vec<Entry> {
                 "problem",
                 "Pipes and ducts through beams and lintels (a level pipe can be led under), gas nearer other pipes than 20 mm (TPH 03 2012 F.5.7), passages into another fire zone",
             ),
-            act(
-                "calc:herzdp",
-                "HERZ differential pressure regulator",
-                "circle-dot-dashed",
-                "A HERZ 4002, 4007 or F 4007 regulator for a circuit's flow and loss: its setting, the STRÖMAX partner valve and the pump's head, as HERZ's design tool works them out",
-            ),
             Sep,
-            act(
-                "calc:heatloss",
-                "Heat loss",
-                "gauge",
-                "The design heat loss of every room (STN EN 12831-1): through walls, windows, floor and roof and by ventilation, and the building's total",
-            ),
             act(
                 "calc:thermalfield",
                 "Thermal field of a detail",
@@ -455,54 +445,6 @@ fn tab_entries(tab: usize) -> Vec<Entry> {
                 "Condensation in a build-up",
                 "droplet",
                 "Water vapour in a build-up by the Glaser method: the condensation zone and the annual balance Mc, Mev by STN 73 0540-2 annex B, checked by čl. 6.1 and 6.2",
-            ),
-            act(
-                "calc:floorheat",
-                "Design underfloor heating",
-                "spline",
-                "Give rooms their underfloor loops from their heat loss: spacing, loops of 100 m at most, flows and what to set at the manifold (STN EN 1264)",
-            ),
-            act(
-                "ufh:edge",
-                "Edge zone",
-                "square-dashed",
-                "Draw an edge zone of underfloor heating in a room (by a window or a door), as a polygon or a rectangle: its pipes laid closer",
-            ),
-            act(
-                "ufh:reduced",
-                "Place of reduced output",
-                "square",
-                "Draw a place of reduced output in a room (under a bed with no legs), as a polygon or a rectangle: set in the Underfloor heating window by how many % it gives less",
-            ),
-            act(
-                "ufh:hole",
-                "Hole with no pipe",
-                "scan",
-                "Draw a hole in a room's underfloor heating, as a polygon or a rectangle: the system board, but no pipe",
-            ),
-            act(
-                "heat:bill",
-                "Bill of materials",
-                "sheet",
-                "The heating's bill of materials: heat sources, manifolds and radiators, pipes by type and size with their valves and insulation (Tubolit, MIRELON), the underfloor heating's system boards, pipe and coils",
-            ),
-            act(
-                "calc:radiators",
-                "Size radiators",
-                "table-2",
-                "Radiators for every room from its heat loss, less what its underfloor heating gives: type, length, output and flow (STN EN 442)",
-            ),
-            act(
-                "heat:source",
-                "Heat source",
-                "flame",
-                "A hot water cylinder, a gas condensing boiler or a heat pump from the range: sized by the heat load, a heat pump by its bivalence point, then placed",
-            ),
-            act(
-                "catalogue.cat:hvac",
-                "Radiators and boilers",
-                "thermometer",
-                "Radiators, boilers and other heating fixtures from the catalogue",
             ),
             Sep,
             act(
@@ -940,6 +882,7 @@ pub fn menu_tools(key: &str) -> &'static [Tool] {
     match key {
         "tab:roof" => &ROOF_TOOLS,
         "tab:footing" => &[Tool::Footing],
+        "tab:heating.floor" => &[Tool::UfhZone],
         _ => &[],
     }
 }
@@ -956,11 +899,8 @@ pub fn holds(tab: usize, tool: Tool) -> bool {
         || entries(tab).contains(&Entry::Tool(tool))
         || (tool == Tool::Footing && menu("tab:footing"))
         || (ROOF_TOOLS.contains(&tool) && menu("tab:roof"))
-        // the zone tool behind its three kinds' buttons
-        || (tool == Tool::UfhZone
-            && entries(tab)
-                .iter()
-                .any(|e| matches!(e, Entry::Act { id, .. } if id.starts_with("ufh:"))))
+        // the zone tool behind the underfloor heating's menu
+        || (tool == Tool::UfhZone && menu("tab:heating.floor"))
 }
 
 /// The first tab that shows `tool`.

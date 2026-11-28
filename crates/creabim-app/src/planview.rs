@@ -8386,7 +8386,7 @@ pub fn tag_fixtures(
     let tagged: Vec<ElementId> = model
         .iter()
         .filter_map(|e| match &e.kind {
-            ElementKind::Tag(t) if t.view == view => Some(t.host),
+            ElementKind::Tag(t) if t.view == view && !t.ufh => Some(t.host),
             _ => None,
         })
         .collect();
@@ -8462,7 +8462,7 @@ pub fn opening_tags(
     let tagged: Vec<ElementId> = model
         .iter()
         .filter_map(|e| match &e.kind {
-            ElementKind::Tag(t) if t.view == view => Some(t.host),
+            ElementKind::Tag(t) if t.view == view && !t.ufh => Some(t.host),
             _ => None,
         })
         .collect();

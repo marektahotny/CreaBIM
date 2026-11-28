@@ -9208,5 +9208,8 @@
   "pipes in a sleeve": "potrubí v ochranné trubce",
   "Connected by": "Napojení přes",
   "auto": "auto",
- "Insulation: the least thickness at λ 0.035 W/(m·K) by the pipe's inner diameter (vyhláška MH SR č. 14/2016 Z. z., príloha č. 1) · the product's least at its λ at 0 °C (príloha č. 2, α2 = 10 W/(m²·K)): its tube, inner diameter × wall, mm; ! not thick enough even at its thickest.": "Izolace: nejmenší tloušťka při λ 0,035 W/(m·K) podle vnitřního průměru trubky (vyhláška MH SR č. 14/2016 Z. z., příloha č. 1) · nejmenší tloušťka výrobku při jeho λ při 0 °C (příloha č. 2, α2 = 10 W/(m²·K)): jeho návlek, vnitřní průměr × tloušťka stěny, mm; ! nestačí ani nejtlustší vyráběný."
+ "Insulation: the least thickness at λ 0.035 W/(m·K) by the pipe's inner diameter (vyhláška MH SR č. 14/2016 Z. z., príloha č. 1) · the product's least at its λ at 0 °C (príloha č. 2, α2 = 10 W/(m²·K)): its tube, inner diameter × wall, mm; ! not thick enough even at its thickest.": "Izolace: nejmenší tloušťka při λ 0,035 W/(m·K) podle vnitřního průměru trubky (vyhláška MH SR č. 14/2016 Z. z., příloha č. 1) · nejmenší tloušťka výrobku při jeho λ při 0 °C (příloha č. 2, α2 = 10 W/(m²·K)): jeho návlek, vnitřní průměr × tloušťka stěny, mm; ! nestačí ani nejtlustší vyráběný.",
+ "Radiator heating: heating pipes, their sizing and balancing, valves, the HERZ differential pressure regulator and the radiators (STN EN 12828, STN EN 442)": "Teplovodní vytápění tělesy: otopné potrubí, jeho dimenzování a vyregulování, armatury, regulátor diferenčního tlaku HERZ a otopná tělesa (ČSN EN 12828, ČSN EN 442)",
+ "Underfloor heating: the design of the loops, manifolds and pipes from the rooms' heat loss, edge zones, places of reduced output and holes (STN EN 1264)": "Podlahové vytápění: návrh okruhů, rozdělovačů a potrubí z tepelných ztrát místností, okrajové zóny, místa sníženého výkonu a otvory (ČSN EN 1264)",
+ "Underfloor heating table": "Tabulka podlahového vytápění"
 }

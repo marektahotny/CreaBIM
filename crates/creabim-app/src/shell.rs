@@ -642,6 +642,57 @@ impl CreaBimApp {
             "menu:Help" => self.help_menu(),
             "menu:Create" => self.create_menu(),
             "tab:schedules" => schedule_items(),
+            // each heating system's tools behind its icon (George 2026-11-28)
+            "tab:heating.radiators" => vec![
+                Item::new("pipe:UKP", "Heating pipe")
+                    .icon("pipe")
+                    .hint("The Pipe tool in heating supply; the return is in the bar's systems"),
+                Item::new("calc:heating", "Calculate heating pipes")
+                    .icon("calc-heating")
+                    .hint("Size the supply and return to the radiators, find the critical circuit and the pump, and preset the HERZ valves (TS-98-V, STRÖMAX) to balance the circuits"),
+                Item::new("valves:auto", "Propose valves")
+                    .icon("wrench")
+                    .hint("Radiator valves, shut-offs and a strainer, air vents at the high points and drain cocks at the low points of the heating and cooling pipes (STN EN 12828)"),
+                Item::new("calc:herzdp", "HERZ differential pressure regulator")
+                    .icon("circle-dot-dashed")
+                    .hint("A HERZ 4002, 4007 or F 4007 regulator for a circuit's flow and loss: its setting, the STRÖMAX partner valve and the pump's head, as HERZ's design tool works them out"),
+                Item::Separator,
+                Item::new("calc:radiators", "Size radiators")
+                    .icon("table-2")
+                    .hint("Radiators for every room from its heat loss, less what its underfloor heating gives: type, length, output and flow (STN EN 442)"),
+                Item::new("catalogue.cat:hvac", "Radiators and boilers")
+                    .icon("thermometer")
+                    .hint("Radiators, boilers and other heating fixtures from the catalogue"),
+                Item::Separator,
+                Item::new("discipline:heating.radiators", "Standards").icon("book-open"),
+            ],
+            "tab:heating.floor" => {
+                let zone = |k| {
+                    self.plan.tool == Tool::UfhZone && self.plan.ufh_zone == k
+                };
+                use crate::roomtool::UfhZone;
+                vec![
+                    Item::new("calc:floorheat", "Design underfloor heating")
+                        .icon("spline")
+                        .hint("Give rooms their underfloor loops from their heat loss: spacing, loops of 100 m at most, flows and what to set at the manifold (STN EN 1264)"),
+                    Item::Separator,
+                    Item::new("ufh:edge", "Edge zone")
+                        .icon("square-dashed")
+                        .hint("Draw an edge zone of underfloor heating in a room (by a window or a door), as a polygon or a rectangle: its pipes laid closer")
+                        .checked(zone(UfhZone::Edge)),
+                    Item::new("ufh:reduced", "Place of reduced output")
+                        .icon("square")
+                        .hint("Draw a place of reduced output in a room (under a bed with no legs), as a polygon or a rectangle: set in the Underfloor heating window by how many % it gives less")
+                        .checked(zone(UfhZone::Reduced)),
+                    Item::new("ufh:hole", "Hole with no pipe")
+                        .icon("scan")
+                        .hint("Draw a hole in a room's underfloor heating, as a polygon or a rectangle: the system board, but no pipe")
+                        .checked(zone(UfhZone::Hole)),
+                    Item::Separator,
+                    Item::new("heat:bill", "Bill of materials").icon("sheet"),
+                    Item::new("discipline:heating.floor", "Standards").icon("book-open"),
+                ]
+            }
             "tab:footing" => {
                 let k = self.plan.members.footing_kind;
                 let on = |x| self.plan.tool == Tool::Footing && k == x;

@@ -1365,7 +1365,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                         });
                         // drawn by its tag where it has one in this view
                         let tagged = model.iter().any(|t| {
-                            matches!(&t.kind, ElementKind::Tag(t) if t.view == view && t.host == e.id)
+                            matches!(&t.kind, ElementKind::Tag(t) if t.view == view && t.host == e.id && !t.ufh)
                         });
                         if let Some(n) = positions
                             .iter()
@@ -1414,7 +1414,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         let tagged: std::collections::HashSet<ElementId> = model
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Tag(t) if t.view == view => Some(t.host),
+                ElementKind::Tag(t) if t.view == view && !t.ufh => Some(t.host),
                 _ => None,
             })
             .collect();
@@ -1527,7 +1527,8 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             };
             d.items
                 .retain(|it| !(matches!(it, PlanItem::Line { .. }) && heated(it.id())));
-            d.items.extend(crate::heatplan::items(model, *level, mm));
+            d.items
+                .extend(crate::heatplan::items(model, *level, Some(view), mm));
         }
     }
     // a plan that shows the fire zones shows the fire-dangerous space

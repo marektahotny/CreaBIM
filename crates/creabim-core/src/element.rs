@@ -1099,6 +1099,11 @@ pub struct Tag {
     /// position mark.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub underside: bool,
+    /// A room's table of its underfloor heating circuits (George
+    /// 2026-11-28): drawn by the heating plan at `offset` from the room's
+    /// label point, moved on its own, on a leader once outside the room.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ufh: bool,
 }
 
 impl Tag {
@@ -1116,6 +1121,7 @@ impl Tag {
             material: false,
             placed: false,
             underside: false,
+            ufh: false,
         }
     }
 }

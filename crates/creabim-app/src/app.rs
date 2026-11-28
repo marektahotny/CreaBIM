@@ -12164,7 +12164,10 @@ crate::props::row(ui, "File names", |ui| {
                     {
                         self.selection.only(t.host);
                     }
-                    if matches!(
+                    if t.ufh {
+                        // a room's underfloor heating table: the plan
+                        // writes it from the design
+                    } else if matches!(
                         self.doc.model().get(t.host).map(|e| &e.kind),
                         Some(ElementKind::Room(_))
                     ) {

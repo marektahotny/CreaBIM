@@ -474,7 +474,18 @@ impl CreaBimApp {
             self.plan.tool = super::Tool::Object;
             self.park(what);
         }
-        if !set.is_empty() {
+        // each room's table its own tag in the heating plans, to move
+        let tags = if !set.is_empty() || write_now {
+            let on: Vec<ElementId> = set
+                .iter()
+                .filter(|(_, u)| u.is_some())
+                .map(|(id, _)| *id)
+                .collect();
+            table_tags(self.doc.model(), &on)
+        } else {
+            vec![]
+        };
+        if !set.is_empty() || !tags.is_empty() {
             let mut tx = Transaction::new("Underfloor heating");
             for (id, u) in set {
                 let Some(before) = self.doc.model().get(id).cloned() else {
@@ -485,6 +496,9 @@ impl CreaBimApp {
                     r.ufh = u;
                 }
                 tx = tx.replace(before, after);
+            }
+            for tag in tags {
+                tx = tx.insert(tag);
             }
             match self.doc.commit(tx) {
                 Ok(_) => self.status = t("Underfloor heating"),
@@ -499,6 +513,53 @@ impl CreaBimApp {
         }
         self.floor_heat = if open { Some(s) } else { None };
     }
+}
+
+/// The tags of the underfloor heating tables a heating plan wants and
+/// has not got: of the rooms with underfloor heating, and of `also`
+/// (just given it), in each plan of their storey that draws heating.
+fn table_tags(model: &creabim_core::Model, also: &[ElementId]) -> Vec<creabim_core::Element> {
+    use creabim_core::{Element, ElementKind, Tag, ViewKind};
+    let mut out = vec![];
+    let rooms: Vec<(ElementId, ElementId)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Room(r) if r.ufh.is_some() || also.contains(&e.id) => {
+                Some((e.id, r.level))
+            }
+            _ => None,
+        })
+        .collect();
+    for v in model.iter() {
+        let ElementKind::View(view) = &v.kind else {
+            continue;
+        };
+        let ViewKind::Plan { level, .. } = &view.kind else {
+            continue;
+        };
+        let heating = view
+            .trade
+            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Heating);
+        if view.ceiling_plan || !heating {
+            continue;
+        }
+        for (room, _) in rooms.iter().filter(|r| r.1 == *level) {
+            let has = model.iter().any(|t| {
+                matches!(&t.kind, ElementKind::Tag(x) if x.ufh && x.view == v.id && x.host == *room)
+            });
+            if !has {
+                // under the room's name, as the plan drew it (9 mm down)
+                let mm = view.scale / 1000.0;
+                let mut tag = Tag::new(v.id, *room, glam::DVec2::new(0.0, -9.0 * mm));
+                tag.ufh = true;
+                out.push(Element::new(
+                    "Underfloor heating table",
+                    ElementKind::Tag(tag),
+                ));
+            }
+        }
+    }
+    out
 }
 
 fn code(c: &str) -> String {

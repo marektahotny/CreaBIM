@@ -923,7 +923,7 @@ pub fn air_position_tags(model: &Model) -> Vec<Element> {
         model
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Tag(t) => Some((t.view, t.host)),
+                ElementKind::Tag(t) if !t.ufh => Some((t.view, t.host)),
                 _ => None,
             })
             .collect();
