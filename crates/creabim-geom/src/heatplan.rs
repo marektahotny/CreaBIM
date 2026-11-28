@@ -331,6 +331,7 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
     for rm in rooms.iter_mut() {
         if let Some(x) = design.rooms.iter().find(|x| x.id == rm.0.id && x.on) {
             rm.2.loops = x.loops.max(1);
+            rm.2.wall = x.wall;
         }
     }
     let storey = model.get(level).map_or(String::new(), |e| e.name.clone());

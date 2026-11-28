@@ -37,6 +37,10 @@ pub struct Underfloor {
     /// the one on the shortest way.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub door: Option<crate::ElementId>,
+    /// How far the coil keeps off the walls, m, as the system board's maker
+    /// asks; none keeps [`EDGE`]. Set from the design, not stored.
+    #[serde(skip)]
+    pub wall: Option<f64>,
 }
 
 /// How a room's loops are split, set by hand.
@@ -59,6 +63,7 @@ impl Default for Underfloor {
             zones: vec![],
             split: None,
             door: None,
+            wall: None,
         }
     }
 }
@@ -920,6 +925,7 @@ pub fn loops(outline: &[DVec2], u: &Underfloor) -> Vec<Spiral> {
 /// The loops, each spiral setting out from its corner nearest `from`
 /// (where the pipes come in from the manifold).
 pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec<Spiral> {
+    let edge = u.wall.filter(|w| *w > 0.0).unwrap_or(EDGE);
     let tidied = tidy(outline, 0.05);
     let strips = split_zones(&tidied, u.loops.max(1) as usize, u.split.as_ref());
     // the holes along the walls (under kitchen units) taken off the field
@@ -948,7 +954,7 @@ pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec
     // so it is filled all over (George 2026-11-27)
     let lay = |z: &[DVec2], start: usize| -> Spiral {
         if matches!(u.layout, Layout::Spiral | Layout::SpiralLeading) {
-            let sp = spiral(z, u.spacing, EDGE, start);
+            let sp = spiral(z, u.spacing, edge, start);
             let area = crate::polygon::signed_area2(z).abs() / 2.0;
             if sp.length >= 0.8 * area / u.spacing || convex_parts(z).len() < 2 {
                 return sp;
@@ -979,7 +985,7 @@ pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec
                     })
                     .unwrap_or(0);
                 let p = parts.remove(k);
-                let mut s = meander_at(&p, u.spacing, EDGE, u.spacing / 2.0).supply;
+                let mut s = meander_at(&p, u.spacing, edge, u.spacing / 2.0).supply;
                 if s.len() < 2 {
                     continue;
                 }
@@ -997,7 +1003,7 @@ pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec
                 at = s.last().copied();
                 supply.extend(s);
             }
-            let coil = spiral(&main, u.spacing, EDGE, nearest(&main, at));
+            let coil = spiral(&main, u.spacing, edge, nearest(&main, at));
             if let (Some(&l), Some(&f)) = (supply.last(), coil.supply.first()) {
                 let c = square_corner(z, l, f);
                 length += plen(&[l, c, f]);
@@ -1016,10 +1022,10 @@ pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec
         for (k, part) in convex_parts(z).iter().enumerate() {
             let sp = match u.layout {
                 Layout::Spiral | Layout::SpiralLeading => {
-                    spiral(part, u.spacing, EDGE, corner(part))
+                    spiral(part, u.spacing, edge, corner(part))
                 }
-                Layout::Meander => meander(part, u.spacing, EDGE),
-                Layout::DoubleMeander => double_meander(part, u.spacing, EDGE),
+                Layout::Meander => meander(part, u.spacing, edge),
+                Layout::DoubleMeander => double_meander(part, u.spacing, edge),
                 Layout::Hidden => Spiral::default(),
             };
             all.length += sp.length;
@@ -1041,7 +1047,7 @@ pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec
         .then(|| {
             strips
                 .iter()
-                .map(|z| loop_with_edges(z, &marked, u.spacing, from, &lay))
+                .map(|z| loop_with_edges(z, &marked, u.spacing, edge, from, &lay))
                 .collect()
         })
         .flatten();
@@ -1109,6 +1115,7 @@ fn loop_with_edges(
     z: &[DVec2],
     marked: &[(&Zone, f64)],
     t: f64,
+    edge: f64,
     from: Option<DVec2>,
     lay: &dyn Fn(&[DVec2], usize) -> Spiral,
 ) -> Option<Spiral> {
@@ -1146,7 +1153,7 @@ fn loop_with_edges(
     let mut length = 0.0;
     let mut at = from;
     for (p, tz) in &pieces {
-        let mut s = meander_at(p, *tz, EDGE, tz / 2.0).supply;
+        let mut s = meander_at(p, *tz, edge, tz / 2.0).supply;
         if s.len() < 2 {
             continue;
         }
@@ -1420,6 +1427,30 @@ mod tests {
         assert_eq!(loops(&rect(6.0, 4.0), &u).len(), 2);
         assert!(u.validate().is_ok());
         assert!(Underfloor { loops: 0, ..u }.validate().is_err());
+    }
+
+    #[test]
+    fn the_coil_keeps_the_makers_distance_off_the_walls() {
+        let r = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(4.0, 0.0),
+            DVec2::new(4.0, 3.0),
+            DVec2::new(0.0, 3.0),
+        ];
+        for w in [None, Some(0.15)] {
+            let u = Underfloor {
+                spacing: 0.2,
+                wall: w,
+                ..Underfloor::default()
+            };
+            let keep = w.unwrap_or(EDGE);
+            let near = loops(&r, &u)
+                .iter()
+                .flat_map(|s| s.supply.iter().chain(&s.ret))
+                .map(|p| p.x.min(p.y).min(4.0 - p.x).min(3.0 - p.y))
+                .fold(f64::MAX, f64::min);
+            assert!((near - keep).abs() < 1e-6, "{w:?}: {near}");
+        }
     }
 
     #[test]

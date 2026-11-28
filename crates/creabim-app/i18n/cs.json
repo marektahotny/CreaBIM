@@ -9253,5 +9253,9 @@
   "Edge zone width changed": "Šířka okrajové zóny změněna",
   "Zone picked: drag it to move it, a corner to reshape it, an edge zone's dashed line to change its width; Delete takes it away.": "Zóna vybrána: tažením ji posunete, tažením za roh změníte tvar, tažením za čárkovanou čáru okrajové zóny změníte její šířku; Delete ji smaže.",
   "Its texts cover what is drawn under them": "Texty zakryjí to, co je nakresleno pod nimi",
-  "Tag text background": "Pozadí textu označení"
+  "Tag text background": "Pozadí textu označení",
+ "The 180° bends between neighbouring pipes are tighter than the least bending radius the maker gives": "Ohyby o 180° mezi sousedními trubkami jsou těsnější než nejmenší poloměr ohybu, který udává výrobce",
+ "guide lines": "vodicí čáry",
+ "bend": "ohyb",
+ "from the wall": "od stěny"
 }

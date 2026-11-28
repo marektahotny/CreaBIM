@@ -314,7 +314,19 @@ impl CreaBimApp {
                                 r
                             } else {
                                 ui.colored_label(ui.visuals().warn_fg_color, "⚠").on_hover_text(
-                                    x.notes.iter().map(|n| t(n.text())).collect::<Vec<_>>().join("\n"),
+                                    x.notes
+                                        .iter()
+                                        .map(|n| match (n, x.bend) {
+                                            (floorheat::Note::BendTight, Some((r, need))) => format!(
+                                                "{} (R {} mm < {} mm)",
+                                                t(n.text()),
+                                                num(r * 1000.0, 0),
+                                                num(need * 1000.0, 0)
+                                            ),
+                                            _ => t(n.text()),
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n"),
                                 );
                                 r
                             };
@@ -808,6 +820,15 @@ fn floor_ui(ui: &mut egui::Ui, f: &floorheat::FloorBuild, rooms: &[&str]) {
                 }
                 if let Some(r) = f.spec.raster_mm {
                     x.push(format!("{} {} mm", t("raster"), num(r, 0)));
+                }
+                if let Some(g) = f.spec.guide_mm {
+                    x.push(format!("{} {} mm", t("guide lines"), num(g, 0)));
+                }
+                if let Some(k) = f.spec.bend_d {
+                    x.push(format!("{} R ≥ {} × Da", t("bend"), num(k, 0)));
+                }
+                if let Some(w) = f.spec.wall_mm {
+                    x.push(format!("{} ≥ {} mm", t("from the wall"), num(w, 0)));
                 }
                 if !f.spec.spacings_mm.is_empty() {
                     x.push(format!(

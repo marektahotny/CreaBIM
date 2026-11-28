@@ -108,6 +108,13 @@ pub struct BoardSpec {
     pub spacings_mm: Vec<f64>,
     /// "A": the pipe in the screed; "B": a dry system under a dry screed.
     pub system: String,
+    /// The pipe's least bending radius its maker gives, in pipe outside
+    /// diameters (5 for 5 × Da).
+    pub bend_d: Option<f64>,
+    /// How far the coil keeps off the walls, mm, as the maker asks.
+    pub wall_mm: Option<f64>,
+    /// The lines printed on a flat board to lay by, mm apart.
+    pub guide_mm: Option<f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -346,6 +353,9 @@ pub enum Note {
     ThinCover,
     /// The layers under the pipes resist less than STN EN 1264-4 asks.
     InsulationThin,
+    /// A 180° bend between neighbouring pipes (a meander, an edge zone's
+    /// serpentine) is tighter than the maker's least bending radius.
+    BendTight,
 }
 
 impl Note {
@@ -358,6 +368,7 @@ impl Note {
             Note::DrySystem => "A dry system: the characteristic of system A does not hold for it",
             Note::ThinCover => "The screed over the pipe is thinner than the pipe",
             Note::InsulationThin => "The layers under the pipes resist less than STN EN 1264-4, table 1 asks (Rλ,ins)",
+            Note::BendTight => "The 180° bends between neighbouring pipes are tighter than the least bending radius the maker gives",
         }
     }
 }
@@ -541,6 +552,10 @@ pub struct RoomDesign {
     pub theta_u: f64,
     pub q_down: f64,
     pub notes: Vec<Note>,
+    /// The tightest 180° bend's radius and the least the maker allows, m.
+    pub bend: Option<(f64, f64)>,
+    /// How far the coil keeps off the walls, m, as the board's maker asks.
+    pub wall: Option<f64>,
     /// The room's underfloor heating in the model.
     pub ufh: Option<Underfloor>,
     /// Its edge zones' area, m², spacing, m, and flux, W/m²; the places of
@@ -999,6 +1014,43 @@ fn one(
     if own.is_some() && !spacings.iter().any(|v| (v - spacing).abs() < 1e-6) {
         notes.push(Note::SpacingNotForBoard);
     }
+    // an edge zone's spacing on a nub board: a multiple of its raster
+    if let Some(r) = floor
+        .as_ref()
+        .and_then(|f| f.spec.raster_mm)
+        .filter(|r| *r > 0.0)
+    {
+        if edges.iter().any(|(_, t)| {
+            let k = t * 1000.0 / r;
+            (k - k.round()).abs() > 1e-6 || k.round() < 1.0
+        }) && !notes.contains(&Note::SpacingNotForBoard)
+        {
+            notes.push(Note::SpacingNotForBoard);
+        }
+    }
+    // the maker's least bending radius (5 × Da): a 180° bend between
+    // neighbouring pipes of a meander or of an edge zone's serpentine has
+    // half their spacing for its radius; a double spiral turns only at
+    // its middle, at a whole spacing
+    let bend = floor.as_ref().and_then(|f| f.spec.bend_d).and_then(|k| {
+        let need = k * d;
+        let layout = own.map(|u| u.layout).unwrap_or_default();
+        let mut have: Vec<f64> = edges.iter().map(|(_, t)| t / 2.0).collect();
+        have.push(match layout {
+            creabim_core::underfloor::Layout::Meander
+            | creabim_core::underfloor::Layout::DoubleMeander => spacing / 2.0,
+            _ => spacing,
+        });
+        let r = have.into_iter().fold(f64::MAX, f64::min);
+        (r + 1e-9 < need).then_some((r, need))
+    });
+    if bend.is_some() {
+        notes.push(Note::BendTight);
+    }
+    let wall = floor
+        .as_ref()
+        .and_then(|f| f.spec.wall_mm)
+        .map(|w| w / 1000.0);
     let q_main = flux(spacing);
     let (covered, reduced_w) = gives(spacing);
     // the flux over the whole floor, as the loss and the flow take it
@@ -1098,6 +1150,8 @@ fn one(
         theta_u,
         q_down,
         notes,
+        bend,
+        wall,
         ufh: own.cloned(),
         edge_area,
         edge_spacing: edges.first().map(|e| e.1),
@@ -1843,6 +1897,17 @@ fn model_bill_now(model: &Model) -> Vec<BillLine> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_system_board_names_its_bending_radius() {
+        // the makers' sheets give each pipe board a least bending radius;
+        // where a maker asks a distance off the walls it is read too
+        for b in boards().iter().filter(|b| b.ufh.is_some()) {
+            let u = b.ufh.as_ref().unwrap();
+            assert!(u.bend_d.is_some_and(|k| k > 0.0), "{}", b.name);
+            assert!(u.wall_mm.is_none_or(|w| w > 50.0), "{}", b.name);
+        }
+    }
 
     #[test]
     fn loops_are_cut_from_whole_coils() {

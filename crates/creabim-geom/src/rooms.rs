@@ -196,6 +196,7 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
                             .and_then(|d| d.rooms.iter().find(|x| x.id == e.id && x.on))
                         {
                             u.loops = x.loops.max(1);
+                            u.wall = x.wall;
                         }
                         let u = &u;
                         for sp in creabim_core::underfloor::loops(&s.outline, u) {
